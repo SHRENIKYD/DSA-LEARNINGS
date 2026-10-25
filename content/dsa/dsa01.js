@@ -173,7 +173,41 @@ int main() {
     cout << total << ' ' << boolalpha << isEven << ' ' << grade << ' ' << digitSum << ' ' << size << '\n';
     // prints: 15 true A 19 medium
     return 0;
-}` }] }, { code: String.raw`
+}` }, { lang: 'csharp', code: String.raw`
+// The skeleton you should be able to type with your eyes closed.
+using System;
+
+class Program {
+    static void Main() {
+        int n = 4096;              // a whole number (32 bits)
+        long total = 0;            // use long for sums that may grow large
+        bool isEven = n % 2 == 0;
+        char grade = n > 1000 ? 'A' : 'B';   // ternary: condition ? ifTrue : ifFalse
+
+        // for loop: we know the number of rounds
+        for (int i = 1; i <= 5; i++) {
+            total += i;            // same as total = total + i
+        }
+
+        // while loop: we stop on a condition (peel digits)
+        int digitSum = 0, m = n;
+        while (m > 0) {
+            digitSum += m % 10;    // last digit
+            m /= 10;               // drop last digit
+        }
+
+        // switch statement: every case ends with break (no fall-through in C#)
+        string size;
+        switch (n.ToString().Length) {
+            case 1: case 2: size = "small"; break;
+            case 3: case 4: size = "medium"; break;
+            default: size = "large"; break;
+        }
+
+        Console.WriteLine(total + " " + isEven + " " + grade + " " + digitSum + " " + size);
+        // prints: 15 True A 19 medium   (C# prints bools as True/False)
+    }
+}`, run: true }] }, { code: String.raw`
 // LeetCode style: no main, no input reading. You only fill the method.
 class Solution {
     public int sumOfDigits(int n) {
@@ -217,7 +251,21 @@ public:
         }
         return sum;
     }
-};` }] }],
+};` }, { lang: 'csharp', code: String.raw`
+// LeetCode style: no Main, no input reading. You only fill the method.
+using System;
+
+public class Solution {
+    public int SumOfDigits(int n) {
+        long m = Math.Abs((long)n);   // Math.Abs(int.MinValue) throws: widen to long first
+        int sum = 0;
+        while (m > 0) {
+            sum += (int)(m % 10);
+            m /= 10;
+        }
+        return sum;
+    }
+}` }] }],
     codeTitle: ['Full program skeleton (online-judge style)', 'Method-only skeleton (LeetCode style)'],
     viz: {
       title: 'Digit peeling: watch % 10 and / 10 at work',
@@ -302,7 +350,19 @@ cout << -5 / 2 << '\n';             // -2 (towards zero, guaranteed since C++11)
 cout << -5 % 2 << '\n';             // -1
 cout << ((-5 % 2) + 2) % 2 << '\n'; // 1  the "maths" remainder
 cout << (5 + 2 - 1) / 2 << '\n';    // 3 = ceil(5 / 2)
-cout << 5 / 2.0 << '\n';            // 2.5` }] } },
+cout << 5 / 2.0 << '\n';            // 2.5` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        Console.WriteLine(5 / 2);                 // 2
+        Console.WriteLine(-5 / 2);                // -2 (towards zero)
+        Console.WriteLine(-5 % 2);                // -1 (sign of the dividend, like Java)
+        Console.WriteLine(((-5 % 2) + 2) % 2);    // 1  the "maths" remainder
+        Console.WriteLine((5 + 2 - 1) / 2);       // 3 = ceil(5 / 2)
+        Console.WriteLine(5 / 2.0);               // 2.5
+    }
+}`, run: true }] } },
       { title: 'Picking the right loop', html: `<p><b>for</b> when you can count the rounds, <b>while</b> when a condition decides, <b>for-each</b> when you only read values. Counting down is common too (reverse traversal), and a step of 2 visits every second index.</p>`, code: { code: String.raw`
 int[] a = {3, 8, 1, 9};
 for (int i = 0; i < a.length; i++) System.out.print(a[i] + " ");      // 3 8 1 9
@@ -349,7 +409,25 @@ cout << '\n';
 int x = 100, steps = 0;
 while (x > 1) { x /= 2; steps++; }
 cout << steps << '\n';                                             // 6
-for (int v : a) if (v > 5) cout << v << ' ';                       // 8 9` }] } },
+for (int v : a) if (v > 5) cout << v << ' ';                       // 8 9` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 3, 8, 1, 9 };
+        for (int i = 0; i < a.Length; i++) Console.Write(a[i] + " ");      // 3 8 1 9
+        Console.WriteLine();
+        for (int i = a.Length - 1; i >= 0; i--) Console.Write(a[i] + " "); // 9 1 8 3
+        Console.WriteLine();
+        for (int i = 0; i < a.Length; i += 2) Console.Write(a[i] + " ");   // 3 1
+        Console.WriteLine();
+        int x = 100, steps = 0;
+        while (x > 1) { x /= 2; steps++; }          // how many halvings to reach 1?
+        Console.WriteLine(steps);                   // 6
+        foreach (int v in a) if (v > 5) Console.Write(v + " ");            // 8 9 (foreach reads values)
+        Console.WriteLine();
+    }
+}`, run: true }] } },
       { title: 'String + number: left to right!', html: `<p>Java evaluates <code>+</code> from left to right. Once a String appears, everything after it becomes text glueing. This matters when you print answers like <code>"Case " + i + 1</code>. JavaScript behaves exactly the same. Python refuses to mix text and numbers (a <code>TypeError</code>), so you use f-strings. In C++, <code>"Case #" + i</code> even compiles but moves a pointer — stream the parts with <code>&lt;&lt;</code> or use <code>to_string</code>.</p>
 ${H.table(['Expression', 'Result'], [['<code>1 + 2 + "x"</code>', '"3x"'], ['<code>"x" + 1 + 2</code>', H.c('r', '"x12"')], ['<code>"x" + (1 + 2)</code>', H.c('g', '"x3"')], ['<code>\'a\' + 1</code>', '98 (char is a number)']])}`, code: { code: String.raw`
 int i = 4;
@@ -375,7 +453,19 @@ cout << "Case #" << i + 1 << '\n';              // Case #5  (stream the parts)
 string s = "Case #" + to_string(i + 1);          // Case #5  (build a std::string)
 cout << s << '\n';
 cout << 'a' + 1 << '\n';                         // 98 (char is promoted to int)
-cout << char('a' + 1) << '\n';                   // b` }] } },
+cout << char('a' + 1) << '\n';                   // b` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int i = 4;
+        Console.WriteLine("Case #" + i + 1);    // Case #41  (bug: left-to-right string glueing)
+        Console.WriteLine("Case #" + (i + 1));  // Case #5   (fixed)
+        Console.WriteLine($"Case #{i + 1}");    // Case #5   (interpolated string: the usual way)
+        Console.WriteLine('a' + 1);             // 98 (char is promoted to int)
+        Console.WriteLine((char)('a' + 1));     // b
+    }
+}`, run: true }] } },
       { title: 'Labelled break: escaping two loops at once', html: `<p>When searching a grid, you often want to stop <b>both</b> loops as soon as you find the target. A label on the outer loop lets one <code>break</code> jump out of everything — cleaner than a flag variable. Java and JavaScript have labels; in Python and C++, put the loops in a function (or lambda) and <code>return</code>.</p>`, code: { code: String.raw`
 int[][] grid = {{1, 2}, {3, 4}};
 int target = 3, fr = -1, fc = -1;
@@ -416,7 +506,23 @@ auto find = [&]() -> pair<int, int> {
     return {-1, -1};
 };
 auto [fr, fc] = find();             // structured binding (C++17)
-cout << fr << "," << fc << '\n';    // 1,0` }] } }
+cout << fr << "," << fc << '\n';    // 1,0` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        // C# has no labelled break. goto a label after the loops, or put the search in a method.
+        int[][] grid = { new[] { 1, 2 }, new[] { 3, 4 } };
+        int target = 3, fr = -1, fc = -1;
+        for (int r = 0; r < grid.Length; r++) {
+            for (int c = 0; c < grid[r].Length; c++) {
+                if (grid[r][c] == target) { fr = r; fc = c; goto found; }
+            }
+        }
+    found:
+        Console.WriteLine(fr + "," + fc);   // 1,0
+    }
+}`, run: true }] } }
     ],
     deepDive: `<h4>Compound assignment hides a cast</h4>
 <p><code>int x = 10; x += 2.7;</code> compiles and leaves <code>x = 12</code>, because <code>x += y</code> really means <code>x = (int)(x + y)</code>. But <code>x = x + 2.7;</code> is a compile error. The same rule lets <code>byte b = 0; b += 1;</code> work while <code>b = b + 1;</code> fails (byte + int is int).</p>
@@ -492,7 +598,20 @@ public:
         }
         return num;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int AddDigits(int num) {
+        while (num >= 10) {          // more than one digit?
+            int sum = 0;
+            while (num > 0) {        // peel every digit
+                sum += num % 10;
+                num /= 10;
+            }
+            num = sum;               // repeat with the digit sum
+        }
+        return num;
+    }
+}` }] } },
       mcq: { q: 'Adding the digits of a number never changes its remainder when divided by…', options: ['9', '10', '2', '7'], answer: 0, explain: 'Because 10 ≡ 1 (mod 9), every power of 10 is ≡ 1, so a number and its digit sum leave the same remainder mod 9. That gives the O(1) "digital root" formula.' },
       hints: [`<p>Hint 1: Write the simulation first — inner loop sums digits, outer loop repeats while the number has 2+ digits.</p>`, `<p>Hint 2: Try a few inputs: 38 → 2, 18 → 9, 27 → 9, 10 → 1. Compare each answer with <code>num % 9</code>. Do you see the pattern?</p>`, `<p>Hint 3: Edge cases: 0 stays 0; multiples of 9 give 9, not 0. Recipe: if num == 0 return 0, else return 1 + (num − 1) % 9.</p>`],
       tests: { sig: 'int -> int', fn: 'addDigits', cases: [
@@ -527,7 +646,13 @@ public:
         if (num == 0) return 0;      // the only number whose digital root is 0
         return 1 + (num - 1) % 9;    // multiples of 9 map to 9, others to num % 9
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int AddDigits(int num) {
+        if (num == 0) return 0;          // the only number whose digital root is 0
+        return 1 + (num - 1) % 9;        // maps multiples of 9 to 9, others to num % 9
+    }
+}` }],
         dry: { head: ['num', 'digits summed', 'new num', 'one digit?'], rows: [['38', '3 + 8', '11', 'no'], ['11', '1 + 1', '2', H.c('g', 'yes → return 2')], ['formula', '1 + (38 − 1) % 9', '1 + 1 = 2', H.c('g', 'same answer')]] },
         complexity: `<p>Simulation: O(log N) total (each pass is O(digits), passes shrink instantly). Formula: O(1) time and space.</p>`,
         followUps: ['What if the number is given as a String with 10<sup>5</sup> digits? (Sum the chars once, then apply the formula.)', 'Return how many rounds of adding were needed.']
@@ -659,6 +784,44 @@ int main() {
         cout << sum << '\n';       // '\n', not endl: endl forces a flush every line
     }
     return 0;                      // cout is flushed automatically at exit
+}` }, { lang: 'csharp', code: String.raw`
+// Reusable fast reader: copy this into every online assessment.
+using System;
+using System.IO;
+
+class Program {
+    class FastReader {
+        private readonly TextReader input = new StreamReader(Console.OpenStandardInput(), System.Text.Encoding.ASCII, false, 1 << 16);
+        private string[] tokens = new string[0];
+        private int pos = 0;
+
+        public string Next() {
+            // Refill the token buffer from the next line whenever it runs dry.
+            while (pos == tokens.Length) {
+                string line = input.ReadLine();
+                if (line == null) return null;          // end of input
+                tokens = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                pos = 0;
+            }
+            return tokens[pos++];
+        }
+        public int NextInt() { return int.Parse(Next()); }
+        public long NextLong() { return long.Parse(Next()); }
+        public string NextLine() { pos = tokens.Length; return input.ReadLine(); }
+    }
+
+    static void Main() {
+        var reader = new FastReader();
+        var output = new StreamWriter(Console.OpenStandardOutput());   // buffered, cheap
+        int t = reader.NextInt();              // number of test cases
+        while (t-- > 0) {
+            int n = reader.NextInt();
+            long sum = 0;                      // fresh state for EVERY test case
+            for (int i = 0; i < n; i++) sum += reader.NextInt();
+            output.WriteLine(sum);
+        }
+        output.Flush();                        // never forget this line
+    }
 }` }] }, { code: String.raw`
 // Fastest option: read raw bytes yourself (handles negative numbers).
 import java.io.*;
@@ -721,6 +884,29 @@ static int nextInt() {
     int x = 0;
     while (c >= '0' && c <= '9') { x = x * 10 + (c - '0'); c = readByte(); }
     return neg ? -x : x;
+}` }, { lang: 'csharp', code: String.raw`
+// Fastest option: read raw bytes yourself (handles negative numbers).
+using System;
+using System.IO;
+
+class ByteReader {
+    private readonly Stream input = Console.OpenStandardInput();
+    private readonly byte[] buf = new byte[1 << 16];
+    private int len = 0, ptr = 0;
+
+    private int Read() {
+        if (ptr == len) { len = input.Read(buf, 0, buf.Length); ptr = 0; if (len <= 0) return -1; }
+        return buf[ptr++];
+    }
+    public int NextInt() {
+        int c = Read();
+        while (c != '-' && (c < '0' || c > '9')) c = Read();   // skip spaces/newlines
+        bool neg = c == '-';
+        if (neg) c = Read();
+        int x = 0;
+        while (c >= '0' && c <= '9') { x = x * 10 + (c - '0'); c = Read(); }
+        return neg ? -x : x;
+    }
 }` }] }],
     codeTitle: ['FastReader (BufferedReader + StringTokenizer) and PrintWriter', 'Byte-level reader for very large inputs'],
     viz: {
@@ -800,7 +986,22 @@ string rest, text;
 getline(in, rest);                       // "" (leftover end of line 1!)
 getline(in, text);                       // "hello world"
 cout << n << " [" << rest << "] [" << text << "]\n";
-// Fix: in >> ws (skip whitespace) or in.ignore(numeric_limits<streamsize>::max(), '\n') before getline.` }] } },
+// Fix: in >> ws (skip whitespace) or in.ignore(numeric_limits<streamsize>::max(), '\n') before getline.` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.IO;
+
+class Program {
+    static void Main() {
+        // Console.In only reads whole lines, so the leftover-newline trap does not exist in C#.
+        // Split the first line yourself; the second ReadLine gets the text.
+        var reader = new StringReader("3\nhello world");      // stands in for Console.In
+        int n = int.Parse(reader.ReadLine());                 // 3
+        string text = reader.ReadLine();                      // "hello world"
+        Console.WriteLine(n + " [" + text + "]");            // 3 [hello world]
+        // The C# trap is speed instead: Console.ReadLine without a buffered reader is slow for 10^5+ lines.
+        // Wrap Console.OpenStandardInput() in a StreamReader with a big buffer in assessments.
+    }
+}`, run: true }] } },
       { title: 'Reading a character grid', html: `<p>Input: first line <code>R C</code>, then R rows like <code>#..#</code>. Read sizes with a tokenizer, then each row as a string. Java converts it to <code>char[]</code>; Python and C++ strings already give O(1) access by <code>grid[r][c]</code> (use a list of lists in Python if you must edit cells).</p>`, code: { code: String.raw`
 BufferedReader br = new BufferedReader(new StringReader("2 4\n#..#\n.##."));
 StringTokenizer st = new StringTokenizer(br.readLine());
@@ -831,7 +1032,22 @@ vector<string> grid(rows);
 for (auto& row : grid) in >> row;        // >> skips whitespace and reads one row
 int hashes = 0;
 for (const string& row : grid) hashes += count(row.begin(), row.end(), '#');
-cout << rows << "x" << cols << " grid has " << hashes << " walls\n";   // 2x4 grid has 4 walls` }] } },
+cout << rows << "x" << cols << " grid has " << hashes << " walls\n";   // 2x4 grid has 4 walls` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.IO;
+
+class Program {
+    static void Main() {
+        var reader = new StringReader("2 4\n#..#\n.##.");    // stands in for Console.In
+        string[] first = reader.ReadLine().Split(' ');
+        int rows = int.Parse(first[0]), cols = int.Parse(first[1]);
+        char[][] grid = new char[rows][];
+        for (int r = 0; r < rows; r++) grid[r] = reader.ReadLine().Trim().ToCharArray();
+        int hashes = 0;
+        foreach (char[] row in grid) foreach (char ch in row) if (ch == '#') hashes++;
+        Console.WriteLine(rows + "x" + cols + " grid has " + hashes + " walls");   // 2x4 grid has 4 walls
+    }
+}`, run: true }] } },
       { title: 'Reading until end of input', html: `<p>Some problems never tell you how many lines come. <code>readLine()</code> returns <code>null</code> at end of input — use it as the loop guard (Python: the <code>for line in ...</code> loop simply ends; C++: <code>getline</code> returns false). Skip blank lines defensively, because judges sometimes add a trailing newline.</p>`, code: { code: String.raw`
 BufferedReader br = new BufferedReader(new StringReader("5 7\n1 2\n\n10 20\n"));
 StringBuilder sb = new StringBuilder();
@@ -872,7 +1088,25 @@ while (getline(in, line)) {                 // false at end of input
     out += to_string(a + b) + '\n';
 }
 cout << out;                                // 12, 3, 30 on separate lines
-// With plain tokens, "while (cin >> a >> b)" also stops at end of input.` }] } },
+// With plain tokens, "while (cin >> a >> b)" also stops at end of input.` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.IO;
+using System.Text;
+
+class Program {
+    static void Main() {
+        var reader = new StringReader("5 7\n1 2\n\n10 20\n");   // stands in for Console.In
+        var sb = new StringBuilder();
+        string line;
+        while ((line = reader.ReadLine()) != null) {             // null at end of input
+            line = line.Trim();
+            if (line.Length == 0) continue;                      // ignore blank lines
+            string[] p = line.Split(' ');
+            sb.Append(long.Parse(p[0]) + long.Parse(p[1])).Append('\n');
+        }
+        Console.Write(sb);                                       // 12, 3, 30 on separate lines
+    }
+}`, run: true }] } },
       { title: 'Output: one parcel instead of a million letters', html: `<p>Printing 10<sup>5</sup> answers one call at a time (<code>System.out.println</code>, <code>print()</code>, <code>console.log</code>, <code>cout &lt;&lt; endl</code>) may flush to the operating system many times. Collecting the text (a <code>StringBuilder</code>, a list joined once, a <code>std::string</code>) and printing once makes output practically free.</p>
 ${H.table(['Way', 'Flushes for 10<sup>5</sup> lines', 'Verdict'], [['println in loop', 'up to 10<sup>5</sup>', H.c('r', 'risky')], ['StringBuilder + one print', '1', H.c('g', 'fast')], ['PrintWriter + flush()', 'a few (buffer fills)', H.c('g', 'fast')]])}`, code: { code: String.raw`
 StringBuilder sb = new StringBuilder();
@@ -887,7 +1121,17 @@ for (let q = 1; q <= 5; q++) out.push(q * q);
 process.stdout.write(out.join('\n') + '\n');   // one write; console.log per line is much slower`, run: true }, { lang: 'cpp', code: String.raw`
 string out;
 for (int q = 1; q <= 5; q++) out += to_string(q * q) + '\n';
-cout << out;   // one write; also never use endl in a loop (it flushes every time)` }] } }
+cout << out;   // one write; also never use endl in a loop (it flushes every time)` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+class Program {
+    static void Main() {
+        var sb = new StringBuilder();
+        for (int q = 1; q <= 5; q++) sb.Append(q * q).Append('\n');
+        Console.Write(sb);   // 1 4 9 16 25, each on its own line: one write instead of five
+    }
+}`, run: true }] } }
     ],
     deepDive: `<h4>Why Java's Scanner is slow</h4>
 <p><code>Scanner</code> wraps the input in a small (1024-char) buffer and uses <code>java.util.regex</code> to find each token and to validate it as an integer (it even supports locale-specific digit grouping). Every <code>nextInt()</code> therefore runs pattern matching, plus extra checks. <code>StringTokenizer</code> just scans for delimiter characters; <code>Integer.parseInt</code> is a tight digit loop.</p>
@@ -948,6 +1192,17 @@ int main() {
     int sum = 0;                       // BUG: signed overflow past ~2.1e9 (undefined behaviour)
     for (int i = 0; i < n; i++) { int x; cin >> x; sum += x; }
     cout << sum << endl;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        string[] tok = Console.In.ReadToEnd().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+        int n = int.Parse(tok[0]);
+        int sum = 0;                    // BUG: overflows past ~2.1e9 (wraps silently, unchecked by default)
+        for (int i = 0; i < n; i++) sum += int.Parse(tok[1 + i]);
+        Console.WriteLine(sum);
+    }
 }` }] } },
       mcq: { q: 'Your O(N) solution gets TLE on N = 10<sup>6</sup>. What is the most likely culprit?', options: ['Reading input with a slow reader (Scanner in Java, input() per line in Python, synced cin in C++)', 'Using a for loop instead of while', 'Declaring the array as int[]', 'Using long instead of int'], answer: 0, explain: 'The algorithm is already linear; the remaining cost is I/O. Scanner is several times slower than BufferedReader + StringTokenizer on large inputs.' },
       hints: [`<p>Hint 1: The algorithm is trivial — the challenge is reading 10<sup>6</sup> numbers fast and storing a sum that can reach 10<sup>15</sup>.</p>`, `<p>Hint 2: Use your language's fast reader: BufferedReader + StringTokenizer in Java (refill the tokenizer with the next line if the numbers wrap across lines), <code>sys.stdin.buffer.read().split()</code> in Python, <code>fs.readFileSync(0)</code> in Node, <code>cin</code> after <code>ios::sync_with_stdio(false)</code> in C++.</p>`, `<p>Hint 3: Use a 64-bit sum (<code>long</code> in Java, <code>long long</code> in C++; Python ints never overflow; a JS Number is exact up to 2<sup>53</sup> ≈ 9 × 10<sup>15</sup>, which is enough here). Recipe: read N → loop N times: sum += nextInt() → print sum. Max |sum| = 10<sup>6</sup> × 10<sup>9</sup> = 10<sup>15</sup>, safely inside long.</p>`],
@@ -1011,6 +1266,19 @@ int main() {
     }
     cout << sum << '\n';
     return 0;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.IO;
+
+class Program {
+    static void Main() {
+        var reader = new StreamReader(Console.OpenStandardInput(), System.Text.Encoding.ASCII, false, 1 << 16);
+        string[] tok = reader.ReadToEnd().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+        int n = int.Parse(tok[0]);
+        long sum = 0;                                   // up to 1e15 fits easily in 64 bits
+        for (int i = 0; i < n; i++) sum += int.Parse(tok[1 + i]);
+        Console.WriteLine(sum);
+    }
 }` }],
         dry: { head: ['step', 'token', 'sum (long)', 'sum if it were int'], rows: [['1', '1000000000', '1000000000', '1000000000'], ['2', '1000000000', '2000000000', '2000000000'], ['3', '1000000000', '3000000000', H.c('r', '-1294967296 (overflow!)')], ['4', '-7', H.c('g', '2999999993'), H.c('r', '-1294967303')]] },
         complexity: `<p>O(N) time, O(1) extra space (we never store the array). I/O dominates the running time.</p>`,
@@ -1115,7 +1383,34 @@ int r;
 if (__builtin_mul_overflow(a, b, &r)) cout << "overflow detected\n";   // GCC/Clang helper
 int lo = 2'000'000'000, hi = 2'100'000'000;
 int mid = lo + (hi - lo) / 2;         // safe midpoint
-cout << mid << '\n';                  // 2050000000` }] }, { code: String.raw`
+cout << mid << '\n';                  // 2050000000` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        // Overflow and how to avoid it. C# arithmetic is unchecked by default: it wraps silently.
+        int a = 50000, b = 50000;
+        long wrong = a * b;                             // int * int overflows BEFORE widening
+        long right = (long)a * b;                       // promote first, then multiply
+        Console.WriteLine(wrong + " vs " + right);      // -1794967296 vs 2500000000
+
+        int max = int.MaxValue;
+        Console.WriteLine(max + 1);                     // -2147483648 (rolls over)
+        // Math.Abs(int.MinValue) throws OverflowException: no positive twin exists
+
+        try {
+            int boom = checked(a * b);                  // checked: throws instead of silently overflowing
+            Console.WriteLine(boom);
+        } catch (OverflowException) {
+            Console.WriteLine("overflow detected");
+        }
+
+        // Safe midpoint (classic binary-search bug when lo + hi > 2^31 - 1)
+        int lo = 2000000000, hi = 2100000000;
+        int mid = lo + (hi - lo) / 2;
+        Console.WriteLine(mid);                         // 2050000000
+    }
+}`, run: true }] }, { code: String.raw`
 // Wrapper classes: == compares addresses, equals compares values.
 Integer x = 127, y = 127;
 Integer p = 128, q = 128;
@@ -1153,7 +1448,27 @@ int* pp = new int(1000);
 int* pq = new int(1000);
 cout << (pp == pq) << ' ' << (*pp == *pq) << '\n';   // 0 1 (addresses differ, values equal)
 delete pp;
-delete pq;` }] }],
+delete pq;` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        // int is a value type: == compares numbers. Boxing into object brings the address trap back.
+        int p = 128, q = 128;
+        Console.WriteLine(p == q);                     // True
+        object bp = p, bq = q;                         // boxed: two separate objects on the heap
+        Console.WriteLine(bp == bq);                   // False (reference comparison on object)
+        Console.WriteLine(bp.Equals(bq));              // True  (compares the numbers)
+
+        var list = new List<int> { 1000, 1000 };
+        Console.WriteLine(list[0] == list[1]);         // True - generic List<int> never boxes
+
+        int? maybe = null;                             // nullable int: the C# counterpart of Integer null
+        // int boom = maybe.Value;                     // would throw InvalidOperationException
+        Console.WriteLine(maybe ?? -1);                // -1 (default when null)
+    }
+}`, run: true }] }],
     codeTitle: ['Overflow traps and fixes', 'Integer caching and equals'],
     viz: {
       title: 'Odometer rollover: watch a 32-bit int overflow',
@@ -1213,7 +1528,23 @@ long long goodSum = 0;
 for (int v : a) { badSum += v; goodSum += v; }   // badSum overflows (undefined behaviour)
 cout << goodSum << '\n';                           // 100000000000000
 // Trap: accumulate(a.begin(), a.end(), 0) sums in int! Write 0LL to sum in long long.
-cout << accumulate(a.begin(), a.end(), 0LL) << '\n';` }] } },
+cout << accumulate(a.begin(), a.end(), 0LL) << '\n';` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Linq;
+
+class Program {
+    static void Main() {
+        int[] a = new int[100000];
+        Array.Fill(a, 1000000000);
+        int badSum = 0;
+        long goodSum = 0;
+        foreach (int v in a) { badSum += v; goodSum += v; }
+        Console.WriteLine(badSum);   // some meaningless number (wrapped around)
+        Console.WriteLine(goodSum);  // 100000000000000
+        // Trap: a.Sum() sums in int and THROWS OverflowException here. Use a.Sum(v => (long)v).
+        Console.WriteLine(a.Sum(v => (long)v));
+    }
+}`, run: true }] } },
       { title: 'Ceiling division without doubles', html: `<p>"How many boxes of size 3 to pack 10 items?" Answer ⌈10/3⌉ = 4. Avoid <code>Math.ceil(10 / 3)</code> — that computes integer 3 first and returns 3.0! For positive numbers use <code>(a + b - 1) / b</code>, or <code>Math.ceilDiv</code> (Java 18+). C++ has the same trap. In Python and JavaScript <code>/</code> already gives 3.33…, so <code>math.ceil</code>/<code>Math.ceil</code> work for small numbers — but the integer recipe (<code>-(-a // b)</code> in Python) stays exact for huge ones.</p>
 ${H.table(['Expression', 'Result'], [['<code>Math.ceil(10 / 3)</code>', H.c('r', '3.0')], ['<code>Math.ceil(10 / 3.0)</code>', '4.0 (double)'], ['<code>(10 + 3 - 1) / 3</code>', H.c('g', '4')]])}`, code: { code: String.raw`
 int items = 10, size = 3;
@@ -1231,7 +1562,17 @@ console.log(Math.ceil(items / size));                  // 4 ('/' already gives 3
 console.log(Math.floor((items + size - 1) / size));    // 4 (integer recipe, same as Java)`, run: true }, { lang: 'cpp', code: String.raw`
 int items = 10, size = 3;
 cout << ceil(items / size) << '\n';          // 3  (bug: int / int happened first)
-cout << (items + size - 1) / size << '\n';   // 4` }] } },
+cout << (items + size - 1) / size << '\n';   // 4` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int items = 10, size = 3;
+        Console.WriteLine(Math.Ceiling((double)(items / size)));   // 3  (bug: int / int happened first)
+        Console.WriteLine((items + size - 1) / size);             // 4
+        Console.WriteLine(Math.Ceiling(items / (double)size));    // 4  (goes through a double)
+    }
+}`, run: true }] } },
       { title: 'Doubles are approximate', html: `<p><code>0.1 + 0.2 == 0.3</code> is <b>false</b> in Java (and in every language using IEEE-754 doubles), because 0.1 has no exact binary form. Compare doubles with a tolerance, or better, keep money and counts in integers (cents, not dollars).</p>`, code: { code: String.raw`
 double s = 0.1 + 0.2;
 System.out.println(s);                         // 0.30000000000000004
@@ -1258,7 +1599,21 @@ cout << setprecision(17) << s << '\n';   // 0.30000000000000004
 cout << (s == 0.3) << '\n';              // 0
 cout << (fabs(s - 0.3) < 1e-9) << '\n';  // 1
 long long cents = 10 + 20;
-cout << (cents == 30) << '\n';           // 1` }] } },
+cout << (cents == 30) << '\n';           // 1` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        double s = 0.1 + 0.2;
+        Console.WriteLine(s.ToString("R"));            // 0.30000000000000004 ("R": round-trip digits)
+        Console.WriteLine(s == 0.3);                   // False
+        Console.WriteLine(Math.Abs(s - 0.3) < 1e-9);   // True
+        long cents = 10 + 20;                          // exact integers
+        Console.WriteLine(cents == 30);                // True
+        decimal money = 0.1m + 0.2m;                   // decimal: exact base-10 arithmetic
+        Console.WriteLine(money == 0.3m);              // True
+    }
+}`, run: true }] } },
       { title: 'char is secretly a number', html: `<p>Characters are stored as UTF-16 code numbers: <code>'a' = 97</code>, <code>'A' = 65</code>, <code>'0' = 48</code>. That is why <code>c - 'a'</code> gives a letter's position 0–25 and <code>c - '0'</code> gives a digit's value.</p>
 ${H.table(['char c', 'c - \'a\'', 'c - \'0\''], [['\'a\'', '0', '—'], ['\'d\'', '3', '—'], ['\'7\'', '—', '7']])}`, code: { code: String.raw`
 char c = 'd';
@@ -1284,7 +1639,19 @@ int pos = c - 'a';                 // 3
 char next = c + 1;                 // 'e'
 int digit = '7' - '0';             // 7
 char upper = c - 'a' + 'A';        // 'D' (or toupper(c))
-cout << pos << ' ' << next << ' ' << digit << ' ' << upper << '\n';` }] } }
+cout << pos << ' ' << next << ' ' << digit << ' ' << upper << '\n';` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        char c = 'd';
+        int pos = c - 'a';                   // 3
+        char next = (char)(c + 1);           // 'e'  (char + int is an int: cast back)
+        int digit = '7' - '0';               // 7
+        char upper = (char)(c - 'a' + 'A');  // 'D'  (or char.ToUpper(c))
+        Console.WriteLine(pos + " " + next + " " + digit + " " + upper);
+    }
+}`, run: true }] } }
     ],
     deepDive: `<h4>Two's complement in one paragraph</h4>
 <p>Java integers use <b>two's complement</b>: the top bit has weight −2<sup>31</sup> instead of +2<sup>31</sup>. So <code>0111…1</code> = 2,147,483,647 and adding 1 gives <code>1000…0</code> = −2,147,483,648. Negation is "flip all bits, add 1", which is why <code>-Integer.MIN_VALUE == Integer.MIN_VALUE</code> and <code>Math.abs</code> cannot fix it. Integer overflow in Java is <b>defined behaviour</b> (wraps), unlike C/C++ where signed overflow is undefined.</p>
@@ -1339,7 +1706,14 @@ public:
         for (int v : a) p *= v;                 // overflows after 2-3 elements
         return (int) (p % 1000000007LL);        // garbage in, garbage out
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int ProductMod(int[] a) {
+        long p = 1;
+        foreach (int v in a) p *= v;            // overflows after 2-3 elements (wraps silently)
+        return (int)(p % 1000000007L);          // garbage in, garbage out
+    }
+}` }] } },
       mcq: { q: 'Both p and a[i] are below M = 10<sup>9</sup>+7. What is the largest possible value of p × a[i] before taking %?', options: ['About 10<sup>18</sup> — fits in long', 'About 10<sup>9</sup> — fits in int', 'About 10<sup>27</sup> — needs BigInteger', 'Exactly M'], answer: 0, explain: '(10<sup>9</sup>)·(10<sup>9</sup>) = 10<sup>18</sup> &lt; 9.22·10<sup>18</sup>, so a long holds it. That is exactly why the modulus is chosen around 10<sup>9</sup>.' },
       hints: [`<p>Hint 1: (x · y) mod M = ((x mod M) · (y mod M)) mod M. You can take the modulo after <b>every</b> multiplication without changing the final answer.</p>`, `<p>Hint 2: Keep the running product in a 64-bit integer (<code>long</code> / <code>long long</code>) and reduce it right away, so it always stays below M. In JavaScript, p × v can reach 10<sup>18</sup> &gt; 2<sup>53</sup>, so use <code>BigInt</code>. Python ints never overflow, but reducing keeps them small and fast.</p>`, `<p>Hint 3: Edge: a[i] can be up to 10<sup>9</sup> which is already &lt; M, but reduce it anyway for safety. Recipe: p = 1; for v: p = p * (v % M) % M; return (int) p.</p>`],
       tests: { sig: 'int[] -> int', fn: 'productMod', cases: [
@@ -1393,7 +1767,18 @@ public:
         for (int v : a) p = p * (v % MOD) % MOD;   // p, v < MOD, so p * v < ~1e18 fits in long long
         return (int)p;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    const long MOD = 1000000007L;
+
+    public int ProductMod(int[] a) {
+        long p = 1;
+        foreach (int v in a) {
+            p = p * (v % MOD) % MOD;   // p < MOD and v < MOD, so p * v < ~1.0e18 which fits in long
+        }
+        return (int)p;                 // safe: p < MOD < int.MaxValue
+    }
+}` }],
         dry: { head: ['v', 'p before', 'p × v', 'p after (% M)'], rows: [['100000', '1', '100000', '100000'], ['100000', '100000', '10000000000', '999999937'], ['3', '999999937', '2999999811', H.c('g', '999999797')]] },
         complexity: `<p>O(N) time, O(1) space. Each step is one multiply and one modulo on longs.</p>`,
         followUps: ['What if the modulus were around 10<sup>18</sup>? (p × v would overflow long → use Math.multiplyHigh, BigInteger, or "multiply by doubling".)', 'Return the product of every element except itself, modulo M, without division.']
@@ -1511,7 +1896,30 @@ int main() {
     fill(a);
     cout << a[0] << "," << a[1] << "," << a[2] << '\n';               // 0,0,42
     return 0;
-}` }] }, { code: String.raw`
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+// Value types (int) are copied; reference types (arrays) share the object. ref/out can share anything.
+class Program {
+    static void Bump(int n) { n++; }                  // changes only the local copy
+    static void BumpRef(ref int n) { n++; }           // ref: changes the caller's int
+    static void Fill(int[] arr) {
+        arr[1] = 7;                                   // mutates the caller's array (same object)
+        arr = new int[3];                             // re-points the LOCAL copy only
+        arr[2] = 42;                                  // touches the new array, invisible to caller
+    }
+    static void Main() {
+        int x = 5;
+        int[] a = { 1, 2, 3 };
+        int[] b = a;                                  // alias: same array
+        b[0] = 99;
+        Bump(x);
+        Fill(a);
+        Console.WriteLine(x + " [" + string.Join(", ", a) + "]");   // 5 [99, 7, 3]
+        BumpRef(ref x);
+        Console.WriteLine(x);                         // 6
+    }
+}`, run: true }] }, { code: String.raw`
 // Running deep recursion safely: give the thread a bigger stack (common CP trick).
 class DeepRecursion {
     static int depth(int n) { return n == 0 ? 0 : 1 + depth(n - 1); }
@@ -1569,6 +1977,21 @@ int main() {
     // For 10^6+ levels: use an explicit std::stack / vector, or raise the limit
     // outside the program (ulimit -s unlimited), which judges may not allow.
     return 0;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Threading;
+
+// Running deep recursion safely: give the thread a bigger stack (the main thread has about 1 MB on .NET).
+class DeepRecursion {
+    static int Depth(int n) { return n == 0 ? 0 : 1 + Depth(n - 1); }
+
+    static void Main() {
+        var t = new Thread(() => {
+            Console.WriteLine(Depth(1000000));        // 1,000,000 frames
+        }, 1 << 28);                                  // 256 MB stack for this thread
+        t.Start();
+        t.Join();
+    }
 }` }] }],
     codeTitle: ['Pass-by-value demo', 'Bigger stack for deep recursion'],
     viz: {
@@ -1671,7 +2094,24 @@ int main() {
     swap(arr[0], arr[1]);               // std::swap takes references too
     cout << arr[0] << " " << arr[1] << '\n';   // 2 1
     return 0;
-}` }] } },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void SwapBroken(int x, int y) { int t = x; x = y; y = t; }        // copies
+    static void SwapRef(ref int x, ref int y) { int t = x; x = y; y = t; }   // ref: this one WORKS in C#
+    static void Swap(int[] a, int i, int j) { int t = a[i]; a[i] = a[j]; a[j] = t; }
+    static void Main() {
+        int p = 1, q = 2;
+        SwapBroken(p, q);
+        Console.WriteLine(p + " " + q);                     // 1 2 (unchanged)
+        SwapRef(ref p, ref q);
+        Console.WriteLine(p + " " + q);                     // 2 1
+        int[] arr = { 1, 2 };
+        Swap(arr, 0, 1);
+        Console.WriteLine("[" + string.Join(", ", arr) + "]");   // [2, 1]
+    }
+}`, run: true }] } },
       { title: 'Alias vs copy vs deep copy', html: `<p><code>b = a</code> is an alias. <code>a.clone()</code> or <code>Arrays.copyOf</code> makes a new 1D array. For a <b>2D</b> array, <code>clone()</code> copies only the outer array of row addresses — rows are still shared (a <b>shallow</b> copy). Copy each row for a true deep copy.</p>
 ${H.table(['Operation', 'New outer array?', 'New rows?'], [['<code>int[][] g2 = g;</code>', 'no', 'no'], ['<code>g.clone()</code>', 'yes', H.c('r', 'no')], ['row-by-row <code>clone()</code>', 'yes', H.c('g', 'yes')]])}`, code: { code: String.raw`
 int[][] g = {{1, 2}, {3, 4}};
@@ -1701,7 +2141,20 @@ auto copyAll = g;                  // copies every row
 copyAll[0][0] = 100;               // g is untouched
 auto& alias = g;                   // sharing needs an explicit reference
 alias[1][1] = -1;                  // changes g
-cout << g[0][0] << " " << g[1][1] << '\n';   // 1 -1` }] } },
+cout << g[0][0] << " " << g[1][1] << '\n';   // 1 -1` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[][] g = { new[] { 1, 2 }, new[] { 3, 4 } };
+        int[][] shallow = (int[][])g.Clone();
+        shallow[0][0] = 100;                       // also changes g[0][0]!
+        int[][] deep = new int[g.Length][];
+        for (int r = 0; r < g.Length; r++) deep[r] = (int[])g[r].Clone();
+        deep[1][1] = -1;                           // g is untouched
+        Console.WriteLine(g[0][0] + " " + g[1][1]);   // 100 4
+    }
+}`, run: true }] } },
       { title: 'Strings look like pass-by-value because they are immutable', html: `<p>Inside a method, <code>s += "!"</code> does <b>not</b> change the caller's String. Strings cannot be modified; <code>+=</code> builds a <b>new</b> String and re-points the local variable. If you want a method to modify text, pass a <code>StringBuilder</code> (which is mutable) or return the new String.</p>`, code: { code: String.raw`
 class StrDemo {
     static void shout(String s) { s += "!"; }                 // new object, local only
@@ -1746,7 +2199,21 @@ int main() {
     shoutRef(b);
     cout << a << " " << b << '\n';          // hi hi!
     return 0;
-}` }] } },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+class Program {
+    static void Shout(string s) { s += "!"; }                 // string is immutable: new object, local only
+    static void Shout(StringBuilder sb) { sb.Append("!"); }   // mutates the shared object
+    static void Main() {
+        string s = "hi";
+        Shout(s);
+        var sb = new StringBuilder("hi");
+        Shout(sb);
+        Console.WriteLine(s + " " + sb);                      // hi hi!
+    }
+}`, run: true }] } },
       { title: 'The live-list bug in backtracking', html: `<p>Adding <code>path</code> itself to the result stores the <b>address</b> of one list that keeps changing. At the end every entry shows the same (often empty) list. Always snapshot with <code>new ArrayList&lt;&gt;(path)</code>.</p>`, code: { code: String.raw`
 List<List<Integer>> bad = new ArrayList<>(), good = new ArrayList<>();
 List<Integer> path = new ArrayList<>();
@@ -1784,7 +2251,30 @@ vector<vector<int>*> bad;
 for (int i = 0; i < 3; i++) bad.push_back(&path);
 path.clear();
 cout << good.size() << " snapshots, last has " << good.back().size() << " items; bad[0] has " << bad[0]->size() << '\n';
-// 3 snapshots, last has 3 items; bad[0] has 0` }] } }
+// 3 snapshots, last has 3 items; bad[0] has 0` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static string Show(List<List<int>> lists) {
+        var parts = new List<string>();
+        foreach (var l in lists) parts.Add("[" + string.Join(", ", l) + "]");
+        return "[" + string.Join(", ", parts) + "]";
+    }
+    static void Main() {
+        var bad = new List<List<int>>();
+        var good = new List<List<int>>();
+        var path = new List<int>();
+        for (int i = 1; i <= 3; i++) {
+            path.Add(i);
+            bad.Add(path);                    // same object added three times
+            good.Add(new List<int>(path));    // independent snapshot
+        }
+        path.Clear();
+        Console.WriteLine(Show(bad));    // [[], [], []]
+        Console.WriteLine(Show(good));   // [[1], [1, 2], [1, 2, 3]]
+    }
+}`, run: true }] } }
     ],
     deepDive: `<h4>What really sits in a frame</h4>
 <p>A JVM frame contains a <b>local-variable array</b> (parameters first), an <b>operand stack</b> for intermediate values, and a link back to the caller. Each frame is typically tens to a few hundred bytes, so a default 512 KB–1 MB thread stack fits roughly 10<sup>4</sup>–10<sup>5</sup> simple recursive calls. Judges (and LeetCode) do not guarantee more; recursion depth equal to N = 10<sup>5</sup>–10<sup>6</sup> is a real risk. Options: rewrite iteratively with an explicit <code>ArrayDeque</code>, or run the solver in a <code>Thread</code> with a large stack size (works on most judges; check rules).</p>
@@ -1838,7 +2328,15 @@ public:
         a = rev;   // changes only the local copy; caller sees nothing
         // correct-but-wasteful fix: take vector<int>& a and copy rev back element by element
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Reverse(int[] a) {
+        int[] rev = new int[a.Length];
+        for (int i = 0; i < a.Length; i++) rev[i] = a[a.Length - 1 - i];
+        a = rev;   // BUG: only the local reference changes; caller sees nothing
+        // correct-but-wasteful fix: Array.Copy(rev, a, a.Length);
+    }
+}` }] } },
       mcq: { q: 'Inside <code>reverse(int[] a)</code> you write <code>a = newArray;</code>. What does the caller see?', options: ['The original array, unchanged', 'The new array', 'null', 'A compile error'], answer: 0, explain: 'Java copied the address into a. Re-pointing the local copy does not touch the caller\'s variable. Only writes through the address (a[i] = …) are visible.' },
       hints: [`<p>Hint 1: The first and last elements trade places, then the second and second-to-last, and so on. You never need a second array.</p>`, `<p>Hint 2: Two indices: <code>i</code> from the left, <code>j</code> from the right. Swap <code>a[i]</code> and <code>a[j]</code> through the array reference, then move both inward.</p>`, `<p>Hint 3: Stop when <code>i &gt;= j</code> (handles odd length, length 0 and 1). Recipe: i = 0, j = n−1; while i &lt; j: swap(a, i, j); i++; j−−.</p>`],
       tests: { sig: 'int[] -> void', fn: 'reverse', mutate: 0, cases: [
@@ -1893,7 +2391,19 @@ public:
         int i = 0, j = (int)a.size() - 1;
         while (i < j) swap(a[i++], a[j--]);
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Reverse(int[] a) {
+        int i = 0, j = a.Length - 1;
+        while (i < j) {
+            int t = a[i];      // write THROUGH the reference, never reassign 'a'
+            a[i] = a[j];
+            a[j] = t;
+            i++;
+            j--;
+        }
+    }
+}` }],
         dry: { head: ['i', 'j', 'swap', 'array after'], rows: [['0', '4', 'a[0] ↔ a[4]', '[5, 2, 3, 4, 1]'], ['1', '3', 'a[1] ↔ a[3]', '[5, 4, 3, 2, 1]'], ['2', '2', H.c('m', 'i ≥ j → stop'), H.c('g', '[5, 4, 3, 2, 1]')]] },
         complexity: `<p>O(N) time (N/2 swaps), O(1) extra space.</p>`,
         followUps: ['Reverse only the sub-range [l, r].', 'Rotate the array right by k using three reversals.', 'Reverse a string in place (Java, Python and JavaScript strings are immutable — convert to a char array or list first; a C++ std::string can be edited directly).']
@@ -2044,7 +2554,39 @@ for (int r = 0; r < R; r++)
         if (peak) peaks++;
     }
 cout << part[0] << "," << part[1] << " " << peaks << '\n';   // 3,5 1
-// a[i] is unchecked: an out-of-range index is undefined behaviour. a.at(i) throws instead.` }] }, { code: String.raw`
+// a[i] is unchecked: an out-of-range index is undefined behaviour. a.at(i) throws instead.` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        // Array toolkit
+        int[] a = { 5, 3, 8, 1 };
+        Console.WriteLine(a.Length);                          // 4
+        Array.Sort(a);                                        // [1, 3, 5, 8]
+        Console.WriteLine("[" + string.Join(", ", a) + "]");
+        int[] part = new int[2];
+        Array.Copy(a, 1, part, 0, 2);                         // [3, 5]  (or a.Skip(1).Take(2).ToArray() with LINQ)
+        int[] dp = new int[5];
+        Array.Fill(dp, -1);                                   // [-1, -1, -1, -1, -1]
+
+        // 2D grid: count cells whose 4 neighbours are all smaller
+        int[][] g = { new[] { 1, 2, 1 }, new[] { 2, 9, 2 }, new[] { 1, 2, 1 } };
+        int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+        int peaks = 0;
+        for (int r = 0; r < g.Length; r++) {
+            for (int c = 0; c < g[0].Length; c++) {
+                bool peak = true;
+                for (int d = 0; d < 4; d++) {
+                    int nr = r + dr[d], nc = c + dc[d];
+                    if (nr >= 0 && nr < g.Length && nc >= 0 && nc < g[0].Length && g[nr][nc] >= g[r][c]) peak = false;
+                }
+                if (peak) peaks++;
+            }
+        }
+        Console.WriteLine("[" + string.Join(", ", part) + "] " + peaks);   // [3, 5] 1
+        // int[,] is a rectangular array (g[r, c]); int[][] is a jagged array of rows, like Java.
+    }
+}`, run: true }] }, { code: String.raw`
 // String toolkit
 String s = "Hello, World";
 System.out.println(s.length() + " " + s.charAt(4) + " " + s.substring(7));   // 12 o World
@@ -2117,7 +2659,37 @@ for (int i = 0; i < 5; i++) { sb += to_string(i); sb += ','; }      // += is amo
 sb.pop_back();                                                     // drop trailing comma
 reverse(sb.begin(), sb.end());
 cout << sb << '\n';                                                // 4,3,2,1,0
-cout << (bool)isdigit('7') << " " << (bool)isalpha('x') << " " << (char)toupper('q') << '\n';   // 1 1 Q` }] }],
+cout << (bool)isdigit('7') << " " << (bool)isalpha('x') << " " << (char)toupper('q') << '\n';   // 1 1 Q` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+class Program {
+    static void Main() {
+        // String toolkit
+        string s = "Hello, World";
+        Console.WriteLine(s.Length + " " + s[4] + " " + s.Substring(7));         // 12 o World
+        Console.WriteLine(s.ToLower().IndexOf("world"));                           // 7 (-1 if absent)
+        string[] words = "the quick  brown".Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);   // split on runs of spaces
+        Console.WriteLine(words.Length + " " + string.Join("-", words));          // 3 the-quick-brown
+
+        // Count letters with int[26]
+        int[] cnt = new int[26];
+        foreach (char ch in "banana") cnt[ch - 'a']++;
+        Console.WriteLine(cnt['a' - 'a'] + " " + cnt['n' - 'a']);                 // 3 2
+
+        // StringBuilder: the whiteboard
+        var sb = new StringBuilder();
+        for (int i = 0; i < 5; i++) sb.Append(i).Append(',');
+        sb.Length--;                                 // drop trailing comma
+        char[] rev = sb.ToString().ToCharArray();    // StringBuilder has no Reverse: go through a char[]
+        Array.Reverse(rev);
+        Console.WriteLine(new string(rev));          // 4,3,2,1,0
+
+        // Character helpers
+        char c = '7';
+        Console.WriteLine(char.IsDigit(c) + " " + char.IsLetter('x') + " " + char.ToUpper('q'));   // True True Q
+    }
+}`, run: true }] }],
     codeTitle: ['Arrays and 2D grids', 'Strings, counting array and StringBuilder'],
     viz: {
       title: 'Counting letters with int[26] (are these two words anagrams?)',
@@ -2204,7 +2776,26 @@ int n = 20'000;
 string slow, fast;
 for (int i = 0; i < n; i++) slow = slow + 'x';   // O(N^2): copies the whole string every time
 for (int i = 0; i < n; i++) fast += 'x';         // O(N)
-cout << (slow == fast) << '\n';                   // 1` }] } },
+cout << (slow == fast) << '\n';                   // 1` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Diagnostics;
+using System.Text;
+
+class Program {
+    static void Main() {
+        int n = 20000;
+        var sw = Stopwatch.StartNew();
+        string s = "";
+        for (int i = 0; i < n; i++) s += 'x';                 // quadratic copying: strings are immutable
+        long t1 = sw.ElapsedMilliseconds;
+        sw.Restart();
+        var sb = new StringBuilder();
+        for (int i = 0; i < n; i++) sb.Append('x');           // linear
+        string fast = sb.ToString();
+        long t2 = sw.ElapsedMilliseconds;
+        Console.WriteLine("+=: " + t1 + " ms, StringBuilder: " + t2 + " ms, same=" + (s == fast));
+    }
+}` }] } },
       { title: 'substring indexes: start inclusive, end exclusive', html: `<p><code>s.substring(i, j)</code> returns characters at positions i, i+1, …, j−1, so its length is <b>j − i</b>. To take k characters starting at i use <code>substring(i, i + k)</code>. Looping over all substrings uses <code>j</code> from <code>i + 1</code> to <code>n</code> inclusive.</p>
 ${H.arr(['c', 'o', 'd', 'e', 'r'], { label: 's', hl: { 1: 'b', 2: 'b', 3: 'b' } })}<p>${H.c('b', 's.substring(1, 4) = "ode"')} (indexes 1, 2, 3).</p>`, code: { code: String.raw`
 String s = "coder";
@@ -2231,7 +2822,21 @@ cout << s.substr(2) << '\n';      // der  (to the end)
 for (int i = 0; i < 2; i++)
     for (int j = i + 1; j <= 3; j++)
         cout << s.substr(i, j - i) << ' ';   // c co cod o od
-// string_view(s).substr(i, len) avoids copying when you only need to read.` }] } },
+// string_view(s).substr(i, len) avoids copying when you only need to read.` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        string s = "coder";
+        // Careful: Substring takes (start, LENGTH), not (start, end)!
+        Console.WriteLine(s.Substring(1, 3));   // ode  (3 characters from index 1)
+        Console.WriteLine(s.Substring(2));      // der  (to the end)
+        for (int i = 0; i < 2; i++)
+            for (int j = i + 1; j <= 3; j++)
+                Console.Write(s.Substring(i, j - i) + " ");   // c co cod o od
+        Console.WriteLine();
+    }
+}`, run: true }] } },
       { title: 'Sorting descending and sorting 2D arrays', html: `<p><code>Arrays.sort(int[])</code> only sorts ascending. For descending, either sort and walk backwards, or use a boxed <code>Integer[]</code> with a comparator. Sorting intervals by start: <code>Arrays.sort(iv, (x, y) -&gt; Integer.compare(x[0], y[0]))</code>. Prefer <code>Integer.compare</code> over <code>x[0] - y[0]</code>, which can overflow.</p>`, code: { code: String.raw`
 Integer[] boxed = {5, 1, 4};
 Arrays.sort(boxed, Collections.reverseOrder());
@@ -2256,7 +2861,24 @@ sort(nums.begin(), nums.end(), greater<int>());              // 5 4 1
 vector<array<int, 2>> iv = {{5, 6}, {1, 3}, {2, 4}};
 sort(iv.begin(), iv.end(), [](const auto& x, const auto& y) { return x[0] < y[0]; });
 // A comparator must return "x comes before y" (a strict <), never x[0] - y[0].
-for (auto& p : iv) cout << "[" << p[0] << "," << p[1] << "] ";   // [1,3] [2,4] [5,6]` }] } },
+for (auto& p : iv) cout << "[" << p[0] << "," << p[1] << "] ";   // [1,3] [2,4] [5,6]` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        int[] nums = { 5, 1, 4 };
+        Array.Sort(nums, (x, y) => y.CompareTo(x));           // descending comparison
+        Console.WriteLine("[" + string.Join(", ", nums) + "]");          // [5, 4, 1]
+
+        int[][] iv = { new[] { 5, 6 }, new[] { 1, 3 }, new[] { 2, 4 } };
+        Array.Sort(iv, (x, y) => x[0].CompareTo(y[0]));       // CompareTo, never x[0] - y[0] (overflow)
+        var rows = new List<string>();
+        foreach (int[] p in iv) rows.Add("[" + p[0] + ", " + p[1] + "]");
+        Console.WriteLine("[" + string.Join(", ", rows) + "]");          // [[1, 3], [2, 4], [5, 6]]
+        // Array.Sort is NOT stable; List<T>.Sort is not either. Use LINQ OrderBy when equal keys must keep their order.
+    }
+}`, run: true }] } },
       { title: 'Palindrome check with two indexes', html: `<p>A palindrome reads the same both ways ("racecar"). Compare <code>charAt(i)</code> with <code>charAt(n - 1 - i)</code> for the first half only. No new string, O(1) extra space — far better than building a reversed copy.</p>
 ${H.arr(['r', 'a', 'c', 'e', 'c', 'a', 'r'], { hl: { 0: 'g', 6: 'g', 1: 'b', 5: 'b', 2: 'p', 4: 'p', 3: 'y' } })}`, code: { code: String.raw`
 String w = "racecar";
@@ -2278,7 +2900,19 @@ string w = "racecar";
 bool pal = true;
 for (int i = 0, j = (int)w.size() - 1; i < j; i++, j--)
     if (w[i] != w[j]) { pal = false; break; }
-cout << boolalpha << pal << '\n';   // true` }] } }
+cout << boolalpha << pal << '\n';   // true` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        string w = "racecar";
+        bool pal = true;
+        for (int i = 0, j = w.Length - 1; i < j; i++, j--) {
+            if (w[i] != w[j]) { pal = false; break; }
+        }
+        Console.WriteLine(pal);   // True
+    }
+}`, run: true }] } }
     ],
     deepDive: `<h4>How Java Strings are stored (Java 9+)</h4>
 <p>Since Java 9, a String holds a <code>byte[]</code> plus a <b>coder</b> flag: <b>LATIN-1</b> (1 byte per char) when every character fits, otherwise <b>UTF-16</b> (2 bytes per char). This "compact strings" feature halves memory for typical ASCII text. A String also caches its <code>hashCode</code> after the first computation, which is why Strings are cheap repeated HashMap keys.</p>
@@ -2350,7 +2984,19 @@ public:
         }
         return true;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public bool IsAnagram(string s, string t) {
+        if (s.Length != t.Length) return false;
+        var pool = new List<char>(t);
+        foreach (char c in s) {
+            if (!pool.Remove(c)) return false;   // O(N) scan + shift
+        }
+        return true;
+    }
+}` }] } },
       mcq: { q: 'Input is guaranteed to be lowercase English letters. Which structure counts letters most efficiently?', options: ['int[26] indexed by c - \'a\'', 'HashMap&lt;Character, Integer&gt;', 'Sorting both strings', 'A List&lt;Character&gt;'], answer: 0, explain: 'A fixed 26-cell array gives O(1) access with no hashing or boxing. HashMap works too but is slower; sorting is O(N log N).' },
       hints: [`<p>Hint 1: Two strings are anagrams exactly when every letter appears the same number of times in both. Order does not matter at all.</p>`, `<p>Hint 2: One <code>int[26]</code>: +1 for each letter of s, −1 for each letter of t. If they are anagrams, every cell returns to 0.</p>`, `<p>Hint 3: Early exit when lengths differ. Recipe: if lengths differ → false; for i: cnt[s[i]−'a']++, cnt[t[i]−'a']−−; return all cells == 0. Unicode follow-up → use a hash map (<code>HashMap</code> / <code>dict</code> or <code>Counter</code> / <code>Map</code> / <code>unordered_map</code>).</p>`],
       tests: { sig: 'string string -> bool', fn: 'isAnagram', cases: [
@@ -2408,7 +3054,19 @@ public:
         for (int c : cnt) if (c != 0) return false;
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsAnagram(string s, string t) {
+        if (s.Length != t.Length) return false;   // quick reject
+        int[] cnt = new int[26];
+        for (int i = 0; i < s.Length; i++) {
+            cnt[s[i] - 'a']++;                    // letter from s: +1
+            cnt[t[i] - 'a']--;                    // letter from t: -1
+        }
+        foreach (int c in cnt) if (c != 0) return false;   // any imbalance -> not anagram
+        return true;
+    }
+}` }],
         dry: { head: ['i', 's[i]', 't[i]', 'changed cells'], rows: [['0', 'r', 'c', 'cnt[r] = 1, cnt[c] = −1'], ['1', 'a', 'a', 'cnt[a] = 0'], ['2', 't', 'r', 'cnt[t] = 1, cnt[r] = 0'], ['end', '', '', H.c('r', 'cnt[c] = −1, cnt[t] = 1 → false')]] },
         complexity: `<p>O(N) time, O(1) space (26 counters, independent of N).</p>`,
         followUps: ['What if inputs contain Unicode characters? (HashMap&lt;Integer,Integer&gt; over code points.)', 'Group a list of words into anagram families.', 'Find all start indexes in s where an anagram of p begins (sliding window + counts).']
@@ -2565,7 +3223,48 @@ int main() {
          << inBounds(2, 3, 3, 3) << " " << myMax(4, 9) << " " << myMax(4LL, 10'000'000'000LL) << '\n';
     // 12 81 true false 9 10000000000
     return 0;
-}` }] }, { code: String.raw`
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+// A tiny helper library you will reuse across many problems.
+class Helpers {
+    // Greatest common divisor (Euclid): gcd(a, b) = gcd(b, a % b)
+    static long Gcd(long a, long b) {
+        while (b != 0) { long t = a % b; a = b; b = t; }
+        return Math.Abs(a);
+    }
+
+    // Integer power without doubles (exact up to long range)
+    static long Power(long b, int exp) {
+        long result = 1;
+        for (int i = 0; i < exp; i++) result *= b;
+        return result;
+    }
+
+    // Grid bounds check: makes neighbour loops readable
+    static bool InBounds(int r, int c, int rows, int cols) {
+        return r >= 0 && r < rows && c >= 0 && c < cols;
+    }
+
+    // Early return keeps the logic flat
+    static bool IsPrime(int n) {
+        if (n < 2) return false;
+        for (long d = 2; d * d <= n; d++) {
+            if (n % d == 0) return false;     // found a divisor: stop now
+        }
+        return true;
+    }
+
+    // Overloading: same name, different parameter types
+    static int Max(int a, int b) { return a > b ? a : b; }
+    static long Max(long a, long b) { return a > b ? a : b; }
+
+    static void Main() {
+        Console.WriteLine(Gcd(84, 36) + " " + Power(3, 4) + " " + IsPrime(97) + " "
+                + InBounds(2, 3, 3, 3) + " " + Max(4, 9) + " " + Max(4L, 10000000000L));
+        // 12 81 True False 9 10000000000
+    }
+}`, run: true }] }, { code: String.raw`
 // Returning several values: a record (Java 16+) is the cleanest way.
 record MinMax(int min, int max) {}
 
@@ -2617,7 +3316,24 @@ int main() {
     auto [mn, mx] = minMax({4, -2, 9, 7});   // structured binding (C++17)
     cout << mn << " " << mx << '\n';         // -2 9
     return 0;
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+// Returning several values: a value tuple with named elements is the cleanest way.
+class Stats {
+    static (int min, int max) MinMax(int[] a) {
+        int lo = int.MaxValue, hi = int.MinValue;
+        foreach (int v in a) { lo = Math.Min(lo, v); hi = Math.Max(hi, v); }
+        return (lo, hi);
+    }
+    static void Main() {
+        var r = MinMax(new[] { 4, -2, 9, 7 });
+        Console.WriteLine(r.min + " " + r.max);   // -2 9
+        Console.WriteLine(r);                     // (-2, 9)
+        var (mn, mx) = MinMax(new[] { 4, -2, 9, 7 });   // deconstruction into two locals
+        Console.WriteLine(mn + " " + mx);         // -2 9
+    }
+}`, run: true }] }],
     codeTitle: ['Reusable helper methods', 'Returning multiple values with a record'],
     viz: {
       title: 'Call stack: isArmstrong(n) calling its helpers',
@@ -2738,7 +3454,26 @@ int main() {
     for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) if (g[r][c] == 1 && isCoast(g, r, c)) count++;
     cout << count << '\n';   // 3
     return 0;
-}` }] } },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Coast {
+    static readonly int[] DR = { -1, 1, 0, 0 }, DC = { 0, 0, -1, 1 };
+    static bool InBounds(int[][] g, int r, int c) { return r >= 0 && r < g.Length && c >= 0 && c < g[0].Length; }
+    static bool IsCoast(int[][] g, int r, int c) {
+        for (int d = 0; d < 4; d++) {
+            int nr = r + DR[d], nc = c + DC[d];
+            if (!InBounds(g, nr, nc) || g[nr][nc] == 0) return true;   // early return
+        }
+        return false;
+    }
+    static void Main() {
+        int[][] g = { new[] { 1, 1, 0 }, new[] { 0, 1, 0 }, new[] { 0, 0, 0 } };
+        int count = 0;
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) if (g[r][c] == 1 && IsCoast(g, r, c)) count++;
+        Console.WriteLine(count);   // 3
+    }
+}`, run: true }] } },
       { title: 'Overload resolution surprises', html: `<p>Java chooses an overload at compile time in phases: <b>exact/widening</b> first, then <b>boxing</b>, then <b>varargs</b>. So <code>f(5)</code> prefers <code>f(long)</code> (widening) over <code>f(Integer)</code> (boxing).</p>
 ${H.table(['Call', 'Available', 'Chosen'], [['<code>f(5)</code>', 'f(long), f(Integer)', H.c('g', 'f(long)')], ['<code>f(5)</code>', 'f(Integer), f(int...)', H.c('g', 'f(Integer)')]])}`, code: { code: String.raw`
 class Over {
@@ -2783,7 +3518,20 @@ int main() {
     cout << g(5) << " " << g(5.0) << " " << g('a') << '\n';   // int double int ('a' promotes to int)
     // g(5L) would be a compile error: long -> int and long -> double are equally good (ambiguous).
     return 0;
-}` }] } },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+// C# overloading: an exact match beats an implicit conversion; params comes last.
+class Over {
+    static string F(long x) { return "long"; }
+    static string F(object x) { return "object"; }
+    static string G(object x) { return "object"; }
+    static string G(params int[] x) { return "params"; }
+    static void Main() {
+        Console.WriteLine(F(5) + " " + G(5));   // long params  (int -> long beats boxing; params expanded beats boxing too)
+        Console.WriteLine(F(5.0) + " " + G("s"));   // object object
+    }
+}`, run: true }] } },
       { title: 'Static state is not reset between test cases', html: `<p>LeetCode runs many test cases in the <b>same process</b>, and it warns that <b>class-level variables</b> (such as static fields) can survive from one test to the next. A static counter that you forget to reset gives correct output on the first test and wrong output on later ones. Prefer local variables or instance fields, and reset any shared state at the start of each call. The same bug appears with Python class attributes and mutable default arguments, JavaScript module-level variables, and C++ globals or <code>static</code> members.</p>`, code: { code: String.raw`
 class Solution {
     static int calls = 0;                 // shared across ALL test cases (danger)
@@ -2826,7 +3574,17 @@ public:
         for (int v : a) if (v > 0) { calls++; localCalls++; }
         return calls;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    static int calls = 0;                 // shared across ALL test cases (danger)
+    private int localCalls = 0;           // fresh for each new Solution object
+
+    public int CountSomething(int[] a) {
+        calls = 0;                        // reset explicitly if you must use static
+        foreach (int v in a) if (v > 0) { calls++; localCalls++; }
+        return calls;
+    }
+}` }] } },
       { title: 'A first recursive method', html: `<p><code>sumTo(n)</code> = n + sumTo(n − 1), with <b>base case</b> sumTo(0) = 0. Each call waits for the smaller one, so the stack grows to depth n, then unwinds adding numbers on the way back.</p>
 ${H.table(['call', 'returns'], [['sumTo(3)', '3 + sumTo(2) = 6'], ['sumTo(2)', '2 + sumTo(1) = 3'], ['sumTo(1)', '1 + sumTo(0) = 1'], ['sumTo(0)', H.c('g', '0 (base case)')]])}`, code: { code: String.raw`
 class Rec {
@@ -2860,7 +3618,16 @@ long long sumTo(int n) {
 int main() {
     cout << sumTo(3) << " " << sumTo(1000) << '\n';   // 6 500500
     return 0;
-}` }] } }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Rec {
+    static long SumTo(int n) {
+        if (n == 0) return 0;          // base case stops the chain
+        return n + SumTo(n - 1);       // smaller sub-problem
+    }
+    static void Main() { Console.WriteLine(SumTo(3) + " " + SumTo(1000)); }   // 6 500500
+}`, run: true }] } }
     ],
     deepDive: `<h4>Do helpers make code slower?</h4>
 <p>Practically never. HotSpot's JIT <b>inlines</b> small methods (bytecode under ~35 bytes always; hot methods up to ~325 bytes), pasting their body into the caller. A clean <code>inBounds()</code> costs the same as the inline condition after warm-up. Readability wins.</p>
@@ -2948,7 +3715,25 @@ public:
         }
         return out;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public List<int> Armstrong(int lo, int hi) {
+        var result = new List<int>();
+        for (int n = lo; n <= hi; n++) {
+            int k = n.ToString().Length;                 // allocates a string every time
+            int sum = 0, m = n;
+            while (m > 0) {
+                sum += (int)Math.Pow(m % 10, k);         // double math for integer powers
+                m /= 10;
+            }
+            if (sum == n) result.Add(n);
+        }
+        return result;
+    }
+}` }] } },
       mcq: { q: 'Why is <code>(int) Math.pow(d, k)</code> considered risky for integer powers in general?', options: ['It computes in double and can round below the true value for large results', 'It is a compile error', 'It only accepts positive bases', 'It always returns 0 for k &gt; 3'], answer: 0, explain: 'Math.pow returns a double. For small values it is exact, but large integer powers may not be representable exactly, and casting truncates. Integer loops or precomputed tables are exact.' },
       hints: [`<p>Hint 1: Split the job into tiny questions: "how many digits does n have?", "what is d<sup>k</sup>?", "is n Armstrong?". Each is a helper.</p>`, `<p>Hint 2: Only digits 0–9 are ever raised to a power, and k ≤ 7. Precompute <code>pow[k][d]</code> once with integer multiplication.</p>`, `<p>Hint 3: Remember 1-digit numbers are all Armstrong (d¹ = d). Recipe: build pow table → for n in [lo, hi]: k = countDigits(n); if digitPowerSum(n, k) == n add n.</p>`],
       tests: { sig: 'int int -> list<int>', fn: 'armstrong', cases: [
@@ -3058,7 +3843,45 @@ public:
         for (int n = lo; n <= hi; n++) if (isArmstrong(n)) out.push_back(n);
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    // POW[k][d] = d^k for k = 0..7, d = 0..9 (exact integers)
+    private static readonly long[][] POW = BuildPow();
+
+    private static long[][] BuildPow() {
+        var pow = new long[8][];
+        for (int k = 0; k < 8; k++) pow[k] = new long[10];
+        for (int d = 0; d <= 9; d++) {
+            pow[0][d] = 1;
+            for (int k = 1; k < 8; k++) pow[k][d] = pow[k - 1][d] * d;
+        }
+        return pow;
+    }
+
+    private static int CountDigits(int n) {
+        int k = 0;
+        do { k++; n /= 10; } while (n > 0);   // do-while: 0 has one digit
+        return k;
+    }
+
+    private static long DigitPowerSum(int n, int k) {
+        long sum = 0;
+        for (int m = n; m > 0; m /= 10) sum += POW[k][m % 10];
+        return sum;
+    }
+
+    private static bool IsArmstrong(int n) {
+        return DigitPowerSum(n, CountDigits(n)) == n;
+    }
+
+    public List<int> Armstrong(int lo, int hi) {
+        var result = new List<int>();
+        for (int n = lo; n <= hi; n++) if (IsArmstrong(n)) result.Add(n);
+        return result;
+    }
+}` }],
         dry: { head: ['n', 'countDigits', 'digitPowerSum', 'Armstrong?'], rows: [['153', '3', '1 + 125 + 27 = 153', H.c('g', 'yes')], ['154', '3', '1 + 125 + 64 = 190', H.c('r', 'no')], ['370', '3', '27 + 343 + 0 = 370', H.c('g', 'yes')], ['407', '3', '64 + 0 + 343 = 407', H.c('g', 'yes')]] },
         complexity: `<p>O((hi − lo + 1) · D) time where D ≤ 7 digits; O(1) extra space besides the output (the table has 80 entries).</p>`,
         followUps: ['Count Armstrong numbers up to 10<sup>18</sup> (only 88 exist in base 10 overall — generate by digit multisets instead of scanning).', 'Write unit tests for each helper separately.']
@@ -3184,7 +4007,30 @@ int main() {
     cout << "N^2     : " << verdict(n * n, 1) << '\n';           // TLE
     cout << 10'000'000LL * sizeof(int) / (1024 * 1024) << " MB\n";   // 38 MB
     return 0;
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+// A tiny "constraint calculator" you can reason through on paper.
+class ConstraintCheck {
+    const double OPS_PER_SEC = 1e8;   // rough rule of thumb for JIT-compiled C#
+
+    static string Verdict(double ops, double limitSec) {
+        double secs = ops / OPS_PER_SEC;
+        if (secs <= limitSec * 0.5) return "comfortable";
+        if (secs <= limitSec) return "risky but maybe";
+        return "TLE";
+    }
+
+    static void Main() {
+        double n = 1e5, logN = Math.Log(n, 2);
+        Console.WriteLine("N       : " + Verdict(n, 1));             // comfortable
+        Console.WriteLine("N log N : " + Verdict(n * logN, 1));      // comfortable
+        Console.WriteLine("N^2     : " + Verdict(n * n, 1));         // TLE
+        // Memory check: 1e7 ints = 4e7 bytes = ~38 MB (fits 256 MB)
+        long bytes = 10000000L * sizeof(int);
+        Console.WriteLine(bytes / (1024 * 1024) + " MB");            // 38 MB
+    }
+}`, run: true }] }],
     codeTitle: ['Estimating time and memory from constraints'],
     viz: {
       title: 'Plug in N: which complexities survive the 10^8 rule?',
@@ -3283,7 +4129,23 @@ for (auto& a : tests) {
     for (int v : a) if (++freq[v] == 2) dup++;
     cout << dup << ' ';                // 1 0 0
     for (int v : a) freq[v] = 0;       // O(size of this test), not O(1e6)
-}` }] } },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        // Reset only what you used, not the whole big array.
+        int[] freq = new int[1000001];            // allocated ONCE
+        int[][] tests = { new[] { 5, 5, 7 }, new[] { 1, 2 }, new[] { 9 } };
+        foreach (int[] a in tests) {
+            int dup = 0;
+            foreach (int v in a) if (++freq[v] == 2) dup++;
+            Console.Write(dup + " ");             // 1 0 0
+            foreach (int v in a) freq[v] = 0;     // O(size of this test), not O(1e6)
+        }
+        Console.WriteLine();
+    }
+}`, run: true }] } },
       { title: 'Queries multiply your cost', html: `<p>N = 10<sup>5</sup> numbers and Q = 10<sup>5</sup> questions "sum of a[l..r]". Looping over the range per query: up to 10<sup>5</sup> × 10<sup>5</sup> = 10<sup>10</sup> → TLE. Precompute prefix sums once (O(N)) and answer each query in O(1): total 2 · 10<sup>5</sup>. Whenever you see Q, multiply!</p>`, code: { code: String.raw`
 int[] a = {3, 1, 4, 1, 5};
 long[] pre = new long[a.length + 1];
@@ -3305,7 +4167,19 @@ vector<int> a = {3, 1, 4, 1, 5};
 vector<long long> pre(a.size() + 1, 0);
 partial_sum(a.begin(), a.end(), pre.begin() + 1);   // STL prefix sums
 vector<pair<int, int>> queries = {{0, 2}, {1, 4}};
-for (auto [l, r] : queries) cout << pre[r + 1] - pre[l] << ' ';   // 8 11` }] } },
+for (auto [l, r] : queries) cout << pre[r + 1] - pre[l] << ' ';   // 8 11` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 3, 1, 4, 1, 5 };
+        long[] pre = new long[a.Length + 1];
+        for (int i = 0; i < a.Length; i++) pre[i + 1] = pre[i] + a[i];
+        int[][] queries = { new[] { 0, 2 }, new[] { 1, 4 } };
+        foreach (int[] q in queries) Console.Write((pre[q[1] + 1] - pre[q[0]]) + " ");   // 8 11
+        Console.WriteLine();
+    }
+}`, run: true }] } },
       { title: 'Memory limits are constraints too', html: `<p>Memory limit 256 MB. A <code>long[10<sup>7</sup>]</code> = 80 MB (fine). An <code>int[10<sup>4</sup>][10<sup>4</sup>]</code> = 400 MB (fails!). A <code>boolean[10<sup>8</sup>]</code> = 100 MB (ok-ish, a <code>BitSet</code> uses 12.5 MB). When N × M &gt; ~5 × 10<sup>7</sup>, a full 2D table is suspicious — look for a rolling-row or 1D trick.</p>
 ${H.table(['Structure', 'Size', 'Memory'], [['int[]', '10<sup>7</sup>', '40 MB'], ['long[]', '10<sup>7</sup>', '80 MB'], ['int[][]', '10<sup>4</sup> × 10<sup>4</sup>', H.c('r', '400 MB')], ['ArrayList&lt;Integer&gt;', '10<sup>7</sup>', H.c('r', '≈ 200 MB')]])}` }
     ],
@@ -3366,7 +4240,16 @@ public:
                 if (a[i] + a[j] == k) count++;
         return count;                 // correct, but O(N^2)
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountPairs(int[] a, int k) {
+        long count = 0;
+        for (int i = 0; i < a.Length; i++)
+            for (int j = i + 1; j < a.Length; j++)
+                if (a[i] + a[j] == k) count++;
+        return count;                 // correct, but O(N^2)
+    }
+}` }] } },
       mcq: { q: 'Values are at most 10<sup>6</sup>. What does that constraint unlock?', options: ['Using the value itself as an index into a counting array', 'Sorting in O(N)', 'Using int for the answer', 'Skipping the i &lt; j condition'], answer: 0, explain: 'An int[1_000_001] costs only ~4 MB, so freq[v] gives O(1) "how many times have I seen v?" with no hashing.' },
       hints: [`<p>Hint 1: Walk left to right. When you are at index j, the partners that make a valid pair are earlier elements equal to <code>K − a[j]</code>.</p>`, `<p>Hint 2: Keep <code>freq[v]</code> = how many times value v appeared <b>before</b> j. Add <code>freq[K − a[j]]</code> to the answer, then increment <code>freq[a[j]]</code>.</p>`, `<p>Hint 3: K − a[j] can be negative or above 10<sup>6</sup> → skip it. The answer can reach ~5 × 10<sup>9</sup> → use a 64-bit count (<code>long</code> / <code>long long</code>; Python ints and JS Numbers hold it exactly). Updating freq <i>after</i> counting enforces i &lt; j and avoids pairing an element with itself.</p>`],
       tests: { sig: 'int[] int -> long', fn: 'countPairs', cases: [
@@ -3434,7 +4317,20 @@ public:
         }
         return count;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountPairs(int[] a, int k) {
+        const int MAXV = 1000000;
+        int[] freq = new int[MAXV + 1];       // freq[v] = how many earlier elements equal v
+        long count = 0;                       // up to ~5e9 -> long
+        foreach (int x in a) {
+            int need = k - x;
+            if (need >= 0 && need <= MAXV) count += freq[need];   // partners seen before
+            freq[x]++;                        // now x can partner with later elements
+        }
+        return count;
+    }
+}` }],
         dry: { head: ['j', 'a[j]', 'need = K − a[j]', 'freq[need] added', 'count', 'freq after'], rows: [['0', '1', '5', '0', '0', '{1:1}'], ['1', '5', '1', '1', '1', '{1:1, 5:1}'], ['2', '7', '−1 (skip)', '0', '1', '{1:1, 5:1, 7:1}'], ['3', '1', '5', '1', '2', '{1:2, 5:1, 7:1}'], ['4', '5', '1', '2', H.c('g', '4'), '{1:2, 5:2, 7:1}']] },
         complexity: `<p>O(N + maxValue) time, O(maxValue) space (~4 MB). Versus O(N<sup>2</sup>) brute force: 10<sup>5</sup> + 10<sup>6</sup> steps instead of 5 × 10<sup>9</sup>.</p>`,
         followUps: ['Values up to 10<sup>9</sup>? (HashMap instead of array, or sort + two pointers.)', 'Count pairs with a[i] − a[j] = K.', 'Count pairs with sum divisible by K.']
@@ -3591,7 +4487,41 @@ int main() {
     cout << '\n';
     // To enumerate orderings, sort first and loop: do { ... } while (next_permutation(a.begin(), a.end()));
     return 0;
-}` }] }, { code: String.raw`
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+// Enumeration templates you will use for years.
+class Enumerate {
+    static void Main() {
+        int[] a = { 2, 7, 4 };
+        int n = a.Length;
+
+        // 1) all pairs i < j
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                Console.Write("(" + a[i] + "," + a[j] + ") ");
+        Console.WriteLine();
+
+        // 2) all subarrays with a running sum (O(N^2) total, not O(N^3))
+        for (int i = 0; i < n; i++) {
+            long sum = 0;
+            for (int j = i; j < n; j++) {
+                sum += a[j];                       // extend the subarray by one element
+                Console.Write("[" + i + ".." + j + "]=" + sum + " ");
+            }
+        }
+        Console.WriteLine();
+
+        // 3) all subsets with a bitmask: bit b of mask set => take a[b]
+        for (int mask = 0; mask < (1 << n); mask++) {
+            var sb = new StringBuilder("{");
+            for (int b = 0; b < n; b++) if ((mask >> b & 1) == 1) sb.Append(a[b]).Append(' ');
+            Console.Write(sb.ToString().Trim() + "} ");
+        }
+        Console.WriteLine();
+    }
+}`, run: true }] }, { code: String.raw`
 // Stress test: compare a fast solution against a brute-force oracle on random small inputs.
 class Stress {
     static long brute(int[] a) {                     // obviously correct, O(N^3)
@@ -3711,7 +4641,40 @@ int main() {
     }
     cout << "all 10000 random tests passed\n";
     return 0;
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+// Stress test: compare a fast solution against a brute-force oracle on random small inputs.
+class Stress {
+    static long Brute(int[] a) {                     // obviously correct, O(N^3)
+        long best = long.MinValue;
+        for (int i = 0; i < a.Length; i++)
+            for (int j = i; j < a.Length; j++) {
+                long s = 0;
+                for (int k = i; k <= j; k++) s += a[k];
+                best = Math.Max(best, s);
+            }
+        return best;
+    }
+    static long Fast(int[] a) {                      // the solution we want to trust
+        long best = long.MinValue, cur = 0;
+        foreach (int x in a) { cur = Math.Max(x, cur + x); best = Math.Max(best, cur); }
+        return best;
+    }
+    static void Main() {
+        var rnd = new Random(42);                    // fixed seed -> reproducible failures
+        for (int iter = 0; iter < 10000; iter++) {
+            int n = 1 + rnd.Next(8);
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) a[i] = rnd.Next(21) - 10;   // small values, negatives too
+            if (Brute(a) != Fast(a)) {
+                Console.WriteLine("MISMATCH on [" + string.Join(", ", a) + "]");
+                return;
+            }
+        }
+        Console.WriteLine("all 10000 random tests passed");
+    }
+}`, run: true }] }],
     codeTitle: ['Enumeration templates: pairs, subarrays, subsets', 'Stress testing with a brute-force oracle'],
     viz: {
       title: 'Brute force: try every subarray, keep the best sum',
@@ -3804,7 +4767,20 @@ bool isPrime(long long n) {
 int main() {
     cout << boolalpha << isPrime(97) << " " << isPrime(1'000'000'007LL) << " " << isPrime(1'000'000'008LL) << '\n';
     return 0;
-}` }] } },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Prime {
+    static bool IsPrime(long n) {
+        if (n < 2) return false;
+        for (long d = 2; d * d <= n; d++)        // d * d avoids floating-point sqrt
+            if (n % d == 0) return false;
+        return true;
+    }
+    static void Main() {
+        Console.WriteLine(IsPrime(97) + " " + IsPrime(1000000007L) + " " + IsPrime(1000000008L));   // True True False
+    }
+}`, run: true }] } },
       { title: 'Subset sum with a bitmask (N ≤ 20)', html: `<p>"Can some subset of these numbers add up to T?" With N ≤ 20 there are at most 2<sup>20</sup> ≈ 10<sup>6</sup> subsets — just try them all. Each mask's binary digits say which elements are taken.</p>
 ${H.table(['mask (binary)', 'elements taken from {3, 34, 4}', 'sum'], [['001', '3', '3'], ['101', '3, 4', H.c('g', '7')], ['111', '3, 34, 4', '41']])}`, code: { code: String.raw`
 int[] a = {3, 34, 4};
@@ -3836,7 +4812,22 @@ for (int mask = 0; mask < (1 << n) && !found; mask++) {
     for (int b = 0; b < n; b++) if (mask & (1 << b)) sum += a[b];
     if (sum == target) found = true;
 }
-cout << boolalpha << found << '\n';   // true (3 + 4)` }] } },
+cout << boolalpha << found << '\n';   // true (3 + 4)` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 3, 34, 4 };
+        int target = 7;
+        bool found = false;
+        for (int mask = 0; mask < (1 << a.Length) && !found; mask++) {
+            int sum = 0;
+            for (int b = 0; b < a.Length; b++) if ((mask & (1 << b)) != 0) sum += a[b];
+            if (sum == target) found = true;
+        }
+        Console.WriteLine(found);   // True (3 + 4)
+    }
+}`, run: true }] } },
       { title: 'Count palindromic substrings (N ≤ 100)', html: `<p>Enumerate all N(N+1)/2 substrings and check each with two indexes, without building new Strings. O(N<sup>3</sup>) = 10<sup>6</sup> for N = 100 — perfectly fine. For N = 10<sup>4</sup> you would need "expand around center" (String Algorithms module).</p>`, code: { code: String.raw`
 String s = "aaba";
 int count = 0;
@@ -3874,7 +4865,22 @@ for (int i = 0; i < n; i++)
         while (l < r && s[l] == s[r]) { l++; r--; }
         if (l >= r) count++;             // s[i..j] is a palindrome
     }
-cout << count << '\n';   // 6: a, a, b, a, aa, aba` }] } },
+cout << count << '\n';   // 6: a, a, b, a, aa, aba` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        string s = "aaba";
+        int count = 0;
+        for (int i = 0; i < s.Length; i++)
+            for (int j = i; j < s.Length; j++) {
+                int l = i, r = j;
+                while (l < r && s[l] == s[r]) { l++; r--; }
+                if (l >= r) count++;                 // s[i..j] is a palindrome
+            }
+        Console.WriteLine(count);   // 6: a, a, b, a, aa, aba
+    }
+}`, run: true }] } },
       { title: 'Early exit and pruning', html: `<p>Brute force does not have to be dumb. If you only need <b>whether</b> a pair exists, return at the first hit. If the array is sorted and you need a[i] + a[j] ≤ K, break the inner loop as soon as the sum exceeds K — later j only make it bigger. Worst case is unchanged, but typical runs get much faster.</p>`, code: { code: String.raw`
 int[] a = {1, 3, 4, 8, 10};        // sorted
 int k = 9, pairs = 0;
@@ -3907,7 +4913,21 @@ for (int i = 0; i < n; i++)
         if (a[i] + a[j] > k) break;   // prune: sorted, so the rest are larger
         pairs++;
     }
-cout << pairs << '\n';   // 4: (1,3) (1,4) (1,8) (3,4)` }] } }
+cout << pairs << '\n';   // 4: (1,3) (1,4) (1,8) (3,4)` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 1, 3, 4, 8, 10 };      // sorted
+        int k = 9, pairs = 0;
+        for (int i = 0; i < a.Length; i++)
+            for (int j = i + 1; j < a.Length; j++) {
+                if (a[i] + a[j] > k) break;   // prune: sorted, so the rest are larger
+                pairs++;
+            }
+        Console.WriteLine(pairs);   // 4: (1,3) (1,4) (1,8) (3,4)
+    }
+}`, run: true }] } }
     ],
     deepDive: `<h4>Counting candidates precisely</h4>
 <p>Pairs i &lt; j: N(N−1)/2. Subarrays: N(N+1)/2. Triples: N(N−1)(N−2)/6. Subsets: 2<sup>N</sup>. Permutations: N!. Knowing the exact count (not just Big-O) helps when the limit is tight: N = 3000 gives 4.5 × 10<sup>6</sup> pairs (trivial), but 4.5 × 10<sup>9</sup> triples (TLE).</p>
@@ -3980,7 +5000,21 @@ public:
             }
         return best;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSubArray(int[] a) {
+        long best = long.MinValue;
+        for (int i = 0; i < a.Length; i++)
+            for (int j = i; j < a.Length; j++) {
+                long sum = 0;
+                for (int k = i; k <= j; k++) sum += a[k];   // recomputed every time
+                best = Math.Max(best, sum);
+            }
+        return best;
+    }
+}` }] } },
       mcq: { q: 'You know sum(i..j) = 5 and a[j+1] = −2. What is sum(i..j+1)?', options: ['3 — just add a[j+1]', 'Need to re-add from i', '−2', '7'], answer: 0, explain: 'Extending a subarray by one element only adds that element. This O(1) update turns O(N³) into O(N²).' },
       hints: [`<p>Hint 1: Fix the start i. As j moves right, the subarray grows by exactly one element each step.</p>`, `<p>Hint 2: Keep a running <code>sum</code> that resets to 0 for each new i and adds a[j] for each j. Update <code>best</code> after every addition.</p>`, `<p>Hint 3: Initialise best to the smallest possible value (<code>Long.MIN_VALUE</code>, <code>LLONG_MIN</code>, <code>-Infinity</code>, or simply a[0]) — not 0! — so all-negative arrays work. Use a 64-bit sum (<code>long</code> / <code>long long</code>): a sum of 2000 values of 10<sup>9</sup> is 2 × 10<sup>12</sup>.</p>`],
       tests: { sig: 'int[] -> long', fn: 'maxSubArray', cases: [
@@ -4049,7 +5083,22 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSubArray(int[] a) {
+        long best = long.MinValue;           // not 0: all-negative arrays must work
+        for (int i = 0; i < a.Length; i++) {
+            long sum = 0;                    // fresh sum for each start
+            for (int j = i; j < a.Length; j++) {
+                sum += a[j];                 // sum of a[i..j] in O(1)
+                best = Math.Max(best, sum);
+            }
+        }
+        return best;
+    }
+}` }],
         dry: { head: ['i', 'j range', 'running sums', 'best so far'], rows: [['0', '0..8', '−2, −1, −4, 0, −1, 1, 2, −3, 1', '2'], ['1', '1..8', '1, −2, 2, 1, 3, 4, −1, 3', '4'], ['2', '2..8', '−3, 1, 0, 2, 3, −2, 2', '4'], ['3', '3..8', '4, 3, 5, 6, 1, 5', H.c('g', '6')], ['4..8', '…', 'all smaller', H.c('g', '6')]] },
         complexity: `<p>O(N<sup>2</sup>) time, O(1) space. Brute force with 3 loops: O(N<sup>3</sup>). Kadane: O(N).</p>`,
         followUps: ['Return the start and end indexes too.', 'Now N ≤ 10<sup>5</sup> — what changes? (Kadane, DSA 5.)', 'Maximum sum of a subarray of length exactly K.']
@@ -4098,7 +5147,18 @@ public:
         for (int i = (int) b.size() - 2; i >= 0; i--) if (b[i] != mx) return b[i];
         return -1;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int SecondLargest(int[] a) {
+        int[] b = (int[])a.Clone();
+        Array.Sort(b);                                     // O(N log N)
+        int max = b[b.Length - 1];
+        for (int i = b.Length - 2; i >= 0; i--) if (b[i] != max) return b[i];
+        return -1;
+    }
+}` }] } },
     mcq: { q: 'Scanning once with variables <code>first</code> and <code>second</code>, what should happen when you see x == first?', options: ['Ignore it (it is a duplicate of the max)', 'Set second = first', 'Set first = x and second = x', 'Return -1'], answer: 0, explain: 'We need the second largest DISTINCT value, so a copy of the current maximum changes nothing.' },
     hints: [`<p>Hint 1: You only need to remember the two best distinct values seen so far — not the whole sorted order.</p>`, `<p>Hint 2: For each x: if x &gt; first → second = first, first = x. Else if x &lt; first and x &gt; second → second = x.</p>`, `<p>Hint 3: Start with first = second = −1 (values are positive). The strict comparisons automatically skip duplicates of the maximum. Return second (still −1 if never set).</p>`],
     tests: { sig: 'int[] -> int', fn: 'secondLargest', cases: [
@@ -4167,7 +5227,21 @@ public:
         }
         return second;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SecondLargest(int[] a) {
+        int first = -1, second = -1;           // values are >= 1, so -1 means "none yet"
+        foreach (int x in a) {
+            if (x > first) {                   // new champion
+                second = first;
+                first = x;
+            } else if (x < first && x > second) {   // strictly between: new runner-up
+                second = x;
+            }                                  // x == first: duplicate, ignore
+        }
+        return second;
+    }
+}` }],
       dry: { head: ['x', 'first', 'second'], rows: [['12', '12', '−1'], ['35', '35', '12'], ['1', '35', '12'], ['10', '35', '12'], ['34', '35', '34'], ['35', '35', H.c('g', '34')]] },
       complexity: `<p>O(N) time, O(1) space.</p>`,
       followUps: ['Return the k-th largest distinct value (heap or sort — DSA 15).', 'What changes if values can be negative? (Use the smallest value of a wider type as the sentinel — Long.MIN_VALUE, LLONG_MIN, -Infinity, None — or a boolean "set" flag.)']
@@ -4210,7 +5284,21 @@ public:
         string back(fwd.rbegin(), fwd.rend());     // a second full copy
         return fwd == back;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+public class Solution {
+    public bool IsPalindrome(string s) {
+        var clean = new StringBuilder();
+        foreach (char c in s)
+            if (char.IsLetterOrDigit(c)) clean.Append(char.ToLower(c));
+        string fwd = clean.ToString();
+        char[] rev = fwd.ToCharArray();
+        Array.Reverse(rev);                          // a second full copy
+        return fwd == new string(rev);
+    }
+}` }] } },
     mcq: { q: 'Which pair of helpers handles the cleaning rules correctly for ASCII input?', options: ['An "is letter or digit" test plus lower-casing both sides (Character.isLetterOrDigit + toLowerCase, str.isalnum + lower, isalnum + tolower)', 'An "is letter" test plus trimming spaces', 'Skipping only spaces and upper-casing one side', 'Splitting into characters and comparing the whole arrays'], answer: 0, explain: 'Digits count as alphanumeric too ("0P" is not a palindrome). Compare both sides after lowering case.' },
     hints: [`<p>Hint 1: Instead of building a cleaned copy, skip unwanted characters on the fly from both ends.</p>`, `<p>Hint 2: Two indexes i (left) and j (right). Move i right while s[i] is not alphanumeric; move j left likewise. Compare lowercase versions.</p>`, `<p>Hint 3: Keep the guard <code>i &lt; j</code> inside the skipping loops so a string of only punctuation does not run off the ends. Empty-after-cleaning counts as a palindrome (true).</p>`],
     tests: { sig: 'string -> bool', fn: 'isPalindrome', cases: [
@@ -4286,7 +5374,20 @@ public:
         }
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPalindrome(string s) {
+        int i = 0, j = s.Length - 1;
+        while (i < j) {
+            while (i < j && !char.IsLetterOrDigit(s[i])) i++;   // skip junk on the left
+            while (i < j && !char.IsLetterOrDigit(s[j])) j--;   // skip junk on the right
+            if (char.ToLower(s[i]) != char.ToLower(s[j])) return false;
+            i++;
+            j--;
+        }
+        return true;
+    }
+}` }],
       dry: { head: ['i', 'j', 's[i]', 's[j]', 'match?'], rows: [['0', '9', 'r', 'r', 'yes'], ['1', '8', 'a', 'a', 'yes'], ['2', '7', 'c', 'c', 'yes'], ['3', '5 (skipped the space at 6)', 'e', 'a', H.c('r', 'no → false')]] },
       complexity: `<p>O(N) time, O(1) extra space.</p>`,
       followUps: ['Valid Palindrome II: may delete at most one character.', 'Handle full Unicode (iterate code points, not UTF-16 units: Java codePoints(), JS [...s]; Python str is already code points).']
@@ -4333,7 +5434,16 @@ public:
                 if (r == c || r + c == n - 1) sum += mat[r][c];
         return sum;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int DiagonalSum(int[][] mat) {
+        int n = mat.Length, sum = 0;
+        for (int r = 0; r < n; r++)
+            for (int c = 0; c < n; c++)
+                if (r == c || r + c == n - 1) sum += mat[r][c];
+        return sum;
+    }
+}` }] } },
     mcq: { q: 'Cell (r, c) is on the secondary (anti-) diagonal of an n × n matrix when…', options: ['r + c == n − 1', 'r == c', 'r − c == 1', 'r + c == n'], answer: 0, explain: 'Top-right is (0, n−1) and bottom-left is (n−1, 0): the indexes always add to n − 1.' },
     hints: [`<p>Hint 1: Row r touches the primary diagonal at column r and the secondary diagonal at column n − 1 − r. That is just two cells per row.</p>`, `<p>Hint 2: Loop r from 0 to n − 1 and add <code>mat[r][r] + mat[r][n - 1 - r]</code>.</p>`, `<p>Hint 3: When n is odd, the middle row adds the centre twice — subtract <code>mat[n/2][n/2]</code> once at the end. n = 1 is the extreme case.</p>`],
     tests: { sig: 'int[][] -> int', fn: 'diagonalSum', cases: [
@@ -4385,7 +5495,18 @@ public:
         if (n % 2 == 1) sum -= mat[n / 2][n / 2];   // centre counted twice
         return sum;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int DiagonalSum(int[][] mat) {
+        int n = mat.Length, sum = 0;
+        for (int r = 0; r < n; r++) {
+            sum += mat[r][r];               // primary diagonal
+            sum += mat[r][n - 1 - r];       // secondary diagonal
+        }
+        if (n % 2 == 1) sum -= mat[n / 2][n / 2];   // centre counted twice
+        return sum;
+    }
+}` }],
       dry: { head: ['r', 'mat[r][r]', 'mat[r][n−1−r]', 'sum'], rows: [['0', '1', '3', '4'], ['1', '5', '5', '14'], ['2', '9', '7', '30'], ['fix', '−5 (centre)', '', H.c('g', '25')]] },
       complexity: `<p>O(n) time, O(1) space (versus O(n<sup>2</sup>) for the full scan).</p>`,
       followUps: ['Return the sums of all 2n − 1 anti-diagonals.', 'Rotate the matrix 90° in place (DSA 5).']
@@ -4441,7 +5562,18 @@ public:
         }
         return -1;   // unreachable for valid input
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MissingNumber(int[] a) {
+        int n = a.Length;
+        for (int v = 0; v <= n; v++) {
+            bool found = false;
+            foreach (int x in a) if (x == v) { found = true; break; }
+            if (!found) return v;
+        }
+        return -1;   // unreachable for valid input
+    }
+}` }] } },
     mcq: { q: 'Using the formula n(n+1)/2 with n = 10<sup>5</sup>, what type should hold the expected sum to be safe?', options: ['long (to be safe as n grows)', 'byte', 'short', 'char'], answer: 0, explain: 'For n = 10<sup>5</sup> the sum is about 5·10<sup>9</sup> — already above int\'s 2.1·10<sup>9</sup>! Using long avoids overflow. (XOR avoids the issue entirely.)' },
     hints: [`<p>Hint 1: You know exactly which numbers <i>should</i> be there: 0, 1, …, n. Their total is easy to compute.</p>`, `<p>Hint 2: Missing = (0 + 1 + … + n) − (sum of the array) = n(n+1)/2 − sum. Alternatively XOR all indexes and all values — pairs cancel.</p>`, `<p>Hint 3: n(n+1)/2 for n = 10<sup>5</sup> is ≈ 5 × 10<sup>9</sup>: compute it in <code>long</code>. Missing 0 and missing n are the edge cases to test.</p>`],
     tests: { sig: 'int[] -> int', fn: 'missingNumber', cases: [
@@ -4487,7 +5619,16 @@ public:
         long long actual = accumulate(a.begin(), a.end(), 0LL);   // 0LL: sum in long long
         return (int)(expected - actual);
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MissingNumber(int[] a) {
+        long n = a.Length;
+        long expected = n * (n + 1) / 2;   // 0 + 1 + ... + n, needs long
+        long actual = 0;
+        foreach (int x in a) actual += x;
+        return (int)(expected - actual);   // result is within [0, n]
+    }
+}` }],
       dry: { head: ['step', 'value'], rows: [['n', '3'], ['expected = 3·4/2', '6'], ['actual = 3 + 0 + 1', '4'], ['missing', H.c('g', '2')]] },
       complexity: `<p>O(n) time, O(1) space.</p>`,
       followUps: ['Two numbers are missing — find both (sum and sum of squares, or XOR partition).', 'The array is sorted — can you do O(log n)? (Binary search on a[i] == i.)']
@@ -4533,7 +5674,18 @@ public:
         if (r > INT_MAX || r < INT_MIN) return 0;
         return (int) r;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int Reverse(int x) {
+        char[] digits = Math.Abs((long)x).ToString().ToCharArray();
+        Array.Reverse(digits);
+        long r = long.Parse(new string(digits)) * (x < 0 ? -1 : 1);   // uses 64-bit (not allowed)
+        if (r > int.MaxValue || r < int.MinValue) return 0;
+        return (int)r;
+    }
+}` }] } },
     mcq: { q: 'rev is about to become rev * 10 + d. Which check (for positive numbers) guarantees no overflow?', options: ['rev &gt; Integer.MAX_VALUE / 10 means overflow (or == and d &gt; 7)', 'rev * 10 + d &gt; Integer.MAX_VALUE', 'rev &lt; 0', 'd &gt; 9'], answer: 0, explain: 'Checking rev * 10 + d directly is useless because it already overflowed. Compare rev against MAX/10 = 214748364 first; if equal, the last digit must be ≤ 7.' },
     hints: [`<p>Hint 1: Pop the last digit with <code>x % 10</code>, push it onto the result with <code>rev * 10 + d</code>, drop it with integer division by 10. In Java, C++ and JavaScript, % keeps the sign of x, so negatives work automatically (JavaScript needs <code>Math.trunc(x / 10)</code>). In Python, <code>-7 % 10</code> is 3, so work with <code>abs(x)</code> and put the sign back at the end.</p>`, `<p>Hint 2: Before pushing, check whether <code>rev * 10 + d</code> would leave int range: compare <code>rev</code> with INT_MAX / 10 and INT_MIN / 10 (<code>Integer.MAX_VALUE</code> in Java, <code>INT_MAX</code> in C++). In C++ this check is essential: signed overflow is undefined behaviour.</p>`, `<p>Hint 3: MAX = 2147483647 (last digit 7), MIN = −2147483648 (last digit −8). Recipe: while x != 0: d = x % 10; x /= 10; if rev &gt; MAX/10 or (rev == MAX/10 and d &gt; 7) return 0; same for MIN with −8; rev = rev*10 + d.</p>`],
     tests: { sig: 'int -> int', fn: 'reverse', cases: [
@@ -4604,7 +5756,21 @@ public:
         }
         return rev;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int Reverse(int x) {
+        int rev = 0;
+        while (x != 0) {
+            int d = x % 10;                  // last digit (negative if x < 0: % keeps the dividend's sign)
+            x /= 10;
+            // C# wraps silently on overflow (unchecked by default), so check BEFORE multiplying.
+            if (rev > int.MaxValue / 10 || (rev == int.MaxValue / 10 && d > 7)) return 0;
+            if (rev < int.MinValue / 10 || (rev == int.MinValue / 10 && d < -8)) return 0;
+            rev = rev * 10 + d;              // safe now
+        }
+        return rev;
+    }
+}` }],
       dry: { head: ['x', 'd', 'rev before', 'check', 'rev after'], rows: [['-120', '0', '0', 'ok', '0'], ['-12', '-2', '0', 'ok', '-2'], ['-1', '-1', '-2', 'ok', H.c('g', '-21')]] },
       complexity: `<p>O(log₁₀ |x|) ≤ 10 iterations, O(1) space.</p>`,
       followUps: ['Palindrome Number without converting to a string (reverse half the digits).', 'Reverse the bits of a 32-bit integer (DSA 4).']
@@ -4678,7 +5844,22 @@ public:
         if (v < INT_MIN) return INT_MIN;
         return (int) v;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MyAtoi(string s) {
+        int i = 0, n = s.Length;
+        while (i < n && s[i] == ' ') i++;
+        int start = i;
+        if (i < n && (s[i] == '+' || s[i] == '-')) i++;
+        int digitsStart = i;
+        while (i < n && char.IsDigit(s[i])) i++;
+        if (i == digitsStart) return 0;                             // no digits
+        double v = double.Parse(s.Substring(start, i - start));     // a double holds ~300 digits approximately (System.Numerics.BigInteger would be exact)
+        if (v > int.MaxValue) return int.MaxValue;
+        if (v < int.MinValue) return int.MinValue;
+        return (int)v;
+    }
+}` }] } },
     mcq: { q: 'Input "   +-12". What should myAtoi return?', options: ['0 — after "+", the next char "-" is not a digit', '-12', '12', '-2147483648'], answer: 0, explain: 'Only one optional sign is allowed. After reading "+", the parser expects digits; "-" stops it with no digits read, so the result is 0.' },
     hints: [`<p>Hint 1: Treat it as a tiny state machine: spaces → optional sign → digits → stop. Use one index that only moves forward.</p>`, `<p>Hint 2: Accumulate the absolute value in a 64-bit integer (<code>long</code> / <code>long long</code>), or a 32-bit int with a MAX/10 pre-check. As soon as it exceeds 2<sup>31</sup>, you can clamp and stop reading.</p>`, `<p>Hint 3: Edge cases: empty string, only spaces, sign with no digits, huge digit runs (stop early — never let the accumulator overflow), leading zeros. Apply the sign at the end, then clamp.</p>`],
     tests: { sig: 'string -> int', fn: 'myAtoi', cases: [
@@ -4785,7 +5966,26 @@ public:
         }
         return (int)(sign * val);                                // 4) 0 if no digits
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MyAtoi(string s) {
+        int i = 0, n = s.Length;
+        while (i < n && s[i] == ' ') i++;                          // 1) leading spaces
+        int sign = 1;
+        if (i < n && (s[i] == '+' || s[i] == '-')) {               // 2) optional sign
+            sign = s[i] == '-' ? -1 : 1;
+            i++;
+        }
+        long val = 0;
+        while (i < n && s[i] >= '0' && s[i] <= '9') {              // 3) ASCII digits only
+            val = val * 10 + (s[i] - '0');
+            if (sign * val > int.MaxValue) return int.MaxValue;    // 5) clamp early
+            if (sign * val < int.MinValue) return int.MinValue;
+            i++;
+        }
+        return (int)(sign * val);                                  // 4) 0 if no digits
+    }
+}` }],
       dry: { head: ['i', 'char', 'state', 'val'], rows: [['0–2', '" "', 'skip spaces', '0'], ['3', '-', 'sign = −1', '0'], ['4', '0', 'digit', '0'], ['5', '4', 'digit', '4'], ['6', '2', 'digit', '42 → return ' + H.c('g', '-42')]] },
       complexity: `<p>O(N) time, O(1) space. Each character is examined at most once.</p>`,
       followUps: ['Valid Number (Hard): accept decimals and exponents like "-1.5e10".', 'Parse a comma-separated list of integers robustly.']
@@ -4818,7 +6018,13 @@ public:
         // Breaks for inputs longer than ~18 digits: long long has only 64 bits (stoll throws).
         return to_string(stoll(num1) + stoll(num2));
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string AddStrings(string num1, string num2) {
+        // Breaks for inputs longer than ~18 digits: long has only 64 bits (long.Parse throws).
+        return (long.Parse(num1) + long.Parse(num2)).ToString();
+    }
+}` }] } },
     mcq: { q: 'Adding column by column from the right, what is the largest possible carry?', options: ['1', '9', '18', '10'], answer: 0, explain: 'The largest column sum is 9 + 9 + 1 = 19, which gives digit 9 and carry 1. The carry can never exceed 1 in addition.' },
     hints: [`<p>Hint 1: Do exactly what you learned in school: start from the rightmost digits, add with a carry, write the last digit, carry the rest.</p>`, `<p>Hint 2: Two indexes i, j at the ends of the strings. Treat a finished string as contributing 0. Append digits to a builder (StringBuilder, a list, an array, a <code>std::string</code>) and reverse at the end.</p>`, `<p>Hint 3: Do not forget a final carry ("99" + "1" = "100"). Loop condition: i ≥ 0 || j ≥ 0 || carry &gt; 0. Digit value is <code>c - '0'</code> (Python: <code>ord(c) - 48</code>, JavaScript: <code>s.charCodeAt(i) - 48</code>).</p>`],
     tests: { sig: 'string string -> string', fn: 'addStrings', cases: [
@@ -4892,7 +6098,26 @@ public:
         reverse(out.begin(), out.end());
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+public class Solution {
+    public string AddStrings(string num1, string num2) {
+        var sb = new StringBuilder();
+        int i = num1.Length - 1, j = num2.Length - 1, carry = 0;
+        while (i >= 0 || j >= 0 || carry > 0) {
+            int d1 = i >= 0 ? num1[i--] - '0' : 0;   // 0 once a number is exhausted
+            int d2 = j >= 0 ? num2[j--] - '0' : 0;
+            int sum = d1 + d2 + carry;
+            sb.Append((char)('0' + sum % 10));
+            carry = sum / 10;
+        }
+        char[] digits = sb.ToString().ToCharArray();   // StringBuilder has no Reverse
+        Array.Reverse(digits);
+        return new string(digits);
+    }
+}` }],
       dry: { head: ['i', 'j', 'd1 + d2 + carry', 'append', 'carry'], rows: [['2', '1', '6 + 7 + 0 = 13', '3', '1'], ['1', '0', '5 + 7 + 1 = 13', '3', '1'], ['0', '−1', '4 + 0 + 1 = 5', '5', '0'], ['−1', '−1', 'stop', 'reverse "335"', H.c('g', '"533"')]] },
       complexity: `<p>O(max(N, M)) time, O(max(N, M)) space for the output.</p>`,
       followUps: ['Subtract two big numbers (borrow instead of carry; handle a negative result).', 'Add two numbers stored as linked lists (DSA 12).']
@@ -4954,6 +6179,23 @@ int main() {
         long long s = 0;
         for (int i = l; i <= r; i++) s += a[i];   // O(N) per query
         cout << s << endl;                        // endl flushes on every answer
+    }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        string[] tok = Console.In.ReadToEnd().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+        int p = 0;
+        int n = int.Parse(tok[p++]), q = int.Parse(tok[p++]);
+        int[] a = new int[n + 1];
+        for (int i = 1; i <= n; i++) a[i] = int.Parse(tok[p++]);
+        while (q-- > 0) {
+            int l = int.Parse(tok[p++]), r = int.Parse(tok[p++]);
+            long s = 0;
+            for (int i = l; i <= r; i++) s += a[i];   // O(N) per query
+            Console.WriteLine(s);                     // Console.Out autoflushes: one slow write per answer
+        }
     }
 }` }] } },
     mcq: { q: 'With prefix sums <code>pre[i] = a[1] + … + a[i]</code>, the sum of a[l..r] equals…', options: ['pre[r] − pre[l − 1]', 'pre[r] − pre[l]', 'pre[r + 1] − pre[l]', 'pre[l] + pre[r]'], answer: 0, explain: 'pre[r] includes a[1..r]; subtracting pre[l−1] removes a[1..l−1], leaving exactly a[l..r]. pre[0] = 0 makes l = 1 work.' },
@@ -5044,6 +6286,26 @@ int main() {
     }
     cout << out;
     return 0;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.IO;
+using System.Text;
+
+class Program {
+    static void Main() {
+        var reader = new StreamReader(Console.OpenStandardInput(), Encoding.ASCII, false, 1 << 16);
+        string[] tok = reader.ReadToEnd().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+        int p = 0;
+        int n = int.Parse(tok[p++]), q = int.Parse(tok[p++]);
+        long[] pre = new long[n + 1];                    // pre[0] = 0
+        for (int i = 1; i <= n; i++) pre[i] = pre[i - 1] + int.Parse(tok[p++]);
+        var sb = new StringBuilder();
+        while (q-- > 0) {
+            int l = int.Parse(tok[p++]), r = int.Parse(tok[p++]);
+            sb.Append(pre[r] - pre[l - 1]).Append('\n');    // O(1) per query
+        }
+        Console.Write(sb);                               // one big write
+    }
 }` }],
       dry: { head: ['i', 'a[i]', 'pre[i]'], rows: [['0', '—', '0'], ['1', '3', '3'], ['2', '1', '4'], ['3', '4', '8'], ['4', '1', '9'], ['5', '5', '14'], ['query 2..5', '', 'pre[5] − pre[1] = 14 − 3 = ' + H.c('g', '11')]] },
       complexity: `<p>O(N + Q) time, O(N) space. I/O is linear in the input size with small constants.</p>`,
@@ -5097,7 +6359,18 @@ public:
             nums[0] = last;
         }
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Rotate(int[] nums, int k) {
+        int n = nums.Length;
+        k %= n;                                   // at least avoid useless full cycles
+        for (int step = 0; step < k; step++) {
+            int last = nums[n - 1];
+            for (int i = n - 1; i > 0; i--) nums[i] = nums[i - 1];   // shift right by one
+            nums[0] = last;
+        }
+    }
+}` }] } },
     mcq: { q: 'Why do we start with <code>k %= n</code>?', options: ['Rotating by n returns the original array, so only k mod n matters', 'To make k negative', 'Because k must be even', 'To sort the array'], answer: 0, explain: 'After n single steps every element is back home. k = 10, n = 7 behaves exactly like k = 3, and it also prevents index errors when k ≥ n.' },
     hints: [`<p>Hint 1: The answer is "last k elements, then first n − k elements". Can reversing pieces of the array produce that order?</p>`, `<p>Hint 2: Reverse the whole array, then reverse the first k elements, then reverse the remaining n − k elements.</p>`, `<p>Hint 3: Do <code>k %= n</code> first (k can be 10<sup>9</sup> or ≥ n). Write one helper <code>reverse(a, l, r)</code> and call it three times. k = 0 must leave the array unchanged.</p>`],
     tests: { sig: 'int[] int -> void', fn: 'rotate', mutate: 0, cases: [
@@ -5178,7 +6451,18 @@ public:
         reverse(nums.begin() + k, nums.end());
         // The STL also has std::rotate(nums.begin(), nums.end() - k, nums.end()).
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public void Rotate(int[] nums, int k) {
+        int n = nums.Length;
+        k %= n;
+        Array.Reverse(nums);              // 7 6 5 4 3 2 1   (Array.Reverse takes start + LENGTH)
+        Array.Reverse(nums, 0, k);        // 5 6 7 | 4 3 2 1
+        Array.Reverse(nums, k, n - k);    // 5 6 7 | 1 2 3 4
+    }
+}` }],
       dry: { head: ['step', 'array'], rows: [['start (k = 3)', '[1, 2, 3, 4, 5, 6, 7]'], ['reverse all', '[7, 6, 5, 4, 3, 2, 1]'], ['reverse [0..2]', '[5, 6, 7, 4, 3, 2, 1]'], ['reverse [3..6]', H.c('g', '[5, 6, 7, 1, 2, 3, 4]')]] },
       complexity: `<p>O(N) time (each element swapped at most twice), O(1) extra space.</p>`,
       followUps: ['Rotate left by k.', 'Do it with cyclic replacements (gcd(n, k) cycles).', 'Rotate a String: is "cdeab" a rotation of "abcde"? (check (s + s).contains(t)).']
@@ -5256,7 +6540,25 @@ public:
                 board[r][c] = (live == 3 || (old[r][c] == 1 && live == 2)) ? 1 : 0;
             }
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void GameOfLife(int[][] board) {
+        int m = board.Length, n = board[0].Length;
+        int[][] old = new int[m][];
+        for (int r = 0; r < m; r++) old[r] = (int[])board[r].Clone();   // O(m*n) extra memory
+        for (int r = 0; r < m; r++)
+            for (int c = 0; c < n; c++) {
+                int live = 0;
+                for (int dr = -1; dr <= 1; dr++)
+                    for (int dc = -1; dc <= 1; dc++) {
+                        if (dr == 0 && dc == 0) continue;
+                        int nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < m && nc >= 0 && nc < n) live += old[nr][nc];
+                    }
+                board[r][c] = (live == 3 || (old[r][c] == 1 && live == 2)) ? 1 : 0;
+            }
+    }
+}` }] } },
     mcq: { q: 'Each cell holds 0 or 1 in an int (32 bits). How can we store the next state without a second board?', options: ['Use bit 1 for the next state and bit 0 for the current state', 'Store it in a String', 'Use negative zero', 'It is impossible in O(1) space'], answer: 0, explain: 'board[r][c] |= nextState &lt;&lt; 1 keeps the current state readable as board[r][c] &amp; 1. Afterwards shift every cell right by 1.' },
     hints: [`<p>Hint 1: The difficulty is that neighbours must see the <b>old</b> state. Can one int cell remember both old and new states?</p>`, `<p>Hint 2: Bit 0 = current state, bit 1 = next state. While counting neighbours, read only <code>board[nr][nc] &amp; 1</code>. Write the new state with <code>board[r][c] |= 2</code> if it will be alive.</p>`, `<p>Hint 3: Second pass: <code>board[r][c] &gt;&gt;= 1</code> makes the next state current. Remember bounds checks on all 8 directions and skip (0, 0).</p>`],
     tests: { sig: 'int[][] -> void', fn: 'gameOfLife', mutate: 0, cases: [
@@ -5350,7 +6652,27 @@ public:
         for (auto& row : board)               // reference: edit the real row, not a copy
             for (int& cell : row) cell >>= 1;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void GameOfLife(int[][] board) {
+        int m = board.Length, n = board[0].Length;
+        for (int r = 0; r < m; r++) {
+            for (int c = 0; c < n; c++) {
+                int live = 0;
+                for (int dr = -1; dr <= 1; dr++)
+                    for (int dc = -1; dc <= 1; dc++) {
+                        if (dr == 0 && dc == 0) continue;
+                        int nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < m && nc >= 0 && nc < n) live += board[nr][nc] & 1;  // OLD state only
+                    }
+                bool alive = (board[r][c] & 1) == 1;
+                if (live == 3 || (alive && live == 2)) board[r][c] |= 2;   // next state in bit 1
+            }
+        }
+        for (int r = 0; r < m; r++)
+            for (int c = 0; c < n; c++) board[r][c] >>= 1;                  // promote next -> current
+    }
+}` }],
       dry: { head: ['cell', 'old', 'live neighbours', 'rule', 'stored value', 'after shift'], rows: [['(0,1)', '1', '1', 'under-population', '01 = 1', '0'], ['(1,0)', '0', '3', 'birth', '10 = 2', '1'], ['(1,2)', '1', '3', 'survives', '11 = 3', '1'], ['(2,1)', '1', '3', 'survives', '11 = 3', '1']] },
       complexity: `<p>O(m · n · 8) = O(m · n) time, O(1) extra space.</p>`,
       followUps: ['The board is infinite / huge and sparse: store only live cells in a HashSet of coordinates.', 'Simulate k generations efficiently (detect cycles).']
@@ -5486,7 +6808,47 @@ private:
         reverse(sb.begin(), sb.end());
         return sb;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+public class Solution {
+    public string Multiply(string num1, string num2) {
+        if (num1 == "0" || num2 == "0") return "0";
+        string total = "0";
+        for (int j = num2.Length - 1, shift = 0; j >= 0; j--, shift++) {
+            int d = num2[j] - '0';
+            var part = new StringBuilder();
+            part.Append('0', shift);                                 // place value zeros
+            int carry = 0;
+            for (int i = num1.Length - 1; i >= 0; i--) {
+                int p = (num1[i] - '0') * d + carry;
+                part.Append(p % 10);
+                carry = p / 10;
+            }
+            if (carry > 0) part.Append(carry);
+            total = Add(total, Reversed(part.ToString()));          // new string every round
+        }
+        return total;
+    }
+
+    private static string Reversed(string s) {
+        char[] a = s.ToCharArray();
+        Array.Reverse(a);
+        return new string(a);
+    }
+
+    private string Add(string a, string b) {
+        var sb = new StringBuilder();
+        int i = a.Length - 1, j = b.Length - 1, carry = 0;
+        while (i >= 0 || j >= 0 || carry > 0) {
+            int s = carry + (i >= 0 ? a[i--] - '0' : 0) + (j >= 0 ? b[j--] - '0' : 0);
+            sb.Append(s % 10);
+            carry = s / 10;
+        }
+        return Reversed(sb.ToString());
+    }
+}` }] } },
     mcq: { q: 'A number with N digits times a number with M digits has at most how many digits?', options: ['N + M', 'N × M', 'max(N, M) + 1', 'N + M + 1'], answer: 0, explain: '10<sup>N</sup> × 10<sup>M</sup> = 10<sup>N+M</sup>, and both factors are smaller, so the product has at most N + M digits. Allocate an int[N + M].' },
     hints: [`<p>Hint 1: Indexing from the left, digit i of num1 (place value 10<sup>N−1−i</sup>) times digit j of num2 contributes to result position i + j + 1 of an array of length N + M.</p>`, `<p>Hint 2: Accumulate all products into <code>int[] res = new int[N + M]</code> first, then sweep once from right to left pushing carries: res[k − 1] += res[k] / 10; res[k] %= 10.</p>`, `<p>Hint 3: Each cell collects at most ~200 products of ≤ 81 — fits easily in int. Skip leading zeros when building the string; if everything is zero, return "0".</p>`],
     tests: { sig: 'string string -> string', fn: 'multiply', cases: [
@@ -5568,7 +6930,28 @@ public:
         for (int d : res) if (!s.empty() || d != 0) s.push_back(char('0' + d));
         return s.empty() ? "0" : s;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public string Multiply(string num1, string num2) {
+        int n = num1.Length, m = num2.Length;
+        int[] res = new int[n + m];                         // product has at most n + m digits
+        for (int i = n - 1; i >= 0; i--) {
+            int a = num1[i] - '0';
+            for (int j = m - 1; j >= 0; j--) {
+                res[i + j + 1] += a * (num2[j] - '0');      // accumulate, carry later
+            }
+        }
+        for (int k = n + m - 1; k > 0; k--) {               // single carry sweep
+            res[k - 1] += res[k] / 10;
+            res[k] %= 10;
+        }
+        var sb = new StringBuilder();
+        foreach (int d in res) if (sb.Length > 0 || d != 0) sb.Append(d);   // skip leading zeros
+        return sb.Length == 0 ? "0" : sb.ToString();
+    }
+}` }],
       dry: { head: ['i (num1 digit)', 'j (num2 digit)', 'product', 'slot i+j+1'], rows: [['2 (3)', '1 (5)', '15', '4'], ['2 (3)', '0 (4)', '12', '3'], ['1 (2)', '1 (5)', '10', '3'], ['1 (2)', '0 (4)', '8', '2'], ['0 (1)', '1 (5)', '5', '2'], ['0 (1)', '0 (4)', '4', '1'], ['carry sweep', '', '[0,4,13,22,15] →', H.c('g', '[0,5,5,3,5] → "5535"')]] },
       complexity: `<p>O(N · M) time, O(N + M) space.</p>`,
       followUps: ['Karatsuba multiplication: O(N<sup>1.585</sup>) for very long numbers.', 'Factorial of 1000 as a string (see the Hard problem below).']
@@ -5612,7 +6995,14 @@ public:
         for (int i = 2; i <= n; i++) f *= i;   // overflows silently for n >= 21
         return to_string(f);
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string Factorial(int n) {
+        long f = 1;
+        for (int i = 2; i <= n; i++) f *= i;   // overflows silently for n >= 21
+        return f.ToString();
+    }
+}` }] } },
     mcq: { q: 'You store digits least-significant first in an int array and multiply by i ≤ 1000. What is the largest value of digit × i + carry in one step?', options: ['A few thousand (9 × 1000 + carry) — fits in int', 'More than 2<sup>31</sup>', 'Exactly 9', 'It depends on the number of digits'], answer: 0, explain: 'digit ≤ 9, i ≤ 1000, carry ≤ ~1000, so the product is ≤ ~10<sup>4</sup>. Plain int arithmetic is perfectly safe.' },
     hints: [`<p>Hint 1: Store the number as an array of digits, <b>least significant first</b> (units at index 0). That makes carries flow toward higher indexes and lets the array grow at the end.</p>`, `<p>Hint 2: To multiply the whole number by i: for each digit, <code>prod = digit * i + carry</code>; store <code>prod % 10</code>; <code>carry = prod / 10</code>. After the last digit, append carry digit by digit.</p>`, `<p>Hint 3: Allocate 3000 digit cells (enough for 1000!) and track <code>len</code>, or use a growable list/vector. 0! = 1! = 1. Build the answer by reading digits from the most significant end.</p>`],
     tests: { sig: 'int -> string', fn: 'factorial', cases: [
@@ -5708,7 +7098,31 @@ public:
         for (auto it = d.rbegin(); it != d.rend(); ++it) s.push_back(char('0' + *it));
         return s;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public string Factorial(int n) {
+        int[] d = new int[3000];          // 1000! has 2568 digits
+        d[0] = 1;
+        int len = 1;                      // current number of digits (stored units-first)
+        for (int i = 2; i <= n; i++) {
+            int carry = 0;
+            for (int k = 0; k < len; k++) {
+                int prod = d[k] * i + carry;
+                d[k] = prod % 10;
+                carry = prod / 10;
+            }
+            while (carry > 0) {           // number grew: append new high digits
+                d[len++] = carry % 10;
+                carry /= 10;
+            }
+        }
+        var sb = new StringBuilder(len);
+        for (int k = len - 1; k >= 0; k--) sb.Append(d[k]);
+        return sb.ToString();
+    }
+}` }],
       dry: { head: ['i', 'digits (units first)', 'number'], rows: [['start', '[1]', '1'], ['2', '[2]', '2'], ['3', '[6]', '6'], ['4', '[4, 2]', '24'], ['5', '[0, 2, 1]', H.c('g', '120')]] },
       complexity: `<p>O(N · D) where D is the number of digits of N! (≈ 2,568 for N = 1000) → about 2.5 × 10<sup>6</sup> steps. O(D) space. Storing 4 digits per int cell (base 10,000) cuts the work by 4×.</p>`,
       followUps: ['Count trailing zeros of N! without computing it (count factors of 5).', 'Compute N! mod 10<sup>9</sup>+7 for N up to 10<sup>6</sup> (just a long and %).', 'Use base 10<sup>9</sup> per cell with long arithmetic to go 9× faster.']
@@ -5803,7 +7217,27 @@ private:
         if (n < 1000000000) return trim(words(n / 1000000) + " Million " + words(n % 1000000));
         return trim(words(n / 1000000000) + " Billion " + words(n % 1000000000));
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    private static readonly string[] ONES = { "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+        "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen" };
+    private static readonly string[] TENS = { "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety" };
+
+    public string NumberToWords(int num) {
+        if (num == 0) return "Zero";
+        return Words(num).Trim();
+    }
+
+    private string Words(int n) {
+        if (n == 0) return "";
+        if (n < 20) return ONES[n];
+        if (n < 100) return (TENS[n / 10] + " " + Words(n % 10)).Trim();
+        if (n < 1000) return (ONES[n / 100] + " Hundred " + Words(n % 100)).Trim();
+        if (n < 1000000) return (Words(n / 1000) + " Thousand " + Words(n % 1000)).Trim();
+        if (n < 1000000000) return (Words(n / 1000000) + " Million " + Words(n % 1000000)).Trim();
+        return (Words(n / 1000000000) + " Billion " + Words(n % 1000000000)).Trim();
+    }
+}` }] } },
     mcq: { q: 'How should the group "000" in 1,000,010 be handled?', options: ['Skip it completely — no "Thousand" word', 'Say "Zero Thousand"', 'Say "Thousand" alone', 'Throw an exception'], answer: 0, explain: '1,000,010 is "One Million Ten". A scale word is spoken only when its 3-digit group is non-zero.' },
     hints: [`<p>Hint 1: Every number is just 3-digit groups with scale words: [Billion, Million, Thousand, ""]. Write one helper <code>three(int n)</code> for 1–999 and reuse it for all groups.</p>`, `<p>Hint 2: three(n): hundreds digit → ONES[h] + " Hundred"; the remaining 0–99: if &lt; 20 use ONES directly (handles Eleven…Nineteen), else TENS[t] plus ONES[u] if u &gt; 0.</p>`, `<p>Hint 3: Peel groups with <code>% 1000</code> and <code>/ 1000</code> from the lowest scale upward (or divide by 10<sup>9</sup>, 10<sup>6</sup>, 10<sup>3</sup> from the top). Skip zero groups. Join non-empty pieces with single spaces. Special-case 0 → "Zero".</p>`],
     tests: { sig: 'int -> string', fn: 'numberToWords', cases: [
@@ -5938,7 +7372,36 @@ public:
         for (size_t i = 0; i < words.size(); i++) out += (i ? " " : "") + words[i];
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    private static readonly string[] ONES = { "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+        "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen" };
+    private static readonly string[] TENS = { "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety" };
+    private static readonly int[] SCALE_VAL = { 1000000000, 1000000, 1000, 1 };
+    private static readonly string[] SCALE_NAME = { "Billion", "Million", "Thousand", "" };
+
+    public string NumberToWords(int num) {
+        if (num == 0) return "Zero";
+        var words = new List<string>();
+        for (int s = 0; s < SCALE_VAL.Length; s++) {
+            int group = num / SCALE_VAL[s];
+            num %= SCALE_VAL[s];
+            if (group == 0) continue;                        // skip empty groups like "000"
+            Three(group, words);
+            if (SCALE_NAME[s].Length > 0) words.Add(SCALE_NAME[s]);
+        }
+        return string.Join(" ", words);                      // single spaces by construction
+    }
+
+    // Appends the words for 1..999
+    private void Three(int n, List<string> output) {
+        if (n >= 100) { output.Add(ONES[n / 100]); output.Add("Hundred"); n %= 100; }
+        if (n >= 20) { output.Add(TENS[n / 10]); n %= 10; }
+        if (n > 0) output.Add(ONES[n]);                      // 1..19 handled in one table
+    }
+}` }],
       dry: { head: ['scale', 'group', 'words added', 'remaining num'], rows: [['Billion', '0', '(skip)', '1234567'], ['Million', '1', 'One Million', '234567'], ['Thousand', '234', 'Two Hundred Thirty Four Thousand', '567'], ['units', '567', 'Five Hundred Sixty Seven', H.c('g', '0 → join')]] },
       complexity: `<p>O(1): at most 4 groups with a few words each (O(log₁₀ num) in general).</p>`,
       followUps: ['Support negative numbers and "and" (British style: "One Hundred and Five").', 'Reverse direction: parse English words back into an integer.']
@@ -6031,7 +7494,31 @@ public:
         }
         return res;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public List<string> FullJustify(string[] words, int maxWidth) {
+        var res = new List<string>();
+        int i = 0;
+        while (i < words.Length) {
+            int j = i, len = 0;
+            while (j < words.Length && len + words[j].Length + (j - i) <= maxWidth) len += words[j++].Length;
+            string[] gapsArr = new string[Math.Max(1, j - i - 1)];
+            Array.Fill(gapsArr, j == words.Length ? " " : "");
+            if (j < words.Length && j - i > 1) {
+                for (int s = 0; s < maxWidth - len; s++) gapsArr[s % (j - i - 1)] += " ";   // one space at a time
+            }
+            string line = words[i];
+            for (int k = i + 1; k < j; k++) line += gapsArr[k - i - 1] + words[k];
+            while (line.Length < maxWidth) line += " ";                                    // pad right
+            res.Add(line);
+            i = j;
+        }
+        return res;
+    }
+}` }] } },
     mcq: { q: 'A line has 3 words with 13 letters in total and maxWidth = 20. How are the 7 spaces split over the 2 gaps?', options: ['4 then 3', '3 then 4', '3.5 and 3.5', '7 then 0'], answer: 0, explain: '7 / 2 = 3 remainder 1. Every gap gets 3, and the leftmost 1 gap gets one extra: 4, 3.' },
     hints: [`<p>Hint 1: Split the job into two helpers: (a) <b>choose</b> the words for a line greedily — keep adding while total letters + minimum single spaces ≤ maxWidth; (b) <b>render</b> the line.</p>`, `<p>Hint 2: For a normal line with g = count − 1 gaps and S = maxWidth − letters spaces: each gap gets S / g, and the first S % g gaps get one extra.</p>`, `<p>Hint 3: Special cases: a line with one word, and the last line → words joined with single spaces, then pad with spaces on the right to maxWidth. Repeat spaces with <code>" ".repeat(k)</code> (Java, JS), <code>" " * k</code> (Python) or <code>string(k, ' ')</code> (C++); <code>ljust</code> / <code>padEnd</code> pad the right side.</p>`],
     tests: { sig: 'string[] int -> list<string>', fn: 'fullJustify', cases: [
@@ -6158,7 +7645,41 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+using System.Text;
+
+public class Solution {
+    public List<string> FullJustify(string[] words, int maxWidth) {
+        var res = new List<string>();
+        int i = 0, n = words.Length;
+        while (i < n) {
+            // 1) choose words i..j-1 for this line
+            int j = i, letters = 0;
+            while (j < n && letters + words[j].Length + (j - i) <= maxWidth) letters += words[j++].Length;
+            int count = j - i, gaps = count - 1;
+            var sb = new StringBuilder(maxWidth);
+            if (j == n || gaps == 0) {
+                // 2a) last line or single word: left-justify
+                for (int k = i; k < j; k++) {
+                    if (k > i) sb.Append(' ');
+                    sb.Append(words[k]);
+                }
+                sb.Append(' ', maxWidth - sb.Length);
+            } else {
+                // 2b) full justification: spread spaces, extra ones go left
+                int spaces = maxWidth - letters, b = spaces / gaps, extra = spaces % gaps;
+                for (int k = i; k < j; k++) {
+                    sb.Append(words[k]);
+                    if (k < j - 1) sb.Append(' ', b + (k - i < extra ? 1 : 0));
+                }
+            }
+            res.Add(sb.ToString());
+            i = j;
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['line', 'words', 'letters', 'spaces / gaps', 'base, extra', 'result'], rows: [['1', 'This is an', '8', '8 / 2', '4, 0', '"This····is····an"'], ['2', 'example of text', '13', '3 / 2', '1, 1', '"example··of·text"'], ['3 (last)', 'justification.', '14', '—', 'left-justify', '"justification.··"']] },
       complexity: `<p>O(total characters of output) = O(lines × maxWidth) time; O(maxWidth) extra per line.</p>`,
       followUps: ['Centre-justify each line instead.', 'Minimise the "raggedness" (sum of squared trailing spaces) instead of greedy packing — a DP problem (DSA 17).']

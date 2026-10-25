@@ -238,7 +238,53 @@ int main() {
     int second = h.extractMax();
     cout << first << " " << second << endl;   // 8 5
 }
-` }
+` },
+      { lang: 'csharp', run: true, code: `using System;
+
+// Max-heap version: identical to min-heap, only the comparisons are flipped.
+class MaxHeap
+{
+    private int[] a = new int[16];   // the tree, stored level by level
+    private int size = 0;
+
+    public void Insert(int x)
+    {
+        if (size == a.Length) Array.Resize(ref a, size * 2);  // grow when full
+        a[size] = x;                 // 1) put new value at the end
+        int i = size++;
+        while (i > 0 && a[i] > a[(i - 1) / 2])     // 2) bigger than parent? (max-heap)
+        {
+            int p = (i - 1) / 2;
+            int t = a[i]; a[i] = a[p]; a[p] = t;    // swap child and parent
+            i = p;                                  // keep bubbling up
+        }
+    }
+
+    public int ExtractMax()
+    {
+        if (size == 0) throw new InvalidOperationException("heap is empty");
+        int top = a[0];              // the answer: largest value
+        a[0] = a[--size];            // move last element to the root
+        int i = 0;
+        while (true)
+        {
+            int l = 2 * i + 1, r = 2 * i + 2, big = i;
+            if (l < size && a[l] > a[big]) big = l;   // pick the BIGGER child
+            if (r < size && a[r] > a[big]) big = r;
+            if (big == i) break;                      // parent already biggest: done
+            int t = a[i]; a[i] = a[big]; a[big] = t;
+            i = big;                                  // keep sinking down
+        }
+        return top;
+    }
+
+    static void Main()
+    {
+        var h = new MaxHeap();
+        foreach (int x in new[] { 4, 10, 3, 5, 1 }) h.Insert(x);
+        Console.WriteLine(h.ExtractMax() + " " + h.ExtractMax());   // 10 5
+    }
+}` }
     ] }],
     codeTitle: ['Max-heap: same code, comparisons flipped'],
     examples: [
@@ -471,7 +517,34 @@ public:
     }
 
     int size() { return list.size(); }
-};` }
+};` },
+          { lang: 'csharp', code: `class SlowMinHeap
+{
+    private List<int> list = new List<int>();
+
+    public void Insert(int x) { list.Add(x); }    // O(1)
+
+    public int GetMin()
+    {
+        if (list.Count == 0) return -1;
+        int best = list[0];
+        foreach (int v in list) best = Math.Min(best, v); // O(N) scan every time
+        return best;
+    }
+
+    public int ExtractMin()
+    {
+        if (list.Count == 0) return -1;
+        int bi = 0;
+        for (int i = 1; i < list.Count; i++)
+            if (list[i] < list[bi]) bi = i;         // O(N) scan
+        int v2 = list[bi];
+        list.RemoveAt(bi);                          // O(N) shift
+        return v2;
+    }
+
+    public int Size() { return list.Count; }
+}` }
         ] }
         },
         mcq: {
@@ -676,7 +749,65 @@ public:
 
     int size() const { return (int)a.size(); }
 };
-` }
+` },
+            { lang: 'csharp', code: `using System;
+
+public class MinHeap
+{
+    private int[] a = new int[16];  // heap stored level by level
+    private int size = 0;           // how many values are in use
+
+    public void Insert(int x)
+    {
+        if (size == a.Length) Array.Resize(ref a, size * 2); // grow
+        a[size] = x;            // new value goes to the next free spot
+        SiftUp(size);           // fix order by bubbling it up
+        size++;
+    }
+
+    public int GetMin()
+    {
+        return size == 0 ? -1 : a[0];   // root is the minimum
+    }
+
+    public int ExtractMin()
+    {
+        if (size == 0) return -1;
+        int min = a[0];         // answer
+        size--;
+        a[0] = a[size];         // move last value to the root
+        SiftDown(0);            // let it sink to the right place
+        return min;
+    }
+
+    public int Size() { return size; }
+
+    private void SiftUp(int i)
+    {
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;            // parent index
+            if (a[i] >= a[p]) break;        // parent already smaller: done
+            Swap(i, p);
+            i = p;                          // continue from the parent spot
+        }
+    }
+
+    private void SiftDown(int i)
+    {
+        while (true)
+        {
+            int l = 2 * i + 1, r = 2 * i + 2, small = i;
+            if (l < size && a[l] < a[small]) small = l;  // smaller child?
+            if (r < size && a[r] < a[small]) small = r;
+            if (small == i) break;                       // no child is smaller
+            Swap(i, small);
+            i = small;
+        }
+    }
+
+    private void Swap(int i, int j) { int t = a[i]; a[i] = a[j]; a[j] = t; }
+}` }
           ],
           dry: {
             head: ['operation', 'array before fix', 'sift steps', 'array after', 'returns'],
@@ -849,7 +980,49 @@ int main() {
     make_heap(b.begin(), b.end());
     sort_heap(b.begin(), b.end());
 }
-` }
+` },
+      { lang: 'csharp', run: true, code: `using System;
+
+class HeapSort
+{
+    // Sorts ascending using a max-heap built in place.
+    static void Sort(int[] a)
+    {
+        int n = a.Length;
+        // 1) Build max-heap bottom-up: last non-leaf is n/2 - 1
+        for (int i = n / 2 - 1; i >= 0; i--)
+        {
+            SiftDown(a, i, n);
+        }
+        // 2) Move the max to the end, shrink the heap, repair the root
+        for (int end = n - 1; end > 0; end--)
+        {
+            int t = a[0]; a[0] = a[end]; a[end] = t;  // largest goes to its final spot
+            SiftDown(a, 0, end);                      // heap is now a[0..end-1]
+        }
+    }
+
+    // Sink a[i] down inside a[0..size-1] (max-heap version).
+    static void SiftDown(int[] a, int i, int size)
+    {
+        while (true)
+        {
+            int l = 2 * i + 1, r = 2 * i + 2, big = i;
+            if (l < size && a[l] > a[big]) big = l;
+            if (r < size && a[r] > a[big]) big = r;
+            if (big == i) return;                     // already bigger than children
+            int t = a[i]; a[i] = a[big]; a[big] = t;
+            i = big;
+        }
+    }
+
+    static void Main()
+    {
+        int[] a = { 4, 10, 3, 5, 1 };
+        Sort(a);
+        Console.WriteLine("[" + string.Join(", ", a) + "]");   // [1, 3, 4, 5, 10]
+    }
+}` }
     ] }],
     codeTitle: ['Build-heap (O(N)) + Heap Sort (O(N log N), in place)'],
     examples: [
@@ -1124,7 +1297,83 @@ console.log(out.join(' '));               // 1 4 7 9
     while (!built.empty()) { cout << built.top() << ' '; built.pop(); }   // 1 4 7 9
     cout << endl;
 }
-` }
+` },
+      { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Text;
+
+class HeapUsage
+{
+    static void Main()
+    {
+        // 1) Min-heap: the comparison says what comes out first
+        var minHeap = new MinHeap<int>((a, b) => a.CompareTo(b));
+        minHeap.Push(5); minHeap.Push(2); minHeap.Push(8);
+        Console.WriteLine(minHeap.Peek());   // 2
+
+        // 2) Max-heap: flip the comparison
+        var maxHeap = new MinHeap<int>((a, b) => b.CompareTo(a));
+        maxHeap.Push(5); maxHeap.Push(2); maxHeap.Push(8);
+        Console.WriteLine(maxHeap.Pop());    // 8
+
+        // 3) Pairs: {value, index}, ordered by value, ties by index
+        var pq = new MinHeap<int[]>((x, y) => x[0] != y[0] ? x[0].CompareTo(y[0]) : x[1].CompareTo(y[1]));
+        pq.Push(new[] { 7, 0 });
+        pq.Push(new[] { 3, 1 });
+        pq.Push(new[] { 3, 0 });
+        int[] top = pq.Pop();                // {3, 0}
+        Console.WriteLine(top[0] + " at " + top[1]);
+
+        // 4) Build from a whole list, then drain in sorted order
+        var built = new MinHeap<int>((a, b) => a.CompareTo(b));
+        foreach (int x in new[] { 9, 4, 7, 1 }) built.Push(x);
+        var sb = new StringBuilder();
+        while (built.Count > 0) sb.Append(built.Pop()).Append(' ');
+        Console.WriteLine(sb);               // 1 4 7 9
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
     ] },
       { lang: 'java', code: `
       // Custom objects: a patient with a severity score; most severe first.
@@ -1226,7 +1475,73 @@ int main() {
         er.pop();
     }
 }
-` }
+` },
+      { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// Custom objects: a patient with a severity score; most severe first.
+class Patient
+{
+    public string Name; public int Severity;
+    public Patient(string n, int s) { Name = n; Severity = s; }
+}
+
+class ER
+{
+    static void Main()
+    {
+        var er = new MinHeap<Patient>((p, q) => q.Severity.CompareTo(p.Severity));   // reversed: max first
+        er.Push(new Patient("cut finger", 2));
+        er.Push(new Patient("heart attack", 10));
+        er.Push(new Patient("broken arm", 6));
+        while (er.Count > 0)
+        {
+            Console.WriteLine(er.Pop().Name);   // heart attack, broken arm, cut finger
+        }
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
     ] }],
     codeTitle: ['PriorityQueue cheat-sheet', 'Comparator on your own class (emergency room)'],
     viz: {
@@ -1312,7 +1627,65 @@ console.log(order.join(' '));             // 1 4 7
     while (!pq.empty()) { cout << pq.top() << ' '; pq.pop(); }   // 1 4 7
     cout << endl;
 }
-` }
+` },
+          { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class FrequencyOrder
+{
+    static void Main()
+    {
+        var f = new Dictionary<int, int> { { 4, 3 }, { 1, 3 }, { 7, 1 } };
+        var pq = new MinHeap<int>((a, b) =>
+            f[a] == f[b] ? a.CompareTo(b)             // tie -> smaller value first
+                         : f[b].CompareTo(f[a]));     // higher count first
+        foreach (int k in f.Keys) pq.Push(k);
+        while (pq.Count > 0) Console.Write(pq.Pop() + " ");      // 1 4 7
+        Console.WriteLine();
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
         ] }
       },
       {
@@ -1390,6 +1763,18 @@ console.log(order.join(' '));             // 1 4 7
         if (y != x) list.push_back(y - x);
     }
     return list.empty() ? 0 : list[0];
+}` },
+          { lang: 'csharp', code: `int LastStoneWeight(int[] stones)
+{
+    var list = new List<int>(stones);
+    while (list.Count > 1)
+    {
+        list.Sort();                                     // full sort every turn
+        int y = list[list.Count - 1]; list.RemoveAt(list.Count - 1);
+        int x = list[list.Count - 1]; list.RemoveAt(list.Count - 1);
+        if (y != x) list.Add(y - x);
+    }
+    return list.Count == 0 ? 0 : list[0];
 }` }
         ] }
         },
@@ -1504,7 +1889,67 @@ public:
         return pq.empty() ? 0 : pq.top();
     }
 };
-` }
+` },
+            { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int LastStoneWeight(int[] stones)
+    {
+        var pq = new MinHeap<int>((a, b) => b.CompareTo(a));   // max-heap: reversed comparison
+        foreach (int s in stones) pq.Push(s);
+        while (pq.Count > 1)
+        {
+            int y = pq.Pop();           // heaviest
+            int x = pq.Pop();           // second heaviest
+            if (y != x) pq.Push(y - x); // leftover goes back in
+        }
+        return pq.Count == 0 ? 0 : pq.Peek();
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
           ],
           dry: {
             head: ['turn', 'heap (sorted view)', 'y', 'x', 'push back'],
@@ -1637,7 +2082,62 @@ vector<int> kSmallest(const vector<int>& a, int k) {
     return res;                                       // ascending
 }
 // Library alternative: std::partial_sort or std::nth_element on a copy.
-` }
+` },
+      { lang: 'csharp', code: `// K smallest elements: MAX-heap of size K (top = the biggest of the small ones)
+int[] KSmallest(int[] a, int k)
+{
+    var maxHeap = new MinHeap<int>((x, y) => y.CompareTo(x));   // reversed comparison = max-heap
+    foreach (int x in a)
+    {
+        maxHeap.Push(x);
+        if (maxHeap.Count > k) maxHeap.Pop();      // throw out the largest: it can't be in the K smallest
+    }
+    int[] res = new int[maxHeap.Count];
+    for (int i = res.Length - 1; i >= 0; i--) res[i] = maxHeap.Pop(); // fill from the back -> ascending
+    return res;
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
     ] },
     codeTitle: 'Mirror pattern: K smallest with a max-heap',
     examples: [
@@ -1729,7 +2229,63 @@ function kClosest(pts, k) {
     while (!pq.empty()) { res.push_back(pq.top()); pq.pop(); }
     return res;
 }
-` }
+` },
+          { lang: 'csharp', code: `int[][] KClosest(int[][] pts, int k)
+{
+    // max-heap on squared distance: the farthest kept point is on top
+    Func<int[], long> d = p => (long)p[0] * p[0] + (long)p[1] * p[1];
+    var pq = new MinHeap<int[]>((a, b) => d(b).CompareTo(d(a)));
+    foreach (int[] p in pts)
+    {
+        pq.Push(p);
+        if (pq.Count > k) pq.Pop();     // drop the farthest
+    }
+    var res = new List<int[]>();
+    while (pq.Count > 0) res.Add(pq.Pop());
+    return res.ToArray();
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
         ] }
       },
       {
@@ -1824,6 +2380,12 @@ function kClosest(pts, k) {
     vector<int> copy = nums;
     sort(copy.begin(), copy.end());                  // ascending
     return copy[copy.size() - k];                    // k-th from the end
+}` },
+          { lang: 'csharp', code: `int FindKthLargest(int[] nums, int k)
+{
+    int[] copy = (int[])nums.Clone();
+    Array.Sort(copy);               // ascending
+    return copy[copy.Length - k];   // k-th from the end
 }` }
         ] }
         },
@@ -1934,7 +2496,68 @@ public:
         return heap.top();                                    // k-th largest
     }
 };
-` }
+` },
+            { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int FindKthLargest(int[] nums, int k)
+    {
+        var heap = new MinHeap<int>((a, b) => a.CompareTo(b)); // min-heap
+        foreach (int x in nums)
+        {
+            heap.Push(x);             // try x in the top-k club
+            if (heap.Count > k)
+            {
+                heap.Pop();           // kick out the weakest: not in top k
+            }
+        }
+        return heap.Peek();           // weakest of the top k = k-th largest
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
           ],
           dry: {
             head: ['x', 'after offer', 'size &gt; k?', 'heap after', 'peek'],
@@ -2004,6 +2627,20 @@ public:
             if (!used[i] && (best == -1 || arr[i] > arr[best])) best = i;
         used[best] = true;
         res.push_back(arr[best]);
+    }
+    return res;
+}` },
+          { lang: 'csharp', code: `List<int> KLargest(int[] arr, int k)
+{
+    bool[] used = new bool[arr.Length];
+    var res = new List<int>();
+    for (int t = 0; t < k; t++)
+    {
+        int best = -1;
+        for (int i = 0; i < arr.Length; i++)          // full scan every round
+            if (!used[i] && (best == -1 || arr[i] > arr[best])) best = i;
+        used[best] = true;
+        res.Add(arr[best]);
     }
     return res;
 }` }
@@ -2121,7 +2758,70 @@ public:
         return res;
     }
 };
-` }
+` },
+            { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<int> KLargest(int[] arr, int k)
+    {
+        var heap = new MinHeap<int>((a, b) => a.CompareTo(b));   // min-heap of the k largest
+        foreach (int x in arr)
+        {
+            heap.Push(x);
+            if (heap.Count > k) heap.Pop();   // drop the smallest of k+1
+        }
+        int[] res = new int[k];
+        for (int i = k - 1; i >= 0; i--)
+        {
+            res[i] = heap.Pop();    // smallest goes to the back -> decreasing order
+        }
+        return res;
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
           ],
           dry: {
             head: ['x', 'heap after offer', 'poll?', 'heap after'],
@@ -2266,7 +2966,70 @@ vector<int> mergeKArrays(const vector<vector<int>>& arrs) {
     }
     return res;
 }
-` }
+` },
+      { lang: 'csharp', code: `// Merge K sorted ARRAYS: heap stores {value, which array, index inside it}
+int[] MergeKArrays(int[][] arrs)
+{
+    var pq = new MinHeap<int[]>((x, y) => x[0].CompareTo(y[0]));
+    int total = 0;
+    for (int i = 0; i < arrs.Length; i++)
+    {
+        total += arrs[i].Length;
+        if (arrs[i].Length > 0) pq.Push(new[] { arrs[i][0], i, 0 }); // front of each array
+    }
+    int[] res = new int[total];
+    int w = 0;
+    while (pq.Count > 0)
+    {
+        int[] cur = pq.Pop();                // smallest front
+        res[w++] = cur[0];
+        int arr = cur[1], pos = cur[2] + 1;
+        if (pos < arrs[arr].Length) pq.Push(new[] { arrs[arr][pos], arr, pos }); // next in same array
+    }
+    return res;
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
     ] },
     codeTitle: 'Same idea for K sorted arrays',
     examples: [
@@ -2435,6 +3198,28 @@ ListNode* mergeKLists(vector<ListNode*>& lists) {
     ListNode* result = nullptr;
     for (ListNode* l : lists) result = mergeTwo(result, l); // re-walks result each time
     return result;
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public ListNode MergeKLists(ListNode[] lists)
+    {
+        ListNode result = null;
+        foreach (ListNode l in lists) result = MergeTwo(result, l); // re-walks result each time
+        return result;
+    }
+
+    private ListNode MergeTwo(ListNode a, ListNode b)
+    {
+        var dummy = new ListNode(0); ListNode t = dummy;
+        while (a != null && b != null)
+        {
+            if (a.val <= b.val) { t.next = a; a = a.next; }
+            else { t.next = b; b = b.next; }
+            t = t.next;
+        }
+        t.next = a ?? b;
+        return dummy.next;
+    }
 }` }
         ] }
         },
@@ -2571,7 +3356,78 @@ public:
         return dummy.next;
     }
 };
-` }
+` },
+            { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public ListNode MergeKLists(ListNode[] lists)
+    {
+        // min-heap ordered by node value
+        var pq = new MinHeap<ListNode>((a, b) => a.val.CompareTo(b.val));
+        foreach (ListNode head in lists)
+        {
+            if (head != null) pq.Push(head);      // seed with each list's front
+        }
+        var dummy = new ListNode(0);              // fake head: no special first case
+        ListNode tail = dummy;
+        while (pq.Count > 0)
+        {
+            ListNode node = pq.Pop();             // smallest of all fronts
+            tail.next = node;                     // attach to answer
+            tail = node;
+            if (node.next != null)
+            {
+                pq.Push(node.next);               // that list's next front
+            }
+        }
+        tail.next = null;                         // tidy end (already null here)
+        return dummy.next;
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
           ],
           dry: {
             head: ['step', 'poll', 'push', 'heap after', 'result'],
@@ -2751,7 +3607,81 @@ int main() {
         cout << "added " << x << " -> median " << mf.median() << endl;
     }
 }
-` }
+` },
+      { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// Same two-heap idea in C#: low is a max-heap (reversed comparison), high a min-heap
+class MedianFinder
+{
+    private readonly MinHeap<int> low = new MinHeap<int>((a, b) => b.CompareTo(a));    // smaller half, biggest on top
+    private readonly MinHeap<int> high = new MinHeap<int>((a, b) => a.CompareTo(b));   // bigger half, smallest on top
+
+    public void Add(int x)
+    {
+        low.Push(x);                                 // 1) into the small half
+        high.Push(low.Pop());                        // 2) its biggest moves right
+        if (high.Count > low.Count) low.Push(high.Pop());   // 3) keep low >= high in size
+    }
+
+    public double Median()
+    {
+        if (low.Count > high.Count) return low.Peek();
+        return (low.Peek() + high.Peek()) / 2.0;
+    }
+
+    static void Main()
+    {
+        var mf = new MedianFinder();
+        foreach (int x in new[] { 5, 15, 1, 3, 8, 7, 9, 10 })
+        {
+            mf.Add(x);
+            Console.WriteLine("added " + x + " -> median " + mf.Median());
+        }
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
     ] }, { lang: 'java', code: `
       // Sliding-window median building block: two heaps + lazy deletion counts.
       class WindowMedian {
@@ -2937,7 +3867,93 @@ public:
         return ((double)*prev(low.end()) + *high.begin()) / 2.0;
     }
 };
-` }
+` },
+      { lang: 'csharp', code: `// Sliding-window median building block: two heaps + lazy deletion counts.
+class WindowMedian
+{
+    MinHeap<int> low = new MinHeap<int>((a, b) => b.CompareTo(a));   // smaller half (max on top)
+    MinHeap<int> high = new MinHeap<int>((a, b) => a.CompareTo(b));  // bigger half (min on top)
+    Dictionary<int, int> delayed = new Dictionary<int, int>();       // value -> how many copies to delete later
+    int lowSize = 0, highSize = 0;                                   // sizes WITHOUT the delayed values
+
+    public void Add(int x)
+    {
+        if (low.Count == 0 || x <= low.Peek()) { low.Push(x); lowSize++; }
+        else { high.Push(x); highSize++; }
+        Balance();
+    }
+
+    public void Remove(int x)
+    {
+        int c; delayed.TryGetValue(x, out c); delayed[x] = c + 1;   // remember, delete when it reaches a top
+        if (x <= low.Peek()) { lowSize--; if (x == low.Peek()) Prune(low); }
+        else { highSize--; if (high.Count > 0 && x == high.Peek()) Prune(high); }
+        Balance();
+    }
+
+    public double Median()
+    {
+        return lowSize > highSize ? low.Peek() : ((long)low.Peek() + high.Peek()) / 2.0;
+    }
+
+    private void Balance()
+    {
+        if (lowSize > highSize + 1) { high.Push(low.Pop()); lowSize--; highSize++; Prune(low); }
+        else if (lowSize < highSize) { low.Push(high.Pop()); highSize--; lowSize++; Prune(high); }
+    }
+
+    private void Prune(MinHeap<int> pq)      // pop tops that were deleted earlier
+    {
+        int c;
+        while (pq.Count > 0 && delayed.TryGetValue(pq.Peek(), out c) && c > 0)
+        {
+            int v = pq.Pop();
+            delayed[v] = c - 1;
+        }
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
     ] }],
     codeTitle: ['Python version (runnable)', 'Sliding window median helper: lazy deletion'],
     examples: [
@@ -3080,7 +4096,22 @@ public:
         if (n % 2 == 1) return s[n / 2];
         return (s[n / 2 - 1] + s[n / 2]) / 2.0;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class SlowMedianFinder
+{
+    private List<int> data = new List<int>();
+
+    public void AddNum(int num) { data.Add(num); }
+
+    public double FindMedian()
+    {
+        var s = new List<int>(data);
+        s.Sort();                                       // full sort each call
+        int n = s.Count;
+        if (n % 2 == 1) return s[n / 2];
+        return (s[n / 2 - 1] + s[n / 2]) / 2.0;
+    }
+}` }
         ] }
         },
         mcq: {
@@ -3222,7 +4253,75 @@ public:
         return ((long long)low.top() + high.top()) / 2.0;   // widen before adding
     }
 };
-` }
+` },
+            { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class MedianFinder
+{
+    // low: smaller half, biggest on top (reversed comparison = max-heap)
+    private MinHeap<int> low = new MinHeap<int>((a, b) => b.CompareTo(a));
+    // high: bigger half, smallest on top
+    private MinHeap<int> high = new MinHeap<int>((a, b) => a.CompareTo(b));
+
+    public void AddNum(int num)
+    {
+        low.Push(num);                  // 1) go to the small half first
+        high.Push(low.Pop());           // 2) its biggest moves right -> low <= high holds
+        if (high.Count > low.Count)     // 3) keep low as big or one bigger
+        {
+            low.Push(high.Pop());
+        }
+    }
+
+    public double FindMedian()
+    {
+        if (low.Count > high.Count) return low.Peek();     // odd count
+        return ((long)low.Peek() + high.Peek()) / 2.0;     // even count
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
           ],
           dry: {
             head: ['call', 'after step 1 (low += x)', 'after step 2 (move to high)', 'after step 3 (rebalance)', 'result'],
@@ -3449,7 +4548,68 @@ int main() {
     for (const string& s : ac.suggest("ca")) cout << s << " ";   // car cart cat
     cout << endl;
 }
-` }
+` },
+      { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Text;
+
+class TrieNode
+{
+    public TrieNode[] child = new TrieNode[26];
+    public bool isEnd;
+}
+
+class Autocomplete
+{
+    TrieNode root = new TrieNode();
+
+    public void Insert(string w)
+    {
+        TrieNode cur = root;
+        foreach (char ch in w)
+        {
+            int c = ch - 'a';
+            if (cur.child[c] == null) cur.child[c] = new TrieNode();
+            cur = cur.child[c];
+        }
+        cur.isEnd = true;
+    }
+
+    // All stored words that start with prefix, in alphabetical order.
+    public List<string> Suggest(string prefix)
+    {
+        var result = new List<string>();
+        TrieNode cur = root;
+        foreach (char ch in prefix)
+        {
+            cur = cur.child[ch - 'a'];
+            if (cur == null) return result;       // no word has this prefix
+        }
+        Collect(cur, new StringBuilder(prefix), result);
+        return result;
+    }
+
+    private void Collect(TrieNode node, StringBuilder sb, List<string> result)
+    {
+        if (node.isEnd) result.Add(sb.ToString()); // a full word ends here
+        for (int c = 0; c < 26; c++)
+        {
+            if (node.child[c] != null)
+            {
+                sb.Append((char)('a' + c));        // go down letter c
+                Collect(node.child[c], sb, result);
+                sb.Length--;                       // come back up (backtrack)
+            }
+        }
+    }
+
+    static void Main()
+    {
+        var ac = new Autocomplete();
+        foreach (string w in new[] { "car", "cat", "cart", "dog", "do" }) ac.Insert(w);
+        Console.WriteLine("[" + string.Join(", ", ac.Suggest("ca")) + "]");   // [car, cart, cat]
+    }
+}` }
     ] },
     codeTitle: 'Autocomplete: walk to the prefix, then DFS for all words below',
     examples: [
@@ -3563,7 +4723,45 @@ console.log(t.countPrefix('ap'));         // 3
         return cur->pass;
     }
 };
-` }
+` },
+          { lang: 'csharp', run: true, code: `using System;
+
+class CountTrie
+{
+    CountTrie[] kid = new CountTrie[26];
+    int pass, end;                       // words passing through / ending here
+
+    public void Insert(string w)
+    {
+        CountTrie cur = this;
+        foreach (char ch in w)
+        {
+            int c = ch - 'a';
+            if (cur.kid[c] == null) cur.kid[c] = new CountTrie();
+            cur = cur.kid[c];
+            cur.pass++;                  // one more word goes through this node
+        }
+        cur.end++;
+    }
+
+    public int CountPrefix(string p)
+    {
+        CountTrie cur = this;
+        foreach (char ch in p)
+        {
+            cur = cur.kid[ch - 'a'];
+            if (cur == null) return 0;
+        }
+        return cur.pass;
+    }
+
+    static void Main()
+    {
+        var t = new CountTrie();
+        foreach (string w in new[] { "apple", "app", "apt", "bat" }) t.Insert(w);
+        Console.WriteLine(t.CountPrefix("ap") + " " + t.CountPrefix("app") + " " + t.CountPrefix("c"));   // 3 2 0
+    }
+}` }
         ] }
       },
       {
@@ -3750,7 +4948,25 @@ public:
         for (const string& w : words) if (w.compare(0, prefix.size(), prefix) == 0) return true; // O(N*L)
         return false;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class SlowTrie
+{
+    private List<string> words = new List<string>();
+
+    public void Insert(string word) { words.Add(word); }
+
+    public bool Search(string word)
+    {
+        foreach (string w in words) if (w == word) return true;                   // O(N*L)
+        return false;
+    }
+
+    public bool StartsWith(string prefix)
+    {
+        foreach (string w in words) if (w.StartsWith(prefix, StringComparison.Ordinal)) return true; // O(N*L)
+        return false;
+    }
+}` }
         ] }
         },
         mcq: {
@@ -3931,7 +5147,55 @@ public:
         return walk(prefix) != nullptr;   // path existing is enough
     }
 };
-` }
+` },
+            { lang: 'csharp', code: `public class TrieNode
+{
+    public TrieNode[] child = new TrieNode[26];  // child[c] = next node for letter 'a'+c
+    public bool isEnd;                           // true if a word finishes at this node
+}
+
+public class Trie
+{
+    private readonly TrieNode root = new TrieNode();
+
+    public void Insert(string word)
+    {
+        TrieNode cur = root;
+        for (int i = 0; i < word.Length; i++)
+        {
+            int c = word[i] - 'a';
+            if (cur.child[c] == null)
+            {
+                cur.child[c] = new TrieNode();   // create missing branch
+            }
+            cur = cur.child[c];                  // step down
+        }
+        cur.isEnd = true;                        // mark the word's last letter
+    }
+
+    public bool Search(string word)
+    {
+        TrieNode node = Walk(word);
+        return node != null && node.isEnd;       // must be a full word
+    }
+
+    public bool StartsWith(string prefix)
+    {
+        return Walk(prefix) != null;             // path existing is enough
+    }
+
+    // Follow s from the root; null if some letter is missing.
+    private TrieNode Walk(string s)
+    {
+        TrieNode cur = root;
+        for (int i = 0; i < s.Length; i++)
+        {
+            cur = cur.child[s[i] - 'a'];
+            if (cur == null) return null;
+        }
+        return cur;
+    }
+}` }
           ],
           dry: {
             head: ['call', 'walk', 'node reached', 'isEnd there', 'returns'],
@@ -4099,7 +5363,39 @@ int maxSubarrayXor(const vector<int>& a) {
     }
     return best;
 }
-` }
+` },
+      { lang: 'csharp', code: `// Maximum XOR of a SUBARRAY: prefix XOR p[j] ^ p[i] = xor of a[i..j-1].
+// Insert prefixes into a binary trie and ask each new prefix for its best partner.
+int MaxSubarrayXor(int[] a)
+{
+    int[,] trie = new int[(a.Length + 1) * 31 + 1, 2];  // flat trie: node -> {child0, child1}, 0 = none
+    int nodes = 1, best = 0, pref = 0;
+    // insert prefix 0 (the empty prefix) so subarrays starting at index 0 count
+    int cur = 0;
+    for (int b = 30; b >= 0; b--) { if (trie[cur, 0] == 0) trie[cur, 0] = nodes++; cur = trie[cur, 0]; }
+    foreach (int x in a)
+    {
+        pref ^= x;
+        // query: greedily take the opposite bit
+        int q = 0, xr = 0;
+        for (int b = 30; b >= 0; b--)
+        {
+            int bit = (pref >> b) & 1;
+            if (trie[q, bit ^ 1] != 0) { xr |= 1 << b; q = trie[q, bit ^ 1]; }
+            else q = trie[q, bit];
+        }
+        best = Math.Max(best, xr);
+        // insert pref
+        int t = 0;
+        for (int b = 30; b >= 0; b--)
+        {
+            int bit = (pref >> b) & 1;
+            if (trie[t, bit] == 0) trie[t, bit] = nodes++;
+            t = trie[t, bit];
+        }
+    }
+    return best;
+}` }
     ] },
     codeTitle: 'Variation: maximum XOR subarray with a flat-array binary trie',
     examples: [
@@ -4247,6 +5543,14 @@ int maxSubarrayXor(const vector<int>& a) {
     for (int i = 0; i < (int)nums.size(); i++)
         for (int j = i; j < (int)nums.size(); j++)
             best = max(best, nums[i] ^ nums[j]);     // O(N^2) pairs
+    return best;
+}` },
+          { lang: 'csharp', code: `int FindMaximumXOR(int[] nums)
+{
+    int best = 0;
+    for (int i = 0; i < nums.Length; i++)
+        for (int j = i; j < nums.Length; j++)
+            best = Math.Max(best, nums[i] ^ nums[j]);   // O(N^2) pairs
     return best;
 }` }
         ] }
@@ -4396,7 +5700,57 @@ public:
         return best;
     }
 };
-` }
+` },
+            { lang: 'csharp', code: `using System;
+
+public class TrieNode
+{
+    public TrieNode[] child = new TrieNode[2];   // child[0] = bit 0, child[1] = bit 1
+}
+
+public class Solution
+{
+    private const int TOP = 30;    // highest bit for non-negative int
+
+    public int FindMaximumXOR(int[] nums)
+    {
+        var root = new TrieNode();
+        // 1) insert every number, highest bit first
+        foreach (int x in nums)
+        {
+            TrieNode cur = root;
+            for (int b = TOP; b >= 0; b--)
+            {
+                int bit = (x >> b) & 1;
+                if (cur.child[bit] == null) cur.child[bit] = new TrieNode();
+                cur = cur.child[bit];
+            }
+        }
+        // 2) for every number, greedily walk towards opposite bits
+        int best = 0;
+        foreach (int x in nums)
+        {
+            TrieNode cur = root;
+            int xr = 0;
+            for (int b = TOP; b >= 0; b--)
+            {
+                int bit = (x >> b) & 1;
+                int want = bit ^ 1;                   // opposite bit
+                if (cur.child[want] != null)
+                {
+                    xr |= (1 << b);                   // this XOR bit becomes 1
+                    cur = cur.child[want];
+                }
+                else
+                {
+                    cur = cur.child[bit];             // forced: same bit, XOR bit 0
+                }
+            }
+            best = Math.Max(best, xr);
+        }
+        return best;
+    }
+}` }
           ],
           dry: {
             head: ['x', 'binary (5 low bits)', 'greedy path ends at', 'x ^ partner', 'best'],
@@ -4475,7 +5829,25 @@ public:
         sort(all.begin(), all.end());                // full sort each call
         return all[all.size() - k];
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class KthLargestSlow
+{
+    private readonly List<int> all = new List<int>();
+    private readonly int k;
+
+    public KthLargestSlow(int k, int[] nums)
+    {
+        this.k = k;
+        all.AddRange(nums);
+    }
+
+    public int Add(int val)
+    {
+        all.Add(val);
+        all.Sort();                         // full sort each call
+        return all[all.Count - k];
+    }
+}` }
         ] }
     },
     mcq: { q: 'Which state is enough to answer every add() call?', options: ['A min-heap holding only the k largest values seen', 'A max-heap of all values', 'A sorted array of all values', 'Only the current maximum'], answer: 0, explain: 'Values smaller than the current k-th largest can never become the k-th largest again (new values only push them further down), so a min-heap of size k is all we need; its top is the answer.' },
@@ -4597,7 +5969,70 @@ public:
         return heap.top();                      // k-th largest
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class KthLargest
+{
+    private readonly MinHeap<int> heap = new MinHeap<int>((a, b) => a.CompareTo(b)); // min-heap of top k
+    private readonly int k;
+
+    public KthLargest(int k, int[] nums)
+    {
+        this.k = k;
+        foreach (int x in nums) Add(x);
+    }
+
+    public int Add(int val)
+    {
+        heap.Push(val);
+        if (heap.Count > k) heap.Pop();     // drop the weakest of k+1
+        return heap.Peek();                 // weakest of the top k = k-th largest
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
       ],
       dry: {
         head: ['call', 'heap after offer', 'poll?', 'heap', 'return'],
@@ -4683,6 +6118,24 @@ public:
         }
     }
     return true;
+}` },
+          { lang: 'csharp', code: `bool IsMinHeapSlow(int[] a)
+{
+    int n = a.Length;
+    for (int i = 0; i < n; i++)
+    {
+        // walk every descendant of i using an explicit stack
+        var st = new Stack<int>();
+        st.Push(i);
+        while (st.Count > 0)
+        {
+            int j = st.Pop();
+            if (a[j] < a[i]) return false;
+            if (2 * j + 1 < n) st.Push(2 * j + 1);
+            if (2 * j + 2 < n) st.Push(2 * j + 2);
+        }
+    }
+    return true;
 }` }
         ] }
     },
@@ -4748,7 +6201,21 @@ public:
         return is_heap(a.begin(), a.end(), greater<int>());
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public bool IsMinHeap(int[] a)
+    {
+        int n = a.Length;
+        for (int i = 0; i <= n / 2 - 1; i++)          // only non-leaf nodes
+        {
+            int l = 2 * i + 1, r = 2 * i + 2;
+            if (a[i] > a[l]) return false;            // left child always exists here
+            if (r < n && a[i] > a[r]) return false;   // right child may be missing
+        }
+        return true;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'a[i]', 'left (idx: val)', 'right (idx: val)', 'ok?'],
@@ -4817,6 +6284,21 @@ public:
         r.erase(r.begin(), r.begin() + 2);
         cost += a + b;
         r.push_back(a + b);
+    }
+    return cost;
+}` },
+          { lang: 'csharp', code: `long ConnectRopesSlow(int[] ropes)
+{
+    var r = new List<long>();
+    foreach (int x in ropes) r.Add(x);
+    long cost = 0;
+    while (r.Count > 1)
+    {
+        r.Sort();                            // O(N log N) every round
+        long a = r[0], b = r[1];
+        r.RemoveRange(0, 2);
+        cost += a + b;
+        r.Add(a + b);
     }
     return cost;
 }` }
@@ -4932,7 +6414,68 @@ public:
         return cost;
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public long MinCost(int[] ropes)
+    {
+        var pq = new MinHeap<long>((a, b) => a.CompareTo(b));
+        foreach (int x in ropes) pq.Push(x);
+        long cost = 0;
+        while (pq.Count > 1)
+        {
+            long a = pq.Pop(), b = pq.Pop();      // two shortest ropes
+            cost += a + b;                        // pay for this join
+            pq.Push(a + b);                       // the new rope goes back in
+        }
+        return cost;
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
       ],
       dry: {
         head: ['round', 'heap before', 'join', 'cost so far', 'heap after'],
@@ -4990,6 +6533,18 @@ public:
         bool ok = true;
         for (const string& s : strs)
             if (s.compare(0, p.size(), p) != 0) { ok = false; break; }
+        if (ok) return p;
+    }
+    return "";
+}` },
+          { lang: 'csharp', code: `string LcpSlow(string[] strs)
+{
+    string first = strs[0];
+    for (int len = first.Length; len >= 0; len--)
+    {
+        string p = first.Substring(0, len);
+        bool ok = true;
+        foreach (string s in strs) if (!s.StartsWith(p, StringComparison.Ordinal)) { ok = false; break; }
         if (ok) return p;
     }
     return "";
@@ -5113,7 +6668,45 @@ public:
         return prefix;
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System.Text;
+
+public class Solution
+{
+    public string LongestCommonPrefix(string[] strs)
+    {
+        var root = new Node();
+        foreach (string s in strs)
+        {
+            if (s.Length == 0) return "";             // empty word kills any prefix
+            Node cur = root;
+            foreach (char ch in s)
+            {
+                int c = ch - 'a';
+                if (cur.kid[c] == null) { cur.kid[c] = new Node(); cur.count++; }
+                cur = cur.kid[c];
+            }
+            cur.isEnd = true;
+        }
+        var sb = new StringBuilder();
+        Node walk = root;
+        while (walk.count == 1 && !walk.isEnd)
+        {
+            int c = 0;
+            while (walk.kid[c] == null) c++;              // the only child
+            sb.Append((char)('a' + c));
+            walk = walk.kid[c];
+        }
+        return sb.ToString();
+    }
+
+    class Node
+    {
+        public Node[] kid = new Node[26];
+        public int count;       // how many distinct children
+        public bool isEnd;
+    }
+}` }
       ],
       dry: {
         head: ['node', 'children', 'isEnd', 'action', 'prefix'],
@@ -5170,6 +6763,16 @@ public:
     sort(keys.begin(), keys.end(), [&](int a, int b) { return f[a] > f[b]; }); // sort all by count desc
     keys.resize(k);
     return keys;
+}` },
+          { lang: 'csharp', code: `int[] TopKSlow(int[] nums, int k)
+{
+    var f = new Dictionary<int, int>();
+    foreach (int x in nums) { int c; f.TryGetValue(x, out c); f[x] = c + 1; }
+    var keys = new List<int>(f.Keys);
+    keys.Sort((a, b) => f[b].CompareTo(f[a]));   // sort all by count desc
+    int[] res = new int[k];
+    for (int i = 0; i < k; i++) res[i] = keys[i];
+    return res;
 }` }
         ] }
     },
@@ -5282,7 +6885,69 @@ public:
         return res;
     }
 };
-` }],
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] TopKFrequent(int[] nums, int k)
+    {
+        var f = new Dictionary<int, int>();
+        foreach (int x in nums) { int c; f.TryGetValue(x, out c); f[x] = c + 1; }   // value -> count
+        var pq = new MinHeap<int>((a, b) => f[a].CompareTo(f[b]));                 // min-heap by count
+        foreach (int key in f.Keys)
+        {
+            pq.Push(key);
+            if (pq.Count > k) pq.Pop();                              // evict least frequent
+        }
+        int[] res = new int[k];
+        for (int i = k - 1; i >= 0; i--) res[i] = pq.Pop();         // most frequent first
+        return res;
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       dry: {
         head: ['key (count)', 'heap after offer', 'poll?', 'heap'],
         rows: [
@@ -5328,6 +6993,12 @@ public:
     });
     p.resize(k);
     return p;
+}` },
+          { lang: 'csharp', code: `int[][] KClosestSlow(int[][] points, int k)
+{
+    int[][] p = (int[][])points.Clone();
+    Array.Sort(p, (a, b) => (a[0] * a[0] + a[1] * a[1]).CompareTo(b[0] * b[0] + b[1] * b[1]));
+    return p.Take(k).ToArray();
 }` }
         ] }
     },
@@ -5432,7 +7103,69 @@ public:
         return res;
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    private static int D(int[] p) { return p[0] * p[0] + p[1] * p[1]; }   // squared distance
+
+    public int[][] KClosest(int[][] points, int k)
+    {
+        var pq = new MinHeap<int[]>((a, b) => D(b).CompareTo(D(a))); // farthest on top
+        foreach (int[] p in points)
+        {
+            pq.Push(p);
+            if (pq.Count > k) pq.Pop();       // drop the farthest
+        }
+        int[][] res = new int[k][];
+        for (int i = 0; i < k; i++) res[i] = pq.Pop();
+        return res;
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
       ],
       dry: {
         head: ['point (d²)', 'heap after offer (by d²)', 'poll?', 'heap'],
@@ -5483,6 +7216,15 @@ public:
 }` },
           { lang: 'cpp', code: `void sortK(vector<int>& a, int k) {
     for (int i = 1; i < (int)a.size(); i++) {        // insertion sort: each element shifts at most k times
+        int x = a[i], j = i - 1;
+        while (j >= 0 && a[j] > x) { a[j + 1] = a[j]; j--; }
+        a[j + 1] = x;
+    }
+}` },
+          { lang: 'csharp', code: `void SortKSlow(int[] a, int k)
+{
+    for (int i = 1; i < a.Length; i++)        // insertion sort: each element shifts at most k times
+    {
         int x = a[i], j = i - 1;
         while (j >= 0 && a[j] > x) { a[j + 1] = a[j]; j--; }
         a[j + 1] = x;
@@ -5595,7 +7337,66 @@ public:
         while (!pq.empty()) { a[w++] = pq.top(); pq.pop(); } // flush the rest
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public void SortK(int[] a, int k)
+    {
+        var pq = new MinHeap<int>((x, y) => x.CompareTo(y));   // min-heap window of k + 1
+        int w = 0;                                  // next position to fill
+        foreach (int x in a)
+        {
+            pq.Push(x);
+            if (pq.Count > k) a[w++] = pq.Pop();    // smallest of the window is final
+        }
+        while (pq.Count > 0) a[w++] = pq.Pop();     // flush the rest
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
       ],
       dry: {
         head: ['read', 'heap after offer', 'poll → write', 'output so far'],
@@ -5665,6 +7466,19 @@ public:
         result += best;
     }
     return result;
+}` },
+          { lang: 'csharp', code: `string ReplaceWordsSlow(IList<string> roots, string sentence)
+{
+    var sb = new StringBuilder();
+    foreach (string w in sentence.Split(' '))
+    {
+        string best = w;
+        foreach (string r in roots)
+            if (w.StartsWith(r, StringComparison.Ordinal) && r.Length < best.Length) best = r;
+        if (sb.Length > 0) sb.Append(' ');
+        sb.Append(best);
+    }
+    return sb.ToString();
 }` }
         ] }
     },
@@ -5802,7 +7616,49 @@ public:
         return out;
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public string ReplaceWords(IList<string> roots, string sentence)
+    {
+        var root = new Node();
+        foreach (string r in roots)                    // build the trie of roots
+        {
+            Node cur = root;
+            foreach (char ch in r)
+            {
+                int c = ch - 'a';
+                if (cur.kid[c] == null) cur.kid[c] = new Node();
+                cur = cur.kid[c];
+            }
+            cur.isEnd = true;
+        }
+        var result = new StringBuilder();
+        foreach (string w in sentence.Split(' '))
+        {
+            if (result.Length > 0) result.Append(' ');
+            result.Append(ShortestRoot(root, w));
+        }
+        return result.ToString();
+    }
+
+    private string ShortestRoot(Node root, string w)
+    {
+        Node cur = root;
+        for (int i = 0; i < w.Length; i++)
+        {
+            cur = cur.kid[w[i] - 'a'];
+            if (cur == null) return w;                 // no root matches
+            if (cur.isEnd) return w.Substring(0, i + 1); // first (shortest) root
+        }
+        return w;
+    }
+
+    class Node { public Node[] kid = new Node[26]; public bool isEnd; }
+}` }
       ],
       dry: {
         head: ['word', 'walk', 'stops because', 'output'],
@@ -5854,6 +7710,15 @@ public:
     vector<int> all;
     for (const auto& row : m) for (int v : row) all.push_back(v);
     sort(all.begin(), all.end());
+    return all[k - 1];
+}` },
+          { lang: 'csharp', code: `int KthSmallestSlow(int[][] m, int k)
+{
+    int n = m.Length;
+    int[] all = new int[n * n];
+    int w = 0;
+    foreach (int[] row in m) foreach (int v in row) all[w++] = v;
+    Array.Sort(all);
     return all[k - 1];
 }` }
         ] }
@@ -5968,7 +7833,68 @@ public:
         return get<0>(pq.top());
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int KthSmallest(int[][] m, int k)
+    {
+        int n = m.Length;
+        var pq = new MinHeap<int[]>((a, b) => a[0].CompareTo(b[0]));       // {value, row, col}
+        for (int r = 0; r < Math.Min(n, k); r++) pq.Push(new[] { m[r][0], r, 0 }); // row heads
+        for (int i = 0; i < k - 1; i++)                   // throw away the k-1 smallest
+        {
+            int[] cur = pq.Pop();
+            int r = cur[1], c = cur[2];
+            if (c + 1 < n) pq.Push(new[] { m[r][c + 1], r, c + 1 }); // next in the same row
+        }
+        return pq.Peek()[0];
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
       ],
       dry: {
         head: ['poll #', 'polled (r, c)', 'push', 'heap values after'],
@@ -6068,6 +7994,27 @@ public:
                 if (!has) { ok = false; break; }
             }
             if (ok && (best.empty() || b - a < best[1] - best[0])) best = {a, b};
+        }
+    return best;
+}` },
+          { lang: 'csharp', code: `int[] SmallestRangeSlow(IList<IList<int>> lists)
+{
+    var vals = new List<int>();
+    foreach (var l in lists) vals.AddRange(l);
+    vals.Sort();
+    int[] best = null;
+    for (int i = 0; i < vals.Count; i++)
+        for (int j = i; j < vals.Count; j++)
+        {
+            int a = vals[i], b = vals[j];
+            bool ok = true;
+            foreach (var l in lists)
+            {
+                bool has = false;
+                foreach (int v in l) if (v >= a && v <= b) { has = true; break; }
+                if (!has) { ok = false; break; }
+            }
+            if (ok && (best == null || b - a < best[1] - best[0])) best = new[] { a, b };
         }
     return best;
 }` }
@@ -6210,7 +8157,78 @@ public:
         return {bestLo, bestHi};
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] SmallestRange(IList<IList<int>> nums)
+    {
+        var pq = new MinHeap<int[]>((a, b) => a[0].CompareTo(b[0]));   // {value, list, idx}
+        int curMax = int.MinValue;
+        for (int i = 0; i < nums.Count; i++)
+        {
+            int v = nums[i][0];
+            pq.Push(new[] { v, i, 0 });
+            curMax = Math.Max(curMax, v);
+        }
+        int bestLo = 0, bestHi = int.MaxValue;
+        while (true)
+        {
+            int[] top = pq.Pop();                     // current minimum
+            if ((long)curMax - top[0] < (long)bestHi - bestLo) { bestLo = top[0]; bestHi = curMax; }
+            int li = top[1], idx = top[2] + 1;
+            if (idx == nums[li].Count) break;         // this list is exhausted
+            int nv = nums[li][idx];
+            pq.Push(new[] { nv, li, idx });
+            curMax = Math.Max(curMax, nv);
+        }
+        return new[] { bestLo, bestHi };
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
       ],
       dry: {
         head: ['heap (values)', 'min', 'max', 'range', 'best', 'advance'],
@@ -6274,6 +8292,18 @@ public:
         vector<int> w(nums.begin() + i, nums.begin() + i + k);
         sort(w.begin(), w.end());
         res.push_back(k % 2 == 1 ? w[k / 2] : ((double)w[k / 2 - 1] + w[k / 2]) / 2.0);
+    }
+    return res;
+}` },
+          { lang: 'csharp', code: `double[] MedianSlidingWindowSlow(int[] nums, int k)
+{
+    double[] res = new double[nums.Length - k + 1];
+    for (int i = 0; i + k <= nums.Length; i++)
+    {
+        int[] w = new int[k];
+        Array.Copy(nums, i, w, 0, k);
+        Array.Sort(w);
+        res[i] = k % 2 == 1 ? w[k / 2] : ((double)w[k / 2 - 1] + w[k / 2]) / 2.0;
     }
     return res;
 }` }
@@ -6483,7 +8513,107 @@ public:
         return res;
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    MinHeap<int> low = new MinHeap<int>((a, b) => b.CompareTo(a));   // smaller half, max on top
+    MinHeap<int> high = new MinHeap<int>((a, b) => a.CompareTo(b));  // bigger half, min on top
+    Dictionary<int, int> delayed = new Dictionary<int, int>();       // value -> copies to delete lazily
+    int lowSize, highSize;                                           // live counts
+
+    public double[] MedianSlidingWindow(int[] nums, int k)
+    {
+        double[] res = new double[nums.Length - k + 1];
+        for (int i = 0; i < nums.Length; i++)
+        {
+            Add(nums[i]);
+            if (i >= k) Remove(nums[i - k]);
+            if (i >= k - 1) res[i - k + 1] = Median(k);
+        }
+        return res;
+    }
+
+    private void Add(int x)
+    {
+        if (low.Count == 0 || x <= low.Peek()) { low.Push(x); lowSize++; }
+        else { high.Push(x); highSize++; }
+        Balance();
+    }
+
+    private void Remove(int x)
+    {
+        int c; delayed.TryGetValue(x, out c); delayed[x] = c + 1;
+        if (x <= low.Peek()) { lowSize--; if (x == low.Peek()) Prune(low); }
+        else { highSize--; if (x == high.Peek()) Prune(high); }
+        Balance();
+    }
+
+    private void Balance()
+    {
+        if (lowSize > highSize + 1) { high.Push(low.Pop()); lowSize--; highSize++; Prune(low); }
+        else if (lowSize < highSize) { low.Push(high.Pop()); highSize--; lowSize++; Prune(high); }
+    }
+
+    private void Prune(MinHeap<int> pq)
+    {
+        int c;
+        while (pq.Count > 0 && delayed.TryGetValue(pq.Peek(), out c) && c > 0)
+        {
+            int v = pq.Pop();
+            if (c == 1) delayed.Remove(v); else delayed[v] = c - 1;
+        }
+    }
+
+    private double Median(int k)
+    {
+        return k % 2 == 1 ? low.Peek() : ((double)low.Peek() + high.Peek()) / 2.0;
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary heap stands in for one:
+// Push / Pop / Peek in O(log n); the comparison decides what comes out first.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'add', 'remove', 'live low | high', 'median'],
@@ -6602,6 +8732,34 @@ vector<string> findWords(vector<vector<char>>& b, vector<string>& words) {
         if (found) res.push_back(w);
     }
     return res;
+}` },
+          { lang: 'csharp', code: `class WordSearchSlow
+{
+    public List<string> FindWords(char[][] b, string[] words)
+    {
+        var res = new List<string>();
+        foreach (string w in words)
+        {
+            bool found = false;
+            for (int r = 0; r < b.Length && !found; r++)
+                for (int c = 0; c < b[0].Length && !found; c++)
+                    if (Dfs(b, w, 0, r, c)) found = true;
+            if (found) res.Add(w);
+        }
+        return res;
+    }
+
+    private bool Dfs(char[][] b, string w, int i, int r, int c)
+    {
+        if (i == w.Length) return true;
+        if (r < 0 || c < 0 || r >= b.Length || c >= b[0].Length || b[r][c] != w[i]) return false;
+        char t = b[r][c];
+        b[r][c] = '#';                                     // mark used
+        bool ok = Dfs(b, w, i + 1, r + 1, c) || Dfs(b, w, i + 1, r - 1, c)
+               || Dfs(b, w, i + 1, r, c + 1) || Dfs(b, w, i + 1, r, c - 1);
+        b[r][c] = t;                                       // unmark
+        return ok;
+    }
 }` }
         ] }
     },
@@ -6761,7 +8919,49 @@ public:
         return res;
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    private readonly List<string> res = new List<string>();
+
+    public IList<string> FindWords(char[][] board, string[] words)
+    {
+        var root = new Node();
+        foreach (string w in words)                       // build trie
+        {
+            Node cur = root;
+            foreach (char ch in w)
+            {
+                int c = ch - 'a';
+                if (cur.kid[c] == null) cur.kid[c] = new Node();
+                cur = cur.kid[c];
+            }
+            cur.word = w;                                 // full word stored at its end
+        }
+        for (int r = 0; r < board.Length; r++)
+            for (int c = 0; c < board[0].Length; c++)
+                Dfs(board, r, c, root);
+        return res;
+    }
+
+    private void Dfs(char[][] b, int r, int c, Node node)
+    {
+        if (r < 0 || c < 0 || r >= b.Length || c >= b[0].Length) return;
+        char ch = b[r][c];
+        if (ch == '#') return;                            // already on the path
+        Node next = node.kid[ch - 'a'];
+        if (next == null) return;                         // no word continues: prune
+        if (next.word != null) { res.Add(next.word); next.word = null; } // found, no duplicates
+        b[r][c] = '#';                                    // choose
+        Dfs(b, r + 1, c, next); Dfs(b, r - 1, c, next);   // explore
+        Dfs(b, r, c + 1, next); Dfs(b, r, c - 1, next);
+        b[r][c] = ch;                                     // un-choose
+    }
+
+    class Node { public Node[] kid = new Node[26]; public string word; }
+}` }
       ],
       dry: {
         head: ['start cell', 'path', 'trie node', 'result'],
@@ -6822,6 +9022,17 @@ public:
         int best = -1;
         for (int v : nums) if (v <= q[1]) best = max(best, v ^ q[0]);
         ans.push_back(best);
+    }
+    return ans;
+}` },
+          { lang: 'csharp', code: `int[] MaximizeXorSlow(int[] nums, int[][] queries)
+{
+    int[] ans = new int[queries.Length];
+    for (int q = 0; q < queries.Length; q++)
+    {
+        int best = -1;
+        foreach (int v in nums) if (v <= queries[q][1]) best = Math.Max(best, v ^ queries[q][0]);
+        ans[q] = best;
     }
     return ans;
 }` }
@@ -6977,7 +9188,48 @@ public:
         return ans;
     }
 };
-` }
+` },
+        { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int[] MaximizeXor(int[] nums, int[][] queries)
+    {
+        Array.Sort(nums);
+        int q = queries.Length;
+        int[] order = new int[q];
+        for (int i = 0; i < q; i++) order[i] = i;
+        Array.Sort(order, (a, b) => queries[a][1].CompareTo(queries[b][1])); // by m
+        int[,] trie = new int[nums.Length * 31 + 1, 2];    // node -> children, 0 = none
+        int nodes = 1, j = 0;
+        int[] ans = new int[q];
+        foreach (int id in order)
+        {
+            int x = queries[id][0], m = queries[id][1];
+            while (j < nums.Length && nums[j] <= m)         // insert newly allowed numbers
+            {
+                int cur = 0;
+                for (int b = 30; b >= 0; b--)
+                {
+                    int bit = (nums[j] >> b) & 1;
+                    if (trie[cur, bit] == 0) trie[cur, bit] = nodes++;
+                    cur = trie[cur, bit];
+                }
+                j++;
+            }
+            if (j == 0) { ans[id] = -1; continue; }          // nothing allowed
+            int node = 0, xr = 0;
+            for (int b = 30; b >= 0; b--)                    // greedy opposite bit
+            {
+                int bit = (x >> b) & 1;
+                if (trie[node, bit ^ 1] != 0) { xr |= 1 << b; node = trie[node, bit ^ 1]; }
+                else node = trie[node, bit];
+            }
+            ans[id] = xr;
+        }
+        return ans;
+    }
+}` }
       ],
       dry: {
         head: ['query (x, m)', 'inserted now', 'trie holds', 'greedy partner', 'answer'],

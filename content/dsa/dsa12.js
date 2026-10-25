@@ -7,17 +7,20 @@
     rm: {
       python: { code: J(['if node.prev is not None: node.prev.next = node.next', 'else: head = node.next', 'if node.next is not None: node.next.prev = node.prev', 'else: tail = node.prev', 'node.prev = node.next = None']), map: {} },
       js: { code: J(['if (node.prev !== null) node.prev.next = node.next;', 'else head = node.next;', 'if (node.next !== null) node.next.prev = node.prev;', 'else tail = node.prev;', 'node.prev = node.next = null;']), map: {} },
-      cpp: { code: J(['if (node->prev != nullptr) node->prev->next = node->next;', 'else head = node->next;', 'if (node->next != nullptr) node->next->prev = node->prev;', 'else tail = node->prev;', 'node->prev = node->next = nullptr;']), map: {} }
+      cpp: { code: J(['if (node->prev != nullptr) node->prev->next = node->next;', 'else head = node->next;', 'if (node->next != nullptr) node->next->prev = node->prev;', 'else tail = node->prev;', 'node->prev = node->next = nullptr;']), map: {} },
+      csharp: { code: J(["if (node.prev != null) node.prev.next = node.next;", "else head = node.next;", "if (node.next != null) node.next.prev = node.prev;", "else tail = node.prev;", "node.prev = node.next = null;"]), map: {} }
     },
     ins: {
       python: { code: J(['node = DNode(x)', 'node.prev = at; node.next = at.next', 'if at.next is not None: at.next.prev = node', 'else: tail = node', 'at.next = node']), map: {} },
       js: { code: J(['const node = new DNode(x);', 'node.prev = at; node.next = at.next;', 'if (at.next !== null) at.next.prev = node;', 'else tail = node;', 'at.next = node;']), map: {} },
-      cpp: { code: J(['DNode* node = new DNode(x);', 'node->prev = at; node->next = at->next;', 'if (at->next != nullptr) at->next->prev = node;', 'else tail = node;', 'at->next = node;']), map: {} }
+      cpp: { code: J(['DNode* node = new DNode(x);', 'node->prev = at; node->next = at->next;', 'if (at->next != nullptr) at->next->prev = node;', 'else tail = node;', 'at->next = node;']), map: {} },
+      csharp: { code: J(["var node = new DNode(x);", "node.prev = at; node.next = at.next;", "if (at.next != null) at.next.prev = node;", "else tail = node;", "at.next = node;"]), map: {} }
     },
     af: {
       python: { code: J(['node = DNode(x)', 'node.next = head', 'if head is not None: head.prev = node', 'else: tail = node', 'head = node']), map: {} },
       js: { code: J(['const node = new DNode(x);', 'node.next = head;', 'if (head !== null) head.prev = node;', 'else tail = node;', 'head = node;']), map: {} },
-      cpp: { code: J(['DNode* node = new DNode(x);', 'node->next = head;', 'if (head != nullptr) head->prev = node;', 'else tail = node;', 'head = node;']), map: {} }
+      cpp: { code: J(['DNode* node = new DNode(x);', 'node->next = head;', 'if (head != nullptr) head->prev = node;', 'else tail = node;', 'head = node;']), map: {} },
+      csharp: { code: J(["var node = new DNode(x);", "node.next = head;", "if (head != null) head.prev = node;", "else tail = node;", "head = node;"]), map: {} }
     }
   };
 
@@ -432,6 +435,112 @@ int main() {
     list.deleteAt(1);                      // 5 -> 20 -> 30
     list.deleteLast();                     // 5 -> 20
     list.print();
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Text;
+
+class SinglyLinkedList
+{
+    // One "coach" of the train: a value plus a hook to the next coach
+    class Node
+    {
+        public int val;
+        public Node next;
+        public Node(int val) { this.val = val; }
+    }
+
+    Node head;   // first node (null when the list is empty)
+    int size;    // how many nodes we currently have
+
+    // Traversal: start at head, follow next until we fall off the end (null)
+    void Print()
+    {
+        var sb = new StringBuilder();
+        Node curr = head;
+        while (curr != null)
+        {
+            sb.Append(curr.val).Append(" -> ");
+            curr = curr.next;              // jump to the next clue
+        }
+        sb.Append("null");
+        Console.WriteLine(sb);
+    }
+
+    // O(1): new node hooks onto the old head, then becomes the head
+    void AddFirst(int val)
+    {
+        var node = new Node(val);
+        node.next = head;
+        head = node;
+        size++;
+    }
+
+    // O(N) without a tail pointer: walk to the last node and hang the new node after it
+    void AddLast(int val)
+    {
+        var node = new Node(val);
+        if (head == null) { head = node; size++; return; }
+        Node curr = head;
+        while (curr.next != null) curr = curr.next;   // stop ON the last node
+        curr.next = node;
+        size++;
+    }
+
+    // Insert so that the new node ends up at index pos (0 = new head)
+    void InsertAt(int pos, int val)
+    {
+        if (pos < 0 || pos > size) throw new ArgumentOutOfRangeException("bad position " + pos);
+        if (pos == 0) { AddFirst(val); return; }   // head changes: special case
+        Node prev = head;
+        for (int i = 0; i < pos - 1; i++) prev = prev.next;   // stop just BEFORE the spot
+        var node = new Node(val);
+        node.next = prev.next;   // 1) new node grabs the rest of the chain FIRST
+        prev.next = node;        // 2) only then does prev point to the new node
+        size++;
+    }
+
+    // O(1): just move head one step forward
+    void DeleteFirst()
+    {
+        if (head == null) return;
+        head = head.next;
+        size--;
+    }
+
+    // O(N): we need the SECOND-last node so we can cut its link
+    void DeleteLast()
+    {
+        if (head == null) return;
+        if (head.next == null) { head = null; size--; return; }   // only one node
+        Node curr = head;
+        while (curr.next.next != null) curr = curr.next;
+        curr.next = null;
+        size--;
+    }
+
+    // Delete the node at index pos
+    void DeleteAt(int pos)
+    {
+        if (pos < 0 || pos >= size) throw new ArgumentOutOfRangeException("bad position " + pos);
+        if (pos == 0) { DeleteFirst(); return; }   // head changes: special case
+        Node prev = head;
+        for (int i = 0; i < pos - 1; i++) prev = prev.next;
+        prev.next = prev.next.next;   // skip over the victim; the garbage collector frees it
+        size--;
+    }
+
+    static void Main()
+    {
+        var list = new SinglyLinkedList();
+        list.AddLast(10);
+        list.AddLast(30);
+        list.AddFirst(5);       // 5 -> 10 -> 30
+        list.InsertAt(2, 20);   // 5 -> 10 -> 20 -> 30
+        list.Print();
+        list.DeleteAt(1);       // 5 -> 20 -> 30
+        list.DeleteLast();      // 5 -> 20
+        list.Print();
+    }
 }` }
       ] }, { lang: 'java', code: `
 class DoublyLinkedList {
@@ -692,6 +801,98 @@ int main() {
     d.insertAfter(d.head, 9);                    // 1 9 2 3
     d.removeLast();                              // 1 9 2
     cout << d.forward() << "| " << d.backward() << "\\n";   // 1 9 2 | 2 9 1
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Text;
+
+class DoublyLinkedList
+{
+    // A coach with hooks on BOTH ends
+    public class DNode
+    {
+        public int val;
+        public DNode prev, next;
+        public DNode(int val) { this.val = val; }
+    }
+
+    public DNode head, tail;   // first and last nodes (both null when empty)
+    int size;
+
+    // O(1) at the front
+    public void AddFirst(int val)
+    {
+        var node = new DNode(val);
+        if (head == null) { head = tail = node; }
+        else
+        {
+            node.next = head;   // new node -> old head
+            head.prev = node;   // old head <- new node
+            head = node;
+        }
+        size++;
+    }
+
+    // O(1) at the back thanks to the tail pointer
+    public void AddLast(int val)
+    {
+        var node = new DNode(val);
+        if (tail == null) { head = tail = node; }
+        else
+        {
+            tail.next = node;
+            node.prev = tail;
+            tail = node;
+        }
+        size++;
+    }
+
+    // Insert a new node right after a node we are already holding: O(1)
+    public void InsertAfter(DNode at, int val)
+    {
+        if (at == tail) { AddLast(val); return; }
+        var node = new DNode(val);
+        DNode after = at.next;
+        node.prev = at;      // fix the new node's two hooks first
+        node.next = after;
+        at.next = node;      // then the neighbours point to it
+        after.prev = node;
+        size++;
+    }
+
+    // Remove ANY node we are holding in O(1): it knows both neighbours
+    public void Remove(DNode node)
+    {
+        if (node.prev != null) node.prev.next = node.next; else head = node.next;
+        if (node.next != null) node.next.prev = node.prev; else tail = node.prev;
+        node.prev = node.next = null;   // fully unhook it
+        size--;
+    }
+
+    public void RemoveFirst() { if (head != null) Remove(head); }
+    public void RemoveLast() { if (tail != null) Remove(tail); }   // O(1), unlike singly lists
+
+    // Walk forward from head, or backward from tail
+    public string Forward()
+    {
+        var sb = new StringBuilder();
+        for (DNode c = head; c != null; c = c.next) sb.Append(c.val).Append(' ');
+        return sb.ToString().Trim();
+    }
+    public string Backward()
+    {
+        var sb = new StringBuilder();
+        for (DNode c = tail; c != null; c = c.prev) sb.Append(c.val).Append(' ');
+        return sb.ToString().Trim();
+    }
+
+    static void Main()
+    {
+        var d = new DoublyLinkedList();
+        d.AddLast(2); d.AddLast(3); d.AddFirst(1);   // 1 2 3
+        d.InsertAfter(d.head, 9);                    // 1 9 2 3
+        d.RemoveLast();                              // 1 9 2
+        Console.WriteLine(d.Forward() + " | " + d.Backward());   // 1 9 2 | 2 9 1
+    }
 }` }
       ] }],
     codeTitle: ['Singly linked list from scratch (insert/delete at head, tail, position + traversal)', 'Doubly linked list from scratch (O(1) remove of any node you hold)'],
@@ -770,6 +971,19 @@ ListNode* removeAll(ListNode* head, int target) {
         }
     }
     return dummy.next;                        // the (possibly new) real head
+}` },
+        { lang: 'csharp', code: `ListNode RemoveAll(ListNode head, int target)
+{
+    var dummy = new ListNode(0) { next = head };   // signboard in front of the real head
+    ListNode prev = dummy;                         // prev always sits BEFORE the node we inspect
+    while (prev.next != null)
+    {
+        if (prev.next.val == target)
+            prev.next = prev.next.next;            // skip it (works even for the real head)
+        else
+            prev = prev.next;                      // only move forward when we did NOT delete
+    }
+    return dummy.next;                             // the (possibly new) real head
 }` }
       ] },
     codeTitle: 'Dummy node: remove every node equal to target (no head special case)',
@@ -925,6 +1139,16 @@ ListNode removeNthFromEnd(ListNode head, int n) {
     }
     node->val = node->next->val;            // copy the last value
     node->next = nullptr;                   // drop the (now duplicate) tail
+}` },
+            { lang: 'csharp', code: `ListNode RemoveNthFromEnd(ListNode head, int n)
+{
+    int len = 0;
+    for (ListNode c = head; c != null; c = c.next) len++;   // pass 1: count
+    if (n == len) return head.next;                          // removing the head: special case
+    ListNode cur = head;
+    for (int i = 1; i < len - n; i++) cur = cur.next;       // pass 2: stop before the victim
+    cur.next = cur.next.next;
+    return head;
 }` }
           ]
         }
@@ -1019,7 +1243,30 @@ public:
         delete victim;
         return dummy.next;                    // may differ from head
     }
-};` }
+};` },
+          { lang: 'csharp', code: `public class Solution
+{
+    public ListNode RemoveNthFromEnd(ListNode head, int n)
+    {
+        var dummy = new ListNode(0) { next = head };   // signboard before the head
+        ListNode fast = dummy, slow = dummy;
+
+        // Phase 1: put fast n+1 steps ahead, so n nodes sit strictly between them
+        for (int i = 0; i <= n; i++) fast = fast.next;
+
+        // Phase 2: move both until fast falls off the end
+        while (fast != null)
+        {
+            fast = fast.next;
+            slow = slow.next;
+        }
+
+        // slow is just BEFORE the n-th node from the end: skip it
+        slow.next = slow.next.next;
+
+        return dummy.next;   // may differ from head if we removed the head
+    }
+}` }
         ],
         dry: {
           head: ['step', 'fast on', 'slow on', 'what happened'],
@@ -1144,6 +1391,14 @@ ListNode middleNode(ListNode head) {
     for (int i = 1; i < len - n; i++) c = c->next;               // pass 2: stop before the victim
     c->next = c->next->next;
     return head;
+}` },
+            { lang: 'csharp', code: `ListNode MiddleNode(ListNode head)
+{
+    int n = 0;
+    for (ListNode c = head; c != null; c = c.next) n++;   // pass 1: count
+    ListNode cur = head;
+    for (int i = 0; i < n / 2; i++) cur = cur.next;      // pass 2: walk n/2 steps
+    return cur;
 }` }
           ]
         }
@@ -1216,7 +1471,22 @@ public:
         }
         return slow;                     // halfway (second middle if even)
     }
-};` }
+};` },
+          { lang: 'csharp', code: `public class Solution
+{
+    public ListNode MiddleNode(ListNode head)
+    {
+        ListNode slow = head, fast = head;
+        // fast needs two nodes ahead of it to make a full jump
+        while (fast != null && fast.next != null)
+        {
+            slow = slow.next;          // 1 step
+            fast = fast.next.next;     // 2 steps
+        }
+        // fast walked 2x as far as slow, so slow is halfway
+        return slow;
+    }
+}` }
         ],
         dry: {
           head: ['round', 'slow', 'fast', 'fast != null &amp;&amp; fast.next != null?'],
@@ -1348,6 +1618,15 @@ ListNode detectCycle(ListNode head) {
     ListNode* c = head;
     for (int i = 0; i < n / 2; i++) c = c->next;               // pass 2: walk n/2 steps
     return c;
+}` },
+            { lang: 'csharp', code: `ListNode DetectCycle(ListNode head)
+{
+    var seen = new HashSet<ListNode>();       // reference equality: the node object itself
+    for (ListNode c = head; c != null; c = c.next)
+    {
+        if (!seen.Add(c)) return c;   // seen before -> this is where the loop begins
+    }
+    return null;                      // reached the end -> no loop
 }` }
           ]
         }
@@ -1370,7 +1649,7 @@ ListNode detectCycle(ListNode head) {
         java: "class Check {\n    // build vals with the tail linked back to index pos (-1 = no cycle)\n    static int[] cycleInfo(int[] vals, int pos) {\n        ListNode[] nodes = new ListNode[vals.length];\n        for (int i = 0; i < vals.length; i++) nodes[i] = new ListNode(vals[i]);\n        for (int i = 0; i + 1 < vals.length; i++) nodes[i].next = nodes[i + 1];\n        if (pos >= 0) nodes[vals.length - 1].next = nodes[pos];\n        ListNode head = vals.length > 0 ? nodes[0] : null;\n        Solution s = new Solution();\n        ListNode start = s.detectCycle(head);\n        int idx = -1;\n        for (int i = 0; i < nodes.length; i++) if (nodes[i] == start) idx = i;\n        return new int[]{s.hasCycle(head) ? 1 : 0, idx};\n    }\n}",
         python: "def cycle_info(vals, pos):\n    nodes = [ListNode(v) for v in vals]\n    for a, b in zip(nodes, nodes[1:]):\n        a.next = b\n    if pos >= 0:\n        nodes[-1].next = nodes[pos]\n    head = nodes[0] if nodes else None\n    s = Solution()\n    start = s.detect_cycle(head)\n    return [int(s.has_cycle(head)), next((i for i, n in enumerate(nodes) if n is start), -1)]",
         js: "function cycleInfo(vals, pos) {\n  const nodes = vals.map((v) => new ListNode(v));\n  for (let i = 0; i + 1 < nodes.length; i++) nodes[i].next = nodes[i + 1];\n  if (pos >= 0) nodes[nodes.length - 1].next = nodes[pos];\n  const head = nodes.length ? nodes[0] : null, s = new Solution();\n  const start = s.detectCycle(head);\n  return [s.hasCycle(head) ? 1 : 0, nodes.indexOf(start)];\n}",
-        cpp: "vector<int> cycleInfo(vector<int>& vals, int pos) {\n    int n = vals.size();\n    vector<ListNode> nodes(vals.begin(), vals.end());\n    for (int i = 0; i + 1 < n; i++) nodes[i].next = &nodes[i + 1];\n    if (pos >= 0) nodes[n - 1].next = &nodes[pos];\n    ListNode* head = n ? &nodes[0] : nullptr;\n    ListNode* start = detectCycle(head);\n    int idx = -1;\n    for (int i = 0; i < n; i++) if (&nodes[i] == start) idx = i;\n    return {hasCycle(head) ? 1 : 0, idx};\n}"
+        cpp: "vector<int> cycleInfo(vector<int>& vals, int pos) {\n    int n = vals.size();\n    vector<ListNode> nodes(vals.begin(), vals.end());\n    for (int i = 0; i + 1 < n; i++) nodes[i].next = &nodes[i + 1];\n    if (pos >= 0) nodes[n - 1].next = &nodes[pos];\n    ListNode* head = n ? &nodes[0] : nullptr;\n    ListNode* start = detectCycle(head);\n    int idx = -1;\n    for (int i = 0; i < n; i++) if (&nodes[i] == start) idx = i;\n    return {hasCycle(head) ? 1 : 0, idx};\n}", csharp: "class Check {\n    // build vals with the tail linked back to index pos (-1 = no cycle)\n    public static int[] CycleInfo(int[] vals, int pos) {\n        var nodes = new ListNode[vals.Length];\n        for (int i = 0; i < vals.Length; i++) nodes[i] = new ListNode(vals[i]);\n        for (int i = 0; i + 1 < vals.Length; i++) nodes[i].next = nodes[i + 1];\n        if (pos >= 0) nodes[vals.Length - 1].next = nodes[pos];\n        ListNode head = vals.Length > 0 ? nodes[0] : null;\n        var s = new Solution();\n        ListNode start = s.DetectCycle(head);\n        int idx = -1;\n        for (int i = 0; i < nodes.Length; i++) if (nodes[i] == start) idx = i;\n        return new int[] { s.HasCycle(head) ? 1 : 0, idx };\n    }\n}"
       }, cases: [
         [[[3, 2, 0, -4], 1], [1, 1]],
         [[[1, 2], 0], [1, 0]],
@@ -1496,6 +1775,46 @@ ListNode* detectCycle(ListNode* head) {
         }
     }
     return nullptr;                        // no cycle
+}` },
+          { lang: 'csharp', code: `public class Solution
+{
+    // Part 1 (LeetCode 141): just say whether a loop exists
+    public bool HasCycle(ListNode head)
+    {
+        ListNode slow = head, fast = head;
+        while (fast != null && fast.next != null)
+        {
+            slow = slow.next;
+            fast = fast.next.next;
+            if (slow == fast) return true;   // fast lapped slow
+        }
+        return false;                         // fast reached the end
+    }
+
+    // Part 2 (LeetCode 142): return the node where the loop begins
+    public ListNode DetectCycle(ListNode head)
+    {
+        ListNode slow = head, fast = head;
+        // Phase 1: find a meeting point inside the loop (if any)
+        while (fast != null && fast.next != null)
+        {
+            slow = slow.next;
+            fast = fast.next.next;
+            if (slow == fast)
+            {
+                // Phase 2: a = k*c - b, so walking a steps from head and
+                // from the meeting point lands both on the cycle start
+                ListNode p = head;
+                while (p != slow)
+                {
+                    p = p.next;
+                    slow = slow.next;
+                }
+                return p;
+            }
+        }
+        return null;   // no cycle
+    }
 }` }
         ],
         dry: {
@@ -1591,6 +1910,19 @@ ListNode* reverseIterative(ListNode* head) {
         curr = next;                   //    curr steps forward
     }
     return prev;                       // prev is the old last node = new head
+}` },
+        { lang: 'csharp', code: `ListNode ReverseIterative(ListNode head)
+{
+    ListNode prev = null;       // the new tail must point to null
+    ListNode curr = head;
+    while (curr != null)
+    {
+        ListNode next = curr.next;   // 1) remember the rest of the list
+        curr.next = prev;            // 2) flip this arrow backwards
+        prev = curr;                 // 3) prev steps forward
+        curr = next;                 //    curr steps forward
+    }
+    return prev;                     // prev is the old last node = new head
 }` }
       ] }, { lang: 'java', code: `
 ListNode reverseRecursive(ListNode head) {
@@ -1631,6 +1963,17 @@ ListNode* reverseRecursive(ListNode* head) {
     ListNode* newHead = reverseRecursive(head->next);
     head->next->next = head;     // hang head after the LAST node of the reversed part
     head->next = nullptr;        // head becomes the new tail
+    return newHead;              // same new head is passed all the way up
+}` },
+        { lang: 'csharp', code: `ListNode ReverseRecursive(ListNode head)
+{
+    // Base case: empty list or one node is already reversed
+    if (head == null || head.next == null) return head;
+    // Reverse everything after head; newHead is the old last node
+    ListNode newHead = ReverseRecursive(head.next);
+    // head.next is now the LAST node of the reversed part: hang head after it
+    head.next.next = head;
+    head.next = null;            // head becomes the new tail
     return newHead;              // same new head is passed all the way up
 }` }
       ] }],
@@ -1708,6 +2051,13 @@ ListNode reverseList(ListNode head) {
         if (!seen.insert(c).second) return c;   // seen before -> this is where the loop begins
     }
     return nullptr;                             // reached the end -> no loop
+}` },
+            { lang: 'csharp', code: `ListNode ReverseList(ListNode head)
+{
+    var stack = new Stack<int>();
+    for (ListNode c = head; c != null; c = c.next) stack.Push(c.val);   // remember values
+    for (ListNode c = head; c != null; c = c.next) c.val = stack.Pop(); // write them back reversed
+    return head;
 }` }
           ]
         }
@@ -1826,7 +2176,33 @@ public:
         head->next = nullptr;              // head is the new tail
         return newHead;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `public class Solution
+{
+    // Iterative: O(N) time, O(1) space
+    public ListNode ReverseList(ListNode head)
+    {
+        ListNode prev = null, curr = head;
+        while (curr != null)
+        {
+            ListNode next = curr.next;   // save the rest
+            curr.next = prev;            // flip the arrow
+            prev = curr;                 // move prev forward
+            curr = next;                 // move curr forward
+        }
+        return prev;                     // new head
+    }
+
+    // Recursive: O(N) time, O(N) call stack
+    public ListNode ReverseListRecursive(ListNode head)
+    {
+        if (head == null || head.next == null) return head;   // 0 or 1 node
+        ListNode newHead = ReverseListRecursive(head.next);   // reverse the rest
+        head.next.next = head;   // the node after head now points back to head
+        head.next = null;        // head is the new tail
+        return newHead;
+    }
+}` }
         ],
         dry: {
           head: ['round', 'curr', 'next saved', 'curr.next set to', 'prev after', 'reversed part'],
@@ -1983,6 +2359,22 @@ ListNode reverseKGroup(ListNode head, int k) {
     for (ListNode* c = head; c != nullptr; c = c->next) st.push(c->val);              // remember values
     for (ListNode* c = head; c != nullptr; c = c->next) { c->val = st.top(); st.pop(); }  // write them back reversed
     return head;
+}` },
+            { lang: 'csharp', code: `ListNode ReverseKGroup(ListNode head, int k)
+{
+    var vals = new List<int>();
+    for (ListNode c = head; c != null; c = c.next) vals.Add(c.val);
+    for (int start = 0; start + k <= vals.Count; start += k)
+    {
+        // reverse vals[start .. start+k-1]
+        for (int i = start, j = start + k - 1; i < j; i++, j--)
+        {
+            int t = vals[i]; vals[i] = vals[j]; vals[j] = t;
+        }
+    }
+    int idx = 0;
+    for (ListNode c = head; c != null; c = c.next) c.val = vals[idx++];
+    return head;
 }` }
           ]
         }
@@ -2132,7 +2524,49 @@ private:
         while (node && k-- > 0) node = node->next;   // nullptr: the list ran out first
         return node;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `public class Solution
+{
+    public ListNode ReverseKGroup(ListNode head, int k)
+    {
+        var dummy = new ListNode(0) { next = head };
+        ListNode groupPrev = dummy;              // node just before the current group
+
+        while (true)
+        {
+            ListNode kth = GetKth(groupPrev, k);  // last node of this group
+            if (kth == null) break;               // fewer than k nodes left: leave them
+            ListNode groupNext = kth.next;        // first node after the group
+
+            // Reverse the group. prev starts at groupNext so the old first
+            // node ends up pointing to the rest of the list automatically.
+            ListNode prev = groupNext, curr = groupPrev.next;
+            while (curr != groupNext)
+            {
+                ListNode next = curr.next;
+                curr.next = prev;
+                prev = curr;
+                curr = next;
+            }
+
+            ListNode oldFirst = groupPrev.next;   // now the LAST node of the group
+            groupPrev.next = kth;                 // hook the front to the new first node
+            groupPrev = oldFirst;                 // step to just before the next group
+        }
+        return dummy.next;
+    }
+
+    // Walk k steps from node; null means the list ran out first
+    private ListNode GetKth(ListNode node, int k)
+    {
+        while (node != null && k > 0)
+        {
+            node = node.next;
+            k--;
+        }
+        return node;
+    }
+}` }
         ],
         dry: {
           head: ['group', 'groupPrev', 'kth', 'groupNext', 'list after hooking', 'groupPrev →'],
@@ -2220,6 +2654,18 @@ ListNode* mergeRecursive(ListNode* l1, ListNode* l2) {
         return l1;
     }
     l2->next = mergeRecursive(l1, l2->next);
+    return l2;
+}` },
+        { lang: 'csharp', code: `ListNode MergeRecursive(ListNode l1, ListNode l2)
+{
+    if (l1 == null) return l2;          // nothing left in l1: the rest is l2
+    if (l2 == null) return l1;
+    if (l1.val <= l2.val)
+    {
+        l1.next = MergeRecursive(l1.next, l2);   // l1 is smallest; merge the rest after it
+        return l1;
+    }
+    l2.next = MergeRecursive(l1, l2.next);
     return l2;
 }` }
       ] },
@@ -2320,6 +2766,16 @@ ListNode mergeTwoLists(ListNode list1, ListNode list2) {
     int idx = 0;
     for (ListNode* c = head; c != nullptr; c = c->next) c->val = vals[idx++];
     return head;
+}` },
+            { lang: 'csharp', code: `ListNode MergeTwoLists(ListNode list1, ListNode list2)
+{
+    var all = new List<int>();
+    for (ListNode c = list1; c != null; c = c.next) all.Add(c.val);
+    for (ListNode c = list2; c != null; c = c.next) all.Add(c.val);
+    all.Sort();                                  // re-sorting what was already sorted
+    var dummy = new ListNode(0); ListNode tail = dummy;
+    foreach (int v in all) { tail.next = new ListNode(v); tail = tail.next; }
+    return dummy.next;
 }` }
           ]
         }
@@ -2417,7 +2873,35 @@ public:
         tail->next = list1 ? list1 : list2;    // leftovers are already sorted
         return dummy.next;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `public class Solution
+{
+    public ListNode MergeTwoLists(ListNode list1, ListNode list2)
+    {
+        var dummy = new ListNode(0);        // fake head of the merged list
+        ListNode tail = dummy;              // last node of the merged list so far
+
+        while (list1 != null && list2 != null)
+        {
+            if (list1.val <= list2.val)     // ties go to list1 (stable)
+            {
+                tail.next = list1;
+                list1 = list1.next;
+            }
+            else
+            {
+                tail.next = list2;
+                list2 = list2.next;
+            }
+            tail = tail.next;               // the node we just attached is the new tail
+        }
+
+        // At most one list still has nodes; they are already sorted and linked
+        tail.next = list1 ?? list2;
+
+        return dummy.next;
+    }
+}` }
         ],
         dry: {
           head: ['step', 'list1 front', 'list2 front', 'attach', 'merged'],
@@ -2720,6 +3204,93 @@ int main() {
     cout << c.get(2) << "\\n";               // -1
     c.put(4, 4);                             // evicts key 1
     cout << c.get(1) << " " << c.get(3) << " " << c.get(4) << "\\n";   // -1 3 4
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class LRUCache
+{
+    // One entry in the recency list. It stores the KEY too, so that when we
+    // evict it from the list we know which key to delete from the map.
+    private class Node
+    {
+        public int key, val;
+        public Node prev, next;
+        public Node(int key, int val) { this.key = key; this.val = val; }
+    }
+
+    private readonly int capacity;
+    private readonly Dictionary<int, Node> map = new Dictionary<int, Node>();   // key -> its node
+    private readonly Node head = new Node(0, 0);   // sentinel: head.next = MOST recent
+    private readonly Node tail = new Node(0, 0);   // sentinel: tail.prev = LEAST recent
+
+    public LRUCache(int capacity)
+    {
+        this.capacity = capacity;
+        head.next = tail;   // empty cache: the two sentinels hold hands
+        tail.prev = head;
+    }
+
+    public int Get(int key)
+    {
+        Node node;
+        if (!map.TryGetValue(key, out node)) return -1;   // miss
+        MoveToFront(node);             // a read counts as a "use"
+        return node.val;
+    }
+
+    public void Put(int key, int value)
+    {
+        Node node;
+        if (map.TryGetValue(key, out node))   // existing key: update + mark as used
+        {
+            node.val = value;
+            MoveToFront(node);
+            return;
+        }
+        if (map.Count == capacity)     // full: evict the least recently used
+        {
+            Node lru = tail.prev;
+            Unlink(lru);
+            map.Remove(lru.key);       // this is why the node keeps its key
+        }
+        var fresh = new Node(key, value);
+        AddFront(fresh);
+        map[key] = fresh;
+    }
+
+    // Pull a node out of the list: its neighbours shake hands with each other
+    private void Unlink(Node n)
+    {
+        n.prev.next = n.next;
+        n.next.prev = n.prev;
+    }
+
+    // Put a node right after the head sentinel (= most recently used)
+    private void AddFront(Node n)
+    {
+        n.next = head.next;
+        n.prev = head;
+        head.next.prev = n;
+        head.next = n;
+    }
+
+    private void MoveToFront(Node n)
+    {
+        Unlink(n);
+        AddFront(n);
+    }
+
+    static void Main()
+    {
+        var c = new LRUCache(2);
+        c.Put(1, 1); c.Put(2, 2);
+        Console.WriteLine(c.Get(1));   // 1  (order now: 1, 2)
+        c.Put(3, 3);                   // evicts key 2
+        Console.WriteLine(c.Get(2));   // -1
+        c.Put(4, 4);                   // evicts key 1
+        Console.WriteLine(c.Get(1) + " " + c.Get(3) + " " + c.Get(4));   // -1 3 4
+    }
 }` }
       ] }, { lang: 'java', code: `
 // The "I know my library" answer: LinkedHashMap already IS a HashMap + doubly linked list.
@@ -2818,7 +3389,51 @@ public:
         items.emplace_front(key, value);
         where[key] = items.begin();
     }
-};` }
+};` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// The "I know my library" answer: Dictionary for O(1) lookup + LinkedList<T> as the recency
+// list. Dictionary stores the LinkedListNode, so Remove(node) and AddFirst(node) are O(1)
+// moves of the same node - no copying, no re-allocation.
+class LRUCacheLL
+{
+    private readonly int capacity;
+    private readonly Dictionary<int, LinkedListNode<KeyValuePair<int, int>>> map = new Dictionary<int, LinkedListNode<KeyValuePair<int, int>>>();
+    private readonly LinkedList<KeyValuePair<int, int>> order = new LinkedList<KeyValuePair<int, int>>();   // First = most recent
+
+    public LRUCacheLL(int capacity) { this.capacity = capacity; }
+
+    public int Get(int key)
+    {
+        LinkedListNode<KeyValuePair<int, int>> node;
+        if (!map.TryGetValue(key, out node)) return -1;
+        order.Remove(node);            // O(1): unlink the node we already hold
+        order.AddFirst(node);          // O(1): re-link it at the front
+        return node.Value.Value;
+    }
+
+    public void Put(int key, int value)
+    {
+        LinkedListNode<KeyValuePair<int, int>> node;
+        if (map.TryGetValue(key, out node)) order.Remove(node);
+        else if (map.Count == capacity)
+        {
+            map.Remove(order.Last.Value.Key);   // evict the least recently used (the back)
+            order.RemoveLast();
+        }
+        map[key] = order.AddFirst(new KeyValuePair<int, int>(key, value));
+    }
+
+    static void Main()
+    {
+        var c = new LRUCacheLL(2);
+        c.Put(1, 1); c.Put(2, 2);
+        Console.WriteLine(c.Get(1));   // 1
+        c.Put(3, 3);                   // evicts key 2
+        Console.WriteLine(c.Get(2));   // -1
+    }
+}` }
       ] }, {
       lang: 'python', run: true, title: 'Python: OrderedDict is also a hash map + doubly linked list (runnable)', code: `from collections import OrderedDict
 
@@ -3053,6 +3668,37 @@ class LRUCache {
     ListNode* tail = dummy;
     for (int v : all) { tail->next = new ListNode(v); tail = tail->next; }
     return dummy->next;
+}` },
+            { lang: 'csharp', code: `class LRUCache
+{
+    private readonly int capacity;
+    private readonly Dictionary<int, int> vals = new Dictionary<int, int>();
+    private readonly Dictionary<int, long> lastUsed = new Dictionary<int, long>();
+    private long clock = 0;
+
+    public LRUCache(int capacity) { this.capacity = capacity; }
+
+    public int Get(int key)
+    {
+        if (!vals.ContainsKey(key)) return -1;
+        lastUsed[key] = clock++;
+        return vals[key];
+    }
+
+    public void Put(int key, int value)
+    {
+        if (!vals.ContainsKey(key) && vals.Count == capacity)
+        {
+            int victim = -1;
+            long oldest = long.MaxValue;
+            foreach (var e in lastUsed)                              // O(N) scan
+                if (e.Value < oldest) { oldest = e.Value; victim = e.Key; }
+            vals.Remove(victim);
+            lastUsed.Remove(victim);
+        }
+        vals[key] = value;
+        lastUsed[key] = clock++;
+    }
 }` }
           ]
         }
@@ -3289,7 +3935,73 @@ public:
         addFront(n);
         map[key] = n;
     }
-};` }],
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class LRUCache
+{
+    private class Node
+    {
+        public int key, val;
+        public Node prev, next;
+        public Node(int k, int v) { key = k; val = v; }
+    }
+
+    private readonly int capacity;
+    private readonly Dictionary<int, Node> map = new Dictionary<int, Node>();
+    private readonly Node head = new Node(0, 0), tail = new Node(0, 0);
+
+    public LRUCache(int capacity)
+    {
+        this.capacity = capacity;
+        head.next = tail;
+        tail.prev = head;
+    }
+
+    public int Get(int key)
+    {
+        Node n;
+        if (!map.TryGetValue(key, out n)) return -1;
+        Unlink(n);          // move to front = most recently used
+        AddFront(n);
+        return n.val;
+    }
+
+    public void Put(int key, int value)
+    {
+        Node n;
+        if (map.TryGetValue(key, out n))      // 1) existing key: update, refresh recency
+        {
+            n.val = value;
+            Unlink(n);
+            AddFront(n);
+            return;
+        }
+        if (map.Count == capacity)            // 2) new key and full: evict LRU
+        {
+            Node lru = tail.prev;
+            Unlink(lru);
+            map.Remove(lru.key);
+        }
+        n = new Node(key, value);             // 3) insert as most recent
+        AddFront(n);
+        map[key] = n;
+    }
+
+    private void Unlink(Node n)
+    {
+        n.prev.next = n.next;
+        n.next.prev = n.prev;
+    }
+
+    private void AddFront(Node n)
+    {
+        n.next = head.next;
+        n.prev = head;
+        head.next.prev = n;
+        head.next = n;
+    }
+}` }],
         dry: {
           head: ['op', 'returns', 'list after (MRU → LRU)', 'map keys'],
           rows: [
@@ -3532,7 +4244,27 @@ for (int i = 0; i < 100000; i++) {
 long long sum = 0;
 for (size_t i = 0; i < arr.size(); i++) sum += arr[i];   // O(1) per index on a vector
 for (int x : linked) sum += x;                           // iterator: O(1) per step
-cout << sum << "\\n";` }
+cout << sum << "\\n";` },
+          { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class ListVsLinked
+{
+    static void Main()
+    {
+        var arr = new List<int>();
+        var linked = new LinkedList<int>();     // LinkedList<T> is a doubly linked list
+        for (int i = 0; i < 100000; i++)
+        {
+            arr.Insert(0, i);       // shifts every existing element: O(N) each
+            linked.AddFirst(i);     // two pointer writes: O(1) each
+        }
+        long sum = 0;
+        for (int i = 0; i < arr.Count; i++) sum += arr[i];   // O(1) per index on an array
+        foreach (int x in linked) sum += x;                  // enumerator: O(1) per step
+        Console.WriteLine(sum);
+    }
+}` }
         ] }
       },
       {
@@ -3584,6 +4316,15 @@ ListNode* deleteValue(ListNode* head, int target) {
         delete gone;
     }
     return head;                                 // head did not change
+}` },
+          { lang: 'csharp', code: `ListNode DeleteValue(ListNode head, int target)
+{
+    if (head == null) return null;               // empty list
+    if (head.val == target) return head.next;    // special case: the head itself goes
+    ListNode prev = head;
+    while (prev.next != null && prev.next.val != target) prev = prev.next;
+    if (prev.next != null) prev.next = prev.next.next;   // found: skip it
+    return head;                                 // head did not change
 }` }
         ] }
       },
@@ -3623,7 +4364,25 @@ for (auto it = lst.begin(); it != lst.end(); ) {
     else ++it;
 }
 for (int x : lst) cout << x << ' ';          // 1 3 5
-cout << "| back = " << lst.back() << "\\n";   // 5, O(1) thanks to the tail pointer` }
+cout << "| back = " << lst.back() << "\\n";   // 5, O(1) thanks to the tail pointer` },
+          { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class IteratorRemove
+{
+    static void Main()
+    {
+        var list = new LinkedList<int>(new[] { 1, 2, 3, 4, 5, 6 });
+        for (var node = list.First; node != null; )
+        {
+            var next = node.Next;                       // save before unlinking
+            if (node.Value % 2 == 0) list.Remove(node); // O(1): we hold the node itself
+            node = next;
+        }
+        Console.WriteLine("[" + string.Join(", ", list) + "]");   // [1, 3, 5]
+        Console.WriteLine(list.Last.Value);                      // 5, O(1) thanks to the tail pointer
+    }
+}` }
         ] }
       },
       {
@@ -3664,6 +4423,16 @@ ListNode* build(const vector<int>& a) {
         tail = tail->next;             // and step onto it
     }
     return dummy.next;                 // real head (nullptr if a is empty)
+}` },
+          { lang: 'csharp', code: `ListNode Build(int[] a)
+{
+    var dummy = new ListNode(0); ListNode tail = dummy;
+    foreach (int x in a)
+    {
+        tail.next = new ListNode(x);   // hang a new node after the current tail
+        tail = tail.next;              // and step onto it
+    }
+    return dummy.next;                 // real head (null if a is empty)
 }` }
         ] }
       }
@@ -3790,7 +4559,17 @@ public:
         vals[key] = value;
         lastUsed[key] = tick++;
     }
-};` }
+};` },
+            { lang: 'csharp', code: `void DeleteNode(ListNode node)
+{
+    while (node.next.next != null)       // shift every later value one step left
+    {
+        node.val = node.next.val;
+        node = node.next;
+    }
+    node.val = node.next.val;            // copy the last value
+    node.next = null;                    // drop the (now duplicate) tail
+}` }
           ]
         }
       },
@@ -3852,7 +4631,17 @@ public:
         node->next = next->next;       // ...and the successor is skipped
         delete next;                   // C++ has no garbage collector: free it
     }
-};` }
+};` },
+          { lang: 'csharp', code: `public class Solution
+{
+    public void DeleteNode(ListNode node)
+    {
+        ListNode next = node.next;   // guaranteed not null (node is not the tail)
+        node.val = next.val;         // X takes over its successor's value...
+        node.next = next.next;       // ...and the successor is skipped
+        next.next = null;            // optional: detach the removed node completely
+    }
+}` }
         ],
         dry: {
           head: ['step', 'list (by values)', 'note'],
@@ -3938,6 +4727,19 @@ ListNode* partition(ListNode* head, int x) {
     }
     ge->next = nullptr;              // cut the old link, or we may create a cycle
     less->next = geDummy.next;       // glue: small part, then big part
+    return lessDummy.next;
+}` },
+          { lang: 'csharp', code: `ListNode Partition(ListNode head, int x)
+{
+    var lessDummy = new ListNode(0); ListNode less = lessDummy;
+    var geDummy = new ListNode(0); ListNode ge = geDummy;
+    for (ListNode c = head; c != null; c = c.next)
+    {
+        if (c.val < x) { less.next = c; less = c; }   // append to the "small" list
+        else           { ge.next = c;   ge = c; }     // append to the "big" list
+    }
+    ge.next = null;              // cut the old link, or we may create a cycle
+    less.next = geDummy.next;    // glue: small part, then big part
     return lessDummy.next;
 }` }
         ] }
@@ -4028,6 +4830,18 @@ ListNode* deleteMiddle(ListNode* head) {
     slow->next = mid->next;                             // skip the middle node
     delete mid;
     return head;
+}` },
+          { lang: 'csharp', code: `ListNode DeleteMiddle(ListNode head)
+{
+    if (head.next == null) return null;           // one node: the middle IS the head
+    ListNode slow = head, fast = head.next.next;  // fast starts 2 ahead -> slow stops BEFORE the middle
+    while (fast != null && fast.next != null)
+    {
+        slow = slow.next;
+        fast = fast.next.next;
+    }
+    slow.next = slow.next.next;                   // skip the middle node
+    return head;
 }` }
         ] }
       },
@@ -4072,6 +4886,18 @@ ListNode* splitHalf(ListNode* head) {         // head != nullptr; returns the se
     }
     ListNode* second = slow->next;            // 1-2-3-4-5-6: slow = 3, second = 4
     slow->next = nullptr;                     // cut: first half ends at slow
+    return second;
+}` },
+          { lang: 'csharp', code: `ListNode SplitHalf(ListNode head)            // head != null; returns the second half
+{
+    ListNode slow = head, fast = head;
+    while (fast.next != null && fast.next.next != null)
+    {
+        slow = slow.next;
+        fast = fast.next.next;
+    }
+    ListNode second = slow.next;              // 1-2-3-4-5-6: slow = 3, second = 4
+    slow.next = null;                         // cut: first half ends at slow
     return second;
 }` }
         ] }
@@ -4162,6 +4988,34 @@ bool isHappy(int n) {
         fast = digitSquareSum(digitSquareSum(fast));   // 2 steps
     }
     return fast == 1;                              // reached 1, or met in a loop
+}` },
+          { lang: 'csharp', run: true, code: `using System;
+
+class HappyNumber
+{
+    static int DigitSquareSum(int n)
+    {
+        int s = 0;
+        while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
+        return s;
+    }
+
+    static bool IsHappy(int n)
+    {
+        int slow = n, fast = DigitSquareSum(n);        // "next" is f(x)
+        while (fast != 1 && slow != fast)
+        {
+            slow = DigitSquareSum(slow);               // 1 step
+            fast = DigitSquareSum(DigitSquareSum(fast)); // 2 steps
+        }
+        return fast == 1;                              // reached 1, or met in a loop
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(IsHappy(19));   // True
+        Console.WriteLine(IsHappy(2));    // False
+    }
 }` }
         ] }
       },
@@ -4190,6 +5044,12 @@ int cycleLength(ListNode meet) {      // meet = a node known to be inside the lo
 int cycleLength(ListNode* meet) {     // meet = a node known to be inside the loop
     int len = 1;
     for (ListNode* c = meet->next; c != meet; c = c->next) len++;
+    return len;
+}` },
+          { lang: 'csharp', code: `int CycleLength(ListNode meet)        // meet = a node known to be inside the loop
+{
+    int len = 1;
+    for (ListNode c = meet.next; c != meet; c = c.next) len++;
     return len;
 }` }
         ] }
@@ -4288,6 +5148,24 @@ DNode* reverseDLL(DNode* head) {
         curr = tmp;                         // continue with the old next
     }
     return last;                            // old tail = new head
+}` },
+          { lang: 'csharp', code: `class DoublyReverse
+{
+    class DNode { public int val; public DNode prev, next; public DNode(int v) { val = v; } }
+
+    static DNode ReverseDLL(DNode head)
+    {
+        DNode curr = head, last = null;
+        while (curr != null)
+        {
+            DNode tmp = curr.next;   // save the forward link before swapping
+            curr.next = curr.prev;   // swap the two arrows of this node
+            curr.prev = tmp;
+            last = curr;
+            curr = tmp;              // continue with the old next
+        }
+        return last;                 // old tail = new head
+    }
 }` }
         ] }
       },
@@ -4393,6 +5271,25 @@ ListNode* reverseKGroupRec(ListNode* head, int k) {
         curr = next;
     }
     return prev;                               // new first node of this group
+}` },
+          { lang: 'csharp', code: `ListNode ReverseKGroupRec(ListNode head, int k)
+{
+    ListNode check = head;
+    for (int i = 0; i < k; i++)               // are there k nodes?
+    {
+        if (check == null) return head;        // no: leave this short tail as it is
+        check = check.next;
+    }
+    ListNode prev = ReverseKGroupRec(check, k);   // the rest, already fixed
+    ListNode curr = head;
+    for (int i = 0; i < k; i++)               // flip exactly k nodes onto prev
+    {
+        ListNode next = curr.next;
+        curr.next = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;                               // new first node of this group
 }` }
         ] }
       },
@@ -4464,6 +5361,15 @@ int[] mergeArrays(int[] a, int[] b) {
     vector<int> out(a.size() + b.size());        // arrays need a new buffer
     merge(a.begin(), a.end(), b.begin(), b.end(), out.begin());   // std::merge is stable too
     return out;
+}` },
+          { lang: 'csharp', code: `int[] MergeArrays(int[] a, int[] b)
+{
+    int[] result = new int[a.Length + b.Length];  // arrays need a new buffer
+    int i = 0, j = 0, k = 0;
+    while (i < a.Length && j < b.Length) result[k++] = (a[i] <= b[j]) ? a[i++] : b[j++];
+    while (i < a.Length) result[k++] = a[i++];     // copy leftovers one by one
+    while (j < b.Length) result[k++] = b[j++];
+    return result;
 }` }
         ] }
       },
@@ -4542,6 +5448,15 @@ ListNode removeElements(ListNode head, int val) {
         if (c->val != val) { tail->next = new ListNode(c->val); tail = tail->next; }   // copies
     }
     return dummy->next;
+}` },
+            { lang: 'csharp', code: `ListNode RemoveElements(ListNode head, int val)
+{
+    var dummy = new ListNode(0); ListNode tail = dummy;
+    for (ListNode c = head; c != null; c = c.next)
+    {
+        if (c.val != val) { tail.next = new ListNode(c.val); tail = tail.next; }   // copies
+    }
+    return dummy.next;
 }` }
           ]
         }
@@ -4620,7 +5535,21 @@ public:
         }
         return dummy.next;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode RemoveElements(ListNode head, int val)
+    {
+        var dummy = new ListNode(0) { next = head };
+        ListNode prev = dummy;
+        while (prev.next != null)
+        {
+            if (prev.next.val == val) prev.next = prev.next.next;   // drop it, stay put
+            else prev = prev.next;                                  // keep it, move on
+        }
+        return dummy.next;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N)</b> — each node is examined once. <b>Space O(1)</b> — one dummy and one pointer.</p>`,
       followUps: ['Do it recursively: head.next = removeElements(head.next, val); return head.val == val ? head.next : head.', 'What is the recursion depth for 10<sup>4</sup> nodes, and is it safe?']
@@ -4680,6 +5609,17 @@ ListNode deleteDuplicates(ListNode head) {
         else prev = prev->next;
     }
     return dummy->next;
+}` },
+            { lang: 'csharp', code: `ListNode DeleteDuplicates(ListNode head)
+{
+    var seen = new HashSet<int>();
+    var dummy = new ListNode(0) { next = head }; ListNode prev = dummy;
+    while (prev.next != null)
+    {
+        if (!seen.Add(prev.next.val)) prev.next = prev.next.next;   // already seen: drop
+        else prev = prev.next;
+    }
+    return dummy.next;
 }` }
           ]
         }
@@ -4750,7 +5690,20 @@ public:
         }
         return head;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode DeleteDuplicates(ListNode head)
+    {
+        ListNode curr = head;
+        while (curr != null && curr.next != null)
+        {
+            if (curr.next.val == curr.val) curr.next = curr.next.next;   // drop the copy
+            else curr = curr.next;                                       // new value: move on
+        }
+        return head;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
       followUps: ['Remove ALL nodes that have duplicates (see "Remove Duplicates II").', 'What if the list is unsorted and you must use O(1) memory? (O(N²) compare-all, or sort first.)']
@@ -4800,6 +5753,13 @@ ListNode getIntersectionNode(ListNode headA, ListNode headB) {
     for (ListNode* a = headA; a != nullptr; a = a->next) inA.insert(a);
     for (ListNode* b = headB; b != nullptr; b = b->next) if (inA.count(b)) return b;
     return nullptr;
+}` },
+            { lang: 'csharp', code: `ListNode GetIntersectionNode(ListNode headA, ListNode headB)
+{
+    var inA = new HashSet<ListNode>();        // node identity, not value
+    for (ListNode a = headA; a != null; a = a.next) inA.Add(a);
+    for (ListNode b = headB; b != null; b = b.next) if (inA.Contains(b)) return b;
+    return null;
 }` }
           ]
         }
@@ -4817,7 +5777,7 @@ ListNode getIntersectionNode(ListNode headA, ListNode headB) {
         java: "class Check {\n    // A = a + shared, B = b + shared (the same nodes); index in A of the answer, -1 = null\n    static int intersectIndex(int[] a, int[] b, int[] shared) {\n        ListNode common = build(shared, null);\n        ListNode headA = build(a, common), headB = build(b, common);\n        ListNode hit = new Solution().getIntersectionNode(headA, headB);\n        int i = 0;\n        for (ListNode c = headA; c != null; c = c.next, i++) if (c == hit) return i;\n        return -1;\n    }\n    static ListNode build(int[] vals, ListNode tail) {\n        for (int i = vals.length - 1; i >= 0; i--) tail = new ListNode(vals[i], tail);\n        return tail;\n    }\n}",
         python: "def intersect_index(a, b, shared):\n    def build(vals, tail):\n        for v in reversed(vals):\n            tail = ListNode(v, tail)\n        return tail\n    common = build(shared, None)\n    head_a = build(a, common)\n    hit = Solution().get_intersection_node(head_a, build(b, common))\n    c, i = head_a, 0\n    while c:\n        if c is hit:\n            return i\n        c, i = c.next, i + 1\n    return -1",
         js: "function intersectIndex(a, b, shared) {\n  const build = (vals, tail) => vals.reduceRight((next, v) => new ListNode(v, next), tail);\n  const common = build(shared, null), headA = build(a, common);\n  const hit = new Solution().getIntersectionNode(headA, build(b, common));\n  let i = 0;\n  for (let c = headA; c !== null; c = c.next, i++) if (c === hit) return i;\n  return -1;\n}",
-        cpp: "int intersectIndex(vector<int>& a, vector<int>& b, vector<int>& shared) {\n    auto build = [](const vector<int>& vals, ListNode* tail) {\n        for (auto it = vals.rbegin(); it != vals.rend(); ++it) tail = new ListNode(*it, tail);\n        return tail;\n    };\n    ListNode* common = build(shared, nullptr);\n    ListNode* headA = build(a, common);\n    ListNode* hit = getIntersectionNode(headA, build(b, common));\n    int i = 0;\n    for (ListNode* c = headA; c; c = c->next, i++) if (c == hit) return i;\n    return -1;\n}"
+        cpp: "int intersectIndex(vector<int>& a, vector<int>& b, vector<int>& shared) {\n    auto build = [](const vector<int>& vals, ListNode* tail) {\n        for (auto it = vals.rbegin(); it != vals.rend(); ++it) tail = new ListNode(*it, tail);\n        return tail;\n    };\n    ListNode* common = build(shared, nullptr);\n    ListNode* headA = build(a, common);\n    ListNode* hit = getIntersectionNode(headA, build(b, common));\n    int i = 0;\n    for (ListNode* c = headA; c; c = c->next, i++) if (c == hit) return i;\n    return -1;\n}", csharp: "class Check {\n    // A = a + shared, B = b + shared (the same nodes); index in A of the answer, -1 = null\n    public static int IntersectIndex(int[] a, int[] b, int[] shared) {\n        ListNode common = Build(shared, null);\n        ListNode headA = Build(a, common), headB = Build(b, common);\n        ListNode hit = new Solution().GetIntersectionNode(headA, headB);\n        int i = 0;\n        for (ListNode c = headA; c != null; c = c.next, i++) if (c == hit) return i;\n        return -1;\n    }\n    static ListNode Build(int[] vals, ListNode tail) {\n        for (int i = vals.Length - 1; i >= 0; i--) { var n = new ListNode(vals[i]); n.next = tail; tail = n; }\n        return tail;\n    }\n}"
       }, cases: [
       [[[4, 1], [5, 6, 1], [8, 4, 5]], 2],
       [[[1, 9, 1], [3], [2, 4]], 3],
@@ -4875,6 +5835,19 @@ ListNode* getIntersectionNode(ListNode* headA, ListNode* headB) {
         b = b ? b->next : headA;               // finished B? continue on A
     }
     return a;                                  // the meeting node, or nullptr
+}` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode GetIntersectionNode(ListNode headA, ListNode headB)
+    {
+        ListNode a = headA, b = headB;
+        while (a != b)                         // compares node identity
+        {
+            a = (a == null) ? headB : a.next;  // finished A? continue on B
+            b = (b == null) ? headA : b.next;  // finished B? continue on A
+        }
+        return a;                              // the meeting node, or null
+    }
 }` }
       ],
       complexity: `<p><b>Time O(m + n)</b> — each pointer walks at most both lists once. <b>Space O(1)</b>.</p>`,
@@ -4927,6 +5900,14 @@ boolean isPalindrome(ListNode head) {
     vector<int> vals;
     for (ListNode* c = head; c != nullptr; c = c->next) vals.push_back(c->val);
     for (int i = 0, j = (int)vals.size() - 1; i < j; i++, j--)
+        if (vals[i] != vals[j]) return false;
+    return true;
+}` },
+            { lang: 'csharp', code: `bool IsPalindrome(ListNode head)
+{
+    var vals = new List<int>();
+    for (ListNode c = head; c != null; c = c.next) vals.Add(c.val);
+    for (int i = 0, j = vals.Count - 1; i < j; i++, j--)
         if (vals[i] != vals[j]) return false;
     return true;
 }` }
@@ -5066,7 +6047,40 @@ private:
         }
         return prev;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public bool IsPalindrome(ListNode head)
+    {
+        ListNode slow = head, fast = head;
+        while (fast != null && fast.next != null)     // slow -> (second) middle
+        {
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        ListNode second = Reverse(slow);              // reversed second half
+        bool ok = true;
+        for (ListNode a = head, b = second; b != null; a = a.next, b = b.next)
+        {
+            if (a.val != b.val) { ok = false; break; }
+        }
+        Reverse(second);                              // restore the input
+        return ok;
+    }
+
+    private ListNode Reverse(ListNode head)
+    {
+        ListNode prev = null;
+        while (head != null)
+        {
+            ListNode next = head.next;
+            head.next = prev;
+            prev = head;
+            head = next;
+        }
+        return prev;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N)</b> (find middle, reverse, compare, restore — each linear). <b>Space O(1)</b>.</p>`,
       followUps: ['Why does the first half still reach the middle node after reversal (it still points into the reversed part)?', 'Is restoring the list important in a multi-threaded program?']
@@ -5145,6 +6159,17 @@ ListNode addTwoNumbers(ListNode l1, ListNode l2) {
     ListNode* tail = dummy;
     do { tail->next = new ListNode((int)(s % 10)); tail = tail->next; s /= 10; } while (s > 0);
     return dummy->next;
+}` },
+            { lang: 'csharp', code: `ListNode AddTwoNumbers(ListNode l1, ListNode l2)
+{
+    long a = 0, b = 0, p = 1;
+    for (ListNode c = l1; c != null; c = c.next, p *= 10) a += c.val * p;   // overflows past ~19 digits
+    p = 1;
+    for (ListNode c = l2; c != null; c = c.next, p *= 10) b += c.val * p;
+    long s = a + b;
+    var dummy = new ListNode(0); ListNode tail = dummy;
+    do { tail.next = new ListNode((int)(s % 10)); tail = tail.next; s /= 10; } while (s > 0);
+    return dummy.next;
 }` }
           ]
         }
@@ -5235,7 +6260,25 @@ public:
         }
         return dummy.next;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode AddTwoNumbers(ListNode l1, ListNode l2)
+    {
+        var dummy = new ListNode(0); ListNode tail = dummy;
+        int carry = 0;
+        while (l1 != null || l2 != null || carry != 0)
+        {
+            int sum = carry;
+            if (l1 != null) { sum += l1.val; l1 = l1.next; }
+            if (l2 != null) { sum += l2.val; l2 = l2.next; }
+            tail.next = new ListNode(sum % 10);   // digit to write
+            tail = tail.next;
+            carry = sum / 10;                     // 0 or 1
+        }
+        return dummy.next;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(max(m, n))</b>. <b>Space O(1)</b> extra besides the output list (max(m, n) + 1 nodes).</p>`,
       followUps: ['Digits stored most-significant first (Add Two Numbers II): reverse both, or use two stacks.', 'Subtract instead of add — how do you handle the borrow and leading zeros?']
@@ -5295,6 +6338,16 @@ ListNode oddEvenList(ListNode head) {
     odd.insert(odd.end(), even.begin(), even.end());
     int i = 0;
     for (ListNode* c = head; c != nullptr; c = c->next) c->val = odd[i++];
+    return head;
+}` },
+            { lang: 'csharp', code: `ListNode OddEvenList(ListNode head)
+{
+    var odd = new List<int>(); var even = new List<int>();
+    int pos = 1;
+    for (ListNode c = head; c != null; c = c.next, pos++) (pos % 2 == 1 ? odd : even).Add(c.val);
+    odd.AddRange(even);
+    int i = 0;
+    for (ListNode c = head; c != null; c = c.next) c.val = odd[i++];
     return head;
 }` }
           ]
@@ -5380,7 +6433,24 @@ public:
         odd->next = evenHead;          // glue: odds then evens
         return head;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode OddEvenList(ListNode head)
+    {
+        if (head == null) return null;
+        ListNode odd = head, even = head.next, evenHead = even;
+        while (even != null && even.next != null)
+        {
+            odd.next = even.next;    // next odd node
+            odd = odd.next;
+            even.next = odd.next;    // next even node
+            even = even.next;
+        }
+        odd.next = evenHead;         // glue: odds then evens
+        return head;
+    }
+}` }
       ],
       dry: { head: ['step', 'odd chain', 'even chain'], rows: [['start', '2', '1'], ['1', '2 → 3', '1 → 5'], ['2', '2 → 3 → 6', '1 → 5 → 4'], ['3', '2 → 3 → 6 → 7', '1 → 5 → 4 → null'], ['glue', '<span class="c-g">2 → 3 → 6 → 7 → 1 → 5 → 4</span>', '—']] },
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
@@ -5422,6 +6492,14 @@ ListNode swapPairs(ListNode head) {
             { lang: 'cpp', code: `ListNode* swapPairs(ListNode* head) {
     for (ListNode* c = head; c != nullptr && c->next != nullptr; c = c->next->next) {
         int t = c->val; c->val = c->next->val; c->next->val = t;   // swaps values, not nodes
+    }
+    return head;
+}` },
+            { lang: 'csharp', code: `ListNode SwapPairs(ListNode head)
+{
+    for (ListNode c = head; c != null && c.next != null; c = c.next.next)
+    {
+        int t = c.val; c.val = c.next.val; c.next.val = t;   // swaps values, not nodes
     }
     return head;
 }` }
@@ -5499,7 +6577,23 @@ public:
         }
         return dummy.next;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode SwapPairs(ListNode head)
+    {
+        var dummy = new ListNode(0) { next = head }; ListNode prev = dummy;
+        while (prev.next != null && prev.next.next != null)
+        {
+            ListNode a = prev.next, b = a.next;
+            prev.next = b;       // prev -> b
+            a.next = b.next;     // a -> rest
+            b.next = a;          // b -> a
+            prev = a;            // a is now the second node of the pair
+        }
+        return dummy.next;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
       followUps: ['Generalise to k (Reverse Nodes in k-Group).', 'Recursive version: swapPairs(head) = b with b.next = a and a.next = swapPairs(rest).']
@@ -5555,6 +6649,15 @@ ListNode reverseBetween(ListNode head, int left, int right) {
     reverse(vals.begin() + (left - 1), vals.begin() + right);   // reverse the middle part
     int i = 0;
     for (ListNode* c = head; c != nullptr; c = c->next) c->val = vals[i++];
+    return head;
+}` },
+            { lang: 'csharp', code: `ListNode ReverseBetween(ListNode head, int left, int right)
+{
+    var vals = new List<int>();
+    for (ListNode c = head; c != null; c = c.next) vals.Add(c.val);
+    vals.Reverse(left - 1, right - left + 1);     // reverse the middle part
+    int i = 0;
+    for (ListNode c = head; c != null; c = c.next) c.val = vals[i++];
     return head;
 }` }
           ]
@@ -5639,7 +6742,24 @@ public:
         }
         return dummy.next;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode ReverseBetween(ListNode head, int left, int right)
+    {
+        var dummy = new ListNode(0) { next = head }; ListNode pre = dummy;
+        for (int i = 1; i < left; i++) pre = pre.next;   // pre = node before position left
+        ListNode curr = pre.next;                         // will end up as the sublist's tail
+        for (int i = 0; i < right - left; i++)
+        {
+            ListNode move = curr.next;   // node to bring to the front
+            curr.next = move.next;       // unlink it
+            move.next = pre.next;        // put it before the current sublist head
+            pre.next = move;             // ...and hook it after pre
+        }
+        return dummy.next;
+    }
+}` }
       ],
       dry: { head: ['step', 'list (left=2, right=4)'], rows: [['start', '1 → [2 → 3 → 4] → 5'], ['move 3', '1 → [3 → 2 → 4] → 5'], ['move 4', '1 → <span class="c-g">[4 → 3 → 2]</span> → 5']] },
       complexity: `<p><b>Time O(N)</b> (walk to left, then right − left moves). <b>Space O(1)</b>.</p>`
@@ -5713,6 +6833,21 @@ void reorderList(ListNode head) {
         j--;
     }
     nodes[i]->next = nullptr;        // new tail
+}` },
+            { lang: 'csharp', code: `void ReorderList(ListNode head)
+{
+    var nodes = new List<ListNode>();
+    for (ListNode c = head; c != null; c = c.next) nodes.Add(c);
+    int i = 0, j = nodes.Count - 1;
+    while (i < j)
+    {
+        nodes[i].next = nodes[j];   // front -> back
+        i++;
+        if (i == j) break;
+        nodes[j].next = nodes[i];   // back -> next front
+        j--;
+    }
+    nodes[i].next = null;           // new tail
 }` }
           ]
         }
@@ -5837,7 +6972,38 @@ private:
         while (h) { ListNode* nx = h->next; h->next = prev; prev = h; h = nx; }
         return prev;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public void ReorderList(ListNode head)
+    {
+        if (head == null || head.next == null) return;
+        ListNode slow = head, fast = head;
+        while (fast.next != null && fast.next.next != null)     // first middle
+        {
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        ListNode second = Reverse(slow.next);
+        slow.next = null;                       // first half ends at slow
+        ListNode first = head;
+        while (second != null)                  // weave
+        {
+            ListNode n1 = first.next, n2 = second.next;
+            first.next = second;
+            second.next = n1;
+            first = n1;
+            second = n2;
+        }
+    }
+
+    private ListNode Reverse(ListNode h)
+    {
+        ListNode prev = null;
+        while (h != null) { ListNode nx = h.next; h.next = prev; prev = h; h = nx; }
+        return prev;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
     }
@@ -5902,6 +7068,18 @@ ListNode deleteDuplicates(ListNode head) {
         else prev = prev->next;
     }
     return dummy->next;
+}` },
+            { lang: 'csharp', code: `ListNode DeleteDuplicates(ListNode head)
+{
+    var cnt = new Dictionary<int, int>();
+    for (ListNode c = head; c != null; c = c.next) { int k; cnt.TryGetValue(c.val, out k); cnt[c.val] = k + 1; }
+    var dummy = new ListNode(0) { next = head }; ListNode prev = dummy;
+    while (prev.next != null)
+    {
+        if (cnt[prev.next.val] > 1) prev.next = prev.next.next;
+        else prev = prev.next;
+    }
+    return dummy.next;
 }` }
           ]
         }
@@ -5998,7 +7176,30 @@ public:
         }
         return dummy.next;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode DeleteDuplicates(ListNode head)
+    {
+        var dummy = new ListNode(0) { next = head }; ListNode prev = dummy;
+        ListNode curr = head;
+        while (curr != null)
+        {
+            if (curr.next != null && curr.next.val == curr.val)
+            {
+                int dup = curr.val;
+                while (curr != null && curr.val == dup) curr = curr.next;   // skip the whole run
+                prev.next = curr;                                          // cut it out
+            }
+            else
+            {
+                prev = curr;          // unique: keep it
+                curr = curr.next;
+            }
+        }
+        return dummy.next;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
     }
@@ -6052,6 +7253,15 @@ ListNode sortList(ListNode head) {
     sort(vals.begin(), vals.end());
     int i = 0;
     for (ListNode* c = head; c != nullptr; c = c->next) c->val = vals[i++];
+    return head;
+}` },
+            { lang: 'csharp', code: `ListNode SortList(ListNode head)
+{
+    var vals = new List<int>();
+    for (ListNode c = head; c != null; c = c.next) vals.Add(c.val);
+    vals.Sort();
+    int i = 0;
+    for (ListNode c = head; c != null; c = c.next) c.val = vals[i++];
     return head;
 }` }
           ]
@@ -6182,7 +7392,36 @@ private:
         tail->next = a ? a : b;
         return dummy.next;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public ListNode SortList(ListNode head)
+    {
+        if (head == null || head.next == null) return head;
+        ListNode slow = head, fast = head;
+        while (fast.next != null && fast.next.next != null)     // first middle
+        {
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        ListNode right = slow.next;
+        slow.next = null;                                       // cut into two lists
+        return Merge(SortList(head), SortList(right));
+    }
+
+    private ListNode Merge(ListNode a, ListNode b)
+    {
+        var dummy = new ListNode(0); ListNode tail = dummy;
+        while (a != null && b != null)
+        {
+            if (a.val <= b.val) { tail.next = a; a = a.next; }
+            else { tail.next = b; b = b.next; }
+            tail = tail.next;
+        }
+        tail.next = a ?? b;
+        return dummy.next;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N log N)</b>: log N levels, O(N) merging per level. <b>Space O(log N)</b> recursion (O(1) with the bottom-up variant).</p>`
     }
@@ -6282,6 +7521,26 @@ Node* copyRandomList(Node* head) {
         copies[i]->random = copies[j];
     }
     return copies.empty() ? nullptr : copies[0];
+}` },
+            { lang: 'csharp', code: `public class Node { public int val; public Node next, random; public Node(int val) { this.val = val; } }
+
+public class Solution
+{
+    public Node CopyRandomList(Node head)
+    {
+        var copies = new List<Node>();
+        for (Node c = head; c != null; c = c.next) copies.Add(new Node(c.val));
+        for (int i = 0; i + 1 < copies.Count; i++) copies[i].next = copies[i + 1];
+        int idx = 0;
+        for (Node c = head; c != null; c = c.next, idx++)
+        {
+            if (c.random == null) continue;
+            int j = 0;
+            for (Node d = head; d != c.random; d = d.next) j++;   // O(N) search for the index
+            copies[idx].random = copies[j];
+        }
+        return copies.Count == 0 ? null : copies[0];
+    }
 }` }
           ]
         }
@@ -6299,7 +7558,7 @@ Node* copyRandomList(Node* head) {
         java: "class Check {\n    // rand[i] = index of node i's random (-1 = null). One row {val, random index in the COPY} per copied node,\n    // then {1 if the original is unchanged, 1 if the copy reuses an original node}.\n    static int[][] copyCheck(int[] vals, int[] rand) {\n        int n = vals.length;\n        Node[] orig = new Node[n];\n        for (int i = 0; i < n; i++) orig[i] = new Node(vals[i]);\n        for (int i = 0; i < n; i++) {\n            orig[i].next = i + 1 < n ? orig[i + 1] : null;\n            orig[i].random = rand[i] >= 0 ? orig[rand[i]] : null;\n        }\n        List<Node> copies = new ArrayList<>();\n        for (Node c = new Solution().copyRandomList(n > 0 ? orig[0] : null); c != null && copies.size() <= n; c = c.next) copies.add(c);\n        List<Node> origList = Arrays.asList(orig);\n        int[][] out = new int[copies.size() + 1][];\n        boolean shares = false, intact = true;\n        for (int i = 0; i < copies.size(); i++) {\n            Node c = copies.get(i);\n            if (origList.contains(c)) shares = true;\n            int r = copies.indexOf(c.random);\n            out[i] = new int[]{c.val, c.random == null ? -1 : (r < 0 ? -2 : r)};\n        }\n        for (int i = 0; i < n; i++) {\n            if (orig[i].next != (i + 1 < n ? orig[i + 1] : null)) intact = false;\n            if (orig[i].random != (rand[i] >= 0 ? orig[rand[i]] : null)) intact = false;\n        }\n        out[copies.size()] = new int[]{intact ? 1 : 0, shares ? 1 : 0};\n        return out;\n    }\n}",
         python: "def copy_check(vals, rand):\n    orig = [Node(v) for v in vals]\n    for i, node in enumerate(orig):\n        node.next = orig[i + 1] if i + 1 < len(orig) else None\n        node.random = orig[rand[i]] if rand[i] >= 0 else None\n    copies, c = [], Solution().copy_random_list(orig[0] if orig else None)\n    while c and len(copies) <= len(orig):\n        copies.append(c)\n        c = c.next\n    pos = {id(x): i for i, x in enumerate(copies)}\n    orig_ids = {id(x) for x in orig}\n    rows = [[x.val, -1 if x.random is None else pos.get(id(x.random), -2)] for x in copies]\n    intact = all(node.next is (orig[i + 1] if i + 1 < len(orig) else None) and\n                 node.random is (orig[rand[i]] if rand[i] >= 0 else None) for i, node in enumerate(orig))\n    shares = any(id(x) in orig_ids for x in copies)\n    return rows + [[int(intact), int(shares)]]",
         js: "function copyCheck(vals, rand) {\n  const n = vals.length, orig = vals.map((v) => new Node(v));\n  const expNext = (i) => (i + 1 < n ? orig[i + 1] : null), expRand = (i) => (rand[i] >= 0 ? orig[rand[i]] : null);\n  orig.forEach((node, i) => { node.next = expNext(i); node.random = expRand(i); });\n  const copies = [];\n  for (let c = new Solution().copyRandomList(n ? orig[0] : null); c !== null && copies.length <= n; c = c.next) copies.push(c);\n  const rows = copies.map((c) => [c.val, c.random === null ? -1 : (copies.indexOf(c.random) < 0 ? -2 : copies.indexOf(c.random))]);\n  const intact = orig.every((node, i) => node.next === expNext(i) && node.random === expRand(i));\n  const shares = copies.some((c) => orig.includes(c));\n  return rows.concat([[intact ? 1 : 0, shares ? 1 : 0]]);\n}",
-        cpp: "vector<vector<int>> copyCheck(vector<int>& vals, vector<int>& rand) {\n    int n = vals.size();\n    vector<Node*> orig;\n    for (int v : vals) orig.push_back(new Node(v));\n    auto expNext = [&](int i) { return i + 1 < n ? orig[i + 1] : nullptr; };\n    auto expRand = [&](int i) { return rand[i] >= 0 ? orig[rand[i]] : nullptr; };\n    for (int i = 0; i < n; i++) { orig[i]->next = expNext(i); orig[i]->random = expRand(i); }\n    vector<Node*> copies;\n    for (Node* c = copyRandomList(n ? orig[0] : nullptr); c && (int)copies.size() <= n; c = c->next) copies.push_back(c);\n    vector<vector<int>> out;\n    bool shares = false, intact = true;\n    for (Node* c : copies) {\n        if (find(orig.begin(), orig.end(), c) != orig.end()) shares = true;\n        auto it = find(copies.begin(), copies.end(), c->random);\n        out.push_back({c->val, !c->random ? -1 : (it == copies.end() ? -2 : int(it - copies.begin()))});\n    }\n    for (int i = 0; i < n; i++)\n        if (orig[i]->next != expNext(i) || orig[i]->random != expRand(i)) intact = false;\n    out.push_back({intact ? 1 : 0, shares ? 1 : 0});\n    return out;\n}"
+        cpp: "vector<vector<int>> copyCheck(vector<int>& vals, vector<int>& rand) {\n    int n = vals.size();\n    vector<Node*> orig;\n    for (int v : vals) orig.push_back(new Node(v));\n    auto expNext = [&](int i) { return i + 1 < n ? orig[i + 1] : nullptr; };\n    auto expRand = [&](int i) { return rand[i] >= 0 ? orig[rand[i]] : nullptr; };\n    for (int i = 0; i < n; i++) { orig[i]->next = expNext(i); orig[i]->random = expRand(i); }\n    vector<Node*> copies;\n    for (Node* c = copyRandomList(n ? orig[0] : nullptr); c && (int)copies.size() <= n; c = c->next) copies.push_back(c);\n    vector<vector<int>> out;\n    bool shares = false, intact = true;\n    for (Node* c : copies) {\n        if (find(orig.begin(), orig.end(), c) != orig.end()) shares = true;\n        auto it = find(copies.begin(), copies.end(), c->random);\n        out.push_back({c->val, !c->random ? -1 : (it == copies.end() ? -2 : int(it - copies.begin()))});\n    }\n    for (int i = 0; i < n; i++)\n        if (orig[i]->next != expNext(i) || orig[i]->random != expRand(i)) intact = false;\n    out.push_back({intact ? 1 : 0, shares ? 1 : 0});\n    return out;\n}", csharp: "class Check {\n    // rand[i] = index of node i's random (-1 = null). One row {val, random index in the COPY} per copied node,\n    // then {1 if the original is unchanged, 1 if the copy reuses an original node}.\n    public static int[][] CopyCheck(int[] vals, int[] rand) {\n        int n = vals.Length;\n        var orig = new Node[n];\n        for (int i = 0; i < n; i++) orig[i] = new Node(vals[i]);\n        for (int i = 0; i < n; i++) {\n            orig[i].next = i + 1 < n ? orig[i + 1] : null;\n            orig[i].random = rand[i] >= 0 ? orig[rand[i]] : null;\n        }\n        var copies = new List<Node>();\n        for (Node c = new Solution().CopyRandomList(n > 0 ? orig[0] : null); c != null && copies.Count <= n; c = c.next) copies.Add(c);\n        var result = new int[copies.Count + 1][];\n        bool shares = false, intact = true;\n        for (int i = 0; i < copies.Count; i++) {\n            Node c = copies[i];\n            if (Array.IndexOf(orig, c) >= 0) shares = true;\n            int r = copies.IndexOf(c.random);\n            result[i] = new int[] { c.val, c.random == null ? -1 : (r < 0 ? -2 : r) };\n        }\n        for (int i = 0; i < n; i++) {\n            if (orig[i].next != (i + 1 < n ? orig[i + 1] : null)) intact = false;\n            if (orig[i].random != (rand[i] >= 0 ? orig[rand[i]] : null)) intact = false;\n        }\n        result[copies.Count] = new int[] { intact ? 1 : 0, shares ? 1 : 0 };\n        return result;\n    }\n}"
       }, cases: [
       [[[7, 13, 11, 10, 1], [-1, 0, 4, 2, 0]], [[7, -1], [13, 0], [11, 4], [10, 2], [1, 0], [1, 0]]],
       [[[], []], [[1, 0]]],
@@ -6399,6 +7658,36 @@ Node* copyRandomList(Node* head) {
         copy->next = copy->next ? copy->next->next : nullptr;
     }
     return newHead;
+}` },
+        { lang: 'csharp', code: `public class Node { public int val; public Node next, random; public Node(int val) { this.val = val; } }
+
+public class Solution
+{
+    public Node CopyRandomList(Node head)
+    {
+        if (head == null) return null;
+        // 1) weave: A -> A' -> B -> B' -> ...
+        for (Node c = head; c != null; c = c.next.next)
+        {
+            var copy = new Node(c.val);
+            copy.next = c.next;
+            c.next = copy;
+        }
+        // 2) randoms: the copy of X.random is X.random.next
+        for (Node c = head; c != null; c = c.next.next)
+        {
+            if (c.random != null) c.next.random = c.random.next;
+        }
+        // 3) unweave: restore the original list and chain the copies
+        Node newHead = head.next;
+        for (Node c = head; c != null; c = c.next)
+        {
+            Node copy = c.next;
+            c.next = copy.next;                                      // original skips its copy
+            copy.next = (copy.next != null) ? copy.next.next : null; // copy skips the next original
+        }
+        return newHead;
+    }
 }` }
       ],
       complexity: `<p><b>Time O(N)</b> (three linear passes). <b>Space O(1)</b> extra besides the N new nodes (HashMap version: O(N)).</p>`,
@@ -6443,6 +7732,12 @@ int findDuplicate(int[] nums) {
             { lang: 'cpp', code: `int findDuplicate(vector<int>& nums) {
     unordered_set<int> seen;
     for (int x : nums) if (!seen.insert(x).second) return x;
+    return -1;
+}` },
+            { lang: 'csharp', code: `int FindDuplicate(int[] nums)
+{
+    var seen = new HashSet<int>();
+    foreach (int x in nums) if (!seen.Add(x)) return x;
     return -1;
 }` }
           ]
@@ -6526,7 +7821,26 @@ public:
         }
         return p;                              // cycle entrance = duplicate value
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public int FindDuplicate(int[] nums)
+    {
+        int slow = 0, fast = 0;
+        do                                     // phase 1: meet inside the cycle
+        {
+            slow = nums[slow];
+            fast = nums[nums[fast]];
+        } while (slow != fast);
+        int p = 0;                             // phase 2: from the head (index 0)
+        while (p != slow)
+        {
+            p = nums[p];
+            slow = nums[slow];
+        }
+        return p;                              // cycle entrance = duplicate value
+    }
+}` }
       ],
       dry: { head: ['phase', 'slow', 'fast / p', 'note (nums = 1 3 4 2 2)'], rows: [['1', '1', '3', ''], ['1', '3', '4', 'fast: 3 → 2 → 4'], ['1', '2', '4', 'fast: 4 → 2 → 4'], ['1', '4', '4', '<span class="c-r">meet</span>'], ['2', '2', 'p = 1', 'p from 0'], ['2', '4', 'p = 3', ''], ['2', '2', 'p = 2', '<span class="c-g">equal → 2</span>']] },
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>, array untouched.</p>`,
@@ -6617,6 +7931,24 @@ ListNode* mergeKLists(vector<ListNode*>& lists) {
     ListNode* acc = nullptr;
     for (ListNode* l : lists) acc = mergeTwo(acc, l);   // acc keeps growing: O(N*k) total
     return acc;
+}` },
+            { lang: 'csharp', code: `ListNode MergeKLists(ListNode[] lists)
+{
+    ListNode acc = null;
+    foreach (ListNode l in lists) acc = MergeTwo(acc, l);   // acc keeps growing: O(N*k) total
+    return acc;
+}
+
+ListNode MergeTwo(ListNode a, ListNode b)
+{
+    var dummy = new ListNode(0); ListNode t = dummy;
+    while (a != null && b != null)
+    {
+        if (a.val <= b.val) { t.next = a; a = a.next; } else { t.next = b; b = b.next; }
+        t = t.next;
+    }
+    t.next = a ?? b;
+    return dummy.next;
 }` }
           ]
         }
@@ -6739,7 +8071,68 @@ public:
         }
         return dummy.next;
     }
-};` }],
+};` },
+      { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public ListNode MergeKLists(ListNode[] lists)
+    {
+        var pq = new MinHeap<ListNode>((a, b) => a.val.CompareTo(b.val));
+        foreach (ListNode head in lists) if (head != null) pq.Push(head);   // k fronts
+        var dummy = new ListNode(0); ListNode tail = dummy;
+        while (pq.Count > 0)
+        {
+            ListNode smallest = pq.Pop();              // O(log k)
+            tail.next = smallest;
+            tail = smallest;
+            if (smallest.next != null) pq.Push(smallest.next);   // its list's new front
+        }
+        return dummy.next;
+    }
+}
+
+// .NET Framework has no priority queue, so this small binary min-heap stands in for it.
+public class MinHeap<T>
+{
+    private readonly List<T> a = new List<T>();
+    private readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x)
+    {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0)
+        {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop()
+    {
+        T top = a[0];
+        T last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0)
+        {
+            a[0] = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p><b>Time O(N log k)</b>: N pushes and pops on a heap of size ≤ k. <b>Space O(k)</b> for the heap (the output reuses the input nodes).</p>`,
       followUps: ['Divide &amp; conquer: merge lists[i] with lists[i + step] for step = 1, 2, 4, … — O(N log k) time, O(1) extra space.', 'The lists are huge files on disk (external merge sort): what changes?']
     }
@@ -6875,7 +8268,40 @@ public:
         }
         data[key] = {value, 1, tick++};
     }
-};` }
+};` },
+            { lang: 'csharp', code: `class LFUCache
+{
+    private readonly int capacity;
+    private long clock = 0;
+    private readonly Dictionary<int, long[]> data = new Dictionary<int, long[]>();   // key -> {value, count, lastUsed}
+
+    public LFUCache(int capacity) { this.capacity = capacity; }
+
+    public int Get(int key)
+    {
+        long[] d;
+        if (!data.TryGetValue(key, out d)) return -1;
+        d[1]++; d[2] = clock++;
+        return (int)d[0];
+    }
+
+    public void Put(int key, int value)
+    {
+        long[] d;
+        if (data.TryGetValue(key, out d)) { d[0] = value; d[1]++; d[2] = clock++; return; }
+        if (data.Count == capacity)
+        {
+            int victim = -1; long[] best = null;
+            foreach (var e in data)                                       // O(N) scan
+            {
+                long[] v = e.Value;
+                if (best == null || v[1] < best[1] || (v[1] == best[1] && v[2] < best[2])) { best = v; victim = e.Key; }
+            }
+            data.Remove(victim);
+        }
+        data[key] = new long[] { value, 1, clock++ };
+    }
+}` }
           ]
         }
     },
@@ -7088,7 +8514,75 @@ public:
         data[key] = {value, 1, prev(ones.end())};
         minFreq = 1;                                  // a brand-new key has the lowest count
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class LFUCache
+{
+    private readonly int capacity;
+    private int minFreq = 0;
+    private readonly Dictionary<int, int> vals = new Dictionary<int, int>();
+    private readonly Dictionary<int, int> freq = new Dictionary<int, int>();
+    // count -> keys, oldest first; pos lets us unlink a key from its bucket in O(1)
+    private readonly Dictionary<int, LinkedList<int>> buckets = new Dictionary<int, LinkedList<int>>();
+    private readonly Dictionary<int, LinkedListNode<int>> pos = new Dictionary<int, LinkedListNode<int>>();
+
+    public LFUCache(int capacity) { this.capacity = capacity; }
+
+    public int Get(int key)
+    {
+        if (!vals.ContainsKey(key)) return -1;
+        Touch(key);
+        return vals[key];
+    }
+
+    public void Put(int key, int value)
+    {
+        if (capacity <= 0) return;
+        if (vals.ContainsKey(key))              // existing: update + count a use (never evicts)
+        {
+            vals[key] = value;
+            Touch(key);
+            return;
+        }
+        if (vals.Count == capacity)             // evict: least frequent, then least recent
+        {
+            LinkedList<int> set = buckets[minFreq];
+            int victim = set.First.Value;       // oldest key in the lowest bucket
+            set.RemoveFirst();
+            if (set.Count == 0) buckets.Remove(minFreq);
+            vals.Remove(victim);
+            freq.Remove(victim);
+            pos.Remove(victim);
+        }
+        vals[key] = value;
+        freq[key] = 1;
+        pos[key] = Bucket(1).AddLast(key);
+        minFreq = 1;                            // a brand-new key always has the lowest count
+    }
+
+    private LinkedList<int> Bucket(int c)
+    {
+        LinkedList<int> set;
+        if (!buckets.TryGetValue(c, out set)) buckets[c] = set = new LinkedList<int>();
+        return set;
+    }
+
+    // Move key from bucket[c] to bucket[c + 1]
+    private void Touch(int key)
+    {
+        int c = freq[key];
+        LinkedList<int> set = buckets[c];
+        set.Remove(pos[key]);
+        if (set.Count == 0)
+        {
+            buckets.Remove(c);
+            if (minFreq == c) minFreq = c + 1;  // the key itself now lives in c + 1
+        }
+        freq[key] = c + 1;
+        pos[key] = Bucket(c + 1).AddLast(key);  // newest in its bucket
+    }
+}` }
       ],
       complexity: `<p><b>Time O(1)</b> average per call (hash map/set operations; LinkedHashSet removal is O(1) via its internal doubly linked list). <b>Space O(capacity)</b>.</p>`,
       followUps: ['Implement the buckets as your own doubly linked lists instead of LinkedHashSet.', 'LFU never forgets old popularity — how do real caches (TinyLFU) age the counts?']
@@ -7199,7 +8693,28 @@ public:
         cursor = min((int)sb.size(), cursor + k);
         return sb.substr(max(0, cursor - 10), cursor - max(0, cursor - 10));
     }
-};` }
+};` },
+            { lang: 'csharp', code: `class TextEditor
+{
+    private readonly StringBuilder sb = new StringBuilder();
+    private int cursor = 0;
+
+    public void AddText(string text) { sb.Insert(cursor, text); cursor += text.Length; }   // shifts the right part
+
+    public int DeleteText(int k)
+    {
+        int d = Math.Min(k, cursor);
+        sb.Remove(cursor - d, d);                                                           // shifts again
+        cursor -= d;
+        return d;
+    }
+
+    public string CursorLeft(int k) { cursor = Math.Max(0, cursor - k); return LeftText(); }
+
+    public string CursorRight(int k) { cursor = Math.Min(sb.Length, cursor + k); return LeftText(); }
+
+    private string LeftText() { int from = Math.Max(0, cursor - 10); return sb.ToString(from, cursor - from); }
+}` }
           ]
         }
     },
@@ -7397,7 +8912,69 @@ public:
         while (k-- > 0 && cur != text.end()) ++cur;
         return leftText();
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Text;
+
+public class TextEditor
+{
+    private class Node
+    {
+        public char ch;
+        public Node prev, next;
+        public Node(char ch) { this.ch = ch; }
+    }
+
+    private readonly Node head = new Node('#');   // sentinel: "start of text"
+    private Node cur;                             // the cursor sits right AFTER this node
+
+    public TextEditor() { cur = head; }
+
+    public void AddText(string text)
+    {
+        foreach (char c in text)
+        {
+            var n = new Node(c);
+            n.prev = cur;
+            n.next = cur.next;
+            if (cur.next != null) cur.next.prev = n;
+            cur.next = n;
+            cur = n;                            // typing moves the cursor forward
+        }
+    }
+
+    public int DeleteText(int k)
+    {
+        int deleted = 0;
+        while (k-- > 0 && cur != head)         // remove the char just left of the cursor
+        {
+            Node left = cur.prev;
+            left.next = cur.next;
+            if (cur.next != null) cur.next.prev = left;
+            cur = left;
+            deleted++;
+        }
+        return deleted;
+    }
+
+    public string CursorLeft(int k)
+    {
+        while (k-- > 0 && cur != head) cur = cur.prev;
+        return LeftText();
+    }
+
+    public string CursorRight(int k)
+    {
+        while (k-- > 0 && cur.next != null) cur = cur.next;
+        return LeftText();
+    }
+
+    private string LeftText()                  // last min(10, len) chars left of the cursor
+    {
+        var sb = new StringBuilder();
+        for (Node n = cur; n != head && sb.Length < 10; n = n.prev) sb.Insert(0, n.ch);
+        return sb.ToString();
+    }
+}` }
       ],
       complexity: `<p><b>Time O(k)</b> per call (plus ≤ 10 steps for the report), independent of text length. <b>Space O(total characters)</b> — one node per character, which is heavy; the alternative "two stacks" design (left of cursor, right of cursor) has the same complexity with less memory.</p>`,
       followUps: ['Implement it with two ArrayDeques (left stack, right stack) and compare memory.', 'Real editors use gap buffers, piece tables or ropes — what does each optimise?']

@@ -166,7 +166,39 @@ console.log(JSON.stringify(b), JSON.stringify(g), tri[2].length);` },
     for (int i = 0; i < 3; i++) tri[i].assign(i + 1, 0);   // lengths 1, 2, 3
     cout << tri[2].size() << "\\n";
     return 0;
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class ArrayBasics {
+    static void Main() {
+        // ---- 1D array: 5 boxes side by side, all start at 0 ----
+        int[] a = new int[5];
+        a[0] = 7;                          // O(1): jump straight to box 0 (bounds-checked: a[5] throws)
+        int[] b = { 3, 1, 4, 1, 5 };       // declare and fill in one go
+        Console.WriteLine(b.Length);       // 5  (Length is a property, not a method)
+
+        // ---- 2D jagged array: 3 rows, 4 columns (int[,] would be one rectangular block) ----
+        int[][] g = new int[3][];
+        for (int i = 0; i < 3; i++) g[i] = new int[4];
+        int rows = g.Length;               // 3
+        int cols = g[0].Length;            // 4
+        for (int r = 0; r < rows; r++) {   // row by row = cache friendly
+            for (int c = 0; c < cols; c++) {
+                g[r][c] = r * cols + c;    // the row-major "flat index" of (r, c)
+            }
+        }
+
+        // ---- Going back from a flat index to (row, col) ----
+        int flat = 9;
+        int fr = flat / cols, fc = flat % cols;   // 9 / 4 = 2, 9 % 4 = 1  -> (2, 1)
+        Console.WriteLine(fr + "," + fc + " holds " + g[fr][fc]);
+
+        // ---- Jagged array: each row can have a different length ----
+        int[][] tri = new int[3][];
+        for (int i = 0; i < 3; i++) tri[i] = new int[i + 1];  // lengths 1, 2, 3
+        Console.WriteLine("[" + string.Join(", ", b) + "] " + tri[2].Length);
+    }
+}`, run: true }
       ] },
     codeTitle: 'Declaring, filling and walking 1D / 2D arrays',
     viz: {
@@ -241,7 +273,18 @@ for (size_t i = 0; i < a.size(); i++) a[i] = i * i;   // 0 1 4 9, never i <= a.s
 vector<string> names(3);                  // three empty strings
 int raw[4];                               // a plain local array is NOT zeroed: garbage values
 cout << a[3] << " " << names[0].size() << "\\n";
-// a[4] is undefined behaviour (no exception); a.at(4) throws std::out_of_range` }
+// a[4] is undefined behaviour (no exception); a.at(4) throws std::out_of_range` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = new int[4];
+        for (int i = 0; i < a.Length; i++) a[i] = i * i;   // 0 1 4 9 - never i <= a.Length
+        string[] names = new string[3];                      // [null, null, null]
+        Console.WriteLine("[" + string.Join(", ", a) + "] " + (names[0] == null));
+        try { a[4] = 1; } catch (IndexOutOfRangeException e) { Console.WriteLine(e.Message); }   // one past the end
+    }
+}`, run: true }
       ] } },
       { title: 'Arrays are references: copying is not cloning', html: `<p><code>int[] b = a;</code> does <b>not</b> copy the boxes — both names now point to the <b>same</b> array, like two people holding keys to one locker row. Change <code>b[0]</code> and <code>a[0]</code> changes too. To get a real copy use <code>a.clone()</code> or <code>Arrays.copyOf(a, a.length)</code> in Java, <code>a.copy()</code> or <code>a[:]</code> in Python, <code>[...a]</code> in JS. (C++ is the opposite: <code>vector&lt;int&gt; b = a;</code> <b>does</b> copy, and you write <code>auto&amp; b = a;</code> to share.)</p>
         ${H.table(['code', 'a after', 'b after', 'why'], [['int[] b = a; b[0] = 99;', H.c('r', '[99, 2, 3]'), '[99, 2, 3]', 'same object'], ['int[] b = a.clone(); b[0] = 99;', H.c('g', '[1, 2, 3]'), '[99, 2, 3]', 'separate object']])}
@@ -269,7 +312,19 @@ vector<int>& alias = a;     // a reference: same vector, two names
 vector<int> copy = a;       // plain assignment COPIES a vector in C++
 alias[0] = 99;
 cout << a[0] << " " << copy[0] << "\\n";   // 99 1
-// passing vector<int> by value copies it too; pass const vector<int>& to avoid that` }
+// passing vector<int> by value copies it too; pass const vector<int>& to avoid that` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 1, 2, 3 };
+        int[] alias = a;                // same array, two names
+        int[] copy = (int[])a.Clone();  // brand-new array with the same values
+        alias[0] = 99;
+        Console.WriteLine(a[0] + " " + copy[0]);   // 99 1
+        // Clone on int[][] copies only the outer array: the rows stay shared
+    }
+}`, run: true }
       ] } },
       { title: 'Flat index ↔ (row, col) in a 3 × 4 grid', html: `<p>Flat index 7 in a grid with 4 columns: row = 7 / 4 = <b>1</b>, col = 7 % 4 = <b>3</b>. Back again: 1 × 4 + 3 = 7 ✔. This is how "Search a 2D Matrix" binary-searches a whole matrix as if it were one sorted list of 12 numbers, and how BFS on a grid can store a cell as one <code>int</code> instead of a pair.</p>
         ${H.table(['flat', 'row = flat / 4', 'col = flat % 4'], [['0', '0', '0'], ['5', '1', '1'], ['7', '1', H.c('y', '3')], ['11', '2', '3']])}` },
@@ -329,6 +384,17 @@ void rotate(vector<int>& A, int k) {
         int last = A[n - 1];                     // remember the last element
         for (int i = n - 1; i > 0; i--) A[i] = A[i - 1];   // shift everyone right by one
         A[0] = last;                             // last goes to the front
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Rotate(int[] A, int k) {
+        int n = A.Length;
+        k %= n;
+        for (int step = 0; step < k; step++) {
+            int last = A[n - 1];                       // remember the last element
+            for (int i = n - 1; i > 0; i--) A[i] = A[i - 1];  // shift everyone right by one
+            A[0] = last;                               // last goes to the front
+        }
     }
 }` }] }
       },
@@ -417,7 +483,27 @@ public:
         reverse(A.begin(), A.begin() + k);       // first k back in order
         reverse(A.begin() + k, A.end());         // the rest back in order
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Rotate(int[] A, int k) {
+        int n = A.Length;
+        k %= n;                       // rotating by n is a full circle: no change
+        Reverse(A, 0, n - 1);         // 1 2 3 4 5 6 7 -> 7 6 5 4 3 2 1
+        Reverse(A, 0, k - 1);         // first k back in order: 5 6 7 | 4 3 2 1
+        Reverse(A, k, n - 1);         // rest back in order:    5 6 7 | 1 2 3 4
+    }
+
+    private void Reverse(int[] A, int lo, int hi) {
+        while (lo < hi) {             // two pointers walk toward each other
+            int t = A[lo];
+            A[lo] = A[hi];
+            A[hi] = t;
+            lo++;
+            hi--;
+        }
+        // built-in: Array.Reverse(A, index, LENGTH) takes a start and a count
+    }
+}` }
         ],
         dry: {
           head: ['step', 'operation', 'array after'],
@@ -502,6 +588,17 @@ function rangeSum(pf, L, R) {   // inclusive L..R, 0-indexed
 
 long long rangeSum(const vector<long long>& pf, int L, int R) {   // inclusive L..R
     return pf[R + 1] - pf[L];                // "up to R" minus "before L"
+}` }, { lang: 'csharp', code: String.raw`
+long[] BuildPrefix(int[] A) {
+    long[] pf = new long[A.Length + 1];   // pf[0] = 0 means "sum of nothing"
+    for (int i = 0; i < A.Length; i++) {
+        pf[i + 1] = pf[i] + A[i];         // new total = old total + one new number (long: totals can pass 2^31)
+    }
+    return pf;
+}
+
+long RangeSum(long[] pf, int L, int R) { // inclusive L..R, 0-indexed
+    return pf[R + 1] - pf[L];             // "up to R" minus "before L"
 }` }
       ] },
     codeTitle: 'Padded prefix sum (no special case for L = 0)',
@@ -581,7 +678,19 @@ vector<long long> P(rain.size() + 1, 0);
 for (size_t i = 0; i < rain.size(); i++) P[i + 1] = P[i] + rain[i];
 int L = 2, R = 5;
 double avg = (double)(P[R + 1] - P[L]) / (R - L + 1);   // cast first, or integer division truncates
-cout << avg << "\\n";   // 4` }
+cout << avg << "\\n";   // 4` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] rain = { 4, 0, 7, 3, 1, 5 };
+        long[] P = new long[rain.Length + 1];
+        for (int i = 0; i < rain.Length; i++) P[i + 1] = P[i] + rain[i];
+        int L = 2, R = 5;
+        double avg = (double)(P[R + 1] - P[L]) / (R - L + 1);   // cast first, or integer division truncates
+        Console.WriteLine(avg);   // 4
+    }
+}`, run: true }
       ] } },
       { title: 'Range update in O(1) with a difference array (the reverse trick)', html: `<p>Prefix sums turn "many range <b>queries</b>" into O(1). The mirror trick, a <b>difference array</b>, turns "many range <b>updates</b>" into O(1): to add v to every cell in L..R, do <code>D[L] += v; D[R+1] −= v;</code>. After all updates, one prefix-sum pass over D rebuilds the final array.</p>
         ${H.table(['update', 'D after'], [['start', '[0, 0, 0, 0, 0, 0]'], ['+3 on 1..3', '[0, <span class="c-g">3</span>, 0, 0, <span class="c-r">−3</span>, 0]'], ['+2 on 2..4', '[0, 3, <span class="c-g">2</span>, 0, −3, <span class="c-r">−2</span>]'], ['prefix sum of D', '<b>[0, 3, 5, 5, 2, 0]</b>']])}
@@ -614,7 +723,21 @@ for (auto& [L, R, v] : updates) { D[L] += v; D[R + 1] -= v; }
 vector<long long> result(n);
 partial_sum(D.begin(), D.begin() + n, result.begin());   // [0, 3, 5, 5, 2]
 for (long long x : result) cout << x << " ";
-cout << "\\n";` }
+cout << "\\n";` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int n = 5;
+        long[] D = new long[n + 1];                  // one extra slot so R + 1 never overflows
+        int[][] updates = { new[] { 1, 3, 3 }, new[] { 2, 4, 2 } };    // {L, R, value}
+        foreach (int[] u in updates) { D[u[0]] += u[2]; D[u[1] + 1] -= u[2]; }
+        long run = 0;
+        long[] result = new long[n];
+        for (int i = 0; i < n; i++) { run += D[i]; result[i] = run; }
+        Console.WriteLine("[" + string.Join(", ", result) + "]");  // [0, 3, 5, 5, 2]
+    }
+}`, run: true }
       ] } },
       { title: 'Counting with prefix sums (not just adding)', html: `<p>"How many vowels are in s[L..R]?" Build <code>cnt[i+1] = cnt[i] + (s[i] is a vowel ? 1 : 0)</code>. For s = "interview" (i n t e r v i e w): cnt = [0, 1, 1, 1, 2, 2, 2, 3, 4, 4]. Vowels in 2..6 ("tervi") = cnt[7] − cnt[2] = 3 − 1 = <b>2</b> (e and i) ✔. A prefix <b>count</b> is just a prefix sum over a 0/1 array — the same trick answers "how many even numbers / how many 'X' cells / how many days above 30°C in a range". Always verify the table on a tiny case by hand; off-by-one errors hide here.</p>` }
     ],
@@ -673,6 +796,17 @@ vector<long long> rangeSum(vector<int>& A, vector<vector<int>>& queries) {
         ans.push_back(s);
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long[] RangeSum(int[] A, int[][] queries) {
+        long[] ans = new long[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            long s = 0;
+            for (int i = queries[q][0]; i <= queries[q][1]; i++) s += A[i];  // re-adding every time
+            ans[q] = s;
+        }
+        return ans;
+    }
 }` }] }
       },
       mcq: {
@@ -742,7 +876,24 @@ public:
         for (auto& q : queries) ans.push_back(pf[q[1] + 1] - pf[q[0]]);
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long[] RangeSum(int[] A, int[][] queries) {
+        int n = A.Length;
+        long[] pf = new long[n];              // long: the totals can exceed int range
+        pf[0] = A[0];                         // first total is just the first number
+        for (int i = 1; i < n; i++) {
+            pf[i] = pf[i - 1] + A[i];         // reuse the previous total
+        }
+        long[] ans = new long[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            int L = queries[q][0], R = queries[q][1];
+            // everything up to R, minus everything before L
+            ans[q] = (L == 0) ? pf[R] : pf[R] - pf[L - 1];
+        }
+        return ans;
+    }
+}` }
         ],
         dry: {
           head: ['step', 'what', 'computation', 'result'],
@@ -838,6 +989,17 @@ public:
         pfO[i] = prevO + (i % 2 == 1 ? A[i] : 0);   // add only if i is odd
     }
     return {pfE, pfO};
+}` }, { lang: 'csharp', code: String.raw`
+long[][] EvenOddPrefix(int[] A) {
+    int n = A.Length;
+    long[] pfE = new long[n], pfO = new long[n];
+    for (int i = 0; i < n; i++) {
+        long prevE = (i == 0) ? 0 : pfE[i - 1];
+        long prevO = (i == 0) ? 0 : pfO[i - 1];
+        pfE[i] = prevE + (i % 2 == 0 ? A[i] : 0);   // add only if i is even
+        pfO[i] = prevO + (i % 2 == 1 ? A[i] : 0);   // add only if i is odd
+    }
+    return new[] { pfE, pfO };
 }` }
       ] }, { lang: 'java', code: `
       int equilibriumIndex(int[] A) {
@@ -877,6 +1039,17 @@ public:
         left += A[i];                         // carry the left sum forward
     }
     return -1;                                // no such index
+}` }, { lang: 'csharp', code: String.raw`
+int EquilibriumIndex(int[] A) {
+    long total = 0;
+    foreach (int x in A) total += x;
+    long left = 0;                        // sum of A[0..i-1]
+    for (int i = 0; i < A.Length; i++) {
+        long right = total - left - A[i]; // sum of A[i+1..n-1]
+        if (left == right) return i;      // first balancing index
+        left += A[i];                     // carry the left sum forward
+    }
+    return -1;                            // no such index
 }` }
       ] }],
     codeTitle: ['Building even and odd prefix sums', 'Equilibrium (pivot) index with one running sum'],
@@ -958,7 +1131,20 @@ vector<long long> S(A.size() + 1, 0);
 for (size_t i = 0; i < A.size(); i++) S[i + 1] = S[i] + (i % 2 == 0 ? A[i] : -A[i]);
 int L = 1, R = 3;
 long long raw = S[R + 1] - S[L];
-cout << (L % 2 == 0 ? raw : -raw) << "\\n";   // -1` }
+cout << (L % 2 == 0 ? raw : -raw) << "\\n";   // -1` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] A = { 5, 1, 4, 2 };
+        long[] S = new long[A.Length + 1];
+        for (int i = 0; i < A.Length; i++) S[i + 1] = S[i] + (i % 2 == 0 ? A[i] : -A[i]);
+        int L = 1, R = 3;
+        long raw = S[R + 1] - S[L];
+        long alt = (L % 2 == 0) ? raw : -raw;   // flip sign if the range starts on an odd index
+        Console.WriteLine(alt);                 // -1
+    }
+}`, run: true }
       ] } }
     ],
     deepDive: `<h4>Why the parity flip is correct</h4><p>After deleting index i, every j &gt; i moves to j − 1. Since j and j − 1 always have different parity, the whole right block swaps teams together, and the left block (j &lt; i) is untouched. That gives exactly four independent quantities — leftE, leftO, rightE, rightO — each readable in O(1) from two prefix arrays.</p>
@@ -1045,6 +1231,22 @@ int countSpecial(vector<int>& A) {
         if (even == odd) count++;
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int CountSpecial(int[] A) {
+        int n = A.Length, count = 0;
+        for (int i = 0; i < n; i++) {
+            long even = 0, odd = 0;
+            int pos = 0;                          // index in the NEW array
+            for (int j = 0; j < n; j++) {
+                if (j == i) continue;             // skip the removed element
+                if (pos % 2 == 0) even += A[j]; else odd += A[j];
+                pos++;
+            }
+            if (even == odd) count++;
+        }
+        return count;
+    }
 }` }] }
       },
       mcq: {
@@ -1143,7 +1345,30 @@ public:
         }
         return count;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int CountSpecial(int[] A) {
+        int n = A.Length;
+        long[] pe = new long[n], po = new long[n];   // even / odd prefix sums
+        for (int i = 0; i < n; i++) {
+            long prevE = (i == 0) ? 0 : pe[i - 1];
+            long prevO = (i == 0) ? 0 : po[i - 1];
+            pe[i] = prevE + (i % 2 == 0 ? A[i] : 0);
+            po[i] = prevO + (i % 2 == 1 ? A[i] : 0);
+        }
+        int count = 0;
+        for (int i = 0; i < n; i++) {
+            long leftE = (i == 0) ? 0 : pe[i - 1];   // left part keeps its parity
+            long leftO = (i == 0) ? 0 : po[i - 1];
+            long rightE = pe[n - 1] - pe[i];          // strictly right of i
+            long rightO = po[n - 1] - po[i];
+            long newEven = leftE + rightO;            // right odds become even
+            long newOdd = leftO + rightE;             // right evens become odd
+            if (newEven == newOdd) count++;
+        }
+        return count;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'leftE', 'leftO', 'rightE', 'rightO', 'newEven', 'newOdd', 'special?'],
@@ -1203,6 +1428,17 @@ int pivotIndex(vector<int>& A) {
         if (left == right) return i;
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int PivotIndex(int[] A) {
+        for (int i = 0; i < A.Length; i++) {
+            long left = 0, right = 0;
+            for (int j = 0; j < i; j++) left += A[j];
+            for (int j = i + 1; j < A.Length; j++) right += A[j];
+            if (left == right) return i;
+        }
+        return -1;
+    }
 }` }] }
       },
       mcq: {
@@ -1274,7 +1510,20 @@ public:
         }
         return -1;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int PivotIndex(int[] A) {
+        long total = 0;
+        foreach (int x in A) total += x;            // sum of the whole array
+        long left = 0;                              // sum of A[0..i-1]
+        for (int i = 0; i < A.Length; i++) {
+            long right = total - left - A[i];       // sum of A[i+1..n-1]
+            if (left == right) return i;            // balanced!
+            left += A[i];                           // A[i] moves to the left side
+        }
+        return -1;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'A[i]', 'left', 'right = 28 − left − A[i]', 'equal?'],
@@ -1350,6 +1599,15 @@ long long countAGLeftToRight(const string& s) {
     for (char ch : s) {
         if (ch == 'a') aCount++;               // remember this 'a' for future g's
         else if (ch == 'g') pairs += aCount;   // every earlier 'a' pairs with this 'g'
+    }
+    return pairs;
+}` }, { lang: 'csharp', code: String.raw`
+// Left-to-right flavour: carry how many 'a' we have passed
+long CountAGLeftToRight(string s) {
+    long aCount = 0, pairs = 0;
+    foreach (char ch in s) {
+        if (ch == 'a') aCount++;              // remember this 'a' for future g's
+        else if (ch == 'g') pairs += aCount;  // every earlier 'a' pairs with this 'g'
     }
     return pairs;
 }` }
@@ -1449,7 +1707,20 @@ for (int x : p) {
     if (minSoFar != INT_MAX) best = max(best, x - minSoFar);   // sell today? (skip day 0: nothing bought yet)
     minSoFar = min(minSoFar, x);                             // then remember today as a buy option
 }
-cout << best << "\\n";   // 5` }
+cout << best << "\\n";   // 5` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] p = { 7, 1, 5, 3, 6, 4 };
+        int minSoFar = int.MaxValue, best = 0;
+        foreach (int x in p) {
+            if (minSoFar != int.MaxValue) best = Math.Max(best, x - minSoFar);  // sell today?
+            minSoFar = Math.Min(minSoFar, x);                             // then remember today as a buy option
+        }
+        Console.WriteLine(best);   // 5
+    }
+}`, run: true }
       ] } },
       { title: 'Count pairs i &lt; j with A[i] &gt; A[j] where values are only 0 or 1', html: `<p>A = [1, 0, 1, 1, 0, 0]. A "bad pair" is a 1 before a 0. Walk left to right carrying <code>ones</code>; at every 0 add <code>ones</code>. Ones before index 1 → 1; before index 4 → 3; before index 5 → 3. Total <b>7</b>. That is also the number of adjacent swaps needed to sort a 0/1 array (a sneak peek of inversion counting, done for general values in the Sorting module).</p>` },
       { title: 'Closest "a" to every position (carry the last seen index)', html: `<p>For each index of s = "baxab", how far is the nearest earlier 'a'? Carry <code>lastA</code> (−1 means none yet): b → none, a → 0, x → 1, a → 0, b → 1. Carrying an <b>index</b> instead of a count is the same idea; doing a second pass from the right and taking the min gives "nearest 'a' on either side" (LeetCode 821, Shortest Distance to a Character).</p>` },
@@ -1486,7 +1757,20 @@ for (int i = 0; i < (int)s.size(); i++) {
     if (s[i] == 'a') { lastA = i; if (lastB != -1) ans = min(ans, i - lastB); }
     else if (s[i] == 'b') { lastB = i; if (lastA != -1) ans = min(ans, i - lastA); }
 }
-cout << ans << "\\n";   // 1` }
+cout << ans << "\\n";   // 1` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        char[] s = { 'a', 'x', 'x', 'b', 'x', 'a', 'b' };
+        int lastA = -1, lastB = -1, ans = int.MaxValue;
+        for (int i = 0; i < s.Length; i++) {
+            if (s[i] == 'a') { lastA = i; if (lastB != -1) ans = Math.Min(ans, i - lastB); }
+            else if (s[i] == 'b') { lastB = i; if (lastA != -1) ans = Math.Min(ans, i - lastA); }
+        }
+        Console.WriteLine(ans);   // 1
+    }
+}`, run: true }
       ] } }
     ],
     deepDive: `<h4>The general shape</h4><p>Carry forward is a tiny state machine: <code>state = f(state, A[i])</code>, and the answer is read from the state (or accumulated) at every step. Kadane, prefix sums, running max/min, "last seen index", and even many DP problems are this exact shape. If you can name the state in one sentence ("the cheapest price so far", "number of g's to my right"), you have an O(N) one-pass algorithm with O(1) memory.</p>
@@ -1547,6 +1831,18 @@ long long countAG(const string& s) {
         }
     }
     return pairs;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountAG(string s) {
+        long pairs = 0;
+        for (int i = 0; i < s.Length; i++) {
+            if (s[i] != 'a') continue;
+            for (int j = i + 1; j < s.Length; j++) {
+                if (s[j] == 'g') pairs++;
+            }
+        }
+        return pairs;
+    }
 }` }] }
       },
       mcq: {
@@ -1619,7 +1915,22 @@ public:
         }
         return pairs;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountAG(string s) {
+        long gCount = 0;   // how many 'g' are to the RIGHT of the current index
+        long pairs = 0;
+        for (int i = s.Length - 1; i >= 0; i--) {
+            char ch = s[i];
+            if (ch == 'g') {
+                gCount++;                // one more 'g' available for a's on the left
+            } else if (ch == 'a') {
+                pairs += gCount;         // this 'a' pairs with every 'g' on its right
+            }
+        }
+        return pairs;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'S[i]', 'action', 'gCount', 'pairs'],
@@ -1688,6 +1999,21 @@ vector<int> leaders(vector<int>& A) {
         if (leader) res.push_back(A[i]);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> Leaders(int[] A) {
+        var res = new List<int>();
+        for (int i = 0; i < A.Length; i++) {
+            bool leader = true;
+            for (int j = i + 1; j < A.Length; j++) {
+                if (A[j] >= A[i]) { leader = false; break; }
+            }
+            if (leader) res.Add(A[i]);
+        }
+        return res;
+    }
 }` }] }
       },
       mcq: {
@@ -1766,7 +2092,23 @@ public:
         reverse(res.begin(), res.end());
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> Leaders(int[] A) {
+        var res = new List<int>();
+        long maxRight = long.MinValue;     // biggest value seen to the right (long: safe even for int.MinValue)
+        for (int i = A.Length - 1; i >= 0; i--) {
+            if (A[i] > maxRight) {         // beats everyone on its right
+                res.Add(A[i]);
+                maxRight = A[i];           // carry the new max leftwards
+            }
+        }
+        res.Reverse();                     // we collected them right-to-left
+        return res;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'A[i]', 'maxRight before', 'A[i] &gt; maxRight?', 'res (right→left)'],
@@ -1867,6 +2209,24 @@ public:
         if (cur > best) { best = cur; bestL = start; bestR = i; }   // new record
     }
     return {bestL, bestR};   // the best subarray is A[bestL..bestR]
+}` }, { lang: 'csharp', code: String.raw`
+int[] KadaneWithIndices(int[] A) {
+    long cur = A[0], best = A[0];
+    int start = 0, bestL = 0, bestR = 0;
+    for (int i = 1; i < A.Length; i++) {
+        if (cur < 0) {           // old run is baggage: start fresh at i
+            cur = A[i];
+            start = i;
+        } else {
+            cur += A[i];         // extend the run
+        }
+        if (cur > best) {        // new record: remember where it is
+            best = cur;
+            bestL = start;
+            bestR = i;
+        }
+    }
+    return new[] { bestL, bestR };   // the best subarray is A[bestL..bestR]
 }` }
       ] },
     codeTitle: 'Kadane that also returns where the best subarray is',
@@ -1934,7 +2294,20 @@ for (size_t i = 1; i < A.size(); i++) {
     cur = min<long long>(A[i], cur + A[i]);   // same recurrence, min instead of max
     worst = min(worst, cur);
 }
-cout << worst << "\\n";   // -6` }
+cout << worst << "\\n";   // -6` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] A = { 3, -4, 2, -3, -1, 7 };
+        long cur = A[0], worst = A[0];
+        for (int i = 1; i < A.Length; i++) {
+            cur = Math.Min(A[i], cur + A[i]);   // same recurrence, min instead of max
+            worst = Math.Min(worst, cur);
+        }
+        Console.WriteLine(worst);   // -6
+    }
+}`, run: true }
       ] } }
     ],
     deepDive: `<h4>Kadane is the simplest dynamic programming</h4><p>Define <code>dp[i]</code> = best sum of a subarray <b>ending at i</b>. Then <code>dp[i] = A[i] + max(dp[i−1], 0)</code> and the answer is <code>max(dp)</code>. Because dp[i] only needs dp[i−1], the array collapses to one variable — the classic DP "space optimisation" you will see again in the DP modules.</p>
@@ -1997,6 +2370,21 @@ long long maxSubArray(vector<int>& A) {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSubArray(int[] A) {
+        long best = long.MinValue;
+        for (int i = 0; i < A.Length; i++) {
+            long s = 0;
+            for (int j = i; j < A.Length; j++) {
+                s += A[j];                    // sum of A[i..j]
+                best = Math.Max(best, s);
+            }
+        }
+        return best;
+    }
 }` }] }
       },
       mcq: {
@@ -2065,7 +2453,21 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSubArray(int[] A) {
+        long cur = A[0];    // best sum of a subarray that ENDS exactly at the current index
+        long best = A[0];   // best sum seen anywhere so far (A[0], not 0: handles all-negative input)
+        for (int i = 1; i < A.Length; i++) {
+            // extend the previous run, or start a new run at A[i] - whichever is bigger
+            cur = Math.Max(A[i], cur + A[i]);
+            best = Math.Max(best, cur);
+        }
+        return best;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'A[i]', 'cur = max(A[i], cur + A[i])', 'best'],
@@ -2177,7 +2579,22 @@ for (long long i = 0; i < n; i++) {
     long long odd = ((L + 1) / 2) * ((R + 1) / 2) + (L / 2) * (R / 2);
     total += A[i] * odd;
 }
-cout << total << "\\n";   // 58` }
+cout << total << "\\n";   // 58` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] A = { 1, 4, 2, 5, 3 };
+        int n = A.Length;
+        long total = 0;
+        for (int i = 0; i < n; i++) {
+            long L = i + 1, R = n - i;                       // choices of start / end
+            long odd = ((L + 1) / 2) * ((R + 1) / 2) + (L / 2) * (R / 2);
+            total += A[i] * odd;
+        }
+        Console.WriteLine(total);   // 58
+    }
+}`, run: true }
       ] } },
       { title: 'Sum of all submatrix sums (2D contribution)', html: `<p>Matrix [[1, 2], [3, 4]] (N = M = 2). Cell (i, j) is inside (i+1)(j+1)(N−i)(M−j) submatrices — every corner cell of a 2 × 2 grid is inside 1·1·2·2 = 4 of the 9 submatrices. Total = 4 × (1 + 2 + 3 + 4) = <b>40</b>. Listing all 9 submatrices by hand confirms it.</p>` },
       { title: 'Number of subarrays where A[i] is the maximum (preview)', html: `<p>The contribution idea scales: "sum of max of every subarray" = ∑ A[i] × (number of subarrays where A[i] is the max). That count is (distance to previous greater) × (distance to next greater), found with a monotonic stack (Stacks module). A = [3, 1, 2]: 3 is max in 3 subarrays, 1 in 1, 2 in 2 → 3·3 + 1·1 + 2·2 = <b>14</b>. Check: [3]=3, [1]=1, [2]=2, [3,1]=3, [1,2]=2, [3,1,2]=3 → 14 ✔.</p>` }
@@ -2242,6 +2659,19 @@ long long subarraySumTotal(vector<int>& A) {
         }
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long SubarraySumTotal(int[] A) {
+        long total = 0;
+        for (int i = 0; i < A.Length; i++) {
+            long s = 0;
+            for (int j = i; j < A.Length; j++) {
+                s += A[j];       // sum of A[i..j]
+                total += s;      // add this subarray's sum
+            }
+        }
+        return total;
+    }
 }` }] }
       },
       mcq: {
@@ -2306,7 +2736,20 @@ public:
             total += A[i] * (i + 1) * (n - i);   // starts * ends subarrays hold A[i]
         return total;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long SubarraySumTotal(int[] A) {
+        int n = A.Length;
+        long total = 0;
+        for (int i = 0; i < n; i++) {
+            long starts = i + 1;   // a subarray containing i can start at 0..i
+            long ends = n - i;     // ...and end at i..n-1
+            // A[i] is added once inside each of those starts*ends subarrays
+            total += (long)A[i] * starts * ends;
+        }
+        return total;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'A[i]', 'starts = i+1', 'ends = N−i', 'count', 'A[i] × count', 'total'],
@@ -2401,6 +2844,23 @@ public:
         rightMax = max(rightMax, h[R]);
         if (leftMax <= rightMax) { water += leftMax - h[L]; L++; }   // left wall limits bar L
         else { water += rightMax - h[R]; R--; }                      // right wall limits bar R
+    }
+    return water;
+}` }, { lang: 'csharp', code: String.raw`
+long TrapTwoPointers(int[] h) {
+    int L = 0, R = h.Length - 1;
+    int leftMax = 0, rightMax = 0;
+    long water = 0;
+    while (L < R) {
+        leftMax = Math.Max(leftMax, h[L]);
+        rightMax = Math.Max(rightMax, h[R]);
+        if (leftMax <= rightMax) {        // left wall is the limiting one for bar L
+            water += leftMax - h[L];
+            L++;
+        } else {                          // right wall is the limiting one for bar R
+            water += rightMax - h[R];
+            R--;
+        }
     }
     return water;
 }` }
@@ -2499,7 +2959,24 @@ for (int i = 1; i < n; i++) out[i] = out[i - 1] * A[i - 1];   // product of ever
 int right = 1;
 for (int i = n - 1; i >= 0; i--) { out[i] *= right; right *= A[i]; }   // times everything after i
 for (int x : out) cout << x << " ";   // 24 12 8 6
-cout << "\\n";` }
+cout << "\\n";` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] A = { 1, 2, 3, 4 };
+        int n = A.Length;
+        int[] result = new int[n];
+        result[0] = 1;
+        for (int i = 1; i < n; i++) result[i] = result[i - 1] * A[i - 1];   // product of everything before i
+        int right = 1;
+        for (int i = n - 1; i >= 0; i--) {                                  // multiply by product of everything after i
+            result[i] *= right;
+            right *= A[i];
+        }
+        Console.WriteLine("[" + string.Join(", ", result) + "]");   // [24, 12, 8, 6]
+    }
+}`, run: true }
       ] } },
       { title: 'Two-pointer run on [4, 2, 0, 3, 2, 5]', html: `${H.table(['L', 'R', 'leftMax', 'rightMax', 'move', 'water added', 'total'], [['0', '5', '4', '5', 'L (4 ≤ 5)', '0', '0'], ['1', '5', '4', '5', 'L', '4 − 2 = 2', '2'], ['2', '5', '4', '5', 'L', '4 − 0 = 4', '6'], ['3', '5', '4', '5', 'L', '4 − 3 = 1', '7'], ['4', '5', '4', '5', 'L', '4 − 2 = 2', H.c('p', '9')]])}<p>Answer <b>9</b>. Every time, the left max (4) is the smaller wall, so bar L's water is decided by it — whatever lies between, the right side has at least a 5.</p>` }
     ],
@@ -2558,6 +3035,20 @@ long long trap(vector<int>& h) {
         water += min(lm, rm) - h[i];
     }
     return water;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long Trap(int[] h) {
+        long water = 0;
+        for (int i = 0; i < h.Length; i++) {
+            int lm = 0, rm = 0;
+            for (int j = 0; j <= i; j++) lm = Math.Max(lm, h[j]);          // tallest on the left
+            for (int j = i; j < h.Length; j++) rm = Math.Max(rm, h[j]);    // tallest on the right
+            water += Math.Min(lm, rm) - h[i];
+        }
+        return water;
+    }
 }` }] }
       },
       mcq: {
@@ -2640,7 +3131,29 @@ public:
         for (int i = 0; i < n; i++) water += min(lMax[i], rMax[i]) - h[i];
         return water;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long Trap(int[] h) {
+        int n = h.Length;
+        int[] lMax = new int[n], rMax = new int[n];
+        lMax[0] = h[0];
+        for (int i = 1; i < n; i++) {
+            lMax[i] = Math.Max(lMax[i - 1], h[i]);   // tallest wall from 0..i
+        }
+        rMax[n - 1] = h[n - 1];
+        for (int i = n - 2; i >= 0; i--) {
+            rMax[i] = Math.Max(rMax[i + 1], h[i]);   // tallest wall from i..n-1
+        }
+        long water = 0;                              // long: up to 1e10
+        for (int i = 0; i < n; i++) {
+            // water level = shorter of the two walls; subtract the bar itself
+            water += Math.Min(lMax[i], rMax[i]) - h[i];
+        }
+        return water;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'h[i]', 'LMax', 'RMax', 'min', 'water', 'total'],
@@ -2761,6 +3274,26 @@ public:
         }
     }
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+List<int> SpiralOrder(int[][] g) {
+    var result = new List<int>();
+    int top = 0, bottom = g.Length - 1;
+    int left = 0, right = g[0].Length - 1;
+    while (top <= bottom && left <= right) {
+        for (int c = left; c <= right; c++) result.Add(g[top][c]);      // -> top row
+        top++;                                                         // top row is done
+        for (int r = top; r <= bottom; r++) result.Add(g[r][right]);   // v right column
+        right--;                                                       // right column is done
+        if (top <= bottom) {                                           // a bottom row still exists
+            for (int c = right; c >= left; c--) result.Add(g[bottom][c]); // <- bottom row
+            bottom--;
+        }
+        if (left <= right) {                                           // a left column still exists
+            for (int r = bottom; r >= top; r--) result.Add(g[r][left]);   // ^ left column
+            left++;
+        }
+    }
+    return result;
 }` }
       ] }, {
       lang: 'python', run: true, title: 'Same four-wall walk in Python (runnable)', code: `def spiral(g):
@@ -2894,7 +3427,29 @@ while (top <= bottom && left <= right) {
     if (top <= bottom) { for (int c = right; c >= left; c--) g[bottom][c] = val++; bottom--; }
     if (left <= right) { for (int r = bottom; r >= top; r--) g[r][left] = val++; left++; }
 }
-for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
+for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        int n = 3, val = 1;
+        int[][] g = new int[n][];
+        for (int i = 0; i < n; i++) g[i] = new int[n];
+        int top = 0, bottom = n - 1, left = 0, right = n - 1;
+        while (top <= bottom && left <= right) {
+            for (int c = left; c <= right; c++) g[top][c] = val++;
+            top++;
+            for (int r = top; r <= bottom; r++) g[r][right] = val++;
+            right--;
+            if (top <= bottom) { for (int c = right; c >= left; c--) g[bottom][c] = val++; bottom--; }
+            if (left <= right) { for (int r = bottom; r >= top; r--) g[r][left] = val++; left++; }
+        }
+        var rows = new List<string>();
+        foreach (int[] row in g) rows.Add("[" + string.Join(", ", row) + "]");
+        Console.WriteLine("[" + string.Join(", ", rows) + "]");   // [[1, 2, 3], [8, 9, 4], [7, 6, 5]]
+    }
+}`, run: true }
       ] } },
       { title: 'Direction-vector version (simulation)', html: `<p>Another style: keep <code>dr = {0, 1, 0, −1}</code>, <code>dc = {1, 0, −1, 0}</code> and a <code>visited</code> grid; step forward and turn right whenever the next cell is outside or already visited. It is easy to write and generalises to "walk until blocked" puzzles, but it costs O(R × C) extra memory for <code>visited</code>. The wall version is O(1) extra and is the one interviewers expect as the optimal answer.</p>` }
     ],
@@ -2993,6 +3548,31 @@ vector<int> spiralOrder(vector<vector<int>>& g) {
         c = nc;
     }
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> SpiralOrder(int[][] g) {
+        int R = g.Length, C = g[0].Length;
+        bool[][] seen = new bool[R][];                 // O(R*C) extra memory
+        for (int i = 0; i < R; i++) seen[i] = new bool[C];
+        int[] dr = { 0, 1, 0, -1 }, dc = { 1, 0, -1, 0 };  // right, down, left, up
+        var result = new List<int>();
+        int r = 0, c = 0, d = 0;
+        for (int k = 0; k < R * C; k++) {
+            result.Add(g[r][c]);
+            seen[r][c] = true;
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nr >= R || nc < 0 || nc >= C || seen[nr][nc]) {
+                d = (d + 1) % 4;                       // blocked: turn right
+                nr = r + dr[d];
+                nc = c + dc[d];
+            }
+            r = nr;
+            c = nc;
+        }
+        return result;
+    }
 }` }] }
       },
       mcq: {
@@ -3092,6 +3672,29 @@ vector<int> spiralOrder(vector<vector<int>>& g) {
         if (left <= right) { for (int r = bottom; r >= top; r--) out.push_back(g[r][left]); left++; }
     }
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> SpiralOrder(int[][] g) {
+        var result = new List<int>();
+        int top = 0, bottom = g.Length - 1, left = 0, right = g[0].Length - 1;
+        while (top <= bottom && left <= right) {
+            for (int c = left; c <= right; c++) result.Add(g[top][c]);       // ->
+            top++;
+            for (int r = top; r <= bottom; r++) result.Add(g[r][right]);    // v
+            right--;
+            if (top <= bottom) {                                            // still a row below?
+                for (int c = right; c >= left; c--) result.Add(g[bottom][c]); // <-
+                bottom--;
+            }
+            if (left <= right) {                                            // still a column left?
+                for (int r = bottom; r >= top; r--) result.Add(g[r][left]);   // ^
+                left++;
+            }
+        }
+        return result;
+    }
 }` }
         ],
         dry: {
@@ -3182,6 +3785,19 @@ vector<int> spiralOrder(vector<vector<int>>& g) {
         for (int c = r + 1; c < n; c++) swap(g[r][c], g[c][r]);
     // 2) mirror every row left <-> right
     for (auto& row : g) reverse(row.begin(), row.end());
+}` }, { lang: 'csharp', code: String.raw`
+void RotateClockwise(int[][] g) {
+    int n = g.Length;
+    // 1) transpose: swap across the main diagonal (only c > r, so each pair is swapped once)
+    for (int r = 0; r < n; r++) {
+        for (int c = r + 1; c < n; c++) {
+            int t = g[r][c];
+            g[r][c] = g[c][r];
+            g[c][r] = t;
+        }
+    }
+    // 2) mirror every row left <-> right
+    foreach (int[] row in g) Array.Reverse(row);
 }` }
       ] }, { lang: 'java', code: `
       int[][] rotateRectangle(int[][] g) {
@@ -3207,6 +3823,15 @@ vector<int> spiralOrder(vector<vector<int>>& g) {
     vector<vector<int>> res(C, vector<int>(R));   // shape changes: R x C becomes C x R
     for (int r = 0; r < R; r++)
         for (int c = 0; c < C; c++) res[c][R - 1 - r] = g[r][c];   // the clockwise cell rule
+    return res;
+}` }, { lang: 'csharp', code: String.raw`
+int[][] RotateRectangle(int[][] g) {
+    int R = g.Length, C = g[0].Length;
+    int[][] res = new int[C][];           // shape changes: R x C becomes C x R
+    for (int i = 0; i < C; i++) res[i] = new int[R];
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++)
+            res[c][R - 1 - r] = g[r][c];   // the clockwise cell rule
     return res;
 }` }
       ] }],
@@ -3284,7 +3909,22 @@ int n = g.size();
 for (auto& row : g) reverse(row.begin(), row.end());   // 1) reverse each row
 for (int r = 0; r < n; r++)                            // 2) transpose
     for (int c = r + 1; c < n; c++) swap(g[r][c], g[c][r]);
-for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }   // 3 6 9 / 2 5 8 / 1 4 7` }
+for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }   // 3 6 9 / 2 5 8 / 1 4 7` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        int[][] g = { new[] { 1, 2, 3 }, new[] { 4, 5, 6 }, new[] { 7, 8, 9 } };
+        int n = g.Length;
+        foreach (int[] row in g) Array.Reverse(row);          // 1) reverse each row
+        for (int r = 0; r < n; r++)                           // 2) transpose
+            for (int c = r + 1; c < n; c++) { int t = g[r][c]; g[r][c] = g[c][r]; g[c][r] = t; }
+        var rows = new List<string>();
+        foreach (int[] row in g) rows.Add("[" + string.Join(", ", row) + "]");
+        Console.WriteLine("[" + string.Join(", ", rows) + "]");   // [[3, 6, 9], [2, 5, 8], [1, 4, 7]]
+    }
+}`, run: true }
       ] } },
       { title: 'Layer-by-layer four-way swap (one pass)', html: `<p>Instead of two passes, rotate each ring by moving four cells at once: top → right → bottom → left → top. For a 4 × 4, layer 0 handles positions i = 0..2: each step saves <code>top = g[first][first+i]</code>, then left → top, bottom → left, right → bottom, saved top → right. It touches each cell once (vs twice for transpose + reverse) but is much easier to get wrong under pressure. Mention it as an alternative; code the two-flip version.</p>`, code: { lang: 'java', code: `int[][] g = {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}};
 int n = g.length;
@@ -3335,7 +3975,29 @@ for (int layer = 0; layer < n / 2; layer++) {
         g[first + i][last] = top;                        // top    -> right
     }
 }
-for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
+for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        int[][] g = { new[] { 1, 2, 3, 4 }, new[] { 5, 6, 7, 8 }, new[] { 9, 10, 11, 12 }, new[] { 13, 14, 15, 16 } };
+        int n = g.Length;
+        for (int layer = 0; layer < n / 2; layer++) {
+            int first = layer, last = n - 1 - layer;
+            for (int i = 0; i < last - first; i++) {
+                int top = g[first][first + i];                   // save top
+                g[first][first + i] = g[last - i][first];        // left   -> top
+                g[last - i][first] = g[last][last - i];          // bottom -> left
+                g[last][last - i] = g[first + i][last];          // right  -> bottom
+                g[first + i][last] = top;                        // top    -> right
+            }
+        }
+        var rows = new List<string>();
+        foreach (int[] row in g) rows.Add("[" + string.Join(", ", row) + "]");
+        Console.WriteLine("[" + string.Join(", ", rows) + "]");  // [[13, 9, 5, 1], [14, 10, 6, 2], [15, 11, 7, 3], [16, 12, 8, 4]]
+    }
+}`, run: true }
       ] } },
       { title: 'Rectangular 2 × 3', html: `<p>g = [[1, 2, 3], [4, 5, 6]] (R = 2, C = 3) rotated clockwise is 3 × 2: <b>[[4, 1], [5, 2], [6, 3]]</b>. With res[c][R−1−r] = g[r][c]: the 1 at (0, 0) lands at res[0][1] ✔, the 6 at (1, 2) lands at res[2][0] ✔. The shape changes, so a new matrix is unavoidable.</p>` }
     ],
@@ -3390,6 +4052,17 @@ void rotate(vector<vector<int>>& g) {
         for (int c = 0; c < n; c++)
             res[c][n - 1 - r] = g[r][c];           // clockwise rule
     for (int r = 0; r < n; r++) g[r] = res[r];
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Rotate(int[][] g) {
+        int n = g.Length;
+        int[][] res = new int[n][];                  // extra N*N memory: not allowed
+        for (int r = 0; r < n; r++) res[r] = new int[n];
+        for (int r = 0; r < n; r++)
+            for (int c = 0; c < n; c++)
+                res[c][n - 1 - r] = g[r][c];         // clockwise rule
+        for (int r = 0; r < n; r++) res[r].CopyTo(g[r], 0);   // write back through the shared rows
+    }
 }` }] }
       },
       mcq: {
@@ -3465,7 +4138,26 @@ public:
             for (int c = r + 1; c < n; c++) swap(g[r][c], g[c][r]);
         for (auto& row : g) reverse(row.begin(), row.end());   // then reverse each row
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Rotate(int[][] g) {
+        int n = g.Length;
+        for (int r = 0; r < n; r++) {               // transpose
+            for (int c = r + 1; c < n; c++) {       // only above the diagonal
+                int t = g[r][c];
+                g[r][c] = g[c][r];
+                g[c][r] = t;
+            }
+        }
+        for (int r = 0; r < n; r++) {               // reverse each row
+            for (int lo = 0, hi = n - 1; lo < hi; lo++, hi--) {
+                int t = g[r][lo];
+                g[r][lo] = g[r][hi];
+                g[r][hi] = t;
+            }
+        }
+    }
+}` }
         ],
         dry: {
           head: ['step', 'action', 'matrix'],
@@ -3552,6 +4244,16 @@ public:
         else r++;                          // everything to the left is smaller: drop this row
     }
     return false;                          // walked off the matrix: not present
+}` }, { lang: 'csharp', code: String.raw`
+bool SearchMatrix(int[][] g, int target) {
+    int r = 0, c = g[0].Length - 1;          // start at the top-right corner
+    while (r < g.Length && c >= 0) {
+        int v = g[r][c];
+        if (v == target) return true;
+        if (v > target) c--;                 // everything below is bigger: drop this column
+        else r++;                            // everything to the left is smaller: drop this row
+    }
+    return false;                            // walked off the matrix: not present
 }` }
       ] }, { lang: 'java', code: `
       // Fully sorted matrix (rows continue each other): binary search on a virtual flat array
@@ -3595,6 +4297,18 @@ function searchFlat(g, target) {
         { lang: 'cpp', code: `// Fully sorted matrix (rows continue each other): binary search on a virtual flat array
 bool searchFlat(const vector<vector<int>>& g, int target) {
     int R = g.size(), C = g[0].size();
+    int lo = 0, hi = R * C - 1;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        int v = g[mid / C][mid % C];          // flat index -> (row, col)
+        if (v == target) return true;
+        if (v < target) lo = mid + 1; else hi = mid - 1;
+    }
+    return false;
+}` }, { lang: 'csharp', code: String.raw`
+// Fully sorted matrix (rows continue each other): binary search on a virtual flat array
+bool SearchFlat(int[][] g, int target) {
+    int R = g.Length, C = g[0].Length;
     int lo = 0, hi = R * C - 1;
     while (lo <= hi) {
         int mid = lo + (hi - lo) / 2;
@@ -3705,7 +4419,20 @@ while (r >= 0 && c < C) {
     if (g[r][c] < 0) { count += C - c; r--; }   // this cell and all to its right are negative
     else c++;                                    // non-negative: look further right
 }
-cout << count << "\\n";   // 8` }
+cout << count << "\\n";   // 8` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[][] g = { new[] { 4, 3, 2, -1 }, new[] { 3, 2, 1, -1 }, new[] { 1, 1, -1, -2 }, new[] { -1, -1, -2, -3 } };
+        int R = g.Length, C = g[0].Length, r = R - 1, c = 0, count = 0;
+        while (r >= 0 && c < C) {
+            if (g[r][c] < 0) { count += C - c; r--; }   // this cell and all to its right are negative
+            else c++;                                    // non-negative: look further right
+        }
+        Console.WriteLine(count);   // 8
+    }
+}`, run: true }
       ] } },
       { title: 'Count how many values are ≤ x (building block for k-th smallest)', html: `<p>Walk from the bottom-left: if g[r][c] ≤ x, the whole column segment from row 0 to r is ≤ x → add r + 1 and move right; else move up. For the 4 × 4 matrix above and x = 8: column 0 gives 3 (1, 2, 3), column 1 gives 3 (4, 5, 6), column 2 gives 2 (7, 8), column 3 gives 0 → <b>8</b> values ≤ 8. Binary-searching x over the value range with this O(R + C) count finds the k-th smallest in O((R + C) · log(range)).</p>` },
       { title: 'Fully sorted matrix (LeetCode 74)', html: `<p>[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], target 3. Treat it as the flat list [1, 3, 5, 7, 10, …]: lo = 0, hi = 11, mid = 5 → (1, 1) = 11 &gt; 3 → hi = 4; mid = 2 → (0, 2) = 5 &gt; 3 → hi = 1; mid = 0 → 1 &lt; 3 → lo = 1; mid = 1 → (0, 1) = 3 → <b>found</b>. O(log 12) ≈ 4 steps.</p>` }
@@ -3753,6 +4480,14 @@ bool searchMatrix(vector<vector<int>>& g, int target) {
         for (int v : row)
             if (v == target) return true;   // looks at every single cell
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool SearchMatrix(int[][] g, int target) {
+        foreach (int[] row in g)
+            foreach (int v in row)
+                if (v == target) return true;   // looks at every single cell
+        return false;
+    }
 }` }] }
       },
       mcq: {
@@ -3831,7 +4566,18 @@ public:
         }
         return false;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool SearchMatrix(int[][] g, int target) {
+        int r = 0, c = g[0].Length - 1;        // top-right corner
+        while (r < g.Length && c >= 0) {
+            if (g[r][c] == target) return true;
+            if (g[r][c] > target) c--;         // column c (from row r down) is too big
+            else r++;                          // row r (up to column c) is too small
+        }
+        return false;
+    }
+}` }
         ],
         dry: {
           head: ['step', '(r, c)', 'g[r][c]', 'vs 20', 'move'],
@@ -3933,7 +4679,23 @@ public:
     long long sumRegion(int r1, int c1, int r2, int c2) const {   // inclusive corners
         return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class NumMatrix {
+    private readonly long[][] P;                // padded: P[i][j] = sum of A[0..i-1][0..j-1]
+
+    public NumMatrix(int[][] A) {
+        int R = A.Length, C = A[0].Length;
+        P = new long[R + 1][];                  // row 0 and column 0 stay 0
+        for (int i = 0; i <= R; i++) P[i] = new long[C + 1];
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++)
+                P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+    }
+
+    public long SumRegion(int r1, int c1, int r2, int c2) {   // inclusive corners
+        return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+    }
+}` }
       ] }, {
       lang: 'python', run: true, title: 'Python: build and query (runnable)', code: `def build(A):
     R, C = len(A), len(A[0])
@@ -4037,7 +4799,21 @@ vector<vector<int>> P(R + 1, vector<int>(C + 1, 0));
 for (int i = 0; i < R; i++)
     for (int j = 0; j < C; j++) P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
 int r1 = 1, c1 = 1, r2 = 2, c2 = 2;
-cout << P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1] << "\\n";   // 3` }
+cout << P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1] << "\\n";   // 3` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[][] A = { new[] { 1, 0, 1 }, new[] { 1, 1, 0 }, new[] { 0, 1, 1 } };
+        int R = A.Length, C = A[0].Length;
+        int[,] P = new int[R + 1, C + 1];                 // rectangular array: all zeros
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++)
+                P[i + 1, j + 1] = A[i][j] + P[i, j + 1] + P[i + 1, j] - P[i, j];
+        int r1 = 1, c1 = 1, r2 = 2, c2 = 2;
+        Console.WriteLine(P[r2 + 1, c2 + 1] - P[r1, c2 + 1] - P[r2 + 1, c1] + P[r1, c1]);   // 3
+    }
+}`, run: true }
       ] } },
       { title: 'Best K × K square', html: `<p>Find the K × K block with the largest sum. With P, every square's sum is O(1), so trying all (R − K + 1)(C − K + 1) top-left corners costs O(R·C) total instead of O(R·C·K<sup>2</sup>). For A = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] and K = 2 the best block is bottom-right: 5 + 6 + 8 + 9 = <b>28</b>.</p>` },
       { title: '2D difference array: many rectangle updates', html: `<p>To add v to every cell of (r1, c1)..(r2, c2): <code>D[r1][c1] += v; D[r1][c2+1] −= v; D[r2+1][c1] −= v; D[r2+1][c2+1] += v</code>. After all updates, a 2D prefix sum over D gives the final grid. Adding 1 to (0, 0)..(1, 1) on a 3 × 3 zero grid gives D corners +1, −1, −1, +1 → prefix → [[1, 1, 0], [1, 1, 0], [0, 0, 0]]. Used for "stamping" problems and range painting (LeetCode 2536).</p>` }
@@ -4105,7 +4881,18 @@ public:
                 s += A[i][j];            // O(area) per query
         return s;
     }
-};` }] }
+};` }, { lang: 'csharp', code: String.raw`
+public class BruteMatrix {
+    private readonly int[][] A;
+    public BruteMatrix(int[][] A) { this.A = A; }
+    public long SumRegion(int r1, int c1, int r2, int c2) {
+        long s = 0;
+        for (int i = r1; i <= r2; i++)
+            for (int j = c1; j <= c2; j++)
+                s += A[i][j];                 // O(area) per query
+        return s;
+    }
+}` }] }
       },
       mcq: {
         q: `<p>In <code>P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1]</code>, why is the last term <b>added</b>?</p>`,
@@ -4198,7 +4985,29 @@ public:
     long long sumRegion(int r1, int c1, int r2, int c2) {
         return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class NumMatrix {
+    private readonly long[][] P;
+
+    public NumMatrix(int[][] A) {
+        int R = A.Length, C = A[0].Length;
+        P = new long[R + 1][];
+        for (int i = 0; i <= R; i++) P[i] = new long[C + 1];
+        for (int i = 0; i < R; i++) {
+            for (int j = 0; j < C; j++) {
+                // this cell + block above + block left - overlap counted twice
+                P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+            }
+        }
+    }
+
+    public long SumRegion(int r1, int c1, int r2, int c2) {
+        return P[r2 + 1][c2 + 1]     // whole block from (0,0)
+             - P[r1][c2 + 1]         // minus rows above r1
+             - P[r2 + 1][c1]         // minus columns left of c1
+             + P[r1][c1];            // plus the corner removed twice
+    }
+}` }
         ],
         dry: {
           head: ['query', 'P[r2+1][c2+1]', '− P[r1][c2+1]', '− P[r2+1][c1]', '+ P[r1][c1]', 'answer'],
@@ -4263,6 +5072,17 @@ vector<int> runningSum(vector<int>& nums) {
         out[i] = s;
     }
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] RunningSum(int[] nums) {
+        int[] result = new int[nums.Length];
+        for (int i = 0; i < nums.Length; i++) {
+            int s = 0;
+            for (int j = 0; j <= i; j++) s += nums[j];   // re-adds the whole prefix
+            result[i] = s;
+        }
+        return result;
+    }
 }` }] }
     },
     mcq: { q: `<p>runningSum[5] = 40 and nums[6] = −3. What is runningSum[6]?</p>`, options: ['37', '43', '−3', '40'], answer: 0, explain: `<p>runningSum[6] = runningSum[5] + nums[6] = 40 + (−3) = 37. One addition per index.</p>` },
@@ -4310,7 +5130,15 @@ public:
         partial_sum(nums.begin(), nums.end(), nums.begin());   // in place running total
         return nums;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] RunningSum(int[] nums) {
+        for (int i = 1; i < nums.Length; i++) {
+            nums[i] += nums[i - 1];       // previous running sum + this number
+        }
+        return nums;                      // in place: O(1) extra space
+    }
+}` }
       ],
       dry: { head: ['i', 'nums[i] before', 'add nums[i−1]', 'nums[i] after'], rows: [['1', '2', '1', '3'], ['2', '3', '3', '6'], ['3', '4', '6', '10']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b> extra (in place).</p>`,
@@ -4355,6 +5183,17 @@ int maxProfit(vector<int>& prices) {
         for (int j = i + 1; j < (int) prices.size(); j++)
             best = max(best, prices[j] - prices[i]);   // buy i, sell j
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxProfit(int[] prices) {
+        int best = 0;
+        for (int i = 0; i < prices.Length; i++)
+            for (int j = i + 1; j < prices.Length; j++)
+                best = Math.Max(best, prices[j] - prices[i]);   // buy i, sell j
+        return best;
+    }
 }` }] }
     },
     mcq: { q: `<p>Walking left to right, what single number should you carry?</p>`, options: ['The minimum price seen so far', 'The maximum price seen so far', 'The sum of prices so far', 'The index of today'], answer: 0, explain: `<p>Selling today, the best buy is the cheapest earlier day. Carry minSoFar; profit today = price − minSoFar.</p>` },
@@ -4415,7 +5254,19 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxProfit(int[] prices) {
+        int minSoFar = prices[0], best = 0;
+        for (int i = 1; i < prices.Length; i++) {
+            best = Math.Max(best, prices[i] - minSoFar);   // sell today?
+            minSoFar = Math.Min(minSoFar, prices[i]);      // cheaper buy for future days?
+        }
+        return best;
+    }
+}` }
       ],
       dry: { head: ['day', 'price', 'price − min', 'best', 'min after'], rows: [['0', '7', '—', '0', '7'], ['1', '1', '−6', '0', '1'], ['2', '5', '4', '4', '1'], ['3', '3', '2', '4', '1'], ['4', '6', '5', H.c('p', '5'), '1'], ['5', '4', '3', '5', '1']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
@@ -4462,6 +5313,15 @@ int diagonalSum(vector<vector<int>>& mat) {
         for (int c = 0; c < n; c++)
             if (r == c || r + c == n - 1) s += mat[r][c];   // the || counts the centre once
     return s;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int DiagonalSum(int[][] mat) {
+        int n = mat.Length, s = 0;
+        for (int r = 0; r < n; r++)
+            for (int c = 0; c < n; c++)
+                if (r == c || r + c == n - 1) s += mat[r][c];   // the || counts the centre once
+        return s;
+    }
 }` }] }
     },
     mcq: { q: `<p>Which cells are on the secondary diagonal of an N × N matrix?</p>`, options: ['Cells with r + c = N − 1', 'Cells with r = c', 'Cells with r − c = 1', 'Cells with r + c = N'], answer: 0, explain: `<p>The secondary diagonal goes from (0, N−1) to (N−1, 0); along it the row goes up by 1 while the column goes down by 1, so r + c stays N − 1.</p>` },
@@ -4516,7 +5376,18 @@ public:
         if (n % 2 == 1) s -= mat[n / 2][n / 2];   // centre was added twice
         return s;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int DiagonalSum(int[][] mat) {
+        int n = mat.Length, s = 0;
+        for (int r = 0; r < n; r++) {
+            s += mat[r][r];               // primary diagonal
+            s += mat[r][n - 1 - r];       // secondary diagonal
+        }
+        if (n % 2 == 1) s -= mat[n / 2][n / 2];   // centre was added twice
+        return s;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N)</b> (only 2N cells read), <b>space O(1)</b>.</p>`,
       followUps: ['Sum of every anti-diagonal (cells grouped by r + c).', 'Check if a matrix is a Toeplitz matrix (constant diagonals).']
@@ -4575,6 +5446,19 @@ int sumOddLengthSubarrays(vector<int>& arr) {
         }
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SumOddLengthSubarrays(int[] arr) {
+        int total = 0;
+        for (int i = 0; i < arr.Length; i++) {
+            int s = 0;
+            for (int j = i; j < arr.Length; j++) {
+                s += arr[j];                          // sum of arr[i..j]
+                if ((j - i + 1) % 2 == 1) total += s; // only odd lengths count
+            }
+        }
+        return total;
+    }
 }` }] }
     },
     mcq: { q: `<p>Index i has L = i + 1 possible starts and R = N − i possible ends. Roughly what fraction of the L·R subarrays containing i have odd length?</p>`, options: ['About half: ⌈L/2⌉⌈R/2⌉ + ⌊L/2⌋⌊R/2⌋', 'All of them', 'Exactly L', 'None when i is even'], answer: 0, explain: `<p>Length = (left extension) + (right extension) + 1 is odd when both extensions are even or both are odd. Counting those combinations gives ⌈L/2⌉⌈R/2⌉ + ⌊L/2⌋⌊R/2⌋.</p>` },
@@ -4633,7 +5517,18 @@ public:
         }
         return total;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SumOddLengthSubarrays(int[] arr) {
+        int n = arr.Length, total = 0;
+        for (int i = 0; i < n; i++) {
+            int all = (i + 1) * (n - i);     // subarrays containing i
+            int odd = (all + 1) / 2;         // ceil(all / 2) of them have odd length
+            total += arr[i] * odd;
+        }
+        return total;
+    }
+}` }
       ],
       dry: { head: ['i', 'arr[i]', 'all = L·R', 'odd = ⌈all/2⌉', 'contribution'], rows: [['0', '1', '5', '3', '3'], ['1', '4', '8', '4', '16'], ['2', '2', '9', '5', '10'], ['3', '5', '8', '4', '20'], ['4', '3', '5', '3', '9 → total ' + H.c('p', '58')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
@@ -4694,6 +5589,18 @@ vector<int> productExceptSelf(vector<int>& nums) {
         out[i] = p;
     }
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] ProductExceptSelf(int[] nums) {
+        int n = nums.Length;
+        int[] result = new int[n];
+        for (int i = 0; i < n; i++) {
+            int p = 1;
+            for (int j = 0; j < n; j++) if (j != i) p *= nums[j];
+            result[i] = p;
+        }
+        return result;
+    }
 }` }] }
     },
     mcq: { q: `<p>answer[i] equals…</p>`, options: ['(product of nums[0..i−1]) × (product of nums[i+1..N−1])', 'total product / nums[i]', 'prefix product up to i', 'nums[i−1] × nums[i+1]'], answer: 0, explain: `<p>Everything except i = everything on the left times everything on the right. Prefix and suffix products give both without division, so zeros cause no trouble.</p>` },
@@ -4766,7 +5673,21 @@ public:
         }
         return out;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] ProductExceptSelf(int[] nums) {
+        int n = nums.Length;
+        int[] result = new int[n];
+        result[0] = 1;
+        for (int i = 1; i < n; i++) result[i] = result[i - 1] * nums[i - 1];  // product of everything LEFT of i
+        int right = 1;                                                        // product of everything RIGHT of i
+        for (int i = n - 1; i >= 0; i--) {
+            result[i] *= right;
+            right *= nums[i];
+        }
+        return result;
+    }
+}` }
       ],
       dry: { head: ['i', 'left product (pass 1)', 'right before', 'out[i]', 'right after'], rows: [['3', '6', '1', '6', '4'], ['2', '2', '4', '8', '12'], ['1', '1', '12', '12', '24'], ['0', '1', '24', '24', '24']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b> extra (output array not counted).</p>`,
@@ -4826,6 +5747,21 @@ int maxSubarraySumCircular(vector<int>& nums) {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxSubarraySumCircular(int[] nums) {
+        int n = nums.Length, best = int.MinValue;
+        for (int i = 0; i < n; i++) {
+            int s = 0;
+            for (int len = 1; len <= n; len++) {
+                s += nums[(i + len - 1) % n];   // walk around the circle
+                best = Math.Max(best, s);
+            }
+        }
+        return best;
+    }
 }` }] }
     },
     mcq: { q: `<p>A wrapping subarray (uses both ends) leaves out a contiguous middle part. To maximise the wrap, the left-out middle should be…</p>`, options: ['The minimum-sum subarray', 'The maximum-sum subarray', 'Empty', 'The first element'], answer: 0, explain: `<p>wrap sum = total − (middle sum). Maximising the wrap means minimising the middle — Kadane with min instead of max.</p>` },
@@ -4907,7 +5843,25 @@ public:
         if (bestMax < 0) return bestMax;        // all negative: the wrap would be empty
         return max(bestMax, total - bestMin);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxSubarraySumCircular(int[] nums) {
+        int total = 0;
+        int curMax = 0, bestMax = int.MinValue;
+        int curMin = 0, bestMin = int.MaxValue;
+        foreach (int x in nums) {
+            curMax = Math.Max(x, curMax + x);   // best ending here
+            bestMax = Math.Max(bestMax, curMax);
+            curMin = Math.Min(x, curMin + x);   // worst ending here
+            bestMin = Math.Min(bestMin, curMin);
+            total += x;
+        }
+        if (bestMax < 0) return bestMax;        // all negative: wrap would be empty
+        return Math.Max(bestMax, total - bestMin);
+    }
+}` }
       ],
       dry: { head: ['x', 'curMax', 'bestMax', 'curMin', 'bestMin', 'total'], rows: [['5', '5', '5', '5', '5', '5'], ['−3', '2', '5', '−3', '−3', '2'], ['5', '7', '7', '2', '−3', '7 → max(7, 7 − (−3)) = ' + H.c('p', '10')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
@@ -4966,6 +5920,21 @@ int maxProduct(vector<int>& nums) {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxProduct(int[] nums) {
+        int best = int.MinValue;
+        for (int i = 0; i < nums.Length; i++) {
+            int p = 1;
+            for (int j = i; j < nums.Length; j++) {
+                p *= nums[j];
+                best = Math.Max(best, p);
+            }
+        }
+        return best;
+    }
 }` }] }
     },
     mcq: { q: `<p>Why must you carry the <b>minimum</b> product ending here, not just the maximum?</p>`, options: ['A negative number turns the minimum into the maximum', 'To handle zeros only', 'To save memory', 'It is not needed'], answer: 0, explain: `<p>min × (negative) can be the new max. E.g. ending at −4 in [−2, 3, −4]: previous min −6 × −4 = 24.</p>` },
@@ -5036,7 +6005,22 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxProduct(int[] nums) {
+        int hi = nums[0], lo = nums[0], best = nums[0];
+        for (int i = 1; i < nums.Length; i++) {
+            int x = nums[i];
+            int a = hi * x, b = lo * x;                 // extend the best and the worst run
+            hi = Math.Max(x, Math.Max(a, b));            // or start fresh at x
+            lo = Math.Min(x, Math.Min(a, b));
+            best = Math.Max(best, hi);
+        }
+        return best;
+    }
+}` }
       ],
       dry: { head: ['x', 'hi·x', 'lo·x', 'hi', 'lo', 'best'], rows: [['−2', '—', '—', '−2', '−2', '−2'], ['3', '−6', '−6', '3', '−6', '3'], ['−4', '−12', '24', '24', '−12', H.c('p', '24')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
@@ -5117,6 +6101,26 @@ vector<vector<int>> generateMatrix(int n) {
         c = nc;
     }
     return g;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[][] GenerateMatrix(int n) {
+        int[][] g = new int[n][];
+        for (int i = 0; i < n; i++) g[i] = new int[n];
+        int[] dr = { 0, 1, 0, -1 }, dc = { 1, 0, -1, 0 };
+        int r = 0, c = 0, d = 0;
+        for (int v = 1; v <= n * n; v++) {
+            g[r][c] = v;
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nr >= n || nc < 0 || nc >= n || g[nr][nc] != 0) {
+                d = (d + 1) % 4;                    // blocked: turn clockwise
+                nr = r + dr[d];
+                nc = c + dc[d];
+            }
+            r = nr;
+            c = nc;
+        }
+        return g;
+    }
 }` }] }
     },
     mcq: { q: `<p>For n = 4, which number lands at position (1, 1)?</p>`, options: ['13', '12', '16', '6'], answer: 0, explain: `<p>Outer ring uses 1..12 (12 cells). The inner 2 × 2 ring starts at (1, 1) with 13, then 14 at (1, 2), 15 at (2, 2), 16 at (2, 1).</p>` },
@@ -5203,7 +6207,23 @@ public:
         }
         return g;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[][] GenerateMatrix(int n) {
+        int[][] g = new int[n][];
+        for (int i = 0; i < n; i++) g[i] = new int[n];
+        int top = 0, bottom = n - 1, left = 0, right = n - 1, v = 1;
+        while (top <= bottom && left <= right) {
+            for (int c = left; c <= right; c++) g[top][c] = v++;
+            top++;
+            for (int r = top; r <= bottom; r++) g[r][right] = v++;
+            right--;
+            if (top <= bottom) { for (int c = right; c >= left; c--) g[bottom][c] = v++; bottom--; }
+            if (left <= right) { for (int r = bottom; r >= top; r--) g[r][left] = v++; left++; }
+        }
+        return g;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(n<sup>2</sup>)</b>, <b>space O(1)</b> extra besides the output.</p>`,
       followUps: ['Generate an R × C (non-square) spiral.', 'Fill anti-clockwise starting from the centre.']
@@ -5261,6 +6281,19 @@ void setZeroes(vector<vector<int>>& m) {
                 for (int k = 0; k < C; k++) m[r][k] = 0;
                 for (int k = 0; k < R; k++) m[k][c] = 0;
             }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SetZeroes(int[][] m) {
+        int R = m.Length, C = m[0].Length;
+        int[][] copy = new int[R][];
+        for (int r = 0; r < R; r++) copy[r] = (int[])m[r].Clone();
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+                if (copy[r][c] == 0) {                       // look at ORIGINAL values only
+                    for (int k = 0; k < C; k++) m[r][k] = 0;
+                    for (int k = 0; k < R; k++) m[k][c] = 0;
+                }
+    }
 }` }] }
     },
     mcq: { q: `<p>Why do we need a separate flag for the first column (or first row) in the O(1)-space solution?</p>`, options: ['Cell (0, 0) cannot mark both row 0 and column 0 at once', 'Arrays start at index 1', 'To handle negative numbers', 'It is only for speed'], answer: 0, explain: `<p>We use row 0 as column markers and column 0 as row markers. The cell (0, 0) is shared by both, so one extra boolean (e.g. col0Zero) keeps the two meanings apart.</p>` },
@@ -5360,7 +6393,29 @@ public:
         if (m[0][0] == 0) fill(m[0].begin(), m[0].end(), 0);   // row 0 marker
         if (col0Zero) for (int r = 0; r < R; r++) m[r][0] = 0; // column 0 marker
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SetZeroes(int[][] m) {
+        int R = m.Length, C = m[0].Length;
+        bool col0Zero = false;
+        for (int r = 0; r < R; r++) {
+            if (m[r][0] == 0) col0Zero = true;           // column 0 has its own flag
+            for (int c = 1; c < C; c++) {
+                if (m[r][c] == 0) {
+                    m[r][0] = 0;                         // mark row r
+                    m[0][c] = 0;                         // mark column c
+                }
+            }
+        }
+        for (int r = 1; r < R; r++)                      // inner cells first
+            for (int c = 1; c < C; c++)
+                if (m[r][0] == 0 || m[0][c] == 0) m[r][c] = 0;
+        if (m[0][0] == 0)                                // row 0 marker
+            for (int c = 0; c < C; c++) m[0][c] = 0;
+        if (col0Zero)                                    // column 0 marker
+            for (int r = 0; r < R; r++) m[r][0] = 0;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(R·C)</b>, <b>space O(1)</b> extra.</p>`,
       followUps: ['Do it with O(R + C) boolean arrays first — explain the trade-off.', 'Game of Life: update in place using extra state values.']
@@ -5411,6 +6466,16 @@ bool searchMatrix(vector<vector<int>>& g, int target) {
         if (g[r][c] > target) c--; else r++;
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool SearchMatrix(int[][] g, int target) {
+        int r = 0, c = g[0].Length - 1;
+        while (r < g.Length && c >= 0) {
+            if (g[r][c] == target) return true;
+            if (g[r][c] > target) c--; else r++;
+        }
+        return false;
+    }
 }` }] }
     },
     mcq: { q: `<p>With C = 4 columns, which cell is flat index 9?</p>`, options: ['(2, 1)', '(1, 2)', '(2, 2)', '(9, 0)'], answer: 0, explain: `<p>row = 9 / 4 = 2, col = 9 % 4 = 1 → (2, 1).</p>` },
@@ -5494,7 +6559,21 @@ public:
         }
         return false;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool SearchMatrix(int[][] g, int target) {
+        int R = g.Length, C = g[0].Length;
+        int lo = 0, hi = R * C - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            int v = g[mid / C][mid % C];      // flat index -> (row, col)
+            if (v == target) return true;
+            if (v < target) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        return false;
+    }
+}` }
       ],
       dry: { head: ['lo', 'hi', 'mid', '(r, c)', 'value vs 13'], rows: [['0', '11', '5', '(1, 1)', '11 &lt; 13 → lo = 6'], ['6', '11', '8', '(2, 0)', '23 &gt; 13 → hi = 7'], ['6', '7', '6', '(1, 2)', '16 &gt; 13 → hi = 5'], ['6', '5', '—', '—', H.c('r', 'lo &gt; hi → false')]] },
       complexity: `<p><b>Time O(log(R·C))</b>, <b>space O(1)</b>.</p>`,
@@ -5551,6 +6630,21 @@ vector<vector<int>> matrixBlockSum(vector<vector<int>>& mat, int k) {
                 for (int c = max(0, j - k); c <= min(C - 1, j + k); c++)
                     ans[i][j] += mat[r][c];
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[][] MatrixBlockSum(int[][] mat, int k) {
+        int R = mat.Length, C = mat[0].Length;
+        int[][] ans = new int[R][];
+        for (int i = 0; i < R; i++) ans[i] = new int[C];
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++)
+                for (int r = Math.Max(0, i - k); r <= Math.Min(R - 1, i + k); r++)
+                    for (int c = Math.Max(0, j - k); c <= Math.Min(C - 1, j + k); c++)
+                        ans[i][j] += mat[r][c];
+        return ans;
+    }
 }` }] }
     },
     mcq: { q: `<p>For cell (0, 0) with k = 1 in a 3 × 3 matrix, which rectangle do you query?</p>`, options: ['(0, 0)..(1, 1) after clamping', '(−1, −1)..(1, 1)', '(0, 0)..(2, 2)', '(1, 1)..(1, 1)'], answer: 0, explain: `<p>Clamp: r1 = max(0, i − k) = 0, c1 = 0, r2 = min(R − 1, i + k) = 1, c2 = 1. Then one 2D prefix query.</p>` },
@@ -5637,7 +6731,28 @@ public:
             }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[][] MatrixBlockSum(int[][] mat, int k) {
+        int R = mat.Length, C = mat[0].Length;
+        int[,] P = new int[R + 1, C + 1];
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++)
+                P[i + 1, j + 1] = mat[i][j] + P[i, j + 1] + P[i + 1, j] - P[i, j];
+        int[][] ans = new int[R][];
+        for (int i = 0; i < R; i++) {
+            ans[i] = new int[C];
+            for (int j = 0; j < C; j++) {
+                int r1 = Math.Max(0, i - k), c1 = Math.Max(0, j - k);          // clamp to the grid
+                int r2 = Math.Min(R - 1, i + k), c2 = Math.Min(C - 1, j + k);
+                ans[i][j] = P[r2 + 1, c2 + 1] - P[r1, c2 + 1] - P[r2 + 1, c1] + P[r1, c1];
+            }
+        }
+        return ans;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(R·C)</b>, <b>space O(R·C)</b> for the prefix table.</p>`,
       followUps: ['Largest square with sum ≤ threshold (LeetCode 1292).', 'Image blur / box filter in real image processing.']
@@ -5715,6 +6830,26 @@ int candy(vector<int>& ratings) {
     int sum = 0;
     for (int x : c) sum += x;
     return sum;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int Candy(int[] ratings) {
+        int n = ratings.Length;
+        int[] c = new int[n];
+        Array.Fill(c, 1);
+        bool changed = true;
+        while (changed) {                                   // repeat until stable
+            changed = false;
+            for (int i = 0; i < n; i++) {
+                if (i > 0 && ratings[i] > ratings[i - 1] && c[i] <= c[i - 1]) { c[i] = c[i - 1] + 1; changed = true; }
+                if (i < n - 1 && ratings[i] > ratings[i + 1] && c[i] <= c[i + 1]) { c[i] = c[i + 1] + 1; changed = true; }
+            }
+        }
+        int sum = 0;
+        foreach (int x in c) sum += x;
+        return sum;
+    }
 }` }] }
     },
     mcq: { q: `<p>After the left→right pass (only the "left neighbour" rule), how do you enforce the "right neighbour" rule without breaking the first?</p>`, options: ['Right→left pass: c[i] = max(c[i], c[i+1] + 1) when ratings[i] &gt; ratings[i+1]', 'Overwrite c[i] = c[i+1] + 1', 'Sort the ratings', 'Add 1 to every child'], answer: 0, explain: `<p>Taking the max keeps the left rule satisfied (values only grow) while fixing the right rule — exactly like combining prefix max and suffix max.</p>` },
@@ -5786,7 +6921,23 @@ public:
             if (ratings[i] > ratings[i + 1]) c[i] = max(c[i], c[i + 1] + 1);
         return accumulate(c.begin(), c.end(), 0);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int Candy(int[] ratings) {
+        int n = ratings.Length;
+        int[] c = new int[n];
+        Array.Fill(c, 1);                                    // everyone gets at least one
+        for (int i = 1; i < n; i++)                          // left neighbour rule
+            if (ratings[i] > ratings[i - 1]) c[i] = c[i - 1] + 1;
+        for (int i = n - 2; i >= 0; i--)                     // right neighbour rule
+            if (ratings[i] > ratings[i + 1]) c[i] = Math.Max(c[i], c[i + 1] + 1);
+        int sum = 0;
+        foreach (int x in c) sum += x;
+        return sum;
+    }
+}` }
       ],
       dry: { head: ['i', 'rating', 'after → pass', 'after ← pass'], rows: [['0', '1', '1', '1'], ['1', '3', '2', '2'], ['2', '4', '3', '3'], ['3', '5', '4', '4'], ['4', '2', '1', '1 → total ' + H.c('p', '11')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> (an O(1)-space version counts up/down slopes).</p>`,
@@ -5835,6 +6986,15 @@ int firstMissingPositive(vector<int>& nums) {
         bool found = false;
         for (int x : nums) if (x == want) { found = true; break; }
         if (!found) return want;        // at most N + 1 tries, each O(N)
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FirstMissingPositive(int[] nums) {
+        for (int want = 1; ; want++) {
+            bool found = false;
+            foreach (int x in nums) if (x == want) { found = true; break; }
+            if (!found) return want;            // at most N + 1 tries, each O(N)
+        }
     }
 }` }] }
     },
@@ -5918,7 +7078,23 @@ public:
             if (nums[i] != i + 1) return i + 1;    // first empty home
         return n + 1;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FirstMissingPositive(int[] nums) {
+        int n = nums.Length;
+        for (int i = 0; i < n; i++) {
+            // keep swapping nums[i] to its home until it is out of range, a duplicate, or already home
+            while (nums[i] >= 1 && nums[i] <= n && nums[nums[i] - 1] != nums[i]) {
+                int v = nums[i];
+                nums[i] = nums[v - 1];
+                nums[v - 1] = v;
+            }
+        }
+        for (int i = 0; i < n; i++)
+            if (nums[i] != i + 1) return i + 1;    // first empty home
+        return n + 1;                              // 1..n all present
+    }
+}` }
       ],
       dry: { head: ['step', 'action', 'array'], rows: [['i=0', 'swap 3 → index 2', '[−1, 4, 3, 1]'], ['i=0', '−1 out of range, stop', '[−1, 4, 3, 1]'], ['i=1', 'swap 4 → index 3', '[−1, 1, 3, 4]'], ['i=1', 'swap 1 → index 0', '[1, −1, 3, 4]'], ['scan', 'index 1 holds −1 ≠ 2', H.c('p', 'answer 2')]] },
       complexity: `<p><b>Time O(N)</b> — every swap puts a value home for good, so at most N swaps overall. <b>Space O(1)</b>.</p>`,
@@ -5991,6 +7167,24 @@ long long maxSumRectangle(vector<vector<int>>& A) {
                 for (int c2 = c1; c2 < C; c2++)
                     best = max(best, P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSumRectangle(int[][] A) {
+        int R = A.Length, C = A[0].Length;
+        long[,] P = new long[R + 1, C + 1];
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++)
+                P[i + 1, j + 1] = A[i][j] + P[i, j + 1] + P[i + 1, j] - P[i, j];
+        long best = long.MinValue;
+        for (int r1 = 0; r1 < R; r1++)
+            for (int r2 = r1; r2 < R; r2++)
+                for (int c1 = 0; c1 < C; c1++)
+                    for (int c2 = c1; c2 < C; c2++)
+                        best = Math.Max(best, P[r2 + 1, c2 + 1] - P[r1, c2 + 1] - P[r2 + 1, c1] + P[r1, c1]);
+        return best;
+    }
 }` }] }
     },
     mcq: { q: `<p>You fix top row = 1 and bottom row = 3 and add each column's values between them, getting [−9, 4, 15, 10, −2]. What is the best rectangle sum for this row pair?</p>`, options: ['29 (Kadane on the compressed row: 4 + 15 + 10)', '18', '15', '27'], answer: 0, explain: `<p>Each compressed value is a whole column strip. Kadane over [−9, 4, 15, 10, −2] gives 4 + 15 + 10 = 29, i.e. columns 1..3 — the answer above.</p>` },
@@ -6087,7 +7281,28 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSumRectangle(int[][] A) {
+        int R = A.Length, C = A[0].Length;
+        long best = long.MinValue;
+        for (int top = 0; top < R; top++) {
+            long[] col = new long[C];                  // column strip sums for rows top..bottom
+            for (int bottom = top; bottom < R; bottom++) {
+                for (int c = 0; c < C; c++) col[c] += A[bottom][c];   // grow the strip by one row
+                long cur = col[0], here = col[0];      // Kadane on the compressed row
+                for (int c = 1; c < C; c++) {
+                    cur = Math.Max(col[c], cur + col[c]);
+                    here = Math.Max(here, cur);
+                }
+                best = Math.Max(best, here);
+            }
+        }
+        return best;
+    }
+}` }
       ],
       dry: { head: ['top..bottom', 'compressed col', 'Kadane best'], rows: [['2..2', '[3, 8, 10, 1, 3]', '25'], ['1..2', '[−5, 5, 14, 3, 4]', '26'], ['1..3', '[−9, 4, 15, 10, −2]', H.c('p', '29')], ['0..3', '[−8, 6, 14, 6, −22]', '26']] },
       complexity: `<p><b>Time O(R<sup>2</sup>·C)</b> (10<sup>6</sup> for 100 × 100), <b>space O(C)</b>.</p>`,
@@ -6154,6 +7369,20 @@ vector<int> maxSumOfThreeSubarrays(vector<int>& nums, int k) {
             for (int c = b + k; c < m; c++)
                 if (W[a] + W[b] + W[c] > best) { best = W[a] + W[b] + W[c]; ans = {a, b, c}; }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] MaxSumOfThreeSubarrays(int[] nums, int k) {
+        int n = nums.Length, m = n - k + 1;
+        long[] W = new long[m];
+        for (int i = 0; i < m; i++) for (int j = i; j < i + k; j++) W[i] += nums[j];   // window sums, recomputed from scratch
+        long best = -1;
+        int[] ans = new int[3];
+        for (int a = 0; a < m; a++)
+            for (int b = a + k; b < m; b++)
+                for (int c = b + k; c < m; c++)
+                    if (W[a] + W[b] + W[c] > best) { best = W[a] + W[b] + W[c]; ans = new[] { a, b, c }; }
+        return ans;
+    }
 }` }] }
     },
     mcq: { q: `<p>With the middle window starting at j, which windows are allowed on the left?</p>`, options: ['Starts 0..j − k', 'Starts 0..j − 1', 'Starts 0..j', 'Any start'], answer: 0, explain: `<p>The left window must end before j: its start a satisfies a + k − 1 &lt; j, i.e. a ≤ j − k. Similarly the right window starts at ≥ j + k.</p>` },
@@ -6285,7 +7514,41 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] MaxSumOfThreeSubarrays(int[] nums, int k) {
+        int n = nums.Length, m = n - k + 1;
+        long[] P = new long[n + 1];
+        for (int i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+        long[] W = new long[m];                           // W[i] = sum of nums[i..i+k-1]
+        for (int i = 0; i < m; i++) W[i] = P[i + k] - P[i];
+
+        int[] left = new int[m];                          // best window start in 0..i
+        int best = 0;
+        for (int i = 0; i < m; i++) {
+            if (W[i] > W[best]) best = i;                 // strict: earliest index wins ties
+            left[i] = best;
+        }
+        int[] right = new int[m];                         // best window start in i..m-1
+        best = m - 1;
+        for (int i = m - 1; i >= 0; i--) {
+            if (W[i] >= W[best]) best = i;                // >=: earliest index wins ties
+            right[i] = best;
+        }
+
+        int[] ans = { -1, -1, -1 };
+        long bestSum = -1;
+        for (int j = k; j + k < m; j++) {                 // middle window start
+            int a = left[j - k], c = right[j + k];
+            long total = W[a] + W[j] + W[c];
+            if (total > bestSum) {                        // strict: keep lexicographically smallest
+                bestSum = total;
+                ans = new[] { a, j, c };
+            }
+        }
+        return ans;
+    }
+}` }
       ],
       dry: { head: ['j (middle)', 'left[j−k]', 'right[j+k]', 'W sums', 'total'], rows: [['2', '0', '4', '3 + 3 + 13', '19'], ['3', '0', '5', '3 + 8 + 12', H.c('p', '23')], ['4', '0', '6', '3 + 13 + 6', '22']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for W, left and right.</p>`,

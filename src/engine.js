@@ -62,6 +62,7 @@ var App = (function () {
   var LANGS = {
     java: { name: 'Java', kw: kw(CK + 'abstract assert boolean byte char class const double enum extends final float goto implements import instanceof int interface long native new null package private protected public short static strictfp super synchronized this throws transient void volatile var true false record yield sealed permits non-sealed'), c: 1 },
     cpp: { name: 'C++', kw: kw(CK + 'alignas alignof auto bool char char16_t char32_t class const constexpr consteval constinit const_cast decltype delete double dynamic_cast enum explicit export extern false float friend goto inline int long mutable namespace new noexcept nullptr operator private protected public register reinterpret_cast short signed sizeof static static_assert static_cast struct template this thread_local true typedef typeid typename union unsigned using virtual void volatile wchar_t override final concept requires co_await co_return co_yield size_t'), c: 1, pre: 1 },
+    csharp: { name: 'C#', kw: kw(CK + 'abstract as base bool byte char checked class const decimal delegate double enum event explicit extern false fixed float foreach goto implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref sbyte sealed short sizeof stackalloc static string struct this true typeof uint ulong unchecked unsafe ushort using virtual void volatile var dynamic async await yield get set value where select from let group into orderby join nameof when partial add remove'), c: 1, pre: 1 },
     js: { name: 'JavaScript', kw: kw(CK + 'async await class const debugger delete export extends false function import in instanceof let new null of super this true typeof undefined var void with yield static get set from as'), c: 1, bt: 1 },
     ts: { name: 'TypeScript', kw: kw(CK + 'async await class const debugger delete export extends false function import in instanceof let new null of super this true typeof undefined var void with yield static get set from as interface type enum implements private protected public readonly declare namespace abstract keyof infer is never unknown any string number boolean symbol bigint object satisfies'), c: 1, bt: 1 },
     python: { name: 'Python', kw: kw('False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield match case self print len range'), hash: 1, tri: 1 },
@@ -76,7 +77,7 @@ var App = (function () {
     http: { name: 'HTTP', kw: kw('GET POST PUT PATCH DELETE HEAD OPTIONS HTTP') },
     text: { name: 'Text', kw: {}, plain: 1 }
   };
-  LANGS.jsx = LANGS.js; LANGS.tsx = LANGS.ts; LANGS.javascript = LANGS.js; LANGS.typescript = LANGS.ts; LANGS.py = LANGS.python; LANGS.sh = LANGS.bash; LANGS.tf = LANGS.hcl; LANGS.terraform = LANGS.hcl; LANGS.c = LANGS.cpp; LANGS.xml = LANGS.html;
+  LANGS.jsx = LANGS.js; LANGS.tsx = LANGS.ts; LANGS.javascript = LANGS.js; LANGS.typescript = LANGS.ts; LANGS.py = LANGS.python; LANGS.sh = LANGS.bash; LANGS.tf = LANGS.hcl; LANGS.terraform = LANGS.hcl; LANGS.c = LANGS.cpp; LANGS.cs = LANGS.csharp; LANGS['c#'] = LANGS.csharp; LANGS.xml = LANGS.html;
   function highlight(code, lang) {
     var L = LANGS[lang] || LANGS.text;
     if (L.plain) return esc(code);
@@ -118,9 +119,9 @@ var App = (function () {
     return codeTabs([s].concat(asList(x && x.alt).map(function (a) { return snip(a, defLang, defTitle); })));
   }
   /* ---------- the learner's code language ---------- */
-  var CODE_LANGS = [['java', 'Java'], ['python', 'Python'], ['js', 'JavaScript / TypeScript'], ['cpp', 'C++']];
+  var CODE_LANGS = [['java', 'Java'], ['python', 'Python'], ['js', 'JavaScript / TypeScript'], ['cpp', 'C++'], ['csharp', 'C#']];
   function langPref() { var l = store.get('imastery.lang', null); return CODE_LANGS.some(function (c) { return c[0] === l; }) ? l : null; }
-  function langKey(l) { l = String(l || '').toLowerCase(); return { py: 'python', javascript: 'js', typescript: 'js', ts: 'js', 'c++': 'cpp', c: 'cpp' }[l] || l; }
+  function langKey(l) { l = String(l || '').toLowerCase(); return { py: 'python', javascript: 'js', typescript: 'js', ts: 'js', 'c++': 'cpp', c: 'cpp', 'c#': 'csharp', cs: 'csharp' }[l] || l; }
   /* The language whose code shows first while the other languages wait behind "Other languages": an explicit pick
      (imastery.lang), else the chosen route's language. 'all' is stored when the learner asks for every language;
      with no choice at all the page renders exactly as it did before language mode existed. */

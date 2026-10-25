@@ -9,7 +9,7 @@ var Auth = (function () {
       });
     } catch (e) { enabled = false; }
   }
-  var user = null, timer = null, status = 'idle', listeners = [], ready = null, noPrefs = false;
+  var user = null, timer = null, status = 'idle', listeners = [], ready = null, noPrefs = false, noPlay = false;
 
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
@@ -21,12 +21,15 @@ var Auth = (function () {
     for (var i = 0; i < ka.length; i++) if (!b[ka[i]]) return false;
     return true;
   }
+  // Columns to read: prefs (0004) and play (0005) are skipped once the server has said it does not have them.
+  function cols() { return 'done,last' + (noPrefs ? '' : ',prefs') + (noPlay ? '' : ',play'); }
 
   function pull() {
     if (!user) return Promise.resolve();
     setStatus('syncing');
-    return client.from('progress').select(noPrefs ? 'done,last' : 'done,last,prefs').eq('user_id', user.id).maybeSingle().then(function (res) {
+    return client.from('progress').select(cols()).eq('user_id', user.id).maybeSingle().then(function (res) {
       if (res.error && !noPrefs && prefsMissing(res.error)) { noPrefs = true; return pull(); }
+      if (res.error && !noPlay && playMissing(res.error)) { noPlay = true; return pull(); }
       if (res.error) { setStatus('error'); return; }
       var row = res.data, remote = (row && row.done) || {}, local = lsGet('imastery.done', {}) || {};
       var st = lsGet('imastery.sync', {}) || {}, trusted = st.user === user.id && !st.dirty, foreign = !!st.user && st.user !== user.id;
@@ -37,8 +40,9 @@ var Auth = (function () {
       else if (foreign) lsSet('imastery.last', null);
       lsSet('imastery.sync', { user: user.id, dirty: false });
       var prefsNewer = mergePrefs(row && row.prefs, foreign);
+      var playNewer = mergePlay(row && row.play, foreign);
       emit('progress');
-      if (!row || !same(merged, remote) || prefsNewer) return push();
+      if (!row || !same(merged, remote) || prefsNewer || playNewer) return push();
       setStatus('synced');
     }, function () { setStatus('error'); });
   }
@@ -58,6 +62,121 @@ var Auth = (function () {
     return !noPrefs && lt > rt;
   }
   function prefsMissing(err) { return /prefs/i.test(String((err && (err.message || err.details)) || '')); }
+  function playMissing(err) { return /\bplay\b/i.test(String((err && (err.message || err.details)) || '')); }
+
+  /* ---------- play layer (progress.play, migration 0005) ----------
+     One blob per account: { play, review, days, updatedAt }
+       play   = imastery.play without the device settings (sound, haptics, motion, bit, tts stay on this device)
+       review = imastery.review (spaced-review queue), days = imastery.days (activity days, last 60)
+     imastery.playmeta = { updatedAt, sig } remembers when the local copy last changed (sig = canonical JSON of the blob).
+     Two devices can both play, so pulling merges instead of last-write-wins; see mergeBlob and docs/DATABASE.md. */
+  var DEVICE_SETTINGS = { sound: 1, haptics: 1, motion: 1, bit: 1, tts: 1 }, DAYS_KEEP = 60, REVIEW_KEEP = 300;
+  function isObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+  function canon(v) {
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    if (isObj(v)) return '{' + Object.keys(v).sort().map(function (k) { return v[k] === undefined ? '' : JSON.stringify(k) + ':' + canon(v[k]); }).filter(Boolean).join(',') + '}';
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  function syncedSettings(s) { var out = {}; Object.keys(isObj(s) ? s : {}).forEach(function (k) { if (!DEVICE_SETTINGS[k]) out[k] = s[k]; }); return out; }
+  function deviceSettings(s) { var out = {}; Object.keys(isObj(s) ? s : {}).forEach(function (k) { if (DEVICE_SETTINGS[k]) out[k] = s[k]; }); return out; }
+  function cleanDays(d) {
+    var seen = {}, out = [];
+    (Array.isArray(d) ? d : []).forEach(function (x) { if (typeof x === 'string' && /^\d{4}-\d\d-\d\d$/.test(x) && !seen[x]) { seen[x] = 1; out.push(x); } });
+    return out.sort().slice(-DAYS_KEEP);
+  }
+  function cleanReview(r) {
+    return (Array.isArray(r) ? r : []).filter(function (x) { return isObj(x) && typeof x.id === 'string'; }).sort(function (a, b) { return (+a.due || 0) - (+b.due || 0); }).slice(0, REVIEW_KEEP);
+  }
+  // The local copy as a blob without updatedAt, or null when this device has no play data at all.
+  function localBlob() {
+    var p = lsGet('imastery.play', null), review = cleanReview(lsGet('imastery.review', [])), days = cleanDays(lsGet('imastery.days', []));
+    var play = null;
+    if (isObj(p)) { play = {}; Object.keys(p).forEach(function (k) { if (k !== 'settings') play[k] = p[k]; }); play.settings = syncedSettings(p.settings); }
+    if (!play && !review.length && !days.length) return null;
+    return { play: play || {}, review: review, days: days };
+  }
+  function playSig(b) { b = b || localBlob(); return b ? canon({ play: b.play, review: b.review, days: b.days }) : ''; }
+  function playMeta() { var m = lsGet('imastery.playmeta', null); return isObj(m) ? m : {}; }
+  // Stamps imastery.playmeta when the local play data differs from what was last stamped. Returns true when it changed.
+  function stampPlay() {
+    var sig = playSig(), m = playMeta();
+    if (sig === (m.sig || '')) return false;
+    lsSet('imastery.playmeta', { updatedAt: Date.now(), sig: sig });
+    return true;
+  }
+  function validBlob(b) { return isObj(b) && (isObj(b.play) || Array.isArray(b.review) || Array.isArray(b.days)) ? { play: isObj(b.play) ? b.play : {}, review: cleanReview(b.review), days: cleanDays(b.days), updatedAt: +b.updatedAt || 0 } : null; }
+  function maxNum(a, b) { a = +a || 0; b = +b || 0; return a > b ? a : b; }
+  // Merge rule (both inputs are blobs; n is the one with the later updatedAt, o the other):
+  //   xp bonus = max; game wins = per game max of wins and latest timestamp; day records (quests) = newer blob's record per day, union of days;
+  //   claimed quests = union per day; seen items = union; synced settings and other scalars = newer blob (older fills gaps);
+  //   activity days = union (sorted, last 60); review queue = union by section id keeping the later due; updatedAt = max.
+  function mergeBlob(a, b) {
+    var n = (+a.updatedAt || 0) >= (+b.updatedAt || 0) ? a : b, o = n === a ? b : a, np = n.play || {}, op = o.play || {};
+    var play = {};
+    Object.keys(op).forEach(function (k) { play[k] = op[k]; });
+    Object.keys(np).forEach(function (k) { if (np[k] !== undefined && np[k] !== null) play[k] = np[k]; });
+    play.bonus = maxNum(np.bonus, op.bonus);
+    var games = {};
+    [op.games, np.games].forEach(function (g) {
+      Object.keys(isObj(g) ? g : {}).forEach(function (id) {
+        var x = isObj(g[id]) ? g[id] : {}, cur = games[id] || (games[id] = { wins: 0 });
+        cur.wins = maxNum(cur.wins, x.wins);
+        var at = maxNum(cur.at, x.at); if (at) cur.at = at;
+      });
+    });
+    play.games = games;
+    var days = {};
+    Object.keys(isObj(op.days) ? op.days : {}).forEach(function (k) { days[k] = op.days[k]; });
+    Object.keys(isObj(np.days) ? np.days : {}).forEach(function (k) { days[k] = np.days[k]; });
+    play.days = days;
+    var claimed = {};
+    [op.claimed, np.claimed].forEach(function (c) {
+      Object.keys(isObj(c) ? c : {}).forEach(function (k) { var d = claimed[k] || (claimed[k] = {}); Object.keys(isObj(c[k]) ? c[k] : {}).forEach(function (q) { if (c[k][q]) d[q] = 1; }); });
+    });
+    play.claimed = claimed;
+    if (isObj(np.seen) || isObj(op.seen)) {
+      var seen = {};
+      [op.seen, np.seen].forEach(function (s) { Object.keys(isObj(s) ? s : {}).forEach(function (id) { if (s[id]) seen[id] = 1; }); });
+      play.seen = seen;
+    }
+    play.settings = syncedSettings(np.settings);
+    var byId = {};
+    [o.review, n.review].forEach(function (r) { (r || []).forEach(function (x) { var cur = byId[x.id]; if (!cur || (+x.due || 0) > (+cur.due || 0)) byId[x.id] = x; }); });
+    var review = cleanReview(Object.keys(byId).map(function (k) { return byId[k]; }));
+    return { play: play, review: review, days: cleanDays((a.days || []).concat(b.days || [])), updatedAt: maxNum(a.updatedAt, b.updatedAt) };
+  }
+  function writeBlob(b) {
+    var cur = lsGet('imastery.play', null), dev = deviceSettings(isObj(cur) ? cur.settings : null);
+    var play = {};
+    Object.keys(b.play || {}).forEach(function (k) { play[k] = b.play[k]; });
+    play.settings = Object.assign({}, syncedSettings(b.play && b.play.settings), dev);
+    lsSet('imastery.play', play);
+    lsSet('imastery.review', b.review || []);
+    lsSet('imastery.days', b.days || []);
+    lsSet('imastery.playmeta', { updatedAt: +b.updatedAt || 0, sig: playSig({ play: b.play, review: b.review, days: b.days }) });
+  }
+  // Returns true when the merged result differs from the server copy, so it should be pushed.
+  function mergePlay(remote, foreign) {
+    var R = validBlob(remote), L = localBlob();
+    if (foreign) {
+      if (R) writeBlob(R);
+      else { ['imastery.play', 'imastery.review', 'imastery.days', 'imastery.playmeta'].forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { } }); }
+      return false;
+    }
+    if (!R) { if (L) stampPlay(); return !noPlay && !!L; }
+    if (!L) { writeBlob(R); return false; }
+    stampPlay();
+    L.updatedAt = +playMeta().updatedAt || 0;
+    var M = mergeBlob(L, R);
+    writeBlob(M);
+    return !noPlay && playSig(M) !== playSig(R);
+  }
+  function playBody() {
+    var L = localBlob();
+    if (!L) return null;
+    stampPlay();
+    return { play: L.play, review: L.review, days: L.days, updatedAt: +playMeta().updatedAt || Date.now() };
+  }
 
   function push() {
     if (!user) return Promise.resolve();
@@ -66,8 +185,11 @@ var Auth = (function () {
     var body = { user_id: user.id, done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null) };
     var pr = lsGet('imastery.route', null);
     if (!noPrefs && pr && typeof pr === 'object') body.prefs = pr;
+    var pb = noPlay ? null : playBody();
+    if (pb) body.play = pb;
     return client.from('progress').upsert(body, { onConflict: 'user_id' }).then(function (res) {
       if (res.error && body.prefs && prefsMissing(res.error)) { noPrefs = true; return push(); }
+      if (res.error && body.play && playMissing(res.error)) { noPlay = true; return push(); }
       if (res.error) { lsSet('imastery.sync', { user: user.id, dirty: true }); setStatus('error'); return; }
       lsSet('imastery.sync', { user: user.id, dirty: false });
       setStatus('synced');
@@ -75,6 +197,9 @@ var Auth = (function () {
   }
 
   function changed(kind) {
+    // Play data is saved on every screen; only a real change (new signature) marks the account dirty.
+    if (kind === 'play' && !stampPlay()) return;
+    if (kind !== 'play') stampPlay();
     if (!user) {
       var st = lsGet('imastery.sync', {}) || {};
       if (st.user && kind !== 'last') lsSet('imastery.sync', { user: st.user, dirty: true });
@@ -99,7 +224,7 @@ var Auth = (function () {
       if (r.error) throw new Error(r.error.message || 'Could not delete the account.');
       return client.auth.signOut({ scope: 'local' }).catch(function () { });
     }).then(function () {
-      try { ['imastery.sync', 'imastery.done', 'imastery.last', 'imastery.play'].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) { }
+      try { ['imastery.sync', 'imastery.done', 'imastery.last', 'imastery.play', 'imastery.review', 'imastery.days', 'imastery.playmeta'].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) { }
       user = null; emit('user');
     });
   }
@@ -110,14 +235,14 @@ var Auth = (function () {
     var out = {
       app: 'Interview Mastery', version: String(window.IM_VERSION || cfg.version || ''), exportedAt: new Date().toISOString(),
       account: user ? { id: user.id, email: user.email || null } : null,
-      local: { done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null), play: lsGet('imastery.play', null), prefs: lsGet('imastery.route', null) },
+      local: { done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null), play: lsGet('imastery.play', null), review: lsGet('imastery.review', []), days: lsGet('imastery.days', []), prefs: lsGet('imastery.route', null) },
       server: null
     };
     if (!user || !client) return Promise.resolve(out);
     var uid = user.id;
-    return client.from('progress').select(noPrefs ? 'done,last' : 'done,last,prefs').eq('user_id', uid).maybeSingle().then(function (res) {
+    return client.from('progress').select(cols()).eq('user_id', uid).maybeSingle().then(function (res) {
       if (res.error) out.server = { error: 'Could not read your saved progress from the server: ' + (res.error.message || 'unknown error') + '. Only the data on this device is included.' };
-      else out.server = { found: !!res.data, user_id: uid, done: (res.data && res.data.done) || {}, last: res.data ? res.data.last : null, prefs: (res.data && res.data.prefs) || null };
+      else out.server = { found: !!res.data, user_id: uid, done: (res.data && res.data.done) || {}, last: res.data ? res.data.last : null, prefs: (res.data && res.data.prefs) || null, play: (res.data && res.data.play) || null };
       return out;
     }, function () {
       out.server = { error: 'Could not reach the server. Only the data on this device is included.' };
@@ -137,17 +262,18 @@ var Auth = (function () {
     });
   }
 
-  // Sign-out removes progress from this device, so first send anything not yet saved; if that fails, keep everything and stay signed in.
+  // Sign-out removes progress and play data from this device, so first send anything not yet saved; if that fails, keep everything and stay signed in.
   function signOut() {
     if (!client) return Promise.resolve();
     var st = lsGet('imastery.sync', {}) || {};
-    var flush = (timer || (user && st.user === user.id && st.dirty)) ? push() : Promise.resolve();
+    var playDirty = user && !noPlay && stampPlay();
+    var flush = (timer || playDirty || (user && st.user === user.id && st.dirty)) ? push() : Promise.resolve();
     return flush.then(function () {
       var after = lsGet('imastery.sync', {}) || {};
       if (user && after.user === user.id && after.dirty) throw new Error('Your latest progress is not saved yet. Connect to the internet and try again, so it is not lost.');
       return client.auth.signOut();
     }).then(function () {
-      try { ['imastery.sync', 'imastery.done', 'imastery.last'].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) { }
+      try { ['imastery.sync', 'imastery.done', 'imastery.last', 'imastery.play', 'imastery.review', 'imastery.days', 'imastery.playmeta'].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) { }
     });
   }
 

@@ -11,11 +11,11 @@ const args = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : null; };
 // Tracks whose every problem must have tests, and the languages each problem must be implemented in.
 const REQUIRE = {
-  dsa: 'java,python,js,cpp', lld: 'java,python,ts,cpp',
+  dsa: 'java,python,js,cpp,csharp', lld: 'java,python,ts,cpp,csharp',
   java: 'java', py: 'python', js: 'js|ts', cpp: 'cpp', sql: 'sql|python|java|js'
 };
 const SAMPLE = ['dsa/dsa07', 'dsa/dsa27', 'lld/lld03', 'java/java07', 'py/py05', 'js/js02', 'cpp/cpp05', 'sql/sql02'].map((m) => 'content/' + m + '.js');
-const TOOLS = /^tools\/(solution-check|sql-runner|validate|pycheck)\.js$|^tools\/pycheck\.py$|^tools\/harness\/|^vendor\/sql-wasm/;
+const TOOLS = /^tools\/(solution-check|sql-runner|validate|pycheck)\.js$|^tools\/pycheck\.py$|^tools\/harness\/|^vendor\/sql-wasm/; // tools/harness/ includes H.cs and cs-compile.js
 
 const allModules = () => fs.readdirSync(path.join(root, 'content')).flatMap((t) => fs.readdirSync(path.join(root, 'content', t)).filter((f) => /\.js$/.test(f)).sort().map((f) => 'content/' + t + '/' + f));
 let files;

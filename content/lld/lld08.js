@@ -1257,6 +1257,277 @@ int main() {
     cout << name(service.pay(b.id).status) << ", free seats left = " << evening.availableCount() << "\\n";
     Booking& declined = service.start({"u2", "Ben"}, evening, {"C1", "C2"});
     cout << name(service.pay(declined.id).status) << ", free seats left = " << evening.availableCount() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+// ================= BookMyShow core domain model (single file, compiles as-is) =================
+// Money is ALWAYS in paise (long). 1 rupee = 100 paise. Never use double for money.
+
+enum SeatType { REGULAR, PREMIUM, RECLINER }
+enum SeatStatus { AVAILABLE, HELD, BOOKED }
+enum BookingStatus { PENDING, CONFIRMED, CANCELLED, EXPIRED }
+
+// ---------- Catalogue: things that almost never change ----------
+sealed class Movie {
+    public readonly string Id, Title, Language;
+    public readonly int DurationMins;
+    public Movie(string id, string title, int durationMins, string language) {
+        Id = id; Title = title; DurationMins = durationMins; Language = language;
+    }
+}
+
+// A PHYSICAL chair. It exists exactly once, no matter how many shows run.
+sealed class Seat {
+    public readonly string Id;          // "B4"
+    public readonly int Row, Col;
+    public readonly SeatType Type;
+    public Seat(string id, int row, int col, SeatType type) { Id = id; Row = row; Col = col; Type = type; }
+}
+
+sealed class Screen {           // an auditorium: Screen COMPOSES its seats
+    public readonly string Id, Name;
+    public readonly IReadOnlyList<Seat> Seats;
+    public Screen(string id, string name, List<Seat> seats) { Id = id; Name = name; Seats = new List<Seat>(seats).AsReadOnly(); }
+}
+
+sealed class Theatre {          // a building in a city: Theatre COMPOSES its screens
+    public readonly string Id, Name, City;
+    public readonly List<Screen> Screens = new List<Screen>();
+    public Theatre(string id, string name, string city) { Id = id; Name = name; City = city; }
+    public void AddScreen(Screen s) { Screens.Add(s); }
+}
+
+// ---------- Inventory: changes every second ----------
+// A chair IN ONE SHOW. This is the thing we actually sell.
+sealed class ShowSeat {
+    public readonly Seat Seat;
+    public readonly long PricePaise;
+    public SeatStatus Status = SeatStatus.AVAILABLE;
+    public string HeldBy;               // userId while HELD or BOOKED
+    public DateTime? HoldExpiresAt;     // only meaningful while HELD
+    public ShowSeat(Seat seat, long pricePaise) { Seat = seat; PricePaise = pricePaise; }
+}
+
+// Pricing is a Strategy: weekend surge, recliner premium, festival pricing... all pluggable.
+interface IPricingStrategy { long Price(Seat seat, DateTime showStart); }
+
+sealed class TieredPricing : IPricingStrategy {
+    public long Price(Seat seat, DateTime showStart) {           // showStart is local (IST) wall-clock time
+        long b;
+        switch (seat.Type) {
+            case SeatType.REGULAR: b = 20000; break;
+            case SeatType.PREMIUM: b = 35000; break;
+            default: b = 60000; break;
+        }
+        DayOfWeek d = showStart.DayOfWeek;
+        bool weekend = d == DayOfWeek.Saturday || d == DayOfWeek.Sunday;
+        return weekend ? b * 120 / 100 : b;   // +20% on weekends
+    }
+}
+
+// A Show = (Movie, Screen, start time). It OWNS one ShowSeat per physical Seat.
+sealed class Show {
+    public readonly string Id;
+    public readonly Movie Movie;
+    public readonly Screen Screen;
+    public readonly DateTime Start;
+    public readonly Dictionary<string, ShowSeat> Seats = new Dictionary<string, ShowSeat>();
+    public Show(string id, Movie movie, Screen screen, DateTime start, IPricingStrategy pricing) {
+        Id = id; Movie = movie; Screen = screen; Start = start;
+        foreach (Seat s in screen.Seats) Seats[s.Id] = new ShowSeat(s, pricing.Price(s, start));
+    }
+    public DateTime End() { return Start.AddMinutes(Movie.DurationMins); }
+    public List<ShowSeat> Available() { return Seats.Values.Where(x => x.Status == SeatStatus.AVAILABLE).ToList(); }
+}
+
+sealed class User {
+    public readonly string Id, Name;
+    public User(string id, string name) { Id = id; Name = name; }
+}
+
+sealed class Booking {
+    public readonly string Id;
+    public readonly User User;
+    public readonly Show Show;
+    public readonly IReadOnlyList<ShowSeat> Seats;
+    public readonly long AmountPaise;
+    public BookingStatus Status = BookingStatus.PENDING;
+    public Booking(string id, User user, Show show, List<ShowSeat> seats, long amountPaise) {
+        Id = id; User = user; Show = show; Seats = new List<ShowSeat>(seats).AsReadOnly(); AmountPaise = amountPaise;
+    }
+}
+
+// ---------- Search: city -> shows, with an overlap guard per screen ----------
+sealed class ShowCatalog {
+    private readonly Dictionary<string, List<Show>> showsByCity = new Dictionary<string, List<Show>>();
+    private readonly Dictionary<string, Theatre> theatreOfScreen = new Dictionary<string, Theatre>();
+
+    public void AddTheatre(Theatre t) { foreach (Screen s in t.Screens) theatreOfScreen[s.Id] = t; }
+
+    public void AddShow(Show show) {
+        Theatre t;
+        if (!theatreOfScreen.TryGetValue(show.Screen.Id, out t)) throw new ArgumentException("unknown screen " + show.Screen.Id);
+        List<Show> list;
+        if (!showsByCity.TryGetValue(t.City, out list)) { list = new List<Show>(); showsByCity[t.City] = list; }
+        foreach (Show other in list) {
+            bool sameScreen = other.Screen == show.Screen;
+            bool overlap = other.Start < show.End() && show.Start < other.End();
+            if (sameScreen && overlap) throw new InvalidOperationException("overlaps show " + other.Id);
+        }
+        list.Add(show);
+    }
+
+    public List<Movie> MoviesIn(string city) {
+        List<Show> list;
+        return showsByCity.TryGetValue(city, out list) ? list.Select(s => s.Movie).Distinct().ToList() : new List<Movie>();
+    }
+
+    public List<Show> ShowsOf(string city, string movieId) {
+        List<Show> list;
+        if (!showsByCity.TryGetValue(city, out list)) return new List<Show>();
+        return list.Where(s => s.Movie.Id == movieId).OrderBy(s => s.Start).ToList();
+    }
+}
+
+// ---------- Booking flow: depends on ABSTRACTIONS (Dependency Inversion) ----------
+interface ISeatLockProvider {                     // in-memory today, Redis / DB tomorrow
+    bool Hold(Show show, IReadOnlyList<ShowSeat> seats, User user);     // all-or-nothing
+    bool Confirm(Show show, IReadOnlyList<ShowSeat> seats, User user);  // HELD -> BOOKED if hold still valid
+    void Release(Show show, IReadOnlyList<ShowSeat> seats, User user);  // HELD -> AVAILABLE
+}
+
+interface IPaymentGateway {
+    bool Charge(string userId, long amountPaise, string idempotencyKey);
+    void Refund(string idempotencyKey);
+}
+
+// Simple, correct, coarse: ONE monitor for everything. The next topic makes it per-show.
+sealed class CoarseLockProvider : ISeatLockProvider {
+    private readonly Func<DateTime> clock;
+    private readonly TimeSpan ttl;
+    private readonly object gate = new object();
+    public CoarseLockProvider(Func<DateTime> clock, TimeSpan ttl) { this.clock = clock; this.ttl = ttl; }
+
+    private bool FreeFor(ShowSeat s, User u, DateTime now) {
+        if (s.Status == SeatStatus.AVAILABLE) return true;
+        if (s.Status == SeatStatus.BOOKED) return false;
+        return now > s.HoldExpiresAt.Value || u.Id == s.HeldBy;   // expired hold or my own hold
+    }
+    public bool Hold(Show show, IReadOnlyList<ShowSeat> seats, User u) {
+        lock (gate) {
+            DateTime now = clock();
+            foreach (ShowSeat s in seats) if (!FreeFor(s, u, now)) return false;      // phase 1: check ALL
+            foreach (ShowSeat s in seats) {                                            // phase 2: take ALL
+                s.Status = SeatStatus.HELD; s.HeldBy = u.Id; s.HoldExpiresAt = now + ttl;
+            }
+            return true;
+        }
+    }
+    public bool Confirm(Show show, IReadOnlyList<ShowSeat> seats, User u) {
+        lock (gate) {
+            DateTime now = clock();
+            foreach (ShowSeat s in seats)
+                if (s.Status != SeatStatus.HELD || u.Id != s.HeldBy || now > s.HoldExpiresAt.Value) return false;
+            foreach (ShowSeat s in seats) { s.Status = SeatStatus.BOOKED; s.HoldExpiresAt = null; }
+            return true;
+        }
+    }
+    public void Release(Show show, IReadOnlyList<ShowSeat> seats, User u) {
+        lock (gate) {
+            foreach (ShowSeat s in seats)
+                if (s.Status == SeatStatus.HELD && u.Id == s.HeldBy) { s.Status = SeatStatus.AVAILABLE; s.HeldBy = null; }
+        }
+    }
+}
+
+sealed class BookingService {
+    private readonly ISeatLockProvider locks;
+    private readonly IPaymentGateway payments;
+    private readonly ConcurrentDictionary<string, Booking> bookings = new ConcurrentDictionary<string, Booking>();
+    private long ids = 0;
+
+    public BookingService(ISeatLockProvider locks, IPaymentGateway payments) { this.locks = locks; this.payments = payments; }
+
+    // Step 1: user picks seats -> we HOLD them and create a PENDING booking
+    public Booking Start(User u, Show show, List<string> seatIds) {
+        List<ShowSeat> chosen = new List<ShowSeat>();
+        foreach (string id in seatIds) {
+            ShowSeat s;
+            if (!show.Seats.TryGetValue(id, out s)) throw new ArgumentException("no seat " + id);
+            chosen.Add(s);
+        }
+        if (!locks.Hold(show, chosen, u)) throw new InvalidOperationException("some seats were just taken, pick again");
+        long amount = chosen.Sum(s => s.PricePaise);
+        Booking b = new Booking("BK" + Interlocked.Increment(ref ids), u, show, chosen, amount);
+        bookings[b.Id] = b;
+        return b;
+    }
+
+    // Step 2: payment -> confirm. The booking id doubles as the payment idempotency key.
+    public Booking Pay(string bookingId) {
+        Booking b;
+        if (!bookings.TryGetValue(bookingId, out b)) throw new ArgumentException("no booking " + bookingId);
+        if (b.Status != BookingStatus.PENDING) return b;                      // retry-safe
+        if (!payments.Charge(b.User.Id, b.AmountPaise, b.Id)) {
+            locks.Release(b.Show, b.Seats, b.User);
+            b.Status = BookingStatus.CANCELLED;
+            return b;
+        }
+        if (!locks.Confirm(b.Show, b.Seats, b.User)) {                        // hold expired during payment
+            payments.Refund(b.Id);
+            b.Status = BookingStatus.EXPIRED;
+            return b;
+        }
+        b.Status = BookingStatus.CONFIRMED;
+        return b;
+    }
+}
+
+sealed class DemoGateway : IPaymentGateway {
+    public bool Charge(string userId, long amountPaise, string key) { return userId != "u2"; }   // Ben's card is declined
+    public void Refund(string key) { Console.WriteLine("refund " + key); }
+}
+
+class Program {
+    static void Main() {
+        List<Seat> seats = new List<Seat>();
+        for (int r = 0; r < 3; r++)
+            for (int c = 1; c <= 4; c++)
+                seats.Add(new Seat((char)('A' + r) + "" + c, r, c, r == 2 ? SeatType.PREMIUM : SeatType.REGULAR));
+        Screen audi1 = new Screen("SCR1", "Audi 1", seats);
+        Theatre pvr = new Theatre("T1", "PVR Forum", "Bengaluru");
+        pvr.AddScreen(audi1);
+
+        ShowCatalog catalog = new ShowCatalog();
+        catalog.AddTheatre(pvr);
+        Movie movie = new Movie("M1", "Interstellar", 169, "English");
+        DateTime sat6pm = new DateTime(2026, 10, 17, 18, 0, 0);               // a Saturday, IST wall-clock
+        Show evening = new Show("SH1", movie, audi1, sat6pm, new TieredPricing());
+        catalog.AddShow(evening);
+        try {
+            catalog.AddShow(new Show("SH2", movie, audi1, sat6pm.AddHours(1), new TieredPricing()));
+        } catch (InvalidOperationException e) {
+            Console.WriteLine("Rejected: " + e.Message);           // same screen, overlapping time
+        }
+
+        IPaymentGateway gateway = new DemoGateway();
+        BookingService service = new BookingService(new CoarseLockProvider(() => DateTime.UtcNow, TimeSpan.FromMinutes(10)), gateway);
+        Booking b = service.Start(new User("u1", "Asha"), evening, new List<string> { "C3", "C4" });
+        Console.WriteLine(b.Id + " amount (paise) = " + b.AmountPaise);   // 2 premium seats on a Saturday
+        try {
+            service.Start(new User("u2", "Ben"), evening, new List<string> { "C2", "C4" });   // C4 is held by Asha
+        } catch (InvalidOperationException e) {
+            Console.WriteLine("Rejected: " + e.Message);
+        }
+        Console.WriteLine(service.Pay(b.Id).Status + ", free seats left = " + evening.Available().Count);
+        Booking declined = service.Start(new User("u2", "Ben"), evening, new List<string> { "C1", "C2" });
+        Console.WriteLine(service.Pay(declined.Id).Status + ", free seats left = " + evening.Available().Count);   // seats went back
+    }
 }` }
     ] }],
     codeTitle: 'BookMyShow domain model + booking flow (a complete program)',
@@ -1402,6 +1673,32 @@ int main() {
     FestivalPricing diwali(normal, 25);
     cout << normal.price("REGULAR", true) << "\\n";   // 24000 paise = Rs 240
     cout << diwali.price("REGULAR", true) << "\\n";   // 30000 paise = Rs 300
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IPricingStrategy { long Price(string seatType, bool weekend); }
+
+sealed class FestivalPricing : IPricingStrategy {
+    private readonly IPricingStrategy b;     // decorate the normal pricing
+    private readonly int surgePercent;
+    public FestivalPricing(IPricingStrategy b, int surgePercent) { this.b = b; this.surgePercent = surgePercent; }
+    public long Price(string seatType, bool weekend) {
+        return b.Price(seatType, weekend) * (100 + surgePercent) / 100;
+    }
+}
+
+sealed class NormalPricing : IPricingStrategy {
+    public long Price(string type, bool weekend) { return (type == "RECLINER" ? 60000 : 20000) * (weekend ? 120 : 100) / 100; }
+}
+
+class Program {
+    static void Main() {
+        IPricingStrategy normal = new NormalPricing();
+        IPricingStrategy diwali = new FestivalPricing(normal, 25);
+        Console.WriteLine(normal.Price("REGULAR", true));   // 24000 paise = Rs 240
+        Console.WriteLine(diwali.Price("REGULAR", true));   // 30000 paise = Rs 300
+    }
 }` }
         ] },
       { title: 'Rejecting overlapping shows on the same screen', html: `<p>Interstellar is 169 minutes. Show 1 runs 18:00 → 20:49. An admin tries to add Show 2 at 19:00 on the same screen. Two intervals [a1, b1) and [a2, b2) overlap exactly when <code>a1 &lt; b2 &amp;&amp; a2 &lt; b1</code>: 18:00 &lt; 21:49 and 19:00 &lt; 20:49 → ${H.c('r', 'overlap → reject')}. Real cinemas also add a 15-minute cleaning buffer — just extend <code>end()</code> by the buffer.</p>` },
@@ -1437,7 +1734,7 @@ row4 ........</pre><p>Middle row is 2. Row 2 has free run cols 4..7 → blocks s
             }
         return null;
     }
-}`, alt: [{ lang: 'python', code: "class BruteSuggest:\n    @staticmethod\n    def first_fit(seat_map, k):\n        for r in range(len(seat_map)):\n            for c in range(len(seat_map[r]) - k + 1):\n                ok = True\n                for j in range(c, c + k):\n                    if seat_map[r][j] != \".\": ok = False; break\n                if ok: return (r, c)          # first fit = front row, bad seats\n        return None\n" }, { lang: 'ts', code: "class BruteSuggest {\n  static firstFit(map: string[][], k: number): [number, number] | null {\n    for (let r = 0; r < map.length; r++)\n      for (let c = 0; c + k <= map[r].length; c++) {\n        let ok = true;\n        for (let j = c; j < c + k; j++) if (map[r][j] !== \".\") { ok = false; break; }\n        if (ok) return [r, c];          // first fit = front row, bad seats\n      }\n    return null;\n  }\n}\n" }, { lang: 'cpp', code: "struct BruteSuggest {\n    static optional<pair<int, int>> firstFit(const vector<string>& map, int k) {\n        for (int r = 0; r < (int)map.size(); r++)\n            for (int c = 0; c + k <= (int)map[r].size(); c++) {\n                bool ok = true;\n                for (int j = c; j < c + k; j++) if (map[r][j] != '.') { ok = false; break; }\n                if (ok) return make_pair(r, c);          // first fit = front row, bad seats\n            }\n        return nullopt;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class BruteSuggest:\n    @staticmethod\n    def first_fit(seat_map, k):\n        for r in range(len(seat_map)):\n            for c in range(len(seat_map[r]) - k + 1):\n                ok = True\n                for j in range(c, c + k):\n                    if seat_map[r][j] != \".\": ok = False; break\n                if ok: return (r, c)          # first fit = front row, bad seats\n        return None\n" }, { lang: 'ts', code: "class BruteSuggest {\n  static firstFit(map: string[][], k: number): [number, number] | null {\n    for (let r = 0; r < map.length; r++)\n      for (let c = 0; c + k <= map[r].length; c++) {\n        let ok = true;\n        for (let j = c; j < c + k; j++) if (map[r][j] !== \".\") { ok = false; break; }\n        if (ok) return [r, c];          // first fit = front row, bad seats\n      }\n    return null;\n  }\n}\n" }, { lang: 'cpp', code: "struct BruteSuggest {\n    static optional<pair<int, int>> firstFit(const vector<string>& map, int k) {\n        for (int r = 0; r < (int)map.size(); r++)\n            for (int c = 0; c + k <= (int)map[r].size(); c++) {\n                bool ok = true;\n                for (int j = c; j < c + k; j++) if (map[r][j] != '.') { ok = false; break; }\n                if (ok) return make_pair(r, c);          // first fit = front row, bad seats\n            }\n        return nullopt;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass BruteSuggest {\n    public static int[] FirstFit(char[][] map, int k) {\n        for (int r = 0; r < map.Length; r++)\n            for (int c = 0; c + k <= map[r].Length; c++) {\n                bool ok = true;\n                for (int j = c; j < c + k; j++) if (map[r][j] != '.') { ok = false; break; }\n                if (ok) return new[] { r, c };           // first fit = front row, bad seats\n            }\n        return null;\n    }\n}\n" }] } },
       mcq: { q: 'How do you avoid re-checking k cells for every start position?', options: ['Keep a running count of consecutive free seats in the row', 'Sort the seats', 'Use a hash set of taken seats', 'Binary search on k'], answer: 0, explain: 'A run counter resets on X and grows on "."; whenever run ≥ k, the block ending here is free — O(1) per cell.' },
       hints: [`<p>Hint 1: a block of k free seats ending at column c exists exactly when the number of consecutive '.' ending at c is at least k.</p>`, `<p>Hint 2: keep <code>run</code> per row; reset to 0 on 'X'. When <code>run ≥ k</code>, candidate start = c − k + 1. Score it.</p>`, `<p>Hint 3: score = |row − midRow| × cols + |blockCentre − midCol|. Multiplying the row distance by cols makes row preference always win over column preference. Track the minimum.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: '2,4\n0,1\n0,0\nnone\nnone\n0,1\n' }] },
@@ -1579,6 +1876,46 @@ int main() {
     vector<string> broken = {"X.X.", ".X.X"};
     cout << show(SeatSuggester::suggest(broken, 2)) << "\\n";
     cout << show(SeatSuggester::suggest(broken, 1)) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class SeatSuggester {
+    /// returns {row, startCol} of the best k-block, or null
+    public static int[] Suggest(char[][] map, int k) {
+        int rows = map.Length, cols = map[0].Length;
+        double midRow = (rows - 1) / 2.0, midCol = (cols - 1) / 2.0;
+        int[] best = null;
+        double bestScore = double.MaxValue;
+        for (int r = 0; r < rows; r++) {
+            int run = 0;                                   // consecutive free seats ending at c
+            for (int c = 0; c < cols; c++) {
+                run = map[r][c] == '.' ? run + 1 : 0;
+                if (run >= k) {
+                    int start = c - k + 1;
+                    double centre = start + (k - 1) / 2.0;
+                    double score = Math.Abs(r - midRow) * cols + Math.Abs(centre - midCol);
+                    if (score < bestScore) { bestScore = score; best = new[] { r, start }; }
+                }
+            }
+        }
+        return best;
+    }
+
+    static string Show(int[] a) { return a == null ? "none" : a[0] + "," + a[1]; }
+
+    static void Main() {
+        string[] raw = { "........", "XX..XXXX", "..XX....", "....X...", "........" };
+        char[][] map = new char[raw.Length][];
+        for (int i = 0; i < raw.Length; i++) map[i] = raw[i].ToCharArray();
+        Console.WriteLine(Show(Suggest(map, 3)));        // 2,4  middle row wins
+        Console.WriteLine(Show(Suggest(map, 5)));        // 0,1  tie with row 4 and start 2: first found wins
+        Console.WriteLine(Show(Suggest(map, 8)));        // 0,0  only full rows fit
+        Console.WriteLine(Show(Suggest(map, 9)));        // none: wider than the hall
+        char[][] broken = { "X.X.".ToCharArray(), ".X.X".ToCharArray() };
+        Console.WriteLine(Show(Suggest(broken, 2)));     // none: no two seats side by side
+        Console.WriteLine(Show(Suggest(broken, 1)));     // 0,1
+    }
 }` }
         ],
         complexity: `<p>O(R·C) time, O(1) extra space. For a 500×500 hall that is 250k steps — instant.</p>`,
@@ -2190,6 +2527,143 @@ int main() {
         if (a.ok && b.ok) doubleSold++;
     }
     cout << "double-sold rounds = " << doubleSold << "\\n";   // always 0
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+// ===== Per-show locking with hold expiry (lock -> hold -> confirm). Self-contained, compiles as-is. =====
+enum SeatState { AVAILABLE, HELD, BOOKED }
+
+sealed class HoldResult {
+    public readonly bool Ok; public readonly string Reason; public readonly DateTime? ExpiresAt;
+    public HoldResult(bool ok, string reason, DateTime? expiresAt) { Ok = ok; Reason = reason; ExpiresAt = expiresAt; }
+}
+
+sealed class SeatSlot {                      // one seat in one show (the "ShowSeat")
+    public readonly string SeatId;
+    public SeatState State = SeatState.AVAILABLE;
+    public string Owner;                     // user holding or owning it
+    public DateTime? HoldUntil;              // only for HELD
+    public SeatSlot(string seatId) { SeatId = seatId; }
+
+    // LAZY EXPIRY: an old hold is treated as free the moment anybody looks at it.
+    public bool TakeableBy(string user, DateTime now) {
+        switch (State) {
+            case SeatState.AVAILABLE: return true;
+            case SeatState.BOOKED: return false;
+            default: return now > HoldUntil.Value || user == Owner;
+        }
+    }
+}
+
+sealed class ShowInventory {
+    public readonly string ShowId;
+    public readonly SortedDictionary<string, SeatSlot> Seats = new SortedDictionary<string, SeatSlot>(StringComparer.Ordinal);  // sorted -> deterministic order
+    public readonly object Lock = new object();              // ONE lock per show
+    public ShowInventory(string showId, IEnumerable<string> seatIds) {
+        ShowId = showId;
+        foreach (string id in seatIds) Seats[id] = new SeatSlot(id);
+    }
+}
+
+sealed class SeatBookingService {
+    private readonly ConcurrentDictionary<string, ShowInventory> shows = new ConcurrentDictionary<string, ShowInventory>();
+    private readonly Func<DateTime> clock;
+    private readonly TimeSpan holdTtl;
+
+    public SeatBookingService(Func<DateTime> clock, TimeSpan holdTtl) { this.clock = clock; this.holdTtl = holdTtl; }
+
+    public void AddShow(string showId, IEnumerable<string> seatIds) { shows[showId] = new ShowInventory(showId, seatIds); }
+
+    private ShowInventory Inv(string showId) {
+        ShowInventory s;
+        if (!shows.TryGetValue(showId, out s)) throw new ArgumentException("unknown show " + showId);
+        return s;
+    }
+
+    /// All-or-nothing hold. Two users on DIFFERENT shows never block each other.
+    public HoldResult Hold(string showId, string user, List<string> seatIds) {
+        ShowInventory inv = Inv(showId);
+        lock (inv.Lock) {                                             // released on every path, like try/finally
+            DateTime now = clock();
+            foreach (string id in seatIds) {                          // phase 1: check every seat
+                SeatSlot s;
+                if (!inv.Seats.TryGetValue(id, out s)) return new HoldResult(false, "no such seat " + id, null);
+                if (!s.TakeableBy(user, now)) return new HoldResult(false, id + " was just taken", null);
+            }
+            DateTime until = now + holdTtl;
+            foreach (string id in seatIds) {                          // phase 2: take every seat
+                SeatSlot s = inv.Seats[id];
+                s.State = SeatState.HELD; s.Owner = user; s.HoldUntil = until;
+            }
+            return new HoldResult(true, "held", until);
+        }
+    }
+
+    /// Payment succeeded: HELD -> BOOKED, but only if the hold is still mine and alive.
+    public bool Confirm(string showId, string user, List<string> seatIds) {
+        ShowInventory inv = Inv(showId);
+        lock (inv.Lock) {
+            DateTime now = clock();
+            foreach (string id in seatIds) {
+                SeatSlot s;
+                if (!inv.Seats.TryGetValue(id, out s) || s.State != SeatState.HELD || user != s.Owner || now > s.HoldUntil.Value) return false;
+            }
+            foreach (string id in seatIds) { SeatSlot s = inv.Seats[id]; s.State = SeatState.BOOKED; s.HoldUntil = null; }
+            return true;
+        }
+    }
+
+    /// User closed the app / payment failed: give seats back immediately.
+    public void Release(string showId, string user, List<string> seatIds) {
+        ShowInventory inv = Inv(showId);
+        lock (inv.Lock) {
+            foreach (string id in seatIds) {
+                SeatSlot s;
+                if (inv.Seats.TryGetValue(id, out s) && s.State == SeatState.HELD && user == s.Owner) { s.State = SeatState.AVAILABLE; s.Owner = null; s.HoldUntil = null; }
+            }
+        }
+    }
+
+    /// Optional background sweeper (lazy expiry already keeps us correct; this just tidies the seat map).
+    public int SweepExpired(string showId) {
+        ShowInventory inv = Inv(showId);
+        lock (inv.Lock) {
+            DateTime now = clock();
+            int n = 0;
+            foreach (SeatSlot s in inv.Seats.Values)
+                if (s.State == SeatState.HELD && now > s.HoldUntil.Value) { s.State = SeatState.AVAILABLE; s.Owner = null; s.HoldUntil = null; n++; }
+            return n;
+        }
+    }
+
+    public string StateOf(string showId, string seatId) { return Inv(showId).Seats[seatId].State.ToString(); }
+}
+
+class Program {
+    static void Main() {
+        SeatBookingService svc = new SeatBookingService(() => DateTime.UtcNow, TimeSpan.FromMinutes(10));
+        svc.AddShow("S1", new[] { "B3", "B4", "B5" });
+
+        // 1000 rounds of two users racing for the SAME seat at the same instant
+        int doubleSold = 0;
+        for (int round = 0; round < 1000; round++) {
+            string show = "R" + round;
+            svc.AddShow(show, new[] { "B4" });
+            ManualResetEventSlim go = new ManualResetEventSlim(false);
+            HoldResult a = null, b = null;
+            Thread ta = new Thread(() => { go.Wait(); a = svc.Hold(show, "asha", new List<string> { "B4" }); });
+            Thread tb = new Thread(() => { go.Wait(); b = svc.Hold(show, "ben", new List<string> { "B4" }); });
+            ta.Start(); tb.Start();
+            go.Set();
+            ta.Join(); tb.Join();
+            if (a.Ok && b.Ok) doubleSold++;
+        }
+        Console.WriteLine("double-sold rounds = " + doubleSold);   // always 0
+    }
 }` }
     ] }, { lang: 'java', code: BMS_CAS, alt: [
       { lang: 'python', code: `import threading
@@ -2346,6 +2820,52 @@ int main() {
     cout << CasBooking::holdAll({&b3, &b4}, "asha") << "\\n";   // true
     cout << CasBooking::holdAll({&b4, &b5}, "ben") << "\\n";    // false: B4 taken
     cout << b5.ref.load()->status << "\\n";                      // AVAILABLE (rolled back)
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+// ===== Lock-free alternative: one reference per seat + compare-and-set (Interlocked.CompareExchange) =====
+sealed class CasSeat {
+    // An IMMUTABLE snapshot. Changing state = swapping the whole snapshot atomically.
+    public sealed class Snap {
+        public readonly string Status, Owner; public readonly long Version;
+        public Snap(string status, string owner, long version) { Status = status; Owner = owner; Version = version; }
+    }
+    public readonly string Id;
+    public Snap Ref = new Snap("AVAILABLE", null, 0);
+    public CasSeat(string id) { Id = id; }
+    public bool CompareAndSet(Snap expected, Snap next) { return Interlocked.CompareExchange(ref Ref, next, expected) == expected; }
+}
+
+static class CasBooking {
+    /// Try to HOLD every seat; if any CAS loses, undo the ones we won (compensation).
+    public static bool HoldAll(List<CasSeat> seats, string user) {
+        List<CasSeat> won = new List<CasSeat>();
+        foreach (CasSeat s in seats) {
+            CasSeat.Snap cur = s.Ref;
+            bool free = cur.Status == "AVAILABLE";
+            if (!free || !s.CompareAndSet(cur, new CasSeat.Snap("HELD", user, cur.Version + 1))) {
+                foreach (CasSeat w in won) {                              // roll back our partial grab
+                    CasSeat.Snap mine = w.Ref;
+                    if (user == mine.Owner) w.CompareAndSet(mine, new CasSeat.Snap("AVAILABLE", null, mine.Version + 1));
+                }
+                return false;
+            }
+            won.Add(s);
+        }
+        return true;
+    }
+}
+
+class Program {
+    static void Main() {
+        List<CasSeat> row = new List<CasSeat> { new CasSeat("B3"), new CasSeat("B4"), new CasSeat("B5") };
+        Console.WriteLine(CasBooking.HoldAll(new List<CasSeat> { row[0], row[1] }, "asha").ToString().ToLower());  // true
+        Console.WriteLine(CasBooking.HoldAll(new List<CasSeat> { row[1], row[2] }, "ben").ToString().ToLower());   // false: B4 taken
+        Console.WriteLine(row[2].Ref.Status);                                                                      // AVAILABLE (rolled back)
+    }
 }` }
     ] }, { lang: 'sql', code: `-- Optimistic locking in the database: the WHERE clause IS the "check", the UPDATE IS the "act".
 CREATE TABLE show_seat (
@@ -2589,7 +3109,32 @@ public:
         criticalSection();
         return true;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class OrderedSeatLocks {
+    private readonly ConcurrentDictionary<string, object> locks = new ConcurrentDictionary<string, object>();
+
+    public bool WithSeats(List<string> seatIds, Action criticalSection) {
+        List<string> sorted = new List<string>(new SortedSet<string>(seatIds, StringComparer.Ordinal));   // unique + sorted = global order
+        List<object> taken = new List<object>();
+        try {
+            foreach (string id in sorted) {
+                object l = locks.GetOrAdd(id, k => new object());
+                Monitor.Enter(l);
+                taken.Add(l);
+            }
+            criticalSection();
+            return true;
+        } finally {
+            for (int i = taken.Count - 1; i >= 0; i--) Monitor.Exit(taken[i]);   // reverse order
+        }
+    }
+}` }
         ] },
       { title: 'Late payment callback after expiry', html: `<p>Hold until 18:10. Gateway webhook arrives at 18:12. Meanwhile Ben holds the same seats (lazy expiry let him). <code>confirm(asha)</code> checks <code>owner == asha &amp;&amp; now ≤ holdUntil</code> → false. Correct action: <b>refund Asha</b>, mark booking EXPIRED, notify her. Wrong action: "she paid, so give her the seats" — that steals from Ben and creates a double booking.</p>` },
       { title: 'Why not just a DB unique constraint?', html: `<p>A table <code>booking_seat(show_id, seat_id) UNIQUE</code> is a great <b>last line of defence</b>: a second insert fails. But it only protects the final BOOKED step — it cannot express a 10-minute HOLD that expires by itself. Production systems combine: hold in Redis/DB with expiry → pay → insert with unique constraint inside a transaction.</p>` }
@@ -2617,7 +3162,7 @@ public:
         for (String s : seats) owner.put(show + ":" + s, user);                       // ACT (race window!)
         return true;                                                                  // and holds never expire
     }
-}`, alt: [{ lang: 'python', code: "class NaiveHoldManager:\n    def __init__(self):\n        self.owner = {}                                   # \"show:seat\" -> user\n\n    def hold(self, show, user, seats):\n        for s in seats:\n            if f\"{show}:{s}\" in self.owner: return False  # CHECK\n        for s in seats:\n            self.owner[f\"{show}:{s}\"] = user              # ACT (race window!)\n        return True                                       # and holds never expire\n" }, { lang: 'ts', code: "class NaiveHoldManager {\n  private owner = new Map<string, string>();             // \"show:seat\" -> user\n  hold(show: string, user: string, seats: string[]): boolean {\n    for (const s of seats) if (this.owner.has(show + \":\" + s)) return false;   // CHECK\n    for (const s of seats) this.owner.set(show + \":\" + s, user);               // ACT (race window!)\n    return true;                                                               // and holds never expire\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveHoldManager {\n    unordered_map<string, string> owner;                  // \"show:seat\" -> user\npublic:\n    bool hold(const string& show, const string& user, const vector<string>& seats) {\n        for (auto& s : seats) if (owner.count(show + \":\" + s)) return false;   // CHECK\n        for (auto& s : seats) owner[show + \":\" + s] = user;                    // ACT (race window!)\n        return true;                                                           // and holds never expire\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveHoldManager:\n    def __init__(self):\n        self.owner = {}                                   # \"show:seat\" -> user\n\n    def hold(self, show, user, seats):\n        for s in seats:\n            if f\"{show}:{s}\" in self.owner: return False  # CHECK\n        for s in seats:\n            self.owner[f\"{show}:{s}\"] = user              # ACT (race window!)\n        return True                                       # and holds never expire\n" }, { lang: 'ts', code: "class NaiveHoldManager {\n  private owner = new Map<string, string>();             // \"show:seat\" -> user\n  hold(show: string, user: string, seats: string[]): boolean {\n    for (const s of seats) if (this.owner.has(show + \":\" + s)) return false;   // CHECK\n    for (const s of seats) this.owner.set(show + \":\" + s, user);               // ACT (race window!)\n    return true;                                                               // and holds never expire\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveHoldManager {\n    unordered_map<string, string> owner;                  // \"show:seat\" -> user\npublic:\n    bool hold(const string& show, const string& user, const vector<string>& seats) {\n        for (auto& s : seats) if (owner.count(show + \":\" + s)) return false;   // CHECK\n        for (auto& s : seats) owner[show + \":\" + s] = user;                    // ACT (race window!)\n        return true;                                                           // and holds never expire\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass NaiveHoldManager {\n    private readonly Dictionary<string, string> owner = new Dictionary<string, string>();     // \"show:seat\" -> user\n    public bool Hold(string show, string user, List<string> seats) {\n        foreach (string s in seats) if (owner.ContainsKey(show + \":\" + s)) return false;   // CHECK\n        foreach (string s in seats) owner[show + \":\" + s] = user;                          // ACT (race window!)\n        return true;                                                                       // and holds never expire\n    }\n}\n" }] } },
       mcq: { q: 'A hold expired 2 minutes ago and no sweeper has run. Ben asks for that seat. What should happen?', options: ['Treat the expired hold as free and give it to Ben', 'Reject Ben until the sweeper runs', 'Throw an exception', 'Extend the old hold'], answer: 0, explain: 'Lazy expiry: correctness never depends on a background job. Whoever looks at an expired hold may treat it as free.' },
       hints: [`<p>Hint 1: the state per seat is (status, owner, holdUntil). "Free for user u at time t" = AVAILABLE, or HELD with holdUntil &lt; t, or HELD by u.</p>`, `<p>Hint 2: keep a thread-safe map of shows (<code>ConcurrentHashMap</code>, or a dict/unordered_map whose creation is guarded); each Show has its own lock and a plain map of seats. Lock → check all → take all → unlock in finally.</p>`, `<p>Hint 3: confirm must re-check owner and expiry under the same lock. Edge cases: unknown seat, duplicate seats in one request, re-holding your own seats (extend), confirm twice (second returns true idempotently if already BOOKED by you).</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: 'true\nfalse\ntrue\ntrue\nfalse\ntrue\ntrue\nfalse\nfalse\nfalse\ntrue\n' }] },
@@ -2958,6 +3503,86 @@ int main() {
     cout << m.hold("S1", "asha", {"B9"}, 900'000) << "\\n";
     cout << m.hold("S9", "asha", {"B3"}, 900'000) << "\\n";
     cout << m.hold("S1", "zoya", {"B5", "B5"}, 900'000) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+
+class HoldManager {
+    private sealed class SeatRec { public string Status = "AVAILABLE"; public string Owner; public long Until; }
+    private sealed class ShowInv {
+        public readonly object Lock = new object();
+        public readonly Dictionary<string, SeatRec> Seats = new Dictionary<string, SeatRec>();
+    }
+    private readonly ConcurrentDictionary<string, ShowInv> shows = new ConcurrentDictionary<string, ShowInv>();
+    private readonly long ttlMs;
+    public HoldManager(long ttlMs) { this.ttlMs = ttlMs; }
+
+    public void AddShow(string show, List<string> seatIds) {
+        ShowInv inv = shows.GetOrAdd(show, k => new ShowInv());
+        lock (inv.Lock) { foreach (string s in seatIds) if (!inv.Seats.ContainsKey(s)) inv.Seats[s] = new SeatRec(); }
+    }
+
+    private static bool FreeFor(SeatRec r, string user, long now) {
+        if (r.Status == "AVAILABLE") return true;
+        if (r.Status == "BOOKED") return false;
+        return now > r.Until || user == r.Owner;             // expired, or my own hold
+    }
+
+    public bool Hold(string show, string user, List<string> seatIds, long now) {
+        ShowInv inv;
+        if (!shows.TryGetValue(show, out inv)) return false;
+        SortedSet<string> unique = new SortedSet<string>(seatIds, StringComparer.Ordinal);
+        lock (inv.Lock) {
+            foreach (string s in unique) {
+                SeatRec r;
+                if (!inv.Seats.TryGetValue(s, out r) || !FreeFor(r, user, now)) return false;
+            }
+            foreach (string s in unique) {
+                SeatRec r = inv.Seats[s];
+                r.Status = "HELD"; r.Owner = user; r.Until = now + ttlMs;
+            }
+            return true;
+        }
+    }
+
+    public bool Confirm(string show, string user, List<string> seatIds, long now) {
+        ShowInv inv;
+        if (!shows.TryGetValue(show, out inv)) return false;
+        lock (inv.Lock) {
+            bool allMineBooked = true;
+            foreach (string s in seatIds) {
+                SeatRec r;
+                if (!inv.Seats.TryGetValue(s, out r) || user != r.Owner) return false;
+                if (r.Status != "BOOKED") allMineBooked = false;
+                if (r.Status == "HELD" && now > r.Until) return false;
+            }
+            if (allMineBooked) return true;                          // idempotent retry
+            foreach (string s in seatIds) inv.Seats[s].Status = "BOOKED";
+            return true;
+        }
+    }
+}
+
+class Program {
+    static List<string> L(params string[] a) { return new List<string>(a); }
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        HoldManager m = new HoldManager(600000);
+        m.AddShow("S1", L("B3", "B4", "B5"));
+        Console.WriteLine(B(m.Hold("S1", "asha", L("B3", "B4"), 0)));          // true
+        Console.WriteLine(B(m.Hold("S1", "ben", L("B4", "B5"), 0)));           // false: B4 is asha's
+        Console.WriteLine(B(m.Hold("S1", "ben", L("B5"), 0)));                 // true: the failed request took nothing
+        Console.WriteLine(B(m.Hold("S1", "ben", L("B4"), 660000)));            // true: asha's hold expired
+        Console.WriteLine(B(m.Confirm("S1", "asha", L("B3", "B4"), 720000)));  // false -> refund
+        Console.WriteLine(B(m.Confirm("S1", "ben", L("B4"), 720000)));         // true
+        Console.WriteLine(B(m.Confirm("S1", "ben", L("B4"), 800000)));         // true: retry is idempotent
+        Console.WriteLine(B(m.Hold("S1", "asha", L("B4"), 900000)));           // false: booked
+        Console.WriteLine(B(m.Hold("S1", "asha", L("B9"), 900000)));           // false: no such seat
+        Console.WriteLine(B(m.Hold("S9", "asha", L("B3"), 900000)));           // false: no such show
+        Console.WriteLine(B(m.Hold("S1", "zoya", L("B5", "B5"), 900000)));     // true: duplicate seat counted once
+    }
 }` }
         ],
         complexity: `<p>hold/confirm: O(k log k) for k requested seats (sorted unique ids), O(1) map lookups. Lock held only for those few operations. Memory O(total seats). Different shows run fully in parallel.</p>`,
@@ -3781,6 +4406,206 @@ int main() {
 
     svc.settleUp("G1", "ben", "asha", 333'33);                 // ben pays asha back in full
     for (const auto& line : goa.sheet.describe()) cout << line << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// ================= Splitwise core (compiles as-is). Money in paise (long). =================
+enum SplitType { EQUAL, EXACT, PERCENT, SHARES }
+
+sealed class Split {
+    public readonly string UserId; public readonly long AmountPaise;
+    public Split(string userId, long amountPaise) { UserId = userId; AmountPaise = amountPaise; }
+}
+
+interface ISplitStrategy {
+    /// values: ignored for EQUAL, paise for EXACT, basis points for PERCENT (12.5% = 1250), weights for SHARES
+    List<Split> Split(long totalPaise, List<string> users, List<long> values);
+}
+
+static class Splits {
+    /// Split total in proportion to weights. Leftover paise go to the largest rounding remainders,
+    /// so the parts ALWAYS add up to the total exactly (no paisa created or lost).
+    public static List<Split> ByWeights(long total, List<string> users, List<long> weights) {
+        if (users.Count != weights.Count) throw new ArgumentException("one weight per user");
+        long sumW = 0;
+        foreach (long w in weights) { if (w < 0) throw new ArgumentException("negative weight"); sumW += w; }
+        if (sumW == 0) throw new ArgumentException("weights add up to zero");
+        long sw = sumW;
+        int n = users.Count;
+        long[] amt = new long[n];
+        long given = 0;
+        for (int i = 0; i < n; i++) { amt[i] = total * weights[i] / sw; given += amt[i]; }
+        int[] order = Enumerable.Range(0, n).OrderByDescending(i => total * weights[i] % sw).ThenBy(i => i).ToArray();
+        for (long k = 0; k < total - given; k++) amt[order[(int)k]]++;
+        List<Split> result = new List<Split>();
+        for (int i = 0; i < n; i++) result.Add(new Split(users[i], amt[i]));
+        return result;
+    }
+}
+
+sealed class EqualSplit : ISplitStrategy {
+    public List<Split> Split(long total, List<string> users, List<long> ignored) {
+        return Splits.ByWeights(total, users, Enumerable.Repeat(1L, users.Count).ToList());
+    }
+}
+
+sealed class ExactSplit : ISplitStrategy {
+    public List<Split> Split(long total, List<string> users, List<long> amounts) {
+        if (amounts.Count != users.Count) throw new ArgumentException("one amount per user");
+        long sum = amounts.Sum();
+        if (sum != total) throw new ArgumentException("exact amounts add to " + sum + ", bill is " + total);
+        List<Split> result = new List<Split>();
+        for (int i = 0; i < users.Count; i++) result.Add(new Split(users[i], amounts[i]));
+        return result;
+    }
+}
+
+sealed class PercentSplit : ISplitStrategy {
+    public List<Split> Split(long total, List<string> users, List<long> basisPoints) {
+        long sum = basisPoints.Sum();
+        if (sum != 10000) throw new ArgumentException("percentages add to " + (sum / 100.0).ToString("F2") + "%, need 100%");
+        return Splits.ByWeights(total, users, basisPoints);
+    }
+}
+
+sealed class ShareSplit : ISplitStrategy {
+    public List<Split> Split(long total, List<string> users, List<long> shares) {
+        return Splits.ByWeights(total, users, shares);     // "Asha 2 shares, Ben 1 share"
+    }
+}
+
+sealed class Expense {
+    public readonly string Id, Description, PaidBy;
+    public readonly long TotalPaise;
+    public readonly SplitType Type;
+    public readonly IReadOnlyList<Split> Splits;
+    public Expense(string id, string description, string paidBy, long totalPaise, SplitType type, List<Split> splits) {
+        Id = id; Description = description; PaidBy = paidBy;
+        TotalPaise = totalPaise; Type = type; Splits = new List<Split>(splits).AsReadOnly();
+    }
+}
+
+/// owes[a][b] = how much a owes b. Kept antisymmetric: owes[b][a] == -owes[a][b].
+sealed class BalanceSheet {
+    private readonly SortedDictionary<string, SortedDictionary<string, long>> owes = new SortedDictionary<string, SortedDictionary<string, long>>(StringComparer.Ordinal);
+
+    public void Apply(Expense e) {
+        foreach (Split s in e.Splits)
+            if (s.UserId != e.PaidBy) Add(s.UserId, e.PaidBy, s.AmountPaise);   // you never owe yourself
+    }
+    public void Settle(string payer, string receiver, long amount) { Add(payer, receiver, -amount); }
+
+    private SortedDictionary<string, long> Row(string who) {
+        SortedDictionary<string, long> row;
+        if (!owes.TryGetValue(who, out row)) { row = new SortedDictionary<string, long>(StringComparer.Ordinal); owes[who] = row; }
+        return row;
+    }
+    private void Add(string debtor, string creditor, long amt) {
+        long v; Row(debtor).TryGetValue(creditor, out v); Row(debtor)[creditor] = v + amt;
+        Row(creditor).TryGetValue(debtor, out v); Row(creditor)[debtor] = v - amt;
+    }
+    public long Owes(string a, string b) {
+        SortedDictionary<string, long> row; long v = 0;
+        if (owes.TryGetValue(a, out row)) row.TryGetValue(b, out v);
+        return v;
+    }
+
+    /// + means "gets back", - means "owes overall". Sum over everyone is always 0.
+    public SortedDictionary<string, long> Net() {
+        SortedDictionary<string, long> net = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        foreach (var a in owes) foreach (var b in a.Value) { long v; net.TryGetValue(a.Key, out v); net[a.Key] = v - b.Value; }
+        return net;
+    }
+    public List<string> Describe() {
+        List<string> result = new List<string>();
+        foreach (var a in owes) foreach (var b in a.Value) if (b.Value > 0) result.Add(a.Key + " owes " + b.Key + " " + Money.Fmt(b.Value));
+        return result;
+    }
+}
+
+static class Money {
+    public static string Fmt(long paise) {
+        long a = Math.Abs(paise);
+        return (paise < 0 ? "-" : "") + "Rs " + a / 100 + "." + (a % 100).ToString("D2");
+    }
+}
+
+sealed class Group {
+    public readonly string Id, Name;
+    public readonly SortedSet<string> Members = new SortedSet<string>(StringComparer.Ordinal);
+    public readonly List<Expense> Expenses = new List<Expense>();
+    public readonly BalanceSheet Sheet = new BalanceSheet();
+    public Group(string id, string name, IEnumerable<string> members) { Id = id; Name = name; foreach (string m in members) Members.Add(m); }
+}
+
+sealed class ExpenseService {
+    private readonly Dictionary<SplitType, ISplitStrategy> strategies = new Dictionary<SplitType, ISplitStrategy>();
+    private readonly Dictionary<string, Group> groups = new Dictionary<string, Group>();
+    private readonly object gate = new object();
+    private long nextId = 1;
+
+    public ExpenseService() {
+        strategies[SplitType.EQUAL] = new EqualSplit();
+        strategies[SplitType.EXACT] = new ExactSplit();
+        strategies[SplitType.PERCENT] = new PercentSplit();
+        strategies[SplitType.SHARES] = new ShareSplit();
+    }
+
+    public Group CreateGroup(string id, string name, IEnumerable<string> members) {
+        Group g = new Group(id, name, members);
+        groups[id] = g;
+        return g;
+    }
+
+    public Expense AddExpense(string groupId, string desc, string paidBy, long totalPaise,
+                              SplitType type, List<string> among, List<long> values) {
+        lock (gate) {
+            Group g;
+            if (!groups.TryGetValue(groupId, out g)) throw new ArgumentException("no group " + groupId);
+            if (totalPaise <= 0) throw new ArgumentException("amount must be positive");
+            if (!g.Members.Contains(paidBy) || !among.All(g.Members.Contains)) throw new ArgumentException("everyone must be in the group");
+            if (new HashSet<string>(among).Count != among.Count) throw new ArgumentException("duplicate participant");
+            List<Split> splits = strategies[type].Split(totalPaise, among, values);   // validates & computes
+            Expense e = new Expense("E" + nextId++, desc, paidBy, totalPaise, type, splits);
+            g.Expenses.Add(e);
+            g.Sheet.Apply(e);
+            return e;
+        }
+    }
+
+    public void SettleUp(string groupId, string payer, string receiver, long amountPaise) {
+        lock (gate) groups[groupId].Sheet.Settle(payer, receiver, amountPaise);
+    }
+}
+
+class Program {
+    static List<string> L(params string[] a) { return new List<string>(a); }
+    static List<long> V(params long[] a) { return new List<long>(a); }
+    static void Main() {
+        ExpenseService svc = new ExpenseService();
+        Group goa = svc.CreateGroup("G1", "Goa trip", L("asha", "ben", "chen"));
+        svc.AddExpense("G1", "Hotel", "asha", 90000, SplitType.EQUAL, L("asha", "ben", "chen"), V());
+        svc.AddExpense("G1", "Scooters", "ben", 30000, SplitType.EXACT, L("ben", "chen"), V(10000, 20000));
+        svc.AddExpense("G1", "Dinner", "chen", 100000, SplitType.PERCENT, L("asha", "ben", "chen"), V(5000, 3000, 2000));
+        svc.AddExpense("G1", "Snacks", "asha", 10000, SplitType.EQUAL, L("asha", "ben", "chen"), V());
+        foreach (string line in goa.Sheet.Describe()) Console.WriteLine(line);
+        Console.WriteLine("{" + string.Join(", ", goa.Sheet.Net().Select(kv => kv.Key + "=" + kv.Value)) + "}");   // values sum to 0
+
+        // failure paths: nothing is recorded when an expense is rejected
+        try { svc.AddExpense("G1", "Dinner", "chen", 100000, SplitType.PERCENT, L("asha", "ben", "chen"), V(5000, 3000, 3000)); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { svc.AddExpense("G1", "Taxi", "ben", 30000, SplitType.EXACT, L("ben", "chen"), V(10000, 19000)); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { svc.AddExpense("G1", "Taxi", "dev", 30000, SplitType.EQUAL, L("dev", "ben"), V()); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        Console.WriteLine(goa.Expenses.Count + " expenses recorded");
+
+        svc.SettleUp("G1", "ben", "asha", 33333);           // ben pays asha back in full
+        foreach (string line in goa.Sheet.Describe()) Console.WriteLine(line);
+    }
 }` }
     ] }],
     codeTitle: 'Splitwise core: strategies, exact paise, balance sheet (a complete program)',
@@ -3940,6 +4765,29 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class PercentCheck {
+    public static long[] Split(long totalPaise, long[] basisPoints) {
+        long sum = 0;
+        foreach (long b in basisPoints) sum += b;
+        if (sum != 10000) throw new ArgumentException("must add to 100%, got " + (sum / 100.0).ToString("F2") + "%");
+        long[] result = new long[basisPoints.Length];
+        long given = 0;
+        for (int i = 0; i < result.Length; i++) { result[i] = totalPaise * basisPoints[i] / 10000; given += result[i]; }
+        result[0] += totalPaise - given;              // simple leftover rule: first person absorbs it
+        return result;
+    }
+    static string Show(long[] a) { return "[" + string.Join(", ", a) + "]"; }
+    static void Main() {
+        Console.WriteLine(Show(Split(100000, new long[] { 5000, 3000, 2000 })));   // [50000, 30000, 20000]
+        Console.WriteLine(Show(Split(10000, new long[] { 3333, 3333, 3334 })));    // [3333, 3333, 3334]
+        Console.WriteLine(Show(Split(100, new long[] { 3333, 3333, 3334 })));      // [34, 33, 33]: first person absorbs the paisa
+        try { Split(100000, new long[] { 5000, 3000, 3000 }); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }              // must add to 100%, got 110.00%
+    }
 }` }
         ] },
       { title: 'Payer not in the split', html: `<p>Asha buys movie tickets for Ben and Chen only: ₹600, participants {Ben, Chen}. Shares 300/300. Updates: Ben owes Asha 300, Chen owes Asha 300. Asha's "paid" = 600, "share" = 0, net = +600. A common bug is to always add the payer to the participants — then Asha would "owe herself" ₹200 and the others only ₹200 each.</p>` },
@@ -3969,7 +4817,7 @@ int main() {
         for (int i = 0; i < shares.length; i++) out[i] = Math.round(total * shares[i] / sum);   // may not add up!
         return out;
     }
-}`, alt: [{ lang: 'python', code: "import math\n\nclass NaiveSplit:\n    @staticmethod\n    def split(total, shares):\n        s = sum(shares)\n        return [math.floor(total * x / s + 0.5) for x in shares]   # may not add up!\n" }, { lang: 'ts', code: "class NaiveSplit {\n  static split(total: number, shares: number[]): number[] {\n    const sum = shares.reduce((a, b) => a + b, 0);\n    return shares.map((s) => Math.round(total * s / sum));   // may not add up!\n  }\n}\n" }, { lang: 'cpp', code: "struct NaiveSplit {\n    static vector<long long> split(long long total, const vector<int>& shares) {\n        double sum = 0;\n        for (int s : shares) sum += s;\n        vector<long long> out(shares.size());\n        for (size_t i = 0; i < shares.size(); i++) out[i] = llround(total * shares[i] / sum);   // may not add up!\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import math\n\nclass NaiveSplit:\n    @staticmethod\n    def split(total, shares):\n        s = sum(shares)\n        return [math.floor(total * x / s + 0.5) for x in shares]   # may not add up!\n" }, { lang: 'ts', code: "class NaiveSplit {\n  static split(total: number, shares: number[]): number[] {\n    const sum = shares.reduce((a, b) => a + b, 0);\n    return shares.map((s) => Math.round(total * s / sum));   // may not add up!\n  }\n}\n" }, { lang: 'cpp', code: "struct NaiveSplit {\n    static vector<long long> split(long long total, const vector<int>& shares) {\n        double sum = 0;\n        for (int s : shares) sum += s;\n        vector<long long> out(shares.size());\n        for (size_t i = 0; i < shares.size(); i++) out[i] = llround(total * shares[i] / sum);   // may not add up!\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass NaiveSplit {\n    public static long[] Split(long total, int[] shares) {\n        double sum = 0;\n        foreach (int s in shares) sum += s;\n        long[] result = new long[shares.Length];\n        for (int i = 0; i < shares.Length; i++) result[i] = (long)Math.Round(total * shares[i] / sum);   // may not add up!\n        return result;\n    }\n}\n" }] } },
       mcq: { q: '1000 paise split [2, 1]. Floors are 666 and 333. Who gets the leftover paisa?', options: ['The first person (remainder 0.67)', 'The second person (remainder 0.33)', 'Nobody, keep 999', 'Split it 0.5/0.5'], answer: 0, explain: 'Largest remainder wins: 666.67 has fractional part .67 > .33, so it rounds up to 667.' },
       hints: [`<p>Hint 1: use integers only. Exact share i = total × s<sub>i</sub> / S. Its floor is <code>total * s[i] / S</code>, and its fractional part is proportional to <code>total * s[i] % S</code>.</p>`, `<p>Hint 2: leftover = total − Σ floors is always less than n. Sort indices by remainder (descending, then index) and add 1 paisa to the first <i>leftover</i> of them.</p>`, `<p>Hint 3: edge cases — shares with 0 get 0 (remainder 0, never chosen unless all others exhausted, which cannot happen); use <code>long</code> for total × share; deterministic tie-break keeps results stable.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: '[334, 333, 333]\n[667, 333]\n[501, 500]\n[2, 2, 2, 1]\n[0, 8, 0, 2]\n[0, 0]\nshares add up to zero\nnegative share\n' }] },
@@ -4126,6 +4974,51 @@ int main() {
     show(0, {1, 2});
     show(5, {0, 0});
     show(5, {1, -1});
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Linq;
+
+class ExactSplitter {
+    public static long[] Split(long total, int[] shares) {
+        long S = 0;
+        foreach (int s in shares) {
+            if (s < 0) throw new ArgumentException("negative share");
+            S += s;
+        }
+        if (S == 0) throw new ArgumentException("shares add up to zero");
+        int n = shares.Length;
+        long[] result = new long[n];
+        long given = 0;
+        for (int i = 0; i < n; i++) { result[i] = total * shares[i] / S; given += result[i]; }
+        long sum = S;
+        int[] idx = Enumerable.Range(0, n).ToArray();
+        Array.Sort(idx, (a, b) => {
+            long ra = total * shares[a] % sum, rb = total * shares[b] % sum;
+            return ra != rb ? rb.CompareTo(ra) : a.CompareTo(b);   // bigger remainder first, then earlier
+        });
+        for (int k = 0; k < total - given; k++) result[idx[k]]++;
+        return result;
+    }
+
+    static void Show(long total, params int[] shares) {
+        try {
+            Console.WriteLine("[" + string.Join(", ", Split(total, shares)) + "]");
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);
+        }
+    }
+
+    static void Main() {
+        Show(1000, 1, 1, 1);        // [334, 333, 333]
+        Show(1000, 2, 1);           // [667, 333]
+        Show(1001, 1, 1);           // [501, 500]
+        Show(7, 1, 1, 1, 1);        // [2, 2, 2, 1]
+        Show(10, 0, 3, 0, 1);       // [0, 8, 0, 2]: a tie goes to the earlier person
+        Show(0, 1, 2);              // [0, 0]
+        Show(5, 0, 0);              // shares add up to zero
+        Show(5, 1, -1);             // negative share
+    }
 }` }
         ],
         complexity: `<p>O(n log n) for the sort, O(n) space. All arithmetic exact in <code>long</code>.</p>`,
@@ -4512,6 +5405,107 @@ int main() {
 
     map<string, long long> settled = {{"a", 0}, {"b", 0}};          // already settled: nobody owes anything
     cout << "greedy = " << DebtSimplifier::greedy(settled).size() << ", optimal = " << DebtSimplifier::minTransfers(settled) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// ===== Debt simplification: greedy (fast, at most n-1 transfers) + exact minimum (bitmask DP) =====
+sealed class Transfer {
+    public readonly string From, To; public readonly long Amount;
+    public Transfer(string from, string to, long amount) { From = from; To = to; Amount = amount; }
+}
+
+/// Ordered set of {amount, id} pairs used as a priority queue (ids are unique, so no two entries compare equal).
+sealed class PairQueue {
+    private readonly SortedSet<long[]> set;
+    public PairQueue(Comparison<long[]> cmp) { set = new SortedSet<long[]>(Comparer<long[]>.Create(cmp)); }
+    public void Add(long[] e) { set.Add(e); }
+    public long[] Poll() { long[] e = set.Min; set.Remove(e); return e; }
+    public bool IsEmpty { get { return set.Count == 0; } }
+}
+
+static class DebtSimplifier {
+
+    /// Step 1: collapse any list of debts into one net number per person.
+    public static SortedDictionary<string, long> NetOf(List<Transfer> debts) {
+        SortedDictionary<string, long> net = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        foreach (Transfer d in debts) {
+            long v;
+            net.TryGetValue(d.From, out v); net[d.From] = v - d.Amount;   // debtor goes down
+            net.TryGetValue(d.To, out v); net[d.To] = v + d.Amount;       // creditor goes up
+        }
+        return net;
+    }
+
+    /// Step 2 (greedy): biggest debtor pays biggest creditor, repeat. Each step zeroes at least one person.
+    public static List<Transfer> Greedy(SortedDictionary<string, long> net) {
+        // creditors: largest positive first; debtors: most negative first; ties broken by name for determinism
+        PairQueue cred = new PairQueue((x, y) => x[0] != y[0] ? y[0].CompareTo(x[0]) : x[1].CompareTo(y[1]));
+        PairQueue debt = new PairQueue((x, y) => x[0] != y[0] ? x[0].CompareTo(y[0]) : x[1].CompareTo(y[1]));
+        List<string> names = new List<string>(net.Keys);
+        for (int i = 0; i < names.Count; i++) {
+            long v = net[names[i]];
+            if (v > 0) cred.Add(new long[] { v, i });
+            else if (v < 0) debt.Add(new long[] { v, i });
+        }
+        List<Transfer> result = new List<Transfer>();
+        while (!cred.IsEmpty && !debt.IsEmpty) {
+            long[] c = cred.Poll(), d = debt.Poll();
+            long amt = Math.Min(c[0], -d[0]);
+            result.Add(new Transfer(names[(int)d[1]], names[(int)c[1]], amt));
+            if (c[0] - amt > 0) cred.Add(new long[] { c[0] - amt, c[1] });
+            if (d[0] + amt < 0) debt.Add(new long[] { d[0] + amt, d[1] });
+        }
+        return result;
+    }
+
+    /// Exact minimum number of transfers (NP-hard in general; fine for n <= ~20).
+    /// Answer = (#non-zero people) - (max number of disjoint zero-sum groups).
+    public static int MinTransfers(SortedDictionary<string, long> net) {
+        long[] b = net.Values.Where(v => v != 0).ToArray();
+        int n = b.Length, full = 1 << n;
+        long[] sum = new long[full];
+        int[] groups = new int[full];          // groups[mask] = max zero-sum groups that exactly cover mask
+        for (int mask = 1; mask < full; mask++) {
+            int low = 0; while (((mask >> low) & 1) == 0) low++;      // number of trailing zeros
+            sum[mask] = sum[mask & (mask - 1)] + b[low];
+            int best = 0;
+            for (int i = 0; i < n; i++)
+                if (((mask >> i) & 1) == 1) best = Math.Max(best, groups[mask ^ (1 << i)]);
+            groups[mask] = best + (sum[mask] == 0 ? 1 : 0);
+        }
+        return n == 0 ? 0 : n - groups[full - 1];
+    }
+}
+
+class Program {
+    static string Show(SortedDictionary<string, long> m) { return "{" + string.Join(", ", m.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+    static SortedDictionary<string, long> Map(params object[] kv) {
+        SortedDictionary<string, long> m = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        for (int i = 0; i < kv.Length; i += 2) m[(string)kv[i]] = Convert.ToInt64(kv[i + 1]);
+        return m;
+    }
+
+    static void Main() {
+        List<Transfer> debts = new List<Transfer> {
+            new Transfer("ben", "asha", 300), new Transfer("chen", "asha", 300), new Transfer("chen", "ben", 150),
+            new Transfer("asha", "chen", 60), new Transfer("dev", "ben", 100), new Transfer("dev", "chen", 80) };
+        SortedDictionary<string, long> net = DebtSimplifier.NetOf(debts);
+        Console.WriteLine("net = " + Show(net));                       // {asha=540, ben=-50, chen=-310, dev=-180}
+        List<Transfer> plan = DebtSimplifier.Greedy(net);
+        foreach (Transfer t in plan) Console.WriteLine(t.From + " pays " + t.To + " " + t.Amount);   // 3 transfers instead of 6
+        Console.WriteLine("exact minimum = " + DebtSimplifier.MinTransfers(net));
+
+        // Greedy is NOT always optimal: +4 +3 -2 -2 -3 -> greedy 4 transfers, optimum 3 ({+3,-3}, {+4,-2,-2})
+        SortedDictionary<string, long> tricky = Map("a", 4, "b", 3, "x", -2, "y", -2, "z", -3);
+        Console.WriteLine("greedy = " + DebtSimplifier.Greedy(tricky).Count + ", optimal = " + DebtSimplifier.MinTransfers(tricky));
+
+        // already settled: nobody owes anything
+        SortedDictionary<string, long> settled = Map("a", 0, "b", 0);
+        Console.WriteLine("greedy = " + DebtSimplifier.Greedy(settled).Count + ", optimal = " + DebtSimplifier.MinTransfers(settled));
+    }
 }` }
     ] }],
     codeTitle: 'DebtSimplifier: net balances → greedy plan → exact minimum (a complete program)',
@@ -4665,6 +5659,31 @@ public:
 int main() {
     for (const vector<long long>& balances : vector<vector<long long>>{{4, 3, -2, -2, -3}, {5, -5}, {1, 2, -3}, {}})
         cout << MinTransfersDemo::minTransfers(balances) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class MinTransfersDemo {
+    // dp over subsets: groups[mask] = max zero-sum groups exactly covering 'mask'
+    static int MinTransfers(long[] b) {
+        int n = b.Length, full = 1 << n;
+        long[] sum = new long[full];
+        int[] groups = new int[full];
+        for (int mask = 1; mask < full; mask++) {
+            int low = 0; while (((mask >> low) & 1) == 0) low++;
+            sum[mask] = sum[mask & (mask - 1)] + b[low];
+            int best = 0;
+            for (int i = 0; i < n; i++) if (((mask >> i) & 1) == 1) best = Math.Max(best, groups[mask ^ (1 << i)]);
+            groups[mask] = best + (sum[mask] == 0 ? 1 : 0);
+        }
+        return n - groups[full - 1];
+    }
+    static void Main() {
+        Console.WriteLine(MinTransfers(new long[] { 4, 3, -2, -2, -3 }));   // 3
+        Console.WriteLine(MinTransfers(new long[] { 5, -5 }));              // 1
+        Console.WriteLine(MinTransfers(new long[] { 1, 2, -3 }));           // 2: one group of three people
+        Console.WriteLine(MinTransfers(new long[] { }));                    // 0
+    }
 }` }
         ] },
       { title: 'Constraint: only pay people you already owe', html: `<p>Some groups dislike "pay Chen, whom you never met". Then the settlement may only use <b>existing edges</b> (and their directions). That turns the problem into a <b>flow</b> problem: reduce flow along cycles (cycle cancelling) without creating new edges. Splitwise's own "simplify debts" setting is per-group and can be switched off for exactly this reason.</p>` }
@@ -4696,7 +5715,7 @@ int main() {
                 if (owe[i][j] > 0) out.add(new long[]{i, j, owe[i][j]});
         return out;
     }
-}`, alt: [{ lang: 'python', code: "class PairwiseOnly:\n    # nets each PAIR only: still O(n^2) transfers in the worst case\n    @staticmethod\n    def settle(n, debts):\n        owe = [[0] * n for _ in range(n)]\n        for a, b, amt in debts:\n            owe[a][b] += amt; owe[b][a] -= amt\n        return [(i, j, owe[i][j]) for i in range(n) for j in range(n) if owe[i][j] > 0]\n" }, { lang: 'ts', code: "class PairwiseOnly {\n  // nets each PAIR only: still O(n^2) transfers in the worst case\n  static settle(n: number, debts: number[][]): number[][] {\n    const owe = Array.from({ length: n }, () => new Array<number>(n).fill(0));\n    for (const [a, b, amt] of debts) { owe[a][b] += amt; owe[b][a] -= amt; }\n    const out: number[][] = [];\n    for (let i = 0; i < n; i++)\n      for (let j = 0; j < n; j++)\n        if (owe[i][j] > 0) out.push([i, j, owe[i][j]]);\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct PairwiseOnly {\n    // nets each PAIR only: still O(n^2) transfers in the worst case\n    static vector<array<long long, 3>> settle(int n, const vector<array<int, 3>>& debts) {\n        vector<vector<long long>> owe(n, vector<long long>(n, 0));\n        for (auto& d : debts) { owe[d[0]][d[1]] += d[2]; owe[d[1]][d[0]] -= d[2]; }\n        vector<array<long long, 3>> out;\n        for (int i = 0; i < n; i++)\n            for (int j = 0; j < n; j++)\n                if (owe[i][j] > 0) out.push_back({i, j, owe[i][j]});\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class PairwiseOnly:\n    # nets each PAIR only: still O(n^2) transfers in the worst case\n    @staticmethod\n    def settle(n, debts):\n        owe = [[0] * n for _ in range(n)]\n        for a, b, amt in debts:\n            owe[a][b] += amt; owe[b][a] -= amt\n        return [(i, j, owe[i][j]) for i in range(n) for j in range(n) if owe[i][j] > 0]\n" }, { lang: 'ts', code: "class PairwiseOnly {\n  // nets each PAIR only: still O(n^2) transfers in the worst case\n  static settle(n: number, debts: number[][]): number[][] {\n    const owe = Array.from({ length: n }, () => new Array<number>(n).fill(0));\n    for (const [a, b, amt] of debts) { owe[a][b] += amt; owe[b][a] -= amt; }\n    const out: number[][] = [];\n    for (let i = 0; i < n; i++)\n      for (let j = 0; j < n; j++)\n        if (owe[i][j] > 0) out.push([i, j, owe[i][j]]);\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct PairwiseOnly {\n    // nets each PAIR only: still O(n^2) transfers in the worst case\n    static vector<array<long long, 3>> settle(int n, const vector<array<int, 3>>& debts) {\n        vector<vector<long long>> owe(n, vector<long long>(n, 0));\n        for (auto& d : debts) { owe[d[0]][d[1]] += d[2]; owe[d[1]][d[0]] -= d[2]; }\n        vector<array<long long, 3>> out;\n        for (int i = 0; i < n; i++)\n            for (int j = 0; j < n; j++)\n                if (owe[i][j] > 0) out.push_back({i, j, owe[i][j]});\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass PairwiseOnly {\n    // nets each PAIR only: still O(n^2) transfers in the worst case\n    public static List<long[]> Settle(int n, int[][] debts) {\n        long[,] owe = new long[n, n];\n        foreach (int[] d in debts) { owe[d[0], d[1]] += d[2]; owe[d[1], d[0]] -= d[2]; }\n        List<long[]> result = new List<long[]>();\n        for (int i = 0; i < n; i++)\n            for (int j = 0; j < n; j++)\n                if (owe[i, j] > 0) result.Add(new long[] { i, j, owe[i, j] });\n        return result;\n    }\n}\n" }] } },
       mcq: { q: 'After collapsing to nets, Ben is −300 and Chen is +300 (nobody else non-zero). How many transfers?', options: ['1', '2', '0', 'Depends on the original debts'], answer: 0, explain: 'Only nets matter: Ben pays Chen 300. The original debt graph is irrelevant once nets are known.' },
       hints: [`<p>Hint 1: compute <code>net[i]</code> = received − paid over all debts. The settlement only has to zero every net.</p>`, `<p>Hint 2: two priority queues — creditors by largest positive net, debtors by most negative net. Pop one of each, transfer the min, push back any remainder.</p>`, `<p>Hint 3: every round zeroes at least one person, so ≤ n − 1 rounds. Use <code>long</code> nets (sum of up to 2·10<sup>5</sup> × 10<sup>9</sup>). Skip people whose net is already 0.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: '1 pays 2 4000\n0 pays 2 3000\n--\nno transfers\n--\n2 pays 0 5\n3 pays 1 5\n--\nno transfers\n' }] },
@@ -4910,6 +5929,51 @@ int main() {
     plan(4, {{2, 0, 5}, {3, 1, 5}});
     cout << "--\\n";
     plan(2, {});
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class MinCashFlow {
+    /// {amount, id} entries ordered largest amount first, then smaller id; ids are unique so the set never drops an entry.
+    static SortedSet<long[]> NewQueue() {
+        return new SortedSet<long[]>(Comparer<long[]>.Create((a, b) => a[0] != b[0] ? b[0].CompareTo(a[0]) : a[1].CompareTo(b[1])));
+    }
+    static long[] Poll(SortedSet<long[]> q) { long[] e = q.Min; q.Remove(e); return e; }
+
+    public static List<long[]> Settle(int n, int[][] debts) {
+        long[] net = new long[n];
+        foreach (int[] d in debts) { net[d[0]] -= d[2]; net[d[1]] += d[2]; }
+        SortedSet<long[]> cred = NewQueue(), debt = NewQueue();
+        for (int i = 0; i < n; i++) {
+            if (net[i] > 0) cred.Add(new long[] { net[i], i });
+            else if (net[i] < 0) debt.Add(new long[] { -net[i], i });
+        }
+        List<long[]> result = new List<long[]>();
+        while (cred.Count > 0 && debt.Count > 0) {
+            long[] c = Poll(cred), d = Poll(debt);
+            long amt = Math.Min(c[0], d[0]);
+            result.Add(new long[] { d[1], c[1], amt });
+            if (c[0] > amt) cred.Add(new long[] { c[0] - amt, c[1] });
+            if (d[0] > amt) debt.Add(new long[] { d[0] - amt, d[1] });
+        }
+        return result;
+    }
+    static void Plan(int n, int[][] debts) {
+        List<long[]> moves = Settle(n, debts);
+        if (moves.Count == 0) Console.WriteLine("no transfers");
+        foreach (long[] t in moves) Console.WriteLine(t[0] + " pays " + t[1] + " " + t[2]);
+    }
+
+    static void Main() {
+        Plan(3, new[] { new[] { 0, 1, 1000 }, new[] { 1, 2, 5000 }, new[] { 0, 2, 2000 } });   // 1 pays 2 4000, 0 pays 2 3000
+        Console.WriteLine("--");
+        Plan(3, new[] { new[] { 0, 1, 100 }, new[] { 1, 2, 100 }, new[] { 2, 0, 100 } });      // a cycle cancels out
+        Console.WriteLine("--");
+        Plan(4, new[] { new[] { 2, 0, 5 }, new[] { 3, 1, 5 } });                                // ties: smaller id first
+        Console.WriteLine("--");
+        Plan(2, new int[][] { });                                                               // nobody owes anything
+    }
 }` }
         ],
         complexity: `<p>O(m + n log n) time, O(n) space. Transfers ≤ n − 1.</p>`,
@@ -5802,6 +6866,218 @@ int main() {
     } catch (const exception& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// ================= Library Management core (compiles as-is) =================
+enum ItemStatus { AVAILABLE, LOANED, ON_HOLD, LOST, UNDER_REPAIR }
+
+sealed class MemberType {
+    public static readonly MemberType STUDENT = new MemberType(5, 14);
+    public static readonly MemberType FACULTY = new MemberType(10, 30);
+    public readonly int MaxBooks, LoanDays;
+    private MemberType(int maxBooks, int loanDays) { MaxBooks = maxBooks; LoanDays = loanDays; }
+}
+
+// The TITLE in the catalogue: one per ISBN, no matter how many copies exist.
+sealed class Book {
+    public readonly string Isbn, Title, Subject;
+    public readonly IReadOnlyList<string> Authors;
+    public Book(string isbn, string title, string subject, List<string> authors) {
+        Isbn = isbn; Title = title; Subject = subject; Authors = new List<string>(authors).AsReadOnly();
+    }
+}
+
+// A PHYSICAL copy with its own barcode, shelf and status. This is what gets lent.
+sealed class BookItem {
+    public readonly string Barcode;
+    public readonly Book Book;
+    public readonly string Rack;
+    public ItemStatus Status = ItemStatus.AVAILABLE;
+    public BookItem(string barcode, Book book, string rack) { Barcode = barcode; Book = book; Rack = rack; }
+}
+
+sealed class Member {
+    public readonly string Id, Name;
+    public readonly MemberType Type;
+    public bool Active = true;
+    public long UnpaidFinePaise;
+    public readonly Dictionary<string, Loan> Loans = new Dictionary<string, Loan>();       // barcode -> active loan
+    public Member(string id, string name, MemberType type) { Id = id; Name = name; Type = type; }
+}
+
+sealed class Loan {
+    public readonly BookItem Item;
+    public readonly Member Member;
+    public readonly DateTime IssuedOn;
+    public DateTime DueOn;
+    public DateTime? ReturnedOn;
+    public int Renewals;
+    public Loan(BookItem item, Member member, DateTime issuedOn, DateTime dueOn) {
+        Item = item; Member = member; IssuedOn = issuedOn; DueOn = dueOn;
+    }
+    public long DaysLate(DateTime on) { return Math.Max(0, (long)(on.Date - DueOn.Date).TotalDays); }
+}
+
+// Search: an inverted index "word -> ISBNs" over title and author words.
+sealed class Catalog {
+    private readonly Dictionary<string, Book> byIsbn = new Dictionary<string, Book>();
+    private readonly Dictionary<string, BookItem> byBarcode = new Dictionary<string, BookItem>();
+    private readonly Dictionary<string, List<BookItem>> copies = new Dictionary<string, List<BookItem>>();
+    private readonly Dictionary<string, SortedSet<string>> index = new Dictionary<string, SortedSet<string>>();
+
+    public void AddBook(Book b) {
+        byIsbn[b.Isbn] = b;
+        List<string> words = new List<string>(b.Title.ToLower().Split(' '));
+        foreach (string a in b.Authors) words.AddRange(a.ToLower().Split(' '));
+        foreach (string w in words) if (!string.IsNullOrWhiteSpace(w)) {
+            SortedSet<string> set;
+            if (!index.TryGetValue(w, out set)) { set = new SortedSet<string>(StringComparer.Ordinal); index[w] = set; }
+            set.Add(b.Isbn);
+        }
+    }
+    public void AddItem(BookItem it) {
+        if (!byIsbn.ContainsKey(it.Book.Isbn)) throw new ArgumentException("add the Book first");
+        byBarcode[it.Barcode] = it;
+        List<BookItem> list;
+        if (!copies.TryGetValue(it.Book.Isbn, out list)) { list = new List<BookItem>(); copies[it.Book.Isbn] = list; }
+        list.Add(it);
+    }
+    /// AND-search: every query word must match a title or author word.
+    public List<Book> Search(string query) {
+        SortedSet<string> result = null;
+        foreach (string w in query.ToLower().Split(' ')) {
+            if (string.IsNullOrWhiteSpace(w)) continue;
+            SortedSet<string> hits;
+            if (!index.TryGetValue(w, out hits)) hits = new SortedSet<string>(StringComparer.Ordinal);
+            if (result == null) result = new SortedSet<string>(hits, StringComparer.Ordinal); else result.IntersectWith(hits);
+        }
+        if (result == null) return new List<Book>();
+        return result.Select(i => byIsbn[i]).ToList();
+    }
+    public BookItem Item(string barcode) { BookItem it; return byBarcode.TryGetValue(barcode, out it) ? it : null; }
+    public long AvailableCopies(string isbn) {
+        List<BookItem> list;
+        return copies.TryGetValue(isbn, out list) ? list.Count(i => i.Status == ItemStatus.AVAILABLE) : 0;
+    }
+}
+
+sealed class LibraryService {
+    public const long MAX_UNPAID_FINE = 10000;    // Rs 100
+    public const long FINE_PER_DAY = 1000;        // Rs 10 (topic 6 makes this a pluggable FinePolicy)
+    public const int MAX_RENEWALS = 2;
+
+    private readonly Catalog catalog;
+    private readonly Dictionary<string, Member> members = new Dictionary<string, Member>();
+    private readonly Dictionary<string, Loan> activeLoans = new Dictionary<string, Loan>();   // barcode -> loan
+    private readonly object gate = new object();
+
+    public LibraryService(Catalog catalog) { this.catalog = catalog; }
+    public void AddMember(Member m) { members[m.Id] = m; }
+
+    private Member MemberOf(string id) {
+        Member m;
+        if (!members.TryGetValue(id, out m)) throw new ArgumentException("unknown member " + id);
+        return m;
+    }
+
+    public Loan Checkout(string memberId, string barcode, DateTime today) {
+        lock (gate) {
+            Member m = MemberOf(memberId);
+            BookItem it = catalog.Item(barcode);
+            if (it == null) throw new ArgumentException("unknown barcode " + barcode);
+            if (!m.Active) throw new InvalidOperationException("membership inactive");
+            if (m.Loans.Count >= m.Type.MaxBooks) throw new InvalidOperationException("limit of " + m.Type.MaxBooks + " books reached");
+            if (m.UnpaidFinePaise > MAX_UNPAID_FINE) throw new InvalidOperationException("please clear fines first");
+            if (it.Status != ItemStatus.AVAILABLE) throw new InvalidOperationException("this copy is " + it.Status);
+            Loan loan = new Loan(it, m, today, today.AddDays(m.Type.LoanDays));
+            it.Status = ItemStatus.LOANED;
+            m.Loans[barcode] = loan;
+            activeLoans[barcode] = loan;
+            return loan;
+        }
+    }
+
+    /// returns the fine charged (paise)
+    public long ReturnItem(string barcode, DateTime today) {
+        lock (gate) {
+            Loan loan;
+            if (!activeLoans.TryGetValue(barcode, out loan)) throw new InvalidOperationException(barcode + " is not on loan");
+            activeLoans.Remove(barcode);
+            loan.ReturnedOn = today;
+            loan.Member.Loans.Remove(barcode);
+            loan.Item.Status = ItemStatus.AVAILABLE;            // topic 6: may become ON_HOLD for a waiting member
+            long fine = loan.DaysLate(today) * FINE_PER_DAY;
+            loan.Member.UnpaidFinePaise += fine;
+            return fine;
+        }
+    }
+
+    public Loan Renew(string barcode, DateTime today) {
+        lock (gate) {
+            Loan loan;
+            if (!activeLoans.TryGetValue(barcode, out loan)) throw new InvalidOperationException(barcode + " is not on loan");
+            if (loan.DaysLate(today) > 0) throw new InvalidOperationException("overdue items cannot be renewed");
+            if (loan.Renewals >= MAX_RENEWALS) throw new InvalidOperationException("renewal limit reached");
+            loan.Renewals++;
+            loan.DueOn = loan.DueOn.AddDays(loan.Member.Type.LoanDays);
+            return loan;
+        }
+    }
+
+    public void PayFine(string memberId, long paise) {
+        lock (gate) {
+            Member m = MemberOf(memberId);
+            m.UnpaidFinePaise = Math.Max(0, m.UnpaidFinePaise - paise);
+        }
+    }
+}
+
+class Program {
+    static string D(DateTime d) { return d.ToString("yyyy-MM-dd"); }
+    static void Main() {
+        Catalog cat = new Catalog();
+        Book clean = new Book("978-0132350884", "Clean Code", "Software", new List<string> { "Robert Martin" });
+        Book ddia = new Book("978-1449373320", "Designing Data Intensive Applications", "Databases", new List<string> { "Martin Kleppmann" });
+        cat.AddBook(clean);
+        cat.AddBook(ddia);
+        cat.AddItem(new BookItem("BC-001", clean, "R1-S3"));
+        cat.AddItem(new BookItem("BC-002", clean, "R1-S3"));
+        cat.AddItem(new BookItem("BC-003", ddia, "R4-S1"));
+        Console.WriteLine(cat.Search("martin").Count + " books by a Martin");     // 2
+        Console.WriteLine(cat.Search("clean martin")[0].Title);                   // Clean Code
+
+        LibraryService lib = new LibraryService(cat);
+        lib.AddMember(new Member("M1", "Priya", MemberType.STUDENT));
+        DateTime d1 = new DateTime(2026, 10, 1);
+        Loan loan = lib.Checkout("M1", "BC-001", d1);
+        Console.WriteLine("due " + D(loan.DueOn) + ", copies left " + cat.AvailableCopies(clean.Isbn));  // 2026-10-15, 1
+        long fine = lib.ReturnItem("BC-001", new DateTime(2026, 10, 20));
+        Console.WriteLine("fine paise = " + fine);                                 // 5 days late -> 5000
+
+        // failure paths: each one is refused and changes nothing
+        lib.AddMember(new Member("M2", "Dr. Rao", MemberType.FACULTY));
+        Action[] refused = {
+            () => lib.Checkout("M9", "BC-001", d1),                                 // unknown member M9
+            () => lib.Checkout("M1", "BC-404", d1),                                 // unknown barcode BC-404
+            () => lib.ReturnItem("BC-003", d1),                                     // BC-003 is not on loan
+        };
+        foreach (Action r in refused) {
+            try { r(); } catch (Exception e) { Console.WriteLine(e.Message); }
+        }
+        DateTime d2 = new DateTime(2026, 10, 21);
+        Console.WriteLine("due " + D(lib.Checkout("M1", "BC-002", d2).DueOn));     // 2026-11-04
+        try { lib.Checkout("M2", "BC-002", d2); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // this copy is LOANED
+        for (int i = 0; i < 3; i++) {
+            try { Console.WriteLine("renewed to " + D(lib.Renew("BC-002", d2.AddDays(i + 1)).DueOn)); }   // 2026-11-18, 2026-12-02, then refused
+            catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        }
+        lib.Checkout("M2", "BC-003", d1);                                           // faculty: 30 days, due 2026-10-31
+        try { lib.Renew("BC-003", new DateTime(2026, 11, 2)); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // overdue items cannot be renewed
+    }
 }` }
     ] }],
     codeTitle: 'Library core: Book vs BookItem, Catalog search, checkout / return / renew (a complete program)',
@@ -5915,7 +7191,20 @@ public:
     }
 };
 
-int main() { DueDates::run(); }` }
+int main() { DueDates::run(); }` },
+  { lang: 'csharp', code: `
+using System;
+
+class DueDates {
+    static void Main() {
+        DateTime issued = new DateTime(2026, 10, 1);
+        DateTime due = issued.AddDays(14);                         // 2026-10-15
+        DateTime returned = new DateTime(2026, 11, 2);             // crosses a month boundary
+        long late = Math.Max(0, (long)(returned - due).TotalDays);
+        Console.WriteLine(due.ToString("yyyy-MM-dd") + " late by " + late + " days");    // 18 days
+        Console.WriteLine("wrong way: " + (returned.Day - due.Day));  // -13 !
+    }
+}` }
         ] },
       { title: 'Renewal blocked', html: `<p>Priya's loan is due 15 Oct. On 14 Oct she renews → renewals = 1, due = 29 Oct. On 30 Oct she tries again → ${H.c('r', 'rejected: overdue items cannot be renewed')} (she must return and pay ₹10). If another member had reserved the title, renewal would also be rejected — the reserver should get the next copy.</p>` },
       { title: 'Lost copy', html: `<p>A member reports BC-002 lost. Mark the BookItem <b>LOST</b> (never delete it — history and audit need it), close the Loan with a "lost" flag, and charge the replacement price via the FinePolicy. The <b>Book</b> still exists with its other copies; <code>availableCopies</code> just drops by one.</p>` }
@@ -5945,7 +7234,7 @@ int main() { DueDates::run(); }` }
         else if (reference) return "reference books cannot be borrowed";   // every new rule = edit here
         return "OK";
     }
-}`, alt: [{ lang: 'python', code: "class MonolithCheckout:\n    @staticmethod\n    def checkout(active, loans, limit, fine, status, reference):\n        if not active: return \"membership inactive\"\n        elif loans >= limit: return \"limit reached\"\n        elif fine > 100_00: return \"clear fines first\"\n        elif status != \"AVAILABLE\": return \"copy is \" + status\n        elif reference: return \"reference books cannot be borrowed\"   # every new rule = edit here\n        return \"OK\"\n" }, { lang: 'ts', code: "class MonolithCheckout {\n  static checkout(active: boolean, loans: number, limit: number, fine: number, status: string, reference: boolean): string {\n    if (!active) return \"membership inactive\";\n    else if (loans >= limit) return \"limit reached\";\n    else if (fine > 100_00) return \"clear fines first\";\n    else if (status !== \"AVAILABLE\") return \"copy is \" + status;\n    else if (reference) return \"reference books cannot be borrowed\";   // every new rule = edit here\n    return \"OK\";\n  }\n}\n" }, { lang: 'cpp', code: "struct MonolithCheckout {\n    static string checkout(bool active, int loans, int limit, long long fine, const string& status, bool reference) {\n        if (!active) return \"membership inactive\";\n        else if (loans >= limit) return \"limit reached\";\n        else if (fine > 100'00) return \"clear fines first\";\n        else if (status != \"AVAILABLE\") return \"copy is \" + status;\n        else if (reference) return \"reference books cannot be borrowed\";   // every new rule = edit here\n        return \"OK\";\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class MonolithCheckout:\n    @staticmethod\n    def checkout(active, loans, limit, fine, status, reference):\n        if not active: return \"membership inactive\"\n        elif loans >= limit: return \"limit reached\"\n        elif fine > 100_00: return \"clear fines first\"\n        elif status != \"AVAILABLE\": return \"copy is \" + status\n        elif reference: return \"reference books cannot be borrowed\"   # every new rule = edit here\n        return \"OK\"\n" }, { lang: 'ts', code: "class MonolithCheckout {\n  static checkout(active: boolean, loans: number, limit: number, fine: number, status: string, reference: boolean): string {\n    if (!active) return \"membership inactive\";\n    else if (loans >= limit) return \"limit reached\";\n    else if (fine > 100_00) return \"clear fines first\";\n    else if (status !== \"AVAILABLE\") return \"copy is \" + status;\n    else if (reference) return \"reference books cannot be borrowed\";   // every new rule = edit here\n    return \"OK\";\n  }\n}\n" }, { lang: 'cpp', code: "struct MonolithCheckout {\n    static string checkout(bool active, int loans, int limit, long long fine, const string& status, bool reference) {\n        if (!active) return \"membership inactive\";\n        else if (loans >= limit) return \"limit reached\";\n        else if (fine > 100'00) return \"clear fines first\";\n        else if (status != \"AVAILABLE\") return \"copy is \" + status;\n        else if (reference) return \"reference books cannot be borrowed\";   // every new rule = edit here\n        return \"OK\";\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass MonolithCheckout {\n    public static string Checkout(bool active, int loans, int limit, long fine, string status, bool reference) {\n        if (!active) return \"membership inactive\";\n        else if (loans >= limit) return \"limit reached\";\n        else if (fine > 10000) return \"clear fines first\";\n        else if (status != \"AVAILABLE\") return \"copy is \" + status;\n        else if (reference) return \"reference books cannot be borrowed\";   // every new rule = edit here\n        return \"OK\";\n    }\n}\n" }] } },
       mcq: { q: 'Product adds "members under 18 cannot borrow adult titles". With the rule-list design, what changes?', options: ['Write a new AgeRestrictionRule class and register it', 'Edit checkout() and add an if', 'Change the Member constructor', 'Subclass LibraryService'], answer: 0, explain: 'Rules are objects in a list; adding behaviour = adding a class (Open/Closed).' },
       hints: [`<p>Hint 1: every rule has the same shape: look at (member, item, today) and either allow or give a reason. That is an interface with one method.</p>`, `<p>Hint 2: <code>interface LendingRule { Optional&lt;String&gt; violation(Member m, Item i, LocalDate today); }</code> (an optional or nullable reason) and a list of rules checked in order; the first reason found stops the chain.</p>`, `<p>Hint 3: only after the loop passes do you mutate (status → LOANED, add loan). Order cheap rules first; keep rules stateless so they are trivially testable and thread-safe.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: 'REFUSED: reference books cannot be borrowed\nOK: Clean Code due 2026-10-15\nREFUSED: copy is LOANED\nmember(1 loans)\nREFUSED: membership inactive\nREFUSED: limit of 5 reached\nREFUSED: clear fines first\nOK: Refactoring due 2026-10-15\n' }] },
@@ -6262,6 +7551,69 @@ int main() {
     show(lib.checkout(debtor, refactoring2, today));
     debtor.finePaise = 100'00;
     show(lib.checkout(debtor, refactoring3, today));
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Member { public bool Active = true; public int Loans; public int Limit = 5; public long FinePaise; public override string ToString() { return "member(" + Loans + " loans)"; } }
+sealed class Item { public string Status = "AVAILABLE"; public bool Reference; public string Title; public Item(string t, bool r) { Title = t; Reference = r; } public override string ToString() { return Title; } }
+sealed class Loan {
+    public readonly Item Item; public readonly Member Member; public readonly DateTime Due;
+    public Loan(Item item, Member member, DateTime due) { Item = item; Member = member; Due = due; }
+}
+/// A rule returns the violation text, or null when the rule passes (C#'s stand-in for Optional<String>).
+delegate string LendingRule(Member m, Item i, DateTime today);
+
+class RuleBasedLibrary {
+    public static readonly LendingRule ACTIVE = (m, i, d) => m.Active ? null : "membership inactive";
+    public static readonly LendingRule LIMIT = (m, i, d) => m.Loans < m.Limit ? null : "limit of " + m.Limit + " reached";
+    public static readonly LendingRule FINES = (m, i, d) => m.FinePaise <= 10000 ? null : "clear fines first";
+    public static readonly LendingRule AVAILABLE = (m, i, d) => i.Status == "AVAILABLE" ? null : "copy is " + i.Status;
+    public static readonly LendingRule NOT_REFERENCE = (m, i, d) => i.Reference ? "reference books cannot be borrowed" : null;
+
+    private readonly List<LendingRule> rules = new List<LendingRule> { ACTIVE, LIMIT, FINES, AVAILABLE };
+    public void Register(LendingRule r) { rules.Add(r); }
+
+    /// A Loan, or the first failure reason. Mutates nothing unless every rule passes.
+    public object Checkout(Member m, Item i, DateTime today) {
+        foreach (LendingRule r in rules) {
+            string v = r(m, i, today);
+            if (v != null) return v;
+        }
+        i.Status = "LOANED";
+        m.Loans++;
+        return new Loan(i, m, today.AddDays(14));
+    }
+
+    static void Show(object result) {
+        Loan l = result as Loan;
+        if (l != null) Console.WriteLine("OK: " + l.Item + " due " + l.Due.ToString("yyyy-MM-dd"));
+        else Console.WriteLine("REFUSED: " + result);
+    }
+
+    static void Main() {
+        RuleBasedLibrary lib = new RuleBasedLibrary();
+        lib.Register(NOT_REFERENCE);                               // new policy, no edits to Checkout()
+        DateTime today = new DateTime(2026, 10, 1);
+        Member priya = new Member();
+        Item dictionary = new Item("Oxford Dictionary", true), clean = new Item("Clean Code", false);
+        Show(lib.Checkout(priya, dictionary, today));              // REFUSED: reference books cannot be borrowed
+        Show(lib.Checkout(priya, clean, today));                   // OK: Clean Code due 2026-10-15
+        Show(lib.Checkout(priya, clean, today));                   // REFUSED: copy is LOANED
+        Console.WriteLine(priya);                                  // member(1 loans): refusals changed nothing
+        Member lapsed = new Member();
+        lapsed.Active = false;
+        Show(lib.Checkout(lapsed, dictionary, today));             // REFUSED: membership inactive (first failing rule wins)
+        Member full = new Member();
+        full.Loans = 5;
+        Show(lib.Checkout(full, new Item("Refactoring", false), today));   // REFUSED: limit of 5 reached
+        Member debtor = new Member();
+        debtor.FinePaise = 10001;
+        Show(lib.Checkout(debtor, new Item("Refactoring", false), today)); // REFUSED: clear fines first
+        debtor.FinePaise = 10000;
+        Show(lib.Checkout(debtor, new Item("Refactoring", false), today)); // OK: exactly Rs 100 is allowed
+    }
 }` }
         ],
         complexity: `<p>O(R) per checkout for R rules (each O(1)). Rules are stateless functions → thread-safe and unit-testable in isolation.</p>`,
@@ -7158,6 +8510,208 @@ int main() {
     bool first = res.reserve(ddia.isbn, "ravi");
     bool second = res.reserve(ddia.isbn, "ravi");
     cout << first << " " << second << "\\n";                                           // true false
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// ===== Library lending rules, fine policies, reservations (Observer) and a copy state machine =====
+enum CopyState { AVAILABLE, LOANED, ON_HOLD, LOST, UNDER_REPAIR }
+
+static class CopyStateExt {
+    private static readonly Dictionary<CopyState, HashSet<CopyState>> NEXT = new Dictionary<CopyState, HashSet<CopyState>> {
+        { CopyState.AVAILABLE, new HashSet<CopyState> { CopyState.LOANED, CopyState.ON_HOLD, CopyState.UNDER_REPAIR, CopyState.LOST } },
+        { CopyState.LOANED, new HashSet<CopyState> { CopyState.AVAILABLE, CopyState.ON_HOLD, CopyState.LOST, CopyState.UNDER_REPAIR } },
+        { CopyState.ON_HOLD, new HashSet<CopyState> { CopyState.LOANED, CopyState.AVAILABLE, CopyState.ON_HOLD } },      // ON_HOLD -> ON_HOLD = pass to next waiter
+        { CopyState.UNDER_REPAIR, new HashSet<CopyState> { CopyState.AVAILABLE, CopyState.ON_HOLD, CopyState.LOST } },
+        { CopyState.LOST, new HashSet<CopyState> { CopyState.AVAILABLE } }                                                // found again
+    };
+    public static bool CanGo(this CopyState from, CopyState to) { return NEXT[from].Contains(to); }
+}
+
+sealed class Copy {
+    public readonly string Barcode, Isbn;
+    public readonly long PricePaise;
+    public CopyState State = CopyState.AVAILABLE;
+    public string HoldFor;              // patron id while ON_HOLD
+    public DateTime? HoldUntil;
+    public Copy(string barcode, string isbn, long pricePaise) { Barcode = barcode; Isbn = isbn; PricePaise = pricePaise; }
+    public void MoveTo(CopyState to) {
+        if (!State.CanGo(to)) throw new InvalidOperationException(Barcode + ": " + State + " -> " + to + " is not allowed");
+        State = to;
+    }
+}
+
+sealed class Patron {
+    public readonly string Id;
+    public readonly bool Faculty;
+    public bool Active = true;
+    public int Loans;
+    public long FinePaise;
+    public Patron(string id, bool faculty) { Id = id; Faculty = faculty; }
+    public int Limit() { return Faculty ? 10 : 5; }
+}
+
+// ---------- Fines: Strategy (+ a Decorator for discounts) ----------
+interface IFinePolicy { long Fine(long daysLate, Copy copy, Patron p); }
+
+sealed class FlatFine : IFinePolicy {
+    private readonly long perDay;
+    public FlatFine(long perDay) { this.perDay = perDay; }
+    public long Fine(long d, Copy c, Patron p) { return d * perDay; }
+}
+
+/// First 7 late days Rs 2/day, then Rs 5/day, never more than the book's price.
+sealed class TieredCappedFine : IFinePolicy {
+    public long Fine(long d, Copy c, Patron p) {
+        long f = Math.Min(d, 7) * 200 + Math.Max(0, d - 7) * 500;
+        return Math.Min(f, c.PricePaise);
+    }
+}
+
+sealed class FacultyHalfPrice : IFinePolicy {      // decorator: wraps any other policy
+    private readonly IFinePolicy inner;
+    public FacultyHalfPrice(IFinePolicy inner) { this.inner = inner; }
+    public long Fine(long d, Copy c, Patron p) { long f = inner.Fine(d, c, p); return p.Faculty ? f / 2 : f; }
+}
+
+// ---------- Lending rules: each one a tiny function (null = no violation) ----------
+delegate string LendingRule(Patron p, Copy c, DateTime today);
+
+static class Rules {
+    public static readonly LendingRule ACTIVE = (p, c, d) => p.Active ? null : "membership inactive";
+    public static readonly LendingRule LIMIT = (p, c, d) => p.Loans < p.Limit() ? null : "limit " + p.Limit() + " reached";
+    public static readonly LendingRule FINES = (p, c, d) => p.FinePaise <= 10000 ? null : "clear fines above Rs 100 first";
+    public static readonly LendingRule COPY_FREE = (p, c, d) => {
+        if (c.State == CopyState.AVAILABLE) return null;
+        bool myHold = c.State == CopyState.ON_HOLD && p.Id == c.HoldFor && d <= c.HoldUntil.Value;
+        return myHold ? null : "copy is " + c.State;
+    };
+}
+
+// ---------- Reservations: FIFO queue per title + Observer notifications ----------
+delegate void HoldListener(string patronId, Copy copy, DateTime pickupBy);
+
+sealed class ReservationDesk {
+    public const int PICKUP_DAYS = 3;
+    private readonly Dictionary<string, LinkedList<string>> waitlist = new Dictionary<string, LinkedList<string>>();   // isbn -> patron ids
+    private readonly List<HoldListener> listeners = new List<HoldListener>();
+
+    public void Subscribe(HoldListener l) { listeners.Add(l); }
+
+    public bool Reserve(string isbn, string patronId) {
+        LinkedList<string> q;
+        if (!waitlist.TryGetValue(isbn, out q)) { q = new LinkedList<string>(); waitlist[isbn] = q; }
+        if (q.Contains(patronId)) return false;                          // no duplicate reservations
+        q.AddLast(patronId);
+        return true;
+    }
+
+    public bool HasWaiters(string isbn) { LinkedList<string> q; return waitlist.TryGetValue(isbn, out q) && q.Count > 0; }
+
+    /// A copy just became free: returned, repaired, or its previous hold expired.
+    public void CopyFreed(Copy c, DateTime today) {
+        LinkedList<string> q;
+        string next = null;
+        if (waitlist.TryGetValue(c.Isbn, out q) && q.Count > 0) { next = q.First.Value; q.RemoveFirst(); }
+        if (next == null) {
+            c.MoveTo(CopyState.AVAILABLE);
+            c.HoldFor = null; c.HoldUntil = null;
+            return;
+        }
+        c.MoveTo(CopyState.ON_HOLD);
+        c.HoldFor = next;
+        c.HoldUntil = today.AddDays(PICKUP_DAYS);
+        foreach (HoldListener l in listeners) l(next, c, c.HoldUntil.Value);
+    }
+
+    /// Run once a day (or lazily on access): pass expired holds to the next person.
+    public void ExpireHolds(IEnumerable<Copy> copies, DateTime today) {
+        foreach (Copy c in copies)
+            if (c.State == CopyState.ON_HOLD && today > c.HoldUntil.Value) CopyFreed(c, today);
+    }
+}
+
+// ---------- The desk that ties it all together ----------
+sealed class LendingDesk {
+    private readonly List<LendingRule> rules = new List<LendingRule> { Rules.ACTIVE, Rules.LIMIT, Rules.FINES, Rules.COPY_FREE };
+    private readonly IFinePolicy finePolicy;
+    private readonly ReservationDesk reservations;
+    private readonly Dictionary<string, DateTime> dueDates = new Dictionary<string, DateTime>();     // barcode -> due date
+    private readonly object gate = new object();
+
+    public LendingDesk(IFinePolicy finePolicy, ReservationDesk reservations) { this.finePolicy = finePolicy; this.reservations = reservations; }
+
+    public string Checkout(Patron p, Copy c, DateTime today) {
+        lock (gate) {
+            foreach (LendingRule r in rules) {
+                string v = r(p, c, today);
+                if (v != null) return "REFUSED: " + v;
+            }
+            c.MoveTo(CopyState.LOANED);
+            c.HoldFor = null; c.HoldUntil = null;
+            p.Loans++;
+            DateTime due = today.AddDays(p.Faculty ? 30 : 14);
+            dueDates[c.Barcode] = due;
+            return "OK, due " + due.ToString("yyyy-MM-dd");
+        }
+    }
+
+    public long GiveBack(Patron p, Copy c, DateTime today) {
+        lock (gate) {
+            DateTime due = dueDates[c.Barcode];
+            dueDates.Remove(c.Barcode);
+            long late = Math.Max(0, (long)(today - due).TotalDays);
+            long fine = finePolicy.Fine(late, c, p);
+            p.FinePaise += fine;
+            p.Loans--;
+            reservations.CopyFreed(c, today);          // AVAILABLE, or ON_HOLD for the first waiter
+            return fine;
+        }
+    }
+
+    public bool Renew(Patron p, Copy c, DateTime today) {
+        lock (gate) {
+            DateTime due;
+            if (!dueDates.TryGetValue(c.Barcode, out due) || today > due || reservations.HasWaiters(c.Isbn)) return false;
+            dueDates[c.Barcode] = due.AddDays(p.Faculty ? 30 : 14);
+            return true;
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        ReservationDesk res = new ReservationDesk();
+        res.Subscribe((who, copy, by) => Console.WriteLine("SMS to " + who + ": " + copy.Barcode + " is held for you until " + by.ToString("yyyy-MM-dd")));
+        LendingDesk desk = new LendingDesk(new FacultyHalfPrice(new TieredCappedFine()), res);
+
+        Copy ddia = new Copy("BC-9", "978-1449373320", 30000);
+        Patron priya = new Patron("priya", false), ravi = new Patron("ravi", false), meena = new Patron("meena", true);
+        DateTime d0 = new DateTime(2026, 10, 1);
+
+        Console.WriteLine(desk.Checkout(priya, ddia, d0));                   // OK, due 2026-10-15
+        res.Reserve(ddia.Isbn, "ravi");
+        res.Reserve(ddia.Isbn, "meena");
+        Console.WriteLine("renew? " + desk.Renew(priya, ddia, d0.AddDays(10)).ToString().ToLower());   // false: people are waiting
+        long fine = desk.GiveBack(priya, ddia, d0.AddDays(23));              // 9 days late -> 7*200 + 2*500 = 2400
+        Console.WriteLine("fine paise = " + fine + ", state = " + ddia.State);      // ON_HOLD for ravi
+        Console.WriteLine(desk.Checkout(meena, ddia, d0.AddDays(24)));       // REFUSED: held for ravi
+        res.ExpireHolds(new List<Copy> { ddia }, d0.AddDays(27));            // ravi never came -> meena
+        Console.WriteLine(desk.Checkout(meena, ddia, d0.AddDays(28)));       // OK, due 2026-11-28 (faculty: 30 days)
+
+        // failure paths
+        Copy lost = new Copy("BC-7", "978-0", 10000);
+        lost.MoveTo(CopyState.LOST);
+        Console.WriteLine(desk.Checkout(ravi, lost, d0));                    // REFUSED: copy is LOST
+        try { lost.MoveTo(CopyState.LOANED); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // BC-7: LOST -> LOANED is not allowed
+        Patron lapsed = new Patron("zed", false);
+        lapsed.Active = false;
+        Console.WriteLine(desk.Checkout(lapsed, new Copy("BC-8", "978-1", 10000), d0));   // REFUSED: membership inactive
+        ravi.FinePaise = 10001;
+        Console.WriteLine(desk.Checkout(ravi, new Copy("BC-8", "978-1", 10000), d0));     // REFUSED: clear fines above Rs 100 first
+        Console.WriteLine(res.Reserve(ddia.Isbn, "ravi").ToString().ToLower() + " " + res.Reserve(ddia.Isbn, "ravi").ToString().ToLower());   // true false: no duplicate reservations
+    }
 }` }
     ] }],
     codeTitle: 'Rules, fine strategies, reservation queue + Observer, copy state machine (a complete program)',
@@ -7323,6 +8877,30 @@ int main() {
             cout << e.what() << "\\n";
         }
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum S { AVAILABLE, LOANED, LOST }
+
+class TransitionCheck {
+    static readonly Dictionary<S, HashSet<S>> NEXT = new Dictionary<S, HashSet<S>> {
+        { S.AVAILABLE, new HashSet<S> { S.LOANED, S.LOST } },
+        { S.LOANED, new HashSet<S> { S.AVAILABLE, S.LOST } },
+        { S.LOST, new HashSet<S> { S.AVAILABLE } } };
+
+    static S Move(S from, S to) {
+        if (!NEXT[from].Contains(to)) throw new InvalidOperationException(from + " -> " + to + " is not allowed");
+        return to;
+    }
+    static void Main() {
+        Console.WriteLine(Move(S.AVAILABLE, S.LOANED));                          // LOANED
+        foreach (S[] step in new[] { new[] { S.LOST, S.LOANED }, new[] { S.AVAILABLE, S.AVAILABLE }, new[] { S.LOANED, S.LOST } }) {
+            try { Console.WriteLine(Move(step[0], step[1])); }
+            catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // LOST -> LOANED / AVAILABLE -> AVAILABLE are refused
+        }
+    }
 }` }
         ] },
       { title: 'Observer: adding WhatsApp without touching the desk', html: `<p>The ReservationDesk only knows <code>List&lt;HoldListener&gt;</code>. SMS and email listeners exist today. Product wants WhatsApp → write <code>WhatsAppHoldListener implements HoldListener</code> and <code>subscribe()</code> it at startup. The desk, the rules and the fine logic are untouched. In production, the listener usually just publishes an event to a queue so a slow SMS provider never blocks the desk.</p>` }
@@ -7347,7 +8925,7 @@ int main() {
     private final Set<String> onShelf = new HashSet<>();
     void copyReturned(String copyId) { onShelf.add(copyId); }        // reservations ignored
     boolean pickUp(String anyone, String copyId) { return onShelf.remove(copyId); }   // first come wins
-}`, alt: [{ lang: 'python', code: "class NaiveShelf:\n    def __init__(self):\n        self.on_shelf = set()\n\n    def copy_returned(self, copy_id): self.on_shelf.add(copy_id)         # reservations ignored\n    def pick_up(self, anyone, copy_id):                                  # first come wins\n        had = copy_id in self.on_shelf\n        self.on_shelf.discard(copy_id)\n        return had\n" }, { lang: 'ts', code: "class NaiveShelf {\n  private onShelf = new Set<string>();\n  copyReturned(copyId: string): void { this.onShelf.add(copyId); }                   // reservations ignored\n  pickUp(anyone: string, copyId: string): boolean { return this.onShelf.delete(copyId); }   // first come wins\n}\n" }, { lang: 'cpp', code: "class NaiveShelf {\n    set<string> onShelf;\npublic:\n    void copyReturned(const string& copyId) { onShelf.insert(copyId); }                  // reservations ignored\n    bool pickUp(const string& anyone, const string& copyId) { return onShelf.erase(copyId) > 0; }   // first come wins\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveShelf:\n    def __init__(self):\n        self.on_shelf = set()\n\n    def copy_returned(self, copy_id): self.on_shelf.add(copy_id)         # reservations ignored\n    def pick_up(self, anyone, copy_id):                                  # first come wins\n        had = copy_id in self.on_shelf\n        self.on_shelf.discard(copy_id)\n        return had\n" }, { lang: 'ts', code: "class NaiveShelf {\n  private onShelf = new Set<string>();\n  copyReturned(copyId: string): void { this.onShelf.add(copyId); }                   // reservations ignored\n  pickUp(anyone: string, copyId: string): boolean { return this.onShelf.delete(copyId); }   // first come wins\n}\n" }, { lang: 'cpp', code: "class NaiveShelf {\n    set<string> onShelf;\npublic:\n    void copyReturned(const string& copyId) { onShelf.insert(copyId); }                  // reservations ignored\n    bool pickUp(const string& anyone, const string& copyId) { return onShelf.erase(copyId) > 0; }   // first come wins\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass NaiveShelf {\n    private readonly HashSet<string> onShelf = new HashSet<string>();\n    public void CopyReturned(string copyId) { onShelf.Add(copyId); }        // reservations ignored\n    public bool PickUp(string anyone, string copyId) { return onShelf.Remove(copyId); }   // first come wins\n}\n" }] } },
       mcq: { q: 'Ravi\'s hold expired and Meena is next in the queue. What state change happens to the copy?', options: ['ON_HOLD (Ravi) → ON_HOLD (Meena) with a new pickup deadline', 'ON_HOLD → AVAILABLE', 'ON_HOLD → LOANED to Meena', 'Nothing until Ravi cancels'], answer: 0, explain: 'The copy stays on the hold shelf but is re-assigned to the next waiter, who gets a fresh window and a notification.' },
       hints: [`<p>Hint 1: two structures — a FIFO <code>Deque&lt;String&gt;</code> of waiting patrons, and a map <code>copyId → (patron, until)</code> of active holds.</p>`, `<p>Hint 2: write ONE method <code>assign(copyId, day)</code>: pop the next waiter; if none, the copy goes to the open shelf; else record the hold and add a notification. Both <code>copyReturned</code> and expiry in <code>tick</code> call it.</p>`, `<p>Hint 3: in <code>tick</code>, collect expired copy ids first, then reassign (do not modify the map while iterating it). Reject duplicate reservations with a Set mirror of the queue.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: 'true true false\ntrue false\nfalse\nC1 held for ravi until 8\nC1 held for meena until 12\nC3 held for zoya until 15\nopen shelf [C2, C3]\n' }] },
@@ -7602,6 +9180,68 @@ int main() {
     bool first = true;
     for (const auto& c3 : s.openShelf) { cout << (first ? "" : ", ") << c3; first = false; }
     cout << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class HoldShelf {
+    public const int WINDOW = 3;
+    private readonly LinkedList<string> queue = new LinkedList<string>();
+    private readonly HashSet<string> queued = new HashSet<string>();
+    private readonly SortedDictionary<string, string> holdFor = new SortedDictionary<string, string>(StringComparer.Ordinal);   // copyId -> patron
+    private readonly Dictionary<string, int> holdUntil = new Dictionary<string, int>();
+    private readonly SortedSet<string> openShelf = new SortedSet<string>(StringComparer.Ordinal);
+    public readonly List<string> Notifications = new List<string>();
+
+    public bool Reserve(string patron) {
+        if (!queued.Add(patron)) return false;
+        queue.AddLast(patron);
+        return true;
+    }
+
+    private void Assign(string copyId, int day) {
+        if (queue.Count == 0) { openShelf.Add(copyId); return; }
+        string next = queue.First.Value; queue.RemoveFirst();
+        queued.Remove(next);
+        holdFor[copyId] = next;
+        holdUntil[copyId] = day + WINDOW;
+        Notifications.Add(copyId + " held for " + next + " until " + (day + WINDOW));
+    }
+
+    public void CopyReturned(string copyId, int day) { Assign(copyId, day); }
+
+    public void Tick(int day) {
+        List<string> expired = new List<string>();
+        foreach (string c in holdFor.Keys) if (day > holdUntil[c]) expired.Add(c);
+        foreach (string c in expired) { holdFor.Remove(c); holdUntil.Remove(c); Assign(c, day); }
+    }
+
+    public bool PickUp(string patron, string copyId, int day) {
+        string owner;
+        if (!holdFor.TryGetValue(copyId, out owner) || patron != owner || day > holdUntil[copyId]) return false;
+        holdFor.Remove(copyId);
+        holdUntil.Remove(copyId);
+        return true;
+    }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        HoldShelf s = new HoldShelf();
+        Console.WriteLine(B(s.Reserve("ravi")) + " " + B(s.Reserve("meena")) + " " + B(s.Reserve("ravi")));   // true true false
+        s.CopyReturned("C1", 5);                 // held for ravi until day 8
+        s.Tick(8);                               // the window is inclusive: ravi still owns it
+        s.Tick(9);                               // ravi missed it -> meena
+        Console.WriteLine(B(s.PickUp("meena", "C1", 10)) + " " + B(s.PickUp("ravi", "C1", 10)));   // true false
+        s.CopyReturned("C2", 11);                // nobody waiting -> open shelf
+        s.Reserve("zoya");
+        s.CopyReturned("C3", 12);                // held for zoya until day 15
+        s.Tick(16);                              // zoya never came and the queue is empty -> open shelf
+        Console.WriteLine(B(s.PickUp("zoya", "C3", 16)));   // false
+        foreach (string n in s.Notifications) Console.WriteLine(n);
+        Console.WriteLine("open shelf [" + string.Join(", ", s.openShelf) + "]");
+    }
 }` }
         ],
         complexity: `<p>reserve / pickUp O(1); copyReturned O(1); tick O(H) for H active holds (or O(log H) per expiry with a min-heap by deadline).</p>`,
@@ -7623,7 +9263,7 @@ int main() {
         if (late <= 0) return 0;
         return late <= 7 ? late * 200L : 7 * 200L + (late - 7) * 500L;  // and no cap
     }
-}`, alt: [{ lang: 'python', code: "class NaiveFee:\n    @staticmethod\n    def fee(due, returned):\n        late = returned.day - due.day                       # WRONG across months\n        if late <= 0: return 0\n        return late * 200 if late <= 7 else 7 * 200 + (late - 7) * 500   # and no cap\n" }, { lang: 'ts', code: "class NaiveFee {\n  static fee(due: Date, returned: Date): number {\n    const late = returned.getDate() - due.getDate();        // WRONG across months\n    if (late <= 0) return 0;\n    return late <= 7 ? late * 200 : 7 * 200 + (late - 7) * 500;   // and no cap\n  }\n}\n" }, { lang: 'cpp', code: "struct Date { int year, month, day; };\n\nstruct NaiveFee {\n    static long long fee(Date due, Date returned) {\n        int late = returned.day - due.day;                  // WRONG across months\n        if (late <= 0) return 0;\n        return late <= 7 ? late * 200LL : 7 * 200LL + (late - 7) * 500LL;   // and no cap\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveFee:\n    @staticmethod\n    def fee(due, returned):\n        late = returned.day - due.day                       # WRONG across months\n        if late <= 0: return 0\n        return late * 200 if late <= 7 else 7 * 200 + (late - 7) * 500   # and no cap\n" }, { lang: 'ts', code: "class NaiveFee {\n  static fee(due: Date, returned: Date): number {\n    const late = returned.getDate() - due.getDate();        // WRONG across months\n    if (late <= 0) return 0;\n    return late <= 7 ? late * 200 : 7 * 200 + (late - 7) * 500;   // and no cap\n  }\n}\n" }, { lang: 'cpp', code: "struct Date { int year, month, day; };\n\nstruct NaiveFee {\n    static long long fee(Date due, Date returned) {\n        int late = returned.day - due.day;                  // WRONG across months\n        if (late <= 0) return 0;\n        return late <= 7 ? late * 200LL : 7 * 200LL + (late - 7) * 500LL;   // and no cap\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass NaiveFee {\n    public static long Fee(DateTime due, DateTime returned) {\n        int late = returned.Day - due.Day;                            // WRONG across months\n        if (late <= 0) return 0;\n        return late <= 7 ? late * 200L : 7 * 200L + (late - 7) * 500L;  // and no cap\n    }\n}\n" }] } },
     mcq: { q: 'Which expression gives the number of days between two calendar dates correctly across months and years?', options: ['The difference of the two epoch-day counts (Java: b.toEpochDay() - a.toEpochDay())', 'b.getDayOfMonth() - a.getDayOfMonth()', 'Period.between(a, b).getDays()', 'b.getDayOfYear() - a.getDayOfYear()'], answer: 0, explain: 'Epoch days are a continuous count. Period.getDays() is only the "days" part of a y/m/d period, and day-of-year breaks across years.' },
     hints: [`<p>Hint 1: compute late days as a difference of epoch days and clamp at 0 with Math.max — one line handles every month and leap year.</p>`, `<p>Hint 2: split into two tiers: <code>min(d, 7)</code> days at 200 paise and <code>max(0, d − 7)</code> days at 500 paise.</p>`, `<p>Hint 3: finally <code>Math.min(fee, bookPrice)</code>. Keep everything in long paise; returned-early gives 0, not a negative fee.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '2400\n1000\n30000\n0\n0\n1400\n1900\n1500\n' }] },
@@ -7725,6 +9365,26 @@ int main() {
         {dateOf(2026, 10, 15), dateOf(2026, 10, 24), 1500},
     };
     for (const auto& c : cases) cout << LateFee::feePaise(c.due, c.returned, c.price) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class LateFee {
+    public static long FeePaise(DateTime due, DateTime returned, long bookPricePaise) {
+        long d = Math.Max(0, (long)(returned.Date - due.Date).TotalDays);
+        long fee = Math.Min(d, 7) * 200 + Math.Max(0, d - 7) * 500;
+        return Math.Min(fee, bookPricePaise);
+    }
+    static void Main() {
+        Console.WriteLine(FeePaise(new DateTime(2026, 10, 15), new DateTime(2026, 10, 24), 30000));  // 2400
+        Console.WriteLine(FeePaise(new DateTime(2026, 10, 28), new DateTime(2026, 11, 2), 30000));   // 1000: crosses a month
+        Console.WriteLine(FeePaise(new DateTime(2026, 1, 1), new DateTime(2026, 4, 1), 30000));      // 30000: capped at the price
+        Console.WriteLine(FeePaise(new DateTime(2026, 1, 10), new DateTime(2026, 1, 5), 30000));     // 0: early
+        Console.WriteLine(FeePaise(new DateTime(2026, 10, 15), new DateTime(2026, 10, 15), 30000));  // 0: on the due date
+        Console.WriteLine(FeePaise(new DateTime(2026, 10, 15), new DateTime(2026, 10, 22), 30000));  // 1400: day 7 is still Rs 2
+        Console.WriteLine(FeePaise(new DateTime(2026, 10, 15), new DateTime(2026, 10, 23), 30000));  // 1900: day 8 costs Rs 5
+        Console.WriteLine(FeePaise(new DateTime(2026, 10, 15), new DateTime(2026, 10, 24), 1500));   // 1500: cheap book
+    }
 }` }
       ],
       complexity: `<p>O(1) time and space.</p>`,
@@ -7752,7 +9412,7 @@ int main() {
         }
         return out;
     }
-}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nExp = namedtuple(\"Exp\", \"payer amount among\")\n\nclass NaiveNet:\n    @staticmethod\n    def net(people, exps):\n        out = {}\n        for p in people:                                # O(P * E)\n            v = 0.0\n            for e in exps:\n                if e.payer == p: v += e.amount\n                if p in e.among: v -= e.amount / len(e.among)   # rounding drift\n            out[p] = v\n        return out\n" }, { lang: 'ts', code: "interface Exp { payer: string; amount: number; among: string[] }\n\nclass NaiveNet {\n  static net(people: Set<string>, exps: Exp[]): Map<string, number> {\n    const out = new Map<string, number>();\n    for (const p of people) {                       // O(P * E)\n      let v = 0;\n      for (const e of exps) {\n        if (e.payer === p) v += e.amount;\n        if (e.among.includes(p)) v -= e.amount / e.among.length;   // rounding drift\n      }\n      out.set(p, v);\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct Exp { string payer; long long amount; vector<string> among; };\n\nstruct NaiveNet {\n    static unordered_map<string, double> net(const set<string>& people, const vector<Exp>& exps) {\n        unordered_map<string, double> out;\n        for (auto& p : people) {                    // O(P * E)\n            double v = 0;\n            for (auto& e : exps) {\n                if (e.payer == p) v += e.amount;\n                if (count(e.among.begin(), e.among.end(), p)) v -= (double)e.amount / e.among.size();   // rounding drift\n            }\n            out[p] = v;\n        }\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nExp = namedtuple(\"Exp\", \"payer amount among\")\n\nclass NaiveNet:\n    @staticmethod\n    def net(people, exps):\n        out = {}\n        for p in people:                                # O(P * E)\n            v = 0.0\n            for e in exps:\n                if e.payer == p: v += e.amount\n                if p in e.among: v -= e.amount / len(e.among)   # rounding drift\n            out[p] = v\n        return out\n" }, { lang: 'ts', code: "interface Exp { payer: string; amount: number; among: string[] }\n\nclass NaiveNet {\n  static net(people: Set<string>, exps: Exp[]): Map<string, number> {\n    const out = new Map<string, number>();\n    for (const p of people) {                       // O(P * E)\n      let v = 0;\n      for (const e of exps) {\n        if (e.payer === p) v += e.amount;\n        if (e.among.includes(p)) v -= e.amount / e.among.length;   // rounding drift\n      }\n      out.set(p, v);\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct Exp { string payer; long long amount; vector<string> among; };\n\nstruct NaiveNet {\n    static unordered_map<string, double> net(const set<string>& people, const vector<Exp>& exps) {\n        unordered_map<string, double> out;\n        for (auto& p : people) {                    // O(P * E)\n            double v = 0;\n            for (auto& e : exps) {\n                if (e.payer == p) v += e.amount;\n                if (count(e.among.begin(), e.among.end(), p)) v -= (double)e.amount / e.among.size();   // rounding drift\n            }\n            out[p] = v;\n        }\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass NaiveNet {\n    public sealed class Exp {\n        public readonly string Payer; public readonly long Amount; public readonly List<string> Among;\n        public Exp(string payer, long amount, List<string> among) { Payer = payer; Amount = amount; Among = among; }\n    }\n    public static Dictionary<string, double> Net(HashSet<string> people, List<Exp> exps) {\n        Dictionary<string, double> result = new Dictionary<string, double>();\n        foreach (string p in people) {                  // O(P * E)\n            double v = 0;\n            foreach (Exp e in exps) {\n                if (e.Payer == p) v += e.Amount;\n                if (e.Among.Contains(p)) v -= (double)e.Amount / e.Among.Count;   // rounding drift\n            }\n            result[p] = v;\n        }\n        return result;\n    }\n}\n" }] } },
     mcq: { q: 'Asha pays ₹600 for Ben and Chen only (not herself). What is Asha\'s net from this expense?', options: ['+600', '+400', '+200', '0'], answer: 0, explain: 'Her share is 0 because she is not a participant: paid 600 − share 0 = +600.' },
     hints: [`<p>Hint 1: net = total paid − total share. You can add to the payer and subtract from each participant in a single pass over the expenses.</p>`, `<p>Hint 2: share = amount / n, and the first <code>amount % n</code> participants pay 1 extra paisa, so shares add up to the amount exactly.</p>`, `<p>Hint 3: use <code>Map&lt;String, Long&gt;</code> with <code>merge(key, delta, Long::sum)</code>. Assert at the end that the values sum to 0 — a free bug detector.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '{asha=56666, ben=-18333, chen=-38333}\n0\n{asha=66, ben=-33, chen=-33}\n{}\nnobody to split among\n' }] },
@@ -7905,6 +9565,48 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class NetBalances {
+    public sealed class Exp {
+        public readonly string Payer; public readonly long Amount; public readonly List<string> Among;
+        public Exp(string payer, long amount, List<string> among) { Payer = payer; Amount = amount; Among = among; }
+    }
+
+    public static SortedDictionary<string, long> Net(List<Exp> exps) {
+        SortedDictionary<string, long> net = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        foreach (Exp e in exps) {
+            int n = e.Among.Count;
+            if (n == 0) throw new ArgumentException("nobody to split among");
+            long b = e.Amount / n, extra = e.Amount % n;
+            long v;
+            net.TryGetValue(e.Payer, out v); net[e.Payer] = v + e.Amount;
+            for (int i = 0; i < n; i++) { net.TryGetValue(e.Among[i], out v); net[e.Among[i]] = v - (b + (i < extra ? 1 : 0)); }
+        }
+        return net;
+    }
+}
+
+class Program {
+    static List<string> L(params string[] a) { return new List<string>(a); }
+    static string Show(SortedDictionary<string, long> m) { return "{" + string.Join(", ", m.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+    static void Main() {
+        List<NetBalances.Exp> exps = new List<NetBalances.Exp> {
+            new NetBalances.Exp("asha", 90000, L("asha", "ben", "chen")),
+            new NetBalances.Exp("ben", 30000, L("ben", "chen")),
+            new NetBalances.Exp("chen", 10000, L("asha", "ben", "chen")) };
+        SortedDictionary<string, long> net = NetBalances.Net(exps);
+        Console.WriteLine(Show(net));                                              // {asha=56666, ben=-18333, chen=-38333}
+        Console.WriteLine(net.Values.Sum());                                       // 0
+        Console.WriteLine(Show(NetBalances.Net(new List<NetBalances.Exp> { new NetBalances.Exp("asha", 100, L("asha", "ben", "chen")) })));   // {asha=66, ben=-33, chen=-33}
+        Console.WriteLine(Show(NetBalances.Net(new List<NetBalances.Exp>())));     // {}
+        try { NetBalances.Net(new List<NetBalances.Exp> { new NetBalances.Exp("asha", 100, L()) }); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
       ],
       complexity: `<p>O(Σ participants) time, O(people) space.</p>`,
@@ -7927,7 +9629,7 @@ int main() {
         if (student) p = p - 5000;                      // added in June... and the list keeps growing
         return p + 3000;
     }
-}`, alt: [{ lang: 'python', code: "class IfElsePricing:\n    @staticmethod\n    def price(type_, day, festival, student):    # day: 0=Mon .. 6=Sun\n        if type_ == \"REGULAR\": p = 20000\n        elif type_ == \"PREMIUM\": p = 35000\n        else: p = 60000\n        if day >= 5: p = p * 120 // 100\n        if festival: p = p * 125 // 100               # added in March\n        if student: p = p - 5000                      # added in June... and the list keeps growing\n        return p + 3000\n" }, { lang: 'ts', code: "class IfElsePricing {\n  static price(type: string, day: number, festival: boolean, student: boolean): number {   // day: 0=Sun .. 6=Sat\n    let p: number;\n    if (type === \"REGULAR\") p = 20000; else if (type === \"PREMIUM\") p = 35000; else p = 60000;\n    if (day === 6 || day === 0) p = Math.floor(p * 120 / 100);\n    if (festival) p = Math.floor(p * 125 / 100);      // added in March\n    if (student) p = p - 5000;                        // added in June... and the list keeps growing\n    return p + 3000;\n  }\n}\n" }, { lang: 'cpp', code: "struct IfElsePricing {\n    static long long price(const string& type, int day, bool festival, bool student) {   // day: 0=Sun .. 6=Sat\n        long long p;\n        if (type == \"REGULAR\") p = 20000; else if (type == \"PREMIUM\") p = 35000; else p = 60000;\n        if (day == 6 || day == 0) p = p * 120 / 100;\n        if (festival) p = p * 125 / 100;                 // added in March\n        if (student) p = p - 5000;                      // added in June... and the list keeps growing\n        return p + 3000;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class IfElsePricing:\n    @staticmethod\n    def price(type_, day, festival, student):    # day: 0=Mon .. 6=Sun\n        if type_ == \"REGULAR\": p = 20000\n        elif type_ == \"PREMIUM\": p = 35000\n        else: p = 60000\n        if day >= 5: p = p * 120 // 100\n        if festival: p = p * 125 // 100               # added in March\n        if student: p = p - 5000                      # added in June... and the list keeps growing\n        return p + 3000\n" }, { lang: 'ts', code: "class IfElsePricing {\n  static price(type: string, day: number, festival: boolean, student: boolean): number {   // day: 0=Sun .. 6=Sat\n    let p: number;\n    if (type === \"REGULAR\") p = 20000; else if (type === \"PREMIUM\") p = 35000; else p = 60000;\n    if (day === 6 || day === 0) p = Math.floor(p * 120 / 100);\n    if (festival) p = Math.floor(p * 125 / 100);      // added in March\n    if (student) p = p - 5000;                        // added in June... and the list keeps growing\n    return p + 3000;\n  }\n}\n" }, { lang: 'cpp', code: "struct IfElsePricing {\n    static long long price(const string& type, int day, bool festival, bool student) {   // day: 0=Sun .. 6=Sat\n        long long p;\n        if (type == \"REGULAR\") p = 20000; else if (type == \"PREMIUM\") p = 35000; else p = 60000;\n        if (day == 6 || day == 0) p = p * 120 / 100;\n        if (festival) p = p * 125 / 100;                 // added in March\n        if (student) p = p - 5000;                      // added in June... and the list keeps growing\n        return p + 3000;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass IfElsePricing {\n    public static long Price(string type, DayOfWeek day, bool festival, bool student) {\n        long p;\n        if (type == \"REGULAR\") p = 20000; else if (type == \"PREMIUM\") p = 35000; else p = 60000;\n        if (day == DayOfWeek.Saturday || day == DayOfWeek.Sunday) p = p * 120 / 100;\n        if (festival) p = p * 125 / 100;                 // added in March\n        if (student) p = p - 5000;                      // added in June... and the list keeps growing\n        return p + 3000;\n    }\n}\n" }] } },
     mcq: { q: 'Which pattern lets you stack "weekend surge" on top of "base price" and then "convenience fee" on top of that, in any combination?', options: ['Decorator', 'Singleton', 'Factory Method', 'Iterator'], answer: 0, explain: 'Each decorator wraps another Pricing and adjusts its result, so rules compose like layers.' },
     hints: [`<p>Hint 1: define <code>interface Pricing { long price(String seatType, DayOfWeek day); }</code> — the base table is one implementation.</p>`, `<p>Hint 2: each extra rule is a class that <b>wraps</b> another Pricing (Decorator): call the inner price, then adjust it.</p>`, `<p>Hint 3: compose at startup: <code>new ConvenienceFee(new WeekendSurge(new BasePrice(), 20), 3000)</code>. The order of wrapping is the order rules apply — make it explicit.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '45000\n23000\n75000\n27600\nunknown seat type BALCONY\n' }] },
@@ -8122,6 +9824,50 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class TicketPricing {
+    public interface IPricing { long Price(string seatType, DayOfWeek day); }
+
+    public sealed class BasePrice : IPricing {
+        private readonly Dictionary<string, long> table = new Dictionary<string, long> { { "REGULAR", 20000L }, { "PREMIUM", 35000L }, { "RECLINER", 60000L } };
+        public long Price(string seatType, DayOfWeek day) {
+            long p;
+            if (!table.TryGetValue(seatType, out p)) throw new ArgumentException("unknown seat type " + seatType);
+            return p;
+        }
+    }
+    public sealed class WeekendSurge : IPricing {
+        private readonly IPricing inner; private readonly int percent;
+        public WeekendSurge(IPricing inner, int percent) { this.inner = inner; this.percent = percent; }
+        public long Price(string t, DayOfWeek d) {
+            long p = inner.Price(t, d);
+            bool weekend = d == DayOfWeek.Saturday || d == DayOfWeek.Sunday;
+            return weekend ? p * (100 + percent) / 100 : p;
+        }
+    }
+    public sealed class ConvenienceFee : IPricing {
+        private readonly IPricing inner; private readonly long fee;
+        public ConvenienceFee(IPricing inner, long fee) { this.inner = inner; this.fee = fee; }
+        public long Price(string t, DayOfWeek d) { return inner.Price(t, d) + fee; }
+    }
+}
+
+class Program {
+    static void Main() {
+        TicketPricing.IPricing pricing = new TicketPricing.ConvenienceFee(new TicketPricing.WeekendSurge(new TicketPricing.BasePrice(), 20), 3000);
+        Console.WriteLine(pricing.Price("PREMIUM", DayOfWeek.Saturday));   // 45000
+        Console.WriteLine(pricing.Price("REGULAR", DayOfWeek.Tuesday));    // 23000
+        Console.WriteLine(pricing.Price("RECLINER", DayOfWeek.Sunday));    // 75000
+        // wrapping in the other order changes the answer: the surge now applies to the fee too
+        TicketPricing.IPricing surgeOnFee = new TicketPricing.WeekendSurge(new TicketPricing.ConvenienceFee(new TicketPricing.BasePrice(), 3000), 20);
+        Console.WriteLine(surgeOnFee.Price("REGULAR", DayOfWeek.Saturday)); // 27600
+        try { pricing.Price("BALCONY", DayOfWeek.Monday); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
       ],
       complexity: `<p>O(R) per price for R stacked rules; O(1) memory per rule.</p>`,
@@ -8147,7 +9893,7 @@ int main() {
         }
         return out;
     }
-}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nB = namedtuple(\"B\", \"isbn title author\")\n\nclass ScanSearch:\n    @staticmethod\n    def search(books, q):\n        out = []\n        for b in books:\n            text = (b.title + \" \" + b.author).lower()\n            all_ = True\n            for w in q.lower().split(\" \"):\n                if w not in text: all_ = False        # substring bug\n            if all_: out.append(b.isbn)\n        return out\n" }, { lang: 'ts', code: "interface B { isbn: string; title: string; author: string }\n\nclass ScanSearch {\n  static search(books: B[], q: string): string[] {\n    const out: string[] = [];\n    for (const b of books) {\n      const text = (b.title + \" \" + b.author).toLowerCase();\n      let all = true;\n      for (const w of q.toLowerCase().split(\" \")) if (!text.includes(w)) all = false;   // substring bug\n      if (all) out.push(b.isbn);\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct B { string isbn, title, author; };\n\nstruct ScanSearch {\n    static string lower(string s) { for (char& ch : s) ch = tolower(ch); return s; }\n\n    static vector<string> search(const vector<B>& books, const string& q) {\n        vector<string> out;\n        for (auto& b : books) {\n            string text = lower(b.title + \" \" + b.author);\n            bool all = true;\n            istringstream words(lower(q));\n            for (string w; words >> w;) if (text.find(w) == string::npos) all = false;   // substring bug\n            if (all) out.push_back(b.isbn);\n        }\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nB = namedtuple(\"B\", \"isbn title author\")\n\nclass ScanSearch:\n    @staticmethod\n    def search(books, q):\n        out = []\n        for b in books:\n            text = (b.title + \" \" + b.author).lower()\n            all_ = True\n            for w in q.lower().split(\" \"):\n                if w not in text: all_ = False        # substring bug\n            if all_: out.append(b.isbn)\n        return out\n" }, { lang: 'ts', code: "interface B { isbn: string; title: string; author: string }\n\nclass ScanSearch {\n  static search(books: B[], q: string): string[] {\n    const out: string[] = [];\n    for (const b of books) {\n      const text = (b.title + \" \" + b.author).toLowerCase();\n      let all = true;\n      for (const w of q.toLowerCase().split(\" \")) if (!text.includes(w)) all = false;   // substring bug\n      if (all) out.push(b.isbn);\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct B { string isbn, title, author; };\n\nstruct ScanSearch {\n    static string lower(string s) { for (char& ch : s) ch = tolower(ch); return s; }\n\n    static vector<string> search(const vector<B>& books, const string& q) {\n        vector<string> out;\n        for (auto& b : books) {\n            string text = lower(b.title + \" \" + b.author);\n            bool all = true;\n            istringstream words(lower(q));\n            for (string w; words >> w;) if (text.find(w) == string::npos) all = false;   // substring bug\n            if (all) out.push_back(b.isbn);\n        }\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass ScanSearch {\n    public sealed class B {\n        public readonly string Isbn, Title, Author;\n        public B(string isbn, string title, string author) { Isbn = isbn; Title = title; Author = author; }\n    }\n    public static List<string> Search(List<B> books, string q) {\n        List<string> result = new List<string>();\n        foreach (B b in books) {\n            string text = (b.Title + \" \" + b.Author).ToLower();\n            bool all = true;\n            foreach (string w in q.ToLower().Split(' ')) if (!text.Contains(w)) all = false;   // substring bug\n            if (all) result.Add(b.Isbn);\n        }\n        return result;\n    }\n}\n" }] } },
     mcq: { q: 'Query "clean martin" should return books containing BOTH words. With an inverted index word → set of ISBNs, how do you combine the two sets?', options: ['Intersection', 'Union', 'Difference', 'Concatenate and sort'], answer: 0, explain: 'AND semantics = set intersection. OR semantics would be union.' },
     hints: [`<p>Hint 1: precompute at insert time: split title and author into lower-case words, and map each word to the set of ISBNs containing it.</p>`, `<p>Hint 2: for a query, look up each word's set and intersect them, starting from a copy of the first set (never mutate the index's own sets).</p>`, `<p>Hint 3: start with the smallest set to make intersection fastest; empty query → empty result; unknown word → empty result immediately.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '[1, 2] [1] [3]\n[2]\n[1]\n[]\n[]\n' }] },
@@ -8317,6 +10063,52 @@ int main() {
     cout << fmt(c.search("code  clean")) << "\\n";
     cout << fmt(c.search("martin zzz")) << "\\n";
     cout << fmt(c.search("   ")) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class CatalogIndex {
+    private readonly Dictionary<string, SortedSet<string>> index = new Dictionary<string, SortedSet<string>>();
+
+    public void Add(string isbn, string title, string author) {
+        foreach (string w in (title + " " + author).ToLower().Split(' '))
+            if (!string.IsNullOrWhiteSpace(w)) {
+                SortedSet<string> set;
+                if (!index.TryGetValue(w, out set)) { set = new SortedSet<string>(StringComparer.Ordinal); index[w] = set; }
+                set.Add(isbn);
+            }
+    }
+
+    public List<string> Search(string query) {
+        List<SortedSet<string>> lists = new List<SortedSet<string>>();
+        foreach (string w in query.ToLower().Split(' ')) {
+            if (string.IsNullOrWhiteSpace(w)) continue;
+            SortedSet<string> hits;
+            if (!index.TryGetValue(w, out hits)) return new List<string>();   // a word nobody has -> no results
+            lists.Add(hits);
+        }
+        if (lists.Count == 0) return new List<string>();
+        lists.Sort((a, b) => a.Count.CompareTo(b.Count));                     // smallest first
+        SortedSet<string> result = new SortedSet<string>(lists[0], StringComparer.Ordinal);
+        for (int i = 1; i < lists.Count; i++) result.IntersectWith(lists[i]);
+        return new List<string>(result);
+    }
+
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+
+    static void Main() {
+        CatalogIndex c = new CatalogIndex();
+        c.Add("1", "Clean Code", "Robert Martin");
+        c.Add("2", "Designing Data Intensive Applications", "Martin Kleppmann");
+        c.Add("3", "The Art of Computer Programming", "Donald Knuth");
+        Console.WriteLine(Show(c.Search("martin")) + " " + Show(c.Search("clean martin")) + " " + Show(c.Search("art")));   // [1, 2] [1] [3]
+        Console.WriteLine(Show(c.Search("MARTIN kleppmann")));    // [2]: case-insensitive, AND semantics
+        Console.WriteLine(Show(c.Search("code  clean")));         // [1]: extra spaces are ignored
+        Console.WriteLine(Show(c.Search("martin zzz")));          // []: one word nobody has
+        Console.WriteLine(Show(c.Search("   ")));                 // []: blank query
+    }
 }` }
       ],
       complexity: `<p>Indexing O(total words). Query O(k + m log m) where m is the smallest posting list size.</p>`,
@@ -8343,7 +10135,7 @@ int main() {
         }
         return s;
     }
-}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nIOU = namedtuple(\"IOU\", \"frm to amt\")\n\nclass ScanLedger:\n    def __init__(self):\n        self.all = []\n\n    def record(self, d, c, amt): self.all.append(IOU(d, c, amt))\n\n    def owes(self, a, b):                               # O(records) on EVERY query\n        s = 0\n        for i in self.all:\n            if i.frm == a and i.to == b: s += i.amt\n            if i.frm == b and i.to == a: s -= i.amt\n        return s\n" }, { lang: 'ts', code: "interface IOU { from: string; to: string; amt: number }\n\nclass ScanLedger {\n  private all: IOU[] = [];\n  record(d: string, c: string, amt: number): void { this.all.push({ from: d, to: c, amt }); }\n  owes(a: string, b: string): number {                  // O(records) on EVERY query\n    let s = 0;\n    for (const i of this.all) {\n      if (i.from === a && i.to === b) s += i.amt;\n      if (i.from === b && i.to === a) s -= i.amt;\n    }\n    return s;\n  }\n}\n" }, { lang: 'cpp', code: "class ScanLedger {\n    struct IOU { string from, to; long long amt; };\n    vector<IOU> all;\npublic:\n    void record(const string& d, const string& c, long long amt) { all.push_back({d, c, amt}); }\n    long long owes(const string& a, const string& b) const {   // O(records) on EVERY query\n        long long s = 0;\n        for (auto& i : all) {\n            if (i.from == a && i.to == b) s += i.amt;\n            if (i.from == b && i.to == a) s -= i.amt;\n        }\n        return s;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nIOU = namedtuple(\"IOU\", \"frm to amt\")\n\nclass ScanLedger:\n    def __init__(self):\n        self.all = []\n\n    def record(self, d, c, amt): self.all.append(IOU(d, c, amt))\n\n    def owes(self, a, b):                               # O(records) on EVERY query\n        s = 0\n        for i in self.all:\n            if i.frm == a and i.to == b: s += i.amt\n            if i.frm == b and i.to == a: s -= i.amt\n        return s\n" }, { lang: 'ts', code: "interface IOU { from: string; to: string; amt: number }\n\nclass ScanLedger {\n  private all: IOU[] = [];\n  record(d: string, c: string, amt: number): void { this.all.push({ from: d, to: c, amt }); }\n  owes(a: string, b: string): number {                  // O(records) on EVERY query\n    let s = 0;\n    for (const i of this.all) {\n      if (i.from === a && i.to === b) s += i.amt;\n      if (i.from === b && i.to === a) s -= i.amt;\n    }\n    return s;\n  }\n}\n" }, { lang: 'cpp', code: "class ScanLedger {\n    struct IOU { string from, to; long long amt; };\n    vector<IOU> all;\npublic:\n    void record(const string& d, const string& c, long long amt) { all.push_back({d, c, amt}); }\n    long long owes(const string& a, const string& b) const {   // O(records) on EVERY query\n        long long s = 0;\n        for (auto& i : all) {\n            if (i.from == a && i.to == b) s += i.amt;\n            if (i.from == b && i.to == a) s -= i.amt;\n        }\n        return s;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass ScanLedger {\n    sealed class IOU { public readonly string From, To; public readonly long Amt; public IOU(string f, string t, long a) { From = f; To = t; Amt = a; } }\n    private readonly List<IOU> all = new List<IOU>();\n    public void Record(string d, string c, long amt) { all.Add(new IOU(d, c, amt)); }\n    public long Owes(string a, string b) {              // O(records) on EVERY query\n        long s = 0;\n        foreach (IOU i in all) {\n            if (i.From == a && i.To == b) s += i.Amt;\n            if (i.From == b && i.To == a) s -= i.Amt;\n        }\n        return s;\n    }\n}\n" }] } },
     mcq: { q: 'You store each pair once under the key (min(a,b), max(a,b)) with value v meaning "min owes max v". How do you answer owes(max, min)?', options: ['Return -v', 'Return v', 'Return |v|', 'Look up a second key'], answer: 0, explain: 'Canonical ordering + sign: the reverse direction is just the negation.' },
     hints: [`<p>Hint 1: pick a canonical order for a pair (alphabetical). Store one signed number: positive means the smaller name owes the larger one.</p>`, `<p>Hint 2: record(d, c, x): if d &lt; c add +x to key (d, c), else add −x to key (c, d). owes(a, b) reads the key and flips the sign if a &gt; b.</p>`, `<p>Hint 3: remove the key when it becomes 0 so debtsOf stays small. Keep a per-user adjacency set (user → counterparties) to list a user's debts without scanning all pairs.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '200 -200 [ben owes asha 200]\n[ben owes asha 200, asha owes chen 50]\n0 [asha owes chen 50]\n[]\ncannot owe yourself\namount must be positive\n' }] },
@@ -8586,6 +10378,72 @@ int main() {
             cout << e.what() << "\\n";
         }
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class PairLedger {
+    private readonly Dictionary<string, long> bal = new Dictionary<string, long>();                 // "a|b" with a < b
+    private readonly Dictionary<string, SortedSet<string>> peers = new Dictionary<string, SortedSet<string>>();
+
+    private static string Key(string a, string b) { return a + "|" + b; }
+    private SortedSet<string> PeersOf(string who) {
+        SortedSet<string> set;
+        if (!peers.TryGetValue(who, out set)) { set = new SortedSet<string>(StringComparer.Ordinal); peers[who] = set; }
+        return set;
+    }
+
+    public void Record(string debtor, string creditor, long amt) {
+        if (debtor == creditor) throw new ArgumentException("cannot owe yourself");
+        if (amt <= 0) throw new ArgumentException("amount must be positive");
+        bool ordered = string.CompareOrdinal(debtor, creditor) < 0;
+        string lo = ordered ? debtor : creditor, hi = ordered ? creditor : debtor;
+        long v; bal.TryGetValue(Key(lo, hi), out v);
+        v += ordered ? amt : -amt;
+        bal[Key(lo, hi)] = v;
+        if (v == 0) {
+            bal.Remove(Key(lo, hi));
+            PeersOf(lo).Remove(hi);
+            PeersOf(hi).Remove(lo);
+        } else {
+            PeersOf(lo).Add(hi);
+            PeersOf(hi).Add(lo);
+        }
+    }
+
+    public long Owes(string a, string b) {
+        long v;
+        if (string.CompareOrdinal(a, b) < 0) return bal.TryGetValue(Key(a, b), out v) ? v : 0;
+        return bal.TryGetValue(Key(b, a), out v) ? -v : 0;
+    }
+
+    public List<string> DebtsOf(string user) {
+        List<string> result = new List<string>();
+        SortedSet<string> set;
+        if (!peers.TryGetValue(user, out set)) return result;
+        foreach (string p in set) {
+            long v = Owes(user, p);
+            result.Add(v > 0 ? user + " owes " + p + " " + v : p + " owes " + user + " " + (-v));
+        }
+        return result;
+    }
+
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+
+    static void Main() {
+        PairLedger l = new PairLedger();
+        l.Record("ben", "asha", 300);
+        l.Record("asha", "ben", 100);
+        Console.WriteLine(l.Owes("ben", "asha") + " " + l.Owes("asha", "ben") + " " + Show(l.DebtsOf("asha")));   // 200 -200 [ben owes asha 200]
+        l.Record("asha", "chen", 50);
+        Console.WriteLine(Show(l.DebtsOf("asha")));         // [ben owes asha 200, asha owes chen 50]
+        l.Record("asha", "ben", 200);
+        Console.WriteLine(l.Owes("ben", "asha") + " " + Show(l.DebtsOf("asha")));   // 0 [asha owes chen 50]: the settled pair vanished
+        Console.WriteLine(Show(l.DebtsOf("zed")));          // []
+        try { l.Record("asha", "asha", 10); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { l.Record("asha", "ben", 0); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
       ],
       complexity: `<p>record / owes O(1) expected (plus O(log d) for the sorted peer set); debtsOf O(d) for d counterparties. Space O(non-zero pairs).</p>`,
@@ -8608,7 +10466,7 @@ int main() {
         shows.get(screen).add(new int[]{start, end});
         return true;
     }
-}`, alt: [{ lang: 'python', code: "class ScanScheduler:\n    def __init__(self):\n        self.shows = {}                                  # screen -> [(start, end_with_buffer)]\n\n    def add_show(self, screen, start, dur):\n        end = start + dur + 15\n        lst = self.shows.setdefault(screen, [])\n        for s in lst:                                    # O(n)\n            if start < s[1] and s[0] < end: return False\n        lst.append((start, end))\n        return True\n" }, { lang: 'ts', code: "class ScanScheduler {\n  private shows = new Map<number, number[][]>();        // [start, endWithBuffer)\n  addShow(screen: number, start: number, dur: number): boolean {\n    const end = start + dur + 15;\n    if (!this.shows.has(screen)) this.shows.set(screen, []);\n    for (const s of this.shows.get(screen)!)            // O(n)\n      if (start < s[1] && s[0] < end) return false;\n    this.shows.get(screen)!.push([start, end]);\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class ScanScheduler {\n    unordered_map<int, vector<pair<int, int>>> shows;   // [start, endWithBuffer)\npublic:\n    bool addShow(int screen, int start, int dur) {\n        int end = start + dur + 15;\n        for (auto& s : shows[screen])                   // O(n)\n            if (start < s.second && s.first < end) return false;\n        shows[screen].push_back({start, end});\n        return true;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class ScanScheduler:\n    def __init__(self):\n        self.shows = {}                                  # screen -> [(start, end_with_buffer)]\n\n    def add_show(self, screen, start, dur):\n        end = start + dur + 15\n        lst = self.shows.setdefault(screen, [])\n        for s in lst:                                    # O(n)\n            if start < s[1] and s[0] < end: return False\n        lst.append((start, end))\n        return True\n" }, { lang: 'ts', code: "class ScanScheduler {\n  private shows = new Map<number, number[][]>();        // [start, endWithBuffer)\n  addShow(screen: number, start: number, dur: number): boolean {\n    const end = start + dur + 15;\n    if (!this.shows.has(screen)) this.shows.set(screen, []);\n    for (const s of this.shows.get(screen)!)            // O(n)\n      if (start < s[1] && s[0] < end) return false;\n    this.shows.get(screen)!.push([start, end]);\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class ScanScheduler {\n    unordered_map<int, vector<pair<int, int>>> shows;   // [start, endWithBuffer)\npublic:\n    bool addShow(int screen, int start, int dur) {\n        int end = start + dur + 15;\n        for (auto& s : shows[screen])                   // O(n)\n            if (start < s.second && s.first < end) return false;\n        shows[screen].push_back({start, end});\n        return true;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass ScanScheduler {\n    private readonly Dictionary<int, List<int[]>> shows = new Dictionary<int, List<int[]>>();     // [start, endWithBuffer)\n    public bool AddShow(int screen, int start, int dur) {\n        int end = start + dur + 15;\n        List<int[]> list;\n        if (!shows.TryGetValue(screen, out list)) { list = new List<int[]>(); shows[screen] = list; }\n        foreach (int[] s in list)                                     // O(n)\n            if (start < s[1] && s[0] < end) return false;\n        list.Add(new[] { start, end });\n        return true;\n    }\n}\n" }] } },
     mcq: { q: 'Shows on a screen never overlap each other. To check a new interval [s, e), which existing shows do you need to look at?', options: ['Only the show starting just before s and the show starting just at/after s', 'All shows', 'Only the last show of the day', 'Only shows of the same movie'], answer: 0, explain: 'Non-overlapping intervals sorted by start: only the immediate predecessor and successor can collide.' },
     hints: [`<p>Hint 1: since a screen's shows never overlap, keep them sorted by start time in an ordered map <code>start → endWithBuffer</code> (<code>TreeMap</code>, <code>std::map</code>, or a sorted list with <code>bisect</code>).</p>`, `<p>Hint 2: the new busy interval is [s, s + dur + 15). Check <code>floorEntry(s)</code> (its end must be ≤ s) and <code>ceilingEntry(s)</code> (its start must be ≥ new end).</p>`, `<p>Hint 3: half-open intervals make "ends exactly when the next starts" legal. One ordered map per screen in a <code>Map&lt;screenId, OrderedMap&gt;</code>; lock per screen if admins edit concurrently.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: 'true\nfalse\ntrue\nfalse\ntrue\ntrue\nfalse\nfalse\ntrue\n' }] },
@@ -8726,6 +10584,45 @@ int main() {
     vector<array<int, 3>> requests = {{1, 600, 170}, {1, 780, 120}, {1, 785, 120}, {1, 500, 90}, {2, 780, 120},
                                       {1, 400, 90}, {1, 505, 95}, {1, 600, 10}, {1, 920, 60}};
     for (auto [screen, start, duration] : requests) cout << s.addShow(screen, start, duration) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class ShowScheduler {
+    public const int BUFFER = 15;
+    private readonly Dictionary<int, SortedDictionary<int, int>> screens = new Dictionary<int, SortedDictionary<int, int>>();   // start -> end (with buffer)
+
+    public bool AddShow(int screen, int start, int duration) {
+        SortedDictionary<int, int> t;
+        if (!screens.TryGetValue(screen, out t)) { t = new SortedDictionary<int, int>(); screens[screen] = t; }
+        int end = start + duration + BUFFER;
+        int? beforeEnd = null, afterStart = null;
+        foreach (var kv in t) {                                            // floor entry (start <= ours) and ceiling key (>= ours)
+            if (kv.Key <= start) beforeEnd = kv.Value;
+            else { afterStart = kv.Key; break; }
+        }
+        if (beforeEnd != null && beforeEnd > start) return false;        // previous one still running/cleaning
+        if (t.ContainsKey(start)) return false;                           // same start: floor entry is this one and it is "running"
+        if (afterStart != null && afterStart < end) return false;        // we would run into the next one
+        t[start] = end;
+        return true;
+    }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        ShowScheduler s = new ShowScheduler();
+        Console.WriteLine(B(s.AddShow(1, 600, 170)));   // true, busy until 785
+        Console.WriteLine(B(s.AddShow(1, 780, 120)));   // false: still cleaning
+        Console.WriteLine(B(s.AddShow(1, 785, 120)));   // true: starts exactly when the buffer ends
+        Console.WriteLine(B(s.AddShow(1, 500, 90)));    // false (busy until 605)
+        Console.WriteLine(B(s.AddShow(2, 780, 120)));   // true, other screen
+        Console.WriteLine(B(s.AddShow(1, 400, 90)));    // true: fits in the gap before 600
+        Console.WriteLine(B(s.AddShow(1, 505, 95)));    // false: its own buffer would run into 600
+        Console.WriteLine(B(s.AddShow(1, 600, 10)));    // false: same start
+        Console.WriteLine(B(s.AddShow(1, 920, 60)));    // true: after the last show's buffer
+    }
 }` }
       ],
       complexity: `<p>O(log n) per insert, O(n) space per screen.</p>`,
@@ -8745,7 +10642,7 @@ int main() {
         else if (hoursBefore > 4) return ticket * 0.5 - 20;
         return 0;
     }
-}`, alt: [{ lang: 'python', code: "class HardCodedRefund:\n    @staticmethod\n    def refund(ticket, hours_before):\n        if hours_before > 24: return ticket - 20          # exactly 24h falls through!\n        elif hours_before > 4: return ticket * 0.5 - 20\n        return 0\n" }, { lang: 'ts', code: "class HardCodedRefund {\n  static refund(ticket: number, hoursBefore: number): number {\n    if (hoursBefore > 24) return ticket - 20;          // exactly 24h falls through!\n    else if (hoursBefore > 4) return ticket * 0.5 - 20;\n    return 0;\n  }\n}\n" }, { lang: 'cpp', code: "struct HardCodedRefund {\n    static double refund(double ticket, double hoursBefore) {\n        if (hoursBefore > 24) return ticket - 20;          // exactly 24h falls through!\n        else if (hoursBefore > 4) return ticket * 0.5 - 20;\n        return 0;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class HardCodedRefund:\n    @staticmethod\n    def refund(ticket, hours_before):\n        if hours_before > 24: return ticket - 20          # exactly 24h falls through!\n        elif hours_before > 4: return ticket * 0.5 - 20\n        return 0\n" }, { lang: 'ts', code: "class HardCodedRefund {\n  static refund(ticket: number, hoursBefore: number): number {\n    if (hoursBefore > 24) return ticket - 20;          // exactly 24h falls through!\n    else if (hoursBefore > 4) return ticket * 0.5 - 20;\n    return 0;\n  }\n}\n" }, { lang: 'cpp', code: "struct HardCodedRefund {\n    static double refund(double ticket, double hoursBefore) {\n        if (hoursBefore > 24) return ticket - 20;          // exactly 24h falls through!\n        else if (hoursBefore > 4) return ticket * 0.5 - 20;\n        return 0;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass HardCodedRefund {\n    public static double Refund(double ticket, double hoursBefore) {\n        if (hoursBefore > 24) return ticket - 20;          // exactly 24h falls through!\n        else if (hoursBefore > 4) return ticket * 0.5 - 20;\n        return 0;\n    }\n}\n" }] } },
     mcq: { q: 'Tiers are stored in an ordered map from "minutes before show" to percent: {0:0, 240:50, 1440:100}. A user cancels 600 minutes before. Which call finds the right tier?', options: ['floorEntry(600)', 'ceilingEntry(600)', 'firstEntry()', 'get(600)'], answer: 0, explain: 'floorEntry returns the largest threshold ≤ 600, i.e. 240 → 50%.' },
     hints: [`<p>Hint 1: make it a <code>RefundPolicy</code> interface so chains can plug different rules; the common case is a tiered table.</p>`, `<p>Hint 2: store tiers in an ordered map <code>minutesBefore → percent</code> (<code>TreeMap&lt;Long, Integer&gt;</code> and <code>floorEntry(minutesBefore)</code>; <code>bisect_right</code> on a sorted list; <code>std::map::upper_bound</code>). Compute minutes as the difference of the two instants (<code>Duration.between(now, showStart).toMinutes()</code>).</p>`, `<p>Hint 3: refund = ticket × percent / 100, minus the fee only if percent &gt; 0, clamped at 0. Cancelling after the show started → 0. Use long paise throughout.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '38000\n38000\n18000\n18000\n0\n0\n0\n0\n' }] },
@@ -8885,6 +10782,42 @@ int main() {
                                            {40000, 239}, {40000, 2 * 60}, {40000, -10}, {1000, 10 * 60}};
     for (const auto& [ticket, minutesBefore] : probes)
         cout << pvr.refund(ticket, show - chrono::minutes{minutesBefore}, show) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class RefundCalc {
+    public interface IRefundPolicy { long Refund(long ticketPaise, DateTime now, DateTime showStart); }
+
+    public sealed class TieredRefund : IRefundPolicy {
+        private readonly SortedDictionary<long, int> tiers = new SortedDictionary<long, int>();   // minutesBefore threshold -> percent
+        private readonly long feePaise;
+        public TieredRefund(IDictionary<long, int> tiers, long feePaise) { foreach (var kv in tiers) this.tiers[kv.Key] = kv.Value; this.feePaise = feePaise; }
+        public long Refund(long ticket, DateTime now, DateTime showStart) {
+            long minutes = (long)Math.Floor((showStart - now).TotalMinutes);
+            if (minutes < 0) return 0;                                   // show already started
+            int pct = 0;
+            foreach (var kv in tiers) { if (kv.Key <= minutes) pct = kv.Value; else break; }   // floor entry
+            if (pct == 0) return 0;
+            return Math.Max(0, ticket * pct / 100 - feePaise);
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        RefundCalc.IRefundPolicy pvr = new RefundCalc.TieredRefund(new Dictionary<long, int> { { 0L, 0 }, { 240L, 50 }, { 1440L, 100 } }, 2000);
+        DateTime show = new DateTime(2026, 10, 17, 12, 30, 0, DateTimeKind.Utc);
+        Console.WriteLine(pvr.Refund(40000, show.AddHours(-30), show));   // 38000
+        Console.WriteLine(pvr.Refund(40000, show.AddHours(-24), show));   // 38000 (boundary)
+        Console.WriteLine(pvr.Refund(40000, show.AddHours(-10), show));   // 18000
+        Console.WriteLine(pvr.Refund(40000, show.AddHours(-4), show));    // 18000 (boundary)
+        Console.WriteLine(pvr.Refund(40000, show.AddMinutes(-239), show)); // 0: one minute short of 4 hours
+        Console.WriteLine(pvr.Refund(40000, show.AddHours(-2), show));    // 0
+        Console.WriteLine(pvr.Refund(40000, show.AddMinutes(10), show));  // 0: show already started
+        Console.WriteLine(pvr.Refund(1000, show.AddHours(-10), show));    // 0: the fee eats a small refund
+    }
 }` }
       ],
       complexity: `<p>O(log T) per refund for T tiers; O(T) memory.</p>`,
@@ -8900,7 +10833,7 @@ int main() {
     example: `<p>Student loan due 15 Oct, renewals 0, no waiters. renew on 12 Oct → ${H.c('g', 'OK, new due 29 Oct')}. renew again 28 Oct → ${H.c('g', 'OK, due 12 Nov')}. Third time → ${H.c('r', '"renewal limit (2) reached"')}. If renewed on 16 Oct (overdue) → ${H.c('r', '"overdue — return and pay fine"')}.</p>`,
     brute: { why: `<p>Naive: <code>loan.due = today.plusDays(14)</code> with no checks. A member can renew forever, starve everybody on the waitlist, and renewing after the due date silently wipes the fine they owe.</p>`, code: { lang: 'java', code: `class NaiveRenew {
     static LocalDate renew(LocalDate today) { return today.plusDays(14); }   // forever, even if overdue or reserved
-}`, alt: [{ lang: 'python', code: "from datetime import timedelta\n\nclass NaiveRenew:\n    @staticmethod\n    def renew(today): return today + timedelta(days=14)   # forever, even if overdue or reserved\n" }, { lang: 'ts', code: "class NaiveRenew {\n  static renew(today: Date): Date { return new Date(today.getTime() + 14 * 86_400_000); }   // forever, even if overdue or reserved\n}\n" }, { lang: 'cpp', code: "struct NaiveRenew {\n    static int renew(int today) { return today + 14; }   // today = day number; forever, even if overdue or reserved\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from datetime import timedelta\n\nclass NaiveRenew:\n    @staticmethod\n    def renew(today): return today + timedelta(days=14)   # forever, even if overdue or reserved\n" }, { lang: 'ts', code: "class NaiveRenew {\n  static renew(today: Date): Date { return new Date(today.getTime() + 14 * 86_400_000); }   // forever, even if overdue or reserved\n}\n" }, { lang: 'cpp', code: "struct NaiveRenew {\n    static int renew(int today) { return today + 14; }   // today = day number; forever, even if overdue or reserved\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass NaiveRenew {\n    public static DateTime Renew(DateTime today) { return today.AddDays(14); }   // forever, even if overdue or reserved\n}\n" }] } },
     mcq: { q: 'Why extend from the current due date instead of from today?', options: ['So renewing early neither loses nor gains extra days, and the total time is bounded', 'Because a calendar date cannot add days to today', 'To charge more fines', 'It makes no difference'], answer: 0, explain: 'From-due extension gives exactly one more period per renewal; from-today lets members chain renewals into arbitrarily long loans and penalises early renewers.' },
     hints: [`<p>Hint 1: return a small result type (record, dataclass, struct) with <code>ok</code>, <code>newDue</code> and <code>reason</code> — UIs need the reason, not just false.</p>`, `<p>Hint 2: check in order: blocked → overdue (<code>today.isAfter(due)</code>) → renewals ≥ 2 → waiters &gt; 0. Mutate only after all pass.</p>`, `<p>Hint 3: new due = due.plusDays(period). Renewing exactly on the due date is allowed (not after). Increment the renewal counter in the same step.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: 'renewed, due 2026-10-29\nrenewed, due 2026-11-12\nrefused: renewal limit (2) reached\nrefused: overdue - return and pay fine\nrenewed, due 2026-10-29\nrefused: 2 member(s) waiting for this title\nrefused: member is blocked\n' }] },
@@ -9095,6 +11028,49 @@ int main() {
     show(RenewalPolicy::renew(wanted, dateOf(2026, 10, 12), 2));
     Loan blocked{dateOf(2026, 10, 15), 14, true};
     show(RenewalPolicy::renew(blocked, dateOf(2026, 10, 20), 0));
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+static class RenewalPolicy {
+    public const int MAX_RENEWALS = 2;
+    public sealed class Loan { public DateTime Due; public int Renewals; public readonly int Period; public readonly bool MemberBlocked;
+        public Loan(DateTime due, int period, bool blocked) { Due = due; Period = period; MemberBlocked = blocked; } }
+    public sealed class Result {
+        public readonly bool Ok; public readonly DateTime? NewDue; public readonly string Reason;
+        public Result(bool ok, DateTime? newDue, string reason) { Ok = ok; NewDue = newDue; Reason = reason; }
+    }
+
+    public static Result Renew(Loan loan, DateTime today, int waitersForTitle) {
+        if (loan.MemberBlocked) return new Result(false, null, "member is blocked");
+        if (today > loan.Due) return new Result(false, null, "overdue - return and pay fine");
+        if (loan.Renewals >= MAX_RENEWALS) return new Result(false, null, "renewal limit (" + MAX_RENEWALS + ") reached");
+        if (waitersForTitle > 0) return new Result(false, null, waitersForTitle + " member(s) waiting for this title");
+        loan.Due = loan.Due.AddDays(loan.Period);
+        loan.Renewals++;
+        return new Result(true, loan.Due, "renewed");
+    }
+}
+
+class Program {
+    static void Show(RenewalPolicy.Result r) {
+        Console.WriteLine(r.Ok ? "renewed, due " + r.NewDue.Value.ToString("yyyy-MM-dd") : "refused: " + r.Reason);
+    }
+
+    static void Main() {
+        RenewalPolicy.Loan l = new RenewalPolicy.Loan(new DateTime(2026, 10, 15), 14, false);
+        Show(RenewalPolicy.Renew(l, new DateTime(2026, 10, 12), 0));    // renewed, due 2026-10-29
+        Show(RenewalPolicy.Renew(l, new DateTime(2026, 10, 28), 0));    // renewed, due 2026-11-12
+        Show(RenewalPolicy.Renew(l, new DateTime(2026, 11, 1), 0));     // refused: renewal limit (2) reached
+        RenewalPolicy.Loan late = new RenewalPolicy.Loan(new DateTime(2026, 10, 15), 14, false);
+        Show(RenewalPolicy.Renew(late, new DateTime(2026, 10, 16), 0)); // refused: overdue - return and pay fine
+        RenewalPolicy.Loan onDueDay = new RenewalPolicy.Loan(new DateTime(2026, 10, 15), 14, false);
+        Show(RenewalPolicy.Renew(onDueDay, new DateTime(2026, 10, 15), 0));   // renewed, due 2026-10-29: the due day itself is still on time
+        RenewalPolicy.Loan wanted = new RenewalPolicy.Loan(new DateTime(2026, 10, 15), 14, false);
+        Show(RenewalPolicy.Renew(wanted, new DateTime(2026, 10, 12), 2));     // refused: 2 member(s) waiting for this title
+        RenewalPolicy.Loan blocked = new RenewalPolicy.Loan(new DateTime(2026, 10, 15), 14, true);
+        Show(RenewalPolicy.Renew(blocked, new DateTime(2026, 10, 20), 0));    // refused: member is blocked (checked before overdue)
+    }
 }` }
       ],
       complexity: `<p>O(1) time and O(1) extra space per renewal call.</p>`,
@@ -9119,7 +11095,7 @@ int main() {
         }
         return n;
     }
-}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nExp = namedtuple(\"Exp\", \"payer amount among\")\n\nclass ReplayAll:\n    def __init__(self):\n        self.live = {}                                  # id -> Exp\n\n    def net(self):                                      # O(E * P) on every read\n        n = {}\n        for e in self.live.values():\n            n[e.payer] = n.get(e.payer, 0) + e.amount\n            for p in e.among:\n                n[p] = n.get(p, 0) - e.amount // len(e.among)   # also drops paise\n        return n\n" }, { lang: 'ts', code: "interface Exp { payer: string; amount: number; among: string[] }\n\nclass ReplayAll {\n  live = new Map<number, Exp>();\n  net(): Map<string, number> {                          // O(E * P) on every read\n    const n = new Map<string, number>();\n    for (const e of this.live.values()) {\n      n.set(e.payer, (n.get(e.payer) ?? 0) + e.amount);\n      for (const p of e.among) n.set(p, (n.get(p) ?? 0) - Math.trunc(e.amount / e.among.length));   // also drops paise\n    }\n    return n;\n  }\n}\n" }, { lang: 'cpp', code: "struct Exp { string payer; long long amount; vector<string> among; };\n\nclass ReplayAll {\npublic:\n    unordered_map<int, Exp> live;\n    unordered_map<string, long long> net() const {      // O(E * P) on every read\n        unordered_map<string, long long> n;\n        for (auto& [id, e] : live) {\n            n[e.payer] += e.amount;\n            for (auto& p : e.among) n[p] -= e.amount / (long long)e.among.size();   // also drops paise\n        }\n        return n;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nExp = namedtuple(\"Exp\", \"payer amount among\")\n\nclass ReplayAll:\n    def __init__(self):\n        self.live = {}                                  # id -> Exp\n\n    def net(self):                                      # O(E * P) on every read\n        n = {}\n        for e in self.live.values():\n            n[e.payer] = n.get(e.payer, 0) + e.amount\n            for p in e.among:\n                n[p] = n.get(p, 0) - e.amount // len(e.among)   # also drops paise\n        return n\n" }, { lang: 'ts', code: "interface Exp { payer: string; amount: number; among: string[] }\n\nclass ReplayAll {\n  live = new Map<number, Exp>();\n  net(): Map<string, number> {                          // O(E * P) on every read\n    const n = new Map<string, number>();\n    for (const e of this.live.values()) {\n      n.set(e.payer, (n.get(e.payer) ?? 0) + e.amount);\n      for (const p of e.among) n.set(p, (n.get(p) ?? 0) - Math.trunc(e.amount / e.among.length));   // also drops paise\n    }\n    return n;\n  }\n}\n" }, { lang: 'cpp', code: "struct Exp { string payer; long long amount; vector<string> among; };\n\nclass ReplayAll {\npublic:\n    unordered_map<int, Exp> live;\n    unordered_map<string, long long> net() const {      // O(E * P) on every read\n        unordered_map<string, long long> n;\n        for (auto& [id, e] : live) {\n            n[e.payer] += e.amount;\n            for (auto& p : e.among) n[p] -= e.amount / (long long)e.among.size();   // also drops paise\n        }\n        return n;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass ReplayAll {\n    public sealed class Exp {\n        public readonly string Payer; public readonly long Amount; public readonly List<string> Among;\n        public Exp(string payer, long amount, List<string> among) { Payer = payer; Amount = amount; Among = among; }\n    }\n    public readonly Dictionary<int, Exp> Live = new Dictionary<int, Exp>();\n    public Dictionary<string, long> Net() {                                       // O(E * P) on every read\n        Dictionary<string, long> n = new Dictionary<string, long>();\n        foreach (Exp e in Live.Values) {\n            long v; n.TryGetValue(e.Payer, out v); n[e.Payer] = v + e.Amount;\n            foreach (string p in e.Among) { n.TryGetValue(p, out v); n[p] = v - e.Amount / e.Among.Count; }   // also drops paise\n        }\n        return n;\n    }\n}\n" }] } },
     mcq: { q: 'What is the cheapest correct way to apply an edit to an expense?', options: ['Apply the old version with sign −1, then the new version with sign +1', 'Recompute everything from scratch', 'Only apply the new version', 'Change the stored expense and ignore balances'], answer: 0, explain: 'Reversing the old effect and adding the new one touches only the participants of the two versions.' },
     hints: [`<p>Hint 1: write one function <code>apply(expense, sign)</code> that adds sign × amount to the payer and subtracts sign × share from each participant.</p>`, `<p>Hint 2: edit = apply(old, −1), store new, apply(new, +1). delete = apply(old, −1), remove. Shares must be computed deterministically so reversing cancels exactly.</p>`, `<p>Hint 3: keep the history of versions (append-only) for audit; the "live" map points to the latest version. Reject edits of deleted ids.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '60000 -30000 -30000\n30000 -30000 0\nnobody to split among\n30000 -30000 0\n0 0 0\nno live expense 1\namount must be positive\nadd 1 asha 90000 [asha, ben, chen]\nedit 1 asha 90000 [asha, ben, chen] -> asha 60000 [asha, ben]\ndelete 1\n' }] },
@@ -9455,6 +11431,86 @@ int main() {
     attempt([&] { b.erase(id); });
     attempt([&] { b.add("asha", 0, {"asha"}); });
     for (const auto& line : b.audit) cout << line << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class ExpenseBook {
+    public sealed class Exp {
+        public readonly string Payer; public readonly long Amount; public readonly IReadOnlyList<string> Among;
+        public Exp(string payer, long amount, List<string> among) { Payer = payer; Amount = amount; Among = new List<string>(among).AsReadOnly(); }
+        public override string ToString() { return Payer + " " + Amount + " [" + string.Join(", ", Among) + "]"; }
+    }
+    private readonly Dictionary<int, Exp> live = new Dictionary<int, Exp>();
+    private readonly List<string> audit = new List<string>();
+    private readonly Dictionary<string, long> net = new Dictionary<string, long>();
+    private int nextId = 1;
+
+    private static Exp Checked(string payer, long amount, List<string> among) {
+        if (amount <= 0) throw new ArgumentException("amount must be positive");
+        if (among.Count == 0) throw new ArgumentException("nobody to split among");
+        return new Exp(payer, amount, among);
+    }
+
+    private void Merge(string who, long delta) { long v; net.TryGetValue(who, out v); net[who] = v + delta; }
+
+    private void Apply(Exp e, int sign) {
+        int n = e.Among.Count;
+        long b = e.Amount / n, extra = e.Amount % n;
+        Merge(e.Payer, sign * e.Amount);
+        for (int i = 0; i < n; i++) Merge(e.Among[i], -sign * (b + (i < extra ? 1 : 0)));
+    }
+
+    public int Add(string payer, long amount, List<string> among) {
+        Exp e = Checked(payer, amount, among);
+        int id = nextId++;
+        live[id] = e;
+        Apply(e, +1);
+        audit.Add("add " + id + " " + e);
+        return id;
+    }
+
+    public void Edit(int id, string payer, long amount, List<string> among) {
+        Exp old;
+        if (!live.TryGetValue(id, out old)) throw new ArgumentException("no live expense " + id);
+        Exp now = Checked(payer, amount, among);          // validate BEFORE touching the books
+        Apply(old, -1);
+        Apply(now, +1);
+        live[id] = now;
+        audit.Add("edit " + id + " " + old + " -> " + now);
+    }
+
+    public void Delete(int id) {
+        Exp old;
+        if (!live.TryGetValue(id, out old)) throw new ArgumentException("no live expense " + id);
+        live.Remove(id);
+        Apply(old, -1);
+        audit.Add("delete " + id);
+    }
+
+    public long Net(string user) { long v; return net.TryGetValue(user, out v) ? v : 0; }
+    public List<string> AuditTrail() { return new List<string>(audit); }
+}
+
+class Program {
+    static List<string> L(params string[] a) { return new List<string>(a); }
+    static string Row(ExpenseBook b) { return b.Net("asha") + " " + b.Net("ben") + " " + b.Net("chen"); }
+
+    static void Main() {
+        ExpenseBook b = new ExpenseBook();
+        int id = b.Add("asha", 90000, L("asha", "ben", "chen"));
+        Console.WriteLine(Row(b));                                      // 60000 -30000 -30000
+        b.Edit(id, "asha", 60000, L("asha", "ben"));
+        Console.WriteLine(Row(b));                                      // 30000 -30000 0
+        try { b.Edit(id, "asha", 50000, L()); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        Console.WriteLine(Row(b));                                      // unchanged: the bad edit touched nothing
+        b.Delete(id);
+        Console.WriteLine(Row(b));                                      // 0 0 0
+        try { b.Delete(id); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { b.Add("asha", 0, L("asha")); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        foreach (string line in b.AuditTrail()) Console.WriteLine(line);
+    }
 }` }
       ],
       complexity: `<p>add/edit/delete O(participants); net O(1); memory O(expenses + users + audit).</p>`,
@@ -9477,7 +11533,7 @@ int main() {
         for (int s : seats) owner[s] = user;                    // ACT (another thread can be between!)
         return true;
     }
-}`, alt: [{ lang: 'python', code: "class NaiveSeats:\n    def __init__(self, n):\n        self.owner = [0] * n\n\n    def book(self, user, seats):\n        for s in seats:\n            if self.owner[s] != 0: return False         # CHECK\n        for s in seats:\n            self.owner[s] = user                         # ACT (another thread can be between!)\n        return True\n" }, { lang: 'ts', code: "class NaiveSeats {\n  private owner: number[];\n  constructor(n: number) { this.owner = new Array<number>(n).fill(0); }\n  book(user: number, seats: number[]): boolean {\n    for (const s of seats) if (this.owner[s] !== 0) return false;   // CHECK\n    for (const s of seats) this.owner[s] = user;                    // ACT (another thread can be between!)\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveSeats {\n    vector<int> owner;\npublic:\n    NaiveSeats(int n) : owner(n, 0) {}\n    bool book(int user, const vector<int>& seats) {\n        for (int s : seats) if (owner[s] != 0) return false;   // CHECK\n        for (int s : seats) owner[s] = user;                    // ACT (another thread can be between!)\n        return true;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveSeats:\n    def __init__(self, n):\n        self.owner = [0] * n\n\n    def book(self, user, seats):\n        for s in seats:\n            if self.owner[s] != 0: return False         # CHECK\n        for s in seats:\n            self.owner[s] = user                         # ACT (another thread can be between!)\n        return True\n" }, { lang: 'ts', code: "class NaiveSeats {\n  private owner: number[];\n  constructor(n: number) { this.owner = new Array<number>(n).fill(0); }\n  book(user: number, seats: number[]): boolean {\n    for (const s of seats) if (this.owner[s] !== 0) return false;   // CHECK\n    for (const s of seats) this.owner[s] = user;                    // ACT (another thread can be between!)\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveSeats {\n    vector<int> owner;\npublic:\n    NaiveSeats(int n) : owner(n, 0) {}\n    bool book(int user, const vector<int>& seats) {\n        for (int s : seats) if (owner[s] != 0) return false;   // CHECK\n        for (int s : seats) owner[s] = user;                    // ACT (another thread can be between!)\n        return true;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass NaiveSeats {\n    public readonly int[] Owner;\n    public NaiveSeats(int n) { Owner = new int[n]; }\n    public bool Book(int user, int[] seats) {\n        foreach (int s in seats) if (Owner[s] != 0) return false;   // CHECK\n        foreach (int s in seats) Owner[s] = user;                    // ACT (another thread can be between!)\n        return true;\n    }\n}\n" }] } },
     mcq: { q: 'Thread A got seat 3 via CAS but then fails on seat 4. What must it do?', options: ['compareAndSet(3, A, 0) to undo its own grab only', 'set(3, 0) unconditionally', 'Retry forever until 4 is free', 'Leave seat 3 held'], answer: 0, explain: 'A conditional undo only releases the seat if A still owns it; an unconditional set could wipe out a seat someone else legitimately owns later.' },
     hints: [`<p>Hint 1: <code>compareAndSet(i, 0, user)</code> is an atomic "take seat i only if free". It replaces the check-then-act pair with one hardware instruction.</p>`, `<p>Hint 2: sort the requested seats and drop duplicates; take them one by one; remember what you took. On the first failure, undo each taken seat with <code>compareAndSet(i, user, 0)</code> and return false.</p>`, `<p>Hint 3: stress test: N threads with a start gate (<code>CountDownLatch</code>, <code>std::latch</code>), random overlapping requests; afterwards check each seat's owner and that every successful request owns all its seats (no partial bookings remain).</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: 'true false 0\ntrue true 3\nfalse\nno seat 20\n0\nuser must be positive\ninvariant holds\n' }] },
@@ -9771,6 +11827,79 @@ int main() {
     int owned = 0;
     for (int s = 0; s < 20; s++) owned += seatMap.ownerOf(s) != 0;
     cout << (owned == winnerSeats ? "invariant holds" : "LEAK") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+class CasSeatMap {
+    private readonly int[] owner;                                // 0 = free, otherwise the user id (> 0); changed only via CAS
+    public CasSeatMap(int n) { owner = new int[n]; }
+
+    private bool Cas(int seat, int expected, int next) { return Interlocked.CompareExchange(ref owner[seat], next, expected) == expected; }
+
+    public bool Book(int user, int[] seats) {
+        if (user <= 0) throw new ArgumentException("user must be positive");
+        int[] order = seats.Distinct().OrderBy(s => s).ToArray();
+        foreach (int s in order) if (s < 0 || s >= owner.Length) throw new ArgumentException("no seat " + s);
+        int taken = 0;
+        foreach (int s in order) {
+            if (!Cas(s, 0, user)) {                                  // lost the race (or already sold)
+                for (int k = 0; k < taken; k++) Cas(order[k], user, 0);   // undo only ours
+                return false;
+            }
+            taken++;
+        }
+        return true;
+    }
+
+    public int OwnerOf(int seat) { return Volatile.Read(ref owner[seat]); }
+
+    static void ExpectError(Action r) {
+        try { r(); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        CasSeatMap small = new CasSeatMap(20);
+        Console.WriteLine(B(small.Book(1, new[] { 3, 4 })) + " " + B(small.Book(2, new[] { 2, 4 })) + " " + small.OwnerOf(2));   // true false 0: seat 2 was taken, then rolled back
+        Console.WriteLine(B(small.Book(2, new[] { 5, 6 })) + " " + B(small.Book(3, new[] { 9, 7, 9, 8 })) + " " + small.OwnerOf(7));   // true true 3
+        Console.WriteLine(B(small.Book(1, new[] { 3 })));         // false: even your own seat is not free
+        ExpectError(() => small.Book(1, new[] { 19, 20 }));       // no seat 20 (nothing was taken)
+        Console.WriteLine(small.OwnerOf(19));                     // 0
+        ExpectError(() => small.Book(0, new[] { 1 }));            // user must be positive
+
+        CasSeatMap map = new CasSeatMap(20);
+        int threads = 16;
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        bool[] results = new bool[threads];
+        int[][] reqs = new int[threads][];
+        List<Thread> pool = new List<Thread>();
+        for (int t = 0; t < threads; t++) {
+            int idx = t; int user = t + 1;
+            reqs[t] = new[] { user % 10, (user * 7) % 10, 10 + user % 5 };
+            int[] req = reqs[t];
+            Thread th = new Thread(() => { go.Wait(); results[idx] = map.Book(user, req); });
+            pool.Add(th); th.Start();
+        }
+        go.Set();
+        foreach (Thread th in pool) th.Join();
+        int winnerSeats = 0;
+        for (int t = 0; t < threads; t++) {
+            bool won = results[t];
+            int[] distinct = reqs[t].Distinct().ToArray();
+            foreach (int s in distinct) {
+                bool mine = map.OwnerOf(s) == t + 1;
+                if (won != mine) throw new Exception("partial, stolen or leaked booking");
+            }
+            if (won) winnerSeats += distinct.Length;
+        }
+        int owned = 0;
+        for (int s = 0; s < 20; s++) if (map.OwnerOf(s) != 0) owned++;
+        Console.WriteLine(owned == winnerSeats ? "invariant holds" : "LEAK");   // all-or-nothing under contention
+    }
 }` }
       ],
       complexity: `<p>O(k log k) per request for k seats; no blocking. Under heavy contention requests fail fast instead of waiting, which matches the "seat taken, pick again" UX.</p>`,
@@ -9798,7 +11927,7 @@ int main() {
         }
         return count;
     }
-}`, alt: [{ lang: 'python', code: "import heapq\n\nclass GreedyOnly:\n    @staticmethod\n    def transfers(net):                                 # NOT always minimal\n        pos = [-v for v in net if v > 0]                # max-heaps via negated values\n        neg = [v for v in net if v < 0]\n        heapq.heapify(pos); heapq.heapify(neg)\n        count = 0\n        while pos:\n            p = -heapq.heappop(pos)\n            n = -heapq.heappop(neg)\n            m = min(p, n)\n            count += 1\n            if p > m: heapq.heappush(pos, -(p - m))\n            if n > m: heapq.heappush(neg, -(n - m))\n        return count\n" }, { lang: 'ts', code: "class GreedyOnly {\n  static transfers(net: number[]): number {             // NOT always minimal\n    const pos = net.filter((v) => v > 0).sort((a, b) => a - b);    // sorted arrays stand in for max-heaps\n    const neg = net.filter((v) => v < 0).map((v) => -v).sort((a, b) => a - b);\n    const put = (a: number[], v: number) => { a.push(v); a.sort((x, y) => x - y); };\n    let count = 0;\n    while (pos.length) {\n      const p = pos.pop()!, n = neg.pop()!, m = Math.min(p, n);\n      count++;\n      if (p > m) put(pos, p - m);\n      if (n > m) put(neg, n - m);\n    }\n    return count;\n  }\n}\n" }, { lang: 'cpp', code: "struct GreedyOnly {\n    static int transfers(const vector<int>& net) {      // NOT always minimal\n        priority_queue<int> pos, neg;\n        for (int v : net) { if (v > 0) pos.push(v); else if (v < 0) neg.push(-v); }\n        int count = 0;\n        while (!pos.empty()) {\n            int p = pos.top(), n = neg.top(), m = min(p, n);\n            pos.pop(); neg.pop();\n            count++;\n            if (p > m) pos.push(p - m);\n            if (n > m) neg.push(n - m);\n        }\n        return count;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import heapq\n\nclass GreedyOnly:\n    @staticmethod\n    def transfers(net):                                 # NOT always minimal\n        pos = [-v for v in net if v > 0]                # max-heaps via negated values\n        neg = [v for v in net if v < 0]\n        heapq.heapify(pos); heapq.heapify(neg)\n        count = 0\n        while pos:\n            p = -heapq.heappop(pos)\n            n = -heapq.heappop(neg)\n            m = min(p, n)\n            count += 1\n            if p > m: heapq.heappush(pos, -(p - m))\n            if n > m: heapq.heappush(neg, -(n - m))\n        return count\n" }, { lang: 'ts', code: "class GreedyOnly {\n  static transfers(net: number[]): number {             // NOT always minimal\n    const pos = net.filter((v) => v > 0).sort((a, b) => a - b);    // sorted arrays stand in for max-heaps\n    const neg = net.filter((v) => v < 0).map((v) => -v).sort((a, b) => a - b);\n    const put = (a: number[], v: number) => { a.push(v); a.sort((x, y) => x - y); };\n    let count = 0;\n    while (pos.length) {\n      const p = pos.pop()!, n = neg.pop()!, m = Math.min(p, n);\n      count++;\n      if (p > m) put(pos, p - m);\n      if (n > m) put(neg, n - m);\n    }\n    return count;\n  }\n}\n" }, { lang: 'cpp', code: "struct GreedyOnly {\n    static int transfers(const vector<int>& net) {      // NOT always minimal\n        priority_queue<int> pos, neg;\n        for (int v : net) { if (v > 0) pos.push(v); else if (v < 0) neg.push(-v); }\n        int count = 0;\n        while (!pos.empty()) {\n            int p = pos.top(), n = neg.top(), m = min(p, n);\n            pos.pop(); neg.pop();\n            count++;\n            if (p > m) pos.push(p - m);\n            if (n > m) neg.push(n - m);\n        }\n        return count;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass GreedyOnly {\n    static int PollMax(List<int> q) { int m = 0; for (int i = 1; i < q.Count; i++) if (q[i] > q[m]) m = i; int v = q[m]; q.RemoveAt(m); return v; }\n\n    public static int Transfers(int[] net) {               // NOT always minimal\n        List<int> pos = new List<int>(), neg = new List<int>();      // largest first, like reversed priority queues\n        foreach (int v in net) { if (v > 0) pos.Add(v); else if (v < 0) neg.Add(-v); }\n        int count = 0;\n        while (pos.Count > 0) {\n            int p = PollMax(pos), n = PollMax(neg), m = Math.Min(p, n);\n            count++;\n            if (p > m) pos.Add(p - m);\n            if (n > m) neg.Add(n - m);\n        }\n        return count;\n    }\n}\n" }] } },
     mcq: { q: 'The non-zero nets split into 2 disjoint groups that each sum to zero, with 7 people in total. What is the minimum number of transfers (assuming neither group can be split further)?', options: ['5', '6', '7', '2'], answer: 0, explain: 'A zero-sum group of k people needs k − 1 transfers: total = 7 − 2 = 5.' },
     hints: [`<p>Hint 1: collapse to nets and drop zeros. Now the answer depends only on that small array.</p>`, `<p>Hint 2: DFS: take the first non-zero person s; try settling them completely with each later person i of the opposite sign (<code>d[i] += d[s]</code>), recurse on s+1, undo. Count 1 per step.</p>`, `<p>Hint 3: prune — skip zeros, only pair opposite signs, and if a pairing makes d[i] exactly 0 it is a perfect match: no other choice can beat it, so break. Alternative: bitmask DP over subsets (n − max zero-sum groups).</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '2\n1\n3\n0\n0\n' }] },
@@ -9946,6 +12075,48 @@ int main() {
     cout << OptimalBalancing::minTransfers({{10, 0, 4}, {11, 1, 3}, {2, 10, 2}, {3, 10, 2}, {4, 11, 3}}) << "\\n";
     cout << OptimalBalancing::minTransfers({{0, 1, 5}, {1, 0, 5}}) << "\\n";
     cout << OptimalBalancing::minTransfers({}) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class OptimalBalancing {
+    public static int MinTransfers(int[][] transactions) {
+        Dictionary<int, int> bal = new Dictionary<int, int>();
+        foreach (int[] t in transactions) {
+            int v;
+            bal.TryGetValue(t[0], out v); bal[t[0]] = v - t[2];
+            bal.TryGetValue(t[1], out v); bal[t[1]] = v + t[2];
+        }
+        int[] d = bal.Values.Where(v => v != 0).ToArray();
+        return Dfs(d, 0);
+    }
+
+    private static int Dfs(int[] d, int s) {
+        while (s < d.Length && d[s] == 0) s++;
+        if (s == d.Length) return 0;
+        int best = int.MaxValue;
+        for (int i = s + 1; i < d.Length; i++) {
+            if ((d[i] > 0) == (d[s] > 0) || d[i] == 0) continue;     // need opposite signs
+            d[i] += d[s];                                            // s settles fully with i
+            best = Math.Min(best, 1 + Dfs(d, s + 1));
+            d[i] -= d[s];
+            if (d[i] + d[s] == 0) break;                             // perfect match: optimal, stop
+        }
+        return best;
+    }
+
+    static int[] T(int a, int b, int c) { return new[] { a, b, c }; }
+
+    static void Main() {
+        Console.WriteLine(MinTransfers(new[] { T(0, 1, 10), T(2, 0, 5) }));                                  // 2
+        Console.WriteLine(MinTransfers(new[] { T(0, 1, 10), T(1, 0, 1), T(1, 2, 5), T(2, 0, 5) }));          // 1
+        // nets a:+4 b:+3 x:-2 y:-2 z:-3  (greedy gives 4)
+        Console.WriteLine(MinTransfers(new[] { T(10, 0, 4), T(11, 1, 3), T(2, 10, 2), T(3, 10, 2), T(4, 11, 3) }));   // 3
+        Console.WriteLine(MinTransfers(new[] { T(0, 1, 5), T(1, 0, 5) }));                                   // 0: the two debts cancel
+        Console.WriteLine(MinTransfers(new int[][] { }));                                                    // 0: nothing owed
+    }
 }` }
       ],
       complexity: `<p>Worst case O(n!) without pruning; with pruning very fast for n ≤ 12. Bitmask DP alternative: O(2<sup>n</sup>·n) time, O(2<sup>n</sup>) space — predictable.</p>`,
@@ -9966,7 +12137,7 @@ int main() {
         sendPushToEveryone("seats available!");               // slow I/O while holding the lock
     }
     private void sendPushToEveryone(String msg) { System.out.println(msg); }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass NaiveRelease:\n    def __init__(self):\n        self.free = set()\n        self.lock = threading.Lock()\n\n    def release(self, seats):\n        with self.lock:\n            self.free.update(seats)                       # waitlist ignored: first refresher wins\n            self.send_push_to_everyone(\"seats available!\")    # slow I/O while holding the lock\n\n    def send_push_to_everyone(self, msg): print(msg)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass NaiveRelease {\n  private free = new Set<string>();\n  private lock = new Mutex();                           \n  async release(seats: string[]): Promise<void> {\n    await this.lock.runExclusive(async () => {\n      seats.forEach((s) => this.free.add(s));              // waitlist ignored: first refresher wins\n      await this.sendPushToEveryone(\"seats available!\");   // slow I/O while holding the lock\n    });\n  }\n  private async sendPushToEveryone(msg: string): Promise<void> { console.log(msg); }\n}\n" }, { lang: 'cpp', code: "class NaiveRelease {\n    set<string> free;\n    mutex m;\n    void sendPushToEveryone(const string& msg) { cout << msg << endl; }\npublic:\n    void release(const vector<string>& seats) {\n        lock_guard<mutex> g(m);\n        free.insert(seats.begin(), seats.end());               // waitlist ignored: first refresher wins\n        sendPushToEveryone(\"seats available!\");                // slow I/O while holding the lock\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass NaiveRelease:\n    def __init__(self):\n        self.free = set()\n        self.lock = threading.Lock()\n\n    def release(self, seats):\n        with self.lock:\n            self.free.update(seats)                       # waitlist ignored: first refresher wins\n            self.send_push_to_everyone(\"seats available!\")    # slow I/O while holding the lock\n\n    def send_push_to_everyone(self, msg): print(msg)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass NaiveRelease {\n  private free = new Set<string>();\n  private lock = new Mutex();                           \n  async release(seats: string[]): Promise<void> {\n    await this.lock.runExclusive(async () => {\n      seats.forEach((s) => this.free.add(s));              // waitlist ignored: first refresher wins\n      await this.sendPushToEveryone(\"seats available!\");   // slow I/O while holding the lock\n    });\n  }\n  private async sendPushToEveryone(msg: string): Promise<void> { console.log(msg); }\n}\n" }, { lang: 'cpp', code: "class NaiveRelease {\n    set<string> free;\n    mutex m;\n    void sendPushToEveryone(const string& msg) { cout << msg << endl; }\npublic:\n    void release(const vector<string>& seats) {\n        lock_guard<mutex> g(m);\n        free.insert(seats.begin(), seats.end());               // waitlist ignored: first refresher wins\n        sendPushToEveryone(\"seats available!\");                // slow I/O while holding the lock\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nclass NaiveRelease {\n    private readonly SortedSet<string> free = new SortedSet<string>(StringComparer.Ordinal);\n    private readonly object gate = new object();\n    public void Release(IEnumerable<string> seats) {\n        lock (gate) {\n            foreach (string s in seats) free.Add(s);              // waitlist ignored: first refresher wins\n            SendPushToEveryone(\"seats available!\");               // slow I/O while holding the lock\n        }\n    }\n    private void SendPushToEveryone(string msg) { Console.WriteLine(msg); }\n}\n" }] } },
     mcq: { q: 'Why collect notifications inside the lock but send them after unlocking?', options: ['So slow I/O never blocks other threads booking the same show', 'Because notifications must be sent in random order', 'Locks cannot call methods', 'To make the notification faster'], answer: 0, explain: 'Keep critical sections tiny: decide who gets what under the lock, do I/O outside it.' },
     hints: [`<p>Hint 1: state = a sorted set of free seats (<code>TreeSet</code>, <code>std::set</code>, or a heap plus a set), a FIFO queue <code>waitlist</code> of <code>Request(user, n)</code>, one lock per show.</p>`, `<p>Hint 2: <code>release(seats)</code>: lock → add seats to free → while head exists and head.n ≤ free.size(): poll n seats (pollFirst), record a hold and a pending notification → unlock → send notifications.</p>`, `<p>Hint 3: <code>request(user, n)</code>: if the waitlist is empty and n seats are free, hold immediately; otherwise join the queue (do not let newcomers jump ahead of waiters). Holds that expire call <code>release</code> again — one code path.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: '[]\n[]\n[]\nravi: 2 seats held [B3, B4]\nmeena: 1 seats held [C1]\n[]\nzoya: 3 seats held [D1, D2, D3]\nlate: 1 seats held [E1]\n[E2]\ncount must be positive\n' }] },
@@ -10268,6 +12439,73 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class WaitlistedShow {
+    public sealed class Request { public readonly string User; public readonly int Count; public Request(string user, int count) { User = user; Count = count; } }
+    public delegate void Notifier(string user, List<string> seats);
+
+    private readonly object gate = new object();
+    private readonly SortedSet<string> free = new SortedSet<string>(StringComparer.Ordinal);
+    private readonly LinkedList<Request> waitlist = new LinkedList<Request>();
+    private readonly Dictionary<string, List<string>> holds = new Dictionary<string, List<string>>();
+    private readonly Notifier notifier;
+
+    public WaitlistedShow(IEnumerable<string> initiallyFree, Notifier notifier) { foreach (string s in initiallyFree) free.Add(s); this.notifier = notifier; }
+
+    /// Returns held seats, or an empty list if the user was put on the waitlist.
+    public List<string> Request_(string user, int count) {
+        if (count <= 0) throw new ArgumentException("count must be positive");
+        lock (gate) {
+            if (waitlist.Count == 0 && free.Count >= count) return HoldFor(user, count);
+            waitlist.AddLast(new Request(user, count));
+            return new List<string>();
+        }
+    }
+
+    /// Called on cancellation or hold expiry.
+    public void Release(IEnumerable<string> seats) {
+        List<KeyValuePair<string, List<string>>> toNotify = new List<KeyValuePair<string, List<string>>>();
+        lock (gate) {
+            foreach (string s in seats) free.Add(s);
+            while (waitlist.Count > 0 && waitlist.First.Value.Count <= free.Count) {
+                Request r = waitlist.First.Value; waitlist.RemoveFirst();
+                toNotify.Add(new KeyValuePair<string, List<string>>(r.User, HoldFor(r.User, r.Count)));
+            }
+        }
+        foreach (var kv in toNotify) notifier(kv.Key, kv.Value);                 // I/O outside the lock
+    }
+
+    private List<string> HoldFor(string user, int count) {    // caller holds the lock
+        List<string> got = new List<string>();
+        for (int i = 0; i < count; i++) { string s = free.Min; free.Remove(s); got.Add(s); }
+        List<string> mine;
+        if (!holds.TryGetValue(user, out mine)) { mine = new List<string>(); holds[user] = mine; }
+        mine.AddRange(got);
+        return got;
+    }
+}
+
+class Program {
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static List<string> L(params string[] a) { return new List<string>(a); }
+    static void Main() {
+        WaitlistedShow show = new WaitlistedShow(L(), (u, s) => Console.WriteLine(u + ": " + s.Count + " seats held " + Show(s)));
+        Console.WriteLine(Show(show.Request_("ravi", 2)));    // [] - nothing free, on the waitlist
+        Console.WriteLine(Show(show.Request_("meena", 1)));   // []
+        Console.WriteLine(Show(show.Request_("zoya", 3)));    // []
+        show.Release(L("B3", "B4"));            // ravi: 2 seats held [B3, B4]
+        show.Release(L("C1"));                  // meena: 1 seats held [C1]
+        show.Release(L("D1", "D2"));            // zoya needs 3 -> waits, no message
+        Console.WriteLine(Show(show.Request_("late", 1)));   // [] - must queue behind zoya
+        show.Release(L("D3"));                  // zoya: 3 seats held [D1, D2, D3]
+        show.Release(L("E1", "E2"));            // late: 1 seats held [E1]
+        Console.WriteLine(Show(show.Request_("nina", 1)));   // [E2] - nobody waiting, so she gets a seat at once
+        try { show.Request_("bad", 0); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
       ],
       complexity: `<p>request O(n log S); release O((r + assigned) log S) for r released seats; lock held only for in-memory work.</p>`,
@@ -10290,7 +12528,7 @@ int main() {
         if (i == b.size()) { work.run(); return; }
         synchronized (locks.computeIfAbsent(b.get(i), k -> new Object())) { lockInOrder(b, i + 1, work); }
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass ScanOrderLocks:\n    def __init__(self):\n        self.locks = {}\n\n    def checkout_all(self, barcodes, work):\n        self._lock_in_order(barcodes, 0, work)            # scan order: deadlock-prone\n\n    def _lock_in_order(self, b, i, work):\n        if i == len(b):\n            work(); return\n        with self.locks.setdefault(b[i], threading.Lock()):\n            self._lock_in_order(b, i + 1, work)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass ScanOrderLocks {\n  private locks = new Map<string, Mutex>();\n  async checkoutAll(barcodes: string[], work: () => Promise<void>): Promise<void> {\n    await this.lockInOrder(barcodes, 0, work);             // scan order: deadlock-prone\n  }\n  private async lockInOrder(b: string[], i: number, work: () => Promise<void>): Promise<void> {\n    if (i === b.length) { await work(); return; }\n    if (!this.locks.has(b[i])) this.locks.set(b[i], new Mutex());\n    await this.locks.get(b[i])!.runExclusive(() => this.lockInOrder(b, i + 1, work));\n  }\n}\n" }, { lang: 'cpp', code: "class ScanOrderLocks {\n    map<string, mutex> locks;\n    mutex guard;\n    mutex& lockFor(const string& barcode) { lock_guard<mutex> g(guard); return locks[barcode]; }\n\n    void lockInOrder(const vector<string>& b, size_t i, const function<void()>& work) {\n        if (i == b.size()) { work(); return; }\n        lock_guard<mutex> g(lockFor(b[i]));\n        lockInOrder(b, i + 1, work);\n    }\npublic:\n    void checkoutAll(const vector<string>& barcodes, const function<void()>& work) {\n        lockInOrder(barcodes, 0, work);                       // scan order: deadlock-prone\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass ScanOrderLocks:\n    def __init__(self):\n        self.locks = {}\n\n    def checkout_all(self, barcodes, work):\n        self._lock_in_order(barcodes, 0, work)            # scan order: deadlock-prone\n\n    def _lock_in_order(self, b, i, work):\n        if i == len(b):\n            work(); return\n        with self.locks.setdefault(b[i], threading.Lock()):\n            self._lock_in_order(b, i + 1, work)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass ScanOrderLocks {\n  private locks = new Map<string, Mutex>();\n  async checkoutAll(barcodes: string[], work: () => Promise<void>): Promise<void> {\n    await this.lockInOrder(barcodes, 0, work);             // scan order: deadlock-prone\n  }\n  private async lockInOrder(b: string[], i: number, work: () => Promise<void>): Promise<void> {\n    if (i === b.length) { await work(); return; }\n    if (!this.locks.has(b[i])) this.locks.set(b[i], new Mutex());\n    await this.locks.get(b[i])!.runExclusive(() => this.lockInOrder(b, i + 1, work));\n  }\n}\n" }, { lang: 'cpp', code: "class ScanOrderLocks {\n    map<string, mutex> locks;\n    mutex guard;\n    mutex& lockFor(const string& barcode) { lock_guard<mutex> g(guard); return locks[barcode]; }\n\n    void lockInOrder(const vector<string>& b, size_t i, const function<void()>& work) {\n        if (i == b.size()) { work(); return; }\n        lock_guard<mutex> g(lockFor(b[i]));\n        lockInOrder(b, i + 1, work);\n    }\npublic:\n    void checkoutAll(const vector<string>& barcodes, const function<void()>& work) {\n        lockInOrder(barcodes, 0, work);                       // scan order: deadlock-prone\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Concurrent;\nusing System.Collections.Generic;\n\nclass ScanOrderLocks {\n    readonly ConcurrentDictionary<string, object> locks = new ConcurrentDictionary<string, object>();\n    public void CheckoutAll(List<string> barcodes, Action work) {\n        LockInOrder(barcodes, 0, work);                       // scan order: deadlock-prone\n    }\n    private void LockInOrder(List<string> b, int i, Action work) {\n        if (i == b.Count) { work(); return; }\n        lock (locks.GetOrAdd(b[i], k => new object())) { LockInOrder(b, i + 1, work); }\n    }\n}\n" }] } },
     mcq: { q: 'Which single change removes the possibility of deadlock between kiosks?', options: ['Acquire the copy locks in one global order (sorted by barcode)', 'Use fair locks', 'Add Thread.sleep between locks', 'Make the fields volatile'], answer: 0, explain: 'Deadlock needs a cycle in the wait-for graph; a global acquisition order makes a cycle impossible.' },
     hints: [`<p>Hint 1: one lock per copy (created lazily in a map) plus one per member, since the member's loan count is also shared state.</p>`, `<p>Hint 2: global order: member lock first, then copy locks sorted by barcode. Inside: check member limit + every copy AVAILABLE, then mark all LOANED. Unlock in reverse order in finally.</p>`, `<p>Hint 3: deduplicate barcodes; validate unknown barcodes before locking; consider <code>tryLock(timeout)</code> so a stuck kiosk returns "busy, try again" instead of waiting forever.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: 'OK [BC-1, BC-2]\nBC-2 not available\nunknown copy BC-9\nlimit 5 exceeded\nOK [BC-3]\nBC-2 not available\nOK [BC-4]\nBC-1 not available | OK [BC-1, BC-2]\n' }] },
@@ -10531,6 +12769,73 @@ int main() {
     }
     sort(answers.begin(), answers.end());
     cout << answers[0] << " | " << answers[1] << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class KioskCheckout {
+    public const int LIMIT = 5;
+    private readonly ConcurrentDictionary<string, string> status = new ConcurrentDictionary<string, string>();   // barcode -> AVAILABLE | LOANED:member
+    private readonly ConcurrentDictionary<string, int> loans = new ConcurrentDictionary<string, int>();         // member -> count
+    private readonly ConcurrentDictionary<string, object> locks = new ConcurrentDictionary<string, object>();
+
+    public void AddCopy(string barcode) { status[barcode] = "AVAILABLE"; }
+    private object LockOf(string key) { return locks.GetOrAdd(key, k => new object()); }
+
+    public string CheckoutAll(string member, List<string> barcodes) {
+        List<string> sorted = new List<string>(new SortedSet<string>(barcodes, StringComparer.Ordinal));
+        foreach (string b in sorted) if (!status.ContainsKey(b)) return "unknown copy " + b;
+        List<object> held = new List<object>();
+        try {
+            object m = LockOf("member:" + member);                   // 1) member first
+            Monitor.Enter(m);
+            held.Add(m);
+            foreach (string b in sorted) {                           // 2) copies in sorted order
+                object l = LockOf("copy:" + b);
+                Monitor.Enter(l);
+                held.Add(l);
+            }
+            int current; loans.TryGetValue(member, out current);
+            if (current + sorted.Count > LIMIT) return "limit " + LIMIT + " exceeded";
+            foreach (string b in sorted) if (status[b] != "AVAILABLE") return b + " not available";
+            foreach (string b in sorted) status[b] = "LOANED:" + member;   // commit
+            loans[member] = current + sorted.Count;
+            return "OK [" + string.Join(", ", sorted) + "]";
+        } finally {
+            for (int i = held.Count - 1; i >= 0; i--) Monitor.Exit(held[i]);
+        }
+    }
+
+    static List<string> L(params string[] a) { return new List<string>(a); }
+
+    static void Main() {
+        KioskCheckout desk = new KioskCheckout();
+        for (int i = 1; i <= 6; i++) desk.AddCopy("BC-" + i);
+        Console.WriteLine(desk.CheckoutAll("priya", L("BC-2", "BC-1")));   // OK [BC-1, BC-2]
+        Console.WriteLine(desk.CheckoutAll("rahul", L("BC-2")));           // BC-2 not available
+        Console.WriteLine(desk.CheckoutAll("rahul", L("BC-9")));           // unknown copy BC-9
+        Console.WriteLine(desk.CheckoutAll("priya", L("BC-3", "BC-4", "BC-5", "BC-6")));   // limit 5 exceeded: 2 + 4 > 5
+        Console.WriteLine(desk.CheckoutAll("rahul", L("BC-3", "BC-3")));   // OK [BC-3]: a repeated barcode counts once
+        Console.WriteLine(desk.CheckoutAll("rahul", L("BC-4", "BC-2")));   // BC-2 not available: BC-4 is NOT taken
+        Console.WriteLine(desk.CheckoutAll("sam", L("BC-4")));             // OK [BC-4]
+
+        // Opposite scan orders on two kiosks: sorted locking means no deadlock and exactly one winner.
+        KioskCheckout lib = new KioskCheckout();
+        for (int i = 1; i <= 4; i++) lib.AddCopy("BC-" + i);
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        string a = null, b = null;
+        Thread ta = new Thread(() => { go.Wait(); a = lib.CheckoutAll("priya", L("BC-2", "BC-1")); });
+        Thread tb = new Thread(() => { go.Wait(); b = lib.CheckoutAll("rahul", L("BC-1", "BC-2")); });
+        ta.Start(); tb.Start();
+        go.Set();
+        ta.Join(); tb.Join();
+        List<string> both = L(a, b);
+        both.Sort(StringComparer.Ordinal);
+        Console.WriteLine(string.Join(" | ", both));          // BC-1 not available | OK [BC-1, BC-2]
+    }
 }` }
       ],
       complexity: `<p>O(k log k) per request for k copies; lock hold time is a few map operations. No deadlock (total lock order); independent requests run in parallel.</p>`,

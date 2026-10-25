@@ -169,6 +169,24 @@ long long fibMemo(int n) {
     if (n < 2) return n;
     if (memo[n] != -1) return memo[n];        // already in the notebook: reuse!
     return memo[n] = fibMemo(n - 1) + fibMemo(n - 2);   // write it down before returning
+}` }, { lang: 'csharp', code: `// Plain recursion: asks the same Fib(k) again and again -> about 1.6^n calls
+long FibSlow(int n)
+{
+    if (n < 2) return n;                    // base cases: fib(0)=0, fib(1)=1
+    return FibSlow(n - 1) + FibSlow(n - 2); // two calls, and they overlap
+}
+
+// Same recursion + a notebook (memo). Each Fib(k) is computed once -> O(n)
+long[] memo = new long[91];                 // fib(90) still fits in a long
+bool[] known = new bool[91];
+
+long FibMemo(int n)
+{
+    if (n < 2) return n;
+    if (known[n]) return memo[n];           // already in the notebook: reuse!
+    memo[n] = FibMemo(n - 1) + FibMemo(n - 2);
+    known[n] = true;                        // write it down before returning
+    return memo[n];
 }` }] }, { lang: 'python', run: true, title: 'Count the calls yourself (Python, runnable)', code: `calls = 0
 
 def fib_slow(n):
@@ -312,6 +330,17 @@ for n in (10, 20, 25):
         end1 = new1;
     }
     return end0 + end1;
+}` }, { lang: 'csharp', code: `long CountNoAdjacentOnes(int n)
+{
+    long end0 = 1, end1 = 1;          // length 1: "0" and "1"
+    for (int i = 2; i <= n; i++)
+    {
+        long new0 = end0 + end1;       // append 0 to anything
+        long new1 = end0;              // append 1 only after a 0
+        end0 = new0;
+        end1 = new1;
+    }
+    return end0 + end1;
 }` }] } },
       { title: 'Spotting the repeated state in a brute force', html: `<p>Brute force for "min cost to reach stair n" is <code>solve(i) = cost[i] + min(solve(i-1), solve(i-2))</code>. Its <b>only parameter</b> is <code>i</code>, and i ranges over 0..n. So at most n+1 different calls exist, yet the plain recursion makes ~1.6<sup>n</sup> calls. "Few distinct parameter values, many calls" is the exact moment to add a memo.</p>` }
     ],
@@ -345,6 +374,11 @@ for n in (10, 20, 25):
           { lang: 'cpp', code: `int fib(int n) {
     if (n < 2) return n;                  // F(0)=0, F(1)=1
     return fib(n - 1) + fib(n - 2);       // overlapping calls -> exponential
+}` },
+          { lang: 'csharp', code: `int Fib(int n)
+{
+    if (n < 2) return n;              // F(0)=0, F(1)=1
+    return Fib(n - 1) + Fib(n - 2);   // overlapping calls -> exponential
 }` }
         ] } },
       mcq: { q: 'To compute F(n) bottom-up, how many earlier values do you need to keep at any moment?', options: ['All n values', 'Just the last two', 'Just the last one', 'log n values'], answer: 1, explain: 'F(i) only reads F(i−1) and F(i−2), so two variables are enough → O(1) space.' },
@@ -392,7 +426,21 @@ public:
         }
         return prev1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int Fib(int n)
+    {
+        if (n < 2) return n;           // F(0)=0, F(1)=1
+        int prev2 = 0, prev1 = 1;      // F(i-2), F(i-1)
+        for (int i = 2; i <= n; i++)
+        {
+            int cur = prev1 + prev2;   // F(i) = F(i-1) + F(i-2)
+            prev2 = prev1;             // slide the window forward
+            prev1 = cur;
+        }
+        return prev1;                  // F(n)
+    }
+}` }],
         dry: { head: ['i', 'prev2 (F(i-2))', 'prev1 (F(i-1))', 'cur = F(i)'], rows: [['2', '0', '1', '1'], ['3', '1', '1', '2'], ['4', '1', '2', '3'], ['5', '2', '3', '5'], ['6', '3', '5', H.c('g', '8')]] },
         complexity: `<p>Time O(n), space O(1). Memoized recursion is also O(n) time but O(n) space for the memo plus O(n) recursion stack.</p>`,
         followUps: ['n up to 10<sup>18</sup> modulo 10<sup>9</sup>+7 → 2×2 matrix fast exponentiation, O(log n).', 'Return the first n Fibonacci numbers as a list.', 'Why does fib(93) overflow a 64-bit integer (Java <code>long</code>, C++ <code>long long</code>), and what happens in Python and JS instead?']
@@ -542,6 +590,39 @@ int climbO1(int n) {
         oneBack = cur;
     }
     return oneBack;                           // n = 0 or 1 -> loop skipped -> 1
+}` }, { lang: 'csharp', code: `// 1) TOP-DOWN: recursion + memo. memo[i] == 0 means "not computed yet"
+//    (safe here because every real answer is >= 1).
+int ClimbMemo(int i, int[] memo)
+{
+    if (i <= 1) return 1;                    // ways(0) = ways(1) = 1
+    if (memo[i] != 0) return memo[i];        // notebook hit
+    return memo[i] = ClimbMemo(i - 1, memo) + ClimbMemo(i - 2, memo);
+}
+
+// 2) BOTTOM-UP: fill dp[] from small to big.
+int ClimbTab(int n)
+{
+    int[] dp = new int[n + 2];               // n+2 so dp[1] exists even when n = 0
+    dp[0] = 1;                               // base cases
+    dp[1] = 1;
+    for (int i = 2; i <= n; i++)
+    {
+        dp[i] = dp[i - 1] + dp[i - 2];       // last move was 1 step or 2 steps
+    }
+    return dp[n];
+}
+
+// 3) SPACE-OPTIMIZED: keep only the last two cells.
+int ClimbO1(int n)
+{
+    int twoBack = 1, oneBack = 1;            // ways(i-2), ways(i-1) for i = 2
+    for (int i = 2; i <= n; i++)
+    {
+        int cur = oneBack + twoBack;
+        twoBack = oneBack;                   // slide the window
+        oneBack = cur;
+    }
+    return oneBack;                          // n = 0 or 1 -> loop skipped -> 1
 }` }] }, { lang: 'python', run: true, title: 'All three in Python (runnable)', code: `from functools import lru_cache
 
 @lru_cache(maxsize=None)          # Python's built-in memo notebook
@@ -650,6 +731,14 @@ for n in (1, 2, 3, 5, 10, 45):
         for (int step = 1; step <= 3; step++)
             if (i - step >= 0) dp[i] += dp[i - step];
     return dp[n];
+}` }, { lang: 'csharp', code: `int Ways123(int n)
+{
+    int[] dp = new int[n + 1];
+    dp[0] = 1;
+    for (int i = 1; i <= n; i++)
+        for (int step = 1; step <= 3; step++)
+            if (i - step >= 0) dp[i] += dp[i - step];
+    return dp[n];
 }` }] } },
       { title: 'Arbitrary allowed steps + modulo', html: `<p>Allowed steps = {1, 3, 5}, n up to 10<sup>5</sup>, answer mod 10<sup>9</sup>+7. Same transition, sum over allowed steps, and take <code>% MOD</code> after every addition so the int never overflows (10<sup>9</sup>+7 + 10<sup>9</sup>+7 still fits in a long; use long for the sum).</p>`, code: { lang: 'java', code: `int waysSteps(int n, int[] steps) {
     final int MOD = 1_000_000_007;
@@ -681,6 +770,15 @@ for n in (1, 2, 3, 5, 10, 45):
         for (int s : steps)
             if (i - s >= 0) dp[i] = (dp[i] + dp[i - s]) % MOD;
     return (int) dp[n];
+}` }, { lang: 'csharp', code: `int WaysSteps(int n, int[] steps)
+{
+    const int MOD = 1000000007;
+    long[] dp = new long[n + 1];
+    dp[0] = 1;
+    for (int i = 1; i <= n; i++)
+        foreach (int s in steps)
+            if (i - s >= 0) dp[i] = (dp[i] + dp[i - s]) % MOD;
+    return (int)dp[n];
 }` }] } },
       { title: 'Why the memo sentinel matters', html: `<p>Using <code>0</code> to mean "not computed" works for climbing stairs because every answer is ≥ 1. In <b>min-cost</b> problems a real answer can be 0, so a 0 sentinel would make you recompute (correct but slow) — or worse, in some codes return a wrong cached 0. Fix: fill the memo with <code>-1</code> (Java <code>Arrays.fill(memo, -1)</code>, Python <code>[-1] * (n + 1)</code>, JS <code>new Array(n + 1).fill(-1)</code>, C++ <code>vector&lt;long long&gt; memo(n + 1, -1)</code>), or use "no value" as unknown (<code>null</code> / <code>None</code> / <code>undefined</code>), or keep a separate <code>seen</code> array.</p>` },
       { title: 'Top-down wins when most states are never visited', html: `<p>f(0) = 1 and f(k) = f(⌊k/2⌋) + f(⌊k/3⌋), asked for n = 10<sup>12</sup>. A bottom-up table of 10<sup>12</sup> cells is impossible, but starting from n the recursion only ever reaches numbers of the form ⌊n / (2<sup>a</sup>·3<sup>b</sup>)⌋ — a few hundred distinct states. A top-down memo in a hash map (<code>HashMap</code> / <code>dict</code> or <code>@cache</code> / <code>Map</code> / <code>unordered_map</code>) touches only those. Rule: if the reachable states are a tiny slice of the full table, memoize with a hash map instead of tabulating.</p>` }
@@ -720,6 +818,12 @@ for n in (1, 2, 3, 5, 10, 45):
     if (i == n) return 1;                 // reached the top exactly: one way
     if (i > n) return 0;                  // overshot: not a valid way
     return climbStairs(i + 1, n) + climbStairs(i + 2, n);
+}` },
+          { lang: 'csharp', code: `int Count(int i, int n)
+{
+    if (i == n) return 1;          // reached the top exactly: one way
+    if (i > n) return 0;           // overshot: not a valid way
+    return Count(i + 1, n) + Count(i + 2, n);
 }` }
         ] } },
       mcq: { q: 'You stand on step i. Which statement gives the correct recurrence?', options: ['ways(i) = ways(i−1) × ways(i−2)', 'ways(i) = ways(i−1) + ways(i−2)', 'ways(i) = 2 × ways(i−1)', 'ways(i) = ways(i−1) + 1'], answer: 1, explain: 'The last move was either a 1-step (from i−1) or a 2-step (from i−2). These two groups are disjoint and cover everything, so we add.' },
@@ -762,7 +866,20 @@ public:
         }
         return prev1;                        // ways(n); n <= 45 fits in int
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int ClimbStairs(int n)
+    {
+        int prev2 = 1, prev1 = 1;          // ways(0), ways(1)
+        for (int i = 2; i <= n; i++)
+        {
+            int cur = prev1 + prev2;       // last move: 1-step or 2-step
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;                      // ways(n)
+    }
+}` }],
         dry: { head: ['i', 'prev2 = ways(i-2)', 'prev1 = ways(i-1)', 'cur = ways(i)'], rows: [['2', '1', '1', '2'], ['3', '1', '2', '3'], ['4', '2', '3', H.c('g', '5')]] },
         complexity: `<p>Time O(n), space O(1).</p>`,
         followUps: ['Steps can be any size from a given set → sum over the set (O(n·k)).', 'Some stairs are broken (cannot be stepped on) → dp[broken] = 0.', 'Each stair has a cost → Min Cost Climbing Stairs (min instead of +).']
@@ -894,6 +1011,34 @@ int robO1(const vector<int>& a) {
         prev1 = cur;
     }
     return prev1;
+}` }, { lang: 'csharp', code: `// dp[i] = best loot using houses 0..i only.
+int Rob(int[] a)
+{
+    int n = a.Length;
+    if (n == 1) return a[0];
+    int[] dp = new int[n];
+    dp[0] = a[0];
+    dp[1] = Math.Max(a[0], a[1]);
+    for (int i = 2; i < n; i++)
+    {
+        int skip = dp[i - 1];            // leave house i alone
+        int take = dp[i - 2] + a[i];     // rob i, so i-1 is forbidden
+        dp[i] = Math.Max(skip, take);
+    }
+    return dp[n - 1];
+}
+
+// Same idea, O(1) space: prev2 = dp[i-2], prev1 = dp[i-1].
+int RobO1(int[] a)
+{
+    int prev2 = 0, prev1 = 0;            // "best before any house" = 0
+    foreach (int x in a)
+    {
+        int cur = Math.Max(prev1, prev2 + x);
+        prev2 = prev1;
+        prev1 = cur;
+    }
+    return prev1;
 }` }] }, { lang: 'python', run: true, title: 'With reconstruction: which houses? (Python, runnable)', code: `def rob_with_houses(a):
     n = len(a)
     dp = [0] * (n + 1)          # dp[i] = best using the first i houses (shifted by one)
@@ -1019,6 +1164,22 @@ int robCircle(const vector<int>& a) {     // robRange is defined first: C++ need
     int n = a.size();
     if (n == 1) return a[0];
     return max(robRange(a, 0, n - 2), robRange(a, 1, n - 1));
+}` }, { lang: 'csharp', code: `int RobCircle(int[] a)
+{
+    int n = a.Length;
+    if (n == 1) return a[0];
+    return Math.Max(RobRange(a, 0, n - 2), RobRange(a, 1, n - 1));
+}
+int RobRange(int[] a, int lo, int hi)
+{
+    int prev2 = 0, prev1 = 0;
+    for (int i = lo; i <= hi; i++)
+    {
+        int cur = Math.Max(prev1, prev2 + a[i]);
+        prev2 = prev1;
+        prev1 = cur;
+    }
+    return prev1;
 }` }] } },
       { title: 'Delete and Earn reduces to House Robber', html: `<p>nums = [2, 2, 3, 3, 3, 4]. Taking a value x earns x but deletes all x−1 and x+1. Build points[v] = v × count(v): points = [0, 0, 4, 9, 4] for v = 0..4. Adjacent <i>values</i> conflict exactly like adjacent houses → House Robber on points → max(4 + 4, 9) = <b>9</b>.</p>` }
     ],
@@ -1059,6 +1220,13 @@ int robCircle(const vector<int>& a) {     // robRange is defined first: C++ need
     int skip = rob(a, i + 1);             // leave house i
     int take = a[i] + rob(a, i + 2);      // rob i, neighbour i+1 forbidden
     return max(skip, take);
+}` },
+          { lang: 'csharp', code: `int Best(int[] a, int i)
+{
+    if (i >= a.Length) return 0;               // no houses left
+    int skip = Best(a, i + 1);                 // leave house i
+    int take = a[i] + Best(a, i + 2);          // rob i, neighbour i+1 forbidden
+    return Math.Max(skip, take);
 }` }
         ] } },
       mcq: { q: 'In dp[i] = max(dp[i−1], dp[i−2] + nums[i]), why dp[i−2] in the rob branch?', options: ['Because robbing i forbids house i−1, so only houses 0..i−2 remain usable', 'Because we must skip exactly one house every time', 'Because dp[i−1] is always smaller', 'It is a typo; it should be dp[i−1]'], answer: 0, explain: 'Robbing house i blocks i−1; the best you can add from the rest is the best plan for 0..i−2.' },
@@ -1103,7 +1271,22 @@ public:
         }
         return prev1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int Rob(int[] nums)
+    {
+        int prev2 = 0, prev1 = 0;                 // best before the first house
+        foreach (int x in nums)
+        {
+            int cur = Math.Max(prev1, prev2 + x); // skip x  vs  rob x
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;
+    }
+}` }],
         dry: { head: ['x', 'prev2', 'prev1', 'cur = max(prev1, prev2 + x)'], rows: [['2', '0', '0', 'max(0, 2) = 2'], ['7', '0', '2', 'max(2, 7) = 7'], ['9', '2', '7', 'max(7, 11) = 11'], ['3', '7', '11', 'max(11, 10) = 11'], ['1', '11', '11', H.c('g', 'max(11, 12) = 12')]] },
         complexity: `<p>Time O(n), space O(1).</p>`,
         followUps: ['Houses in a circle (House Robber II).', 'Return which houses were robbed.', 'Houses on a binary tree (House Robber III, DSA 18).']
@@ -1294,6 +1477,54 @@ long long combinationSum4(const vector<int>& nums, int target) {
         }
     }
     return ways[target];
+}` }, { lang: 'csharp', code: `// Minimum coins (LeetCode 322). dp[a] = fewest coins summing to a.
+int CoinChange(int[] coins, int amount)
+{
+    int INF = amount + 1;                  // more coins than could ever be needed
+    int[] dp = new int[amount + 1];
+    for (int a = 0; a <= amount; a++) dp[a] = INF;
+    dp[0] = 0;                             // zero coins make amount 0
+    for (int a = 1; a <= amount; a++)
+    {
+        foreach (int c in coins)
+        {
+            if (c <= a && dp[a - c] + 1 < dp[a])
+            {
+                dp[a] = dp[a - c] + 1;     // last coin handed over is c
+            }
+        }
+    }
+    return dp[amount] == INF ? -1 : dp[amount];
+}
+
+// Number of COMBINATIONS (LeetCode 518): coins outer, amounts inner.
+int Change(int amount, int[] coins)
+{
+    int[] ways = new int[amount + 1];
+    ways[0] = 1;                           // one way to make 0: take nothing
+    foreach (int c in coins)               // decide coin types one at a time
+    {
+        for (int a = c; a <= amount; a++)
+        {
+            ways[a] += ways[a - c];        // add "at least one more coin c"
+        }
+    }
+    return ways[amount];
+}
+
+// Number of ORDERED SEQUENCES (LeetCode 377): amounts outer, coins inner.
+int CombinationSum4(int[] nums, int target)
+{
+    int[] ways = new int[target + 1];
+    ways[0] = 1;
+    for (int a = 1; a <= target; a++)
+    {
+        foreach (int c in nums)
+        {
+            if (c <= a) ways[a] += ways[a - c]; // last element of the sequence is c
+        }
+    }
+    return ways[target];
 }` }] }, { lang: 'python', run: true, title: 'Combinations vs permutations: see the loop order matter (Python, runnable)', code: `def combos(coins, amount):
     ways = [1] + [0] * amount
     for c in coins:                 # coin outer -> each pile counted once
@@ -1440,6 +1671,15 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
         for (int s = 1; s * s <= a; s++)
             dp[a] = min(dp[a], dp[a - s * s] + 1);
     return dp[n];
+}` }, { lang: 'csharp', code: `int NumSquares(int n)
+{
+    int[] dp = new int[n + 1];
+    for (int a = 0; a <= n; a++) dp[a] = n + 1;
+    dp[0] = 0;
+    for (int a = 1; a <= n; a++)
+        for (int s = 1; s * s <= a; s++)
+            dp[a] = Math.Min(dp[a], dp[a - s * s] + 1);
+    return dp[n];
 }` }] } }
     ],
     deepDive: `<p><b>Why the loop order decides combinations vs permutations.</b> Coin-outer processes coin types in a fixed order, so every multiset is generated exactly once, as "all coins of type 1, then all of type 2, …". Amount-outer lets the last coin be any type at every step, so every arrangement is generated. Mixing them up is the #1 bug on this topic.</p>
@@ -1499,6 +1739,20 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
         }
     }
     return best;   // INT_MAX means impossible; caller converts to -1
+}` },
+          { lang: 'csharp', code: `int MinCoins(int[] coins, int a)
+{
+    if (a == 0) return 0;
+    int best = int.MaxValue;
+    foreach (int c in coins)
+    {
+        if (c <= a)
+        {
+            int sub = MinCoins(coins, a - c);
+            if (sub != int.MaxValue) best = Math.Min(best, sub + 1);
+        }
+    }
+    return best;   // int.MaxValue means impossible; caller converts to -1
 }` }
         ] } },
       mcq: { q: 'Which initial value is the safest "∞" for dp[a]?', options: ['The largest int (Integer.MAX_VALUE / INT_MAX)', 'amount + 1', '0', '-1'], answer: 1, explain: 'No valid answer needs more than amount coins (all coins ≥ 1), so amount + 1 means impossible — and dp + 1 never overflows. The largest int + 1 wraps to a negative number in Java (and is undefined behaviour in C++).' },
@@ -1550,7 +1804,26 @@ public:
                 if (c <= a) dp[a] = min(dp[a], dp[a - c] + 1);
         return dp[amount] > amount ? -1 : dp[amount];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int CoinChange(int[] coins, int amount)
+    {
+        int INF = amount + 1;                       // impossible marker
+        int[] dp = new int[amount + 1];
+        for (int a = 0; a <= amount; a++) dp[a] = INF;
+        dp[0] = 0;
+        for (int a = 1; a <= amount; a++)
+        {
+            foreach (int c in coins)
+            {
+                if (c <= a) dp[a] = Math.Min(dp[a], dp[a - c] + 1);
+            }
+        }
+        return dp[amount] > amount ? -1 : dp[amount];
+    }
+}` }],
         dry: { head: ['a', 'coin 1 → dp[a-1]+1', 'coin 3 → dp[a-3]+1', 'coin 4 → dp[a-4]+1', 'dp[a]'], rows: [['1', '1', '—', '—', '1'], ['2', '2', '—', '—', '2'], ['3', '3', '1', '—', '1'], ['4', '2', '2', '1', '1'], ['5', '2', '3', '2', '2'], ['6', '3', H.c('g', '2'), '3', H.c('g', '2')]] },
         complexity: `<p>Time O(amount × #coins) ≈ 1.2·10<sup>5</sup> operations; space O(amount).</p>`,
         followUps: ['Print the coins used (store the last coin per amount).', 'Count the number of combinations instead (LC 518).', 'Each coin may be used at most once → 0/1 knapsack, iterate amounts backwards.']
@@ -1686,6 +1959,38 @@ int knapsack1D(const vector<int>& wt, const vector<int>& val, int W) {
         }
     }
     return dp[W];
+}` }, { lang: 'csharp', code: `// 0/1 knapsack, full table. dp[i, c] = best value from first i items, capacity c.
+int Knapsack(int[] wt, int[] val, int W)
+{
+    int n = wt.Length;
+    int[,] dp = new int[n + 1, W + 1];           // row 0 and column 0 are all 0
+    for (int i = 1; i <= n; i++)
+    {
+        int w = wt[i - 1], v = val[i - 1];       // the i-th item
+        for (int c = 0; c <= W; c++)
+        {
+            dp[i, c] = dp[i - 1, c];             // skip item i
+            if (w <= c)
+            {
+                dp[i, c] = Math.Max(dp[i, c], dp[i - 1, c - w] + v); // take it once
+            }
+        }
+    }
+    return dp[n, W];
+}
+
+// Same thing in one array: capacity loop runs BACKWARDS so each item is used once.
+int Knapsack1D(int[] wt, int[] val, int W)
+{
+    int[] dp = new int[W + 1];
+    for (int i = 0; i < wt.Length; i++)
+    {
+        for (int c = W; c >= wt[i]; c--)         // right-to-left!
+        {
+            dp[c] = Math.Max(dp[c], dp[c - wt[i]] + val[i]);
+        }
+    }
+    return dp[W];
 }` }] }, { lang: 'python', run: true, title: 'Knapsack + which items were packed (Python, runnable)', code: `def knapsack(wt, val, W):
     n = len(wt)
     dp = [[0] * (W + 1) for _ in range(n + 1)]
@@ -1807,6 +2112,14 @@ print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
         for (int c = target; c >= x; c--)    // backwards: each number once
             can[c] = can[c] || can[c - x];
     return can[target];
+}` }, { lang: 'csharp', code: `bool SubsetSum(int[] a, int target)
+{
+    bool[] can = new bool[target + 1];
+    can[0] = true;                         // empty subset makes 0
+    foreach (int x in a)
+        for (int c = target; c >= x; c--)  // backwards: each number once
+            can[c] = can[c] || can[c - x];
+    return can[target];
 }` }] } },
       { title: 'Counting subsets: Target Sum', html: `<p>nums = [1,1,1,1,1], target 3: choose a + or − for each. If P = sum of "+" numbers, then P − (total − P) = target → P = (total + target)/2 = 4. Count subsets summing to 4 → C(5,4) = <b>5</b>. Same backward loop with <code>ways[c] += ways[c − x]</code>. If (total + target) is odd or |target| &gt; total → 0.</p>` },
       { title: 'Huge capacity, small values: flip the DP', html: `<p>n = 100, W = 10<sup>9</sup>, each value ≤ 1000. A W-wide table is impossible. Instead <code>minW[val]</code> = least weight achieving total value exactly val (size ≤ 100 × 1000 = 10<sup>5</sup>). Answer = largest val with minW[val] ≤ W. Same 0/1 backward loop, roles of weight and value swapped.</p>` }
@@ -1854,6 +2167,14 @@ print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
     int take = 0;
     if (wt[i] <= cap) take = val[i] + knapSack(wt, val, i + 1, cap - wt[i]);
     return max(skip, take);
+}` },
+          { lang: 'csharp', code: `int Best(int[] wt, int[] val, int i, int cap)
+{
+    if (i == wt.Length) return 0;                      // no items left
+    int skip = Best(wt, val, i + 1, cap);
+    int take = 0;
+    if (wt[i] <= cap) take = val[i] + Best(wt, val, i + 1, cap - wt[i]);
+    return Math.Max(skip, take);
 }` }
         ] } },
       mcq: { q: 'In the 1D version you loop capacity from small to large by mistake. What happens?', options: ['Nothing, same answer', 'Items can be counted more than once (it becomes unbounded knapsack)', 'It throws an exception', 'It returns 0'], answer: 1, explain: 'dp[c − w] was already updated with item i in this sweep, so taking it again reuses the same item.' },
@@ -1900,7 +2221,23 @@ public:
                 dp[c] = max(dp[c], dp[c - wt[i]] + val[i]);
         return dp[W];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int KnapSack(int W, int[] wt, int[] val)
+    {
+        int[] dp = new int[W + 1];                     // dp[c] = best value with capacity c
+        for (int i = 0; i < wt.Length; i++)
+        {
+            for (int c = W; c >= wt[i]; c--)           // backwards = each item once
+            {
+                dp[c] = Math.Max(dp[c], dp[c - wt[i]] + val[i]);
+            }
+        }
+        return dp[W];
+    }
+}` }],
         dry: { head: ['after item', 'dp[0..7]', 'note'], rows: [['1:1', '0 1 1 1 1 1 1 1', 'any capacity ≥ 1 takes it'], ['3:4', '0 1 1 4 5 5 5 5', 'c=4: 1 + 4 = 5'], ['4:5', '0 1 1 4 5 6 6 9', 'c=7: dp[3] + 5 = 9'], ['5:7', '0 1 1 4 5 7 8 9', H.c('g', 'c=7: max(9, dp[2]+7=8) = 9')]] },
         complexity: `<p>Time O(n·W) = 10<sup>6</sup>; space O(W) (O(n·W) if you need to list the items).</p>`,
         followUps: ['Return the chosen items (keep the 2D table).', 'W up to 10<sup>9</sup>, values ≤ 100 → DP over value.', 'Each item has a count limit (bounded knapsack).']
@@ -2014,6 +2351,32 @@ int cutRod(const vector<int>& price, int n) {
         }
     }
     return best[n];
+}` }, { lang: 'csharp', code: `// Unbounded knapsack (each item type reusable). 1D, capacity loop FORWARDS.
+int UnboundedKnapsack(int[] wt, int[] val, int W)
+{
+    int[] dp = new int[W + 1];                 // dp[c] = best value with capacity c
+    for (int i = 0; i < wt.Length; i++)
+    {
+        for (int c = wt[i]; c <= W; c++)       // forwards: dp[c - w] may already use item i
+        {
+            dp[c] = Math.Max(dp[c], dp[c - wt[i]] + val[i]);
+        }
+    }
+    return dp[W];
+}
+
+// Rod cutting: price[k] = price of a piece of length k+1. Last-piece formulation.
+int CutRod(int[] price, int n)
+{
+    int[] best = new int[n + 1];               // best[0] = 0: empty rod earns nothing
+    for (int len = 1; len <= n; len++)
+    {
+        for (int piece = 1; piece <= len && piece <= price.Length; piece++)
+        {
+            best[len] = Math.Max(best[len], price[piece - 1] + best[len - piece]);
+        }
+    }
+    return best[n];
 }` }] }, { lang: 'python', run: true, title: 'Rod cutting with the actual cuts (Python, runnable)', code: `def cut_rod(price, n):
     best = [0] * (n + 1)
     first_cut = [0] * (n + 1)          # which piece to cut first for this length
@@ -2106,6 +2469,14 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
         for (int j = 1; j < i; j++)
             dp[i] = max(dp[i], max(j, dp[j]) * max(i - j, dp[i - j]));
     return dp[n];
+}` }, { lang: 'csharp', code: `int IntegerBreak(int n)
+{
+    int[] dp = new int[n + 1];
+    dp[1] = 1;
+    for (int i = 2; i <= n; i++)
+        for (int j = 1; j < i; j++)
+            dp[i] = Math.Max(dp[i], Math.Max(j, dp[j]) * Math.Max(i - j, dp[i - j]));
+    return dp[n];
 }` }] } },
       { title: 'Minimum cost to get at least X (bundles)', html: `<p>Packs of 3 cans for ₹5 or 5 cans for ₹7; you need <b>at least</b> 12 cans. Exactly 12 cans costs ₹20 (3+3+3+3), but 5+5+3 = 13 cans costs only <b>₹19</b>. An exact-amount DP would never look at 13. Fix: dp[x] = min cost for at least x cans, transition <code>dp[x] = min(dp[max(0, x − size)] + price)</code>. The clamp to 0 is the whole trick.</p>` },
       { title: 'Coin change is unbounded knapsack', html: `<p>Min coins: weight = coin value, "value" = 1 coin, minimize instead of maximize, exact capacity. Number of combinations: same forward loop with + instead of max. If you understood the forward-loop rule here, you understand why LC 518's inner loop goes forward.</p>` }
@@ -2150,6 +2521,14 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
     int best = 0;
     for (int piece = 1; piece <= len; piece++)
         best = max(best, price[piece - 1] + cutRod(price, len - piece));
+    return best;
+}` },
+          { lang: 'csharp', code: `int Cut(int[] price, int len)
+{
+    if (len == 0) return 0;
+    int best = 0;
+    for (int piece = 1; piece <= len; piece++)
+        best = Math.Max(best, price[piece - 1] + Cut(price, len - piece));
     return best;
 }` }
         ] } },
@@ -2200,7 +2579,24 @@ public:
                 best[len] = max(best[len], price[piece - 1] + best[len - piece]);
         return best[n];                           // at most 1000 * 1e5 = 1e8, fits in int
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int CutRod(int[] price)
+    {
+        int n = price.Length;
+        int[] best = new int[n + 1];                   // best[0] = 0
+        for (int len = 1; len <= n; len++)
+        {
+            for (int piece = 1; piece <= len; piece++)
+            {
+                best[len] = Math.Max(best[len], price[piece - 1] + best[len - piece]);
+            }
+        }
+        return best[n];
+    }
+}` }],
         dry: { head: ['len', 'best candidates (piece + rest)', 'best[len]'], rows: [['1', '1+0', '1'], ['2', '1+1, 5+0', '5'], ['3', '1+5, 5+1, 8+0', '8'], ['4', '1+8, 5+5, 8+1, 9', '10'], ['5', '1+10, 5+8, 8+5, 9+1, 10', '13'], ['6', '…, 17+0', '17'], ['7', '1+17, 5+13, 8+10, …', '18'], ['8', '5+17 (piece 2 + best[6])', H.c('g', '22')]] },
         complexity: `<p>Time O(n²), space O(n).</p>`,
         followUps: ['Print the cuts (store the best first piece per length).', 'Each cut costs a fixed fee c → subtract c per cut.', 'Only certain lengths are allowed → loop over the allowed list.']
@@ -2358,6 +2754,40 @@ string lcsString(const string& s1, const string& s2, const vector<vector<int>>& 
     }
     reverse(out.begin(), out.end());
     return out;
+}` }, { lang: 'csharp', code: `// LCS length. dp[i, j] = LCS of s1[0..i-1] and s2[0..j-1].
+int Lcs(string s1, string s2)
+{
+    int n = s1.Length, m = s2.Length;
+    int[,] dp = new int[n + 1, m + 1];            // row 0 / col 0 = empty prefix = 0
+    for (int i = 1; i <= n; i++)
+    {
+        for (int j = 1; j <= m; j++)
+        {
+            if (s1[i - 1] == s2[j - 1])
+                dp[i, j] = 1 + dp[i - 1, j - 1];  // use the matching pair (diagonal)
+            else
+                dp[i, j] = Math.Max(dp[i - 1, j], dp[i, j - 1]); // drop one char
+        }
+    }
+    return dp[n, m];
+}
+
+// Rebuild one actual LCS string by walking back from dp[n, m].
+string LcsString(string s1, string s2, int[,] dp)
+{
+    var sb = new StringBuilder();
+    int i = s1.Length, j = s2.Length;
+    while (i > 0 && j > 0)
+    {
+        if (s1[i - 1] == s2[j - 1])
+        {
+            sb.Insert(0, s1[i - 1]);              // part of the LCS (built back to front)
+            i--; j--;
+        }
+        else if (dp[i - 1, j] >= dp[i, j - 1]) i--;   // came from above
+        else j--;                                     // came from the left
+    }
+    return sb.ToString();
 }` }] }, { lang: 'python', run: true, title: 'LCS with two rolling rows + the string itself (Python, runnable)', code: `def lcs_len_two_rows(s1, s2):
     prev = [0] * (len(s2) + 1)              # row i-1
     for ch in s1:
@@ -2485,6 +2915,18 @@ print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 '
                 best = max(best, dp[i][j]);
             }                                  // else stays 0: the run is broken
     return best;
+}` }, { lang: 'csharp', code: `int LongestCommonSubstring(string a, string b)
+{
+    int[,] dp = new int[a.Length + 1, b.Length + 1];
+    int best = 0;
+    for (int i = 1; i <= a.Length; i++)
+        for (int j = 1; j <= b.Length; j++)
+            if (a[i - 1] == b[j - 1])
+            {
+                dp[i, j] = dp[i - 1, j - 1] + 1;
+                best = Math.Max(best, dp[i, j]);
+            }                                      // else stays 0: the run is broken
+    return best;
 }` }] } }
     ],
     deepDive: `<p><b>Space.</b> Each row reads only the row above and itself → two rows O(min(n, m)) (put the shorter string on the columns). With a single row plus one saved "diagonal" variable it is one array. Reconstruction needs the full table, or <b>Hirschberg's algorithm</b>: divide &amp; conquer that finds the middle crossing point using forward and backward two-row passes → O(n·m) time, O(n + m) space. That is how diff tools handle large files.</p>
@@ -2522,6 +2964,12 @@ print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 '
     if (i == (int)a.size() || j == (int)b.size()) return 0;   // one string used up
     if (a[i] == b[j]) return 1 + longestCommonSubsequence(a, b, i + 1, j + 1);
     return max(longestCommonSubsequence(a, b, i + 1, j), longestCommonSubsequence(a, b, i, j + 1));
+}` },
+          { lang: 'csharp', code: `int F(string a, string b, int i, int j)
+{
+    if (i == a.Length || j == b.Length) return 0;         // one string used up
+    if (a[i] == b[j]) return 1 + F(a, b, i + 1, j + 1);
+    return Math.Max(F(a, b, i + 1, j), F(a, b, i, j + 1));
 }` }
         ] } },
       mcq: { q: 'text1[i−1] ≠ text2[j−1]. Which cells can give dp[i][j]?', options: ['Only the diagonal dp[i−1][j−1]', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i−1][j−1] + 1', 'Always 0'], answer: 1, explain: 'At least one of the two last characters is not part of the LCS, so drop one of them and take the better result.' },
@@ -2582,7 +3030,27 @@ public:
                                                         : max(dp[i - 1][j], dp[i][j - 1]);
         return dp[n][m];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int LongestCommonSubsequence(string text1, string text2)
+    {
+        int n = text1.Length, m = text2.Length;
+        int[] prev = new int[m + 1], cur = new int[m + 1];   // rows i-1 and i
+        for (int i = 1; i <= n; i++)
+        {
+            char a = text1[i - 1];
+            for (int j = 1; j <= m; j++)
+            {
+                if (a == text2[j - 1]) cur[j] = prev[j - 1] + 1;   // diagonal + 1
+                else cur[j] = Math.Max(prev[j], cur[j - 1]);       // up or left
+            }
+            int[] t = prev; prev = cur; cur = t;                  // row i becomes "previous"
+        }
+        return prev[m];
+    }
+}` }],
         dry: { head: ['i (char of text1)', 'row after processing ("" a c e)', 'note'], rows: [['1 (a)', '0 1 1 1', 'a matches a'], ['2 (b)', '0 1 1 1', 'no match, copy max'], ['3 (c)', '0 1 2 2', 'c matches c: diag 1 + 1'], ['4 (d)', '0 1 2 2', 'no match'], ['5 (e)', '0 1 2 3', H.c('g', 'e matches e → 3')]] },
         complexity: `<p>Time O(n·m) = 10<sup>6</sup>; space O(m) with two rows (O(n·m) to rebuild the string).</p>`,
         followUps: ['Print the LCS itself.', 'LCS of three strings → dp[i][j][k].', 'One string has all distinct characters → reduce to LIS in O(n log n).']
@@ -2700,6 +3168,31 @@ int minDistance(const string& word1, const string& word2) {
         }
     }
     return dp[n][m];
+}` }, { lang: 'csharp', code: `// Levenshtein distance. dp[i, j] = min ops: word1[0..i-1] -> word2[0..j-1].
+int MinDistance(string word1, string word2)
+{
+    int n = word1.Length, m = word2.Length;
+    int[,] dp = new int[n + 1, m + 1];
+    for (int i = 0; i <= n; i++) dp[i, 0] = i;          // delete everything
+    for (int j = 0; j <= m; j++) dp[0, j] = j;          // insert everything
+    for (int i = 1; i <= n; i++)
+    {
+        for (int j = 1; j <= m; j++)
+        {
+            if (word1[i - 1] == word2[j - 1])
+            {
+                dp[i, j] = dp[i - 1, j - 1];               // free: chars already match
+            }
+            else
+            {
+                int replace = dp[i - 1, j - 1];
+                int delete = dp[i - 1, j];
+                int insert = dp[i, j - 1];
+                dp[i, j] = 1 + Math.Min(replace, Math.Min(delete, insert));
+            }
+        }
+    }
+    return dp[n, m];
 }` }] }, { lang: 'python', run: true, title: 'Edit distance + the actual list of edits (Python, runnable)', code: `def edit_script(a, b):
     n, m = len(a), len(b)
     dp = [[0] * (m + 1) for _ in range(n + 1)]
@@ -2829,6 +3322,20 @@ print(edit_script("", "abc"))
         }
     }
     return s.size() + 1 == t.size();           // all equal so far: only an extra last char is ok
+}` }, { lang: 'csharp', code: `bool IsOneEditDistance(string s, string t)
+{
+    if (s.Length > t.Length) return IsOneEditDistance(t, s);  // make s the shorter
+    if (t.Length - s.Length > 1) return false;
+    for (int i = 0; i < s.Length; i++)
+    {
+        if (s[i] != t[i])
+        {
+            if (s.Length == t.Length)
+                return s.Substring(i + 1) == t.Substring(i + 1);   // replace
+            return s.Substring(i) == t.Substring(i + 1);            // insert into s
+        }
+    }
+    return s.Length + 1 == t.Length;   // all equal so far: only an extra last char is ok
 }` }] } },
       { title: 'Weighted costs', html: `<p>Insert costs 1, delete costs 1, replace costs 2: then replace is never better than delete + insert, and the answer becomes n + m − 2·LCS. "kitten" → "sitting": Levenshtein = <b>3</b> (k→s, e→i, insert g); with replace = 2 it is 5. Same grid; just put the costs on the arrows.</p>` }
     ],
@@ -2879,6 +3386,15 @@ print(edit_script("", "abc"))
     return 1 + min({minDistance(a, b, i - 1, j - 1),   // replace
                     minDistance(a, b, i - 1, j),       // delete
                     minDistance(a, b, i, j - 1)});     // insert
+}` },
+          { lang: 'csharp', code: `int F(string a, string b, int i, int j)
+{
+    if (i == 0) return j;                         // insert the remaining j chars
+    if (j == 0) return i;                         // delete the remaining i chars
+    if (a[i - 1] == b[j - 1]) return F(a, b, i - 1, j - 1);
+    return 1 + Math.Min(F(a, b, i - 1, j - 1),    // replace
+               Math.Min(F(a, b, i - 1, j),        // delete
+                        F(a, b, i, j - 1)));      // insert
 }` }
         ] } },
       mcq: { q: 'Which cell corresponds to INSERTING word2[j−1] at the end of the current word1 prefix?', options: ['dp[i−1][j−1]', 'dp[i−1][j]', 'dp[i][j−1]', 'dp[i][j]'], answer: 2, explain: 'After inserting word2[j−1], that char is matched; what remains is converting word1[0..i−1] into word2[0..j−2] → dp[i][j−1].' },
@@ -2959,7 +3475,36 @@ public:
         }
         return dp[m];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MinDistance(string word1, string word2)
+    {
+        int n = word1.Length, m = word2.Length;
+        int[] dp = new int[m + 1];
+        for (int j = 0; j <= m; j++) dp[j] = j;            // row 0: insert j chars
+        for (int i = 1; i <= n; i++)
+        {
+            int diag = dp[0];                              // old dp[i-1][0]
+            dp[0] = i;                                     // dp[i][0]: delete i chars
+            for (int j = 1; j <= m; j++)
+            {
+                int up = dp[j];                            // old dp[i-1][j] (not yet overwritten)
+                if (word1[i - 1] == word2[j - 1])
+                {
+                    dp[j] = diag;                          // match: free
+                }
+                else
+                {
+                    dp[j] = 1 + Math.Min(diag, Math.Min(up, dp[j - 1])); // replace, delete, insert
+                }
+                diag = up;                                 // becomes dp[i-1][j-1] for next j
+            }
+        }
+        return dp[m];
+    }
+}` }],
         dry: { head: ['i (word1 char)', 'row dp[i][0..3] for "" r o s', 'note'], rows: [['0', '0 1 2 3', 'base: inserts'], ['1 (h)', '1 1 2 3', 'h→r replace = 1'], ['2 (o)', '2 2 1 2', 'o==o: copy diag 1'], ['3 (r)', '3 2 2 2', 'r vs s: min(1, 2, 2) + 1 = 2'], ['4 (s)', '4 3 3 2', 's==s: diag 2'], ['5 (e)', '5 4 4 3', H.c('g', 'delete e: up 2 + 1 = 3')]] },
         complexity: `<p>Time O(n·m) = 2.5·10<sup>5</sup>; space O(m) (keep the full table to print the edit script).</p>`,
         followUps: ['Return the list of edits.', 'Is the distance ≤ k? (banded DP, O(n·k))', 'Allow swapping adjacent characters (Damerau–Levenshtein).']
@@ -3098,6 +3643,40 @@ int minPathSum(vector<vector<int>>& g) {
             int up   = r > 0 ? g[r - 1][c] : INT_MAX;
             int left = c > 0 ? g[r][c - 1] : INT_MAX;
             g[r][c] += min(up, left);         // one of them is always a real cell
+        }
+    }
+    return g[m - 1][n - 1];
+}` }, { lang: 'csharp', code: `// Unique Paths II: grid[r][c] == 1 means blocked. One row of dp is enough.
+int UniquePathsWithObstacles(int[][] grid)
+{
+    int m = grid.Length, n = grid[0].Length;
+    int[] dp = new int[n];                 // dp[c] = paths to (current row, c)
+    dp[0] = grid[0][0] == 1 ? 0 : 1;       // blocked start -> 0 paths
+    for (int r = 0; r < m; r++)
+    {
+        for (int c = 0; c < n; c++)
+        {
+            if (grid[r][c] == 1)
+                dp[c] = 0;                 // nobody can stand here
+            else if (c > 0)
+                dp[c] += dp[c - 1];        // from above (old dp[c]) + from left
+        }
+    }
+    return dp[n - 1];
+}
+
+// Minimum Path Sum: reuse the grid itself as the dp table (modifies input).
+int MinPathSum(int[][] g)
+{
+    int m = g.Length, n = g[0].Length;
+    for (int r = 0; r < m; r++)
+    {
+        for (int c = 0; c < n; c++)
+        {
+            if (r == 0 && c == 0) continue;               // start: cost is its own value
+            int up = r > 0 ? g[r - 1][c] : int.MaxValue;
+            int left = c > 0 ? g[r][c - 1] : int.MaxValue;
+            g[r][c] += Math.Min(up, left);                // cheapest way in + this toll
         }
     }
     return g[m - 1][n - 1];
@@ -3265,6 +3844,14 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
         for (int j = 0; j <= i; j++)
             dp[j] = tri[i][j] + min(dp[j], dp[j + 1]);
     return dp[0];
+}` }, { lang: 'csharp', code: `int MinimumTotal(IList<IList<int>> tri)
+{
+    int n = tri.Count;
+    int[] dp = new int[n + 1];                      // extra 0 below the last row
+    for (int i = n - 1; i >= 0; i--)
+        for (int j = 0; j <= i; j++)
+            dp[j] = tri[i][j] + Math.Min(dp[j], dp[j + 1]);
+    return dp[0];
 }` }] } },
       { title: 'Dungeon Game: why some grids are filled backwards', html: `<p>The knight needs health ≥ 1 at every cell. A forward DP would have to remember both "current health" and "minimum seen so far" — two numbers that trade off. Backwards, <code>need[r][c] = max(1, min(need[r+1][c], need[r][c+1]) − dungeon[r][c])</code> is a single number: the minimum health needed when <i>entering</i> (r, c). Rule: fill in the direction where the future is a single number.</p>` }
     ],
@@ -3308,6 +3895,13 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
     if (r >= m || c >= n || g[r][c] == 1) return 0;    // off-grid or blocked
     if (r == m - 1 && c == n - 1) return 1;            // reached the goal
     return uniquePathsWithObstacles(g, r + 1, c) + uniquePathsWithObstacles(g, r, c + 1); // down or right
+}` },
+          { lang: 'csharp', code: `int Count(int[][] g, int r, int c)
+{
+    int m = g.Length, n = g[0].Length;
+    if (r >= m || c >= n || g[r][c] == 1) return 0;   // off-grid or blocked
+    if (r == m - 1 && c == n - 1) return 1;           // reached the goal
+    return Count(g, r + 1, c) + Count(g, r, c + 1);   // down or right
 }` }
         ] } },
       mcq: { q: 'The first row is [0, 0, 1, 0]. What are the path counts for that row?', options: ['1 1 1 1', '1 1 0 0', '1 1 0 1', '0 0 0 0'], answer: 1, explain: 'In row 0 the only way in is from the left. The obstacle gives 0 and every cell after it inherits 0.' },
@@ -3376,7 +3970,24 @@ public:
         }
         return (int) dp[n - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int UniquePathsWithObstacles(int[][] obstacleGrid)
+    {
+        int n = obstacleGrid[0].Length;
+        int[] dp = new int[n];
+        dp[0] = obstacleGrid[0][0] == 1 ? 0 : 1;
+        foreach (int[] row in obstacleGrid)
+        {
+            for (int c = 0; c < n; c++)
+            {
+                if (row[c] == 1) dp[c] = 0;            // blocked cell
+                else if (c > 0) dp[c] += dp[c - 1];    // above + left
+            }
+        }
+        return dp[n - 1];
+    }
+}` }],
         dry: { head: ['row', 'grid row', 'dp after the row'], rows: [['0', '0 0 0', '1 1 1'], ['1', '0 1 0', '1 0 1'], ['2', '0 0 0', '1 1 ' + H.c('g', '2')]] },
         complexity: `<p>Time O(m·n), space O(n).</p>`,
         followUps: ['Minimum Path Sum on the same grid.', 'Robot can also move diagonally down-right → add a third term.', 'Count paths modulo 10<sup>9</sup>+7 on a 10<sup>5</sup> × 10<sup>5</sup> grid with few obstacles (combinatorics + inclusion–exclusion).']
@@ -3409,6 +4020,13 @@ public:
     long long up = r > 0 ? minPathSum(g, r - 1, c) : LLONG_MAX;
     long long left = c > 0 ? minPathSum(g, r, c - 1) : LLONG_MAX;
     return g[r][c] + min(up, left);                    // exponential without memo
+}` },
+          { lang: 'csharp', code: `int Best(int[][] g, int r, int c)
+{
+    if (r == 0 && c == 0) return g[0][0];
+    int up = r > 0 ? Best(g, r - 1, c) : int.MaxValue;
+    int left = c > 0 ? Best(g, r, c - 1) : int.MaxValue;
+    return g[r][c] + Math.Min(up, left);              // exponential without memo
 }` }
         ] } },
       mcq: { q: 'How should the first row be filled?', options: ['All zeros', 'Copy the grid values', 'Running (prefix) sums of the row, since it is reachable only from the left', 'All infinity'], answer: 2, explain: 'Cells in row 0 can only be entered from the left, so their cost is the sum of everything before them plus themselves.' },
@@ -3469,7 +4087,27 @@ public:
         }
         return dp[n - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MinPathSum(int[][] grid)
+    {
+        int m = grid.Length, n = grid[0].Length;
+        int[] dp = new int[n];
+        for (int r = 0; r < m; r++)
+        {
+            for (int c = 0; c < n; c++)
+            {
+                if (r == 0 && c == 0) dp[c] = grid[0][0];
+                else if (r == 0) dp[c] = dp[c - 1] + grid[r][c];          // only from the left
+                else if (c == 0) dp[c] = dp[c] + grid[r][c];              // only from above
+                else dp[c] = Math.Min(dp[c], dp[c - 1]) + grid[r][c];     // cheaper of above/left
+            }
+        }
+        return dp[n - 1];
+    }
+}` }],
         dry: { head: ['row', 'grid row', 'dp after the row'], rows: [['0', '1 3 1', '1 4 5'], ['1', '1 5 1', '2 7 6'], ['2', '4 2 1', '6 8 ' + H.c('g', '7')]] },
         complexity: `<p>Time O(m·n) = 4·10<sup>4</sup>; space O(n).</p>`,
         followUps: ['Print the path (keep the full table and walk back).', 'Maximum gold instead of minimum cost.', 'Movement in 4 directions → Dijkstra.']
@@ -3505,6 +4143,12 @@ public:
     if (n == 0) return 0;
     if (n <= 2) return 1;
     return tribonacci(n - 1) + tribonacci(n - 2) + tribonacci(n - 3);
+}` },
+          { lang: 'csharp', code: `int Trib(int n)
+{
+    if (n == 0) return 0;
+    if (n <= 2) return 1;
+    return Trib(n - 1) + Trib(n - 2) + Trib(n - 3);
 }` }
         ] } },
     mcq: { q: 'How many rolling variables does the O(1)-space solution need?', options: ['1', '2', '3', 'n'], answer: 2, explain: 'Each term reads the previous three terms.' },
@@ -3552,7 +4196,21 @@ public:
         }
         return c;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int Tribonacci(int n)
+    {
+        if (n == 0) return 0;
+        if (n <= 2) return 1;
+        int a = 0, b = 1, c = 1;               // T(i-3), T(i-2), T(i-1)
+        for (int i = 3; i <= n; i++)
+        {
+            int d = a + b + c;
+            a = b; b = c; c = d;               // slide the window
+        }
+        return c;
+    }
+}` }],
       dry: { head: ['i', 'a', 'b', 'c', 'd'], rows: [['3', '0', '1', '1', '2'], ['4', '1', '1', '2', H.c('g', '4')]] },
       complexity: `<p>Time O(n), space O(1).</p>`
     }
@@ -3584,7 +4242,13 @@ function minCostClimbingStairs(cost) { return Math.min(fromStair(cost, 0), fromS
     if (i >= (int)cost.size()) return 0;               // reached the top
     return cost[i] + min(fromStair(cost, i + 1), fromStair(cost, i + 2));
 }
-int minCostClimbingStairs(vector<int>& cost) { return min(fromStair(cost, 0), fromStair(cost, 1)); }` }
+int minCostClimbingStairs(vector<int>& cost) { return min(fromStair(cost, 0), fromStair(cost, 1)); }` },
+          { lang: 'csharp', code: `int From(int[] cost, int i)
+{
+    if (i >= cost.Length) return 0;                      // reached the top
+    return cost[i] + Math.Min(From(cost, i + 1), From(cost, i + 2));
+}
+int MinCost(int[] cost) { return Math.Min(From(cost, 0), From(cost, 1)); }` }
         ] } },
     mcq: { q: 'Let dp[i] = min cost to <i>stand on</i> position i (before paying cost[i]). What is dp[i]?', options: ['min(dp[i−1] + cost[i−1], dp[i−2] + cost[i−2])', 'dp[i−1] + dp[i−2]', 'cost[i] + cost[i−1]', 'max(dp[i−1], dp[i−2])'], answer: 0, explain: 'You arrived from i−1 (paying cost[i−1]) or from i−2 (paying cost[i−2]). dp[0] = dp[1] = 0 because you may start on either for free.' },
     tests: { sig: 'int[] -> int', fn: 'minCostClimbingStairs', cases: [
@@ -3627,7 +4291,22 @@ public:
         }
         return oneBack;                        // dp[n] = cost to reach the top
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MinCostClimbingStairs(int[] cost)
+    {
+        int twoBack = 0, oneBack = 0;          // dp[i-2], dp[i-1]; dp[0] = dp[1] = 0
+        for (int i = 2; i <= cost.Length; i++)
+        {
+            int cur = Math.Min(oneBack + cost[i - 1], twoBack + cost[i - 2]);
+            twoBack = oneBack;
+            oneBack = cur;
+        }
+        return oneBack;                        // dp[n] = cost to reach the top
+    }
+}` }],
       dry: { head: ['i', 'from i-1', 'from i-2', 'dp[i]'], rows: [['2 (cost=[10,15,20])', '0 + 15', '0 + 10', '10'], ['3 (top)', '10 + 20 = 30', '0 + 15 = 15', H.c('g', '15')]] },
       complexity: `<p>Time O(n), space O(1).</p>`,
       followUps: ['Allow jumps of 1..k stairs → O(n·k), or O(n) with a monotonic deque.']
@@ -3654,6 +4333,11 @@ public:
           { lang: 'cpp', code: `long long C(int n, int k) {
     if (k == 0 || k == n) return 1;
     return C(n - 1, k - 1) + C(n - 1, k);     // exponential without memo
+}` },
+          { lang: 'csharp', code: `long C(int n, int k)
+{
+    if (k == 0 || k == n) return 1;
+    return C(n - 1, k - 1) + C(n - 1, k);      // exponential without memo
 }` }
         ] } },
     mcq: { q: 'Which DP relation builds row i from row i−1?', options: ['row[i][j] = row[i−1][j−1] + row[i−1][j]', 'row[i][j] = row[i−1][j] × 2', 'row[i][j] = row[i][j−1] + 1', 'row[i][j] = i × j'], answer: 0, explain: 'Pascal\'s rule: C(i, j) = C(i−1, j−1) + C(i−1, j) — choose item i or not.' },
@@ -3708,7 +4392,26 @@ public:
         }
         return rows;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<IList<int>> Generate(int numRows)
+    {
+        var rows = new List<IList<int>>();
+        for (int i = 0; i < numRows; i++)
+        {
+            var row = new List<int>();
+            for (int j = 0; j <= i; j++)
+            {
+                if (j == 0 || j == i) row.Add(1);                        // edges
+                else row.Add(rows[i - 1][j - 1] + rows[i - 1][j]);
+            }
+            rows.Add(row);
+        }
+        return rows;
+    }
+}` }],
       dry: { head: ['i', 'row'], rows: [['0', '1'], ['1', '1 1'], ['2', '1 2 1'], ['3', '1 3 3 1'], ['4', H.c('g', '1 4 6 4 1')]] },
       complexity: `<p>Time O(numRows<sup>2</sup>), space O(numRows<sup>2</sup>) for the output.</p>`,
       followUps: ['Return only row k using O(k) space (update right-to-left, like 0/1 knapsack).', 'nCr mod p for large n → factorials + modular inverse (DSA 3).']
@@ -3755,6 +4458,17 @@ public:
         ans[i] = c;
     }
     return ans;
+}` },
+          { lang: 'csharp', code: `int[] CountBits(int n)
+{
+    int[] ans = new int[n + 1];
+    for (int i = 0; i <= n; i++)
+    {
+        int x = i, c = 0;
+        while (x > 0) { c += x & 1; x >>= 1; }   // O(log i) per number
+        ans[i] = c;
+    }
+    return ans;
 }` }
         ] } },
     mcq: { q: 'Why is ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1) valid DP?', options: ['i &gt;&gt; 1 &lt; i so it is already computed, and it has the same bits except the last one', 'Because of 2\'s complement', 'Because popcount is multiplicative', 'It only works for powers of two'], answer: 0, explain: 'Dropping the last bit gives a smaller number already in the table; add back the dropped bit.' },
@@ -3794,7 +4508,18 @@ public:
             ans[i] = ans[i >> 1] + (i & 1);    // same bits as i / 2, plus the last bit
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int[] CountBits(int n)
+    {
+        int[] ans = new int[n + 1];                 // ans[0] = 0
+        for (int i = 1; i <= n; i++)
+        {
+            ans[i] = ans[i >> 1] + (i & 1);         // same bits as i/2, plus the last bit
+        }
+        return ans;
+    }
+}` }],
       dry: { head: ['i', 'i>>1', 'i&1', 'ans[i]'], rows: [['1', '0', '1', '1'], ['2', '1', '0', '1'], ['3', '1', '1', '2'], ['4', '2', '0', '1'], ['5', '2', '1', H.c('g', '2')]] },
       complexity: `<p>Time O(n), space O(n) for the output.</p>`
     }
@@ -3836,6 +4561,14 @@ public:
     int skip = rob(a, i + 1, tookFirst);
     int take = a[i] + rob(a, i + 2, tookFirst || i == 0);
     return max(skip, take);
+}` },
+          { lang: 'csharp', code: `int Go(int[] a, int i, bool tookFirst)
+{
+    if (i >= a.Length) return 0;
+    if (i == a.Length - 1 && tookFirst) return 0;          // last house touches the first
+    int skip = Go(a, i + 1, tookFirst);
+    int take = a[i] + Go(a, i + 2, tookFirst || i == 0);
+    return Math.Max(skip, take);
 }` }
         ] } },
     mcq: { q: 'How do you break the circle?', options: ['Solve the line twice: without the last house, and without the first house; take the max', 'Always skip house 0', 'Rob every other house', 'Double the array'], answer: 0, explain: 'First and last can\'t both be robbed, so at least one of them is excluded; each case is a plain line problem.' },
@@ -3896,7 +4629,28 @@ public:
         if (n == 1) return nums[0];
         return max(line(nums, 0, n - 2), line(nums, 1, n - 1));   // drop the last house, or the first
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int Rob(int[] nums)
+    {
+        int n = nums.Length;
+        if (n == 1) return nums[0];
+        return Math.Max(Line(nums, 0, n - 2), Line(nums, 1, n - 1));
+    }
+    private int Line(int[] a, int lo, int hi)      // plain House Robber on a[lo..hi]
+    {
+        int prev2 = 0, prev1 = 0;
+        for (int i = lo; i <= hi; i++)
+        {
+            int cur = Math.Max(prev1, prev2 + a[i]);
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;
+    }
+}` }],
       dry: { head: ['range', 'houses', 'best'], rows: [['0..n-2', '1 2 3', '4 (1 + 3)'], ['1..n-1', '2 3 1', '3'], ['answer', '', H.c('g', '4')]] },
       complexity: `<p>Time O(n), space O(1).</p>`
     }
@@ -3931,6 +4685,13 @@ public:
     if (i == (int)coins.size() || left < 0) return 0;
     return change(coins, i, left - coins[i])   // use coin i again
          + change(coins, i + 1, left);         // move on to the next coin type
+}` },
+          { lang: 'csharp', code: `int Ways(int[] coins, int i, int left)
+{
+    if (left == 0) return 1;
+    if (i == coins.Length || left < 0) return 0;
+    return Ways(coins, i, left - coins[i])     // use coin i again
+         + Ways(coins, i + 1, left);           // move on to the next coin type
 }` }
         ] } },
     mcq: { q: 'Which loop order counts each combination exactly once?', options: ['for coin { for a = coin..amount }', 'for a { for coin }', 'Either, they are identical', 'for a = amount down to coin'], answer: 0, explain: 'Coins outer means coin types are added in a fixed order, so each multiset is built once. Amount outer counts orderings (LC 377).' },
@@ -3979,7 +4740,18 @@ public:
                 ways[a] += ways[a - c];
         return (int) ways[amount];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int Change(int amount, int[] coins)
+    {
+        int[] ways = new int[amount + 1];
+        ways[0] = 1;
+        foreach (int c in coins)
+            for (int a = c; a <= amount; a++)
+                ways[a] += ways[a - c];
+        return ways[amount];
+    }
+}` }],
       dry: { head: ['after coin', 'ways[0..5]'], rows: [['(start)', '1 0 0 0 0 0'], ['1', '1 1 1 1 1 1'], ['2', '1 1 2 2 3 3'], ['5', '1 1 2 2 3 ' + H.c('g', '4')]] },
       complexity: `<p>Time O(amount × coins) = 1.5·10<sup>6</sup>; space O(amount).</p>`
     }
@@ -4014,6 +4786,13 @@ public:
     if (t == 0) return 1;
     int total = 0;
     for (int x : nums) if (x <= t) total += combinationSum4(nums, t - x);
+    return total;
+}` },
+          { lang: 'csharp', code: `int Count(int[] nums, int t)
+{
+    if (t == 0) return 1;
+    int total = 0;
+    foreach (int x in nums) if (x <= t) total += Count(nums, t - x);
     return total;
 }` }
         ] } },
@@ -4064,7 +4843,24 @@ public:
                 if (x <= t) dp[t] = min<long long>(INT_MAX, dp[t] + dp[t - x]);   // cap: no overflow
         return (int) dp[target];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int CombinationSum4(int[] nums, int target)
+    {
+        long[] dp = new long[target + 1];
+        dp[0] = 1;
+        for (int t = 1; t <= target; t++)
+        {
+            foreach (int x in nums)
+            {
+                if (x <= t) dp[t] = Math.Min(int.MaxValue, dp[t] + dp[t - x]); // cap to avoid overflow
+            }
+        }
+        return (int)dp[target];
+    }
+}` }],
       dry: { head: ['t', 'dp[t-1]', 'dp[t-2]', 'dp[t-3]', 'dp[t]'], rows: [['1', '1', '—', '—', '1'], ['2', '1', '1', '—', '2'], ['3', '2', '1', '1', '4'], ['4', '4', '2', '1', H.c('g', '7')]] },
       complexity: `<p>Time O(target × n) = 2·10<sup>5</sup>; space O(target).</p>`,
       followUps: ['Negative numbers allowed? Then infinitely many sequences may exist — you must cap the length.']
@@ -4096,6 +4892,12 @@ public:
     if (left == 0) return true;
     if (i == (int)a.size() || left < 0) return false;
     return canPartition(a, i + 1, left - a[i]) || canPartition(a, i + 1, left);
+}` },
+          { lang: 'csharp', code: `bool Can(int[] a, int i, int left)
+{
+    if (left == 0) return true;
+    if (i == a.Length || left < 0) return false;
+    return Can(a, i + 1, left - a[i]) || Can(a, i + 1, left);
 }` }
         ] } },
     mcq: { q: 'The total is 23. What do you return?', options: ['false immediately', 'Run subset sum for 11', 'Run subset sum for 12', 'true'], answer: 0, explain: 'Two equal integer halves need an even total.' },
@@ -4156,7 +4958,27 @@ public:
         for (int x : nums) reach |= reach << x;   // take x or not, each number once
         return reach[total / 2];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public bool CanPartition(int[] nums)
+    {
+        int total = 0;
+        foreach (int x in nums) total += x;
+        if (total % 2 == 1) return false;
+        int target = total / 2;
+        bool[] can = new bool[target + 1];
+        can[0] = true;
+        foreach (int x in nums)
+        {
+            for (int s = target; s >= x; s--)          // backwards: each number once
+            {
+                can[s] = can[s] || can[s - x];
+            }
+            if (can[target]) return true;
+        }
+        return can[target];
+    }
+}` }],
       dry: { head: ['after x', 'reachable sums ≤ 11'], rows: [['1', '{0, 1}'], ['5', '{0, 1, 5, 6}'], ['11', '{0, 1, 5, 6, ' + H.c('g', '11') + '} → true']] },
       complexity: `<p>Time O(n × total/2) ≤ 200 × 10 000 = 2·10<sup>6</sup>; space O(total). BitSet version: O(n·total/64).</p>`
     }
@@ -4183,6 +5005,11 @@ public:
           { lang: 'cpp', code: `int findTargetSumWays(vector<int>& a, int i, int sum, int target) {
     if (i == (int)a.size()) return sum == target ? 1 : 0;
     return findTargetSumWays(a, i + 1, sum + a[i], target) + findTargetSumWays(a, i + 1, sum - a[i], target);
+}` },
+          { lang: 'csharp', code: `int Count(int[] a, int i, int sum, int target)
+{
+    if (i == a.Length) return sum == target ? 1 : 0;
+    return Count(a, i + 1, sum + a[i], target) + Count(a, i + 1, sum - a[i], target);
 }` }
         ] } },
     mcq: { q: 'With P = sum of "+" numbers and total = sum of all, which is true?', options: ['P = (total + target) / 2', 'P = total − target', 'P = target / 2', 'P = total'], answer: 0, explain: 'P − (total − P) = target ⇒ 2P = total + target.' },
@@ -4240,7 +5067,24 @@ public:
             for (int s = p; s >= x; s--) ways[s] += ways[s - x];   // each number used once
         return ways[p];                        // at most 2^20, fits in int
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int FindTargetSumWays(int[] nums, int target)
+    {
+        int total = 0;
+        foreach (int x in nums) total += x;
+        if (Math.Abs(target) > total || (total + target) % 2 != 0) return 0;
+        int p = (total + target) / 2;
+        int[] ways = new int[p + 1];
+        ways[0] = 1;
+        foreach (int x in nums)
+            for (int s = p; s >= x; s--)               // each number used once
+                ways[s] += ways[s - x];
+        return ways[p];
+    }
+}` }],
       dry: { head: ['after x', 'ways[0..4]'], rows: [['1', '1 1 0 0 0'], ['1', '1 2 1 0 0'], ['1', '1 3 3 1 0'], ['1', '1 4 6 4 1'], ['1', '1 5 10 10 ' + H.c('g', '5')]] },
       complexity: `<p>Time O(n × P), space O(P).</p>`
     }
@@ -4276,6 +5120,13 @@ public:
     if (n == 0) return 0;
     int best = INT_MAX;
     for (int s = 1; s * s <= n; s++) best = min(best, 1 + numSquares(n - s * s));
+    return best;
+}` },
+          { lang: 'csharp', code: `int F(int n)
+{
+    if (n == 0) return 0;
+    int best = int.MaxValue;
+    for (int s = 1; s * s <= n; s++) best = Math.Min(best, 1 + F(n - s * s));
     return best;
 }` }
         ] } },
@@ -4325,7 +5176,21 @@ public:
             for (int s = 1; s * s <= a; s++) dp[a] = min(dp[a], dp[a - s * s] + 1);
         return dp[n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int NumSquares(int n)
+    {
+        int[] dp = new int[n + 1];
+        for (int a = 1; a <= n; a++) dp[a] = int.MaxValue;
+        dp[0] = 0;
+        for (int a = 1; a <= n; a++)
+            for (int s = 1; s * s <= a; s++)
+                dp[a] = Math.Min(dp[a], dp[a - s * s] + 1);   // dp[a - s*s] is always finite (1 is a square)
+        return dp[n];
+    }
+}` }],
       dry: { head: ['a', 'options', 'dp[a]'], rows: [['4', 'dp[3]+1 = 4, dp[0]+1 = 1', '1'], ['8', 'dp[7]+1 = 5, dp[4]+1 = 2', '2'], ['12', 'dp[11]+1 = 4, dp[8]+1 = 3, dp[3]+1 = 4', H.c('g', '3')]] },
       complexity: `<p>Time O(n√n), space O(n).</p>`
     }
@@ -4361,6 +5226,13 @@ public:
     if (i == j) return 1;
     if (s[i] == s[j]) return 2 + longestPalindromeSubseq(s, i + 1, j - 1);
     return max(longestPalindromeSubseq(s, i + 1, j), longestPalindromeSubseq(s, i, j - 1));
+}` },
+          { lang: 'csharp', code: `int Lps(string s, int i, int j)
+{
+    if (i > j) return 0;
+    if (i == j) return 1;
+    if (s[i] == s[j]) return 2 + Lps(s, i + 1, j - 1);
+    return Math.Max(Lps(s, i + 1, j), Lps(s, i, j - 1));
 }` }
         ] } },
     mcq: { q: 'Which reduction gives the LPS length?', options: ['LCS(s, reverse(s))', 'Edit distance(s, reverse(s))', 'Longest common substring of s and reverse(s)', 'n − number of distinct letters'], answer: 0, explain: 'A palindromic subsequence is common to s and its reverse; the LCS of the two has the max length.' },
@@ -4420,7 +5292,28 @@ public:
         }
         return prev[n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int LongestPalindromeSubseq(string s)
+    {
+        char[] rev = s.ToCharArray(); Array.Reverse(rev);
+        string t = new string(rev);                       // LPS(s) = LCS(s, reverse(s))
+        int n = s.Length;
+        int[] prev = new int[n + 1], cur = new int[n + 1];
+        for (int i = 1; i <= n; i++)
+        {
+            for (int j = 1; j <= n; j++)
+            {
+                if (s[i - 1] == t[j - 1]) cur[j] = prev[j - 1] + 1;
+                else cur[j] = Math.Max(prev[j], cur[j - 1]);
+            }
+            int[] tmp = prev; prev = cur; cur = tmp;
+        }
+        return prev[n];
+    }
+}` }],
       dry: { head: ['s', 'reverse', 'LCS'], rows: [['bbbab', 'babbb', H.c('g', 'bbbb → 4')], ['cbbd', 'dbbc', 'bb → 2']] },
       complexity: `<p>Time O(n²) = 10<sup>6</sup>, space O(n).</p>`,
       followUps: ['Minimum insertions to make s a palindrome = n − LPS (see Hard practice).']
@@ -4447,6 +5340,11 @@ public:
           { lang: 'cpp', code: `int minimumTotal(vector<vector<int>>& t, int i, int j) {
     if (i == (int)t.size()) return 0;
     return t[i][j] + min(minimumTotal(t, i + 1, j), minimumTotal(t, i + 1, j + 1));
+}` },
+          { lang: 'csharp', code: `int Best(IList<IList<int>> t, int i, int j)
+{
+    if (i == t.Count) return 0;
+    return t[i][j] + Math.Min(Best(t, i + 1, j), Best(t, i + 1, j + 1));
 }` }
         ] } },
     mcq: { q: 'Why is bottom-up nicer than top-down here?', options: ['No edge cases: every cell has exactly two children below, and the answer ends in one cell', 'It uses less time asymptotically', 'Top-down is wrong', 'Negative numbers break top-down'], answer: 0, explain: 'Going up, dp[j] = val + min(dp[j], dp[j+1]) works for every cell, and the final answer is dp[0].' },
@@ -4492,7 +5390,21 @@ public:
             for (int j = 0; j <= i; j++) dp[j] = triangle[i][j] + min(dp[j], dp[j + 1]);
         return dp[0];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int MinimumTotal(IList<IList<int>> triangle)
+    {
+        int n = triangle.Count;
+        int[] dp = new int[n + 1];                     // zeros below the last row
+        for (int i = n - 1; i >= 0; i--)
+            for (int j = 0; j <= i; j++)
+                dp[j] = triangle[i][j] + Math.Min(dp[j], dp[j + 1]);
+        return dp[0];
+    }
+}` }],
       dry: { head: ['row', 'dp after processing'], rows: [['4 1 8 3', '4 1 8 3'], ['6 5 7', '7 6 10'], ['3 4', '9 10'], ['2', H.c('g', '11')]] },
       complexity: `<p>Time O(rows²), space O(rows).</p>`
     }
@@ -4534,6 +5446,14 @@ public:
     if (i == (int)s.size()) return 0;                  // ran out of s
     int res = numDistinct(s, t, i + 1, j);             // do not use s[i]
     if (s[i] == t[j]) res += numDistinct(s, t, i + 1, j + 1);   // use s[i] for t[j]
+    return res;
+}` },
+          { lang: 'csharp', code: `int Count(string s, string t, int i, int j)
+{
+    if (j == t.Length) return 1;                    // matched all of t
+    if (i == s.Length) return 0;                    // ran out of s
+    int res = Count(s, t, i + 1, j);                // do not use s[i]
+    if (s[i] == t[j]) res += Count(s, t, i + 1, j + 1);   // use s[i] for t[j]
     return res;
 }` }
         ] } },
@@ -4594,7 +5514,26 @@ public:
         }
         return (int) dp[m];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int NumDistinct(string s, string t)
+    {
+        int m = t.Length;
+        long[] dp = new long[m + 1];
+        dp[0] = 1;                                   // empty t: one way (pick nothing)
+        for (int i = 1; i <= s.Length; i++)
+        {
+            char c = s[i - 1];
+            for (int j = Math.Min(i, m); j >= 1; j--)     // backwards: dp[j-1] is still row i-1
+            {
+                if (c == t[j - 1]) dp[j] += dp[j - 1];
+            }
+        }
+        return (int)dp[m];
+    }
+}` }],
       dry: { head: ['s char', 'dp over t = "" r a b b i t'], rows: [['r', '1 1 0 0 0 0 0'], ['a', '1 1 1 0 0 0 0'], ['b', '1 1 1 1 0 0 0'], ['b', '1 1 1 2 1 0 0'], ['b', '1 1 1 3 3 0 0'], ['i', '1 1 1 3 3 3 0'], ['t', '1 1 1 3 3 3 ' + H.c('g', '3')]] },
       complexity: `<p>Time O(|s|·|t|) = 10<sup>6</sup>; space O(|t|).</p>`
     }
@@ -4628,6 +5567,13 @@ public:
     for (int j = 0; j < (int)big.size() && i < (int)small.size(); j++)
         if (small[i] == big[j]) i++;
     return i == (int)small.size();     // brute force would call this on 26^L candidates
+}` },
+          { lang: 'csharp', code: `bool IsSubseq(string small, string big)
+{
+    int i = 0;
+    for (int j = 0; j < big.Length && i < small.Length; j++)
+        if (small[i] == big[j]) i++;
+    return i == small.Length;       // brute force would call this on 26^L candidates
 }` }
         ] } },
     mcq: { q: 'Length of the shortest common supersequence?', options: ['n + m − LCS', 'n + m', 'max(n, m)', 'LCS'], answer: 0, explain: 'Shared LCS characters are written once; every other character of both strings must appear.' },
@@ -4714,7 +5660,34 @@ public:
         reverse(out.begin(), out.end());
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Text;
+
+public class Solution
+{
+    public string ShortestCommonSupersequence(string a, string b)
+    {
+        int n = a.Length, m = b.Length;
+        int[,] dp = new int[n + 1, m + 1];
+        for (int i = 1; i <= n; i++)
+            for (int j = 1; j <= m; j++)
+                dp[i, j] = a[i - 1] == b[j - 1] ? dp[i - 1, j - 1] + 1
+                                                : Math.Max(dp[i - 1, j], dp[i, j - 1]);
+        var sb = new StringBuilder();
+        int p = n, q = m;
+        while (p > 0 && q > 0)
+        {
+            if (a[p - 1] == b[q - 1]) { sb.Append(a[p - 1]); p--; q--; }        // shared
+            else if (dp[p - 1, q] >= dp[p, q - 1]) { sb.Append(a[p - 1]); p--; } // only in a
+            else { sb.Append(b[q - 1]); q--; }                                   // only in b
+        }
+        while (p > 0) sb.Append(a[--p]);
+        while (q > 0) sb.Append(b[--q]);
+        char[] arr = sb.ToString().ToCharArray();
+        Array.Reverse(arr);                                 // built back to front
+        return new string(arr);
+    }
+}` }],
       dry: { head: ['(i, j)', 'compare', 'action', 'emitted so far (backwards)'], rows: [['(4,3)', 'c vs b', 'up ≥ left → emit c', 'c'], ['(3,3)', 'a vs b', 'up ≥ left → emit a', 'ca'], ['(2,3)', 'b vs b', 'match → emit b', 'cab'], ['(1,2)', 'a vs a', 'match → emit a', 'caba'], ['(0,1)', '—', 'emit rest of str2: c', 'cabac'], ['done', '', 'reverse', H.c('g', '"cabac"')]] },
       complexity: `<p>Time O(n·m), space O(n·m) for reconstruction.</p>`,
       followUps: ['Prove the result has length n + m − LCS.', 'Return the lexicographically smallest SCS (needs more careful tie-breaking).']
@@ -4759,6 +5732,15 @@ public:
     if (r + 1 < m) best = min(best, calculateMinimumHP(d, r + 1, c));
     if (c + 1 < n) best = min(best, calculateMinimumHP(d, r, c + 1));
     return max(1, best - d[r][c]);         // exponential without memo
+}` },
+          { lang: 'csharp', code: `int Need(int[][] d, int r, int c)
+{
+    int m = d.Length, n = d[0].Length;
+    if (r == m - 1 && c == n - 1) return Math.Max(1, 1 - d[r][c]);
+    int best = int.MaxValue;
+    if (r + 1 < m) best = Math.Min(best, Need(d, r + 1, c));
+    if (c + 1 < n) best = Math.Min(best, Need(d, r, c + 1));
+    return Math.Max(1, best - d[r][c]);          // exponential without memo
 }` }
         ] } },
     mcq: { q: 'Why fill this grid from the bottom-right?', options: ['Because "minimum health needed from here on" is a single number that depends only on the future', 'Because it is faster', 'Because the start cell is negative', 'It does not matter'], answer: 0, explain: 'Forward you must track both current health and the worst dip; backward one number (health needed on entering) captures everything.' },
@@ -4822,7 +5804,27 @@ public:
             }
         return need[0];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int CalculateMinimumHP(int[][] dungeon)
+    {
+        int m = dungeon.Length, n = dungeon[0].Length;
+        int[] need = new int[n + 1];
+        for (int c = 0; c <= n; c++) need[c] = int.MaxValue;
+        need[n - 1] = 1;                                    // "after" the princess you need 1
+        for (int r = m - 1; r >= 0; r--)
+        {
+            for (int c = n - 1; c >= 0; c--)
+            {
+                int next = Math.Min(need[c], need[c + 1]);  // below (old need[c]) or right
+                need[c] = Math.Max(1, next - dungeon[r][c]);
+            }
+        }
+        return need[0];
+    }
+}` }],
       dry: { head: ['cell', 'min(next)', 'value', 'need'], rows: [['(2,2)', '1', '−5', '6'], ['(1,2)', '6', '1', '5'], ['(0,2)', '5', '3', '2'], ['(0,1)', 'min(11, 2) = 2', '−3', '5'], ['(0,0)', 'min(6, 5) = 5', '−2', H.c('g', '7')]] },
       complexity: `<p>Time O(m·n), space O(n).</p>`
     }
@@ -4853,6 +5855,12 @@ public:
     if (i >= j) return 0;
     if (s[i] == s[j]) return minInsertions(s, i + 1, j - 1);
     return 1 + min(minInsertions(s, i + 1, j), minInsertions(s, i, j - 1));
+}` },
+          { lang: 'csharp', code: `int F(string s, int i, int j)
+{
+    if (i >= j) return 0;
+    if (s[i] == s[j]) return F(s, i + 1, j - 1);
+    return 1 + Math.Min(F(s, i + 1, j), F(s, i, j - 1));
 }` }
         ] } },
     mcq: { q: 'Minimum insertions equals…', options: ['n − LPS(s) = n − LCS(s, reverse(s))', 'number of distinct letters', 'edit distance(s, reverse(s))', 'n / 2'], answer: 0, explain: 'Keep the longest palindromic subsequence; every other character needs a mirrored partner inserted.' },
@@ -4910,7 +5918,28 @@ public:
         }
         return n - prev[n];                    // n - LPS
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MinInsertions(string s)
+    {
+        int n = s.Length;
+        char[] rev = s.ToCharArray(); Array.Reverse(rev);
+        string r = new string(rev);
+        int[] prev = new int[n + 1], cur = new int[n + 1];
+        for (int i = 1; i <= n; i++)
+        {
+            for (int j = 1; j <= n; j++)
+            {
+                cur[j] = s[i - 1] == r[j - 1] ? prev[j - 1] + 1
+                                              : Math.Max(prev[j], cur[j - 1]);
+            }
+            int[] t = prev; prev = cur; cur = t;
+        }
+        return n - prev[n];                          // n - LPS
+    }
+}` }],
       dry: { head: ['s', 'LPS', 'answer'], rows: [['zzazz', '5', '0'], ['mbadm', '3', H.c('g', '2')], ['leetcode', '3 ("eee"/"ete")', '5']] },
       complexity: `<p>Time O(n²) = 2.5·10<sup>5</sup>, space O(n).</p>`
     }

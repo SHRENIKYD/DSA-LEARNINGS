@@ -136,6 +136,21 @@ vector<int> pairWithSum(const vector<int>& a, int target) {
         else R--;                          // need a smaller sum
     }
     return {-1, -1};                       // no pair exists
+}` }, { lang: 'csharp', code: String.raw`
+// Generic opposite-direction template (here: pair with sum == target in a sorted array)
+int[] PairWithSum(int[] a, int target) {
+    int L = 0, R = a.Length - 1;           // one finger at each end
+    while (L < R) {                        // stop when the fingers meet
+        long sum = (long)a[L] + a[R];      // long: two big ints can overflow
+        if (sum == target) {
+            return new[] { L, R };         // found the pair
+        } else if (sum < target) {
+            L++;                           // need a bigger sum -> move the small side up
+        } else {
+            R--;                           // need a smaller sum -> move the big side down
+        }
+    }
+    return new[] { -1, -1 };               // no pair exists
 }` }
       ] },
     codeTitle: 'Opposite-direction two-pointer template',
@@ -266,6 +281,15 @@ vector<int> pairWithSum(const vector<int>& a, int target) {
         R--;                              // shrink from both sides
     }
     return true;                          // met in the middle with no mismatch
+}` }, { lang: 'csharp', code: String.raw`
+bool IsPalindrome(string s) {
+    int L = 0, R = s.Length - 1;
+    while (L < R) {
+        if (s[L] != s[R]) return false;   // ends differ -> not a palindrome
+        L++;                              // both ends matched,
+        R--;                              // shrink from both sides
+    }
+    return true;                          // met in the middle with no mismatch
 }` }
           ] }
       },
@@ -354,6 +378,16 @@ vector<int> twoSumSorted(const vector<int>& a, int target) {
         }
     }
     return {-1, -1};
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] TwoSumSorted(int[] a, int target) {
+        for (int i = 0; i < a.Length; i++) {
+            for (int j = i + 1; j < a.Length; j++) {
+                if ((long)a[i] + a[j] == target) return new[] { i, j };
+            }
+        }
+        return new[] { -1, -1 };
+    }
 }` }] }
         },
         mcq: {
@@ -438,7 +472,24 @@ public:
         }
         return {-1, -1};
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] TwoSumSorted(int[] a, int target) {
+        int L = 0;                    // smallest number still in play
+        int R = a.Length - 1;         // biggest number still in play
+        while (L < R) {               // need two DIFFERENT positions
+            long sum = (long)a[L] + a[R];   // long avoids int overflow
+            if (sum == target) {
+                return new[] { L, R };      // found it
+            } else if (sum < target) {
+                L++;                  // too small: a[L] can't reach target with anyone
+            } else {
+                R--;                  // too big: a[R] overshoots even with the smallest
+            }
+        }
+        return new[] { -1, -1 };      // pointers met, no pair exists
+    }
+}` }
           ],
           dry: {
             head: ['step', 'L', 'R', 'a[L] + a[R]', 'vs target 9', 'action'],
@@ -688,6 +739,39 @@ vector<vector<int>> kSum(const vector<int>& nums, long long target, int start, i
         }
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+// Generic k-Sum: fix numbers one by one, finish with a 2-Sum pointer walk.
+// nums must be sorted. Returns all unique k-tuples (by value) summing to target.
+List<List<int>> KSum(int[] nums, long target, int start, int k) {
+    var res = new List<List<int>>();
+    int n = nums.Length;
+    if (start >= n || (long)nums[start] * k > target || (long)nums[n - 1] * k < target) {
+        return res;                                  // pruning: even smallest/largest choices miss
+    }
+    if (k == 2) {                                    // base case: opposite pointers
+        int L = start, R = n - 1;
+        while (L < R) {
+            long sum = (long)nums[L] + nums[R];
+            if (sum < target || (L > start && nums[L] == nums[L - 1])) {
+                L++;                                 // too small, or a duplicate left value
+            } else if (sum > target || (R < n - 1 && nums[R] == nums[R + 1])) {
+                R--;                                 // too big, or a duplicate right value
+            } else {
+                res.Add(new List<int> { nums[L], nums[R] });
+                L++;
+                R--;
+            }
+        }
+        return res;
+    }
+    for (int i = start; i < n; i++) {
+        if (i > start && nums[i] == nums[i - 1]) continue;   // same fixed value -> same tuples
+        foreach (var rest in KSum(nums, target - nums[i], i + 1, k - 1)) {
+            rest.Insert(0, nums[i]);                 // prepend the fixed number
+            res.Add(rest);
+        }
+    }
+    return res;
 }` }
       ] }, {
         lang: 'python', run: true, title: 'Runnable: 3-Sum in Python',
@@ -796,6 +880,22 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+int TriangleNumber(int[] a) {
+    Array.Sort(a);
+    int count = 0;
+    for (int k = a.Length - 1; k >= 2; k--) {        // a[k] = longest side
+        int L = 0, R = k - 1;
+        while (L < R) {
+            if (a[L] + a[R] > a[k]) {
+                count += R - L;      // a[L..R-1] each pair with a[R]
+                R--;
+            } else {
+                L++;                 // a[L] too short even with the biggest partner
+            }
+        }
+    }
+    return count;
 }` }
           ] }
       }
@@ -873,6 +973,26 @@ vector<vector<int>> threeSum(vector<int> nums) {
                     seen.insert(t);
                 }
     return vector<vector<int>>(seen.begin(), seen.end());
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<int>> ThreeSum(int[] nums) {
+        var seen = new HashSet<(int, int, int)>();          // same trio in any order looks the same
+        int n = nums.Length;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++)
+                    if (nums[i] + nums[j] + nums[k] == 0) {
+                        int[] t = { nums[i], nums[j], nums[k] };
+                        Array.Sort(t);
+                        seen.Add((t[0], t[1], t[2]));
+                    }
+        var res = new List<IList<int>>();
+        foreach (var t in seen) res.Add(new List<int> { t.Item1, t.Item2, t.Item3 });
+        return res;
+    }
 }` }] }
         },
         mcq: {
@@ -1002,7 +1122,37 @@ public:
         }
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<int>> ThreeSum(int[] nums) {
+        var res = new List<IList<int>>();
+        Array.Sort(nums);                           // sorted -> pointers work, dups are neighbours
+        int n = nums.Length;
+        for (int i = 0; i < n - 2; i++) {
+            if (nums[i] > 0) break;                 // three positives can't make 0
+            if (i > 0 && nums[i] == nums[i - 1]) continue;   // same fixed value -> same triplets
+            int L = i + 1, R = n - 1;               // 2-Sum on the part right of i
+            while (L < R) {
+                int sum = nums[i] + nums[L] + nums[R];   // max 3*10^5, fits in int
+                if (sum == 0) {
+                    res.Add(new List<int> { nums[i], nums[L], nums[R] });
+                    while (L < R && nums[L] == nums[L + 1]) L++;   // skip copies of a[L]
+                    while (L < R && nums[R] == nums[R - 1]) R--;   // skip copies of a[R]
+                    L++;                            // both must move: with a[i] fixed, a new L
+                    R--;                            // value needs a new R value to make 0 again
+                } else if (sum < 0) {
+                    L++;                            // need a bigger total
+                } else {
+                    R--;                            // need a smaller total
+                }
+            }
+        }
+        return res;
+    }
+}` }
           ],
           dry: {
             head: ['i (a[i])', 'L', 'R', 'a[i] + a[L] + a[R]', 'action'],
@@ -1164,6 +1314,20 @@ long long maxArea(const vector<int>& h) {
         while (L < R && h[R] <= level) R--;
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+// Container With Most Water - with the "skip shorter-or-equal walls" speed-up.
+long MaxArea(int[] h) {
+    int L = 0, R = h.Length - 1;
+    long best = 0;
+    while (L < R) {
+        int level = Math.Min(h[L], h[R]);            // water stops at the shorter wall
+        best = Math.Max(best, (long)level * (R - L));
+        // Every wall not taller than 'level' cannot beat this container with a narrower width,
+        // so jump over all of them at once (same answer, fewer area computations).
+        while (L < R && h[L] <= level) L++;
+        while (L < R && h[R] <= level) R--;
+    }
+    return best;
 }` }
       ] }, {
         lang: 'python', run: true, title: 'Runnable: compare with brute force on random inputs',
@@ -1274,6 +1438,17 @@ int maxArea(const vector<int>& height) {
         for (int j = i + 1; j < (int) height.size(); j++)
             best = max(best, min(height[i], height[j]) * (j - i));
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxArea(int[] height) {
+        int best = 0;
+        for (int i = 0; i < height.Length; i++)
+            for (int j = i + 1; j < height.Length; j++)
+                best = Math.Max(best, Math.Min(height[i], height[j]) * (j - i));
+        return best;
+    }
 }` }] }
         },
         mcq: {
@@ -1352,7 +1527,26 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxArea(int[] height) {
+        int L = 0, R = height.Length - 1;   // widest container first
+        int best = 0;
+        while (L < R) {
+            int h = Math.Min(height[L], height[R]);   // water level = shorter wall
+            int area = h * (R - L);                   // at most 10^4 * 10^5 = 10^9, fits int
+            best = Math.Max(best, area);
+            if (height[L] < height[R]) {
+                L++;      // left wall caps the water; it can't do better with a narrower partner
+            } else {
+                R--;      // right wall is shorter (or equal); discard it
+            }
+        }
+        return best;
+    }
+}` }
           ],
           dry: {
             head: ['L', 'R', 'h[L], h[R]', 'min × width', 'area', 'best', 'move'],
@@ -1455,6 +1649,17 @@ int compact(vector<int>& a) {
         }
     }
     return slow;                          // a[0..slow-1] is the answer
+}` }, { lang: 'csharp', code: String.raw`
+// Read/write template: keep only elements that pass the rule, in place.
+int Compact(int[] a) {
+    int slow = 0;                          // next free slot for a "kept" element
+    for (int fast = 0; fast < a.Length; fast++) {
+        if (a[fast] % 2 == 0) {            // keep rule (example: keep even numbers)
+            a[slow] = a[fast];             // write it into the keep zone
+            slow++;                        // keep zone grows by one
+        }
+    }
+    return slow;                           // a[0..slow-1] is the answer
 }` }
       ] }, { lang: 'java', code: `
       // Move zeroes: keep non-zeros in order, zeros drift to the end via swaps.
@@ -1492,6 +1697,18 @@ void moveZeroes(vector<int>& a) {
     int slow = 0;                         // where the next non-zero belongs
     for (int fast = 0; fast < (int)a.size(); fast++)
         if (a[fast] != 0) swap(a[slow++], a[fast]);
+}` }, { lang: 'csharp', code: String.raw`
+// Move zeroes: keep non-zeros in order, zeros drift to the end via swaps.
+void MoveZeroes(int[] a) {
+    int slow = 0;                          // where the next non-zero belongs
+    for (int fast = 0; fast < a.Length; fast++) {
+        if (a[fast] != 0) {
+            int tmp = a[slow];             // swap a[slow] and a[fast]
+            a[slow] = a[fast];
+            a[fast] = tmp;
+            slow++;
+        }
+    }
 }` }
         ] }],
     codeTitle: ['Generic read/write (slow/fast) template', 'Move zeroes with swaps'],
@@ -1647,6 +1864,15 @@ void moveZeroes(vector<int>& a) {
     for (int fast = 0; fast < (int)a.size(); fast++)
         if (slow < 2 || a[fast] != a[slow - 2]) a[slow++] = a[fast];   // not a third copy
     return slow;                              // [1,1,1,2,2,3] -> 5
+}` }, { lang: 'csharp', code: String.raw`
+int RemoveDuplicatesAtMostTwo(int[] a) {
+    int slow = 0;                                   // next free slot
+    for (int fast = 0; fast < a.Length; fast++) {
+        if (slow < 2 || a[fast] != a[slow - 2]) {   // not a third copy
+            a[slow++] = a[fast];
+        }
+    }
+    return slow;                                    // [1,1,1,2,2,3] -> 5
 }` }
           ] }
       },
@@ -1686,6 +1912,14 @@ void moveZeroes(vector<int>& a) {
         if (!dupSpace) s[slow++] = s[fast];   // keep it
     }
     return slow;                  // new logical length (s.resize(slow) to cut the tail)
+}` }, { lang: 'csharp', code: String.raw`
+int SqueezeSpaces(char[] s) {              // strings are immutable in C#: work on a char[]
+    int slow = 0;
+    for (int fast = 0; fast < s.Length; fast++) {
+        bool dupSpace = s[fast] == ' ' && slow > 0 && s[slow - 1] == ' ';
+        if (!dupSpace) s[slow++] = s[fast];   // keep it
+    }
+    return slow;                              // new logical length (new string(s, 0, slow) cuts the tail)
 }` }
           ] }
       },
@@ -1754,6 +1988,18 @@ int removeDuplicates(vector<int>& nums) {
     }
     for (int i = 0; i < (int) uniq.size(); i++) nums[i] = uniq[i];
     return uniq.size();
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int RemoveDuplicates(int[] nums) {
+        var uniq = new List<int>();
+        foreach (int x in nums) {
+            if (uniq.Count == 0 || uniq[uniq.Count - 1] != x) uniq.Add(x);   // extra O(N) memory
+        }
+        for (int i = 0; i < uniq.Count; i++) nums[i] = uniq[i];
+        return uniq.Count;
+    }
 }` }] }
         },
         mcq: {
@@ -1827,7 +2073,21 @@ public:
             if (nums[fast] != nums[slow]) nums[++slow] = nums[fast];
         return slow + 1;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int RemoveDuplicates(int[] nums) {
+        if (nums.Length == 0) return 0;      // nothing to keep
+        int slow = 0;                        // index of the last kept (unique) value
+        for (int fast = 1; fast < nums.Length; fast++) {
+            if (nums[fast] != nums[slow]) {  // a new value appears
+                slow++;                      // open the next slot in the keep zone
+                nums[slow] = nums[fast];     // write the new value there
+            }
+            // else: duplicate of nums[slow] -> just skip it
+        }
+        return slow + 1;                     // count of unique values
+    }
+}` }
           ],
           dry: {
             head: ['fast', 'a[fast]', 'a[slow] (last kept)', 'action', 'slow', 'array'],
@@ -1885,6 +2145,18 @@ void moveZeroes(vector<int>& nums) {
         for (int i = 0; i + 1 < n; i++) {
             if (nums[i] == 0 && nums[i + 1] != 0) { // push the zero one step right
                 swap(nums[i], nums[i + 1]);
+            }
+        }
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void MoveZeroes(int[] nums) {
+        int n = nums.Length;
+        for (int pass = 0; pass < n; pass++) {          // repeat like bubble sort
+            for (int i = 0; i + 1 < n; i++) {
+                if (nums[i] == 0 && nums[i + 1] != 0) {  // push the zero one step right
+                    int t = nums[i]; nums[i] = nums[i + 1]; nums[i + 1] = t;
+                }
             }
         }
     }
@@ -1956,7 +2228,20 @@ public:
         for (int fast = 0; fast < (int)nums.size(); fast++)
             if (nums[fast] != 0) swap(nums[slow++], nums[fast]);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void MoveZeroes(int[] nums) {
+        int slow = 0;                          // all of nums[0..slow-1] are non-zero, in order
+        for (int fast = 0; fast < nums.Length; fast++) {
+            if (nums[fast] != 0) {             // found a value to keep
+                int tmp = nums[slow];          // nums[slow] is 0 (or fast itself)
+                nums[slow] = nums[fast];
+                nums[fast] = tmp;              // zero goes back to where fast is
+                slow++;
+            }
+        }
+    }
+}` }
           ],
           dry: {
             head: ['fast', 'a[fast]', 'action', 'array after', 'slow after'],
@@ -2131,6 +2416,17 @@ long long countPairsDiffAtMostK(const vector<int>& a, int K) {
         count += j - i;                           // pairs (i..j-1, j) all have gap <= K
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+// Count INDEX pairs (i < j) in a sorted array with a[j] - a[i] <= K.
+// For each j, slide i forward until the gap fits; then every i' in [i, j-1] pairs with j.
+long CountPairsDiffAtMostK(int[] a, int K) {      // a must be sorted
+    long count = 0;
+    int i = 0;
+    for (int j = 0; j < a.Length; j++) {
+        while ((long)a[j] - a[i] > K) i++;        // gap too big -> back walker steps up
+        count += j - i;                           // pairs (i..j-1, j) all have gap <= K
+    }
+    return count;
 }` }
       ] }, { lang: 'java', code: `
       // Same question as the guided problem (distinct value pairs with difference k), with a hash map.
@@ -2176,6 +2472,21 @@ int findPairsHash(const vector<int>& nums, int k) {
     for (auto& [x, c] : freq) {
         if (k == 0) { if (c >= 2) count++; }    // needs two copies of the same value
         else if (freq.count(x + k)) count++;    // x and x + k both present
+    }
+    return count;
+}` }, { lang: 'csharp', code: String.raw`
+// Same question as the guided problem (distinct value pairs with difference k), with a hash map.
+// O(N) time, O(N) memory, no sorting needed.
+int FindPairsHash(int[] nums, int k) {
+    var freq = new Dictionary<int, int>();
+    foreach (int x in nums) freq[x] = freq.TryGetValue(x, out int c) ? c + 1 : 1;
+    int count = 0;
+    foreach (var e in freq) {
+        if (k == 0) {
+            if (e.Value >= 2) count++;                   // needs two copies of the same value
+        } else if (freq.ContainsKey(e.Key + k)) {
+            count++;                                     // x and x + k both present
+        }
     }
     return count;
 }` }
@@ -2246,6 +2557,16 @@ int findPairsHash(const vector<int>& nums, int k) {
     while (i < A.size()) out.push_back(A[i++]);   // leftovers of A
     while (j < B.size()) out.push_back(B[j++]);   // leftovers of B
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+int[] Merge(int[] A, int[] B) {
+    int[] result = new int[A.Length + B.Length];
+    int i = 0, j = 0, w = 0;
+    while (i < A.Length && j < B.Length) {
+        result[w++] = (A[i] <= B[j]) ? A[i++] : B[j++];   // <= keeps it stable
+    }
+    while (i < A.Length) result[w++] = A[i++];            // leftovers of A
+    while (j < B.Length) result[w++] = B[j++];            // leftovers of B
+    return result;
 }` }
           ] }
       },
@@ -2310,6 +2631,18 @@ int findPairs(vector<int> nums, int k) {
             if (i != j && (long long) nums[j] - nums[i] == k)
                 seen.insert({nums[i], nums[j]});
     return seen.size();
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int FindPairs(int[] nums, int k) {
+        var seen = new HashSet<(int, int)>();            // remember each pair (x, y)
+        for (int i = 0; i < nums.Length; i++)
+            for (int j = 0; j < nums.Length; j++)
+                if (i != j && (long)nums[j] - nums[i] == k)
+                    seen.Add((nums[i], nums[j]));
+        return seen.Count;
+    }
 }` }] }
         },
         mcq: {
@@ -2426,7 +2759,34 @@ public:
         }
         return count;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int FindPairs(int[] nums, int k) {
+        Array.Sort(nums);                      // smallest to largest
+        int n = nums.Length;
+        int i = 0, j = 1, count = 0;           // i = back walker, j = front walker
+        while (j < n) {
+            if (i == j) {                      // a pair needs two different positions
+                j++;
+                continue;
+            }
+            long diff = (long)nums[j] - nums[i];
+            if (diff < k) {
+                j++;                           // gap too small -> grow it
+            } else if (diff > k) {
+                i++;                           // gap too big -> shrink it
+            } else {
+                count++;                       // found pair (nums[i], nums[j])
+                int v = nums[i];
+                while (i < n && nums[i] == v) i++;   // skip copies of v: count pair once
+                if (j <= i) j = i + 1;         // keep j strictly ahead of i
+            }
+        }
+        return count;
+    }
+}` }
           ],
           dry: {
             head: ['i', 'j', 'a[i], a[j]', 'diff', 'vs k = 2', 'action', 'count'],
@@ -2521,6 +2881,18 @@ long long maxSumOfSizeK(const vector<int>& a, int k) {
         window += a[i];                   // element entering on the right
         window -= a[i - k];               // element leaving on the left
         best = max(best, window);
+    }
+    return best;
+}` }, { lang: 'csharp', code: String.raw`
+// Fixed-size window template: best sum among all windows of size k.
+long MaxSumOfSizeK(int[] a, int k) {
+    long window = 0;
+    for (int i = 0; i < k; i++) window += a[i];   // first window a[0..k-1]
+    long best = window;
+    for (int i = k; i < a.Length; i++) {
+        window += a[i];          // element entering on the right
+        window -= a[i - k];      // element leaving on the left
+        best = Math.Max(best, window);
     }
     return best;
 }` }
@@ -2641,6 +3013,17 @@ def first_negative(a, k):
         if (i >= k - 1) out.push_back(neg.empty() ? 0 : a[neg.front()]);
     }
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+int[] FirstNegative(int[] a, int k) {
+    int n = a.Length;
+    int[] result = new int[n - k + 1];
+    var neg = new LinkedList<int>();                     // indices of negatives in the window (deque)
+    for (int i = 0; i < n; i++) {
+        if (a[i] < 0) neg.AddLast(i);                    // entering element
+        if (neg.Count > 0 && neg.First.Value <= i - k) neg.RemoveFirst();   // left the window
+        if (i >= k - 1) result[i - k + 1] = neg.Count == 0 ? 0 : a[neg.First.Value];
+    }
+    return result;
 }` }
           ] }
       },
@@ -2724,6 +3107,19 @@ long long maxSumSubarrayOfSizeK(const vector<int>& a, int k) {
         best = max(best, sum);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSumSubarrayOfSizeK(int[] a, int k) {
+        long best = long.MinValue;
+        for (int s = 0; s + k <= a.Length; s++) {
+            long sum = 0;
+            for (int j = s; j < s + k; j++) sum += a[j];   // re-adds the overlap every time
+            best = Math.Max(best, sum);
+        }
+        return best;
+    }
 }` }] }
         },
         mcq: {
@@ -2798,7 +3194,24 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long MaxSumSubarrayOfSizeK(int[] a, int k) {
+        long window = 0;
+        for (int i = 0; i < k; i++) {
+            window += a[i];                 // first window: a[0..k-1]
+        }
+        long best = window;                 // NOT 0: all numbers could be negative
+        for (int i = k; i < a.Length; i++) {
+            window += a[i];                 // a[i] enters on the right
+            window -= a[i - k];             // a[i-k] leaves on the left
+            best = Math.Max(best, window);  // window now covers a[i-k+1 .. i]
+        }
+        return best;
+    }
+}` }
           ],
           dry: {
             head: ['i', 'enters a[i]', 'leaves a[i-K]', 'window covers', 'window sum', 'best'],
@@ -2908,6 +3321,20 @@ int shortestGood(const vector<int>& a, long long target) {
         }
     }
     return best == INT_MAX ? 0 : best;
+}` }, { lang: 'csharp', code: String.raw`
+// Flavour 1: SHORTEST window that is good (here: sum >= target, positive numbers)
+int ShortestGood(int[] a, int target) {
+    int L = 0, best = int.MaxValue;
+    long sum = 0;
+    for (int R = 0; R < a.Length; R++) {
+        sum += a[R];                         // grow: take a[R] in
+        while (sum >= target) {              // window is good -> try to make it shorter
+            best = Math.Min(best, R - L + 1);
+            sum -= a[L];                     // shrink: let a[L] go
+            L++;
+        }
+    }
+    return best == int.MaxValue ? 0 : best;
 }` }
       ] }, { lang: 'java', code: `
       // Flavour 2: LONGEST window that is good (here: sum <= limit, non-negative numbers)
@@ -2953,6 +3380,20 @@ int longestGood(const vector<int>& a, long long limit) {
         sum += a[R];                      // grow
         while (sum > limit) sum -= a[L++];   // window is bad -> shrink until good again
         best = max(best, R - L + 1);      // window a[L..R] is good here
+    }
+    return best;
+}` }, { lang: 'csharp', code: String.raw`
+// Flavour 2: LONGEST window that is good (here: sum <= limit, non-negative numbers)
+int LongestGood(int[] a, int limit) {
+    int L = 0, best = 0;
+    long sum = 0;
+    for (int R = 0; R < a.Length; R++) {
+        sum += a[R];                         // grow
+        while (sum > limit) {                // window is bad -> shrink until good again
+            sum -= a[L];
+            L++;
+        }
+        best = Math.Max(best, R - L + 1);    // window a[L..R] is good here
     }
     return best;
 }` }
@@ -3148,6 +3589,16 @@ int longestGood(const vector<int>& a, long long limit) {
         count += R - L + 1;               // all good windows ending at R
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+long CountSumAtMost(int[] a, long S) {       // positive numbers
+    long count = 0, sum = 0;
+    int L = 0;
+    for (int R = 0; R < a.Length; R++) {
+        sum += a[R];
+        while (sum > S) sum -= a[L++];       // shrink while bad
+        count += R - L + 1;                  // all good windows ending at R
+    }
+    return count;
 }` }
           ] }
       },
@@ -3241,6 +3692,24 @@ int minSubArrayLen(int k, const vector<int>& a) {
         }
     }
     return best == INT_MAX ? 0 : best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MinSubArrayLen(int k, int[] a) {
+        int best = int.MaxValue;
+        for (int i = 0; i < a.Length; i++) {
+            long sum = 0;
+            for (int j = i; j < a.Length; j++) {
+                sum += a[j];
+                if (sum >= k) {                       // first time it's enough for this start
+                    best = Math.Min(best, j - i + 1);
+                    break;                            // longer windows from i are worse
+                }
+            }
+        }
+        return best == int.MaxValue ? 0 : best;
+    }
 }` }] }
         },
         mcq: {
@@ -3322,7 +3791,25 @@ public:
         }
         return best == INT_MAX ? 0 : best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MinSubArrayLen(int k, int[] a) {
+        int L = 0;                               // left end of the window
+        long sum = 0;                            // sum of a[L..R]
+        int best = int.MaxValue;                 // "infinity" = not found yet
+        for (int R = 0; R < a.Length; R++) {
+            sum += a[R];                         // GROW: take a[R] in
+            while (sum >= k) {                   // window is good
+                best = Math.Min(best, R - L + 1);   // record before shrinking
+                sum -= a[L];                     // SHRINK: let a[L] go
+                L++;
+            }
+        }
+        return best == int.MaxValue ? 0 : best;   // 0 = no window was ever good
+    }
+}` }
           ],
           dry: {
             head: ['R', 'a[R]', 'sum after grow', 'shrink steps (while sum ≥ 7)', 'L after', 'best'],
@@ -3572,6 +4059,20 @@ bool isPalindrome(const string& s) {
     for (char c : s)
         if (isalnum((unsigned char) c)) clean += (char) tolower((unsigned char) c);
     return clean == string(clean.rbegin(), clean.rend());   // extra O(N) memory
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+public class Solution {
+    public bool IsPalindrome(string s) {
+        var sb = new StringBuilder();
+        foreach (char c in s)
+            if (char.IsLetterOrDigit(c)) sb.Append(char.ToLower(c));
+        string clean = sb.ToString();
+        char[] rev = clean.ToCharArray();
+        Array.Reverse(rev);
+        return clean == new string(rev);   // extra O(N) memory
+    }
 }` }] }
     },
     mcq: {
@@ -3651,7 +4152,22 @@ public:
         }
         return true;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPalindrome(string s) {
+        int L = 0, R = s.Length - 1;
+        while (L < R) {
+            while (L < R && !char.IsLetterOrDigit(s[L])) L++;   // skip junk on the left
+            while (L < R && !char.IsLetterOrDigit(s[R])) R--;   // skip junk on the right
+            if (char.ToLower(s[L]) != char.ToLower(s[R])) {
+                return false;                  // mirror characters differ
+            }
+            L++;
+            R--;
+        }
+        return true;
+    }
+}` }
       ],
       dry: {
         head: ['L', 'R', 's[L] vs s[R]', 'action'],
@@ -3693,6 +4209,16 @@ vector<int> sortedSquares(const vector<int>& nums) {
     for (int i = 0; i < (int) nums.size(); i++) out[i] = nums[i] * nums[i];
     sort(out.begin(), out.end());   // O(N log N)
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[] SortedSquares(int[] nums) {
+        int[] result = new int[nums.Length];
+        for (int i = 0; i < nums.Length; i++) result[i] = nums[i] * nums[i];
+        Array.Sort(result);                   // O(N log N)
+        return result;
+    }
 }` }] }
     },
     mcq: {
@@ -3769,7 +4295,26 @@ public:
         }
         return out;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[] SortedSquares(int[] nums) {
+        int n = nums.Length;
+        int[] result = new int[n];
+        int L = 0, R = n - 1;
+        for (int w = n - 1; w >= 0; w--) {          // fill biggest squares first
+            if (Math.Abs(nums[L]) > Math.Abs(nums[R])) {
+                result[w] = nums[L] * nums[L];
+                L++;
+            } else {
+                result[w] = nums[R] * nums[R];
+                R--;
+            }
+        }
+        return result;
+    }
+}` }
       ],
       dry: {
         head: ['w', 'L (val)', 'R (val)', 'bigger |x|', 'out[w]'],
@@ -3825,6 +4370,19 @@ double findMaxAverage(const vector<int>& nums, int k) {
         best = max(best, (double) sum / k);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public double FindMaxAverage(int[] nums, int k) {
+        double best = -double.MaxValue;
+        for (int s = 0; s + k <= nums.Length; s++) {
+            long sum = 0;
+            for (int j = s; j < s + k; j++) sum += nums[j];
+            best = Math.Max(best, (double)sum / k);
+        }
+        return best;
+    }
 }` }] }
     },
     mcq: {
@@ -3890,7 +4448,21 @@ public:
         }
         return (double)best / k;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public double FindMaxAverage(int[] nums, int k) {
+        long sum = 0;
+        for (int i = 0; i < k; i++) sum += nums[i];   // first window
+        long best = sum;
+        for (int i = k; i < nums.Length; i++) {
+            sum += nums[i] - nums[i - k];             // slide by one
+            best = Math.Max(best, sum);
+        }
+        return (double)best / k;                      // divide once
+    }
+}` }
       ],
       dry: {
         head: ['i', 'enters', 'leaves', 'sum', 'best'],
@@ -3927,6 +4499,14 @@ function merge(nums1, m, nums2, n) {
 void merge(vector<int>& nums1, int m, const vector<int>& nums2, int n) {
     for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
     sort(nums1.begin(), nums1.end());
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public void Merge(int[] nums1, int m, int[] nums2, int n) {
+        for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
+        Array.Sort(nums1);
+    }
 }` }] }
     },
     mcq: {
@@ -3992,7 +4572,19 @@ public:
             else nums1[w--] = nums2[j--];
         }
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Merge(int[] nums1, int m, int[] nums2, int n) {
+        int i = m - 1, j = n - 1, w = m + n - 1;
+        while (j >= 0) {                                  // until nums2 is fully placed
+            if (i >= 0 && nums1[i] > nums2[j]) {
+                nums1[w--] = nums1[i--];                  // nums1's value is larger
+            } else {
+                nums1[w--] = nums2[j--];                  // nums2's value is larger (or nums1 empty)
+            }
+        }
+    }
+}` }
       ],
       dry: {
         head: ['i (val)', 'j (val)', 'w', 'write', 'nums1'],
@@ -4055,6 +4647,20 @@ int threeSumClosest(vector<int> nums, int target) {
                 if (abs(s - target) < abs(best - target)) best = s;
             }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int ThreeSumClosest(int[] nums, int target) {
+        int best = nums[0] + nums[1] + nums[2];
+        for (int i = 0; i < nums.Length; i++)
+            for (int j = i + 1; j < nums.Length; j++)
+                for (int k = j + 1; k < nums.Length; k++) {
+                    int s = nums[i] + nums[j] + nums[k];
+                    if (Math.Abs(s - target) < Math.Abs(best - target)) best = s;
+                }
+        return best;
+    }
 }` }] }
     },
     mcq: {
@@ -4153,7 +4759,28 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int ThreeSumClosest(int[] nums, int target) {
+        Array.Sort(nums);
+        int n = nums.Length;
+        int best = nums[0] + nums[1] + nums[2];           // a real triple to start
+        for (int i = 0; i < n - 2; i++) {
+            if (i > 0 && nums[i] == nums[i - 1]) continue; // optional speed-up
+            int L = i + 1, R = n - 1;
+            while (L < R) {
+                int sum = nums[i] + nums[L] + nums[R];
+                if (Math.Abs(sum - target) < Math.Abs(best - target)) best = sum;
+                if (sum == target) return sum;            // cannot get closer than 0
+                if (sum < target) L++;
+                else R--;
+            }
+        }
+        return best;
+    }
+}` }
       ],
       dry: {
         head: ['i (val)', 'L', 'R', 'sum', '|sum-1|', 'best'],
@@ -4204,6 +4831,15 @@ void sortColors(vector<int>& nums) {
     int w = 0;
     for (int c = 0; c < 3; c++)             // pass 2: rewrite
         for (int t = 0; t < cnt[c]; t++) nums[w++] = c;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SortColors(int[] nums) {
+        int[] cnt = new int[3];
+        foreach (int x in nums) cnt[x]++;            // pass 1: count
+        int w = 0;
+        for (int c = 0; c < 3; c++)                  // pass 2: rewrite
+            for (int t = 0; t < cnt[c]; t++) nums[w++] = c;
+    }
 }` }] }
     },
     mcq: {
@@ -4280,7 +4916,25 @@ public:
             else swap(nums[mid], nums[high--]);
         }
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SortColors(int[] nums) {
+        int low = 0, mid = 0, high = nums.Length - 1;
+        while (mid <= high) {                     // [mid..high] still unknown
+            if (nums[mid] == 0) {
+                Swap(nums, low++, mid++);         // 0 joins the front zone
+            } else if (nums[mid] == 1) {
+                mid++;                            // 1 is already in the middle zone
+            } else {
+                Swap(nums, mid, high--);          // 2 goes to the back; re-check new nums[mid]
+            }
+        }
+    }
+
+    private void Swap(int[] a, int i, int j) {
+        int t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+}` }
       ],
       dry: {
         head: ['low', 'mid', 'high', 'nums[mid]', 'action', 'array'],
@@ -4347,6 +5001,22 @@ int removeDuplicates(vector<int>& nums) {
         }
     }
     return min(n, (int) nums.size());
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int RemoveDuplicates(int[] nums) {
+        int n = nums.Length, i = 2;
+        while (i < n) {
+            if (nums[i] == nums[i - 1] && nums[i] == nums[i - 2]) {
+                for (int j = i; j + 1 < n; j++) nums[j] = nums[j + 1];   // shift tail left
+                n--;
+            } else {
+                i++;
+            }
+        }
+        return Math.Min(n, nums.Length);
+    }
 }` }] }
     },
     mcq: {
@@ -4407,7 +5077,18 @@ public:
             if (slow < 2 || x != nums[slow - 2]) nums[slow++] = x;
         return slow;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int RemoveDuplicates(int[] nums) {
+        int slow = 0;                                     // next free slot
+        for (int fast = 0; fast < nums.Length; fast++) {
+            if (slow < 2 || nums[fast] != nums[slow - 2]) {
+                nums[slow++] = nums[fast];                // keep it (at most 2nd copy)
+            }
+        }
+        return slow;
+    }
+}` }
       ],
       dry: {
         head: ['fast', 'val', 'nums[slow-2]', 'keep?', 'slow after'],
@@ -4475,6 +5156,22 @@ int longestOnes(const vector<int>& nums, int k) {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int LongestOnes(int[] nums, int k) {
+        int best = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            int zeros = 0;
+            for (int j = i; j < nums.Length; j++) {
+                if (nums[j] == 0) zeros++;
+                if (zeros > k) break;
+                best = Math.Max(best, j - i + 1);
+            }
+        }
+        return best;
+    }
 }` }] }
     },
     mcq: {
@@ -4548,7 +5245,23 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int LongestOnes(int[] nums, int k) {
+        int L = 0, zeros = 0, best = 0;
+        for (int R = 0; R < nums.Length; R++) {
+            if (nums[R] == 0) zeros++;                 // grow
+            while (zeros > k) {                        // bad -> shrink
+                if (nums[L] == 0) zeros--;
+                L++;
+            }
+            best = Math.Max(best, R - L + 1);          // good again: record
+        }
+        return best;
+    }
+}` }
       ],
       dry: {
         head: ['R', 'val', 'zeros', 'shrink', 'L', 'len', 'best'],
@@ -4618,6 +5331,20 @@ int numSubarrayProductLessThanK(const vector<int>& nums, int k) {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int NumSubarrayProductLessThanK(int[] nums, int k) {
+        int count = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            long prod = 1;
+            for (int j = i; j < nums.Length; j++) {
+                prod *= nums[j];
+                if (prod >= k) break;      // positives: product only grows
+                count++;
+            }
+        }
+        return count;
+    }
 }` }] }
     },
     mcq: {
@@ -4692,7 +5419,20 @@ public:
         }
         return count;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int NumSubarrayProductLessThanK(int[] nums, int k) {
+        if (k <= 1) return 0;                   // nothing positive is < 1
+        long prod = 1;
+        int L = 0, count = 0;
+        for (int R = 0; R < nums.Length; R++) {
+            prod *= nums[R];                    // grow
+            while (prod >= k) prod /= nums[L++];   // shrink while bad (exact division)
+            count += R - L + 1;                 // all valid subarrays ending at R
+        }
+        return count;
+    }
+}` }
       ],
       dry: {
         head: ['R', 'val', 'prod after grow', 'shrink', 'L', 'added', 'count'],
@@ -4757,6 +5497,21 @@ int maxScore(const vector<int>& cardPoints, int k) {
         best = max(best, sum);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxScore(int[] cardPoints, int k) {
+        int[] c = cardPoints;
+        int n = c.Length, best = 0;
+        for (int left = 0; left <= k; left++) {          // take 'left' from front, k-left from back
+            int sum = 0;
+            for (int i = 0; i < left; i++) sum += c[i];
+            for (int i = 0; i < k - left; i++) sum += c[n - 1 - i];
+            best = Math.Max(best, sum);
+        }
+        return best;
+    }
 }` }] }
     },
     mcq: {
@@ -4837,7 +5592,25 @@ public:
         }
         return total - minWin;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxScore(int[] cardPoints, int k) {
+        int n = cardPoints.Length, w = n - k;     // size of the untouched middle window
+        int total = 0;
+        foreach (int x in cardPoints) total += x;
+        if (w == 0) return total;                 // take everything
+        int win = 0;
+        for (int i = 0; i < w; i++) win += cardPoints[i];
+        int minWin = win;
+        for (int i = w; i < n; i++) {
+            win += cardPoints[i] - cardPoints[i - w];   // slide
+            minWin = Math.Min(minWin, win);
+        }
+        return total - minWin;
+    }
+}` }
       ],
       dry: {
         head: ['window', 'sum', 'min', 'total - min'],
@@ -4936,6 +5709,30 @@ int numRescueBoats(vector<int> people, int limit) {
         boats++;
     }
     return boats;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int NumRescueBoats(int[] people, int limit) {
+        int n = people.Length, boats = 0;
+        bool[] used = new bool[n];
+        int[] idx = new int[n];
+        for (int i = 0; i < n; i++) idx[i] = i;
+        Array.Sort(idx, (a, b) => people[b].CompareTo(people[a]));      // heaviest first
+        for (int a = 0; a < n; a++) {
+            int i = idx[a];
+            if (used[i]) continue;
+            used[i] = true;
+            int bestJ = -1;
+            for (int b = a + 1; b < n; b++) {                   // heaviest partner that fits
+                int j = idx[b];
+                if (!used[j] && people[i] + people[j] <= limit) { bestJ = j; break; }
+            }
+            if (bestJ >= 0) used[bestJ] = true;
+            boats++;
+        }
+        return boats;
+    }
 }` }] }
     },
     mcq: {
@@ -5007,7 +5804,21 @@ public:
         }
         return boats;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int NumRescueBoats(int[] people, int limit) {
+        Array.Sort(people);
+        int L = 0, R = people.Length - 1, boats = 0;
+        while (L <= R) {
+            if (people[L] + people[R] <= limit) L++;   // lightest joins the heaviest
+            R--;                                       // heaviest always leaves on this boat
+            boats++;
+        }
+        return boats;
+    }
+}` }
       ],
       dry: {
         head: ['L (w)', 'R (w)', 'sum ≤ 3?', 'boat', 'boats'],
@@ -5075,6 +5886,20 @@ int numberOfSubarrays(const vector<int>& nums, int k) {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int NumberOfSubarrays(int[] nums, int k) {
+        int count = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            int odd = 0;
+            for (int j = i; j < nums.Length; j++) {
+                odd += nums[j] & 1;
+                if (odd == k) count++;
+                else if (odd > k) break;
+            }
+        }
+        return count;
+    }
 }` }] }
     },
     mcq: {
@@ -5161,7 +5986,24 @@ public:
     int numberOfSubarrays(const vector<int>& nums, int k) {
         return (int)(atMost(nums, k) - atMost(nums, k - 1));
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int NumberOfSubarrays(int[] nums, int k) {
+        return (int)(AtMost(nums, k) - AtMost(nums, k - 1));
+    }
+
+    private long AtMost(int[] nums, int k) {
+        if (k < 0) return 0;
+        long count = 0;
+        int L = 0, odd = 0;
+        for (int R = 0; R < nums.Length; R++) {
+            odd += nums[R] & 1;                       // 1 if odd
+            while (odd > k) odd -= nums[L++] & 1;     // shrink while bad
+            count += R - L + 1;                       // windows ending at R with <= k odds
+        }
+        return count;
+    }
+}` }
       ],
       dry: {
         head: ['R', 'odd (k=3)', 'L', '+ (at most 3)', 'odd (k=2)', 'L', '+ (at most 2)'],
@@ -5230,7 +6072,22 @@ public:
         }
         return water;
     }
-};` }] }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int Trap(int[] height) {
+        int[] h = height;
+        int n = h.Length, water = 0;
+        for (int i = 0; i < n; i++) {
+            int lmax = 0, rmax = 0;
+            for (int j = 0; j <= i; j++) lmax = Math.Max(lmax, h[j]);
+            for (int j = i; j < n; j++) rmax = Math.Max(rmax, h[j]);
+            water += Math.Min(lmax, rmax) - h[i];
+        }
+        return water;
+    }
+}` }] }
     },
     mcq: {
       q: `h[L] &lt; h[R]. Why can we settle the water at L using only leftMax?`,
@@ -5320,7 +6177,28 @@ public:
         }
         return (int)water;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int Trap(int[] height) {
+        int L = 0, R = height.Length - 1;
+        int leftMax = 0, rightMax = 0;
+        long water = 0;
+        while (L < R) {
+            if (height[L] < height[R]) {
+                leftMax = Math.Max(leftMax, height[L]);   // right side has a taller wall
+                water += leftMax - height[L];             // so leftMax caps the level here
+                L++;
+            } else {
+                rightMax = Math.Max(rightMax, height[R]); // left side has a wall >= this one
+                water += rightMax - height[R];
+                R--;
+            }
+        }
+        return (int)water;
+    }
+}` }
       ],
       dry: {
         head: ['L (h)', 'R (h)', 'lower side', 'max', 'water added', 'total'],
@@ -5405,6 +6283,24 @@ string minWindow(const string& s, const string& t) {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string MinWindow(string s, string t) {
+        string best = "";
+        for (int i = 0; i < s.Length; i++) {
+            int[] cnt = new int[128];
+            foreach (char c in t) cnt[c]++;
+            int missing = t.Length;
+            for (int j = i; j < s.Length; j++) {
+                if (cnt[s[j]]-- > 0) missing--;
+                if (missing == 0) {
+                    if (best.Length == 0 || j - i + 1 < best.Length) best = s.Substring(i, j - i + 1);
+                    break;                       // longer windows from i are worse
+                }
+            }
+        }
+        return best;
+    }
 }` }] }
     },
     mcq: {
@@ -5502,7 +6398,26 @@ public:
         }
         return bestLen == INT_MAX ? "" : s.substr(bestL, bestLen);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string MinWindow(string s, string t) {
+        int[] need = new int[128];
+        foreach (char c in t) need[c]++;
+        int missing = t.Length, L = 0, bestL = 0, bestLen = int.MaxValue;
+        for (int R = 0; R < s.Length; R++) {
+            char c = s[R];
+            if (need[c] > 0) missing--;          // this char was still needed
+            need[c]--;                           // grow
+            while (missing == 0) {               // window covers t -> shrink
+                if (R - L + 1 < bestLen) { bestLen = R - L + 1; bestL = L; }
+                char d = s[L++];
+                need[d]++;                       // give d back
+                if (need[d] > 0) missing++;      // now we lack a needed char
+            }
+        }
+        return bestLen == int.MaxValue ? "" : s.Substring(bestL, bestLen);
+    }
+}` }
       ],
       dry: {
         head: ['R (char)', 'missing', 'shrinking records', 'best'],
@@ -5570,6 +6485,22 @@ int subarraysWithKDistinct(const vector<int>& nums, int k) {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int SubarraysWithKDistinct(int[] nums, int k) {
+        int count = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            var seen = new HashSet<int>();
+            for (int j = i; j < nums.Length; j++) {
+                seen.Add(nums[j]);
+                if (seen.Count == k) count++;
+                else if (seen.Count > k) break;
+            }
+        }
+        return count;
+    }
 }` }] }
     },
     mcq: {
@@ -5670,7 +6601,28 @@ public:
     int subarraysWithKDistinct(const vector<int>& nums, int k) {
         return (int)(atMost(nums, k) - atMost(nums, k - 1));
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SubarraysWithKDistinct(int[] nums, int k) {
+        return (int)(AtMost(nums, k) - AtMost(nums, k - 1));
+    }
+
+    private long AtMost(int[] nums, int k) {
+        if (k <= 0) return 0;
+        int[] cnt = new int[nums.Length + 1];    // values are 1..N
+        long total = 0;
+        int L = 0, distinct = 0;
+        for (int R = 0; R < nums.Length; R++) {
+            if (cnt[nums[R]]++ == 0) distinct++;          // new value enters
+            while (distinct > k) {
+                if (--cnt[nums[L]] == 0) distinct--;       // a value fully leaves
+                L++;
+            }
+            total += R - L + 1;                           // windows ending at R
+        }
+        return total;
+    }
+}` }
       ],
       dry: {
         head: ['R', 'val', 'atMost(2): L, +', 'running', 'atMost(1): L, +', 'running'],
@@ -5730,6 +6682,19 @@ int shortestSubarray(const vector<int>& nums, int k) {
         for (int j = i + 1; j <= n; j++)
             if (P[j] - P[i] >= k) { best = min(best, j - i); break; }
     return best == INT_MAX ? -1 : best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int ShortestSubarray(int[] nums, int k) {
+        int n = nums.Length, best = int.MaxValue;
+        long[] P = new long[n + 1];
+        for (int i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j <= n; j++)
+                if (P[j] - P[i] >= k) { best = Math.Min(best, j - i); break; }
+        return best == int.MaxValue ? -1 : best;
+    }
 }` }] }
     },
     mcq: {
@@ -5820,7 +6785,30 @@ public:
         }
         return best == INT_MAX ? -1 : best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int ShortestSubarray(int[] nums, int k) {
+        int n = nums.Length;
+        long[] P = new long[n + 1];
+        for (int i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+        var dq = new LinkedList<int>();                 // start indices, P increasing (deque)
+        int best = int.MaxValue;
+        for (int j = 0; j <= n; j++) {
+            while (dq.Count > 0 && P[j] - P[dq.First.Value] >= k) {
+                best = Math.Min(best, j - dq.First.Value);   // front start is used up
+                dq.RemoveFirst();
+            }
+            while (dq.Count > 0 && P[j] <= P[dq.Last.Value]) {
+                dq.RemoveLast();                        // dominated: later and not larger
+            }
+            dq.AddLast(j);
+        }
+        return best == int.MaxValue ? -1 : best;
+    }
+}` }
       ],
       dry: {
         head: ['j', 'P[j]', 'front checks', 'back pops', 'deque after', 'best'],

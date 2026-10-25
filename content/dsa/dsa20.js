@@ -349,7 +349,96 @@ int main() {
     for (int v : path(5)) cout << v << " ";
     cout << "\\n";                             // 0 2 4 5  = A -> C -> E -> F
     return 0;
-}` }] }, {
+}` }, { lang: 'csharp', code: `// Dijkstra with lazy deletion + path reconstruction. Graph: 0..n-1, edges {u, v, w}, undirected.
+using System;
+using System.Collections.Generic;
+
+class Dijkstra {
+    static long[] dist;
+    static int[] parent;
+
+    static void Run(int n, int[][] edges, int src) {
+        // 1) adjacency list: for each node, a list of (neighbour, weight)
+        var g = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var e in edges) {
+            g[e[0]].Add((e[1], e[2]));
+            g[e[1]].Add((e[0], e[2]));            // remove this line for a directed graph
+        }
+        // 2) dist = infinity everywhere except the source; long avoids overflow on big sums
+        dist = new long[n];
+        parent = new int[n];
+        for (int i = 0; i < n; i++) { dist[i] = long.MaxValue; parent[i] = -1; }
+        dist[src] = 0;
+        // 3) min-heap ordered by distance: entries are (distance, node)
+        var pq = new MinHeap<(long d, int u)>((a, b) => a.d.CompareTo(b.d));
+        pq.Push((0, src));
+        while (pq.Count > 0) {
+            var top = pq.Pop();
+            long d = top.d;
+            int u = top.u;
+            if (d > dist[u]) continue;            // stale entry -> lazy deletion
+            foreach (var e in g[u]) {             // u is final: relax its edges
+                long nd = d + e.w;
+                if (nd < dist[e.v]) {
+                    dist[e.v] = nd;
+                    parent[e.v] = u;
+                    pq.Push((nd, e.v));           // push a NEW entry instead of decrease-key
+                }
+            }
+        }
+    }
+
+    static List<int> Path(int target) {           // walk parents back from target
+        var p = new List<int>();
+        if (dist[target] == long.MaxValue) return p;   // unreachable
+        for (int v = target; v != -1; v = parent[v]) p.Add(v);
+        p.Reverse();
+        return p;
+    }
+
+    static void Main() {
+        // A=0 B=1 C=2 D=3 E=4 F=5 (same graph as the visualizer)
+        int[][] edges = { new[] {0,1,4}, new[] {0,2,1}, new[] {2,1,2}, new[] {1,3,1}, new[] {2,4,5}, new[] {3,4,3}, new[] {3,5,6}, new[] {4,5,2} };
+        Run(6, edges, 0);
+        Console.WriteLine("[" + string.Join(", ", dist) + "]");   // [0, 3, 1, 4, 6, 8]
+        Console.WriteLine("[" + string.Join(", ", Path(5)) + "]"); // [0, 2, 4, 5]  = A -> C -> E -> F
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}`, run: true }] }, {
       lang: 'python', run: true, title: 'Same algorithm in Python with heapq (runnable)', code: `import heapq
 
 def dijkstra(n, edges, src):
@@ -516,6 +605,23 @@ function distTo(g, src, target) {
             if (d + w < dist[v]) { dist[v] = d + w; pq.push({dist[v], v}); }
     }
     return -1;                                    // unreachable
+}` }, { lang: 'csharp', code: `static long DistTo(List<(int v, int w)>[] g, int src, int target) {
+    long[] dist = new long[g.Length];
+    for (int i = 0; i < dist.Length; i++) dist[i] = long.MaxValue;
+    dist[src] = 0;
+    var pq = new SortedSet<(long d, int u)>();  // ordered set as a min-heap: Min = smallest (distance, node)
+    pq.Add((0, src));
+    while (pq.Count > 0) {
+        var t = pq.Min;
+        pq.Remove(t);
+        long d = t.d;
+        int u = t.u;
+        if (d > dist[u]) continue;              // stale
+        if (u == target) return d;              // first POP of target is the answer
+        foreach (var e in g[u])
+            if (d + e.w < dist[e.v]) { dist[e.v] = d + e.w; pq.Add((dist[e.v], e.v)); }
+    }
+    return -1;                                  // unreachable
 }` }] } },
       { title: 'Counting the work', html: `<p>V = 10<sup>5</sup>, E = 2·10<sup>5</sup>: heap holds at most E + 1 entries, log₂(2·10<sup>5</sup>) ≈ 18, so ≈ (V + E) · 18 ≈ 5.4·10<sup>6</sup> heap steps. Comfortably fast. Bellman-Ford would need V·E = 2·10<sup>10</sup> steps — far too slow.</p>` }
     ],
@@ -616,7 +722,28 @@ public:
         for (int i = 1; i <= n; i++) { if (best[i] == INT_MAX) return -1; ans = max(ans, best[i]); }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    int[] best;
+    List<int[]>[] g;
+    public int NetworkDelayTime(int[][] times, int n, int k) {
+        g = new List<int[]>[n + 1];
+        for (int i = 0; i <= n; i++) g[i] = new List<int[]>();
+        foreach (var t in times) g[t[0]].Add(new[] { t[1], t[2] });
+        best = new int[n + 1];
+        for (int i = 0; i <= n; i++) best[i] = int.MaxValue;
+        Dfs(k, 0, new bool[n + 1]);
+        int ans = 0;
+        for (int i = 1; i <= n; i++) { if (best[i] == int.MaxValue) return -1; ans = Math.Max(ans, best[i]); }
+        return ans;
+    }
+    void Dfs(int u, int t, bool[] onPath) {
+        if (t >= best[u]) return;          // small prune; still exponential in the worst case
+        best[u] = t;
+        onPath[u] = true;
+        foreach (var e in g[u]) if (!onPath[e[0]]) Dfs(e[0], t + e[1], onPath);
+        onPath[u] = false;
+    }
+}` }
         ] } },
       mcq: { q: 'All shortest arrival times are known. What is the answer?', options: ['The maximum of them (or -1 if any is ∞)', 'Their sum', 'The minimum of them', 'The arrival time at node n'], answer: 0, explain: 'Every node must receive the signal; the network is "done" when the slowest one does — the max of the shortest distances.' },
       hints: [`<p>"Time for a signal to reach a node" = shortest path from k, with non-negative times. One run of single-source shortest path gives every node's arrival time.</p>`, `<p>Directed adjacency list + Dijkstra with a min-heap of {time, node}. Skip stale entries.</p>`, `<p>Edge cases: an unreachable node (dist stays ∞ → return -1); nodes are 1-indexed, so size arrays n + 1. Recipe: build graph → Dijkstra from k → answer = max dist, or -1.</p>`],
@@ -656,6 +783,18 @@ public:
             for (int s = 1; s <= d; s++) times.push_back({i + 1, (i + s) % n + 1, (i * 31 + s * 17) % 101});
     }
     return Solution().networkDelayTime(times, n, k);
+}`, csharp: `public class Check {
+    public static int DelayRun(int[][] times, int n, int k) {
+        if (times[0][0] == -1) {                  // marker row [-1, d]: ring graph with d out-edges per node
+            int d = times[0][1];
+            var list = new List<int[]>();
+            for (int i = 0; i < n; i++)
+                for (int s = 1; s <= d; s++)
+                    list.Add(new[] { i + 1, (i + s) % n + 1, (i * 31 + s * 17) % 101 });
+            times = list.ToArray();
+        }
+        return new Solution().NetworkDelayTime(times, n, k);
+    }
 }`
       }, cases: [
         [[[[2,1,1],[2,3,1],[3,4,1]],4,2],2],
@@ -805,7 +944,67 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int NetworkDelayTime(int[][] times, int n, int k) {
+        var g = new List<(int v, int w)>[n + 1];
+        for (int i = 0; i <= n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var t in times) g[t[0]].Add((t[1], t[2]));   // directed u -> v
+        int[] dist = new int[n + 1];
+        for (int i = 0; i <= n; i++) dist[i] = int.MaxValue;
+        dist[k] = 0;
+        var pq = new MinHeap<(int d, int u)>((a, b) => a.d.CompareTo(b.d));
+        pq.Push((0, k));
+        while (pq.Count > 0) {
+            var top = pq.Pop();
+            int d = top.d, u = top.u;
+            if (d > dist[u]) continue;                 // stale
+            foreach (var e in g[u]) {
+                int nd = d + e.w;
+                if (nd < dist[e.v]) { dist[e.v] = nd; pq.Push((nd, e.v)); }
+            }
+        }
+        int ans = 0;
+        for (int i = 1; i <= n; i++) {
+            if (dist[i] == int.MaxValue) return -1;  // someone never hears the signal
+            ans = Math.Max(ans, dist[i]);
+        }
+        return ans;
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
         dry: { head: ['poll', 'final dist', 'relax', 'PQ after'], rows: [
           ['(0,2)', '2 → 0', '1: 1, 3: 1', '(1,1) (1,3)'],
           ['(1,1)', '1 → 1', 'no out-edges', '(1,3)'],
@@ -975,7 +1174,42 @@ int main() {
     for (int d : shortest(g, 0)) cout << d << " ";
     cout << "\\n";                             // 0 0 0 1 1 1
     return 0;
-}` }] }, {
+}` }, { lang: 'csharp', code: `// 0-1 BFS on an adjacency list. g[u] = list of (v, w) with w in {0, 1}.
+using System;
+using System.Collections.Generic;
+
+class ZeroOneBfs {
+    static int[] Shortest(List<(int v, int w)>[] g, int src) {
+        int n = g.Length;
+        int[] dist = new int[n];
+        for (int i = 0; i < n; i++) dist[i] = int.MaxValue;
+        dist[src] = 0;
+        var dq = new LinkedList<int>();
+        dq.AddFirst(src);
+        while (dq.Count > 0) {
+            int u = dq.First.Value;               // front always has the smallest distance
+            dq.RemoveFirst();
+            foreach (var e in g[u]) {
+                if (dist[u] + e.w < dist[e.v]) {
+                    dist[e.v] = dist[u] + e.w;
+                    if (e.w == 0) dq.AddFirst(e.v);   // free move: same distance, goes to the FRONT
+                    else dq.AddLast(e.v);             // paid move: distance + 1, goes to the BACK
+                }
+            }
+        }
+        return dist;
+    }
+
+    static void Main() {
+        // A=0 B=1 C=2 D=3 E=4 F=5, undirected (same as the visualizer)
+        int n = 6;
+        int[][] edges = { new[] {0,1,1}, new[] {0,2,0}, new[] {2,1,0}, new[] {1,3,1}, new[] {2,4,1}, new[] {3,5,0}, new[] {4,5,1}, new[] {4,3,0} };
+        var g = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var e in edges) { g[e[0]].Add((e[1], e[2])); g[e[1]].Add((e[0], e[2])); }
+        Console.WriteLine("[" + string.Join(", ", Shortest(g, 0)) + "]");  // [0, 0, 0, 1, 1, 1]
+    }
+}`, run: true }] }, {
       lang: 'python', run: true, title: 'Grid 0-1 BFS: minimum walls to break (runnable)', code: `from collections import deque
 
 def min_walls(grid):
@@ -1179,7 +1413,30 @@ public:
         }
         return dist[m - 1][n - 1];
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinCost(int[][] grid) {
+        int m = grid.Length, n = grid[0].Length;
+        int[][] dirs = { new[] {0, 1}, new[] {0, -1}, new[] {1, 0}, new[] {-1, 0} };   // sign 1..4
+        int[][] dist = new int[m][];
+        for (int r = 0; r < m; r++) { dist[r] = new int[n]; for (int c = 0; c < n; c++) dist[r][c] = int.MaxValue; }
+        dist[0][0] = 0;
+        bool changed = true;
+        while (changed) {                                   // sweep until stable
+            changed = false;
+            for (int r = 0; r < m; r++)
+                for (int c = 0; c < n; c++) {
+                    if (dist[r][c] == int.MaxValue) continue;
+                    for (int k = 0; k < 4; k++) {
+                        int nr = r + dirs[k][0], nc = c + dirs[k][1];
+                        if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+                        int nd = dist[r][c] + (grid[r][c] == k + 1 ? 0 : 1);
+                        if (nd < dist[nr][nc]) { dist[nr][nc] = nd; changed = true; }
+                    }
+                }
+        }
+        return dist[m - 1][n - 1];
+    }
+}` }
         ] } },
       mcq: { q: 'Moving from a cell in the direction its sign points costs…', options: ['0 — push the neighbour to the front of the deque', '1 — push to the back', '0 — push to the back', 'It depends on the neighbour\'s sign'], answer: 0, explain: 'Following the existing sign is free (weight 0 → addFirst). Any other direction means changing this cell\'s sign: weight 1 → addLast.' },
       hints: [`<p>Think of each cell as a node with 4 outgoing edges. The edge in the sign's direction costs 0; the other three cost 1 (you would change the sign).</p>`, `<p>Weights are only 0 and 1 → 0-1 BFS with a deque (<code>ArrayDeque</code> / <code>collections.deque</code> / <code>std::deque</code>; in JS use two arrays, one per cost level): 0-edges go to the front, 1-edges to the back.</p>`, `<p>Directions must match sign numbering: index 0 = right (sign 1), 1 = left (2), 2 = down (3), 3 = up (4). Answer = dist[m−1][n−1]. A 1×1 grid answers 0.</p>`],
@@ -1215,6 +1472,18 @@ public:
             for (int j = 0; j < n; j++) grid[i][j] = (i * a + j * b + i * j * c) % 4 + 1;
     }
     return Solution().minCost(grid);
+}`, csharp: `public class Check {
+    public static int SignRun(int[][] grid) {
+        if (grid[0][0] == -1) {                   // marker row [-1, m, n, a, b, c]
+            int m = grid[0][1], n = grid[0][2], a = grid[0][3], b = grid[0][4], c = grid[0][5];
+            grid = new int[m][];
+            for (int i = 0; i < m; i++) {
+                grid[i] = new int[n];
+                for (int j = 0; j < n; j++) grid[i][j] = (i * a + j * b + i * j * c) % 4 + 1;
+            }
+        }
+        return new Solution().MinCost(grid);
+    }
 }`
       }, cases: [
         [[[[1,2],[4,3]]],1],
@@ -1337,7 +1606,33 @@ public:
         }
         return dist[m - 1][n - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinCost(int[][] grid) {
+        int m = grid.Length, n = grid[0].Length;
+        int[][] dirs = { new[] {0, 1}, new[] {0, -1}, new[] {1, 0}, new[] {-1, 0} };   // right, left, down, up = signs 1..4
+        int[][] dist = new int[m][];
+        for (int r = 0; r < m; r++) { dist[r] = new int[n]; for (int c = 0; c < n; c++) dist[r][c] = int.MaxValue; }
+        var dq = new LinkedList<(int r, int c)>();
+        dist[0][0] = 0;
+        dq.AddFirst((0, 0));
+        while (dq.Count > 0) {
+            var cur = dq.First.Value;
+            dq.RemoveFirst();
+            int r = cur.r, c = cur.c;
+            for (int k = 0; k < 4; k++) {
+                int nr = r + dirs[k][0], nc = c + dirs[k][1];
+                if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+                int w = (grid[r][c] == k + 1) ? 0 : 1;        // follow sign = free
+                if (dist[r][c] + w < dist[nr][nc]) {
+                    dist[nr][nc] = dist[r][c] + w;
+                    if (w == 0) dq.AddFirst((nr, nc));
+                    else dq.AddLast((nr, nc));
+                }
+            }
+        }
+        return dist[m - 1][n - 1];
+    }
+}` }],
         dry: { head: ['pop', 'dist', 'moves tried', 'deque after'], rows: [
           ['(0,0)', '0', 'right (0,1) w0 → 0 front; down (1,0) w1 → 1 back', '[(0,1), (1,0)]'],
           ['(0,1)', '0', 'left (0,0) no gain; down (1,1) w1 → 1 back', '[(1,0), (1,1)]'],
@@ -1597,7 +1892,69 @@ int main() {
     for (int v : findNegativeCycle(4, bad)) cout << v << " ";
     cout << "\\n";                             // a rotation of 0 1 2 0
     return 0;
-}` }] }, {
+}` }, { lang: 'csharp', code: `// Bellman-Ford with early stop, negative-cycle detection and cycle extraction.
+using System;
+using System.Collections.Generic;
+
+class BellmanFord {
+    const long INF = long.MaxValue / 4;
+
+    // returns null if a negative cycle is reachable from src, else the dist array
+    static long[] Shortest(int n, int[][] edges, int src) {
+        long[] dist = new long[n];
+        for (int i = 0; i < n; i++) dist[i] = INF;
+        dist[src] = 0;
+        for (int round = 1; round <= n - 1; round++) {
+            bool changed = false;
+            foreach (var e in edges) {
+                int u = e[0], v = e[1], w = e[2];
+                if (dist[u] != INF && dist[u] + w < dist[v]) {   // skip unreachable u
+                    dist[v] = dist[u] + w;
+                    changed = true;
+                }
+            }
+            if (!changed) break;                                  // early stop: already stable
+        }
+        foreach (var e in edges)                                  // the V-th round = detector
+            if (dist[e[0]] != INF && dist[e[0]] + e[2] < dist[e[1]]) return null;
+        return dist;
+    }
+
+    // returns the nodes of one negative cycle (in order), or an empty list
+    static List<int> FindNegativeCycle(int n, int[][] edges) {
+        long[] dist = new long[n];           // all 0 = a virtual source connected to everyone
+        int[] parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = -1;
+        int last = -1;
+        for (int round = 1; round <= n; round++) {
+            last = -1;
+            foreach (var e in edges) {
+                if (dist[e[0]] + e[2] < dist[e[1]]) {
+                    dist[e[1]] = dist[e[0]] + e[2];
+                    parent[e[1]] = e[0];
+                    last = e[1];
+                }
+            }
+        }
+        if (last == -1) return new List<int>();                  // n-th round changed nothing
+        int x = last;
+        for (int i = 0; i < n; i++) x = parent[x];               // step back n times: now surely ON the cycle
+        var cycle = new List<int>();
+        for (int v = x; ; v = parent[v]) {
+            cycle.Add(v);
+            if (v == x && cycle.Count > 1) break;
+        }
+        cycle.Reverse();
+        return cycle;
+    }
+
+    static void Main() {
+        int[][] edges = { new[] {0,1,4}, new[] {3,4,3}, new[] {1,3,-2}, new[] {2,1,-3}, new[] {0,2,5}, new[] {4,5,2}, new[] {2,4,6} };
+        Console.WriteLine("[" + string.Join(", ", Shortest(6, edges, 0)) + "]");   // [0, 2, 5, 0, 3, 5]
+        int[][] bad = { new[] {0,1,1}, new[] {1,2,-2}, new[] {2,0,0}, new[] {2,3,4} };
+        Console.WriteLine("[" + string.Join(", ", FindNegativeCycle(4, bad)) + "]"); // a rotation of [0, 1, 2, 0]
+    }
+}`, run: true }] }, {
       lang: 'python', run: true, title: 'Currency arbitrage = negative cycle (runnable)', code: `import math
 
 def has_arbitrage(rates):
@@ -1803,7 +2160,35 @@ public:
         dfs(src, 0, onPath, costAt);
         return negCycle ? vector<int>{-1} : best;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    const int INF = 100000000;
+    static int[] best;
+    static bool negCycle;
+    static List<int[]>[] g;
+
+    public static int[] BellmanFord(int V, int[][] edges, int src) {
+        g = new List<int[]>[V];
+        for (int i = 0; i < V; i++) g[i] = new List<int[]>();
+        foreach (var e in edges) g[e[0]].Add(new[] { e[1], e[2] });
+        best = new int[V];
+        for (int i = 0; i < V; i++) best[i] = INF;
+        negCycle = false;
+        Dfs(src, 0, new bool[V], new int[V]);
+        return negCycle ? new[] { -1 } : best;
+    }
+
+    static void Dfs(int u, int cost, bool[] onPath, int[] costAt) {
+        best[u] = Math.Min(best[u], cost);
+        onPath[u] = true;
+        costAt[u] = cost;
+        foreach (var e in g[u]) {
+            int v = e[0], w = e[1];
+            if (onPath[v]) { if (cost + w - costAt[v] < 0) negCycle = true; }  // closed a loop
+            else Dfs(v, cost + w, onPath, costAt);
+        }
+        onPath[u] = false;
+    }
+}` }
         ] } },
       mcq: { q: 'After V − 1 rounds you do one more pass and edge (u, v) still relaxes. What does that prove?', options: ['A negative cycle is reachable from the source', 'The graph has a negative edge', 'Node v is unreachable', 'You needed V + 1 rounds'], answer: 0, explain: 'Without a reachable negative cycle, V − 1 rounds always reach a fixed point. Further improvement means some distance can fall forever.' },
       hints: [`<p>Shortest paths without cycles have at most V − 1 edges, so relaxing every edge V − 1 times is enough.</p>`, `<p>Plain edge list + an integer <code>dist</code> array filled with 10<sup>8</sup>. Guard <code>dist[u] != INF</code> before relaxing. Stop early if a round changes nothing.</p>`, `<p>After the rounds, scan all edges once more: any improvement → return [-1]. Recipe: init → (V−1) × relax all → one detection pass → return dist.</p>`],
@@ -1883,6 +2268,27 @@ public:
     long long sum = 0;
     for (int i = 0; i < V; i++) sum += (long long)r[i] * (i % 7 + 1);
     return {(int)sum};
+}`, csharp: `public class Check {
+    public static int[] BfRun(int V, int[][] edges, int src) {
+        bool big = edges[0][0] == -1;             // marker row [-1, d, mode]
+        if (big) {
+            int d = edges[0][1], mode = edges[0][2];
+            var list = new List<int[]>();
+            for (int u = 0; u < V; u++)
+                for (int s = 1; s <= d; s++) {
+                    int v = (u + s) % V;
+                    int w = 1 + (u * 7 + s * 13) % 50 + (u * 13) % 101 - (v * 13) % 101;
+                    if (mode == 1 && s == 1) w = -1;
+                    list.Add(new[] { u, v, w });
+                }
+            edges = list.ToArray();
+        }
+        int[] r = Solution.BellmanFord(V, edges, src);
+        if (!big || r.Length == 1) return r;
+        long sum = 0;
+        for (int i = 0; i < V; i++) sum += (long)r[i] * (i % 7 + 1);
+        return new[] { (int)sum };
+    }
 }`
       }, cases: [
         [[5,[[1,3,2],[4,3,-1],[2,4,1],[1,2,1],[0,1,5]],0],[0,5,6,6,7]],
@@ -1984,7 +2390,29 @@ public:
             if (dist[e[0]] != INF && dist[e[0]] + e[2] < dist[e[1]]) return {-1};   // negative cycle
         return dist;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    const int INF = 100000000;
+
+    public static int[] BellmanFord(int V, int[][] edges, int src) {
+        int[] dist = new int[V];
+        for (int i = 0; i < V; i++) dist[i] = INF;
+        dist[src] = 0;
+        for (int i = 0; i < V - 1; i++) {
+            bool changed = false;
+            foreach (var e in edges) {
+                int u = e[0], v = e[1], w = e[2];
+                if (dist[u] != INF && dist[u] + w < dist[v]) {
+                    dist[v] = dist[u] + w;
+                    changed = true;
+                }
+            }
+            if (!changed) break;                       // stable -> no more work, no neg cycle
+        }
+        foreach (var e in edges)                       // detection pass
+            if (dist[e[0]] != INF && dist[e[0]] + e[2] < dist[e[1]]) return new[] { -1 };
+        return dist;
+    }
+}` }],
         dry: { head: ['round', 'edges that relax (in list order)', 'dist after round'], rows: [
           ['1', '0→1: 5 (others start from ∞)', '[0, 5, ∞, ∞, ∞]'],
           ['2', '1→3: 7, 1→2: 6', '[0, 5, 6, 7, ∞]'],
@@ -2216,7 +2644,63 @@ int main() {
     for (int v : path(0, 3)) cout << v << " ";   // 0 1 2 3
     cout << "\\nnegative cycle? " << boolalpha << hasNegativeCycle() << "\\n";
     return 0;
-}` }] }, {
+}` }, { lang: 'csharp', code: `// Floyd-Warshall with path reconstruction and negative-cycle check.
+using System;
+using System.Collections.Generic;
+
+class FloydWarshall {
+    const long INF = long.MaxValue / 4;             // big, but INF + INF does not overflow
+    static long[][] d;
+    static int[][] nxt;                             // nxt[i][j] = first step on the best i -> j path
+
+    static void Run(int n, int[][] edges) {
+        d = new long[n][];
+        nxt = new int[n][];
+        for (int i = 0; i < n; i++) {
+            d[i] = new long[n];
+            nxt[i] = new int[n];
+            for (int j = 0; j < n; j++) { d[i][j] = INF; nxt[i][j] = -1; }
+            d[i][i] = 0;
+            nxt[i][i] = i;
+        }
+        foreach (var e in edges) {                  // directed; keep the cheapest parallel edge
+            if (e[2] < d[e[0]][e[1]]) { d[e[0]][e[1]] = e[2]; nxt[e[0]][e[1]] = e[1]; }
+        }
+        for (int k = 0; k < n; k++)                 // k = the newly allowed middle stop (OUTER loop!)
+            for (int i = 0; i < n; i++) {
+                if (d[i][k] == INF) continue;       // small speed-up: i cannot reach k
+                for (int j = 0; j < n; j++) {
+                    if (d[k][j] == INF) continue;
+                    if (d[i][k] + d[k][j] < d[i][j]) {
+                        d[i][j] = d[i][k] + d[k][j];
+                        nxt[i][j] = nxt[i][k];      // first go towards k
+                    }
+                }
+            }
+    }
+
+    static bool HasNegativeCycle() {
+        for (int i = 0; i < d.Length; i++) if (d[i][i] < 0) return true;
+        return false;
+    }
+
+    static List<int> Path(int i, int j) {
+        var p = new List<int>();
+        if (nxt[i][j] == -1) return p;              // unreachable
+        p.Add(i);
+        while (i != j) { i = nxt[i][j]; p.Add(i); }
+        return p;
+    }
+
+    static void Main() {
+        // A=0 B=1 C=2 D=3 (same as the visualizer)
+        int[][] edges = { new[] {0,1,3}, new[] {0,3,7}, new[] {1,0,8}, new[] {1,2,2}, new[] {2,0,5}, new[] {2,3,1}, new[] {3,0,2} };
+        Run(4, edges);
+        foreach (var row in d) Console.WriteLine("[" + string.Join(", ", row) + "]");
+        Console.WriteLine("A->D path: [" + string.Join(", ", Path(0, 3)) + "]");   // [0, 1, 2, 3]
+        Console.WriteLine("negative cycle? " + HasNegativeCycle());
+    }
+}`, run: true }] }, {
       lang: 'python', run: true, title: 'Floyd-Warshall in Python (runnable)', code: `INF = float('inf')
 
 def floyd_warshall(n, edges):
@@ -2322,6 +2806,13 @@ static void transitiveClosure(boolean[][] reach) {
             if (reach[i][k])
                 for (int j = 0; j < n; j++)
                     if (reach[k][j]) reach[i][j] = true;   // i -> k -> j
+}` }, { lang: 'csharp', code: `static void TransitiveClosure(bool[][] reach) {
+    int n = reach.Length;
+    for (int k = 0; k < n; k++)
+        for (int i = 0; i < n; i++)
+            if (reach[i][k])
+                for (int j = 0; j < n; j++)
+                    if (reach[k][j]) reach[i][j] = true;   // i -> k -> j
 }` }] } },
       { title: 'Graph diameter / best meeting city', html: `<p>After Floyd-Warshall, the <b>eccentricity</b> of i is max<sub>j</sub> d[i][j]. The graph centre (best place for a warehouse) is the i with the smallest eccentricity; the diameter is the largest d[i][j] overall.</p>` },
       { title: 'Floyd-Warshall vs V × Dijkstra', html: `<p>V = 300, E = 1000: FW = 2.7·10<sup>7</sup>; V × Dijkstra ≈ 300 × 1300 × 10 ≈ 3.9·10<sup>6</sup>. Dijkstra wins on sparse graphs, but FW is 6 lines, handles negative edges and is cache-friendly. For V ≤ 400, FW is the pragmatic interview pick.</p>` }
@@ -2414,7 +2905,25 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int FindTheCity(int n, int[][] edges, int distanceThreshold) {
+        int INF = 1000000000, best = -1, bestCnt = int.MaxValue;
+        for (int s = 0; s < n; s++) {
+            int[] dist = new int[n];
+            for (int i = 0; i < n; i++) dist[i] = INF;
+            dist[s] = 0;
+            for (int r = 0; r < n - 1; r++)                     // Bellman-Ford from s
+                foreach (var e in edges) {
+                    if (dist[e[0]] != INF && dist[e[0]] + e[2] < dist[e[1]]) dist[e[1]] = dist[e[0]] + e[2];
+                    if (dist[e[1]] != INF && dist[e[1]] + e[2] < dist[e[0]]) dist[e[0]] = dist[e[1]] + e[2];
+                }
+            int cnt = 0;
+            for (int j = 0; j < n; j++) if (j != s && dist[j] <= distanceThreshold) cnt++;
+            if (cnt <= bestCnt) { bestCnt = cnt; best = s; }   // <= keeps the larger index on ties
+        }
+        return best;
+    }
+}` }
         ] } },
       mcq: { q: 'n ≤ 100 and we need distances between ALL pairs. Best first choice?', options: ['Floyd-Warshall, 10<sup>6</sup> steps', 'One Dijkstra from city 0', 'BFS from each city', 'Kruskal\'s MST'], answer: 0, explain: 'All pairs + tiny n → Floyd-Warshall. One Dijkstra gives only one row; BFS ignores weights; an MST does not preserve shortest paths.' },
       hints: [`<p>You need every city's distances to every other city — an all-pairs table.</p>`, `<p>Floyd-Warshall on an n × n matrix; roads are undirected, so set both d[u][v] and d[v][u].</p>`, `<p>Count with <code>j != i &amp;&amp; d[i][j] ≤ T</code>. Loop i from 0 up and use <code>&lt;=</code> when comparing counts so ties go to the larger index. Use a safe INF (10<sup>9</sup>) and skip when d[i][k] is INF.</p>`],
@@ -2456,6 +2965,18 @@ public:
                 if (s == 0 || (i + j) % s != 0) edges.push_back({i, j, 1 + (i * i * 7 + j * 13 + i * j) % 97});
     }
     return Solution().findTheCity(n, edges, thr);
+}`, csharp: `public class Check {
+    public static int CityRun(int n, int[][] edges, int thr) {
+        if (edges[0][0] == -1) {                  // marker row [-1, s]: pairs with (i + j) % s != 0 (all pairs if s = 0)
+            int s = edges[0][1];
+            var list = new List<int[]>();
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                    if (s == 0 || (i + j) % s != 0) list.Add(new[] { i, j, 1 + (i * i * 7 + j * 13 + i * j) % 97 });
+            edges = list.ToArray();
+        }
+        return new Solution().FindTheCity(n, edges, thr);
+    }
 }`
       }, cases: [
         [[4,[[0,1,3],[1,2,1],[1,3,4],[2,3,1]],4],3],
@@ -2569,7 +3090,30 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int FindTheCity(int n, int[][] edges, int distanceThreshold) {
+        int INF = 1000000000;
+        int[][] d = new int[n][];
+        for (int i = 0; i < n; i++) { d[i] = new int[n]; for (int j = 0; j < n; j++) d[i][j] = INF; d[i][i] = 0; }
+        foreach (var e in edges) {                                // undirected roads
+            d[e[0]][e[1]] = Math.Min(d[e[0]][e[1]], e[2]);
+            d[e[1]][e[0]] = Math.Min(d[e[1]][e[0]], e[2]);
+        }
+        for (int k = 0; k < n; k++)
+            for (int i = 0; i < n; i++) {
+                if (d[i][k] == INF) continue;
+                for (int j = 0; j < n; j++)
+                    if (d[i][k] + d[k][j] < d[i][j]) d[i][j] = d[i][k] + d[k][j];
+            }
+        int best = -1, bestCnt = int.MaxValue;
+        for (int i = 0; i < n; i++) {
+            int cnt = 0;
+            for (int j = 0; j < n; j++) if (i != j && d[i][j] <= distanceThreshold) cnt++;
+            if (cnt <= bestCnt) { bestCnt = cnt; best = i; }      // tie -> larger index wins
+        }
+        return best;
+    }
+}` }],
         dry: { head: ['k', 'updates', 'row 0 after', 'row 3 after'], rows: [
           ['start', 'direct roads only', '[0, 3, ∞, ∞]', '[∞, 4, 1, 0]'],
           ['0', 'none (0 only touches 1)', '[0, 3, ∞, ∞]', '[∞, 4, 1, 0]'],
@@ -2794,7 +3338,80 @@ int main() {
     cout << "MST weight = " << mst(6, edges, chosen) << "\\n";   // 13
     for (auto& c : chosen) cout << c[0] << " - " << c[1] << " (" << c[2] << ")\\n";
     return 0;
-}` }] }, {
+}` }, { lang: 'csharp', code: `// Lazy Prim with a min-heap. Undirected graph 0..n-1. Returns total MST weight, or -1 if disconnected.
+using System;
+using System.Collections.Generic;
+
+class Prim {
+    static long Mst(int n, int[][] edges, List<int[]> chosen) {
+        var g = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var e in edges) {
+            g[e[0]].Add((e[1], e[2]));
+            g[e[1]].Add((e[0], e[2]));
+        }
+        bool[] inTree = new bool[n];
+        // heap entries: (weight, node, fromNode); ordered by weight only
+        var pq = new MinHeap<(int w, int u, int from)>((a, b) => a.w.CompareTo(b.w));
+        pq.Push((0, 0, -1));                            // start anywhere: node 0 with a free "edge"
+        long total = 0;
+        int count = 0;
+        while (pq.Count > 0 && count < n) {
+            var top = pq.Pop();
+            int w = top.w, u = top.u;
+            if (inTree[u]) continue;                    // would close a cycle -> skip
+            inTree[u] = true;
+            total += w;
+            count++;
+            if (top.from != -1) chosen.Add(new[] { top.from, u, w });
+            foreach (var e in g[u])
+                if (!inTree[e.v]) pq.Push((e.w, e.v, u));   // key = edge weight only
+        }
+        return count == n ? total : -1;                 // fewer than n nodes -> graph not connected
+    }
+
+    static void Main() {
+        // A=0 B=1 C=2 D=3 E=4 F=5 (same as the visualizer)
+        int[][] edges = { new[] {0,1,4}, new[] {0,2,3}, new[] {1,2,1}, new[] {1,3,2}, new[] {2,4,4}, new[] {3,4,5}, new[] {3,5,3}, new[] {4,5,6} };
+        var chosen = new List<int[]>();
+        Console.WriteLine("MST weight = " + Mst(6, edges, chosen));   // 13
+        foreach (var c in chosen) Console.WriteLine(c[0] + " - " + c[1] + " (" + c[2] + ")");
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}`, run: true }] }, {
       lang: 'python', run: true, title: 'Prim in Python with heapq (runnable)', code: `import heapq
 
 def prim(n, edges):
@@ -2871,7 +3488,8 @@ for p, u, w in chosen:
       { title: 'Disconnected input', html: `<p>Edges A–B (1), C–D (2). Prim from A adds B and then the heap is empty with 2 of 4 nodes. Return -1 ("impossible"), or run Prim from every unvisited node to build a <b>minimum spanning forest</b>.</p>` },
       { title: 'Maximum spanning tree', html: `<p>Want the most reliable network where weight = bandwidth? Use a <b>max</b>-heap (or negate weights). Everything else stays the same — the cut property works for maximum too.</p>`, code: { lang: 'java', code: `PriorityQueue<int[]> pq = new PriorityQueue<>((a, b) -> Integer.compare(b[0], a[0])); // max-heap`,
       alt: [{ lang: 'python', code: `pq = []                                   # heapq is a min-heap: push (-weight, node) for a max-heap` }, { lang: 'js', code: `// uses the MinHeap class from the Dijkstra template (JS has no built-in heap)
-const pq = new MinHeap((a, b) => b[0] - a[0]);   // flip the comparator for a max-heap` }, { lang: 'cpp', code: `priority_queue<array<int, 3>> pq;   // already a max-heap by default` }] } }
+const pq = new MinHeap((a, b) => b[0] - a[0]);   // flip the comparator for a max-heap` }, { lang: 'cpp', code: `priority_queue<array<int, 3>> pq;   // already a max-heap by default` }, { lang: 'csharp', code: `// max-heap: reverse the comparison (with the MinHeap class above, or any heap that takes a comparer)
+Comparison<int[]> byWeightDesc = (a, b) => b[0].CompareTo(a[0]);` }] } }
     ],
     deepDive: `<p><b>Proof of the cut property (exchange argument).</b> Let e be the cheapest edge across cut (S, V∖S) and T an MST without e. Adding e to T creates a cycle; that cycle crosses the cut at least twice, so it contains another crossing edge f with w(f) ≥ w(e). T − f + e is still a spanning tree and weighs no more. So some MST contains e. Prim applies this with S = current tree at every step.</p>
       <p><b>Cycle property</b> (the mirror rule): the most expensive edge on any cycle (if strictly heaviest) is in <b>no</b> MST. Used to update an MST when a new edge arrives: add it, find the max edge on the created cycle, remove it.</p>
@@ -2970,7 +3588,27 @@ public:
         }
         return total;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinCostConnectPoints(int[][] points) {
+        int n = points.Length, total = 0;
+        bool[] inTree = new bool[n];
+        inTree[0] = true;
+        for (int added = 1; added < n; added++) {
+            int bestW = int.MaxValue, bestV = -1;
+            for (int u = 0; u < n; u++) {                 // every tree node...
+                if (!inTree[u]) continue;
+                for (int v = 0; v < n; v++) {             // ...times every outside node
+                    if (inTree[v]) continue;
+                    int w = Math.Abs(points[u][0] - points[v][0]) + Math.Abs(points[u][1] - points[v][1]);
+                    if (w < bestW) { bestW = w; bestV = v; }
+                }
+            }
+            inTree[bestV] = true;
+            total += bestW;
+        }
+        return total;
+    }
+}` }
         ] } },
       mcq: { q: 'The graph is complete (n² edges). Which Prim version fits best?', options: ['Array Prim: best[v] + linear scan, O(n²)', 'Heap Prim over all n² edges, O(n² log n)', 'Dijkstra from point 0', 'Floyd-Warshall'], answer: 0, explain: 'In a dense graph E ≈ V², so the O(V²) array version is optimal and needs no edge list. Dijkstra/FW answer different questions.' },
       hints: [`<p>"Connect all points with minimum total cost, one path between any two" = minimum spanning tree on the complete graph.</p>`, `<p>Keep <code>best[v]</code> = cheapest cost to connect v to the current tree. Each round: pick the outside v with the smallest best[v], add it, then update every outside point's best using the new node.</p>`, `<p>Start with best[0] = 0, others ∞. n rounds × (O(n) scan + O(n) update) = O(n²) = 10<sup>6</sup>. Each distance is ≤ 4·10<sup>6</sup>, but 999 of them could sum past the int limit in theory — keep the running total in a 64-bit integer (<code>long</code> / <code>long long</code>) as a safe habit.</p>`],
@@ -3006,6 +3644,16 @@ public:
         for (int i = 0; i < n; i++) pts.push_back({(int)((i * a) % 2000001) - 1000000, (int)((i * b) % 2000001) - 1000000});
     }
     return Solution().minCostConnectPoints(pts);
+}`, csharp: `public class Check {
+    public static int PtsRun(int[][] pts) {
+        if (pts[0][0] == -1 && pts[0].Length == 4) {      // marker row [-1, n, a, b]
+            int n = pts[0][1];
+            long a = pts[0][2], b = pts[0][3];
+            pts = new int[n][];
+            for (int i = 0; i < n; i++) pts[i] = new[] { (int)((i * a) % 2000001) - 1000000, (int)((i * b) % 2000001) - 1000000 };
+        }
+        return new Solution().MinCostConnectPoints(pts);
+    }
 }`
       }, cases: [
         [[[[0,0],[2,2],[3,10],[5,2],[7,0]]],20],
@@ -3109,7 +3757,29 @@ public:
         }
         return (int)total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinCostConnectPoints(int[][] points) {
+        int n = points.Length;
+        int[] best = new int[n];                 // cheapest known link from the tree to each point
+        bool[] inTree = new bool[n];
+        for (int i = 0; i < n; i++) best[i] = int.MaxValue;
+        best[0] = 0;
+        long total = 0;                          // long: safe even for huge coordinates
+        for (int it = 0; it < n; it++) {
+            int u = -1;
+            for (int v = 0; v < n; v++)          // pick the closest outside point
+                if (!inTree[v] && (u == -1 || best[v] < best[u])) u = v;
+            inTree[u] = true;
+            total += best[u];
+            for (int v = 0; v < n; v++) {        // the new tree node may offer cheaper links
+                if (inTree[v]) continue;
+                int w = Math.Abs(points[u][0] - points[v][0]) + Math.Abs(points[u][1] - points[v][1]);
+                if (w < best[v]) best[v] = w;
+            }
+        }
+        return (int)total;
+    }
+}` }],
         dry: { head: ['pick', 'cost added', 'total', 'best[] after update (p0..p4)'], rows: [
           ['p0 (0,0)', '0', '0', '[–, 4, 13, 7, 7]'],
           ['p1 (2,2)', '4', '4', '[–, –, 9, 3, 7]'],
@@ -3324,7 +3994,52 @@ int main() {
     cout << "MST weight = " << mst(6, edges, chosen) << "\\n";   // 13
     for (auto& e : chosen) cout << e[0] << " - " << e[1] << " (" << e[2] << ")\\n";
     return 0;
-}` }] }, {
+}` }, { lang: 'csharp', code: `// Kruskal's MST with DSU (path compression + union by rank).
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Kruskal {
+    static int[] parent, rnk;
+
+    static int Find(int x) {
+        if (parent[x] != x) parent[x] = Find(parent[x]);   // path compression
+        return parent[x];
+    }
+
+    static bool Union(int a, int b) {
+        int ra = Find(a), rb = Find(b);
+        if (ra == rb) return false;                         // same group -> edge would form a cycle
+        if (rnk[ra] < rnk[rb]) { int t = ra; ra = rb; rb = t; }
+        parent[rb] = ra;                                    // hang the shorter tree under the taller
+        if (rnk[ra] == rnk[rb]) rnk[ra]++;
+        return true;
+    }
+
+    // edges: {u, v, w}. Returns MST weight, or -1 if the graph is disconnected.
+    static long Mst(int n, int[][] edges, List<int[]> chosen) {
+        parent = new int[n];
+        rnk = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+        int[][] sorted = edges.OrderBy(e => e[2]).ToArray();   // cheapest first (stable sort)
+        long total = 0;
+        foreach (var e in sorted) {
+            if (Union(e[0], e[1])) {
+                total += e[2];
+                chosen.Add(e);
+                if (chosen.Count == n - 1) break;           // a spanning tree has n-1 edges
+            }
+        }
+        return chosen.Count == n - 1 ? total : -1;
+    }
+
+    static void Main() {
+        int[][] edges = { new[] {0,1,4}, new[] {0,2,3}, new[] {1,2,1}, new[] {1,3,2}, new[] {2,4,4}, new[] {3,4,5}, new[] {3,5,3}, new[] {4,5,6} };
+        var chosen = new List<int[]>();
+        Console.WriteLine("MST weight = " + Mst(6, edges, chosen));   // 13
+        foreach (var e in chosen) Console.WriteLine(e[0] + " - " + e[1] + " (" + e[2] + ")");
+    }
+}`, run: true }] }, {
       lang: 'python', run: true, title: 'Kruskal in Python + clustering by stopping early (runnable)', code: `def kruskal(n, edges, stop_at_components=1):
     parent = list(range(n))
     rank = [0] * n
@@ -3487,6 +4202,19 @@ int bottleneck(int n, vector<array<int, 3>> edges, int s, int t) {
         if (root(parent, s) == root(parent, t)) return e[2];   // the bottleneck
     }
     return -1;                                                 // never connected
+}` }, { lang: 'csharp', code: `static int Bottleneck(int n, int[][] edges, int s, int t) {
+    int[] parent = new int[n];
+    for (int i = 0; i < n; i++) parent[i] = i;
+    int[][] sorted = edges.OrderBy(e => e[2]).ToArray();
+    foreach (var e in sorted) {
+        parent[Root(parent, e[0])] = Root(parent, e[1]);
+        if (Root(parent, s) == Root(parent, t)) return e[2];   // the bottleneck
+    }
+    return -1;                                                 // never connected
+}
+static int Root(int[] p, int x) {
+    while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; }
+    return x;
 }` }] } }
     ],
     deepDive: `<p><b>Exact complexity.</b> Sorting O(E log E) = O(E log V). DSU with both path compression and union by rank: O(α(V)) amortised per operation (Tarjan 1975); with only one of them, O(log V). If weights are small integers, counting/radix sort makes Kruskal nearly linear.</p>
@@ -3615,7 +4343,31 @@ public:
         pick(n, connections, 0, cur, 0);
         return best == INT_MAX ? -1 : best;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    int best = int.MaxValue;
+    public int MinimumCost(int n, int[][] connections) {
+        Pick(n, connections, 0, new List<int[]>(), 0);
+        return best == int.MaxValue ? -1 : best;
+    }
+    void Pick(int n, int[][] c, int i, List<int[]> cur, int cost) {
+        if (cur.Count == n - 1) { if (Connected(n, cur)) best = Math.Min(best, cost); return; }
+        if (i == c.Length) return;
+        cur.Add(c[i]);                                   // take edge i
+        Pick(n, c, i + 1, cur, cost + c[i][2]);
+        cur.RemoveAt(cur.Count - 1);
+        Pick(n, c, i + 1, cur, cost);                    // skip edge i
+    }
+    bool Connected(int n, List<int[]> es) {              // simple DFS check
+        var g = new List<int>[n + 1];
+        for (int i = 0; i <= n; i++) g[i] = new List<int>();
+        foreach (var e in es) { g[e[0]].Add(e[1]); g[e[1]].Add(e[0]); }
+        bool[] seen = new bool[n + 1];
+        var st = new Stack<int>();
+        st.Push(1); seen[1] = true; int cnt = 1;
+        while (st.Count > 0) foreach (int v in g[st.Pop()]) if (!seen[v]) { seen[v] = true; cnt++; st.Push(v); }
+        return cnt == n;
+    }
+}` }
         ] } },
       mcq: { q: 'While scanning sorted edges, find(x) == find(y). What do you do?', options: ['Skip the edge — it would close a cycle', 'Take it — it is cheap', 'Stop the algorithm', 'Swap the two roots'], answer: 0, explain: 'Same root = already connected. Adding the edge only adds cost and creates a cycle; a tree never needs it.' },
       hints: [`<p>"Connect every pair, minimum total cost" = MST. The input is already an edge list — perfect for Kruskal.</p>`, `<p>Sort by cost, DSU over 1..n (size n + 1). Take an edge only when <code>union</code> returns true.</p>`, `<p>Count taken edges; when it hits n − 1, return the total. If the loop ends earlier → -1. Edge case n = 1 → 0 (no edges needed).</p>`],
@@ -3665,6 +4417,20 @@ public:
         if (mode != 1) c.push_back({n, 1, mode == 2 ? 100000 : (n * 37) % 100001});
     }
     return Solution().minimumCost(n, c);
+}`, csharp: `public class Check {
+    public static int ConnRun(int n, int[][] c) {
+        if (c[0][0] == -1) {                      // marker row [-1, mode]: a chain of n cities
+            int mode = c[0][1];
+            var list = new List<int[]>();
+            for (int i = 1; i < n; i++) {
+                if (mode == 1 && i == 5000) continue;
+                list.Add(new[] { i, i + 1, mode == 2 ? 100000 : (i * 37) % 100001 });
+            }
+            if (mode != 1) list.Add(new[] { n, 1, mode == 2 ? 100000 : (n * 37) % 100001 });
+            c = list.ToArray();
+        }
+        return new Solution().MinimumCost(n, c);
+    }
 }`
       }, cases: [
         [[3,[[1,2,5],[1,3,6],[2,3,1]]],6],
@@ -3789,7 +4555,42 @@ public:
         }
         return -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    int[] parent, rnk;
+
+    int Find(int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];   // path halving
+            x = parent[x];
+        }
+        return x;
+    }
+
+    bool Union(int a, int b) {
+        int ra = Find(a), rb = Find(b);
+        if (ra == rb) return false;
+        if (rnk[ra] < rnk[rb]) { int t = ra; ra = rb; rb = t; }
+        parent[rb] = ra;
+        if (rnk[ra] == rnk[rb]) rnk[ra]++;
+        return true;
+    }
+
+    public int MinimumCost(int n, int[][] connections) {
+        if (n == 1) return 0;
+        parent = new int[n + 1];
+        rnk = new int[n + 1];
+        for (int i = 0; i <= n; i++) parent[i] = i;
+        Array.Sort(connections, (a, b) => a[2].CompareTo(b[2]));
+        int total = 0, used = 0;
+        foreach (var c in connections) {
+            if (Union(c[0], c[1])) {
+                total += c[2];
+                if (++used == n - 1) return total;   // spanning tree complete
+            }
+        }
+        return -1;                                     // still more than one group
+    }
+}` }],
         dry: { head: ['edge (sorted)', 'roots', 'action', 'used / total'], rows: [
           ['2–3 (1)', '2 ≠ 3', 'union', '1 / 1'],
           ['1–2 (5)', '1 ≠ 2', 'union', '2 / 6 → used = n − 1 → return <span class="c-g">6</span>'],
@@ -4086,7 +4887,103 @@ int main() {
     cout << cheapest(4, flights, 0, 3, 2) << "\\n";        // 400
     cout << minEffort({{1,2,2},{3,8,2},{5,3,5}}) << "\\n"; // 2
     return 0;
-}` }] }, {
+}` }, { lang: 'csharp', code: `// Template: Dijkstra over an EXPANDED state (node, extra) with a custom combine.
+// Example: cheapest price from src to dst using at most k stops, via states (city, flightsUsed).
+using System;
+using System.Collections.Generic;
+
+class StateDijkstra {
+    static int Cheapest(int n, int[][] flights, int src, int dst, int k) {
+        var g = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var f in flights) g[f[0]].Add((f[1], f[2]));
+        int maxEdges = k + 1;
+        int[][] best = new int[n][];                          // best[city][edgesUsed]
+        for (int i = 0; i < n; i++) { best[i] = new int[maxEdges + 1]; for (int j = 0; j <= maxEdges; j++) best[i][j] = int.MaxValue; }
+        best[src][0] = 0;
+        var pq = new MinHeap<(int cost, int u, int used)>((a, b) => a.cost.CompareTo(b.cost));
+        pq.Push((0, src, 0));                                 // (cost, city, edgesUsed)
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            int cost = t.cost, u = t.u, used = t.used;
+            if (u == dst) return cost;                        // first time dst is popped = cheapest valid
+            if (cost > best[u][used] || used == maxEdges) continue;
+            foreach (var e in g[u]) {
+                int nc = cost + e.w;
+                if (nc < best[e.v][used + 1]) {
+                    best[e.v][used + 1] = nc;
+                    pq.Push((nc, e.v, used + 1));
+                }
+            }
+        }
+        return -1;
+    }
+
+    // Minimum effort: same skeleton, combine = max instead of +.
+    static int MinEffort(int[][] h) {
+        int R = h.Length, C = h[0].Length;
+        int[][] eff = new int[R][];
+        for (int i = 0; i < R; i++) { eff[i] = new int[C]; for (int j = 0; j < C; j++) eff[i][j] = int.MaxValue; }
+        eff[0][0] = 0;
+        var pq = new MinHeap<(int e, int r, int c)>((a, b) => a.e.CompareTo(b.e));
+        pq.Push((0, 0, 0));
+        int[][] dirs = { new[] {1, 0}, new[] {-1, 0}, new[] {0, 1}, new[] {0, -1} };
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            int e = t.e, r = t.r, c = t.c;
+            if (r == R - 1 && c == C - 1) return e;
+            if (e > eff[r][c]) continue;
+            foreach (var d in dirs) {
+                int nr = r + d[0], nc = c + d[1];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;
+                int ne = Math.Max(e, Math.Abs(h[nr][nc] - h[r][c]));   // <- the only change
+                if (ne < eff[nr][nc]) { eff[nr][nc] = ne; pq.Push((ne, nr, nc)); }
+            }
+        }
+        return 0;
+    }
+
+    static void Main() {
+        int[][] flights = { new[] {0,1,100}, new[] {1,2,100}, new[] {2,0,100}, new[] {1,3,600}, new[] {2,3,200} };
+        Console.WriteLine(Cheapest(4, flights, 0, 3, 1));            // 700
+        Console.WriteLine(Cheapest(4, flights, 0, 3, 2));            // 400
+        Console.WriteLine(MinEffort(new[] { new[] {1,2,2}, new[] {3,8,2}, new[] {5,3,5} }));   // 2
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}`, run: true }] }, {
       lang: 'python', run: true, title: 'Counting shortest paths + lexicographic tie-break (runnable)', code: `import heapq
 
 MOD = 10**9 + 7
@@ -4252,7 +5149,9 @@ print("(cost, time) to node 3:", cheapest_then_fastest(4, edges, 0, 3))  # (10, 
 # relax: if prob[u] * p > prob[v]: prob[v] = prob[u] * p; heapq.heappush(pq, (-prob[v], v))` }, { lang: 'js', code: `// uses the MinHeap class from the Dijkstra template (JS has no built-in heap)
 const pq = new MinHeap((a, b) => b[0] - a[0]);   // max-heap
 // relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.push([prob[v], v]); }` }, { lang: 'cpp', code: `priority_queue<pair<double, int>> pq;   // max-heap by default
-// relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.push({prob[v], v}); }` }] } },
+// relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.push({prob[v], v}); }` }, { lang: 'csharp', code: `// max-heap on probability: reverse the comparison; entries are (prob, node)
+Comparison<(double p, int v)> maxFirst = (a, b) => b.p.CompareTo(a.p);
+// relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.Push((prob[v], v)); }` }] } },
       { title: 'Minimum effort three ways', html: `<p>Grid [[1,2,2],[3,8,2],[5,3,5]] → ${H.c('g', '2')}. (1) Dijkstra with max (visualizer). (2) Binary search the answer X in 0..10<sup>6</sup>, BFS using only jumps ≤ X: O(RC log 10<sup>6</sup>). (3) Sort all neighbour edges by jump, union cells with DSU until start and end connect; the last jump is the answer (Kruskal-style).</p>` },
       { title: 'Layered graph for "k free edges"', html: `<p>"You may skip the cost of up to k roads." Make k + 1 copies of the graph (layers 0..k). Normal edges stay in a layer; a free edge goes from layer j to layer j + 1 with cost 0. Dijkstra on V·(k + 1) nodes; answer = min over layers at the target. This is the state (node, freeUsed) drawn as a picture.</p>` }
     ],
@@ -4336,7 +5235,23 @@ public:
         dfs(src, dst, k + 1, 0);
         return best == INT_MAX ? -1 : best;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    int best = int.MaxValue;
+    List<int[]>[] g;
+    public int FindCheapestPrice(int n, int[][] flights, int src, int dst, int k) {
+        g = new List<int[]>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<int[]>();
+        foreach (var f in flights) g[f[0]].Add(new[] { f[1], f[2] });
+        Dfs(src, dst, k + 1, 0);
+        return best == int.MaxValue ? -1 : best;
+    }
+    void Dfs(int u, int dst, int flightsLeft, int cost) {
+        if (cost >= best) return;                 // prune: already worse
+        if (u == dst) { best = cost; return; }
+        if (flightsLeft == 0) return;
+        foreach (var e in g[u]) Dfs(e[0], dst, flightsLeft - 1, cost + e[1]);
+    }
+}` }
         ] } },
       mcq: { q: 'In the K + 1 rounds of Bellman-Ford, why read from a copy of the previous round?', options: ['So one round cannot chain two flights and exceed the stop limit', 'To avoid negative cycles', 'Because arrays cannot be changed once created', 'It is only an optimisation'], answer: 0, explain: 'Updating in place lets a value written earlier in the same round be used again in that round — the path gains two edges in one round, breaking the "≤ r edges after round r" meaning.' },
       hints: [`<p>"At most k stops" = at most k + 1 edges. Which algorithm naturally grows paths one edge per round?</p>`, `<p>Bellman-Ford for exactly k + 1 rounds. Each round: <code>cur = prev.clone()</code>, relax every flight reading <b>prev</b>, writing <b>cur</b>.</p>`, `<p>Guard prev[u] != INF. After k + 1 rounds, answer = prev[dst] or -1. Alternative: Dijkstra on (city, stops) — never use a plain visited[] on cities.</p>`],
@@ -4384,6 +5299,19 @@ public:
             }
     }
     return Solution().findCheapestPrice(n, fl, src, dst, k);
+}`, csharp: `public class Check {
+    public static int FlightRun(int n, int[][] fl, int src, int dst, int k) {
+        if (fl.Length > 0 && fl[0][0] == -1) {    // marker row [-1, 0]: one flight for every pair of cities
+            var list = new List<int[]>();
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++) {
+                    int price = 1 + (i * 17 + j * 31 + i * j) % 10000;
+                    list.Add((i + j) % 3 == 0 ? new[] { j, i, price } : new[] { i, j, price });
+                }
+            fl = list.ToArray();
+        }
+        return new Solution().FindCheapestPrice(n, fl, src, dst, k);
+    }
 }`
       }, cases: [
         [[4,[[0,1,100],[1,2,100],[2,0,100],[1,3,600],[2,3,200]],0,3,1],700],
@@ -4465,7 +5393,23 @@ public:
         }
         return prev[dst] == INF ? -1 : prev[dst];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int FindCheapestPrice(int n, int[][] flights, int src, int dst, int k) {
+        const int INF = int.MaxValue;
+        int[] prev = new int[n];
+        for (int i = 0; i < n; i++) prev[i] = INF;
+        prev[src] = 0;
+        for (int round = 0; round <= k; round++) {        // k + 1 flights at most
+            int[] cur = (int[])prev.Clone();              // write here, read prev
+            foreach (var f in flights) {
+                int u = f[0], v = f[1], w = f[2];
+                if (prev[u] != INF && prev[u] + w < cur[v]) cur[v] = prev[u] + w;
+            }
+            prev = cur;
+        }
+        return prev[dst] == INF ? -1 : prev[dst];
+    }
+}` }],
         dry: { head: ['round (≤ flights)', 'relaxations (reading prev)', 'prev after round [0,1,2,3]'], rows: [
           ['start', '—', '[0, ∞, ∞, ∞]'],
           ['1 (≤ 1)', '0→1: 100', '[0, 100, ∞, ∞]'],
@@ -4551,7 +5495,24 @@ public:
         }
         return dist;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public List<int> Dijkstra(int V, int[][] edges, int src) {
+        int[] dist = new int[V];
+        for (int i = 0; i < V; i++) dist[i] = int.MaxValue;
+        dist[src] = 0;
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            foreach (var e in edges) {
+                for (int dir = 0; dir < 2; dir++) {                 // undirected: both ways
+                    int u = dir == 0 ? e[0] : e[1], v = dir == 0 ? e[1] : e[0];
+                    if (dist[u] != int.MaxValue && dist[u] + e[2] < dist[v]) { dist[v] = dist[u] + e[2]; changed = true; }
+                }
+            }
+        }
+        return new List<int>(dist);
+    }
+}` }
         ] } },
     mcq: { q: 'You poll (7, v) but dist[v] is already 5. What now?', options: ['Skip it — it is a stale entry', 'Update dist[v] to 7', 'Re-relax all of v\'s edges with 7', 'Throw an error'], answer: 0, explain: 'Standard priority queues (Java PriorityQueue, Python heapq, C++ priority_queue) have no decrease-key, so outdated entries stay inside. Lazy deletion = ignore them when they come out.' },
     hints: [`<p>Non-negative weights + one source → Dijkstra. Build an adjacency list first, adding each edge in both directions.</p>`, `<p>Min-heap of {dist, node}. Poll; if dist &gt; dist[node] skip; else relax neighbours and push improvements.</p>`, `<p>Return the dist array as a list (Java: an <code>ArrayList&lt;Integer&gt;</code>). Since the graph is connected, no ∞ remains. Complexity O((V + E) log V).</p>`],
@@ -4607,6 +5568,21 @@ public:
     long long sum = 0;
     for (int i = 0; i < V; i++) sum += (long long)d[i] * (i % 7 + 1);
     return {(int)(sum % 1000000007LL)};
+}`, csharp: `public class Check {
+    public static List<int> DijRun(int V, int[][] edges, int src) {
+        if (edges[0][0] != -1) return new Solution().Dijkstra(V, edges, src);
+        int mode = edges[0][1];                   // marker row [-1, mode]: a tree plus one long edge, V edges in all
+        int[][] es = new int[V][];
+        for (int i = 1; i < V; i++) {
+            int p = mode == 0 ? i - 1 : i - 1 - ((i * 13) % Math.Min(i, 50));
+            es[i - 1] = new[] { p, i, (i * 7) % 1001 };
+        }
+        es[V - 1] = new[] { 0, V - 1, 1000 };
+        List<int> d = new Solution().Dijkstra(V, es, src);
+        long sum = 0;
+        for (int i = 0; i < V; i++) sum += (long)d[i] * (i % 7 + 1);
+        return new List<int> { (int)(sum % 1000000007L) };
+    }
 }`
     }, cases: [
       [[3,[[0,1,1],[1,2,3],[0,2,6]],2],[4,3,0]],
@@ -4757,7 +5733,67 @@ public:
         }
         return dist;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public List<int> Dijkstra(int V, int[][] edges, int src) {
+        var g = new List<(int v, int w)>[V];
+        for (int i = 0; i < V; i++) g[i] = new List<(int v, int w)>();
+        foreach (var e in edges) {
+            g[e[0]].Add((e[1], e[2]));
+            g[e[1]].Add((e[0], e[2]));
+        }
+        int[] dist = new int[V];
+        for (int i = 0; i < V; i++) dist[i] = int.MaxValue;
+        dist[src] = 0;
+        var pq = new MinHeap<(int d, int u)>((a, b) => a.d.CompareTo(b.d));
+        pq.Push((0, src));
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            int d = t.d, u = t.u;
+            if (d > dist[u]) continue;
+            foreach (var e in g[u]) {
+                if (d + e.w < dist[e.v]) {
+                    dist[e.v] = d + e.w;
+                    pq.Push((dist[e.v], e.v));
+                }
+            }
+        }
+        return new List<int>(dist);
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p>Time O((V + E) log V); space O(V + E).</p>`,
       followUps: ['Print the path to each vertex', 'Which nodes are on at least one shortest path from src to t?']
     }
@@ -4838,7 +5874,25 @@ public:
         }
         return total;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public static int SpanningTree(int V, int[][] edges) {
+        bool[] inT = new bool[V];
+        inT[0] = true;
+        int total = 0;
+        for (int step = 1; step < V; step++) {
+            int bestW = int.MaxValue, bestV = -1;
+            foreach (var e in edges) {
+                if (inT[e[0]] != inT[e[1]] && e[2] < bestW) {        // crosses the cut
+                    bestW = e[2];
+                    bestV = inT[e[0]] ? e[1] : e[0];
+                }
+            }
+            inT[bestV] = true;
+            total += bestW;
+        }
+        return total;
+    }
+}` }
         ] } },
     mcq: { q: 'Kruskal processes edges in which order?', options: ['Increasing weight', 'Decreasing weight', 'Input order', 'BFS order from node 0'], answer: 0, explain: 'Cheapest first; each edge joining two different components is safe by the cut property.' },
     hints: [`<p>The input is an edge list — Kruskal is the shortest code: sort edges, add the ones that join different groups.</p>`, `<p>DSU with path compression + union by rank tells you instantly whether two vertices are already connected.</p>`, `<p>Stop after V − 1 edges. Recipe: sort by w → for each edge if union(u, v) then total += w.</p>`],
@@ -4880,6 +5934,18 @@ public:
                 if (j == i + 1 || (i * j + i + j) % k == 0) edges.push_back({i, j, 1 + (i * i + 31 * j + i * j) % 1000});
     }
     return Solution().spanningTree(V, edges);
+}`, csharp: `public class Check {
+    public static int MstRun(int V, int[][] edges) {
+        if (edges[0][0] == -1) {                  // marker row [-1, k]: chain edges plus pair (i, j) when (i*j + i + j) % k == 0
+            int k = edges[0][1];
+            var list = new List<int[]>();
+            for (int i = 0; i < V; i++)
+                for (int j = i + 1; j < V; j++)
+                    if (j == i + 1 || (i * j + i + j) % k == 0) list.Add(new[] { i, j, 1 + (i * i + 31 * j + i * j) % 1000 });
+            edges = list.ToArray();
+        }
+        return Solution.SpanningTree(V, edges);
+    }
 }`
     }, cases: [
       [[3,[[0,1,5],[1,2,3],[0,2,1]]],4],
@@ -4987,7 +6053,30 @@ public:
         }
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    static int[] parent;
+
+    static int Find(int x) {
+        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+    }
+
+    public static int SpanningTree(int V, int[][] edges) {
+        parent = new int[V];
+        for (int i = 0; i < V; i++) parent[i] = i;
+        int[][] es = (int[][])edges.Clone();
+        Array.Sort(es, (a, b) => a[2].CompareTo(b[2]));
+        int total = 0, used = 0;
+        foreach (var e in es) {
+            int a = Find(e[0]), b = Find(e[1]);
+            if (a == b) continue;                // would form a cycle
+            parent[a] = b;
+            total += e[2];
+            if (++used == V - 1) break;
+        }
+        return total;
+    }
+}` }],
       complexity: `<p>Time O(E log E); space O(V).</p>`,
       followUps: ['Return the edges of the MST', 'Is the MST unique? (Check for equal-weight alternatives)']
     }
@@ -5061,7 +6150,23 @@ public:
         }
         for (int i = 0; i < n; i++) dist[i] = res[i];
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public void FloydWarshall(int[][] dist) {
+        int n = dist.Length, INF = 100000000;
+        int[][] res = new int[n][];
+        for (int s = 0; s < n; s++) {
+            int[] d = new int[n];
+            for (int i = 0; i < n; i++) d[i] = INF;
+            d[s] = 0;
+            for (int r = 0; r < n - 1; r++)
+                for (int u = 0; u < n; u++)
+                    for (int v = 0; v < n; v++)
+                        if (d[u] != INF && dist[u][v] != INF && d[u] + dist[u][v] < d[v]) d[v] = d[u] + dist[u][v];
+            res[s] = d;
+        }
+        for (int i = 0; i < n; i++) dist[i] = res[i];
+    }
+}` }
         ] } },
     mcq: { q: 'Why check dist[i][k] != 10<sup>8</sup> before adding?', options: ['10<sup>8</sup> means "no path"; adding a negative weight to it would look like a real path', 'To avoid integer overflow only', 'It is not needed', 'Because the language requires it'], answer: 0, explain: '10<sup>8</sup> + (−5) = 99999995 &lt; 10<sup>8</sup> would wrongly turn "unreachable" into a fake distance when negative weights exist.' },
     hints: [`<p>All pairs + n ≤ 100 → the classic triple loop with k outermost.</p>`, `<p>For each k, i, j: if both halves are reachable and d[i][k] + d[k][j] &lt; d[i][j], update.</p>`, `<p>Skip when either half equals 10<sup>8</sup>. No extra matrix needed — in-place is correct because row k and column k do not change during round k.</p>`],
@@ -5133,6 +6238,27 @@ public:
     for (int i = 0; i < n; i++)
         for (int j = 0; j < n; j++) s += (long long)(d[i][j] + 10000) * ((i * 3 + j) % 11 + 1);
     return {{(int)(s % 1000000007LL)}};
+}`, csharp: `public class Check {
+    public static int[][] FloydRun(int[][] dist) {
+        if (dist[0][0] != -1) {                   // normal input: change it in place and hand it back
+            new Solution().FloydWarshall(dist);
+            return dist;
+        }
+        int n = dist[0][1], mode = dist[0][2], mod = mode == 0 ? 3 : 5;   // marker row [-1, n, mode]
+        int[][] d = new int[n][];
+        for (int i = 0; i < n; i++) {
+            d[i] = new int[n];
+            for (int j = 0; j < n; j++) {
+                d[i][j] = i == j ? 0 : 100000000;
+                if (i != j && (i * j + i + 2 * j) % mod == 0) d[i][j] = 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53;
+            }
+        }
+        new Solution().FloydWarshall(d);
+        long sum = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) sum += (long)(d[i][j] + 10000) * ((i * 3 + j) % 11 + 1);
+        return new[] { new[] { (int)(sum % 1000000007L) } };
+    }
 }`
     }, cases: [
       [[[[0,4,100000000,5,100000000],[100000000,0,1,100000000,6],[2,100000000,0,3,100000000],[100000000,100000000,1,0,2],[1,100000000,100000000,4,0]]],[[0,4,5,5,7],[3,0,1,4,6],[2,6,0,3,5],[3,7,1,0,2],[1,5,5,4,0]]],
@@ -5203,7 +6329,19 @@ public:
                 }
             }
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public void FloydWarshall(int[][] dist) {
+        int n = dist.Length, INF = 100000000;
+        for (int k = 0; k < n; k++)
+            for (int i = 0; i < n; i++) {
+                if (dist[i][k] == INF) continue;
+                for (int j = 0; j < n; j++) {
+                    if (dist[k][j] == INF) continue;
+                    if (dist[i][k] + dist[k][j] < dist[i][j]) dist[i][j] = dist[i][k] + dist[k][j];
+                }
+            }
+    }
+}` }],
       complexity: `<p>Time O(n³); space O(1) extra.</p>`,
       followUps: ['Detect a negative cycle from the result', 'Reconstruct the path i → j with a next[][] matrix']
     }
@@ -5272,7 +6410,20 @@ public:
         for (int i = 0; i < n; i++) if (d[i][i] < 0) return 1;
         return 0;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int IsNegativeWeightCycle(int n, int[][] edges) {
+        long INF = long.MaxValue / 4;
+        long[][] d = new long[n][];
+        for (int i = 0; i < n; i++) { d[i] = new long[n]; for (int j = 0; j < n; j++) d[i][j] = INF; d[i][i] = 0; }
+        foreach (var e in edges) d[e[0]][e[1]] = Math.Min(d[e[0]][e[1]], e[2]);
+        for (int k = 0; k < n; k++)
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    if (d[i][k] != INF && d[k][j] != INF && d[i][k] + d[k][j] < d[i][j]) d[i][j] = d[i][k] + d[k][j];
+        for (int i = 0; i < n; i++) if (d[i][i] < 0) return 1;
+        return 0;
+    }
+}` }
         ] } },
     mcq: { q: 'How do you catch a negative cycle that is NOT reachable from vertex 0?', options: ['Start with dist[v] = 0 for every v (a virtual source joined to all)', 'Run Dijkstra instead', 'Only check edges out of vertex 0', 'It cannot be done'], answer: 0, explain: 'Initialising every distance to 0 is the same as adding a virtual source with 0-weight edges to all vertices — every cycle becomes reachable.' },
     hints: [`<p>Bellman-Ford's extra V-th round detects negative cycles — but only those reachable from the source.</p>`, `<p>Make every vertex a "source": set all distances to 0 initially (a virtual source).</p>`, `<p>Relax all edges n − 1 times, then one more pass: any relaxation → return 1. Otherwise 0.</p>`],
@@ -5342,6 +6493,25 @@ public:
             }
     }
     return Solution().isNegativeWeightCycle(n, edges);
+}`, csharp: `public class Check {
+    public static int NegRun(int n, int[][] edges) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: dense graph, mode 1 and 2 hide a negative cycle
+            int mode = edges[0][1];
+            var list = new List<int[]>();
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++) {
+                    if (i == j) continue;
+                    if (mode == 1 && i == 60 && j == 61) list.Add(new[] { i, j, 5 });
+                    else if (mode == 1 && i == 61 && j == 62) list.Add(new[] { i, j, 5 });
+                    else if (mode == 1 && i == 62 && j == 60) list.Add(new[] { i, j, -100 });
+                    else if (mode == 2 && i == 10 && j == 11) list.Add(new[] { i, j, -3 });
+                    else if (mode == 2 && i == 11 && j == 10) list.Add(new[] { i, j, 2 });
+                    else if ((i * j + i + 2 * j) % 3 == 0) list.Add(new[] { i, j, 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53 });
+                }
+            edges = list.ToArray();
+        }
+        return new Solution().IsNegativeWeightCycle(n, edges);
+    }
 }`
     }, cases: [
       [[3,[[0,1,-1],[1,2,-2],[2,0,-3]]],1],
@@ -5424,7 +6594,20 @@ public:
             if (dist[e[0]] + e[2] < dist[e[1]]) return 1;
         return 0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int IsNegativeWeightCycle(int n, int[][] edges) {
+        long[] dist = new long[n];                    // all 0 = virtual source
+        for (int r = 0; r < n - 1; r++) {
+            bool changed = false;
+            foreach (var e in edges)
+                if (dist[e[0]] + e[2] < dist[e[1]]) { dist[e[1]] = dist[e[0]] + e[2]; changed = true; }
+            if (!changed) return 0;                   // stable early -> no negative cycle
+        }
+        foreach (var e in edges)
+            if (dist[e[0]] + e[2] < dist[e[1]]) return 1;
+        return 0;
+    }
+}` }],
       complexity: `<p>Time O(n · E); space O(n).</p>`,
       followUps: ['Print one negative cycle', 'Currency arbitrage: rates instead of weights']
     }
@@ -5539,7 +6722,31 @@ public:
     int minimumEffortPath(vector<vector<int>>& h) {
         for (int x = 0; ; x++) if (reach(h, x)) return x;     // linear scan over the answer
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumEffortPath(int[][] h) {
+        for (int x = 0; ; x++) if (Reach(h, x)) return x;     // linear scan over the answer
+    }
+    bool Reach(int[][] h, int x) {
+        int R = h.Length, C = h[0].Length;
+        bool[,] seen = new bool[R, C];
+        var q = new Queue<int[]>();
+        q.Enqueue(new[] { 0, 0 });
+        seen[0, 0] = true;
+        int[][] dirs = { new[] {1, 0}, new[] {-1, 0}, new[] {0, 1}, new[] {0, -1} };
+        while (q.Count > 0) {
+            int[] c = q.Dequeue();
+            if (c[0] == R - 1 && c[1] == C - 1) return true;
+            foreach (var d in dirs) {
+                int nr = c[0] + d[0], nc = c[1] + d[1];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || seen[nr, nc]) continue;
+                if (Math.Abs(h[nr][nc] - h[c[0]][c[1]]) > x) continue;
+                seen[nr, nc] = true;
+                q.Enqueue(new[] { nr, nc });
+            }
+        }
+        return false;
+    }
+}` }
         ] } },
     mcq: { q: 'In Dijkstra for minimum effort, the new value for a neighbour is…', options: ['max(effort so far, |jump|)', 'effort so far + |jump|', 'min(effort so far, |jump|)', '|jump| only'], answer: 0, explain: 'Effort is the largest jump on the route, so extending the route takes the max. max never decreases, which keeps Dijkstra correct.' },
     hints: [`<p>The cost of a path is a <b>max</b>, not a sum — but it still never decreases as the path grows.</p>`, `<p>Dijkstra on cells with <code>ne = max(e, |h[n] − h[c]|)</code>; min-heap of {effort, r, c}.</p>`, `<p>Return when the bottom-right cell is polled. 1 × 1 grid → 0. Alternatives: binary search + BFS, or DSU over edges sorted by jump.</p>`],
@@ -5575,6 +6782,18 @@ public:
             for (int j = 0; j < C; j++) h[i][j] = 1 + (i * i * 31 + j * j * 17 + i * j * a) % 1000000;
     }
     return Solution().minimumEffortPath(h);
+}`, csharp: `public class Check {
+    public static int EffortRun(int[][] h) {
+        if (h[0][0] == -1) {                      // marker row [-1, R, C, a]
+            int R = h[0][1], C = h[0][2], a = h[0][3];
+            h = new int[R][];
+            for (int i = 0; i < R; i++) {
+                h[i] = new int[C];
+                for (int j = 0; j < C; j++) h[i][j] = 1 + (i * i * 31 + j * j * 17 + i * j * a) % 1000000;
+            }
+        }
+        return new Solution().MinimumEffortPath(h);
+    }
 }`
     }, cases: [
       [[[[1,2,2],[3,8,2],[5,3,5]]],2],
@@ -5725,7 +6944,64 @@ public:
         }
         return 0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumEffortPath(int[][] h) {
+        int R = h.Length, C = h[0].Length;
+        int[,] eff = new int[R, C];
+        for (int i = 0; i < R; i++) for (int j = 0; j < C; j++) eff[i, j] = int.MaxValue;
+        eff[0, 0] = 0;
+        var pq = new MinHeap<(int e, int r, int c)>((a, b) => a.e.CompareTo(b.e));
+        pq.Push((0, 0, 0));
+        int[][] dirs = { new[] {1, 0}, new[] {-1, 0}, new[] {0, 1}, new[] {0, -1} };
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            int e = t.e, r = t.r, c = t.c;
+            if (r == R - 1 && c == C - 1) return e;
+            if (e > eff[r, c]) continue;
+            foreach (var d in dirs) {
+                int nr = r + d[0], nc = c + d[1];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;
+                int ne = Math.Max(e, Math.Abs(h[nr][nc] - h[r][c]));
+                if (ne < eff[nr, nc]) { eff[nr, nc] = ne; pq.Push((ne, nr, nc)); }
+            }
+        }
+        return 0;
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p>Time O(RC log(RC)); space O(RC).</p>`,
       followUps: ['Solve with binary search + BFS and compare', 'Solve with DSU (Kruskal style)', 'Swim in Rising Water is the same idea on cell values']
     }
@@ -5804,7 +7080,23 @@ public:
         }
         return p[end_node];
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double MaxProbability(int n, int[][] edges, double[] succProb, int start_node, int end_node) {
+        double[] p = new double[n];
+        p[start_node] = 1.0;
+        for (int r = 0; r < n - 1; r++) {
+            bool changed = false;
+            for (int i = 0; i < edges.Length; i++) {
+                int a = edges[i][0], b = edges[i][1];
+                double q = succProb[i];
+                if (p[a] * q > p[b]) { p[b] = p[a] * q; changed = true; }
+                if (p[b] * q > p[a]) { p[a] = p[b] * q; changed = true; }
+            }
+            if (!changed) break;
+        }
+        return p[end_node];
+    }
+}` }
         ] } },
     mcq: { q: 'Why does Dijkstra still work with multiplication here?', options: ['All probabilities are ≤ 1, so extending a path never increases its value (use a max-heap)', 'Multiplication is commutative', 'Probabilities are positive', 'It does not work — use Bellman-Ford'], answer: 0, explain: 'The mirror of "non-negative weights": multiplying by a number in [0, 1] can only keep or reduce the value. The first time the target is polled from a max-heap it is optimal.' },
     hints: [`<p>"Maximum product" with factors ≤ 1 behaves like "minimum sum" with weights ≥ 0. (Or use −log(p) as weights.)</p>`, `<p>Max-heap of {prob, node}; relax with <code>prob[u] * p &gt; prob[v]</code>.</p>`, `<p>Return as soon as end is polled; if the heap empties, return 0. Skip stale entries with <code>prob &lt; best[u]</code>.</p>`],
@@ -5871,6 +7163,25 @@ public:
             }
     }
     return Solution().maxProbability(n, edges, p, s, t);
+}`, csharp: `public class Check {
+    public static double ProbRun(int n, int[][] edges, double[] p, int s, int t) {
+        if (edges.Length > 0 && edges[0][0] == -1) {   // marker row [-1, mode]: a long chain, plus skip edges in mode 0
+            int mode = edges[0][1];
+            int m = mode == 0 ? 2 * n - 3 : n - 1;
+            edges = new int[m][];
+            p = new double[m];
+            for (int i = 0; i < n - 1; i++) {
+                edges[i] = new[] { i, i + 1 };
+                p[i] = 0.99995 - 0.00001 * (i % 5);
+            }
+            if (mode == 0)
+                for (int i = 0; i < n - 2; i++) {
+                    edges[n - 1 + i] = new[] { i, i + 2 };
+                    p[n - 1 + i] = 0.9999 - 0.00001 * ((i * 7) % 9);
+                }
+        }
+        return new Solution().MaxProbability(n, edges, p, s, t);
+    }
 }`
     }, cases: [
       [[3,[[0,1],[1,2],[0,2]],[0.5,0.5,0.2],0,2],0.25],
@@ -6025,7 +7336,66 @@ public:
         }
         return 0.0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double MaxProbability(int n, int[][] edges, double[] succProb, int start_node, int end_node) {
+        var g = new List<(int v, double p)>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<(int v, double p)>();
+        for (int i = 0; i < edges.Length; i++) {
+            g[edges[i][0]].Add((edges[i][1], succProb[i]));
+            g[edges[i][1]].Add((edges[i][0], succProb[i]));
+        }
+        double[] best = new double[n];
+        best[start_node] = 1.0;
+        var pq = new MinHeap<(double p, int u)>((a, b) => b.p.CompareTo(a.p));  // max-heap
+        pq.Push((1.0, start_node));
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            double p = t.p;
+            int u = t.u;
+            if (u == end_node) return p;
+            if (p < best[u]) continue;                 // stale
+            foreach (var e in g[u]) {
+                double np = p * e.p;
+                if (np > best[e.v]) { best[e.v] = np; pq.Push((np, e.v)); }
+            }
+        }
+        return 0.0;
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p>Time O(E log V); space O(V + E).</p>`,
       followUps: ['Use −log(p) and a normal min-heap Dijkstra', 'What breaks if some "probabilities" could be &gt; 1?']
     }
@@ -6122,7 +7492,27 @@ public:
         dfs(0, n - 1, 0, on);
         return (int)(count % 1'000'000'007LL);
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    long bestTime = long.MaxValue, count = 0;
+    List<int[]>[] g;
+    public int CountPaths(int n, int[][] roads) {
+        g = new List<int[]>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<int[]>();
+        foreach (var r in roads) { g[r[0]].Add(new[] { r[1], r[2] }); g[r[1]].Add(new[] { r[0], r[2] }); }
+        Dfs(0, n - 1, 0L, new bool[n]);
+        return (int)(count % 1000000007L);
+    }
+    void Dfs(int u, int t, long time, bool[] on) {
+        if (time > bestTime) return;
+        if (u == t) {
+            if (time < bestTime) { bestTime = time; count = 1; } else count++;
+            return;
+        }
+        on[u] = true;
+        foreach (var e in g[u]) if (!on[e[0]]) Dfs(e[0], t, time + e[1], on);
+        on[u] = false;
+    }
+}` }
         ] } },
     mcq: { q: 'Relaxing u → v gives exactly dist[v] (a tie). What happens to ways[v]?', options: ['ways[v] += ways[u]', 'ways[v] = ways[u]', 'ways[v]++', 'Nothing'], answer: 0, explain: 'Every shortest way to u extends to a new shortest way to v. On a strict improvement you reset ways[v] = ways[u].' },
     hints: [`<p>Dijkstra finalises nodes in time order, so when u is polled its number of shortest ways is complete.</p>`, `<p>Keep 64-bit <code>dist</code> and <code>ways</code> arrays (<code>long[]</code> in Java, <code>long long</code> in C++). Strictly better → dist = nd, ways = ways[u]; equal → ways += ways[u] (mod).</p>`, `<p>Times up to 10<sup>9</sup> × 200 → 64-bit integers. Only relax from non-stale pops, or ties get counted twice.</p>`],
@@ -6192,6 +7582,26 @@ public:
         }
     }
     return Solution().countPaths(n, roads);
+}`, csharp: `public class Check {
+    public static int WaysRun(int n, int[][] roads) {
+        if (roads.Length > 0 && roads[0][0] == -1) {   // marker row [-1, mode]
+            var list = new List<int[]>();
+            if (roads[0][1] == 0) {                    // chain of (n - 1) / 3 diamonds, each road 10^9
+                for (int s = 1; 3 * s < n; s++) {
+                    int j0 = 3 * s - 3, a = 3 * s - 2, b = 3 * s - 1, j = 3 * s;
+                    list.Add(new[] { j0, a, 1000000000 });
+                    list.Add(new[] { j0, b, 1000000000 });
+                    list.Add(new[] { a, j, 1000000000 });
+                    list.Add(new[] { b, j, 1000000000 });
+                }
+            } else {                                   // every pair of intersections has a road
+                for (int i = 0; i < n; i++)
+                    for (int j = i + 1; j < n; j++) list.Add(new[] { i, j, 1 + (i * j + i + j) % 5 });
+            }
+            roads = list.ToArray();
+        }
+        return new Solution().CountPaths(n, roads);
+    }
 }`
     }, cases: [
       [[7,[[0,6,7],[0,1,2],[1,2,3],[1,3,3],[6,3,3],[3,5,1],[6,5,1],[2,5,1],[0,4,5],[4,6,2]]],4],
@@ -6364,7 +7774,72 @@ public:
         }
         return (int)(ways[n - 1] % MOD);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int CountPaths(int n, int[][] roads) {
+        const long MOD = 1000000007L;
+        var g = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var r in roads) { g[r[0]].Add((r[1], r[2])); g[r[1]].Add((r[0], r[2])); }
+        long[] dist = new long[n];
+        long[] ways = new long[n];
+        for (int i = 0; i < n; i++) dist[i] = long.MaxValue;
+        dist[0] = 0;
+        ways[0] = 1;
+        var pq = new MinHeap<(long d, int u)>((a, b) => a.d.CompareTo(b.d));
+        pq.Push((0, 0));
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            long d = t.d;
+            int u = t.u;
+            if (d > dist[u]) continue;                       // stale: do NOT count again
+            foreach (var e in g[u]) {
+                long nd = d + e.w;
+                if (nd < dist[e.v]) {
+                    dist[e.v] = nd;
+                    ways[e.v] = ways[u];
+                    pq.Push((nd, e.v));
+                } else if (nd == dist[e.v]) {
+                    ways[e.v] = (ways[e.v] + ways[u]) % MOD;
+                }
+            }
+        }
+        return (int)(ways[n - 1] % MOD);
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p>Time O(E log V); space O(V + E).</p>`,
       followUps: ['Count shortest paths in an unweighted graph (BFS version)', 'Which edges lie on at least one shortest path?']
     }
@@ -6440,7 +7915,23 @@ public:
         }
         return dist[dst] == INF ? -1 : dist[dst];
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumEdgeReversal(int[][] edges, int n, int src, int dst) {
+        int INF = int.MaxValue;
+        int[] dist = new int[n + 1];
+        for (int i = 0; i <= n; i++) dist[i] = INF;
+        dist[src] = 0;
+        for (int r = 0; r < n - 1; r++) {
+            bool changed = false;
+            foreach (var e in edges) {
+                if (dist[e[0]] != INF && dist[e[0]] < dist[e[1]]) { dist[e[1]] = dist[e[0]]; changed = true; }          // use as is: 0
+                if (dist[e[1]] != INF && dist[e[1]] + 1 < dist[e[0]]) { dist[e[0]] = dist[e[1]] + 1; changed = true; } // reversed: 1
+            }
+            if (!changed) break;
+        }
+        return dist[dst] == INF ? -1 : dist[dst];
+    }
+}` }
         ] } },
     mcq: { q: 'How do you model "reversing" an edge u → v?', options: ['Keep u → v with cost 0 and add v → u with cost 1', 'Delete the edge', 'Add v → u with cost 0', 'Double every weight'], answer: 0, explain: 'Using the edge as given is free; travelling against it means one reversal. Now it is a 0-1 shortest-path problem.' },
     hints: [`<p>Every original edge gives two moves: forward (free) and backward (costs one reversal).</p>`, `<p>Weights 0/1 → 0-1 BFS with a deque (in JS, two arrays by cost level): cost 0 → front, cost 1 → back.</p>`, `<p>Vertices are 1-indexed → arrays of size n + 1. If dst stays ∞ return -1; if src == dst return 0.</p>`],
@@ -6480,6 +7971,16 @@ public:
         if (mode == 1) edges.push_back({n, 1});
     }
     return Solution().minimumEdgeReversal(edges, n, src, dst);
+}`, csharp: `public class Check {
+    public static int RevRun(int[][] edges, int n, int src, int dst) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: a chain whose every third edge points backwards
+            int mode = edges[0][1];
+            edges = new int[mode == 1 ? n : n - 1][];
+            for (int i = 1; i < n; i++) edges[i - 1] = i % 3 == 0 ? new[] { i + 1, i } : new[] { i, i + 1 };
+            if (mode == 1) edges[n - 1] = new[] { n, 1 };
+        }
+        return new Solution().MinimumEdgeReversal(edges, n, src, dst);
+    }
 }`
     }, cases: [
       [[[[1,2],[3,2]],3,1,3],1],
@@ -6601,7 +8102,32 @@ public:
         }
         return dist[dst] == INT_MAX ? -1 : dist[dst];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumEdgeReversal(int[][] edges, int n, int src, int dst) {
+        var g = new List<(int v, int w)>[n + 1];
+        for (int i = 0; i <= n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var e in edges) {
+            g[e[0]].Add((e[1], 0));    // original direction: free
+            g[e[1]].Add((e[0], 1));    // against the arrow: one reversal
+        }
+        int[] dist = new int[n + 1];
+        for (int i = 0; i <= n; i++) dist[i] = int.MaxValue;
+        dist[src] = 0;
+        var dq = new LinkedList<int>();
+        dq.AddLast(src);
+        while (dq.Count > 0) {
+            int u = dq.First.Value;
+            dq.RemoveFirst();
+            foreach (var e in g[u]) {
+                if (dist[u] + e.w < dist[e.v]) {
+                    dist[e.v] = dist[u] + e.w;
+                    if (e.w == 0) dq.AddFirst(e.v); else dq.AddLast(e.v);
+                }
+            }
+        }
+        return dist[dst] == int.MaxValue ? -1 : dist[dst];
+    }
+}` }],
       complexity: `<p>Time O(n + E); space O(n + E).</p>`,
       followUps: ['Return which edges to reverse', 'What if reversing edge i costs c<sub>i</sub>? (Dijkstra)']
     }
@@ -6657,7 +8183,19 @@ public:
         for (int i = 0; i < V; i++) if (d[i] == INF) d[i] = -1;
         return d;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] ShortestPath(int V, int E, int[][] edges) {
+        int INF = int.MaxValue;
+        int[] d = new int[V];
+        for (int i = 0; i < V; i++) d[i] = INF;
+        d[0] = 0;
+        for (int r = 0; r < V - 1; r++)
+            foreach (var e in edges)
+                if (d[e[0]] != INF && d[e[0]] + e[2] < d[e[1]]) d[e[1]] = d[e[0]] + e[2];
+        for (int i = 0; i < V; i++) if (d[i] == INF) d[i] = -1;
+        return d;
+    }
+}` }
         ] } },
     mcq: { q: 'Why does one pass in topological order suffice?', options: ['When u is processed, every edge INTO u has already been relaxed, so dist[u] is final', 'Because DAGs have no negative weights', 'Because the heap is sorted', 'It does not — you still need V − 1 passes'], answer: 0, explain: 'All predecessors of u come before u in topological order, so every path into u has been considered before u relaxes its out-edges.' },
     hints: [`<p>No cycles → there is a topological order where every edge goes left to right.</p>`, `<p>Kahn's algorithm (in-degrees + queue) gives the order; then relax each node's out-edges in that order.</p>`, `<p>Skip nodes whose dist is still ∞. Works with negative weights. Turn ∞ into −1 at the end. Same trick with max gives the <b>longest</b> path in a DAG.</p>`],
@@ -6716,6 +8254,21 @@ public:
     int sum = 0;
     for (int i = 0; i < V; i++) sum += d[i] * (i % 7 + 1);
     return {sum};
+}`, csharp: `public class Check {
+    public static int[] DagRun(int V, int E, int[][] edges) {
+        if (edges[0][0] != -1) return new Solution().ShortestPath(V, E, edges);
+        int mode = edges[0][1];                   // marker row [-1, mode]: 4000 forward edges; mode 1 relabels the vertices
+        var list = new List<int[]>();
+        for (int i = 0; i < V && list.Count < 4000; i++)
+            for (int j = i + 1; j < V && list.Count < 4000; j++)
+                if ((i * j + i) % 11 != 0) list.Add(new[] { i, j, (i * 13 + j * 7) % 101 });
+        if (mode == 1) foreach (var e in list) { e[0] = e[0] * 37 % V; e[1] = e[1] * 37 % V; }
+        int[][] es = list.ToArray();
+        int[] d = new Solution().ShortestPath(V, es.Length, es);
+        int sum = 0;
+        for (int i = 0; i < V; i++) sum += d[i] * (i % 7 + 1);
+        return new[] { sum };
+    }
 }`
     }, cases: [
       [[6,7,[[0,1,2],[0,4,1],[4,5,4],[4,2,2],[1,2,3],[2,3,6],[5,3,1]]],[0,2,3,6,1,5]],
@@ -6837,7 +8390,32 @@ public:
         for (int& x : d) if (x == INF) x = -1;
         return d;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] ShortestPath(int V, int E, int[][] edges) {
+        var g = new List<(int v, int w)>[V];
+        for (int i = 0; i < V; i++) g[i] = new List<(int v, int w)>();
+        int[] indeg = new int[V];
+        foreach (var e in edges) { g[e[0]].Add((e[1], e[2])); indeg[e[1]]++; }
+        var q = new Queue<int>();                               // Kahn's algorithm
+        for (int i = 0; i < V; i++) if (indeg[i] == 0) q.Enqueue(i);
+        var order = new List<int>();
+        while (q.Count > 0) {
+            int u = q.Dequeue();
+            order.Add(u);
+            foreach (var e in g[u]) if (--indeg[e.v] == 0) q.Enqueue(e.v);
+        }
+        int INF = int.MaxValue;
+        int[] d = new int[V];
+        for (int i = 0; i < V; i++) d[i] = INF;
+        d[0] = 0;
+        foreach (int u in order) {
+            if (d[u] == INF) continue;                          // not reachable from 0
+            foreach (var e in g[u]) if (d[u] + e.w < d[e.v]) d[e.v] = d[u] + e.w;
+        }
+        for (int i = 0; i < V; i++) if (d[i] == INF) d[i] = -1;
+        return d;
+    }
+}` }],
       complexity: `<p>Time O(V + E); space O(V + E).</p>`,
       followUps: ['Longest path in a DAG (critical path in project scheduling)', 'Count the number of shortest paths in a DAG']
     }
@@ -6937,7 +8515,29 @@ public:
         }
         return d[m - 1][n - 1];
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumObstacles(int[][] grid) {
+        int m = grid.Length, n = grid[0].Length;
+        int[,] d = new int[m, n];
+        for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) d[i, j] = int.MaxValue;
+        d[0, 0] = 0;
+        int[][] dirs = { new[] {1, 0}, new[] {-1, 0}, new[] {0, 1}, new[] {0, -1} };
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (int r = 0; r < m; r++)
+                for (int c = 0; c < n; c++) {
+                    if (d[r, c] == int.MaxValue) continue;
+                    foreach (var k in dirs) {
+                        int nr = r + k[0], nc = c + k[1];
+                        if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+                        if (d[r, c] + grid[nr][nc] < d[nr, nc]) { d[nr, nc] = d[r, c] + grid[nr][nc]; changed = true; }
+                    }
+                }
+        }
+        return d[m - 1, n - 1];
+    }
+}` }
         ] } },
     mcq: { q: 'Entering a cell costs its value (0 or 1). Best algorithm for 10<sup>5</sup> cells?', options: ['0-1 BFS with a deque, O(cells)', 'Plain BFS', 'Floyd-Warshall', 'Kruskal'], answer: 0, explain: 'Two possible costs → deque keeps the frontier sorted without a heap. Plain BFS would treat obstacles and empty cells the same.' },
     hints: [`<p>Think of moving into a cell as an edge whose weight is that cell's value: 0 or 1.</p>`, `<p>0-1 BFS: pollFirst; neighbour cost 0 → addFirst, cost 1 → addLast; only push on improvement.</p>`, `<p>Use one flat dist array of size m·n (index r·n + c) to save memory. Answer = dist of the bottom-right cell.</p>`],
@@ -6985,6 +8585,21 @@ public:
         grid[m - 1][n - 1] = 0;
     }
     return Solution().minimumObstacles(grid);
+}`, csharp: `public class Check {
+    public static int ObstRun(int[][] grid) {
+        if (grid[0][0] == -1) {                   // marker row [-1, m, n, mode]
+            int m = grid[0][1], n = grid[0][2], mode = grid[0][3];
+            grid = new int[m][];
+            for (int i = 0; i < m; i++) {
+                grid[i] = new int[n];
+                for (int j = 0; j < n; j++)
+                    grid[i][j] = mode == 0 ? ((i * 7 + j * 3 + i * j) % 5 == 0 ? 1 : 0) : ((i * 5 + j * 11 + (i / 3) * (j / 3)) % 3 == 0 ? 1 : 0);
+            }
+            grid[0][0] = 0;
+            grid[m - 1][n - 1] = 0;
+        }
+        return new Solution().MinimumObstacles(grid);
+    }
 }`
     }, cases: [
       [[[[0,1,1],[1,1,0],[1,1,0]]],2],
@@ -7105,7 +8720,31 @@ public:
         }
         return dist[m * n - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumObstacles(int[][] grid) {
+        int m = grid.Length, n = grid[0].Length;
+        int[] dist = new int[m * n];
+        for (int i = 0; i < m * n; i++) dist[i] = int.MaxValue;
+        dist[0] = 0;
+        var dq = new LinkedList<int>();
+        dq.AddLast(0);
+        int[][] dirs = { new[] {1, 0}, new[] {-1, 0}, new[] {0, 1}, new[] {0, -1} };
+        while (dq.Count > 0) {
+            int id = dq.First.Value, r = id / n, c = id % n;
+            dq.RemoveFirst();
+            foreach (var k in dirs) {
+                int nr = r + k[0], nc = c + k[1];
+                if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+                int w = grid[nr][nc], nid = nr * n + nc;
+                if (dist[id] + w < dist[nid]) {
+                    dist[nid] = dist[id] + w;
+                    if (w == 0) dq.AddFirst(nid); else dq.AddLast(nid);
+                }
+            }
+        }
+        return dist[m * n - 1];
+    }
+}` }],
       complexity: `<p>Time O(m·n); space O(m·n).</p>`,
       followUps: ['Return the cells to remove', 'Each obstacle has its own removal cost → Dijkstra']
     }
@@ -7213,7 +8852,30 @@ public:
     int swimInWater(vector<vector<int>>& grid) {
         for (int t = grid[0][0]; ; t++) if (canReach(grid, t)) return t;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int SwimInWater(int[][] grid) {
+        for (int t = grid[0][0]; ; t++) if (CanReach(grid, t)) return t;
+    }
+    bool CanReach(int[][] g, int t) {
+        int n = g.Length;
+        bool[,] seen = new bool[n, n];
+        var q = new Queue<int[]>();
+        q.Enqueue(new[] { 0, 0 });
+        seen[0, 0] = true;
+        int[][] dirs = { new[] {1, 0}, new[] {-1, 0}, new[] {0, 1}, new[] {0, -1} };
+        while (q.Count > 0) {
+            int[] c = q.Dequeue();
+            if (c[0] == n - 1 && c[1] == n - 1) return true;
+            foreach (var d in dirs) {
+                int r = c[0] + d[0], k = c[1] + d[1];
+                if (r < 0 || k < 0 || r >= n || k >= n || seen[r, k] || g[r][k] > t) continue;
+                seen[r, k] = true;
+                q.Enqueue(new[] { r, k });
+            }
+        }
+        return false;
+    }
+}` }
         ] } },
     mcq: { q: 'Cost of a route = the highest elevation on it. Which combine rule does Dijkstra use?', options: ['max(time so far, cell elevation)', 'time so far + elevation', 'min(time so far, elevation)', 'elevation of the start cell'], answer: 0, explain: 'You must wait until the water covers the highest cell on your route. Max is monotone, so Dijkstra works.' },
     hints: [`<p>The answer is the minimum over routes of the <b>maximum</b> cell value on the route (a minimax path).</p>`, `<p>Dijkstra: min-heap of {time, r, c}, neighbour time = max(time, grid[nr][nc]). Because the cost lives on cells, you may mark cells seen when pushing.</p>`, `<p>Return when (n−1, n−1) is polled. Alternatives: binary search t + BFS (O(n² log n²)), or add cells in increasing elevation with DSU until corners connect.</p>`],
@@ -7249,6 +8911,18 @@ public:
             for (int j = 0; j < n; j++) grid[i][j] = (i * n + j) * k % (n * n);
     }
     return Solution().swimInWater(grid);
+}`, csharp: `public class Check {
+    public static int SwimRun(int[][] grid) {
+        if (grid[0][0] == -1 && grid[0].Length == 3) {   // marker row [-1, n, k]: value (i*n + j) * k mod n*n
+            int n = grid[0][1], k = grid[0][2];
+            grid = new int[n][];
+            for (int i = 0; i < n; i++) {
+                grid[i] = new int[n];
+                for (int j = 0; j < n; j++) grid[i][j] = (i * n + j) * k % (n * n);
+            }
+        }
+        return new Solution().SwimInWater(grid);
+    }
 }`
     }, cases: [
       [[[[0,2],[1,3]]],3],
@@ -7387,7 +9061,63 @@ public:
         }
         return -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int SwimInWater(int[][] grid) {
+        int n = grid.Length;
+        bool[,] seen = new bool[n, n];
+        var pq = new MinHeap<(int t, int r, int c)>((a, b) => a.t.CompareTo(b.t));
+        pq.Push((grid[0][0], 0, 0));
+        seen[0, 0] = true;
+        int[][] dirs = { new[] {1, 0}, new[] {-1, 0}, new[] {0, 1}, new[] {0, -1} };
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            int time = t.t, r = t.r, c = t.c;
+            if (r == n - 1 && c == n - 1) return time;
+            foreach (var d in dirs) {
+                int nr = r + d[0], nc = c + d[1];
+                if (nr < 0 || nc < 0 || nr >= n || nc >= n || seen[nr, nc]) continue;
+                // pops come out in non-decreasing time, so the first push to a cell is already its best
+                seen[nr, nc] = true;
+                pq.Push((Math.Max(time, grid[nr][nc]), nr, nc));
+            }
+        }
+        return -1;
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p>Time O(n² log n); space O(n²).</p>`,
       followUps: ['Solve with DSU by sorting cells', 'Path With Minimum Effort is the edge-weighted cousin']
     }
@@ -7563,7 +9293,50 @@ public:
         }
         return {crit, pseudo};
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    int best = int.MaxValue;
+    List<bool[]> optimal = new List<bool[]>();
+
+    public List<List<int>> FindCriticalAndPseudoCriticalEdges(int n, int[][] edges) {
+        Rec(n, edges, 0, new bool[edges.Length], 0, 0);
+        var crit = new List<int>();
+        var pseudo = new List<int>();
+        for (int i = 0; i < edges.Length; i++) {
+            int cnt = 0;
+            foreach (var t in optimal) if (t[i]) cnt++;
+            if (cnt == optimal.Count) crit.Add(i);
+            else if (cnt > 0) pseudo.Add(i);
+        }
+        return new List<List<int>> { crit, pseudo };
+    }
+
+    void Rec(int n, int[][] e, int i, bool[] pick, int cnt, int w) {
+        if (cnt == n - 1) {
+            if (!Spans(n, e, pick)) return;
+            if (w < best) { best = w; optimal.Clear(); }
+            if (w == best) optimal.Add((bool[])pick.Clone());
+            return;
+        }
+        if (i == e.Length) return;
+        pick[i] = true;
+        Rec(n, e, i + 1, pick, cnt + 1, w + e[i][2]);
+        pick[i] = false;
+        Rec(n, e, i + 1, pick, cnt, w);
+    }
+
+    bool Spans(int n, int[][] e, bool[] pick) {
+        int[] p = new int[n];
+        for (int i = 0; i < n; i++) p[i] = i;
+        for (int i = 0; i < e.Length; i++) if (pick[i]) {
+            int a = Root(p, e[i][0]), b = Root(p, e[i][1]);
+            if (a == b) return false;              // cycle -> not a tree
+            p[a] = b;
+        }
+        return true;                               // n-1 edges, no cycle -> spanning tree
+    }
+
+    int Root(int[] p, int x) { while (p[x] != x) x = p[x]; return x; }
+}` }
         ] } },
     mcq: { q: 'How do you test if edge e is pseudo-critical (given it is not critical)?', options: ['Force e into the tree first, run Kruskal; if the weight equals the true MST weight, e is pseudo-critical', 'Remove e and check connectivity', 'Check if e is the lightest edge', 'Check if e is on a cycle'], answer: 0, explain: 'Forcing e and still reaching the optimal weight proves some MST contains it. Being non-critical means some MST avoids it.' },
     hints: [`<p>First compute the true MST weight W with Kruskal (sort once, keep original indices).</p>`, `<p>For each edge i: Kruskal <b>skipping</b> i — weight &gt; W (or disconnected) → critical. Else Kruskal <b>forcing</b> i first — weight == W → pseudo-critical.</p>`, `<p>E ≤ 200 → E Kruskal runs × E edges = 4·10<sup>4</sup> DSU ops — tiny. Return "disconnected" as +∞ so it counts as critical.</p>`],
@@ -7622,6 +9395,22 @@ public:
         }
     }
     return Solution().findCriticalAndPseudoCriticalEdges(n, edges);
+}`, csharp: `public class Check {
+    public static List<List<int>> CritRun(int n, int[][] edges) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: 100 vertices, up to 200 edges
+            int mode = edges[0][1];
+            var list = new List<int[]>();
+            if (mode == 2) {
+                for (int i = 0; i < n - 1; i++) list.Add(new[] { i, i + 1, 1 });
+            } else {
+                for (int i = 0; i < n; i++) list.Add(new[] { i, (i + 1) % n, mode == 0 ? 1 + (i * 7) % 5 : 1 });
+                if (mode != 3)
+                    for (int i = 0; i < n; i++) list.Add(new[] { i, (i + 2 + (i * 7) % 40) % n, mode == 0 ? 1 + (i * i * 3 + 5 * i) % 7 : 1 });
+            }
+            edges = list.ToArray();
+        }
+        return new Solution().FindCriticalAndPseudoCriticalEdges(n, edges);
+    }
 }`
     }, cases: [
       [[5,[[0,1,1],[1,2,1],[2,3,2],[0,3,2],[0,4,3],[3,4,3],[1,4,6]]],[[0,1],[2,3,4,5]]],
@@ -7799,7 +9588,47 @@ public:
         }
         return {critical, pseudo};
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    int[] parent;
+
+    int Find(int x) {
+        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+    }
+
+    // es sorted by weight; skip / force are positions in es (or -1)
+    int Mst(int n, int[][] es, int skip, int force) {
+        parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+        int total = 0, used = 0;
+        if (force != -1) {
+            parent[Find(es[force][0])] = Find(es[force][1]);
+            total += es[force][2];
+            used++;
+        }
+        for (int i = 0; i < es.Length; i++) {
+            if (i == skip || i == force) continue;
+            int a = Find(es[i][0]), b = Find(es[i][1]);
+            if (a != b) { parent[a] = b; total += es[i][2]; used++; }
+        }
+        return used == n - 1 ? total : int.MaxValue;   // disconnected -> "infinite"
+    }
+
+    public List<List<int>> FindCriticalAndPseudoCriticalEdges(int n, int[][] edges) {
+        int m = edges.Length;
+        int[][] es = new int[m][];
+        for (int i = 0; i < m; i++) es[i] = new[] { edges[i][0], edges[i][1], edges[i][2], i };
+        Array.Sort(es, (a, b) => a[2].CompareTo(b[2]));
+        int bse = Mst(n, es, -1, -1);
+        var crit = new List<int>();
+        var pseudo = new List<int>();
+        for (int i = 0; i < m; i++) {
+            if (Mst(n, es, i, -1) > bse) crit.Add(es[i][3]);
+            else if (Mst(n, es, -1, i) == bse) pseudo.Add(es[i][3]);
+        }
+        return new List<List<int>> { crit, pseudo };
+    }
+}` }],
       complexity: `<p>Time O(E² · α(V)) after one O(E log E) sort; space O(V + E).</p>`,
       followUps: ['Faster: group equal weights and find bridges in the contracted graph (Tarjan)', 'Second-best MST weight']
     }
@@ -7890,7 +9719,28 @@ public:
         dfs(0, 0, passingFees[0], n - 1);
         return best == INT_MAX ? -1 : best;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    int best = int.MaxValue;
+    List<int[]>[] g;
+    int[] fee;
+    int limit;
+    public int MinCost(int maxTime, int[][] edges, int[] passingFees) {
+        int n = passingFees.Length;
+        g = new List<int[]>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<int[]>();
+        foreach (var e in edges) { g[e[0]].Add(new[] { e[1], e[2] }); g[e[1]].Add(new[] { e[0], e[2] }); }
+        fee = passingFees;
+        limit = maxTime;
+        Dfs(0, 0, passingFees[0], n - 1);
+        return best == int.MaxValue ? -1 : best;
+    }
+    void Dfs(int u, int time, int cost, int target) {
+        if (cost >= best) return;
+        if (u == target) { best = cost; return; }
+        foreach (var e in g[u])
+            if (time + e[1] <= limit) Dfs(e[0], time + e[1], cost + fee[e[0]], target);
+    }
+}` }
         ] } },
     mcq: { q: 'Popping states in cost order, when should you push a new state (v, newTime)?', options: ['Only if newTime is smaller than the best time seen at v so far', 'Always', 'Only if v was never visited', 'Only if the cost is smaller than before'], answer: 0, explain: 'Every earlier state at v costs no more (pops are in cost order). A new state is useful only if it is faster — otherwise it is dominated.' },
     hints: [`<p>Two criteria: minimise fees, but time is a hard limit. A plain "visited" per city is wrong — a pricier but faster arrival may be needed.</p>`, `<p>Dijkstra on fees with states {cost, time, city}. Keep minTime[city]; push only when the new time beats it (dominance pruning).</p>`, `<p>Start cost = passingFees[0]. Skip moves with time &gt; maxTime. First time city n−1 is polled → answer. Alternative: DP dp[t][v] = min cost to be at v at time t, O(maxTime · E).</p>`],
@@ -7936,6 +9786,18 @@ public:
         else for (int i = 0; i < n - 1; i++) edges.push_back({i, min(i + 2 + (i % 5), n - 1), 1 + (i * 3) % 7});
     }
     return Solution().minCost(maxTime, edges, fees);
+}`, csharp: `public class Check {
+    public static int TimeRun(int maxTime, int[][] edges, int[] fees) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: chain of n cities with shortcuts (mode 0) or one long road (mode 1)
+            int mode = edges[0][1], n = fees.Length;
+            var list = new List<int[]>();
+            for (int i = 0; i < n - 1; i++) list.Add(new[] { i, i + 1, mode == 1 ? 1 : 1 + (i * 7) % 5 });
+            if (mode == 1) list.Add(new[] { 0, n - 1, 999 });
+            else for (int i = 0; i < n - 1; i++) list.Add(new[] { i, Math.Min(i + 2 + (i % 5), n - 1), 1 + (i * 3) % 7 });
+            edges = list.ToArray();
+        }
+        return new Solution().MinCost(maxTime, edges, fees);
+    }
 }`
     }, cases: [
       [[30,[[0,1,10],[1,2,10],[2,5,10],[0,3,1],[3,4,10],[4,5,15]],[5,1,2,20,20,3]],11],
@@ -8104,7 +9966,70 @@ public:
         }
         return -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinCost(int maxTime, int[][] edges, int[] passingFees) {
+        int n = passingFees.Length;
+        var g = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<(int v, int w)>();
+        foreach (var e in edges) {
+            g[e[0]].Add((e[1], e[2]));
+            g[e[1]].Add((e[0], e[2]));
+        }
+        int[] minTime = new int[n];
+        for (int i = 0; i < n; i++) minTime[i] = int.MaxValue;
+        minTime[0] = 0;
+        var pq = new MinHeap<(int cost, int time, int u)>((a, b) => a.cost.CompareTo(b.cost));
+        pq.Push((passingFees[0], 0, 0));                    // (cost, time, city)
+        while (pq.Count > 0) {
+            var t = pq.Pop();
+            int cost = t.cost, time = t.time, u = t.u;
+            if (u == n - 1) return cost;                     // cheapest valid arrival
+            foreach (var e in g[u]) {
+                int nt = time + e.w;
+                if (nt > maxTime) continue;                  // breaks the time limit
+                if (nt < minTime[e.v]) {                     // otherwise dominated (pricier AND slower)
+                    minTime[e.v] = nt;
+                    pq.Push((cost + passingFees[e.v], nt, e.v));
+                }
+            }
+        }
+        return -1;
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p>Dijkstra with pruning: each push needs a strictly smaller time, so at most maxTime pushes per city → O(maxTime · E log(...)) worst case, fast in practice. DP: O(maxTime · E) = 10<sup>6</sup>.</p>`,
       followUps: ['Return the route', 'Two limits (time and fuel) — what is the state now?', 'Pareto front: list all non-dominated (cost, time) pairs at the target']
     }
@@ -8216,7 +10141,32 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinCostToSupplyWater(int n, int[] wells, int[][] pipes) {
+        int[][] ps = (int[][])pipes.Clone();
+        Array.Sort(ps, (a, b) => a[2].CompareTo(b[2]));
+        int best = int.MaxValue;
+        for (int mask = 1; mask < (1 << n); mask++) {           // which houses dig a well
+            int[] p = new int[n + 1];
+            for (int i = 0; i <= n; i++) p[i] = i;
+            int cost = 0, comps = n + 1;
+            for (int i = 0; i < n; i++) {
+                if (((mask >> i) & 1) == 1) {
+                    cost += wells[i];
+                    p[Root(p, i + 1)] = Root(p, 0);              // house joins "has water" (node 0)
+                    comps--;
+                }
+            }
+            foreach (var e in ps) {
+                int a = Root(p, e[0]), b = Root(p, e[1]);
+                if (a != b) { p[a] = b; cost += e[2]; comps--; }
+            }
+            if (comps == 1) best = Math.Min(best, cost);
+        }
+        return best;
+    }
+    int Root(int[] p, int x) { while (p[x] != x) x = p[x]; return x; }
+}` }
         ] } },
     mcq: { q: 'How do you turn "build a well at house i for cost c" into a graph edge?', options: ['Edge between a virtual node 0 (water source) and house i with weight c', 'A self-loop on house i', 'Add c to every pipe of house i', 'Ignore wells and add them afterwards'], answer: 0, explain: 'A virtual source node makes "own well" just another way to connect to water. The MST over n + 1 nodes then chooses wells and pipes together.' },
     hints: [`<p>Every house must be connected to "water". Invent a node 0 that IS the water.</p>`, `<p>Edges: (0, i, wells[i−1]) for each house, plus all pipes. Now it is a plain MST on n + 1 nodes.</p>`, `<p>Kruskal + DSU over n + 1 nodes; stop after n edges. At least one well is always chosen because node 0 must be connected.</p>`],
@@ -8255,6 +10205,16 @@ public:
         pipes.push_back({1, n, mode == 1 ? 100000 : 500});
     }
     return Solution().minCostToSupplyWater(n, wells, pipes);
+}`, csharp: `public class Check {
+    public static int WaterRun(int n, int[] wells, int[][] pipes) {
+        if (pipes[0][0] == -1) {                  // marker row [-1, mode]: a chain of pipes plus one link from house 1 to house n
+            int mode = pipes[0][1];
+            pipes = new int[n][];
+            for (int i = 1; i < n; i++) pipes[i - 1] = new[] { i, i + 1, mode == 1 ? 100000 : (i * 91) % 100001 };
+            pipes[n - 1] = new[] { 1, n, mode == 1 ? 100000 : 500 };
+        }
+        return new Solution().MinCostToSupplyWater(n, wells, pipes);
+    }
 }`
     }, cases: [
       [[3,[1,2,2],[[1,2,1],[2,3,1]]],3],
@@ -8376,7 +10336,32 @@ public:
         }
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    int[] parent;
+
+    int Find(int x) {
+        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+    }
+
+    public int MinCostToSupplyWater(int n, int[] wells, int[][] pipes) {
+        var edges = new List<int[]>();
+        for (int i = 0; i < n; i++) edges.Add(new[] { 0, i + 1, wells[i] });   // virtual water node 0
+        foreach (var p in pipes) edges.Add(p);
+        edges.Sort((a, b) => a[2].CompareTo(b[2]));
+        parent = new int[n + 1];
+        for (int i = 0; i <= n; i++) parent[i] = i;
+        int total = 0, used = 0;
+        foreach (var e in edges) {
+            int a = Find(e[0]), b = Find(e[1]);
+            if (a == b) continue;
+            parent[a] = b;
+            total += e[2];
+            if (++used == n) break;                     // n + 1 nodes -> n edges
+        }
+        return total;
+    }
+}` }],
       complexity: `<p>Time O((n + P) log(n + P)); space O(n + P).</p>`,
       followUps: ['Prim from node 0 instead', 'Each house needs water from at least 2 sources (much harder — not an MST any more)']
     }

@@ -163,7 +163,46 @@ int main() {
     cout << stoi("1101", nullptr, 2) << '\\n';  // built-in: 13
     cout << 0b1101 << '\\n';                    // binary literal: 13
     cout << popcount(13u) << '\\n';             // C++20 <bit>: 3 bits are ON
-}` }] },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+class BinaryDemo {
+    // Decimal -> binary by repeated halving.
+    static string ToBinary(int n) {
+        if (n == 0) return "0";            // 0 has no ON switches
+        var sb = new StringBuilder();
+        while (n > 0) {
+            sb.Insert(0, n % 2);           // remainder = the current lowest bit, written in front
+            n /= 2;                        // drop that bit (same as n >> 1 for n >= 0)
+        }
+        return sb.ToString();
+    }
+
+    // Binary -> decimal: slide old value one place left (x2) and add the new bit.
+    static int ToDecimal(string s) {
+        int val = 0;
+        foreach (char ch in s) {
+            val = val * 2 + (ch - '0');    // '1' - '0' = 1, '0' - '0' = 0
+        }
+        return val;
+    }
+
+    static int BitCount(int n) {           // no Integer.bitCount in .NET Framework: count by hand
+        int c = 0;
+        for (uint u = (uint)n; u != 0; u >>= 1) c += (int)(u & 1);
+        return c;
+    }
+
+    static void Main() {
+        Console.WriteLine(ToBinary(13));                 // 1101
+        Console.WriteLine(ToDecimal("1101"));            // 13
+        Console.WriteLine(Convert.ToString(13, 2));      // built-in: 1101
+        Console.WriteLine(Convert.ToInt32("1101", 2));   // built-in: 13
+        Console.WriteLine(0b1101);                       // binary literal: 13
+        Console.WriteLine(BitCount(13));                 // 3 bits are ON (.NET Core 3+: BitOperations.PopCount)
+    }
+}`, run: true }] },
     codeTitle: 'Converting both ways (by hand and with built-ins)',
     examples: [
       {
@@ -180,7 +219,14 @@ int main() {
           <p>Check with place values: 32 + 8 + 4 + 1 = 45 ✔. This is exactly what <code>Integer.parseInt(s, 2)</code> does inside.</p>`,
         code: { lang: 'java', code: `System.out.println(Integer.parseInt("101101", 2)); // 45`, alt: [{ lang: 'python', run: true, code: `print(int("101101", 2))  # 45` },
   { lang: 'js', run: true, code: `console.log(parseInt('101101', 2)); // 45` },
-  { lang: 'cpp', code: `cout << stoi("101101", nullptr, 2) << '\\n'; // 45` }] }
+  { lang: 'cpp', code: `cout << stoi("101101", nullptr, 2) << '\\n'; // 45` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        Console.WriteLine(Convert.ToInt32("101101", 2)); // 45
+    }
+}`, run: true }] }
       },
       {
         title: 'How many bits does a number need? (int or long?)',
@@ -193,7 +239,15 @@ print(n.bit_length())  # 30` },
   { lang: 'js', run: true, code: `const n = 1000000000;
 console.log(32 - Math.clz32(n)); // 30 (clz32 = count leading zeros of the 32-bit value)` },
   { lang: 'cpp', code: `unsigned n = 1'000'000'000;
-cout << bit_width(n) << '\\n'; // 30 (C++20 <bit>)` }] }
+cout << bit_width(n) << '\\n'; // 30 (C++20 <bit>)` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int n = 1000000000;
+        Console.WriteLine(Convert.ToString(n, 2).Length); // 30 (bit length; .NET Core 3+: BitOperations.Log2(n) + 1)
+    }
+}`, run: true }] }
       },
       {
         title: 'Hex is just binary in groups of 4',
@@ -372,7 +426,32 @@ int main() {
 
     int n = 12;                         // 1100
     cout << (n & -n) << '\\n';           // 4 (binary 100)
-}` }] },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class TwosComplementDemo {
+    static void Main() {
+        int x = 5;
+        int flipped = ~x;          // every bit flipped -> -6 (because ~x == -x - 1)
+        int neg = ~x + 1;          // flip, then add 1 -> -5
+        Console.WriteLine(flipped);                         // -6
+        Console.WriteLine(neg);                             // -5
+        Console.WriteLine(neg == -x);                       // True
+        Console.WriteLine(Convert.ToString(-5, 2));         // 11111111111111111111111111111011
+        Console.WriteLine(Convert.ToString(-1, 2));         // 32 ones
+
+        // The odometer rolls over (C# arithmetic is unchecked by default):
+        int big = int.MaxValue;
+        Console.WriteLine(big + 1 == int.MinValue);         // True
+        int min = int.MinValue;
+        Console.WriteLine(-min);                            // still -2147483648
+        Console.WriteLine(Math.Abs((long)int.MinValue));    // 2147483648, safe in long
+
+        // Lowest ON switch:
+        int n = 12;                                         // 1100
+        Console.WriteLine(n & -n);                          // 4 (binary 100)
+    }
+}`, run: true }] },
     codeTitle: 'Seeing 2\'s complement in code',
     examples: [
       {
@@ -398,7 +477,17 @@ console.log((big + 1) | 0);    // -2147483648: | 0 squeezes it into 32 bits` },
   { lang: 'cpp', code: `int big = INT_MAX;
 cout << static_cast<long long>(big) + 1 << '\\n';      // 2147483648
 int r;
-if (__builtin_add_overflow(big, 1, &r)) cout << "overflow caught\\n";   // GCC/Clang check; big + 1 itself is UB` }] }
+if (__builtin_add_overflow(big, 1, &r)) cout << "overflow caught\\n";   // GCC/Clang check; big + 1 itself is UB` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int big = int.MaxValue;
+        Console.WriteLine(big + 1);          // -2147483648 (unchecked by default)
+        Console.WriteLine((long)big + 1);    // 2147483648
+        try { int r = checked(big + 1); Console.WriteLine(r); } catch (OverflowException) { Console.WriteLine("overflow caught"); }
+    }
+}`, run: true }] }
       },
       {
         title: 'Signed bytes in Java: (byte) 200',
@@ -413,7 +502,16 @@ console.log(b);          // -56
 console.log(b & 0xFF);   // 200` },
   { lang: 'cpp', code: `int8_t b = static_cast<int8_t>(200);
 cout << int(b) << '\\n';        // -56
-cout << (b & 0xFF) << '\\n';    // 200` }] }
+cout << (b & 0xFF) << '\\n';    // 200` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        sbyte b = unchecked((sbyte)200);   // signed 8-bit; the plain byte type is unsigned (0..255)
+        Console.WriteLine(b);          // -56
+        Console.WriteLine(b & 0xFF);   // 200
+    }
+}`, run: true }] }
       },
       {
         title: 'Widening copies the sign bit (sign extension)',
@@ -426,7 +524,17 @@ print(x & 0xFFFFFFFF)   # 4294967295: the 32 raw bits read as unsigned` },
   { lang: 'js', run: true, code: `const x = -1;
 console.log(x >>> 0);   // 4294967295: >>> 0 reads the 32 bits as unsigned` },
   { lang: 'cpp', code: `int x = -1;
-cout << static_cast<uint32_t>(x) << '\\n';   // 4294967295` }] }
+cout << static_cast<uint32_t>(x) << '\\n';   // 4294967295` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int x = -1;
+        long asUnsigned = x & 0xFFFFFFFFL;
+        Console.WriteLine(asUnsigned);                 // 4294967295
+        Console.WriteLine((uint)x);                    // 4294967295 (C# has unsigned types)
+    }
+}`, run: true }] }
       }
     ],
     deepDive: `<h4>Why 2's complement won</h4>
@@ -608,7 +716,38 @@ int main() {
 
     int x = 7;
     cout << boolalpha << ((x & 1) == 1) << '\\n';       // true (without brackets: x & (1 == 1))
-}` }] },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class OperatorsDemo {
+    static void Main() {
+        int a = 12, b = 10;              // 1100 and 1010
+        Console.WriteLine(a & b);        // 8   (1000) both on
+        Console.WriteLine(a | b);        // 14  (1110) at least one on
+        Console.WriteLine(a ^ b);        // 6   (0110) different
+        Console.WriteLine(~a);           // -13 (every bit flipped)
+
+        Console.WriteLine(3 << 2);       // 12  = 3 * 4
+        Console.WriteLine(13 >> 1);      // 6   = floor(13 / 2)
+        Console.WriteLine(-16 >> 2);     // -4  sign bit copied in
+        Console.WriteLine(-7 >> 1);      // -4  rounds toward minus infinity
+        Console.WriteLine(-7 / 2);       // -3  division rounds toward zero
+        int neg = -16;
+        Console.WriteLine((uint)neg >> 28);   // 15  no >>> in C# 7: shift an unsigned value instead
+
+        int sh = 32;
+        Console.WriteLine(1 << sh);      // 1 (shift amount uses only its last 5 bits!)
+        Console.WriteLine(1L << sh);     // 4294967296 (use long for big masks)
+
+        int lo = 2000000000, hi = 2100000000;
+        int mid = (int)((uint)(lo + hi) >> 1);   // lo + hi overflows, but the unsigned shift reads it as unsigned
+        Console.WriteLine(mid);          // 2050000000
+
+        int x = 7;
+        bool odd = (x & 1) == 1;         // brackets needed: == binds tighter than &
+        Console.WriteLine(odd);          // True
+    }
+}`, run: true }] },
     codeTitle: 'Every operator on small numbers',
     examples: [
       {
@@ -638,7 +777,17 @@ console.log(((r << 16) | (g << 8) | b) === c);    // true` },
   { lang: 'cpp', code: `uint32_t c = 0x12AB34;
 uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;   // unsigned: >> fills with 0
 cout << r << ' ' << g << ' ' << b << '\\n';                          // 18 171 52
-cout << boolalpha << (((r << 16) | (g << 8) | b) == c) << '\\n';     // true` }] }
+cout << boolalpha << (((r << 16) | (g << 8) | b) == c) << '\\n';     // true` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int c = 0x12AB34;
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;   // c >= 0, so >> fills with 0
+        Console.WriteLine(r + " " + g + " " + b);              // 18 171 52
+        Console.WriteLine(((r << 16) | (g << 8) | b) == c);    // True
+    }
+}`, run: true }] }
       },
       {
         title: 'The precedence trap: x &amp; 1 == 0',
@@ -658,7 +807,16 @@ const i = 1;
 console.log(i < a.length && a[i] > 0); // false, right side skipped` },
   { lang: 'cpp', code: `vector<int> a = {5};
 size_t i = 1;
-cout << boolalpha << (i < a.size() && a[i] > 0) << '\\n';   // false, a[1] is never read` }] }
+cout << boolalpha << (i < a.size() && a[i] > 0) << '\\n';   // false, a[1] is never read` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 5 };
+        int i = 1;
+        Console.WriteLine(i < a.Length && a[i] > 0); // False, right side skipped
+    }
+}`, run: true }] }
       }
     ],
     deepDive: `<h4>How shifts really behave in Java</h4>
@@ -856,7 +1014,44 @@ int main() {
     for (size_t i = 0; i < arr.size(); ++i) px[i + 1] = px[i] ^ arr[i];
     cout << rangeXor(px, 1, 3) << '\\n'; // 1
     cout << xorUpTo(4) << '\\n';         // 4
-}` }] },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class XorFacts {
+    // XOR of all numbers 1..n in O(1) using the repeating pattern of period 4.
+    static int XorUpTo(int n) {
+        switch (n % 4) {
+            case 0: return n;      // 1^2^3^4 = 4
+            case 1: return 1;      // 1^2^3^4^5 = 1
+            case 2: return n + 1;  // 1^2 = 3
+            default: return 0;     // 1^2^3 = 0
+        }
+    }
+
+    // XOR of a[l..r] using a prefix XOR array (px[i] = a[0]^...^a[i-1]).
+    static int RangeXor(int[] px, int l, int r) {
+        return px[r + 1] ^ px[l];  // the common part a[0..l-1] cancels itself
+    }
+
+    static void Main() {
+        int a = 5, b = 3;
+        Console.WriteLine(a ^ a);       // 0  (x ^ x = 0)
+        Console.WriteLine(a ^ 0);       // 5  (x ^ 0 = x)
+        Console.WriteLine(a ^ b ^ a);   // 3  (the a's cancel)
+
+        // swap without temp (only safe for two DIFFERENT variables)
+        a ^= b;   // a = 5^3
+        b ^= a;   // b = 3^(5^3) = 5
+        a ^= b;   // a = (5^3)^5 = 3
+        Console.WriteLine(a + " " + b); // 3 5
+
+        int[] arr = { 4, 7, 1, 7 };
+        int[] px = new int[arr.Length + 1];
+        for (int i = 0; i < arr.Length; i++) px[i + 1] = px[i] ^ arr[i];
+        Console.WriteLine(RangeXor(px, 1, 3)); // 7^1^7 = 1
+        Console.WriteLine(XorUpTo(4));         // 4
+    }
+}`, run: true }] },
     codeTitle: 'XOR rules in code: pattern, prefix XOR, swap',
     examples: [
       {
@@ -879,7 +1074,17 @@ console.log(x);                // 2` },
   { lang: 'cpp', code: `vector<int> nums = {3, 0, 1};
 int x = nums.size();           // start with n itself
 for (int i = 0; i < (int)nums.size(); ++i) x ^= i ^ nums[i];
-cout << x << '\\n';             // 2` }] }
+cout << x << '\\n';             // 2` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] nums = { 3, 0, 1 };
+        int x = nums.Length;                        // start with n itself
+        for (int i = 0; i < nums.Length; i++) x ^= i ^ nums[i];
+        Console.WriteLine(x);                       // 2
+    }
+}`, run: true }] }
       },
       {
         title: 'XOR of 1..n without a loop',
@@ -912,7 +1117,17 @@ console.log(String.fromCharCode(x));             // e` },
   { lang: 'cpp', code: `string s = "abcd", t = "abcde";
 char x = 0;
 for (char ch : s + t) x ^= ch;   // a char is a small integer in C++
-cout << x << '\\n';               // e` }] }
+cout << x << '\\n';               // e` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        string s = "abcd", t = "abcde";
+        char x = (char)0;
+        foreach (char ch in s + t) x ^= ch;   // char ^ char is an int: ^= casts it back
+        Console.WriteLine(x); // e
+    }
+}`, run: true }] }
       }
     ],
     deepDive: `<h4>XOR is "addition without carry"</h4>
@@ -1079,7 +1294,34 @@ int main() {
     uint64_t big = 0;
     big |= 1ULL << 40;                                 // 64-bit mask needs 1ULL (1 << 40 is undefined)
     cout << countr_zero(big) << '\\n';                  // 40
-}` }] },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class BitOps {
+    static bool IsSet(int n, int i)  { return ((n >> i) & 1) == 1; }  // peek through the hole
+    static int SetBit(int n, int i)     { return n | (1 << i); }      // force ON
+    static int ClearBit(int n, int i)   { return n & ~(1 << i); }     // force OFF
+    static int ToggleBit(int n, int i)  { return n ^ (1 << i); }      // flip
+
+    static int TrailingZeros(long v) {                                // index of the lowest ON bit
+        int k = 0;
+        while ((v & 1) == 0) { v >>= 1; k++; }
+        return k;                                                     // (.NET Core 3+: BitOperations.TrailingZeroCount)
+    }
+
+    static void Main() {
+        int n = 13;                                 // 1101
+        Console.WriteLine(IsSet(n, 1));             // False
+        Console.WriteLine(IsSet(n, 2));             // True
+        Console.WriteLine(SetBit(n, 1));            // 15 (1111)
+        Console.WriteLine(ClearBit(n, 2));          // 9  (1001)
+        Console.WriteLine(ToggleBit(n, 0));         // 12 (1100)
+
+        long big = 0L;
+        big |= 1L << 40;                            // long mask needs 1L
+        Console.WriteLine(TrailingZeros(big));      // 40
+    }
+}`, run: true }] },
     codeTitle: 'The four mask operations',
     examples: [
       {
@@ -1109,7 +1351,19 @@ int perms = READ | EXEC;
 cout << boolalpha << ((perms & WRITE) != 0) << '\\n';  // false
 perms |= WRITE;                                        // 7
 perms &= ~EXEC;                                        // 3
-cout << perms << '\\n';                                 // 3` }] }
+cout << perms << '\\n';                                 // 3` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        const int READ = 1, WRITE = 2, EXEC = 4;
+        int perms = READ | EXEC;
+        Console.WriteLine((perms & WRITE) != 0); // False
+        perms |= WRITE;                           // 7
+        perms &= ~EXEC;                           // 3
+        Console.WriteLine(perms);                 // 3
+    }
+}`, run: true }] }
       },
       {
         title: 'Letters of a word as a 26-bit set',
@@ -1127,7 +1381,16 @@ for (const c of 'bad') mask |= 1 << (c.charCodeAt(0) - 97);   // 97 = 'a'
 console.log(mask); // 11` },
   { lang: 'cpp', code: `int mask = 0;
 for (char c : string("bad")) mask |= 1 << (c - 'a');
-cout << mask << '\\n'; // 11` }] }
+cout << mask << '\\n'; // 11` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int mask = 0;
+        foreach (char c in "bad") mask |= 1 << (c - 'a');
+        Console.WriteLine(mask); // 11
+    }
+}`, run: true }] }
       },
       {
         title: 'Set bit i to a given value v (0 or 1)',
@@ -1286,7 +1549,24 @@ int main() {
     cout << countBits(-1) << '\\n';    // 32 (-1 converts to 0xFFFFFFFF)
     cout << popcount(44u) << '\\n';    // 3 (C++20 <bit>)
     cout << (44 & -44) << '\\n';       // 4
-}` }] },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class KernighanDemo {
+    static int CountBits(int n) {
+        int count = 0;
+        while (n != 0) {        // works for negatives too (32 ones in -1): unchecked wrap-around
+            n &= (n - 1);       // switch off the lowest ON bit
+            count++;            // one breath per lit candle
+        }
+        return count;
+    }
+    static void Main() {
+        Console.WriteLine(CountBits(44));          // 3
+        Console.WriteLine(CountBits(-1));          // 32  (.NET Core 3+ built-in: BitOperations.PopCount)
+        Console.WriteLine(44 & -44);               // 4 (only the lowest ON bit kept)
+    }
+}`, run: true }] },
     codeTitle: 'Kernighan loop',
     examples: [
       {
@@ -1309,7 +1589,17 @@ console.log(bits); // [0, 1, 1, 2, 1, 2, 2, 3]` },
   { lang: 'cpp', code: `int n = 7;
 vector<int> bits(n + 1, 0);
 for (int i = 1; i <= n; ++i) bits[i] = bits[i & (i - 1)] + 1;
-for (int b : bits) cout << b << ' ';   // 0 1 1 2 1 2 2 3` }] }
+for (int b : bits) cout << b << ' ';   // 0 1 1 2 1 2 2 3` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int n = 7;
+        int[] bits = new int[n + 1];
+        for (int i = 1; i <= n; i++) bits[i] = bits[i & (i - 1)] + 1;
+        Console.WriteLine("[" + string.Join(", ", bits) + "]"); // [0, 1, 1, 2, 1, 2, 2, 3]
+    }
+}`, run: true }] }
       },
       {
         title: 'Power of four',
@@ -1325,7 +1615,16 @@ const powerOfFour = n > 0 && (n & (n - 1)) === 0 && (n & 0x55555555) !== 0;
 console.log(powerOfFour); // true` },
   { lang: 'cpp', code: `int n = 16;
 bool powerOfFour = n > 0 && (n & (n - 1)) == 0 && (n & 0x55555555) != 0;
-cout << boolalpha << powerOfFour << '\\n'; // true` }] }
+cout << boolalpha << powerOfFour << '\\n'; // true` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int n = 16;
+        bool powerOfFour = n > 0 && (n & (n - 1)) == 0 && (n & 0x55555555) != 0;
+        Console.WriteLine(powerOfFour); // True
+    }
+}`, run: true }] }
       },
       {
         title: 'Visit only the ON bits of a mask',
@@ -1356,7 +1655,21 @@ while (m) {
     unsigned low = m & (0u - m);          // unsigned negate is well defined
     cout << countr_zero(low) << ' ';      // 1 2 4
     m &= m - 1;
-}` }] }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static int TrailingZeros(int v) { int k = 0; while ((v & 1) == 0) { v >>= 1; k++; } return k; }
+    static void Main() {
+        int m = 22;
+        while (m != 0) {
+            int low = m & -m;
+            Console.Write(TrailingZeros(low) + " "); // 1 2 4
+            m &= m - 1;
+        }
+        Console.WriteLine();
+    }
+}`, run: true }] }
       },
       {
         title: 'Round up to the next power of two',
@@ -1457,6 +1770,15 @@ int hammingWeight(int n) {
         if (((unsigned) n >> i) & 1) count++;   // look at every switch
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int HammingWeight(int n) {
+        int count = 0;
+        for (int i = 0; i < 32; i++) {
+            if ((((uint)n >> i) & 1) == 1) count++;  // look at every switch (unsigned shift fills with 0)
+        }
+        return count;
+    }
 }` }] }
         },
         mcq: {
@@ -1517,7 +1839,17 @@ public:
         }
         return count;                           // built-in: std::popcount(u)
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int HammingWeight(int n) {
+        int count = 0;
+        while (n != 0) {
+            n = n & (n - 1);   // remove the lowest set bit (n - 1 wraps safely: C# is unchecked by default)
+            count++;           // we removed exactly one 1
+        }
+        return count;          // number of rounds = number of 1 bits
+    }
+}` }
           ],
           dry: {
             head: ['round', 'n before', 'n − 1', 'n &amp; (n − 1)', 'count'],
@@ -1561,6 +1893,13 @@ bool isPowerOfTwo(int n) {
     if (n <= 0) return false;      // 0 and negatives are never powers of two
     while (n % 2 == 0) n /= 2;     // strip factors of 2
     return n == 1;                 // only a single 1 should remain
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPowerOfTwo(int n) {
+        if (n <= 0) return false;      // 0 and negatives are never powers of two
+        while (n % 2 == 0) n /= 2;     // strip factors of 2
+        return n == 1;                 // only a single 1 should remain
+    }
 }` }] }
         },
         mcq: {
@@ -1606,7 +1945,14 @@ public:
         // n > 0 is checked first, so n - 1 can never overflow
         return n > 0 && (n & (n - 1)) == 0;   // C++20 also has std::has_single_bit
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPowerOfTwo(int n) {
+        // n > 0 rules out 0 and all negatives (incl. int.MinValue)
+        // n & (n - 1) removes the only ON bit of a power of two -> 0
+        return n > 0 && (n & (n - 1)) == 0;
+    }
+}` }
           ],
           dry: {
             head: ['n', 'binary', 'n − 1', 'n &amp; (n − 1)', 'n &gt; 0', 'answer'],
@@ -1656,7 +2002,16 @@ for (const x of [-3, 5, -3]) res ^= x;
 console.log(res); // 5` },
   { lang: 'cpp', code: `int res = 0;
 for (int x : {-3, 5, -3}) res ^= x;
-cout << res << '\\n'; // 5` }] }
+cout << res << '\\n'; // 5` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int res = 0;
+        foreach (int x in new[] { -3, 5, -3 }) res ^= x;
+        Console.WriteLine(res); // 5
+    }
+}`, run: true }] }
       },
       {
         title: 'The value that appears an odd number of times',
@@ -1685,7 +2040,17 @@ console.log([...seen]); // [4]` },
   { lang: 'cpp', code: `unordered_set<int> seen;
 for (int x : {4, 1, 2, 1, 2})
     if (!seen.insert(x).second) seen.erase(x);   // toggle membership
-for (int x : seen) cout << x << '\\n';             // 4` }] }
+for (int x : seen) cout << x << '\\n';             // 4` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        var seen = new HashSet<int>();
+        foreach (int x in new[] { 4, 1, 2, 1, 2 }) if (!seen.Add(x)) seen.Remove(x);   // toggle membership
+        Console.WriteLine("[" + string.Join(", ", seen) + "]"); // [4]
+    }
+}`, run: true }] }
       }
     ],
     deepDive: `<h4>Correctness proof (column view)</h4>
@@ -1715,7 +2080,19 @@ System.out.println(Arrays.stream(new int[]{-3, 5, -3}).reduce(0, (a, b) -> a ^ b
 console.log(nums.reduce((a, b) => a ^ b, 0));          // 4
 console.log([-3, 5, -3].reduce((a, b) => a ^ b, 0));   // 5` },
       { lang: 'cpp', code: `vector<int> nums = {4, 1, 2, 1, 2};
-cout << accumulate(nums.begin(), nums.end(), 0, bit_xor<int>()) << '\\n';   // 4` }
+cout << accumulate(nums.begin(), nums.end(), 0, bit_xor<int>()) << '\\n';   // 4` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Linq;
+
+class Program {
+    static void Main() {
+        int[] nums = { 4, 1, 2, 1, 2 };
+        Console.WriteLine(nums.Aggregate(0, (acc, x) => acc ^ x));   // 4: LINQ fold with XOR
+
+        // negative values are fine too
+        Console.WriteLine(new[] { -3, 5, -3 }.Aggregate(0, (acc, x) => acc ^ x));   // 5
+    }
+}`, run: true }
     ] }],
     codeTitle: ['One-line XOR fold with reduce'],
     viz: {
@@ -1807,6 +2184,18 @@ int singleNumber(const vector<int>& nums) {
         if (count == 1) return nums[i];        // no twin found
     }
     return -1;                                 // never happens for valid input
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SingleNumber(int[] nums) {
+        for (int i = 0; i < nums.Length; i++) {
+            int count = 0;
+            for (int j = 0; j < nums.Length; j++) {
+                if (nums[j] == nums[i]) count++;   // count copies of nums[i]
+            }
+            if (count == 1) return nums[i];        // no twin found
+        }
+        return -1;                                 // never happens for valid input
+    }
 }` }] }
         },
         mcq: {
@@ -1855,7 +2244,16 @@ public:
         for (int x : nums) res ^= x;   // twin pairs cancel
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SingleNumber(int[] nums) {
+        int res = 0;                 // 0 is the "empty hand"
+        foreach (int x in nums) {
+            res ^= x;                // twin pairs cancel: x ^ x = 0
+        }
+        return res;                  // only the unpaired value is left
+    }
+}` }
           ],
           dry: {
             head: ['i', 'x', 'res before', 'res ^ x (binary)', 'res'],
@@ -1935,7 +2333,18 @@ public:
         }
         return ones;
     }
-};` }] },
+};` }, { lang: 'csharp', code: String.raw`
+public class SingleNumberIIOnePass {
+    // ones = columns whose count % 3 == 1, twos = columns whose count % 3 == 2
+    public int SingleNumber(int[] nums) {
+        int ones = 0, twos = 0;
+        foreach (int x in nums) {
+            ones = (ones ^ x) & ~twos;   // add x to "seen once" unless it was "seen twice"
+            twos = (twos ^ x) & ~ones;   // add x to "seen twice" unless it is now "seen once"
+        }                                 // a third copy clears the column from both
+        return ones;                     // the single number's bits are left in ones
+    }
+}` }] },
     codeTitle: 'Bonus: one-pass ones/twos version',
     examples: [
       {
@@ -1980,7 +2389,21 @@ for (int bit = 0; bit < 32; ++bit) {
     for (int x : nums) cnt += (static_cast<uint32_t>(x) >> bit) & 1u;
     if (cnt % k != 0) ans |= 1u << bit;
 }
-cout << static_cast<int>(ans) << '\\n'; // 6` }] }
+cout << static_cast<int>(ans) << '\\n'; // 6` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] nums = { 9, 9, 9, 9, 9, 6 };
+        int k = 5, ans = 0;
+        for (int bit = 0; bit < 32; bit++) {
+            int cnt = 0;
+            foreach (int x in nums) cnt += (x >> bit) & 1;
+            if (cnt % k != 0) ans |= 1 << bit;
+        }
+        Console.WriteLine(ans); // 6
+    }
+}`, run: true }] }
       },
       {
         title: 'Tracing the ones/twos trick on [2, 2, 3, 2]',
@@ -2096,6 +2519,18 @@ int singleNumber(const vector<int>& nums) {
         if (value == 1) return key;
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int SingleNumber(int[] nums) {
+        var freq = new Dictionary<int, int>();
+        foreach (int x in nums) freq[x] = freq.TryGetValue(x, out int c) ? c + 1 : 1;  // O(N) extra memory
+        foreach (var e in freq) {
+            if (e.Value == 1) return e.Key;
+        }
+        return -1;
+    }
 }` }] }
         },
         mcq: {
@@ -2162,7 +2597,22 @@ public:
         }
         return static_cast<int>(ans);           // C++20: wraps to the signed value
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SingleNumber(int[] nums) {
+        int ans = 0;
+        for (int bit = 0; bit < 32; bit++) {          // every column incl. sign bit 31
+            int count = 0;
+            foreach (int x in nums) {
+                count += (x >> bit) & 1;              // is this column ON in x?
+            }
+            if (count % 3 != 0) {                     // triplets add multiples of 3
+                ans |= (1 << bit);                    // leftover 1 belongs to the single
+            }
+        }
+        return ans;
+    }
+}` }
           ],
           dry: {
             head: ['bit', 'bits of 2, 2, 3, 2', 'count', 'count % 3', 'ans'],
@@ -2263,7 +2713,25 @@ pair<int, int> twoSingles(const vector<int>& nums) {
 int main() {
     auto [a, b] = twoSingles({1, 2, 1, 3, 2, 5});
     cout << a << ' ' << b << '\\n';   // 3 5
-}` }] },
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class SingleNumberIIIDemo {
+    static int[] TwoSingles(int[] nums) {
+        int xr = 0;
+        foreach (int x in nums) xr ^= x;      // pairs cancel -> xr = a ^ b (not 0)
+        int diff = xr & -xr;                  // lowest bit where a and b differ
+        int a = 0, b = 0;
+        foreach (int x in nums) {
+            if ((x & diff) != 0) a ^= x;      // pile 1: that bit ON
+            else b ^= x;                      // pile 2: that bit OFF
+        }
+        return new[] { a, b };                // each pile held exactly one loner
+    }
+    static void Main() {
+        Console.WriteLine("[" + string.Join(", ", TwoSingles(new[] { 1, 2, 1, 3, 2, 5 })) + "]"); // [3, 5]
+    }
+}`, run: true }] },
     codeTitle: 'Core pattern',
     examples: [
       {
@@ -2305,7 +2773,22 @@ for (int v : arr) xr ^= v;                 // xr = 2 ^ 5
 int diff = xr & -xr, a = 0, b = 0;         // xr > 0 here, so -xr cannot overflow
 for (int v = 1; v <= n; ++v) (v & diff ? a : b) ^= v;
 for (int v : arr) (v & diff ? a : b) ^= v;
-cout << a << ' ' << b << '\\n';             // 5 2` }] }
+cout << a << ' ' << b << '\\n';             // 5 2` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int n = 6;
+        int[] arr = { 1, 3, 4, 6 };
+        int xr = 0;
+        for (int v = 1; v <= n; v++) xr ^= v;
+        foreach (int v in arr) xr ^= v;            // xr = 2 ^ 5
+        int diff = xr & -xr, a = 0, b = 0;
+        for (int v = 1; v <= n; v++) { if ((v & diff) != 0) a ^= v; else b ^= v; }
+        foreach (int v in arr) { if ((v & diff) != 0) a ^= v; else b ^= v; }
+        Console.WriteLine(a + " " + b);     // 5 2
+    }
+}`, run: true }] }
       },
       {
         title: 'Negative numbers and Integer.MIN_VALUE',
@@ -2438,6 +2921,20 @@ vector<int> singleNumber(const vector<int>& nums) {
         if (value == 1) res.push_back(key);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int[] SingleNumber(int[] nums) {
+        var freq = new Dictionary<int, int>();
+        foreach (int x in nums) freq[x] = freq.TryGetValue(x, out int c) ? c + 1 : 1;   // O(N) extra space
+        int[] res = new int[2];
+        int k = 0;
+        foreach (var e in freq) {
+            if (e.Value == 1) res[k++] = e.Key;
+        }
+        return res;
+    }
 }` }] }
         },
         mcq: {
@@ -2510,7 +3007,20 @@ public:
         }
         return {a, b};
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] SingleNumber(int[] nums) {
+        int xr = 0;
+        foreach (int x in nums) xr ^= x;         // = a ^ b, guaranteed non-zero
+        int diff = xr & -xr;                     // lowest bit where a and b differ (-int.MinValue wraps harmlessly)
+        int a = 0, b = 0;
+        foreach (int x in nums) {
+            if ((x & diff) != 0) a ^= x;         // pile with that bit ON
+            else b ^= x;                         // pile with that bit OFF
+        }
+        return new[] { a, b };
+    }
+}` }],
           dry: {
             head: ['x', 'x &amp; diff (diff = 2)', 'pile', 'a', 'b'],
             rows: [
@@ -2631,7 +3141,40 @@ int main() {
     cout << subsets({1, 2, 3}).size() << '\\n';             // 8
     for (int s : submasks(0b1011)) cout << s << ' ';       // 11 10 9 8 3 2 1 0
     cout << '\\n';
-}` }, { lang: 'python', title: 'Same in Python (runnable)', run: true, code: `def subsets(nums):
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class SubsetMasks {
+    // All subsets of nums using masks 0 .. 2^n - 1
+    static List<List<int>> Subsets(int[] nums) {
+        int n = nums.Length;
+        var all = new List<List<int>>();
+        for (int mask = 0; mask < (1 << n); mask++) {       // 2^n patterns
+            var cur = new List<int>();
+            for (int j = 0; j < n; j++) {
+                if (((mask >> j) & 1) == 1) cur.Add(nums[j]); // bit j ON -> take item j
+            }
+            all.Add(cur);
+        }
+        return all;
+    }
+
+    // Every submask of m, largest first, including 0 at the end
+    static List<int> Submasks(int m) {
+        var result = new List<int>();
+        for (int s = m; s > 0; s = (s - 1) & m) result.Add(s);
+        result.Add(0);                                       // the empty submask
+        return result;
+    }
+
+    static void Main() {
+        var parts = new List<string>();
+        foreach (var sub in Subsets(new[] { 1, 2, 3 })) parts.Add("[" + string.Join(", ", sub) + "]");
+        Console.WriteLine("[" + string.Join(", ", parts) + "]");   // [[], [1], [2], [1, 2], [3], [1, 3], [2, 3], [1, 2, 3]]
+        Console.WriteLine("[" + string.Join(", ", Submasks(0b1011)) + "]");   // [11, 10, 9, 8, 3, 2, 1, 0]
+    }
+}`, run: true }, { lang: 'python', title: 'Same in Python (runnable)', run: true, code: `def subsets(nums):
     n = len(nums)
     return [[nums[j] for j in range(n) if mask >> j & 1] for mask in range(1 << n)]
 
@@ -2682,7 +3225,21 @@ for (int mask = 0; mask < (1 << n); ++mask) {
     for (int j = 0; j < n; ++j) if ((mask >> j) & 1) sumA += s[j];
     best = min(best, abs(2 * sumA - total));
 }
-cout << best << '\\n'; // 2` }] }
+cout << best << '\\n'; // 2` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] s = { 5, 2, 8, 3 };
+        int n = s.Length, total = 18, best = int.MaxValue;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            int sumA = 0;
+            for (int j = 0; j < n; j++) if ((mask >> j & 1) == 1) sumA += s[j];
+            best = Math.Min(best, Math.Abs(2 * sumA - total));
+        }
+        Console.WriteLine(best); // 2
+    }
+}`, run: true }] }
       },
       {
         title: 'Submasks of 1011 step by step',
@@ -2847,6 +3404,22 @@ vector<vector<int>> subsets(const vector<int>& nums) {
     vector<int> cur;
     build(nums, 0, cur, all);
     return all;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<int>> Subsets(int[] nums) {
+        var all = new List<IList<int>>();
+        Build(nums, 0, new List<int>(), all);
+        return all;
+    }
+    void Build(int[] nums, int i, List<int> cur, List<IList<int>> all) {
+        if (i == nums.Length) { all.Add(new List<int>(cur)); return; }
+        Build(nums, i + 1, cur, all);          // skip nums[i]
+        cur.Add(nums[i]);
+        Build(nums, i + 1, cur, all);          // take nums[i]
+        cur.RemoveAt(cur.Count - 1);           // undo
+    }
 }` }] }
         },
         mcq: {
@@ -2910,7 +3483,25 @@ public:
         }
         return result;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<int>> Subsets(int[] nums) {
+        int n = nums.Length;
+        var result = new List<IList<int>>(1 << n);
+        for (int mask = 0; mask < (1 << n); mask++) {     // one mask per subset
+            var cur = new List<int>();
+            for (int j = 0; j < n; j++) {
+                if (((mask >> j) & 1) == 1) {              // bit j ON -> take nums[j]
+                    cur.Add(nums[j]);
+                }
+            }
+            result.Add(cur);
+        }
+        return result;
+    }
+}` }
           ],
           dry: {
             head: ['mask', 'binary', 'bits ON', 'subset added'],
@@ -2981,6 +3572,17 @@ int missingNumber(const vector<int>& nums) {
         if (!found) return v;
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MissingNumber(int[] nums) {
+        int n = nums.Length;
+        for (int v = 0; v <= n; v++) {
+            bool found = false;
+            foreach (int x in nums) if (x == v) { found = true; break; }  // linear search
+            if (!found) return v;
+        }
+        return -1;
+    }
 }` }] }
     },
     mcq: {
@@ -3030,7 +3632,16 @@ public:
         for (int i = 0; i < (int)nums.size(); ++i) res ^= i ^ nums[i];
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MissingNumber(int[] nums) {
+        int res = nums.Length;               // include n itself
+        for (int i = 0; i < nums.Length; i++) {
+            res ^= i ^ nums[i];              // index i and value nums[i]
+        }
+        return res;                          // all present values cancelled
+    }
+}` }
       ],
       dry: {
         head: ['i', 'nums[i]', 'i ^ nums[i]', 'res'],
@@ -3078,6 +3689,15 @@ int hammingDistance(int x, int y) {
         if (((x >> i) & 1) != ((y >> i) & 1)) d++;   // compare column i
     }
     return d;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int HammingDistance(int x, int y) {
+        int d = 0;
+        for (int i = 0; i < 32; i++) {
+            if (((x >> i) & 1) != ((y >> i) & 1)) d++;   // compare column i
+        }
+        return d;
+    }
 }` }] }
     },
     mcq: {
@@ -3125,7 +3745,17 @@ public:
     int hammingDistance(int x, int y) {
         return std::popcount(static_cast<uint32_t>(x ^ y));   // C++20 <bit>; __builtin_popcount before that
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int HammingDistance(int x, int y) {
+        int z = x ^ y, count = 0;   // 1s mark differing columns
+        while (z != 0) {
+            z &= z - 1;             // remove one differing column
+            count++;
+        }
+        return count;               // same as BitOperations.PopCount((uint)(x ^ y)) on .NET Core 3+
+    }
+}` }
       ],
       dry: {
         head: ['step', 'z (binary)', 'count'],
@@ -3169,6 +3799,17 @@ int findComplement(int num) {
     reverse(s.begin(), s.end());
     for (char& c : s) c = (c == '1') ? '0' : '1';                 // flip each digit
     return stoi(s, nullptr, 2);
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+public class Solution {
+    public int FindComplement(int num) {
+        string s = Convert.ToString(num, 2);
+        var sb = new StringBuilder();
+        foreach (char c in s) sb.Append(c == '1' ? '0' : '1');  // flip each digit
+        return Convert.ToInt32(sb.ToString(), 2);
+    }
 }` }] }
     },
     mcq: {
@@ -3215,7 +3856,14 @@ public:
         uint32_t mask = (std::bit_floor(u) << 1) - 1;   // unsigned, so 2^31 does not overflow
         return static_cast<int>(u ^ mask);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindComplement(int num) {
+        int mask = 1;                              // grow 1, 11, 111, ... until it covers num: e.g. 5 -> 111
+        while (mask < num) mask = (mask << 1) | 1;
+        return num ^ mask;                         // flip only meaningful bits
+    }
+}` }
       ],
       dry: {
         head: ['num', 'highestOneBit', 'mask', 'num ^ mask'],
@@ -3272,6 +3920,17 @@ vector<int> countBits(int n) {
         ans[i] = c;
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] CountBits(int n) {
+        int[] ans = new int[n + 1];
+        for (int i = 0; i <= n; i++) {
+            int x = i, c = 0;
+            while (x != 0) { c += x & 1; x >>= 1; }   // look at every bit of i
+            ans[i] = c;
+        }
+        return ans;
+    }
 }` }] }
     },
     mcq: {
@@ -3320,7 +3979,16 @@ public:
         for (int i = 1; i <= n; ++i) ans[i] = ans[i >> 1] + (i & 1);   // drop bit 0, add it back
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] CountBits(int n) {
+        int[] ans = new int[n + 1];
+        for (int i = 1; i <= n; i++) {
+            ans[i] = ans[i >> 1] + (i & 1);   // drop bit 0, then add it back
+        }
+        return ans;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'binary', 'i &gt;&gt; 1', 'i &amp; 1', 'ans[i]'],
@@ -3361,6 +4029,16 @@ int reverseBits(int n) {
     string s = bitset<32>((unsigned) n).to_string();   // 32-character binary string with leading zeros
     reverse(s.begin(), s.end());
     return (int) stoul(s, nullptr, 2);                 // r can exceed INT_MAX: go through unsigned
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int ReverseBits(int n) {
+        string s = Convert.ToString(n, 2).PadLeft(32, '0');   // 32-character binary string with leading zeros
+        char[] r = s.ToCharArray();
+        Array.Reverse(r);
+        return (int)Convert.ToUInt32(new string(r), 2);        // r can exceed int.MaxValue: go through uint
+    }
 }` }] }
     },
     mcq: {
@@ -3419,7 +4097,17 @@ public:
         }
         return static_cast<int>(res);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int ReverseBits(int n) {
+        uint u = (uint)n, res = 0;          // unsigned: >> always fills with 0
+        for (int i = 0; i < 32; i++) {
+            res = (res << 1) | (u & 1u);    // append u's lowest bit to res
+            u >>= 1;
+        }
+        return (int)res;
+    }
+}` }
       ],
       dry: {
         head: ['iteration', 'n &amp; 1', 'res (low bits shown)', 'note'],
@@ -3479,6 +4167,19 @@ int getSum(int a, int b) {
         res |= (unsigned) s << i;
     }
     return (int) res;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int GetSum(int a, int b) {
+        uint res = 0;
+        int carry = 0;
+        for (int i = 0; i < 32; i++) {
+            int x = (int)(((uint)a >> i) & 1), y = (int)(((uint)b >> i) & 1);
+            int s = x ^ y ^ carry;                         // sum bit of this column
+            carry = (x & y) | (x & carry) | (y & carry);   // carry into next column
+            res |= (uint)s << i;
+        }
+        return (int)res;
+    }
 }` }] }
     },
     mcq: {
@@ -3542,7 +4243,17 @@ public:
         }
         return static_cast<int>(x);
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int GetSum(int a, int b) {
+        while (b != 0) {
+            int carry = (a & b) << 1;   // columns that overflow, moved left (a carry out of bit 31 just drops)
+            a = a ^ b;                  // add without carries
+            b = carry;                  // now add the carries
+        }
+        return a;
+    }
+}` }],
       dry: {
         head: ['round', 'a', 'b', 'carry = (a &amp; b) &lt;&lt; 1', 'new a = a ^ b'],
         rows: [['1', '010 (2)', '011 (3)', '100 (4)', '001 (1)'], ['2', '001 (1)', '100 (4)', '000', '101 (5)'], ['end', '<span class="c-p">5</span>', '0', '–', '–']]
@@ -3590,6 +4301,15 @@ int rangeBitwiseAnd(int left, int right) {
         res &= (int) i;
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int RangeBitwiseAnd(int left, int right) {
+        int res = left;
+        for (long i = left; i <= right && res != 0; i++) {   // long avoids overflow
+            res &= (int)i;
+        }
+        return res;
+    }
 }` }] }
     },
     mcq: {
@@ -3636,7 +4356,15 @@ public:
         while (right > left) right &= right - 1;   // right >= 1 here, so right - 1 is safe
         return right;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int RangeBitwiseAnd(int left, int right) {
+        while (right > left) {
+            right &= right - 1;   // drop right's lowest ON bit
+        }
+        return right;             // only the shared prefix is left
+    }
+}` }
       ],
       dry: {
         head: ['right', 'right &gt; left (5)?', 'right &amp; (right − 1)'],
@@ -3686,6 +4414,21 @@ long long totalHammingDistance(const vector<int>& nums) {
         for (int j = i + 1; j < (int) nums.size(); j++)
             total += __builtin_popcount(nums[i] ^ nums[j]);   // O(N^2) pairs
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long TotalHammingDistance(int[] nums) {
+        long total = 0;
+        for (int i = 0; i < nums.Length; i++)
+            for (int j = i + 1; j < nums.Length; j++)
+                total += BitCount(nums[i] ^ nums[j]);   // O(N^2) pairs
+        return total;
+    }
+
+    static int BitCount(int n) {
+        int c = 0;
+        while (n != 0) { n &= n - 1; c++; }
+        return c;
+    }
 }` }] }
     },
     mcq: {
@@ -3747,7 +4490,19 @@ public:
         }
         return total;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long TotalHammingDistance(int[] nums) {
+        int n = nums.Length;
+        long total = 0;
+        for (int bit = 0; bit < 31; bit++) {         // values <= 1e9 < 2^30
+            int ones = 0;
+            foreach (int x in nums) ones += (x >> bit) & 1;
+            total += (long)ones * (n - ones);        // (1,0) pairs in this column
+        }
+        return total;
+    }
+}` }
       ],
       dry: {
         head: ['bit', 'bits of 4, 14, 2', 'ones', 'ones·(3 − ones)', 'total'],
@@ -3809,6 +4564,21 @@ int minFlips(int a, int b, int c) {
         else flips += (A[i] - '0') + (B[i] - '0');
     }
     return flips;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MinFlips(int a, int b, int c) {
+        string A = Convert.ToString(a, 2).PadLeft(30, '0');
+        string B = Convert.ToString(b, 2).PadLeft(30, '0');
+        string C = Convert.ToString(c, 2).PadLeft(30, '0');
+        int flips = 0;
+        for (int i = 0; i < 30; i++) {
+            if (C[i] == '1') { if (A[i] == '0' && B[i] == '0') flips++; }
+            else flips += (A[i] - '0') + (B[i] - '0');
+        }
+        return flips;
+    }
 }` }] }
     },
     mcq: {
@@ -3870,7 +4640,21 @@ public:
         return std::popcount(static_cast<uint32_t>((a | b) ^ c))
              + std::popcount(static_cast<uint32_t>(a & b & ~c));
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MinFlips(int a, int b, int c) {
+        int flips = 0;
+        for (int bit = 0; bit < 31; bit++) {
+            int x = (a >> bit) & 1, y = (b >> bit) & 1, z = (c >> bit) & 1;
+            if (z == 1) {
+                if ((x | y) == 0) flips += 1;   // need at least one 1
+            } else {
+                flips += x + y;                 // every 1 must go
+            }
+        }
+        return flips;
+    }
+}` }
       ],
       dry: {
         head: ['bit', 'x', 'y', 'z', 'add', 'flips'],
@@ -3936,6 +4720,21 @@ int maxProduct(const vector<string>& words) {
             if (!share) best = max(best, (int) (words[i].size() * words[j].size()));
         }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxProduct(string[] words) {
+        int best = 0;
+        for (int i = 0; i < words.Length; i++)
+            for (int j = i + 1; j < words.Length; j++) {
+                bool share = false;
+                foreach (char c in words[i])
+                    if (words[j].IndexOf(c) >= 0) { share = true; break; }   // O(L) scan
+                if (!share) best = Math.Max(best, words[i].Length * words[j].Length);
+            }
+        return best;
+    }
 }` }] }
     },
     mcq: {
@@ -4010,7 +4809,24 @@ public:
                     best = max(best, (int)(words[i].size() * words[j].size()));
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxProduct(string[] words) {
+        int n = words.Length;
+        int[] mask = new int[n];
+        for (int i = 0; i < n; i++)
+            foreach (char c in words[i])
+                mask[i] |= 1 << (c - 'a');           // letter set of word i
+        int best = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                if ((mask[i] & mask[j]) == 0)          // no shared letter
+                    best = Math.Max(best, words[i].Length * words[j].Length);
+        return best;
+    }
+}` }
       ],
       dry: {
         head: ['pair', 'masks AND', 'disjoint?', 'product', 'best'],
@@ -4114,6 +4930,30 @@ vector<int> grayCode(int n) {
     seen[0] = true;
     dfs(n, path, seen);
     return path;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> GrayCode(int n) {
+        var path = new List<int>();
+        bool[] seen = new bool[1 << n];
+        path.Add(0); seen[0] = true;
+        Dfs(n, path, seen);
+        return path;
+    }
+    bool Dfs(int n, List<int> path, bool[] seen) {
+        if (path.Count == (1 << n)) return true;
+        int cur = path[path.Count - 1];
+        for (int b = 0; b < n; b++) {
+            int nxt = cur ^ (1 << b);                 // flip one bit
+            if (!seen[nxt]) {
+                seen[nxt] = true; path.Add(nxt);
+                if (Dfs(n, path, seen)) return true;
+                seen[nxt] = false; path.RemoveAt(path.Count - 1);
+            }
+        }
+        return false;
+    }
 }` }] }
     },
     mcq: {
@@ -4157,7 +4997,18 @@ public:
         for (int i = 0; i < (1 << n); ++i) res[i] = i ^ (i >> 1);   // neighbours differ in one bit
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> GrayCode(int n) {
+        var res = new List<int>(1 << n);
+        for (int i = 0; i < (1 << n); i++) {
+            res.Add(i ^ (i >> 1));   // neighbours differ in exactly one bit
+        }
+        return res;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'i (bin)', 'i &gt;&gt; 1', 'gray', 'bit flipped from previous'],
@@ -4213,6 +5064,17 @@ vector<int> xorQueries(const vector<int>& arr, const vector<vector<int>>& querie
         ans.push_back(x);
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] XorQueries(int[] arr, int[][] queries) {
+        int[] ans = new int[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            int x = 0;
+            for (int i = queries[q][0]; i <= queries[q][1]; i++) x ^= arr[i];   // O(N) per query
+            ans[q] = x;
+        }
+        return ans;
+    }
 }` }] }
     },
     mcq: {
@@ -4269,7 +5131,19 @@ public:
         for (const auto& q : queries) ans.push_back(px[q[1] + 1] ^ px[q[0]]);
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] XorQueries(int[] arr, int[][] queries) {
+        int n = arr.Length;
+        int[] px = new int[n + 1];
+        for (int i = 0; i < n; i++) px[i + 1] = px[i] ^ arr[i];   // prefix XOR
+        int[] ans = new int[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            ans[q] = px[queries[q][1] + 1] ^ px[queries[q][0]];   // shared prefix cancels
+        }
+        return ans;
+    }
+}` }
       ],
       dry: {
         head: ['query', 'px[r + 1]', 'px[l]', 'answer'],
@@ -4317,6 +5191,15 @@ int getXORSum(const vector<int>& arr1, const vector<int>& arr2) {
         for (int b : arr2)
             res ^= a & b;          // N * M pairs
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int GetXORSum(int[] arr1, int[] arr2) {
+        int res = 0;
+        foreach (int a in arr1)
+            foreach (int b in arr2)
+                res ^= a & b;          // N * M pairs
+        return res;
+    }
 }` }] }
     },
     mcq: {
@@ -4367,7 +5250,15 @@ public:
         int x2 = accumulate(arr2.begin(), arr2.end(), 0, bit_xor<int>());
         return x1 & x2;                                                     // odd * odd = odd
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int GetXORSum(int[] arr1, int[] arr2) {
+        int x1 = 0, x2 = 0;
+        foreach (int a in arr1) x1 ^= a;   // parity of ones per column in arr1
+        foreach (int b in arr2) x2 ^= b;   // parity of ones per column in arr2
+        return x1 & x2;                    // odd * odd = odd, per column
+    }
+}` }
       ],
       dry: {
         head: ['bit', 'ones in [1,2,3]', 'ones in [6,5]', 'pairs with both = product', 'parity'],
@@ -4468,6 +5359,33 @@ int minimumOneBitOperations(int n) {             // BFS, only for small n
         }
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int MinimumOneBitOperations(int n) {          // BFS, only for small n
+        if (n == 0) return 0;
+        int bits = 0;
+        while ((n >> bits) != 0) bits++;                 // bit length of n
+        int[] dist = new int[1 << bits];
+        Array.Fill(dist, -1);
+        var q = new Queue<int>();
+        dist[n] = 0;
+        q.Enqueue(n);
+        while (q.Count > 0) {
+            int s = q.Dequeue();
+            if (s == 0) return dist[s];
+            int[] next = { s ^ 1, -1 };                  // rule 1: flip bit 0
+            int low = 0;
+            while (((s >> low) & 1) == 0) low++;         // rule 2 flips the bit just above the lowest 1
+            if (low + 1 < bits) next[1] = s ^ (1 << (low + 1));
+            foreach (int t in next) {
+                if (t >= 0 && dist[t] < 0) { dist[t] = dist[s] + 1; q.Enqueue(t); }
+            }
+        }
+        return -1;
+    }
 }` }] }
     },
     mcq: {
@@ -4524,7 +5442,17 @@ public:
         for (; n != 0; n >>= 1) ans ^= n;   // inverse Gray code (n >= 0, so >> is safe)
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MinimumOneBitOperations(int n) {
+        int ans = 0;
+        while (n != 0) {
+            ans ^= n;      // inverse Gray code: XOR of n, n>>1, n>>2, ...
+            n >>= 1;
+        }
+        return ans;
+    }
+}` }],
       dry: {
         head: ['n', 'ans ^= n', 'ans', 'n &gt;&gt;= 1'],
         rows: [['110 (6)', '000 ^ 110', '110 (6)', '011'], ['011 (3)', '110 ^ 011', '101 (5)', '001'], ['001 (1)', '101 ^ 001', '100 (4)', '000'], ['0', 'stop', '<span class="c-p">4</span>', '–']]
@@ -4576,6 +5504,16 @@ int countTriplets(const vector<int>& nums) {
             for (int c : nums)
                 if ((a & b & c) == 0) total++;   // N^3
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int CountTriplets(int[] nums) {
+        int total = 0;
+        foreach (int a in nums)
+            foreach (int b in nums)
+                foreach (int c in nums)
+                    if ((a & b & c) == 0) total++;   // N^3
+        return total;
+    }
 }` }] }
     },
     mcq: {
@@ -4659,7 +5597,24 @@ public:
         }
         return total;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int CountTriplets(int[] nums) {
+        int[] cnt = new int[1 << 16];
+        foreach (int x in nums)
+            foreach (int y in nums)
+                cnt[x & y]++;                      // ordered pairs by AND value
+        int total = 0;
+        foreach (int z in nums) {
+            int comp = ~z & 0xFFFF;                // bits z does NOT have
+            for (int s = comp; ; s = (s - 1) & comp) {
+                total += cnt[s];                   // pair-AND s is disjoint from z
+                if (s == 0) break;                 // include the empty submask, then stop
+            }
+        }
+        return total;
+    }
+}` }
       ],
       dry: {
         head: ['z', 'needed: x &amp; z = 0', 'x values present', 'cnt sum', 'total'],
@@ -4718,6 +5673,21 @@ int smallestSufficientTeam(const vector<int>& personMask, int full) {   // perso
         if (skills == full) best = min(best, __builtin_popcount(team));
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int SmallestSufficientTeam(int[] personMask, int full) {   // personMask.Length <= 20
+        int n = personMask.Length, best = int.MaxValue;
+        for (int team = 0; team < (1 << n); team++) {
+            int skills = 0;
+            for (int p = 0; p < n; p++) if (((team >> p) & 1) == 1) skills |= personMask[p];
+            if (skills == full) best = Math.Min(best, BitCount(team));
+        }
+        return best;
+    }
+
+    static int BitCount(int v) { int c = 0; while (v != 0) { v &= v - 1; c++; } return c; }
 }` }] }
     },
     mcq: {
@@ -4842,7 +5812,43 @@ public:
         for (uint64_t t = team[full]; t; t &= t - 1) res.push_back(std::countr_zero(t));
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int[] SmallestSufficientTeam(string[] reqSkills, IList<IList<string>> people) {
+        int m = reqSkills.Length, full = (1 << m) - 1;
+        var id = new Dictionary<string, int>();
+        for (int i = 0; i < m; i++) id[reqSkills[i]] = i;
+        int[] pm = new int[people.Count];
+        for (int p = 0; p < people.Count; p++)
+            foreach (string s in people[p]) pm[p] |= 1 << id[s];   // person's skill mask
+
+        int[] size = new int[1 << m];
+        long[] team = new long[1 << m];
+        Array.Fill(size, int.MaxValue);
+        size[0] = 0;
+        for (int p = 0; p < pm.Length; p++) {
+            if (pm[p] == 0) continue;                                  // useless person
+            for (int mask = 0; mask <= full; mask++) {
+                if (size[mask] == int.MaxValue) continue;              // not reachable
+                int nm = mask | pm[p];
+                if (size[mask] + 1 < size[nm]) {
+                    size[nm] = size[mask] + 1;
+                    team[nm] = team[mask] | (1L << p);                 // add person p (1L: 60 people fit in 64 bits)
+                }
+            }
+        }
+        var res = new List<int>();
+        for (long t = team[full]; t != 0; t &= t - 1) {
+            int idx = 0;
+            while (((t >> idx) & 1) == 0) idx++;                       // index of lowest person
+            res.Add(idx);
+        }
+        return res.ToArray();
+    }
+}` }
       ],
       dry: {
         head: ['person (mask)', 'updates', 'size[111]'],

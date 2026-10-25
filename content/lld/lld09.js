@@ -789,6 +789,101 @@ int main() {
     ride.endTrip(240);
     for (const auto& line : ride.log()) cout << line << "\\n";
     cout << "final state = " << ride.stateName() << ", fee = " << ride.fee() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Context: the outside world only talks to Ride. Ride owns data; the state object owns behaviour.
+class Ride {
+    private RideState state = new Requested();
+    private int cancellationFee = 0;
+    private readonly List<string> log = new List<string>();
+
+    // Public API = events. Each one is a one-line delegation to the current state.
+    public void AssignDriver(string driver) { state.Assign(this, driver); }
+    public void DriverArrived()             { state.Arrive(this); }
+    public void StartTrip()                 { state.Start(this); }
+    public void EndTrip(int fare)           { state.End(this, fare); }
+    public void Cancel()                    { state.Cancel(this); }
+
+    // Hooks the state objects use. Only states call these.
+    public void TransitionTo(RideState next) {
+        log.Add(state.Name() + " -> " + next.Name());
+        state.OnExit(this);          // exit action of the old state
+        state = next;
+        next.OnEnter(this);          // entry action of the new state
+    }
+    public void Reject(string ev)   { log.Add("REJECTED '" + ev + "' in " + state.Name()); }
+    public void Charge(int fee)     { cancellationFee = fee; }
+    public string StateName()       { return state.Name(); }
+    public int Fee()                { return cancellationFee; }
+    public List<string> Log()       { return log; }
+}
+
+/// One method per event. Defaults reject, so each state overrides ONLY what it allows.
+abstract class RideState {
+    public abstract string Name();
+    public virtual void OnEnter(Ride r) {}
+    public virtual void OnExit(Ride r) {}
+    public virtual void Assign(Ride r, string driver) { r.Reject("assign"); }
+    public virtual void Arrive(Ride r)                { r.Reject("arrive"); }
+    public virtual void Start(Ride r)                 { r.Reject("start"); }
+    public virtual void End(Ride r, int fare)         { r.Reject("end"); }
+    public virtual void Cancel(Ride r)                { r.Reject("cancel"); }
+}
+
+sealed class Requested : RideState {
+    public override string Name() { return "REQUESTED"; }
+    public override void Assign(Ride r, string driver) { r.TransitionTo(new Assigned(driver)); }
+    public override void Cancel(Ride r) { r.Charge(0); r.TransitionTo(new Cancelled()); }      // free
+}
+
+sealed class Assigned : RideState {
+    private readonly string driver;               // state-specific data lives in the state
+    public Assigned(string driver) { this.driver = driver; }
+    public override string Name() { return "ASSIGNED(" + driver + ")"; }
+    public override void Arrive(Ride r) { r.TransitionTo(new Arrived(driver)); }
+    public override void Cancel(Ride r) { r.Charge(25); r.TransitionTo(new Cancelled()); }     // small fee
+}
+
+sealed class Arrived : RideState {
+    private readonly string driver;
+    public Arrived(string driver) { this.driver = driver; }
+    public override string Name() { return "ARRIVED(" + driver + ")"; }
+    public override void Start(Ride r)  { r.TransitionTo(new InTrip()); }
+    public override void Cancel(Ride r) { r.Charge(50); r.TransitionTo(new Cancelled()); }     // driver waited
+}
+
+sealed class InTrip : RideState {
+    public override string Name() { return "IN_TRIP"; }
+    public override void OnEnter(Ride r) { /* start the fare meter here */ }
+    public override void End(Ride r, int fare) { r.TransitionTo(new Completed(fare)); }
+    // Cancel() is NOT overridden -> default rejects it: no cancelling mid-ride
+}
+
+sealed class Completed : RideState {
+    private readonly int fare;
+    public Completed(int fare) { this.fare = fare; }
+    public override string Name() { return "COMPLETED(Rs " + fare + ")"; }
+}
+
+sealed class Cancelled : RideState {
+    public override string Name() { return "CANCELLED"; }
+}
+
+class Program {
+    static void Main() {
+        Ride ride = new Ride();
+        ride.StartTrip();              // rejected: no driver yet
+        ride.AssignDriver("Asha");
+        ride.DriverArrived();
+        ride.StartTrip();
+        ride.Cancel();                 // rejected: cannot cancel mid-trip
+        ride.EndTrip(240);
+        foreach (string line in ride.Log()) Console.WriteLine(line);
+        Console.WriteLine("final state = " + ride.StateName() + ", fee = " + ride.Fee());
+    }
 }` }
         ] }, { lang: 'java', title: 'Enum + EnumMap transition table (when states carry little behaviour)', code: `import java.util.*;
 
@@ -956,6 +1051,47 @@ int main() {
     for (TripEvent e : {TripEvent::START, TripEvent::ASSIGN, TripEvent::ARRIVE, TripEvent::START, TripEvent::CANCEL, TripEvent::END}) {
         bool ok = m.fire(e);
         cout << name(e) << (ok ? " accepted -> " : " rejected, still ") << name(m.state()) << "\\n";
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum TripState { REQUESTED, ASSIGNED, ARRIVED, IN_TRIP, COMPLETED, CANCELLED }
+enum TripEvent { ASSIGN, ARRIVE, START, END, CANCEL }
+
+class TripMachine {
+    // The whole machine is DATA: row = state, column = event, cell = next state.
+    private static readonly Dictionary<TripState, Dictionary<TripEvent, TripState>> TABLE = new Dictionary<TripState, Dictionary<TripEvent, TripState>>();
+    static TripMachine() {
+        foreach (TripState s in Enum.GetValues(typeof(TripState))) TABLE[s] = new Dictionary<TripEvent, TripState>();
+        Add(TripState.REQUESTED, TripEvent.ASSIGN, TripState.ASSIGNED);
+        Add(TripState.REQUESTED, TripEvent.CANCEL, TripState.CANCELLED);
+        Add(TripState.ASSIGNED,  TripEvent.ARRIVE, TripState.ARRIVED);
+        Add(TripState.ASSIGNED,  TripEvent.CANCEL, TripState.CANCELLED);
+        Add(TripState.ARRIVED,   TripEvent.START,  TripState.IN_TRIP);
+        Add(TripState.ARRIVED,   TripEvent.CANCEL, TripState.CANCELLED);
+        Add(TripState.IN_TRIP,   TripEvent.END,    TripState.COMPLETED);
+    }
+    private static void Add(TripState from, TripEvent on, TripState to) { TABLE[from][on] = to; }
+
+    private TripState state = TripState.REQUESTED;
+
+    /// Returns true if the event was accepted. Unknown cell = rejected, state unchanged.
+    public bool Fire(TripEvent e) {
+        TripState next;
+        if (!TABLE[state].TryGetValue(e, out next)) return false;
+        state = next;
+        return true;
+    }
+    public TripState State() { return state; }
+
+    static void Main() {
+        TripMachine m = new TripMachine();
+        foreach (TripEvent e in new[] { TripEvent.START, TripEvent.ASSIGN, TripEvent.ARRIVE, TripEvent.START, TripEvent.CANCEL, TripEvent.END }) {
+            bool ok = m.Fire(e);
+            Console.WriteLine(e + (ok ? " accepted -> " : " rejected, still ") + m.State());
+        }
     }
 }` }
         ] }, { lang: 'java', title: 'Java 21: sealed states + records + exhaustive pattern switch (pure function)', code: `import java.util.*;
@@ -1151,6 +1287,52 @@ int main() {
         cout << e << ": " << show(s) << " -> " << show(n) << (n == s ? "  (ignored)" : "") << "\\n";
         s = n;
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// A closed set of immutable states: the private constructor means only the nested variants exist.
+abstract class TripS {
+    private TripS() { }
+    public sealed class Req : TripS { public override string ToString() { return "Req[]"; } }
+    public sealed class Asg : TripS { public readonly string Driver; public Asg(string d) { Driver = d; } public override string ToString() { return "Asg[driver=" + Driver + "]"; } }
+    public sealed class Arr : TripS { public readonly string Driver; public Arr(string d) { Driver = d; } public override string ToString() { return "Arr[driver=" + Driver + "]"; } }
+    public sealed class Run : TripS { public readonly string Driver; public Run(string d) { Driver = d; } public override string ToString() { return "Run[driver=" + Driver + "]"; } }
+    public sealed class Done : TripS { public readonly string Driver; public readonly int Fare; public Done(string d, int f) { Driver = d; Fare = f; } public override string ToString() { return "Done[driver=" + Driver + ", fare=" + Fare + "]"; } }
+    public sealed class Cxl : TripS { public readonly int Fee; public Cxl(int f) { Fee = f; } public override string ToString() { return "Cxl[fee=" + Fee + "]"; } }
+}
+
+static class PureTrip {
+    /// (state, event) -> next state. No mutation: easy to test, log, replay and persist.
+    public static TripS Next(TripS s, string ev) {
+        if (s is TripS.Req) {
+            if (ev == "assign") return new TripS.Asg("Asha");
+            if (ev == "cancel") return new TripS.Cxl(0);
+            return s;
+        }
+        if (s is TripS.Asg a) {
+            if (ev == "arrive") return new TripS.Arr(a.Driver);
+            if (ev == "cancel") return new TripS.Cxl(25);
+            return s;
+        }
+        if (s is TripS.Arr r) {
+            if (ev == "start") return new TripS.Run(r.Driver);
+            if (ev == "cancel") return new TripS.Cxl(50);
+            return s;
+        }
+        if (s is TripS.Run t) return ev == "end" ? new TripS.Done(t.Driver, 240) : s;
+        return s;                                 // Done and Cxl are terminal
+    }
+
+    static void Main() {
+        TripS s = new TripS.Req();
+        foreach (string e in new[] { "start", "assign", "arrive", "start", "cancel", "end" }) {
+            TripS n = Next(s, e);
+            Console.WriteLine(e + ": " + s + " -> " + n + (n == s ? "  (ignored)" : ""));
+            s = n;
+        }
+    }
 }` }
         ] }],
     codeTitle: ['GoF State classes', 'Enum transition table', 'Sealed + pattern switch'],
@@ -1333,7 +1515,24 @@ struct Arrived2 final : RideState2 {
     string name() const override { return "ARRIVED"; }
     StatePtr start() const override { return make_unique<InTrip2>(); }
     StatePtr timeout() const override { return make_unique<NoShow2>(100); }  // the ONLY changed state
-};` }
+};` },
+  { lang: 'csharp', code: `
+abstract class RideState2 {
+    public abstract string Name();
+    public virtual RideState2 Timeout() { return this; }          // new event: default = ignore
+    public virtual RideState2 Start()   { return this; }
+}
+sealed class Arrived2 : RideState2 {
+    public override string Name() { return "ARRIVED"; }
+    public override RideState2 Start()   { return new InTrip2(); }
+    public override RideState2 Timeout() { return new NoShow2(100); } // the ONLY changed state
+}
+sealed class InTrip2 : RideState2 { public override string Name() { return "IN_TRIP"; } }
+sealed class NoShow2 : RideState2 {                                  // the new state
+    public readonly int Fee;
+    public NoShow2(int fee) { Fee = fee; }
+    public override string Name() { return "NO_SHOW(Rs " + Fee + ")"; }
+}` }
         ] } },
       { title: 'Who decides the next state? Three valid answers', html: `<p>${H.table(['Style', 'Where the transition lives', 'Good for'], [['State-driven', 'Inside each State class (<code>r.transitionTo(new X())</code>)', 'behaviour-rich states, GoF classic'], ['Context-driven', 'Context switches based on what the state returns', 'states as stateless singletons; easy logging'], ['Table-driven', 'A map keyed by (state, event), or a config file', 'many simple states, rules owned by product/ops']])}</p><p>A popular middle ground: each state method <b>returns</b> the next state (<code>RideState start()</code>), and the context does <code>state = state.start()</code>. States stay free of setters, and the context is the only place that writes the field — perfect for logging and locking.</p>` },
       { title: 'State vs Strategy: identical class diagram, different story', html: `<p>Both have a context holding an interface reference. The difference is <b>who changes it and why</b>. ${H.c('b', 'Strategy')}: the <i>client</i> picks an algorithm (pay by card or UPI) and it rarely changes during the object’s life. ${H.c('p', 'State')}: the object changes its <i>own</i> state as events arrive (REQUESTED → ASSIGNED → …), and states usually know their successors. If an interviewer asks "isn't that just Strategy?", answer with this.</p>` },
@@ -1373,7 +1572,7 @@ struct Arrived2 final : RideState2 {
         else System.out.println("cannot edit in " + status);
     }
     // publish(), reject(), archive() ... the same if/else repeated in every method
-}`, alt: [{ lang: 'python', code: "class NaiveDoc:\n    def __init__(self, author):\n        self.status = \"DRAFT\"\n        self.author = author\n\n    def submit(self):\n        if self.status == \"DRAFT\": self.status = \"IN_REVIEW\"\n        else: print(\"cannot submit in\", self.status)\n\n    def approve(self, reviewer):\n        if self.status == \"IN_REVIEW\" and reviewer != self.author: self.status = \"APPROVED\"\n        else: print(\"cannot approve in\", self.status)\n\n    def edit(self):\n        if self.status == \"DRAFT\": print(\"edited\")\n        elif self.status == \"APPROVED\": self.status = \"DRAFT\"\n        else: print(\"cannot edit in\", self.status)\n\n    # publish(), reject(), archive() ... the same if/else repeated in every method\n" }, { lang: 'ts', code: "class NaiveDoc {\n  status = \"DRAFT\";\n  constructor(private readonly author: string) {}\n  submit(): void {\n    if (this.status === \"DRAFT\") this.status = \"IN_REVIEW\";\n    else console.log(\"cannot submit in \" + this.status);\n  }\n  approve(reviewer: string): void {\n    if (this.status === \"IN_REVIEW\" && reviewer !== this.author) this.status = \"APPROVED\";\n    else console.log(\"cannot approve in \" + this.status);\n  }\n  edit(): void {\n    if (this.status === \"DRAFT\") console.log(\"edited\");\n    else if (this.status === \"APPROVED\") this.status = \"DRAFT\";\n    else console.log(\"cannot edit in \" + this.status);\n  }\n  // publish(), reject(), archive() ... the same if/else repeated in every method\n}\n" }, { lang: 'cpp', code: "class NaiveDoc {\npublic:\n    string status = \"DRAFT\";\n    const string author;\n    NaiveDoc(string author) : author(move(author)) {}\n    void submit() {\n        if (status == \"DRAFT\") status = \"IN_REVIEW\";\n        else cout << \"cannot submit in \" << status << endl;\n    }\n    void approve(const string& reviewer) {\n        if (status == \"IN_REVIEW\" && reviewer != author) status = \"APPROVED\";\n        else cout << \"cannot approve in \" << status << endl;\n    }\n    void edit() {\n        if (status == \"DRAFT\") cout << \"edited\" << endl;\n        else if (status == \"APPROVED\") status = \"DRAFT\";\n        else cout << \"cannot edit in \" << status << endl;\n    }\n    // publish(), reject(), archive() ... the same if/else repeated in every method\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveDoc:\n    def __init__(self, author):\n        self.status = \"DRAFT\"\n        self.author = author\n\n    def submit(self):\n        if self.status == \"DRAFT\": self.status = \"IN_REVIEW\"\n        else: print(\"cannot submit in\", self.status)\n\n    def approve(self, reviewer):\n        if self.status == \"IN_REVIEW\" and reviewer != self.author: self.status = \"APPROVED\"\n        else: print(\"cannot approve in\", self.status)\n\n    def edit(self):\n        if self.status == \"DRAFT\": print(\"edited\")\n        elif self.status == \"APPROVED\": self.status = \"DRAFT\"\n        else: print(\"cannot edit in\", self.status)\n\n    # publish(), reject(), archive() ... the same if/else repeated in every method\n" }, { lang: 'ts', code: "class NaiveDoc {\n  status = \"DRAFT\";\n  constructor(private readonly author: string) {}\n  submit(): void {\n    if (this.status === \"DRAFT\") this.status = \"IN_REVIEW\";\n    else console.log(\"cannot submit in \" + this.status);\n  }\n  approve(reviewer: string): void {\n    if (this.status === \"IN_REVIEW\" && reviewer !== this.author) this.status = \"APPROVED\";\n    else console.log(\"cannot approve in \" + this.status);\n  }\n  edit(): void {\n    if (this.status === \"DRAFT\") console.log(\"edited\");\n    else if (this.status === \"APPROVED\") this.status = \"DRAFT\";\n    else console.log(\"cannot edit in \" + this.status);\n  }\n  // publish(), reject(), archive() ... the same if/else repeated in every method\n}\n" }, { lang: 'cpp', code: "class NaiveDoc {\npublic:\n    string status = \"DRAFT\";\n    const string author;\n    NaiveDoc(string author) : author(move(author)) {}\n    void submit() {\n        if (status == \"DRAFT\") status = \"IN_REVIEW\";\n        else cout << \"cannot submit in \" << status << endl;\n    }\n    void approve(const string& reviewer) {\n        if (status == \"IN_REVIEW\" && reviewer != author) status = \"APPROVED\";\n        else cout << \"cannot approve in \" << status << endl;\n    }\n    void edit() {\n        if (status == \"DRAFT\") cout << \"edited\" << endl;\n        else if (status == \"APPROVED\") status = \"DRAFT\";\n        else cout << \"cannot edit in \" << status << endl;\n    }\n    // publish(), reject(), archive() ... the same if/else repeated in every method\n};\n" }, { lang: 'csharp', code: "using System;\n\nclass NaiveDoc {\n    public string Status = \"DRAFT\";\n    public readonly string Author;\n    public NaiveDoc(string author) { Author = author; }\n    public void Submit() {\n        if (Status == \"DRAFT\") Status = \"IN_REVIEW\";\n        else Console.WriteLine(\"cannot submit in \" + Status);\n    }\n    public void Approve(string reviewer) {\n        if (Status == \"IN_REVIEW\" && reviewer != Author) Status = \"APPROVED\";\n        else Console.WriteLine(\"cannot approve in \" + Status);\n    }\n    public void Edit() {\n        if (Status == \"DRAFT\") Console.WriteLine(\"edited\");\n        else if (Status == \"APPROVED\") Status = \"DRAFT\";\n        else Console.WriteLine(\"cannot edit in \" + Status);\n    }\n    // Publish(), Reject(), Archive() ... the same if/else repeated in every method\n}\n" }] } },
       mcq: { q: 'You add ARCHIVED with the State pattern and default-reject methods. Which classes must change?', options: ['The interface (new archive() with default reject), Published (override archive), and a new Archived class', 'Every state class', 'Only the Document context', 'Draft and Published only'], answer: 0, explain: 'A default in the base state (an interface default method, a base-class method) means states that do not allow archive() need no change. Only the state that leads to ARCHIVED overrides it, plus the new class.' },
       hints: [`<p>Hint 1: Draw the state × event table: 4 states × 5 events. Most cells are "reject". Only 6 cells move the document.</p>`, `<p>Hint 2: <code>DocState</code> (an interface or base class) with one default method per event that calls <code>doc.reject(event)</code>. Each concrete state overrides only its allowed events. The guard "reviewer ≠ author" lives in <code>InReview.approve</code>.</p>`, `<p>Hint 3: Keep the reason from reject() in the Document (data), not in a static field. Recipe: Document(context) → transitionTo(next) logs "A → B" → states as stateless singletons except where they need data → default-reject → ARCHIVED = new class + override in Published.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "DRAFT -> IN_REVIEW\nrejected approve (self-approval not allowed) in IN_REVIEW\nIN_REVIEW -> APPROVED\nAPPROVED -> DRAFT\nDRAFT -> IN_REVIEW\nIN_REVIEW -> APPROVED\nAPPROVED -> PUBLISHED\nrejected edit in PUBLISHED\nPUBLISHED -> ARCHIVED\nfinal = ARCHIVED\n" }] },
@@ -1755,6 +1954,90 @@ int main() {
     doc.archive();
     for (const auto& line : doc.history()) cout << line << "\\n";
     cout << "final = " << doc.status() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+abstract class DocState {
+    public abstract string Name();
+    public virtual void Submit(Document d)                   { d.Reject("submit"); }
+    public virtual void Approve(Document d, string reviewer) { d.Reject("approve"); }
+    public virtual void RejectDoc(Document d, string reason) { d.Reject("reject"); }
+    public virtual void Publish(Document d)                  { d.Reject("publish"); }
+    public virtual void Edit(Document d, string text)        { d.Reject("edit"); }
+    public virtual void Archive(Document d)                  { d.Reject("archive"); }   // follow-up event
+}
+
+sealed class Draft : DocState {
+    public static readonly Draft I = new Draft();
+    public override string Name() { return "DRAFT"; }
+    public override void Submit(Document d) { d.TransitionTo(InReview.I); }
+    public override void Edit(Document d, string text) { d.SetContent(text); }
+}
+sealed class InReview : DocState {
+    public static readonly InReview I = new InReview();
+    public override string Name() { return "IN_REVIEW"; }
+    public override void Approve(Document d, string reviewer) {
+        if (reviewer == d.Author()) { d.Reject("approve (self-approval not allowed)"); return; }  // guard
+        d.TransitionTo(Approved.I);
+    }
+    public override void RejectDoc(Document d, string reason) { d.SetRejectionReason(reason); d.TransitionTo(Draft.I); }
+}
+sealed class Approved : DocState {
+    public static readonly Approved I = new Approved();
+    public override string Name() { return "APPROVED"; }
+    public override void Publish(Document d) { d.TransitionTo(Published.I); }
+    public override void Edit(Document d, string text) { d.SetContent(text); d.TransitionTo(Draft.I); } // approval void
+}
+sealed class Published : DocState {
+    public static readonly Published I = new Published();
+    public override string Name() { return "PUBLISHED"; }
+    public override void Archive(Document d) { d.TransitionTo(Archived.I); }               // follow-up: 1 override
+}
+sealed class Archived : DocState {                                                      // follow-up: 1 new class
+    public static readonly Archived I = new Archived();
+    public override string Name() { return "ARCHIVED"; }
+}
+
+class Document {
+    private readonly string author;
+    private string content = "";
+    private string rejectionReason = "";
+    private DocState state = Draft.I;
+    private readonly List<string> history = new List<string>();
+
+    public Document(string author) { this.author = author; }
+    public void Submit()                    { state.Submit(this); }
+    public void Approve(string reviewer)    { state.Approve(this, reviewer); }
+    public void RejectReview(string reason) { state.RejectDoc(this, reason); }
+    public void Publish()                   { state.Publish(this); }
+    public void Edit(string text)           { state.Edit(this, text); }
+    public void Archive()                   { state.Archive(this); }
+
+    public void TransitionTo(DocState next) { history.Add(state.Name() + " -> " + next.Name()); state = next; }
+    public void Reject(string ev)           { history.Add("rejected " + ev + " in " + state.Name()); }
+    public void SetContent(string c)        { content = c; }
+    public void SetRejectionReason(string r){ rejectionReason = r; }
+    public string Author()                  { return author; }
+    public string Status()                  { return state.Name(); }
+    public List<string> History()           { return history; }
+
+    static void Main() {
+        Document doc = new Document("asha");
+        doc.Edit("v1");
+        doc.Submit();
+        doc.Approve("asha");          // rejected: self approval
+        doc.Approve("ben");
+        doc.Edit("v2");               // back to DRAFT
+        doc.Submit();
+        doc.Approve("ben");
+        doc.Publish();
+        doc.Edit("v3");               // rejected: published is frozen
+        doc.Archive();
+        foreach (string h in doc.History()) Console.WriteLine(h);
+        Console.WriteLine("final = " + doc.Status());
+    }
 }` }
         ],
         complexity: `<p>Every event is O(1): one virtual call plus a list append. Adding a state costs O(1) new classes and touches only the states that lead into it. Memory: states are shared singletons, so a million documents share 5 state objects.</p>`,
@@ -2400,6 +2683,167 @@ int main() {
     a.blockDoor();          // someone holds the door
     for (int t = 0; t < 12; t++) ctl.tickAll();
     cout << "car 0 at " << a.floor() << " " << name(a.state()) << ", car 1 at " << b.floor() << " " << name(b.state()) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Direction { UP, DOWN, NONE }
+
+/// A request from a floor button: "I am on floor 4 and want to go UP".
+sealed class HallCall {
+    public readonly int Floor; public readonly Direction Direction;
+    public HallCall(int floor, Direction direction) { Floor = floor; Direction = direction; }
+}
+
+/// Type-safe enum State pattern: each constant is an instance that carries its own behaviour.
+abstract class CarState {
+    public static readonly CarState IDLE = new IdleState();
+    public static readonly CarState MOVING_UP = new MovingUpState();
+    public static readonly CarState MOVING_DOWN = new MovingDownState();
+    public static readonly CarState DOORS_OPEN = new DoorsOpenState();
+    public static readonly CarState MAINTENANCE = new MaintenanceState();
+
+    private readonly string name;
+    private CarState(string name) { this.name = name; }
+    public abstract CarState OnTick(ElevatorCar c);
+    public virtual bool AcceptsCalls() { return true; }
+    public override string ToString() { return name; }
+
+    sealed class IdleState : CarState {
+        public IdleState() : base("IDLE") { }
+        public override CarState OnTick(ElevatorCar c) {
+            if (c.MaintenanceRequested()) return MAINTENANCE;
+            if (c.IsStop(c.Floor())) { c.Arrive(); return DOORS_OPEN; }
+            Direction d = c.ChooseDirection();
+            c.SetDirection(d);
+            return d == Direction.UP ? MOVING_UP : d == Direction.DOWN ? MOVING_DOWN : IDLE;
+        }
+    }
+    sealed class MovingUpState : CarState {
+        public MovingUpState() : base("MOVING_UP") { }
+        public override CarState OnTick(ElevatorCar c) {
+            c.Move(+1);
+            if (c.IsStop(c.Floor())) { c.Arrive(); return DOORS_OPEN; }
+            return MOVING_UP;
+        }
+    }
+    sealed class MovingDownState : CarState {
+        public MovingDownState() : base("MOVING_DOWN") { }
+        public override CarState OnTick(ElevatorCar c) {
+            c.Move(-1);
+            if (c.IsStop(c.Floor())) { c.Arrive(); return DOORS_OPEN; }
+            return MOVING_DOWN;
+        }
+    }
+    sealed class DoorsOpenState : CarState {
+        public DoorsOpenState() : base("DOORS_OPEN") { }
+        public override CarState OnTick(ElevatorCar c) {
+            if (c.DoorBlocked()) { c.ResetDoorTimer(); return DOORS_OPEN; }   // safety: never close on a person
+            if (c.CountDownDoor() > 0) return DOORS_OPEN;
+            return IDLE;                                                      // doors closed; IDLE decides next
+        }
+    }
+    sealed class MaintenanceState : CarState {
+        public MaintenanceState() : base("MAINTENANCE") { }
+        public override CarState OnTick(ElevatorCar c) { return MAINTENANCE; }
+        public override bool AcceptsCalls() { return false; }
+    }
+}
+
+class ElevatorCar {
+    public const int DOOR_TICKS = 2;
+    private readonly int id, minFloor, maxFloor;
+    private int floor;
+    private Direction direction = Direction.NONE;
+    private CarState state = CarState.IDLE;
+    private readonly SortedSet<int> stops = new SortedSet<int>();   // sorted: next-above / next-below are O(log n)
+    private int doorTicks = 0;
+    private bool blocked = false, maintenance = false;
+
+    public ElevatorCar(int id, int minFloor, int maxFloor, int startFloor) {
+        this.id = id; this.minFloor = minFloor; this.maxFloor = maxFloor; floor = startFloor;
+    }
+
+    /// Car button or dispatcher assignment. Returns false if the car is not taking calls.
+    public bool AddStop(int f) {
+        if (f < minFloor || f > maxFloor) throw new ArgumentException("no floor " + f);
+        if (!state.AcceptsCalls() || maintenance) return false;
+        stops.Add(f);                                          // duplicates ignored by the set
+        return true;
+    }
+
+    public void Tick() {
+        CarState next = state.OnTick(this);
+        if (next != state) Console.WriteLine("car " + id + ": " + state + " -> " + next + " at floor " + floor);
+        state = next;
+    }
+
+    /// Cost of serving a hall call; the controller picks the cheapest car.
+    public int CostFor(HallCall call) {
+        if (!state.AcceptsCalls() || maintenance) return int.MaxValue;
+        int distance = Math.Abs(floor - call.Floor);
+        bool onTheWay = (state == CarState.MOVING_UP && call.Direction == Direction.UP && call.Floor > floor)
+                || (state == CarState.MOVING_DOWN && call.Direction == Direction.DOWN && call.Floor < floor);
+        if (state == CarState.IDLE || onTheWay) return distance;
+        return distance + 2 * (maxFloor - minFloor);           // must finish its current sweep first
+    }
+
+    // ---- helpers used only by CarState ----
+    public bool IsStop(int f)             { return stops.Contains(f); }
+    public void Arrive()                  { stops.Remove(floor); doorTicks = DOOR_TICKS; }
+    public void Move(int delta)           { floor += delta; }
+    public int CountDownDoor()            { return --doorTicks; }
+    public void ResetDoorTimer()          { doorTicks = DOOR_TICKS; blocked = false; }
+    public bool DoorBlocked()             { return blocked; }
+    public void SetDirection(Direction d) { direction = d; }
+    public bool MaintenanceRequested()    { return maintenance; }
+    private int? Higher(int f) { foreach (int s in stops.GetViewBetween(f + 1, int.MaxValue)) return s; return null; }
+    private int? Lower(int f)  { int? best = null; foreach (int s in stops.GetViewBetween(int.MinValue, f - 1)) best = s; return best; }
+    public Direction ChooseDirection() {                        // LOOK rule: keep going while work remains ahead
+        int? above = Higher(floor), below = Lower(floor);
+        if (direction == Direction.UP && above != null) return Direction.UP;
+        if (direction == Direction.DOWN && below != null) return Direction.DOWN;
+        if (above != null && below != null) return (above.Value - floor) <= (floor - below.Value) ? Direction.UP : Direction.DOWN;
+        if (above != null) return Direction.UP;
+        if (below != null) return Direction.DOWN;
+        return Direction.NONE;
+    }
+
+    // ---- outside events ----
+    public void BlockDoor()          { blocked = true; }
+    public void RequestMaintenance() { maintenance = true; stops.Clear(); }
+    public void FinishMaintenance()  { maintenance = false; if (state == CarState.MAINTENANCE) state = CarState.IDLE; }
+    public int Floor()               { return floor; }
+    public int Id()                  { return id; }
+    public CarState State()          { return state; }
+}
+
+class ElevatorController {
+    private readonly List<ElevatorCar> cars;
+    public ElevatorController(List<ElevatorCar> cars) { this.cars = cars; }
+
+    public ElevatorCar OnHallCall(HallCall call) {
+        ElevatorCar best = cars.OrderBy(c => c.CostFor(call)).First();
+        if (best.CostFor(call) == int.MaxValue) throw new InvalidOperationException("no car in service");
+        best.AddStop(call.Floor);
+        return best;
+    }
+    public void OnCarButton(int carIndex, int floor) { cars[carIndex].AddStop(floor); }
+    public void TickAll() { foreach (ElevatorCar c in cars) c.Tick(); }
+
+    static void Main() {
+        ElevatorCar a = new ElevatorCar(0, 0, 9, 0), b = new ElevatorCar(1, 0, 9, 9);
+        ElevatorController ctl = new ElevatorController(new List<ElevatorCar> { a, b });
+        Console.WriteLine("hall call 2 UP -> car " + ctl.OnHallCall(new HallCall(2, Direction.UP)).Id());
+        Console.WriteLine("hall call 8 DOWN -> car " + ctl.OnHallCall(new HallCall(8, Direction.DOWN)).Id());
+        for (int t = 0; t < 6; t++) ctl.TickAll();
+        ctl.OnCarButton(0, 6);                 // passenger in car 0 presses 6
+        a.BlockDoor();                         // someone holds the door
+        for (int t = 0; t < 12; t++) ctl.TickAll();
+        Console.WriteLine("car 0 at " + a.Floor() + " " + a.State() + ", car 1 at " + b.Floor() + " " + b.State());
+    }
 }` }
         ] },
     viz: {
@@ -2481,7 +2925,16 @@ struct CarRequest {
     int carId;
     int floor;
     bool operator==(const CarRequest&) const = default;
-};` }
+};` },
+  { lang: 'csharp', code: `
+sealed class HallRequest {
+    public readonly int Floor; public readonly bool Up;
+    public HallRequest(int floor, bool up) { Floor = floor; Up = up; }
+}
+sealed class CarRequest {
+    public readonly int CarId, Floor;
+    public CarRequest(int carId, int floor) { CarId = carId; Floor = floor; }
+}` }
         ] } },
       { title: 'Why a set of stops, not a FIFO queue', html: `<p>Calls arrive: 7, 2, 6 while the car is at 0. A FIFO queue forces 0→7→2→6 = 7 + 5 + 4 = <b>16 floors</b>. A sorted set lets the car serve 2 and 6 on the way up: 0→2→6→7 = <b>7 floors</b>. Also, pressing 6 three times must not create three stops — a set ignores duplicates for free. ${H.c('g', 'A sorted set (TreeSet, std::set, or a sorted list with bisect) gives higher(f)/lower(f) in O(log n)')}, exactly the "next stop above/below me" questions a lift asks.</p>` },
       { title: 'Door obstruction: the safety self-loop', html: `<p>In DOORS_OPEN, each tick checks the door sensor first. Blocked → reset timer, stay open. This rule lives in exactly one place (<code>DOORS_OPEN.onTick</code>). With flags, you would have to remember to check <code>doorBlocked</code> everywhere doors might close — and an elevator closing on a child is not a bug you get to fix later.</p>` },
@@ -2542,6 +2995,21 @@ enum class CarState2 { DOORS_OPEN, OVERLOADED };
 CarState2 onTick(CarState2 s, const Car2& c) {
     if (s == CarState2::OVERLOADED) c.beep();
     return c.loadKg() > 680 ? CarState2::OVERLOADED : CarState2::DOORS_OPEN;
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class CarState2 {
+    public static readonly CarState2 DOORS_OPEN = new DoorsOpen2();
+    public static readonly CarState2 OVERLOADED = new Overloaded2();
+    public abstract CarState2 OnTick(Car2 c);
+    sealed class DoorsOpen2 : CarState2 { public override CarState2 OnTick(Car2 c) { return c.LoadKg() > 680 ? OVERLOADED : DOORS_OPEN; } }
+    sealed class Overloaded2 : CarState2 { public override CarState2 OnTick(Car2 c) { c.Beep(); return c.LoadKg() > 680 ? OVERLOADED : DOORS_OPEN; } }
+}
+class Car2 {
+    public int Load = 700;
+    public int LoadKg() { return Load; }
+    public void Beep() { Console.WriteLine("BEEP: overloaded"); }
 }` }
         ] } },
       { title: 'Display as an Observer of the car', html: `<p>Each floor has a display "▲ 5". Instead of the car calling every display, displays <b>subscribe</b> to the car: <code>car.addListener(display)</code>; on every state change the car notifies listeners with (floor, direction). New listeners (a mobile app, a building-management dashboard, a logger) plug in without changing <code>ElevatorCar</code>. State + Observer is the standard combination in elevator designs.</p>` }
@@ -2575,7 +3043,7 @@ CarState2 onTick(CarState2 s, const Car2& c) {
         }
         // ... every other branch also needs "if (fireMode)" - one missed check = safety bug
     }
-}`, alt: [{ lang: 'python', code: "class FlagCar:\n    def __init__(self):\n        self.floor, self.fire_mode, self.moving_up, self.door_open = 6, False, True, False\n        self.stops = set()\n\n    def tick(self):\n        if self.fire_mode:\n            if self.door_open: self.door_open = False\n            elif self.floor > 0: self.floor -= 1        # easy to forget: what if we were moving up?\n            else: self.door_open = True\n        elif self.moving_up:\n            self.floor += 1\n            if self.floor in self.stops:\n                self.stops.remove(self.floor)\n                self.door_open = True\n        # ... every other branch also needs \"if fire_mode\" - one missed check = safety bug\n" }, { lang: 'ts', code: "class FlagCar {\n  floor = 6; fireMode = false; movingUp = true; doorOpen = false;\n  stops = new Set<number>();\n  tick(): void {\n    if (this.fireMode) {\n      if (this.doorOpen) this.doorOpen = false;\n      else if (this.floor > 0) this.floor--;            // easy to forget: what if we were moving up?\n      else this.doorOpen = true;\n    } else if (this.movingUp) {\n      this.floor++;\n      if (this.stops.delete(this.floor)) this.doorOpen = true;\n    }\n    // ... every other branch also needs \"if (fireMode)\" - one missed check = safety bug\n  }\n}\n" }, { lang: 'cpp', code: "class FlagCar {\npublic:\n    int floor = 6; bool fireMode = false, movingUp = true, doorOpen = false;\n    set<int> stops;\n    void tick() {\n        if (fireMode) {\n            if (doorOpen) doorOpen = false;\n            else if (floor > 0) floor--;            // easy to forget: what if we were moving up?\n            else doorOpen = true;\n        } else if (movingUp) {\n            floor++;\n            if (stops.erase(floor)) doorOpen = true;\n        }\n        // ... every other branch also needs \"if (fireMode)\" - one missed check = safety bug\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class FlagCar:\n    def __init__(self):\n        self.floor, self.fire_mode, self.moving_up, self.door_open = 6, False, True, False\n        self.stops = set()\n\n    def tick(self):\n        if self.fire_mode:\n            if self.door_open: self.door_open = False\n            elif self.floor > 0: self.floor -= 1        # easy to forget: what if we were moving up?\n            else: self.door_open = True\n        elif self.moving_up:\n            self.floor += 1\n            if self.floor in self.stops:\n                self.stops.remove(self.floor)\n                self.door_open = True\n        # ... every other branch also needs \"if fire_mode\" - one missed check = safety bug\n" }, { lang: 'ts', code: "class FlagCar {\n  floor = 6; fireMode = false; movingUp = true; doorOpen = false;\n  stops = new Set<number>();\n  tick(): void {\n    if (this.fireMode) {\n      if (this.doorOpen) this.doorOpen = false;\n      else if (this.floor > 0) this.floor--;            // easy to forget: what if we were moving up?\n      else this.doorOpen = true;\n    } else if (this.movingUp) {\n      this.floor++;\n      if (this.stops.delete(this.floor)) this.doorOpen = true;\n    }\n    // ... every other branch also needs \"if (fireMode)\" - one missed check = safety bug\n  }\n}\n" }, { lang: 'cpp', code: "class FlagCar {\npublic:\n    int floor = 6; bool fireMode = false, movingUp = true, doorOpen = false;\n    set<int> stops;\n    void tick() {\n        if (fireMode) {\n            if (doorOpen) doorOpen = false;\n            else if (floor > 0) floor--;            // easy to forget: what if we were moving up?\n            else doorOpen = true;\n        } else if (movingUp) {\n            floor++;\n            if (stops.erase(floor)) doorOpen = true;\n        }\n        // ... every other branch also needs \"if (fireMode)\" - one missed check = safety bug\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\n\nclass FlagCar {\n    public int Floor = 6; public bool FireMode = false, MovingUp = true, DoorOpen = false;\n    public SortedSet<int> Stops = new SortedSet<int>();\n    public void Tick() {\n        if (FireMode) {\n            if (DoorOpen) DoorOpen = false;\n            else if (Floor > 0) Floor--;            // easy to forget: what if we were moving up?\n            else DoorOpen = true;\n        } else if (MovingUp) {\n            Floor++;\n            if (Stops.Remove(Floor)) DoorOpen = true;\n        }\n        // ... every other branch also needs \"if (FireMode)\" - one missed check = safety bug\n    }\n}\n" }] } },
       mcq: { q: 'A passenger presses "3" inside the car during FIRE_RECALL. With the State pattern, where is this handled?', options: ['FIRE_RECALL.acceptsCalls() returns false, so addStop() rejects it — no other code changes', 'MOVING_DOWN must check a fire flag', 'The controller must filter it', 'It cannot be handled'], answer: 0, explain: 'The new states declare their own policy for calls. The context asks the current state; existing states do not know fire mode exists.' },
       hints: [`<p>Hint 1: Fire recall is really <b>two</b> new states: FIRE_RECALL (travelling to the lobby) and FIRE_PARKED (doors open, waiting for reset).</p>`, `<p>Hint 2: The alarm is an <b>outside event</b> that can arrive in any state. Handle it once in the car: <code>onFireAlarm()</code> clears stops and sets the state to FIRE_RECALL — the existing states do not need to know.</p>`, `<p>Hint 3: FIRE_RECALL.onTick: if doors open and not blocked → close; else if floor &gt; 0 → move down; else → FIRE_PARKED. Both new states answer <code>acceptsCalls()</code> with false. Reset: only FIRE_PARKED → IDLE.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "call 3 accepted? false\nFIRE_PARKED at floor 0, door open true\nreset ok? true -> IDLE\nreset again? false\nIDLE at floor 2\n" }] },
@@ -2918,6 +3386,103 @@ int main() {
     car.addStop(2);
     for (int t = 0; t < 5; t++) car.tick();
     cout << toString(car.state) << " at floor " << car.floor << "\\n";  // back in service
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+abstract class FState {
+    public static readonly FState IDLE = new IdleS();
+    public static readonly FState MOVING_UP = new MovingUpS();
+    public static readonly FState MOVING_DOWN = new MovingDownS();
+    public static readonly FState DOORS_OPEN = new DoorsOpenS();
+    // ---------- the two NEW states; nothing above was modified ----------
+    public static readonly FState FIRE_RECALL = new FireRecallS();
+    public static readonly FState FIRE_PARKED = new FireParkedS();
+
+    private readonly string name;
+    private FState(string name) { this.name = name; }
+    public abstract FState OnTick(FireCar c);
+    public virtual bool AcceptsCalls() { return true; }
+    public override string ToString() { return name; }
+
+    sealed class IdleS : FState {
+        public IdleS() : base("IDLE") { }
+        public override FState OnTick(FireCar c) {
+            bool up = c.Stops.GetViewBetween(c.Floor + 1, int.MaxValue).Count > 0, down = c.Stops.GetViewBetween(int.MinValue, c.Floor - 1).Count > 0;
+            if (c.Stops.Remove(c.Floor)) { c.DoorOpen = true; return DOORS_OPEN; }
+            if (up) return MOVING_UP;
+            if (down) return MOVING_DOWN;
+            return IDLE;
+        }
+    }
+    sealed class MovingUpS : FState {
+        public MovingUpS() : base("MOVING_UP") { }
+        public override FState OnTick(FireCar c) { c.Floor++; if (c.Stops.Remove(c.Floor)) { c.DoorOpen = true; return DOORS_OPEN; } return MOVING_UP; }
+    }
+    sealed class MovingDownS : FState {
+        public MovingDownS() : base("MOVING_DOWN") { }
+        public override FState OnTick(FireCar c) { c.Floor--; if (c.Stops.Remove(c.Floor)) { c.DoorOpen = true; return DOORS_OPEN; } return MOVING_DOWN; }
+    }
+    sealed class DoorsOpenS : FState {
+        public DoorsOpenS() : base("DOORS_OPEN") { }
+        public override FState OnTick(FireCar c) { if (c.DoorBlocked) return DOORS_OPEN; c.DoorOpen = false; return IDLE; }
+    }
+    sealed class FireRecallS : FState {
+        public FireRecallS() : base("FIRE_RECALL") { }
+        public override FState OnTick(FireCar c) {
+            if (c.DoorOpen) { if (!c.DoorBlocked) c.DoorOpen = false; return FIRE_RECALL; } // close safely first
+            if (c.Floor > 0) { c.Floor--; return FIRE_RECALL; }                            // non-stop to lobby
+            c.DoorOpen = true;
+            return FIRE_PARKED;
+        }
+        public override bool AcceptsCalls() { return false; }
+    }
+    sealed class FireParkedS : FState {
+        public FireParkedS() : base("FIRE_PARKED") { }
+        public override FState OnTick(FireCar c) { return FIRE_PARKED; }
+        public override bool AcceptsCalls() { return false; }
+    }
+}
+
+class FireCar {
+    public int Floor;
+    public bool DoorOpen = false, DoorBlocked = false;
+    public readonly SortedSet<int> Stops = new SortedSet<int>();
+    public FState State = FState.IDLE;
+
+    public FireCar(int floor) { Floor = floor; }
+
+    public bool AddStop(int f) { if (!State.AcceptsCalls()) return false; Stops.Add(f); return true; }
+    public void Tick() { State = State.OnTick(this); }
+
+    /// Outside event: valid in ANY state, so the context handles it once.
+    public void OnFireAlarm() { Stops.Clear(); State = FState.FIRE_RECALL; }
+
+    /// Only a parked car may return to service.
+    public bool OnAlarmReset() {
+        if (State != FState.FIRE_PARKED) return false;
+        DoorOpen = false;
+        State = FState.IDLE;
+        return true;
+    }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        FireCar car = new FireCar(6);
+        car.AddStop(9);
+        car.Tick();                                  // IDLE -> MOVING_UP
+        car.OnFireAlarm();
+        Console.WriteLine("call 3 accepted? " + B(car.AddStop(3)));   // false
+        for (int t = 0; t < 10; t++) car.Tick();
+        Console.WriteLine(car.State + " at floor " + car.Floor + ", door open " + B(car.DoorOpen));
+        Console.WriteLine("reset ok? " + B(car.OnAlarmReset()) + " -> " + car.State);
+        Console.WriteLine("reset again? " + B(car.OnAlarmReset()));       // false: only a parked car resets
+        car.AddStop(2);
+        for (int t = 0; t < 5; t++) car.Tick();
+        Console.WriteLine(car.State + " at floor " + car.Floor);      // back in service
+    }
 }` }
         ],
         complexity: `<p>Each tick is O(log n) for the sorted-set operations; recall takes at most (current floor + 1) ticks. Adding the mode cost 2 new enum constants and 2 context methods; the four existing states were not edited.</p>`,
@@ -3358,6 +3923,96 @@ int main() {
         for (size_t i = 0; i < r.size(); i++) cout << (i ? ", " : "") << r[i];
         cout << "] floors=" << distance(5, r) << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Dir { UP, DOWN }
+
+/// Strategy: given where the car is, plan the waypoints it will visit.
+interface ISchedulingStrategy {
+    string Name();
+    List<int> Route(int start, Dir dir, List<int> requests, int topFloor);
+}
+
+class Fcfs : ISchedulingStrategy {
+    public string Name() { return "FCFS"; }
+    public List<int> Route(int start, Dir dir, List<int> req, int top) {
+        return req.Distinct().ToList();                            // arrival order, duplicates removed
+    }
+}
+
+class Sstf : ISchedulingStrategy {
+    public string Name() { return "SSTF"; }
+    public List<int> Route(int start, Dir dir, List<int> req, int top) {
+        SortedSet<int> left = new SortedSet<int>(req);
+        List<int> result = new List<int>();
+        int cur = start;
+        Dir d = dir;
+        while (left.Count > 0) {
+            int? lo = left.GetViewBetween(int.MinValue, cur).Count > 0 ? left.GetViewBetween(int.MinValue, cur).Max : (int?)null;   // nearest below (floor)
+            int? hi = left.GetViewBetween(cur, int.MaxValue).Count > 0 ? left.GetViewBetween(cur, int.MaxValue).Min : (int?)null;   // nearest above (ceiling)
+            int dDown = lo == null ? int.MaxValue : cur - lo.Value;
+            int dUp = hi == null ? int.MaxValue : hi.Value - cur;
+            int next;
+            if (dUp < dDown || (dUp == dDown && d == Dir.UP)) { next = hi.Value; d = Dir.UP; }
+            else { next = lo.Value; d = Dir.DOWN; }                 // tie -> keep current direction
+            result.Add(next);
+            left.Remove(next);
+            cur = next;
+        }
+        return result;
+    }
+}
+
+class Look : ISchedulingStrategy {
+    public string Name() { return "LOOK"; }
+    public List<int> Route(int start, Dir dir, List<int> req, int top) {
+        SortedSet<int> s = new SortedSet<int>(req);
+        List<int> result = new List<int>();
+        if (dir == Dir.UP) {
+            result.AddRange(s.Where(f => f >= start));                     // everything at/above, ascending
+            result.AddRange(s.Where(f => f < start).Reverse());            // then turn at the LAST request
+        } else {
+            result.AddRange(s.Where(f => f <= start).Reverse());
+            result.AddRange(s.Where(f => f > start));
+        }
+        return result;
+    }
+}
+
+class Scan : ISchedulingStrategy {
+    public string Name() { return "SCAN"; }
+    public List<int> Route(int start, Dir dir, List<int> req, int top) {
+        SortedSet<int> s = new SortedSet<int>(req);
+        List<int> first = new List<int>(), second = new List<int>();
+        int end;
+        if (dir == Dir.UP) { first.AddRange(s.Where(f => f >= start)); second.AddRange(s.Where(f => f < start).Reverse()); end = top; }
+        else { first.AddRange(s.Where(f => f <= start).Reverse()); second.AddRange(s.Where(f => f > start)); end = 0; }
+        List<int> result = new List<int>(first);
+        bool alreadyAtEnd = first.Count > 0 && first[first.Count - 1] == end;
+        if (second.Count > 0 && !alreadyAtEnd) result.Add(end);    // ride all the way to the end floor
+        result.AddRange(second);
+        return result;
+    }
+}
+
+class SchedulerBench {
+    static int Distance(int start, List<int> route) {
+        int total = 0, pos = start;
+        foreach (int f in route) { total += Math.Abs(f - pos); pos = f; }
+        return total;
+    }
+
+    static void Main() {
+        List<int> req = new List<int> { 8, 2, 6, 1, 4 };
+        foreach (ISchedulingStrategy s in new ISchedulingStrategy[] { new Fcfs(), new Sstf(), new Scan(), new Look() }) {
+            List<int> r = s.Route(5, Dir.UP, req, 9);
+            Console.WriteLine(string.Format("{0,-4} route=[{1}] floors={2}", s.Name(), string.Join(", ", r), Distance(5, r)));
+        }
+    }
 }` }
         ] }, { lang: 'java', title: 'Multi-car dispatcher with a direction-aware cost function', code: `import java.util.*;
 
@@ -3639,6 +4294,77 @@ int main() {
     for (Call call : {Call{4, true}, Call{7, false}, Call{2, false}}) {
         cout << "call Call[floor=" << call.floor << ", wantsUp=" << call.wantsUp << "] -> car " << d.onHallCall(call).id << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum Motion { UP, DOWN, IDLE }
+
+sealed class Call {
+    public readonly int Floor; public readonly bool WantsUp;
+    public Call(int floor, bool wantsUp) { Floor = floor; WantsUp = wantsUp; }
+    public override string ToString() { return "Call[floor=" + Floor + ", wantsUp=" + WantsUp.ToString().ToLower() + "]"; }
+}
+
+class Car {
+    public readonly string Id;
+    public int Floor;
+    public Motion Motion;
+    public readonly List<int> Assigned = new List<int>();
+    public Car(string id, int floor, Motion motion) { Id = id; Floor = floor; Motion = motion; }
+}
+
+interface IDispatchStrategy { Car Choose(List<Car> cars, Call call, int top); }
+
+/// Estimated floors to travel before reaching the caller, assuming SCAN-like sweeps, + load penalty.
+class NearestCarDispatch : IDispatchStrategy {
+    public static int Travel(Car c, Call k, int top) {
+        int p = c.Floor, f = k.Floor;
+        switch (c.Motion) {
+            case Motion.IDLE: return Math.Abs(p - f);
+            case Motion.UP:
+                if (k.WantsUp && f >= p) return f - p;             // on the way
+                if (!k.WantsUp) return (top - p) + (top - f);      // up to the top, then down to f
+                return (top - p) + top + f;                        // full loop: top, bottom, back up to f
+            default:
+                if (!k.WantsUp && f <= p) return p - f;
+                if (k.WantsUp) return p + f;                       // down to 0, then up to f
+                return p + top + (top - f);
+        }
+    }
+    public Car Choose(List<Car> cars, Call call, int top) {
+        Car best = null;
+        int bestCost = int.MaxValue;
+        foreach (Car c in cars) {
+            int cost = Travel(c, call, top) + c.Assigned.Count;    // small penalty spreads the load
+            if (cost < bestCost) { bestCost = cost; best = c; }
+        }
+        return best;
+    }
+}
+
+class Dispatcher {
+    private readonly List<Car> cars;
+    private readonly int top;
+    private IDispatchStrategy strategy;                 // swappable: zoning in the morning rush, etc.
+    public Dispatcher(List<Car> cars, int top, IDispatchStrategy s) { this.cars = cars; this.top = top; strategy = s; }
+    public void SetStrategy(IDispatchStrategy s) { strategy = s; }
+
+    public Car OnHallCall(Call call) {
+        Car c = strategy.Choose(cars, call, top);
+        c.Assigned.Add(call.Floor);
+        if (c.Motion == Motion.IDLE && c.Floor != call.Floor) c.Motion = call.Floor > c.Floor ? Motion.UP : Motion.DOWN;
+        return c;
+    }
+
+    static void Main() {
+        List<Car> cars = new List<Car> { new Car("A", 0, Motion.IDLE), new Car("B", 6, Motion.DOWN), new Car("C", 3, Motion.UP) };
+        Dispatcher d = new Dispatcher(cars, 9, new NearestCarDispatch());
+        foreach (Call call in new[] { new Call(4, true), new Call(7, false), new Call(2, false) }) {
+            Console.WriteLine("call " + call + " -> car " + d.OnHallCall(call).Id);
+        }
+    }
 }` }
         ] }],
     codeTitle: ['Car-level scheduling strategies', 'Building-level dispatch'],
@@ -3806,7 +4532,15 @@ public:
 
     // Should a car moving in direction 'goingUp' stop at 'floor'?
     bool shouldStop(int floor, bool goingUp) const { return (goingUp ? up_ : down_).count(floor) > 0; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Collections.Generic;
+class DirectionalStops {
+    public readonly SortedSet<int> Up = new SortedSet<int>(), Down = new SortedSet<int>();
+    public void HallCall(int floor, bool wantsUp) { (wantsUp ? Up : Down).Add(floor); }
+    /// Should a car moving in direction 'goingUp' stop at 'floor'?
+    public bool ShouldStop(int floor, bool goingUp) { return goingUp ? Up.Contains(floor) : Down.Contains(floor); }
+}` }
         ] } },
       { title: 'Estimating wait time for the dispatcher', html: `<p>Our cost uses floors, but production systems estimate <b>seconds</b>: travel ≈ floors × 1.5 s + stops on the way × 10 s (doors + boarding). A car 3 floors away with 4 stops in between (≈ 44 s) loses to an idle car 7 floors away (≈ 10 s). The structure stays the same — only the cost function (a Strategy) gets smarter.</p>` }
     ],
@@ -3838,7 +4572,7 @@ class BruteLook {
         }
         return out;
     }
-}`, alt: [{ lang: 'python', code: "class BruteLook:\n    @staticmethod\n    def order(start, up, req, top):\n        pending, out = list(set(req)), []\n        pos = start\n        while pending:\n            if pos in pending:                                                   # O(N) scan\n                pending.remove(pos); out.append(pos); continue\n            ahead = any((f > pos) if up else (f < pos) for f in pending)        # O(N) scan per floor\n            if not ahead: up = not up; continue\n            pos += 1 if up else -1                                               # one floor at a time\n        return out\n" }, { lang: 'ts', code: "class BruteLook {\n  static order(start: number, up: boolean, req: number[], top: number): number[] {\n    const pending = [...new Set(req)], out: number[] = [];\n    let pos = start;\n    while (pending.length) {\n      const at = pending.indexOf(pos);                                           // O(N) scan\n      if (at >= 0) { pending.splice(at, 1); out.push(pos); continue; }\n      const ahead = pending.some((f) => (up ? f > pos : f < pos));               // O(N) scan per floor\n      if (!ahead) { up = !up; continue; }\n      pos += up ? 1 : -1;                                                        // one floor at a time\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct BruteLook {\n    static vector<int> order(int start, bool up, const vector<int>& req, int top) {\n        set<int> uniq(req.begin(), req.end());\n        vector<int> pending(uniq.begin(), uniq.end()), out;\n        int pos = start;\n        while (!pending.empty()) {\n            auto it = find(pending.begin(), pending.end(), pos);                  // O(N) scan\n            if (it != pending.end()) { pending.erase(it); out.push_back(pos); continue; }\n            bool ahead = false;\n            for (int f : pending) if (up ? f > pos : f < pos) ahead = true;       // O(N) scan per floor\n            if (!ahead) { up = !up; continue; }\n            pos += up ? 1 : -1;                                                   // one floor at a time\n        }\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class BruteLook:\n    @staticmethod\n    def order(start, up, req, top):\n        pending, out = list(set(req)), []\n        pos = start\n        while pending:\n            if pos in pending:                                                   # O(N) scan\n                pending.remove(pos); out.append(pos); continue\n            ahead = any((f > pos) if up else (f < pos) for f in pending)        # O(N) scan per floor\n            if not ahead: up = not up; continue\n            pos += 1 if up else -1                                               # one floor at a time\n        return out\n" }, { lang: 'ts', code: "class BruteLook {\n  static order(start: number, up: boolean, req: number[], top: number): number[] {\n    const pending = [...new Set(req)], out: number[] = [];\n    let pos = start;\n    while (pending.length) {\n      const at = pending.indexOf(pos);                                           // O(N) scan\n      if (at >= 0) { pending.splice(at, 1); out.push(pos); continue; }\n      const ahead = pending.some((f) => (up ? f > pos : f < pos));               // O(N) scan per floor\n      if (!ahead) { up = !up; continue; }\n      pos += up ? 1 : -1;                                                        // one floor at a time\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct BruteLook {\n    static vector<int> order(int start, bool up, const vector<int>& req, int top) {\n        set<int> uniq(req.begin(), req.end());\n        vector<int> pending(uniq.begin(), uniq.end()), out;\n        int pos = start;\n        while (!pending.empty()) {\n            auto it = find(pending.begin(), pending.end(), pos);                  // O(N) scan\n            if (it != pending.end()) { pending.erase(it); out.push_back(pos); continue; }\n            bool ahead = false;\n            for (int f : pending) if (up ? f > pos : f < pos) ahead = true;       // O(N) scan per floor\n            if (!ahead) { up = !up; continue; }\n            pos += up ? 1 : -1;                                                   // one floor at a time\n        }\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass BruteLook {\n    public static List<int> Order(int start, bool up, List<int> req, int top) {\n        List<int> pending = new List<int>(new HashSet<int>(req)), result = new List<int>();\n        int pos = start;\n        while (pending.Count > 0) {\n            if (pending.Remove(pos)) { result.Add(pos); continue; }                   // O(N) scan\n            bool ahead = false;\n            foreach (int f in pending) if (up ? f > pos : f < pos) ahead = true;      // O(N) scan per floor\n            if (!ahead) { up = !up; continue; }\n            pos += up ? 1 : -1;                                                       // one floor at a time\n        }\n        return result;\n    }\n}\n" }] } },
       mcq: { q: 'The car is at 5 going UP, with requests at 3 and 7. A new request for 6 arrives when the car is at 5.5 (between 5 and 6). What does LOOK do?', options: ['Stops at 6, then 7, then reverses to 3', 'Goes to 7 first because it was earlier', 'Reverses to 3 immediately because 3 is closer to 5 than 7', 'Ignores 6 until the next sweep'], answer: 0, explain: 'LOOK serves everything ahead in the current direction in floor order, including late arrivals ahead of the car.' },
       hints: [`<p>Hint 1: LOOK = "everything at or above me in ascending order, then everything below me in descending order" (for UP). Duplicates do not matter — use a set.</p>`, `<p>Hint 2: A sorted set (<code>TreeSet</code> in Java) gives the requests at or above <code>start</code> ascending and those below it descending (<code>tailSet(start, true)</code> and <code>headSet(start, false).descendingSet()</code>; with <code>std::set</code> use <code>lower_bound</code> and iterate; in Python filter a sorted list). For the online version, <code>ceiling(pos)</code> / <code>floor(pos)</code> give the next stop in each direction in O(log N).</p>`, `<p>Hint 3: Online <code>nextStop()</code>: if direction is UP and <code>ceiling(pos)</code> exists → go there; else flip to DOWN and try <code>floor(pos)</code>; if neither, return -1 (idle). Remove the floor when served, update pos.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "[6, 8, 4, 2, 1] distance=10\n6 7 3\n-1\n" }] },
@@ -4071,6 +4805,61 @@ int main() {
     int a = live.nextStop(), b = live.nextStop(), c = live.nextStop();
     cout << a << " " << b << " " << c << "\\n";  // 6 7 3
     cout << live.nextStop() << "\\n";            // -1: nothing pending, idle
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class LookScheduler {
+    private readonly SortedSet<int> pending = new SortedSet<int>();
+    private int pos;
+    private bool up;
+
+    public LookScheduler(int start, bool up) { pos = start; this.up = up; }
+
+    public void AddRequest(int floor) { pending.Add(floor); }
+
+    private int? Ceiling(int f) { SortedSet<int> v = pending.GetViewBetween(f, int.MaxValue); return v.Count > 0 ? v.Min : (int?)null; }
+    private int? FloorOf(int f) { SortedSet<int> v = pending.GetViewBetween(int.MinValue, f); return v.Count > 0 ? v.Max : (int?)null; }
+
+    /// Next floor to stop at under LOOK, or -1 if idle. Serves (removes) it and moves there.
+    public int NextStop() {
+        if (pending.Count == 0) return -1;
+        int? next = up ? Ceiling(pos) : FloorOf(pos);
+        if (next == null) {                         // nothing ahead -> reverse (the LOOK turn)
+            up = !up;
+            next = up ? Ceiling(pos) : FloorOf(pos);
+        }
+        pending.Remove(next.Value);
+        pos = next.Value;
+        return next.Value;
+    }
+
+    /// Offline helper: whole order + distance.
+    public static long[] ServeAll(int start, bool up, List<int> req, List<int> orderOut) {
+        LookScheduler s = new LookScheduler(start, up);
+        foreach (int r in req) s.AddRequest(r);
+        long dist = 0;
+        int at = start;
+        for (int f = s.NextStop(); f != -1; f = s.NextStop()) {
+            orderOut.Add(f);
+            dist += Math.Abs(f - at);
+            at = f;
+        }
+        return new long[] { dist };
+    }
+
+    static void Main() {
+        List<int> order = new List<int>();
+        long[] d = ServeAll(5, true, new List<int> { 8, 2, 6, 1, 4, 6 }, order);
+        Console.WriteLine("[" + string.Join(", ", order) + "] distance=" + d[0]);      // [6, 8, 4, 2, 1] distance=10
+
+        LookScheduler live = new LookScheduler(5, true);
+        live.AddRequest(3); live.AddRequest(7);
+        live.AddRequest(6);                                     // arrives late, but is ahead
+        Console.WriteLine(live.NextStop() + " " + live.NextStop() + " " + live.NextStop()); // 6 7 3
+        Console.WriteLine(live.NextStop());                    // -1: nothing pending, idle
+    }
 }` }
         ],
         complexity: `<p>O(N log N) to insert N requests; each <code>nextStop</code> is O(log N). Space O(N). Compared with the brute force O(F × N), we never visit empty floors in the algorithm (the physical car still moves floor by floor, but the decision is instant).</p>`,
@@ -4896,6 +5685,162 @@ int main() {
     vm.select("A1");  // needs 5 more
     vm.cancel();      // refund the exact 10 coin
     cout << "state=" << vm.stateName() << " box=" << vm.coinBox().toString() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Coin { ONE = 1, TWO = 2, FIVE = 5, TEN = 10, TWENTY = 20 }
+
+sealed class Product {
+    public readonly string Code, Name; public readonly int Price;
+    public Product(string code, string name, int price) { Code = code; Name = name; Price = price; }
+}
+
+class Inventory {
+    private readonly Dictionary<string, Product> products = new Dictionary<string, Product>();
+    private readonly Dictionary<string, int> stock = new Dictionary<string, int>();
+    public void Restock(Product p, int qty) { products[p.Code] = p; int q; stock.TryGetValue(p.Code, out q); stock[p.Code] = q + qty; }
+    public Product Find(string code)       { Product p; return products.TryGetValue(code, out p) ? p : null; }
+    public bool InStock(string code)       { int q; return stock.TryGetValue(code, out q) && q > 0; }
+    public void TakeOne(string code)       { if (stock.ContainsKey(code)) stock[code]--; }
+    public bool AllEmpty()                 { return stock.Values.All(q => q == 0); }
+}
+
+class CoinBox {
+    private readonly SortedDictionary<Coin, int> coins = new SortedDictionary<Coin, int>();
+    public void Add(Coin c, int n) { int q; coins.TryGetValue(c, out q); coins[c] = q + n; }
+
+    /// Change for 'amount' using box coins + 'extra' (escrow). Largest-first with backtracking. Null when impossible.
+    public List<Coin> PlanChange(int amount, List<Coin> extra) {
+        Dictionary<Coin, int> avail = new Dictionary<Coin, int>(coins);
+        foreach (Coin c in extra) { int q; avail.TryGetValue(c, out q); avail[c] = q + 1; }
+        List<Coin> desc = ((Coin[])Enum.GetValues(typeof(Coin))).OrderByDescending(c => (int)c).ToList();   // 20, 10, 5, 2, 1
+        List<Coin> result = new List<Coin>();
+        return Search(amount, 0, desc, avail, result) ? result : null;
+    }
+    private bool Search(int amount, int i, List<Coin> desc, Dictionary<Coin, int> avail, List<Coin> result) {
+        if (amount == 0) return true;
+        if (i == desc.Count) return false;
+        Coin c = desc[i];
+        int have; avail.TryGetValue(c, out have);
+        int max = Math.Min(have, amount / (int)c);
+        for (int k = max; k >= 0; k--) {                           // try many big coins first, back off if stuck
+            for (int j = 0; j < k; j++) result.Add(c);
+            if (Search(amount - k * (int)c, i + 1, desc, avail, result)) return true;
+            for (int j = 0; j < k; j++) result.RemoveAt(result.Count - 1);
+        }
+        return false;
+    }
+    /// Commit a sale: escrow goes in, change comes out.
+    public void Commit(List<Coin> escrow, List<Coin> change) {
+        foreach (Coin c in escrow) Add(c, 1);
+        foreach (Coin c in change) Add(c, -1);
+    }
+    public override string ToString() { return "{" + string.Join(", ", coins.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+}
+
+abstract class VmState {
+    public abstract string Name();
+    public virtual void InsertCoin(VendingMachine m, Coin c)   { m.Show(Name() + ": coin returned"); m.GiveBack(new List<Coin> { c }); }
+    public virtual void Select(VendingMachine m, string code)  { m.Show(Name() + ": cannot select now"); }
+    public virtual void Cancel(VendingMachine m)               { m.Show(Name() + ": nothing to cancel"); }
+    public virtual void Service(VendingMachine m)              { m.Show(Name() + ": cannot enter service now"); }
+    public virtual void Restock(VendingMachine m, Product p, int qty) { m.Show(Name() + ": open service mode first"); }
+    public virtual void FinishService(VendingMachine m)        { m.Show(Name() + ": not in service"); }
+}
+
+class Idle : VmState {
+    public override string Name() { return "IDLE"; }
+    public override void InsertCoin(VendingMachine m, Coin c) { m.Escrow().Add(c); m.SetState(new HasMoney()); }
+    public override void Select(VendingMachine m, string code) {
+        Product p = m.Inventory().Find(code);
+        m.Show(p == null ? "No such slot" : p.Name + " costs Rs " + p.Price + ". Insert coins.");
+    }
+    public override void Service(VendingMachine m) { m.SetState(new Maintenance()); }
+}
+
+class HasMoney : VmState {
+    public override string Name() { return "HAS_MONEY"; }
+    public override void InsertCoin(VendingMachine m, Coin c) { m.Escrow().Add(c); m.Show("Balance Rs " + m.Balance()); }
+    public override void Select(VendingMachine m, string code) {
+        Product p = m.Inventory().Find(code);
+        if (p == null) { m.Show("No such slot"); return; }                                  // check 1
+        if (!m.Inventory().InStock(code)) { m.Show(p.Name + " sold out, pick another"); return; } // check 2
+        int due = p.Price - m.Balance();
+        if (due > 0) { m.Show("Insert Rs " + due + " more"); return; }                     // check 3
+        List<Coin> change = m.CoinBox().PlanChange(-due, m.Escrow());
+        if (change == null) { m.Show("Cannot make change, pick another or cancel"); return; } // check 4
+        m.SetState(new Dispensing());
+        m.CompleteSale(p, change);                          // commit stock + coins together
+        m.SetState(m.Inventory().AllEmpty() ? (VmState)new SoldOut() : new Idle());
+    }
+    public override void Cancel(VendingMachine m) { m.GiveBack(m.Escrow()); m.Escrow().Clear(); m.SetState(new Idle()); }
+}
+
+class Dispensing : VmState {                     // in real hardware the motor takes ~2 s
+    public override string Name() { return "DISPENSING"; }
+}
+
+class SoldOut : VmState {
+    public override string Name() { return "SOLD_OUT"; }
+    public override void Service(VendingMachine m) { m.SetState(new Maintenance()); }
+}
+
+class Maintenance : VmState {
+    public override string Name() { return "MAINTENANCE"; }
+    public override void Restock(VendingMachine m, Product p, int qty) { m.Inventory().Restock(p, qty); m.Show("Restocked " + p.Code); }
+    public override void FinishService(VendingMachine m) { m.SetState(m.Inventory().AllEmpty() ? (VmState)new SoldOut() : new Idle()); }
+}
+
+class VendingMachine {
+    private VmState state = new Idle();
+    private readonly Inventory inventory = new Inventory();
+    private readonly CoinBox coinBox = new CoinBox();
+    private readonly List<Coin> escrow = new List<Coin>();
+
+    // ---- public API: every call is a one-line delegation ----
+    public void InsertCoin(Coin c)              { state.InsertCoin(this, c); }
+    public void Select(string code)             { state.Select(this, code); }
+    public void Cancel()                        { state.Cancel(this); }
+    public void Service()                       { state.Service(this); }
+    public void Restock(Product p, int qty)     { state.Restock(this, p, qty); }
+    public void FinishService()                 { state.FinishService(this); }
+
+    // ---- used by states ----
+    public void SetState(VmState s)             { Show("[" + state.Name() + " -> " + s.Name() + "]"); state = s; }
+    public int Balance()                        { return escrow.Sum(c => (int)c); }
+    public void CompleteSale(Product p, List<Coin> change) {
+        inventory.TakeOne(p.Code);
+        coinBox.Commit(escrow, change);
+        escrow.Clear();
+        Show("Dropped " + p.Name + (change.Count == 0 ? "" : ", change [" + string.Join(", ", change) + "]"));
+    }
+    public void GiveBack(List<Coin> coins)      { if (coins.Count > 0) Show("Returned [" + string.Join(", ", coins) + "]"); }
+    public void Show(string msg)                { Console.WriteLine(msg); }
+    public List<Coin> Escrow()                  { return escrow; }
+    public Inventory Inventory()                { return inventory; }
+    public CoinBox CoinBox()                    { return coinBox; }
+    public string StateName()                   { return state.Name(); }
+
+    static void Main() {
+        VendingMachine vm = new VendingMachine();
+        vm.Service();
+        vm.Restock(new Product("A1", "Chips", 15), 2);
+        vm.Restock(new Product("B2", "Water", 12), 3);
+        vm.FinishService();
+        vm.CoinBox().Add(Coin.ONE, 1); vm.CoinBox().Add(Coin.TWO, 2);
+        vm.Select("A1");                                   // price only
+        vm.InsertCoin(Coin.TEN); vm.InsertCoin(Coin.FIVE);
+        vm.Select("A1");                                   // exact money
+        vm.InsertCoin(Coin.TWENTY);
+        vm.Select("B2");                                   // change 8 = 5 + 2 + 1
+        vm.InsertCoin(Coin.TEN);
+        vm.Select("A1");                                   // needs 5 more
+        vm.Cancel();                                       // refund the exact 10 coin
+        Console.WriteLine("state=" + vm.StateName() + " box=" + vm.CoinBox());
+    }
 }` }
         ] },
     viz: {
@@ -5016,7 +5961,14 @@ class UpiPayment final : public PaymentMethod {
 public:
     bool authorize(int amountRs) override { return amountRs <= 2000; }  // stub: UPI-lite limit
     void voidAuth() override { cout << "UPI authorization voided\\n"; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+interface IPaymentMethod { bool Authorize(int amountRs); void VoidAuth(); }
+class UpiPayment : IPaymentMethod {
+    public bool Authorize(int amountRs) { return amountRs <= 2000; }   // stub: UPI-lite limit
+    public void VoidAuth() { Console.WriteLine("UPI authorization voided"); }
+}` }
         ] } },
       { title: 'Dispense failure: the snack gets stuck', html: `<p>The motor turns but the drop sensor sees nothing (the classic stuck packet). A good design has the DISPENSING state wait for a <b>drop-sensor</b> event: success → commit; timeout → retry the motor once, then <b>refund</b> (or offer another item) and mark the slot faulty. That is why DISPENSING is a real state and not just a method call — it is where hardware can fail.</p>` }
     ],
@@ -5045,7 +5997,7 @@ class GreedyChange {
         }
         return amount == 0 ? out : null;
     }
-}`, alt: [{ lang: 'python', code: "class GreedyChange:\n    # WRONG with limited coins: 6 with {5:1, 2:3} returns None although 2+2+2 works\n    @staticmethod\n    def change(denoms, counts, amount):\n        out = {}\n        for i in range(len(denoms) - 1, -1, -1):\n            if amount <= 0: break\n            take = min(counts[i], amount // denoms[i])\n            if take > 0:\n                out[denoms[i]] = take\n                amount -= take * denoms[i]\n        return dict(sorted(out.items())) if amount == 0 else None\n" }, { lang: 'ts', code: "class GreedyChange {\n  // WRONG with limited coins: 6 with {5:1, 2:3} returns null although 2+2+2 works\n  static change(denoms: number[], counts: number[], amount: number): Map<number, number> | null {\n    const out = new Map<number, number>();\n    for (let i = denoms.length - 1; i >= 0 && amount > 0; i--) {\n      const take = Math.min(counts[i], Math.floor(amount / denoms[i]));\n      if (take > 0) { out.set(denoms[i], take); amount -= take * denoms[i]; }\n    }\n    return amount === 0 ? out : null;\n  }\n}\n" }, { lang: 'cpp', code: "struct GreedyChange {\n    // WRONG with limited coins: 6 with {5:1, 2:3} returns nullopt although 2+2+2 works\n    static optional<map<int, int>> change(const vector<int>& denoms, const vector<int>& counts, int amount) {\n        map<int, int> out;\n        for (int i = (int)denoms.size() - 1; i >= 0 && amount > 0; i--) {\n            int take = min(counts[i], amount / denoms[i]);\n            if (take > 0) { out[denoms[i]] = take; amount -= take * denoms[i]; }\n        }\n        if (amount == 0) return out;\n        return nullopt;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class GreedyChange:\n    # WRONG with limited coins: 6 with {5:1, 2:3} returns None although 2+2+2 works\n    @staticmethod\n    def change(denoms, counts, amount):\n        out = {}\n        for i in range(len(denoms) - 1, -1, -1):\n            if amount <= 0: break\n            take = min(counts[i], amount // denoms[i])\n            if take > 0:\n                out[denoms[i]] = take\n                amount -= take * denoms[i]\n        return dict(sorted(out.items())) if amount == 0 else None\n" }, { lang: 'ts', code: "class GreedyChange {\n  // WRONG with limited coins: 6 with {5:1, 2:3} returns null although 2+2+2 works\n  static change(denoms: number[], counts: number[], amount: number): Map<number, number> | null {\n    const out = new Map<number, number>();\n    for (let i = denoms.length - 1; i >= 0 && amount > 0; i--) {\n      const take = Math.min(counts[i], Math.floor(amount / denoms[i]));\n      if (take > 0) { out.set(denoms[i], take); amount -= take * denoms[i]; }\n    }\n    return amount === 0 ? out : null;\n  }\n}\n" }, { lang: 'cpp', code: "struct GreedyChange {\n    // WRONG with limited coins: 6 with {5:1, 2:3} returns nullopt although 2+2+2 works\n    static optional<map<int, int>> change(const vector<int>& denoms, const vector<int>& counts, int amount) {\n        map<int, int> out;\n        for (int i = (int)denoms.size() - 1; i >= 0 && amount > 0; i--) {\n            int take = min(counts[i], amount / denoms[i]);\n            if (take > 0) { out[denoms[i]] = take; amount -= take * denoms[i]; }\n        }\n        if (amount == 0) return out;\n        return nullopt;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass GreedyChange {\n    // WRONG with limited coins: 6 with {5:1, 2:3} returns null although 2+2+2 works\n    public static SortedDictionary<int, int> Change(int[] denoms, int[] counts, int amount) {\n        SortedDictionary<int, int> result = new SortedDictionary<int, int>();\n        for (int i = denoms.Length - 1; i >= 0 && amount > 0; i--) {\n            int take = Math.Min(counts[i], amount / denoms[i]);\n            if (take > 0) { result[denoms[i]] = take; amount -= take * denoms[i]; }\n        }\n        return amount == 0 ? result : null;\n    }\n}\n" }] } },
       mcq: { q: 'Coins {1, 3, 4}, unlimited counts, amount 6. What does greedy give vs optimal?', options: ['Greedy 4+1+1 (3 coins), optimal 3+3 (2 coins)', 'Both give 3+3', 'Greedy fails entirely', 'Both give 4+1+1'], answer: 0, explain: 'Greedy is only guaranteed optimal for canonical coin systems with unlimited coins; {1,3,4} is not canonical.' },
       hints: [`<p>Hint 1: This is a <b>bounded</b> knapsack: each denomination can be used at most counts[i] times; minimise the number of coins.</p>`, `<p>Hint 2: <code>dp[a]</code> = fewest coins to make a. Process denominations one by one; for each, use it k = 1..counts[i] times on top of the previous layer (iterate a from high to low or keep a copy of the previous layer).</p>`, `<p>Hint 3: To return the coins, store for each (denomination, amount) how many of that coin were used, then walk back. dp[0] = 0, others = ∞; answer impossible if dp[amount] = ∞.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "{2=3}\n{10=1, 5=1, 2=1}\nnull\n{}\nnull\n" }] },
@@ -5218,6 +6170,55 @@ int main() {
     show(change(d, c, 3));   // null -> refuse the sale before dispensing
     show(change(d, c, 0));   // {} -> nothing to give back
     show(change(d, c, 1));   // null -> no 1-coins left
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class ExactChange {
+    const int INF = int.MaxValue / 2;
+
+    /// Fewest coins with limited counts; returns null if impossible.
+    public static SortedDictionary<int, int> Change(int[] denoms, int[] counts, int amount) {
+        int n = denoms.Length;
+        int[] prev = new int[amount + 1];
+        for (int a = 0; a <= amount; a++) prev[a] = INF;
+        prev[0] = 0;
+        int[][] used = new int[n][];                     // how many of coin i used to reach amount a
+        for (int i = 0; i < n; i++) {
+            used[i] = new int[amount + 1];
+            int[] cur = new int[amount + 1];
+            for (int a = 0; a <= amount; a++) {
+                cur[a] = prev[a];                        // k = 0
+                int maxK = Math.Min(counts[i], a / denoms[i]);
+                for (int k = 1; k <= maxK; k++) {
+                    int cand = prev[a - k * denoms[i]] + k;
+                    if (cand < cur[a]) { cur[a] = cand; used[i][a] = k; }
+                }
+            }
+            prev = cur;
+        }
+        if (prev[amount] >= INF) return null;
+        SortedDictionary<int, int> result = new SortedDictionary<int, int>(Comparer<int>.Create((x, y) => y.CompareTo(x)));   // largest first
+        int rest = amount;
+        for (int i = n - 1; i >= 0; i--) {               // walk back layer by layer
+            int k = used[i][rest];
+            if (k > 0) { result[denoms[i]] = k; rest -= k * denoms[i]; }
+        }
+        return result;
+    }
+
+    static string Show(SortedDictionary<int, int> m) { return m == null ? "null" : "{" + string.Join(", ", m.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+
+    static void Main() {
+        int[] d = { 1, 2, 5, 10 }, c = { 0, 3, 1, 1 };
+        Console.WriteLine(Show(Change(d, c, 6)));       // {2=3}
+        Console.WriteLine(Show(Change(d, c, 17)));      // {10=1, 5=1, 2=1}
+        Console.WriteLine(Show(Change(d, c, 3)));       // null -> refuse the sale before dispensing
+        Console.WriteLine(Show(Change(d, c, 0)));       // {} -> nothing to give back
+        Console.WriteLine(Show(Change(d, c, 1)));       // null -> no 1-coins left
+    }
 }` }
         ],
         complexity: `<p>Time O(D · A · C) with D denominations, amount A, max count C (≤ 10 · 10<sup>4</sup> · 10<sup>3</sup> worst case, but in practice A/d bounds k); space O(D · A) for reconstruction. For vending amounts (A ≤ 2000) this runs in well under a millisecond.</p>`,
@@ -6312,6 +7313,231 @@ int main() {
     atm.eject();
     atm.insertCard({"4111-02", "ACC1"});
     atm.enterPin("0000"); atm.enterPin("1111"); atm.enterPin("2222");  // card retained
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Card {
+    public readonly string Number, Account;
+    public Card(string number, string account) { Number = number; Account = account; }
+}
+
+/// Everything about money lives at the bank. Every call is idempotent by txnId.
+interface IBankService {
+    bool VerifyPin(Card card, string pin);
+    long Balance(string account);
+    string Debit(string account, long amount, string txnId);   // null = approved, else reason
+    void Reverse(string txnId);
+    void Credit(string account, long amount, string txnId);
+}
+
+class InMemoryBank : IBankService {
+    public const long DAILY_LIMIT = 10000;
+    sealed class DebitRec { public readonly string Account; public readonly long Amount; public DebitRec(string a, long amt) { Account = a; Amount = amt; } }
+    private readonly Dictionary<string, long> balances = new Dictionary<string, long>();
+    private readonly Dictionary<string, string> pins = new Dictionary<string, string>();
+    private readonly Dictionary<string, long> withdrawnToday = new Dictionary<string, long>();
+    private readonly Dictionary<string, DebitRec> debits = new Dictionary<string, DebitRec>();
+    private readonly HashSet<string> reversed = new HashSet<string>(), credits = new HashSet<string>();
+    private readonly object gate = new object();
+
+    public void Open(string account, string pin, long balance) { balances[account] = balance; pins[account] = pin; }
+    public bool VerifyPin(Card c, string pin) { string real; return pins.TryGetValue(c.Account, out real) && real == pin; }
+    public long Balance(string a) { lock (gate) { long b; return balances.TryGetValue(a, out b) ? b : 0; } }
+    private static void Merge(Dictionary<string, long> m, string k, long delta) { long v; m.TryGetValue(k, out v); m[k] = v + delta; }
+
+    public string Debit(string a, long amt, string txnId) {
+        lock (gate) {
+            if (debits.ContainsKey(txnId)) return null;                   // retry of an approved debit: no double charge
+            if (Balance(a) < amt) return "INSUFFICIENT_FUNDS";
+            long today; withdrawnToday.TryGetValue(a, out today);
+            if (today + amt > DAILY_LIMIT) return "DAILY_LIMIT_EXCEEDED";
+            Merge(balances, a, -amt);
+            Merge(withdrawnToday, a, amt);
+            debits[txnId] = new DebitRec(a, amt);
+            return null;
+        }
+    }
+    public void Reverse(string txnId) {
+        lock (gate) {
+            DebitRec d;
+            if (!debits.TryGetValue(txnId, out d) || !reversed.Add(txnId)) return;   // unknown or already reversed: no-op
+            Merge(balances, d.Account, d.Amount);
+            Merge(withdrawnToday, d.Account, -d.Amount);
+        }
+    }
+    public void Credit(string a, long amt, string txnId) {
+        lock (gate) { if (credits.Add(txnId)) Merge(balances, a, amt); }
+    }
+}
+
+/// Chain of Responsibility: each cassette serves what it can and passes the rest on.
+class NoteHandler {
+    public readonly int Note;
+    public int Count;
+    private NoteHandler next;
+    public NoteHandler(int note, int count) { Note = note; Count = count; }
+    public NoteHandler Then(NoteHandler n) { next = n; return n; }
+
+    /// Plan only (no notes move). Backtracks: uses fewer big notes if the chain below gets stuck.
+    public bool Plan(int amount, IDictionary<int, int> result) {
+        for (int use = Math.Min(Count, amount / Note); use >= 0; use--) {
+            int rest = amount - use * Note;
+            if (rest == 0 || (next != null && next.Plan(rest, result))) {
+                if (use > 0) result[Note] = use;
+                return true;
+            }
+        }
+        return false;
+    }
+    public void Commit(IDictionary<int, int> plan) { int n; if (plan.TryGetValue(Note, out n)) Count -= n; if (next != null) next.Commit(plan); }
+    public long Total() { return (long)Note * Count + (next == null ? 0 : next.Total()); }
+}
+
+class CashDispenser {
+    private readonly NoteHandler head;
+    public bool JamNext = false;                                    // test hook: simulate a hardware jam
+    public CashDispenser(int n2000, int n500, int n200, int n100) {
+        head = new NoteHandler(2000, n2000);
+        head.Then(new NoteHandler(500, n500)).Then(new NoteHandler(200, n200)).Then(new NoteHandler(100, n100));
+    }
+    public SortedDictionary<int, int> Plan(int amount) {
+        SortedDictionary<int, int> p = new SortedDictionary<int, int>(Comparer<int>.Create((x, y) => y.CompareTo(x)));
+        return head.Plan(amount, p) ? p : null;
+    }
+    public bool Dispense(IDictionary<int, int> plan) {
+        if (JamNext) { JamNext = false; return false; }
+        head.Commit(plan);
+        return true;
+    }
+    public long Total() { return head.Total(); }
+    public static string Show(SortedDictionary<int, int> p) { return "{" + string.Join(", ", p.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+}
+
+/// Command pattern: each transaction is an object with an id that can be logged and audited.
+interface ITransaction { string Run(Atm atm); }
+
+class WithdrawTxn : ITransaction {
+    private readonly long amount;
+    public WithdrawTxn(long amount) { this.amount = amount; }
+    public string Run(Atm atm) {
+        if (amount <= 0 || amount % 100 != 0) return "Amount must be a positive multiple of 100";   // 1. validate
+        SortedDictionary<int, int> plan = atm.Dispenser().Plan((int)amount);                        // 2. plan notes
+        if (plan == null) return "This ATM cannot dispense Rs " + amount;
+        string txnId = atm.NewTxnId();
+        string err = atm.Bank().Debit(atm.Card().Account, amount, txnId);                          // 3. debit
+        if (err != null) return "Declined: " + err;
+        if (!atm.Dispenser().Dispense(plan)) {                                                      // 4. dispense
+            atm.Bank().Reverse(txnId);                                                              // 5b. rollback
+            return "Could not dispense. Your account was NOT charged (" + txnId + " reversed)";
+        }
+        return "Take Rs " + amount + " as " + CashDispenser.Show(plan) + " [" + txnId + "]";       // 5a. success
+    }
+}
+class BalanceTxn : ITransaction {
+    public string Run(Atm atm) { return "Balance Rs " + atm.Bank().Balance(atm.Card().Account); }
+}
+class DepositTxn : ITransaction {
+    private readonly long amount;
+    public DepositTxn(long amount) { this.amount = amount; }
+    public string Run(Atm atm) {
+        if (amount <= 0 || amount % 100 != 0) return "Invalid deposit";
+        string txnId = atm.NewTxnId();
+        atm.Bank().Credit(atm.Card().Account, amount, txnId);
+        return "Deposited Rs " + amount + " [" + txnId + "]";
+    }
+}
+
+abstract class AtmState {
+    public abstract string Name();
+    public virtual void InsertCard(Atm a, Card c)       { a.Show(Name() + ": card not accepted now"); }
+    public virtual void EnterPin(Atm a, string pin)     { a.Show(Name() + ": insert card first"); }
+    public virtual void Choose(Atm a, ITransaction t)   { a.Show(Name() + ": enter PIN first"); }
+    public virtual void Eject(Atm a)                    { a.Show(Name() + ": no card to eject"); }
+}
+
+class AtmIdle : AtmState {
+    public override string Name() { return "IDLE"; }
+    public override void InsertCard(Atm a, Card c) { a.StartSession(c); a.SetState(new CardInserted()); }
+}
+class CardInserted : AtmState {
+    public const int MAX_ATTEMPTS = 3;
+    public override string Name() { return "CARD_INSERTED"; }
+    public override void EnterPin(Atm a, string pin) {
+        if (a.Bank().VerifyPin(a.Card(), pin)) { a.SetState(new Authenticated()); return; }
+        int tries = a.FailedPin();
+        if (tries >= MAX_ATTEMPTS) { a.RetainCard(); return; }       // CARD_RETAINED, then IDLE
+        a.Show("Wrong PIN, " + (MAX_ATTEMPTS - tries) + " attempt(s) left");
+    }
+    public override void Eject(Atm a) { a.EndSession(); }
+}
+class Authenticated : AtmState {
+    public override string Name() { return "AUTHENTICATED"; }
+    public override void Choose(Atm a, ITransaction t) {
+        a.SetState(new InTransaction());                            // other inputs rejected meanwhile
+        a.Show(t.Run(a));
+        a.SetState(new Authenticated());                            // "another transaction?"
+    }
+    public override void Eject(Atm a) { a.EndSession(); }
+}
+class InTransaction : AtmState { public override string Name() { return "IN_TRANSACTION"; } }
+class OutOfService : AtmState { public override string Name() { return "OUT_OF_SERVICE"; } }
+
+class Atm {
+    private AtmState state = new AtmIdle();
+    private readonly IBankService bank;
+    private readonly CashDispenser dispenser;
+    private Card card;
+    private int failedPins;
+    private int txnSeq = 0;
+
+    public Atm(IBankService bank, CashDispenser dispenser) { this.bank = bank; this.dispenser = dispenser; }
+
+    // public API
+    public void InsertCard(Card c)   { state.InsertCard(this, c); }
+    public void EnterPin(string pin) { state.EnterPin(this, pin); }
+    public void Withdraw(long amt)   { state.Choose(this, new WithdrawTxn(amt)); }
+    public void Deposit(long amt)    { state.Choose(this, new DepositTxn(amt)); }
+    public void Balance()            { state.Choose(this, new BalanceTxn()); }
+    public void Eject()              { state.Eject(this); }
+
+    // used by states and transactions
+    public void SetState(AtmState s) { Show("  [" + state.Name() + " -> " + s.Name() + "]"); state = s; }
+    public void StartSession(Card c) { card = c; failedPins = 0; }
+    public int FailedPin()           { return ++failedPins; }
+    public void RetainCard()         { Show("Card " + card.Number + " retained. Contact your bank."); SetState(new AtmIdle()); card = null; }
+    public void EndSession() {
+        Show("Card returned");
+        card = null;
+        SetState(dispenser.Total() < 100 ? (AtmState)new OutOfService() : new AtmIdle());
+    }
+    public string NewTxnId()         { return "T" + (++txnSeq); }
+    public void Show(string msg)     { Console.WriteLine(msg); }
+    public IBankService Bank()       { return bank; }
+    public CashDispenser Dispenser() { return dispenser; }
+    public Card Card()               { return card; }
+
+    static void Main() {
+        InMemoryBank bank = new InMemoryBank();
+        bank.Open("ACC1", "1234", 15000);
+        CashDispenser cash = new CashDispenser(2, 10, 10, 10);
+        Atm atm = new Atm(bank, cash);
+        atm.Balance();                                  // rejected: no card
+        atm.InsertCard(new Card("4111-01", "ACC1"));
+        atm.EnterPin("1111");                           // wrong
+        atm.EnterPin("1234");
+        atm.Withdraw(2750);                             // not a multiple of 100
+        atm.Withdraw(2700);                             // 2000 + 500 + 200
+        cash.JamNext = true;
+        atm.Withdraw(1000);                             // jam -> reversed, not charged
+        atm.Withdraw(9000);                             // daily limit (2700 + 9000 > 10000)
+        atm.Balance();                                  // 12300
+        atm.Eject();
+        atm.InsertCard(new Card("4111-02", "ACC1"));
+        atm.EnterPin("0000"); atm.EnterPin("1111"); atm.EnterPin("2222");   // card retained
+    }
 }` }
         ] },
     viz: [{
@@ -6504,7 +7730,14 @@ class MiniStatement final : public Txn {
 public:
     explicit MiniStatement(string account) : account_(move(account)) {}
     string run() const override { return "Last 5 transactions for " + account_; }  // new feature = new class
-};` }
+};` },
+  { lang: 'csharp', code: `
+interface ITxn { string Run(); }
+sealed class MiniStatement : ITxn {
+    private readonly string account;
+    public MiniStatement(string account) { this.account = account; }
+    public string Run() { return "Last 5 transactions for " + account; }   // new feature = new class
+}` }
         ] } },
       { title: 'Idempotency in one picture', html: `<p>${H.table(['Bank receives', 'Bank state before', 'Result'], [['debit 2700 T42', 'T42 unknown', H.c('g', 'debit, store T42')], ['debit 2700 T42 (retry)', 'T42 debited', H.c('b', 'no-op, reply approved')], ['reverse T42', 'T42 debited', H.c('g', 'credit back, mark reversed')], ['reverse T42 (retry)', 'T42 reversed', H.c('b', 'no-op')]])} Without txnIds, a network retry charges the customer twice — the number one ATM bug interviewers probe.</p>` },
       { title: 'Out of service: a state, not a flag', html: `<p>When total cash drops below ₹100 (or a cassette faults, or the printer is out of paper for a bank that requires receipts), the ATM moves to <b>OUT_OF_SERVICE</b> after the current customer ejects. In that state <code>insertCard</code> is rejected by default. Partial modes are common: "no ₹100 notes" just shrinks the allowed amounts (handled by the planner), while "no cash at all" is a real state change.</p>` }
@@ -6535,7 +7768,7 @@ public:
         int d = Math.min(n100, amount / 100);   amount -= d * 100;
         return amount == 0 ? new int[] {a, b, c, d} : null;   // 600 with {1,1,3,0} -> null (wrong!)
     }
-}`, alt: [{ lang: 'python', code: "class HardCodedDispenser:\n    def __init__(self, a, b, c, d):\n        self.n2000, self.n500, self.n200, self.n100 = a, b, c, d\n\n    # greedy + hard-coded denominations: wrong on limited stock, closed to extension\n    def plan(self, amount):\n        a = min(self.n2000, amount // 2000); amount -= a * 2000\n        b = min(self.n500, amount // 500);   amount -= b * 500\n        c = min(self.n200, amount // 200);   amount -= c * 200\n        d = min(self.n100, amount // 100);   amount -= d * 100\n        return [a, b, c, d] if amount == 0 else None   # 600 with {1,1,3,0} -> None (wrong!)\n" }, { lang: 'ts', code: "class HardCodedDispenser {\n  constructor(private n2000: number, private n500: number, private n200: number, private n100: number) {}\n  // greedy + hard-coded denominations: wrong on limited stock, closed to extension\n  plan(amount: number): number[] | null {\n    const a = Math.min(this.n2000, Math.floor(amount / 2000)); amount -= a * 2000;\n    const b = Math.min(this.n500, Math.floor(amount / 500));   amount -= b * 500;\n    const c = Math.min(this.n200, Math.floor(amount / 200));   amount -= c * 200;\n    const d = Math.min(this.n100, Math.floor(amount / 100));   amount -= d * 100;\n    return amount === 0 ? [a, b, c, d] : null;   // 600 with {1,1,3,0} -> null (wrong!)\n  }\n}\n" }, { lang: 'cpp', code: "class HardCodedDispenser {\n    int n2000, n500, n200, n100;\npublic:\n    HardCodedDispenser(int a, int b, int c, int d) : n2000(a), n500(b), n200(c), n100(d) {}\n    // greedy + hard-coded denominations: wrong on limited stock, closed to extension\n    optional<array<int, 4>> plan(int amount) {\n        int a = min(n2000, amount / 2000); amount -= a * 2000;\n        int b = min(n500, amount / 500);   amount -= b * 500;\n        int c = min(n200, amount / 200);   amount -= c * 200;\n        int d = min(n100, amount / 100);   amount -= d * 100;\n        if (amount == 0) return array<int, 4>{a, b, c, d};\n        return nullopt;   // 600 with {1,1,3,0} -> nullopt (wrong!)\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class HardCodedDispenser:\n    def __init__(self, a, b, c, d):\n        self.n2000, self.n500, self.n200, self.n100 = a, b, c, d\n\n    # greedy + hard-coded denominations: wrong on limited stock, closed to extension\n    def plan(self, amount):\n        a = min(self.n2000, amount // 2000); amount -= a * 2000\n        b = min(self.n500, amount // 500);   amount -= b * 500\n        c = min(self.n200, amount // 200);   amount -= c * 200\n        d = min(self.n100, amount // 100);   amount -= d * 100\n        return [a, b, c, d] if amount == 0 else None   # 600 with {1,1,3,0} -> None (wrong!)\n" }, { lang: 'ts', code: "class HardCodedDispenser {\n  constructor(private n2000: number, private n500: number, private n200: number, private n100: number) {}\n  // greedy + hard-coded denominations: wrong on limited stock, closed to extension\n  plan(amount: number): number[] | null {\n    const a = Math.min(this.n2000, Math.floor(amount / 2000)); amount -= a * 2000;\n    const b = Math.min(this.n500, Math.floor(amount / 500));   amount -= b * 500;\n    const c = Math.min(this.n200, Math.floor(amount / 200));   amount -= c * 200;\n    const d = Math.min(this.n100, Math.floor(amount / 100));   amount -= d * 100;\n    return amount === 0 ? [a, b, c, d] : null;   // 600 with {1,1,3,0} -> null (wrong!)\n  }\n}\n" }, { lang: 'cpp', code: "class HardCodedDispenser {\n    int n2000, n500, n200, n100;\npublic:\n    HardCodedDispenser(int a, int b, int c, int d) : n2000(a), n500(b), n200(c), n100(d) {}\n    // greedy + hard-coded denominations: wrong on limited stock, closed to extension\n    optional<array<int, 4>> plan(int amount) {\n        int a = min(n2000, amount / 2000); amount -= a * 2000;\n        int b = min(n500, amount / 500);   amount -= b * 500;\n        int c = min(n200, amount / 200);   amount -= c * 200;\n        int d = min(n100, amount / 100);   amount -= d * 100;\n        if (amount == 0) return array<int, 4>{a, b, c, d};\n        return nullopt;   // 600 with {1,1,3,0} -> nullopt (wrong!)\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nclass HardCodedDispenser {\n    int n2000, n500, n200, n100;\n    public HardCodedDispenser(int a, int b, int c, int d) { n2000 = a; n500 = b; n200 = c; n100 = d; }\n    // greedy + hard-coded denominations: wrong on limited stock, closed to extension\n    public int[] Plan(int amount) {\n        int a = Math.Min(n2000, amount / 2000); amount -= a * 2000;\n        int b = Math.Min(n500, amount / 500);   amount -= b * 500;\n        int c = Math.Min(n200, amount / 200);   amount -= c * 200;\n        int d = Math.Min(n100, amount / 100);   amount -= d * 100;\n        return amount == 0 ? new[] { a, b, c, d } : null;   // 600 with {1,1,3,0} -> null (wrong!)\n    }\n}\n" }] } },
       mcq: { q: 'Why does the plan step come before calling the bank in a withdrawal?', options: ['So the customer is never charged for an amount the ATM cannot physically dispense', 'Because the bank needs the note breakdown', 'To make the transaction faster', 'It does not matter'], answer: 0, explain: 'Planning is local and side-effect free; if it fails, nothing needs undoing. Debit-then-discover-you-cannot-dispense forces a reversal.' },
       hints: [`<p>Hint 1: Make each denomination a <b>handler</b> that knows its note value, its stock and the next handler. The chain order (big → small) is set up once at construction.</p>`, `<p>Hint 2: Plain "take as many as you can" fails on limited stock. Let each handler try <code>use = max … 0</code> and ask the next handler to solve the remainder; return true on the first success (backtracking). Write into the plan only on success.</p>`, `<p>Hint 3: Keep <code>plan()</code> pure (no stock changes) and a separate <code>commit(plan)</code> that walks the chain subtracting counts. Adding ₹50 = link one more handler.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "plan {200=3}\nplan {2000=1, 500=1, 200=1}\nno plan\nno plan\n{2000=1, 500=1, 200=1, 50=1}\nplan {2000=1, 500=1, 200=1, 50=1}\nplan {500=8, 200=4, 100=1, 50=1}\nno plan\n" }] },
@@ -6817,6 +8050,71 @@ int main() {
     d2.dispense(*d2.plan(2750));
     cout << Dispenser::show(d2.plan(4950)) << "\\n";          // plan {500=8, 200=4, 100=1, 50=1}: the 2000s are gone
     cout << Dispenser::show(d2.plan(4975)) << "\\n";          // no plan: not a multiple of 50
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Cassette {
+    public readonly int Note;
+    public int Count;
+    private Cassette next;
+    public Cassette(int note, int count) { Note = note; Count = count; }
+    public Cassette Link(Cassette n) { next = n; return n; }
+
+    /// Pure planning: no counts change. Backtracks when the rest of the chain cannot finish.
+    public bool Plan(int amount, IDictionary<int, int> result) {
+        for (int use = Math.Min(Count, amount / Note); use >= 0; use--) {
+            int rest = amount - use * Note;
+            if (rest == 0 || (next != null && next.Plan(rest, result))) {
+                if (use > 0) result[Note] = use;
+                return true;
+            }
+        }
+        return false;
+    }
+    public void Commit(IDictionary<int, int> plan) {
+        int n; if (plan.TryGetValue(Note, out n)) Count -= n;
+        if (next != null) next.Commit(plan);
+    }
+}
+
+class Dispenser {
+    private readonly Cassette head;
+    public Dispenser(Cassette head) { this.head = head; }
+
+    /// Largest note first; null when the amount cannot be served.
+    public SortedDictionary<int, int> Plan(int amount) {
+        if (amount <= 0) return null;
+        SortedDictionary<int, int> p = new SortedDictionary<int, int>(Comparer<int>.Create((x, y) => y.CompareTo(x)));
+        return head.Plan(amount, p) ? p : null;
+    }
+    public void Dispense(IDictionary<int, int> plan) { head.Commit(plan); }
+
+    static string Map(SortedDictionary<int, int> m) { return "{" + string.Join(", ", m.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+    static string Show(SortedDictionary<int, int> plan) { return plan == null ? "no plan" : "plan " + Map(plan); }
+
+    static void Main() {
+        Cassette c2000 = new Cassette(2000, 1);
+        c2000.Link(new Cassette(500, 1)).Link(new Cassette(200, 3)).Link(new Cassette(100, 0));
+        Dispenser d = new Dispenser(c2000);
+        Console.WriteLine(Show(d.Plan(600)));      // plan {200=3}
+        Console.WriteLine(Show(d.Plan(2700)));     // plan {2000=1, 500=1, 200=1}
+        Console.WriteLine(Show(d.Plan(300)));      // no plan -> refuse before calling the bank
+        Console.WriteLine(Show(d.Plan(0)));        // no plan -> nothing to dispense
+
+        Cassette big = new Cassette(2000, 2);  // adding a Rs 50 cassette = one more Link()
+        big.Link(new Cassette(500, 10)).Link(new Cassette(200, 10)).Link(new Cassette(100, 10)).Link(new Cassette(50, 4));
+        Dispenser d2 = new Dispenser(big);
+        SortedDictionary<int, int> p = d2.Plan(2750);
+        d2.Dispense(p);
+        Console.WriteLine(Map(p));                 // {2000=1, 500=1, 200=1, 50=1}
+        Console.WriteLine(Show(d2.Plan(2750)));    // plan {2000=1, 500=1, 200=1, 50=1}: counts dropped, still enough
+        d2.Dispense(d2.Plan(2750));
+        Console.WriteLine(Show(d2.Plan(4950)));    // plan {500=8, 200=4, 100=1, 50=1}: the 2000s are gone
+        Console.WriteLine(Show(d2.Plan(4975)));    // no plan: not a multiple of 50
+    }
 }` }
         ],
         complexity: `<p>Greedy-feasible cases run in O(D) (no backtracking). Worst case backtracking explores O(∏ counts) branches, but with 4–5 denominations, the descending order and early success it is tiny in practice; for guaranteed bounds use bounded-knapsack DP, O(D · A/100). Space O(D) recursion.</p>`,
@@ -7198,6 +8496,88 @@ int main() {
     vm.fire(VE::SELECT, till);
     vm.fire(VE::DROP_OK, till);
     cout << "final " << name(vm.state()) << ", stock " << till.stock << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// A reusable engine. S = state enum, E = event enum, C = context (the data the guards/actions use).
+sealed class StateMachine<S, E, C> where S : struct where E : struct {
+    public sealed class Transition {
+        public readonly S To; public readonly Func<C, bool> Guard; public readonly Action<C> Action;
+        public Transition(S to, Func<C, bool> guard, Action<C> action) { To = to; Guard = guard; Action = action; }
+    }
+
+    private readonly Dictionary<S, Dictionary<E, List<Transition>>> table;
+    private readonly List<Action<S, S>> listeners = new List<Action<S, S>>();
+    private readonly object gate = new object();
+    private S current;
+
+    private StateMachine(S initial, Dictionary<S, Dictionary<E, List<Transition>>> table) { current = initial; this.table = table; }
+
+    /// Atomic: no other thread can observe or change state mid-transition.
+    public bool Fire(E ev, C ctx) {
+        lock (gate) {
+            Dictionary<E, List<Transition>> row; List<Transition> options;
+            if (!table.TryGetValue(current, out row) || !row.TryGetValue(ev, out options)) return false;
+            foreach (Transition t in options) {                   // first transition whose guard passes wins
+                if (t.Guard(ctx)) {
+                    S from = current;
+                    t.Action(ctx);                                  // side effect while holding the lock
+                    current = t.To;
+                    foreach (Action<S, S> l in listeners) l(from, t.To);   // Observer: audit log, metrics, UI
+                    return true;
+                }
+            }
+            return false;                                           // illegal event or every guard failed
+        }
+    }
+    public S State() { lock (gate) return current; }
+    public void OnTransition(Action<S, S> l) { listeners.Add(l); }
+
+    public static Builder NewBuilder(S initial) { return new Builder(initial); }
+
+    public sealed class Builder {
+        private readonly Dictionary<S, Dictionary<E, List<Transition>>> table = new Dictionary<S, Dictionary<E, List<Transition>>>();
+        private readonly S initial;
+        public Builder(S initial) { this.initial = initial; }
+        public Builder Permit(S from, E on, S to) { return Permit(from, on, to, c => true, c => { }); }
+        public Builder Permit(S from, E on, S to, Func<C, bool> guard, Action<C> action) {
+            Dictionary<E, List<Transition>> row;
+            if (!table.TryGetValue(from, out row)) { row = new Dictionary<E, List<Transition>>(); table[from] = row; }
+            List<Transition> list;
+            if (!row.TryGetValue(on, out list)) { list = new List<Transition>(); row[on] = list; }
+            list.Add(new Transition(to, guard, action));
+            return this;
+        }
+        public StateMachine<S, E, C> Build() { return new StateMachine<S, E, C>(initial, table); }
+    }
+}
+
+enum VS { IDLE, HAS_MONEY, DISPENSING }
+enum VE { COIN, SELECT, DROP_OK, CANCEL }
+
+class Till { public int Balance; public int Stock = 1; public readonly int Price = 15; }
+
+class Program {
+    static void Main() {
+        StateMachine<VS, VE, Till> vm = StateMachine<VS, VE, Till>.NewBuilder(VS.IDLE)
+            .Permit(VS.IDLE, VE.COIN, VS.HAS_MONEY, t => true, t => t.Balance += 10)
+            .Permit(VS.HAS_MONEY, VE.COIN, VS.HAS_MONEY, t => true, t => t.Balance += 10)
+            .Permit(VS.HAS_MONEY, VE.SELECT, VS.DISPENSING, t => t.Balance >= t.Price && t.Stock > 0, t => t.Stock--)
+            .Permit(VS.DISPENSING, VE.DROP_OK, VS.IDLE, t => true, t => t.Balance = 0)
+            .Permit(VS.HAS_MONEY, VE.CANCEL, VS.IDLE, t => true, t => t.Balance = 0)
+            .Build();
+        vm.OnTransition((a, b) => Console.WriteLine("audit: " + a + " -> " + b));
+        Till till = new Till();
+        Console.WriteLine("select early: " + vm.Fire(VE.SELECT, till).ToString().ToLower());   // false: illegal in IDLE
+        vm.Fire(VE.COIN, till);
+        Console.WriteLine("select with 10: " + vm.Fire(VE.SELECT, till).ToString().ToLower()); // false: guard fails
+        vm.Fire(VE.COIN, till);
+        vm.Fire(VE.SELECT, till);
+        vm.Fire(VE.DROP_OK, till);
+        Console.WriteLine("final " + vm.State() + ", stock " + till.Stock);
+    }
 }` }
         ] }, { lang: 'java', title: 'Lock-free transitions with an immutable snapshot + compareAndSet (and the race it prevents)', code: `import java.util.*;
 import java.util.concurrent.*;
@@ -7438,6 +8818,59 @@ int main() {
     go.count_down();  // release all 8 buyers at once
     for (auto& t : pool) t.join();
     cout << "CAS machine sold " << sold << " can(s); final " << m.snapshot()->toString() << "\\n";  // always exactly 1
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+/// Immutable snapshot: state + stock + version travel together, so they can never disagree.
+sealed class Slot {
+    public readonly string State; public readonly int Stock; public readonly long Version;
+    public Slot(string state, int stock, long version) { State = state; Stock = stock; Version = version; }
+    public override string ToString() { return "Slot[state=" + State + ", stock=" + Stock + ", version=" + Version + "]"; }
+}
+
+class LastCanMachine {
+    private Slot slot = new Slot("IDLE", 1, 0);              // swapped only with Interlocked.CompareExchange
+
+    /// Lock-free buy: read snapshot, compute next, publish only if nobody changed it meanwhile.
+    public bool Buy() {
+        while (true) {
+            Slot cur = Volatile.Read(ref slot);
+            if (cur.Stock == 0) return false;                         // guard on a consistent snapshot
+            Slot next = new Slot(cur.Stock == 1 ? "SOLD_OUT" : "IDLE", cur.Stock - 1, cur.Version + 1);
+            if (Interlocked.CompareExchange(ref slot, next, cur) == cur) return true;   // we won the race
+            // someone else transitioned first -> loop and re-check with fresh data
+        }
+    }
+    public Slot Snapshot() { return Volatile.Read(ref slot); }
+
+    /// The broken version for comparison: check-then-act on plain fields.
+    public sealed class Unsafe {
+        public int Stock = 1;
+        public bool Buy() {
+            if (Stock > 0) {                       // two threads can both pass this check...
+                Thread.SpinWait(1);
+                Stock--;                           // ...and both decrement: stock -1, two cans "sold"
+                return true;
+            }
+            return false;
+        }
+    }
+
+    static void Main() {
+        LastCanMachine m = new LastCanMachine();
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        bool[] results = new bool[8];
+        List<Thread> pool = new List<Thread>();
+        for (int i = 0; i < 8; i++) { int idx = i; Thread t = new Thread(() => { go.Wait(); results[idx] = m.Buy(); }); pool.Add(t); t.Start(); }
+        go.Set();                                  // release all 8 buyers at once
+        foreach (Thread t in pool) t.Join();
+        int sold = 0;
+        foreach (bool r in results) if (r) sold++;
+        Console.WriteLine("CAS machine sold " + sold + " can(s); final " + m.Snapshot());   // always exactly 1
+    }
 }` }
         ] }],
     codeTitle: ['Generic FSM engine', 'CAS + immutable snapshot'],
@@ -7638,6 +9071,33 @@ int main() {
         }
     }
     cout << (fails == 0 ? "all 12 cells pass" : to_string(fails) + " failures") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+class TableTest {
+    enum S { IDLE, HAS_MONEY, DISPENSING }
+    enum E { COIN, SELECT, DROP_OK, CANCEL }
+    static S Next(S s, E e) {                       // the machine under test (pure function)
+        switch (s) {
+            case S.IDLE: return e == E.COIN ? S.HAS_MONEY : s;
+            case S.HAS_MONEY:
+                switch (e) { case E.COIN: return S.HAS_MONEY; case E.SELECT: return S.DISPENSING; case E.CANCEL: return S.IDLE; default: return s; }
+            default: return e == E.DROP_OK ? S.IDLE : s;
+        }
+    }
+    static void Main() {
+        S[][] expected = {
+            new[] { S.HAS_MONEY, S.IDLE, S.IDLE, S.IDLE },                       // IDLE
+            new[] { S.HAS_MONEY, S.DISPENSING, S.HAS_MONEY, S.IDLE },            // HAS_MONEY
+            new[] { S.DISPENSING, S.DISPENSING, S.IDLE, S.DISPENSING }           // DISPENSING
+        };
+        int fails = 0;
+        foreach (S s in Enum.GetValues(typeof(S))) foreach (E e in Enum.GetValues(typeof(E))) {
+            S got = Next(s, e), want = expected[(int)s][(int)e];
+            if (got != want) { fails++; Console.WriteLine("FAIL " + s + " + " + e + " -> " + got + ", want " + want); }
+        }
+        Console.WriteLine(fails == 0 ? "all 12 cells pass" : fails + " failures");
+    }
 }` }
         ] } },
       { title: 'Single-threaded event loop for an elevator car', html: `<p>Buttons, sensors and the dispatcher run on different threads, but they only <b>post</b> events. One thread per car takes events from a thread-safe queue (<code>BlockingQueue</code>, <code>queue.Queue</code>, a mutex plus condition variable) and feeds them to the state machine. No locks inside the machine, and events are processed in a clear order — this is the actor model (Akka, Erlang, Go channels).</p>`, code: { lang: 'java', code: `import java.util.concurrent.*;
@@ -7744,7 +9204,25 @@ public:
             if (state_ == "IDLE" && e.rfind("CALL", 0) == 0) state_ = "MOVING";  // only this thread writes state
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Threading;
+class CarLoop {
+    private readonly BlockingCollection<string> inbox = new BlockingCollection<string>();
+    private volatile bool running = true;
+    private string state = "IDLE";
+    public void Post(string ev) { inbox.Add(ev); }           // safe to call from any thread
+    public void Run() {
+        while (running) {
+            string e;
+            if (!inbox.TryTake(out e, 100)) continue;        // poll with a 100 ms timeout
+            if (e == "STOP") { running = false; continue; }
+            state = state == "IDLE" && e.StartsWith("CALL") ? "MOVING" : state;   // only this thread writes state
+        }
+    }
+}` }
         ] } },
       { title: 'Validating the table at startup', html: `<p>With transitions as data you can check the design itself: every state reachable from the start (BFS over the table), every non-terminal state has an exit, no (state, event) pair has two guards that can both be true. Run these checks in a unit test so a bad config never ships. Tools like Spring Statemachine, XState and AWS Step Functions do exactly this kind of validation.</p>` }
     ],
@@ -7773,7 +9251,7 @@ public:
         }
         return false;
     }
-}`, alt: [{ lang: 'python', code: "class RacySeat:\n    def __init__(self):\n        self.state, self.holder = \"AVAILABLE\", None\n\n    def hold(self, user):\n        if self.state == \"AVAILABLE\":       # check\n            self.state = \"HELD\"             # act (not atomic with the check)\n            self.holder = user              # second field: readers can see a torn mix\n            return True\n        return False\n" }, { lang: 'ts', code: "class RacySeat {\n  state = \"AVAILABLE\";\n  holder: string | null = null;\n  hold(user: string): boolean {\n    if (this.state === \"AVAILABLE\") {       // check\n      this.state = \"HELD\";                  // act (not atomic with the check)\n      this.holder = user;                   // second field: readers can see a torn mix\n      return true;\n    }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class RacySeat {\npublic:\n    string state = \"AVAILABLE\", holder;\n    bool hold(const string& user) {\n        if (state == \"AVAILABLE\") {         // check\n            state = \"HELD\";                 // act (not atomic with the check)\n            holder = user;                  // second field: readers can see a torn mix\n            return true;\n        }\n        return false;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class RacySeat:\n    def __init__(self):\n        self.state, self.holder = \"AVAILABLE\", None\n\n    def hold(self, user):\n        if self.state == \"AVAILABLE\":       # check\n            self.state = \"HELD\"             # act (not atomic with the check)\n            self.holder = user              # second field: readers can see a torn mix\n            return True\n        return False\n" }, { lang: 'ts', code: "class RacySeat {\n  state = \"AVAILABLE\";\n  holder: string | null = null;\n  hold(user: string): boolean {\n    if (this.state === \"AVAILABLE\") {       // check\n      this.state = \"HELD\";                  // act (not atomic with the check)\n      this.holder = user;                   // second field: readers can see a torn mix\n      return true;\n    }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class RacySeat {\npublic:\n    string state = \"AVAILABLE\", holder;\n    bool hold(const string& user) {\n        if (state == \"AVAILABLE\") {         // check\n            state = \"HELD\";                 // act (not atomic with the check)\n            holder = user;                  // second field: readers can see a torn mix\n            return true;\n        }\n        return false;\n    }\n};\n" }, { lang: 'csharp', code: "class RacySeat {\n    public string State = \"AVAILABLE\", Holder = null;\n    public bool Hold(string user) {\n        if (State == \"AVAILABLE\") {            // check\n            State = \"HELD\";                     // act (not atomic with the check)\n            Holder = user;                      // second field: readers can see a torn mix\n            return true;\n        }\n        return false;\n    }\n}\n" }] } },
       mcq: { q: 'Why must the snapshot passed to compareAndSet be immutable?', options: ['CAS compares references; if you mutate fields in place, the reference never changes and conflicting updates are not detected', 'Immutable objects are faster to allocate', 'A compare-and-set reference only accepts records', 'To avoid garbage collection'], answer: 0, explain: 'compareAndSet checks reference identity. Each transition must publish a new object so a concurrent change is visible as a different reference.' },
       hints: [`<p>Hint 1: Put <b>everything</b> that must be consistent (state, holder, expiry, version) into one immutable snapshot object (a record in Java). A transition = build a new snapshot from the old one.</p>`, `<p>Hint 2: Loop: <code>cur = ref.get()</code>; compute the "effective" state (HELD but expired counts as AVAILABLE); check the guard; build <code>next</code> with <code>version + 1</code>; <code>if (ref.compareAndSet(cur, next)) return true;</code> else retry.</p>`, `<p>Hint 3: Guards: hold needs effective AVAILABLE; confirm/release need state HELD, same holder and not expired. Return false (no retry) when the guard fails on a fresh snapshot. Pass <code>now</code> as a parameter so tests can control time.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "winners=1 state=HELD v1\nholder is a contender: true\nstranger confirm: false\nconfirm after expiry: false\nafter expiry, u_late holds: true\nu_late confirms: true -> SOLD\nhold after sold: false\nrelease after sold: false\n" }] },
@@ -8116,6 +9594,82 @@ int main() {
     cout << "u_late confirms: " << ok << " -> " << toString(seat.snapshot().state) << "\\n";
     cout << "hold after sold: " << seat.hold("u_other", 8'000) << "\\n";                        // false
     cout << "release after sold: " << seat.release("u_late", 8'000) << "\\n";                  // false
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+enum SeatState { AVAILABLE, HELD, SOLD }
+
+sealed class Snap {
+    public readonly SeatState State; public readonly string Holder; public readonly long ExpiresAt, Version;
+    public Snap(SeatState state, string holder, long expiresAt, long version) { State = state; Holder = holder; ExpiresAt = expiresAt; Version = version; }
+    public bool HeldBy(string u, long now) { return State == SeatState.HELD && Holder == u && now < ExpiresAt; }
+    public bool EffectivelyAvailable(long now) {
+        return State == SeatState.AVAILABLE || (State == SeatState.HELD && now >= ExpiresAt);   // expired hold
+    }
+}
+
+class SeatMachine {
+    private Snap snap = new Snap(SeatState.AVAILABLE, null, 0, 0);     // swapped only via CAS
+    private readonly long ttlMillis;
+    public SeatMachine(long ttlMillis) { this.ttlMillis = ttlMillis; }
+
+    private bool Cas(Snap expected, Snap next) { return Interlocked.CompareExchange(ref snap, next, expected) == expected; }
+
+    public bool Hold(string user, long now) {
+        while (true) {
+            Snap cur = Volatile.Read(ref snap);
+            if (!cur.EffectivelyAvailable(now)) return false;                       // guard on a fresh snapshot
+            Snap next = new Snap(SeatState.HELD, user, now + ttlMillis, cur.Version + 1);
+            if (Cas(cur, next)) return true;                                        // exactly one winner
+        }
+    }
+    public bool Confirm(string user, long now) {
+        while (true) {
+            Snap cur = Volatile.Read(ref snap);
+            if (!cur.HeldBy(user, now)) return false;                               // only the live holder
+            Snap next = new Snap(SeatState.SOLD, user, 0, cur.Version + 1);
+            if (Cas(cur, next)) return true;
+        }
+    }
+    public bool Release(string user, long now) {
+        while (true) {
+            Snap cur = Volatile.Read(ref snap);
+            if (!cur.HeldBy(user, now)) return false;
+            Snap next = new Snap(SeatState.AVAILABLE, null, 0, cur.Version + 1);
+            if (Cas(cur, next)) return true;
+        }
+    }
+    public Snap Snapshot() { return Volatile.Read(ref snap); }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        SeatMachine seat = new SeatMachine(5000);
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        bool[] results = new bool[50];
+        List<Thread> threads = new List<Thread>();
+        for (int i = 0; i < 50; i++) {
+            int idx = i; string user = "u" + i;
+            Thread t = new Thread(() => { go.Wait(); results[idx] = seat.Hold(user, 1000); });
+            threads.Add(t); t.Start();
+        }
+        go.Set();
+        foreach (Thread t in threads) t.Join();
+        int winners = 0;
+        foreach (bool r in results) if (r) winners++;
+        Snap s = seat.Snapshot();
+        Console.WriteLine("winners=" + winners + " state=" + s.State + " v" + s.Version);   // winners=1 (holder varies per run)
+        Console.WriteLine("holder is a contender: " + B(s.Holder.StartsWith("u")));
+        Console.WriteLine("stranger confirm: " + B(seat.Confirm("nobody", 2000)));                   // false
+        Console.WriteLine("confirm after expiry: " + B(seat.Confirm(s.Holder, 6000)));               // false: hold expired at 6000
+        Console.WriteLine("after expiry, u_late holds: " + B(seat.Hold("u_late", 7000)));            // true
+        Console.WriteLine("u_late confirms: " + B(seat.Confirm("u_late", 7500)) + " -> " + seat.Snapshot().State);
+        Console.WriteLine("hold after sold: " + B(seat.Hold("u_other", 8000)));                      // false
+        Console.WriteLine("release after sold: " + B(seat.Release("u_late", 8000)));                 // false
+    }
 }` }
         ],
         complexity: `<p>Each operation is O(1) expected; under contention a loser retries, but every failed CAS means some other thread made progress (lock-free). Memory: one small snapshot per transition (garbage collected). The version gives ABA protection and maps directly to <code>UPDATE … WHERE version = ?</code> when persisted.</p>`,
@@ -8139,7 +9693,7 @@ int main() {
         else if (state == 2) { state = 0; remaining = 30; }
     }
     void press() { if (state == 1 && remaining > 5) remaining = 5; }   // the ladder again
-}`, alt: [{ lang: 'python', code: "class NaiveLight:\n    def __init__(self):\n        self.state, self.remaining = 0, 30          # 0 = red, 1 = green, 2 = yellow\n\n    def tick(self):\n        self.remaining -= 1\n        if self.remaining > 0: return\n        if self.state == 0: self.state, self.remaining = 1, 25\n        elif self.state == 1: self.state, self.remaining = 2, 5\n        elif self.state == 2: self.state, self.remaining = 0, 30\n\n    def press(self):                                 # the ladder again\n        if self.state == 1 and self.remaining > 5: self.remaining = 5\n" }, { lang: 'ts', code: "class NaiveLight {\n  state = 0; remaining = 30;          // 0 = red, 1 = green, 2 = yellow\n  tick(): void {\n    if (--this.remaining > 0) return;\n    if (this.state === 0) { this.state = 1; this.remaining = 25; }\n    else if (this.state === 1) { this.state = 2; this.remaining = 5; }\n    else if (this.state === 2) { this.state = 0; this.remaining = 30; }\n  }\n  press(): void { if (this.state === 1 && this.remaining > 5) this.remaining = 5; }   // the ladder again\n}\n" }, { lang: 'cpp', code: "class NaiveLight {\npublic:\n    int state = 0, remaining = 30;          // 0 = red, 1 = green, 2 = yellow\n    void tick() {\n        if (--remaining > 0) return;\n        if (state == 0) { state = 1; remaining = 25; }\n        else if (state == 1) { state = 2; remaining = 5; }\n        else if (state == 2) { state = 0; remaining = 30; }\n    }\n    void press() { if (state == 1 && remaining > 5) remaining = 5; }   // the ladder again\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveLight:\n    def __init__(self):\n        self.state, self.remaining = 0, 30          # 0 = red, 1 = green, 2 = yellow\n\n    def tick(self):\n        self.remaining -= 1\n        if self.remaining > 0: return\n        if self.state == 0: self.state, self.remaining = 1, 25\n        elif self.state == 1: self.state, self.remaining = 2, 5\n        elif self.state == 2: self.state, self.remaining = 0, 30\n\n    def press(self):                                 # the ladder again\n        if self.state == 1 and self.remaining > 5: self.remaining = 5\n" }, { lang: 'ts', code: "class NaiveLight {\n  state = 0; remaining = 30;          // 0 = red, 1 = green, 2 = yellow\n  tick(): void {\n    if (--this.remaining > 0) return;\n    if (this.state === 0) { this.state = 1; this.remaining = 25; }\n    else if (this.state === 1) { this.state = 2; this.remaining = 5; }\n    else if (this.state === 2) { this.state = 0; this.remaining = 30; }\n  }\n  press(): void { if (this.state === 1 && this.remaining > 5) this.remaining = 5; }   // the ladder again\n}\n" }, { lang: 'cpp', code: "class NaiveLight {\npublic:\n    int state = 0, remaining = 30;          // 0 = red, 1 = green, 2 = yellow\n    void tick() {\n        if (--remaining > 0) return;\n        if (state == 0) { state = 1; remaining = 25; }\n        else if (state == 1) { state = 2; remaining = 5; }\n        else if (state == 2) { state = 0; remaining = 30; }\n    }\n    void press() { if (state == 1 && remaining > 5) remaining = 5; }   // the ladder again\n};\n" }, { lang: 'csharp', code: "class NaiveLight {\n    public int State = 0, Remaining = 30;          // 0 = red, 1 = green, 2 = yellow\n    public void Tick() {\n        if (--Remaining > 0) return;\n        if (State == 0) { State = 1; Remaining = 25; }\n        else if (State == 1) { State = 2; Remaining = 5; }\n        else if (State == 2) { State = 0; Remaining = 30; }\n    }\n    public void Press() { if (State == 1 && Remaining > 5) Remaining = 5; }   // the ladder again\n}\n" }] } },
     mcq: { q: 'Where should the rule "button shortens GREEN only" live in an enum State design?', options: ['As a method on the state that only GREEN overrides; the others inherit "do nothing"', 'In the TrafficLight.press() method with an if on the colour', 'In a static utility class', 'In every tick() call'], answer: 0, explain: 'Constant-specific methods put the behaviour next to the state it belongs to; the context just delegates.' },
     hints: [`<p>Hint 1: Each colour knows its duration and its successor — that is all a cycle needs. An enum with a duration and a <code>next()</code> method is perfect (a Java enum with a constructor argument and an abstract method, a Python <code>Enum</code> with a lookup table, a C++ <code>enum class</code> with a switch).</p>`, `<p>Hint 2: Give the enum a method <code>int onPedestrian(int remaining)</code> that returns <code>remaining</code> by default; only GREEN overrides it with <code>min(remaining, 5)</code>.</p>`, `<p>Hint 3: The context holds <code>light</code> and <code>remaining</code>. tick(): decrement; when it hits 0, switch to <code>light.next()</code> and reload its duration. Night mode = one more constant whose next() is itself.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "RED -> GREEN\ngreen left after button: 5\nGREEN -> YELLOW\nYELLOW -> RED\nnow RED\nred left after button: 30\nnight FLASHING_YELLOW 1\n" }] },
@@ -8369,6 +9923,63 @@ int main() {
     t.nightMode();
     t.tick();
     cout << "night " << name(t.light()) << " " << t.remaining() << "\\n";  // FLASHING_YELLOW 1
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+/// Type-safe enum: each constant is an instance with its own Next()/OnPedestrian() behaviour.
+abstract class Light {
+    public static readonly Light RED = new Red();
+    public static readonly Light GREEN = new Green();
+    public static readonly Light YELLOW = new Yellow();
+    public static readonly Light FLASHING_YELLOW = new FlashingYellow();      // add-a-state: night mode
+
+    public readonly int Seconds;
+    private readonly string name;
+    private Light(string name, int seconds) { this.name = name; Seconds = seconds; }
+    public abstract Light Next();
+    public virtual int OnPedestrian(int remaining) { return remaining; }      // default: ignore
+    public override string ToString() { return name; }
+
+    sealed class Red : Light { public Red() : base("RED", 30) { } public override Light Next() { return GREEN; } }
+    sealed class Green : Light {
+        public Green() : base("GREEN", 25) { }
+        public override Light Next() { return YELLOW; }
+        public override int OnPedestrian(int remaining) { return Math.Min(remaining, 5); }   // only GREEN reacts
+    }
+    sealed class Yellow : Light { public Yellow() : base("YELLOW", 5) { } public override Light Next() { return RED; } }
+    sealed class FlashingYellow : Light { public FlashingYellow() : base("FLASHING_YELLOW", 1) { } public override Light Next() { return FLASHING_YELLOW; } }
+}
+
+class TrafficLight {
+    private Light light = Light.RED;
+    private int remaining = Light.RED.Seconds;
+
+    public void Tick() {
+        if (--remaining > 0) return;
+        Light next = light.Next();
+        if (next != light) Console.WriteLine(light + " -> " + next);
+        light = next;
+        remaining = light.Seconds;
+    }
+    public void PressButton()  { remaining = light.OnPedestrian(remaining); }
+    public void NightMode()    { light = Light.FLASHING_YELLOW; remaining = light.Seconds; }
+    public Light Current()     { return light; }
+    public int Remaining()     { return remaining; }
+
+    static void Main() {
+        TrafficLight t = new TrafficLight();
+        for (int i = 0; i < 33; i++) t.Tick();          // RED -> GREEN, 3 s into green
+        t.PressButton();
+        Console.WriteLine("green left after button: " + t.Remaining());   // 5
+        for (int i = 0; i < 10; i++) t.Tick();          // GREEN -> YELLOW -> RED
+        Console.WriteLine("now " + t.Current());
+        t.PressButton();                                // RED ignores the button
+        Console.WriteLine("red left after button: " + t.Remaining());   // 30
+        t.NightMode();
+        t.Tick();
+        Console.WriteLine("night " + t.Current() + " " + t.Remaining());   // FLASHING_YELLOW 1
+    }
 }` }
         ],
       complexity: `<p>O(1) per tick and per button press. Adding a colour/mode = one enum constant.</p>`,
@@ -8387,7 +9998,7 @@ int main() {
     void coin() { if (locked) { locked = false; coins++; } else System.out.println("refund"); }   // forgot broken!
     void push() { if (!locked) { passengers++; locked = true; } else System.out.println("alarm"); }
     void fault() { broken = true; }
-}`, alt: [{ lang: 'python', code: "class FlagTurnstile:\n    def __init__(self):\n        self.locked, self.broken = True, False\n        self.coins = self.passengers = 0\n\n    def coin(self):                                   # forgot broken!\n        if self.locked: self.locked = False; self.coins += 1\n        else: print(\"refund\")\n\n    def push(self):\n        if not self.locked: self.passengers += 1; self.locked = True\n        else: print(\"alarm\")\n\n    def fault(self): self.broken = True\n" }, { lang: 'ts', code: "class FlagTurnstile {\n  locked = true; broken = false;\n  coins = 0; passengers = 0;\n  coin(): void { if (this.locked) { this.locked = false; this.coins++; } else console.log(\"refund\"); }   // forgot broken!\n  push(): void { if (!this.locked) { this.passengers++; this.locked = true; } else console.log(\"alarm\"); }\n  fault(): void { this.broken = true; }\n}\n" }, { lang: 'cpp', code: "class FlagTurnstile {\npublic:\n    bool locked = true, broken = false;\n    int coins = 0, passengers = 0;\n    void coin() { if (locked) { locked = false; coins++; } else cout << \"refund\" << endl; }   // forgot broken!\n    void push() { if (!locked) { passengers++; locked = true; } else cout << \"alarm\" << endl; }\n    void fault() { broken = true; }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class FlagTurnstile:\n    def __init__(self):\n        self.locked, self.broken = True, False\n        self.coins = self.passengers = 0\n\n    def coin(self):                                   # forgot broken!\n        if self.locked: self.locked = False; self.coins += 1\n        else: print(\"refund\")\n\n    def push(self):\n        if not self.locked: self.passengers += 1; self.locked = True\n        else: print(\"alarm\")\n\n    def fault(self): self.broken = True\n" }, { lang: 'ts', code: "class FlagTurnstile {\n  locked = true; broken = false;\n  coins = 0; passengers = 0;\n  coin(): void { if (this.locked) { this.locked = false; this.coins++; } else console.log(\"refund\"); }   // forgot broken!\n  push(): void { if (!this.locked) { this.passengers++; this.locked = true; } else console.log(\"alarm\"); }\n  fault(): void { this.broken = true; }\n}\n" }, { lang: 'cpp', code: "class FlagTurnstile {\npublic:\n    bool locked = true, broken = false;\n    int coins = 0, passengers = 0;\n    void coin() { if (locked) { locked = false; coins++; } else cout << \"refund\" << endl; }   // forgot broken!\n    void push() { if (!locked) { passengers++; locked = true; } else cout << \"alarm\" << endl; }\n    void fault() { broken = true; }\n};\n" }, { lang: 'csharp', code: "using System;\nclass FlagTurnstile {\n    public bool Locked = true, Broken = false;\n    public int Coins, Passengers;\n    public void Coin() { if (Locked) { Locked = false; Coins++; } else Console.WriteLine(\"refund\"); }   // forgot broken!\n    public void Push() { if (!Locked) { Passengers++; Locked = true; } else Console.WriteLine(\"alarm\"); }\n    public void Fault() { Broken = true; }\n}\n" }] } },
     mcq: { q: 'After adding BROKEN with default-reject methods, which existing state classes change?', options: ['None — fault() is handled once in the context or by a default in the base state; only Broken is new', 'Locked and Unlocked both', 'Only Unlocked', 'All classes and the interface'], answer: 0, explain: 'An event valid in every state (fault) can be handled once; the new state class handles its own coin/push.' },
     hints: [`<p>Hint 1: Draw the 2 × 2 table (LOCKED/UNLOCKED × coin/push). Every cell has a defined outcome — there are no "impossible" cells here.</p>`, `<p>Hint 2: <code>interface GateState { GateState coin(Turnstile t); GateState push(Turnstile t); }</code> returning the next state keeps the context in charge of the field.</p>`, `<p>Hint 3: fault() is legal from every state → handle it in the context (<code>state = new Broken()</code>). Broken.coin refunds, Broken.push ignores, repair() only works in Broken.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[LOCKED] ALARM: pay first\n[UNLOCKED] already open, coin refunded\n[BROKEN] out of order, coin refunded\n[BROKEN] repaired\n[LOCKED] nothing to repair\nLOCKED coins=1 passengers=1\n" }] },
@@ -8622,6 +10233,49 @@ int main() {
     t.push(); t.coin(); t.coin(); t.push(); t.fault(); t.coin(); t.repair();
     t.repair();  // nothing to repair when not broken
     cout << t.state() << " coins=" << t.coins() << " passengers=" << t.passengers() << "\\n";  // LOCKED 1 1
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class GateState {
+    public abstract GateState Coin(Turnstile t);
+    public abstract GateState Push(Turnstile t);
+    public virtual GateState Repair(Turnstile t) { t.Say("nothing to repair"); return this; }
+}
+sealed class Locked : GateState {
+    public override GateState Coin(Turnstile t) { t.Collect(); return new Unlocked(); }
+    public override GateState Push(Turnstile t) { t.Say("ALARM: pay first"); return this; }
+    public override string ToString() { return "LOCKED"; }
+}
+sealed class Unlocked : GateState {
+    public override GateState Coin(Turnstile t) { t.Say("already open, coin refunded"); return this; }
+    public override GateState Push(Turnstile t) { t.Pass(); return new Locked(); }
+    public override string ToString() { return "UNLOCKED"; }
+}
+sealed class Broken : GateState {                              // follow-up: one new class
+    public override GateState Coin(Turnstile t) { t.Say("out of order, coin refunded"); return this; }
+    public override GateState Push(Turnstile t) { t.Say("out of order"); return this; }
+    public override GateState Repair(Turnstile t) { t.Say("repaired"); return new Locked(); }
+    public override string ToString() { return "BROKEN"; }
+}
+
+class Turnstile {
+    private GateState state = new Locked();
+    private int coins, passengers;
+    public void Coin()   { state = state.Coin(this); }
+    public void Push()   { state = state.Push(this); }
+    public void Repair() { state = state.Repair(this); }
+    public void Fault()  { state = new Broken(); }               // valid in every state: handled once
+    public void Collect() { coins++; }
+    public void Pass()    { passengers++; }
+    public void Say(string s) { Console.WriteLine("[" + state + "] " + s); }
+
+    static void Main() {
+        Turnstile t = new Turnstile();
+        t.Push(); t.Coin(); t.Coin(); t.Push(); t.Fault(); t.Coin(); t.Repair();
+        t.Repair();                                 // nothing to repair when not broken
+        Console.WriteLine(t.state + " coins=" + t.coins + " passengers=" + t.passengers);   // LOCKED 1 1
+    }
 }` }
         ],
       complexity: `<p>O(1) per event. Adding BROKEN: 1 new class + 2 context methods; Locked/Unlocked untouched.</p>`,
@@ -8643,7 +10297,7 @@ int main() {
         if (++fails >= 3) lockedUntil = now + 60;
         return false;
     }
-}`, alt: [{ lang: 'python', code: "class FlagDoor:\n    def __init__(self):\n        self.is_open, self.is_locked = True, False\n        self.fails, self.locked_until = 0, 0\n\n    def lock(self): self.is_locked = True                          # bug: can \"lock\" an open door\n\n    def unlock(self, code, now):\n        if code == \"4321\":                                         # bug: ignores lockout time\n            self.is_locked = False; self.fails = 0\n            return True\n        self.fails += 1\n        if self.fails >= 3: self.locked_until = now + 60\n        return False\n" }, { lang: 'ts', code: "class FlagDoor {\n  isOpen = true; isLocked = false;\n  fails = 0; lockedUntil = 0;\n  lock(): void { this.isLocked = true; }                          // bug: can \"lock\" an open door\n  unlock(code: string, now: number): boolean {\n    if (code === \"4321\") { this.isLocked = false; this.fails = 0; return true; }  // bug: ignores lockout time\n    if (++this.fails >= 3) this.lockedUntil = now + 60;\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class FlagDoor {\npublic:\n    bool isOpen = true, isLocked = false;\n    int fails = 0; long long lockedUntil = 0;\n    void lock() { isLocked = true; }                              // bug: can \"lock\" an open door\n    bool unlock(const string& code, long long now) {\n        if (code == \"4321\") { isLocked = false; fails = 0; return true; }  // bug: ignores lockout time\n        if (++fails >= 3) lockedUntil = now + 60;\n        return false;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class FlagDoor:\n    def __init__(self):\n        self.is_open, self.is_locked = True, False\n        self.fails, self.locked_until = 0, 0\n\n    def lock(self): self.is_locked = True                          # bug: can \"lock\" an open door\n\n    def unlock(self, code, now):\n        if code == \"4321\":                                         # bug: ignores lockout time\n            self.is_locked = False; self.fails = 0\n            return True\n        self.fails += 1\n        if self.fails >= 3: self.locked_until = now + 60\n        return False\n" }, { lang: 'ts', code: "class FlagDoor {\n  isOpen = true; isLocked = false;\n  fails = 0; lockedUntil = 0;\n  lock(): void { this.isLocked = true; }                          // bug: can \"lock\" an open door\n  unlock(code: string, now: number): boolean {\n    if (code === \"4321\") { this.isLocked = false; this.fails = 0; return true; }  // bug: ignores lockout time\n    if (++this.fails >= 3) this.lockedUntil = now + 60;\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class FlagDoor {\npublic:\n    bool isOpen = true, isLocked = false;\n    int fails = 0; long long lockedUntil = 0;\n    void lock() { isLocked = true; }                              // bug: can \"lock\" an open door\n    bool unlock(const string& code, long long now) {\n        if (code == \"4321\") { isLocked = false; fails = 0; return true; }  // bug: ignores lockout time\n        if (++fails >= 3) lockedUntil = now + 60;\n        return false;\n    }\n};\n" }, { lang: 'csharp', code: "class FlagDoor {\n    public bool IsOpen = true, IsLocked = false;\n    public int Fails; public long LockedUntil;\n    public void Lock() { IsLocked = true; }                      // bug: can \"lock\" an open door\n    public bool Unlock(string code, long now) {\n        if (code == \"4321\") { IsLocked = false; Fails = 0; return true; }  // bug: ignores lockout time\n        if (++Fails >= 3) LockedUntil = now + 60;\n        return false;\n    }\n}\n" }] } },
     mcq: { q: 'Is LOCKED_OUT better modelled as a separate state or as a counter inside LOCKED?', options: ['A separate state: it accepts different events (all unlocks refused) and has its own exit condition (time)', 'A counter, because states must not hold data', 'A boolean flag on the door', 'An exception thrown from unlock()'], answer: 0, explain: 'Different allowed behaviour + a distinct exit condition is exactly what makes something a state.' },
     hints: [`<p>Hint 1: Table first: 4 states × 4 events. Most cells are "not allowed"; lock in OPEN is a classic trap.</p>`, `<p>Hint 2: LOCKED_OUT is a state holding <code>lockedUntil</code>. Its unlock() checks time first: before → refuse; after → behave like LOCKED (delegate to a fresh Locked state).</p>`, `<p>Hint 3: Keep the wrong-attempt counter in Locked (per locking session) and reset it on success. Pass <code>now</code> into unlock rather than calling the clock inside.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[OPEN] cannot lock now\n[LOCKED] wrong code (1/3)\n[LOCKED] wrong code (2/3)\n[LOCKED] 3 wrong codes: locked out for 60 s\n[LOCKED_OUT] locked out for 53 s\n[LOCKED_OUT] wrong code (1/3)\n[CLOSED] not locked\nfinal CLOSED\n" }] },
@@ -8953,6 +10607,67 @@ int main() {
     d.unlock("4321", 71);
     d.unlock("4321", 72);  // not locked any more
     cout << "final " << d.state() << "\\n";  // CLOSED
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class DoorState {
+    public virtual DoorState Open(SmartDoor d)  { d.Say("cannot open now"); return this; }
+    public virtual DoorState Close(SmartDoor d) { d.Say("cannot close now"); return this; }
+    public virtual DoorState Lock(SmartDoor d)  { d.Say("cannot lock now"); return this; }
+    public virtual DoorState Unlock(SmartDoor d, string code, long now) { d.Say("not locked"); return this; }
+}
+sealed class OpenDoor : DoorState {
+    public override DoorState Close(SmartDoor d) { return new ClosedDoor(); }
+    public override string ToString() { return "OPEN"; }
+}
+sealed class ClosedDoor : DoorState {
+    public override DoorState Open(SmartDoor d) { return new OpenDoor(); }
+    public override DoorState Lock(SmartDoor d) { return new LockedDoor(); }
+    public override string ToString() { return "CLOSED"; }
+}
+sealed class LockedDoor : DoorState {
+    private int fails = 0;
+    public override DoorState Unlock(SmartDoor d, string code, long now) {
+        if (d.CodeMatches(code)) return new ClosedDoor();
+        if (++fails >= 3) { d.Say("3 wrong codes: locked out for 60 s"); return new LockedOut(now + 60); }
+        d.Say("wrong code (" + fails + "/3)");
+        return this;
+    }
+    public override string ToString() { return "LOCKED"; }
+}
+sealed class LockedOut : DoorState {
+    private readonly long until;
+    public LockedOut(long until) { this.until = until; }
+    public override DoorState Unlock(SmartDoor d, string code, long now) {
+        if (now < until) { d.Say("locked out for " + (until - now) + " s"); return this; }
+        return new LockedDoor().Unlock(d, code, now);            // time is up: behave like LOCKED
+    }
+    public override string ToString() { return "LOCKED_OUT"; }
+}
+
+class SmartDoor {
+    private DoorState state = new OpenDoor();
+    private readonly string secret;
+    public SmartDoor(string secret) { this.secret = secret; }
+    public void Open()  { state = state.Open(this); }
+    public void Close() { state = state.Close(this); }
+    public void Lock()  { state = state.Lock(this); }
+    public void Unlock(string code, long now) { state = state.Unlock(this, code, now); }
+    public bool CodeMatches(string c) { return secret == c; }
+    public void Say(string s) { Console.WriteLine("[" + state + "] " + s); }
+
+    static void Main() {
+        SmartDoor d = new SmartDoor("4321");
+        d.Lock();                                   // cannot lock an open door
+        d.Close(); d.Lock();
+        d.Unlock("0000", 1); d.Unlock("1111", 2); d.Unlock("2222", 3);
+        d.Unlock("4321", 10);                       // still locked out
+        d.Unlock("9999", 70);                       // lock-out is over, but this code is wrong
+        d.Unlock("4321", 71);
+        d.Unlock("4321", 72);                       // not locked any more
+        Console.WriteLine("final " + d.state);      // CLOSED
+    }
 }` }
         ],
       complexity: `<p>O(1) per event. Lockout costs no timers: it is evaluated lazily from <code>now</code>.</p>`,
@@ -8974,7 +10689,7 @@ int main() {
         // return window? typo "DELIVERD"? every caller re-implements part of this
         return false;
     }
-}`, alt: [{ lang: 'python', code: "class NaiveOrder:\n    def __init__(self):\n        self.status = \"PLACED\"\n\n    def move_to(self, nxt):\n        if self.status == \"PLACED\" and nxt in (\"PACKED\", \"CANCELLED\"): self.status = nxt; return True\n        if self.status == \"PACKED\" and nxt in (\"SHIPPED\", \"CANCELLED\"): self.status = nxt; return True\n        if self.status == \"SHIPPED\" and nxt == \"DELIVERED\": self.status = nxt; return True\n        # return window? typo \"DELIVERD\"? every caller re-implements part of this\n        return False\n" }, { lang: 'ts', code: "class NaiveOrder {\n  status = \"PLACED\";\n  moveTo(next: string): boolean {\n    if (this.status === \"PLACED\" && (next === \"PACKED\" || next === \"CANCELLED\")) { this.status = next; return true; }\n    if (this.status === \"PACKED\" && (next === \"SHIPPED\" || next === \"CANCELLED\")) { this.status = next; return true; }\n    if (this.status === \"SHIPPED\" && next === \"DELIVERED\") { this.status = next; return true; }\n    // return window? typo \"DELIVERD\"? every caller re-implements part of this\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveOrder {\npublic:\n    string status = \"PLACED\";\n    bool moveTo(const string& next) {\n        if (status == \"PLACED\" && (next == \"PACKED\" || next == \"CANCELLED\")) { status = next; return true; }\n        if (status == \"PACKED\" && (next == \"SHIPPED\" || next == \"CANCELLED\")) { status = next; return true; }\n        if (status == \"SHIPPED\" && next == \"DELIVERED\") { status = next; return true; }\n        // return window? typo \"DELIVERD\"? every caller re-implements part of this\n        return false;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveOrder:\n    def __init__(self):\n        self.status = \"PLACED\"\n\n    def move_to(self, nxt):\n        if self.status == \"PLACED\" and nxt in (\"PACKED\", \"CANCELLED\"): self.status = nxt; return True\n        if self.status == \"PACKED\" and nxt in (\"SHIPPED\", \"CANCELLED\"): self.status = nxt; return True\n        if self.status == \"SHIPPED\" and nxt == \"DELIVERED\": self.status = nxt; return True\n        # return window? typo \"DELIVERD\"? every caller re-implements part of this\n        return False\n" }, { lang: 'ts', code: "class NaiveOrder {\n  status = \"PLACED\";\n  moveTo(next: string): boolean {\n    if (this.status === \"PLACED\" && (next === \"PACKED\" || next === \"CANCELLED\")) { this.status = next; return true; }\n    if (this.status === \"PACKED\" && (next === \"SHIPPED\" || next === \"CANCELLED\")) { this.status = next; return true; }\n    if (this.status === \"SHIPPED\" && next === \"DELIVERED\") { this.status = next; return true; }\n    // return window? typo \"DELIVERD\"? every caller re-implements part of this\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveOrder {\npublic:\n    string status = \"PLACED\";\n    bool moveTo(const string& next) {\n        if (status == \"PLACED\" && (next == \"PACKED\" || next == \"CANCELLED\")) { status = next; return true; }\n        if (status == \"PACKED\" && (next == \"SHIPPED\" || next == \"CANCELLED\")) { status = next; return true; }\n        if (status == \"SHIPPED\" && next == \"DELIVERED\") { status = next; return true; }\n        // return window? typo \"DELIVERD\"? every caller re-implements part of this\n        return false;\n    }\n};\n" }, { lang: 'csharp', code: "class NaiveOrder {\n    public string Status = \"PLACED\";\n    public bool MoveTo(string next) {\n        if (Status == \"PLACED\" && (next == \"PACKED\" || next == \"CANCELLED\")) { Status = next; return true; }\n        if (Status == \"PACKED\" && (next == \"SHIPPED\" || next == \"CANCELLED\")) { Status = next; return true; }\n        if (Status == \"SHIPPED\" && next == \"DELIVERED\") { Status = next; return true; }\n        // return window? typo \"DELIVERD\"? every caller re-implements part of this\n        return false;\n    }\n}\n" }] } },
     mcq: { q: 'Why is a map from each status to its set of allowed next statuses (in Java an EnumMap&lt;Status, EnumSet&lt;Status&gt;&gt;) a good fit here?', options: ['States have little behaviour; the rules are pure "from → allowed to" data that the UI can also read', 'It is faster than a switch in all cases', 'Because State classes cannot be used with enums', 'It removes the need for a date check'], answer: 0, explain: 'When states carry almost no behaviour, a transition table is the clearest single source of truth; extra conditions become guards.' },
     hints: [`<p>Hint 1: Separate the <b>structure</b> (which arrows exist) from <b>guards</b> (the 7-day rule). Structure is a map from status to its set of allowed next statuses (an <code>EnumMap</code> of <code>EnumSet</code>s in Java).</p>`, `<p>Hint 2: <code>allowedNext()</code> returns <code>TABLE.get(status)</code> — free UI support. Terminal states map to an empty set.</p>`, `<p>Hint 3: In moveTo: if the arrow is missing → reject; if target is RETURN_REQUESTED, check <code>today ≤ deliveredOn + 7 days</code>; record deliveredOn when entering DELIVERED; append "A → B" to history.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "allowed now: [RETURN_REQUESTED]\nPLACED -> PACKED\nPACKED -> SHIPPED\nREJECTED SHIPPED -> CANCELLED\nSHIPPED -> DELIVERED\nREJECTED return: window closed on 2026-03-09\nDELIVERED -> RETURN_REQUESTED\nRETURN_REQUESTED -> RETURNED\nREJECTED RETURNED -> PACKED\n" }] },
@@ -9222,6 +10937,57 @@ int main() {
     o.moveTo(Status::RETURNED, day(2026, 3, 8));
     o.moveTo(Status::PACKED, day(2026, 3, 9));  // rejected: RETURNED is terminal
     for (const auto& line : o.history()) cout << line << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Status { PLACED, PACKED, SHIPPED, DELIVERED, CANCELLED, RETURN_REQUESTED, RETURNED }
+
+class Order {
+    private static readonly Dictionary<Status, HashSet<Status>> NEXT = new Dictionary<Status, HashSet<Status>> {
+        { Status.PLACED, new HashSet<Status> { Status.PACKED, Status.CANCELLED } },
+        { Status.PACKED, new HashSet<Status> { Status.SHIPPED, Status.CANCELLED } },
+        { Status.SHIPPED, new HashSet<Status> { Status.DELIVERED } },
+        { Status.DELIVERED, new HashSet<Status> { Status.RETURN_REQUESTED } },
+        { Status.RETURN_REQUESTED, new HashSet<Status> { Status.RETURNED } },
+        { Status.CANCELLED, new HashSet<Status>() },     // terminal
+        { Status.RETURNED, new HashSet<Status>() }       // terminal
+    };
+    private Status status = Status.PLACED;
+    private DateTime deliveredOn;
+    private readonly List<string> history = new List<string>();
+
+    public IEnumerable<Status> AllowedNext() { return NEXT[status].OrderBy(s => (int)s).ToList(); }
+
+    public bool MoveTo(Status next, DateTime today) {
+        if (!NEXT[status].Contains(next)) { history.Add("REJECTED " + status + " -> " + next); return false; }
+        if (next == Status.RETURN_REQUESTED && today > deliveredOn.AddDays(7)) {                   // guard
+            history.Add("REJECTED return: window closed on " + deliveredOn.AddDays(7).ToString("yyyy-MM-dd"));
+            return false;
+        }
+        if (next == Status.DELIVERED) deliveredOn = today;                                          // entry action
+        history.Add(status + " -> " + next);
+        status = next;
+        return true;
+    }
+    public Status CurrentStatus() { return status; }
+    public List<string> History() { return history; }
+
+    static void Main() {
+        Order o = new Order();
+        o.MoveTo(Status.PACKED, new DateTime(2026, 3, 1));
+        o.MoveTo(Status.SHIPPED, new DateTime(2026, 3, 1));
+        o.MoveTo(Status.CANCELLED, new DateTime(2026, 3, 1));          // rejected
+        o.MoveTo(Status.DELIVERED, new DateTime(2026, 3, 2));
+        Console.WriteLine("allowed now: [" + string.Join(", ", o.AllowedNext()) + "]");
+        o.MoveTo(Status.RETURN_REQUESTED, new DateTime(2026, 3, 12));  // rejected: > 7 days
+        o.MoveTo(Status.RETURN_REQUESTED, new DateTime(2026, 3, 6));
+        o.MoveTo(Status.RETURNED, new DateTime(2026, 3, 8));
+        o.MoveTo(Status.PACKED, new DateTime(2026, 3, 9));              // rejected: RETURNED is terminal
+        foreach (string h in o.History()) Console.WriteLine(h);
+    }
 }` }
         ],
       complexity: `<p>O(1) per transition (EnumSet lookup is a bit test). Adding a status = one enum constant + one table row.</p>`,
@@ -9248,7 +11014,7 @@ int main() {
         }
         return "unknown";
     }
-}`, alt: [{ lang: 'python', code: "class NaiveCoffee:\n    def __init__(self):\n        self.water, self.milk, self.beans = 200, 120, 40\n\n    def make(self, name, money):\n        if name == \"latte\":\n            if money < 180: return \"pay more\"\n            if self.milk < 150: return \"no milk\"            # money handling differs per copy...\n            self.water -= 50; self.milk -= 150; self.beans -= 18\n            return f\"latte, change {money - 180}\"\n        elif name == \"espresso\":\n            if self.beans < 18: return \"no beans\"\n            self.water -= 50; self.beans -= 18\n            return f\"espresso, change {money - 120}\"        # forgot price check!\n        return \"unknown\"\n" }, { lang: 'ts', code: "class NaiveCoffee {\n  water = 200; milk = 120; beans = 40;\n  make(name: string, money: number): string {\n    if (name === \"latte\") {\n      if (money < 180) return \"pay more\";\n      if (this.milk < 150) return \"no milk\";            // money handling differs per copy...\n      this.water -= 50; this.milk -= 150; this.beans -= 18; return \"latte, change \" + (money - 180);\n    } else if (name === \"espresso\") {\n      if (this.beans < 18) return \"no beans\";\n      this.water -= 50; this.beans -= 18; return \"espresso, change \" + (money - 120);   // forgot price check!\n    }\n    return \"unknown\";\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveCoffee {\npublic:\n    int water = 200, milk = 120, beans = 40;\n    string make(const string& name, int money) {\n        if (name == \"latte\") {\n            if (money < 180) return \"pay more\";\n            if (milk < 150) return \"no milk\";            // money handling differs per copy...\n            water -= 50; milk -= 150; beans -= 18; return \"latte, change \" + to_string(money - 180);\n        } else if (name == \"espresso\") {\n            if (beans < 18) return \"no beans\";\n            water -= 50; beans -= 18; return \"espresso, change \" + to_string(money - 120);   // forgot price check!\n        }\n        return \"unknown\";\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveCoffee:\n    def __init__(self):\n        self.water, self.milk, self.beans = 200, 120, 40\n\n    def make(self, name, money):\n        if name == \"latte\":\n            if money < 180: return \"pay more\"\n            if self.milk < 150: return \"no milk\"            # money handling differs per copy...\n            self.water -= 50; self.milk -= 150; self.beans -= 18\n            return f\"latte, change {money - 180}\"\n        elif name == \"espresso\":\n            if self.beans < 18: return \"no beans\"\n            self.water -= 50; self.beans -= 18\n            return f\"espresso, change {money - 120}\"        # forgot price check!\n        return \"unknown\"\n" }, { lang: 'ts', code: "class NaiveCoffee {\n  water = 200; milk = 120; beans = 40;\n  make(name: string, money: number): string {\n    if (name === \"latte\") {\n      if (money < 180) return \"pay more\";\n      if (this.milk < 150) return \"no milk\";            // money handling differs per copy...\n      this.water -= 50; this.milk -= 150; this.beans -= 18; return \"latte, change \" + (money - 180);\n    } else if (name === \"espresso\") {\n      if (this.beans < 18) return \"no beans\";\n      this.water -= 50; this.beans -= 18; return \"espresso, change \" + (money - 120);   // forgot price check!\n    }\n    return \"unknown\";\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveCoffee {\npublic:\n    int water = 200, milk = 120, beans = 40;\n    string make(const string& name, int money) {\n        if (name == \"latte\") {\n            if (money < 180) return \"pay more\";\n            if (milk < 150) return \"no milk\";            // money handling differs per copy...\n            water -= 50; milk -= 150; beans -= 18; return \"latte, change \" + to_string(money - 180);\n        } else if (name == \"espresso\") {\n            if (beans < 18) return \"no beans\";\n            water -= 50; beans -= 18; return \"espresso, change \" + to_string(money - 120);   // forgot price check!\n        }\n        return \"unknown\";\n    }\n};\n" }, { lang: 'csharp', code: "class NaiveCoffee {\n    public int Water = 200, Milk = 120, Beans = 40;\n    public string Make(string name, int money) {\n        if (name == \"latte\") {\n            if (money < 180) return \"pay more\";\n            if (Milk < 150) return \"no milk\";            // money handling differs per copy...\n            Water -= 50; Milk -= 150; Beans -= 18; return \"latte, change \" + (money - 180);\n        } else if (name == \"espresso\") {\n            if (Beans < 18) return \"no beans\";\n            Water -= 50; Beans -= 18; return \"espresso, change \" + (money - 120);   // forgot price check!\n        }\n        return \"unknown\";\n    }\n}\n" }] } },
     mcq: { q: 'Where should recipes live so that adding "mocha" needs no state-class changes?', options: ['In data: a map from drink name to a Recipe value object (ingredients + price)', 'One State class per drink', 'In the PAID state as if/else', 'In an enum switch inside BREWING'], answer: 0, explain: 'Drinks are data, states are behaviour. Mixing them makes every new drink a code change across states.' },
     hints: [`<p>Hint 1: States describe the machine's mode (IDLE, PAID, BREWING, NEEDS_REFILL); drinks are <b>data</b> (a Recipe value object: ingredients map + price).</p>`, `<p>Hint 2: PAID.select runs checks in order: known drink → enough money → enough ingredients (Inventory.canMake) → BREWING → consume + change → next state is NEEDS_REFILL if no recipe can be made, else IDLE.</p>`, `<p>Hint 3: Entering NEEDS_REFILL refunds the balance. refill() is accepted in IDLE/PAID/NEEDS_REFILL; in NEEDS_REFILL it re-checks and returns to IDLE if any drink is possible.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[PAID] not enough milk, pick another\n[BREWING] enjoy your cappuccino, change 40\n[BREWING] enjoy your espresso\nstate NEEDS_REFILL, stock {beans=4, milk=20, water=100}\nafter refill: IDLE\n[IDLE] pay first\n[IDLE] nothing to cancel\n[PAID] unknown drink\n[PAID] insert 70 more\n[PAID] refund 50\nfinal IDLE balance 0\n" }] },
@@ -9741,6 +11507,119 @@ int main() {
     m.pay(50); m.select("tea"); m.select("espresso");  // unknown drink; insert 70 more
     m.cancel();         // refund 50
     cout << "final " << m.stateName() << " balance " << m.balance() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Recipe {
+    public readonly int Price; public readonly List<KeyValuePair<string, int>> Needs;   // ordered on purpose
+    public Recipe(int price, List<KeyValuePair<string, int>> needs) { Price = price; Needs = needs; }
+}
+
+/// Type-safe enum State: each constant overrides only the events it handles.
+abstract class CoffeeState {
+    public static readonly CoffeeState IDLE = new IdleS();
+    public static readonly CoffeeState PAID = new PaidS();
+    public static readonly CoffeeState BREWING = new BrewingS();
+    public static readonly CoffeeState NEEDS_REFILL = new NeedsRefillS();
+
+    private readonly string name;
+    private CoffeeState(string name) { this.name = name; }
+    public override string ToString() { return name; }
+
+    public virtual CoffeeState Pay(CoffeeMachine m, int amt) { m.Say("cannot pay now"); return this; }
+    public virtual CoffeeState Select(CoffeeMachine m, string d) { m.Say("pay first"); return this; }
+    public virtual CoffeeState Cancel(CoffeeMachine m) { m.Say("nothing to cancel"); return this; }
+    public virtual CoffeeState Refill(CoffeeMachine m, string ing, int qty) { m.AddStock(ing, qty); return this; }
+    public CoffeeState Enter(CoffeeMachine m) { m.Refund(); return this; }        // entry action
+
+    sealed class IdleS : CoffeeState {
+        public IdleS() : base("IDLE") { }
+        public override CoffeeState Pay(CoffeeMachine m, int amt) { m.AddBalance(amt); return PAID; }
+    }
+    sealed class PaidS : CoffeeState {
+        public PaidS() : base("PAID") { }
+        public override CoffeeState Pay(CoffeeMachine m, int amt) { m.AddBalance(amt); return PAID; }
+        public override CoffeeState Select(CoffeeMachine m, string drink) {
+            Recipe r = m.RecipeOf(drink);
+            if (r == null) { m.Say("unknown drink"); return PAID; }
+            if (m.Balance() < r.Price) { m.Say("insert " + (r.Price - m.Balance()) + " more"); return PAID; }
+            string missing = m.MissingFor(r);
+            if (missing != null) { m.Say("not enough " + missing + ", pick another"); return PAID; }
+            m.Brew(drink, r);                                   // BREWING happens here (synchronous demo)
+            return m.AnyDrinkPossible() ? IDLE : NEEDS_REFILL.Enter(m);
+        }
+        public override CoffeeState Cancel(CoffeeMachine m) { m.Refund(); return IDLE; }
+    }
+    sealed class BrewingS : CoffeeState {
+        public BrewingS() : base("BREWING") { }
+        public override CoffeeState Refill(CoffeeMachine m, string ing, int qty) { m.Say("wait, brewing"); return BREWING; }
+    }
+    sealed class NeedsRefillS : CoffeeState {
+        public NeedsRefillS() : base("NEEDS_REFILL") { }
+        public override CoffeeState Pay(CoffeeMachine m, int amt) { m.Say("needs refill, money returned: " + amt); return NEEDS_REFILL; }
+        public override CoffeeState Refill(CoffeeMachine m, string ing, int qty) { m.AddStock(ing, qty); return m.AnyDrinkPossible() ? IDLE : NEEDS_REFILL; }
+    }
+}
+
+class CoffeeMachine {
+    private CoffeeState state = CoffeeState.IDLE;
+    private int balance;
+    private readonly SortedDictionary<string, int> stock = new SortedDictionary<string, int>(StringComparer.Ordinal);   // sorted: stable printing
+    private readonly List<KeyValuePair<string, Recipe>> recipes = new List<KeyValuePair<string, Recipe>>();
+
+    public CoffeeMachine() {
+        recipes.Add(new KeyValuePair<string, Recipe>("espresso", new Recipe(120, Needs("water", 50, "beans", 18))));
+        recipes.Add(new KeyValuePair<string, Recipe>("latte", new Recipe(180, Needs("water", 50, "milk", 150, "beans", 18))));
+        recipes.Add(new KeyValuePair<string, Recipe>("cappuccino", new Recipe(160, Needs("water", 50, "milk", 100, "beans", 18))));
+    }
+    /// Ordered on purpose: the first missing ingredient reported must not change from run to run.
+    private static List<KeyValuePair<string, int>> Needs(params object[] kv) {
+        List<KeyValuePair<string, int>> m = new List<KeyValuePair<string, int>>();
+        for (int i = 0; i < kv.Length; i += 2) m.Add(new KeyValuePair<string, int>((string)kv[i], (int)kv[i + 1]));
+        return m;
+    }
+    public void Pay(int amt)                     { state = state.Pay(this, amt); }
+    public void Select(string d)                 { state = state.Select(this, d); }
+    public void Cancel()                         { state = state.Cancel(this); }
+    public void Refill(string ing, int qty)      { state = state.Refill(this, ing, qty); }
+
+    public Recipe RecipeOf(string d)             { foreach (var kv in recipes) if (kv.Key == d) return kv.Value; return null; }
+    public int Balance()                         { return balance; }
+    public void AddBalance(int a)                { balance += a; }
+    public void AddStock(string ing, int q)      { int v; stock.TryGetValue(ing, out v); stock[ing] = v + q; }
+    public void Refund()                         { if (balance > 0) Say("refund " + balance); balance = 0; }
+    public string MissingFor(Recipe r) {
+        foreach (var e in r.Needs) { int have; stock.TryGetValue(e.Key, out have); if (have < e.Value) return e.Key; }
+        return null;
+    }
+    public bool AnyDrinkPossible()               { return recipes.Any(kv => MissingFor(kv.Value) == null); }
+    public void Brew(string drink, Recipe r) {
+        state = CoffeeState.BREWING;
+        foreach (var kv in r.Needs) stock[kv.Key] -= kv.Value;
+        int change = balance - r.Price;
+        balance = 0;
+        Say("enjoy your " + drink + (change > 0 ? ", change " + change : ""));
+    }
+    public void Say(string s) { Console.WriteLine("[" + state + "] " + s); }
+    string StockText() { return "{" + string.Join(", ", stock.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+
+    static void Main() {
+        CoffeeMachine m = new CoffeeMachine();
+        m.Refill("water", 200); m.Refill("milk", 120); m.Refill("beans", 40);
+        m.Pay(200); m.Select("latte"); m.Select("cappuccino");
+        m.Pay(120); m.Select("espresso");
+        Console.WriteLine("state " + m.state + ", stock " + m.StockText());   // NEEDS_REFILL
+        m.Refill("beans", 100);
+        Console.WriteLine("after refill: " + m.state);                       // IDLE
+        m.Select("latte");                                                   // pay first
+        m.Cancel();                                                          // nothing to cancel
+        m.Pay(50); m.Select("tea"); m.Select("espresso");                    // unknown drink; insert 70 more
+        m.Cancel();                                                          // refund 50
+        Console.WriteLine("final " + m.state + " balance " + m.Balance());
+    }
 }` }
         ],
       complexity: `<p>Each event is O(R · I) at worst (recipes × ingredients) for the refill check — tiny. New drink = one map entry.</p>`,
@@ -9760,7 +11639,7 @@ int main() {
         wrong++;
         return false;
     }
-}`, alt: [{ lang: 'python', code: "class PerAtmCounter:\n    def __init__(self):\n        self.wrong = 0                               # lives in ONE ATM: a thief just walks to the next ATM\n\n    def verify(self, pin, real):\n        if pin == real:\n            self.wrong = 0\n            return True\n        self.wrong += 1\n        return False\n" }, { lang: 'ts', code: "class PerAtmCounter {\n  wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM\n  verify(pin: string, real: string): boolean {\n    if (pin === real) { this.wrong = 0; return true; }\n    this.wrong++;\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class PerAtmCounter {\npublic:\n    int wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM\n    bool verify(const string& pin, const string& real) {\n        if (pin == real) { wrong = 0; return true; }\n        wrong++;\n        return false;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class PerAtmCounter:\n    def __init__(self):\n        self.wrong = 0                               # lives in ONE ATM: a thief just walks to the next ATM\n\n    def verify(self, pin, real):\n        if pin == real:\n            self.wrong = 0\n            return True\n        self.wrong += 1\n        return False\n" }, { lang: 'ts', code: "class PerAtmCounter {\n  wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM\n  verify(pin: string, real: string): boolean {\n    if (pin === real) { this.wrong = 0; return true; }\n    this.wrong++;\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class PerAtmCounter {\npublic:\n    int wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM\n    bool verify(const string& pin, const string& real) {\n        if (pin == real) { wrong = 0; return true; }\n        wrong++;\n        return false;\n    }\n};\n" }, { lang: 'csharp', code: "class PerAtmCounter {\n    public int Wrong = 0;                                // lives in ONE ATM: a thief just walks to the next ATM\n    public bool Verify(string pin, string real) {\n        if (pin == real) { Wrong = 0; return true; }\n        Wrong++;\n        return false;\n    }\n}\n" }] } },
     mcq: { q: 'How do you reset the daily limit without a midnight batch job?', options: ['Store (date, amountToday) per card; if the stored date differs from today, treat amountToday as 0', 'Reset all rows at midnight with a cron job', 'Never reset it', 'Keep the limit in the ATM'], answer: 0, explain: 'Lazy reset keyed by date is O(1), has no batch job and no midnight race.' },
     hints: [`<p>Hint 1: The state belongs to the <b>card at the bank</b>: status, failed attempts, and (date, withdrawnToday). Make it a small class per card.</p>`, `<p>Hint 2: Use a thread-safe map from card to CardAccount (<code>ConcurrentHashMap</code> in Java, a dict plus a lock in Python, a mutex-protected map in C++) and lock the CardAccount object so two ATMs updating the same card are serialized, while different cards run in parallel.</p>`, `<p>Hint 3: Lazy reset: if <code>lastDate != date</code>, set withdrawnToday = 0 and lastDate = date before checking. Return an enum result: OK, WRONG_PIN, BLOCKED, DAILY_LIMIT.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "WRONG_PIN WRONG_PIN BLOCKED\ncorrect PIN while blocked: BLOCKED\nOK\nDAILY_LIMIT\nOK\nUNKNOWN_CARD UNKNOWN_CARD\nWRONG_PIN OK WRONG_PIN WRONG_PIN\nOK DAILY_LIMIT\nBLOCKED BLOCKED\n" }] },
@@ -10079,6 +11958,75 @@ int main() {
     cout << name(w1) << " " << name(w2) << "\\n";                                        // exactly the limit is allowed
     auto b1 = s.verifyPin("C2", "3"), b2 = s.authorizeWithdrawal("C2", 1, d1 + chrono::days{1});
     cout << name(b1) << " " << name(b2) << "\\n";                                        // third wrong PIN blocks the card
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+
+enum AuthResult { OK, WRONG_PIN, BLOCKED, DAILY_LIMIT, UNKNOWN_CARD }
+
+class CardAccount {
+    public readonly string Pin;
+    public bool Blocked;
+    public int WrongPins;
+    public DateTime? LastDate;
+    public long WithdrawnToday;
+    public CardAccount(string pin) { Pin = pin; }
+}
+
+class CardAuthService {
+    public const int MAX_WRONG = 3;
+    public const long DAILY_LIMIT = 25000;
+    private readonly ConcurrentDictionary<string, CardAccount> cards = new ConcurrentDictionary<string, CardAccount>();
+
+    public void Register(string card, string pin) { cards[card] = new CardAccount(pin); }
+
+    public AuthResult VerifyPin(string card, string pin) {
+        CardAccount a;
+        if (!cards.TryGetValue(card, out a)) return AuthResult.UNKNOWN_CARD;
+        lock (a) {                                              // per-card lock: ATMs on other cards are not blocked
+            if (a.Blocked) return AuthResult.BLOCKED;
+            if (a.Pin == pin) { a.WrongPins = 0; return AuthResult.OK; }
+            if (++a.WrongPins >= MAX_WRONG) { a.Blocked = true; return AuthResult.BLOCKED; }
+            return AuthResult.WRONG_PIN;
+        }
+    }
+
+    public AuthResult AuthorizeWithdrawal(string card, long amount, DateTime date) {
+        CardAccount a;
+        if (!cards.TryGetValue(card, out a)) return AuthResult.UNKNOWN_CARD;
+        lock (a) {
+            if (a.Blocked) return AuthResult.BLOCKED;
+            if (a.LastDate != date) { a.LastDate = date; a.WithdrawnToday = 0; }   // lazy daily reset
+            if (a.WithdrawnToday + amount > DAILY_LIMIT) return AuthResult.DAILY_LIMIT;
+            a.WithdrawnToday += amount;
+            return AuthResult.OK;
+        }
+    }
+
+    public void AdminUnblock(string card) {
+        CardAccount a;
+        if (!cards.TryGetValue(card, out a)) return;            // unknown card: nothing to unblock
+        lock (a) { a.Blocked = false; a.WrongPins = 0; }
+    }
+
+    static void Main() {
+        CardAuthService s = new CardAuthService();
+        s.Register("C1", "1234");
+        Console.WriteLine(s.VerifyPin("C1", "1111") + " " + s.VerifyPin("C1", "2222") + " " + s.VerifyPin("C1", "3333"));
+        Console.WriteLine("correct PIN while blocked: " + s.VerifyPin("C1", "1234"));    // BLOCKED
+        s.AdminUnblock("C1");
+        DateTime d1 = new DateTime(2026, 6, 1);
+        Console.WriteLine(s.AuthorizeWithdrawal("C1", 20000, d1));                     // OK
+        Console.WriteLine(s.AuthorizeWithdrawal("C1", 6000, d1));                      // DAILY_LIMIT
+        Console.WriteLine(s.AuthorizeWithdrawal("C1", 6000, d1.AddDays(1)));           // OK
+        Console.WriteLine(s.VerifyPin("NOPE", "0000") + " " + s.AuthorizeWithdrawal("NOPE", 1, d1));  // UNKNOWN_CARD UNKNOWN_CARD
+        s.AdminUnblock("NOPE");                                                        // no-op, no crash
+        s.Register("C2", "9999");
+        Console.WriteLine(s.VerifyPin("C2", "0") + " " + s.VerifyPin("C2", "9999") + " " + s.VerifyPin("C2", "1") + " " + s.VerifyPin("C2", "2"));  // success resets the counter
+        Console.WriteLine(s.AuthorizeWithdrawal("C2", 25000, d1) + " " + s.AuthorizeWithdrawal("C2", 1, d1));  // exactly the limit is allowed
+        Console.WriteLine(s.VerifyPin("C2", "3") + " " + s.AuthorizeWithdrawal("C2", 1, d1.AddDays(1)));       // third wrong PIN blocks the card
+    }
 }` }
         ],
       complexity: `<p>O(1) per call; contention only between requests for the same card. Memory O(cards).</p>`,
@@ -10099,7 +12047,7 @@ class DirectionBlind {
         out.addAll(all.headSet(start, false).descendingSet());
         return out;                                     // 5 served once, on the way up: wrong for 5-DOWN
     }
-}`, alt: [{ lang: 'python', code: "class DirectionBlind:\n    @staticmethod\n    def stops(start, floors):\n        all_ = sorted(set(floors))                       # loses the direction of each hall call\n        out = [f for f in all_ if f >= start]\n        out += [f for f in reversed(all_) if f < start]\n        return out                                       # 5 served once, on the way up: wrong for 5-DOWN\n" }, { lang: 'ts', code: "class DirectionBlind {\n  static stops(start: number, floors: number[]): number[] {\n    const all = [...new Set(floors)].sort((a, b) => a - b);   // loses the direction of each hall call\n    const out = all.filter((f) => f >= start);\n    out.push(...all.filter((f) => f < start).reverse());\n    return out;                                          // 5 served once, on the way up: wrong for 5-DOWN\n  }\n}\n" }, { lang: 'cpp', code: "struct DirectionBlind {\n    static vector<int> stops(int start, const vector<int>& floors) {\n        set<int> all(floors.begin(), floors.end());      // loses the direction of each hall call\n        vector<int> out(all.lower_bound(start), all.end());\n        for (auto it = make_reverse_iterator(all.lower_bound(start)); it != all.rend(); ++it) out.push_back(*it);\n        return out;                                      // 5 served once, on the way up: wrong for 5-DOWN\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class DirectionBlind:\n    @staticmethod\n    def stops(start, floors):\n        all_ = sorted(set(floors))                       # loses the direction of each hall call\n        out = [f for f in all_ if f >= start]\n        out += [f for f in reversed(all_) if f < start]\n        return out                                       # 5 served once, on the way up: wrong for 5-DOWN\n" }, { lang: 'ts', code: "class DirectionBlind {\n  static stops(start: number, floors: number[]): number[] {\n    const all = [...new Set(floors)].sort((a, b) => a - b);   // loses the direction of each hall call\n    const out = all.filter((f) => f >= start);\n    out.push(...all.filter((f) => f < start).reverse());\n    return out;                                          // 5 served once, on the way up: wrong for 5-DOWN\n  }\n}\n" }, { lang: 'cpp', code: "struct DirectionBlind {\n    static vector<int> stops(int start, const vector<int>& floors) {\n        set<int> all(floors.begin(), floors.end());      // loses the direction of each hall call\n        vector<int> out(all.lower_bound(start), all.end());\n        for (auto it = make_reverse_iterator(all.lower_bound(start)); it != all.rend(); ++it) out.push_back(*it);\n        return out;                                      // 5 served once, on the way up: wrong for 5-DOWN\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nusing System.Linq;\nclass DirectionBlind {\n    public static List<int> Stops(int start, List<int> floors) {\n        SortedSet<int> all = new SortedSet<int>(floors);   // loses the direction of each hall call\n        List<int> result = all.Where(f => f >= start).ToList();\n        result.AddRange(all.Where(f => f < start).Reverse());\n        return result;                                      // 5 served once, on the way up: wrong for 5-DOWN\n    }\n}\n" }] } },
     mcq: { q: 'The car is at 8 going up; the only remaining request is hall 8▼. What happens?', options: ['Nothing is ahead, so the car reverses to DOWN at 8 and serves the ▼ call right there', 'It ignores the call until the next up sweep', 'It goes to the top floor first', 'It serves it only if a car call exists'], answer: 0, explain: 'With nothing ahead, LOOK reverses; after reversing, the ▼ call at the current floor matches the new direction.' },
     hints: [`<p>Hint 1: Keep three sets: carCalls, upCalls, downCalls. A floor is a stop for direction d if it is in carCalls or in the hall set for d.</p>`, `<p>Hint 2: Simulate floor by floor: serve what matches the current direction at the current floor; if any request in <i>any</i> set lies strictly ahead, move one floor; otherwise flip direction (without moving).</p>`, `<p>Hint 3: The loop terminates because if requests remain but none is ahead in either direction, they are at the current floor and get served after at most one flip.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[5, 8, 5, 3]\n[]\n[1, 4]\n" }] },
@@ -10288,6 +12236,54 @@ int main() {
     cout << show(idle.run()) << "\\n";  // [] nothing to do
     idle.hallCall(4, true); idle.hallCall(1, true);  // the up-call at 4 is passed while going down
     cout << show(idle.run()) << "\\n";  // [1, 4]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class DirectionalElevator {
+    public readonly SortedSet<int> Car = new SortedSet<int>(), Up = new SortedSet<int>(), Down = new SortedSet<int>();
+    public int Floor;
+    public bool GoingUp;
+    public DirectionalElevator(int start, bool goingUp) { Floor = start; GoingUp = goingUp; }
+
+    public void CarCall(int f)                   { Car.Add(f); }
+    public void HallCall(int f, bool wantsUp)    { (wantsUp ? Up : Down).Add(f); }
+
+    private bool AnyAhead() {
+        foreach (SortedSet<int> s in new[] { Car, Up, Down }) {
+            SortedSet<int> view = GoingUp ? s.GetViewBetween(Floor + 1, int.MaxValue) : s.GetViewBetween(int.MinValue, Floor - 1);
+            if (view.Count > 0) return true;
+        }
+        return false;
+    }
+    private bool Empty() { return Car.Count == 0 && Up.Count == 0 && Down.Count == 0; }
+
+    public List<int> Run() {
+        List<int> stops = new List<int>();
+        while (!Empty()) {
+            bool served = Car.Remove(Floor);
+            served |= GoingUp ? Up.Remove(Floor) : Down.Remove(Floor);   // only same-direction hall calls
+            if (served) stops.Add(Floor);
+            if (Empty()) break;
+            if (AnyAhead()) Floor += GoingUp ? 1 : -1;
+            else GoingUp = !GoingUp;                                     // LOOK turn, no movement
+        }
+        return stops;
+    }
+
+    static string Show(List<int> l) { return "[" + string.Join(", ", l) + "]"; }
+
+    static void Main() {
+        DirectionalElevator e = new DirectionalElevator(2, true);
+        e.CarCall(8); e.HallCall(5, true); e.HallCall(5, false); e.HallCall(3, false);
+        Console.WriteLine(Show(e.Run()));                   // [5, 8, 5, 3]
+
+        DirectionalElevator idle = new DirectionalElevator(4, false);
+        Console.WriteLine(Show(idle.Run()));                // [] nothing to do
+        idle.HallCall(4, true); idle.HallCall(1, true);     // the up-call at 4 is passed while going down
+        Console.WriteLine(Show(idle.Run()));                // [1, 4]
+    }
 }` }
         ],
       complexity: `<p>O(F · log N) for F floors travelled (each step does O(1) set operations, O(log N) each). For an online version, run one iteration per tick.</p>`,
@@ -10308,7 +12304,7 @@ int main() {
     }
     void pause() { paused = true; }
     void openDoor() { if (paused || phase == 4) doorOpen = true; }
-}`, alt: [{ lang: 'python', code: "class NaiveWasher:\n    def __init__(self):\n        self.phase, self.remaining = 0, 0\n        self.paused, self.door_open = False, False\n        self.durations = [2, 5, 3, 2]\n\n    def tick(self):\n        self.remaining -= 1\n        if self.remaining <= 0 and self.phase < 4:   # forgot \"if paused: return\"\n            self.phase += 1\n            self.remaining = self.durations[self.phase] if self.phase < 4 else 0\n\n    def pause(self): self.paused = True\n    def open_door(self):\n        if self.paused or self.phase == 4: self.door_open = True\n" }, { lang: 'ts', code: "class NaiveWasher {\n  phase = 0; remaining = 0; paused = false; doorOpen = false;\n  durations = [2, 5, 3, 2];\n  tick(): void {\n    if (--this.remaining <= 0 && this.phase < 4) { this.phase++; this.remaining = this.phase < 4 ? this.durations[this.phase] : 0; }  // forgot \"if (paused) return\"\n  }\n  pause(): void { this.paused = true; }\n  openDoor(): void { if (this.paused || this.phase === 4) this.doorOpen = true; }\n}\n" }, { lang: 'cpp', code: "class NaiveWasher {\npublic:\n    int phase = 0, remaining = 0; bool paused = false, doorOpen = false;\n    int durations[4] = {2, 5, 3, 2};\n    void tick() {\n        if (--remaining <= 0 && phase < 4) { phase++; remaining = phase < 4 ? durations[phase] : 0; }  // forgot \"if (paused) return\"\n    }\n    void pause() { paused = true; }\n    void openDoor() { if (paused || phase == 4) doorOpen = true; }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveWasher:\n    def __init__(self):\n        self.phase, self.remaining = 0, 0\n        self.paused, self.door_open = False, False\n        self.durations = [2, 5, 3, 2]\n\n    def tick(self):\n        self.remaining -= 1\n        if self.remaining <= 0 and self.phase < 4:   # forgot \"if paused: return\"\n            self.phase += 1\n            self.remaining = self.durations[self.phase] if self.phase < 4 else 0\n\n    def pause(self): self.paused = True\n    def open_door(self):\n        if self.paused or self.phase == 4: self.door_open = True\n" }, { lang: 'ts', code: "class NaiveWasher {\n  phase = 0; remaining = 0; paused = false; doorOpen = false;\n  durations = [2, 5, 3, 2];\n  tick(): void {\n    if (--this.remaining <= 0 && this.phase < 4) { this.phase++; this.remaining = this.phase < 4 ? this.durations[this.phase] : 0; }  // forgot \"if (paused) return\"\n  }\n  pause(): void { this.paused = true; }\n  openDoor(): void { if (this.paused || this.phase === 4) this.doorOpen = true; }\n}\n" }, { lang: 'cpp', code: "class NaiveWasher {\npublic:\n    int phase = 0, remaining = 0; bool paused = false, doorOpen = false;\n    int durations[4] = {2, 5, 3, 2};\n    void tick() {\n        if (--remaining <= 0 && phase < 4) { phase++; remaining = phase < 4 ? durations[phase] : 0; }  // forgot \"if (paused) return\"\n    }\n    void pause() { paused = true; }\n    void openDoor() { if (paused || phase == 4) doorOpen = true; }\n};\n" }, { lang: 'csharp', code: "class NaiveWasher {\n    public int Phase = 0, Remaining = 0; public bool Paused = false, DoorOpen = false;\n    int[] durations = { 2, 5, 3, 2 };\n    public void Tick() {\n        if (--Remaining <= 0 && Phase < 4) { Phase++; Remaining = Phase < 4 ? durations[Phase] : 0; }  // forgot \"if (Paused) return\"\n    }\n    public void Pause() { Paused = true; }\n    public void OpenDoor() { if (Paused || Phase == 4) DoorOpen = true; }\n}\n" }] } },
     mcq: { q: 'What exactly must PAUSED remember to implement resume correctly?', options: ['The state it was paused from AND the ticks remaining in it', 'Only the original program', 'Nothing, resume restarts the cycle', 'Only the ticks remaining'], answer: 0, explain: 'A history state stores the interrupted sub-state plus its progress so the machine continues exactly where it stopped.' },
     hints: [`<p>Hint 1: Running phases differ only in name, duration and successor → an enum with (duration, next). PAUSED and IDLE/DONE are special.</p>`, `<p>Hint 2: Keep <code>current</code>, <code>remaining</code>, plus <code>resumeTo</code>/<code>resumeRemaining</code> captured on pause. tick() does nothing unless current is a running phase.</p>`, `<p>Hint 3: Door rule = a method on the enum: <code>doorMayOpen()</code> true for IDLE, PAUSED, DONE. Guard start() with "door closed".</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "IDLE -> FILLING (2 ticks)\nFILLING -> WASHING (5 ticks)\nWASHING -> PAUSED\nPAUSED -> WASHING (3 ticks)\nWASHING -> RINSING (3 ticks)\ndoor locked during RINSING\nRINSING -> SPINNING (2 ticks)\nSPINNING -> DONE\ncannot start (DONE, door closed)\ncannot resume\ncannot start (IDLE, door open)\n" }] },
@@ -10610,6 +12606,63 @@ int main() {
     Washer w2;
     w2.openDoor();
     w2.start();  // refused: door open
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+enum Phase { IDLE, FILLING, WASHING, RINSING, SPINNING, DONE, PAUSED }
+
+static class PhaseExt {
+    public static int Ticks(this Phase p) {
+        switch (p) { case Phase.FILLING: return 2; case Phase.WASHING: return 5; case Phase.RINSING: return 3; case Phase.SPINNING: return 2; default: return 0; }
+    }
+    public static Phase Next(this Phase p) {
+        switch (p) { case Phase.FILLING: return Phase.WASHING; case Phase.WASHING: return Phase.RINSING; case Phase.RINSING: return Phase.SPINNING; case Phase.SPINNING: return Phase.DONE; default: return p; }
+    }
+    public static bool Running(this Phase p) { return p.Ticks() > 0; }
+    public static bool DoorMayOpen(this Phase p) { return p == Phase.IDLE || p == Phase.PAUSED || p == Phase.DONE; }
+}
+
+class Washer {
+    private Phase phase = Phase.IDLE, resumeTo;
+    private int remaining, resumeRemaining;
+    private bool doorOpen;
+
+    public void Start() {
+        if (phase != Phase.IDLE || doorOpen) { Console.WriteLine("cannot start (" + phase + ", door " + (doorOpen ? "open" : "closed") + ")"); return; }
+        Go(Phase.FILLING, Phase.FILLING.Ticks());
+    }
+    public void Tick() {
+        if (!phase.Running()) return;                       // paused/idle/done: time does not move
+        if (--remaining == 0) { Phase n = phase.Next(); Go(n, n.Ticks()); }
+    }
+    public void Pause() {
+        if (!phase.Running()) return;
+        resumeTo = phase; resumeRemaining = remaining;      // history
+        Go(Phase.PAUSED, 0);
+    }
+    public void Resume() {
+        if (phase != Phase.PAUSED || doorOpen) { Console.WriteLine("cannot resume"); return; }
+        Go(resumeTo, resumeRemaining);
+    }
+    public void OpenDoor()  { if (phase.DoorMayOpen()) doorOpen = true; else Console.WriteLine("door locked during " + phase); }
+    public void CloseDoor() { doorOpen = false; }
+    private void Go(Phase p, int ticks) { Console.WriteLine(phase + " -> " + p + (ticks > 0 ? " (" + ticks + " ticks)" : "")); phase = p; remaining = ticks; }
+
+    static void Main() {
+        Washer w = new Washer();
+        w.Start();
+        for (int i = 0; i < 4; i++) w.Tick();               // FILLING done, 2 ticks into WASHING
+        w.Pause(); w.OpenDoor(); w.CloseDoor(); w.Resume();  // WASHING (3 ticks)
+        for (int i = 0; i < 4; i++) w.Tick();               // -> RINSING, 1 tick in
+        w.OpenDoor();                                        // refused
+        for (int i = 0; i < 10; i++) w.Tick();              // -> SPINNING -> DONE
+        w.Start();                                           // refused: cycle already finished
+        w.Resume();                                          // refused: not paused
+        Washer w2 = new Washer();
+        w2.OpenDoor();
+        w2.Start();                                          // refused: door open
+    }
 }` }
         ],
       complexity: `<p>O(1) per event and tick. A new program (e.g. "quick wash") = different durations; a new phase = one enum constant.</p>`,
@@ -10629,7 +12682,7 @@ int main() {
         if (approved) dispensed++;            // duplicate callback -> dispensed twice; late callback -> free item
         waiting = false;
     }
-}`, alt: [{ lang: 'python', code: "class NaiveCardVending:\n    def __init__(self):\n        self.waiting, self.dispensed = False, 0\n\n    def pay_by_card(self): self.waiting = True\n\n    def on_auth_result(self, approved):\n        if approved: self.dispensed += 1     # duplicate callback -> dispensed twice; late callback -> free item\n        self.waiting = False\n" }, { lang: 'ts', code: "class NaiveCardVending {\n  waiting = false; dispensed = 0;\n  payByCard(): void { this.waiting = true; }\n  onAuthResult(approved: boolean): void {\n    if (approved) this.dispensed++;          // duplicate callback -> dispensed twice; late callback -> free item\n    this.waiting = false;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveCardVending {\npublic:\n    bool waiting = false; int dispensed = 0;\n    void payByCard() { waiting = true; }\n    void onAuthResult(bool approved) {\n        if (approved) dispensed++;           // duplicate callback -> dispensed twice; late callback -> free item\n        waiting = false;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveCardVending:\n    def __init__(self):\n        self.waiting, self.dispensed = False, 0\n\n    def pay_by_card(self): self.waiting = True\n\n    def on_auth_result(self, approved):\n        if approved: self.dispensed += 1     # duplicate callback -> dispensed twice; late callback -> free item\n        self.waiting = False\n" }, { lang: 'ts', code: "class NaiveCardVending {\n  waiting = false; dispensed = 0;\n  payByCard(): void { this.waiting = true; }\n  onAuthResult(approved: boolean): void {\n    if (approved) this.dispensed++;          // duplicate callback -> dispensed twice; late callback -> free item\n    this.waiting = false;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveCardVending {\npublic:\n    bool waiting = false; int dispensed = 0;\n    void payByCard() { waiting = true; }\n    void onAuthResult(bool approved) {\n        if (approved) dispensed++;           // duplicate callback -> dispensed twice; late callback -> free item\n        waiting = false;\n    }\n};\n" }, { lang: 'csharp', code: "class NaiveCardVending {\n    public bool Waiting; public int Dispensed;\n    public void PayByCard() { Waiting = true; }\n    public void OnAuthResult(bool approved) {\n        if (approved) Dispensed++;            // duplicate callback -> dispensed twice; late callback -> free item\n        Waiting = false;\n    }\n}\n" }] } },
     mcq: { q: 'A gateway retries the same approval callback. What makes the second one harmless?', options: ['Accept a callback only if the machine is AUTHORIZING and authId equals the current pending id; then clear the pending id', 'Use a bigger timeout', 'Synchronize the method only', 'Dispense twice and refund later'], answer: 0, explain: 'Matching on the pending authId plus state makes the transition happen once; after it, the id no longer matches.' },
     hints: [`<p>Hint 1: AUTHORIZING is a real state because the machine waits for an outside answer that may never come. Store <code>pendingAuthId</code> when entering it.</p>`, `<p>Hint 2: onAuthResult: if state != AUTHORIZING or authId != pending → stale/duplicate: if approved, call <code>gateway.voidAuth(authId)</code> (unless it was already captured); return.</p>`, `<p>Hint 3: Make every public method take the machine lock (callbacks come from another thread). Track captured ids in a set so you never void a payment you used.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "dispensing A1 (auth-1)\nduplicate auth-1 ignored\npayment timed out\ngateway: void auth-2\nstale auth-2 voided\nselect first\nbusy\ndeclined, try again\nduplicate auth-3 ignored\ndispensing C3 (auth-4)\nitems dispensed: 2\n" }] },
@@ -10958,6 +13011,85 @@ int main() {
     string a4 = *vm.payByCard();
     vm.onAuthResult(a4, true);
     cout << "items dispensed: " << vm.dispensed() << "\\n";  // 2
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum VState { IDLE, SELECTED, AUTHORIZING, DISPENSING }
+
+delegate void Gateway(string authId);          // VoidAuth(authId)
+
+class CardVending {
+    private VState state = VState.IDLE;
+    private string slot, pendingAuth;
+    private int seq = 0, dispensed = 0;
+    private readonly HashSet<string> captured = new HashSet<string>();
+    private readonly Gateway gateway;
+    private readonly object gate = new object();
+    public CardVending(Gateway g) { gateway = g; }
+
+    public void Select(string s) {
+        lock (gate) {
+            if (state != VState.IDLE && state != VState.SELECTED) { Console.WriteLine("busy"); return; }
+            slot = s; state = VState.SELECTED;
+        }
+    }
+    public string PayByCard() {
+        lock (gate) {
+            if (state != VState.SELECTED) { Console.WriteLine("select first"); return null; }
+            pendingAuth = "auth-" + (++seq);
+            state = VState.AUTHORIZING;
+            return pendingAuth;
+        }
+    }
+    public void OnAuthResult(string authId, bool approved) {
+        lock (gate) {
+            bool current = state == VState.AUTHORIZING && authId == pendingAuth;
+            if (!current) {                                              // duplicate or stale
+                if (approved && !captured.Contains(authId)) { gateway(authId); Console.WriteLine("stale " + authId + " voided"); }
+                else Console.WriteLine("duplicate " + authId + " ignored");
+                return;
+            }
+            pendingAuth = null;
+            if (!approved) { state = VState.SELECTED; Console.WriteLine("declined, try again"); return; }
+            captured.Add(authId);
+            state = VState.DISPENSING;
+            dispensed++;
+            Console.WriteLine("dispensing " + slot + " (" + authId + ")");
+            state = VState.IDLE;
+        }
+    }
+    public void Timeout() {
+        lock (gate) {
+            if (state != VState.AUTHORIZING) return;
+            Console.WriteLine("payment timed out");
+            pendingAuth = null;                                          // a late approval will now be stale
+            state = VState.IDLE;
+        }
+    }
+    public int Dispensed() { lock (gate) return dispensed; }
+
+    static void Main() {
+        CardVending vm = new CardVending(id => Console.WriteLine("gateway: void " + id));
+        vm.Select("A1");
+        string a1 = vm.PayByCard();
+        vm.OnAuthResult(a1, true);
+        vm.OnAuthResult(a1, true);                 // duplicate
+        vm.Select("B2");
+        string a2 = vm.PayByCard();
+        vm.Timeout();
+        vm.OnAuthResult(a2, true);                 // late -> void
+        vm.PayByCard();                            // select first
+        vm.Select("C3");
+        string a3 = vm.PayByCard();
+        vm.Select("D4");                           // busy while authorizing
+        vm.OnAuthResult(a3, false);                // declined -> back to SELECTED
+        vm.OnAuthResult(a3, false);                // duplicate decline
+        string a4 = vm.PayByCard();
+        vm.OnAuthResult(a4, true);
+        Console.WriteLine("items dispensed: " + vm.Dispensed());   // 2
+    }
 }` }
         ],
       complexity: `<p>O(1) per event; the captured-id set grows with sales (prune by age in production).</p>`,
@@ -10975,7 +13107,7 @@ int main() {
     void scan(int minutes) { scanned = true; due = minutes <= 10 ? 0 : 50 + 30 * ((minutes - 1) / 60); }   // ticket reuse not checked
     void pay(int amt) { if (scanned && amt >= due) { paid = true; open = true; } }
     void passed() { open = false; scanned = false; paid = false; }
-}`, alt: [{ lang: 'python', code: "class NaiveGate:\n    def __init__(self):\n        self.scanned = self.paid = self.open = False\n        self.due = 0\n\n    def scan(self, minutes):                 # ticket reuse not checked\n        self.scanned = True\n        self.due = 0 if minutes <= 10 else 50 + 30 * ((minutes - 1) // 60)\n\n    def pay(self, amt):\n        if self.scanned and amt >= self.due: self.paid = self.open = True\n\n    def passed(self): self.open = self.scanned = self.paid = False\n" }, { lang: 'ts', code: "class NaiveGate {\n  scanned = false; paid = false; open = false; due = 0;\n  scan(minutes: number): void { this.scanned = true; this.due = minutes <= 10 ? 0 : 50 + 30 * Math.floor((minutes - 1) / 60); }   // ticket reuse not checked\n  pay(amt: number): void { if (this.scanned && amt >= this.due) { this.paid = true; this.open = true; } }\n  passed(): void { this.open = false; this.scanned = false; this.paid = false; }\n}\n" }, { lang: 'cpp', code: "class NaiveGate {\npublic:\n    bool scanned = false, paid = false, open = false; int due = 0;\n    void scan(int minutes) { scanned = true; due = minutes <= 10 ? 0 : 50 + 30 * ((minutes - 1) / 60); }   // ticket reuse not checked\n    void pay(int amt) { if (scanned && amt >= due) { paid = true; open = true; } }\n    void passed() { open = false; scanned = false; paid = false; }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class NaiveGate:\n    def __init__(self):\n        self.scanned = self.paid = self.open = False\n        self.due = 0\n\n    def scan(self, minutes):                 # ticket reuse not checked\n        self.scanned = True\n        self.due = 0 if minutes <= 10 else 50 + 30 * ((minutes - 1) // 60)\n\n    def pay(self, amt):\n        if self.scanned and amt >= self.due: self.paid = self.open = True\n\n    def passed(self): self.open = self.scanned = self.paid = False\n" }, { lang: 'ts', code: "class NaiveGate {\n  scanned = false; paid = false; open = false; due = 0;\n  scan(minutes: number): void { this.scanned = true; this.due = minutes <= 10 ? 0 : 50 + 30 * Math.floor((minutes - 1) / 60); }   // ticket reuse not checked\n  pay(amt: number): void { if (this.scanned && amt >= this.due) { this.paid = true; this.open = true; } }\n  passed(): void { this.open = false; this.scanned = false; this.paid = false; }\n}\n" }, { lang: 'cpp', code: "class NaiveGate {\npublic:\n    bool scanned = false, paid = false, open = false; int due = 0;\n    void scan(int minutes) { scanned = true; due = minutes <= 10 ? 0 : 50 + 30 * ((minutes - 1) / 60); }   // ticket reuse not checked\n    void pay(int amt) { if (scanned && amt >= due) { paid = true; open = true; } }\n    void passed() { open = false; scanned = false; paid = false; }\n};\n" }, { lang: 'csharp', code: "class NaiveGate {\n    public bool Scanned, Paid, Open; public int Due;\n    public void Scan(int minutes) { Scanned = true; Due = minutes <= 10 ? 0 : 50 + 30 * ((minutes - 1) / 60); }   // ticket reuse not checked\n    public void Pay(int amt) { if (Scanned && amt >= Due) { Paid = true; Open = true; } }\n    public void Passed() { Open = false; Scanned = false; Paid = false; }\n}\n" }] } },
     mcq: { q: 'The fee for a stay of exactly 60 minutes with this pricing is…', options: ['₹50 (one started hour)', '₹80', '₹0', '₹30'], answer: 0, explain: '60 minutes is one started hour: ceil(60/60) = 1 → ₹50. 61 minutes would be ₹80.' },
     hints: [`<p>Hint 1: Fee logic is a pure function (a Strategy) separate from the gate's state machine: <code>fee(minutes)</code> with ceiling division for started hours.</p>`, `<p>Hint 2: States: WAITING accepts scan/lostTicket; TICKET_SCANNED accepts pay/cancel; GATE_OPEN accepts only vehiclePassed. PAID can be skipped by going straight to GATE_OPEN after full payment.</p>`, `<p>Hint 3: Keep a set of used ticket ids (or mark the ticket record) and reject reuse at scan time. Track <code>due</code> in the context; partial payments reduce it.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[TICKET_SCANNED] fee Rs 110\n[TICKET_SCANNED] due Rs 10\n[TICKET_SCANNED] change Rs 10\n[GATE_OPEN] gate open\n[WAITING] gate closed\n[WAITING] ticket already used\n[TICKET_SCANNED] fee Rs 0\n[GATE_OPEN] gate open\n[WAITING] gate closed\n[WAITING] unknown ticket\n[WAITING] nothing to pay\n[WAITING] ALERT: sensor without open gate\n[TICKET_SCANNED] lost ticket fee Rs 500\n[TICKET_SCANNED] finish current exit first\n[TICKET_SCANNED] cancelled, collect your money\n[TICKET_SCANNED] lost ticket fee Rs 500\n[GATE_OPEN] gate open\n[WAITING] gate closed\n" }] },
@@ -11323,6 +13455,81 @@ int main() {
     g.lostTicket();
     g.pay(500);         // exact payment, no ticket to mark used
     g.vehiclePassed();
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum GateState { WAITING, TICKET_SCANNED, GATE_OPEN }
+
+class ExitGate {
+    private GateState state = GateState.WAITING;
+    private readonly Dictionary<string, int> entryMinute = new Dictionary<string, int>();
+    private readonly HashSet<string> used = new HashSet<string>();
+    private readonly Func<int, int> fee;                  // pricing strategy
+    private string ticket;
+    private int due;
+
+    public ExitGate(Func<int, int> fee) { this.fee = fee; }
+    public void Issue(string id, int minute) { entryMinute[id] = minute; }
+
+    public void Scan(string id, int now) {
+        if (state != GateState.WAITING) { Say("finish current exit first"); return; }
+        if (!entryMinute.ContainsKey(id)) { Say("unknown ticket"); return; }
+        if (used.Contains(id)) { Say("ticket already used"); return; }
+        ticket = id;
+        due = fee(now - entryMinute[id]);
+        state = GateState.TICKET_SCANNED;
+        Say("fee Rs " + due);
+        if (due == 0) Open();
+    }
+    public void LostTicket() {
+        if (state != GateState.WAITING) { Say("busy"); return; }
+        ticket = null; due = 500; state = GateState.TICKET_SCANNED;
+        Say("lost ticket fee Rs 500");
+    }
+    public void Pay(int amount) {
+        if (state != GateState.TICKET_SCANNED) { Say("nothing to pay"); return; }
+        due -= amount;
+        if (due > 0) { Say("due Rs " + due); return; }
+        if (due < 0) Say("change Rs " + (-due));
+        Open();
+    }
+    public void Cancel() { if (state == GateState.TICKET_SCANNED) { Say("cancelled, collect your money"); state = GateState.WAITING; } }
+    public void VehiclePassed() {
+        if (state != GateState.GATE_OPEN) { Say("ALERT: sensor without open gate"); return; }
+        state = GateState.WAITING;
+        Say("gate closed");
+    }
+    private void Open() { if (ticket != null) used.Add(ticket); state = GateState.GATE_OPEN; Say("gate open"); }
+    private void Say(string s) { Console.WriteLine("[" + state + "] " + s); }
+
+    public static int StandardFee(int minutes) {
+        if (minutes <= 10) return 0;
+        int hours = (minutes + 59) / 60;                  // started hours
+        return 50 + 30 * (hours - 1);
+    }
+
+    static void Main() {
+        ExitGate g = new ExitGate(StandardFee);
+        g.Issue("T1", 0);
+        g.Scan("T1", 130);          // Rs 110
+        g.Pay(100); g.Pay(20);      // change 10, open
+        g.VehiclePassed();
+        g.Scan("T1", 140);          // already used
+        g.Issue("T2", 100);
+        g.Scan("T2", 105);          // free exit within 10 minutes
+        g.VehiclePassed();
+        g.Scan("T9", 1);            // unknown ticket
+        g.Pay(5);                   // nothing to pay
+        g.VehiclePassed();          // sensor without an open gate
+        g.LostTicket();
+        g.Scan("T1", 1);            // must finish the current exit
+        g.Cancel();
+        g.LostTicket();
+        g.Pay(500);                 // exact payment, no ticket to mark used
+        g.VehiclePassed();
+    }
 }` }
         ],
       complexity: `<p>O(1) per event; O(T) memory for issued/used tickets (expire them daily in production).</p>`,
@@ -11345,7 +13552,7 @@ class GlobalQueueElevators {
     void step() {
         for (int i = 0; i < pos.length && !queue.isEmpty(); i++) pos[i] = queue.poll();   // teleports, FIFO, ignores distance & maintenance
     }
-}`, alt: [{ lang: 'python', code: "from collections import deque\n\nclass GlobalQueueElevators:\n    def __init__(self, n):\n        self.queue = deque()\n        self.pos = [0] * n\n\n    def call(self, floor): self.queue.append(floor)\n\n    def step(self):\n        for i in range(len(self.pos)):\n            if not self.queue: break\n            self.pos[i] = self.queue.popleft()      # teleports, FIFO, ignores distance & maintenance\n" }, { lang: 'ts', code: "class GlobalQueueElevators {\n  private queue: number[] = [];\n  private pos: number[];\n  constructor(n: number) { this.pos = new Array<number>(n).fill(0); }\n  call(floor: number): void { this.queue.push(floor); }\n  step(): void {\n    for (let i = 0; i < this.pos.length && this.queue.length > 0; i++) this.pos[i] = this.queue.shift()!;   // teleports, FIFO, ignores distance & maintenance\n  }\n}\n" }, { lang: 'cpp', code: "class GlobalQueueElevators {\n    deque<int> queue;\n    vector<int> pos;\npublic:\n    GlobalQueueElevators(int n) : pos(n, 0) {}\n    void call(int floor) { queue.push_back(floor); }\n    void step() {\n        for (int i = 0; i < (int)pos.size() && !queue.empty(); i++) { pos[i] = queue.front(); queue.pop_front(); }   // teleports, FIFO, ignores distance & maintenance\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from collections import deque\n\nclass GlobalQueueElevators:\n    def __init__(self, n):\n        self.queue = deque()\n        self.pos = [0] * n\n\n    def call(self, floor): self.queue.append(floor)\n\n    def step(self):\n        for i in range(len(self.pos)):\n            if not self.queue: break\n            self.pos[i] = self.queue.popleft()      # teleports, FIFO, ignores distance & maintenance\n" }, { lang: 'ts', code: "class GlobalQueueElevators {\n  private queue: number[] = [];\n  private pos: number[];\n  constructor(n: number) { this.pos = new Array<number>(n).fill(0); }\n  call(floor: number): void { this.queue.push(floor); }\n  step(): void {\n    for (let i = 0; i < this.pos.length && this.queue.length > 0; i++) this.pos[i] = this.queue.shift()!;   // teleports, FIFO, ignores distance & maintenance\n  }\n}\n" }, { lang: 'cpp', code: "class GlobalQueueElevators {\n    deque<int> queue;\n    vector<int> pos;\npublic:\n    GlobalQueueElevators(int n) : pos(n, 0) {}\n    void call(int floor) { queue.push_back(floor); }\n    void step() {\n        for (int i = 0; i < (int)pos.size() && !queue.empty(); i++) { pos[i] = queue.front(); queue.pop_front(); }   // teleports, FIFO, ignores distance & maintenance\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass GlobalQueueElevators {\n    public readonly Queue<int> Pending = new Queue<int>();\n    public readonly int[] Pos;\n    public GlobalQueueElevators(int n) { Pos = new int[n]; }\n    public void Call(int floor) { Pending.Enqueue(floor); }\n    public void Step() {\n        for (int i = 0; i < Pos.Length && Pending.Count > 0; i++) Pos[i] = Pending.Dequeue();   // teleports, FIFO, ignores distance & maintenance\n    }\n}\n" }] } },
     mcq: { q: 'Which pieces should be swappable Strategies in this design?', options: ['Hall-call dispatch (nearest/zoning) and, optionally, per-car next-stop selection', 'The car states', 'The tick loop', 'The Request value object'], answer: 0, explain: 'What changes by building/time-of-day is the dispatch policy; the car state machine is stable.' },
     hints: [`<p>Hint 1: Classes: <code>Building</code> (owns cars + dispatcher), <code>Car</code> (state machine + sorted stop set + direction), <code>DispatchStrategy</code> (choose car), records for calls. Start with one car working end-to-end.</p>`, `<p>Hint 2: Car.tick by state: IDLE → serve here / pick direction (LOOK); MOVING → move one floor, stop if floor is a stop; DOORS_OPEN → close → IDLE. Cost function: idle → distance; moving toward the caller in the same direction → distance; else distance + 2·F.</p>`, `<p>Hint 3: Make MAINTENANCE return "infinite" cost so the dispatcher skips it. Keep printing in <code>status()</code> only, so tests can assert on state. Run the simulation until all cars are idle.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "7 DOWN -> car2\n1 UP   -> car0\n4 UP   -> car0\nall served after 13 ticks\ncar0@4 IDLE stops=[]\ncar1@5 MAINTENANCE stops=[]\ncar2@0 IDLE stops=[]\nrejected: no car in service\n3 UP   -> car1\n" }] },
@@ -11817,6 +14024,102 @@ int main() {
     catch (const runtime_error& e) { cout << "rejected: " << e.what() << "\\n"; }
     b.maintenance(1, false);  // car1 comes back
     cout << "3 UP   -> car" << b.hallCall(3, true).id << "\\n";  // car1
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum CarMode { IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN, MAINTENANCE }
+sealed class Hall { public readonly int Floor; public readonly bool Up; public Hall(int floor, bool up) { Floor = floor; Up = up; } }
+
+class Lift {
+    public readonly int Id, Top;
+    public int Floor;
+    public CarMode Mode = CarMode.IDLE;
+    public bool GoingUp = true;
+    public readonly SortedSet<int> Stops = new SortedSet<int>();
+    public Lift(int id, int floor, int top) { Id = id; Floor = floor; Top = top; }
+
+    public void AddStop(int f) { if (Mode != CarMode.MAINTENANCE) Stops.Add(f); }
+
+    public int Cost(Hall h) {
+        if (Mode == CarMode.MAINTENANCE) return int.MaxValue;
+        int d = Math.Abs(Floor - h.Floor);
+        bool toward = (Mode == CarMode.MOVING_UP && h.Up && h.Floor >= Floor)
+                || (Mode == CarMode.MOVING_DOWN && !h.Up && h.Floor <= Floor);
+        return (Mode == CarMode.IDLE || Mode == CarMode.DOORS_OPEN || toward) ? d + Stops.Count : d + 2 * Top + Stops.Count;
+    }
+
+    public void Tick() {
+        switch (Mode) {
+            case CarMode.IDLE: {
+                if (Stops.Remove(Floor)) { Mode = CarMode.DOORS_OPEN; return; }
+                bool above = Stops.GetViewBetween(Floor + 1, int.MaxValue).Count > 0, below = Stops.GetViewBetween(int.MinValue, Floor - 1).Count > 0;
+                if (above && (GoingUp || !below)) { GoingUp = true; Mode = CarMode.MOVING_UP; }
+                else if (below) { GoingUp = false; Mode = CarMode.MOVING_DOWN; }
+                break;
+            }
+            case CarMode.MOVING_UP:
+            case CarMode.MOVING_DOWN:
+                Floor += Mode == CarMode.MOVING_UP ? 1 : -1;
+                if (Stops.Remove(Floor)) Mode = CarMode.DOORS_OPEN;
+                break;
+            case CarMode.DOORS_OPEN: Mode = CarMode.IDLE; break;
+            case CarMode.MAINTENANCE: break;
+        }
+    }
+    public override string ToString() { return "car" + Id + "@" + Floor + " " + Mode + " stops=[" + string.Join(", ", Stops) + "]"; }
+}
+
+interface IDispatchStrategy { Lift Choose(List<Lift> cars, Hall h); }
+
+class CostDispatch : IDispatchStrategy {
+    public Lift Choose(List<Lift> cars, Hall h) {
+        Lift best = null;
+        foreach (Lift c in cars) if (best == null || c.Cost(h) < best.Cost(h)) best = c;   // ties -> lower id
+        return best == null || best.Cost(h) == int.MaxValue ? null : best;
+    }
+}
+
+class LiftBuilding {
+    private readonly List<Lift> cars = new List<Lift>();
+    private IDispatchStrategy strategy = new CostDispatch();
+    public LiftBuilding(int top, params int[] starts) { for (int i = 0; i < starts.Length; i++) cars.Add(new Lift(i, starts[i], top)); }
+
+    public void SetStrategy(IDispatchStrategy s) { strategy = s; }
+    public Lift HallCall(int floor, bool up) {
+        Lift c = strategy.Choose(cars, new Hall(floor, up));
+        if (c == null) throw new InvalidOperationException("no car in service");
+        c.AddStop(floor);
+        return c;
+    }
+    public void CarCall(int car, int floor) { cars[car].AddStop(floor); }
+    public void Maintenance(int car, bool on) {
+        Lift c = cars[car];
+        if (on) { c.Stops.Clear(); c.Mode = CarMode.MAINTENANCE; } else c.Mode = CarMode.IDLE;
+    }
+    public void TickAll() { foreach (Lift c in cars) c.Tick(); }
+    public bool AllIdle() { return cars.All(c => c.Stops.Count == 0 && (c.Mode == CarMode.IDLE || c.Mode == CarMode.MAINTENANCE)); }
+    public void Status() { foreach (Lift c in cars) Console.WriteLine(c); }
+
+    static void Main() {
+        LiftBuilding b = new LiftBuilding(9, 0, 5, 9);
+        b.Maintenance(1, true);                            // car1 out of service before the calls
+        Console.WriteLine("7 DOWN -> car" + b.HallCall(7, false).Id);   // car2 (car1 skipped)
+        Console.WriteLine("1 UP   -> car" + b.HallCall(1, true).Id);    // car0
+        Console.WriteLine("4 UP   -> car" + b.HallCall(4, true).Id);    // car0
+        b.CarCall(2, 0);
+        int t = 0;
+        do { b.TickAll(); t++; } while (!b.AllIdle() && t < 100);
+        Console.WriteLine("all served after " + t + " ticks");
+        b.Status();
+        b.Maintenance(0, true); b.Maintenance(2, true);    // every car out of service
+        try { b.HallCall(3, true); }
+        catch (InvalidOperationException e) { Console.WriteLine("rejected: " + e.Message); }
+        b.Maintenance(1, false);                            // car1 comes back
+        Console.WriteLine("3 UP   -> car" + b.HallCall(3, true).Id);    // car1
+    }
 }` }
         ],
       complexity: `<p>Dispatch O(N) per hall call; each tick O(N log S). Simulation of T ticks: O(T · N log S).</p>`,
@@ -11837,7 +14140,7 @@ int main() {
             debit(amt);                                             // response "lost" -> retry -> charged again
         }
     }
-}`, alt: [{ lang: 'python', code: "class RetryWithoutId:\n    def __init__(self):\n        self.balance = 10_000\n\n    def debit(self, amt):                            # not idempotent\n        self.balance -= amt\n        return True\n\n    def withdraw(self, amt):\n        for _ in range(3):\n            self.debit(amt)                          # response \"lost\" -> retry -> charged again\n" }, { lang: 'ts', code: "class RetryWithoutId {\n  balance = 10_000;\n  debit(amt: number): boolean { this.balance -= amt; return true; }      // not idempotent\n  withdraw(amt: number): void {\n    for (let i = 0; i < 3; i++) {\n      this.debit(amt);                                                    // response \"lost\" -> retry -> charged again\n    }\n  }\n}\n" }, { lang: 'cpp', code: "class RetryWithoutId {\npublic:\n    long long balance = 10'000;\n    bool debit(long long amt) { balance -= amt; return true; }      // not idempotent\n    void withdraw(long long amt) {\n        for (int i = 0; i < 3; i++) {\n            debit(amt);                                              // response \"lost\" -> retry -> charged again\n        }\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class RetryWithoutId:\n    def __init__(self):\n        self.balance = 10_000\n\n    def debit(self, amt):                            # not idempotent\n        self.balance -= amt\n        return True\n\n    def withdraw(self, amt):\n        for _ in range(3):\n            self.debit(amt)                          # response \"lost\" -> retry -> charged again\n" }, { lang: 'ts', code: "class RetryWithoutId {\n  balance = 10_000;\n  debit(amt: number): boolean { this.balance -= amt; return true; }      // not idempotent\n  withdraw(amt: number): void {\n    for (let i = 0; i < 3; i++) {\n      this.debit(amt);                                                    // response \"lost\" -> retry -> charged again\n    }\n  }\n}\n" }, { lang: 'cpp', code: "class RetryWithoutId {\npublic:\n    long long balance = 10'000;\n    bool debit(long long amt) { balance -= amt; return true; }      // not idempotent\n    void withdraw(long long amt) {\n        for (int i = 0; i < 3; i++) {\n            debit(amt);                                              // response \"lost\" -> retry -> charged again\n        }\n    }\n};\n" }, { lang: 'csharp', code: "class RetryWithoutId {\n    public long Balance = 10000;\n    public bool Debit(long amt) { Balance -= amt; return true; }      // not idempotent\n    public void Withdraw(long amt) {\n        for (int i = 0; i < 3; i++) {\n            Debit(amt);                                                 // response \"lost\" -> retry -> charged again\n        }\n    }\n}\n" }] } },
     mcq: { q: 'The ATM never received any reply to debit(T9). What is the only safe action before showing "transaction failed"?', options: ['Send reverse(T9) (retrying until acknowledged) and do not dispense', 'Dispense anyway, the debit probably worked', 'Retry with a new id T10', 'Do nothing; the bank will notice'], answer: 0, explain: 'Unknown outcome must be resolved to a known one. An idempotent reversal is safe whether or not the debit happened.' },
     hints: [`<p>Hint 1: Bank keeps <code>Map&lt;txnId, status&gt;</code> (DEBITED / REVERSED). debit on a known id returns the stored outcome; reverse on DEBITED restores money; reverse on an unknown id stores a REVERSED tombstone so a late debit is refused.</p>`, `<p>Hint 2: Wrap calls in a fake <code>Network</code> that randomly drops the request (bank never sees it), drops the response (bank applied it), or duplicates the request.</p>`, `<p>Hint 3: ATM: generate txnId once; try debit up to 3 times; approved → dispense; no answer → loop reverse(txnId) until acknowledged. Then check the invariant after 10,000 random runs.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "true true balance 700\nafter reverse 1000, late retry false\ndebit after early reverse: false balance 1000\noverdraw: false\ninvariant violations in 2000 runs: 0\nnaive bank breaks the invariant: true\n" }] },
@@ -12331,6 +14634,122 @@ int main() {
     cout << "overdraw: " << b.debit("Z", 5'000) << "\\n";                                           // false
     cout << "invariant violations in 2000 runs: " << violations(true) << "\\n";                    // 0
     cout << "naive bank breaks the invariant: " << (violations(false) > 0) << "\\n";               // true
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IBank {
+    bool Debit(string id, long amt);
+    void Reverse(string id, long amt);
+    long Balance();
+}
+
+/// Naive bank: no transaction ids remembered, so a retry or a duplicate charges again.
+class NaiveBank : IBank {
+    private long balance;
+    private readonly object gate = new object();
+    public NaiveBank(long balance) { this.balance = balance; }
+    public bool Debit(string id, long amt) { lock (gate) { if (balance < amt) return false; balance -= amt; return true; } }
+    public void Reverse(string id, long amt) { lock (gate) balance += amt; }
+    public long Balance() { lock (gate) return balance; }
+}
+
+class IdemBank : IBank {
+    enum T { DEBITED, REVERSED }
+    public long balance;
+    private readonly Dictionary<string, T> txns = new Dictionary<string, T>();
+    private readonly object gate = new object();
+    public IdemBank(long balance) { this.balance = balance; }
+    public long Balance() { lock (gate) return balance; }
+
+    public bool Debit(string id, long amt) {
+        lock (gate) {
+            T t;
+            if (txns.TryGetValue(id, out t)) {
+                if (t == T.DEBITED) return true;             // duplicate: same answer, no new charge
+                return false;                                // tombstone: reversal came first
+            }
+            if (balance < amt) return false;
+            balance -= amt;
+            txns[id] = T.DEBITED;
+            return true;
+        }
+    }
+    public void Reverse(string id, long amt) {
+        lock (gate) {
+            T t;
+            if (txns.TryGetValue(id, out t) && t == T.DEBITED) balance += amt;
+            txns[id] = T.REVERSED;                           // also a tombstone for unknown ids
+        }
+    }
+}
+
+/// Fault injection: request lost, response lost, or duplicated.
+class FlakyNet {
+    private readonly Random rnd;
+    public FlakyNet(int seed) { rnd = new Random(seed); }
+    /// null = no answer came back (request or response lost)
+    public bool? CallDebit(IBank bank, string id, long amt) {
+        int r = rnd.Next(10);
+        if (r == 0) return null;                                     // request lost
+        bool res = bank.Debit(id, amt);
+        if (r == 1) bank.Debit(id, amt);                             // duplicated request
+        if (r == 2) return null;                                     // response lost (bank applied it!)
+        return res;
+    }
+    public bool CallReverse(IBank bank, string id, long amt) {
+        int r = rnd.Next(10);
+        if (r == 0) return false;                                    // request lost
+        bank.Reverse(id, amt);
+        return r != 1;                                               // r == 1: ack lost
+    }
+}
+
+class SafeAtm {
+    private int seq = 0;
+    public long Dispensed = 0;
+
+    public bool Withdraw(IBank bank, FlakyNet net, long amt) {
+        string id = "T" + (++seq);                                   // generated once, reused on retries
+        for (int attempt = 0; attempt < 3; attempt++) {
+            bool? r = net.CallDebit(bank, id, amt);
+            if (r != null) {
+                if (!r.Value) return false;                          // declined: nothing to undo
+                Dispensed += amt;                                    // dispense only after confirmed approval
+                return true;
+            }
+        }
+        while (!net.CallReverse(bank, id, amt)) { }                  // unknown outcome -> reverse until acked
+        return false;
+    }
+
+    /// How many of 2000 fault-injected runs end with dispensed + balance != 100000.
+    static int Violations(bool idempotent) {
+        int violations = 0;
+        for (int seed = 0; seed < 2000; seed++) {
+            IBank bank = idempotent ? (IBank)new IdemBank(100000) : new NaiveBank(100000);
+            FlakyNet net = new FlakyNet(seed);
+            SafeAtm atm = new SafeAtm();
+            for (int i = 0; i < 20; i++) atm.Withdraw(bank, net, 1000);
+            if (atm.Dispensed + bank.Balance() != 100000) violations++;
+        }
+        return violations;
+    }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        IdemBank b = new IdemBank(1000);
+        Console.WriteLine(B(b.Debit("X", 300)) + " " + B(b.Debit("X", 300)) + " balance " + b.balance);       // true true balance 700
+        b.Reverse("X", 300);
+        Console.WriteLine("after reverse " + b.balance + ", late retry " + B(b.Debit("X", 300)));           // 1000, false
+        b.Reverse("Y", 300);                                                                                 // reversal arrives before the debit
+        Console.WriteLine("debit after early reverse: " + B(b.Debit("Y", 300)) + " balance " + b.balance);  // false 1000
+        Console.WriteLine("overdraw: " + B(b.Debit("Z", 5000)));                                            // false
+        Console.WriteLine("invariant violations in 2000 runs: " + Violations(true));                       // 0
+        Console.WriteLine("naive bank breaks the invariant: " + B(Violations(false) > 0));                  // true
+    }
 }` }
         ],
       complexity: `<p>O(1) expected per withdrawal (bounded retries; the reversal loop ends with probability 1). Bank memory O(transactions) — expire ids after the retry window.</p>`,
@@ -12352,7 +14771,7 @@ class RacyVending {
         if (s > 0) { stock.put(slot, s - 1); cash += price; return true; }   // check-then-act + lost update
         return false;
     }
-}`, alt: [{ lang: 'python', code: "class RacyVending:\n    def __init__(self):\n        self.stock = {\"A1\": 3}\n        self.cash = 0\n\n    def buy(self, slot, price):\n        s = self.stock[slot]\n        if s > 0:                                    # check-then-act + lost update\n            self.stock[slot] = s - 1\n            self.cash += price\n            return True\n        return False\n" }, { lang: 'ts', code: "class RacyVending {\n  stock = new Map<string, number>([[\"A1\", 3]]);\n  cash = 0;\n  buy(slot: string, price: number): boolean {\n    const s = this.stock.get(slot)!;\n    if (s > 0) { this.stock.set(slot, s - 1); this.cash += price; return true; }   // check-then-act + lost update\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class RacyVending {\npublic:\n    unordered_map<string, int> stock{{\"A1\", 3}};\n    long long cash = 0;\n    bool buy(const string& slot, int price) {\n        int s = stock[slot];\n        if (s > 0) { stock[slot] = s - 1; cash += price; return true; }   // check-then-act + lost update\n        return false;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class RacyVending:\n    def __init__(self):\n        self.stock = {\"A1\": 3}\n        self.cash = 0\n\n    def buy(self, slot, price):\n        s = self.stock[slot]\n        if s > 0:                                    # check-then-act + lost update\n            self.stock[slot] = s - 1\n            self.cash += price\n            return True\n        return False\n" }, { lang: 'ts', code: "class RacyVending {\n  stock = new Map<string, number>([[\"A1\", 3]]);\n  cash = 0;\n  buy(slot: string, price: number): boolean {\n    const s = this.stock.get(slot)!;\n    if (s > 0) { this.stock.set(slot, s - 1); this.cash += price; return true; }   // check-then-act + lost update\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class RacyVending {\npublic:\n    unordered_map<string, int> stock{{\"A1\", 3}};\n    long long cash = 0;\n    bool buy(const string& slot, int price) {\n        int s = stock[slot];\n        if (s > 0) { stock[slot] = s - 1; cash += price; return true; }   // check-then-act + lost update\n        return false;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass RacyVending {\n    public readonly Dictionary<string, int> Stock = new Dictionary<string, int> { { \"A1\", 3 } };\n    public long Cash = 0;\n    public bool Buy(string slot, int price) {\n        int s = Stock[slot];\n        if (s > 0) { Stock[slot] = s - 1; Cash += price; return true; }   // check-then-act + lost update\n        return false;\n    }\n}\n" }] } },
     mcq: { q: 'Why is a single lock around buy/restock/collect an acceptable answer here?', options: ['Each operation is microseconds and the invariant spans stock AND cash, so one lock keeps them consistent with negligible contention', 'Locks are always faster than CAS', 'Because the plain map is thread-safe by itself', 'Only one thread can ever call the machine'], answer: 0, explain: 'When an invariant spans several fields and critical sections are tiny, one lock is the simplest correct design.' },
     hints: [`<p>Hint 1: Identify the invariant: <code>cash == Σ sales × price</code> and <code>stock ≥ 0</code>. Anything touching these fields together must be atomic.</p>`, `<p>Hint 2: Use one lock (<code>ReentrantLock</code>, <code>threading.Lock</code>, <code>std::mutex</code>) for buy/restock/collect. Do the slow work (motor, printing) <b>outside</b> the lock after reserving the item.</p>`, `<p>Hint 3: Stress test: a thread pool and a start latch to release all threads together; count successes with an atomic counter; assert successes ≤ total stock and cash == successes × price.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "sold between 3 and 5: true\ncash matches sales: true\nno such slot\ninsufficient\nok, change 5\nsold out\ncash 15 sales 1\nok, change 0\ncollected 30, cash now 0\n" }] },
@@ -12651,6 +15070,71 @@ int main() {
     cout << v2.buy("B1", 15) << "\\n";  // ok, change 0
     long long collected = v2.collectCash();
     cout << "collected " << collected << ", cash now " << v2.cash() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+class SafeVending {
+    private readonly object gate = new object();
+    private readonly Dictionary<string, int> stock = new Dictionary<string, int>(), price = new Dictionary<string, int>();
+    private long cash = 0, sales = 0;
+
+    public void AddSlot(string slot, int priceRs, int qty) { lock (gate) { price[slot] = priceRs; stock[slot] = qty; } }
+
+    public string Buy(string slot, int paidRs) {
+        int change;
+        lock (gate) {
+            int p;
+            if (!price.TryGetValue(slot, out p)) return "no such slot";
+            if (stock[slot] == 0) return "sold out";
+            if (paidRs < p) return "insufficient";
+            stock[slot]--;                                  // reserve + take money atomically
+            cash += p;
+            sales++;
+            change = paidRs - p;
+        }
+        DropItem(slot);                                     // slow hardware work outside the lock
+        return "ok, change " + change;
+    }
+    public void Restock(string slot, int qty) { lock (gate) { int q; stock.TryGetValue(slot, out q); stock[slot] = q + qty; } }
+    public long CollectCash() { lock (gate) { long c = cash; cash = 0; return c; } }
+    public long Cash()  { lock (gate) return cash; }
+    public long Sales() { lock (gate) return sales; }
+    private void DropItem(string slot) { Thread.SpinWait(1); }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        SafeVending vm = new SafeVending();
+        vm.AddSlot("A1", 20, 3);
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        int ok = 0;
+        List<Thread> threads = new List<Thread>();
+        for (int i = 0; i < 50; i++) {
+            Thread t = new Thread(() => { go.Wait(); if (vm.Buy("A1", 20).StartsWith("ok")) Interlocked.Increment(ref ok); });
+            threads.Add(t); t.Start();
+        }
+        Thread op = new Thread(() => { go.Wait(); vm.Restock("A1", 2); });   // operator mid-burst
+        threads.Add(op); op.Start();
+        go.Set();
+        foreach (Thread t in threads) t.Join();
+        int sold = ok;
+        Console.WriteLine("sold between 3 and 5: " + B(sold >= 3 && sold <= 5));              // depends on when the restock lands
+        Console.WriteLine("cash matches sales: " + B(vm.Cash() == 20L * sold && vm.Sales() == sold));
+
+        SafeVending v2 = new SafeVending();
+        v2.AddSlot("B1", 15, 1);
+        Console.WriteLine(v2.Buy("Z9", 50));      // no such slot
+        Console.WriteLine(v2.Buy("B1", 10));      // insufficient
+        Console.WriteLine(v2.Buy("B1", 20));      // ok, change 5
+        Console.WriteLine(v2.Buy("B1", 20));      // sold out
+        Console.WriteLine("cash " + v2.Cash() + " sales " + v2.Sales());
+        v2.Restock("B1", 1);
+        Console.WriteLine(v2.Buy("B1", 15));      // ok, change 0
+        Console.WriteLine("collected " + v2.CollectCash() + ", cash now " + v2.Cash());
+    }
 }` }
         ],
       complexity: `<p>O(1) per operation inside a tiny critical section; contention is negligible at vending-machine rates. Holding no lock during the physical drop keeps the machine responsive.</p>`,
@@ -12672,7 +15156,7 @@ int main() {
         else if (state.equals("MOVING") && e.equals("FIRE")) state = "EMERGENCY";
         // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open
     }
-}`, alt: [{ lang: 'python', code: "class FlatElevator:\n    def __init__(self):\n        self.state = \"IDLE\"\n\n    def on(self, e):\n        if self.state == \"IDLE\" and e == \"CALL\": self.state = \"MOVING\"\n        elif self.state == \"IDLE\" and e == \"FIRE\": self.state = \"EMERGENCY\"\n        elif self.state == \"MOVING\" and e == \"ARRIVE\": self.state = \"DOORS_OPEN\"\n        elif self.state == \"MOVING\" and e == \"FIRE\": self.state = \"EMERGENCY\"\n        # DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n" }, { lang: 'ts', code: "class FlatElevator {\n  state = \"IDLE\";\n  on(e: string): void {\n    if (this.state === \"IDLE\" && e === \"CALL\") this.state = \"MOVING\";\n    else if (this.state === \"IDLE\" && e === \"FIRE\") this.state = \"EMERGENCY\";\n    else if (this.state === \"MOVING\" && e === \"ARRIVE\") this.state = \"DOORS_OPEN\";\n    else if (this.state === \"MOVING\" && e === \"FIRE\") this.state = \"EMERGENCY\";\n    // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n  }\n}\n" }, { lang: 'cpp', code: "class FlatElevator {\npublic:\n    string state = \"IDLE\";\n    void on(const string& e) {\n        if (state == \"IDLE\" && e == \"CALL\") state = \"MOVING\";\n        else if (state == \"IDLE\" && e == \"FIRE\") state = \"EMERGENCY\";\n        else if (state == \"MOVING\" && e == \"ARRIVE\") state = \"DOORS_OPEN\";\n        else if (state == \"MOVING\" && e == \"FIRE\") state = \"EMERGENCY\";\n        // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class FlatElevator:\n    def __init__(self):\n        self.state = \"IDLE\"\n\n    def on(self, e):\n        if self.state == \"IDLE\" and e == \"CALL\": self.state = \"MOVING\"\n        elif self.state == \"IDLE\" and e == \"FIRE\": self.state = \"EMERGENCY\"\n        elif self.state == \"MOVING\" and e == \"ARRIVE\": self.state = \"DOORS_OPEN\"\n        elif self.state == \"MOVING\" and e == \"FIRE\": self.state = \"EMERGENCY\"\n        # DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n" }, { lang: 'ts', code: "class FlatElevator {\n  state = \"IDLE\";\n  on(e: string): void {\n    if (this.state === \"IDLE\" && e === \"CALL\") this.state = \"MOVING\";\n    else if (this.state === \"IDLE\" && e === \"FIRE\") this.state = \"EMERGENCY\";\n    else if (this.state === \"MOVING\" && e === \"ARRIVE\") this.state = \"DOORS_OPEN\";\n    else if (this.state === \"MOVING\" && e === \"FIRE\") this.state = \"EMERGENCY\";\n    // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n  }\n}\n" }, { lang: 'cpp', code: "class FlatElevator {\npublic:\n    string state = \"IDLE\";\n    void on(const string& e) {\n        if (state == \"IDLE\" && e == \"CALL\") state = \"MOVING\";\n        else if (state == \"IDLE\" && e == \"FIRE\") state = \"EMERGENCY\";\n        else if (state == \"MOVING\" && e == \"ARRIVE\") state = \"DOORS_OPEN\";\n        else if (state == \"MOVING\" && e == \"FIRE\") state = \"EMERGENCY\";\n        // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n    }\n};\n" }, { lang: 'csharp', code: "class FlatElevator {\n    public string State = \"IDLE\";\n    public void On(string e) {\n        if (State == \"IDLE\" && e == \"CALL\") State = \"MOVING\";\n        else if (State == \"IDLE\" && e == \"FIRE\") State = \"EMERGENCY\";\n        else if (State == \"MOVING\" && e == \"ARRIVE\") State = \"DOORS_OPEN\";\n        else if (State == \"MOVING\" && e == \"FIRE\") State = \"EMERGENCY\";\n        // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n    }\n}\n" }] } },
     mcq: { q: 'Leaving MOVING (child of OPERATIONAL) for EMERGENCY (sibling of OPERATIONAL). Which exit/entry order is correct?', options: ['exit MOVING, exit OPERATIONAL, enter EMERGENCY', 'enter EMERGENCY, exit MOVING', 'exit OPERATIONAL only', 'exit MOVING, enter EMERGENCY (OPERATIONAL untouched)'], answer: 0, explain: 'Exit from the innermost state up to (not including) the lowest common ancestor, then enter downward to the target.' },
     hints: [`<p>Hint 1: <code>HState</code> has a name, a parent, and a <code>Map&lt;String, String&gt;</code> of event → target. Dispatch walks from current up the parent chain until some state handles the event.</p>`, `<p>Hint 2: Transition: compute the ancestor chain of source and target; the lowest common ancestor (LCA) is the first shared state. Exit states from current up to the LCA (exclusive), then enter from just below the LCA down to the target.</p>`, `<p>Hint 3: If the target is a composite state (OPERATIONAL), drill into its initial child (IDLE). Log every entry/exit so the test can assert the order.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "exit IDLE\nenter MOVING\n  -> now MOVING\nexit MOVING\nexit OPERATIONAL\nenter EMERGENCY\n  -> now EMERGENCY\nunhandled CALL in EMERGENCY\n  -> now EMERGENCY\nexit EMERGENCY\nenter OPERATIONAL\nenter IDLE\n  -> now IDLE\nexit IDLE\nenter MOVING\n  -> now MOVING\nexit MOVING\nenter DOORS_OPEN\n  -> now DOORS_OPEN\nexit DOORS_OPEN\nexit OPERATIONAL\nenter EMERGENCY\n  -> now EMERGENCY\nexit EMERGENCY\nenter OPERATIONAL\nenter IDLE\n  -> now IDLE\nunhandled RESET in IDLE\n  -> now IDLE\n" }] },
@@ -12961,6 +15445,70 @@ int main() {
         m.log.push_back("  -> now " + m.current()->name);
     }
     for (const auto& line : m.log) cout << line << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class HState {
+    public readonly string Name;
+    public readonly HState Parent;
+    public HState InitialChild;
+    public readonly Dictionary<string, HState> On = new Dictionary<string, HState>();
+    public HState(string name, HState parent) { Name = name; Parent = parent; }
+    public List<HState> PathFromRoot() {
+        LinkedList<HState> p = new LinkedList<HState>();
+        for (HState s = this; s != null; s = s.Parent) p.AddFirst(s);
+        return new List<HState>(p);
+    }
+    public override string ToString() { return Name; }
+}
+
+class Hsm {
+    private HState current;
+    public readonly List<string> Log = new List<string>();
+    public Hsm(HState start) { current = Drill(start, null); }
+
+    public void Dispatch(string ev) {
+        for (HState s = current; s != null; s = s.Parent) {          // bubble up like an exception
+            HState target;
+            if (s.On.TryGetValue(ev, out target)) { Transition(target); return; }
+        }
+        Log.Add("unhandled " + ev + " in " + current);
+    }
+
+    private void Transition(HState target) {
+        List<HState> from = current.PathFromRoot(), to = target.PathFromRoot();
+        int i = 0;
+        while (i < from.Count && i < to.Count && from[i] == to[i] && to[i] != target) i++;   // LCA depth
+        for (int k = from.Count - 1; k >= i; k--) Log.Add("exit " + from[k]);
+        for (int k = i; k < to.Count; k++) Log.Add("enter " + to[k]);
+        current = Drill(target, Log);
+    }
+    private HState Drill(HState s, List<string> l) {               // composite target -> initial child
+        while (s.InitialChild != null) { s = s.InitialChild; if (l != null) l.Add("enter " + s); }
+        return s;
+    }
+    public HState Current() { return current; }
+
+    static void Main() {
+        HState root = new HState("ELEVATOR", null);
+        HState op = new HState("OPERATIONAL", root), em = new HState("EMERGENCY", root);
+        HState idle = new HState("IDLE", op), moving = new HState("MOVING", op), doors = new HState("DOORS_OPEN", op);
+        root.InitialChild = op; op.InitialChild = idle;
+        idle.On["CALL"] = moving;
+        moving.On["ARRIVE"] = doors;
+        doors.On["CLOSE"] = idle;
+        op.On["FIRE"] = em;                                         // written ONCE for all children
+        em.On["RESET"] = op;
+
+        Hsm m = new Hsm(root);
+        foreach (string e in new[] { "CALL", "FIRE", "CALL", "RESET", "CALL", "ARRIVE", "FIRE", "RESET", "RESET" }) {
+            m.Dispatch(e);
+            m.Log.Add("  -> now " + m.Current());
+        }
+        foreach (string line in m.Log) Console.WriteLine(line);
+    }
 }` }
         ],
       complexity: `<p>Dispatch O(depth); transition O(depth) for the LCA walk. Adding a child of OPERATIONAL inherits FIRE for free — O(1) new transitions instead of O(children).</p>`,

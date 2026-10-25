@@ -371,7 +371,41 @@ struct AdminTool {  // another team, another copy of the rules...
         o.status = "CANCELLED";  // forgot the SHIPPED rule!
         MySqlOrderDao().save(o);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+// BRUTE FORCE: tightly coupled + anemic. Compiles, works on day one, hurts on day thirty.
+class Order {                                   // anemic: data only, no protection
+    public string Id { get; set; }
+    public string Status { get; set; } = "NEW";
+    public double Total { get; set; }
+}
+class MySqlOrderDao { public void Save(Order o) { Console.WriteLine("INSERT INTO orders ... " + o.Id); } }
+class StripeClient  { public bool Charge(double amt) { Console.WriteLine("Stripe charge " + amt); return true; } }
+class SmtpMailer    { public void Send(string to, string body) { Console.WriteLine("SMTP to " + to + ": " + body); } }
+
+class OrderService {
+    private readonly MySqlOrderDao dao = new MySqlOrderDao();   // welded to MySQL
+    private readonly StripeClient stripe = new StripeClient();   // welded to Stripe
+    private readonly SmtpMailer mailer = new SmtpMailer();       // welded to SMTP
+
+    public void Place(Order o) {
+        if (o.Total <= 0) throw new InvalidOperationException("empty order");  // rule copy #1
+        stripe.Charge(o.Total);
+        o.Status = "PAID";
+        dao.Save(o);
+        mailer.Send("customer@example.com", "Order " + o.Id + " paid");
+    }
+    public void Cancel(Order o) {
+        if (o.Status == "SHIPPED") throw new InvalidOperationException("too late"); // rule copy #1
+        o.Status = "CANCELLED";
+        dao.Save(o);
+    }
+}
+class AdminTool {                                  // another team, another copy of the rules...
+    public void ForceCancel(Order o) { o.Status = "CANCELLED"; new MySqlOrderDao().Save(o); } // forgot the SHIPPED rule!
+}` }
         ] }, { lang: 'java', code: `// THE FIX (preview of the whole module): rich entity + ports + constructor injection.
 interface PaymentPort { boolean charge(String orderId, long paise); }
 interface OrderRepository { void save(Order o); }
@@ -649,6 +683,57 @@ int main() {  // composition root: the ONLY place that picks brands
         fakes.log.push_back(string("blocked: ") + e.what());
     }
     for (const auto& line : fakes.log) cout << line << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// THE FIX (preview of the whole module): rich entity + ports + constructor injection.
+interface IPaymentPort { bool Charge(string orderId, long paise); }
+interface IOrderRepository { void Save(Order o); }
+interface INotifier { void Notify(string orderId, string message); }
+
+enum Status { NEW, PAID, SHIPPED, CANCELLED }
+
+class Order {                                      // rich: rules live HERE, once
+    private readonly string id; private readonly long totalPaise; private Status status = Status.NEW;
+    public Order(string id, long totalPaise) {
+        if (totalPaise <= 0) throw new ArgumentException("empty order");
+        this.id = id; this.totalPaise = totalPaise;
+    }
+    public void MarkPaid() { Require(status == Status.NEW, "only NEW orders can be paid"); status = Status.PAID; }
+    public void Ship()     { Require(status == Status.PAID, "only PAID orders ship");      status = Status.SHIPPED; }
+    public void Cancel()   { Require(status != Status.SHIPPED, "cannot cancel after shipping"); status = Status.CANCELLED; }
+    public string Id() { return id; } public long TotalPaise() { return totalPaise; } public Status CurrentStatus() { return status; }
+    private static void Require(bool ok, string msg) { if (!ok) throw new InvalidOperationException(msg); }
+}
+
+class OrderService {                               // knows only interfaces: no 'new' of infrastructure
+    private readonly IPaymentPort payments; private readonly IOrderRepository repo; private readonly INotifier notifier;
+    public OrderService(IPaymentPort p, IOrderRepository r, INotifier n) { payments = p; repo = r; notifier = n; }
+    public void Place(Order o) {
+        if (!payments.Charge(o.Id(), o.TotalPaise())) throw new InvalidOperationException("payment declined");
+        o.MarkPaid();                              // the entity enforces its own rule
+        repo.Save(o);
+        notifier.Notify(o.Id(), "paid");
+    }
+}
+
+// Fakes for a test: each port gets a tiny implementation that writes to a shared log.
+class FakePayments : IPaymentPort { readonly List<string> log; public FakePayments(List<string> l) { log = l; } public bool Charge(string id, long amt) { log.Add("charged " + id + " " + amt); return true; } }
+class FakeRepo : IOrderRepository { readonly List<string> log; public FakeRepo(List<string> l) { log = l; } public void Save(Order o) { log.Add("saved " + o.Id() + " " + o.CurrentStatus()); } }
+class FakeNotifier : INotifier { readonly List<string> log; public FakeNotifier(List<string> l) { log = l; } public void Notify(string id, string msg) { log.Add("notified " + id + " " + msg); } }
+
+class Program {                                    // composition root: the ONLY place that picks brands
+    static void Main() {
+        List<string> log = new List<string>();
+        OrderService svc = new OrderService(new FakePayments(log), new FakeRepo(log), new FakeNotifier(log));
+        Order o = new Order("A-1", 49900);
+        svc.Place(o);
+        o.Ship();
+        try { o.Cancel(); } catch (InvalidOperationException e) { log.Add("blocked: " + e.Message); }
+        foreach (string l in log) Console.WriteLine(l);
+    }
 }` }
         ] }],
     codeTitle: ['Brute force: welded dependencies + anemic Order', 'Preview of the cure: rich Order, ports, constructor injection'],
@@ -750,7 +835,19 @@ public:
         balance_ -= amt;
     }
     long long balance() const { return balance_; }  // read-only view, no setter
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+class Account {
+    private long balance;
+    public void Deposit(long amt) { if (amt <= 0) throw new ArgumentException("amount > 0"); balance += amt; }
+    public void Withdraw(long amt) {
+        if (amt <= 0) throw new ArgumentException("amount > 0");
+        if (amt > balance) throw new InvalidOperationException("insufficient funds");
+        balance -= amt;
+    }
+    public long Balance() { return balance; }   // read-only view, no setter
+}` }
         ] },
       { title: '"new" is a hard-coded phone number', html: `<p>Writing <code>new SmtpMailer()</code> inside <code>OrderService</code> is like a shop that can only ever call one courier because the number is painted on the wall. Passing the courier in through the constructor (<code>OrderService(Notifier n)</code>) is like keeping a contacts list: the shop says "call the courier" and the manager decides which one. ${H.chips(['SmtpMailer', 'WhatsAppNotifier', 'FakeNotifier (tests)'], { label: 'Anything that implements Notifier can be passed in' })}</p>` },
       { title: 'Ask vs Tell', html: `${H.table(['Ask (anemic)', 'Tell (rich)'], [['<code>if (o.getStatus() != SHIPPED) o.setStatus(CANCELLED);</code>', '<code>o.cancel();</code>'], ['Caller must know the rule', 'Only Order knows the rule'], ['Rule repeated in every caller', 'Rule written once']])}<p>A good smell test: if a method mostly calls <code>getX()</code> on one object and then <code>setY()</code> on the same object, that logic belongs <i>inside</i> that object.</p>` },
@@ -786,7 +883,7 @@ class PayService {
 }
 class AdminService {
     void adjust(Wallet w, long delta) { w.setBalance(w.getBalance() + delta); } // can go negative!
-}`, alt: [{ lang: 'python', code: "class Wallet:                                   # a bag of data: no rules of its own\n    def __init__(self):\n        self.balance, self.frozen = 0, False\n\nclass PayService:\n    def __init__(self): self.spent_today = 0\n    def pay(self, w, amt):\n        if w.frozen: raise RuntimeError(\"frozen\")\n        if w.balance < amt: raise RuntimeError(\"insufficient\")\n        if self.spent_today + amt > 1_000_000: raise RuntimeError(\"limit\")\n        w.balance -= amt; self.spent_today += amt\n\nclass AdminService:\n    def adjust(self, w, delta): w.balance += delta   # can go negative!\n" }, { lang: 'ts', code: "class Wallet {                                   // a bag of data: no rules of its own\n  balance = 0; frozen = false;\n}\nclass PayService {\n  spentToday = 0;\n  pay(w: Wallet, amt: number): void {\n    if (w.frozen) throw new Error(\"frozen\");\n    if (w.balance < amt) throw new Error(\"insufficient\");\n    if (this.spentToday + amt > 1_000_000) throw new Error(\"limit\");\n    w.balance -= amt; this.spentToday += amt;\n  }\n}\nclass AdminService {\n  adjust(w: Wallet, delta: number): void { w.balance += delta; }   // can go negative!\n}\n" }, { lang: 'cpp', code: "struct Wallet {                                 // a bag of data: no rules of its own\n    long long balance = 0; bool frozen = false;\n};\nstruct PayService {\n    long long spentToday = 0;\n    void pay(Wallet& w, long long amt) {\n        if (w.frozen) throw runtime_error(\"frozen\");\n        if (w.balance < amt) throw runtime_error(\"insufficient\");\n        if (spentToday + amt > 1'000'000) throw runtime_error(\"limit\");\n        w.balance -= amt; spentToday += amt;\n    }\n};\nstruct AdminService {\n    void adjust(Wallet& w, long long delta) { w.balance += delta; }   // can go negative!\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class Wallet:                                   # a bag of data: no rules of its own\n    def __init__(self):\n        self.balance, self.frozen = 0, False\n\nclass PayService:\n    def __init__(self): self.spent_today = 0\n    def pay(self, w, amt):\n        if w.frozen: raise RuntimeError(\"frozen\")\n        if w.balance < amt: raise RuntimeError(\"insufficient\")\n        if self.spent_today + amt > 1_000_000: raise RuntimeError(\"limit\")\n        w.balance -= amt; self.spent_today += amt\n\nclass AdminService:\n    def adjust(self, w, delta): w.balance += delta   # can go negative!\n" }, { lang: 'ts', code: "class Wallet {                                   // a bag of data: no rules of its own\n  balance = 0; frozen = false;\n}\nclass PayService {\n  spentToday = 0;\n  pay(w: Wallet, amt: number): void {\n    if (w.frozen) throw new Error(\"frozen\");\n    if (w.balance < amt) throw new Error(\"insufficient\");\n    if (this.spentToday + amt > 1_000_000) throw new Error(\"limit\");\n    w.balance -= amt; this.spentToday += amt;\n  }\n}\nclass AdminService {\n  adjust(w: Wallet, delta: number): void { w.balance += delta; }   // can go negative!\n}\n" }, { lang: 'cpp', code: "struct Wallet {                                 // a bag of data: no rules of its own\n    long long balance = 0; bool frozen = false;\n};\nstruct PayService {\n    long long spentToday = 0;\n    void pay(Wallet& w, long long amt) {\n        if (w.frozen) throw runtime_error(\"frozen\");\n        if (w.balance < amt) throw runtime_error(\"insufficient\");\n        if (spentToday + amt > 1'000'000) throw runtime_error(\"limit\");\n        w.balance -= amt; spentToday += amt;\n    }\n};\nstruct AdminService {\n    void adjust(Wallet& w, long long delta) { w.balance += delta; }   // can go negative!\n};\n" }, { lang: 'csharp', code: "using System;\nclass Wallet {\n    public long Balance { get; set; }\n    public bool Frozen { get; set; }\n}\nclass PayService {\n    long spentToday = 0;\n    public void Pay(Wallet w, long amt) {\n        if (w.Frozen) throw new InvalidOperationException(\"frozen\");\n        if (w.Balance < amt) throw new InvalidOperationException(\"insufficient\");\n        if (spentToday + amt > 1000000) throw new InvalidOperationException(\"limit\");\n        w.Balance = w.Balance - amt; spentToday += amt;\n    }\n}\nclass AdminService {\n    public void Adjust(Wallet w, long delta) { w.Balance = w.Balance + delta; } // can go negative!\n}\n" }] } },
       mcq: { q: 'Where should the "daily spend limit" rule live?', options: ['Inside Wallet.pay(), using an injected clock to know the date', 'In PayService, because it is about paying', 'In a database trigger', 'In the controller, validated from the request'], answer: 0, explain: 'The limit protects the wallet\'s own state, so it is an invariant of Wallet. The clock is injected so the rule stays testable and the entity stays free of infrastructure.' },
       hints: [`<p>Hint 1: Delete the setters. Replace them with verbs from the business: <code>topUp</code>, <code>pay</code>, <code>freeze</code>, <code>unfreeze</code>.</p>`, `<p>Hint 2: The daily limit needs "today". Pass a clock into the constructor (Java <code>java.time.Clock</code>, a <code>() -&gt; date</code> function in Python and TypeScript, a clock interface or <code>std::function</code> in C++); keep <code>spentToday</code> and <code>spentOn</code> as private fields.</p>`, `<p>Hint 3: Recipe: guard positive amount → guard frozen → reset daily counter if date changed → guard limit → guard balance → mutate. Order matters only for which error message wins.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "balance 2000\ninsufficient funds\nwallet frozen\nbalance 3000\namount must be > 0\ndaily limit exceeded\nbalance 1005999\n" }] },
@@ -1074,6 +1171,62 @@ int main() {
     clock.plusDays(1);
     w.pay(1);                                    // next day the counter resets
     cout << "balance " << w.balance() << "\\n";  // 1005999
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IClock { DateTime UtcNow(); }
+class MutableClock : IClock {                           // test double: the date moves when we say so
+    private DateTime now;
+    public MutableClock(DateTime start) { now = start; }
+    public void PlusDays(long days) { now = now.AddDays(days); }
+    public DateTime UtcNow() { return now; }
+}
+
+class Wallet {
+    public const long DAILY_LIMIT = 1000000;            // Rs 10,000 in paise
+    private readonly string id; private readonly IClock clock;
+    private long balance; private bool frozen;
+    private long spentToday; private DateTime spentOn;
+
+    public Wallet(string id, IClock clock) { this.id = id; this.clock = clock; spentOn = clock.UtcNow().Date; }
+
+    public void TopUp(long amt) { Positive(amt); balance += amt; }      // allowed even when frozen
+    public void Pay(long amt) {
+        Positive(amt);
+        if (frozen) throw new InvalidOperationException("wallet frozen");
+        DateTime today = clock.UtcNow().Date;
+        if (today != spentOn) { spentOn = today; spentToday = 0; }      // new day, reset counter
+        if (spentToday + amt > DAILY_LIMIT) throw new InvalidOperationException("daily limit exceeded");
+        if (amt > balance) throw new InvalidOperationException("insufficient funds");
+        balance -= amt; spentToday += amt;
+    }
+    public void Freeze() { frozen = true; }
+    public void Unfreeze() { frozen = false; }
+    public long Balance() { return balance; }
+    public string Id() { return id; }
+    private static void Positive(long amt) { if (amt <= 0) throw new ArgumentException("amount must be > 0"); }
+
+    static void Attempt(Action action) {
+        try { action(); } catch (Exception e) { Console.WriteLine(e.Message); }
+    }
+
+    static void Main() {
+        MutableClock clock = new MutableClock(new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc));
+        Wallet w = new Wallet("W1", clock);
+        w.TopUp(5000); w.Pay(3000);
+        Console.WriteLine("balance " + w.Balance());            // 2000
+        Attempt(() => w.Pay(3000));                             // insufficient funds
+        w.Freeze(); w.TopUp(1000);
+        Attempt(() => w.Pay(100));                              // wallet frozen
+        Console.WriteLine("balance " + w.Balance());            // 3000
+        w.Unfreeze();
+        Attempt(() => w.TopUp(0));                              // amount must be > 0
+        w.TopUp(2000000); w.Pay(997000);                        // today's spend is now exactly 10,000
+        Attempt(() => w.Pay(1));                                // daily limit exceeded
+        clock.PlusDays(1); w.Pay(1);                            // next day the counter resets
+        Console.WriteLine("balance " + w.Balance());            // 1005999
+    }
 }` }
         ],
         complexity: `<p>O(1) per operation. Rule copies: 1. Number of ways to put the wallet into an invalid state from outside: 0.</p>`,
@@ -1301,6 +1454,56 @@ int main() {
     cout << svc.place("A-1", 50'000) << "\\n";   // PLACED A-1 at 09:30
     cout << svc.place("A-2", 500'000) << "\\n";  // DECLINED A-2
     cout << "[" << repo.all()[0] << "]\\n";      // [A-1]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// 1) Pure manual DI. No framework. Main() is the composition root.
+interface IOrderRepository { void Save(string id); List<string> All(); }
+interface IPaymentPort { bool Charge(string orderId, long paise); }
+interface IClock { DateTime UtcNow(); }
+
+class FixedClock : IClock { private readonly DateTime t; public FixedClock(DateTime t) { this.t = t; } public DateTime UtcNow() { return t; } }
+class InMemoryOrderRepository : IOrderRepository {
+    private readonly List<string> rows = new List<string>();
+    public void Save(string id) { rows.Add(id); }
+    public List<string> All() { return new List<string>(rows); }
+}
+class FakePayments : IPaymentPort {
+    private readonly long limit;
+    public FakePayments(long limit) { this.limit = limit; }
+    public bool Charge(string orderId, long paise) { return paise <= limit; }
+}
+
+class OrderService {
+    private readonly IOrderRepository repo; private readonly IPaymentPort payments; private readonly IClock clock;
+    // Every dependency is visible in ONE place, readonly, and required.
+    public OrderService(IOrderRepository repo, IPaymentPort payments, IClock clock) {
+        if (repo == null) throw new ArgumentNullException("repo");
+        if (payments == null) throw new ArgumentNullException("payments");
+        if (clock == null) throw new ArgumentNullException("clock");
+        this.repo = repo; this.payments = payments; this.clock = clock;
+    }
+    public string Place(string id, long paise) {
+        if (!payments.Charge(id, paise)) return "DECLINED " + id;
+        repo.Save(id);
+        return "PLACED " + id + " at " + clock.UtcNow().ToString("HH:mm");
+    }
+}
+
+class App {
+    static void Main() {
+        // Leaves first...
+        IClock clock = new FixedClock(new DateTime(2026, 3, 1, 9, 30, 0, DateTimeKind.Utc));
+        IOrderRepository repo = new InMemoryOrderRepository();
+        IPaymentPort payments = new FakePayments(100000);
+        // ...root last.
+        OrderService svc = new OrderService(repo, payments, clock);
+        Console.WriteLine(svc.Place("A-1", 50000));    // PLACED A-1 at 09:30
+        Console.WriteLine(svc.Place("A-2", 500000));   // DECLINED A-2
+        Console.WriteLine("[" + string.Join(", ", repo.All()) + "]");   // [A-1]
+    }
 }` }
         ] }, { lang: 'java', code: `// 2) A tiny DI container: bindings + scopes + recursive resolution + cycle detection.
 class Container {
@@ -1588,6 +1791,70 @@ int main() {
     } catch (const runtime_error& e) {
         cout << e.what() << "\\n";  // A -> B -> A
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// 2) A tiny DI container: bindings + scopes + recursive resolution + cycle detection.
+class Container {
+    enum Scope { SINGLETON, PROTOTYPE }
+    sealed class Binding { public readonly Func<Container, object> Factory; public readonly Scope Scope; public Binding(Func<Container, object> f, Scope s) { Factory = f; Scope = s; } }
+
+    private readonly Dictionary<Type, Binding> bindings = new Dictionary<Type, Binding>();
+    private readonly Dictionary<Type, object> singletons = new Dictionary<Type, object>();
+    private readonly Stack<Type> resolving = new Stack<Type>();   // the "resolution stack"
+
+    public Container Singleton<T>(Func<Container, T> f) { bindings[typeof(T)] = new Binding(c => f(c), Scope.SINGLETON); return this; }
+    public Container Prototype<T>(Func<Container, T> f) { bindings[typeof(T)] = new Binding(c => f(c), Scope.PROTOTYPE); return this; }
+
+    public T Get<T>() {
+        Type type = typeof(T);
+        Binding b;
+        if (!bindings.TryGetValue(type, out b)) throw new InvalidOperationException("No binding for " + type.Name);
+        object cached;
+        if (b.Scope == Scope.SINGLETON && singletons.TryGetValue(type, out cached)) return (T)cached;   // cache hit
+        if (resolving.Contains(type)) {                     // we are already building this type higher up the stack
+            List<string> path = resolving.Reverse().Select(t => t.Name).ToList();
+            path.Add(type.Name);
+            throw new InvalidOperationException("Dependency cycle: " + string.Join(" -> ", path));
+        }
+        resolving.Push(type);
+        try {
+            object instance = b.Factory(this);              // factory calls Get<...>() for its own dependencies
+            if (b.Scope == Scope.SINGLETON) singletons[type] = instance;
+            return (T)instance;
+        } finally {
+            resolving.Pop();
+        }
+    }
+}
+
+interface IClock { DateTime UtcNow(); }
+class FixedClock : IClock { private readonly DateTime t; public FixedClock(DateTime t) { this.t = t; } public DateTime UtcNow() { return t; } }
+interface IGreeter { string Greet(string name); }
+class Prefix { public readonly string Text; public Prefix(string t) { Text = t; } }
+class PoliteGreeter : IGreeter {
+    private readonly Prefix prefix; private readonly IClock clock;
+    public PoliteGreeter(Prefix p, IClock c) { prefix = p; clock = c; }
+    public string Greet(string n) { return prefix.Text + " " + n + " (" + clock.UtcNow().ToString("yyyy-MM-dd") + ")"; }
+}
+class A { public A(B b) {} }
+class B { public B(A a) {} }
+
+class ContainerDemo {
+    static void Main() {
+        Container c = new Container()
+            .Singleton<IClock>(k => new FixedClock(new DateTime(2026, 5, 5)))
+            .Singleton<Prefix>(k => new Prefix("Namaste"))
+            .Prototype<IGreeter>(k => new PoliteGreeter(k.Get<Prefix>(), k.Get<IClock>()));
+        Console.WriteLine(c.Get<IGreeter>().Greet("Asha"));
+        Console.WriteLine("same Clock? " + (c.Get<IClock>() == c.Get<IClock>()).ToString().ToLower());        // true  (singleton)
+        Console.WriteLine("same Greeter? " + (c.Get<IGreeter>() == c.Get<IGreeter>()).ToString().ToLower());  // false (prototype)
+        c.Singleton<A>(k => new A(k.Get<B>())).Singleton<B>(k => new B(k.Get<A>()));
+        try { c.Get<A>(); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); } // A -> B -> A
+    }
 }` }
         ] }, { lang: 'java', check: false, title: 'For comparison only: the same wiring in Spring (needs the framework)', code: `@Configuration
 class AppConfig {
@@ -1695,7 +1962,14 @@ struct DeclineAll : PaymentPort {
 // InMemoryOrderRepository repo;
 // DeclineAll decline;
 // OrderService svc(repo, decline, clock);
-// assert(svc.place("X", 100).starts_with("DECLINED") && repo.all().empty());` }
+// assert(svc.place("X", 100).starts_with("DECLINED") && repo.all().empty());` },
+  { lang: 'csharp', code: `
+interface IPaymentPort { bool Charge(string orderId, long paise); }
+class DeclineAll : IPaymentPort { public bool Charge(string id, long p) { return false; } }
+// test:
+// var repo = new InMemoryOrderRepository();
+// var svc = new OrderService(repo, new DeclineAll(), new SystemClock());
+// Debug.Assert(svc.Place("X", 100).StartsWith("DECLINED") && repo.All().Count == 0);` }
         ] },
       { title: 'Injecting time and randomness', html: `<p>Any code that calls <code>LocalDate.now()</code>, <code>UUID.randomUUID()</code> or <code>Math.random()</code> has a <b>hidden dependency</b> on the world. Inject <code>Clock</code> and <code>Supplier&lt;String&gt; idGen</code>. Tests use <code>Clock.fixed(...)</code> and <code>() -&gt; "id-1"</code>; production uses <code>Clock.systemUTC()</code> and <code>UUID::randomUUID</code>.</p>`, code: `class TicketFactory {
     private final Clock clock; private final Supplier<String> ids;
@@ -1722,7 +1996,14 @@ class TicketFactory:
 public:
     TicketFactory(function<string()> clock, function<string()> ids) : clock_(move(clock)), ids_(move(ids)) {}
     string newTicket() const { return ids_() + "@" + clock_(); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+class TicketFactory {
+    private readonly Func<DateTime> clock; private readonly Func<string> ids;
+    public TicketFactory(Func<DateTime> clock, Func<string> ids) { this.clock = clock; this.ids = ids; }
+    public string NewTicket() { return ids() + "@" + clock().ToString("o"); }
+}` }
         ] },
       { title: 'Per-request objects: inject a factory, not the object', html: `<p>A singleton <code>CheckoutService</code> cannot hold a <code>ShoppingCart</code> (that is per user). Inject a <code>Supplier&lt;ShoppingCart&gt;</code> or a <code>CartFactory</code>; the service calls it when it needs a fresh cart. This is how containers implement "request scope" under the hood (a proxy that looks up the current request's instance).</p>` },
       { title: 'Service Locator: the look-alike anti-pattern', html: `<p><code>Registry.get(PaymentPort.class)</code> called <i>inside</i> a method also avoids <code>new</code>, but the dependency is now <b>hidden</b>: the constructor lies about what the class needs, tests must remember to fill the global registry, and a missing binding fails at runtime deep in a call. ${H.c('g', 'DI pushes dependencies in')}; ${H.c('r', 'a locator lets classes pull them out of a global')}.</p>` }
@@ -1751,7 +2032,7 @@ public:
         System.out.println("MSG91 SMS: order placed");           // pretend: new Msg91Sms().send(...)
         return charge;
     }
-}`, alt: [{ lang: 'python', code: "from datetime import datetime\n\nclass CheckoutServiceBrute:\n    def checkout(self, cart_id):\n        total = 450 * 100                                  # pretend: MySqlCartDao().load(cart_id)\n        fee = 0 if total > 50_000 else 3_000\n        if datetime.now().hour >= 23: fee += 2_000         # hidden dependency on the real clock\n        charge = total + fee\n        print(\"Razorpay charge\", charge)                   # pretend: RazorpayClient().charge(...)\n        print(\"MSG91 SMS: order placed\")                   # pretend: Msg91Sms().send(...)\n        return charge\n" }, { lang: 'ts', code: "class CheckoutServiceBrute {\n  checkout(cartId: string): number {\n    const total = 450 * 100;                                    // pretend: new MySqlCartDao().load(cartId)\n    let fee = total > 50_000 ? 0 : 3_000;\n    if (new Date().getHours() >= 23) fee += 2_000;              // hidden dependency on the real clock\n    const charge = total + fee;\n    console.log(\"Razorpay charge \" + charge);                   // pretend: new RazorpayClient().charge(...)\n    console.log(\"MSG91 SMS: order placed\");                     // pretend: new Msg91Sms().send(...)\n    return charge;\n  }\n}\n" }, { lang: 'cpp', code: "class CheckoutServiceBrute {\npublic:\n    long long checkout(const string& cartId) {\n        long long total = 450 * 100;                            // pretend: MySqlCartDao().load(cartId)\n        long long fee = total > 50'000 ? 0 : 3'000;\n        time_t now = time(nullptr);\n        if (localtime(&now)->tm_hour >= 23) fee += 2'000;       // hidden dependency on the real clock\n        long long charge = total + fee;\n        cout << \"Razorpay charge \" << charge << endl;          // pretend: RazorpayClient().charge(...)\n        cout << \"MSG91 SMS: order placed\" << endl;             // pretend: Msg91Sms().send(...)\n        return charge;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from datetime import datetime\n\nclass CheckoutServiceBrute:\n    def checkout(self, cart_id):\n        total = 450 * 100                                  # pretend: MySqlCartDao().load(cart_id)\n        fee = 0 if total > 50_000 else 3_000\n        if datetime.now().hour >= 23: fee += 2_000         # hidden dependency on the real clock\n        charge = total + fee\n        print(\"Razorpay charge\", charge)                   # pretend: RazorpayClient().charge(...)\n        print(\"MSG91 SMS: order placed\")                   # pretend: Msg91Sms().send(...)\n        return charge\n" }, { lang: 'ts', code: "class CheckoutServiceBrute {\n  checkout(cartId: string): number {\n    const total = 450 * 100;                                    // pretend: new MySqlCartDao().load(cartId)\n    let fee = total > 50_000 ? 0 : 3_000;\n    if (new Date().getHours() >= 23) fee += 2_000;              // hidden dependency on the real clock\n    const charge = total + fee;\n    console.log(\"Razorpay charge \" + charge);                   // pretend: new RazorpayClient().charge(...)\n    console.log(\"MSG91 SMS: order placed\");                     // pretend: new Msg91Sms().send(...)\n    return charge;\n  }\n}\n" }, { lang: 'cpp', code: "class CheckoutServiceBrute {\npublic:\n    long long checkout(const string& cartId) {\n        long long total = 450 * 100;                            // pretend: MySqlCartDao().load(cartId)\n        long long fee = total > 50'000 ? 0 : 3'000;\n        time_t now = time(nullptr);\n        if (localtime(&now)->tm_hour >= 23) fee += 2'000;       // hidden dependency on the real clock\n        long long charge = total + fee;\n        cout << \"Razorpay charge \" << charge << endl;          // pretend: RazorpayClient().charge(...)\n        cout << \"MSG91 SMS: order placed\" << endl;             // pretend: Msg91Sms().send(...)\n        return charge;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nclass CheckoutServiceBrute {\n    public long Checkout(string cartId) {\n        long total = 450 * 100;                                   // pretend: new MySqlCartDao().Load(cartId)\n        long fee = total > 50000 ? 0 : 3000;\n        if (DateTime.Now.Hour >= 23) fee += 2000;                 // hidden dependency on the real clock\n        long charge = total + fee;\n        Console.WriteLine(\"Razorpay charge \" + charge);          // pretend: new RazorpayClient().Charge(...)\n        Console.WriteLine(\"MSG91 SMS: order placed\");            // pretend: new Msg91Sms().Send(...)\n        return charge;\n    }\n}\n" }] } },
       mcq: { q: 'Which dependency is the easiest to forget when making this class testable?', options: ['The system clock (LocalDateTime.now())', 'The cart DAO', 'The payment client', 'The SMS client'], answer: 0, explain: 'Static calls like LocalDateTime.now(), UUID.randomUUID() and Math.random() are hidden dependencies: they do not appear in the constructor, yet they make behaviour depend on the outside world.' },
       hints: [`<p>Hint 1: List everything the class touches outside its own memory: DB, payment, SMS, <b>time</b>. Each becomes a constructor parameter typed as an interface (time as a clock, for example <code>java.time.Clock</code> in Java or a function returning the current time).</p>`, `<p>Hint 2: Fakes are tiny classes (or lambdas) that record calls in a list. A fake beats a mock when you want to assert on state ("was exactly one SMS sent?").</p>`, `<p>Hint 3: Recipe: interfaces CartRepository, PaymentPort, SmsPort → CheckoutService(repo, pay, sms, clock) → FeePolicy pure function → two composition roots: prodMain() and testMain().</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "night fee test PASSED\nday charge 60000\ndeclined: card declined\ncharges [50000, 60000]\nsms [Order for C-9 placed, paid 500, Order for C-1 placed, paid 600]\nfees 3000 2000 0\n" }] },
@@ -2087,6 +2368,72 @@ int main() {
     cout << "sms " << show(sms.messages) << "\\n";
     cout << "fees " << FeePolicy::fee(50'000, at(22, 59)) << " " << FeePolicy::fee(50'001, at(23, 0)) << " "
          << FeePolicy::fee(50'001, at(10, 0)) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+delegate long CartRepository(string cartId);              // single-method ports as delegates
+interface IPaymentPort { void Charge(string reference, long paise); }
+delegate void SmsPort(string msg);
+
+static class FeePolicy {                                   // pure, trivially testable
+    public static long Fee(long total, TimeSpan at) {
+        long fee = total > 50000 ? 0 : 3000;
+        if (at >= new TimeSpan(23, 0, 0)) fee += 2000;
+        return fee;
+    }
+}
+
+class CheckoutService {
+    private readonly CartRepository carts; private readonly IPaymentPort pay; private readonly SmsPort sms; private readonly Func<DateTime> clock;
+    public CheckoutService(CartRepository carts, IPaymentPort pay, SmsPort sms, Func<DateTime> clock) {
+        this.carts = carts; this.pay = pay; this.sms = sms; this.clock = clock;
+    }
+    public long Checkout(string cartId) {
+        long total = carts(cartId);
+        long charge = total + FeePolicy.Fee(total, clock().TimeOfDay);
+        pay.Charge(cartId, charge);
+        sms("Order for " + cartId + " placed, paid " + charge / 100);
+        return charge;
+    }
+}
+
+class RecordingPayments : IPaymentPort {
+    public readonly List<long> Charges = new List<long>();
+    public void Charge(string reference, long paise) { Charges.Add(paise); }
+}
+class DecliningPayments : IPaymentPort {
+    public void Charge(string reference, long paise) { throw new InvalidOperationException("card declined"); }
+}
+
+class Roots {
+    static void Attempt(Action action) {
+        try { action(); } catch (Exception e) { Console.WriteLine("declined: " + e.Message); }
+    }
+
+    // Production root would be: new CheckoutService(new SqlCartRepository(db).Total, new RazorpayAdapter(http), new Msg91Adapter(http).Send, () => DateTime.Now)
+    static void Main() {
+        // Test composition root: fakes + a fixed clock at 23:30
+        DateTime lateNight = new DateTime(2026, 2, 10, 23, 30, 0);
+        RecordingPayments pay = new RecordingPayments();
+        List<string> smsOutbox = new List<string>();
+        CheckoutService svc = new CheckoutService(id => 45000, pay, smsOutbox.Add, () => lateNight);
+        long charged = svc.Checkout("C-9");
+        Console.WriteLine(charged == 50000 ? "night fee test PASSED" : "FAILED " + charged);
+
+        // Same class, second composition: daytime clock, bigger cart, so no delivery fee
+        DateTime noon = new DateTime(2026, 2, 10, 12, 0, 0);
+        Console.WriteLine("day charge " + new CheckoutService(id => 60000, pay, smsOutbox.Add, () => noon).Checkout("C-1"));
+
+        // Third composition: the card is declined, so nothing is recorded and no SMS goes out
+        Attempt(() => new CheckoutService(id => 45000, new DecliningPayments(), smsOutbox.Add, () => noon).Checkout("C-2"));
+
+        Console.WriteLine("charges [" + string.Join(", ", pay.Charges) + "]");
+        Console.WriteLine("sms [" + string.Join(", ", smsOutbox) + "]");
+        Console.WriteLine("fees " + FeePolicy.Fee(50000, new TimeSpan(22, 59, 0)) + " "
+                + FeePolicy.Fee(50001, new TimeSpan(23, 0, 0)) + " " + FeePolicy.Fee(50001, new TimeSpan(10, 0, 0)));
+    }
 }` }
         ],
         complexity: `<p>O(1) per checkout. Test runtime: microseconds, no network. Swapping SMS vendor: one new adapter + one line in the production root.</p>`,
@@ -2495,6 +2842,94 @@ int main() {
         cout << e.what() << "\\n";
     }
     reg.shutdown();
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Core: extension point + metadata + registry with version check, lifecycle and failure isolation.
+sealed class Report {
+    public readonly string Title; public readonly List<string> Rows;
+    public Report(string title, List<string> rows) { Title = title; Rows = rows; }
+}
+
+interface IExporterPlugin {                   // the EXTENSION POINT (owned by the core, kept tiny)
+    string Format();                          // registry key, e.g. "csv"
+    int ApiVersion();                         // what the plugin was built against
+    void Start();                             // lifecycle hooks
+    void Stop();
+    string Export(Report r);
+}
+
+/// Safe defaults for the optional members (Java's default methods).
+abstract class ExporterBase : IExporterPlugin {
+    public const int API_VERSION = 1;         // what this core speaks
+    public abstract string Format();
+    public virtual int ApiVersion() { return 1; }
+    public virtual void Start() { }
+    public virtual void Stop() { }
+    public abstract string Export(Report r);
+}
+
+class PluginRegistry {
+    private readonly Dictionary<string, IExporterPlugin> active = new Dictionary<string, IExporterPlugin>();
+    private readonly List<string> order = new List<string>();
+    private readonly List<string> rejected = new List<string>();
+
+    public void Install(IExporterPlugin p) {
+        string key = p.Format().ToLower();
+        if (p.ApiVersion() != ExporterBase.API_VERSION) { rejected.Add(key + " (needs API v" + p.ApiVersion() + ")"); return; }
+        if (active.ContainsKey(key)) { rejected.Add(key + " (duplicate format)"); return; }
+        try {
+            p.Start();                                  // a plugin that throws on start is quarantined,
+            active[key] = p; order.Add(key);            // the core keeps running
+        } catch (Exception e) {
+            rejected.Add(key + " (failed to start: " + e.Message + ")");
+        }
+    }
+    public string Export(string format, Report r) {
+        IExporterPlugin p;
+        if (!active.TryGetValue(format.ToLower(), out p)) throw new ArgumentException("No exporter for '" + format + "'. Available: [" + string.Join(", ", order) + "]");
+        try { return p.Export(r); }
+        catch (Exception e) { throw new InvalidOperationException("Plugin '" + format + "' failed: " + e.Message, e); }
+    }
+    public void Shutdown() { foreach (string k in order) { try { active[k].Stop(); } catch (Exception) { } } }
+    public List<string> Formats() { return new List<string>(order); }
+    public List<string> Rejected() { return rejected; }
+}
+
+// Plugins: could live in separate assemblies. The core never names them.
+class CsvExporter : ExporterBase {
+    public override string Format() { return "csv"; }
+    public override string Export(Report r) { return string.Join(",", r.Rows); }
+}
+class MarkdownExporter : ExporterBase {
+    public override string Format() { return "md"; }
+    public override string Export(Report r) { return "# " + r.Title + " | " + string.Join(" | ", r.Rows); }
+}
+class FutureXmlExporter : ExporterBase {
+    public override string Format() { return "xml"; }
+    public override int ApiVersion() { return 2; }           // built for a newer core -> rejected safely
+    public override string Export(Report r) { return "<report/>"; }
+}
+class BrokenPdfExporter : ExporterBase {
+    public override string Format() { return "pdf"; }
+    public override void Start() { throw new InvalidOperationException("font file missing"); }
+    public override string Export(Report r) { return "%PDF"; }
+}
+
+class PluginDemo {
+    static void Main() {
+        PluginRegistry reg = new PluginRegistry();
+        foreach (IExporterPlugin p in new IExporterPlugin[] { new CsvExporter(), new MarkdownExporter(), new FutureXmlExporter(), new BrokenPdfExporter() }) reg.Install(p);
+        Report r = new Report("Sales", new List<string> { "north=10", "south=7" });
+        Console.WriteLine("active:   [" + string.Join(", ", reg.Formats()) + "]");
+        Console.WriteLine("rejected: [" + string.Join(", ", reg.Rejected()) + "]");
+        Console.WriteLine(reg.Export("md", r));
+        try { reg.Export("pdf", r); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        reg.Shutdown();
+    }
 }` }
         ] }, { lang: 'java', code: `// Discovery with the JDK's built-in ServiceLoader (no framework).
 // Each plugin JAR ships a text file:  META-INF/services/ExporterSpi   containing one line per class, e.g.  com.acme.pdf.PdfExporter
@@ -2604,6 +3039,39 @@ int main() {
     string names;
     for (const auto& [format, p] : plugins) names += (names.empty() ? "" : ", ") + format;
     cout << "discovered " << plugins.size() << " exporters: [" << names << "]\\n";  // 0 here: no plugin folder
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+
+// Discovery by reflection (no framework): scan the loaded assemblies (or plugin DLLs loaded with
+// Assembly.LoadFrom from a plugins folder) for concrete classes implementing IExporterSpi.
+public interface IExporterSpi { string Format(); string Export(List<string> rows); }
+
+static class Discovery {
+    public static SortedDictionary<string, IExporterSpi> Discover(IEnumerable<Assembly> assemblies) {
+        SortedDictionary<string, IExporterSpi> found = new SortedDictionary<string, IExporterSpi>(StringComparer.Ordinal);
+        foreach (Assembly asm in assemblies) {
+            Type[] types;
+            try { types = asm.GetTypes(); } catch (ReflectionTypeLoadException e) { types = e.Types.Where(t => t != null).ToArray(); }
+            foreach (Type t in types) {
+                if (t.IsAbstract || t.IsInterface || !typeof(IExporterSpi).IsAssignableFrom(t)) continue;
+                try {                                          // one broken plugin does not stop discovery
+                    IExporterSpi p = (IExporterSpi)Activator.CreateInstance(t);
+                    if (!found.ContainsKey(p.Format())) found[p.Format()] = p;
+                } catch (Exception e) {
+                    Console.WriteLine("skipping bad plugin: " + e.Message);
+                }
+            }
+        }
+        return found;
+    }
+    static void Main() {
+        var plugins = Discover(new[] { typeof(Discovery).Assembly });
+        Console.WriteLine("discovered " + plugins.Count + " exporters: [" + string.Join(", ", plugins.Keys) + "]"); // 0 here: no plugin classes loaded
+    }
 }` }
         ] }, { lang: 'java', code: `// Hook-style plugins: plugins subscribe to named hooks in the core's pipeline, ordered by priority.
 interface SavePlugin { int priority(); String beforeSave(String text); }
@@ -2761,6 +3229,39 @@ int main() {
     ed.registerHook(hook(30, [](string) -> string { throw runtime_error("spellcheck server down"); }));
     string saved = ed.save("   fix teh bug   ");  // the failing hook prints before the result
     cout << "[" << saved << "]\\n";  // [fix the bug]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Hook-style plugins: plugins subscribe to named hooks in the core's pipeline, ordered by priority.
+interface ISavePlugin { int Priority(); string BeforeSave(string text); }
+
+class LambdaSavePlugin : ISavePlugin {
+    private readonly int priority; private readonly Func<string, string> f;
+    public LambdaSavePlugin(int priority, Func<string, string> f) { this.priority = priority; this.f = f; }
+    public int Priority() { return priority; }
+    public string BeforeSave(string t) { return f(t); }
+}
+
+class Editor {
+    private readonly List<ISavePlugin> hooks = new List<ISavePlugin>();
+    public void Register(ISavePlugin p) { hooks.Add(p); hooks.Sort((a, b) => a.Priority().CompareTo(b.Priority())); }
+    public string Save(string text) {
+        foreach (ISavePlugin p in hooks) {
+            try { text = p.BeforeSave(text); }                 // each plugin transforms the text in turn
+            catch (Exception e) { Console.WriteLine("hook failed, skipped: " + e.Message); }
+        }
+        return text;
+    }
+    static void Main() {
+        Editor ed = new Editor();
+        ed.Register(new LambdaSavePlugin(20, t => t.Trim()));
+        ed.Register(new LambdaSavePlugin(10, t => t.Replace("teh", "the")));
+        ed.Register(new LambdaSavePlugin(30, t => { throw new Exception("spellcheck server down"); }));
+        Console.WriteLine("[" + ed.Save("   fix teh bug   ") + "]");   // [fix the bug]
+    }
 }` }
         ] }],
     codeTitle: ['Plugin registry with versioning, lifecycle and isolation', 'Discovery without naming plugins (ServiceLoader, entry points, dynamic import, dlopen)', 'Hook pipeline plugins ordered by priority'],
@@ -2865,7 +3366,18 @@ public:
         sort(ids.begin(), ids.end());
         return ids;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Collections.Generic;
+using System.Linq;
+interface IPaymentMethod { string Id(); bool Supports(string country); }
+class PaymentMethods {
+    private readonly List<IPaymentMethod> all = new List<IPaymentMethod>();
+    public void Register(IPaymentMethod m) { all.Add(m); }
+    public List<string> AvailableIn(string country) {
+        return all.Where(m => m.Supports(country)).Select(m => m.Id()).OrderBy(s => s, System.StringComparer.Ordinal).ToList();
+    }
+}` }
         ] },
       { title: 'Evolving an extension point without breaking plugins', html: `<p>You want to add <code>mimeType()</code> to <code>ExporterPlugin</code>. Adding an abstract method breaks every existing plugin. Instead add a <b>default method</b>: <code>default String mimeType() { return "application/octet-stream"; }</code>. Old plugins keep compiling; new ones override it. For bigger changes ship <code>ExporterPluginV2</code> and an adapter that wraps V1 plugins.</p>` },
       { title: 'Plugins vs strategies', html: `${H.table(['', 'Strategy pattern', 'Plugin architecture'], [['Scale', 'one class', 'whole application'], ['Who writes the variants', 'your team', 'other teams / third parties'], ['Discovery', 'chosen in code', 'found at startup or runtime'], ['Needs versioning, isolation, lifecycle', 'no', 'yes']])}<p>A plugin system is a strategy registry plus discovery, versioning, lifecycle and isolation.</p>` }
@@ -2895,7 +3407,7 @@ public:
         }
         return out;
     }
-}`, alt: [{ lang: 'python', code: "class LinterBrute:\n    def lint(self, lines, todo_on, len_on):\n        out = []\n        for i, l in enumerate(lines):\n            if todo_on and \"FIXME\" in l: out.append(f\"L{i + 1} WARN no-fixme\")\n            if len_on and len(l) > 120: out.append(f\"L{i + 1} ERROR max-len\")\n            # every new rule = another if here; an exception here kills the whole lint run\n        return out\n" }, { lang: 'ts', code: "class LinterBrute {\n  lint(lines: string[], todoOn: boolean, lenOn: boolean): string[] {\n    const out: string[] = [];\n    for (let i = 0; i < lines.length; i++) {\n      const l = lines[i];\n      if (todoOn && l.includes(\"FIXME\")) out.push(\"L\" + (i + 1) + \" WARN no-fixme\");\n      if (lenOn && l.length > 120) out.push(\"L\" + (i + 1) + \" ERROR max-len\");\n      // every new rule = another if here; an exception here kills the whole lint run\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "class LinterBrute {\npublic:\n    vector<string> lint(const vector<string>& lines, bool todoOn, bool lenOn) {\n        vector<string> out;\n        for (int i = 0; i < (int)lines.size(); i++) {\n            const string& l = lines[i];\n            if (todoOn && l.find(\"FIXME\") != string::npos) out.push_back(\"L\" + to_string(i + 1) + \" WARN no-fixme\");\n            if (lenOn && l.size() > 120) out.push_back(\"L\" + to_string(i + 1) + \" ERROR max-len\");\n            // every new rule = another if here; an exception here kills the whole lint run\n        }\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class LinterBrute:\n    def lint(self, lines, todo_on, len_on):\n        out = []\n        for i, l in enumerate(lines):\n            if todo_on and \"FIXME\" in l: out.append(f\"L{i + 1} WARN no-fixme\")\n            if len_on and len(l) > 120: out.append(f\"L{i + 1} ERROR max-len\")\n            # every new rule = another if here; an exception here kills the whole lint run\n        return out\n" }, { lang: 'ts', code: "class LinterBrute {\n  lint(lines: string[], todoOn: boolean, lenOn: boolean): string[] {\n    const out: string[] = [];\n    for (let i = 0; i < lines.length; i++) {\n      const l = lines[i];\n      if (todoOn && l.includes(\"FIXME\")) out.push(\"L\" + (i + 1) + \" WARN no-fixme\");\n      if (lenOn && l.length > 120) out.push(\"L\" + (i + 1) + \" ERROR max-len\");\n      // every new rule = another if here; an exception here kills the whole lint run\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "class LinterBrute {\npublic:\n    vector<string> lint(const vector<string>& lines, bool todoOn, bool lenOn) {\n        vector<string> out;\n        for (int i = 0; i < (int)lines.size(); i++) {\n            const string& l = lines[i];\n            if (todoOn && l.find(\"FIXME\") != string::npos) out.push_back(\"L\" + to_string(i + 1) + \" WARN no-fixme\");\n            if (lenOn && l.size() > 120) out.push_back(\"L\" + to_string(i + 1) + \" ERROR max-len\");\n            // every new rule = another if here; an exception here kills the whole lint run\n        }\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass LinterBrute {\n    public List<string> Lint(List<string> lines, bool todoOn, bool lenOn) {\n        List<string> result = new List<string>();\n        for (int i = 0; i < lines.Count; i++) {\n            string l = lines[i];\n            if (todoOn && l.Contains(\"FIXME\")) result.Add(\"L\" + (i + 1) + \" WARN no-fixme\");\n            if (lenOn && l.Length > 120) result.Add(\"L\" + (i + 1) + \" ERROR max-len\");\n            // every new rule = another if here; an exception here kills the whole lint run\n        }\n        return result;\n    }\n}\n" }] } },
       mcq: { q: 'A rule throws an unexpected error (a null dereference) on line 40. What should the core do?', options: ['Catch it at the plugin boundary, record an internal-error issue naming the rule, continue with other rules and lines', 'Abort the whole lint run so the user notices', 'Silently ignore it', 'Disable all rules'], answer: 0, explain: 'Failure isolation: plugin bugs are reported with the plugin\'s name but never take down the core or other plugins.' },
       hints: [`<p>Hint 1: Extension point: <code>interface Rule { String id(); Severity defaultSeverity(); List&lt;String&gt; check(int lineNo, String line); }</code>.</p>`, `<p>Hint 2: Registry = <code>Map&lt;String, Rule&gt;</code>; config = <code>Map&lt;String, Severity&gt;</code> where <code>OFF</code> disables.</p>`, `<p>Hint 3: Loop lines × enabled rules; wrap each <code>check</code> in try/catch; collect <code>Issue</code> records; sort by (line, rule), for example <code>Comparator.comparingInt(Issue::line).thenComparing(Issue::rule)</code> in Java or a key tuple in Python.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "1 INTERNAL crashy: rule crashed: boom\n1 WARN max-len: 25 > 20\n1 WARN no-fixme: FIXME left in code\n2 INTERNAL crashy: rule crashed: boom\nrejected: duplicate rule max-len\n--- no-fixme and crashy switched off\n1 ERROR max-len: 25 > 20\n0 issues in a clean file\n" }] },
@@ -3263,6 +3775,81 @@ int main() {
     addAll(quiet);
     for (const Issue& i : quiet.run(source)) cout << i.str() << "\\n";  // max-len keeps its default severity
     cout << quiet.run({"ok"}).size() << " issues in a clean file\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Severity { OFF, INFO, WARN, ERROR, INTERNAL }
+sealed class Issue {
+    public readonly int Line; public readonly string Rule; public readonly Severity Severity; public readonly string Msg;
+    public Issue(int line, string rule, Severity severity, string msg) { Line = line; Rule = rule; Severity = severity; Msg = msg; }
+    public override string ToString() { return Line + " " + Severity + " " + Rule + ": " + Msg; }
+}
+
+interface IRule {
+    string Id();
+    Severity DefaultSeverity();
+    List<string> Check(int lineNo, string line);     // returns messages; empty = clean
+}
+
+class Linter {
+    private readonly SortedDictionary<string, IRule> rules = new SortedDictionary<string, IRule>(StringComparer.Ordinal);
+    private readonly Dictionary<string, Severity> config;
+    public Linter(Dictionary<string, Severity> config) { this.config = config; }
+    public void Register(IRule r) { if (rules.ContainsKey(r.Id())) throw new ArgumentException("duplicate rule " + r.Id()); rules[r.Id()] = r; }
+
+    public List<Issue> Run(List<string> lines) {
+        List<Issue> result = new List<Issue>();
+        for (int i = 0; i < lines.Count; i++) {
+            foreach (IRule r in rules.Values) {
+                Severity sev;
+                if (!config.TryGetValue(r.Id(), out sev)) sev = r.DefaultSeverity();
+                if (sev == Severity.OFF) continue;
+                try {
+                    foreach (string m in r.Check(i + 1, lines[i])) result.Add(new Issue(i + 1, r.Id(), sev, m));
+                } catch (Exception e) {
+                    result.Add(new Issue(i + 1, r.Id(), Severity.INTERNAL, "rule crashed: " + e.Message));
+                }
+            }
+        }
+        return result.OrderBy(x => x.Line).ThenBy(x => x.Rule, StringComparer.Ordinal).ToList();
+    }
+}
+
+class NoFixme : IRule {
+    public string Id() { return "no-fixme"; }
+    public Severity DefaultSeverity() { return Severity.WARN; }
+    public List<string> Check(int n, string l) { return l.Contains("FIXME") ? new List<string> { "FIXME left in code" } : new List<string>(); }
+}
+class MaxLen : IRule {
+    private readonly int max; public MaxLen(int max) { this.max = max; }
+    public string Id() { return "max-len"; }
+    public Severity DefaultSeverity() { return Severity.ERROR; }
+    public List<string> Check(int n, string l) { return l.Length > max ? new List<string> { l.Length + " > " + max } : new List<string>(); }
+}
+class Crashy : IRule {
+    public string Id() { return "crashy"; }
+    public Severity DefaultSeverity() { return Severity.INFO; }
+    public List<string> Check(int n, string l) { throw new InvalidOperationException("boom"); }
+}
+
+class LintDemo {
+    static void Main() {
+        Linter lint = new Linter(new Dictionary<string, Severity> { { "max-len", Severity.WARN } });   // config overrides severity
+        lint.Register(new NoFixme()); lint.Register(new MaxLen(20)); lint.Register(new Crashy());
+        List<string> source = new List<string> { "int x = 1; // FIXME later", "ok" };
+        foreach (Issue i in lint.Run(source)) Console.WriteLine(i);                // a crashing rule does not stop the others
+        try { lint.Register(new MaxLen(30)); }
+        catch (ArgumentException e) { Console.WriteLine("rejected: " + e.Message); }
+
+        Console.WriteLine("--- no-fixme and crashy switched off");
+        Linter quiet = new Linter(new Dictionary<string, Severity> { { "no-fixme", Severity.OFF }, { "crashy", Severity.OFF } });
+        quiet.Register(new NoFixme()); quiet.Register(new MaxLen(20)); quiet.Register(new Crashy());
+        foreach (Issue i in quiet.Run(source)) Console.WriteLine(i);               // max-len keeps its default severity
+        Console.WriteLine(quiet.Run(new List<string> { "ok" }).Count + " issues in a clean file");
+    }
 }` }
         ],
         complexity: `<p>O(L × R) rule calls for L lines and R rules; O(I log I) to sort I issues. Adding a rule: one class + one <code>register</code> (or a discovered entry).</p>`,
@@ -3761,6 +4348,97 @@ int main() {
         string reply = cli.handle(cmd);
         cout << cmd << " -> " << reply << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// ================= DOMAIN (centre): plain C#, zero technology =================
+sealed class BookId : IEquatable<BookId> {
+    public readonly string Value;
+    public BookId(string value) { if (string.IsNullOrWhiteSpace(value)) throw new ArgumentException("blank id"); Value = value; }
+    public bool Equals(BookId o) { return o != null && o.Value == Value; }
+    public override bool Equals(object o) { return Equals(o as BookId); }
+    public override int GetHashCode() { return Value.GetHashCode(); }
+}
+sealed class MemberId : IEquatable<MemberId> {
+    public readonly string Value;
+    public MemberId(string value) { Value = value; }
+    public bool Equals(MemberId o) { return o != null && o.Value == Value; }
+    public override bool Equals(object o) { return Equals(o as MemberId); }
+    public override int GetHashCode() { return Value.GetHashCode(); }
+}
+class DomainException : Exception { public DomainException(string m) : base(m) { } }
+
+class Book {
+    private readonly BookId id; private readonly string title;
+    private MemberId borrowedBy; private DateTime? due;
+    public Book(BookId id, string title) { this.id = id; this.title = title; }
+    public void Borrow(MemberId member, DateTime today) {
+        if (borrowedBy != null) throw new DomainException("'" + title + "' is already borrowed");
+        borrowedBy = member; due = today.AddDays(14);
+    }
+    public void GiveBack() { if (borrowedBy == null) throw new DomainException("not borrowed"); borrowedBy = null; due = null; }
+    public BookId Id() { return id; } public string Title() { return title; } public DateTime? Due() { return due; }
+    public MemberId Borrower() { return borrowedBy; }   // null when on the shelf
+}
+
+// ================= APPLICATION: ports + use case =================
+sealed class BorrowBookCommand { public readonly string MemberId, BookId; public BorrowBookCommand(string m, string b) { MemberId = m; BookId = b; } }
+interface IBorrowBookUseCase { DateTime Borrow(BorrowBookCommand cmd); }              // DRIVING (inbound) port
+interface IBookRepository {                                                           // DRIVEN (outbound) port
+    Book Find(BookId id); void Save(Book b); long LoansOf(MemberId m);
+}
+interface IMemberNotifier { void LoanCreated(MemberId m, string title, DateTime due); }  // DRIVEN port
+
+class BorrowBookService : IBorrowBookUseCase {
+    public const int MAX_LOANS = 3;
+    private readonly IBookRepository books; private readonly IMemberNotifier notifier; private readonly Func<DateTime> clock;
+    public BorrowBookService(IBookRepository books, IMemberNotifier notifier, Func<DateTime> clock) { this.books = books; this.notifier = notifier; this.clock = clock; }
+    public DateTime Borrow(BorrowBookCommand cmd) {
+        MemberId member = new MemberId(cmd.MemberId);
+        Book book = books.Find(new BookId(cmd.BookId));
+        if (book == null) throw new DomainException("no book " + cmd.BookId);
+        if (books.LoansOf(member) >= MAX_LOANS) throw new DomainException("loan limit " + MAX_LOANS + " reached");
+        book.Borrow(member, clock().Date);               // the rule lives in the domain
+        books.Save(book);
+        notifier.LoanCreated(member, book.Title(), book.Due().Value);
+        return book.Due().Value;
+    }
+}
+
+// ================= ADAPTERS (outside) =================
+class InMemoryBookRepository : IBookRepository {                    // driven adapter
+    private readonly Dictionary<BookId, Book> store = new Dictionary<BookId, Book>();
+    public Book Find(BookId id) { Book b; return store.TryGetValue(id, out b) ? b : null; }
+    public void Save(Book b) { store[b.Id()] = b; }
+    public long LoansOf(MemberId m) { return store.Values.Count(b => m.Equals(b.Borrower())); }
+}
+class ConsoleNotifier : IMemberNotifier {                            // driven adapter
+    public void LoanCreated(MemberId m, string title, DateTime due) { Console.WriteLine("  [mail to " + m.Value + "] '" + title + "' due " + due.ToString("yyyy-MM-dd")); }
+}
+class CliAdapter {                                                   // DRIVING adapter
+    private readonly IBorrowBookUseCase useCase;
+    public CliAdapter(IBorrowBookUseCase useCase) { this.useCase = useCase; }
+    public string Handle(string line) {                // "borrow <member> <book>"
+        string[] p = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (p.Length != 3 || p[0] != "borrow") return "usage: borrow <member> <book>";   // FORMAT validation here
+        try { return "OK, due " + useCase.Borrow(new BorrowBookCommand(p[1], p[2])).ToString("yyyy-MM-dd"); }
+        catch (DomainException e) { return "REFUSED: " + e.Message; }    // translate domain error to CLI text
+    }
+}
+
+// ================= COMPOSITION ROOT =================
+class LibraryApp {
+    static void Main() {
+        InMemoryBookRepository repo = new InMemoryBookRepository();
+        repo.Save(new Book(new BookId("b1"), "Clean Architecture"));
+        repo.Save(new Book(new BookId("b2"), "Domain-Driven Design"));
+        DateTime fixedNow = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc);
+        CliAdapter cli = new CliAdapter(new BorrowBookService(repo, new ConsoleNotifier(), () => fixedNow));
+        foreach (string cmd in new[] { "borrow asha b1", "borrow ravi b1", "borrow ravi b9", "lend b2" }) Console.WriteLine(cmd + " -> " + cli.Handle(cmd));
+    }
 }` }
         ] }, { lang: 'text', title: 'Package layout that makes the rings visible', code: `com.library
  ├── domain                      <- Book, BookId, MemberId, DomainException   (imports: java.* only)
@@ -3893,7 +4571,17 @@ struct BookRow {  // DB-shaped
 struct BookMapper {
     static Book toDomain(const BookRow& r) { return Book{r.id, r.title, r.borrowerId}; }
     static BookRow toRow(const Book& b) { return BookRow{b.id, b.title, b.borrower}; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+sealed class Book {
+    public readonly string Id, Title, Borrower;
+    public Book(string id, string title, string borrower) { Id = id; Title = title; Borrower = borrower; }
+}
+class BookRow { public string id; public string title; public string borrower_id; }   // DB-shaped
+static class BookMapper {
+    public static Book ToDomain(BookRow r) { return new Book(r.id, r.title, r.borrower_id); }
+    public static BookRow ToRow(Book b) { return new BookRow { id = b.Id, title = b.Title, borrower_id = b.Borrower }; }
+}` }
         ] },
       { title: 'A test is just another driving adapter', html: `<p>Cockburn's original motivation: "allow an application to be equally driven by users, programs, automated tests or batch scripts". A use-case test wires <code>InMemoryBookRepository</code> + a recording notifier + fixed clock and calls the in-port. ${H.table(['Test level', 'Adapters used', 'Speed'], [['Use case (core)', 'in-memory fakes', '~1 ms'], ['Adapter contract', 'real Postgres (Testcontainers)', '~1 s'], ['End-to-end', 'everything real', '~10 s']])}</p>` },
       { title: 'Hexagonal vs layered vs clean', html: `${H.table(['Style', 'Arrow direction', 'Main idea'], [['Classic layered', 'UI → Service → DAO → DB (DB at the bottom, everything depends on it)', 'horizontal layers'], ['Hexagonal', 'all adapters → core', 'inside vs outside, ports'], ['Onion / Clean', 'outer rings → inner rings', 'same rule with more named rings (entities, use cases, interface adapters, frameworks)']])}<p>The key difference from layered: the database is <b>not</b> at the bottom; it is just another adapter plugged into a port the core owns.</p>` }
@@ -3924,7 +4612,7 @@ struct BookMapper {
         if (CREATED.get(code).plusDays(30).isBefore(LocalDate.now())) return "expired";
         return DB.get(code);
     }
-}`, alt: [{ lang: 'python', code: "import random, string\nfrom datetime import date, timedelta\n\nclass ShortenerBrute:\n    DB = {}\n    CREATED = {}\n\n    @staticmethod\n    def shorten(url):\n        code = \"\".join(random.choices(string.digits + string.ascii_lowercase, k=7))\n        ShortenerBrute.DB[code] = url\n        ShortenerBrute.CREATED[code] = date.today()\n        return code\n\n    @staticmethod\n    def resolve(code):\n        if ShortenerBrute.CREATED[code] + timedelta(days=30) < date.today(): return \"expired\"\n        return ShortenerBrute.DB[code]\n" }, { lang: 'ts', code: "class ShortenerBrute {\n  static DB = new Map<string, string>();\n  static CREATED = new Map<string, number>();            // code -> creation time (ms)\n  static shorten(url: string): string {\n    const code = Math.random().toString(36).slice(2, 9);\n    ShortenerBrute.DB.set(code, url); ShortenerBrute.CREATED.set(code, Date.now());\n    return code;\n  }\n  static resolve(code: string): string | undefined {\n    if (ShortenerBrute.CREATED.get(code)! + 30 * 86_400_000 < Date.now()) return \"expired\";\n    return ShortenerBrute.DB.get(code);\n  }\n}\n" }, { lang: 'cpp', code: "struct ShortenerBrute {\n    static inline unordered_map<string, string> DB;\n    static inline unordered_map<string, long long> CREATED;   // code -> creation day\n    static long long today() { return time(nullptr) / 86400; }\n\n    static string shorten(const string& url) {\n        static const string digits = \"0123456789abcdefghijklmnopqrstuvwxyz\";\n        string code;\n        for (int i = 0; i < 7; i++) code += digits[rand() % 36];\n        DB[code] = url; CREATED[code] = today();\n        return code;\n    }\n    static string resolve(const string& code) {\n        if (CREATED[code] + 30 < today()) return \"expired\";\n        return DB[code];\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import random, string\nfrom datetime import date, timedelta\n\nclass ShortenerBrute:\n    DB = {}\n    CREATED = {}\n\n    @staticmethod\n    def shorten(url):\n        code = \"\".join(random.choices(string.digits + string.ascii_lowercase, k=7))\n        ShortenerBrute.DB[code] = url\n        ShortenerBrute.CREATED[code] = date.today()\n        return code\n\n    @staticmethod\n    def resolve(code):\n        if ShortenerBrute.CREATED[code] + timedelta(days=30) < date.today(): return \"expired\"\n        return ShortenerBrute.DB[code]\n" }, { lang: 'ts', code: "class ShortenerBrute {\n  static DB = new Map<string, string>();\n  static CREATED = new Map<string, number>();            // code -> creation time (ms)\n  static shorten(url: string): string {\n    const code = Math.random().toString(36).slice(2, 9);\n    ShortenerBrute.DB.set(code, url); ShortenerBrute.CREATED.set(code, Date.now());\n    return code;\n  }\n  static resolve(code: string): string | undefined {\n    if (ShortenerBrute.CREATED.get(code)! + 30 * 86_400_000 < Date.now()) return \"expired\";\n    return ShortenerBrute.DB.get(code);\n  }\n}\n" }, { lang: 'cpp', code: "struct ShortenerBrute {\n    static inline unordered_map<string, string> DB;\n    static inline unordered_map<string, long long> CREATED;   // code -> creation day\n    static long long today() { return time(nullptr) / 86400; }\n\n    static string shorten(const string& url) {\n        static const string digits = \"0123456789abcdefghijklmnopqrstuvwxyz\";\n        string code;\n        for (int i = 0; i < 7; i++) code += digits[rand() % 36];\n        DB[code] = url; CREATED[code] = today();\n        return code;\n    }\n    static string resolve(const string& code) {\n        if (CREATED[code] + 30 < today()) return \"expired\";\n        return DB[code];\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nstatic class ShortenerBrute {\n    static readonly Dictionary<string, string> DB = new Dictionary<string, string>();\n    static readonly Dictionary<string, DateTime> CREATED = new Dictionary<string, DateTime>();\n    public static string Shorten(string url) {\n        string code = Guid.NewGuid().ToString(\"N\").Substring(0, 7);\n        DB[code] = url; CREATED[code] = DateTime.Today;\n        return code;\n    }\n    public static string Resolve(string code) {\n        if (CREATED[code].AddDays(30) < DateTime.Today) return \"expired\";\n        return DB[code];\n    }\n}\n" }] } },
       mcq: { q: 'Which of these should be an OUTBOUND (driven) port?', options: ['CodeGenerator — the core needs codes from somewhere', 'ShortenUseCase — the CLI calls it', 'ShortLink — the domain entity', 'CliAdapter — it reads user input'], answer: 0, explain: 'Outbound ports describe what the core needs from the outside (storage, codes, time). Inbound ports describe what the outside can ask the core to do.' },
       hints: [`<p>Hint 1: Domain: <code>ShortLink</code> (code, url, owner, createdAt, clicks) with methods <code>isExpired(now)</code> and <code>recordClick()</code>.</p>`, `<p>Hint 2: Inbound: <code>ShortenUseCase</code>, <code>ResolveUseCase</code>. Outbound: <code>LinkStore</code> (save, byCode, byOwnerAndUrl), <code>CodeGenerator</code>, <code>Clock</code>.</p>`, `<p>Hint 3: Idempotency: look up <code>byOwnerAndUrl</code> before generating. Validation of URL format belongs in the domain (it is a business rule here); parsing the CLI line belongs in the adapter.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "shorten https://a.com/x asha => gjdgxs\nshorten https://a.com/x asha => gjdgxs\nshorten https://a.com/x bob => gjdgxt\nshorten ftp://bad asha => error: URL must be http(s)\nresolve nope => error: unknown code nope\nhello => usage: shorten <url> <owner> | resolve <code>\nresolve gjdgxs => https://a.com/x\nresolve gjdgxs => error: link expired\nshorten https://a.com/x asha => gjdgxv\nresolve gjdgxv => https://a.com/x\n" }] },
@@ -4439,6 +5127,110 @@ int main() {
     say(cli, "resolve gjdgxs");                // one second later: expired
     say(cli, "shorten https://a.com/x asha");  // an expired link is not reused
     say(cli, "resolve gjdgxv");
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class ShortLink {                                            // domain
+    private readonly string code, url, owner; private readonly DateTime createdAt; private long clicks;
+    public ShortLink(string code, string url, string owner, DateTime createdAt) {
+        if (!url.StartsWith("http://") && !url.StartsWith("https://")) throw new ArgumentException("URL must be http(s)");
+        this.code = code; this.url = url; this.owner = owner; this.createdAt = createdAt;
+    }
+    public bool IsExpired(DateTime now) { return now > createdAt.AddDays(30); }
+    public string Visit(DateTime now) { if (IsExpired(now)) throw new InvalidOperationException("link expired"); clicks++; return url; }
+    public string Code() { return code; } public string Url() { return url; } public string Owner() { return owner; } public long Clicks() { return clicks; }
+}
+
+interface IShortenUseCase { string Shorten(string url, string owner); }    // inbound ports
+interface IResolveUseCase { string Resolve(string code); }
+interface ILinkStore {                                                    // outbound ports (null = not found)
+    void Save(ShortLink l); ShortLink ByCode(string code); ShortLink ByOwnerAndUrl(string owner, string url);
+}
+interface ICodeGenerator { string Next(); }
+interface IClock { DateTime UtcNow(); }
+
+class ShortenerService : IShortenUseCase, IResolveUseCase {
+    private readonly ILinkStore store; private readonly ICodeGenerator codes; private readonly IClock clock;
+    public ShortenerService(ILinkStore s, ICodeGenerator g, IClock c) { store = s; codes = g; clock = c; }
+    public string Shorten(string url, string owner) {
+        DateTime now = clock.UtcNow();
+        ShortLink existing = store.ByOwnerAndUrl(owner, url);
+        if (existing != null && !existing.IsExpired(now)) return existing.Code();
+        ShortLink l = new ShortLink(codes.Next(), url, owner, now);
+        store.Save(l);
+        return l.Code();
+    }
+    public string Resolve(string code) {
+        ShortLink l = store.ByCode(code);
+        if (l == null) throw new KeyNotFoundException("unknown code " + code);
+        string url = l.Visit(clock.UtcNow());
+        store.Save(l);
+        return url;
+    }
+}
+
+class InMemoryLinkStore : ILinkStore {                                    // driven adapter
+    private readonly Dictionary<string, ShortLink> byCode = new Dictionary<string, ShortLink>();
+    private readonly List<string> order = new List<string>();             // insertion order = oldest first
+    public void Save(ShortLink l) { if (!byCode.ContainsKey(l.Code())) order.Add(l.Code()); byCode[l.Code()] = l; }
+    public ShortLink ByCode(string c) { ShortLink l; return byCode.TryGetValue(c, out l) ? l : null; }
+    public ShortLink ByOwnerAndUrl(string o, string u) {                  // newest match wins
+        ShortLink found = null;
+        foreach (string c in order) { ShortLink l = byCode[c]; if (l.Owner() == o && l.Url() == u) found = l; }
+        return found;
+    }
+}
+class Base36Counter : ICodeGenerator {                                    // driven adapter
+    private long n = 1000000000L;
+    public string Next() {                                                // 6 chars, unique, predictable in tests
+        const string digits = "0123456789abcdefghijklmnopqrstuvwxyz";
+        long v = n++; string s = "";
+        do { s = digits[(int)(v % 36)] + s; v /= 36; } while (v > 0);
+        return s;
+    }
+}
+
+class MutableClock : IClock {                                             // test double: time moves when we say so
+    private DateTime now;
+    public MutableClock(DateTime start) { now = start; }
+    public void PlusSeconds(long s) { now = now.AddSeconds(s); }
+    public DateTime UtcNow() { return now; }
+}
+
+class ShortenerCli {                                                      // driving adapter
+    private readonly IShortenUseCase shorten; private readonly IResolveUseCase resolve;
+    public ShortenerCli(IShortenUseCase s, IResolveUseCase r) { shorten = s; resolve = r; }
+    public string Run(string line) {
+        string[] p = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        try {
+            if (p[0] == "shorten" && p.Length == 3) return shorten.Shorten(p[1], p[2]);
+            if (p[0] == "resolve" && p.Length == 2) return resolve.Resolve(p[1]);
+            return "usage: shorten <url> <owner> | resolve <code>";
+        } catch (KeyNotFoundException e) { return "error: " + e.Message; }
+        catch (ArgumentException e) { return "error: " + e.Message; }
+        catch (InvalidOperationException e) { return "error: " + e.Message; }
+    }
+    static void Say(ShortenerCli cli, string cmd) { Console.WriteLine(cmd + " => " + cli.Run(cmd)); }
+
+    static void Main() {
+        MutableClock clock = new MutableClock(new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc));
+        ShortenerService svc = new ShortenerService(new InMemoryLinkStore(), new Base36Counter(), clock);
+        ShortenerCli cli = new ShortenerCli(svc, svc);
+        Say(cli, "shorten https://a.com/x asha");
+        Say(cli, "shorten https://a.com/x asha");              // same owner and URL: same code
+        Say(cli, "shorten https://a.com/x bob");               // another owner gets another code
+        Say(cli, "shorten ftp://bad asha");                    // only http(s) is allowed
+        Say(cli, "resolve nope");
+        Say(cli, "hello");
+        clock.PlusSeconds(30 * 86400L);
+        Say(cli, "resolve gjdgxs");                         // day 30: still alive
+        clock.PlusSeconds(1);
+        Say(cli, "resolve gjdgxs");                         // one second later: expired
+        Say(cli, "shorten https://a.com/x asha");              // an expired link is not reused
+        Say(cli, "resolve gjdgxv");
+    }
 }` }
         ],
         complexity: `<p>O(1) shorten/resolve with a hash map (byOwnerAndUrl is O(n) here; a real adapter adds an index). Swapping to Redis: one new <code>LinkStore</code> adapter.</p>`,
@@ -4682,6 +5474,57 @@ int main() {
         a.plus(Money::of(1, "USD"));
     } catch (const invalid_argument& e) {
         cout << "refused: " << e.what() << "\\n";
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+
+// VALUE OBJECT: Money. Immutable, self-validating, behaviour-rich, equality by value.
+sealed class Money : IEquatable<Money> {                  // minor units: paise / cents. Never double for money.
+    public readonly long Minor; public readonly string Currency;
+    public Money(long minor, string currency) {           // validation runs for EVERY instance
+        if (currency == null) throw new ArgumentNullException("currency");
+        if (!Regex.IsMatch(currency, "^[A-Z]{3}$")) throw new ArgumentException("ISO currency like INR: " + currency);
+        Minor = minor; Currency = currency;
+    }
+    public static Money Of(long major, string cur) { return new Money(checked(major * 100), cur); }
+    public static Money Zero(string cur) { return new Money(0, cur); }
+
+    public Money Plus(Money o)  { Same(o); return new Money(checked(Minor + o.Minor), Currency); }      // NEW object
+    public Money Minus(Money o) { Same(o); return new Money(checked(Minor - o.Minor), Currency); }
+    public Money Times(int n)   { return new Money(checked(Minor * n), Currency); }
+    public bool IsNegative() { return Minor < 0; }
+    public bool GreaterThan(Money o) { Same(o); return Minor > o.Minor; }
+
+    // Split fairly: 100.00 / 3 -> 33.34, 33.33, 33.33 (no paisa lost, no paisa invented)
+    public List<Money> Allocate(int parts) {
+        if (parts <= 0) throw new ArgumentException("parts > 0");
+        long b = Minor / parts, extra = Minor % parts;
+        if (extra < 0) { extra += parts; b -= 1; }         // floor division, so negative amounts split correctly too
+        List<Money> result = new List<Money>();
+        for (int i = 0; i < parts; i++) result.Add(new Money(b + (i < extra ? 1 : 0), Currency));
+        return result;
+    }
+    private void Same(Money o) { if (Currency != o.Currency) throw new ArgumentException(Currency + " vs " + o.Currency); }
+    public bool Equals(Money o) { return o != null && o.Minor == Minor && o.Currency == Currency; }
+    public override bool Equals(object o) { return Equals(o as Money); }
+    public override int GetHashCode() { return Minor.GetHashCode() * 31 + Currency.GetHashCode(); }
+    public override string ToString() {
+        long abs = Math.Abs(Minor);
+        return Currency + " " + (Minor < 0 ? "-" : "") + abs / 100 + "." + (abs % 100).ToString("D2");
+    }
+
+    static string Show(List<Money> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        Money a = Money.Of(100, "INR"), b = Money.Of(100, "INR");
+        Console.WriteLine(a.Equals(b).ToString().ToLower() + " " + ReferenceEquals(a, b).ToString().ToLower());   // true false
+        Money c = a.Plus(Money.Of(50, "INR"));
+        Console.WriteLine(a + " -> " + c);                      // a is unchanged: INR 100.00 -> INR 150.00
+        Console.WriteLine(Show(Money.Of(100, "INR").Allocate(3)));    // [INR 33.34, INR 33.33, INR 33.33]
+        Console.WriteLine(new Money(-50, "INR") + " " + Show(Money.Of(-1, "INR").Allocate(3)));   // INR -0.50 [INR -0.33, INR -0.33, INR -0.34]
+        try { a.Plus(Money.Of(1, "USD")); } catch (ArgumentException e) { Console.WriteLine("refused: " + e.Message); }
     }
 }` }
         ] }, { lang: 'java', code: `// ENTITY: Customer. Identity = CustomerId. Attributes are value objects and can change.
@@ -4932,6 +5775,70 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+// ENTITY: Customer. Identity = CustomerId. Attributes are value objects and can change.
+sealed class CustomerId : IEquatable<CustomerId> {
+    public readonly Guid Value;
+    public CustomerId(Guid v) { Value = v; }
+    public static CustomerId Random() { return new CustomerId(Guid.NewGuid()); }
+    public bool Equals(CustomerId o) { return o != null && o.Value == Value; }
+    public override bool Equals(object o) { return Equals(o as CustomerId); }
+    public override int GetHashCode() { return Value.GetHashCode(); }
+}
+
+sealed class Email : IEquatable<Email> {
+    public readonly string Value;
+    public Email(string value) {
+        value = value.Trim().ToLower();                              // normalise once
+        if (!Regex.IsMatch(value, "^[^@ ]+@[^@ ]+[.][a-z]{2,}$")) throw new ArgumentException("bad email: " + value);
+        Value = value;
+    }
+    public bool Equals(Email o) { return o != null && o.Value == Value; }
+    public override bool Equals(object o) { return Equals(o as Email); }
+    public override int GetHashCode() { return Value.GetHashCode(); }
+}
+sealed class Address {
+    public readonly string Line, City, Pin;
+    public Address(string line, string city, string pin) {
+        if (!Regex.IsMatch(pin, "^[0-9]{6}$")) throw new ArgumentException("PIN must be 6 digits");
+        Line = line; City = city; Pin = pin;
+    }
+}
+
+sealed class Customer {
+    private readonly CustomerId id;                 // never changes
+    private string name; private Email email; private Address address;
+    private readonly List<Email> previousEmails = new List<Email>();
+
+    public Customer(CustomerId id, string name, Email email, Address address) {
+        if (id == null) throw new ArgumentNullException("id");
+        this.id = id; this.name = name; this.email = email; this.address = address;
+    }
+    public void ChangeEmail(Email newEmail) {        // behaviour, not a setter: keeps history
+        if (newEmail.Equals(email)) return;
+        previousEmails.Add(email); email = newEmail;
+    }
+    public void MoveTo(Address a) { address = a; }   // replace the whole VO, never mutate it
+    public CustomerId Id() { return id; } public Email Email() { return email; } public Address Address() { return address; }
+
+    public override bool Equals(object o) { Customer c = o as Customer; return c != null && c.id.Equals(id); }  // ID only!
+    public override int GetHashCode() { return id.GetHashCode(); }
+
+    static void Main() {
+        CustomerId id = CustomerId.Random();
+        Customer a = new Customer(id, "Asha", new Email(" Asha@Mail.com "), new Address("1 MG Rd", "Pune", "411001"));
+        Customer sameRowLoadedAgain = new Customer(id, "Asha K", new Email("asha.k@mail.com"), new Address("9 FC Rd", "Pune", "411004"));
+        Console.WriteLine("same customer? " + a.Equals(sameRowLoadedAgain).ToString().ToLower());   // true: same identity, different data
+        a.ChangeEmail(new Email("asha.new@mail.com"));
+        Console.WriteLine(a.Email().Value + " [" + string.Join(", ", a.previousEmails.Select(e => e.Value)) + "]");
+        try { new Email("not-an-email"); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ] }, { lang: 'java', code: `// VALUE OBJECT with real behaviour: DateRange (used by bookings, leases, discounts)
 record DateRange(LocalDate start, LocalDate endExclusive) {
@@ -5017,6 +5924,26 @@ int main() {
     DateRange a(daysFromCivil(2026, 5, 1), daysFromCivil(2026, 5, 4));
     DateRange b(daysFromCivil(2026, 5, 4), daysFromCivil(2026, 5, 6));  // checkout day = next check-in
     cout << a.nights() << " nights, overlaps? " << boolalpha << a.overlaps(b) << "\\n";  // 3 nights, overlaps? false
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// VALUE OBJECT with real behaviour: DateRange (used by bookings, leases, discounts)
+sealed class DateRange {
+    public readonly DateTime Start, EndExclusive;
+    public DateRange(DateTime start, DateTime endExclusive) {
+        if (!(start < endExclusive)) throw new ArgumentException("start must be before end");
+        Start = start; EndExclusive = endExclusive;
+    }
+    public long Nights() { return (long)(EndExclusive - Start).TotalDays; }
+    public bool Overlaps(DateRange o) { return Start < o.EndExclusive && o.Start < EndExclusive; }
+    public bool Contains(DateTime d) { return d >= Start && d < EndExclusive; }
+
+    static void Main() {
+        DateRange a = new DateRange(new DateTime(2026, 5, 1), new DateTime(2026, 5, 4));
+        DateRange b = new DateRange(new DateTime(2026, 5, 4), new DateTime(2026, 5, 6));   // checkout day = next check-in
+        Console.WriteLine(a.Nights() + " nights, overlaps? " + a.Overlaps(b).ToString().ToLower());   // 3 nights, overlaps? false
+    }
 }` }
         ] }],
     codeTitle: ['Value object: Money (immutable, validating, fair allocation)', 'Entity: Customer with typed ID and VO attributes', 'Value object: DateRange with overlap logic'],
@@ -5135,6 +6062,29 @@ int main() {
         stock[Sku{"TEA-1"}] += qty;  // a different object each time, same value -> same key
     }
     cout << "{Sku[code=" << stock.begin()->first.code << "]=" << stock.begin()->second << "}\\n";  // {Sku[code=TEA-1]=8}
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Sku : IEquatable<Sku> {               // value equality, like a Java record
+    public readonly string Code;
+    public Sku(string code) { Code = code; }
+    public bool Equals(Sku o) { return o != null && o.Code == Code; }
+    public override bool Equals(object o) { return Equals(o as Sku); }
+    public override int GetHashCode() { return Code.GetHashCode(); }
+    public override string ToString() { return "Sku[code=" + Code + "]"; }
+}
+class KeyDemo {
+    static void Main() {
+        Dictionary<Sku, int> stock = new Dictionary<Sku, int>();
+        foreach (int add in new[] { 5, 3 }) {
+            Sku k = new Sku("TEA-1");                         // a different object each time, same value -> same key
+            int q; stock.TryGetValue(k, out q); stock[k] = q + add;
+        }
+        Console.WriteLine("{" + string.Join(", ", stock.Select(kv => kv.Key + "=" + kv.Value)) + "}");   // {Sku[code=TEA-1]=8}
+    }
 }` }
         ] },
       { title: 'Typed IDs stop mix-ups', html: `<p><code>void ship(long orderId, long customerId)</code> — callers can swap them silently. <code>void ship(OrderId o, CustomerId c)</code> — swapping is a compile error. Value objects make typed IDs nearly free: <code>record OrderId(UUID value) {}</code> in Java, <code>@dataclass(frozen=True) class OrderId</code> in Python.</p>` }
@@ -5160,7 +6110,7 @@ int main() {
         return out;                                   // 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost
     }
     public static void main(String[] a) { System.out.println(Arrays.toString(split(1180.0, 3))); }
-}`, alt: [{ lang: 'python', code: "class BillBrute:\n    @staticmethod\n    def split(total, people):\n        return [round(total / people * 100) / 100 for _ in range(people)]   # 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost\n\nif __name__ == \"__main__\":\n    print(BillBrute.split(1180.0, 3))\n" }, { lang: 'ts', code: "class BillBrute {\n  static split(total: number, people: number): number[] {\n    const out: number[] = [];\n    for (let i = 0; i < people; i++) out.push(Math.round(total / people * 100) / 100);\n    return out;                                   // 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost\n  }\n}\nconsole.log(BillBrute.split(1180.0, 3));\n" }, { lang: 'cpp', code: "struct BillBrute {\n    static vector<double> split(double total, int people) {\n        vector<double> out(people);\n        for (int i = 0; i < people; i++) out[i] = round(total / people * 100) / 100.0;\n        return out;                               // 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost\n    }\n};\nint main() { for (double d : BillBrute::split(1180.0, 3)) cout << d << \" \"; cout << endl; }\n" }] } },
+}`, alt: [{ lang: 'python', code: "class BillBrute:\n    @staticmethod\n    def split(total, people):\n        return [round(total / people * 100) / 100 for _ in range(people)]   # 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost\n\nif __name__ == \"__main__\":\n    print(BillBrute.split(1180.0, 3))\n" }, { lang: 'ts', code: "class BillBrute {\n  static split(total: number, people: number): number[] {\n    const out: number[] = [];\n    for (let i = 0; i < people; i++) out.push(Math.round(total / people * 100) / 100);\n    return out;                                   // 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost\n  }\n}\nconsole.log(BillBrute.split(1180.0, 3));\n" }, { lang: 'cpp', code: "struct BillBrute {\n    static vector<double> split(double total, int people) {\n        vector<double> out(people);\n        for (int i = 0; i < people; i++) out[i] = round(total / people * 100) / 100.0;\n        return out;                               // 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost\n    }\n};\nint main() { for (double d : BillBrute::split(1180.0, 3)) cout << d << \" \"; cout << endl; }\n" }, { lang: 'csharp', code: "using System;\nclass BillBrute {\n    public static double[] Split(double total, int people) {\n        double[] result = new double[people];\n        for (int i = 0; i < people; i++) result[i] = Math.Round(total / people * 100) / 100.0;\n        return result;                                // 1180.0 / 3 -> 393.33 x3 = 1179.99 : a paisa is lost\n    }\n    static void Main() { Console.WriteLine(\"[\" + string.Join(\", \", Split(1180.0, 3)) + \"]\"); }\n}\n" }] } },
       mcq: { q: 'Splitting 100 paise by ratio 1:1:1, where should the leftover 1 paisa go?', options: ['To one part (e.g. the first), so the parts still sum to exactly 100', 'Drop it — it is only one paisa', 'Round every part up to 34', 'Throw an exception'], answer: 0, explain: 'Allocation must conserve money: compute floor shares, then hand out the remainder one unit at a time. The sum of parts equals the whole, always.' },
       hints: [`<p>Hint 1: Work in <code>long</code> minor units. Floor-divide each share: <code>minor * ratio[i] / totalRatio</code>.</p>`, `<p>Hint 2: Remainder = whole − sum(floor shares), which is less than the number of parts. Give 1 extra unit to parts 0, 1, 2… until the remainder is used.</p>`, `<p>Hint 3: For percent use exact decimal arithmetic with half-even rounding (Java <code>BigDecimal.valueOf(minor).multiply(p).divide(100, 0, RoundingMode.HALF_EVEN)</code>, Python <code>Decimal</code> with <code>ROUND_HALF_EVEN</code>, TypeScript <code>bigint</code>, C++ <code>__int128</code>). Watch overflow on <code>minor * ratio</code>: Java <code>Math.multiplyExact</code>, a 128-bit intermediate in C++, an explicit range check in Python and TypeScript.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "1180.00 -> [590.00, 295.00, 295.00]\n[33.34, 33.33, 33.33]\n[0.02, 0.02, 0.01]\n[-0.34, -0.33, -0.33]\ntrue\n0.00 0.02\n-0.50\nINR vs USD\ncurrency\nat most 2 decimals\nratio > 0\n1..100 parts\nlong overflow\n" }] },
@@ -5522,6 +6472,74 @@ int main() {
     attempt([&] { bill.allocate({1, 0}); });
     attempt([&] { bill.allocate({}); });
     attempt([&] { Money(numeric_limits<long long>::max(), "INR").plus(Money::of("0.01", "INR")); });
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+sealed class Money : IEquatable<Money> {
+    public readonly long Minor; public readonly string Currency;
+    public Money(long minor, string currency) {
+        if (currency == null || !Regex.IsMatch(currency, "^[A-Z]{3}$")) throw new ArgumentException("currency");
+        Minor = minor; Currency = currency;
+    }
+    public static Money Of(string amount, string cur) {
+        decimal d = decimal.Parse(amount, CultureInfo.InvariantCulture);
+        decimal scaled = d * 100;
+        if (scaled != decimal.Truncate(scaled)) throw new ArgumentException("at most 2 decimals");
+        return new Money((long)scaled, cur);
+    }
+    static long AddExact(long a, long b) { try { return checked(a + b); } catch (OverflowException) { throw new OverflowException("long overflow"); } }
+    static long MulExact(long a, long b) { try { return checked(a * b); } catch (OverflowException) { throw new OverflowException("long overflow"); } }
+    public Money Plus(Money o) { Same(o); return new Money(AddExact(Minor, o.Minor), Currency); }
+    public Money Minus(Money o) { Same(o); return new Money(AddExact(Minor, -o.Minor), Currency); }
+    public Money Percent(string p) {
+        decimal r = Math.Round(Minor * decimal.Parse(p, CultureInfo.InvariantCulture) / 100m, 0, MidpointRounding.ToEven);   // banker's rounding
+        return new Money((long)r, Currency);
+    }
+    public List<Money> Allocate(params int[] ratios) {
+        if (ratios.Length == 0 || ratios.Length > 100) throw new ArgumentException("1..100 parts");
+        if (Minor < 0) {                                           // split the magnitude, then restore the sign
+            List<Money> parts = new Money(-Minor, Currency).Allocate(ratios);
+            return parts.Select(m => new Money(-m.Minor, Currency)).ToList();
+        }
+        long total = 0; foreach (int r in ratios) { if (r <= 0) throw new ArgumentException("ratio > 0"); total += r; }
+        long[] shares = new long[ratios.Length]; long used = 0;
+        for (int i = 0; i < ratios.Length; i++) { shares[i] = MulExact(Minor, ratios[i]) / total; used += shares[i]; }
+        for (int i = 0; used < Minor; i++, used++) shares[i]++;     // hand out the remainder, 1 unit each
+        return shares.Select(s => new Money(s, Currency)).ToList();
+    }
+    private void Same(Money o) { if (Currency != o.Currency) throw new ArgumentException(Currency + " vs " + o.Currency); }
+    public bool Equals(Money o) { return o != null && o.Minor == Minor && o.Currency == Currency; }
+    public override bool Equals(object o) { return Equals(o as Money); }
+    public override int GetHashCode() { return Minor.GetHashCode() * 31 + Currency.GetHashCode(); }
+    public override string ToString() { return (Minor / 100m).ToString("0.00", CultureInfo.InvariantCulture); }
+
+    static void Attempt(Action action) {
+        try { action(); } catch (Exception e) { Console.WriteLine(e.Message); }
+    }
+    static string Show(List<Money> l) { return "[" + string.Join(", ", l) + "]"; }
+
+    static void Main() {
+        Money bill = Money.Of("1000.00", "INR");
+        Money total = bill.Plus(bill.Percent("18"));
+        Console.WriteLine(total + " -> " + Show(total.Allocate(2, 1, 1)));        // 1180.00 -> [590.00, 295.00, 295.00]
+        Console.WriteLine(Show(Money.Of("100.00", "INR").Allocate(1, 1, 1)));     // [33.34, 33.33, 33.33]
+        Console.WriteLine(Show(Money.Of("0.05", "INR").Allocate(1, 1, 1)));       // [0.02, 0.02, 0.01]
+        Console.WriteLine(Show(Money.Of("-1.00", "INR").Allocate(1, 1, 1)));      // [-0.34, -0.33, -0.33]
+        Console.WriteLine(Money.Of("5", "INR").Equals(Money.Of("5.00", "INR")).ToString().ToLower()); // true
+        Console.WriteLine(Money.Of("0.50", "INR").Percent("1") + " " + Money.Of("1.50", "INR").Percent("1")); // half-even: 0.00 0.02
+        Console.WriteLine(Money.Of("1.00", "INR").Minus(Money.Of("1.50", "INR")));   // -0.50
+        Attempt(() => bill.Plus(Money.Of("1", "USD")));
+        Attempt(() => new Money(1, "inr"));
+        Attempt(() => Money.Of("1.005", "INR"));
+        Attempt(() => bill.Allocate(1, 0));
+        Attempt(() => bill.Allocate());
+        Attempt(() => new Money(long.MaxValue, "INR").Plus(Money.Of("0.01", "INR")));
+    }
 }` }
         ],
         complexity: `<p>O(k) for k parts. No floating point anywhere; sum of parts == whole by construction.</p>`,
@@ -5888,6 +6906,72 @@ int main() {
     } catch (const runtime_error& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// AGGREGATE: Order is the root. OrderLine lives INSIDE and is never handed out.
+sealed class OrderId { public readonly string Value; public OrderId(string v) { Value = v; } }
+sealed class ProductId : IEquatable<ProductId> {
+    public readonly string Value; public ProductId(string v) { Value = v; }
+    public bool Equals(ProductId o) { return o != null && o.Value == Value; }
+    public override bool Equals(object o) { return Equals(o as ProductId); }
+    public override int GetHashCode() { return Value.GetHashCode(); }
+}
+sealed class CustomerId { public readonly string Value; public CustomerId(string v) { Value = v; } }
+
+class Order {
+    public const long LIMIT_PAISE = 150000;                  // invariant: total <= Rs 1500
+    public enum OrderStatus { DRAFT, SUBMITTED }
+
+    private sealed class OrderLine {                         // inner ENTITY (local identity = productId)
+        public readonly ProductId Product; public readonly long UnitPrice; public int Qty;
+        public OrderLine(ProductId p, long unitPrice, int qty) { Product = p; UnitPrice = unitPrice; Qty = qty; }
+        public long Subtotal() { return UnitPrice * Qty; }
+    }
+    public sealed class LineView {                           // read-only copy for outsiders
+        public readonly string Product; public readonly long UnitPrice; public readonly int Qty;
+        public LineView(string product, long unitPrice, int qty) { Product = product; UnitPrice = unitPrice; Qty = qty; }
+    }
+
+    private readonly OrderId id; private readonly CustomerId customer;  // other aggregate referenced BY ID
+    private readonly Dictionary<ProductId, OrderLine> lines = new Dictionary<ProductId, OrderLine>();
+    private readonly List<ProductId> lineOrder = new List<ProductId>();
+    private OrderStatus status = OrderStatus.DRAFT;
+    private long version;                                    // for optimistic locking
+
+    public Order(OrderId id, CustomerId customer) { this.id = id; this.customer = customer; }
+
+    public void AddItem(ProductId p, long unitPriceSnapshot, int qty) {
+        RequireDraft();
+        if (qty < 1 || qty > 10) throw new ArgumentException("qty 1-10");
+        OrderLine existing; lines.TryGetValue(p, out existing);
+        int newQty = (existing == null ? 0 : existing.Qty) + qty;
+        if (newQty > 10) throw new ArgumentException("max 10 per product");
+        long newTotal = Total() + unitPriceSnapshot * qty;
+        if (newTotal > LIMIT_PAISE) throw new InvalidOperationException("limit exceeded: " + newTotal);   // rule spanning ALL lines
+        if (existing == null) { lines[p] = new OrderLine(p, unitPriceSnapshot, qty); lineOrder.Add(p); } else existing.Qty = newQty;
+    }
+    public void RemoveItem(ProductId p) { RequireDraft(); if (!lines.Remove(p)) throw new ArgumentException("not in order"); lineOrder.Remove(p); }
+    public void Submit() { RequireDraft(); if (lines.Count == 0) throw new InvalidOperationException("empty order"); status = OrderStatus.SUBMITTED; }
+
+    public long Total() { return lines.Values.Sum(l => l.Subtotal()); }
+    public List<LineView> Lines() { return lineOrder.Select(p => lines[p]).Select(l => new LineView(l.Product.Value, l.UnitPrice, l.Qty)).ToList(); }
+    public OrderId Id() { return id; } public OrderStatus Status() { return status; } public long Version() { return version; } public CustomerId Customer() { return customer; }
+    public void MarkSaved(long newVersion) { version = newVersion; }   // called by the repository only
+    private void RequireDraft() { if (status != OrderStatus.DRAFT) throw new InvalidOperationException("order already submitted"); }
+
+    static void Main() {
+        Order o = new Order(new OrderId("o1"), new CustomerId("c9"));
+        o.AddItem(new ProductId("mug"), 25000, 2);
+        o.AddItem(new ProductId("tea"), 12000, 3);
+        try { o.AddItem(new ProductId("kettle"), 60000, 2); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        o.Submit();
+        Console.WriteLine("[" + string.Join(", ", o.Lines().Select(l => l.Product + " x" + l.Qty + " @" + l.UnitPrice)) + "] total=" + o.Total() + " " + o.Status());
+        try { o.RemoveItem(new ProductId("tea")); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ] }, { lang: 'java', code: `// REPOSITORY: collection-like port in the domain + in-memory adapter with optimistic locking.
 class ConcurrencyConflict extends RuntimeException { ConcurrencyConflict(String m) { super(m); } }
@@ -6138,6 +7222,58 @@ int main() {
         cout << "rejected: " << e.what() << "\\n";
     }
     cout << "balance now " << repo.byId("acc-1").value().balance() << "\\n";  // 200, not -600
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// REPOSITORY: collection-like port in the domain + in-memory adapter with optimistic locking.
+class ConcurrencyConflict : Exception { public ConcurrencyConflict(string m) : base(m) { } }
+
+sealed class Account {                                   // tiny aggregate to keep the demo short
+    private readonly string id; private long balance; private readonly long version;
+    public Account(string id, long balance, long version) { this.id = id; this.balance = balance; this.version = version; }
+    public void Withdraw(long amt) { if (amt > balance) throw new InvalidOperationException("insufficient"); balance -= amt; }
+    public void Deposit(long amt) { balance += amt; }
+    public string Id() { return id; } public long Balance() { return balance; } public long Version() { return version; }
+}
+
+interface IAccountRepository {                           // PORT: speaks in aggregates, not rows
+    Account ById(string id);                             // null when missing
+    void Save(Account a);                                // throws ConcurrencyConflict on stale version
+}
+
+class InMemoryAccountRepository : IAccountRepository {
+    private sealed class Stored { public readonly long Balance, Version; public Stored(long b, long v) { Balance = b; Version = v; } }   // a copy, not the live object
+    private readonly Dictionary<string, Stored> table = new Dictionary<string, Stored>();
+    private readonly object gate = new object();
+
+    public Account ById(string id) {
+        lock (gate) { Stored s; return table.TryGetValue(id, out s) ? new Account(id, s.Balance, s.Version) : null; }  // fresh object per load
+    }
+    public void Save(Account a) {
+        lock (gate) {
+            Stored cur; table.TryGetValue(a.Id(), out cur);
+            long expected = cur == null ? 0 : cur.Version;
+            if (a.Version() != expected)                    // like: UPDATE ... SET version = v+1 WHERE id = ? AND version = ?
+                throw new ConcurrencyConflict("account " + a.Id() + " changed by someone else (v" + expected + " vs v" + a.Version() + ")");
+            table[a.Id()] = new Stored(a.Balance(), expected + 1);
+        }
+    }
+}
+
+class RepoDemo {
+    static void Main() {
+        IAccountRepository repo = new InMemoryAccountRepository();
+        repo.Save(new Account("acc-1", 1000, 0));                  // v0 -> stored v1
+
+        Account tab1 = repo.ById("acc-1");                         // both users load v1
+        Account tab2 = repo.ById("acc-1");
+        tab1.Withdraw(800); repo.Save(tab1);                       // ok, stored v2, balance 200
+        tab2.Withdraw(800);                                        // tab2 still thinks balance is 1000!
+        try { repo.Save(tab2); } catch (ConcurrencyConflict e) { Console.WriteLine("rejected: " + e.Message); }
+        Console.WriteLine("balance now " + repo.ById("acc-1").Balance());   // 200, not -600
+    }
 }` }
         ] }],
     codeTitle: ['Order aggregate: root, inner entity, invariants spanning lines', 'Repository port + adapter with optimistic locking'],
@@ -6252,7 +7388,18 @@ public:
         return Booking(ids(), room, quotedPrice);
     }
     string str() const { return id_ + ":" + room_ + ":" + to_string(pricePaise_); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+sealed class Booking {
+    private readonly string id; private readonly string room; private readonly long pricePaise;
+    private Booking(string id, string room, long price) { this.id = id; this.room = room; pricePaise = price; }
+    public static Booking Create(string room, long quotedPrice, Func<string> ids) {
+        if (quotedPrice <= 0) throw new ArgumentException("quote must be positive");
+        return new Booking(ids(), room, quotedPrice);
+    }
+    public override string ToString() { return id + ":" + room + ":" + pricePaise; }
+}` }
         ] }
     ],
     deepDive: `<p><b>Aggregate size in practice.</b> Most aggregates should be a root plus a handful of value objects. Collections inside an aggregate should be bounded (an order has tens of lines, not millions). An unbounded collection (a <code>Forum</code> with all its <code>Post</code>s) is a sign the child should be its own aggregate referencing the parent by ID, with the invariant re-phrased ("posts can be added only while the forum is open" → Post checks a <code>ForumStatus</code> snapshot or the application service checks the forum first).</p>
@@ -6276,7 +7423,7 @@ public:
         // ...another thread can insert between this read and the write below
         if (amount > highest) bidsTable.add(new long[]{auctionId, amount});
     }
-}`, alt: [{ lang: 'python', code: "class BidServiceBrute:\n    def __init__(self):\n        self.bids_table = []                          # rows of (auction_id, amount)\n\n    def bid(self, auction_id, amount):\n        highest = max((a for i, a in self.bids_table if i == auction_id), default=0)\n        # ...another thread can insert between this read and the write below\n        if amount > highest: self.bids_table.append((auction_id, amount))\n" }, { lang: 'ts', code: "class BidServiceBrute {\n  private bidsTable: Array<[number, number]> = [];    // rows of [auctionId, amount]\n  bid(auctionId: number, amount: number): void {\n    const highest = Math.max(0, ...this.bidsTable.filter((r) => r[0] === auctionId).map((r) => r[1]));\n    // ...another worker (or an await) can insert between this read and the write below\n    if (amount > highest) this.bidsTable.push([auctionId, amount]);\n  }\n}\n" }, { lang: 'cpp', code: "class BidServiceBrute {\n    vector<pair<long long, long long>> bidsTable;     // rows of {auctionId, amount}\npublic:\n    void bid(long long auctionId, long long amount) {\n        long long highest = 0;\n        for (auto& r : bidsTable) if (r.first == auctionId) highest = max(highest, r.second);\n        // ...another thread can insert between this read and the write below\n        if (amount > highest) bidsTable.push_back({auctionId, amount});\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class BidServiceBrute:\n    def __init__(self):\n        self.bids_table = []                          # rows of (auction_id, amount)\n\n    def bid(self, auction_id, amount):\n        highest = max((a for i, a in self.bids_table if i == auction_id), default=0)\n        # ...another thread can insert between this read and the write below\n        if amount > highest: self.bids_table.append((auction_id, amount))\n" }, { lang: 'ts', code: "class BidServiceBrute {\n  private bidsTable: Array<[number, number]> = [];    // rows of [auctionId, amount]\n  bid(auctionId: number, amount: number): void {\n    const highest = Math.max(0, ...this.bidsTable.filter((r) => r[0] === auctionId).map((r) => r[1]));\n    // ...another worker (or an await) can insert between this read and the write below\n    if (amount > highest) this.bidsTable.push([auctionId, amount]);\n  }\n}\n" }, { lang: 'cpp', code: "class BidServiceBrute {\n    vector<pair<long long, long long>> bidsTable;     // rows of {auctionId, amount}\npublic:\n    void bid(long long auctionId, long long amount) {\n        long long highest = 0;\n        for (auto& r : bidsTable) if (r.first == auctionId) highest = max(highest, r.second);\n        // ...another thread can insert between this read and the write below\n        if (amount > highest) bidsTable.push_back({auctionId, amount});\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nusing System.Linq;\nclass BidServiceBrute {\n    public readonly List<long[]> BidsTable = new List<long[]>();            // rows of {auctionId, amount}\n    public void Bid(long auctionId, long amount) {\n        long highest = BidsTable.Where(r => r[0] == auctionId).Select(r => r[1]).DefaultIfEmpty(0).Max();\n        // ...another thread can insert between this read and the write below\n        if (amount > highest) BidsTable.Add(new[] { auctionId, amount });\n    }\n}\n" }] } },
       mcq: { q: 'Which is the best aggregate design?', options: ['Auction is the root and holds the current highest bid (and recent bids); every bid goes through Auction.placeBid(), saved with a version check', 'Each Bid is its own aggregate with no link to Auction', 'User aggregate holds all their bids across auctions', 'One global AuctionHouse aggregate holding every auction'], answer: 0, explain: 'The rule "must beat the current highest" needs the highest bid and the auction state together, instantly — so they share one aggregate. Small enough to load fast; the version check serialises racing bids.' },
       hints: [`<p>Hint 1: Which data does the "beat the highest by increment" rule need? The auction's highest bid, increment, end time and seller — put exactly that in the <code>Auction</code> aggregate.</p>`, `<p>Hint 2: Bid history can grow large; keep only the highest (plus maybe last N) inside, and publish each accepted bid as an event for a separate history read model.</p>`, `<p>Hint 3: Repository <code>save</code> compares versions; the application service retries: reload → <code>placeBid</code> again (it may now be rejected because someone bid higher) → save.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "OK asha 1000\nREJECTED ravi 1050: bid must be >= 1100\nOK ravi 1100\nREJECTED ravi 1300: already highest bidder\nREJECTED sam 2000: seller cannot bid\nOK asha 1600\nmeera's save rejected: stale version -> retry sees ravi at 1700\nwinner: ravi 1700\ntoo early\nREJECTED asha 2000: auction ended\nREJECTED asha 100: unknown auction zz\nOK asha 600\na2 winner: none\n" }] },
@@ -6714,6 +7861,94 @@ int main() {
     repo.save(Auction("a2", "sam", 500, 50, 5000, now + HOUR));
     cout << svc.bid("a2", "asha", 600) << "\\n";
     cout << "a2 winner: " << winner(repo.load("a2").close(now + HOUR)) << "\\n";  // reserve not met
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Bid { public readonly string Bidder; public readonly long Amount; public Bid(string b, long a) { Bidder = b; Amount = a; } }
+
+sealed class Auction {
+    private readonly string id, seller; private readonly long startPrice, increment, reserve; private readonly DateTime endsAt;
+    private Bid highest; private bool closed; private long version;
+    public Auction(string id, string seller, long start, long inc, long reserve, DateTime endsAt, Bid highest, bool closed, long version) {
+        this.id = id; this.seller = seller; startPrice = start; increment = inc; this.reserve = reserve;
+        this.endsAt = endsAt; this.highest = highest; this.closed = closed; this.version = version;
+    }
+    public void PlaceBid(string bidder, long amount, DateTime now) {
+        if (closed || !(now < endsAt)) throw new InvalidOperationException("auction ended");
+        if (bidder == seller) throw new InvalidOperationException("seller cannot bid");
+        if (highest != null && highest.Bidder == bidder) throw new InvalidOperationException("already highest bidder");
+        long min = highest == null ? startPrice : highest.Amount + increment;
+        if (amount < min) throw new ArgumentException("bid must be >= " + min);
+        highest = new Bid(bidder, amount);
+    }
+    public Bid Close(DateTime now) {                       // winner, or null when the reserve was not met
+        if (now < endsAt) throw new InvalidOperationException("too early");
+        closed = true;
+        return highest != null && highest.Amount >= reserve ? highest : null;
+    }
+    public Auction Copy() { return new Auction(id, seller, startPrice, increment, reserve, endsAt, highest, closed, version); }
+    public string Id() { return id; } public long Version() { return version; } public void BumpVersion() { version++; }
+}
+
+class StaleAuction : Exception { public StaleAuction() : base("stale version") { } }
+
+class AuctionRepository {
+    private readonly Dictionary<string, Auction> db = new Dictionary<string, Auction>();
+    private readonly object gate = new object();
+    public Auction Load(string id) {                                         // detached copy per caller
+        lock (gate) {
+            Auction a;
+            if (!db.TryGetValue(id, out a)) throw new KeyNotFoundException("unknown auction " + id);
+            return a.Copy();
+        }
+    }
+    public void Save(Auction a) {
+        lock (gate) {
+            Auction cur;
+            if (db.TryGetValue(a.Id(), out cur) && cur.Version() != a.Version()) throw new StaleAuction();
+            Auction stored = a.Copy(); stored.BumpVersion(); db[a.Id()] = stored;
+        }
+    }
+}
+
+class BidService {
+    private readonly AuctionRepository repo; private readonly Func<DateTime> clock;
+    public BidService(AuctionRepository r, Func<DateTime> c) { repo = r; clock = c; }
+    public string PlaceBid(string auctionId, string bidder, long amount) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            Auction a;
+            try { a = repo.Load(auctionId); a.PlaceBid(bidder, amount, clock()); }
+            catch (Exception rule) { return "REJECTED " + bidder + " " + amount + ": " + rule.Message; }
+            try { repo.Save(a); return "OK " + bidder + " " + amount; }
+            catch (StaleAuction) { /* someone else won the race: reload and re-validate */ }
+        }
+        return "BUSY, try again";
+    }
+    static string Winner(Bid w) { return w == null ? "none" : w.Bidder + " " + w.Amount; }
+
+    static void Main() {
+        DateTime now = new DateTime(2026, 6, 1, 10, 0, 0, DateTimeKind.Utc);
+        AuctionRepository repo = new AuctionRepository();
+        repo.Save(new Auction("a1", "sam", 1000, 100, 1500, now.AddSeconds(3600), null, false, 0));
+        BidService svc = new BidService(repo, () => now);
+        foreach (object[] b in new[] { new object[] { "asha", 1000L }, new object[] { "ravi", 1050L }, new object[] { "ravi", 1100L }, new object[] { "ravi", 1300L }, new object[] { "sam", 2000L }, new object[] { "asha", 1600L } })
+            Console.WriteLine(svc.PlaceBid("a1", (string)b[0], (long)b[1]));
+        // race: two copies loaded at the same version
+        Auction x = repo.Load("a1"), y = repo.Load("a1");
+        x.PlaceBid("ravi", 1700, now); repo.Save(x);
+        y.PlaceBid("meera", 1700, now);
+        try { repo.Save(y); } catch (StaleAuction e) { Console.WriteLine("meera's save rejected: " + e.Message + " -> retry sees ravi at 1700"); }
+        Console.WriteLine("winner: " + Winner(repo.Load("a1").Close(now.AddSeconds(7200))));
+        try { repo.Load("a1").Close(now); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        BidService late = new BidService(repo, () => now.AddSeconds(3600));
+        Console.WriteLine(late.PlaceBid("a1", "asha", 2000));                 // the end time itself is already too late
+        Console.WriteLine(svc.PlaceBid("zz", "asha", 100));
+        repo.Save(new Auction("a2", "sam", 500, 50, 5000, now.AddSeconds(3600), null, false, 0));
+        Console.WriteLine(svc.PlaceBid("a2", "asha", 600));
+        Console.WriteLine("a2 winner: " + Winner(repo.Load("a2").Close(now.AddSeconds(3600))));   // reserve not met
+    }
 }` }
         ],
         complexity: `<p>O(1) per bid. Contention: racing bids on one hot auction serialise via version checks; under extreme load, switch to a single-writer queue per auction (actor) or pessimistic locking.</p>`,
@@ -7098,6 +8333,85 @@ int main() {
     bus.subscribe<OrderPaid>([](const OrderPaid& e) { cout << "  loyalty: +" << e.amountPaise / 10'000 << " points\\n"; });
     bus.subscribe<OrderPaid>([](const OrderPaid&) { throw runtime_error("SMS gateway down"); });
     PlaceOrderService(bus, [] { return time(nullptr); }, [&seq] { return "evt-" + to_string(++seq); }).placeAndPay("o-7", "asha", 250'000);
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// Domain events recorded by the aggregate, dispatched AFTER save by the application service.
+abstract class DomainEvent {
+    public readonly string EventId; public readonly DateTime OccurredAt;
+    protected DomainEvent(string id, DateTime at) { EventId = id; OccurredAt = at; }
+}
+sealed class OrderPlaced : DomainEvent {
+    public readonly string OrderId, CustomerId; public readonly long TotalPaise;
+    public OrderPlaced(string eid, DateTime at, string orderId, string customerId, long total) : base(eid, at) { OrderId = orderId; CustomerId = customerId; TotalPaise = total; }
+}
+sealed class OrderPaid : DomainEvent {
+    public readonly string OrderId; public readonly long AmountPaise;
+    public OrderPaid(string eid, DateTime at, string orderId, long amount) : base(eid, at) { OrderId = orderId; AmountPaise = amount; }
+}
+
+abstract class AggregateRoot {
+    private readonly List<DomainEvent> pending = new List<DomainEvent>();
+    protected void Record(DomainEvent e) { pending.Add(e); }
+    public List<DomainEvent> PullEvents() { List<DomainEvent> result = new List<DomainEvent>(pending); pending.Clear(); return result; }
+}
+
+class Order : AggregateRoot {
+    private readonly string id, customerId; private readonly long total; private string status = "NEW";
+    public Order(string id, string customerId, long total) { this.id = id; this.customerId = customerId; this.total = total; }
+    public void Place(Func<DateTime> clock, Func<string> ids) {
+        if (status != "NEW") throw new InvalidOperationException("already placed");
+        status = "PLACED";
+        Record(new OrderPlaced(ids(), clock(), id, customerId, total));   // a FACT, past tense
+    }
+    public void Pay(long amount, Func<DateTime> clock, Func<string> ids) {
+        if (status != "PLACED" || amount != total) throw new InvalidOperationException("cannot pay");
+        status = "PAID";
+        Record(new OrderPaid(ids(), clock(), id, amount));
+    }
+}
+
+class EventBus {                                          // in-process dispatcher, subscription by type
+    private readonly Dictionary<Type, List<Action<DomainEvent>>> handlers = new Dictionary<Type, List<Action<DomainEvent>>>();
+    public void Subscribe<E>(Action<E> h) where E : DomainEvent {
+        List<Action<DomainEvent>> list;
+        if (!handlers.TryGetValue(typeof(E), out list)) { list = new List<Action<DomainEvent>>(); handlers[typeof(E)] = list; }
+        list.Add(e => h((E)e));
+    }
+    public void Publish(List<DomainEvent> events) {
+        foreach (DomainEvent e in events) {
+            List<Action<DomainEvent>> list;
+            if (!handlers.TryGetValue(e.GetType(), out list)) continue;
+            foreach (Action<DomainEvent> h in list) {
+                try { h(e); }                             // one failing handler must not stop the others
+                catch (Exception ex) { Console.WriteLine("  handler failed for " + e.EventId + ", will retry: " + ex.Message); }
+            }
+        }
+    }
+}
+
+class PlaceOrderService {
+    private readonly Dictionary<string, Order> repo = new Dictionary<string, Order>(); private readonly EventBus bus;
+    private readonly Func<DateTime> clock; private readonly Func<string> ids;
+    public PlaceOrderService(EventBus bus, Func<DateTime> clock, Func<string> ids) { this.bus = bus; this.clock = clock; this.ids = ids; }
+    public void PlaceAndPay(string orderId, string customer, long total) {
+        Order o = new Order(orderId, customer, total);
+        o.Place(clock, ids);
+        o.Pay(total, clock, ids);
+        repo[orderId] = o;                                // 1) save (commit)
+        bus.Publish(o.PullEvents());                      // 2) THEN dispatch committed facts
+    }
+    static void Main() {
+        EventBus bus = new EventBus();
+        int seq = 0;
+        bus.Subscribe<OrderPlaced>(e => Console.WriteLine("  inventory: reserve stock for " + e.OrderId));
+        bus.Subscribe<OrderPlaced>(e => Console.WriteLine("  email: confirmation to " + e.CustomerId));
+        bus.Subscribe<OrderPaid>(e => Console.WriteLine("  loyalty: +" + e.AmountPaise / 10000 + " points"));
+        bus.Subscribe<OrderPaid>(e => { throw new Exception("SMS gateway down"); });
+        new PlaceOrderService(bus, () => DateTime.UtcNow, () => "evt-" + (++seq)).PlaceAndPay("o-7", "asha", 250000);
+    }
 }` }
         ] }, { lang: 'java', code: `// Transactional OUTBOX + relay + idempotent consumer, simulated in memory.
 record OutboxRow(String eventId, String type, String payload, boolean sent) {}
@@ -7346,6 +8660,67 @@ int main() {
     string rows;
     for (const auto& r : db.outbox) rows += (rows.empty() ? "" : ", ") + r.eventId + " " + r.type + " sent=" + (r.sent ? "true" : "false");
     cout << "outbox: [" << rows << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Transactional OUTBOX + relay + idempotent consumer, simulated in memory.
+sealed class OutboxRow {
+    public readonly string EventId, Type, Payload; public readonly bool Sent;
+    public OutboxRow(string eventId, string type, string payload, bool sent) { EventId = eventId; Type = type; Payload = payload; Sent = sent; }
+}
+
+class Database {                                           // pretend this is one SQL database
+    public readonly Dictionary<string, string> Orders = new Dictionary<string, string>();
+    public readonly List<OutboxRow> Outbox = new List<OutboxRow>();
+    private readonly object gate = new object();
+    public void InTransaction(Action work) { lock (gate) work(); }   // a real DB gives atomicity here
+}
+
+class Broker {                                             // pretend Kafka topic
+    public readonly List<OutboxRow> Topic = new List<OutboxRow>();
+    public void Publish(OutboxRow r) { Topic.Add(r); }
+}
+
+class OutboxRelay {
+    private readonly Database db; private readonly Broker broker;
+    public OutboxRelay(Database db, Broker b) { this.db = db; broker = b; }
+    public void PollOnce(bool crashBeforeMarking) {
+        for (int i = 0; i < db.Outbox.Count; i++) {
+            OutboxRow r = db.Outbox[i];
+            if (r.Sent) continue;
+            broker.Publish(r);                             // step 1: publish
+            if (crashBeforeMarking) return;                // simulated crash: row NOT marked -> will be re-sent
+            db.Outbox[i] = new OutboxRow(r.EventId, r.Type, r.Payload, true);   // step 2: mark sent
+        }
+    }
+}
+
+class LoyaltyConsumer {                                    // idempotent: remembers processed event ids
+    private readonly HashSet<string> processed = new HashSet<string>(); int points;
+    public void OnMessage(OutboxRow r) {
+        if (!processed.Add(r.EventId)) { Console.WriteLine("duplicate " + r.EventId + " ignored"); return; }
+        points += 10;
+        Console.WriteLine("processed " + r.EventId + ", points = " + points);
+    }
+}
+
+class OutboxDemo {
+    static void Main() {
+        Database db = new Database(); Broker broker = new Broker();
+        db.InTransaction(() => {                           // aggregate row + event row: both or neither
+            db.Orders["o-1"] = "PLACED";
+            db.Outbox.Add(new OutboxRow("evt-1", "OrderPlaced", "{orderId:o-1}", false));
+        });
+        OutboxRelay relay = new OutboxRelay(db, broker);
+        relay.PollOnce(true);                              // publishes evt-1, then "crashes"
+        relay.PollOnce(false);                             // restart: publishes evt-1 AGAIN, marks it sent
+        LoyaltyConsumer loyalty = new LoyaltyConsumer();
+        foreach (OutboxRow r in broker.Topic) loyalty.OnMessage(r);   // at-least-once delivery, effectively-once effect
+        Console.WriteLine("outbox: [" + string.Join(", ", db.Outbox.Select(r => r.EventId + " " + r.Type + " sent=" + r.Sent.ToString().ToLower())) + "]");
+    }
 }` }
         ] }],
     codeTitle: ['Aggregate records events; dispatcher runs after save', 'Transactional outbox, relay and idempotent consumer'],
@@ -7456,7 +8831,17 @@ public:
         if (!seen_.insert(eventId).second) return;  // already applied: do nothing
         points_[customer] += earned;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Collections.Generic;
+class PointsHandler {
+    private readonly HashSet<string> seen = new HashSet<string>();
+    private readonly Dictionary<string, int> points = new Dictionary<string, int>();
+    public void On(string eventId, string customer, int earned) {
+        if (!seen.Add(eventId)) return;               // already applied: do nothing
+        int p; points.TryGetValue(customer, out p); points[customer] = p + earned;
+    }
+}` }
         ] },
       { title: 'Events vs commands', html: `${H.table(['', 'Command', 'Event'], [['Tense', 'imperative: <code>PlaceOrder</code>', 'past: <code>OrderPlaced</code>'], ['Can be rejected?', 'yes', 'no — it already happened'], ['Receivers', 'exactly one handler', 'zero to many subscribers'], ['Coupling', 'sender knows the receiver', 'publisher does not know subscribers']])}` }
     ],
@@ -7482,7 +8867,7 @@ public:
         Deque<String> q = queues.getOrDefault(book, new ArrayDeque<>());
         if (!q.isEmpty()) System.out.println("notify " + q.poll());  // if this throws, the whole return fails
     }
-}`, alt: [{ lang: 'python', code: "from collections import deque\n\nclass LoanServiceBrute:\n    def __init__(self):\n        self.fines = {}\n        self.queues = {}\n\n    def return_book(self, member, book, late_days):\n        self.fines[member] = self.fines.get(member, 0) + late_days * 10   # not idempotent: retry = double fine\n        q = self.queues.get(book, deque())\n        if q: print(\"notify\", q.popleft())                               # if this raises, the whole return fails\n" }, { lang: 'ts', code: "class LoanServiceBrute {\n  fines = new Map<string, number>();\n  queues = new Map<string, string[]>();\n  returnBook(member: string, book: string, lateDays: number): void {\n    this.fines.set(member, (this.fines.get(member) ?? 0) + lateDays * 10);   // not idempotent: retry = double fine\n    const q = this.queues.get(book) ?? [];\n    if (q.length > 0) console.log(\"notify \" + q.shift());                   // if this throws, the whole return fails\n  }\n}\n" }, { lang: 'cpp', code: "class LoanServiceBrute {\npublic:\n    unordered_map<string, int> fines;\n    unordered_map<string, deque<string>> queues;\n    void returnBook(const string& member, const string& book, int lateDays) {\n        fines[member] += lateDays * 10;                                      // not idempotent: retry = double fine\n        auto& q = queues[book];\n        if (!q.empty()) { cout << \"notify \" << q.front() << endl; q.pop_front(); }   // if this throws, the whole return fails\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from collections import deque\n\nclass LoanServiceBrute:\n    def __init__(self):\n        self.fines = {}\n        self.queues = {}\n\n    def return_book(self, member, book, late_days):\n        self.fines[member] = self.fines.get(member, 0) + late_days * 10   # not idempotent: retry = double fine\n        q = self.queues.get(book, deque())\n        if q: print(\"notify\", q.popleft())                               # if this raises, the whole return fails\n" }, { lang: 'ts', code: "class LoanServiceBrute {\n  fines = new Map<string, number>();\n  queues = new Map<string, string[]>();\n  returnBook(member: string, book: string, lateDays: number): void {\n    this.fines.set(member, (this.fines.get(member) ?? 0) + lateDays * 10);   // not idempotent: retry = double fine\n    const q = this.queues.get(book) ?? [];\n    if (q.length > 0) console.log(\"notify \" + q.shift());                   // if this throws, the whole return fails\n  }\n}\n" }, { lang: 'cpp', code: "class LoanServiceBrute {\npublic:\n    unordered_map<string, int> fines;\n    unordered_map<string, deque<string>> queues;\n    void returnBook(const string& member, const string& book, int lateDays) {\n        fines[member] += lateDays * 10;                                      // not idempotent: retry = double fine\n        auto& q = queues[book];\n        if (!q.empty()) { cout << \"notify \" << q.front() << endl; q.pop_front(); }   // if this throws, the whole return fails\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass LoanServiceBrute {\n    public readonly Dictionary<string, int> Fines = new Dictionary<string, int>();\n    public readonly Dictionary<string, Queue<string>> Queues = new Dictionary<string, Queue<string>>();\n    public void ReturnBook(string member, string book, int lateDays) {\n        int f; Fines.TryGetValue(member, out f); Fines[member] = f + lateDays * 10;   // not idempotent: retry = double fine\n        Queue<string> q;\n        if (Queues.TryGetValue(book, out q) && q.Count > 0) Console.WriteLine(\"notify \" + q.Dequeue());  // if this throws, the whole return fails\n    }\n}\n" }] } },
       mcq: { q: 'The notification service is down when a book is returned. What should happen?', options: ['The return is committed; the BookReturned handler for reservations retries later', 'The return is rolled back so everything stays consistent', 'The fine is cancelled', 'The librarian must retry the return manually'], answer: 0, explain: 'The return is a fact that already happened in the real world. Side effects in other aggregates are eventually consistent and retried; they must not undo the fact.' },
       hints: [`<p>Hint 1: <code>Loan.returnBook(LocalDate today)</code> computes late days inside the aggregate and records <code>BookReturned</code> with everything handlers need.</p>`, `<p>Hint 2: Each handler keeps a <code>Set&lt;String&gt;</code> of processed event IDs (in production, a table with a unique key written in the same transaction).</p>`, `<p>Hint 3: Dispatcher = a list of handlers (functions); wrap each handler call in try/catch and keep failed deliveries in a retry list.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "delivery 1: handler failed: db down\nfines {asha=30}, holds [ravi holds b1 until 2026-03-06]\nqueue b1: [meera]\nalready returned\nfines {asha=30}, holds 1\n" }] },
@@ -7891,6 +9276,82 @@ int main() {
     for (const auto& e : early.pullEvents())
         for (const auto& s : subscribers) s(e);
     cout << "fines " << fmtFines(fines.fines) << ", holds " << res.holds.size() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class BookReturned {
+    public readonly string EventId, LoanId, Member, Book; public readonly long LateDays;
+    public BookReturned(string eventId, string loanId, string member, string book, long lateDays) { EventId = eventId; LoanId = loanId; Member = member; Book = book; LateDays = lateDays; }
+}
+
+class Loan {
+    private readonly string id, member, book; private readonly DateTime due; private bool returned;
+    private readonly List<BookReturned> events = new List<BookReturned>();
+    public Loan(string id, string member, string book, DateTime due) { this.id = id; this.member = member; this.book = book; this.due = due; }
+    public void ReturnBook(DateTime today, string eventId) {
+        if (returned) throw new InvalidOperationException("already returned");
+        returned = true;
+        long late = Math.Max(0, (long)(today.Date - due.Date).TotalDays);
+        events.Add(new BookReturned(eventId, id, member, book, late));
+    }
+    public List<BookReturned> PullEvents() { List<BookReturned> e = new List<BookReturned>(events); events.Clear(); return e; }
+}
+
+class FineHandler {                                        // updates the FineAccount aggregate
+    public readonly SortedDictionary<string, long> Fines = new SortedDictionary<string, long>(StringComparer.Ordinal);
+    private readonly HashSet<string> done = new HashSet<string>();
+    public void On(BookReturned e) {
+        if (!done.Add(e.EventId)) return;                   // idempotent
+        if (e.LateDays > 0) { long f; Fines.TryGetValue(e.Member, out f); Fines[e.Member] = f + e.LateDays * 10; }
+    }
+}
+class ReservationHandler {                                 // updates the ReservationQueue aggregate
+    public readonly SortedDictionary<string, Queue<string>> Queues = new SortedDictionary<string, Queue<string>>(StringComparer.Ordinal);
+    public readonly List<string> Holds = new List<string>();
+    private readonly HashSet<string> done = new HashSet<string>(); private readonly Func<DateTime> clock;
+    public ReservationHandler(Func<DateTime> clock) { this.clock = clock; }
+    public void On(BookReturned e) {
+        if (done.Contains(e.EventId)) return;
+        Queue<string> q;
+        if (Queues.TryGetValue(e.Book, out q) && q.Count > 0) Holds.Add(q.Dequeue() + " holds " + e.Book + " until " + clock().Date.AddDays(2).ToString("yyyy-MM-dd"));
+        done.Add(e.EventId);                                // mark only after success
+    }
+}
+
+class ReturnService {
+    static void Main() {
+        DateTime fixedNow = new DateTime(2026, 3, 4, 9, 0, 0, DateTimeKind.Utc);
+        Func<DateTime> clock = () => fixedNow;
+        DateTime today = clock().Date;
+        FineHandler fines = new FineHandler(); ReservationHandler res = new ReservationHandler(clock);
+        res.Queues["b1"] = new Queue<string>(new[] { "ravi", "meera" });
+        int calls = 0;
+        Action<BookReturned> flakyReservations = e => {          // fails on its first delivery only
+            if (calls++ == 0) throw new InvalidOperationException("db down");
+            res.On(e);
+        };
+        List<Action<BookReturned>> subscribers = new List<Action<BookReturned>> { fines.On, flakyReservations };
+
+        Loan loan = new Loan("L1", "asha", "b1", new DateTime(2026, 3, 1));
+        loan.ReturnBook(today, "e1");
+        List<BookReturned> committed = loan.PullEvents();   // (save loan here, then dispatch)
+        for (int delivery = 1; delivery <= 2; delivery++)    // at-least-once: same event delivered twice
+            foreach (BookReturned e in committed) foreach (Action<BookReturned> s in subscribers) {
+                try { s(e); }
+                catch (Exception ex) { Console.WriteLine("delivery " + delivery + ": handler failed: " + ex.Message); }
+            }
+        Console.WriteLine("fines {" + string.Join(", ", fines.Fines.Select(kv => kv.Key + "=" + kv.Value)) + "}, holds [" + string.Join(", ", res.Holds) + "]");
+        Console.WriteLine("queue b1: [" + string.Join(", ", res.Queues["b1"]) + "]");
+
+        try { loan.ReturnBook(today, "e2"); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        Loan early = new Loan("L2", "ravi", "b2", new DateTime(2026, 3, 10));
+        early.ReturnBook(today, "e3");                        // returned before the due date: no fine
+        foreach (BookReturned e in early.PullEvents()) foreach (Action<BookReturned> s in subscribers) s(e);
+        Console.WriteLine("fines {" + string.Join(", ", fines.Fines.Select(kv => kv.Key + "=" + kv.Value)) + "}, holds " + res.Holds.Count);
+    }
 }` }
         ],
         complexity: `<p>O(1) per event per handler. Each handler's processed-ID set grows with events; in production, expire IDs after the broker's maximum redelivery window.</p>`,
@@ -8399,6 +9860,96 @@ int main() {
     } catch (const ConcurrencyException& e) {
         cout << "conflict: " << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Event-sourced BankAccount: decide (validate) vs apply (evolve), event store with expected version.
+abstract class AccountEvent {                              // closed set: only the nested variants exist
+    private AccountEvent() { }
+    public sealed class Opened : AccountEvent { public readonly string Owner; public Opened(string o) { Owner = o; } }
+    public sealed class Deposited : AccountEvent { public readonly long Amount; public Deposited(long a) { Amount = a; } }
+    public sealed class Withdrew : AccountEvent { public readonly long Amount; public Withdrew(long a) { Amount = a; } }
+    public sealed class Frozen : AccountEvent { public readonly string Reason; public Frozen(string r) { Reason = r; } }
+}
+
+class ConcurrencyException : Exception { public ConcurrencyException(string m) : base(m) { } }
+
+class EventStore {                                          // append-only, one stream per aggregate
+    private readonly Dictionary<string, List<AccountEvent>> streams = new Dictionary<string, List<AccountEvent>>();
+    private readonly object gate = new object();
+    public List<AccountEvent> Read(string streamId) { lock (gate) { List<AccountEvent> s; return streams.TryGetValue(streamId, out s) ? new List<AccountEvent>(s) : new List<AccountEvent>(); } }
+    public void Append(string streamId, long expectedVersion, List<AccountEvent> events) {
+        lock (gate) {
+            List<AccountEvent> s;
+            if (!streams.TryGetValue(streamId, out s)) { s = new List<AccountEvent>(); streams[streamId] = s; }
+            if (s.Count != expectedVersion) throw new ConcurrencyException(streamId + ": expected v" + expectedVersion + " but is v" + s.Count);
+            s.AddRange(events);
+        }
+    }
+}
+
+class BankAccount {
+    private readonly string id;
+    private bool open, frozen; private long balance; private long version;   // derived state
+    private readonly List<AccountEvent> uncommitted = new List<AccountEvent>();
+
+    private BankAccount(string id) { this.id = id; }
+
+    public static BankAccount Rehydrate(string id, List<AccountEvent> history) {      // LOAD = replay
+        BankAccount a = new BankAccount(id);
+        foreach (AccountEvent e in history) { a.Apply(e); a.version++; }
+        return a;
+    }
+    // ---------- decide: rules live here; may throw; produces events ----------
+    public void Open(string owner)   { if (open) throw new InvalidOperationException("already open"); Raise(new AccountEvent.Opened(owner)); }
+    public void Deposit(long amt)    { RequireOpen(); if (amt <= 0) throw new ArgumentException("amount > 0"); Raise(new AccountEvent.Deposited(amt)); }
+    public void Withdraw(long amt)   {
+        RequireOpen();
+        if (frozen) throw new InvalidOperationException("account frozen");
+        if (amt <= 0 || amt > balance) throw new InvalidOperationException("insufficient funds: balance " + balance);
+        Raise(new AccountEvent.Withdrew(amt));
+    }
+    public void Freeze(string why)   { RequireOpen(); if (!frozen) Raise(new AccountEvent.Frozen(why)); }
+
+    // ---------- apply: pure state change; never validates, never fails ----------
+    private void Apply(AccountEvent e) {
+        if (e is AccountEvent.Opened) open = true;
+        else if (e is AccountEvent.Deposited d) balance += d.Amount;
+        else if (e is AccountEvent.Withdrew w) balance -= w.Amount;
+        else if (e is AccountEvent.Frozen) frozen = true;
+    }
+    private void Raise(AccountEvent e) { Apply(e); uncommitted.Add(e); }
+    private void RequireOpen() { if (!open) throw new InvalidOperationException("not open"); }
+
+    public void SaveTo(EventStore store) { store.Append(id, version, uncommitted); version += uncommitted.Count; uncommitted.Clear(); }
+    public long Balance() { return balance; } public long Version() { return version; }
+    public static string Describe(AccountEvent e) {
+        if (e is AccountEvent.Opened o) return "Opened " + o.Owner;
+        if (e is AccountEvent.Deposited d) return "Deposited " + d.Amount;
+        if (e is AccountEvent.Withdrew w) return "Withdrew " + w.Amount;
+        return "Frozen " + ((AccountEvent.Frozen)e).Reason;
+    }
+
+    static void Main() {
+        EventStore store = new EventStore();
+        BankAccount a = Rehydrate("acc-42", store.Read("acc-42"));
+        a.Open("asha"); a.Deposit(100); a.Withdraw(30); a.Deposit(50);
+        a.SaveTo(store);
+        Console.WriteLine("log: [" + string.Join(", ", store.Read("acc-42").Select(Describe)) + "]");
+
+        BankAccount again = Rehydrate("acc-42", store.Read("acc-42"));     // fresh process, same state
+        Console.WriteLine("rebuilt balance " + again.Balance() + " at v" + again.Version()); // 120 at v4
+        try { again.Withdraw(500); } catch (InvalidOperationException e) { Console.WriteLine("rejected: " + e.Message); }
+
+        BankAccount tab1 = Rehydrate("acc-42", store.Read("acc-42"));
+        BankAccount tab2 = Rehydrate("acc-42", store.Read("acc-42"));
+        tab1.Withdraw(100); tab1.SaveTo(store);
+        tab2.Withdraw(100);                                                // based on stale v4
+        try { tab2.SaveTo(store); } catch (ConcurrencyException e) { Console.WriteLine("conflict: " + e.Message); }
+    }
 }` }
         ] }, { lang: 'java', code: `// Functional style (Java 21): state = fold(evolve, initial, events); decide returns events.
 sealed interface CartEvent permits ItemAdded, ItemRemoved, CheckedOut {}
@@ -8621,6 +10172,61 @@ int main() {
             cout << e.what() << "\\n";
         }
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Functional style: state = fold(evolve, initial, events); decide returns events.
+abstract class CartEvent {
+    private CartEvent() { }
+    public sealed class ItemAdded : CartEvent { public readonly string Sku; public readonly int Qty; public ItemAdded(string s, int q) { Sku = s; Qty = q; } }
+    public sealed class ItemRemoved : CartEvent { public readonly string Sku; public ItemRemoved(string s) { Sku = s; } }
+    public sealed class CheckedOut : CartEvent { }
+}
+
+sealed class CartState {
+    public readonly IReadOnlyDictionary<string, int> Items; public readonly bool IsCheckedOut;
+    public CartState(IDictionary<string, int> items, bool checkedOut) { Items = new SortedDictionary<string, int>(items, StringComparer.Ordinal); IsCheckedOut = checkedOut; }
+    public static readonly CartState EMPTY = new CartState(new Dictionary<string, int>(), false);
+}
+
+static class Cart {
+    public static CartState Evolve(CartState s, CartEvent e) {       // pure: (state, event) -> new state
+        if (e is CartEvent.ItemAdded a) {
+            var m = new Dictionary<string, int>(s.Items.ToDictionary(kv => kv.Key, kv => kv.Value));
+            int q; m.TryGetValue(a.Sku, out q); m[a.Sku] = q + a.Qty;
+            return new CartState(m, s.IsCheckedOut);
+        }
+        if (e is CartEvent.ItemRemoved r) {
+            var m = s.Items.Where(kv => kv.Key != r.Sku).ToDictionary(kv => kv.Key, kv => kv.Value);
+            return new CartState(m, s.IsCheckedOut);
+        }
+        return new CartState(s.Items.ToDictionary(kv => kv.Key, kv => kv.Value), true);   // CheckedOut
+    }
+    public static CartState Replay(IEnumerable<CartEvent> events) {
+        CartState s = CartState.EMPTY;
+        foreach (CartEvent e in events) s = Evolve(s, e);
+        return s;
+    }
+    public static List<CartEvent> Checkout(CartState s) {             // decide: validates, returns new events
+        if (s.IsCheckedOut) throw new InvalidOperationException("already checked out");
+        if (s.Items.Count == 0) throw new InvalidOperationException("empty cart");
+        return new List<CartEvent> { new CartEvent.CheckedOut() };
+    }
+    static string Show(CartState s) { return "{" + string.Join(", ", s.Items.Select(kv => kv.Key + "=" + kv.Value)) + "} checkedOut=" + s.IsCheckedOut.ToString().ToLower(); }
+
+    static void Main() {
+        List<CartEvent> log = new List<CartEvent> { new CartEvent.ItemAdded("tea", 2), new CartEvent.ItemAdded("mug", 1), new CartEvent.ItemAdded("tea", 1), new CartEvent.ItemRemoved("mug") };
+        CartState now = Replay(log);
+        Console.WriteLine(Show(now));                             // {tea=3} checkedOut=false
+        log.AddRange(Checkout(now));
+        Console.WriteLine(Show(Replay(log)));                     // {tea=3} checkedOut=true
+        Console.WriteLine("as of event 2: " + Show(Replay(log.Take(2))));   // time travel
+        try { Checkout(Replay(log)); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        try { Checkout(CartState.EMPTY); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ] }, { lang: 'java', code: `// Snapshots + a projection (read model) built from the same events.
 record Event(long version, String type, long amount) {}
@@ -8825,6 +10431,48 @@ int main() {
     for (const auto& [type, total] : MonthlyTotalsProjection::rebuild(r.log).totals)
         line += (line.empty() ? "" : ", ") + type + "=" + to_string(total);
     cout << "projection {" << line << "}\\n";  // {DEP=150, WD=50}
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Snapshots + a projection (read model) built from the same events.
+sealed class Event { public readonly long Version; public readonly string Type; public readonly long Amount; public Event(long v, string t, long a) { Version = v; Type = t; Amount = a; } }
+sealed class Snapshot { public readonly long Version, Balance; public Snapshot(long v, long b) { Version = v; Balance = b; } }
+
+class SnapshottingRepo {
+    public const int EVERY = 3;
+    public readonly List<Event> Log = new List<Event>();
+    public Snapshot Latest = new Snapshot(0, 0);
+    public int EventsReplayedOnLastLoad;
+
+    public void Append(string type, long amount) {
+        Log.Add(new Event(Log.Count + 1, type, amount));
+        if (Log.Count % EVERY == 0) Latest = new Snapshot(Log.Count, Load());     // take a snapshot every 3 events
+    }
+    public long Load() {                                          // snapshot + only the events after it
+        long bal = Latest.Balance; int n = 0;
+        foreach (Event e in Log) if (e.Version > Latest.Version) { bal += e.Type == "DEP" ? e.Amount : -e.Amount; n++; }
+        EventsReplayedOnLastLoad = n;
+        return bal;
+    }
+}
+
+class MonthlyTotalsProjection {                                   // a read model: rebuildable at any time
+    public readonly SortedDictionary<string, long> Totals = new SortedDictionary<string, long>(StringComparer.Ordinal);
+    public void On(Event e) { long t; Totals.TryGetValue(e.Type, out t); Totals[e.Type] = t + e.Amount; }
+    public static MonthlyTotalsProjection Rebuild(List<Event> log) { var p = new MonthlyTotalsProjection(); foreach (Event e in log) p.On(e); return p; }
+}
+
+class SnapshotDemo {
+    static void Main() {
+        SnapshottingRepo r = new SnapshottingRepo();
+        r.Append("DEP", 100); r.Append("WD", 30); r.Append("DEP", 50); r.Append("WD", 20);
+        long bal = r.Load();
+        Console.WriteLine("balance " + bal + " (snapshot v" + r.Latest.Version + " + " + r.EventsReplayedOnLastLoad + " event)");
+        Console.WriteLine("projection {" + string.Join(", ", MonthlyTotalsProjection.Rebuild(r.Log).Totals.Select(kv => kv.Key + "=" + kv.Value)) + "}");   // {DEP=150, WD=50}
+    }
 }` }
         ] }],
     codeTitle: ['Event-sourced aggregate: decide vs apply, expected-version append', 'Functional event sourcing with a closed set of events + exhaustive matching', 'Snapshots and a rebuildable projection'],
@@ -8941,6 +10589,17 @@ DepositedV2 upcast(const variant<DepositedV1, DepositedV2>& raw) {
     return visit(Overloaded{
         [](const DepositedV2& v2) { return v2; },
         [](const DepositedV1& v1) { return DepositedV2{v1.rupees * 100, "INR"}; }}, raw);  // old data was always INR
+}` },
+  { lang: 'csharp', code: `
+using System;
+sealed class DepositedV1 { public readonly long Rupees; public DepositedV1(long r) { Rupees = r; } }
+sealed class DepositedV2 { public readonly long Paise; public readonly string Currency; public DepositedV2(long p, string c) { Paise = p; Currency = c; } }
+static class Upcaster {
+    public static DepositedV2 Upcast(object raw) {
+        if (raw is DepositedV2 v2) return v2;
+        if (raw is DepositedV1 v1) return new DepositedV2(v1.Rupees * 100, "INR");   // old data was always INR
+        throw new ArgumentException("unknown event " + raw);
+    }
 }` }
         ] },
       { title: 'Why apply must never throw', html: `<p>Suppose a later code change adds "withdraw limit ₹10,000" and someone puts that check inside <code>apply(Withdrew)</code>. Old streams containing a legal-at-the-time ₹20,000 withdrawal can now <b>never be loaded again</b>. ${H.c('r', 'Rules belong in decide (commands), not in apply (facts).')} New rules apply only to new commands.</p>` },
@@ -8967,7 +10626,7 @@ DepositedV2 upcast(const variant<DepositedV1, DepositedV2>& raw) {
     void release(int q) { reserved -= q; }                 // releasing twice -> negative reserved
     void ship(int q) { onHand -= q; reserved -= q; }
     int available() { return onHand - reserved; }
-}`, alt: [{ lang: 'python', code: "class StockRowBrute:\n    def __init__(self): self.on_hand = self.reserved = 0\n    def receive(self, q): self.on_hand += q\n    def reserve(self, q): self.reserved += q                 # no per-order tracking, no availability check\n    def release(self, q): self.reserved -= q                 # releasing twice -> negative reserved\n    def ship(self, q): self.on_hand -= q; self.reserved -= q\n    def available(self): return self.on_hand - self.reserved\n" }, { lang: 'ts', code: "class StockRowBrute {\n  onHand = 0; reserved = 0;\n  receive(q: number): void { this.onHand += q; }\n  reserve(q: number): void { this.reserved += q; }           // no per-order tracking, no availability check\n  release(q: number): void { this.reserved -= q; }           // releasing twice -> negative reserved\n  ship(q: number): void { this.onHand -= q; this.reserved -= q; }\n  available(): number { return this.onHand - this.reserved; }\n}\n" }, { lang: 'cpp', code: "class StockRowBrute {\npublic:\n    int onHand = 0, reserved = 0;\n    void receive(int q) { onHand += q; }\n    void reserve(int q) { reserved += q; }                   // no per-order tracking, no availability check\n    void release(int q) { reserved -= q; }                   // releasing twice -> negative reserved\n    void ship(int q) { onHand -= q; reserved -= q; }\n    int available() const { return onHand - reserved; }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class StockRowBrute:\n    def __init__(self): self.on_hand = self.reserved = 0\n    def receive(self, q): self.on_hand += q\n    def reserve(self, q): self.reserved += q                 # no per-order tracking, no availability check\n    def release(self, q): self.reserved -= q                 # releasing twice -> negative reserved\n    def ship(self, q): self.on_hand -= q; self.reserved -= q\n    def available(self): return self.on_hand - self.reserved\n" }, { lang: 'ts', code: "class StockRowBrute {\n  onHand = 0; reserved = 0;\n  receive(q: number): void { this.onHand += q; }\n  reserve(q: number): void { this.reserved += q; }           // no per-order tracking, no availability check\n  release(q: number): void { this.reserved -= q; }           // releasing twice -> negative reserved\n  ship(q: number): void { this.onHand -= q; this.reserved -= q; }\n  available(): number { return this.onHand - this.reserved; }\n}\n" }, { lang: 'cpp', code: "class StockRowBrute {\npublic:\n    int onHand = 0, reserved = 0;\n    void receive(int q) { onHand += q; }\n    void reserve(int q) { reserved += q; }                   // no per-order tracking, no availability check\n    void release(int q) { reserved -= q; }                   // releasing twice -> negative reserved\n    void ship(int q) { onHand -= q; reserved -= q; }\n    int available() const { return onHand - reserved; }\n};\n" }, { lang: 'csharp', code: "class StockRowBrute {\n    public int OnHand, Reserved;\n    public void Receive(int q) { OnHand += q; }\n    public void Reserve(int q) { Reserved += q; }                 // no per-order tracking, no availability check\n    public void Release(int q) { Reserved -= q; }                 // releasing twice -> negative reserved\n    public void Ship(int q) { OnHand -= q; Reserved -= q; }\n    public int Available() { return OnHand - Reserved; }\n}\n" }] } },
       mcq: { q: 'An old stream contains "Reserved o9 50" from before a new rule "max 20 per order" was added. What happens on replay?', options: ['It replays fine: apply never validates; the new rule only affects new reserve commands', 'Replay fails with a rule violation', 'The event must be edited to 20', 'The whole stream must be deleted'], answer: 0, explain: 'Events are historical facts. Rules live in decide (command handling). Apply only changes state, so old histories always load.' },
       hints: [`<p>Hint 1: State = <code>onHand</code>, <code>Map&lt;orderId, qty&gt; reservations</code>; reserved = sum of the map.</p>`, `<p>Hint 2: Each command: check rules on current state → create event → apply it → add to uncommitted list.</p>`, `<p>Hint 3: "As of event k" = rehydrate from <code>history.subList(0, k)</code>. Snapshots: store (version, onHand, reservations) every N events.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "5 events: Received 10, Reserved o1 4, Reserved o2 5, Shipped o1, Released o2\nonHand=6 reserved=0 available=6\nrejected: only 6 available\navailable after o3: 0\nrejected: o3 already has a reservation\nrejected: no reservation for zz\nrejected: nothing reserved for zz\nrejected: qty > 0\nuncommitted events: 1\navailable as of event 3: 1\n" }] },
@@ -9368,6 +11027,79 @@ int main() {
     cout << "uncommitted events: " << rebuilt.pullUncommitted().size() << "\\n";  // rejected commands raise nothing
     cout << "available as of event 3: "
          << StockItem::rehydrate(vector<StockEvent>(history.begin(), history.begin() + 3)).available() << "\\n";  // 1
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+abstract class StockEvent {
+    private StockEvent() { }
+    public sealed class Received : StockEvent { public readonly int Qty; public Received(int q) { Qty = q; } }
+    public sealed class Reserved : StockEvent { public readonly string OrderId; public readonly int Qty; public Reserved(string o, int q) { OrderId = o; Qty = q; } }
+    public sealed class Released : StockEvent { public readonly string OrderId; public Released(string o) { OrderId = o; } }
+    public sealed class Shipped : StockEvent { public readonly string OrderId; public Shipped(string o) { OrderId = o; } }
+}
+
+class StockItem {
+    private int onHand; private readonly Dictionary<string, int> reservations = new Dictionary<string, int>();
+    private readonly List<StockEvent> uncommitted = new List<StockEvent>();
+
+    public static StockItem Rehydrate(IEnumerable<StockEvent> history) { StockItem s = new StockItem(); foreach (StockEvent e in history) s.Apply(e); return s; }
+
+    public int OnHand { get { return onHand; } }
+    public int ReservedQty() { return reservations.Values.Sum(); }
+    public int Available() { return onHand - ReservedQty(); }
+
+    // decide
+    public void Receive(int qty) { if (qty <= 0) throw new ArgumentException("qty > 0"); Raise(new StockEvent.Received(qty)); }
+    public void Reserve(string order, int qty) {
+        if (qty <= 0) throw new ArgumentException("qty > 0");
+        if (reservations.ContainsKey(order)) throw new InvalidOperationException(order + " already has a reservation");
+        if (qty > Available()) throw new InvalidOperationException("only " + Available() + " available");
+        Raise(new StockEvent.Reserved(order, qty));
+    }
+    public void Release(string order) { if (!reservations.ContainsKey(order)) throw new InvalidOperationException("no reservation for " + order); Raise(new StockEvent.Released(order)); }
+    public void Ship(string order) { if (!reservations.ContainsKey(order)) throw new InvalidOperationException("nothing reserved for " + order); Raise(new StockEvent.Shipped(order)); }
+
+    // apply: pure state change, never throws
+    private void Apply(StockEvent e) {
+        if (e is StockEvent.Received r) onHand += r.Qty;
+        else if (e is StockEvent.Reserved rs) reservations[rs.OrderId] = rs.Qty;
+        else if (e is StockEvent.Released rl) reservations.Remove(rl.OrderId);
+        else if (e is StockEvent.Shipped s) { int q; reservations.TryGetValue(s.OrderId, out q); onHand -= q; reservations.Remove(s.OrderId); }
+    }
+    private void Raise(StockEvent e) { Apply(e); uncommitted.Add(e); }
+    public List<StockEvent> PullUncommitted() { List<StockEvent> l = new List<StockEvent>(uncommitted); uncommitted.Clear(); return l; }
+
+    public static string Describe(StockEvent e) {
+        if (e is StockEvent.Received r) return "Received " + r.Qty;
+        if (e is StockEvent.Reserved rs) return "Reserved " + rs.OrderId + " " + rs.Qty;
+        if (e is StockEvent.Released rl) return "Released " + rl.OrderId;
+        return "Shipped " + ((StockEvent.Shipped)e).OrderId;
+    }
+
+    static void Attempt(Action command) {
+        try { command(); } catch (Exception e) { Console.WriteLine("rejected: " + e.Message); }
+    }
+
+    static void Main() {
+        StockItem item = Rehydrate(new List<StockEvent>());
+        item.Receive(10); item.Reserve("o1", 4); item.Reserve("o2", 5); item.Ship("o1"); item.Release("o2");
+        List<StockEvent> history = item.PullUncommitted();                 // what we would append to the store
+        Console.WriteLine(history.Count + " events: " + string.Join(", ", history.Select(Describe)));
+        StockItem rebuilt = Rehydrate(history);
+        Console.WriteLine("onHand=" + rebuilt.OnHand + " reserved=" + rebuilt.ReservedQty() + " available=" + rebuilt.Available());
+        Attempt(() => rebuilt.Reserve("o3", 7));                           // only 6 available
+        rebuilt.Reserve("o3", 6);
+        Console.WriteLine("available after o3: " + rebuilt.Available());
+        Attempt(() => rebuilt.Reserve("o3", 1));                           // one reservation per order
+        Attempt(() => rebuilt.Release("zz"));
+        Attempt(() => rebuilt.Ship("zz"));
+        Attempt(() => rebuilt.Receive(0));
+        Console.WriteLine("uncommitted events: " + rebuilt.PullUncommitted().Count);   // rejected commands raise nothing
+        Console.WriteLine("available as of event 3: " + Rehydrate(history.Take(3)).Available());   // 1
+    }
 }` }
         ],
         complexity: `<p>Load O(E) for E events (O(events since snapshot) with snapshots); commands O(R) to sum R reservations (keep a running total for O(1)).</p>`,
@@ -9385,7 +11117,7 @@ int main() {
     String name, email, phone;
     ContactBrute(String name, String email, String phone) { this.name = name; this.email = email; this.phone = phone; }
     static boolean sameEmail(String a, String b) { return a.equalsIgnoreCase(b); }   // forgot trim(); other callers forget even this
-}`, alt: [{ lang: 'python', code: "class ContactBrute:\n    def __init__(self, name, email, phone):\n        self.name, self.email, self.phone = name, email, phone\n\n    @staticmethod\n    def same_email(a, b): return a.lower() == b.lower()   # forgot strip(); other callers forget even this\n" }, { lang: 'ts', code: "class ContactBrute {\n  constructor(public name: string, public email: string, public phone: string) {}\n  static sameEmail(a: string, b: string): boolean { return a.toLowerCase() === b.toLowerCase(); }   // forgot trim(); other callers forget even this\n}\n" }, { lang: 'cpp', code: "struct ContactBrute {\n    string name, email, phone;\n    ContactBrute(string name, string email, string phone) : name(name), email(email), phone(phone) {}\n    static bool sameEmail(string a, string b) {            // forgot trimming; other callers forget even the lower-casing\n        for (char& c : a) c = tolower(c);\n        for (char& c : b) c = tolower(c);\n        return a == b;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class ContactBrute:\n    def __init__(self, name, email, phone):\n        self.name, self.email, self.phone = name, email, phone\n\n    @staticmethod\n    def same_email(a, b): return a.lower() == b.lower()   # forgot strip(); other callers forget even this\n" }, { lang: 'ts', code: "class ContactBrute {\n  constructor(public name: string, public email: string, public phone: string) {}\n  static sameEmail(a: string, b: string): boolean { return a.toLowerCase() === b.toLowerCase(); }   // forgot trim(); other callers forget even this\n}\n" }, { lang: 'cpp', code: "struct ContactBrute {\n    string name, email, phone;\n    ContactBrute(string name, string email, string phone) : name(name), email(email), phone(phone) {}\n    static bool sameEmail(string a, string b) {            // forgot trimming; other callers forget even the lower-casing\n        for (char& c : a) c = tolower(c);\n        for (char& c : b) c = tolower(c);\n        return a == b;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nclass ContactBrute {\n    public string Name, Email, Phone;\n    public ContactBrute(string name, string email, string phone) { Name = name; Email = email; Phone = phone; }\n    public static bool SameEmail(string a, string b) { return string.Equals(a, b, StringComparison.OrdinalIgnoreCase); }   // forgot Trim(); other callers forget even this\n}\n" }] } },
     mcq: { q: 'Where should email normalisation (trim + lowercase) happen?', options: ['In the Email value object constructor, so every Email is normalised', 'In each service before comparing', 'In the database with a trigger', 'In the UI form'], answer: 0, explain: 'If the VO constructor normalises, no un-normalised Email can exist anywhere. Every other place gets it for free.' },
     hints: [`<p>Hint 1: Use immutable value objects whose constructor normalises first (<code>value = value.trim().toLowerCase();</code>) and then validates.</p>`, `<p>Hint 2: For the phone, strip everything except digits and a leading +, then remove a +91 or 0 prefix, then check 10 digits starting 6-9.</p>`, `<p>Hint 3: Value objects give you equality and hashing on the normalised value (Java records, Python frozen dataclasses, a defaulted <code>operator&lt;=&gt;</code> in C++), so a set dedupes with no extra code; in TypeScript key a <code>Map</code> by the normalised string.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "2 [asha@mail.com, ravi@x.in]\n+919845012345\ntrue\ninvalid mobile: 12345\ninvalid mobile: 5845012345\nphone required\nemail required\ninvalid email: a@@b.com\ninvalid email: noat\ninvalid email: x@y\ninvalid email: a@b.\ninvalid email: @x.com\nAsha <a@b.co> +919845012345\n" }] },
@@ -9604,6 +11336,61 @@ int main() {
         attempt([&] { Email e(bad); });
     Contact c{"Asha", Email(string(" A@B.co ")), IndianMobile(string("9845012345"))};
     cout << c.name << " <" << c.email.value() << "> " << c.phone.value() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+sealed class Email : IEquatable<Email> {
+    public readonly string Value;
+    public Email(string value) {
+        if (value == null) throw new ArgumentException("email required");
+        value = value.Trim().ToLower();
+        int at = value.IndexOf('@');
+        if (at <= 0 || at != value.LastIndexOf('@') || !value.Substring(at + 1).Contains(".") || value.EndsWith("."))
+            throw new ArgumentException("invalid email: " + value);
+        Value = value;
+    }
+    public bool Equals(Email o) { return o != null && o.Value == Value; }
+    public override bool Equals(object o) { return Equals(o as Email); }
+    public override int GetHashCode() { return Value.GetHashCode(); }
+}
+sealed class IndianMobile : IEquatable<IndianMobile> {
+    public readonly string Value;
+    public IndianMobile(string value) {
+        if (value == null) throw new ArgumentException("phone required");
+        string d = Regex.Replace(value, "[^0-9+]", "");
+        if (d.StartsWith("+91")) d = d.Substring(3); else if (d.StartsWith("0")) d = d.Substring(1);
+        if (!Regex.IsMatch(d, "^[6-9][0-9]{9}$")) throw new ArgumentException("invalid mobile: " + value);
+        Value = "+91" + d;
+    }
+    public bool Equals(IndianMobile o) { return o != null && o.Value == Value; }
+    public override bool Equals(object o) { return Equals(o as IndianMobile); }
+    public override int GetHashCode() { return Value.GetHashCode(); }
+}
+sealed class Contact {
+    public readonly string Name; public readonly Email Email; public readonly IndianMobile Phone;
+    public Contact(string name, Email email, IndianMobile phone) { Name = name; Email = email; Phone = phone; }
+}
+
+class ContactDemo {
+    static void Attempt(Action action) {
+        try { action(); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
+
+    static void Main() {
+        HashSet<Email> emails = new HashSet<Email>();
+        foreach (string raw in new[] { " Asha@Mail.com ", "asha@mail.com", "ravi@x.in", "RAVI@X.IN" }) emails.Add(new Email(raw));
+        Console.WriteLine(emails.Count + " [" + string.Join(", ", emails.Select(e => e.Value).OrderBy(v => v, StringComparer.Ordinal)) + "]");   // 2: equal by value
+        Console.WriteLine(new IndianMobile("098450-12345").Value);             // +919845012345
+        Console.WriteLine(new IndianMobile("+91 98450 12345").Equals(new IndianMobile("9845012345")).ToString().ToLower());  // true
+        foreach (string bad in new string[] { "12345", "5845012345", null }) Attempt(() => new IndianMobile(bad));
+        foreach (string bad in new string[] { null, "a@@b.com", "NoAt", "x@y", "a@b.", "  @x.com" }) Attempt(() => new Email(bad));
+        Contact c = new Contact("Asha", new Email(" A@B.co "), new IndianMobile("9845012345"));
+        Console.WriteLine(c.Name + " <" + c.Email.Value + "> " + c.Phone.Value);
+    }
 }` }
         ],
       complexity: `<p>O(length of input) per construction. Duplicates handled by hashing in O(1) average.</p>`,
@@ -9623,7 +11410,7 @@ int main() {
         long total = 12_500;                                     // pretend: new SalesDao().totalFor(today.minusDays(1))
         System.out.println("SMTP: Sales " + today.minusDays(1) + ": " + total);   // pretend: new SmtpClient().send(...)
     }
-}`, alt: [{ lang: 'python', code: "from datetime import date, timedelta\n\nclass DailyReportJobBrute:\n    def run(self):\n        today = date.today()                                     # hidden dependency\n        if today.weekday() == 6: return                          # Sunday\n        total = 12_500                                           # pretend: SalesDao().total_for(today - 1 day)\n        print(f\"SMTP: Sales {today - timedelta(days=1)}: {total}\")   # pretend: SmtpClient().send(...)\n" }, { lang: 'ts', code: "class DailyReportJobBrute {\n  run(): void {\n    const today = new Date();                                    // hidden dependency\n    if (today.getDay() === 0) return;                            // Sunday\n    const total = 12_500;                                        // pretend: new SalesDao().totalFor(yesterday)\n    const yesterday = new Date(today.getTime() - 86_400_000).toISOString().slice(0, 10);\n    console.log(\"SMTP: Sales \" + yesterday + \": \" + total);      // pretend: new SmtpClient().send(...)\n  }\n}\n" }, { lang: 'cpp', code: "class DailyReportJobBrute {\npublic:\n    void run() {\n        time_t today = time(nullptr);                            // hidden dependency\n        if (localtime(&today)->tm_wday == 0) return;             // Sunday\n        long long total = 12'500;                                // pretend: SalesDao().totalFor(yesterday)\n        time_t y = today - 86400;\n        char buf[16]; strftime(buf, sizeof buf, \"%Y-%m-%d\", localtime(&y));\n        cout << \"SMTP: Sales \" << buf << \": \" << total << endl;  // pretend: SmtpClient().send(...)\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from datetime import date, timedelta\n\nclass DailyReportJobBrute:\n    def run(self):\n        today = date.today()                                     # hidden dependency\n        if today.weekday() == 6: return                          # Sunday\n        total = 12_500                                           # pretend: SalesDao().total_for(today - 1 day)\n        print(f\"SMTP: Sales {today - timedelta(days=1)}: {total}\")   # pretend: SmtpClient().send(...)\n" }, { lang: 'ts', code: "class DailyReportJobBrute {\n  run(): void {\n    const today = new Date();                                    // hidden dependency\n    if (today.getDay() === 0) return;                            // Sunday\n    const total = 12_500;                                        // pretend: new SalesDao().totalFor(yesterday)\n    const yesterday = new Date(today.getTime() - 86_400_000).toISOString().slice(0, 10);\n    console.log(\"SMTP: Sales \" + yesterday + \": \" + total);      // pretend: new SmtpClient().send(...)\n  }\n}\n" }, { lang: 'cpp', code: "class DailyReportJobBrute {\npublic:\n    void run() {\n        time_t today = time(nullptr);                            // hidden dependency\n        if (localtime(&today)->tm_wday == 0) return;             // Sunday\n        long long total = 12'500;                                // pretend: SalesDao().totalFor(yesterday)\n        time_t y = today - 86400;\n        char buf[16]; strftime(buf, sizeof buf, \"%Y-%m-%d\", localtime(&y));\n        cout << \"SMTP: Sales \" << buf << \": \" << total << endl;  // pretend: SmtpClient().send(...)\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nclass DailyReportJobBrute {\n    public void Run() {\n        DateTime today = DateTime.Today;                         // hidden dependency\n        if (today.DayOfWeek == DayOfWeek.Sunday) return;\n        long total = 12500;                                      // pretend: new SalesDao().TotalFor(today.AddDays(-1))\n        Console.WriteLine(\"SMTP: Sales \" + today.AddDays(-1).ToString(\"yyyy-MM-dd\") + \": \" + total);   // pretend: new SmtpClient().Send(...)\n    }\n}\n" }] } },
     mcq: { q: 'What is the simplest way to make the Sunday rule testable?', options: ['Inject a clock (java.time.Clock in Java) and ask it for today', 'Add a boolean parameter isSunday to run()', 'Use a static mutable "today" field', 'Mock LocalDate.now() with bytecode tricks'], answer: 0, explain: 'A clock is the seam for time: Java ships java.time.Clock, other languages pass a function or an interface. Production passes the system clock; tests pass a fixed one.' },
     hints: [`<p>Hint 1: Interfaces: <code>SalesQuery { long totalFor(LocalDate d); }</code>, <code>Mailer { void send(String to, String body); }</code>.</p>`, `<p>Hint 2: Both are single-method interfaces, so fakes can be lambdas.</p>`, `<p>Hint 3: Collect sent mails in a <code>List&lt;String&gt;</code> inside the fake mailer and assert on its size and content.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "boss@shop.in | Sales 2026-03-01: 12500\nMonday test PASSED\nSunday test PASSED\nboss@shop.in | Sales 2026-03-02: 0\nmailer failed: smtp down\n" }] },
@@ -9878,6 +11665,48 @@ int main() {
     } catch (const runtime_error& e) {
         cout << "mailer failed: " << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+delegate long SalesQuery(DateTime day);
+delegate void Mailer(string to, string body);
+
+class DailyReportJob {
+    private readonly SalesQuery sales; private readonly Mailer mailer; private readonly Func<DateTime> clock; private readonly string manager;
+    public DailyReportJob(SalesQuery sales, Mailer mailer, Func<DateTime> clock, string manager) {
+        this.sales = sales; this.mailer = mailer; this.clock = clock; this.manager = manager;
+    }
+    public void Run() {
+        DateTime today = clock().Date;
+        if (today.DayOfWeek == DayOfWeek.Sunday) return;
+        DateTime yesterday = today.AddDays(-1);
+        mailer(manager, "Sales " + yesterday.ToString("yyyy-MM-dd") + ": " + sales(yesterday));
+    }
+
+    static Func<DateTime> At(int y, int m, int d) { DateTime t = new DateTime(y, m, d, 6, 0, 0, DateTimeKind.Utc); return () => t; }
+
+    static void Main() {
+        List<string> outbox = new List<string>();
+        SalesQuery fakeSales = day => day == new DateTime(2026, 3, 1) ? 12500 : 0;
+        Mailer fakeMailer = (to, body) => outbox.Add(to + " | " + body);
+
+        new DailyReportJob(fakeSales, fakeMailer, At(2026, 3, 2), "boss@shop.in").Run();   // Monday
+        Console.WriteLine(outbox[0]);
+        Console.WriteLine(outbox.Count == 1 && outbox[0].EndsWith("2026-03-01: 12500") ? "Monday test PASSED" : "FAILED " + string.Join(";", outbox));
+
+        outbox.Clear();
+        new DailyReportJob(fakeSales, fakeMailer, At(2026, 3, 1), "boss@shop.in").Run();   // Sunday
+        Console.WriteLine(outbox.Count == 0 ? "Sunday test PASSED" : "FAILED " + string.Join(";", outbox));
+
+        new DailyReportJob(fakeSales, fakeMailer, At(2026, 3, 3), "boss@shop.in").Run();   // Tuesday, no sales yesterday
+        Console.WriteLine(outbox[0]);
+
+        Mailer down = (to, body) => { throw new InvalidOperationException("smtp down"); };
+        try { new DailyReportJob(fakeSales, down, At(2026, 3, 4), "boss@shop.in").Run(); }
+        catch (InvalidOperationException e) { Console.WriteLine("mailer failed: " + e.Message); }
+    }
 }` }
         ],
       complexity: `<p>O(1). Tests run in microseconds with no I/O.</p>`,
@@ -9896,7 +11725,7 @@ int main() {
         if (!items.containsKey(sku)) throw new IllegalStateException("unknown sku");   // validation inside replay: old streams may fail to load
         items.put(sku, q);
     }
-}`, alt: [{ lang: 'python', code: "class CartRowBrute:\n    def __init__(self): self.items = {}\n\n    def change_qty(self, sku, q):\n        if sku not in self.items: raise RuntimeError(\"unknown sku\")   # validation inside replay: old streams may fail to load\n        self.items[sku] = q\n" }, { lang: 'ts', code: "class CartRowBrute {\n  items = new Map<string, number>();\n  changeQty(sku: string, q: number): void {\n    if (!this.items.has(sku)) throw new Error(\"unknown sku\");   // validation inside replay: old streams may fail to load\n    this.items.set(sku, q);\n  }\n}\n" }, { lang: 'cpp', code: "class CartRowBrute {\npublic:\n    unordered_map<string, int> items;\n    void changeQty(const string& sku, int q) {\n        if (!items.count(sku)) throw runtime_error(\"unknown sku\");   // validation inside replay: old streams may fail to load\n        items[sku] = q;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class CartRowBrute:\n    def __init__(self): self.items = {}\n\n    def change_qty(self, sku, q):\n        if sku not in self.items: raise RuntimeError(\"unknown sku\")   # validation inside replay: old streams may fail to load\n        self.items[sku] = q\n" }, { lang: 'ts', code: "class CartRowBrute {\n  items = new Map<string, number>();\n  changeQty(sku: string, q: number): void {\n    if (!this.items.has(sku)) throw new Error(\"unknown sku\");   // validation inside replay: old streams may fail to load\n    this.items.set(sku, q);\n  }\n}\n" }, { lang: 'cpp', code: "class CartRowBrute {\npublic:\n    unordered_map<string, int> items;\n    void changeQty(const string& sku, int q) {\n        if (!items.count(sku)) throw runtime_error(\"unknown sku\");   // validation inside replay: old streams may fail to load\n        items[sku] = q;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass CartRowBrute {\n    public readonly Dictionary<string, int> Items = new Dictionary<string, int>();\n    public void ChangeQty(string sku, int q) {\n        if (!Items.ContainsKey(sku)) throw new InvalidOperationException(\"unknown sku\");   // validation inside replay: old streams may fail to load\n        Items[sku] = q;\n    }\n}\n" }] } },
     mcq: { q: 'During replay you find QuantityChanged for a sku that is not in the cart (an old bug wrote it). Best behaviour?', options: ['Apply defensively (ignore or treat as add) — never throw during replay; fix future writes in decide', 'Throw and refuse to load the cart', 'Delete the event from the store', 'Skip the whole stream'], answer: 0, explain: 'Replay must be total. Historical oddities are handled leniently in apply; correctness rules are enforced when new commands are decided.' },
     hints: [`<p>Hint 1: Use a closed set of event types (a sealed interface of records, a union, a <code>std::variant</code>) and an exhaustive <code>switch</code>/<code>match</code> in <code>apply</code>.</p>`, `<p>Hint 2: Keep items in an insertion-ordered map so output order is stable (Java <code>LinkedHashMap</code>; Python <code>dict</code> and JavaScript <code>Map</code> already keep insertion order; in C++ a vector of pairs).</p>`, `<p>Hint 3: <code>stateAt(k)</code> is just <code>replay(events.subList(0, k))</code>.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "tea:4@13000 subtotal=52000 total=46800 checkedOut=true\ntea:2@12000 mug:1@25000 total=49000\ntea:3@12000 total=32400\n(empty) total=0\ntea:4@13000 total=46800\n" }] },
@@ -10203,6 +12032,69 @@ int main() {
     cout << six.describe() << " total=" << six.total() << "\\n";
     cout << Cart::stateAt(log, 0).describe() << " total=" << Cart::stateAt(log, 0).total() << "\\n";
     cout << Cart::stateAt(log, 99).describe() << " total=" << Cart::stateAt(log, 99).total() << "\\n";  // k past the end is clamped
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+abstract class CartEvent {
+    private CartEvent() { }
+    public sealed class ItemAdded : CartEvent { public readonly string Sku; public readonly int Qty; public readonly long UnitPrice; public ItemAdded(string s, int q, long p) { Sku = s; Qty = q; UnitPrice = p; } }
+    public sealed class QuantityChanged : CartEvent { public readonly string Sku; public readonly int Qty; public QuantityChanged(string s, int q) { Sku = s; Qty = q; } }
+    public sealed class ItemRemoved : CartEvent { public readonly string Sku; public ItemRemoved(string s) { Sku = s; } }
+    public sealed class CouponApplied : CartEvent { public readonly int Percent; public CouponApplied(int p) { Percent = p; } }
+    public sealed class CheckedOut : CartEvent { }
+}
+
+class Cart {
+    public sealed class Line { public readonly int Qty; public readonly long UnitPrice; public Line(int q, long p) { Qty = q; UnitPrice = p; } }
+    public readonly Dictionary<string, Line> Items = new Dictionary<string, Line>();
+    private readonly List<string> order = new List<string>();          // insertion order of skus
+    public int Coupon; public bool CheckedOut;
+
+    public void Apply(CartEvent e) {
+        if (e is CartEvent.ItemAdded a) {
+            Line o;
+            if (Items.TryGetValue(a.Sku, out o)) Items[a.Sku] = new Line(o.Qty + a.Qty, a.UnitPrice);
+            else { Items[a.Sku] = new Line(a.Qty, a.UnitPrice); order.Add(a.Sku); }
+        } else if (e is CartEvent.QuantityChanged q) {
+            Line l;
+            if (Items.TryGetValue(q.Sku, out l)) Items[q.Sku] = new Line(q.Qty, l.UnitPrice);   // lenient: ignore unknown sku
+        } else if (e is CartEvent.ItemRemoved r) {
+            if (Items.Remove(r.Sku)) order.Remove(r.Sku);
+        } else if (e is CartEvent.CouponApplied c) {
+            Coupon = c.Percent;
+        } else {
+            CheckedOut = true;
+        }
+    }
+    public long Subtotal() { return Items.Values.Sum(l => l.Qty * l.UnitPrice); }
+    public long Total() { return Subtotal() * (100 - Coupon) / 100; }
+
+    public static Cart Replay(IEnumerable<CartEvent> events) { Cart c = new Cart(); foreach (CartEvent e in events) c.Apply(e); return c; }
+    public static Cart StateAt(List<CartEvent> events, int k) { return Replay(events.Take(Math.Min(k, events.Count))); }
+
+    public string Describe() {
+        if (Items.Count == 0) return "(empty)";
+        return string.Join(" ", order.Select(s => s + ":" + Items[s].Qty + "@" + Items[s].UnitPrice));
+    }
+}
+
+class CartDemo {
+    static void Main() {
+        List<CartEvent> log = new List<CartEvent> { new CartEvent.ItemAdded("tea", 2, 12000), new CartEvent.ItemAdded("mug", 1, 25000),
+            new CartEvent.QuantityChanged("tea", 3), new CartEvent.CouponApplied(10), new CartEvent.ItemRemoved("mug"), new CartEvent.QuantityChanged("ghost", 9),
+            new CartEvent.ItemAdded("tea", 1, 13000), new CartEvent.CheckedOut() };
+        Cart now = Cart.Replay(log);
+        Console.WriteLine(now.Describe() + " subtotal=" + now.Subtotal() + " total=" + now.Total() + " checkedOut=" + now.CheckedOut.ToString().ToLower());
+        Cart early = Cart.StateAt(log, 2);
+        Console.WriteLine(early.Describe() + " total=" + early.Total());
+        Cart six = Cart.StateAt(log, 6);                       // the unknown sku "ghost" changed nothing
+        Console.WriteLine(six.Describe() + " total=" + six.Total());
+        Console.WriteLine(Cart.StateAt(log, 0).Describe() + " total=" + Cart.StateAt(log, 0).Total());
+        Console.WriteLine(Cart.StateAt(log, 99).Describe() + " total=" + Cart.StateAt(log, 99).Total());   // k past the end is clamped
+    }
 }` }
         ],
       complexity: `<p>O(E) for E events, O(distinct skus) memory. Snapshots make repeated loads O(events since snapshot).</p>`,
@@ -10224,7 +12116,7 @@ int main() {
         loansByMember.computeIfAbsent(member, k -> new ArrayList<>()).add(copy);
         copyHolder.put(copy, member);
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass LibraryBrute:\n    def __init__(self):\n        self.loans_by_member = {}                      # everything in one object\n        self.copy_holder = {}\n        self.lock = threading.Lock()                   # one lock for the entire library\n\n    def borrow(self, member, copy):\n        with self.lock:\n            if copy in self.copy_holder: raise RuntimeError(\"copy taken\")\n            self.loans_by_member.setdefault(member, []).append(copy)\n            self.copy_holder[copy] = member\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass LibraryBrute {\n  loansByMember = new Map<string, string[]>();         // everything in one object\n  copyHolder = new Map<string, string>();\n  private mutex = new Mutex();                         // one lock for the entire library\n\n  borrow(member: string, copy: string): Promise<void> {\n    return this.mutex.runExclusive(() => {\n      if (this.copyHolder.has(copy)) throw new Error(\"copy taken\");\n      if (!this.loansByMember.has(member)) this.loansByMember.set(member, []);\n      this.loansByMember.get(member)!.push(copy);\n      this.copyHolder.set(copy, member);\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class LibraryBrute {\n    unordered_map<string, vector<string>> loansByMember;   // everything in one object\n    unordered_map<string, string> copyHolder;\n    mutex m;                                               // one lock for the entire library\npublic:\n    void borrow(const string& member, const string& copy) {\n        lock_guard<mutex> g(m);\n        if (copyHolder.count(copy)) throw runtime_error(\"copy taken\");\n        loansByMember[member].push_back(copy);\n        copyHolder[copy] = member;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass LibraryBrute:\n    def __init__(self):\n        self.loans_by_member = {}                      # everything in one object\n        self.copy_holder = {}\n        self.lock = threading.Lock()                   # one lock for the entire library\n\n    def borrow(self, member, copy):\n        with self.lock:\n            if copy in self.copy_holder: raise RuntimeError(\"copy taken\")\n            self.loans_by_member.setdefault(member, []).append(copy)\n            self.copy_holder[copy] = member\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass LibraryBrute {\n  loansByMember = new Map<string, string[]>();         // everything in one object\n  copyHolder = new Map<string, string>();\n  private mutex = new Mutex();                         // one lock for the entire library\n\n  borrow(member: string, copy: string): Promise<void> {\n    return this.mutex.runExclusive(() => {\n      if (this.copyHolder.has(copy)) throw new Error(\"copy taken\");\n      if (!this.loansByMember.has(member)) this.loansByMember.set(member, []);\n      this.loansByMember.get(member)!.push(copy);\n      this.copyHolder.set(copy, member);\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class LibraryBrute {\n    unordered_map<string, vector<string>> loansByMember;   // everything in one object\n    unordered_map<string, string> copyHolder;\n    mutex m;                                               // one lock for the entire library\npublic:\n    void borrow(const string& member, const string& copy) {\n        lock_guard<mutex> g(m);\n        if (copyHolder.count(copy)) throw runtime_error(\"copy taken\");\n        loansByMember[member].push_back(copy);\n        copyHolder[copy] = member;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass LibraryBrute {\n    public readonly Dictionary<string, List<string>> LoansByMember = new Dictionary<string, List<string>>();   // everything in one object\n    public readonly Dictionary<string, string> CopyHolder = new Dictionary<string, string>();\n    private readonly object gate = new object();\n    public void Borrow(string member, string copy) {              // one lock for the entire library\n        lock (gate) {\n            if (CopyHolder.ContainsKey(copy)) throw new InvalidOperationException(\"copy taken\");\n            List<string> l;\n            if (!LoansByMember.TryGetValue(member, out l)) { l = new List<string>(); LoansByMember[member] = l; }\n            l.Add(copy);\n            CopyHolder[copy] = member;\n        }\n    }\n}\n" }] } },
     mcq: { q: 'Rule (2) "one borrower per copy" must be instant. Which aggregate owns it?', options: ['Copy — status and borrower id live there; concurrent lends of the same copy conflict on its version', 'Member', 'Title', 'A global Library aggregate'], answer: 0, explain: 'The invariant needs only the copy\'s own state, so a small Copy aggregate enforces it and optimistic locking on that copy serialises racing lends.' },
     hints: [`<p>Hint 1: List each rule and the data it needs: loans count + fines → Member; copy status → Copy; catalog → Title.</p>`, `<p>Hint 2: <code>borrow</code> touches Member and Copy. Options: (a) modify both in one transaction (pragmatic, documented exception), or (b) Copy first, then a <code>CopyLent</code> event updates Member, with a compensating return if Member rejects.</p>`, `<p>Hint 3: Reference by ID: <code>Copy.borrower</code> is a <code>MemberId</code>, <code>Copy.title</code> is an ISBN; Member keeps a set of <code>CopyId</code>s (bounded by 5).</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "OK asha <- c1\nOK asha <- c2\nOK asha <- c3\nOK asha <- c4\nOK asha <- c5\nREJECTED asha c6: loan limit 5\nREJECTED ravi c1: copy already lent\nREJECTED dev c7: unpaid fines\nc6 still available? true\nc7 still available? true\nREJECTED zed c1: unknown member zed\nREJECTED ravi c99: unknown copy c99\nc1 borrower: asha\nversions: asha 5, c1 1, c6 0\n" }] },
@@ -10577,6 +12469,74 @@ int main() {
     cout << "c1 borrower: " << (holder ? holder->v : "nobody") << "\\n";
     cout << "versions: asha " << s.members.at(asha).version << ", c1 " << s.copies.at(CopyId{"c1"}).version
          << ", c6 " << s.copies.at(CopyId{"c6"}).version << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+abstract class Id<T> : IEquatable<T> where T : Id<T> {         // small value-object base: equality by V
+    public readonly string V; protected Id(string v) { V = v; }
+    public bool Equals(T o) { return o != null && o.V == V; }
+    public override bool Equals(object o) { return Equals(o as T); }
+    public override int GetHashCode() { return V.GetHashCode(); }
+}
+sealed class MemberId : Id<MemberId> { public MemberId(string v) : base(v) { } }
+sealed class CopyId : Id<CopyId> { public CopyId(string v) : base(v) { } }
+sealed class Isbn : Id<Isbn> { public Isbn(string v) : base(v) { } }
+
+sealed class Member {
+    public const int MAX = 5; public const long FINE_BLOCK = 10000;
+    public readonly MemberId Id; private readonly HashSet<CopyId> loans = new HashSet<CopyId>(); private readonly long finesPaise; public long Version;
+    public Member(MemberId id, long fines) { Id = id; finesPaise = fines; }
+    public void RecordLoan(CopyId c) {
+        if (finesPaise >= FINE_BLOCK) throw new InvalidOperationException("unpaid fines");
+        if (loans.Count >= MAX) throw new InvalidOperationException("loan limit " + MAX);
+        loans.Add(c);
+    }
+    public void RecordReturn(CopyId c) { loans.Remove(c); }
+    public int LoanCount() { return loans.Count; }
+}
+sealed class Copy {
+    public enum CopyStatus { AVAILABLE, LENT }
+    public readonly CopyId Id; public readonly Isbn Title; private CopyStatus status = CopyStatus.AVAILABLE; private MemberId borrower; public long Version;
+    public Copy(CopyId id, Isbn title) { Id = id; Title = title; }
+    public void LendTo(MemberId m) { if (status == CopyStatus.LENT) throw new InvalidOperationException("copy already lent"); status = CopyStatus.LENT; borrower = m; }
+    public void GiveBack() { status = CopyStatus.AVAILABLE; borrower = null; }
+    public MemberId Borrower() { return borrower; }        // null when available
+}
+
+class LendingService {
+    public readonly Dictionary<MemberId, Member> Members = new Dictionary<MemberId, Member>();
+    public readonly Dictionary<CopyId, Copy> Copies = new Dictionary<CopyId, Copy>();
+    public string Borrow(MemberId m, CopyId c) {
+        try {
+            Member member; Copy copy;
+            if (!Members.TryGetValue(m, out member)) throw new InvalidOperationException("unknown member " + m.V);
+            if (!Copies.TryGetValue(c, out copy)) throw new InvalidOperationException("unknown copy " + c.V);
+            copy.LendTo(m);                       // Copy invariant: one borrower
+            try { member.RecordLoan(c); }         // Member invariants: limit + fines
+            catch (InvalidOperationException) { copy.GiveBack(); throw; }   // keep both consistent (one unit of work)
+            copy.Version++; member.Version++;     // save both
+            return "OK " + m.V + " <- " + c.V;
+        } catch (InvalidOperationException e) { return "REJECTED " + m.V + " " + c.V + ": " + e.Message; }
+    }
+    static void Main() {
+        LendingService s = new LendingService();
+        MemberId asha = new MemberId("asha"), ravi = new MemberId("ravi"), dev = new MemberId("dev");
+        s.Members[asha] = new Member(asha, 0); s.Members[ravi] = new Member(ravi, 0); s.Members[dev] = new Member(dev, 15000);
+        for (int i = 1; i <= 7; i++) { CopyId c = new CopyId("c" + i); s.Copies[c] = new Copy(c, new Isbn("978-1")); }
+        for (int i = 1; i <= 6; i++) Console.WriteLine(s.Borrow(asha, new CopyId("c" + i)));   // 6th rejected
+        Console.WriteLine(s.Borrow(ravi, new CopyId("c1")));   // copy already lent
+        Console.WriteLine(s.Borrow(dev, new CopyId("c7")));    // fines
+        Console.WriteLine("c6 still available? " + (s.Copies[new CopyId("c6")].Borrower() == null).ToString().ToLower());
+        Console.WriteLine("c7 still available? " + (s.Copies[new CopyId("c7")].Borrower() == null).ToString().ToLower());
+        Console.WriteLine(s.Borrow(new MemberId("zed"), new CopyId("c1")));
+        Console.WriteLine(s.Borrow(ravi, new CopyId("c99")));
+        MemberId b = s.Copies[new CopyId("c1")].Borrower();
+        Console.WriteLine("c1 borrower: " + (b == null ? "nobody" : b.V));
+        Console.WriteLine("versions: asha " + s.Members[asha].Version + ", c1 " + s.Copies[new CopyId("c1")].Version
+                + ", c6 " + s.Copies[new CopyId("c6")].Version);
+    }
 }` }
         ],
       complexity: `<p>O(1) per borrow; each aggregate is tiny (Member ≤ 5 loan IDs). Contention only when two people want the same copy or the same member acts twice concurrently.</p>`,
@@ -10598,7 +12558,7 @@ int main() {
         // a new provider = another if here, in the core checkout code
         return out;
     }
-}`, alt: [{ lang: 'python', code: "class CheckoutBrute:\n    def methods_for(self, country, cur, amount):\n        out = []\n        if country == \"IN\" and cur == \"INR\" and amount <= 10_000_000: out.append(\"UPI\")\n        if cur == \"INR\" or cur == \"USD\": out.append(\"CARD\")\n        if country in (\"US\", \"GB\") and cur != \"INR\": out.append(\"PAYPAL\")\n        # a new provider = another if here, in the core checkout code\n        return out\n" }, { lang: 'ts', code: "class CheckoutBrute {\n  methodsFor(country: string, cur: string, amount: number): string[] {\n    const out: string[] = [];\n    if (country === \"IN\" && cur === \"INR\" && amount <= 10_000_000) out.push(\"UPI\");\n    if (cur === \"INR\" || cur === \"USD\") out.push(\"CARD\");\n    if ((country === \"US\" || country === \"GB\") && cur !== \"INR\") out.push(\"PAYPAL\");\n    // a new provider = another if here, in the core checkout code\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "class CheckoutBrute {\npublic:\n    vector<string> methodsFor(const string& country, const string& cur, long long amount) {\n        vector<string> out;\n        if (country == \"IN\" && cur == \"INR\" && amount <= 10'000'000) out.push_back(\"UPI\");\n        if (cur == \"INR\" || cur == \"USD\") out.push_back(\"CARD\");\n        if ((country == \"US\" || country == \"GB\") && cur != \"INR\") out.push_back(\"PAYPAL\");\n        // a new provider = another if here, in the core checkout code\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class CheckoutBrute:\n    def methods_for(self, country, cur, amount):\n        out = []\n        if country == \"IN\" and cur == \"INR\" and amount <= 10_000_000: out.append(\"UPI\")\n        if cur == \"INR\" or cur == \"USD\": out.append(\"CARD\")\n        if country in (\"US\", \"GB\") and cur != \"INR\": out.append(\"PAYPAL\")\n        # a new provider = another if here, in the core checkout code\n        return out\n" }, { lang: 'ts', code: "class CheckoutBrute {\n  methodsFor(country: string, cur: string, amount: number): string[] {\n    const out: string[] = [];\n    if (country === \"IN\" && cur === \"INR\" && amount <= 10_000_000) out.push(\"UPI\");\n    if (cur === \"INR\" || cur === \"USD\") out.push(\"CARD\");\n    if ((country === \"US\" || country === \"GB\") && cur !== \"INR\") out.push(\"PAYPAL\");\n    // a new provider = another if here, in the core checkout code\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "class CheckoutBrute {\npublic:\n    vector<string> methodsFor(const string& country, const string& cur, long long amount) {\n        vector<string> out;\n        if (country == \"IN\" && cur == \"INR\" && amount <= 10'000'000) out.push_back(\"UPI\");\n        if (cur == \"INR\" || cur == \"USD\") out.push_back(\"CARD\");\n        if ((country == \"US\" || country == \"GB\") && cur != \"INR\") out.push_back(\"PAYPAL\");\n        // a new provider = another if here, in the core checkout code\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass CheckoutBrute {\n    public List<string> MethodsFor(string country, string cur, long amount) {\n        List<string> result = new List<string>();\n        if (country == \"IN\" && cur == \"INR\" && amount <= 10000000) result.Add(\"UPI\");\n        if (cur == \"INR\" || cur == \"USD\") result.Add(\"CARD\");\n        if ((country == \"US\" || country == \"GB\") && cur != \"INR\") result.Add(\"PAYPAL\");\n        // a new provider = another if here, in the core checkout code\n        return result;\n    }\n}\n" }] } },
     mcq: { q: 'A plugin\'s supports() throws an unexpected error for some country. What should the registry do?', options: ['Catch it, log with the plugin id, treat as "not supported" and continue', 'Let the checkout page fail', 'Remove all plugins', 'Retry forever'], answer: 0, explain: 'Plugin failures are isolated at the boundary; the core degrades gracefully.' },
     hints: [`<p>Hint 1: Extension point: <code>id()</code>, <code>priority()</code>, <code>supports(PaymentContext)</code>, <code>pay(...)</code>.</p>`, `<p>Hint 2: <code>PaymentContext</code> is an immutable value object (country, currency, amountMinor) — a value object handed to plugins, so they cannot mutate core state.</p>`, `<p>Hint 3: <code>available(ctx)</code> = filter enabled → safe supports → sort by priority then id.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "[upi, bnpl, card]\n[paypal, card]\nUPI collect request for order-17\n[upi, card]\n[upi, card]\n[upi, bnpl, card]\n[card]\npaypal not available for IN INR 200000\nbitcoin not available for IN INR 200000\nduplicate upi\nlog: 8 x flaky supports() failed: region table not loaded\n" }] },
@@ -11044,6 +13004,98 @@ int main() {
     attempt([&] { reg.pay("bitcoin", in, "order-19"); });
     attempt([&] { reg.registerPlugin(make_unique<Upi>()); });
     cout << "log: " << reg.log.size() << " x " << reg.log[0] << "\\n";       // one entry per call, the broken plugin never hides the others
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class PaymentContext {
+    public readonly string Country, Currency; public readonly long AmountMinor;
+    public PaymentContext(string country, string currency, long amountMinor) { Country = country; Currency = currency; AmountMinor = amountMinor; }
+    public override string ToString() { return Country + " " + Currency + " " + AmountMinor; }
+}
+
+interface IPaymentPlugin {
+    string Id(); int Priority();
+    bool Supports(PaymentContext ctx);
+    string Pay(PaymentContext ctx, string reference);
+}
+
+class PaymentRegistry {
+    private readonly Dictionary<string, IPaymentPlugin> plugins = new Dictionary<string, IPaymentPlugin>();
+    private readonly List<IPaymentPlugin> order = new List<IPaymentPlugin>();
+    private readonly HashSet<string> disabled;
+    public readonly List<string> Log = new List<string>();
+    public PaymentRegistry(IEnumerable<string> disabled) { this.disabled = new HashSet<string>(disabled); }
+    public void Register(IPaymentPlugin p) { if (plugins.ContainsKey(p.Id())) throw new ArgumentException("duplicate " + p.Id()); plugins[p.Id()] = p; order.Add(p); }
+
+    public List<string> Available(PaymentContext ctx) {
+        return order
+            .Where(p => !disabled.Contains(p.Id()))
+            .Where(p => SafeSupports(p, ctx))
+            .OrderBy(p => p.Priority()).ThenBy(p => p.Id(), StringComparer.Ordinal)
+            .Select(p => p.Id()).ToList();
+    }
+    private bool SafeSupports(IPaymentPlugin p, PaymentContext ctx) {
+        try { return p.Supports(ctx); } catch (Exception e) { Log.Add(p.Id() + " supports() failed: " + e.Message); return false; }
+    }
+    public string Pay(string id, PaymentContext ctx, string reference) {
+        if (!Available(ctx).Contains(id)) throw new ArgumentException(id + " not available for " + ctx);
+        return plugins[id].Pay(ctx, reference);
+    }
+}
+
+class Upi : IPaymentPlugin {
+    public string Id() { return "upi"; } public int Priority() { return 1; }
+    public bool Supports(PaymentContext c) { return c.Country == "IN" && c.Currency == "INR" && c.AmountMinor <= 10000000; }
+    public string Pay(PaymentContext c, string reference) { return "UPI collect request for " + reference; }
+}
+class Card : IPaymentPlugin {
+    public string Id() { return "card"; } public int Priority() { return 3; }
+    public bool Supports(PaymentContext c) { return new[] { "INR", "USD" }.Contains(c.Currency); }
+    public string Pay(PaymentContext c, string reference) { return "card auth for " + reference; }
+}
+class PayPal : IPaymentPlugin {
+    public string Id() { return "paypal"; } public int Priority() { return 2; }
+    public bool Supports(PaymentContext c) { return new[] { "US", "GB" }.Contains(c.Country) && new[] { "USD", "GBP" }.Contains(c.Currency); }
+    public string Pay(PaymentContext c, string reference) { return "paypal redirect for " + reference; }
+}
+class Bnpl : IPaymentPlugin {
+    public string Id() { return "bnpl"; } public int Priority() { return 2; }
+    public bool Supports(PaymentContext c) { return c.Country == "IN" && c.AmountMinor >= 100000 && c.AmountMinor <= 5000000; }
+    public string Pay(PaymentContext c, string reference) { return "bnpl plan for " + reference; }
+}
+class Flaky : IPaymentPlugin {
+    public string Id() { return "flaky"; } public int Priority() { return 0; }
+    public bool Supports(PaymentContext c) { throw new InvalidOperationException("region table not loaded"); }
+    public string Pay(PaymentContext c, string reference) { return "never"; }
+}
+
+class PaymentDemo {
+    static void Attempt(Action action) {
+        try { action(); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+
+    static void Main() {
+        PaymentRegistry reg = new PaymentRegistry(new string[0]);
+        foreach (IPaymentPlugin p in new IPaymentPlugin[] { new Upi(), new Card(), new PayPal(), new Bnpl(), new Flaky() }) reg.Register(p);
+        PaymentContext inr = new PaymentContext("IN", "INR", 200000);
+        Console.WriteLine(Show(reg.Available(inr)));                                        // [upi, bnpl, card]
+        Console.WriteLine(Show(reg.Available(new PaymentContext("US", "USD", 5000))));     // [paypal, card]
+        Console.WriteLine(reg.Pay("upi", inr, "order-17"));
+        PaymentRegistry noBnpl = new PaymentRegistry(new[] { "bnpl" });
+        foreach (IPaymentPlugin p in new IPaymentPlugin[] { new Upi(), new Card(), new Bnpl() }) noBnpl.Register(p);
+        Console.WriteLine(Show(noBnpl.Available(inr)));                                     // [upi, card]
+        Console.WriteLine(Show(reg.Available(new PaymentContext("IN", "INR", 99999))));    // BNPL needs at least 100000
+        Console.WriteLine(Show(reg.Available(new PaymentContext("IN", "INR", 100000))));   // the bound is inclusive
+        Console.WriteLine(Show(reg.Available(new PaymentContext("IN", "INR", 20000000)))); // above the UPI and BNPL limits
+        Attempt(() => reg.Pay("paypal", inr, "order-18"));
+        Attempt(() => reg.Pay("bitcoin", inr, "order-19"));
+        Attempt(() => reg.Register(new Upi()));
+        Console.WriteLine("log: " + reg.Log.Count + " x " + reg.Log[0]);          // one entry per call, the broken plugin never hides the others
+    }
 }` }
         ],
       complexity: `<p>O(P log P) per checkout for P plugins (tiny). Adding a method: one class + one registration (or a discovered entry).</p>`,
@@ -11063,7 +13115,7 @@ int main() {
         // race window: another request can insert here
         if (!clash) rows.add(new String[]{room, start, end});
     }
-}`, alt: [{ lang: 'python', code: "class BookingServiceBrute:\n    def __init__(self):\n        self.rows = []                                 # (room, start, end) with dates as strings\n\n    def book(self, room, start, end):\n        clash = any(r[0] == room and r[1] < end and start < r[2] for r in self.rows)\n        # race window: another request can insert here\n        if not clash: self.rows.append((room, start, end))\n" }, { lang: 'ts', code: "class BookingServiceBrute {\n  private rows: string[][] = [];                      // [room, start, end] as strings\n  book(room: string, start: string, end: string): void {\n    const clash = this.rows.some((r) => r[0] === room && r[1] < end && start < r[2]);\n    // race window: another request can insert here\n    if (!clash) this.rows.push([room, start, end]);\n  }\n}\n" }, { lang: 'cpp', code: "class BookingServiceBrute {\n    vector<array<string, 3>> rows;                     // {room, start, end} as strings\npublic:\n    void book(const string& room, const string& start, const string& end) {\n        bool clash = any_of(rows.begin(), rows.end(), [&](auto& r) { return r[0] == room && r[1] < end && start < r[2]; });\n        // race window: another request can insert here\n        if (!clash) rows.push_back({room, start, end});\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class BookingServiceBrute:\n    def __init__(self):\n        self.rows = []                                 # (room, start, end) with dates as strings\n\n    def book(self, room, start, end):\n        clash = any(r[0] == room and r[1] < end and start < r[2] for r in self.rows)\n        # race window: another request can insert here\n        if not clash: self.rows.append((room, start, end))\n" }, { lang: 'ts', code: "class BookingServiceBrute {\n  private rows: string[][] = [];                      // [room, start, end] as strings\n  book(room: string, start: string, end: string): void {\n    const clash = this.rows.some((r) => r[0] === room && r[1] < end && start < r[2]);\n    // race window: another request can insert here\n    if (!clash) this.rows.push([room, start, end]);\n  }\n}\n" }, { lang: 'cpp', code: "class BookingServiceBrute {\n    vector<array<string, 3>> rows;                     // {room, start, end} as strings\npublic:\n    void book(const string& room, const string& start, const string& end) {\n        bool clash = any_of(rows.begin(), rows.end(), [&](auto& r) { return r[0] == room && r[1] < end && start < r[2]; });\n        // race window: another request can insert here\n        if (!clash) rows.push_back({room, start, end});\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nusing System.Linq;\nclass BookingServiceBrute {\n    public readonly List<string[]> Rows = new List<string[]>();          // {room, start, end} as strings\n    public void Book(string room, string start, string end) {\n        bool clash = Rows.Any(r => r[0] == room && string.CompareOrdinal(r[1], end) < 0 && string.CompareOrdinal(start, r[2]) < 0);\n        // race window: another request can insert here\n        if (!clash) Rows.Add(new[] { room, start, end });\n    }\n}\n" }] } },
     mcq: { q: 'Which aggregate best enforces "no overlapping bookings for a room"?', options: ['RoomCalendar (per room): holds that room\'s confirmed date ranges and a version', 'Booking (each booking is independent)', 'Hotel (all rooms and all bookings)', 'Guest'], answer: 0, explain: 'The invariant needs all bookings of one room together, instantly. A per-room calendar is the smallest boundary that contains that data; its version serialises concurrent bookings for the same room only.' },
     hints: [`<p>Hint 1: Value objects: <code>DateRange</code> (half-open [start, end)), <code>Money</code>/<code>long paise</code>, <code>RoomNo</code>. Entity inside the aggregate: <code>Reservation</code> with id and status.</p>`, `<p>Hint 2: <code>RoomCalendar.reserve(range, guest)</code> checks overlap against CONFIRMED reservations only.</p>`, `<p>Hint 3: To keep the aggregate small, keep only future reservations (archive past ones). Pricing is a pure function over the DateRange.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "b1 ok | b2 ok | b3 rejected: 101 busy 2026-05-01..2026-05-04\nb4 rejected: 101 busy 2026-05-04..2026-05-06\nc1 ok\nc1 rejected: duplicate reservation c1\nsecond guest: conflict on 101\nThu-Sun price: 10200\nstart < end required\nnothing to cancel\n" }] },
@@ -11545,6 +13597,101 @@ int main() {
     cout << "Thu-Sun price: " << Pricing::price(DateRange(daysFromCivil(2026, 5, 7), daysFromCivil(2026, 5, 10)), 3000) << "\\n";
     attempt([&] { DateRange r(MAY, MAY); });
     attempt([&] { repo.load("101").cancel("b1"); });  // already cancelled
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class DateRange {                                           // [start, end)
+    public readonly DateTime Start, End;
+    public DateRange(DateTime start, DateTime end) { if (!(start < end)) throw new ArgumentException("start < end required"); Start = start; End = end; }
+    public bool Overlaps(DateRange o) { return Start < o.End && o.Start < End; }
+    public List<DateTime> Nights() { List<DateTime> l = new List<DateTime>(); for (DateTime d = Start; d < End; d = d.AddDays(1)) l.Add(d); return l; }
+}
+
+static class Pricing {
+    public static long Price(DateRange r, long nightly) {
+        long total = 0;
+        foreach (DateTime d in r.Nights()) {
+            bool weekend = d.DayOfWeek == DayOfWeek.Friday || d.DayOfWeek == DayOfWeek.Saturday;
+            total += weekend ? nightly * 120 / 100 : nightly;
+        }
+        return total;
+    }
+}
+
+sealed class RoomCalendar {                                        // aggregate root, one per room
+    public enum Status { CONFIRMED, CANCELLED }
+    public sealed class Reservation { public readonly string Id, Guest; public readonly DateRange Range; public Status Status = Status.CONFIRMED;
+        public Reservation(string id, string guest, DateRange r) { Id = id; Guest = guest; Range = r; } }
+    public readonly string Room; public long Version;
+    private readonly Dictionary<string, Reservation> reservations = new Dictionary<string, Reservation>();
+    private readonly List<string> order = new List<string>();
+    public RoomCalendar(string room) { Room = room; }
+
+    public string Reserve(string id, string guest, DateRange r) {
+        if (reservations.ContainsKey(id)) throw new InvalidOperationException("duplicate reservation " + id);   // never overwrite history
+        foreach (string k in order) {
+            Reservation x = reservations[k];
+            if (x.Status == Status.CONFIRMED && x.Range.Overlaps(r)) throw new InvalidOperationException(Room + " busy " + x.Range.Start.ToString("yyyy-MM-dd") + ".." + x.Range.End.ToString("yyyy-MM-dd"));
+        }
+        reservations[id] = new Reservation(id, guest, r); order.Add(id);
+        return id;
+    }
+    public void Cancel(string id) {
+        Reservation x;
+        if (!reservations.TryGetValue(id, out x) || x.Status == Status.CANCELLED) throw new InvalidOperationException("nothing to cancel");
+        x.Status = Status.CANCELLED;
+    }
+    public RoomCalendar Copy() {
+        RoomCalendar c = new RoomCalendar(Room); c.Version = Version;
+        foreach (string k in order) { Reservation v = reservations[k]; Reservation n = new Reservation(v.Id, v.Guest, v.Range); n.Status = v.Status; c.reservations[k] = n; c.order.Add(k); }
+        return c;
+    }
+}
+
+interface IRoomCalendarRepository { RoomCalendar Load(string room); void Save(RoomCalendar c); }
+class InMemoryCalendars : IRoomCalendarRepository {
+    private readonly Dictionary<string, RoomCalendar> db = new Dictionary<string, RoomCalendar>();
+    private readonly object gate = new object();
+    public RoomCalendar Load(string room) {
+        lock (gate) { RoomCalendar c; if (!db.TryGetValue(room, out c)) { c = new RoomCalendar(room); db[room] = c; } return c.Copy(); }
+    }
+    public void Save(RoomCalendar c) {
+        lock (gate) {
+            RoomCalendar cur;
+            if (db.TryGetValue(c.Room, out cur) && cur.Version != c.Version) throw new InvalidOperationException("conflict on " + c.Room);
+            RoomCalendar s = c.Copy(); s.Version++; db[c.Room] = s;
+        }
+    }
+}
+
+class BookingDemo {
+    static readonly DateTime MAY = new DateTime(2026, 5, 1);
+    static string Book(IRoomCalendarRepository repo, string room, string id, int from, int to) {
+        RoomCalendar cal = repo.Load(room);
+        try { cal.Reserve(id, "guest-" + id, new DateRange(MAY.AddDays(from - 1), MAY.AddDays(to - 1))); repo.Save(cal); return id + " ok"; }
+        catch (InvalidOperationException e) { return id + " rejected: " + e.Message; }
+    }
+    static void Attempt(Action action) {
+        try { action(); } catch (Exception e) { Console.WriteLine(e.Message); }
+    }
+
+    static void Main() {
+        IRoomCalendarRepository repo = new InMemoryCalendars();
+        Console.WriteLine(Book(repo, "101", "b1", 1, 4) + " | " + Book(repo, "101", "b2", 4, 6) + " | " + Book(repo, "101", "b3", 3, 5));
+        RoomCalendar cal = repo.Load("101"); cal.Cancel("b1"); repo.Save(cal);
+        Console.WriteLine(Book(repo, "101", "b4", 3, 5));                          // still overlaps b2
+        Console.WriteLine(Book(repo, "102", "c1", 1, 4));                          // another room is another aggregate
+        Console.WriteLine(Book(repo, "102", "c1", 10, 12));                        // a reservation id is used once
+        RoomCalendar x = repo.Load("101"), y = repo.Load("101");                    // race for 10..12
+        x.Reserve("r1", "a", new DateRange(MAY.AddDays(9), MAY.AddDays(11))); repo.Save(x);
+        y.Reserve("r2", "b", new DateRange(MAY.AddDays(9), MAY.AddDays(11)));
+        try { repo.Save(y); } catch (InvalidOperationException e) { Console.WriteLine("second guest: " + e.Message); }
+        Console.WriteLine("Thu-Sun price: " + Pricing.Price(new DateRange(new DateTime(2026, 5, 7), new DateTime(2026, 5, 10)), 3000));
+        Attempt(() => new DateRange(MAY, MAY));
+        Attempt(() => repo.Load("101").Cancel("b1"));                               // already cancelled
+    }
 }` }
         ],
       complexity: `<p>O(R) overlap check for R future reservations of one room (use a sorted map keyed by start date, such as <code>TreeMap</code> or <code>std::map</code>, for O(log R)). Contention is per room, not per hotel.</p>`,
@@ -11564,7 +13711,7 @@ int main() {
         System.out.println("SMTP: approved " + id);
     }
 }
-// escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe`, alt: [{ lang: 'python', code: "class ExpenseControllerBrute:\n    def __init__(self): self.status = {}\n\n    def approve(self, id_, amount):\n        self.status[id_] = \"NEEDS_FINANCE\" if amount > 5_000_000 else \"APPROVED\"   # rule copy #1\n        print(\"SMTP: approved\", id_)\n\n# escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe\n" }, { lang: 'ts', code: "class ExpenseControllerBrute {\n  status = new Map<string, string>();\n  approve(id: string, amount: number): void {\n    this.status.set(id, amount > 5_000_000 ? \"NEEDS_FINANCE\" : \"APPROVED\");   // rule copy #1\n    console.log(\"SMTP: approved \" + id);\n  }\n}\n// escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe\n" }, { lang: 'cpp', code: "class ExpenseControllerBrute {\npublic:\n    unordered_map<string, string> status;\n    void approve(const string& id, long long amount) {\n        status[id] = amount > 5'000'000 ? \"NEEDS_FINANCE\" : \"APPROVED\";   // rule copy #1\n        cout << \"SMTP: approved \" << id << endl;\n    }\n};\n// escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe\n" }] } },
+// escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe`, alt: [{ lang: 'python', code: "class ExpenseControllerBrute:\n    def __init__(self): self.status = {}\n\n    def approve(self, id_, amount):\n        self.status[id_] = \"NEEDS_FINANCE\" if amount > 5_000_000 else \"APPROVED\"   # rule copy #1\n        print(\"SMTP: approved\", id_)\n\n# escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe\n" }, { lang: 'ts', code: "class ExpenseControllerBrute {\n  status = new Map<string, string>();\n  approve(id: string, amount: number): void {\n    this.status.set(id, amount > 5_000_000 ? \"NEEDS_FINANCE\" : \"APPROVED\");   // rule copy #1\n    console.log(\"SMTP: approved \" + id);\n  }\n}\n// escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe\n" }, { lang: 'cpp', code: "class ExpenseControllerBrute {\npublic:\n    unordered_map<string, string> status;\n    void approve(const string& id, long long amount) {\n        status[id] = amount > 5'000'000 ? \"NEEDS_FINANCE\" : \"APPROVED\";   // rule copy #1\n        cout << \"SMTP: approved \" << id << endl;\n    }\n};\n// escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass ExpenseControllerBrute {\n    public readonly Dictionary<string, string> Status = new Dictionary<string, string>();\n    public void Approve(string id, long amount) {\n        Status[id] = amount > 5000000 ? \"NEEDS_FINANCE\" : \"APPROVED\";   // rule copy #1\n        Console.WriteLine(\"SMTP: approved \" + id);\n    }\n}\n// escalate.sql: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe\n" }] } },
     mcq: { q: 'The nightly scheduler is which kind of adapter?', options: ['A driving (inbound) adapter: it calls an inbound port such as EscalateOverdueUseCase', 'A driven adapter implementing a repository', 'Part of the domain', 'Not an adapter; it should contain the escalation rules'], answer: 0, explain: 'Anything that triggers the application — HTTP, CLI, cron, a message — is a driving adapter. It contains no rules; it just calls the use case.' },
     hints: [`<p>Hint 1: Domain: <code>Expense</code> with status machine SUBMITTED → APPROVED | NEEDS_FINANCE → APPROVED, REJECTED, ESCALATED; method <code>escalateIfOverdue(now)</code> returns whether it changed.</p>`, `<p>Hint 2: Inbound ports: <code>SubmitExpense</code>, <code>ApproveExpense</code>, <code>EscalateOverdue</code>. Outbound: <code>ExpenseRepository</code>, <code>Notifier</code>, <code>Clock</code>.</p>`, `<p>Hint 3: Idempotency for free: <code>escalateIfOverdue</code> returns false when already escalated, and only a true result triggers notification.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "submitted x1 x2\nNEEDS_FINANCE\nerror: x1 is NEEDS_FINANCE\nerror: unknown role ceo\nerror: unknown expense x9\nerror: amount must be a number\nerror: amount > 0\nusage: submit <emp> <rupees> | approve <id> <manager|finance>\njob escalated 1\njob escalated 0\nerror: x2 is ESCALATED\nAPPROVED\nAPPROVED [escalated x2]\n" }] },
@@ -12158,6 +14305,110 @@ int main() {
     string joined;
     for (const string& m : notifier.sent) joined += (joined.empty() ? "" : ", ") + m;
     cout << cli.run("approve " + big + " finance") << " [" << joined << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum ExpenseStatus { SUBMITTED, NEEDS_FINANCE, APPROVED, REJECTED, ESCALATED }
+
+class Expense {
+    public const long FINANCE_LIMIT = 5000000;
+    public readonly string Id, Employee; public readonly long Amount; public readonly DateTime SubmittedAt; public ExpenseStatus Status = ExpenseStatus.SUBMITTED;
+    public Expense(string id, string employee, long amount, DateTime at) {
+        if (amount <= 0) throw new ArgumentException("amount > 0");
+        Id = id; Employee = employee; Amount = amount; SubmittedAt = at;
+    }
+    public void ApproveByManager() { Require(ExpenseStatus.SUBMITTED, ExpenseStatus.ESCALATED); Status = Amount > FINANCE_LIMIT ? ExpenseStatus.NEEDS_FINANCE : ExpenseStatus.APPROVED; }
+    public void ApproveByFinance() { Require(ExpenseStatus.NEEDS_FINANCE); Status = ExpenseStatus.APPROVED; }
+    public bool EscalateIfOverdue(DateTime now) {
+        if (Status != ExpenseStatus.SUBMITTED || now < SubmittedAt.AddDays(7)) return false;
+        Status = ExpenseStatus.ESCALATED; return true;
+    }
+    private void Require(params ExpenseStatus[] ok) { if (!ok.Contains(Status)) throw new InvalidOperationException(Id + " is " + Status); }
+}
+
+interface ISubmitExpense { string Submit(string employee, long amount); }            // inbound ports
+interface IApproveExpense { ExpenseStatus Approve(string id, string role); }
+interface IEscalateOverdue { int EscalateOverdue(); }
+interface IExpenseRepository { void Save(Expense e); Expense Get(string id); List<Expense> All(); }  // outbound
+delegate void Notifier(string msg);
+
+class ExpenseService : ISubmitExpense, IApproveExpense, IEscalateOverdue {
+    private readonly IExpenseRepository repo; private readonly Notifier notifier; private readonly Func<DateTime> clock; private int seq;
+    public ExpenseService(IExpenseRepository r, Notifier n, Func<DateTime> c) { repo = r; notifier = n; clock = c; }
+    public string Submit(string emp, long amount) { Expense e = new Expense("x" + (++seq), emp, amount, clock()); repo.Save(e); return e.Id; }
+    public ExpenseStatus Approve(string id, string role) {
+        Expense e = repo.Get(id);
+        if (e == null) throw new KeyNotFoundException("unknown expense " + id);
+        switch (role) {
+            case "finance": e.ApproveByFinance(); break;
+            case "manager": e.ApproveByManager(); break;
+            default: throw new ArgumentException("unknown role " + role);   // a typo must not grant manager rights
+        }
+        repo.Save(e); return e.Status;
+    }
+    public int EscalateOverdue() {
+        int n = 0;
+        foreach (Expense e in repo.All()) if (e.EscalateIfOverdue(clock())) { repo.Save(e); notifier("escalated " + e.Id); n++; }
+        return n;
+    }
+}
+
+class InMemoryExpenses : IExpenseRepository {
+    private readonly Dictionary<string, Expense> m = new Dictionary<string, Expense>();
+    private readonly List<string> order = new List<string>();
+    public void Save(Expense e) { if (!m.ContainsKey(e.Id)) order.Add(e.Id); m[e.Id] = e; }
+    public Expense Get(string id) { Expense e; return m.TryGetValue(id, out e) ? e : null; }
+    public List<Expense> All() { return order.Select(k => m[k]).ToList(); }
+}
+class MutableClock {                                                 // test clock we can move forward
+    public DateTime Now; public MutableClock(DateTime start) { Now = start; }
+}
+class ExpenseCli {                                                   // driving adapter #1
+    private readonly ISubmitExpense submit; private readonly IApproveExpense approve;
+    public ExpenseCli(ISubmitExpense s, IApproveExpense a) { submit = s; approve = a; }
+    public string Run(string line) {
+        string[] p = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        try {
+            if (p[0] == "submit" && p.Length == 3) return submit.Submit(p[1], Rupees(p[2]) * 100);
+            if (p[0] == "approve" && p.Length == 3) return approve.Approve(p[1], p[2]).ToString();
+            return "usage: submit <emp> <rupees> | approve <id> <manager|finance>";
+        } catch (Exception e) { return "error: " + e.Message; }
+    }
+    private static long Rupees(string s) {
+        long v;
+        if (!long.TryParse(s, out v)) throw new ArgumentException("amount must be a number");
+        return v;
+    }
+}
+class NightlyEscalationJob {                                         // driving adapter #2
+    private readonly IEscalateOverdue useCase; public NightlyEscalationJob(IEscalateOverdue u) { useCase = u; }
+    public void Tick() { Console.WriteLine("job escalated " + useCase.EscalateOverdue()); }
+}
+
+class ExpenseApp {
+    static void Main() {
+        MutableClock clock = new MutableClock(new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc));
+        List<string> sent = new List<string>();
+        ExpenseService svc = new ExpenseService(new InMemoryExpenses(), sent.Add, () => clock.Now);
+        ExpenseCli cli = new ExpenseCli(svc, svc); NightlyEscalationJob job = new NightlyEscalationJob(svc);
+        string big = cli.Run("submit asha 80000"), small = cli.Run("submit ravi 2000");
+        Console.WriteLine("submitted " + big + " " + small);
+        Console.WriteLine(cli.Run("approve " + big + " manager"));      // NEEDS_FINANCE
+        Console.WriteLine(cli.Run("approve " + big + " manager"));      // already moved on
+        Console.WriteLine(cli.Run("approve " + big + " ceo"));
+        Console.WriteLine(cli.Run("approve x9 manager"));
+        Console.WriteLine(cli.Run("submit sam abc"));
+        Console.WriteLine(cli.Run("submit sam 0"));
+        Console.WriteLine(cli.Run("hello"));
+        clock.Now = clock.Now.AddDays(8);
+        job.Tick(); job.Tick();                                          // 1 then 0: idempotent
+        Console.WriteLine(cli.Run("approve " + small + " finance"));    // finance only sees big claims
+        Console.WriteLine(cli.Run("approve " + small + " manager"));    // an escalated claim can still be approved
+        Console.WriteLine(cli.Run("approve " + big + " finance") + " [" + string.Join(", ", sent) + "]");
+    }
 }` }
         ],
       complexity: `<p>O(1) per approval; escalation O(N) over open expenses (a real repository would query only SUBMITTED ones older than 7 days).</p>`,
@@ -12176,7 +14427,7 @@ int main() {
         for (long[] e : allEvents) if (e[1] == account) b += e[2];     // full scan on every page view
         return b;
     }
-}`, alt: [{ lang: 'python', code: "class StatementBrute:\n    @staticmethod\n    def balance(all_events, account):                  # (pos, account, sign*amount)\n        b = 0\n        for e in all_events:\n            if e[1] == account: b += e[2]              # full scan on every page view\n        return b\n" }, { lang: 'ts', code: "class StatementBrute {\n  static balance(allEvents: number[][], account: number): number {   // [pos, account, sign*amount]\n    let b = 0;\n    for (const e of allEvents) if (e[1] === account) b += e[2];      // full scan on every page view\n    return b;\n  }\n}\n" }, { lang: 'cpp', code: "struct StatementBrute {\n    static long long balance(const vector<array<long long, 3>>& allEvents, long long account) {   // {pos, account, sign*amount}\n        long long b = 0;\n        for (auto& e : allEvents) if (e[1] == account) b += e[2];     // full scan on every page view\n        return b;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class StatementBrute:\n    @staticmethod\n    def balance(all_events, account):                  # (pos, account, sign*amount)\n        b = 0\n        for e in all_events:\n            if e[1] == account: b += e[2]              # full scan on every page view\n        return b\n" }, { lang: 'ts', code: "class StatementBrute {\n  static balance(allEvents: number[][], account: number): number {   // [pos, account, sign*amount]\n    let b = 0;\n    for (const e of allEvents) if (e[1] === account) b += e[2];      // full scan on every page view\n    return b;\n  }\n}\n" }, { lang: 'cpp', code: "struct StatementBrute {\n    static long long balance(const vector<array<long long, 3>>& allEvents, long long account) {   // {pos, account, sign*amount}\n        long long b = 0;\n        for (auto& e : allEvents) if (e[1] == account) b += e[2];     // full scan on every page view\n        return b;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nstatic class StatementBrute {\n    public static long Balance(List<long[]> allEvents, long account) {          // {pos, account, sign*amount}\n        long b = 0;\n        foreach (long[] e in allEvents) if (e[1] == account) b += e[2];     // full scan on every page view\n        return b;\n    }\n}\n" }] } },
     mcq: { q: 'The projection crashes after updating balances for position 42 but before saving checkpoint 42. On restart, position 42 is delivered again. What prevents a double count?', options: ['Store the checkpoint atomically with the read-model update (same transaction), or make each update idempotent per position', 'Nothing: projections are approximate', 'Delete the event', 'Increase the batch size'], answer: 0, explain: 'Projection state and checkpoint must move together, or each event\'s effect must be idempotent. Then at-least-once delivery yields exactly-once results.' },
     hints: [`<p>Hint 1: Projection state = <code>Map&lt;account, Long&gt;</code> balances, <code>Map&lt;account, List&lt;String&gt;&gt;</code> lines, <code>Map&lt;day, Long&gt;</code> volume, <code>long checkpoint</code>.</p>`, `<p>Hint 2: <code>handle(event)</code>: if <code>position ≤ checkpoint</code> return; else update all maps and set checkpoint = position (atomically in a real DB).</p>`, `<p>Hint 3: <code>rebuild(feed)</code> = new empty projection + handle every event. Compare with the live one to verify.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "{A=70, B=40} {A=[d1 +100, d2 -30], B=[d1 +50, d2 -10]} {d1=150, d2=40} cp=4\nrebuild matches: true\nunknown event type Refunded\ncp=4\n{A=75, B=40} {d1=150, d2=40, d3=5} cp=5\n" }] },
@@ -12415,6 +14666,59 @@ int main() {
     live.handle({5, "A", "Deposited", 5, "d3"});
     live.handle(feed[2]);  // old event again: skipped
     cout << fmt(live.balances) << " " << fmt(live.volumeByDay) << " cp=" << live.checkpoint << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class FeedEvent {
+    public readonly long Position; public readonly string Account, Type; public readonly long Amount; public readonly string Day;
+    public FeedEvent(long position, string account, string type, long amount, string day) { Position = position; Account = account; Type = type; Amount = amount; Day = day; }
+}
+
+class StatementProjection {
+    public readonly SortedDictionary<string, long> Balances = new SortedDictionary<string, long>(StringComparer.Ordinal);
+    public readonly SortedDictionary<string, List<string>> Lines = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
+    public readonly SortedDictionary<string, long> VolumeByDay = new SortedDictionary<string, long>(StringComparer.Ordinal);
+    public long Checkpoint;
+
+    static void Merge(SortedDictionary<string, long> m, string k, long v) { long c; m.TryGetValue(k, out c); m[k] = c + v; }
+
+    public void Handle(FeedEvent e) {
+        if (e.Position <= Checkpoint) return;                            // already applied: idempotent skip
+        long signed;
+        switch (e.Type) {
+            case "Deposited": signed = e.Amount; break;
+            case "Withdrew": signed = -e.Amount; break;
+            default: throw new ArgumentException("unknown event type " + e.Type);   // never guess the sign
+        }
+        Merge(Balances, e.Account, signed);
+        List<string> l; if (!Lines.TryGetValue(e.Account, out l)) { l = new List<string>(); Lines[e.Account] = l; }
+        l.Add(e.Day + " " + (signed > 0 ? "+" : "") + signed);
+        Merge(VolumeByDay, e.Day, e.Amount);
+        Checkpoint = e.Position;                                         // in a DB: same transaction as the updates
+    }
+    public static StatementProjection Rebuild(List<FeedEvent> feed) { StatementProjection p = new StatementProjection(); foreach (FeedEvent e in feed) p.Handle(e); return p; }
+
+    static string M(SortedDictionary<string, long> m) { return "{" + string.Join(", ", m.Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+
+    static void Main() {
+        List<FeedEvent> feed = new List<FeedEvent> { new FeedEvent(1, "A", "Deposited", 100, "d1"), new FeedEvent(2, "B", "Deposited", 50, "d1"),
+            new FeedEvent(3, "A", "Withdrew", 30, "d2"), new FeedEvent(4, "B", "Withdrew", 10, "d2") };
+        StatementProjection live = new StatementProjection();
+        foreach (FeedEvent e in feed.Take(2)) live.Handle(e);            // processed 1..2, then "crash"
+        foreach (FeedEvent e in feed) live.Handle(e);                    // redelivery from position 1
+        string lines = "{" + string.Join(", ", live.Lines.Select(kv => kv.Key + "=[" + string.Join(", ", kv.Value) + "]")) + "}";
+        Console.WriteLine(M(live.Balances) + " " + lines + " " + M(live.VolumeByDay) + " cp=" + live.Checkpoint);
+        Console.WriteLine("rebuild matches: " + Rebuild(feed).Balances.SequenceEqual(live.Balances).ToString().ToLower());
+        try { live.Handle(new FeedEvent(5, "A", "Refunded", 5, "d3")); }
+        catch (ArgumentException ex) { Console.WriteLine(ex.Message); }
+        Console.WriteLine("cp=" + live.Checkpoint);                      // the bad event changed nothing
+        live.Handle(new FeedEvent(5, "A", "Deposited", 5, "d3"));
+        live.Handle(feed[2]);                                            // old event again: skipped
+        Console.WriteLine(M(live.Balances) + " " + M(live.VolumeByDay) + " cp=" + live.Checkpoint);
+    }
 }` }
         ],
       complexity: `<p>O(1) amortised per event; reads are O(1) lookups instead of scans. Rebuild is O(total events) and can run in the background into a new table, then swap.</p>`,
@@ -12433,7 +14737,7 @@ int main() {
         long read = balance;                 // thread A and B both read 100000
         if (read >= amt) balance = read - amt;   // both write 20000 -> lost update
     }
-}`, alt: [{ lang: 'python', code: "class WalletBrute:\n    def __init__(self): self.balance = 100_000\n\n    def debit(self, amt):\n        read = self.balance                     # thread A and B both read 100000\n        if read >= amt: self.balance = read - amt   # both write 20000 -> lost update\n" }, { lang: 'ts', code: "class WalletBrute {\n  balance = 100_000;\n  debit(amt: number): void {\n    const read = this.balance;                  // request A and B both read 100000\n    if (read >= amt) this.balance = read - amt; // both write 20000 -> lost update\n  }\n}\n" }, { lang: 'cpp', code: "class WalletBrute {\npublic:\n    long long balance = 100'000;\n    void debit(long long amt) {\n        long long read = balance;                   // thread A and B both read 100000\n        if (read >= amt) balance = read - amt;      // both write 20000 -> lost update\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class WalletBrute:\n    def __init__(self): self.balance = 100_000\n\n    def debit(self, amt):\n        read = self.balance                     # thread A and B both read 100000\n        if read >= amt: self.balance = read - amt   # both write 20000 -> lost update\n" }, { lang: 'ts', code: "class WalletBrute {\n  balance = 100_000;\n  debit(amt: number): void {\n    const read = this.balance;                  // request A and B both read 100000\n    if (read >= amt) this.balance = read - amt; // both write 20000 -> lost update\n  }\n}\n" }, { lang: 'cpp', code: "class WalletBrute {\npublic:\n    long long balance = 100'000;\n    void debit(long long amt) {\n        long long read = balance;                   // thread A and B both read 100000\n        if (read >= amt) balance = read - amt;      // both write 20000 -> lost update\n    }\n};\n" }, { lang: 'csharp', code: "class WalletBrute {\n    public long Balance = 100000;\n    public void Debit(long amt) {\n        long read = Balance;                     // thread A and B both read 100000\n        if (read >= amt) Balance = read - amt;   // both write 20000 -> lost update\n    }\n}\n" }] } },
     mcq: { q: 'Where is "each ref processed at most once" best enforced in an event-sourced wallet?', options: ['In decide: the wallet state keeps the set of processed refs (rebuilt from events), so a duplicate command produces no event', 'In apply: skip duplicate events', 'In the HTTP layer with a cache', 'It cannot be enforced with event sourcing'], answer: 0, explain: 'Idempotency is a business rule over the stream\'s history, so it belongs in command handling. The processed refs are part of the derived state (and of the snapshot).' },
     hints: [`<p>Hint 1: State = balance, processed refs, debits per day, version. Snapshot = a copy of that state + its version.</p>`, `<p>Hint 2: <code>append(stream, expectedVersion, events)</code> throws if the stream length differs. Handler loop: load → decide → append; on conflict repeat up to N times.</p>`, `<p>Hint 3: Take a snapshot after an append crosses a multiple of 50; loading reads the latest snapshot and only events with version &gt; snapshot.version.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "balance 60000 v60, replayed only 10 events after snapshot\ntab B conflict -> handler retry: rejected: insufficient funds: 10000\nduplicate ignored\nfinal balance 10000\nbalance after the same credit twice: 5010000\ndebited 1500000\nrejected: daily limit\ndebited 600000\nrejected: amount > 0\nfinal balance 2910000\n" }] },
@@ -12964,6 +15268,121 @@ int main() {
     cout << WalletHandler(store, [] { return string("2026-07-02"); }).debit("w1", "d4", 600'000) << "\\n";  // the daily limit starts again
     cout << todayHandler.debit("w1", "d5", 0) << "\\n";
     cout << "final balance " << store.load("w1").balance << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+abstract class WalletEvent {
+    public readonly string Ref; public readonly long Amount; public readonly DateTime Day;
+    private WalletEvent(string r, long a, DateTime d) { Ref = r; Amount = a; Day = d; }
+    public sealed class Credited : WalletEvent { public Credited(string r, long a, DateTime d) : base(r, a, d) { } }
+    public sealed class Debited : WalletEvent { public Debited(string r, long a, DateTime d) : base(r, a, d) { } }
+}
+
+class Conflict : Exception { public Conflict() : base("version conflict") { } }
+
+sealed class WalletState {
+    public long Balance, Version; public readonly HashSet<string> Refs = new HashSet<string>(); public readonly Dictionary<DateTime, long> DebitsByDay = new Dictionary<DateTime, long>();
+    public void Apply(WalletEvent e) {
+        if (e is WalletEvent.Credited) { Balance += e.Amount; Refs.Add(e.Ref); }
+        else { Balance -= e.Amount; Refs.Add(e.Ref); long d; DebitsByDay.TryGetValue(e.Day, out d); DebitsByDay[e.Day] = d + e.Amount; }
+        Version++;
+    }
+    public WalletState Copy() {
+        WalletState s = new WalletState(); s.Balance = Balance; s.Version = Version;
+        foreach (string r in Refs) s.Refs.Add(r);
+        foreach (var kv in DebitsByDay) s.DebitsByDay[kv.Key] = kv.Value;
+        return s;
+    }
+}
+
+class WalletStore {
+    public const int SNAPSHOT_EVERY = 50;
+    private readonly Dictionary<string, List<WalletEvent>> streams = new Dictionary<string, List<WalletEvent>>();
+    private readonly Dictionary<string, WalletState> snapshots = new Dictionary<string, WalletState>();
+    private readonly object gate = new object();
+    public int LastTailReplayed;
+    public WalletState Load(string id) {
+        lock (gate) {
+            WalletState snap;
+            WalletState s = snapshots.TryGetValue(id, out snap) ? snap.Copy() : new WalletState();
+            List<WalletEvent> all; if (!streams.TryGetValue(id, out all)) all = new List<WalletEvent>();
+            LastTailReplayed = 0;
+            for (int i = (int)s.Version; i < all.Count; i++) { s.Apply(all[i]); LastTailReplayed++; }
+            return s;
+        }
+    }
+    public void Append(string id, long expected, List<WalletEvent> events) {
+        lock (gate) {
+            List<WalletEvent> s;
+            if (!streams.TryGetValue(id, out s)) { s = new List<WalletEvent>(); streams[id] = s; }
+            if (s.Count != expected) throw new Conflict();
+            s.AddRange(events);
+            if (s.Count / SNAPSHOT_EVERY > expected / SNAPSHOT_EVERY) {             // crossed a multiple of 50
+                WalletState snap = new WalletState(); foreach (WalletEvent e in s) snap.Apply(e); snapshots[id] = snap;
+            }
+        }
+    }
+}
+
+static class Wallet {
+    public const long DAILY_DEBIT_LIMIT = 2000000;
+    public static List<WalletEvent> DecideCredit(WalletState s, string reference, long amt, DateTime day) {
+        if (amt <= 0) throw new ArgumentException("amount > 0");
+        return s.Refs.Contains(reference) ? new List<WalletEvent>() : new List<WalletEvent> { new WalletEvent.Credited(reference, amt, day) };
+    }
+    public static List<WalletEvent> DecideDebit(WalletState s, string reference, long amt, DateTime day) {
+        if (amt <= 0) throw new ArgumentException("amount > 0");
+        if (s.Refs.Contains(reference)) return new List<WalletEvent>();                 // idempotent retry
+        if (amt > s.Balance) throw new InvalidOperationException("insufficient funds: " + s.Balance);
+        long spent; s.DebitsByDay.TryGetValue(day, out spent);
+        if (spent + amt > DAILY_DEBIT_LIMIT) throw new InvalidOperationException("daily limit");
+        return new List<WalletEvent> { new WalletEvent.Debited(reference, amt, day) };
+    }
+}
+
+class WalletHandler {
+    private readonly WalletStore store; private readonly Func<DateTime> clock;
+    public WalletHandler(WalletStore s, Func<DateTime> c) { store = s; clock = c; }
+    public string Debit(string wallet, string reference, long amt) {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            WalletState s = store.Load(wallet);
+            try {
+                List<WalletEvent> ev = Wallet.DecideDebit(s, reference, amt, clock().Date);
+                store.Append(wallet, s.Version, ev);
+                return ev.Count == 0 ? "duplicate ignored" : "debited " + amt;
+            } catch (Conflict) { /* someone appended first: reload and decide again */ }
+            catch (InvalidOperationException e) { return "rejected: " + e.Message; }
+            catch (ArgumentException e) { return "rejected: " + e.Message; }
+        }
+        return "gave up after retries";
+    }
+    static void Main() {
+        WalletStore store = new WalletStore();
+        DateTime fixedNow = new DateTime(2026, 7, 1, 10, 0, 0, DateTimeKind.Utc);
+        Func<DateTime> clock = () => fixedNow;
+        DateTime today = fixedNow.Date;
+        for (int i = 0; i < 60; i++) { WalletState s = store.Load("w1"); store.Append("w1", s.Version, Wallet.DecideCredit(s, "c" + i, 1000, today)); }
+        WalletState loaded = store.Load("w1");
+        Console.WriteLine("balance " + loaded.Balance + " v" + loaded.Version + ", replayed only " + store.LastTailReplayed + " events after snapshot");
+        WalletState tabA = store.Load("w1"), tabB = store.Load("w1");                    // both see balance 60000
+        store.Append("w1", tabA.Version, Wallet.DecideDebit(tabA, "d1", 50000, today)); // A wins
+        try { store.Append("w1", tabB.Version, Wallet.DecideDebit(tabB, "d2", 50000, today)); }
+        catch (Conflict) { Console.WriteLine("tab B conflict -> handler retry: " + new WalletHandler(store, clock).Debit("w1", "d2", 50000)); }
+        Console.WriteLine(new WalletHandler(store, clock).Debit("w1", "d1", 50000));   // same ref again
+        Console.WriteLine("final balance " + store.Load("w1").Balance);                 // 10000
+
+        for (int i = 0; i < 2; i++) { WalletState s = store.Load("w1"); store.Append("w1", s.Version, Wallet.DecideCredit(s, "big", 5000000, today)); }
+        Console.WriteLine("balance after the same credit twice: " + store.Load("w1").Balance);   // credited once
+        WalletHandler today1 = new WalletHandler(store, clock);
+        Console.WriteLine(today1.Debit("w1", "d3", 1500000));
+        Console.WriteLine(today1.Debit("w1", "d4", 600000));                           // today's debits would pass 2,000,000
+        DateTime tomorrowNow = fixedNow.AddDays(1);
+        Console.WriteLine(new WalletHandler(store, () => tomorrowNow).Debit("w1", "d4", 600000));   // the daily limit starts again
+        Console.WriteLine(today1.Debit("w1", "d5", 0));
+        Console.WriteLine("final balance " + store.Load("w1").Balance);
+    }
 }` }
         ],
       complexity: `<p>Load O(snapshot copy + ≤ 50 tail events). Append O(k). Conflicts cost a reload + re-decide; under heavy contention on one wallet, serialise commands per stream (single writer) instead of retrying.</p>`,
@@ -12984,7 +15403,7 @@ int main() {
             default: throw new IllegalArgumentException(name);
         }
     }
-}`, alt: [{ lang: 'python', code: "class FactoryBrute:\n    @staticmethod\n    def create(name):\n        # edited for every class and every new constructor parameter\n        if name == \"clock\": return SystemClock()\n        if name == \"service\": return object()          # imagine: OrderService(InMemoryOrderRepo(SystemClock()), SystemClock())\n        raise ValueError(name)\n" }, { lang: 'ts', code: "class FactoryBrute {\n  static create(name: string): unknown {\n    switch (name) {                                    // edited for every class and every new constructor parameter\n      case \"clock\": return new SystemClock();\n      case \"service\": return {};                       // imagine: new OrderService(new InMemoryOrderRepo(new SystemClock()), new SystemClock())\n      default: throw new Error(name);\n    }\n  }\n}\n" }, { lang: 'cpp', code: "struct FactoryBrute {\n    static any create(const string& name) {\n        // edited for every class and every new constructor parameter\n        if (name == \"clock\") return chrono::system_clock::now();\n        if (name == \"service\") return string(\"service\");   // imagine: OrderService(InMemoryOrderRepo(clock), clock)\n        throw invalid_argument(name);\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class FactoryBrute:\n    @staticmethod\n    def create(name):\n        # edited for every class and every new constructor parameter\n        if name == \"clock\": return SystemClock()\n        if name == \"service\": return object()          # imagine: OrderService(InMemoryOrderRepo(SystemClock()), SystemClock())\n        raise ValueError(name)\n" }, { lang: 'ts', code: "class FactoryBrute {\n  static create(name: string): unknown {\n    switch (name) {                                    // edited for every class and every new constructor parameter\n      case \"clock\": return new SystemClock();\n      case \"service\": return {};                       // imagine: new OrderService(new InMemoryOrderRepo(new SystemClock()), new SystemClock())\n      default: throw new Error(name);\n    }\n  }\n}\n" }, { lang: 'cpp', code: "struct FactoryBrute {\n    static any create(const string& name) {\n        // edited for every class and every new constructor parameter\n        if (name == \"clock\") return chrono::system_clock::now();\n        if (name == \"service\") return string(\"service\");   // imagine: OrderService(InMemoryOrderRepo(clock), clock)\n        throw invalid_argument(name);\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nstatic class FactoryBrute {\n    public static object Create(string name) {\n        switch (name) {                                   // edited for every class and every new constructor parameter\n            case \"clock\": return new Func<DateTime>(() => DateTime.UtcNow);\n            case \"service\": return new object();          // imagine: new OrderService(new InMemoryOrderRepo(clock), clock)\n            default: throw new ArgumentException(name);\n        }\n    }\n}\n" }] } },
     mcq: { q: 'Resolving A needs B, and B needs A (both via constructors). What is the correct container behaviour?', options: ['Fail fast at resolution with the cycle path A -> B -> A', 'Create A with null for B', 'Recurse until StackOverflowError', 'Silently switch to setter injection'], answer: 0, explain: 'A constructor cycle cannot be satisfied. A good container detects it with a resolution stack and reports the full path so the developer can fix the design.' },
     hints: [`<p>Hint 1: <code>Class.getDeclaredConstructors()</code>; require exactly one (or one marked with an annotation you define). <code>ctor.getParameterTypes()</code> gives the dependency types.</p>`, `<p>Hint 2: Keep a per-thread resolution stack for cycle detection (<code>ThreadLocal</code>, <code>threading.local</code>, <code>thread_local</code>; a single-threaded TypeScript runtime needs only an array); keep singletons in a map guarded by a lock to avoid creating two singletons concurrently.</p>`, `<p>Hint 3: Interfaces/abstract classes without a binding → error "No binding for X (needed by Y)". Show the real constructor error (Java: unwrap <code>InvocationTargetException</code>).</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "service prototype? true, repo singleton? true, clock shared? true\nDependency cycle: Ping -> Pong -> Ping\nNo binding for Unbound (needed by NeedsUnbound)\nconstructor of Exploding failed: boom\n" }] },
@@ -13446,6 +15865,86 @@ int main() {
     attempt([&] { inj.get<Ping>(); });
     attempt([&] { inj.get<NeedsUnbound>(); });
     attempt([&] { inj.get<Exploding>(); });
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+
+class MiniInjector {
+    private readonly Dictionary<Type, Type> bindings = new Dictionary<Type, Type>();
+    private readonly ConcurrentDictionary<Type, object> instances = new ConcurrentDictionary<Type, object>();
+    private readonly ConcurrentDictionary<Type, bool> singletonTypes = new ConcurrentDictionary<Type, bool>();
+    private readonly object creationLock = new object();
+    private readonly ThreadLocal<Stack<Type>> resolving = new ThreadLocal<Stack<Type>>(() => new Stack<Type>());
+
+    public MiniInjector Bind<TApi, TImpl>() where TImpl : TApi { bindings[typeof(TApi)] = typeof(TImpl); return this; }
+    public MiniInjector Instance<T>(T obj) { instances[typeof(T)] = obj; return this; }
+    public MiniInjector Singleton<T>() { singletonTypes[typeof(T)] = true; return this; }
+
+    public T Get<T>() { return (T)Get(typeof(T)); }
+
+    public object Get(Type type) {
+        object ready;
+        if (instances.TryGetValue(type, out ready)) return ready;
+        Type impl; if (!bindings.TryGetValue(type, out impl)) impl = type;
+        if (impl.IsInterface || impl.IsAbstract) {
+            Stack<Type> st = resolving.Value;
+            throw new InvalidOperationException("No binding for " + type.Name + (st.Count == 0 ? "" : " (needed by " + st.Peek().Name + ")"));
+        }
+        bool single = singletonTypes.ContainsKey(type) || singletonTypes.ContainsKey(impl);
+        if (!single) return Create(impl);
+        lock (creationLock) {
+            object cached;
+            if (!instances.TryGetValue(type, out cached)) { cached = Create(impl); instances[type] = cached; }
+            return cached;
+        }
+    }
+
+    private object Create(Type impl) {
+        Stack<Type> stack = resolving.Value;
+        if (stack.Contains(impl)) {
+            List<string> path = stack.Reverse().Select(t => t.Name).ToList();
+            path.Add(impl.Name);
+            throw new InvalidOperationException("Dependency cycle: " + string.Join(" -> ", path));
+        }
+        ConstructorInfo[] ctors = impl.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (ctors.Length != 1) throw new InvalidOperationException(impl.Name + " must have exactly one constructor, has " + ctors.Length);
+        stack.Push(impl);
+        try {
+            object[] args = ctors[0].GetParameters().Select(p => Get(p.ParameterType)).ToArray();
+            return ctors[0].Invoke(args);
+        } catch (TargetInvocationException e) {
+            throw new InvalidOperationException("constructor of " + impl.Name + " failed: " + e.InnerException.Message, e.InnerException);
+        } finally { stack.Pop(); }
+    }
+}
+
+interface IClock { DateTime UtcNow(); }
+class SystemClock : IClock { public DateTime UtcNow() { return DateTime.UtcNow; } }
+interface IOrderRepo { int Count(); }
+class InMemoryOrderRepo : IOrderRepo { public readonly IClock Clock; public InMemoryOrderRepo(IClock c) { Clock = c; } public int Count() { return 0; } }
+class OrderService { public readonly IOrderRepo Repo; public readonly IClock Clock; public OrderService(IOrderRepo r, IClock c) { Repo = r; Clock = c; } }
+class Ping { public Ping(Pong p) {} }
+class Pong { public Pong(Ping p) {} }
+interface Unbound {}
+class NeedsUnbound { public NeedsUnbound(Unbound u) {} }
+class Exploding { public Exploding() { throw new ArgumentException("boom"); } }
+
+class InjectorDemo {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        MiniInjector inj = new MiniInjector()
+            .Instance<IClock>(new SystemClock())
+            .Bind<IOrderRepo, InMemoryOrderRepo>().Singleton<IOrderRepo>();
+        OrderService a = inj.Get<OrderService>(), b = inj.Get<OrderService>();
+        Console.WriteLine("service prototype? " + B(a != b) + ", repo singleton? " + B(a.Repo == b.Repo) + ", clock shared? " + B(a.Clock == ((InMemoryOrderRepo)a.Repo).Clock));
+        foreach (Type bad in new[] { typeof(Ping), typeof(NeedsUnbound), typeof(Exploding) })
+            try { inj.Get(bad); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
       complexity: `<p>Resolution is O(size of the dependency graph) per prototype <code>get</code>; singletons are O(1) after the first build. Reflection cost is paid at startup; compile-time DI (Dagger) removes it entirely.</p>`,
@@ -13464,7 +15963,7 @@ int main() {
         if (version == 2) return ((Number) p.get("amountPaise")).longValue();
         return ((Number) ((Map<?, ?>) p.get("money")).get("paise")).longValue();       // ...and each copy drifts
     }
-}`, alt: [{ lang: 'python', code: "class RevenueBrute:\n    @staticmethod\n    def amount(p, version):\n        if version == 1: return int(p[\"amountRupees\"]) * 100   # copied into every consumer...\n        if version == 2: return int(p[\"amountPaise\"])\n        return int(p[\"money\"][\"paise\"])                        # ...and each copy drifts\n" }, { lang: 'ts', code: "class RevenueBrute {\n  static amount(p: Record<string, any>, version: number): number {\n    if (version === 1) return Number(p[\"amountRupees\"]) * 100;   // copied into every consumer...\n    if (version === 2) return Number(p[\"amountPaise\"]);\n    return Number(p[\"money\"][\"paise\"]);                          // ...and each copy drifts\n  }\n}\n" }, { lang: 'cpp', code: "struct RevenueBrute {\n    // payload fields flattened to \"a.b\" keys, e.g. \"money.paise\"\n    static long long amount(const map<string, long long>& p, int version) {\n        if (version == 1) return p.at(\"amountRupees\") * 100;     // copied into every consumer...\n        if (version == 2) return p.at(\"amountPaise\");\n        return p.at(\"money.paise\");                              // ...and each copy drifts\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class RevenueBrute:\n    @staticmethod\n    def amount(p, version):\n        if version == 1: return int(p[\"amountRupees\"]) * 100   # copied into every consumer...\n        if version == 2: return int(p[\"amountPaise\"])\n        return int(p[\"money\"][\"paise\"])                        # ...and each copy drifts\n" }, { lang: 'ts', code: "class RevenueBrute {\n  static amount(p: Record<string, any>, version: number): number {\n    if (version === 1) return Number(p[\"amountRupees\"]) * 100;   // copied into every consumer...\n    if (version === 2) return Number(p[\"amountPaise\"]);\n    return Number(p[\"money\"][\"paise\"]);                          // ...and each copy drifts\n  }\n}\n" }, { lang: 'cpp', code: "struct RevenueBrute {\n    // payload fields flattened to \"a.b\" keys, e.g. \"money.paise\"\n    static long long amount(const map<string, long long>& p, int version) {\n        if (version == 1) return p.at(\"amountRupees\") * 100;     // copied into every consumer...\n        if (version == 2) return p.at(\"amountPaise\");\n        return p.at(\"money.paise\");                              // ...and each copy drifts\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nstatic class RevenueBrute {\n    public static long Amount(Dictionary<string, object> p, int version) {\n        if (version == 1) return Convert.ToInt64(p[\"amountRupees\"]) * 100;   // copied into every consumer...\n        if (version == 2) return Convert.ToInt64(p[\"amountPaise\"]);\n        return Convert.ToInt64(((Dictionary<string, object>)p[\"money\"])[\"paise\"]);       // ...and each copy drifts\n    }\n}\n" }] } },
     mcq: { q: 'Why upcast on read instead of rewriting stored v1 events into v3?', options: ['Stored events are historical facts and the audit trail; upcasting keeps them intact while giving code one modern shape', 'Rewriting is impossible in any database', 'Upcasting is always faster than reading', 'v1 events are never read again'], answer: 0, explain: 'Immutability of the log is the core promise of event sourcing. Upcasters translate at the edge; copy-transform migrations into a new stream are a rare, deliberate last resort.' },
     hints: [`<p>Hint 1: Model a stored event as a small immutable value: <code>StoredEvent(type, version, payload)</code> where the payload is a map from field name to value.</p>`, `<p>Hint 2: Each upcaster handles one step (type, version) → next (type, version). Apply repeatedly until the event is at the latest version. Chain steps, never jump v1 → v3 directly (each step stays tiny).</p>`, `<p>Hint 3: After upcasting, deserialize into the typed event. Throw on unknown (type, version) so a newer writer deployed before the reader is noticed.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "o1 49900 INR web\no2 25000 INR web\no3 1000 INR app\n{app=1000, web=74900}\nno upcaster for OrderSubmitted@4\nOrderPlaced@1 is missing amountRupees\nstored v1 untouched: OrderPlaced@1 {amountRupees=499, orderId=o1}\n" }] },
@@ -13812,6 +16311,81 @@ int main() {
     string payload = "{";
     for (const auto& [k, v] : first.payload) payload += (payload.size() > 1 ? ", " : "") + k + "=" + show(v);
     cout << "stored v1 untouched: " << first.type << "@" << first.version << " " << payload << "}\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class StoredEvent {
+    public readonly string Type; public readonly int Version; public readonly IReadOnlyDictionary<string, object> Payload;
+    public StoredEvent(string type, int version, Dictionary<string, object> payload) { Type = type; Version = version; Payload = payload; }
+}
+sealed class OrderSubmitted {
+    public readonly string OrderId; public readonly long Paise; public readonly string Currency, Channel;
+    public OrderSubmitted(string orderId, long paise, string currency, string channel) { OrderId = orderId; Paise = paise; Currency = currency; Channel = channel; }
+}
+
+class Upcasters {
+    private readonly Dictionary<string, Func<StoredEvent, StoredEvent>> steps = new Dictionary<string, Func<StoredEvent, StoredEvent>>();
+    public const string LATEST = "OrderSubmitted@3";
+
+    public Upcasters() {
+        steps["OrderPlaced@1"] = e => {                                       // rupees -> paise, assume INR
+            var p = e.Payload.ToDictionary(kv => kv.Key, kv => kv.Value);    // copy: stored events are never mutated
+            object rupees;
+            if (!p.TryGetValue("amountRupees", out rupees)) throw new InvalidOperationException("OrderPlaced@1 is missing amountRupees");
+            p.Remove("amountRupees");
+            p["amountPaise"] = Convert.ToInt64(rupees) * 100;
+            p["currency"] = "INR";
+            return new StoredEvent("OrderPlaced", 2, p);
+        };
+        steps["OrderPlaced@2"] = e => {                                       // rename + nest money + default channel
+            var p = new Dictionary<string, object>();
+            p["orderId"] = e.Payload["orderId"];
+            p["money"] = new Dictionary<string, object> { { "paise", e.Payload["amountPaise"] }, { "currency", e.Payload["currency"] } };
+            p["channel"] = "web";
+            return new StoredEvent("OrderSubmitted", 3, p);
+        };
+    }
+    public OrderSubmitted Upcast(StoredEvent e) {
+        int guard = 0;
+        while (e.Type + "@" + e.Version != LATEST) {
+            Func<StoredEvent, StoredEvent> step;
+            if (!steps.TryGetValue(e.Type + "@" + e.Version, out step) || ++guard > 10) throw new InvalidOperationException("no upcaster for " + e.Type + "@" + e.Version);
+            e = step(e);
+        }
+        var money = (Dictionary<string, object>)e.Payload["money"];
+        object channel;
+        return new OrderSubmitted((string)e.Payload["orderId"], Convert.ToInt64(money["paise"]),
+            (string)money["currency"], e.Payload.TryGetValue("channel", out channel) ? (string)channel : "web");
+    }
+}
+
+class RevenueByChannel {
+    public readonly SortedDictionary<string, long> Revenue = new SortedDictionary<string, long>(StringComparer.Ordinal);
+    public void On(OrderSubmitted e) { long v; Revenue.TryGetValue(e.Channel, out v); Revenue[e.Channel] = v + e.Paise; }
+    public static RevenueByChannel Rebuild(List<StoredEvent> history, Upcasters up) {
+        RevenueByChannel p = new RevenueByChannel();
+        foreach (StoredEvent raw in history) p.On(up.Upcast(raw));
+        return p;
+    }
+    static void Main() {
+        List<StoredEvent> history = new List<StoredEvent> {
+            new StoredEvent("OrderPlaced", 1, new Dictionary<string, object> { { "orderId", "o1" }, { "amountRupees", 499 } }),
+            new StoredEvent("OrderPlaced", 2, new Dictionary<string, object> { { "orderId", "o2" }, { "amountPaise", 25000L }, { "currency", "INR" } }),
+            new StoredEvent("OrderSubmitted", 3, new Dictionary<string, object> { { "orderId", "o3" }, { "money", new Dictionary<string, object> { { "paise", 1000L }, { "currency", "INR" } } }, { "channel", "app" } }) };
+        Upcasters up = new Upcasters();
+        foreach (StoredEvent e in history) {
+            OrderSubmitted o = up.Upcast(e);
+            Console.WriteLine(o.OrderId + " " + o.Paise + " " + o.Currency + " " + o.Channel);
+        }
+        Console.WriteLine("{" + string.Join(", ", Rebuild(history, up).Revenue.Select(kv => kv.Key + "=" + kv.Value)) + "}");   // {app=1000, web=74900}
+        try { up.Upcast(new StoredEvent("OrderSubmitted", 4, new Dictionary<string, object>())); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        try { up.Upcast(new StoredEvent("OrderPlaced", 1, new Dictionary<string, object> { { "orderId", "o9" } })); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        StoredEvent first = history[0];
+        Console.WriteLine("stored v1 untouched: " + first.Type + "@" + first.Version + " {" + string.Join(", ", first.Payload.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Key + "=" + kv.Value)) + "}");
+    }
 }` }
         ],
       complexity: `<p>O(steps) per event (a few map copies); rebuild O(N). Stored data never changes.</p>`,
@@ -13831,7 +16405,7 @@ int main() {
         if (!charged) throw new IllegalStateException("roll back everything?!");
         driverEarnings.merge(driver, fare * 80 / 100, Long::sum);   // retry after a timeout = double credit
     }
-}`, alt: [{ lang: 'python', code: "import random\n\nclass TripServiceBrute:\n    def __init__(self): self.driver_earnings = {}\n\n    def complete(self, trip, driver, fare):\n        charged = random.random() > 0.1                # slow remote call inside the \"transaction\"\n        if not charged: raise RuntimeError(\"roll back everything?!\")\n        self.driver_earnings[driver] = self.driver_earnings.get(driver, 0) + fare * 80 // 100   # retry after a timeout = double credit\n" }, { lang: 'ts', code: "class TripServiceBrute {\n  driverEarnings = new Map<string, number>();\n  complete(trip: string, driver: string, fare: number): void {\n    const charged = Math.random() > 0.1;               // slow remote call inside the \"transaction\"\n    if (!charged) throw new Error(\"roll back everything?!\");\n    this.driverEarnings.set(driver, (this.driverEarnings.get(driver) ?? 0) + Math.floor(fare * 80 / 100));   // retry after a timeout = double credit\n  }\n}\n" }, { lang: 'cpp', code: "class TripServiceBrute {\npublic:\n    unordered_map<string, long long> driverEarnings;\n    void complete(const string& trip, const string& driver, long long fare) {\n        bool charged = rand() / (double)RAND_MAX > 0.1;   // slow remote call inside the \"transaction\"\n        if (!charged) throw runtime_error(\"roll back everything?!\");\n        driverEarnings[driver] += fare * 80 / 100;        // retry after a timeout = double credit\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import random\n\nclass TripServiceBrute:\n    def __init__(self): self.driver_earnings = {}\n\n    def complete(self, trip, driver, fare):\n        charged = random.random() > 0.1                # slow remote call inside the \"transaction\"\n        if not charged: raise RuntimeError(\"roll back everything?!\")\n        self.driver_earnings[driver] = self.driver_earnings.get(driver, 0) + fare * 80 // 100   # retry after a timeout = double credit\n" }, { lang: 'ts', code: "class TripServiceBrute {\n  driverEarnings = new Map<string, number>();\n  complete(trip: string, driver: string, fare: number): void {\n    const charged = Math.random() > 0.1;               // slow remote call inside the \"transaction\"\n    if (!charged) throw new Error(\"roll back everything?!\");\n    this.driverEarnings.set(driver, (this.driverEarnings.get(driver) ?? 0) + Math.floor(fare * 80 / 100));   // retry after a timeout = double credit\n  }\n}\n" }, { lang: 'cpp', code: "class TripServiceBrute {\npublic:\n    unordered_map<string, long long> driverEarnings;\n    void complete(const string& trip, const string& driver, long long fare) {\n        bool charged = rand() / (double)RAND_MAX > 0.1;   // slow remote call inside the \"transaction\"\n        if (!charged) throw runtime_error(\"roll back everything?!\");\n        driverEarnings[driver] += fare * 80 / 100;        // retry after a timeout = double credit\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass TripServiceBrute {\n    static readonly Random Rnd = new Random();\n    public readonly Dictionary<string, long> DriverEarnings = new Dictionary<string, long>();\n    public void Complete(string trip, string driver, long fare) {\n        bool charged = Rnd.NextDouble() > 0.1;           // slow remote call inside the \"transaction\"\n        if (!charged) throw new InvalidOperationException(\"roll back everything?!\");\n        long e; DriverEarnings.TryGetValue(driver, out e); DriverEarnings[driver] = e + fare * 80 / 100;   // retry after a timeout = double credit\n    }\n}\n" }] } },
     mcq: { q: 'Charging succeeded but crediting the driver failed (driver DB down). What is the right recovery?', options: ['Keep the charge; the PaymentCaptured event is redelivered until the idempotent driver-credit handler succeeds', 'Refund the rider immediately', 'Roll back the trip', 'Ask the driver to call support'], answer: 0, explain: 'Each step is a committed fact. The process continues forward by retrying the next idempotent step; compensation (refund) is only for genuine business failure, not a temporarily unavailable service.' },
     hints: [`<p>Hint 1: Trip (status, riderId, driverId, fare), Payment (per trip: status, attempt ref), Driver (available flag, earnings, credited trip IDs), RiderAccount (blocked flag).</p>`, `<p>Hint 2: Process manager: on TripCompleted → command Payment.charge; on PaymentCaptured → Driver.credit + Driver.makeAvailable; on PaymentFailed → Trip.markPaymentPending + Rider.block.</p>`, `<p>Hint 3: Idempotency inside aggregates: Payment ignores a second charge for the same trip; Driver keeps the set of credited trip IDs.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "d1 earnings 20000, available true\nt2 PAYMENT_PENDING, ravi blocked true\nsecond complete publishes nothing: true\nd1 earnings after duplicates 20000\nd1 earnings after t3 28000\nzed blocked true\n" }] },
@@ -14285,6 +16859,86 @@ int main() {
     pm.bus.push_back(PaymentFailed{"t9", "zed", "card declined"});  // a trip this manager never saw
     pm.drain();
     cout << "zed blocked " << pm.riders.at("zed").blocked << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+abstract class RideEvent {
+    private RideEvent() { }
+    public sealed class TripCompleted : RideEvent { public readonly string TripId, Rider, Driver; public readonly long Fare; public TripCompleted(string t, string r, string d, long f) { TripId = t; Rider = r; Driver = d; Fare = f; } }
+    public sealed class PaymentCaptured : RideEvent { public readonly string TripId, Driver; public readonly long Fare; public PaymentCaptured(string t, string d, long f) { TripId = t; Driver = d; Fare = f; } }
+    public sealed class PaymentFailed : RideEvent { public readonly string TripId, Rider, Reason; public PaymentFailed(string t, string r, string why) { TripId = t; Rider = r; Reason = why; } }
+}
+
+class Trip {
+    public readonly string Id, Rider, Driver; public readonly long Fare; public string Status = "ONGOING";
+    public Trip(string id, string rider, string driver, long fare) { Id = id; Rider = rider; Driver = driver; Fare = fare; }
+    public RideEvent Complete() { if (Status != "ONGOING") return null; Status = "COMPLETED"; return new RideEvent.TripCompleted(Id, Rider, Driver, Fare); }
+    public void MarkPaymentPending() { if (Status == "COMPLETED") Status = "PAYMENT_PENDING"; }
+}
+class Payment {                                                   // one per trip
+    public readonly string TripId; public string Status = "NONE";
+    public Payment(string tripId) { TripId = tripId; }
+    public RideEvent Charge(RideEvent.TripCompleted t, Func<string, bool> gateway) {
+        if (Status != "NONE") return null;                         // idempotent: already charged or failed
+        if (gateway(t.Rider)) { Status = "CAPTURED"; return new RideEvent.PaymentCaptured(t.TripId, t.Driver, t.Fare); }
+        Status = "FAILED"; return new RideEvent.PaymentFailed(t.TripId, t.Rider, "card declined");
+    }
+}
+class Driver {
+    public readonly string Id; public long Earnings; public bool Available; private readonly HashSet<string> creditedTrips = new HashSet<string>();
+    public Driver(string id) { Id = id; }
+    public void CreditFor(string tripId, long fare) { if (creditedTrips.Add(tripId)) Earnings += fare * 80 / 100; Available = true; }
+}
+class RiderAccount { public readonly string Id; public bool Blocked; public RiderAccount(string id) { Id = id; } public void Block() { Blocked = true; } }
+
+class TripProcessManager {
+    public readonly Dictionary<string, Trip> Trips = new Dictionary<string, Trip>(); public readonly Dictionary<string, Payment> Payments = new Dictionary<string, Payment>();
+    public readonly Dictionary<string, Driver> Drivers = new Dictionary<string, Driver>(); public readonly Dictionary<string, RiderAccount> Riders = new Dictionary<string, RiderAccount>();
+    public readonly Queue<RideEvent> Bus = new Queue<RideEvent>(); private readonly Func<string, bool> gateway;
+    public TripProcessManager(Func<string, bool> gateway) { this.gateway = gateway; }
+
+    static V GetOrAdd<V>(Dictionary<string, V> m, string k, Func<string, V> f) { V v; if (!m.TryGetValue(k, out v)) { v = f(k); m[k] = v; } return v; }
+
+    public void Publish(RideEvent e) { if (e != null) Bus.Enqueue(e); }
+    public void Drain() {
+        while (Bus.Count > 0) {
+            RideEvent e = Bus.Dequeue();
+            if (e is RideEvent.TripCompleted t) Publish(GetOrAdd(Payments, t.TripId, id => new Payment(id)).Charge(t, gateway));
+            else if (e is RideEvent.PaymentCaptured p) GetOrAdd(Drivers, p.Driver, id => new Driver(id)).CreditFor(p.TripId, p.Fare);
+            else if (e is RideEvent.PaymentFailed f) {
+                Trip trip;
+                if (Trips.TryGetValue(f.TripId, out trip)) trip.MarkPaymentPending();             // an unknown trip must not crash the loop
+                GetOrAdd(Riders, f.Rider, id => new RiderAccount(id)).Block();
+            }
+        }
+    }
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        TripProcessManager pm = new TripProcessManager(rider => rider != "ravi");   // ravi's card declines
+        pm.Trips["t1"] = new Trip("t1", "asha", "d1", 25000);
+        pm.Trips["t2"] = new Trip("t2", "ravi", "d1", 18000);
+        pm.Publish(pm.Trips["t1"].Complete()); pm.Publish(pm.Trips["t2"].Complete());
+        pm.Drain();
+        pm.Bus.Enqueue(new RideEvent.TripCompleted("t1", "asha", "d1", 25000));          // duplicate delivery
+        pm.Drain();
+        Driver d1 = pm.Drivers["d1"];
+        Console.WriteLine("d1 earnings " + d1.Earnings + ", available " + B(d1.Available));     // 20000 once
+        Console.WriteLine("t2 " + pm.Trips["t2"].Status + ", ravi blocked " + B(pm.Riders["ravi"].Blocked));
+
+        Console.WriteLine("second complete publishes nothing: " + B(pm.Trips["t1"].Complete() == null));
+        pm.Bus.Enqueue(new RideEvent.PaymentCaptured("t1", "d1", 25000));                // duplicate delivery
+        pm.Drain();
+        Console.WriteLine("d1 earnings after duplicates " + d1.Earnings);
+        pm.Trips["t3"] = new Trip("t3", "asha", "d1", 10000);
+        pm.Publish(pm.Trips["t3"].Complete());
+        pm.Drain();
+        Console.WriteLine("d1 earnings after t3 " + d1.Earnings);                        // 20000 + 8000
+        pm.Bus.Enqueue(new RideEvent.PaymentFailed("t9", "zed", "card declined"));       // a trip this manager never saw
+        pm.Drain();
+        Console.WriteLine("zed blocked " + B(pm.Riders["zed"].Blocked));
+    }
 }` }
         ],
       complexity: `<p>O(1) per event per handler. Each aggregate is tiny and locked only during its own step, so millions of trips scale horizontally (partition by trip/driver ID).</p>`,

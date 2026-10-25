@@ -296,7 +296,56 @@ int main() {
     cout << st.query(2, 6) << "\\n";   // 20
     st.update(3, 10);
     cout << st.query(2, 6) << "\\n";   // 27
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `// Recursive segment tree for range SUM with point assignment.
+// Node numbering starts at 1: node k has children 2k (left) and 2k+1 (right).
+using System;
+
+class SegmentTree {
+    private readonly int n;
+    private readonly long[] tree;         // tree[k] = sum of the range node k owns
+
+    public SegmentTree(int[] a) {
+        n = a.Length;
+        tree = new long[4 * n];           // 4N slots are always enough
+        Build(a, 1, 0, n - 1);
+    }
+
+    private void Build(int[] a, int node, int l, int r) {
+        if (l == r) { tree[node] = a[l]; return; }          // leaf = one element
+        int mid = l + (r - l) / 2;
+        Build(a, 2 * node, l, mid);                          // left half  [l, mid]
+        Build(a, 2 * node + 1, mid + 1, r);                  // right half [mid+1, r]
+        tree[node] = tree[2 * node] + tree[2 * node + 1];    // parent = merge(children)
+    }
+
+    /// a[idx] = value in O(log N).
+    public void Update(int idx, int value) { Update(1, 0, n - 1, idx, value); }
+
+    private void Update(int node, int l, int r, int idx, int value) {
+        if (l == r) { tree[node] = value; return; }          // reached the leaf
+        int mid = l + (r - l) / 2;
+        if (idx <= mid) Update(2 * node, l, mid, idx, value);
+        else Update(2 * node + 1, mid + 1, r, idx, value);
+        tree[node] = tree[2 * node] + tree[2 * node + 1];    // repair this ancestor on the way up
+    }
+
+    /// sum of a[ql..qr] (inclusive) in O(log N).
+    public long Query(int ql, int qr) { return Query(1, 0, n - 1, ql, qr); }
+
+    private long Query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;                      // 1) no overlap: identity of sum
+        if (ql <= l && r <= qr) return tree[node];           // 2) fully inside: take it whole
+        int mid = l + (r - l) / 2;                           // 3) partial: ask both children
+        return Query(2 * node, l, mid, ql, qr) + Query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+
+    static void Main() {
+        var st = new SegmentTree(new[] { 5, 8, 6, 3, 2, 7, 2, 6 });
+        Console.WriteLine(st.Query(2, 6));   // 20
+        st.Update(3, 10);
+        Console.WriteLine(st.Query(2, 6));   // 27
+    }
+}`, run: true }] }, { lang: 'java', code: `
       // Bottom-up (iterative) segment tree for range MIN — short, fast, no recursion.
       // Leaves live at t[n .. 2n-1]; node p has children 2p and 2p+1; works for ANY n (not only powers of 2).
       class MinSegTree {
@@ -437,7 +486,45 @@ int main() {
     cout << st.query(3, 6) << "\\n";   // 3
     st.set(5, 10);
     cout << st.query(3, 6) << "\\n";   // 5
-}` }] }, { lang: 'python', run: true, title: 'Python version + random stress test against brute force (runnable)', code: `class SegTree:
+}` }, { lang: 'csharp', code: `// Bottom-up (iterative) segment tree for range MIN — short, fast, no recursion.
+// Leaves live at t[n .. 2n-1]; node p has children 2p and 2p+1; works for ANY n (not only powers of 2).
+using System;
+
+class MinSegTree {
+    private readonly int n;
+    private readonly int[] t;
+
+    public MinSegTree(int[] a) {
+        n = a.Length;
+        t = new int[2 * n];
+        for (int i = 0; i < n; i++) t[n + i] = a[i];                           // copy leaves
+        for (int p = n - 1; p >= 1; p--) t[p] = Math.Min(t[2 * p], t[2 * p + 1]); // parents, bottom-up
+    }
+
+    /// a[idx] = value: change the leaf, then climb to the root.
+    public void Set(int idx, int value) {
+        int p = idx + n;
+        t[p] = value;
+        for (p >>= 1; p >= 1; p >>= 1) t[p] = Math.Min(t[2 * p], t[2 * p + 1]);
+    }
+
+    /// min of a[l..r] inclusive.
+    public int Query(int l, int r) {
+        int res = int.MaxValue;                       // identity of min
+        for (l += n, r += n + 1; l < r; l >>= 1, r >>= 1) { // half-open window [l, r) on each level
+            if ((l & 1) == 1) res = Math.Min(res, t[l++]);   // l is a right child: its parent sticks out, take l now
+            if ((r & 1) == 1) res = Math.Min(res, t[--r]);   // r-1 is a left child: its parent sticks out, take r-1 now
+        }
+        return res;
+    }
+
+    static void Main() {
+        var st = new MinSegTree(new[] { 4, 6, 1, 5, 7, 3, 8, 2, 9 });
+        Console.WriteLine(st.Query(3, 6));   // 3
+        st.Set(5, 10);
+        Console.WriteLine(st.Query(3, 6));   // 5
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Python version + random stress test against brute force (runnable)', code: `class SegTree:
     """Range-sum segment tree, recursive, node k has children 2k and 2k+1."""
 
     def __init__(self, a):
@@ -710,7 +797,16 @@ public:
         for (int i = left; i <= right; i++) s += a[i];
         return s;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class NumArrayBrute {
+    private readonly int[] a;
+    public NumArrayBrute(int[] nums) { a = (int[])nums.Clone(); }
+    public void Update(int index, int val) { a[index] = val; }      // O(1)
+    public int SumRange(int left, int right) {                      // O(N) per call
+        int s = 0;
+        for (int i = left; i <= right; i++) s += a[i];
+        return s;
+    }
+}` }
         ] }
       },
       mcq: {
@@ -852,7 +948,33 @@ public:
         }
         return s;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class NumArray {
+    private readonly int n;
+    private readonly int[] t;                 // leaves at t[n..2n-1], internal nodes at t[1..n-1]
+
+    public NumArray(int[] nums) {
+        n = nums.Length;
+        t = new int[2 * n];
+        for (int i = 0; i < n; i++) t[n + i] = nums[i];
+        for (int p = n - 1; p >= 1; p--) t[p] = t[2 * p] + t[2 * p + 1];
+    }
+
+    public void Update(int index, int val) {
+        int p = index + n;
+        t[p] = val;                           // fix the leaf
+        for (p >>= 1; p >= 1; p >>= 1)        // climb: every ancestor = left + right
+            t[p] = t[2 * p] + t[2 * p + 1];
+    }
+
+    public int SumRange(int left, int right) {
+        int s = 0;
+        for (int l = left + n, r = right + n + 1; l < r; l >>= 1, r >>= 1) {
+            if ((l & 1) == 1) s += t[l++];    // l is a right child: take it alone
+            if ((r & 1) == 1) s += t[--r];    // r-1 is a left child: take it alone
+        }
+        return s;
+    }
+}` }],
         dry: {
           head: ['step', 'operation', 'what the tree does', 'result'],
           rows: [
@@ -1156,7 +1278,75 @@ int main() {
     cout << st.query(3, 7) << "\\n";        // 7+8+9+10+8 = 42
     st.add(0, 3, -1);                      // a = 0 1 5 6 8 9 10 8
     cout << st.query(0, 7) << "\\n";        // 47
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `// Lazy segment tree: range ADD + range SUM, both O(log N).
+using System;
+
+class LazySegTree {
+    private readonly int n;
+    private readonly long[] sum;   // sum[node] = correct sum of node's range (its own IOU already included)
+    private readonly long[] lazy;  // lazy[node] = "add this to every element below me", not yet given to children
+
+    public LazySegTree(int[] a) {
+        n = a.Length;
+        sum = new long[4 * n];
+        lazy = new long[4 * n];
+        Build(a, 1, 0, n - 1);
+    }
+
+    private void Build(int[] a, int node, int l, int r) {
+        if (l == r) { sum[node] = a[l]; return; }
+        int mid = (l + r) >> 1;
+        Build(a, 2 * node, l, mid);
+        Build(a, 2 * node + 1, mid + 1, r);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+
+    // Apply "+v to every element" to a WHOLE node in O(1): fix its sum, remember the IOU.
+    private void Apply(int node, int l, int r, long v) {
+        sum[node] += v * (r - l + 1);
+        if (l != r) lazy[node] += v;          // leaves have no children to owe anything to
+    }
+
+    // Hand the IOU one level down before looking inside this node.
+    private void Push(int node, int l, int r) {
+        if (lazy[node] != 0) {
+            int mid = (l + r) >> 1;
+            Apply(2 * node, l, mid, lazy[node]);
+            Apply(2 * node + 1, mid + 1, r, lazy[node]);
+            lazy[node] = 0;
+        }
+    }
+
+    public void Add(int ql, int qr, long v) { Add(1, 0, n - 1, ql, qr, v); }
+
+    private void Add(int node, int l, int r, int ql, int qr, long v) {
+        if (qr < l || r < ql) return;                              // outside: nothing to do
+        if (ql <= l && r <= qr) { Apply(node, l, r, v); return; }  // fully covered: O(1) and STOP
+        Push(node, l, r);                                          // partial: settle old IOUs first
+        int mid = (l + r) >> 1;
+        Add(2 * node, l, mid, ql, qr, v);
+        Add(2 * node + 1, mid + 1, r, ql, qr, v);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];             // pull fresh answers up
+    }
+
+    public long Query(int ql, int qr) { return Query(1, 0, n - 1, ql, qr); }
+
+    private long Query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;
+        if (ql <= l && r <= qr) return sum[node];                  // correct: its IOU is already counted
+        Push(node, l, r);
+        int mid = (l + r) >> 1;
+        return Query(2 * node, l, mid, ql, qr) + Query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+
+    static void Main() {
+        var st = new LazySegTree(new[] { 1, 2, 3, 4, 5, 6, 7, 8 });
+        st.Add(2, 6, 3);                       // a = 1 2 6 7 8 9 10 8
+        Console.WriteLine(st.Query(3, 7));     // 7+8+9+10+8 = 42
+        st.Add(0, 3, -1);                      // a = 0 1 5 6 8 9 10 8
+        Console.WriteLine(st.Query(0, 7));     // 47
+    }
+}`, run: true }] }, { lang: 'java', code: `
       // Range ADD + range MAX: "after each booking, how busy is the busiest time slot?"
       class AddMaxSegTree {
           private final int n;
@@ -1327,7 +1517,50 @@ int main() {
     t.add(3, 7, 1);                        // booking [3,7]
     t.add(4, 5, 1);                        // booking [4,5]
     cout << t.maxIn(0, 9) << "\\n";         // 3: slot 4 is inside all three bookings
-}` }] }, { lang: 'python', run: true, title: 'Python lazy tree + stress test (runnable)', code: `class LazySeg:
+}` }, { lang: 'csharp', code: `// Range ADD + range MAX: "after each booking, how busy is the busiest time slot?"
+using System;
+
+class AddMaxSegTree {
+    private readonly int n;
+    private readonly long[] mx, lz;
+
+    public AddMaxSegTree(int n) { this.n = n; mx = new long[4 * n]; lz = new long[4 * n]; } // all slots start at 0
+
+    private void Apply(int node, long v) { mx[node] += v; lz[node] += v; } // the max shifts by v as a whole
+    private void Push(int node) {
+        if (lz[node] != 0) { Apply(2 * node, lz[node]); Apply(2 * node + 1, lz[node]); lz[node] = 0; }
+    }
+
+    public void Add(int ql, int qr, long v) { Add(1, 0, n - 1, ql, qr, v); }
+
+    private void Add(int node, int l, int r, int ql, int qr, long v) {
+        if (qr < l || r < ql) return;
+        if (ql <= l && r <= qr) { Apply(node, v); return; }
+        Push(node);
+        int mid = (l + r) >> 1;
+        Add(2 * node, l, mid, ql, qr, v);
+        Add(2 * node + 1, mid + 1, r, ql, qr, v);
+        mx[node] = Math.Max(mx[2 * node], mx[2 * node + 1]);
+    }
+
+    public long Max(int ql, int qr) { return Max(1, 0, n - 1, ql, qr); }
+
+    private long Max(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return long.MinValue;                   // identity of max
+        if (ql <= l && r <= qr) return mx[node];
+        Push(node);
+        int mid = (l + r) >> 1;
+        return Math.Max(Max(2 * node, l, mid, ql, qr), Max(2 * node + 1, mid + 1, r, ql, qr));
+    }
+
+    static void Main() {
+        var t = new AddMaxSegTree(10);              // time slots 0..9
+        t.Add(1, 4, 1);                             // booking [1,4]
+        t.Add(3, 7, 1);                             // booking [3,7]
+        t.Add(4, 5, 1);                             // booking [4,5]
+        Console.WriteLine(t.Max(0, 9));             // 3: slot 4 is inside all three bookings
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Python lazy tree + stress test (runnable)', code: `class LazySeg:
     """Range add, range sum."""
 
     def __init__(self, a):
@@ -1594,6 +1827,14 @@ print("3000 random range-adds / range-sums match brute force")` }],
         else { long long s = 0; for (int i = c[1]; i <= c[2]; i++) s += a[i]; out.push_back(s); } // O(N) sum
     }
     return out;
+}` }, { lang: 'csharp', code: `long[] BruteHorrible(int n, int[][] cmds) {
+    long[] a = new long[n];
+    var res = new List<long>();
+    foreach (var c in cmds) {
+        if (c[0] == 0) for (int i = c[1]; i <= c[2]; i++) a[i] += c[3];   // O(N) add
+        else { long s = 0; for (int i = c[1]; i <= c[2]; i++) s += a[i]; res.Add(s); } // O(N) sum
+    }
+    return res.ToArray();
 }` }
         ] }
       },
@@ -1794,7 +2035,53 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private long[] sum, lazy;
+    private int n;
+
+    public long[] Horrible(int n, int[][] cmds) {
+        this.n = n;
+        sum = new long[4 * n];
+        lazy = new long[4 * n];
+        var res = new List<long>();
+        foreach (var c in cmds) {
+            if (c[0] == 0) Add(1, 0, n - 1, c[1], c[2], c[3]);
+            else res.Add(Query(1, 0, n - 1, c[1], c[2]));
+        }
+        return res.ToArray();
+    }
+
+    private void Apply(int node, int l, int r, long v) {
+        sum[node] += v * (r - l + 1);
+        if (l != r) lazy[node] += v;
+    }
+
+    private void Push(int node, int l, int r) {
+        if (lazy[node] == 0) return;
+        int mid = (l + r) >> 1;
+        Apply(2 * node, l, mid, lazy[node]);
+        Apply(2 * node + 1, mid + 1, r, lazy[node]);
+        lazy[node] = 0;
+    }
+
+    private void Add(int node, int l, int r, int ql, int qr, long v) {
+        if (qr < l || r < ql) return;
+        if (ql <= l && r <= qr) { Apply(node, l, r, v); return; }
+        Push(node, l, r);
+        int mid = (l + r) >> 1;
+        Add(2 * node, l, mid, ql, qr, v);
+        Add(2 * node + 1, mid + 1, r, ql, qr, v);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+
+    private long Query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;
+        if (ql <= l && r <= qr) return sum[node];
+        Push(node, l, r);
+        int mid = (l + r) >> 1;
+        return Query(2 * node, l, mid, ql, qr) + Query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+}` }],
         dry: {
           head: ['command', 'nodes fully covered (apply)', 'state after', 'output'],
           rows: [
@@ -2050,7 +2337,59 @@ int main() {
     cout << f.rangeSum(3, 5) << "\\n";   // -1 + 6 + 5 = 10
     f.add(3, 5);                        // a[3]: -1 -> 4
     cout << f.rangeSum(3, 5) << "\\n";   // 15
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `// Fenwick tree (Binary Indexed Tree), 1-based: tree[i] = sum of a(i - lowbit(i), i].
+using System;
+
+class Fenwick {
+    private readonly int n;
+    private readonly long[] tree;
+
+    public Fenwick(int n) { this.n = n; tree = new long[n + 1]; }
+
+    /// O(N) build from a 0-based array: every box hands its total to its parent box once.
+    public Fenwick(int[] a) : this(a.Length) {
+        for (int i = 1; i <= n; i++) {
+            tree[i] += a[i - 1];
+            int parent = i + (i & -i);
+            if (parent <= n) tree[parent] += tree[i];
+        }
+    }
+
+    /// a[i] += delta (1-based): visit every box whose range contains i.
+    public void Add(int i, long delta) {
+        for (; i <= n; i += i & -i) tree[i] += delta;
+    }
+
+    /// a[1] + ... + a[i]: strip the lowest set bit each step.
+    public long Prefix(int i) {
+        long s = 0;
+        for (; i > 0; i -= i & -i) s += tree[i];
+        return s;
+    }
+
+    public long RangeSum(int l, int r) { return Prefix(r) - Prefix(l - 1); }
+
+    /// Smallest p with Prefix(p) >= k (needs all a[i] >= 0). Returns n + 1 if no such p. O(log N).
+    public int LowerBound(long k) {
+        int pos = 0, step = 1;
+        while (step * 2 <= Math.Max(n, 1)) step *= 2;            // highest power of two <= n
+        for (; step > 0; step >>= 1) {
+            if (pos + step <= n && tree[pos + step] < k) {   // whole block still too small: jump over it
+                pos += step;
+                k -= tree[pos];
+            }
+        }
+        return pos + 1;
+    }
+
+    static void Main() {
+        var f = new Fenwick(new[] { 3, 2, -1, 6, 5, 4, -3, 3 });
+        Console.WriteLine(f.Prefix(7));        // 16
+        Console.WriteLine(f.RangeSum(3, 5));   // -1 + 6 + 5 = 10
+        f.Add(3, 5);                           // a[3]: -1 -> 4
+        Console.WriteLine(f.RangeSum(3, 5));   // 15
+    }
+}`, run: true }] }, { lang: 'java', code: `
       // Range ADD + range SUM with two Fenwick trees (1-based).
       // With d = difference array: prefix(x) = x * sum(d[1..x]) - sum(d[i] * (i - 1)).
       class RangeFenwick {
@@ -2176,7 +2515,38 @@ int main() {
     rf.rangeAdd(2, 5, 3);            // a = 0 3 3 3 3 0 0 0
     rf.rangeAdd(4, 8, 1);            // a = 0 3 3 4 4 1 1 1
     cout << rf.rangeSum(3, 6) << "\\n";   // 3 + 4 + 4 + 1 = 12
-}` }] }, { lang: 'python', run: true, title: 'Python: BIT, inversion count and k-th smallest (runnable)', code: `class BIT:
+}` }, { lang: 'csharp', code: `// Range ADD + range SUM with two Fenwick trees (1-based).
+// With d = difference array: prefix(x) = x * sum(d[1..x]) - sum(d[i] * (i - 1)).
+using System;
+
+class RangeFenwick {
+    private readonly int n;
+    private readonly long[] b1, b2;
+
+    public RangeFenwick(int n) { this.n = n; b1 = new long[n + 2]; b2 = new long[n + 2]; }
+
+    private void Upd(long[] b, int i, long v) { for (; i <= n; i += i & -i) b[i] += v; }
+    private long Pre(long[] b, int i) { long s = 0; for (; i > 0; i -= i & -i) s += b[i]; return s; }
+
+    /// a[l..r] += v
+    public void RangeAdd(int l, int r, long v) {
+        Upd(b1, l, v);
+        Upd(b1, r + 1, -v);
+        Upd(b2, l, v * (l - 1));
+        Upd(b2, r + 1, -v * r);
+    }
+
+    public long PrefixSum(int x) { return Pre(b1, x) * x - Pre(b2, x); }
+
+    public long RangeSum(int l, int r) { return PrefixSum(r) - PrefixSum(l - 1); }
+
+    static void Main() {
+        var rf = new RangeFenwick(8);             // a = 0 0 0 0 0 0 0 0
+        rf.RangeAdd(2, 5, 3);                     // a = 0 3 3 3 3 0 0 0
+        rf.RangeAdd(4, 8, 1);                     // a = 0 3 3 4 4 1 1 1
+        Console.WriteLine(rf.RangeSum(3, 6));     // 3 + 4 + 4 + 1 = 12
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Python: BIT, inversion count and k-th smallest (runnable)', code: `class BIT:
     def __init__(self, n):
         self.n = n
         self.t = [0] * (n + 1)
@@ -2392,6 +2762,14 @@ print("3rd smallest now =", counts.kth(3))  # 2 5 7 9 -> 7` }],
         res.push_back(c);
     }
     return res;
+}` }, { lang: 'csharp', code: `List<int> CountSmallerBrute(int[] nums) {
+    var res = new List<int>();
+    for (int i = 0; i < nums.Length; i++) {
+        int c = 0;
+        for (int j = i + 1; j < nums.Length; j++) if (nums[j] < nums[i]) c++;
+        res.Add(c);
+    }
+    return res;
 }` }
         ] }
       },
@@ -2497,7 +2875,22 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public List<int> CountSmaller(int[] nums) {
+        const int OFFSET = 10001;                 // maps -10000..10000 to 1..20001
+        int size = 20002;
+        int[] bit = new int[size + 1];
+        int[] ans = new int[nums.Length];
+        for (int i = nums.Length - 1; i >= 0; i--) {
+            int r = nums[i] + OFFSET;
+            int c = 0;
+            for (int j = r - 1; j > 0; j -= j & -j) c += bit[j];       // how many seen values < nums[i]
+            ans[i] = c;
+            for (int j = r; j <= size; j += j & -j) bit[j]++;           // insert nums[i]
+        }
+        return new List<int>(ans);
+    }
+}` }],
         dry: {
           head: ['i', 'nums[i]', 'values already in BIT (to the right)', 'prefix(v − 1) = smaller', 'counts[i]'],
           rows: [
@@ -2661,7 +3054,41 @@ int main() {
     cout << t.query(2, 6) << "\\n";   // 1
     cout << t.query(3, 7) << "\\n";   // 2
     cout << t.query(4, 5) << "\\n";   // 3
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `// Sparse table for static range MIN: O(N log N) build, O(1) query.
+using System;
+
+class SparseTable {
+    private readonly int[][] st;   // st[k][i] = min of a[i .. i + 2^k - 1]
+    private readonly int[] lg;     // lg[x] = floor(log2 x), precomputed
+
+    public SparseTable(int[] a) {
+        int n = a.Length;
+        lg = new int[n + 1];
+        for (int x = 2; x <= n; x++) lg[x] = lg[x / 2] + 1;
+        int levels = lg[n] + 1;
+        st = new int[levels][];
+        st[0] = (int[])a.Clone();                              // windows of length 1
+        for (int k = 1; k < levels; k++) {
+            int len = 1 << k, half = len >> 1;
+            st[k] = new int[n - len + 1];                      // only windows that fit inside the array
+            for (int i = 0; i + len <= n; i++)
+                st[k][i] = Math.Min(st[k - 1][i], st[k - 1][i + half]); // left half, right half
+        }
+    }
+
+    /// min of a[l..r] in O(1): two overlapping power-of-two windows.
+    public int Query(int l, int r) {
+        int k = lg[r - l + 1];
+        return Math.Min(st[k][l], st[k][r - (1 << k) + 1]);
+    }
+
+    static void Main() {
+        var t = new SparseTable(new[] { 4, 6, 1, 5, 7, 3, 8, 2 });
+        Console.WriteLine(t.Query(2, 6));   // 1
+        Console.WriteLine(t.Query(3, 7));   // 2
+        Console.WriteLine(t.Query(4, 5));   // 3
+    }
+}`, run: true }] }, { lang: 'java', code: `
       // One table for GCD (idempotent, O(1) query) and one for SUM (not idempotent, O(log N) disjoint jumps).
       class SparseGcdSum {
           private final long[][] g, s;
@@ -2829,7 +3256,55 @@ int main() {
     cout << t.rangeGcd(0, 3) << "\\n";  // 6
     cout << t.rangeGcd(1, 4) << "\\n";  // 2
     cout << t.rangeSum(0, 2) << "\\n";  // 54
-}` }] }, { lang: 'python', run: true, title: 'Python sparse table + brute-force check (runnable)', code: `import random
+}` }, { lang: 'csharp', code: `// One table for GCD (idempotent, O(1) query) and one for SUM (not idempotent, O(log N) disjoint jumps).
+using System;
+
+class SparseGcdSum {
+    private readonly long[][] g, s;
+    private readonly int[] lg;
+
+    public SparseGcdSum(long[] a) {
+        int n = a.Length;
+        lg = new int[n + 1];
+        for (int x = 2; x <= n; x++) lg[x] = lg[x / 2] + 1;
+        int levels = lg[n] + 1;
+        g = new long[levels][];
+        s = new long[levels][];
+        for (int k = 0; k < levels; k++) { g[k] = new long[n]; s[k] = new long[n]; }
+        for (int i = 0; i < n; i++) { g[0][i] = a[i]; s[0][i] = a[i]; }
+        for (int k = 1; k < levels; k++)
+            for (int i = 0; i + (1 << k) <= n; i++) {
+                int j = i + (1 << (k - 1));
+                g[k][i] = Gcd(g[k - 1][i], g[k - 1][j]);
+                s[k][i] = s[k - 1][i] + s[k - 1][j];
+            }
+    }
+
+    static long Gcd(long x, long y) { while (y != 0) { long t = x % y; x = y; y = t; } return Math.Abs(x); }
+
+    /// Overlap is harmless for gcd: gcd(x, x) = x.
+    public long RangeGcd(int l, int r) {
+        int k = lg[r - l + 1];
+        return Gcd(g[k][l], g[k][r - (1 << k) + 1]);
+    }
+
+    /// Overlap would double count, so walk the binary digits of the length: disjoint blocks.
+    public long RangeSum(int l, int r) {
+        long total = 0;
+        int len = r - l + 1;
+        for (int k = lg[len]; k >= 0; k--) {
+            if (((len >> k) & 1) == 1) { total += s[k][l]; l += 1 << k; }
+        }
+        return total;
+    }
+
+    static void Main() {
+        var t = new SparseGcdSum(new long[] { 12, 18, 24, 36, 10 });
+        Console.WriteLine(t.RangeGcd(0, 3));  // 6
+        Console.WriteLine(t.RangeGcd(1, 4));  // 2
+        Console.WriteLine(t.RangeSum(0, 2));  // 54
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Python sparse table + brute-force check (runnable)', code: `import random
 
 
 def build(a, op):
@@ -3036,6 +3511,18 @@ print("2000 random max queries match brute force")` }],
         }
     }
     return best;
+}` }, { lang: 'csharp', code: `int LongestBrute(int[] nums, int limit) {
+    int best = 0;
+    for (int l = 0; l < nums.Length; l++) {
+        int mx = nums[l], mn = nums[l];
+        for (int r = l; r < nums.Length; r++) {
+            mx = Math.Max(mx, nums[r]);
+            mn = Math.Min(mn, nums[r]);
+            if (mx - mn > limit) break;      // longer windows from l only get worse
+            best = Math.Max(best, r - l + 1);
+        }
+    }
+    return best;
 }` }
         ] }
       },
@@ -3173,7 +3660,37 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int LongestSubarray(int[] nums, int limit) {
+        int n = nums.Length;
+        int[] lg = new int[n + 1];
+        for (int x = 2; x <= n; x++) lg[x] = lg[x / 2] + 1;
+        int levels = lg[n] + 1;
+        int[][] mx = new int[levels][], mn = new int[levels][];
+        mx[0] = (int[])nums.Clone();
+        mn[0] = (int[])nums.Clone();
+        for (int k = 1; k < levels; k++) {
+            mx[k] = new int[n]; mn[k] = new int[n];
+            for (int i = 0; i + (1 << k) <= n; i++) {
+                int j = i + (1 << (k - 1));
+                mx[k][i] = Math.Max(mx[k - 1][i], mx[k - 1][j]);
+                mn[k][i] = Math.Min(mn[k - 1][i], mn[k - 1][j]);
+            }
+        }
+        int best = 0, l = 0;
+        for (int r = 0; r < n; r++) {
+            while (true) {
+                int k = lg[r - l + 1], s = r - (1 << k) + 1;
+                int hi = Math.Max(mx[k][l], mx[k][s]);
+                int lo = Math.Min(mn[k][l], mn[k][s]);
+                if (hi - lo <= limit) break;        // window valid
+                l++;                                // too wide: shrink from the left
+            }
+            best = Math.Max(best, r - l + 1);
+        }
+        return best;
+    }
+}` }],
         dry: {
           head: ['r', 'window before check', 'max − min', 'action', 'best'],
           rows: [
@@ -3400,7 +3917,56 @@ int main() {
     cout << sd.rangeSum(1, 8) << "\\n";   // 41
     sd.rangeAdd(2, 7, 10);               // six elements +10
     cout << sd.rangeSum(1, 8) << "\\n";   // 101
-}` }] }, { lang: 'python', run: true, title: 'Python sqrt decomposition + stress test (runnable)', code: `import math
+}` }, { lang: 'csharp', code: `// Sqrt decomposition: range ADD + range SUM, O(√N) per operation.
+using System;
+
+class SqrtDecomposition {
+    private readonly int n, B;
+    private readonly long[] a;          // element values WITHOUT their block's pending add
+    private readonly long[] blockSum;   // sum of a[] inside each block (also without blockAdd)
+    private readonly long[] blockAdd;   // pending "+v" for a WHOLE block
+
+    public SqrtDecomposition(int[] arr) {
+        n = arr.Length;
+        B = Math.Max(1, (int)Math.Sqrt(n));
+        a = new long[n];
+        int blocks = (n + B - 1) / B;
+        blockSum = new long[blocks];
+        blockAdd = new long[blocks];
+        for (int i = 0; i < n; i++) { a[i] = arr[i]; blockSum[i / B] += arr[i]; }
+    }
+
+    public void RangeAdd(int l, int r, long v) {
+        int bl = l / B, br = r / B;
+        if (bl == br) {                                        // both ends in one block: walk it
+            for (int i = l; i <= r; i++) { a[i] += v; blockSum[bl] += v; }
+            return;
+        }
+        for (int i = l; i < (bl + 1) * B; i++) { a[i] += v; blockSum[bl] += v; }   // left partial
+        for (int b = bl + 1; b < br; b++) blockAdd[b] += v;                         // full blocks, O(1) each
+        for (int i = br * B; i <= r; i++) { a[i] += v; blockSum[br] += v; }        // right partial
+    }
+
+    public long RangeSum(int l, int r) {
+        int bl = l / B, br = r / B;
+        long s = 0;
+        if (bl == br) {
+            for (int i = l; i <= r; i++) s += a[i] + blockAdd[bl];
+            return s;
+        }
+        for (int i = l; i < (bl + 1) * B; i++) s += a[i] + blockAdd[bl];
+        for (int b = bl + 1; b < br; b++) s += blockSum[b] + blockAdd[b] * B;       // middle blocks are full (size B)
+        for (int i = br * B; i <= r; i++) s += a[i] + blockAdd[br];
+        return s;
+    }
+
+    static void Main() {
+        var sd = new SqrtDecomposition(new[] { 4, 1, 7, 2, 9, 3, 6, 8, 5, 2 });
+        Console.WriteLine(sd.RangeSum(1, 8));   // 41
+        sd.RangeAdd(2, 7, 10);                  // six elements +10
+        Console.WriteLine(sd.RangeSum(1, 8));   // 101
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Python sqrt decomposition + stress test (runnable)', code: `import math
 import random
 
 
@@ -3643,6 +4209,18 @@ print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
         }
     }
     return out;
+}` }, { lang: 'csharp', code: `List<int> BruteCount(int[] a0, int[][] ops) {
+    int[] a = (int[])a0.Clone();
+    var res = new List<int>();
+    foreach (var op in ops) {
+        if (op[0] == 1) a[op[1]] = op[2];
+        else {
+            int c = 0;
+            for (int j = op[1]; j <= op[2]; j++) if (a[j] <= op[3]) c++;
+            res.Add(c);
+        }
+    }
+    return res;
 }` }
         ] }
       },
@@ -3840,7 +4418,62 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private int n, B;
+    private int[] a;
+    private int[][] sorted;            // sorted copy of every block
+
+    public List<int> Process(int[] arr, int[][] ops) {
+        n = arr.Length;
+        B = Math.Max(1, (int)Math.Sqrt(n));
+        a = (int[])arr.Clone();
+        int blocks = (n + B - 1) / B;
+        sorted = new int[blocks][];
+        for (int b = 0; b < blocks; b++) {
+            int len = Math.Min(n, b * B + B) - b * B;
+            sorted[b] = new int[len];
+            Array.Copy(a, b * B, sorted[b], 0, len);
+            Array.Sort(sorted[b]);
+        }
+        var res = new List<int>();
+        foreach (var op in ops) {
+            if (op[0] == 1) Update(op[1], op[2]);
+            else res.Add(Query(op[1], op[2], op[3]));
+        }
+        return res;
+    }
+
+    /// number of values <= x in a sorted array (upper bound).
+    private static int CountLE(int[] s, int x) {
+        int lo = 0, hi = s.Length;
+        while (lo < hi) {
+            int mid = (lo + hi) >> 1;
+            if (s[mid] <= x) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+    private void Update(int i, int v) {
+        int[] s = sorted[i / B];
+        int pos = Array.BinarySearch(s, a[i]);      // some slot holding the old value
+        s[pos] = v;
+        while (pos > 0 && s[pos - 1] > s[pos]) { int t = s[pos]; s[pos] = s[pos - 1]; s[pos - 1] = t; pos--; }
+        while (pos + 1 < s.Length && s[pos + 1] < s[pos]) { int t = s[pos]; s[pos] = s[pos + 1]; s[pos + 1] = t; pos++; }
+        a[i] = v;
+    }
+
+    private int Query(int l, int r, int x) {
+        int bl = l / B, br = r / B, c = 0;
+        if (bl == br) {
+            for (int i = l; i <= r; i++) if (a[i] <= x) c++;
+            return c;
+        }
+        for (int i = l; i < (bl + 1) * B; i++) if (a[i] <= x) c++;   // left edge
+        for (int b = bl + 1; b < br; b++) c += CountLE(sorted[b], x);  // full blocks
+        for (int i = br * B; i <= r; i++) if (a[i] <= x) c++;         // right edge
+        return c;
+    }
+}` }],
         dry: {
           head: ['op', 'left edge', 'full blocks (binary search)', 'right edge', 'answer'],
           rows: [
@@ -4093,7 +4726,60 @@ int main() {
     cout << "[";
     for (size_t i = 0; i < ans.size(); i++) cout << (i ? ", " : "") << ans[i];
     cout << "]\\n";                                     // [3, 4, 3, 4, 3]
-}` }] }, { lang: 'python', run: true, title: 'Python Mo\'s + move counting vs naive (runnable)', code: `import math
+}` }, { lang: 'csharp', code: `// Mo's algorithm: offline "number of distinct values in a[l..r]".
+using System;
+using System.Collections.Generic;
+
+class MoDistinct {
+    private int[] cnt;          // cnt[v] = copies of compressed value v inside the window
+    private int distinct;       // number of values with cnt > 0
+
+    private void Add(int v)    { if (cnt[v]++ == 0) distinct++; }   // first copy enters
+    private void Remove(int v) { if (--cnt[v] == 0) distinct--; }   // last copy leaves
+
+    public int[] Solve(int[] a, int[][] queries) {
+        int n = a.Length, q = queries.Length;
+        // 1) compress values to 0..k-1 so cnt[] is a plain array (no dictionary in the hot loop)
+        int[] sorted = (int[])a.Clone();
+        Array.Sort(sorted);
+        int k = 0;
+        for (int i = 0; i < n; i++) if (i == 0 || sorted[i] != sorted[i - 1]) sorted[k++] = sorted[i];
+        int[] comp = new int[n];
+        for (int i = 0; i < n; i++) comp[i] = Array.BinarySearch(sorted, 0, k, a[i]);
+        cnt = new int[k];
+        distinct = 0;
+
+        // 2) sort queries by (block of l, r); odd blocks sweep r backwards ("odd-even" trick)
+        int B = Math.Max(1, (int)(n / Math.Sqrt(Math.Max(1, q))));
+        int[] order = new int[q];
+        for (int i = 0; i < q; i++) order[i] = i;
+        Array.Sort(order, (x, y) => {
+            int bx = queries[x][0] / B, by = queries[y][0] / B;
+            if (bx != by) return bx.CompareTo(by);
+            return (bx & 1) == 0 ? queries[x][1].CompareTo(queries[y][1])
+                                 : queries[y][1].CompareTo(queries[x][1]);
+        });
+
+        // 3) slide the window from query to query; grow first, then shrink
+        int[] ans = new int[q];
+        int curL = 0, curR = -1;                       // empty window
+        foreach (int id in order) {
+            int l = queries[id][0], r = queries[id][1];
+            while (curR < r) Add(comp[++curR]);
+            while (curL > l) Add(comp[--curL]);
+            while (curR > r) Remove(comp[curR--]);
+            while (curL < l) Remove(comp[curL++]);
+            ans[id] = distinct;                        // store under the ORIGINAL index
+        }
+        return ans;
+    }
+
+    static void Main() {
+        int[] a = { 1, 2, 1, 3, 2, 2, 4, 1, 3, 1 };
+        int[][] qs = { new[] {0, 4}, new[] {2, 7}, new[] {1, 3}, new[] {5, 9}, new[] {6, 8} };
+        Console.WriteLine("[" + string.Join(", ", new MoDistinct().Solve(a, qs)) + "]");   // [3, 4, 3, 4, 3]
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Python Mo\'s + move counting vs naive (runnable)', code: `import math
 import random
 
 
@@ -4298,6 +4984,14 @@ print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive
         ans[i] = seen.size();
     }
     return ans;
+}` }, { lang: 'csharp', code: `int[] BruteDistinct(int[] a, int[][] qs) {
+    int[] ans = new int[qs.Length];
+    for (int i = 0; i < qs.Length; i++) {
+        var seen = new HashSet<int>();
+        for (int j = qs[i][0]; j <= qs[i][1]; j++) seen.Add(a[j]);
+        ans[i] = seen.Count;
+    }
+    return ans;
 }` }
         ] }
       },
@@ -4464,7 +5158,43 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private int[] cnt;
+    private int distinct;
+
+    public int[] DistinctQueries(int[] a, int[][] qs) {
+        int n = a.Length, q = qs.Length;
+        int[] vals = (int[])a.Clone();
+        Array.Sort(vals);
+        int k = 0;
+        for (int i = 0; i < n; i++) if (i == 0 || vals[i] != vals[i - 1]) vals[k++] = vals[i];
+        int[] c = new int[n];
+        for (int i = 0; i < n; i++) c[i] = Array.BinarySearch(vals, 0, k, a[i]);
+        cnt = new int[k];
+        distinct = 0;
+
+        int B = Math.Max(1, (int)(n / Math.Sqrt(Math.Max(1, q))));
+        int[] order = new int[q];
+        for (int i = 0; i < q; i++) order[i] = i;
+        Array.Sort(order, (x, y) => {
+            int bx = qs[x][0] / B, by = qs[y][0] / B;
+            if (bx != by) return bx - by;
+            return (bx & 1) == 0 ? qs[x][1] - qs[y][1] : qs[y][1] - qs[x][1];
+        });
+
+        int[] ans = new int[q];
+        int curL = 0, curR = -1;
+        foreach (int id in order) {
+            int l = qs[id][0], r = qs[id][1];
+            while (curR < r) { if (cnt[c[++curR]]++ == 0) distinct++; }
+            while (curL > l) { if (cnt[c[--curL]]++ == 0) distinct++; }
+            while (curR > r) { if (--cnt[c[curR--]] == 0) distinct--; }
+            while (curL < l) { if (--cnt[c[curL++]] == 0) distinct--; }
+            ans[id] = distinct;
+        }
+        return ans;
+    }
+}` }],
         dry: {
           head: ['Mo order', 'query', 'window moves', 'cnt after', 'distinct'],
           rows: [
@@ -4635,7 +5365,41 @@ int main() {
     cout << c.size() << "\\n";         // 4 distinct values: -5, 7, 42, 1e9
     cout << c.rank(42) << "\\n";       // 3
     cout << c.countLE(10) << "\\n";    // 2 (-5 and 7)
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `// Coordinate compression: map arbitrary values (up to 1e9, negatives) to ranks 1..K
+// so they can index a Fenwick tree / segment tree / count array.
+using System;
+
+class Compressor {
+    private readonly int[] sortedUnique;
+
+    public Compressor(int[] values) {
+        int[] s = (int[])values.Clone();
+        Array.Sort(s);
+        int k = 0;
+        for (int i = 0; i < s.Length; i++) if (i == 0 || s[i] != s[i - 1]) s[k++] = s[i];
+        sortedUnique = new int[k];
+        Array.Copy(s, sortedUnique, k);
+    }
+
+    public int Size() { return sortedUnique.Length; }
+
+    /// 1-based rank of a value that is present (binary search, O(log K)).
+    public int Rank(int v) { return Array.BinarySearch(sortedUnique, v) + 1; }
+
+    /// number of distinct values <= v (works for values that are NOT present too).
+    public int CountLE(int v) {
+        int lo = 0, hi = sortedUnique.Length;
+        while (lo < hi) { int mid = (lo + hi) >> 1; if (sortedUnique[mid] <= v) lo = mid + 1; else hi = mid; }
+        return lo;
+    }
+
+    static void Main() {
+        var c = new Compressor(new[] { 1000000000, -5, 42, 42, 7 });
+        Console.WriteLine(c.Size());           // 4 distinct values: -5, 7, 42, 1e9
+        Console.WriteLine(c.Rank(42));         // 3
+        Console.WriteLine(c.CountLE(10));      // 2 (-5 and 7)
+    }
+}`, run: true }] }, { lang: 'java', code: `
       // Stress-testing harness: compare a fast structure against a brute force on random operations.
       // Writing this takes 5 minutes and catches almost every off-by-one before the interviewer does.
       class StressTest {
@@ -4816,7 +5580,45 @@ int main() {
         }
     }
     cout << "40 000 random operations: segment tree agrees with brute force\\n";
-}` }] }, { lang: 'python', run: true, title: 'The decision guide as code (runnable)', code: `def choose(updates, query, online):
+}` }, { lang: 'csharp', code: `// Stress-testing harness: compare a fast structure against a brute force on random operations.
+// Writing this takes 5 minutes and catches almost every off-by-one before the interviewer does.
+using System;
+
+class StressTest {
+    // structure under test: iterative min segment tree
+    static int n;
+    static int[] t;
+    static void Build(int[] a) { n = a.Length; t = new int[2 * n]; for (int i = 0; i < n; i++) t[n + i] = a[i]; for (int p = n - 1; p > 0; p--) t[p] = Math.Min(t[2 * p], t[2 * p + 1]); }
+    static void Set(int i, int v) { for (t[i += n] = v; i > 1; i >>= 1) t[i >> 1] = Math.Min(t[i], t[i ^ 1]); }
+    static int Query(int l, int r) {   // inclusive
+        int res = int.MaxValue;
+        for (l += n, r += n + 1; l < r; l >>= 1, r >>= 1) {
+            if ((l & 1) == 1) res = Math.Min(res, t[l++]);
+            if ((r & 1) == 1) res = Math.Min(res, t[--r]);
+        }
+        return res;
+    }
+
+    static void Main() {
+        var rnd = new Random(42);
+        for (int round = 0; round < 200; round++) {
+            int size = 1 + rnd.Next(20);                     // include tiny sizes like 1 and 2
+            int[] a = new int[size];
+            for (int i = 0; i < size; i++) a[i] = rnd.Next(21) - 10;
+            Build(a);
+            for (int op = 0; op < 200; op++) {
+                int l = rnd.Next(size), r = l + rnd.Next(size - l);
+                if (rnd.Next(2) == 0) { int v = rnd.Next(21) - 10; a[l] = v; Set(l, v); }
+                else {
+                    int brute = int.MaxValue;
+                    for (int i = l; i <= r; i++) brute = Math.Min(brute, a[i]);
+                    if (brute != Query(l, r)) throw new Exception("mismatch at round " + round);
+                }
+            }
+        }
+        Console.WriteLine("40 000 random operations: segment tree agrees with brute force");
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'The decision guide as code (runnable)', code: `def choose(updates, query, online):
     """updates: 'none' | 'point' | 'range'; query: 'sum','xor','min','max','gcd','distinct','mode'."""
     mergeable = query not in ("distinct", "mode")
     invertible = query in ("sum", "xor")
@@ -5043,7 +5845,15 @@ public:
         for (int i = left; i <= right; i++) if (a[i] == value) c++;
         return c;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class RangeFreqQueryBrute {
+    private readonly int[] a;
+    public RangeFreqQueryBrute(int[] arr) { a = (int[])arr.Clone(); }
+    public int Query(int left, int right, int value) {
+        int c = 0;
+        for (int i = left; i <= right; i++) if (a[i] == value) c++;
+        return c;
+    }
+}` }
         ] }
       },
       mcq: {
@@ -5153,7 +5963,30 @@ public:
         const vector<int>& p = it->second;
         return upper_bound(p.begin(), p.end(), right) - lower_bound(p.begin(), p.end(), left);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class RangeFreqQuery {
+    private readonly Dictionary<int, List<int>> positions = new Dictionary<int, List<int>>();
+
+    public RangeFreqQuery(int[] arr) {
+        for (int i = 0; i < arr.Length; i++) {
+            List<int> list;
+            if (!positions.TryGetValue(arr[i], out list)) positions[arr[i]] = list = new List<int>();
+            list.Add(i);                                      // added in increasing i → sorted
+        }
+    }
+
+    /// first index in list with list[idx] >= x
+    private static int LowerBound(List<int> list, int x) {
+        int lo = 0, hi = list.Count;
+        while (lo < hi) { int mid = (lo + hi) >> 1; if (list[mid] < x) lo = mid + 1; else hi = mid; }
+        return lo;
+    }
+
+    public int Query(int left, int right, int value) {
+        List<int> pos;
+        if (!positions.TryGetValue(value, out pos)) return 0;
+        return LowerBound(pos, right + 1) - LowerBound(pos, left);   // count of positions in [left, right]
+    }
+}` }],
         dry: {
           head: ['call', 'positions list', 'lowerBound(left)', 'lowerBound(right + 1)', 'answer'],
           rows: [
@@ -5219,7 +6052,15 @@ public:
         for (int i = left; i <= right; i++) s += a[i];
         return s;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class NumArrayBrute {
+    private readonly int[] a;
+    public NumArrayBrute(int[] nums) { a = (int[])nums.Clone(); }
+    public int SumRange(int left, int right) {
+        int s = 0;
+        for (int i = left; i <= right; i++) s += a[i];
+        return s;
+    }
+}` }
         ] }
     },
     mcq: {
@@ -5302,7 +6143,18 @@ public:
     int sumRange(int left, int right) {
         return (int)(pre[right + 1] - pre[left]);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class NumArray {
+    private readonly long[] pre;
+
+    public NumArray(int[] nums) {
+        pre = new long[nums.Length + 1];
+        for (int i = 0; i < nums.Length; i++) pre[i + 1] = pre[i] + nums[i];
+    }
+
+    public int SumRange(int left, int right) {
+        return (int)(pre[right + 1] - pre[left]);
+    }
+}` }],
       dry: { head: ['call', 'pre[right+1]', 'pre[left]', 'answer'], rows: [['(0, 2)', '1', '0', '1'], ['(2, 5)', '−3', '−2', '−1'], ['(0, 5)', '−3', '0', '−3']] },
       complexity: `<p>Build O(N), query O(1), memory O(N).</p>`,
       followUps: ['Now nums can change — what do you switch to?', '2D version: sum of a sub-rectangle with 2D prefix sums.']
@@ -5343,6 +6195,11 @@ public:
           { lang: 'cpp', code: `vector<int> getModifiedArray(int length, vector<vector<int>>& updates) {
     vector<int> a(length, 0);
     for (auto& u : updates)
+        for (int i = u[0]; i <= u[1]; i++) a[i] += u[2];
+    return a;
+}` }, { lang: 'csharp', code: `int[] BruteRangeAddition(int length, int[][] updates) {
+    int[] a = new int[length];
+    foreach (var u in updates)
         for (int i = u[0]; i <= u[1]; i++) a[i] += u[2];
     return a;
 }` }
@@ -5436,7 +6293,22 @@ public:
         partial_sum(d.begin(), d.begin() + length, res.begin());
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] GetModifiedArray(int length, int[][] updates) {
+        int[] d = new int[length + 1];
+        foreach (var u in updates) {
+            d[u[0]] += u[2];          // bonus starts at start
+            d[u[1] + 1] -= u[2];      // and stops right after end
+        }
+        int[] res = new int[length];
+        int run = 0;
+        for (int i = 0; i < length; i++) {
+            run += d[i];
+            res[i] = run;
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['step', 'd (indices 0..5)', 'note'], rows: [['[1,3,+2]', '0 2 0 0 −2 0', 'start +2 at 1, stop at 4'], ['[2,4,+3]', '0 2 3 0 −2 −3', 'stop at 5 (extra slot)'], ['[0,2,−2]', '−2 2 3 2 −2 −3', ''], ['prefix', '−2 0 3 5 3', H.c('g', 'answer')]] },
       complexity: `<p>O(N + U) time, O(N) extra memory.</p>`,
       followUps: ['Interleave "what is a[i] now?" queries — Fenwick on the difference array.', 'Ranges in 2D (add to a sub-rectangle) — 2D difference array with four corners.']
@@ -5486,6 +6358,14 @@ public:
     for (int i = 0; i < (int)qs.size(); i++) {
         int m = INT_MAX;
         for (int j = qs[i][0]; j <= qs[i][1]; j++) m = min(m, a[j]);
+        res[i] = m;
+    }
+    return res;
+}` }, { lang: 'csharp', code: `int[] BruteRmq(int[] a, int[][] qs) {
+    int[] res = new int[qs.Length];
+    for (int i = 0; i < qs.Length; i++) {
+        int m = int.MaxValue;
+        for (int j = qs[i][0]; j <= qs[i][1]; j++) m = Math.Min(m, a[j]);
         res[i] = m;
     }
     return res;
@@ -5597,7 +6477,26 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] RangeMin(int[] a, int[][] qs) {
+        int n = a.Length;
+        int[] lg = new int[n + 1];
+        for (int x = 2; x <= n; x++) lg[x] = lg[x / 2] + 1;
+        int[][] st = new int[lg[n] + 1][];
+        st[0] = (int[])a.Clone();
+        for (int k = 1; k <= lg[n]; k++) {
+            st[k] = new int[n - (1 << k) + 1];
+            for (int i = 0; i + (1 << k) <= n; i++)
+                st[k][i] = Math.Min(st[k - 1][i], st[k - 1][i + (1 << (k - 1))]);
+        }
+        int[] res = new int[qs.Length];
+        for (int i = 0; i < qs.Length; i++) {
+            int l = qs[i][0], r = qs[i][1], k = lg[r - l + 1];
+            res[i] = Math.Min(st[k][l], st[k][r - (1 << k) + 1]);
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['query', 'len', 'k', 'cells', 'answer'], rows: [['[1,3]', '3', '1', 'st[1][1]=2, st[1][2]=4', '2'], ['[4,5]', '2', '1', 'st[1][4]=1 (twice)', '1'], ['[0,7]', '8', '3', 'st[3][0]=1', '1'], ['[2,2]', '1', '0', 'st[0][2]=4', '4']] },
       complexity: `<p>Build O(N log N), each query O(1); memory O(N log N).</p>`,
       followUps: ['Add point updates — what replaces the sparse table?', 'Return the index of the minimum (store indices, compare values).']
@@ -5656,6 +6555,15 @@ public:
         else { long long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; out.push_back(s); }
     }
     return out;
+}` }, { lang: 'csharp', code: `long[] BruteDynamic(int[] a0, int[][] ops) {
+    long[] a = new long[a0.Length];
+    for (int i = 0; i < a0.Length; i++) a[i] = a0[i];
+    var res = new List<long>();
+    foreach (var op in ops) {
+        if (op[0] == 1) a[op[1]] = op[2];
+        else { long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; res.Add(s); }
+    }
+    return res.ToArray();
 }` }
         ] }
     },
@@ -5799,7 +6707,30 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private long[] bit;
+    private int n;
+
+    private void Add(int i, long d) { for (; i <= n; i += i & -i) bit[i] += d; }
+    private long Prefix(int i) { long s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; }
+
+    public long[] Process(int[] a, int[][] ops) {
+        n = a.Length;
+        bit = new long[n + 1];
+        long[] cur = new long[n];
+        for (int i = 0; i < n; i++) { cur[i] = a[i]; Add(i + 1, a[i]); }
+        var res = new List<long>();
+        foreach (var op in ops) {
+            if (op[0] == 1) {
+                Add(op[1] + 1, op[2] - cur[op[1]]);   // only the difference
+                cur[op[1]] = op[2];
+            } else {
+                res.Add(Prefix(op[2] + 1) - Prefix(op[1]));
+            }
+        }
+        return res.ToArray();
+    }
+}` }],
       complexity: `<p>O((N + Q) log N) time, O(N) memory.</p>`,
       followUps: ['Range add instead of set — two Fenwicks.', 'Return the first index whose prefix sum reaches S — Fenwick binary lifting.']
     }
@@ -5844,6 +6775,12 @@ public:
     long long c = 0;
     for (int i = 0; i < (int)a.size(); i++)
         for (int j = i + 1; j < (int)a.size(); j++)
+            if (a[i] > a[j]) c++;
+    return c;
+}` }, { lang: 'csharp', code: `long BruteInversions(int[] a) {
+    long c = 0;
+    for (int i = 0; i < a.Length; i++)
+        for (int j = i + 1; j < a.Length; j++)
             if (a[i] > a[j]) c++;
     return c;
 }` }
@@ -5957,7 +6894,25 @@ public:
         }
         return inv;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long CountInversions(int[] a) {
+        int n = a.Length;
+        int[] s = (int[])a.Clone();
+        Array.Sort(s);
+        int k = 0;
+        for (int i = 0; i < n; i++) if (i == 0 || s[i] != s[i - 1]) s[k++] = s[i];
+        int[] bit = new int[k + 1];
+        long inv = 0;
+        for (int seen = 0; seen < n; seen++) {
+            int r = Array.BinarySearch(s, 0, k, a[seen]) + 1;          // rank 1..k
+            int le = 0;
+            for (int i = r; i > 0; i -= i & -i) le += bit[i];          // earlier values <= a[seen]
+            inv += seen - le;                                         // earlier values > a[seen]
+            for (int i = r; i <= k; i += i & -i) bit[i]++;
+        }
+        return inv;
+    }
+}` }],
       dry: { head: ['v', 'rank', 'seen', 'prefix(rank)', 'added', 'total'], rows: [['8', '4', '0', '0', '0', '0'], ['4', '3', '1', '0', '1', '1'], ['2', '2', '2', '0', '2', '3'], ['1', '1', '3', '0', '3', H.c('g', '6')]] },
       complexity: `<p>O(N log N) time (sort + N BIT operations), O(N) memory.</p>`,
       followUps: ['Count pairs with a[i] &gt; 2·a[j] (Reverse Pairs).', 'Minimum adjacent swaps to sort = number of inversions — why?']
@@ -6014,6 +6969,15 @@ public:
         else out.push_back(a[op[1]]);
     }
     return out;
+}` }, { lang: 'csharp', code: `long[] BruteRangePoint(int[] a0, int[][] ops) {
+    long[] a = new long[a0.Length];
+    for (int i = 0; i < a0.Length; i++) a[i] = a0[i];
+    var res = new List<long>();
+    foreach (var op in ops) {
+        if (op[0] == 1) for (int i = op[1]; i <= op[2]; i++) a[i] += op[3];
+        else res.Add(a[op[1]]);
+    }
+    return res.ToArray();
 }` }
         ] }
     },
@@ -6133,7 +7097,25 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long[] Process(int[] a, int[][] ops) {
+        int n = a.Length;
+        long[] bit = new long[n + 2];
+        var res = new List<long>();
+        foreach (var op in ops) {
+            if (op[0] == 1) {
+                int l = op[1] + 1, r = op[2] + 1;                          // 1-based
+                for (int i = l; i <= n; i += i & -i) bit[i] += op[3];      // bonus starts at l
+                for (int i = r + 1; i <= n; i += i & -i) bit[i] -= op[3];  // and stops after r
+            } else {
+                long bonus = 0;
+                for (int i = op[1] + 1; i > 0; i -= i & -i) bonus += bit[i];
+                res.Add(a[op[1]] + bonus);
+            }
+        }
+        return res.ToArray();
+    }
+}` }],
       complexity: `<p>O(log N) per operation, O(N) memory.</p>`,
       followUps: ['Also ask "sum of [l, r]" — two Fenwicks (range add + range sum).', 'Range assign instead of add — lazy segment tree.']
     }
@@ -6193,7 +7175,16 @@ public:
         for (int r = r1; r <= r2; r++) for (int c = c1; c <= c2; c++) s += m[r][c];
         return s;
     }
-};` }
+};` }, { lang: 'csharp', code: `public class NumMatrixBrute {
+    private readonly int[][] m;
+    public NumMatrixBrute(int[][] matrix) { m = new int[matrix.Length][]; for (int i = 0; i < m.Length; i++) m[i] = (int[])matrix[i].Clone(); }
+    public void Update(int r, int c, int val) { m[r][c] = val; }
+    public int SumRegion(int r1, int c1, int r2, int c2) {
+        int s = 0;
+        for (int r = r1; r <= r2; r++) for (int c = c1; c <= c2; c++) s += m[r][c];
+        return s;
+    }
+}` }
         ] }
     },
     mcq: {
@@ -6357,7 +7348,35 @@ public:
     int sumRegion(int r1, int c1, int r2, int c2) {
         return prefix(r2 + 1, c2 + 1) - prefix(r1, c2 + 1) - prefix(r2 + 1, c1) + prefix(r1, c1);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class NumMatrix {
+    private readonly int R, C;
+    private readonly int[,] t, val;
+
+    public NumMatrix(int[][] matrix) {
+        R = matrix.Length; C = matrix[0].Length;
+        t = new int[R + 1, C + 1];
+        val = new int[R, C];
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) Update(r, c, matrix[r][c]);
+    }
+
+    public void Update(int row, int col, int v) {
+        int d = v - val[row, col];
+        val[row, col] = v;
+        for (int i = row + 1; i <= R; i += i & -i)
+            for (int j = col + 1; j <= C; j += j & -j) t[i, j] += d;
+    }
+
+    private int Prefix(int row, int col) {           // sum of (0,0)..(row-1, col-1)
+        int s = 0;
+        for (int i = row; i > 0; i -= i & -i)
+            for (int j = col; j > 0; j -= j & -j) s += t[i, j];
+        return s;
+    }
+
+    public int SumRegion(int r1, int c1, int r2, int c2) {
+        return Prefix(r2 + 1, c2 + 1) - Prefix(r1, c2 + 1) - Prefix(r2 + 1, c1) + Prefix(r1, c1);
+    }
+}` }],
       complexity: `<p>Update and query O(log R · log C); build O(R·C·log R·log C) (or O(R·C) with the parent trick); memory O(R·C).</p>`,
       followUps: ['Range add on rectangles + point query (2D difference + 2D BIT).', 'Huge sparse grid (10<sup>9</sup> × 10<sup>9</sup>) with offline queries — sweep line + 1D BIT.']
     }
@@ -6414,6 +7433,14 @@ public:
         else { int m = INT_MAX; for (int i = op[1]; i <= op[2]; i++) m = min(m, a[i]); out.push_back(m); }
     }
     return out;
+}` }, { lang: 'csharp', code: `int[] BruteDynMin(int[] a0, int[][] ops) {
+    int[] a = (int[])a0.Clone();
+    var res = new List<int>();
+    foreach (var op in ops) {
+        if (op[0] == 1) a[op[1]] = op[2];
+        else { int m = int.MaxValue; for (int i = op[1]; i <= op[2]; i++) m = Math.Min(m, a[i]); res.Add(m); }
+    }
+    return res.ToArray();
 }` }
         ] }
     },
@@ -6550,7 +7577,30 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] Process(int[] a, int[][] ops) {
+        int n = a.Length;
+        int[] t = new int[2 * n];
+        for (int i = 0; i < n; i++) t[n + i] = a[i];
+        for (int p = n - 1; p >= 1; p--) t[p] = Math.Min(t[2 * p], t[2 * p + 1]);
+        var res = new List<int>();
+        foreach (var op in ops) {
+            if (op[0] == 1) {
+                int p = op[1] + n;
+                t[p] = op[2];
+                for (p >>= 1; p >= 1; p >>= 1) t[p] = Math.Min(t[2 * p], t[2 * p + 1]);
+            } else {
+                int m = int.MaxValue;
+                for (int l = op[1] + n, r = op[2] + n + 1; l < r; l >>= 1, r >>= 1) {
+                    if ((l & 1) == 1) m = Math.Min(m, t[l++]);
+                    if ((r & 1) == 1) m = Math.Min(m, t[--r]);
+                }
+                res.Add(m);
+            }
+        }
+        return res.ToArray();
+    }
+}` }],
       complexity: `<p>O((N + Q) log N) time, O(N) memory.</p>`,
       followUps: ['Also return how many times the minimum occurs (node = (min, count)).', 'Range add + range min — lazy propagation.']
     }
@@ -6600,6 +7650,14 @@ public:
     vector<int> res(groups.size(), 0);
     for (int j = 0; j < (int)groups.size(); j++) {
         for (int i = 0; i < (int)h.size(); i++)
+            if (h[i] >= groups[j]) { h[i] -= groups[j]; res[j] = i + 1; break; }
+    }
+    return res;
+}` }, { lang: 'csharp', code: `int[] BruteHotels(int[] h0, int[] groups) {
+    int[] h = (int[])h0.Clone();
+    int[] res = new int[groups.Length];
+    for (int j = 0; j < groups.Length; j++) {
+        for (int i = 0; i < h.Length; i++)
             if (h[i] >= groups[j]) { h[i] -= groups[j]; res[j] = i + 1; break; }
     }
     return res;
@@ -6741,7 +7799,39 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private int n;
+    private int[] mx;
+
+    private void Build(int[] h, int node, int l, int r) {
+        if (l == r) { mx[node] = h[l]; return; }
+        int mid = (l + r) >> 1;
+        Build(h, 2 * node, l, mid);
+        Build(h, 2 * node + 1, mid + 1, r);
+        mx[node] = Math.Max(mx[2 * node], mx[2 * node + 1]);
+    }
+
+    /// leftmost index with value >= need (caller checked mx[1] >= need). Subtracts need there.
+    private int TakeFirst(int node, int l, int r, int need) {
+        int idx;
+        if (l == r) { mx[node] -= need; return l; }
+        int mid = (l + r) >> 1;
+        if (mx[2 * node] >= need) idx = TakeFirst(2 * node, l, mid, need);   // prefer the left half
+        else idx = TakeFirst(2 * node + 1, mid + 1, r, need);
+        mx[node] = Math.Max(mx[2 * node], mx[2 * node + 1]);              // repair on the way up
+        return idx;
+    }
+
+    public int[] Assign(int[] hotels, int[] groups) {
+        n = hotels.Length;
+        mx = new int[4 * n];
+        Build(hotels, 1, 0, n - 1);
+        int[] res = new int[groups.Length];
+        for (int j = 0; j < groups.Length; j++)
+            res[j] = mx[1] < groups[j] ? 0 : TakeFirst(1, 0, n - 1, groups[j]) + 1;
+        return res;
+    }
+}` }],
       dry: { head: ['group', 'root max', 'walk', 'hotel', 'rooms after'], rows: [['4', '6', 'left [1..4] max 4 ≥ 4 → … → hotel 3', '3', 'h3 = 0'], ['4', '6', 'left max now 3 &lt; 4 → right → [5..6] → hotel 5', '5', 'h5 = 1'], ['7', '6', 'root max 6 &lt; 7', '0', '—'], ['1', '6', 'leftmost leaf', '1', 'h1 = 2'], ['1', '6', 'leftmost leaf', '1', 'h1 = 1']] },
       complexity: `<p>O(N + M log N) time, O(N) memory.</p>`,
       followUps: ['Groups may only use hotels in [l, r] — descent restricted to a range.', 'Find the first hotel with ≥ g rooms at or after position p.']
@@ -6786,6 +7876,11 @@ public:
         cur.erase(cur.begin() + (p - 1));          // O(N) shift
     }
     return out;
+}` }, { lang: 'csharp', code: `int[] BruteRemovals(int[] list, int[] positions) {
+    var cur = new List<int>(list);
+    int[] res = new int[positions.Length];
+    for (int i = 0; i < positions.Length; i++) { res[i] = cur[positions[i] - 1]; cur.RemoveAt(positions[i] - 1); }  // O(N) shift
+    return res;
 }` }
         ] }
     },
@@ -6914,7 +8009,29 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] Removals(int[] list, int[] positions) {
+        int n = list.Length;
+        int[] bit = new int[n + 1];
+        for (int i = 1; i <= n; i++) {                    // O(N) build of an all-ones array
+            bit[i]++;
+            int p = i + (i & -i);
+            if (p <= n) bit[p] += bit[i];
+        }
+        int top = 1;
+        while (top * 2 <= n) top *= 2;                    // highest power of two <= n
+        int[] res = new int[positions.Length];
+        for (int q = 0; q < positions.Length; q++) {
+            int k = positions[q], pos = 0;
+            for (int step = top; step > 0; step >>= 1)
+                if (pos + step <= n && bit[pos + step] < k) { pos += step; k -= bit[pos]; }
+            int idx = pos + 1;                              // 1-based original index of the k-th alive
+            res[q] = list[idx - 1];
+            for (int i = idx; i <= n; i += i & -i) bit[i]--;   // mark it dead
+        }
+        return res;
+    }
+}` }],
       complexity: `<p>O(N + Q log N) time, O(N) memory.</p>`,
       followUps: ['Josephus problem with step k — same tool.', 'Support insertions at a position too — implicit treap or offline reverse processing.']
     }
@@ -6976,6 +8093,17 @@ public:
         long long best = 0, cur = 0;
         for (long long v : a) { cur = max(0LL, cur + v); best = max(best, cur); }   // Kadane
         res.push_back(best);
+    }
+    return res;
+}` }, { lang: 'csharp', code: `long[] BruteMaxSub(int[] a0, int[][] ups) {
+    long[] a = new long[a0.Length];
+    for (int i = 0; i < a0.Length; i++) a[i] = a0[i];
+    long[] res = new long[ups.Length];
+    for (int j = 0; j < ups.Length; j++) {
+        a[ups[j][0]] = ups[j][1];
+        long best = 0, cur = 0;
+        foreach (long v in a) { cur = Math.Max(0, cur + v); best = Math.Max(best, cur); }   // Kadane
+        res[j] = best;
     }
     return res;
 }` }
@@ -7160,7 +8288,51 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private long[] sum, pref, suf, best;
+    private int n;
+
+    private void SetLeaf(int node, long v) {
+        sum[node] = v;
+        pref[node] = suf[node] = best[node] = Math.Max(0, v);   // empty subarray allowed
+    }
+
+    private void Pull(int node) {
+        int L = 2 * node, R = 2 * node + 1;
+        sum[node] = sum[L] + sum[R];
+        pref[node] = Math.Max(pref[L], sum[L] + pref[R]);
+        suf[node] = Math.Max(suf[R], sum[R] + suf[L]);
+        best[node] = Math.Max(Math.Max(best[L], best[R]), suf[L] + pref[R]);
+    }
+
+    private void Build(int[] a, int node, int l, int r) {
+        if (l == r) { SetLeaf(node, a[l]); return; }
+        int mid = (l + r) >> 1;
+        Build(a, 2 * node, l, mid);
+        Build(a, 2 * node + 1, mid + 1, r);
+        Pull(node);
+    }
+
+    private void Update(int node, int l, int r, int idx, long v) {
+        if (l == r) { SetLeaf(node, v); return; }
+        int mid = (l + r) >> 1;
+        if (idx <= mid) Update(2 * node, l, mid, idx, v);
+        else Update(2 * node + 1, mid + 1, r, idx, v);
+        Pull(node);
+    }
+
+    public long[] Process(int[] a, int[][] ups) {
+        n = a.Length;
+        sum = new long[4 * n]; pref = new long[4 * n]; suf = new long[4 * n]; best = new long[4 * n];
+        Build(a, 1, 0, n - 1);
+        long[] res = new long[ups.Length];
+        for (int j = 0; j < ups.Length; j++) {
+            Update(1, 0, n - 1, ups[j][0], ups[j][1]);
+            res[j] = best[1];
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['update', 'array', 'best crossing / inside', 'root.best'], rows: [['a[1] = 6', '1 6 −3 5 −1', 'suffix [1,6] + prefix [−3,5] = 7 + 2', '9'], ['a[2] = 1', '1 6 1 5 −1', '[1,6,1,5]', '13'], ['a[1] = −2', '1 −2 1 5 −1', '[1,5] inside right part', '6']] },
       complexity: `<p>Build O(N); each update O(log N); memory 16N longs.</p>`,
       followUps: ['Answer max subarray sum inside [l, r] (combine nodes left-to-right in order).', 'Non-empty subarray required — change the leaf to pref = suf = best = v.']
@@ -7226,6 +8398,16 @@ public:
         else { long long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; out.push_back(s); }
     }
     return out;
+}` }, { lang: 'csharp', code: `long[] BruteAddAssign(int[] a0, int[][] ops) {
+    long[] a = new long[a0.Length];
+    for (int i = 0; i < a0.Length; i++) a[i] = a0[i];
+    var res = new List<long>();
+    foreach (var op in ops) {
+        if (op[0] == 1) for (int i = op[1]; i <= op[2]; i++) a[i] += op[3];
+        else if (op[0] == 2) for (int i = op[1]; i <= op[2]; i++) a[i] = op[3];
+        else { long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; res.Add(s); }
+    }
+    return res.ToArray();
 }` }
         ] }
     },
@@ -7534,7 +8716,77 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private long[] sum, addTag, setTag;
+    private bool[] hasSet;
+    private int n;
+
+    private void ApplySet(int node, int l, int r, long x) {
+        sum[node] = x * (r - l + 1);
+        setTag[node] = x; hasSet[node] = true;
+        addTag[node] = 0;                                  // an assignment wipes older adds
+    }
+
+    private void ApplyAdd(int node, int l, int r, long x) {
+        sum[node] += x * (r - l + 1);
+        addTag[node] += x;                                 // stacks on top of any pending set
+    }
+
+    private void Push(int node, int l, int r) {
+        int mid = (l + r) >> 1;
+        if (hasSet[node]) {                                // order matters: set first
+            ApplySet(2 * node, l, mid, setTag[node]);
+            ApplySet(2 * node + 1, mid + 1, r, setTag[node]);
+            hasSet[node] = false;
+        }
+        if (addTag[node] != 0) {                           // then add
+            ApplyAdd(2 * node, l, mid, addTag[node]);
+            ApplyAdd(2 * node + 1, mid + 1, r, addTag[node]);
+            addTag[node] = 0;
+        }
+    }
+
+    private void Build(int[] a, int node, int l, int r) {
+        if (l == r) { sum[node] = a[l]; return; }
+        int mid = (l + r) >> 1;
+        Build(a, 2 * node, l, mid);
+        Build(a, 2 * node + 1, mid + 1, r);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+
+    private void Update(int node, int l, int r, int ql, int qr, int type, long x) {
+        if (qr < l || r < ql) return;
+        if (ql <= l && r <= qr) {
+            if (type == 1) ApplyAdd(node, l, r, x); else ApplySet(node, l, r, x);
+            return;
+        }
+        Push(node, l, r);
+        int mid = (l + r) >> 1;
+        Update(2 * node, l, mid, ql, qr, type, x);
+        Update(2 * node + 1, mid + 1, r, ql, qr, type, x);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+
+    private long Query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;
+        if (ql <= l && r <= qr) return sum[node];
+        Push(node, l, r);
+        int mid = (l + r) >> 1;
+        return Query(2 * node, l, mid, ql, qr) + Query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+
+    public long[] Process(int[] a, int[][] ops) {
+        n = a.Length;
+        sum = new long[4 * n]; addTag = new long[4 * n]; setTag = new long[4 * n]; hasSet = new bool[4 * n];
+        Build(a, 1, 0, n - 1);
+        var res = new List<long>();
+        foreach (var op in ops) {
+            if (op[0] == 3) res.Add(Query(1, 0, n - 1, op[1], op[2]));
+            else Update(1, 0, n - 1, op[1], op[2], op[0], op[3]);
+        }
+        return res.ToArray();
+    }
+}` }],
       complexity: `<p>O(log N) per operation, O(Q log N) total; memory ~4 arrays of 4N.</p>`,
       followUps: ['Add "range min" queries too — what extra field per node?', 'Replace add with multiply (affine tags modulo p).']
     }
@@ -7588,6 +8840,16 @@ public:
     for (int i = 0; i < (int)nums.size(); i++) {
         long long s = 0;
         for (int j = i; j < (int)nums.size(); j++) {
+            s += nums[j];
+            if (s >= lower && s <= upper) c++;
+        }
+    }
+    return c;
+}` }, { lang: 'csharp', code: `long BruteCountRangeSum(int[] nums, int lower, int upper) {
+    long c = 0;
+    for (int i = 0; i < nums.Length; i++) {
+        long s = 0;
+        for (int j = i; j < nums.Length; j++) {
             s += nums[j];
             if (s >= lower && s <= upper) c++;
         }
@@ -7748,7 +9010,40 @@ public:
         }
         return count;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long CountRangeSum(int[] nums, int lower, int upper) {
+        int n = nums.Length;
+        long[] pre = new long[n + 1];
+        for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+        long[] vals = (long[])pre.Clone();
+        Array.Sort(vals);
+        int k = 0;
+        for (int i = 0; i <= n; i++) if (i == 0 || vals[i] != vals[i - 1]) vals[k++] = vals[i];
+        int[] bit = new int[k + 1];
+        long count = 0;
+        for (int j = 0; j <= n; j++) {
+            long lo = pre[j] - upper, hi = pre[j] - lower;
+            int below = LowerBound(vals, k, lo);          // ranks of values < lo
+            int upto = LowerBound(vals, k, hi + 1);       // ranks of values <= hi
+            count += Prefix(bit, upto) - Prefix(bit, below);
+            int r = LowerBound(vals, k, pre[j]) + 1;      // 1-based rank of pre[j]
+            for (int i = r; i <= k; i += i & -i) bit[i]++;
+        }
+        return count;
+    }
+
+    private static int LowerBound(long[] a, int len, long x) {   // first index with a[idx] >= x
+        int lo = 0, hi = len;
+        while (lo < hi) { int mid = (lo + hi) >> 1; if (a[mid] < x) lo = mid + 1; else hi = mid; }
+        return lo;
+    }
+
+    private static int Prefix(int[] bit, int i) {
+        int s = 0;
+        for (; i > 0; i -= i & -i) s += bit[i];
+        return s;
+    }
+}` }],
       dry: { head: ['j', 'P[j]', 'window [P[j]−upper, P[j]−lower]', 'earlier prefixes inside', 'count'], rows: [['0', '0', '[−2, 2]', 'none yet', '0'], ['1', '−2', '[−4, 0]', '0', '1'], ['2', '3', '[1, 5]', '—', '1'], ['3', '2', '[0, 4]', '0 and 3', H.c('g', '3')]] },
       complexity: `<p>O(N log N) time (sort + 2 binary searches + BIT ops per j), O(N) memory.</p>`,
       followUps: ['Solve it with merge sort (count during the merge step).', 'Count subarrays with sum ≥ K only — simpler one-sided query.']
@@ -7807,6 +9102,16 @@ public:
         for (int j = qs[i][0]; j <= qs[i][1]; j++) cnt[a[j]]++;
         long long p = 0;
         for (auto& e : cnt) p += e.second * e.second * e.first;
+        res[i] = p;
+    }
+    return res;
+}` }, { lang: 'csharp', code: `long[] BrutePower(int[] a, int[][] qs) {
+    long[] res = new long[qs.Length];
+    for (int i = 0; i < qs.Length; i++) {
+        var cnt = new Dictionary<int, long>();
+        for (int j = qs[i][0]; j <= qs[i][1]; j++) { long c; cnt.TryGetValue(a[j], out c); cnt[a[j]] = c + 1; }
+        long p = 0;
+        foreach (var e in cnt) p += e.Value * e.Value * e.Key;
         res[i] = p;
     }
     return res;
@@ -7972,7 +9277,39 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private long power;
+    private int[] cnt;
+
+    private void Add(int x)    { power += (2L * cnt[x] + 1) * x; cnt[x]++; }
+    private void Remove(int x) { cnt[x]--; power -= (2L * cnt[x] + 1) * x; }
+
+    public long[] Powers(int[] a, int[][] qs) {
+        int n = a.Length, q = qs.Length, maxV = 0;
+        foreach (int v in a) maxV = Math.Max(maxV, v);
+        cnt = new int[maxV + 1];
+        power = 0;
+        int B = Math.Max(1, (int)(n / Math.Sqrt(Math.Max(1, q))));
+        int[] order = new int[q];
+        for (int i = 0; i < q; i++) order[i] = i;
+        Array.Sort(order, (x, y) => {
+            int bx = qs[x][0] / B, by = qs[y][0] / B;
+            if (bx != by) return bx - by;
+            return (bx & 1) == 0 ? qs[x][1] - qs[y][1] : qs[y][1] - qs[x][1];
+        });
+        long[] ans = new long[q];
+        int curL = 0, curR = -1;
+        foreach (int id in order) {
+            int l = qs[id][0], r = qs[id][1];
+            while (curR < r) Add(a[++curR]);
+            while (curL > l) Add(a[--curL]);
+            while (curR > r) Remove(a[curR--]);
+            while (curL < l) Remove(a[curL++]);
+            ans[id] = power;
+        }
+        return ans;
+    }
+}` }],
       dry: { head: ['step', 'element', 'cnt before', 'change', 'power'], rows: [['add a[0]', '1', '0', '+1·1', '1'], ['add a[1]', '2', '0', '+1·2', H.c('g', '3 (query [0,1])')], ['add a[2]', '1', '1', '+3·1', H.c('g', '6 (query [0,2])')]] },
       complexity: `<p>O(Q log Q + (N + Q)·√N) time, O(N + Q + maxV) memory.</p>`,
       followUps: ['Use Hilbert-curve ordering — why does it reduce pointer movement?', 'Add point updates: Mo\'s with a time dimension, B = N<sup>2/3</sup>.']

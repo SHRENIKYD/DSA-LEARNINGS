@@ -7,7 +7,7 @@ var Learn = (function () {
   function set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
   function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   var DAY = 864e5, STEPS = [1, 3, 7, 21];
-  var LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript / TypeScript', cpp: 'C++' };
+  var LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript / TypeScript', cpp: 'C++', csharp: 'C#' };
 
   /* ---------- preferences ----------
      imastery.route = {id, lang, hours, mode:'path'|'all', onboarded, known:[langs], updatedAt, interviewDate:'YYYY-MM-DD'|'', restDay:0-6, placement}. It syncs with progress (auth.js, prefs column).
@@ -199,7 +199,7 @@ var Learn = (function () {
       stages: stages, projects: projects, projectsDone: projDone, hoursDone: hoursDone, hoursAll: hoursAll };
   }
   function coverage(items, lang) {
-    var bit = { java: 1, python: 2, js: 4, cpp: 8 }[lang] || 1, gaps = [];
+    var bit = { java: 1, python: 2, js: 4, cpp: 8, csharp: 16 }[lang] || 1, gaps = []; // bits as in tools/build.js LBIT
     items.forEach(function (x) { if (x.meta && x.kind !== 'opt' && !(x.meta.cover & bit)) gaps.push(x.id); });
     return gaps;
   }

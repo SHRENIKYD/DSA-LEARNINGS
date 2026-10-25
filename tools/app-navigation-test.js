@@ -164,7 +164,7 @@ assert.match(nodes['#app'].innerHTML, /data-mode="all" aria-pressed="true"/); as
 modeBtns.find(b => b.m === 'path').events.click(); assert.equal(L.mode(), 'path');
 /* ---------- advanced navigation: Home, Today, Plan ---------- */
 const mem = ctx.document.querySelector;
-reset({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true }, {}); storage['imastery.navBanner'] = 'true';
+reset({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true, restDay: (new Date().getDay() + 3) % 7 }, {}); storage['imastery.navBanner'] = 'true'; // rest day never today, so Today always lists work
 ctx.document.querySelectorAll = sel => sel === '[data-nav] [data-mode]' ? modeBtns : [];
 let ph = go('#home');
 assert.match(ph, /Next on your path/); assert.match(ph, /id="homeContinue"/); assert.match(ph, /See today’s plan/); assert.match(ph, /fits date|tight|of required/);

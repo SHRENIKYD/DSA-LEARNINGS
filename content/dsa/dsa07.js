@@ -123,6 +123,21 @@ void bubbleSort(vector<int>& a) {
         }
         if (!swapped) break;                      // a clean pass means already sorted
     }
+}` }, { lang: 'csharp', code: String.raw`
+// Bubble sort with the "no swaps -> stop early" trick.
+void BubbleSort(int[] a) {
+    int n = a.Length;
+    for (int pass = 0; pass < n - 1; pass++) {
+        bool swapped = false;
+        // the last 'pass' elements are already the biggest ones, locked in place
+        for (int j = 0; j < n - 1 - pass; j++) {
+            if (a[j] > a[j + 1]) {          // neighbours in the wrong order
+                int t = a[j]; a[j] = a[j + 1]; a[j + 1] = t;
+                swapped = true;
+            }
+        }
+        if (!swapped) break;                // a clean pass means already sorted
+    }
 }` }
       ] }, { lang: 'java', code: `
       // Selection sort: put the smallest remaining value at position i.
@@ -160,6 +175,19 @@ void selectionSort(vector<int>& a) {
     for (auto it = a.begin(); it != a.end(); ++it) {
         auto m = min_element(it, a.end());       // smallest remaining value
         if (m != it) iter_swap(it, m);           // one swap per position at most
+    }
+}` }, { lang: 'csharp', code: String.raw`
+// Selection sort: put the smallest remaining value at position i.
+void SelectionSort(int[] a) {
+    int n = a.Length;
+    for (int i = 0; i < n - 1; i++) {
+        int minIdx = i;                     // best candidate so far
+        for (int j = i + 1; j < n; j++) {
+            if (a[j] < a[minIdx]) minIdx = j;
+        }
+        if (minIdx != i) {                  // one swap per position at most
+            int t = a[i]; a[i] = a[minIdx]; a[minIdx] = t;
+        }
     }
 }` }
       ] }, { lang: 'java', code: `
@@ -206,6 +234,19 @@ void insertionSort(vector<int>& a) {
             j--;
         }
         a[j + 1] = key;                         // drop the card into the gap
+    }
+}` }, { lang: 'csharp', code: String.raw`
+// Insertion sort: grow a sorted prefix like cards in your hand.
+void InsertionSort(int[] a) {
+    for (int i = 1; i < a.Length; i++) {
+        int key = a[i];                     // the new card we picked up
+        int j = i - 1;
+        // shift every bigger card one step to the right
+        while (j >= 0 && a[j] > key) {      // strictly bigger -> equal keys keep order (stable)
+            a[j + 1] = a[j];
+            j--;
+        }
+        a[j + 1] = key;                     // drop the card into the gap
     }
 }` }
       ] }],
@@ -423,6 +464,21 @@ console.log(bubbleSwaps([3, 1, 2]));     // 2` },
         if (!swapped) break;
     }
     return swaps;                        // bubbleSwaps({3, 1, 2}) == 2
+}` }, { lang: 'csharp', code: String.raw`
+int BubbleSwaps(int[] a) {
+    int swaps = 0;
+    for (int pass = 0; pass < a.Length - 1; pass++) {
+        bool swapped = false;
+        for (int j = 0; j < a.Length - 1 - pass; j++) {
+            if (a[j] > a[j + 1]) {
+                int t = a[j]; a[j] = a[j + 1]; a[j + 1] = t;
+                swaps++;                 // every swap removes exactly one inversion
+                swapped = true;
+            }
+        }
+        if (!swapped) break;
+    }
+    return swaps;                        // BubbleSwaps(new[] {3, 1, 2}) == 2
 }` }
           ] }
       },
@@ -479,6 +535,15 @@ void sortKSorted(vector<int>& a, int k) {
         int m = i;
         for (int j = i + 1; j < (int) a.size(); j++) if (a[j] < a[m]) m = j;  // scans everything
         swap(a[i], a[m]);
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SortKSorted(int[] a, int k) {
+        for (int i = 0; i < a.Length - 1; i++) {
+            int m = i;
+            for (int j = i + 1; j < a.Length; j++) if (a[j] < a[m]) m = j;  // scans everything
+            int t = a[i]; a[i] = a[m]; a[m] = t;
+        }
     }
 }` }] }
         },
@@ -561,7 +626,21 @@ public:
             a[j + 1] = key;                     // drop into the gap
         }
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SortKSorted(int[] a, int k) {
+        for (int i = 1; i < a.Length; i++) {
+            int key = a[i];                 // next card to place
+            int j = i - 1;
+            // at most k bigger items can be in front of key (K-sorted promise)
+            while (j >= 0 && a[j] > key) {
+                a[j + 1] = a[j];            // shift right
+                j--;
+            }
+            a[j + 1] = key;                 // drop into the gap
+        }
+    }
+}` }
           ],
           dry: {
             head: ['i', 'key', 'items shifted right', 'shifts', 'array after'],
@@ -665,6 +744,17 @@ vector<int> stableCountSort(const vector<int>& a, int k) {
     for (int i = (int)a.size() - 1; i >= 0; i--)           // 3) right-to-left keeps order
         out[--cnt[a[i]]] = a[i];                           // last free slot for this value
     return out;
+}` }, { lang: 'csharp', code: String.raw`
+// Stable counting sort: returns a new sorted array, values must be in 0..k.
+int[] StableCountSort(int[] a, int k) {
+    int[] cnt = new int[k + 1];
+    foreach (int x in a) cnt[x]++;                     // 1) count each value
+    for (int v = 1; v <= k; v++) cnt[v] += cnt[v - 1]; // 2) prefix: how many items are <= v
+    int[] result = new int[a.Length];
+    for (int i = a.Length - 1; i >= 0; i--) {          // 3) right-to-left keeps equal items in order
+        result[--cnt[a[i]]] = a[i];                    // last free slot for this value
+    }
+    return result;
 }` }
       ] }, { lang: 'java', code: `
       // LSD radix sort for non-negative ints, base 10.
@@ -724,6 +814,23 @@ void radixSort(vector<int>& a) {
         for (int i = (int)a.size() - 1; i >= 0; i--)          // stable placement
             out[--cnt[a[i] / exp % 10]] = a[i];
         a.swap(out);                                          // out becomes the input of the next pass
+    }
+}` }, { lang: 'csharp', code: String.raw`
+// LSD radix sort for non-negative ints, base 10.
+void RadixSort(int[] a) {
+    if (a.Length == 0) return;
+    int max = a.Max();
+    int[] result = new int[a.Length];
+    // exp = 1, 10, 100, ... picks the ones, tens, hundreds digit
+    for (long exp = 1; max / exp > 0; exp *= 10) {
+        int[] cnt = new int[10];
+        foreach (int x in a) cnt[(int)(x / exp % 10)]++;          // count digits
+        for (int d = 1; d < 10; d++) cnt[d] += cnt[d - 1];        // prefix sums
+        for (int i = a.Length - 1; i >= 0; i--) {                 // stable placement
+            int d = (int)(a[i] / exp % 10);
+            result[--cnt[d]] = a[i];
+        }
+        Array.Copy(result, a, a.Length);                          // copy back for the next digit
     }
 }` }
       ] }],
@@ -868,6 +975,18 @@ vector<int> countSort(const vector<int>& a, int k) {
         swap(b[i], b[m]);
     }
     return b;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] CountSort(int[] a, int k) {
+        int[] b = (int[])a.Clone();
+        // selection sort: O(N^2) comparisons
+        for (int i = 0; i < b.Length; i++) {
+            int m = i;
+            for (int j = i + 1; j < b.Length; j++) if (b[j] < b[m]) m = j;
+            int t = b[i]; b[i] = b[m]; b[m] = t;
+        }
+        return b;
+    }
 }` }] }
         },
         mcq: {
@@ -944,7 +1063,23 @@ public:
             out.insert(out.end(), cnt[v], v); // write v cnt[v] times
         return out;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] CountSort(int[] a, int k) {
+        int[] cnt = new int[k + 1];       // cnt[v] = how many times v appears
+        foreach (int x in a) {
+            cnt[x]++;                      // the value itself is the index
+        }
+        int[] result = new int[a.Length];
+        int w = 0;                         // next free position in result
+        for (int v = 0; v <= k; v++) {     // small values first
+            for (int c = 0; c < cnt[v]; c++) {
+                result[w++] = v;           // write v as many times as we saw it
+            }
+        }
+        return result;
+    }
+}` }
           ],
           dry: {
             head: ['phase', 'step', 'value', 'cnt[0..3]', 'out so far'],
@@ -1020,6 +1155,16 @@ console.log(countSortWithNegatives([-3, 1, -1, 0]));   // [ -3, -1, 0, 1 ]` },
     int w = 0;
     for (int i = 0; i < (int)cnt.size(); i++)
         while (cnt[i]-- > 0) a[w++] = i + mn; // shift back
+    return a;
+}` }, { lang: 'csharp', code: String.raw`
+int[] CountSortWithNegatives(int[] a) {
+    int min = int.MaxValue, max = int.MinValue;
+    foreach (int x in a) { min = Math.Min(min, x); max = Math.Max(max, x); }
+    int[] cnt = new int[max - min + 1];       // assumes the range fits in memory
+    foreach (int x in a) cnt[x - min]++;      // shift so the smallest value maps to 0
+    int w = 0;
+    for (int i = 0; i < cnt.Length; i++)
+        while (cnt[i]-- > 0) a[w++] = i + min; // shift back
     return a;
 }` }
           ] }
@@ -1159,6 +1304,22 @@ void mergeSort(vector<int>& a, int lo, int hi, vector<int>& tmp) {
     while (j <= hi) tmp[k++] = a[j++];
     copy(tmp.begin() + lo, tmp.begin() + hi + 1, a.begin() + lo);
     // (the library does the merge step as std::inplace_merge, and the whole sort as std::stable_sort)
+}` }, { lang: 'csharp', code: String.raw`
+// Merge sort: sorts a[lo..hi] using a shared temp array.
+void MergeSort(int[] a, int lo, int hi, int[] tmp) {
+    if (lo >= hi) return;                    // 0 or 1 element: already sorted
+    int mid = lo + (hi - lo) / 2;            // safe middle (no overflow)
+    MergeSort(a, lo, mid, tmp);              // sort the left half
+    MergeSort(a, mid + 1, hi, tmp);          // sort the right half
+    int i = lo, j = mid + 1, k = lo;         // two pointers + write pointer
+    while (i <= mid && j <= hi) {
+        // "<=" takes the LEFT one on ties -> keeps the sort stable
+        if (a[i] <= a[j]) tmp[k++] = a[i++];
+        else tmp[k++] = a[j++];
+    }
+    while (i <= mid) tmp[k++] = a[i++];       // leftovers from the left half
+    while (j <= hi) tmp[k++] = a[j++];        // leftovers from the right half
+    for (k = lo; k <= hi; k++) a[k] = tmp[k]; // copy the merged run back
 }` }
       ] },
     codeTitle: 'Merge sort (top-down)',
@@ -1273,6 +1434,16 @@ void sortArray(vector<int>& a) {
         int key = a[i], j = i - 1;
         while (j >= 0 && a[j] > key) { a[j + 1] = a[j]; j--; }
         a[j + 1] = key;
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] SortArray(int[] a) {
+        for (int i = 1; i < a.Length; i++) {
+            int key = a[i], j = i - 1;
+            while (j >= 0 && a[j] > key) { a[j + 1] = a[j]; j--; }
+            a[j + 1] = key;
+        }
+        return a;
     }
 }` }] }
         },
@@ -1393,7 +1564,37 @@ public:
         sort(a, 0, (int)a.size() - 1);
         return a;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] SortArray(int[] a) {
+        if (a.Length > 1) {
+            int[] tmp = new int[a.Length];   // allocated once, reused by every merge
+            Sort(a, 0, a.Length - 1, tmp);
+        }
+        return a;
+    }
+
+    private void Sort(int[] a, int lo, int hi, int[] tmp) {
+        if (lo >= hi) return;                // size 0 or 1 -> already sorted
+        int mid = lo + (hi - lo) / 2;
+        Sort(a, lo, mid, tmp);               // conquer left half
+        Sort(a, mid + 1, hi, tmp);           // conquer right half
+        Merge(a, lo, mid, hi, tmp);          // combine
+    }
+
+    private void Merge(int[] a, int lo, int mid, int hi, int[] tmp) {
+        int i = lo;          // top of the left pile  a[lo..mid]
+        int j = mid + 1;     // top of the right pile a[mid+1..hi]
+        int k = lo;          // next write position in tmp
+        while (i <= mid && j <= hi) {
+            if (a[i] <= a[j]) tmp[k++] = a[i++];   // tie -> left first (stable)
+            else tmp[k++] = a[j++];
+        }
+        while (i <= mid) tmp[k++] = a[i++];        // left leftovers
+        while (j <= hi) tmp[k++] = a[j++];         // right leftovers
+        for (k = lo; k <= hi; k++) a[k] = tmp[k];  // copy merged run back
+    }
+}` }
           ],
           dry: {
             head: ['#', 'call / action', 'details', 'array after'],
@@ -1447,6 +1648,15 @@ long long countInversions(const vector<int>& arr) {
         for (int j = i + 1; j < (int) arr.size(); j++)
             if (arr[i] > arr[j]) cnt++;
     return cnt;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountInversions(int[] arr) {
+        long cnt = 0;
+        for (int i = 0; i < arr.Length; i++)
+            for (int j = i + 1; j < arr.Length; j++)
+                if (arr[i] > arr[j]) cnt++;
+        return cnt;
+    }
 }` }] }
         },
         mcq: {
@@ -1570,7 +1780,35 @@ public:
         tmp.assign(a.size(), 0);
         return count(a, 0, (int)a.size() - 1);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountInversions(int[] arr) {
+        int[] a = (int[])arr.Clone();        // keep the caller's array untouched
+        int[] tmp = new int[a.Length];
+        return Count(a, 0, a.Length - 1, tmp);
+    }
+
+    private long Count(int[] a, int lo, int hi, int[] tmp) {
+        if (lo >= hi) return 0;              // one item: no pairs
+        int mid = lo + (hi - lo) / 2;
+        long c = Count(a, lo, mid, tmp)      // inversions inside the left half
+               + Count(a, mid + 1, hi, tmp); // inversions inside the right half
+        int i = lo, j = mid + 1, k = lo;
+        while (i <= mid && j <= hi) {
+            if (a[i] <= a[j]) {
+                tmp[k++] = a[i++];           // left item is fine, no inversion
+            } else {
+                // a[j] is smaller than a[i..mid] (all of them, the left half is sorted)
+                c += mid - i + 1;
+                tmp[k++] = a[j++];
+            }
+        }
+        while (i <= mid) tmp[k++] = a[i++];
+        while (j <= hi) tmp[k++] = a[j++];
+        for (k = lo; k <= hi; k++) a[k] = tmp[k];
+        return c;
+    }
+}` }
           ],
           dry: {
             head: ['merge', 'left pile', 'right pile', 'what happens', 'added', 'total'],
@@ -1695,7 +1933,37 @@ console.log(a);   // [1, 2, 3, 4, 5, 6]` },
         }
     for (int x : a) cout << x << ' ';                          // 1 2 3 4 5 6
     cout << '\\n';
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class BottomUp {
+    static void Sort(int[] a) {
+        int n = a.Length;
+        int[] tmp = new int[n];
+        for (int width = 1; width < n; width *= 2) {          // run size doubles each round
+            for (int lo = 0; lo < n - width; lo += 2 * width) {
+                int mid = lo + width - 1;                      // end of the left run
+                int hi = Math.Min(lo + 2 * width - 1, n - 1);  // end of the right run (may be short)
+                Merge(a, lo, mid, hi, tmp);
+            }
+        }
+    }
+
+    static void Merge(int[] a, int lo, int mid, int hi, int[] tmp) {
+        if (a[mid] <= a[mid + 1]) return;                      // already in order: skip (TimSort-style)
+        int i = lo, j = mid + 1, k = lo;
+        while (i <= mid && j <= hi) tmp[k++] = a[i] <= a[j] ? a[i++] : a[j++];
+        while (i <= mid) tmp[k++] = a[i++];
+        while (j <= hi) tmp[k++] = a[j++];
+        for (k = lo; k <= hi; k++) a[k] = tmp[k];
+    }
+
+    static void Main() {
+        int[] a = { 5, 2, 4, 6, 1, 3 };
+        Sort(a);
+        Console.WriteLine("[" + string.Join(", ", a) + "]"); // [1, 2, 3, 4, 5, 6]
+    }
+}`, run: true }
           ] }
       }
     ],
@@ -1836,7 +2104,33 @@ void quickSort(vector<int>& a, int lo, int hi) {
     int p = lomuto(a, lo, hi);         // pivot is now at its final index p
     quickSort(a, lo, p - 1);
     quickSort(a, p + 1, hi);
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+// Quick sort with Lomuto partition and a RANDOM pivot (avoids the sorted-input worst case).
+static readonly Random RNG = new Random();
+
+void QuickSort(int[] a, int lo, int hi) {
+    if (lo >= hi) return;
+    int p = Lomuto(a, lo, hi);       // pivot is now at its final index p
+    QuickSort(a, lo, p - 1);         // everything smaller
+    QuickSort(a, p + 1, hi);         // everything bigger or equal
+}
+
+int Lomuto(int[] a, int lo, int hi) {
+    int r = lo + RNG.Next(hi - lo + 1);
+    Swap(a, r, hi);                  // move the random pivot to the end
+    int pivot = a[hi];
+    int i = lo;                      // next slot for an item smaller than pivot
+    for (int j = lo; j < hi; j++) {
+        if (a[j] < pivot) {
+            Swap(a, i, j);
+            i++;
+        }
+    }
+    Swap(a, i, hi);                  // drop the pivot right after the small items
+    return i;
+}
+
+void Swap(int[] a, int x, int y) { int t = a[x]; a[x] = a[y]; a[y] = t; }` }
       ] }, { lang: 'java', code: `
       // Quick sort with Hoare partition (two pointers from both ends).
       void quickSortHoare(int[] a, int lo, int hi) {
@@ -1913,6 +2207,24 @@ void quickSortHoare(vector<int>& a, int lo, int hi) {
     int p = hoare(a, lo, hi);
     quickSortHoare(a, lo, p);                 // NOTE: p is included on the left side
     quickSortHoare(a, p + 1, hi);
+}` }, { lang: 'csharp', code: String.raw`
+// Quick sort with Hoare partition (two pointers from both ends).
+void QuickSortHoare(int[] a, int lo, int hi) {
+    if (lo >= hi) return;
+    int p = Hoare(a, lo, hi);
+    QuickSortHoare(a, lo, p);        // NOTE: p is included on the left side
+    QuickSortHoare(a, p + 1, hi);
+}
+
+int Hoare(int[] a, int lo, int hi) {
+    int pivot = a[lo + (hi - lo) / 2];   // middle value as pivot
+    int i = lo - 1, j = hi + 1;
+    while (true) {
+        do { i++; } while (a[i] < pivot);   // find a big item on the left side
+        do { j--; } while (a[j] > pivot);   // find a small item on the right side
+        if (i >= j) return j;               // pointers crossed: split point found
+        int t = a[i]; a[i] = a[j]; a[j] = t; // fix both wrong-side items at once
+    }
 }` }
       ] }],
     codeTitle: ['Lomuto partition + random pivot', 'Hoare partition'],
@@ -2052,6 +2364,15 @@ function kthSmallest(arr, k) {
 int kthSmallest(vector<int> a, int k) {
     sort(a.begin(), a.end());    // sorts everything: O(N log N)
     return a[k - 1];
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int KthSmallest(int[] a, int k) {
+        int[] b = (int[])a.Clone();
+        Array.Sort(b);           // sorts everything: O(N log N)
+        return b[k - 1];
+    }
 }` }] }
         },
         mcq: {
@@ -2166,7 +2487,41 @@ public:
         }
         throw invalid_argument("k out of range");
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int KthSmallest(int[] arr, int k) {
+        int[] a = (int[])arr.Clone();      // do not disturb the caller's array
+        int lo = 0, hi = a.Length - 1;
+        int target = k - 1;                // 0-based position we want
+        while (lo <= hi) {
+            int p = Partition(a, lo, hi);  // pivot is now at final index p
+            if (p == target) return a[p];
+            if (p < target) lo = p + 1;    // answer is among the bigger items
+            else hi = p - 1;               // answer is among the smaller items
+        }
+        throw new ArgumentException("k out of range");
+    }
+
+    // Lomuto partition around the middle element.
+    private int Partition(int[] a, int lo, int hi) {
+        int mid = lo + (hi - lo) / 2;
+        Swap(a, mid, hi);                  // move pivot to the end
+        int pivot = a[hi];
+        int i = lo;                        // next slot for an item < pivot
+        for (int j = lo; j < hi; j++) {
+            if (a[j] < pivot) {
+                Swap(a, i, j);
+                i++;
+            }
+        }
+        Swap(a, i, hi);                    // pivot goes right after the small items
+        return i;
+    }
+
+    private void Swap(int[] a, int x, int y) { int t = a[x]; a[x] = a[y]; a[y] = t; }
+}` }
           ],
           dry: {
             head: ['round', 'lo..hi', 'pivot (middle)', 'scan result', 'array after partition', 'p', 'decision'],
@@ -2252,6 +2607,21 @@ void sortColors(vector<int>& a) {
         else if (a[i] == 2) swap(a[gt--], a[i]);   // re-check the new a[i]
         else i++;                                  // a 1 is already in the middle zone
     }
+}` }, { lang: 'csharp', code: String.raw`
+// 3-way partition (Dijkstra's Dutch National Flag): sorts 0/1/2 in one pass.
+void SortColors(int[] a) {
+    int lt = 0, i = 0, gt = a.Length - 1;   // a[0..lt-1] = 0, a[lt..i-1] = 1, a[gt+1..] = 2
+    while (i <= gt) {
+        if (a[i] == 0) {
+            int t = a[lt]; a[lt] = a[i]; a[i] = t;
+            lt++; i++;
+        } else if (a[i] == 2) {
+            int t = a[gt]; a[gt] = a[i]; a[i] = t;
+            gt--;                            // the swapped-in value is not checked yet
+        } else {
+            i++;                             // a 1 is already in the middle zone
+        }
+    }
 }` }
           ] }
       },
@@ -2323,6 +2693,21 @@ print(kth_largest([3, 2, 1, 5, 6, 4], 2))  # 5
     // std::nth_element is introselect: quickselect with a worst-case fallback
     nth_element(nums.begin(), nums.begin() + (nums.size() - k), nums.end());
     return nums[nums.size() - k];            // the item at ascending index N - k
+}` }, { lang: 'csharp', code: String.raw`
+int KthLargest(int[] nums, int k) {
+    int target = nums.Length - k;            // index in ascending order
+    int lo = 0, hi = nums.Length - 1;
+    var rnd = new Random(7);
+    while (true) {
+        int r = lo + rnd.Next(hi - lo + 1);  // random pivot -> expected O(N)
+        int t = nums[r]; nums[r] = nums[hi]; nums[hi] = t;
+        int p = lo;
+        for (int j = lo; j < hi; j++)
+            if (nums[j] < nums[hi]) { t = nums[p]; nums[p] = nums[j]; nums[j] = t; p++; }
+        t = nums[p]; nums[p] = nums[hi]; nums[hi] = t;
+        if (p == target) return nums[p];
+        if (p < target) lo = p + 1; else hi = p - 1;
+    }
 }` }
           ] }
       }
@@ -2478,7 +2863,42 @@ stable_sort(words.begin(), words.end(),
 // 5) A C++ comparator answers "does x go BEFORE y?" with a bool: use <, never <=,
 //    and never subtract (signed overflow is undefined behaviour).
 vector<long long> big = {-2000000000LL, 1000000000LL};
-sort(big.begin(), big.end(), [](long long x, long long y) { return x < y; });` }
+sort(big.begin(), big.end(), [](long long x, long long y) { return x < y; });` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Program {
+    static void Main() {
+        // 1) int[]: Array.Sort sorts ascending in place.
+        int[] a = { 5, 1, 4 };
+        Array.Sort(a);                                          // [1, 4, 5]
+
+        // 2) Descending: pass a Comparison<int> (no boxing needed in C#).
+        int[] b = { 5, 1, 4 };
+        Array.Sort(b, (x, y) => y.CompareTo(x));                // [5, 4, 1]
+
+        // 3) Descending without a comparator: sort, then reverse in place.
+        int[] c = { 5, 1, 4 };
+        Array.Sort(c);
+        Array.Reverse(c);
+
+        // 4) 2D jagged array (intervals) by start, then by end.
+        int[][] iv = { new[] { 3, 5 }, new[] { 1, 4 }, new[] { 1, 2 } };
+        Array.Sort(iv, (x, y) => x[0] != y[0] ? x[0].CompareTo(y[0]) : x[1].CompareTo(y[1]));   // {1,2} {1,4} {3,5}
+
+        // 5) Lists: List.Sort is NOT stable; LINQ OrderBy is stable (ties keep input order).
+        var words = new List<string> { "pear", "fig", "apple" };
+        words.Sort(string.CompareOrdinal);                       // alphabetical
+        words = words.OrderBy(w => w.Length).ToList();           // by length, stable
+        words.Sort((p, q) => q.Length - p.Length);               // lengths are small -> subtraction is safe here
+
+        // 6) Overflow-safe compare for big values.
+        long[] big = { -2000000000L, 1000000000L };
+        Array.Sort(big, (x, y) => x.CompareTo(y));               // never (int)(x - y)
+        Console.WriteLine(string.Join(" ", a) + " | " + string.Join(" ", b) + " | " + string.Join(" ", c) + " | " + string.Join(" ", words) + " | " + string.Join(" ", big));
+    }
+}`, run: true }
       ] }, { lang: 'java', code: `
       // Multiple keys with a small record type.
       class Student {
@@ -2556,7 +2976,37 @@ int main() {
     });
 
     for (const auto& s : list) cout << s.name << ':' << s.marks << ' ';   // Anu:92 Bob:92 Ravi:80 Zoe:80
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Multiple keys with a small record type.
+class Student {
+    public string Name; public int Marks;
+    public Student(string n, int m) { Name = n; Marks = m; }
+    public override string ToString() { return Name + ":" + Marks; }
+}
+
+class Demo {
+    static void Main() {
+        var list = new List<Student> {
+            new Student("Ravi", 80), new Student("Anu", 92),
+            new Student("Zoe", 80), new Student("Bob", 92) };
+
+        // Way 1: chain LINQ key selectors.
+        list = list.OrderByDescending(s => s.Marks)              // marks high -> low
+                   .ThenBy(s => s.Name, StringComparer.Ordinal)   // then name A -> Z
+                   .ToList();
+
+        // Way 2: one hand-written comparison (same result).
+        list.Sort((x, y) => {
+            if (x.Marks != y.Marks) return y.Marks.CompareTo(x.Marks);   // bigger marks first
+            return string.CompareOrdinal(x.Name, y.Name);                // tie -> alphabetical
+        });
+        Console.WriteLine("[" + string.Join(", ", list) + "]"); // [Anu:92, Bob:92, Ravi:80, Zoe:80]
+    }
+}`, run: true }
       ] }],
     codeTitle: ['Everyday sorting recipes', 'Sort by several keys'],
     problems: [
@@ -2657,7 +3107,30 @@ public:
         permute(s, 0);
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: String.raw`
+public class Brute {
+    string best = "";
+
+    public string Largest(int[] nums) {
+        string[] s = new string[nums.Length];
+        for (int i = 0; i < nums.Length; i++) s[i] = nums[i].ToString();
+        Permute(s, 0);
+        return best;
+    }
+
+    void Permute(string[] s, int k) {
+        if (k == s.Length) {
+            string cand = string.Join("", s);                      // all candidates have the same length
+            if (string.CompareOrdinal(cand, best) > 0) best = cand; // so string compare = numeric compare
+            return;
+        }
+        for (int i = k; i < s.Length; i++) {
+            string t = s[k]; s[k] = s[i]; s[i] = t;
+            Permute(s, k + 1);
+            t = s[k]; s[k] = s[i]; s[i] = t;                        // undo the swap
+        }
+    }
+}` }] }
         },
         mcq: {
           q: 'Which rule correctly decides whether string <code>a</code> should come before string <code>b</code>?',
@@ -2734,7 +3207,27 @@ public:
         for (const string& x : s) out += x;
         return out;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+public class Solution {
+    public string LargestNumber(int[] nums) {
+        string[] s = new string[nums.Length];
+        for (int i = 0; i < nums.Length; i++) {
+            s[i] = nums[i].ToString();
+        }
+        // a goes first when a+b is bigger than b+a.
+        // Compare(a, b) must be NEGATIVE for "a first", so compare (b+a) against (a+b). Ordinal: plain char codes.
+        Array.Sort(s, (a, b) => string.CompareOrdinal(b + a, a + b));
+        if (s[0] == "0") {
+            return "0";                // all zeros: avoid "000"
+        }
+        var sb = new StringBuilder();
+        foreach (string x in s) sb.Append(x);
+        return sb.ToString();
+    }
+}` }
           ],
           dry: {
             head: ['pair (a, b)', 'a + b', 'b + a', 'winner goes first'],
@@ -2864,7 +3357,18 @@ console.log(w);   // [ 'a', 'ab', 'bb', 'ccc' ]` },
 sort(w.begin(), w.end(), [](const string& p, const string& q) {
     return make_pair(p.size(), p) < make_pair(q.size(), q);   // length, then alphabetical
 });
-// w = {"a", "ab", "bb", "ccc"}` }
+// w = {"a", "ab", "bb", "ccc"}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Program {
+    static void Main() {
+        var w = new List<string> { "bb", "a", "ccc", "ab" };
+        w = w.OrderBy(s => s.Length).ThenBy(s => s, StringComparer.Ordinal).ToList();   // length, then alphabetical
+        Console.WriteLine("[" + string.Join(", ", w) + "]"); // [a, ab, bb, ccc]
+    }
+}`, run: true }
           ] }
       },
       {
@@ -2887,7 +3391,20 @@ console.log(JSON.stringify(pts));             // [[-2,2],[3,3],[5,-1]]` },
             { lang: 'cpp', code: `vector<array<int, 2>> pts = {{3, 3}, {-2, 2}, {5, -1}};
 auto d = [](const array<int, 2>& p) { return 1LL * p[0] * p[0] + 1LL * p[1] * p[1]; };  // long long
 sort(pts.begin(), pts.end(), [&](const auto& p, const auto& q) { return d(p) < d(q); });
-// pts = {{-2, 2}, {3, 3}, {5, -1}}` }
+// pts = {{-2, 2}, {3, 3}, {5, -1}}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        int[][] pts = { new[] { 3, 3 }, new[] { -2, 2 }, new[] { 5, -1 } };
+        Array.Sort(pts, (p, q) => ((long)p[0] * p[0] + (long)p[1] * p[1]).CompareTo(
+                                   (long)q[0] * q[0] + (long)q[1] * q[1]));   // long: no overflow
+        var rows = new List<string>();
+        foreach (int[] p in pts) rows.Add("[" + p[0] + ", " + p[1] + "]");
+        Console.WriteLine("[" + string.Join(", ", rows) + "]"); // [[-2, 2], [3, 3], [5, -1]]
+    }
+}`, run: true }
           ] }
       },
       {
@@ -3003,7 +3520,29 @@ int main() {
         return tie(x.key, x.idx) < tie(y.key, y.idx);
     });
     for (const auto& it : items) cout << it.tag << ' ';   // 1D 3S 5H 5S
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+// Make ANY sort stable: break ties by the original index.
+class Item {
+    public int Key; public string Tag; public int Idx;
+    public Item(int k, string t, int i) { Key = k; Tag = t; Idx = i; }
+}
+
+class StableDemo {
+    static void Main() {
+        string[] tags = { "5H", "3S", "5S", "1D" };
+        int[] keys = { 5, 3, 5, 1 };
+        Item[] items = new Item[keys.Length];
+        for (int i = 0; i < keys.Length; i++) items[i] = new Item(keys[i], tags[i], i);
+
+        // Primary: key ascending. Tie-breaker: original position.
+        // (Array.Sort is NOT stable in C#, so this trick matters; LINQ OrderBy is the stable alternative.)
+        Array.Sort(items, (x, y) => x.Key != y.Key ? x.Key.CompareTo(y.Key) : x.Idx.CompareTo(y.Idx));
+        foreach (Item it in items) Console.Write(it.Tag + " "); // 1D 3S 5H 5S
+        Console.WriteLine();
+    }
+}`, run: true }
       ] },
     codeTitle: 'Stability by tie-breaking on the original index'
   });
@@ -3133,6 +3672,15 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
         auto m = min_element(it, key.end());           // first smallest
         rotate(it, m, m + 1);                          // shift the block right, put min at it
     }
+}` }, { lang: 'csharp', code: String.raw`
+void StableSelectionSort(int[] key) {
+    for (int i = 0; i < key.Length - 1; i++) {
+        int m = i;
+        for (int j = i + 1; j < key.Length; j++) if (key[j] < key[m]) m = j;
+        int min = key[m];
+        for (int j = m; j > i; j--) key[j] = key[j - 1];   // shift, do not swap
+        key[i] = min;
+    }
 }` }
           ] }
       },
@@ -3230,6 +3778,27 @@ vector<string> reorderLogFiles(vector<string> logs) {
         }
     let.insert(let.end(), dig.begin(), dig.end());         // digit-logs in original order
     return let;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public string[] ReorderLogFiles(string[] logs) {
+        var let = new List<string>();
+        var dig = new List<string>();
+        foreach (string s in logs) {
+            if (char.IsDigit(s[s.IndexOf(' ') + 1])) dig.Add(s); else let.Add(s);
+        }
+        for (int i = 0; i < let.Count; i++)                        // bubble sort letter-logs
+            for (int j = 0; j + 1 < let.Count - i; j++) {
+                string a = let[j], b = let[j + 1];
+                string ca = a.Substring(a.IndexOf(' ') + 1), cb = b.Substring(b.IndexOf(' ') + 1);
+                int c = string.CompareOrdinal(ca, cb);
+                if (c == 0) c = string.CompareOrdinal(a.Substring(0, a.IndexOf(' ')), b.Substring(0, b.IndexOf(' ')));
+                if (c > 0) { let[j] = b; let[j + 1] = a; }
+            }
+        let.AddRange(dig);                                         // digit-logs in original order
+        return let.ToArray();
+    }
 }` }] }
         },
         mcq: {
@@ -3319,7 +3888,29 @@ public:
         });
         return logs;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class Solution {
+    public string[] ReorderLogFiles(string[] logs) {
+        // Array.Sort is NOT stable; LINQ OrderBy is, so tied digit-logs keep their input order.
+        return logs.OrderBy(x => x, Comparer<string>.Create((a, b) => {
+            int sa = a.IndexOf(' '), sb = b.IndexOf(' ');
+            bool da = char.IsDigit(a[sa + 1]);                            // is a a digit-log?
+            bool db = char.IsDigit(b[sb + 1]);
+            if (!da && !db) {                                             // both letter-logs
+                int c = string.CompareOrdinal(a.Substring(sa + 1), b.Substring(sb + 1)); // by content
+                if (c != 0) return c;
+                return string.CompareOrdinal(a.Substring(0, sa), b.Substring(0, sb));   // then identifier
+            }
+            if (!da) return -1;                                           // letter before digit
+            if (!db) return 1;                                            // digit after letter
+            return 0;                                                     // both digit: tie -> stable keeps input order
+        })).ToArray();
+    }
+}` }
           ],
           dry: {
             head: ['compare(a, b)', 'types', 'rule used', 'result'],
@@ -3546,6 +4137,32 @@ vector<vector<int>> merge(vector<vector<int>> intervals) {
         }
     }
     return list;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int[][] Merge(int[][] intervals) {
+        var list = new List<int[]>();
+        foreach (int[] x in intervals) list.Add(new[] { x[0], x[1] });
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (int i = 0; i < list.Count && !changed; i++) {
+                for (int j = i + 1; j < list.Count; j++) {
+                    int[] p = list[i], q = list[j];
+                    if (p[0] <= q[1] && q[0] <= p[1]) {      // they overlap
+                        p[0] = Math.Min(p[0], q[0]);
+                        p[1] = Math.Max(p[1], q[1]);
+                        list.RemoveAt(j);
+                        changed = true;                       // restart the scan
+                        break;
+                    }
+                }
+            }
+        }
+        return list.ToArray();
+    }
 }` }] }
         },
         mcq: {
@@ -3625,7 +4242,28 @@ public:
         }
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int[][] Merge(int[][] intervals) {
+        // 1) sort by start (CompareTo: no overflow tricks needed)
+        Array.Sort(intervals, (x, y) => x[0].CompareTo(y[0]));
+        var res = new List<int[]>();
+        foreach (int[] cur in intervals) {
+            if (res.Count == 0 || cur[0] > res[res.Count - 1][1]) {
+                // no overlap with the last block -> open a new block
+                res.Add(new[] { cur[0], cur[1] });
+            } else {
+                // overlap -> stretch the last block (max handles swallowed intervals)
+                int[] last = res[res.Count - 1];
+                last[1] = Math.Max(last[1], cur[1]);
+            }
+        }
+        return res.ToArray();
+    }
+}` }
           ],
           dry: {
             head: ['cur', 'last block', 'cur.start ≤ last.end?', 'action', 'result'],
@@ -3690,6 +4328,20 @@ vector<vector<int>> merge(vector<vector<int>> intervals) {
         else res.back()[1] = max(res.back()[1], cur[1]);                 // overlap -> stretch (max!)
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+// Merge overlapping intervals: sort by start, then one sweep.
+int[][] Merge(int[][] intervals) {
+    Array.Sort(intervals, (x, y) => x[0].CompareTo(y[0]));
+    var res = new List<int[]>();
+    foreach (int[] cur in intervals) {
+        if (res.Count == 0 || cur[0] > res[res.Count - 1][1]) {
+            res.Add(new[] { cur[0], cur[1] });                     // gap -> new block
+        } else {
+            int[] last = res[res.Count - 1];
+            last[1] = Math.Max(last[1], cur[1]);                   // overlap -> stretch (max!)
+        }
+    }
+    return res.ToArray();
 }` }
       ] }, { lang: 'python', run: true, title: 'Same idea in Python (runnable)', code: `def merge(intervals):
     intervals.sort(key=lambda x: x[0])          # 1) sort by start
@@ -3764,6 +4416,16 @@ console.log(coveredLength([[1, 3], [2, 6], [8, 10]]));   // 7` },
         else e = max(e, cur[1]);                                       // extend block
     }
     return total + (e - s);                                            // last block
+}` }, { lang: 'csharp', code: String.raw`
+long CoveredLength(int[][] iv) {
+    Array.Sort(iv, (x, y) => x[0].CompareTo(y[0]));
+    long total = 0;
+    int s = iv[0][0], e = iv[0][1];
+    foreach (int[] cur in iv) {
+        if (cur[0] > e) { total += e - s; s = cur[0]; e = cur[1]; } // close block
+        else e = Math.Max(e, cur[1]);                              // extend block
+    }
+    return total + (e - s);                                        // last block
 }` }
           ] }
       },
@@ -3909,6 +4571,28 @@ vector<vector<int>> insert(const vector<vector<int>>& intervals, vector<int> new
     res.push_back(newIv);                                                        // fused, once
     res.insert(res.end(), intervals.begin() + i, intervals.end());               // phase 3
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+// Insert newIv into a sorted, non-overlapping list (closed intervals; touching ones merge).
+int[][] Insert(int[][] intervals, int[] newIv) {
+    var res = new List<int[]>();
+    int i = 0, n = intervals.Length;
+    int s = newIv[0], e = newIv[1];
+    // phase 1: blocks that end before the new interval starts
+    while (i < n && intervals[i][1] < s) {
+        res.Add(intervals[i++]);
+    }
+    // phase 2: blocks that overlap the new interval -> absorb them
+    while (i < n && intervals[i][0] <= e) {
+        s = Math.Min(s, intervals[i][0]);
+        e = Math.Max(e, intervals[i][1]);
+        i++;
+    }
+    res.Add(new[] { s, e });               // the fused block, added exactly once
+    // phase 3: blocks that start after the new interval ends
+    while (i < n) {
+        res.Add(intervals[i++]);
+    }
+    return res.ToArray();
 }` }
       ] },
     codeTitle: 'Insert interval — three phases',
@@ -4071,6 +4755,22 @@ vector<vector<int>> insert(const vector<vector<int>>& intervals, const vector<in
         else res.back()[1] = max(res.back()[1], cur[1]);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int[][] Insert(int[][] intervals, int[] newInterval) {
+        var all = new List<int[]>(intervals);
+        all.Add(newInterval);
+        all.Sort((x, y) => x[0].CompareTo(y[0]));      // O(N log N) - unnecessary
+        var res = new List<int[]>();
+        foreach (int[] cur in all) {
+            if (res.Count == 0 || cur[0] > res[res.Count - 1][1]) res.Add(new[] { cur[0], cur[1] });
+            else res[res.Count - 1][1] = Math.Max(res[res.Count - 1][1], cur[1]);
+        }
+        return res.ToArray();
+    }
 }` }] }
         },
         mcq: {
@@ -4166,7 +4866,32 @@ public:
         while (i < n) res.push_back(intervals[i++]);                          // 3) after
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int[][] Insert(int[][] intervals, int[] newInterval) {
+        var res = new List<int[]>();
+        int i = 0, n = intervals.Length;
+        int s = newInterval[0], e = newInterval[1];
+        while (i < n && intervals[i][1] < s) {          // 1) completely before
+            res.Add(intervals[i]);
+            i++;
+        }
+        while (i < n && intervals[i][0] <= e) {         // 2) overlapping -> absorb
+            s = Math.Min(s, intervals[i][0]);
+            e = Math.Max(e, intervals[i][1]);
+            i++;
+        }
+        res.Add(new[] { s, e });                        // fused block, once
+        while (i < n) {                                 // 3) completely after
+            res.Add(intervals[i]);
+            i++;
+        }
+        return res.ToArray();
+    }
+}` }
           ],
           dry: {
             head: ['i', 'interval', 'test', 'phase', '[s, e]', 'res'],
@@ -4242,6 +4967,14 @@ bool canAttendAll(vector<vector<int>> m) {
     for (size_t i = 1; i < m.size(); i++)
         if (m[i][0] < m[i - 1][1]) return false;   // starts before the previous one ends
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+// Meeting Rooms I: can one person attend all meetings? (half-open: [s, e))
+bool CanAttendAll(int[][] m) {
+    Array.Sort(m, (x, y) => x[0].CompareTo(y[0]));
+    for (int i = 1; i < m.Length; i++) {
+        if (m[i][0] < m[i - 1][1]) return false;   // starts before the previous one ends
+    }
+    return true;
 }` }
       ] }, { lang: 'java', code: `
       // Meeting Rooms II with a min-heap of end times.
@@ -4316,6 +5049,20 @@ int minRooms(vector<vector<int>> m) {
         ends.push(mt[1]);
     }
     return (int)ends.size();                                    // rooms ever needed at once
+}` }, { lang: 'csharp', code: String.raw`
+// Meeting Rooms II with a min-heap of end times. (.NET Framework has no PriorityQueue: a SortedSet of
+// (end, id) pairs plays the min-heap: Min is the earliest end, both ops are O(log N).)
+int MinRooms(int[][] m) {
+    Array.Sort(m, (x, y) => x[0].CompareTo(y[0]));              // by start
+    var ends = new SortedSet<(int end, int id)>();              // end times of busy rooms
+    int id = 0;
+    foreach (int[] mt in m) {
+        if (ends.Count > 0 && ends.Min.end <= mt[0]) {
+            ends.Remove(ends.Min);                              // earliest room is free -> reuse it
+        }
+        ends.Add((mt[1], id++));                                // this meeting occupies a room until mt[1]
+    }
+    return ends.Count;                                          // rooms ever needed at once
 }` }
       ] }, { lang: 'java', code: `
       // Meeting Rooms II with two sorted arrays (no heap).
@@ -4366,6 +5113,20 @@ int minRoomsTwoPointers(const vector<vector<int>>& m) {
     for (int s : st) {
         if (s >= en[j]) j++;          // some meeting ended by now -> reuse its room
         else rooms++;                 // everyone is still busy -> need a new room
+    }
+    return rooms;
+}` }, { lang: 'csharp', code: String.raw`
+// Meeting Rooms II with two sorted arrays (no heap).
+int MinRoomsTwoPointers(int[][] m) {
+    int n = m.Length;
+    int[] st = new int[n], en = new int[n];
+    for (int i = 0; i < n; i++) { st[i] = m[i][0]; en[i] = m[i][1]; }
+    Array.Sort(st);
+    Array.Sort(en);
+    int rooms = 0, j = 0;
+    for (int i = 0; i < n; i++) {
+        if (st[i] >= en[j]) j++;        // some meeting ended by now -> reuse its room
+        else rooms++;                   // everyone is still busy -> need a new room
     }
     return rooms;
 }` }
@@ -4494,6 +5255,17 @@ console.log(minPlatforms([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 11
         else { cur--; j++; }                                        // a train has left
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+int MinPlatforms(int[] arr, int[] dep) {
+    int[] a = (int[])arr.Clone(), d = (int[])dep.Clone();
+    Array.Sort(a);
+    Array.Sort(d);
+    int i = 0, j = 0, cur = 0, best = 0;
+    while (i < a.Length) {
+        if (a[i] <= d[j]) { cur++; i++; best = Math.Max(best, cur); } // arrival first on ties: train needs a platform
+        else { cur--; j++; }                                           // a train has left
+    }
+    return best;
 }` }
           ] }
       },
@@ -4578,6 +5350,21 @@ int minMeetingRooms(vector<vector<int>> intervals) {
         best = max(best, running);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MinMeetingRooms(int[][] intervals) {
+        int best = 0;
+        foreach (int[] a in intervals) {                 // the peak happens at some start time
+            int running = 0;
+            foreach (int[] b in intervals) {
+                if (b[0] <= a[0] && a[0] < b[1]) running++;   // b is running at time a.start
+            }
+            best = Math.Max(best, running);
+        }
+        return best;
+    }
 }` }] }
         },
         mcq: {
@@ -4685,7 +5472,50 @@ public:
         }
         return (int)ends.size();
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int MinMeetingRooms(int[][] intervals) {
+        Array.Sort(intervals, (x, y) => x[0].CompareTo(y[0]));   // by start
+        var ends = new MinHeap();                                // busy rooms' end times
+        foreach (int[] m in intervals) {
+            if (ends.Count > 0 && ends.Peek() <= m[0]) {
+                ends.Pop();                   // earliest room is free at m[0] -> reuse
+            }
+            ends.Push(m[1]);                  // room busy until m[1]
+        }
+        return ends.Count;
+    }
+
+    // .NET Framework has no PriorityQueue: a small binary min-heap (same shape in every C# solution of this module).
+    class MinHeap {
+        private readonly List<int> h = new List<int>();
+        public int Count { get { return h.Count; } }
+        public int Peek() { return h[0]; }
+        public void Push(int v) {
+            h.Add(v);
+            int i = h.Count - 1;
+            while (i > 0 && h[(i - 1) / 2] > h[i]) { Swap(i, (i - 1) / 2); i = (i - 1) / 2; }
+        }
+        public int Pop() {
+            int top = h[0];
+            h[0] = h[h.Count - 1];
+            h.RemoveAt(h.Count - 1);
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, s = i;
+                if (l < h.Count && h[l] < h[s]) s = l;
+                if (r < h.Count && h[r] < h[s]) s = r;
+                if (s == i) break;
+                Swap(i, s); i = s;
+            }
+            return top;
+        }
+        private void Swap(int i, int j) { int t = h[i]; h[i] = h[j]; h[j] = t; }
+    }
+}` }
           ],
           dry: {
             head: ['meeting', 'heap before', 'peek ≤ start?', 'action', 'heap after', 'size'],
@@ -4739,6 +5569,14 @@ bool canAttendMeetings(vector<vector<int>> m) {
         for (int j = i + 1; j < (int) m.size(); j++)
             if (m[i][0] < m[j][1] && m[j][0] < m[i][1]) return false;   // overlap test
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool CanAttendMeetings(int[][] m) {
+        for (int i = 0; i < m.Length; i++)
+            for (int j = i + 1; j < m.Length; j++)
+                if (m[i][0] < m[j][1] && m[j][0] < m[i][1]) return false;  // overlap test
+        return true;
+    }
 }` }] }
     },
     mcq: {
@@ -4798,7 +5636,18 @@ public:
             if (m[i][0] < m[i - 1][1]) return false;      // starts before previous ends
         return true;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public bool CanAttendMeetings(int[][] m) {
+        Array.Sort(m, (x, y) => x[0].CompareTo(y[0]));
+        for (int i = 1; i < m.Length; i++) {
+            if (m[i][0] < m[i - 1][1]) return false;   // starts before previous ends
+        }
+        return true;
+    }
+}` }
       ],
       dry: { head: ['i', 'previous', 'current', 'start &lt; prev end?'], rows: [['1', '[2,4)', '[7,10)', '7 &lt; 4? no'], ['end', '', '', '<span class="c-g">true</span>']] },
       complexity: `<p><b>Time O(N log N)</b> for the sort, O(N) check. <b>Space O(log N)</b>–O(N) for the sort.</p>`
@@ -4853,6 +5702,17 @@ int heightChecker(const vector<int>& heights) {
     int diff = 0;
     for (int i = 0; i < (int) heights.size(); i++) if (heights[i] != e[i]) diff++;
     return diff;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int HeightChecker(int[] heights) {
+        int[] e = (int[])heights.Clone();
+        for (int i = 0; i < e.Length; i++)
+            for (int j = 0; j + 1 < e.Length - i; j++)
+                if (e[j] > e[j + 1]) { int t = e[j]; e[j] = e[j + 1]; e[j + 1] = t; }
+        int diff = 0;
+        for (int i = 0; i < heights.Length; i++) if (heights[i] != e[i]) diff++;
+        return diff;
+    }
 }` }] }
     },
     mcq: {
@@ -4932,7 +5792,20 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int HeightChecker(int[] heights) {
+        int[] cnt = new int[101];
+        foreach (int x in heights) cnt[x]++;
+        int ans = 0, h = 1;
+        foreach (int x in heights) {
+            while (cnt[h] == 0) h++;          // next height in sorted order
+            if (x != h) ans++;
+            cnt[h]--;
+        }
+        return ans;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N + 100)</b>, <b>space O(100)</b>.</p>`
     }
@@ -5005,6 +5878,21 @@ vector<int> relativeSortArray(const vector<int>& arr1, const vector<int>& arr2) 
         return x < y;
     });
     return b;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[] RelativeSortArray(int[] arr1, int[] arr2) {
+        int[] b = (int[])arr1.Clone();
+        Array.Sort(b, (x, y) => {
+            int px = Array.IndexOf(arr2, x), py = Array.IndexOf(arr2, y);   // O(M) each!
+            if (px >= 0 && py >= 0) return px.CompareTo(py);
+            if (px >= 0) return -1;
+            if (py >= 0) return 1;
+            return x.CompareTo(y);
+        });
+        return b;
+    }
 }` }] }
     },
     mcq: {
@@ -5088,7 +5976,23 @@ public:
             out.insert(out.end(), cnt[v], v);
         return out;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] RelativeSortArray(int[] arr1, int[] arr2) {
+        int[] cnt = new int[1001];
+        foreach (int x in arr1) cnt[x]++;
+        int[] result = new int[arr1.Length];
+        int w = 0;
+        foreach (int v in arr2) {                // custom order first
+            while (cnt[v]-- > 0) result[w++] = v;
+            cnt[v] = 0;                          // undo the final -1 from the loop test
+        }
+        for (int v = 0; v <= 1000; v++) {        // leftovers ascending
+            while (cnt[v] > 0) { result[w++] = v; cnt[v]--; }
+        }
+        return result;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N + M + 1001)</b>, <b>space O(1001)</b> plus the output.</p>`
     }
@@ -5120,6 +6024,14 @@ function merge(nums1, m, nums2, n) {
 void merge(vector<int>& nums1, int m, const vector<int>& nums2, int n) {
     for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
     sort(nums1.begin(), nums1.end());
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public void Merge(int[] nums1, int m, int[] nums2, int n) {
+        for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
+        Array.Sort(nums1);
+    }
 }` }] }
     },
     mcq: {
@@ -5182,7 +6094,16 @@ public:
         while (j >= 0)                           // once nums2 is used up we are done
             nums1[k--] = (i >= 0 && nums1[i] > nums2[j]) ? nums1[i--] : nums2[j--];
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Merge(int[] nums1, int m, int[] nums2, int n) {
+        int i = m - 1, j = n - 1, k = m + n - 1;
+        while (j >= 0) {                              // once nums2 is used up we are done
+            if (i >= 0 && nums1[i] > nums2[j]) nums1[k--] = nums1[i--];
+            else nums1[k--] = nums2[j--];
+        }
+    }
+}` }
       ],
       dry: { head: ['i', 'j', 'k', 'compare', 'nums1'], rows: [['2', '2', '5', '3 vs 6 → 6', '1 2 3 0 0 6'], ['2', '1', '4', '3 vs 5 → 5', '1 2 3 0 5 6'], ['2', '0', '3', '3 vs 2 → 3', '1 2 3 3 5 6'], ['1', '0', '2', '2 vs 2 → 2 (nums2)', '<span class="c-g">1 2 2 3 5 6</span>']] },
       complexity: `<p><b>Time O(m + n)</b>, <b>space O(1)</b>.</p>`
@@ -5222,6 +6143,13 @@ void sortColors(vector<int>& a) {
     for (int i = 0; i < (int) a.size(); i++)
         for (int j = 0; j + 1 < (int) a.size() - i; j++)
             if (a[j] > a[j + 1]) swap(a[j], a[j + 1]);
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SortColors(int[] a) {
+        for (int i = 0; i < a.Length; i++)
+            for (int j = 0; j + 1 < a.Length - i; j++)
+                if (a[j] > a[j + 1]) { int t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
+    }
 }` }] }
     },
     mcq: {
@@ -5295,7 +6223,19 @@ public:
             else i++;                                  // 1 stays in the middle
         }
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void SortColors(int[] a) {
+        int lt = 0, i = 0, gt = a.Length - 1;
+        while (i <= gt) {
+            if (a[i] == 0) { Swap(a, lt, i); lt++; i++; }   // grow the 0-zone
+            else if (a[i] == 2) { Swap(a, i, gt); gt--; }    // grow the 2-zone, re-check a[i]
+            else i++;                                         // 1 stays in the middle
+        }
+    }
+
+    private void Swap(int[] a, int x, int y) { int t = a[x]; a[x] = a[y]; a[y] = t; }
+}` }
       ],
       dry: { head: ['lt', 'i', 'gt', 'a[i]', 'array after'], rows: [['0', '0', '5', '2', '0 0 2 1 1 2'], ['0', '0', '4', '0', '0 0 2 1 1 2'], ['1', '1', '4', '0', '0 0 2 1 1 2'], ['2', '2', '4', '2', '0 0 1 1 2 2'], ['2', '2', '3', '1', '…i = 4 &gt; gt → <span class="c-g">done</span>']] },
       complexity: `<p><b>Time O(N)</b> — each step either advances i or shrinks gt. <b>Space O(1)</b>.</p>`
@@ -5328,6 +6268,15 @@ function findKthLargest(nums, k) {
 int findKthLargest(vector<int> a, int k) {
     sort(a.begin(), a.end());
     return a[a.size() - k];
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int FindKthLargest(int[] nums, int k) {
+        int[] b = (int[])nums.Clone();
+        Array.Sort(b);
+        return b[b.Length - k];
+    }
 }` }] }
     },
     mcq: {
@@ -5440,7 +6389,32 @@ public:
             else return pivot;
         }
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    private readonly Random rnd = new Random();
+
+    public int FindKthLargest(int[] nums, int k) {
+        int target = nums.Length - k;              // index in ascending order
+        int lo = 0, hi = nums.Length - 1;
+        while (true) {
+            int pivot = nums[lo + rnd.Next(hi - lo + 1)];
+            int lt = lo, i = lo, gt = hi;
+            while (i <= gt) {                      // 3-way partition of nums[lo..hi]
+                if (nums[i] < pivot) Swap(nums, lt++, i++);
+                else if (nums[i] > pivot) Swap(nums, i, gt--);
+                else i++;
+            }
+            // now: [lo..lt-1] < pivot, [lt..gt] == pivot, [gt+1..hi] > pivot
+            if (target < lt) hi = lt - 1;
+            else if (target > gt) lo = gt + 1;
+            else return pivot;
+        }
+    }
+
+    private void Swap(int[] a, int x, int y) { int t = a[x]; a[x] = a[y]; a[y] = t; }
+}` }
       ],
       complexity: `<p><b>Expected time O(N)</b>, worst O(N<sup>2</sup>) with vanishing probability. <b>Space O(1)</b>. Alternative: a min-heap of size k gives O(N log k) and works on streams.</p>`
     }
@@ -5506,6 +6480,19 @@ ListNode* sortList(ListNode* head) {
         head = next;
     }
     return dummy.next;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public ListNode SortList(ListNode head) {
+        ListNode dummy = new ListNode(0);
+        while (head != null) {
+            ListNode next = head.next, p = dummy;
+            while (p.next != null && p.next.val < head.val) p = p.next;   // find insert spot
+            head.next = p.next;
+            p.next = head;
+            head = next;
+        }
+        return dummy.next;
+    }
 }` }] }
     },
     mcq: {
@@ -5624,7 +6611,31 @@ public:
         slow->next = nullptr;                    // cut into two lists
         return merge(sortList(head), sortList(right));
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public ListNode SortList(ListNode head) {
+        if (head == null || head.next == null) return head;
+        ListNode slow = head, fast = head.next;          // fast starts one ahead -> even split
+        while (fast != null && fast.next != null) {
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        ListNode right = slow.next;
+        slow.next = null;                                 // cut into two lists
+        return Merge(SortList(head), SortList(right));
+    }
+
+    private ListNode Merge(ListNode a, ListNode b) {
+        ListNode dummy = new ListNode(0), tail = dummy;
+        while (a != null && b != null) {
+            if (a.val <= b.val) { tail.next = a; a = a.next; }  // <= keeps it stable
+            else { tail.next = b; b = b.next; }
+            tail = tail.next;
+        }
+        tail.next = (a != null) ? a : b;                 // append the leftovers
+        return dummy.next;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N log N)</b>. <b>Space O(log N)</b> recursion (a bottom-up version reaches O(1)).</p>`
     }
@@ -5688,6 +6699,22 @@ int eraseOverlapIntervals(vector<vector<int>> iv) {
         best = max(best, keep[i]);
     }
     return n - best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int EraseOverlapIntervals(int[][] iv) {
+        Array.Sort(iv, (x, y) => x[0].CompareTo(y[0]));
+        int n = iv.Length, best = 0;
+        int[] keep = new int[n];
+        for (int i = 0; i < n; i++) {
+            keep[i] = 1;
+            for (int j = 0; j < i; j++)
+                if (iv[j][1] <= iv[i][0]) keep[i] = Math.Max(keep[i], keep[j] + 1);
+            best = Math.Max(best, keep[i]);
+        }
+        return n - best;
+    }
 }` }] }
     },
     mcq: {
@@ -5758,7 +6785,23 @@ public:
         }
         return (int)iv.size() - kept;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int EraseOverlapIntervals(int[][] iv) {
+        Array.Sort(iv, (x, y) => x[1].CompareTo(y[1]));   // by end
+        int kept = 0;
+        long lastEnd = long.MinValue;
+        foreach (int[] cur in iv) {
+            if (cur[0] >= lastEnd) {        // fits after the last kept interval
+                kept++;
+                lastEnd = cur[1];
+            }                               // else: overlaps -> remove it
+        }
+        return iv.Length - kept;
+    }
+}` }
       ],
       dry: { head: ['sorted by end', 'start ≥ lastEnd?', 'kept', 'lastEnd'], rows: [['[1,2]', 'yes', '1', '2'], ['[2,3]', '2 ≥ 2 yes', '2', '3'], ['[1,3]', '1 ≥ 3 <span class="c-r">no</span> → remove', '2', '3'], ['[3,4]', '3 ≥ 3 yes', '3', '4']] },
       complexity: `<p><b>Time O(N log N)</b>, <b>space O(log N)</b>–O(N) for the sort.</p>`
@@ -5820,6 +6863,23 @@ int findMinArrowShots(vector<vector<int>> points) {
         arrows++;
     }
     return arrows;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int FindMinArrowShots(int[][] points) {
+        var left = new List<int[]>(points);
+        int arrows = 0;
+        while (left.Count > 0) {
+            int x = int.MaxValue;
+            foreach (int[] b in left) x = Math.Min(x, b[1]);      // smallest end
+            int shot = x;
+            left.RemoveAll(b => b[0] <= shot && shot <= b[1]);    // burst everything at x
+            arrows++;
+        }
+        return arrows;
+    }
 }` }] }
     },
     mcq: {
@@ -5892,7 +6952,23 @@ public:
         }
         return arrows;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int FindMinArrowShots(int[][] points) {
+        Array.Sort(points, (a, b) => a[1].CompareTo(b[1]));  // never a[1] - b[1]
+        int arrows = 1;
+        int pos = points[0][1];                  // first arrow at the earliest end
+        foreach (int[] b in points) {
+            if (b[0] > pos) {                    // this balloon starts after the arrow -> missed
+                arrows++;
+                pos = b[1];
+            }
+        }
+        return arrows;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N log N)</b>, <b>space O(log N)</b>–O(N) for the sort.</p>`
     }
@@ -5947,6 +7023,21 @@ vector<vector<int>> intervalIntersection(const vector<vector<int>>& a, const vec
         }
     sort(res.begin(), res.end(), [](const vector<int>& p, const vector<int>& q) { return p[0] < q[0]; });
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int[][] IntervalIntersection(int[][] a, int[][] b) {
+        var res = new List<int[]>();
+        foreach (int[] x in a)
+            foreach (int[] y in b) {
+                int lo = Math.Max(x[0], y[0]), hi = Math.Min(x[1], y[1]);
+                if (lo <= hi) res.Add(new[] { lo, hi });
+            }
+        res.Sort((p, q) => p[0].CompareTo(q[0]));
+        return res.ToArray();
+    }
 }` }] }
     },
     mcq: {
@@ -6028,7 +7119,23 @@ public:
         }
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int[][] IntervalIntersection(int[][] a, int[][] b) {
+        var res = new List<int[]>();
+        int i = 0, j = 0;
+        while (i < a.Length && j < b.Length) {
+            int lo = Math.Max(a[i][0], b[j][0]);
+            int hi = Math.Min(a[i][1], b[j][1]);
+            if (lo <= hi) res.Add(new[] { lo, hi });     // they overlap
+            if (a[i][1] < b[j][1]) i++; else j++;        // drop the one that ends first
+        }
+        return res.ToArray();
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N + M)</b>, <b>space O(1)</b> besides the output.</p>`
     }
@@ -6083,6 +7190,19 @@ vector<int> countSmaller(const vector<int>& nums) {
         res.push_back(c);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> CountSmaller(int[] nums) {
+        var res = new List<int>();
+        for (int i = 0; i < nums.Length; i++) {
+            int c = 0;
+            for (int j = i + 1; j < nums.Length; j++) if (nums[j] < nums[i]) c++;
+            res.Add(c);
+        }
+        return res;
+    }
 }` }] }
     },
     mcq: {
@@ -6213,7 +7333,40 @@ public:
         sort(nums, 0, n - 1);
         return cnt;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    private int[] cnt, idx, tmp, a;
+
+    public IList<int> CountSmaller(int[] nums) {
+        int n = nums.Length;
+        a = nums; cnt = new int[n]; idx = new int[n]; tmp = new int[n];
+        for (int i = 0; i < n; i++) idx[i] = i;
+        Sort(0, n - 1);
+        return new List<int>(cnt);
+    }
+
+    private void Sort(int lo, int hi) {
+        if (lo >= hi) return;
+        int mid = lo + (hi - lo) / 2;
+        Sort(lo, mid);
+        Sort(mid + 1, hi);
+        int i = lo, j = mid + 1, k = lo;
+        while (i <= mid && j <= hi) {
+            if (a[idx[j]] < a[idx[i]]) {
+                tmp[k++] = idx[j++];                    // right is smaller -> goes first
+            } else {
+                cnt[idx[i]] += j - (mid + 1);           // right items already taken are smaller
+                tmp[k++] = idx[i++];
+            }
+        }
+        while (i <= mid) { cnt[idx[i]] += j - (mid + 1); tmp[k++] = idx[i++]; }
+        while (j <= hi) tmp[k++] = idx[j++];
+        Array.Copy(tmp, lo, idx, lo, hi - lo + 1);
+    }
+}` }
       ],
       dry: { head: ['merge', 'left (values)', 'right (values)', 'credits'], rows: [['(0,0,1)', '[5]', '[2]', '2 goes first; 5 gets +1'], ['(2,2,3)', '[6]', '[1]', '1 goes first; 6 gets +1'], ['(0,1,3)', '[2,5]', '[1,6]', '1 first; 2 gets +1, 5 gets +1; 6 last'], ['totals', '', '', '<span class="c-p">5:2, 2:1, 6:1, 1:0</span>']] },
       complexity: `<p><b>Time O(N log N)</b>, <b>space O(N)</b>. (A Fenwick tree over compressed values is the other classic solution — Range Query module.)</p>`
@@ -6258,6 +7411,15 @@ int reversePairs(const vector<int>& nums) {
         for (int j = i + 1; j < (int) nums.size(); j++)
             if ((long long) nums[i] > 2LL * nums[j]) c++;   // 2 * nums[j] would overflow an int
     return c;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int ReversePairs(int[] nums) {
+        int c = 0;
+        for (int i = 0; i < nums.Length; i++)
+            for (int j = i + 1; j < nums.Length; j++)
+                if ((long)nums[i] > 2L * nums[j]) c++;   // 2 * nums[j] would overflow an int
+        return c;
+    }
 }` }] }
     },
     mcq: {
@@ -6367,7 +7529,31 @@ public:
     int reversePairs(vector<int> nums) {
         return (int)sort(nums, 0, (int)nums.size() - 1);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int ReversePairs(int[] nums) {
+        return (int)Sort(nums, 0, nums.Length - 1, new int[nums.Length]);
+    }
+
+    private long Sort(int[] a, int lo, int hi, int[] tmp) {
+        if (lo >= hi) return 0;
+        int mid = lo + (hi - lo) / 2;
+        long c = Sort(a, lo, mid, tmp) + Sort(a, mid + 1, hi, tmp);
+        int j = mid + 1;
+        for (int i = lo; i <= mid; i++) {                  // both halves sorted -> j only moves right
+            while (j <= hi && (long)a[i] > 2L * a[j]) j++;
+            c += j - (mid + 1);
+        }
+        int i2 = lo, k = lo; j = mid + 1;                   // ordinary merge
+        while (i2 <= mid && j <= hi) tmp[k++] = a[i2] <= a[j] ? a[i2++] : a[j++];
+        while (i2 <= mid) tmp[k++] = a[i2++];
+        while (j <= hi) tmp[k++] = a[j++];
+        Array.Copy(tmp, lo, a, lo, hi - lo + 1);
+        return c;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N log N)</b> — the counting pass is linear per level. <b>Space O(N)</b>.</p>`
     }
@@ -6414,6 +7600,18 @@ int maximumGap(const vector<int>& nums) {
     int best = 0;
     for (int i = 1; i < (int) b.size(); i++) best = max(best, b[i] - b[i - 1]);
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaximumGap(int[] nums) {
+        if (nums.Length < 2) return 0;
+        int[] b = (int[])nums.Clone();
+        Array.Sort(b);
+        int best = 0;
+        for (int i = 1; i < b.Length; i++) best = Math.Max(best, b[i] - b[i - 1]);
+        return best;
+    }
 }` }] }
     },
     mcq: {
@@ -6504,7 +7702,27 @@ public:
         for (int i = 1; i < n; i++) best = max(best, a[i] - a[i - 1]);
         return (int)best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaximumGap(int[] nums) {
+        int n = nums.Length;
+        if (n < 2) return 0;
+        uint[] a = new uint[n], buf = new uint[n];             // unsigned: >> always fills with 0
+        for (int i = 0; i < n; i++) a[i] = (uint)nums[i];
+        for (int shift = 0; shift < 32; shift += 8) {
+            int[] cnt = new int[257];
+            foreach (uint x in a) cnt[((x >> shift) & 255) + 1]++;     // count digits (shifted by 1)
+            for (int d = 0; d < 256; d++) cnt[d + 1] += cnt[d];       // cnt[d] = first slot for digit d
+            foreach (uint x in a) buf[cnt[(x >> shift) & 255]++] = x; // left-to-right with start slots: stable
+            uint[] t = a; a = buf; buf = t;                           // swap roles
+        }
+        uint best = 0;
+        for (int i = 1; i < n; i++) best = Math.Max(best, a[i] - a[i - 1]);
+        return (int)best;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(4·(N + 256)) = O(N)</b>, <b>space O(N)</b>. (Stable here because each slot pointer starts at the digit's <b>first</b> position and items are placed left to right — the mirror image of the right-to-left version.)</p>`
     }
@@ -6602,6 +7820,31 @@ vector<vector<int>> employeeFreeTime(const vector<vector<vector<int>>>& schedule
         }
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int[]> EmployeeFreeTime(IList<IList<int[]>> schedule) {
+        int maxT = 0;
+        foreach (var emp in schedule) foreach (int[] iv in emp) maxT = Math.Max(maxT, iv[1]);
+        bool[] busy = new bool[maxT + 1];                     // one cell per time unit [t, t+1)
+        int minT = int.MaxValue;
+        foreach (var emp in schedule)
+            foreach (int[] iv in emp) {
+                minT = Math.Min(minT, iv[0]);
+                for (int t = iv[0]; t < iv[1]; t++) busy[t] = true;
+            }
+        var res = new List<int[]>();
+        for (int t = minT; t < maxT; t++) {
+            if (!busy[t]) {
+                int s = t;
+                while (t < maxT && !busy[t]) t++;
+                res.Add(new[] { s, t });
+            }
+        }
+        return res;
+    }
 }` }] }
     },
     mcq: {
@@ -6682,7 +7925,24 @@ public:
         }
         return free;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int[]> EmployeeFreeTime(IList<IList<int[]>> schedule) {
+        var all = new List<int[]>();
+        foreach (var emp in schedule) all.AddRange(emp);
+        all.Sort((x, y) => x[0].CompareTo(y[0]));              // by start
+        var free = new List<int[]>();
+        int end = all[0][1];
+        foreach (int[] cur in all) {
+            if (cur[0] > end) free.Add(new[] { end, cur[0] });   // a gap nobody covers
+            end = Math.Max(end, cur[1]);                          // extend the busy block
+        }
+        return free;
+    }
+}` }
       ],
       complexity: `<p><b>Time O(N log N)</b> for N total intervals (O(N log K) with a K-way heap merge). <b>Space O(N)</b>.</p>`
     }

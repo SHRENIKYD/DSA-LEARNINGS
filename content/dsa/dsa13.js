@@ -238,6 +238,59 @@ console.log(a[0] === b[0], a === b);          // true false: numbers by value, a
     if (!empty.empty()) empty.pop();             // top()/pop() on an empty stack is undefined behaviour
     cout << boolalpha << empty.empty() << "\\n";  // true
     return 0;
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class StackQueueDemo
+{
+    static void Main()
+    {
+        // ---------- STACK (LIFO) with Stack<T> ----------
+        var stack = new Stack<int>();
+        stack.Push(3);                       // stack: [3]          top = 3
+        stack.Push(5);                       // stack: [5, 3]       top = 5
+        stack.Push(8);                       // stack: [8, 5, 3]    top = 8
+        Console.WriteLine(stack.Peek());     // 8 -> look at the top, do NOT remove
+        Console.WriteLine(stack.Pop());      // 8 -> remove the top
+        Console.WriteLine(stack.Pop());      // 5
+        Console.WriteLine(stack.Count);      // 1 -> only 3 is left
+
+        // ---------- QUEUE (FIFO) with Queue<T> ----------
+        var queue = new Queue<int>();
+        queue.Enqueue(3);                    // queue: front [3] back
+        queue.Enqueue(5);                    // queue: front [3, 5] back
+        queue.Enqueue(8);                    // queue: front [3, 5, 8] back
+        Console.WriteLine(queue.Peek());     // 3 -> the oldest item (front)
+        Console.WriteLine(queue.Dequeue());  // 3 -> remove the front
+        Console.WriteLine(queue.Dequeue());  // 5
+
+        // ---------- DEQUE: work at BOTH ends (LinkedList<T> plays the role) ----------
+        var dq = new LinkedList<int>();
+        dq.AddLast(1);                       // [1]
+        dq.AddLast(2);                       // [1, 2]
+        dq.AddFirst(0);                      // [0, 1, 2]
+        Console.WriteLine(dq.First.Value);   // 0
+        Console.WriteLine(dq.Last.Value);    // 2
+        dq.RemoveLast();                     // [0, 1]
+        dq.RemoveFirst();                    // [1]
+
+        // ---------- Safe empty handling ----------
+        var empty = new Stack<int>();
+        int top;
+        Console.WriteLine(empty.TryPeek(out top));   // False (no exception)
+        Console.WriteLine(empty.TryPop(out top));    // False (no exception)
+        if (empty.Count > 0)                 // ALWAYS guard Pop()
+        {
+            empty.Pop();                     // Pop() on empty would throw InvalidOperationException
+        }
+
+        // ---------- Boxed comparison trap ----------
+        object a = 1000, b = 1000;           // two boxed ints
+        bool wrong = a == b;                 // reference comparison on object: False!
+        bool right = a.Equals(b);            // value comparison: True
+        int x = (int)a, y = (int)b;          // or unbox to int first
+        Console.WriteLine(wrong + " " + right + " " + (x == y));
+    }
 }` }] }, { lang: 'java', code: `
 import java.util.*;
 
@@ -286,6 +339,26 @@ console.log(middle, st[st.length - 1]);     // 1 2` }, { lang: 'cpp', code: `int
     st.push(2);
     cout << st.top() << "\\n";                   // 2
     return 0;
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class ListAsStackWarning
+{
+    static void Main()
+    {
+        // Works, but NOT recommended: a List<T> allows middle access and breaks the LIFO idea.
+        var old = new List<int>();
+        old.Add(1);
+        old.Add(2);
+        int middle = old[0];           // legal on a List -> breaks the LIFO idea
+        Console.WriteLine(middle + " " + old[old.Count - 1]);
+
+        // Recommended: Stack<T> only exposes Push / Pop / Peek.
+        var st = new Stack<int>();
+        st.Push(1);
+        st.Push(2);
+        Console.WriteLine(st.Peek()); // 2
+    }
 }` }] }],
     codeTitle: ['Stack, Queue and Deque with ArrayDeque', 'Legacy Stack vs ArrayDeque'],
     examples: [
@@ -325,6 +398,13 @@ console.log(middle, st[st.length - 1]);     // 1 2` }, { lang: 'cpp', code: `int
     string out;
     while (!st.empty()) { out += st.top(); st.pop(); }   // E, D, O, C
     return out;
+}` }, { lang: 'csharp', code: `string Reverse(string s)
+{
+    var st = new Stack<char>();
+    foreach (char c in s) st.Push(c);               // C, O, D, E -> E on top
+    var sb = new StringBuilder();
+    while (st.Count > 0) sb.Append(st.Pop());       // E, D, O, C
+    return sb.ToString();
 }` }] }
       },
       {
@@ -376,6 +456,21 @@ console.log(middle, st[st.length - 1]);     // 1 2` }, { lang: 'cpp', code: `int
         seen[u] = true;
         order.push_back(u);
         for (int v : adj[u]) if (!seen[v]) st.push_back(v);
+    }
+    return order;
+}` }, { lang: 'csharp', code: `List<int> DfsOrder(List<List<int>> adj, int start)
+{
+    var order = new List<int>();
+    var seen = new bool[adj.Count];
+    var st = new Stack<int>();
+    st.Push(start);
+    while (st.Count > 0)
+    {
+        int u = st.Pop();                       // LIFO -> goes deep first
+        if (seen[u]) continue;
+        seen[u] = true;
+        order.Add(u);
+        foreach (int v in adj[u]) if (!seen[v]) st.Push(v);
     }
     return order;
 }` }] }
@@ -622,7 +717,31 @@ public:
     }
 
     bool empty() { return q1.empty(); }
-};` }
+};` },
+            { lang: 'csharp', code: `class MyStackTwoQueues
+{
+    private Queue<int> q1 = new Queue<int>();
+    private Queue<int> q2 = new Queue<int>();
+
+    public void Push(int x) { q1.Enqueue(x); }          // O(1)
+
+    public int Pop()
+    {
+        while (q1.Count > 1) q2.Enqueue(q1.Dequeue());  // move all but the newest: O(N)
+        int last = q1.Dequeue();
+        var t = q1; q1 = q2; q2 = t;                     // swap roles
+        return last;
+    }
+
+    public int Top()
+    {
+        int x = Pop();                                   // O(N) again just to peek
+        Push(x);
+        return x;
+    }
+
+    public bool Empty() { return q1.Count == 0; }
+}` }
           ]
         }
       },
@@ -744,7 +863,25 @@ public:
     int pop() { int x = q.front(); q.pop(); return x; }   // front = newest = stack top
     int top() { return q.front(); }
     bool empty() { return q.empty(); }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class MyStack
+{
+    private readonly Queue<int> q = new Queue<int>();   // front of q = top of stack
+
+    public void Push(int x)
+    {
+        q.Enqueue(x);                                  // newest goes to the back...
+        for (int i = 0; i < q.Count - 1; i++)
+        {
+            q.Enqueue(q.Dequeue());                    // ...then every older item walks behind it
+        }
+    }
+
+    public int Pop() { return q.Dequeue(); }           // front = newest = stack top
+    public int Top() { return q.Peek(); }
+    public bool Empty() { return q.Count == 0; }
+}` }],
         complexity: `<p><b>push O(N)</b> (N - 1 rotations), <b>pop / top / empty O(1)</b>. Space O(N). Unlike the queue-from-two-stacks trick, these simple queue designs have <b>no</b> amortized O(1) version: with one or two queues some operation pays O(N) each time (nothing is "moved once and done"), you only choose which one.</p>`,
         followUps: ['Which version would you choose if the workload is 90% push?', 'How would you add getMin() in O(1) to this stack?', 'Why is queue-from-two-stacks amortized O(1) while this design is not? (Hint: does any element get moved only once?)']
       }
@@ -902,6 +1039,50 @@ int main() {
     cout << isValid("{[}]") << "\\n";                        // false
     cout << isValidSingleType("(()())") << "\\n";            // true
     cout << isValidSingleType("())(") << "\\n";              // false
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class Brackets
+{
+    // Map each closer to the opener it needs. Easy to extend with '<' '>' later.
+    static readonly Dictionary<char, char> PARTNER = new Dictionary<char, char> { { ')', '(' }, { ']', '[' }, { '}', '{' } };
+
+    static bool IsValid(string s)
+    {
+        var st = new Stack<char>();
+        foreach (char ch in s)
+        {
+            if (PARTNER.ContainsValue(ch))
+            {
+                st.Push(ch);                                   // opener: wait for a partner
+            }
+            else if (PARTNER.ContainsKey(ch))
+            {
+                if (st.Count == 0 || st.Pop() != PARTNER[ch]) return false;
+            }                                                  // any other char: ignore it
+        }
+        return st.Count == 0;
+    }
+
+    // Only '(' and ')': a counter replaces the stack -> O(1) extra space
+    static bool IsValidSingleType(string s)
+    {
+        int balance = 0;
+        foreach (char ch in s)
+        {
+            if (ch == '(') balance++;
+            else if (ch == ')' && --balance < 0) return false;   // closed more than opened
+        }
+        return balance == 0;
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(IsValid("a*(b+[c-d])"));      // True  (letters are ignored)
+        Console.WriteLine(IsValid("{[}]"));             // False
+        Console.WriteLine(IsValidSingleType("(()())")); // True
+        Console.WriteLine(IsValidSingleType("())("));   // False
+    }
 }` }] }, { lang: 'python', run: true, title: 'Same idea in Python (runnable)', code: `def is_valid(s):
     partner = {')': '(', ']': '[', '}': '{'}
     st = []
@@ -968,6 +1149,16 @@ for t in ["()[]{}", "([)]", "{[()()]}", "((", "))"]:
 }` }, { lang: 'cpp', code: `int minAddToMakeValid(const string& s) {
     int balance = 0, extraOpens = 0;
     for (char c : s) {
+        if (c == '(') balance++;
+        else if (balance > 0) balance--;   // this ) closes an earlier (
+        else extraOpens++;                 // unmatched ) -> must add a ( before it
+    }
+    return extraOpens + balance;           // plus a ) for every still-open (
+}` }, { lang: 'csharp', code: `int MinAddToMakeValid(string s)
+{
+    int balance = 0, extraOpens = 0;
+    foreach (char c in s)
+    {
         if (c == '(') balance++;
         else if (balance > 0) balance--;   // this ) closes an earlier (
         else extraOpens++;                 // unmatched ) -> must add a ( before it
@@ -1113,6 +1304,16 @@ bool isValid(string s) {
         s = eraseAll(eraseAll(eraseAll(s, "()"), "[]"), "{}");
     }
     return s.empty();                      // everything cancelled -> valid
+}` },
+            { lang: 'csharp', code: `bool IsValidBrute(string s)
+{
+    string prev = "";
+    while (s != prev)                      // repeat while the last pass changed something
+    {
+        prev = s;
+        s = s.Replace("()", "").Replace("[]", "").Replace("{}", "");
+    }
+    return s.Length == 0;                  // everything cancelled -> valid
 }` }
           ]
         }
@@ -1225,7 +1426,32 @@ public:
         }
         return st.empty();                       // leftovers were never closed
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public bool IsValid(string s)
+    {
+        if (s.Length % 2 == 1) return false;            // odd length can never pair up
+        var st = new Stack<char>();                     // openers waiting for a partner
+        foreach (char ch in s)
+        {
+            if (ch == '(' || ch == '[' || ch == '{')
+            {
+                st.Push(ch);                            // opener: wait on the stack
+            }
+            else
+            {
+                if (st.Count == 0) return false;        // closer but nothing is open
+                char top = st.Pop();                    // most recent unmatched opener
+                if (ch == ')' && top != '(') return false;
+                if (ch == ']' && top != '[') return false;
+                if (ch == '}' && top != '{') return false;
+            }
+        }
+        return st.Count == 0;                           // leftovers = never closed
+    }
+}` }],
         complexity: `<p><b>Time O(N)</b>: each character is looked at once and pushed/popped at most once. <b>Space O(N)</b>: in the worst case (all openers, like <code>((((</code>) every character sits on the stack.</p>`
       }
     }]
@@ -1362,6 +1588,40 @@ int main() {
     cout << s.getMin() << "\\n";   // 2 (the duplicate kept it alive)
     s.pop();
     cout << s.getMin() << "\\n";   // 5
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// Space-saving variant: a second stack that only stores "new record lows".
+class MinStackTwoStacks
+{
+    private readonly Stack<int> vals = new Stack<int>();
+    private readonly Stack<int> mins = new Stack<int>();   // top = current minimum
+
+    public void Push(int x)
+    {
+        vals.Push(x);
+        if (mins.Count == 0 || x <= mins.Peek()) mins.Push(x);  // <= keeps duplicate minimums
+    }
+
+    public void Pop()
+    {
+        int x = vals.Pop();
+        if (x == mins.Peek()) mins.Pop();                     // this value was the current minimum
+    }
+
+    public int Top() { return vals.Peek(); }
+    public int GetMin() { return mins.Peek(); }
+
+    static void Main()
+    {
+        var s = new MinStackTwoStacks();
+        s.Push(5); s.Push(2); s.Push(2); s.Push(9);
+        Console.WriteLine(s.GetMin()); // 2
+        s.Pop(); s.Pop();              // removes 9, then one of the 2s
+        Console.WriteLine(s.GetMin()); // 2 (the duplicate kept it alive)
+        s.Pop();
+        Console.WriteLine(s.GetMin()); // 5
+    }
 }` }] }, { lang: 'java', code: `
 import java.util.*;
 
@@ -1497,6 +1757,47 @@ int main() {
     cout << s.getMin() << " " << s.top() << "\\n";   // 3 7
     s.pop(); s.pop();
     cout << s.getMin() << " " << s.top() << "\\n";   // 5 5
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// O(1) extra space trick: store an "encoded" value when a new minimum arrives.
+class MinStackEncoded
+{
+    private readonly Stack<long> st = new Stack<long>();   // long: 2x - min overflows int near +-2^31
+    private long min;
+
+    public void Push(int x)
+    {
+        if (st.Count == 0) { st.Push(x); min = x; return; }
+        if (x >= min) { st.Push(x); return; }
+        st.Push(2L * x - min);   // encoded value is < x, which flags "min changed here"
+        min = x;
+    }
+
+    public void Pop()
+    {
+        long t = st.Pop();
+        if (t < min) min = 2 * min - t;   // decode: recover the previous minimum
+    }
+
+    public int Top()
+    {
+        long t = st.Peek();
+        return (int)(t < min ? min : t);  // a flagged entry means the real value is min
+    }
+
+    public int GetMin() { return (int)min; }
+
+    static void Main()
+    {
+        var s = new MinStackEncoded();
+        s.Push(5); s.Push(3); s.Push(7); s.Push(1);
+        Console.WriteLine(s.GetMin() + " " + s.Top());  // 1 1
+        s.Pop();
+        Console.WriteLine(s.GetMin() + " " + s.Top());  // 3 7
+        s.Pop(); s.Pop();
+        Console.WriteLine(s.GetMin() + " " + s.Top());  // 5 5
+    }
 }` }] }],
     codeTitle: ['Two-stack variant (stores only record lows)', 'Encoded O(1)-extra-space variant (uses long)'],
     examples: [
@@ -1651,7 +1952,20 @@ public:
         for (int x : st) mn = min(mn, x);   // scans the whole stack every time: O(N)
         return mn;
     }
-};` }
+};` },
+            { lang: 'csharp', code: `class MinStackBrute
+{
+    private readonly Stack<int> st = new Stack<int>();
+    public void Push(int val) { st.Push(val); }
+    public void Pop() { st.Pop(); }
+    public int Top() { return st.Peek(); }
+    public int GetMin()
+    {
+        int min = int.MaxValue;
+        foreach (int x in st) min = Math.Min(min, x);   // scans the whole stack every time: O(N)
+        return min;
+    }
+}` }
           ]
         }
       },
@@ -1762,7 +2076,35 @@ public:
     void pop() { st.pop_back(); }           // the entry below already knows its minimum
     int top() { return st.back().first; }
     int getMin() { return st.back().second; }   // min saved at push time -> O(1)
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class MinStack
+{
+    // each entry: [0] = the value, [1] = minimum of this entry and everything below it
+    private readonly Stack<int[]> st = new Stack<int[]>();
+
+    public void Push(int val)
+    {
+        int minBelow = st.Count == 0 ? val : st.Peek()[1];   // min of the stack before this push
+        st.Push(new[] { val, Math.Min(val, minBelow) });    // remember the new minimum with the value
+    }
+
+    public void Pop()
+    {
+        st.Pop();               // the entry below already knows its own minimum
+    }
+
+    public int Top()
+    {
+        return st.Peek()[0];    // value on top
+    }
+
+    public int GetMin()
+    {
+        return st.Peek()[1];    // min saved at push time -> O(1)
+    }
+}` }],
         complexity: `<p><b>Time O(1)</b> for every operation: each one touches only the top entry. <b>Space O(N)</b>: two ints per element instead of one (still linear).</p>`
       }
     }]
@@ -2007,6 +2349,85 @@ long long evalPostfix(const vector<string>& tokens) {
 int main() {
     cout << infixToPostfix("a+b*(c-d)") << "\\n";                                 // abcd-*+
     cout << evalPostfix({"3", "4", "2", "*", "+", "5", "-"}) << "\\n";            // 6
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Text;
+
+class ExpressionBasics
+{
+    // precedence: bigger number = do it earlier
+    static int Prec(char op)
+    {
+        if (op == '+' || op == '-') return 1;
+        if (op == '*' || op == '/') return 2;
+        if (op == '^') return 3;
+        return -1;                                     // '(' is never popped by an operator
+    }
+
+    // "a+b*(c-d)" -> "abcd-*+"   (operands are single letters or digits)
+    static string InfixToPostfix(string s)
+    {
+        var result = new StringBuilder();
+        var ops = new Stack<char>();
+        foreach (char ch in s)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                result.Append(ch);                     // operands go straight to the output
+            }
+            else if (ch == '(')
+            {
+                ops.Push(ch);
+            }
+            else if (ch == ')')
+            {
+                while (ops.Count > 0 && ops.Peek() != '(') result.Append(ops.Pop());
+                ops.Pop();                             // discard the '('
+            }
+            else
+            {
+                // pop operators that must run BEFORE ch
+                while (ops.Count > 0 && ops.Peek() != '('
+                        && (Prec(ops.Peek()) > Prec(ch)
+                            || (Prec(ops.Peek()) == Prec(ch) && ch != '^')))   // '^' is right-associative
+                {
+                    result.Append(ops.Pop());
+                }
+                ops.Push(ch);
+            }
+        }
+        while (ops.Count > 0) result.Append(ops.Pop());  // flush remaining operators
+        return result.ToString();
+    }
+
+    // tokens like {"3","4","2","*","+"} -> 11
+    static long EvalPostfix(string[] tokens)
+    {
+        var st = new Stack<long>();
+        foreach (string t in tokens)
+        {
+            if (t == "+" || t == "-" || t == "*" || t == "/")
+            {
+                long b = st.Pop();                     // FIRST pop = RIGHT operand
+                long a = st.Pop();                     // second pop = left operand
+                if (t == "+") st.Push(a + b);
+                else if (t == "-") st.Push(a - b);
+                else if (t == "*") st.Push(a * b);
+                else st.Push(a / b);                   // truncates toward zero
+            }
+            else
+            {
+                st.Push(long.Parse(t));                // a number (may be negative like "-7")
+            }
+        }
+        return st.Pop();
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(InfixToPostfix("a+b*(c-d)"));                 // abcd-*+
+        Console.WriteLine(EvalPostfix("3 4 2 * + 5 -".Split(' ')));     // 6
+    }
 }` }] },
     codeTitle: 'Infix → postfix and postfix evaluation',
     examples: [
@@ -2085,6 +2506,26 @@ int main() {
         } else st.push_back(stoll(s));
     }
     return st.back();
+}` }, { lang: 'csharp', code: `long EvalPrefix(string[] t)
+{
+    var st = new Stack<long>();
+    for (int i = t.Length - 1; i >= 0; i--)           // scan right to left
+    {
+        string s = t[i];
+        if (s.Length == 1 && "+-*/".IndexOf(s[0]) >= 0)
+        {
+            long a = st.Pop(), b = st.Pop();     // right-to-left: first pop is the LEFT operand
+            switch (s[0])
+            {
+                case '+': st.Push(a + b); break;
+                case '-': st.Push(a - b); break;
+                case '*': st.Push(a * b); break;
+                default: st.Push(a / b); break;
+            }
+        }
+        else st.Push(long.Parse(s));
+    }
+    return st.Pop();
 }` }] }
       }
     ],
@@ -2283,6 +2724,26 @@ int evalRPNBrute(String[] tokens) {
         }
     }
     return stoi(list[0]);
+}` },
+            { lang: 'csharp', code: `int EvalRPNBrute(string[] tokens)
+{
+    var list = new List<string>(tokens);
+    while (list.Count > 1)
+    {
+        for (int i = 2; i < list.Count; i++)
+        {
+            string op = list[i];
+            if (op == "+" || op == "-" || op == "*" || op == "/")
+            {
+                int a = int.Parse(list[i - 2]), b = int.Parse(list[i - 1]);
+                int r = op == "+" ? a + b : op == "-" ? a - b : op == "*" ? a * b : a / b;
+                list.RemoveRange(i - 2, 3);                   // remove "a b op" (O(N) shift)
+                list.Insert(i - 2, r.ToString());             // put the result back
+                break;                                        // rescan from the start
+            }
+        }
+    }
+    return int.Parse(list[0]);
 }` }
           ]
         }
@@ -2370,7 +2831,27 @@ public:
         }
         return (int)st.back();
     }
-};` }, { lang: 'python', code: `def eval_rpn(tokens):
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int EvalRPN(string[] tokens)
+    {
+        var st = new Stack<int>();
+        foreach (string t in tokens)
+        {
+            switch (t)
+            {
+                case "+": st.Push(st.Pop() + st.Pop()); break;          // order does not matter
+                case "*": st.Push(st.Pop() * st.Pop()); break;
+                case "-": { int b = st.Pop(), a = st.Pop(); st.Push(a - b); break; }   // order matters!
+                case "/": { int b = st.Pop(), a = st.Pop(); st.Push(a / b); break; }   // truncates toward 0
+                default: st.Push(int.Parse(t)); break;                  // handles "-11" too
+            }
+        }
+        return st.Pop();
+    }
+}` }, { lang: 'python', code: `def eval_rpn(tokens):
     st = []
     for t in tokens:
         if t in ('+', '-', '*', '/'):
@@ -2588,6 +3069,61 @@ int main() {
     print(nextGreater(a));                   // 5 10 10 -1 -1
     print(prevSmallerIndex(a));              // -1 0 -1 2 2
     print(nextGreaterCircular({1, 2, 1}));   // 2 -1 2
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class MonotonicFamily
+{
+    // Next Greater to the right (value), -1 if none. Stack: indices, values decreasing.
+    static int[] NextGreater(int[] a)
+    {
+        int n = a.Length; int[] res = new int[n]; for (int i = 0; i < n; i++) res[i] = -1;
+        var st = new Stack<int>();
+        for (int i = 0; i < n; i++)
+        {
+            while (st.Count > 0 && a[st.Peek()] < a[i]) res[st.Pop()] = a[i];
+            st.Push(i);
+        }
+        return res;
+    }
+
+    // Previous Smaller to the left (index), -1 if none. Stack: indices, values increasing.
+    static int[] PrevSmallerIndex(int[] a)
+    {
+        int n = a.Length; int[] res = new int[n];
+        var st = new Stack<int>();
+        for (int i = 0; i < n; i++)
+        {
+            while (st.Count > 0 && a[st.Peek()] >= a[i]) st.Pop();   // not strictly smaller -> useless
+            res[i] = st.Count == 0 ? -1 : st.Peek();
+            st.Push(i);
+        }
+        return res;
+    }
+
+    // Next Greater in a CIRCULAR array: walk the array twice, push only on the first lap.
+    static int[] NextGreaterCircular(int[] a)
+    {
+        int n = a.Length; int[] res = new int[n]; for (int i = 0; i < n; i++) res[i] = -1;
+        var st = new Stack<int>();
+        for (int i = 0; i < 2 * n; i++)
+        {
+            int x = a[i % n];
+            while (st.Count > 0 && a[st.Peek()] < x) res[st.Pop()] = x;
+            if (i < n) st.Push(i);
+        }
+        return res;
+    }
+
+    static string Show(int[] a) => "[" + string.Join(", ", a) + "]";
+
+    static void Main()
+    {
+        int[] a = { 4, 5, 2, 10, 8 };
+        Console.WriteLine(Show(NextGreater(a)));                         // [5, 10, 10, -1, -1]
+        Console.WriteLine(Show(PrevSmallerIndex(a)));                    // [-1, 0, -1, 2, 2]
+        Console.WriteLine(Show(NextGreaterCircular(new[] { 1, 2, 1 })));  // [2, -1, 2]
+    }
 }` }] }, { lang: 'python', run: true, title: 'Daily Temperatures in Python (runnable)', code: `def daily_temperatures(t):
     ans = [0] * len(t)
     st = []                                  # indices of days still waiting, temps decreasing
@@ -2733,6 +3269,20 @@ int[] nextGreaterBrute(int[] a) {
         }
     }
     return ans;
+}` },
+            { lang: 'csharp', code: `int[] NextGreaterBrute(int[] a)
+{
+    int n = a.Length;
+    int[] ans = new int[n];
+    for (int i = 0; i < n; i++)
+    {
+        ans[i] = -1;
+        for (int j = i + 1; j < n; j++)
+        {
+            if (a[j] > a[i]) { ans[i] = a[j]; break; }   // first bigger one to the right
+        }
+    }
+    return ans;
 }` }
           ]
         }
@@ -2829,7 +3379,28 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] NextGreater(int[] a)
+    {
+        int n = a.Length;
+        int[] ans = new int[n];
+        for (int i = 0; i < n; i++) ans[i] = -1;      // default: no greater element
+        var st = new Stack<int>();                    // indices waiting, values decreasing
+        for (int i = 0; i < n; i++)
+        {
+            // a[i] answers every waiting element that is smaller than it
+            while (st.Count > 0 && a[st.Peek()] < a[i])
+            {
+                ans[st.Pop()] = a[i];
+            }
+            st.Push(i);                               // now a[i] waits for its own answer
+        }
+        return ans;                                   // indices left in the stack keep -1
+    }
+}` }],
         complexity: `<p><b>Time O(N)</b>: every index is pushed once and popped at most once, so the inner while runs at most N times <i>in total</i> (≈ 2N operations). <b>Space O(N)</b>: the stack (e.g. a fully decreasing array keeps everyone waiting) plus the answer array.</p>`
       }
     }]
@@ -3003,6 +3574,31 @@ int main() {
     StockSpanner s;
     for (int p : {100, 80, 60, 70, 60, 75, 85}) cout << s.next(p) << " ";   // 1 1 1 2 1 4 6
     cout << "\\n";
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class StockSpanner
+{
+    private readonly Stack<int[]> st = new Stack<int[]>();   // {price, span}, prices strictly decreasing
+
+    public int Next(int price)
+    {
+        int span = 1;                                      // today counts
+        while (st.Count > 0 && st.Peek()[0] <= price)
+        {
+            span += st.Pop()[1];                           // absorb the days that day already covered
+        }
+        st.Push(new[] { price, span });
+        return span;
+    }
+
+    static void Main()
+    {
+        var s = new StockSpanner();
+        int[] prices = { 100, 80, 60, 70, 60, 75, 85 };
+        foreach (int p in prices) Console.Write(s.Next(p) + " ");   // 1 1 1 2 1 4 6
+        Console.WriteLine();
+    }
 }` }] },
     codeTitle: 'Online StockSpanner (LeetCode 901)',
     problems: [{
@@ -3052,6 +3648,18 @@ int[] spanBrute(int[] price) {
     int n = price.size();
     vector<int> span(n);
     for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j >= 0 && price[j] <= price[i]) j--;   // walk left until a taller price
+        span[i] = i - j;
+    }
+    return span;
+}` },
+            { lang: 'csharp', code: `int[] SpanBrute(int[] price)
+{
+    int n = price.Length;
+    int[] span = new int[n];
+    for (int i = 0; i < n; i++)
+    {
         int j = i;
         while (j >= 0 && price[j] <= price[i]) j--;   // walk left until a taller price
         span[i] = i - j;
@@ -3154,7 +3762,29 @@ public:
         }
         return span;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] CalculateSpan(int[] price)
+    {
+        int n = price.Length;
+        int[] span = new int[n];
+        var st = new Stack<int>();                     // indices, prices strictly decreasing
+        for (int i = 0; i < n; i++)
+        {
+            // days with price <= today are inside today's span and can never block a later day
+            while (st.Count > 0 && price[st.Peek()] <= price[i])
+            {
+                st.Pop();
+            }
+            int prevGreater = st.Count == 0 ? -1 : st.Peek();   // first taller day on the left
+            span[i] = i - prevGreater;
+            st.Push(i);
+        }
+        return span;
+    }
+}` }],
         complexity: `<p><b>Time O(N)</b>: each day is pushed once and popped at most once, so all the while-loops together do at most N pops. <b>Space O(N)</b> for the stack (a strictly decreasing price list keeps every day on it).</p>`
       }
     }]
@@ -3284,6 +3914,43 @@ long long largestRectangle(const vector<int>& h) {
 int main() {
     cout << largestRectangle({2, 1, 5, 6, 2, 3}) << "\\n";   // 10
     cout << largestRectangle({2, 4}) << "\\n";               // 4
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class HistogramTwoPass
+{
+    // Easier to explain version: compute both boundaries explicitly, then one formula.
+    static long LargestRectangle(int[] h)
+    {
+        int n = h.Length;
+        int[] left = new int[n], right = new int[n];
+        var st = new Stack<int>();
+        for (int i = 0; i < n; i++)                       // previous strictly smaller
+        {
+            while (st.Count > 0 && h[st.Peek()] >= h[i]) st.Pop();
+            left[i] = st.Count == 0 ? -1 : st.Peek();
+            st.Push(i);
+        }
+        st.Clear();
+        for (int i = n - 1; i >= 0; i--)                  // next strictly smaller
+        {
+            while (st.Count > 0 && h[st.Peek()] >= h[i]) st.Pop();
+            right[i] = st.Count == 0 ? n : st.Peek();
+            st.Push(i);
+        }
+        long best = 0;
+        for (int i = 0; i < n; i++)
+        {
+            best = Math.Max(best, (long)h[i] * (right[i] - left[i] - 1));   // long: no overflow
+        }
+        return best;
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(LargestRectangle(new[] { 2, 1, 5, 6, 2, 3 }));   // 10
+        Console.WriteLine(LargestRectangle(new[] { 2, 4 }));               // 4
+    }
 }` }] },
     codeTitle: 'Two-pass version (left/right smaller arrays)',
     examples: [
@@ -3421,6 +4088,18 @@ int largestRectangleBrute(int[] h) {
         best = max(best, h[i] * (r - l + 1));
     }
     return best;
+}` },
+            { lang: 'csharp', code: `int LargestRectangleBrute(int[] h)
+{
+    int n = h.Length, best = 0;
+    for (int i = 0; i < n; i++)
+    {
+        int l = i, r = i;
+        while (l - 1 >= 0 && h[l - 1] >= h[i]) l--;   // stretch left
+        while (r + 1 < n && h[r + 1] >= h[i]) r++;    // stretch right
+        best = Math.Max(best, h[i] * (r - l + 1));
+    }
+    return best;
 }` }
           ]
         }
@@ -3529,7 +4208,30 @@ public:
         }
         return (int)best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int LargestRectangleArea(int[] heights)
+    {
+        int n = heights.Length, best = 0;
+        var st = new Stack<int>();                         // indices, heights increasing
+        for (int i = 0; i <= n; i++)
+        {
+            int cur = (i == n) ? 0 : heights[i];           // height-0 sentinel flushes the stack
+            while (st.Count > 0 && heights[st.Peek()] >= cur)
+            {
+                int top = st.Pop();                        // this bar cannot stretch past i
+                int left = st.Count == 0 ? -1 : st.Peek(); // nearest smaller bar on the left
+                int width = i - left - 1;                  // bars strictly between the two walls
+                best = Math.Max(best, heights[top] * width);
+            }
+            st.Push(i);
+        }
+        return best;
+    }
+}` }],
         complexity: `<p><b>Time O(N)</b>: each index is pushed once and popped once; every pop does O(1) work. <b>Space O(N)</b> for the stack (an increasing histogram keeps every bar on it until the end).</p>`
       }
     }]
@@ -3696,6 +4398,50 @@ int main() {
     cout << q.getMin() << "\\n";   // 7
     q.offer(1);
     cout << q.getMin() << "\\n";   // 1
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// Queue with O(1) amortized GetMin: two stacks where every entry stores {value, minSoFar}.
+class MinQueue
+{
+    private readonly Stack<int[]> inSt = new Stack<int[]>();
+    private readonly Stack<int[]> outSt = new Stack<int[]>();
+
+    private static void PushWithMin(Stack<int[]> st, int x)
+    {
+        int m = st.Count == 0 ? x : Math.Min(x, st.Peek()[1]);
+        st.Push(new[] { x, m });
+    }
+
+    public void Offer(int x) { PushWithMin(inSt, x); }
+
+    public int Poll()
+    {
+        if (outSt.Count == 0)
+        {
+            while (inSt.Count > 0) PushWithMin(outSt, inSt.Pop()[0]);   // re-compute mins while moving
+        }
+        return outSt.Pop()[0];
+    }
+
+    public int GetMin()
+    {
+        if (inSt.Count == 0) return outSt.Peek()[1];
+        if (outSt.Count == 0) return inSt.Peek()[1];
+        return Math.Min(inSt.Peek()[1], outSt.Peek()[1]);              // min of both halves
+    }
+
+    static void Main()
+    {
+        var q = new MinQueue();
+        q.Offer(4); q.Offer(2); q.Offer(7);
+        Console.WriteLine(q.GetMin()); // 2
+        q.Poll();                      // removes 4
+        q.Poll();                      // removes 2
+        Console.WriteLine(q.GetMin()); // 7
+        q.Offer(1);
+        Console.WriteLine(q.GetMin()); // 1
+    }
 }` }] },
     codeTitle: 'Bonus: Min Queue = two Min Stacks',
     examples: [
@@ -3885,7 +4631,32 @@ public:
     }
 
     bool empty() { return main.empty(); }
-};` }
+};` },
+            { lang: 'csharp', code: `class MyQueueSlow
+{
+    private readonly Stack<int> main = new Stack<int>();
+    private readonly Stack<int> help = new Stack<int>();
+
+    public void Push(int x) { main.Push(x); }
+
+    public int Pop()
+    {
+        while (main.Count > 0) help.Push(main.Pop());   // reverse: front is now on top
+        int front = help.Pop();
+        while (help.Count > 0) main.Push(help.Pop());   // move everything back: wasted work
+        return front;
+    }
+
+    public int Peek()
+    {
+        while (main.Count > 0) help.Push(main.Pop());
+        int front = help.Peek();
+        while (help.Count > 0) main.Push(help.Pop());
+        return front;
+    }
+
+    public bool Empty() { return main.Count == 0; }
+}` }
           ]
         }
       },
@@ -4019,7 +4790,44 @@ public:
     int pop() { shiftIfNeeded(); int x = out.top(); out.pop(); return x; }
     int peek() { shiftIfNeeded(); return out.top(); }
     bool empty() { return in.empty() && out.empty(); }   // items may hide in either stack
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class MyQueue
+{
+    private readonly Stack<int> inSt = new Stack<int>();    // newest on top
+    private readonly Stack<int> outSt = new Stack<int>();   // oldest on top
+
+    public void Push(int x)
+    {
+        inSt.Push(x);                       // O(1): new items always go to "in"
+    }
+
+    // Refill "out" only when it is empty. Pouring reverses the order -> oldest ends on top.
+    private void ShiftIfNeeded()
+    {
+        if (outSt.Count == 0)
+        {
+            while (inSt.Count > 0) outSt.Push(inSt.Pop());
+        }
+    }
+
+    public int Pop()
+    {
+        ShiftIfNeeded();
+        return outSt.Pop();                 // front of the queue
+    }
+
+    public int Peek()
+    {
+        ShiftIfNeeded();
+        return outSt.Peek();
+    }
+
+    public bool Empty()
+    {
+        return inSt.Count == 0 && outSt.Count == 0;   // items may hide in either stack
+    }
+}` }],
         complexity: `<p><b>push O(1)</b>. <b>pop/peek amortized O(1)</b>: a single call can move many items, but each item is moved from <code>in</code> to <code>out</code> <b>at most once</b> in its life, so N operations do at most ~4N stack steps. <b>Space O(N)</b> for the items.</p>`
       }
     }]
@@ -4208,6 +5016,55 @@ int main() {
     cout << longestSubarray({10, 1, 2, 4, 7, 2}, 5) << "\\n";    // 4
     for (int x : windowMin({4, 2, 12, 3, 8, 1}, 3)) cout << x << " ";   // 2 2 3 1
     cout << "\\n";
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class DequeWindows
+{
+    // Longest subarray where (max - min) <= limit: one decreasing deque for max, one increasing for min.
+    // LinkedList<int> plays the deque: AddLast / RemoveLast / RemoveFirst are all O(1).
+    static int LongestSubarray(int[] a, int limit)
+    {
+        var maxD = new LinkedList<int>(); var minD = new LinkedList<int>();
+        int left = 0, best = 0;
+        for (int right = 0; right < a.Length; right++)
+        {
+            while (maxD.Count > 0 && a[maxD.Last.Value] < a[right]) maxD.RemoveLast();
+            while (minD.Count > 0 && a[minD.Last.Value] > a[right]) minD.RemoveLast();
+            maxD.AddLast(right);
+            minD.AddLast(right);
+            while (a[maxD.First.Value] - a[minD.First.Value] > limit)   // window invalid -> shrink
+            {
+                left++;
+                if (maxD.First.Value < left) maxD.RemoveFirst();
+                if (minD.First.Value < left) minD.RemoveFirst();
+            }
+            best = Math.Max(best, right - left + 1);
+        }
+        return best;
+    }
+
+    // Sliding window MINIMUM: same as maximum with the comparison flipped.
+    static int[] WindowMin(int[] a, int k)
+    {
+        int[] res = new int[a.Length - k + 1];
+        var dq = new LinkedList<int>();                          // values increasing front -> back
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (dq.Count > 0 && dq.First.Value <= i - k) dq.RemoveFirst();
+            while (dq.Count > 0 && a[dq.Last.Value] >= a[i]) dq.RemoveLast();
+            dq.AddLast(i);
+            if (i >= k - 1) res[i - k + 1] = a[dq.First.Value];
+        }
+        return res;
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(LongestSubarray(new[] { 8, 2, 4, 7 }, 4));                 // 2
+        Console.WriteLine(LongestSubarray(new[] { 10, 1, 2, 4, 7, 2 }, 5));          // 4
+        Console.WriteLine("[" + string.Join(", ", WindowMin(new[] { 4, 2, 12, 3, 8, 1 }, 3)) + "]");  // [2, 2, 3, 1]
+    }
 }` }] }, { lang: 'python', run: true, title: 'Sliding window maximum in Python (runnable)', code: `from collections import deque
 
 def max_sliding_window(nums, k):
@@ -4356,6 +5213,18 @@ int[] maxSlidingWindowBrute(int[] nums, int k) {
         res[start] = best;
     }
     return res;
+}` },
+            { lang: 'csharp', code: `int[] MaxSlidingWindowBrute(int[] nums, int k)
+{
+    int n = nums.Length;
+    int[] res = new int[n - k + 1];
+    for (int start = 0; start + k <= n; start++)
+    {
+        int best = int.MinValue;
+        for (int j = start; j < start + k; j++) best = Math.Max(best, nums[j]);   // rescan whole window
+        res[start] = best;
+    }
+    return res;
 }` }
           ]
         }
@@ -4468,7 +5337,29 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] MaxSlidingWindow(int[] nums, int k)
+    {
+        int n = nums.Length;
+        int[] res = new int[n - k + 1];
+        var dq = new LinkedList<int>();                   // indices, values decreasing front -> back
+        for (int i = 0; i < n; i++)
+        {
+            // 1) the front index fell out of the window [i-k+1 .. i]
+            if (dq.Count > 0 && dq.First.Value <= i - k) dq.RemoveFirst();
+            // 2) smaller-or-equal values at the back can never be a max again
+            while (dq.Count > 0 && nums[dq.Last.Value] <= nums[i]) dq.RemoveLast();
+            // 3) the newcomer joins at the back
+            dq.AddLast(i);
+            // 4) once the first window is complete, the front holds the max
+            if (i >= k - 1) res[i - k + 1] = nums[dq.First.Value];
+        }
+        return res;
+    }
+}` }],
         complexity: `<p><b>Time O(N)</b>: each index is offered once and polled at most once (front or back) → at most 2N deque operations. <b>Space O(k)</b>: the deque only holds indices inside the current window (plus the O(N - k + 1) output).</p>`
       }
     }]
@@ -4537,6 +5428,21 @@ function apply(s) {
 
 bool backspaceCompare(const string& s, const string& t) {
     return apply(s) == apply(t);
+}` },
+            { lang: 'csharp', code: `bool BackspaceCompareBrute(string s, string t)
+{
+    return Apply(s) == Apply(t);
+}
+
+string Apply(string s)
+{
+    while (s.Contains("#"))
+    {
+        int i = s.IndexOf('#');
+        // remove the '#' and the character before it (if any)
+        s = (i > 0 ? s.Substring(0, i - 1) : "") + s.Substring(i + 1);
+    }
+    return s;
 }` }
           ]
         }
@@ -4612,7 +5518,26 @@ class Solution {
     }
 public:
     bool backspaceCompare(const string& s, const string& t) { return typed(s) == typed(t); }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Text;
+
+public class Solution
+{
+    private string Type(string s)
+    {
+        var st = new StringBuilder();                    // used as a stack of characters
+        foreach (char c in s)
+        {
+            if (c != '#') st.Append(c);                  // type a character = push
+            else if (st.Length > 0) st.Length--;         // backspace = pop
+        }
+        return st.ToString();
+    }
+
+    public bool BackspaceCompare(string s, string t)
+    {
+        return Type(s) == Type(t);
+    }
+}` }],
       complexity: `<p><b>Time O(N + M)</b>, <b>space O(N + M)</b> for the two builders. The two-pointer-from-the-end version keeps O(N + M) time with O(1) space.</p>`,
       followUps: ['Do it in O(1) extra space.', 'What if the editor also supports an "undo" command?']
     }
@@ -4683,6 +5608,24 @@ String removeDuplicatesBrute(String s) {
         }
     }
     return s;
+}` },
+            { lang: 'csharp', code: `string RemoveDuplicatesBrute(string s)
+{
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (int i = 0; i + 1 < s.Length; i++)
+        {
+            if (s[i] == s[i + 1])
+            {
+                s = s.Substring(0, i) + s.Substring(i + 2);   // cut the pair, rebuild: O(N)
+                changed = true;
+                break;                                        // rescan from the start
+            }
+        }
+    }
+    return s;
 }` }
           ]
         }
@@ -4749,7 +5692,22 @@ public:
         }
         return st;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Text;
+
+public class Solution
+{
+    public string RemoveDuplicates(string s)
+    {
+        var st = new StringBuilder();
+        foreach (char c in s)
+        {
+            int n = st.Length;
+            if (n > 0 && st[n - 1] == c) st.Length--;   // pair cancels
+            else st.Append(c);                          // survives for now
+        }
+        return st.ToString();
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>: each letter is pushed once and popped at most once. <b>Space O(N)</b> for the builder.</p>`,
       followUps: ['Remove groups of K equal adjacent letters (LeetCode 1209): store (char, count) pairs.']
     }
@@ -4814,6 +5772,21 @@ int[] nextGreaterElementBrute(int[] nums1, int[] nums2) {
         size_t pos = 0;
         while (nums2[pos] != nums1[q]) pos++;                 // find it
         for (size_t j = pos + 1; j < nums2.size(); j++) {
+            if (nums2[j] > nums1[q]) { res[q] = nums2[j]; break; }
+        }
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `int[] NextGreaterElementBrute(int[] nums1, int[] nums2)
+{
+    int[] res = new int[nums1.Length];
+    for (int q = 0; q < nums1.Length; q++)
+    {
+        res[q] = -1;
+        int pos = 0;
+        while (nums2[pos] != nums1[q]) pos++;                 // find it
+        for (int j = pos + 1; j < nums2.Length; j++)
+        {
             if (nums2[j] > nums1[q]) { res[q] = nums2[j]; break; }
         }
     }
@@ -4891,7 +5864,24 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] NextGreaterElement(int[] nums1, int[] nums2)
+    {
+        var next = new Dictionary<int, int>();           // value -> its next greater value in nums2
+        var st = new Stack<int>();                       // values, decreasing bottom -> top
+        foreach (int x in nums2)
+        {
+            while (st.Count > 0 && st.Peek() < x) next[st.Pop()] = x;
+            st.Push(x);
+        }
+        int[] res = new int[nums1.Length];
+        for (int i = 0; i < nums1.Length; i++) { int v; res[i] = next.TryGetValue(nums1[i], out v) ? v : -1; }
+        return res;
+    }
+}` }],
       complexity: `<p><b>Time O(N + M)</b>: one monotonic pass over nums2 plus O(1) lookups. <b>Space O(N)</b> for the map and stack.</p>`,
       followUps: ['What if values are not distinct? (Map by index instead.)']
     }
@@ -4948,6 +5938,19 @@ int[] dailyTemperaturesBrute(int[] t) {
     vector<int> ans(n, 0);
     for (int i = 0; i < n; i++) {
         for (int j = i + 1; j < n; j++) {
+            if (t[j] > t[i]) { ans[i] = j - i; break; }
+        }
+    }
+    return ans;
+}` },
+            { lang: 'csharp', code: `int[] DailyTemperaturesBrute(int[] t)
+{
+    int n = t.Length;
+    int[] ans = new int[n];
+    for (int i = 0; i < n; i++)
+    {
+        for (int j = i + 1; j < n; j++)
+        {
             if (t[j] > t[i]) { ans[i] = j - i; break; }
         }
     }
@@ -5034,7 +6037,26 @@ public:
         }
         return ans;                            // remaining days keep 0
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int[] DailyTemperatures(int[] t)
+    {
+        int n = t.Length;
+        int[] ans = new int[n];
+        int[] st = new int[n];                 // int[] stack: faster than Stack<int>
+        int top = 0;
+        for (int i = 0; i < n; i++)
+        {
+            while (top > 0 && t[st[top - 1]] < t[i])
+            {
+                int j = st[--top];             // day j finally sees a warmer day
+                ans[j] = i - j;
+            }
+            st[top++] = i;
+        }
+        return ans;                            // remaining days keep 0
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b> (each index pushed and popped once), <b>space O(N)</b>.</p>`
     }
   });
@@ -5088,6 +6110,20 @@ int[] nextGreaterCircularBrute(int[] a) {
     vector<int> res(n, -1);
     for (int i = 0; i < n; i++) {
         for (int d = 1; d < n; d++) {
+            if (a[(i + d) % n] > a[i]) { res[i] = a[(i + d) % n]; break; }
+        }
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `int[] NextGreaterCircularBrute(int[] a)
+{
+    int n = a.Length;
+    int[] res = new int[n];
+    for (int i = 0; i < n; i++)
+    {
+        res[i] = -1;
+        for (int d = 1; d < n; d++)
+        {
             if (a[(i + d) % n] > a[i]) { res[i] = a[(i + d) % n]; break; }
         }
     }
@@ -5168,7 +6204,25 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] NextGreaterElements(int[] a)
+    {
+        int n = a.Length;
+        int[] res = new int[n];
+        for (int i = 0; i < n; i++) res[i] = -1;
+        var st = new Stack<int>();
+        for (int i = 0; i < 2 * n; i++)
+        {
+            int x = a[i % n];
+            while (st.Count > 0 && a[st.Peek()] < x) res[st.Pop()] = x;
+            if (i < n) st.Push(i);               // each index waits only once
+        }
+        return res;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>: 2N iterations, each index pushed once and popped at most once. <b>Space O(N)</b>.</p>`
     }
   });
@@ -5292,6 +6346,37 @@ string minRemoveToMakeValid(const string& s) {
         }
     }
     return "";
+}` },
+            { lang: 'csharp', code: `string MinRemoveBrute(string s)
+{
+    var q = new Queue<string>();
+    var seen = new HashSet<string>();
+    q.Enqueue(s);
+    seen.Add(s);
+    while (q.Count > 0)
+    {
+        string cur = q.Dequeue();
+        if (IsValid(cur)) return cur;                    // first valid = fewest removals
+        for (int i = 0; i < cur.Length; i++)
+        {
+            char c = cur[i];
+            if (c != '(' && c != ')') continue;
+            string next = cur.Substring(0, i) + cur.Substring(i + 1);
+            if (seen.Add(next)) q.Enqueue(next);
+        }
+    }
+    return "";
+}
+
+bool IsValid(string s)
+{
+    int balance = 0;
+    foreach (char c in s)
+    {
+        if (c == '(') balance++;
+        else if (c == ')' && --balance < 0) return false;
+    }
+    return balance == 0;
 }` }
           ]
         }
@@ -5384,7 +6469,32 @@ public:
         for (int i = 0; i < (int)s.size(); i++) if (!drop[i]) res += s[i];
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public string MinRemoveToMakeValid(string s)
+    {
+        int n = s.Length;
+        bool[] drop = new bool[n];
+        var open = new Stack<int>();                     // indices of unmatched '('
+        for (int i = 0; i < n; i++)
+        {
+            char c = s[i];
+            if (c == '(') open.Push(i);
+            else if (c == ')')
+            {
+                if (open.Count == 0) drop[i] = true;     // nothing to close
+                else open.Pop();                         // matched pair
+            }
+        }
+        while (open.Count > 0) drop[open.Pop()] = true;  // never closed
+        var sb = new StringBuilder();
+        for (int i = 0; i < n; i++) if (!drop[i]) sb.Append(s[i]);
+        return sb.ToString();
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the stack and marks. Minimality: each removed bracket is provably unmatched in every valid subsequence.</p>`,
       followUps: ['Return ALL valid strings with the minimum removals (LeetCode 301, BFS/backtracking).', 'Do it with O(1) extra space besides the output (two counter passes).']
     }
@@ -5477,6 +6587,28 @@ int[] asteroidBrute(int[] asteroids) {
         }
     }
     return list;
+}` },
+            { lang: 'csharp', code: `int[] AsteroidBrute(int[] asteroids)
+{
+    var list = new List<int>(asteroids);
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (int i = 0; i + 1 < list.Count; i++)
+        {
+            int l = list[i], r = list[i + 1];
+            if (l > 0 && r < 0)                         // they meet
+            {
+                if (l > -r) list.RemoveAt(i + 1);
+                else if (l < -r) list.RemoveAt(i);
+                else { list.RemoveAt(i + 1); list.RemoveAt(i); }
+                changed = true;
+                break;
+            }
+        }
+    }
+    return list.ToArray();
 }` }
           ]
         }
@@ -5571,7 +6703,30 @@ public:
         }
         return st;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] AsteroidCollision(int[] asteroids)
+    {
+        var st = new Stack<int>();
+        foreach (int a in asteroids)
+        {
+            bool alive = true;
+            while (alive && a < 0 && st.Count > 0 && st.Peek() > 0)
+            {
+                int top = st.Peek();
+                if (top < -a) st.Pop();                          // top explodes, a continues
+                else if (top == -a) { st.Pop(); alive = false; } // both explode
+                else alive = false;                              // a explodes
+            }
+            if (alive) st.Push(a);
+        }
+        int[] res = new int[st.Count];
+        for (int i = res.Length - 1; i >= 0; i--) res[i] = st.Pop();   // stack top is the rightmost
+        return res;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>: each asteroid is pushed and popped at most once. <b>Space O(N)</b>.</p>`
     }
   });
@@ -5639,6 +6794,21 @@ String decodeBrute(String s) {
         string expanded;
         for (int t = 0; t < times; t++) expanded += inner;
         s = s.substr(0, start) + expanded + s.substr(close + 1);
+    }
+    return s;
+}` },
+            { lang: 'csharp', code: `string DecodeBrute(string s)
+{
+    int close;
+    while ((close = s.IndexOf(']')) >= 0)
+    {
+        int open = s.LastIndexOf('[', close);            // innermost '[' for this ']'
+        int start = open;
+        while (start > 0 && char.IsDigit(s[start - 1])) start--;
+        int times = int.Parse(s.Substring(start, open - start));
+        var expanded = new StringBuilder();
+        for (int r = 0; r < times; r++) expanded.Append(s, open + 1, close - open - 1);
+        s = s.Substring(0, start) + expanded + s.Substring(close + 1);
     }
     return s;
 }` }
@@ -5754,7 +6924,46 @@ public:
         }
         return cur;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public string DecodeString(string s)
+    {
+        var counts = new Stack<int>();
+        var outers = new Stack<StringBuilder>();
+        var cur = new StringBuilder();
+        int k = 0;
+        foreach (char c in s)
+        {
+            if (char.IsDigit(c))
+            {
+                k = k * 10 + (c - '0');                  // multi-digit count
+            }
+            else if (c == '[')
+            {
+                counts.Push(k);                          // remember how many times
+                outers.Push(cur);                        // remember what came before
+                cur = new StringBuilder();
+                k = 0;
+            }
+            else if (c == ']')
+            {
+                int times = counts.Pop();
+                StringBuilder outer = outers.Pop();
+                string piece = cur.ToString();
+                for (int r = 0; r < times; r++) outer.Append(piece);
+                cur = outer;                             // continue the outer level
+            }
+            else
+            {
+                cur.Append(c);
+            }
+        }
+        return cur.ToString();
+    }
+}` }],
       complexity: `<p><b>Time O(output length)</b> (each output character is written a bounded number of times per nesting level), <b>space O(output length)</b>.</p>`
     }
   });
@@ -5828,6 +7037,23 @@ String removeKdigitsBrute(String num, int k) {
     while (i + 1 < num.size() && num[i] == '0') i++;
     num = num.substr(i);
     return num.empty() ? "0" : num;
+}` },
+            { lang: 'csharp', code: `string RemoveKdigitsBrute(string num, int k)
+{
+    for (int r = 0; r < k; r++)
+    {
+        string best = null;
+        for (int i = 0; i < num.Length; i++)
+        {
+            string cand = num.Substring(0, i) + num.Substring(i + 1);
+            if (best == null || string.CompareOrdinal(cand, best) < 0) best = cand;   // same length -> lexicographic = numeric
+        }
+        num = best;
+    }
+    int z = 0;
+    while (z < num.Length - 1 && num[z] == '0') z++;
+    num = num.Substring(z);
+    return num.Length == 0 ? "0" : num;
 }` }
           ]
         }
@@ -5913,7 +7139,29 @@ public:
         size_t i = st.find_first_not_of('0');
         return i == string::npos ? "0" : st.substr(i);
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Text;
+
+public class Solution
+{
+    public string RemoveKdigits(string num, int k)
+    {
+        var st = new StringBuilder();               // digits, non-decreasing bottom -> top
+        foreach (char c in num)
+        {
+            while (k > 0 && st.Length > 0 && st[st.Length - 1] > c)
+            {
+                st.Length--;                        // remove a bigger digit before a smaller one
+                k--;
+            }
+            st.Append(c);
+        }
+        st.Length -= k;                             // still need removals: cut the largest tail
+        int i = 0;
+        while (i < st.Length - 1 && st[i] == '0') i++;   // strip leading zeros
+        string res = st.ToString(i, st.Length - i);
+        return res.Length == 0 ? "0" : res;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>.</p>`,
       followUps: ['Make the number as LARGE as possible instead.', 'Remove Duplicate Letters / Smallest Subsequence of Distinct Characters (LC 316/1081).']
     }
@@ -5972,6 +7220,20 @@ int sumSubarrayMinsBrute(int[] arr) {
         int mn = INT_MAX;
         for (size_t j = i; j < arr.size(); j++) {
             mn = min(mn, arr[j]);
+            sum = (sum + mn) % MOD;
+        }
+    }
+    return (int)sum;
+}` },
+            { lang: 'csharp', code: `int SumSubarrayMinsBrute(int[] arr)
+{
+    long MOD = 1000000007L, sum = 0;
+    for (int i = 0; i < arr.Length; i++)
+    {
+        int mn = int.MaxValue;
+        for (int j = i; j < arr.Length; j++)
+        {
+            mn = Math.Min(mn, arr[j]);
             sum = (sum + mn) % MOD;
         }
     }
@@ -6096,7 +7358,38 @@ public:
         }
         return (int)sum;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int SumSubarrayMins(int[] arr)
+    {
+        const long MOD = 1000000007L;
+        int n = arr.Length;
+        int[] left = new int[n], right = new int[n];
+        var st = new Stack<int>();
+        for (int i = 0; i < n; i++)                         // previous STRICTLY smaller
+        {
+            while (st.Count > 0 && arr[st.Peek()] >= arr[i]) st.Pop();
+            left[i] = st.Count == 0 ? -1 : st.Peek();
+            st.Push(i);
+        }
+        st.Clear();
+        for (int i = n - 1; i >= 0; i--)                    // next smaller OR EQUAL
+        {
+            while (st.Count > 0 && arr[st.Peek()] > arr[i]) st.Pop();
+            right[i] = st.Count == 0 ? n : st.Peek();
+            st.Push(i);
+        }
+        long sum = 0;
+        for (int i = 0; i < n; i++)
+        {
+            long count = (long)(i - left[i]) * (right[i] - i);   // subarrays where arr[i] is the min
+            sum = (sum + arr[i] * count) % MOD;
+        }
+        return (int)sum;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>. Max product 3·10<sup>4</sup> × 9·10<sup>8</sup> ≈ 2.7·10<sup>13</sup> fits in a long.</p>`,
       followUps: ['Sum of subarray ranges (max − min) — LC 2104.', 'Why would strict comparisons on both sides double-count [2, 2]?']
     }
@@ -6178,7 +7471,19 @@ public:
     int Rear() { return list.empty() ? -1 : list.back(); }
     bool isEmpty() { return list.empty(); }
     bool isFull() { return (int)list.size() == cap; }
-};` }
+};` },
+            { lang: 'csharp', code: `class MyCircularQueueSlow
+{
+    private readonly List<int> list = new List<int>();
+    private readonly int cap;
+    public MyCircularQueueSlow(int k) { cap = k; }
+    public bool EnQueue(int v) { if (list.Count == cap) return false; list.Add(v); return true; }
+    public bool DeQueue() { if (list.Count == 0) return false; list.RemoveAt(0); return true; }   // O(N) shift
+    public int Front() { return list.Count == 0 ? -1 : list[0]; }
+    public int Rear() { return list.Count == 0 ? -1 : list[list.Count - 1]; }
+    public bool IsEmpty() { return list.Count == 0; }
+    public bool IsFull() { return list.Count == cap; }
+}` }
           ]
         }
     },
@@ -6309,7 +7614,34 @@ public:
     int Rear() { return isEmpty() ? -1 : data[(head + size - 1) % data.size()]; }
     bool isEmpty() { return size == 0; }
     bool isFull() { return size == (int)data.size(); }
-};` }],
+};` }, { lang: 'csharp', code: `public class MyCircularQueue
+{
+    private readonly int[] data;
+    private int head = 0, size = 0;
+
+    public MyCircularQueue(int k) { data = new int[k]; }
+
+    public bool EnQueue(int value)
+    {
+        if (IsFull()) return false;
+        data[(head + size) % data.Length] = value;    // first free slot after the last element
+        size++;
+        return true;
+    }
+
+    public bool DeQueue()
+    {
+        if (IsEmpty()) return false;
+        head = (head + 1) % data.Length;              // just move the front forward
+        size--;
+        return true;
+    }
+
+    public int Front() { return IsEmpty() ? -1 : data[head]; }
+    public int Rear() { return IsEmpty() ? -1 : data[(head + size - 1) % data.Length]; }
+    public bool IsEmpty() { return size == 0; }
+    public bool IsFull() { return size == data.Length; }
+}` }],
       complexity: `<p><b>All operations O(1)</b>, <b>space O(k)</b>. This is the same circular-buffer idea used inside <code>ArrayDeque</code>, Linux kernel ring buffers and network card queues.</p>`,
       followUps: ['Make it thread-safe for one producer and one consumer (lock-free ring buffer).', 'Design a circular DEQUE (LC 641).']
     }
@@ -6409,6 +7741,30 @@ function go(pu, po, i, j, st) {
 bool validateStackSequences(const vector<int>& pushed, const vector<int>& popped) {
     vector<int> st;
     return go(pushed, popped, 0, 0, st);
+}` },
+            { lang: 'csharp', code: `bool ValidateBrute(int[] pushed, int[] popped)
+{
+    return Go(pushed, popped, 0, 0, new Stack<int>());
+}
+
+bool Go(int[] pu, int[] po, int i, int j, Stack<int> st)
+{
+    if (j == po.Length) return true;
+    if (st.Count > 0 && st.Peek() == po[j])               // option 1: pop now
+    {
+        int x = st.Pop();
+        bool ok = Go(pu, po, i, j + 1, st);
+        st.Push(x);
+        if (ok) return true;
+    }
+    if (i < pu.Length)                                     // option 2: push next
+    {
+        st.Push(pu[i]);
+        bool ok = Go(pu, po, i + 1, j, st);
+        st.Pop();
+        if (ok) return true;
+    }
+    return false;
 }` }
           ]
         }
@@ -6487,7 +7843,26 @@ public:
         }
         return j == popped.size();
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public bool ValidateStackSequences(int[] pushed, int[] popped)
+    {
+        var st = new Stack<int>();
+        int j = 0;
+        foreach (int x in pushed)
+        {
+            st.Push(x);
+            while (st.Count > 0 && st.Peek() == popped[j])
+            {
+                st.Pop();
+                j++;
+            }
+        }
+        return j == popped.Length;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>.</p>`
     }
   });
@@ -6565,6 +7940,22 @@ int maximalRectangleBrute(char[][] m) {
                         for (int c = c1; c <= c2 && ok; c++)
                             if (m[r][c] != '1') ok = false;
                     if (ok) best = max(best, (r2 - r1 + 1) * (c2 - c1 + 1));
+                }
+    return best;
+}` },
+            { lang: 'csharp', code: `int MaximalRectangleBrute(char[][] m)
+{
+    int R = m.Length, C = R == 0 ? 0 : m[0].Length, best = 0;
+    for (int r1 = 0; r1 < R; r1++)
+        for (int c1 = 0; c1 < C; c1++)
+            for (int r2 = r1; r2 < R; r2++)
+                for (int c2 = c1; c2 < C; c2++)
+                {
+                    bool ok = true;
+                    for (int r = r1; r <= r2 && ok; r++)
+                        for (int c = c1; c <= c2 && ok; c++)
+                            if (m[r][c] != '1') ok = false;
+                    if (ok) best = Math.Max(best, (r2 - r1 + 1) * (c2 - c1 + 1));
                 }
     return best;
 }` }
@@ -6695,7 +8086,42 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int MaximalRectangle(char[][] matrix)
+    {
+        if (matrix.Length == 0) return 0;
+        int cols = matrix[0].Length, best = 0;
+        int[] h = new int[cols];
+        foreach (char[] row in matrix)
+        {
+            for (int c = 0; c < cols; c++) h[c] = row[c] == '1' ? h[c] + 1 : 0;
+            best = Math.Max(best, Largest(h));
+        }
+        return best;
+    }
+
+    private int Largest(int[] h)
+    {
+        int n = h.Length, best = 0;
+        var st = new Stack<int>();                   // increasing stack of indices
+        for (int i = 0; i <= n; i++)
+        {
+            int cur = i == n ? 0 : h[i];
+            while (st.Count > 0 && h[st.Peek()] >= cur)
+            {
+                int top = st.Pop();
+                int left = st.Count == 0 ? -1 : st.Peek();
+                best = Math.Max(best, h[top] * (i - left - 1));
+            }
+            st.Push(i);
+        }
+        return best;
+    }
+}` }],
       complexity: `<p><b>Time O(R·C)</b>, <b>space O(C)</b>.</p>`,
       followUps: ['Largest SQUARE of 1s (DP, LC 221).', 'Count all submatrices of 1s (LC 1504) with the same histogram + stack idea.']
     }
@@ -6749,6 +8175,18 @@ int trapBrute(int[] h) {
         for (size_t j = 0; j <= i; j++) lm = max(lm, h[j]);
         for (size_t j = i; j < h.size(); j++) rm = max(rm, h[j]);
         water += min(lm, rm) - h[i];
+    }
+    return water;
+}` },
+            { lang: 'csharp', code: `int TrapBrute(int[] h)
+{
+    int water = 0;
+    for (int i = 0; i < h.Length; i++)
+    {
+        int lm = 0, rm = 0;
+        for (int j = 0; j <= i; j++) lm = Math.Max(lm, h[j]);
+        for (int j = i; j < h.Length; j++) rm = Math.Max(rm, h[j]);
+        water += Math.Min(lm, rm) - h[i];
     }
     return water;
 }` }
@@ -6844,7 +8282,31 @@ public:
         }
         return (int)water;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int Trap(int[] height)
+    {
+        var st = new Stack<int>();                        // indices, heights decreasing
+        int water = 0;
+        for (int i = 0; i < height.Length; i++)
+        {
+            while (st.Count > 0 && height[st.Peek()] < height[i])
+            {
+                int floor = st.Pop();                     // bottom of the valley
+                if (st.Count == 0) break;                 // no left wall: water would spill
+                int left = st.Peek();
+                int width = i - left - 1;
+                int level = Math.Min(height[left], height[i]) - height[floor];
+                water += width * level;
+            }
+            st.Push(i);
+        }
+        return water;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>. Two-pointer version: O(N) time, O(1) space.</p>`,
       followUps: ['Trapping Rain Water II on a 2D grid (min-heap from the borders, LC 407).', 'Prove the two-pointer version correct.']
     }
@@ -6970,6 +8432,37 @@ int calculate(string s) {
         s = s.substr(0, open) + to_string(v) + s.substr(close + 1);   // may create "--5" or "+-5"
     }
     return (int)evalFlat(s);
+}` },
+            { lang: 'csharp', code: `int CalculateBrute(string s)
+{
+    s = s.Replace(" ", "");
+    int close;
+    while ((close = s.IndexOf(')')) >= 0)
+    {
+        int open = s.LastIndexOf('(', close);
+        long v = EvalFlat(s.Substring(open + 1, close - open - 1));
+        s = s.Substring(0, open) + v + s.Substring(close + 1);   // may create "--5" or "+-5"
+    }
+    return (int)EvalFlat(s);
+}
+
+long EvalFlat(string e)                      // only digits, '+' and '-'
+{
+    long total = 0, num = 0;
+    int sign = 1;
+    bool inNum = false;
+    for (int i = 0; i < e.Length; i++)
+    {
+        char c = e[i];
+        if (char.IsDigit(c)) { num = num * 10 + (c - '0'); inNum = true; }
+        else
+        {
+            if (inNum) { total += sign * num; num = 0; inNum = false; sign = 1; }
+            if (c == '-') sign = -sign;      // "--" cancels, "+-" stays negative
+        }
+    }
+    if (inNum) total += sign * num;
+    return total;
 }` }
           ]
         }
@@ -7100,7 +8593,45 @@ public:
         }
         return (int)(result + sign * num);
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int Calculate(string s)
+    {
+        var st = new Stack<int>();
+        int result = 0, sign = 1, num = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (char.IsDigit(c))
+            {
+                num = num * 10 + (c - '0');
+            }
+            else if (c == '+' || c == '-')
+            {
+                result += sign * num;                 // close the previous number
+                num = 0;
+                sign = (c == '+') ? 1 : -1;
+            }
+            else if (c == '(')
+            {
+                st.Push(result);                      // save the outer state
+                st.Push(sign);
+                result = 0;
+                sign = 1;
+            }
+            else if (c == ')')
+            {
+                result += sign * num;                 // finish the inner expression
+                num = 0;
+                result *= st.Pop();                   // sign in front of '(' (pushed last)
+                result += st.Pop();                   // result before '('
+            }                                         // spaces are ignored
+        }
+        return result + sign * num;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(depth of nesting)</b>.</p>`,
       followUps: ['Add * and / (Basic Calculator II / III): apply * and / immediately, push signed terms.', 'Support variables and return a simplified polynomial (LC 770).']
     }
@@ -7163,6 +8694,21 @@ int longestValidBrute(String s) {
             bal += s[j] == '(' ? 1 : -1;
             if (bal < 0) break;                  // a ')' with nothing open
             if (bal == 0) best = max(best, j - i + 1);
+        }
+    }
+    return best;
+}` },
+            { lang: 'csharp', code: `int LongestValidBrute(string s)
+{
+    int best = 0;
+    for (int i = 0; i < s.Length; i++)
+    {
+        int bal = 0;
+        for (int j = i; j < s.Length; j++)
+        {
+            bal += s[j] == '(' ? 1 : -1;
+            if (bal < 0) break;                        // a ')' with nothing open
+            if (bal == 0) best = Math.Max(best, j - i + 1);
         }
     }
     return best;
@@ -7259,7 +8805,32 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int LongestValidParentheses(string s)
+    {
+        var st = new Stack<int>();
+        st.Push(-1);                                     // barrier before index 0
+        int best = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '(')
+            {
+                st.Push(i);
+            }
+            else
+            {
+                st.Pop();                                // match the latest '(' (or remove barrier)
+                if (st.Count == 0) st.Push(i);           // unmatched ')' becomes the new barrier
+                else best = Math.Max(best, i - st.Peek());
+            }
+        }
+        return best;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> (O(1) with the two-scan counter method).</p>`
     }
   });
@@ -7316,6 +8887,16 @@ int shortestSubarrayBrute(int[] nums, int k) {
         for (int j = i + 1; j <= n; j++)
             if (pre[j] - pre[i] >= k) { best = min(best, j - i); break; }
     return best == INT_MAX ? -1 : best;
+}` },
+            { lang: 'csharp', code: `int ShortestSubarrayBrute(int[] nums, int k)
+{
+    int n = nums.Length, best = int.MaxValue;
+    long[] pre = new long[n + 1];
+    for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j <= n; j++)
+            if (pre[j] - pre[i] >= k) { best = Math.Min(best, j - i); break; }
+    return best == int.MaxValue ? -1 : best;
 }` }
           ]
         }
@@ -7417,7 +8998,34 @@ public:
         }
         return best <= n ? best : -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int ShortestSubarray(int[] nums, int k)
+    {
+        int n = nums.Length;
+        long[] pre = new long[n + 1];
+        for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+        var dq = new LinkedList<int>();              // prefix indices, pre[] increasing
+        int best = n + 1;
+        for (int j = 0; j <= n; j++)
+        {
+            while (dq.Count > 0 && pre[j] - pre[dq.First.Value] >= k)
+            {
+                best = Math.Min(best, j - dq.First.Value);   // a later j would only be longer
+                dq.RemoveFirst();
+            }
+            while (dq.Count > 0 && pre[dq.Last.Value] >= pre[j])
+            {
+                dq.RemoveLast();                             // dominated start
+            }
+            dq.AddLast(j);
+        }
+        return best <= n ? best : -1;
+    }
+}` }],
       complexity: `<p><b>Time O(N)</b> (each index enters and leaves the deque once), <b>space O(N)</b>.</p>`,
       followUps: ['Why does the plain sliding window fail with negative numbers?', 'Constrained Subsequence Sum (LC 1425) — DP + monotonic deque.']
     }

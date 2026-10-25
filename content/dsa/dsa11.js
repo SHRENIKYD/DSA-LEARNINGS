@@ -6,17 +6,20 @@
   var CU_ALT = {
     python: { code: J(['def count_up(n):', '    if n == 0:', '        return', '    count_up(n - 1)', '    print(n)']), map: { 3: 4, 4: 5 } },
     js: { code: J(['function countUp(n) {', '  if (n === 0) return;', '  countUp(n - 1);', '  console.log(n);', '}']), map: {} },
-    cpp: { code: J(['void countUp(int n) {', '  if (n == 0) return;', '  countUp(n - 1);', '  cout << n << endl;', '}']), map: {} }
+    cpp: { code: J(['void countUp(int n) {', '  if (n == 0) return;', '  countUp(n - 1);', '  cout << n << endl;', '}']), map: {} },
+    csharp: { code: J(["static void CountUp(int n) {", "  if (n == 0) return;", "  CountUp(n - 1);", "  Console.WriteLine(n);", "}"]), map: {} }
   };
   var CD_ALT = {
     python: { code: J(['def count_down(n):', '    if n == 0:', '        return', '    print(n)', '    count_down(n - 1)']), map: { 3: 4, 4: 5 } },
     js: { code: J(['function countDown(n) {', '  if (n === 0) return;', '  console.log(n);', '  countDown(n - 1);', '}']), map: {} },
-    cpp: { code: J(['void countDown(int n) {', '  if (n == 0) return;', '  cout << n << endl;', '  countDown(n - 1);', '}']), map: {} }
+    cpp: { code: J(['void countDown(int n) {', '  if (n == 0) return;', '  cout << n << endl;', '  countDown(n - 1);', '}']), map: {} },
+    csharp: { code: J(["static void CountDown(int n) {", "  if (n == 0) return;", "  Console.WriteLine(n);", "  CountDown(n - 1);", "}"]), map: {} }
   };
   var PAREN_ALT = {
     python: { code: J(['def bt(sb, open_, close):', '    if len(sb) == 2 * n:', '        res.append("".join(sb)); return', '    if open_ < n:', '        sb.append("("); bt(sb, open_ + 1, close); sb.pop()', '    if close < open_:', '        sb.append(")"); bt(sb, open_, close + 1); sb.pop()']), map: { 2: 3, 3: 4, 4: 5 } },
     js: { code: J(['function bt(sb, open, close) {', '  if (sb.length === 2 * n) { res.push(sb.join("")); return; }', '  if (open < n) {', '    sb.push("("); bt(sb, open + 1, close); sb.pop();', '  }', '  if (close < open) {', '    sb.push(")"); bt(sb, open, close + 1); sb.pop();', '  }', '}']), map: {} },
-    cpp: { code: J(['void bt(string& sb, int open, int close) {', '  if ((int)sb.size() == 2 * n) { res.push_back(sb); return; }', '  if (open < n) {', "    sb.push_back('('); bt(sb, open + 1, close); sb.pop_back();", '  }', '  if (close < open) {', "    sb.push_back(')'); bt(sb, open, close + 1); sb.pop_back();", '  }', '}']), map: {} }
+    cpp: { code: J(['void bt(string& sb, int open, int close) {', '  if ((int)sb.size() == 2 * n) { res.push_back(sb); return; }', '  if (open < n) {', "    sb.push_back('('); bt(sb, open + 1, close); sb.pop_back();", '  }', '  if (close < open) {', "    sb.push_back(')'); bt(sb, open, close + 1); sb.pop_back();", '  }', '}']), map: {} },
+    csharp: { code: J(["void Bt(StringBuilder sb, int open, int close) {", "  if (sb.Length == 2 * n) { res.Add(sb.ToString()); return; }", "  if (open < n) {", "    sb.Append('('); Bt(sb, open + 1, close); sb.Length--;", "  }", "  if (close < open) {", "    sb.Append(')'); Bt(sb, open, close + 1); sb.Length--;", "  }", "}"]), map: {} }
   };
 
   // ---------- small shared helpers for the visualizers ----------
@@ -783,6 +786,47 @@ int main() {
     countDown(3);                        // 3 2 1
     countUp(3);                          // 1 2 3
     cout << '\\n';
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+
+class RecursionBasics
+{
+    // Factorial: n! = n * (n-1)!, base case 0! = 1! = 1
+    static long Fact(int n)
+    {
+        if (n <= 1) return 1;            // BASE CASE: the smallest doll
+        return n * Fact(n - 1);          // RECURSIVE CASE: shrink n, trust the answer
+    }
+
+    // Fibonacci: fib(n) = fib(n-1) + fib(n-2); two calls per frame
+    static int Fib(int n)
+    {
+        if (n <= 1) return n;            // fib(0) = 0, fib(1) = 1
+        return Fib(n - 1) + Fib(n - 2);  // left call finishes completely before the right one starts
+    }
+
+    // Head vs tail work: same calls, different print order
+    static void CountDown(int n)         // prints n, n-1, ..., 1
+    {
+        if (n == 0) return;
+        Console.Write(n + " ");          // work BEFORE the call -> runs on the way DOWN
+        CountDown(n - 1);
+    }
+    static void CountUp(int n)           // prints 1, 2, ..., n
+    {
+        if (n == 0) return;
+        CountUp(n - 1);
+        Console.Write(n + " ");          // work AFTER the call -> runs on the way back UP
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(Fact(5));      // 120
+        Console.WriteLine(Fib(6));       // 8
+        CountDown(3);                    // 3 2 1
+        CountUp(3);                      // 1 2 3
+        Console.WriteLine();
+    }
 }` }
       ] }, { lang: 'java', code: `
       class OverflowDemo {
@@ -850,6 +894,34 @@ int withBase(int n) {
 
 int main() {
     cout << withBase(100000) << '\\n';    // 100000 small frames fit in a typical 8 MB stack
+}` },
+          { lang: 'csharp', run: true, code: `using System;
+
+class OverflowDemo
+{
+    // BUG on purpose: no base case, so every call makes another call forever.
+    // In .NET a StackOverflowException cannot be caught: the process is killed.
+    // So we count frames ourselves and stop at a limit instead of letting it crash.
+    static int depth = 0;
+    static void NoBase(int n)
+    {
+        depth++;
+        if (depth >= 100000)             // safety valve; a real run would die around here
+            throw new InvalidOperationException("stack would overflow");
+        NoBase(n - 1);                   // never stops on its own
+    }
+
+    static void Main()
+    {
+        try
+        {
+            NoBase(5);
+        }
+        catch (InvalidOperationException)
+        {
+            Console.WriteLine("Stack overflowed after about " + depth + " frames");
+        }
+    }
 }` }
         ] }],
     codeTitle: ['Base case, recursive case, head vs tail work', 'What a stack overflow looks like'],
@@ -899,6 +971,20 @@ console.log(digitSum(4721));                     // 14` },
 }
 int main() {
     cout << digitSum(4721) << '\\n';      // 14
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+
+class DigitSum
+{
+    static int Sum(int n)
+    {
+        if (n < 10) return n;                 // base case: single digit
+        return n % 10 + Sum(n / 10);          // last digit + sum of the rest
+    }
+    static void Main()
+    {
+        Console.WriteLine(Sum(4721));         // 14
+    }
 }` }
           ] }
       },
@@ -944,6 +1030,22 @@ console.log(isPal('abca', 0, 3));                // false` },
 int main() {
     cout << boolalpha << isPal("racecar", 0, 6) << '\\n';   // true
     cout << boolalpha << isPal("abca", 0, 3) << '\\n';      // false
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+
+class Pal
+{
+    static bool IsPal(string s, int l, int r)
+    {
+        if (l >= r) return true;                       // base: empty or one char
+        if (s[l] != s[r]) return false;                // early exit: mismatch
+        return IsPal(s, l + 1, r - 1);                 // the inside decides
+    }
+    static void Main()
+    {
+        Console.WriteLine(IsPal("racecar", 0, 6));     // True
+        Console.WriteLine(IsPal("abca", 0, 3));        // False
+    }
 }` }
           ] }
       },
@@ -992,6 +1094,23 @@ int main() {
     reverseRange(a, 0, (int)a.size() - 1);
     for (int x : a) cout << x << ' ';    // 5 4 3 2 1
     cout << '\\n';
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+
+class Rev
+{
+    static void Reverse(int[] a, int l, int r)
+    {
+        if (l >= r) return;                 // base: 0 or 1 elements left
+        int t = a[l]; a[l] = a[r]; a[r] = t; // fix the two ends
+        Reverse(a, l + 1, r - 1);           // trust recursion for the middle
+    }
+    static void Main()
+    {
+        int[] a = { 1, 2, 3, 4, 5 };
+        Reverse(a, 0, a.Length - 1);
+        Console.WriteLine("[" + string.Join(", ", a) + "]"); // [5, 4, 3, 2, 1]
+    }
 }` }
           ] }
       },
@@ -1075,6 +1194,15 @@ except RecursionError as e:
         ans *= i;          // multiply 2, 3, ..., n
     }
     return ans;
+}` },
+            { lang: 'csharp', code: `long FactLoop(int n)
+{
+    long ans = 1;
+    for (int i = 2; i <= n; i++)
+    {
+        ans *= i;          // multiply 2, 3, ..., n
+    }
+    return ans;
 }` }
           ]
         }
@@ -1131,7 +1259,16 @@ public:
         if (n <= 1) return 1;                 // base case: 0! = 1! = 1
         return n * factorial(n - 1);          // long long: 20! < 2^63, 21! is not
     }
-};` }
+};` },
+            { lang: 'csharp', code: `public class Solution
+{
+    public long Factorial(int n)
+    {
+        if (n <= 1) return 1;                 // base case: 0! = 1! = 1
+        long smaller = Factorial(n - 1);      // leap of faith: trust (n-1)! is correct
+        return n * smaller;                   // long: 20! < 2^63, 21! is not
+    }
+}` }
           ],
           dry: {
             head: ['frame', 'n', 'base case?', 'smaller (returned by child)', 'returns'],
@@ -1194,6 +1331,16 @@ public:
     double ans = 1.0;
     for (long long i = 0; i < m; i++) {
         ans *= x;                        // one multiplication per unit of n
+    }
+    return n < 0 ? 1.0 / ans : ans;
+}` },
+            { lang: 'csharp', code: `double PowBrute(double x, int n)
+{
+    long m = Math.Abs((long)n);    // long so that -2^31 does not overflow
+    double ans = 1.0;
+    for (long i = 0; i < m; i++)
+    {
+        ans *= x;                  // one multiplication per unit of n
     }
     return n < 0 ? 1.0 / ans : ans;
 }` }
@@ -1291,7 +1438,28 @@ private:
         double half = fastPow(x, N / 2);      // ONE call on half the exponent
         return N % 2 == 0 ? half * half : half * half * x;
     }
-};` }
+};` },
+            { lang: 'csharp', code: `public class Solution
+{
+    public double MyPow(double x, int n)
+    {
+        long N = n;                 // long: -(-2^31) does not fit in int
+        if (N < 0)
+        {
+            x = 1 / x;              // x^-N = (1/x)^N
+            N = -N;
+        }
+        return FastPow(x, N);
+    }
+
+    private double FastPow(double x, long N)
+    {
+        if (N == 0) return 1.0;                 // base case: anything^0 = 1
+        double half = FastPow(x, N / 2);        // ONE recursive call on half the exponent
+        return N % 2 == 0 ? half * half         // even: x^N = (x^(N/2))^2
+                          : half * half * x;    // odd: one extra x left over
+    }
+}` }
           ],
           dry: {
             head: ['call', 'N', 'N / 2', 'half (from child)', 'N % 2', 'returns'],
@@ -1470,6 +1638,42 @@ int main() {
     doubleTree(4);
     cout << calls << '\\n';               // 31 = 2^5 - 1 (levels n..0)
     cout << mergeWork(8) << '\\n';        // 32 = 8 * 3 (merges) + 8 (leaves)
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+
+class RecurrenceExamples
+{
+    // T(n) = T(n-1) + 1  -> O(n)
+    static int SumTo(int n) => n == 0 ? 0 : n + SumTo(n - 1);
+
+    // T(n) = T(n/2) + 1  -> O(log n)
+    static int CountHalvings(int n) => n <= 1 ? 0 : 1 + CountHalvings(n / 2);
+
+    // T(n) = 2T(n-1) + 1  -> O(2^n): count the calls to see the doubling
+    static long calls = 0;
+    static void DoubleTree(int n)
+    {
+        calls++;
+        if (n == 0) return;
+        DoubleTree(n - 1);
+        DoubleTree(n - 1);
+    }
+
+    // T(n) = 2T(n/2) + n -> O(n log n): returns total "work" done
+    static long MergeWork(int n)
+    {
+        if (n <= 1) return 1;
+        return MergeWork(n / 2) + MergeWork(n - n / 2) + n;  // two halves + linear merge
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(SumTo(10));            // 55
+        Console.WriteLine(CountHalvings(1024));  // 10
+        DoubleTree(4);
+        Console.WriteLine(calls);                // 31 = 2^5 - 1 (levels n..0)
+        Console.WriteLine(MergeWork(8));         // 32 = 8 * 3 (merges) + 8 (leaves)
+    }
 }` }
       ] },
     codeTitle: 'Each recurrence shape as real code',
@@ -1537,6 +1741,23 @@ console.log(search([1, 3, 5, 7, 9, 11], 0, 5, 9)); // 4` },
 }
 int main() {
     cout << search({1, 3, 5, 7, 9, 11}, 0, 5, 9) << '\\n';   // 4
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+
+class BS
+{
+    static int Search(int[] a, int lo, int hi, int x)
+    {
+        if (lo > hi) return -1;                    // base: empty range
+        int mid = lo + (hi - lo) / 2;              // overflow-safe middle
+        if (a[mid] == x) return mid;
+        if (a[mid] < x) return Search(a, mid + 1, hi, x); // ONE call on half
+        return Search(a, lo, mid - 1, x);
+    }
+    static void Main()
+    {
+        Console.WriteLine(Search(new[] { 1, 3, 5, 7, 9, 11 }, 0, 5, 9)); // 4
+    }
 }` }
           ] }
       },
@@ -1628,6 +1849,11 @@ print(fib_memo(90), fib_memo.cache_info().misses, "distinct computations")` }
             { lang: 'cpp', code: `long long fib(int n) {
     if (n <= 1) return n;                       // F(0) = 0, F(1) = 1
     return fib(n - 1) + fib(n - 2);             // two calls -> exponential
+}` },
+            { lang: 'csharp', code: `long FibNaive(int n)
+{
+    if (n <= 1) return n;                       // F(0) = 0, F(1) = 1
+    return FibNaive(n - 1) + FibNaive(n - 2);   // two calls -> exponential
 }` }
           ]
         }
@@ -1724,7 +1950,41 @@ private:
         if (memo[k] != -1) return memo[k];
         return memo[k] = go(k - 1, memo) + go(k - 2, memo);
     }
-};` }
+};` },
+            { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    private long[] memo;
+
+    public long Fib(int n)
+    {
+        memo = new long[n + 1];
+        for (int i = 0; i <= n; i++) memo[i] = -1;   // -1 = "not computed yet"
+        return Go(n);
+    }
+
+    private long Go(int k)
+    {
+        if (k <= 1) return k;                 // base cases F(0) = 0, F(1) = 1
+        if (memo[k] != -1) return memo[k];    // already solved: O(1)
+        memo[k] = Go(k - 1) + Go(k - 2);      // solve once, remember
+        return memo[k];
+    }
+
+    // Bottom-up, O(1) space: only the last two values matter.
+    public long FibLoop(int n)
+    {
+        long a = 0, b = 1;                    // a = F(i), b = F(i+1)
+        for (int i = 0; i < n; i++)
+        {
+            long c = a + b;
+            a = b;
+            b = c;
+        }
+        return a;
+    }
+}` }
           ],
           dry: {
             head: ['call', 'memo hit?', 'computes', 'memo after'],
@@ -1843,6 +2103,28 @@ void hanoi(int n, char from, char to, char via) {
 int main() {
     hanoi(3, 'A', 'C', 'B');
     cout << "moves = " << moves << " (2^3 - 1 = " << ((1LL << 3) - 1) << ")\\n";
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+
+class Hanoi
+{
+    static long moves = 0;
+
+    // Move n disks from 'from' to 'to' using 'via' as the helper peg.
+    static void Solve(int n, char from, char to, char via)
+    {
+        if (n == 0) return;                  // base case: nothing to move
+        Solve(n - 1, from, via, to);         // 1) park n-1 disks on the helper
+        moves++;
+        Console.WriteLine("disk " + n + ": " + from + " -> " + to); // 2) biggest disk
+        Solve(n - 1, via, to, from);         // 3) bring n-1 disks on top of it
+    }
+
+    static void Main()
+    {
+        Solve(3, 'A', 'C', 'B');
+        Console.WriteLine("moves = " + moves + " (2^3 - 1 = " + ((1L << 3) - 1) + ")");
+    }
 }` }
       ] },
     codeTitle: 'Tower of Hanoi in 6 lines',
@@ -1882,6 +2164,26 @@ console.log(disks.join(' '));            // 1 2 1 3 1 2 1` },
         cout << disk << ' ';             // 1 2 1 3 1 2 1
     }
     cout << '\\n';
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+
+class WhichDisk
+{
+    static int TrailingZeros(int k)
+    {
+        int z = 0;
+        while ((k & 1) == 0) { k >>= 1; z++; }
+        return z;
+    }
+    static void Main()
+    {
+        for (int k = 1; k <= 7; k++)
+        {
+            int disk = TrailingZeros(k) + 1;      // ruler sequence
+            Console.Write(disk + " ");            // 1 2 1 3 1 2 1
+        }
+        Console.WriteLine();
+    }
 }` }
           ] }
       },
@@ -2062,6 +2364,48 @@ def bfs_min_moves(n):
         }
     }
     return -1;
+}` },
+            { lang: 'csharp', code: `int BfsMinMoves(int n)
+{
+    int total = 1;
+    for (int i = 0; i < n; i++) total *= 3;     // 3^n states
+    int[] pw = new int[n];
+    pw[0] = 1;
+    for (int i = 1; i < n; i++) pw[i] = pw[i - 1] * 3;
+    int[] dist = new int[total];
+    for (int i = 0; i < total; i++) dist[i] = -1;
+    // state digit d (base 3) = rod of disk d; disk 0 is the smallest. Start: all on rod 0.
+    int goal = total - 1;                       // all digits = 2 -> all on rod C
+    var q = new Queue<int>();
+    dist[0] = 0;
+    q.Enqueue(0);
+    while (q.Count > 0)
+    {
+        int s = q.Dequeue();
+        if (s == goal) return dist[s];
+        int[] top = { -1, -1, -1 };             // smallest disk on each rod
+        for (int d = 0; d < n; d++)
+        {
+            int rod = (s / pw[d]) % 3;
+            if (top[rod] == -1) top[rod] = d;
+        }
+        for (int p = 0; p < 3; p++)
+        {
+            if (top[p] == -1) continue;
+            for (int r = 0; r < 3; r++)
+            {
+                if (r == p) continue;
+                if (top[r] != -1 && top[r] < top[p]) continue; // cannot put bigger on smaller
+                int ns = s + (r - p) * pw[top[p]];
+                if (dist[ns] == -1)
+                {
+                    dist[ns] = dist[s] + 1;
+                    q.Enqueue(ns);
+                }
+            }
+        }
+    }
+    return -1;
 }` }
           ]
         }
@@ -2151,7 +2495,26 @@ private:
         moves.push_back("move disk " + to_string(n) + " from " + from + " to " + to);
         solve(n - 1, via, to, from, moves);   // 3) bring them back on top
     }
-};` }
+};` },
+            { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public List<string> Hanoi(int n)
+    {
+        var moves = new List<string>();
+        Solve(n, 'A', 'C', 'B', moves);
+        return moves;                       // moves.Count == 2^n - 1
+    }
+
+    private void Solve(int n, char from, char to, char via, List<string> moves)
+    {
+        if (n == 0) return;                 // base case: nothing to move
+        Solve(n - 1, from, via, to, moves); // 1) park the n-1 smaller disks on the helper
+        moves.Add("move disk " + n + " from " + from + " to " + to); // 2) biggest disk
+        Solve(n - 1, via, to, from, moves); // 3) bring the n-1 disks on top of it
+    }
+}` }
           ],
           dry: {
             head: ['call', 'what it does', 'move added'],
@@ -2284,6 +2647,35 @@ int main() {
     backtrack(3, sb);
     for (const string& s : res) cout << s << ' ';   // 000 001 010 011 100 101 110 111
     cout << '\\n';
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Text;
+
+class BinaryStrings
+{
+    static List<string> res = new List<string>();
+
+    static void Backtrack(int n, StringBuilder sb)
+    {
+        if (sb.Length == n)                // GOAL: complete answer
+        {
+            res.Add(sb.ToString());        // save a COPY (ToString makes a new string)
+            return;
+        }
+        for (char ch = '0'; ch <= '1'; ch++)   // CHOICES at this level
+        {
+            sb.Append(ch);                 // CHOOSE
+            Backtrack(n, sb);              // EXPLORE
+            sb.Length--;                   // UN-CHOOSE (undo exactly the append)
+        }
+    }
+
+    static void Main()
+    {
+        Backtrack(3, new StringBuilder());
+        Console.WriteLine("[" + string.Join(", ", res) + "]");  // [000, 001, 010, 011, 100, 101, 110, 111]
+    }
 }` }
       ] },
     codeTitle: 'Template in action: all binary strings of length n',
@@ -2375,6 +2767,32 @@ int main() {
     bt("23", 0, sb, res);
     for (const string& s : res) cout << s << ' ';   // ad ae af bd be bf cd ce cf
     cout << '\\n';
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Text;
+
+class Phone
+{
+    static readonly string[] KEYS = { "", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz" };
+
+    static void Bt(string digits, int i, StringBuilder sb, List<string> res)
+    {
+        if (i == digits.Length) { res.Add(sb.ToString()); return; }   // goal
+        foreach (char ch in KEYS[digits[i] - '0'])                    // choices
+        {
+            sb.Append(ch);                    // choose
+            Bt(digits, i + 1, sb, res);       // explore
+            sb.Length--;                      // un-choose
+        }
+    }
+
+    static void Main()
+    {
+        var res = new List<string>();
+        Bt("23", 0, new StringBuilder(), res);
+        Console.WriteLine("[" + string.Join(", ", res) + "]");   // [ad, ae, af, bd, be, bf, cd, ce, cf]
+    }
 }` }
           ] }
       },
@@ -2489,6 +2907,25 @@ int main() {
         if (ok && bal == 0) res.push_back(sb);
     }
     return res;
+}` },
+            { lang: 'csharp', code: `List<string> Brute(int n)
+{
+    var res = new List<string>();
+    for (int mask = 0; mask < (1 << (2 * n)); mask++)
+    {
+        var sb = new StringBuilder();
+        int bal = 0;
+        bool ok = true;
+        for (int i = 0; i < 2 * n; i++)
+        {
+            bool open = ((mask >> i) & 1) == 1;
+            sb.Append(open ? '(' : ')');
+            bal += open ? 1 : -1;
+            if (bal < 0) ok = false;      // a ')' with no partner
+        }
+        if (ok && bal == 0) res.Add(sb.ToString());
+    }
+    return res;
 }` }
           ]
         }
@@ -2589,7 +3026,40 @@ private:
         if (open < n) { sb.push_back('('); bt(n, open + 1, close, sb, res); sb.pop_back(); }
         if (close < open) { sb.push_back(')'); bt(n, open, close + 1, sb, res); sb.pop_back(); }
     }
-};` }
+};` },
+            { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public List<string> GenerateParenthesis(int n)
+    {
+        var res = new List<string>();
+        Bt(n, 0, 0, new StringBuilder(), res);
+        return res;
+    }
+
+    private void Bt(int n, int open, int close, StringBuilder sb, List<string> res)
+    {
+        if (sb.Length == 2 * n)                // goal: all brackets placed
+        {
+            res.Add(sb.ToString());            // ToString() = a fresh copy
+            return;
+        }
+        if (open < n)                          // still have '(' to place
+        {
+            sb.Append('(');                    // choose
+            Bt(n, open + 1, close, sb, res);   // explore
+            sb.Length--;                       // un-choose
+        }
+        if (close < open)                      // a ')' has a partner to close
+        {
+            sb.Append(')');
+            Bt(n, open, close + 1, sb, res);
+            sb.Length--;
+        }
+    }
+}` }
           ],
           dry: {
             head: ['sb', 'open', 'close', 'allowed next', 'event'],
@@ -2800,6 +3270,66 @@ int main() {
     print(r1);   // [1,2,3] [1,2] [1,3] [1] [2,3] [2] [3] []
     print(r2);   // [] [1] [1,2] [1,2,3] [1,3] [2] [2,3] [3]
     print(bitmask(a));
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class SubsetStyles
+{
+    // Style 1: pick / not-pick (answers at the leaves)
+    static void PickNotPick(int[] nums, int i, List<int> cur, List<List<int>> res)
+    {
+        if (i == nums.Length)
+        {
+            res.Add(new List<int>(cur));        // copy!
+            return;
+        }
+        cur.Add(nums[i]);                       // pick
+        PickNotPick(nums, i + 1, cur, res);
+        cur.RemoveAt(cur.Count - 1);            // un-pick
+        PickNotPick(nums, i + 1, cur, res);     // not pick
+    }
+
+    // Style 2: for-loop (every node is an answer)
+    static void LoopStyle(int[] nums, int start, List<int> cur, List<List<int>> res)
+    {
+        res.Add(new List<int>(cur));
+        for (int j = start; j < nums.Length; j++)
+        {
+            cur.Add(nums[j]);
+            LoopStyle(nums, j + 1, cur, res);
+            cur.RemoveAt(cur.Count - 1);
+        }
+    }
+
+    // Style 3: bitmask (no recursion)
+    static List<List<int>> Bitmask(int[] nums)
+    {
+        var res = new List<List<int>>();
+        int n = nums.Length;
+        for (int mask = 0; mask < (1 << n); mask++)
+        {
+            var sub = new List<int>();
+            for (int j = 0; j < n; j++)
+                if ((mask & (1 << j)) != 0) sub.Add(nums[j]);  // bit j on -> pick nums[j]
+            res.Add(sub);
+        }
+        return res;
+    }
+
+    static string Show(List<List<int>> r) => "[" + string.Join(", ", r.Select(s => "[" + string.Join(", ", s) + "]")) + "]";
+
+    static void Main()
+    {
+        int[] a = { 1, 2, 3 };
+        var r1 = new List<List<int>>(); var r2 = new List<List<int>>();
+        PickNotPick(a, 0, new List<int>(), r1);
+        LoopStyle(a, 0, new List<int>(), r2);
+        Console.WriteLine(Show(r1));   // [[1, 2, 3], [1, 2], [1, 3], [1], [2, 3], [2], [3], []]
+        Console.WriteLine(Show(r2));   // [[], [1], [1, 2], [1, 2, 3], [1, 3], [2], [2, 3], [3]]
+        Console.WriteLine(Show(Bitmask(a)));
+    }
 }` }
       ] }],
     codeTitle: ['Three ways to generate all subsets'],
@@ -2884,6 +3414,33 @@ int main() {
         cout << "] ";                                // [] [1] [1,2] [1,2,2] [2] [2,2]
     }
     cout << '\\n';
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class SubsetsII
+{
+    static void Bt(int[] a, int start, List<int> cur, List<List<int>> res)
+    {
+        res.Add(new List<int>(cur));                    // every node is an answer
+        for (int j = start; j < a.Length; j++)
+        {
+            if (j > start && a[j] == a[j - 1]) continue; // same value at same level -> skip
+            cur.Add(a[j]);
+            Bt(a, j + 1, cur, res);
+            cur.RemoveAt(cur.Count - 1);
+        }
+    }
+    static void Main()
+    {
+        int[] a = { 2, 1, 2 };
+        Array.Sort(a);                                  // duplicates must be adjacent
+        var res = new List<List<int>>();
+        Bt(a, 0, new List<int>(), res);
+        Console.WriteLine("[" + string.Join(", ", res.Select(s => "[" + string.Join(", ", s) + "]")) + "]");
+        // [[], [1], [1, 2], [1, 2, 2], [2], [2, 2]]
+    }
 }` }
           ] }
       },
@@ -2938,6 +3495,21 @@ console.log(count([1, 2, 1], 0, 0, 2));            // 2` },
 }
 int main() {
     cout << countK({1, 2, 1}, 0, 0, 2) << '\\n';     // 2
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+
+class CountK
+{
+    static int Count(int[] a, int i, int sum, int k)
+    {
+        if (i == a.Length) return sum == k ? 1 : 0;   // one finished subsequence
+        return Count(a, i + 1, sum + a[i], k)         // pick a[i]
+             + Count(a, i + 1, sum, k);               // skip a[i]
+    }
+    static void Main()
+    {
+        Console.WriteLine(Count(new[] { 1, 2, 1 }, 0, 0, 2)); // 2
+    }
 }` }
           ] }
       },
@@ -3019,6 +3591,19 @@ int main() {
             if (((mask >> j) & 1) == 1) sub.push_back(nums[j]);
         }
         res.push_back(sub);
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `List<List<int>> SubsetsBits(int[] nums)
+{
+    var res = new List<List<int>>();
+    int n = nums.Length;
+    for (int mask = 0; mask < (1 << n); mask++)     // 2^n masks
+    {
+        var sub = new List<int>();
+        for (int j = 0; j < n; j++)
+            if (((mask >> j) & 1) == 1) sub.Add(nums[j]);
+        res.Add(sub);
     }
     return res;
 }` }
@@ -3115,7 +3700,31 @@ private:
         cur.pop_back();                       // un-pick
         build(nums, i + 1, cur, res);         // skip
     }
-};` }
+};` },
+            { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public List<List<int>> Subsets(int[] nums)
+    {
+        var res = new List<List<int>>();
+        Build(nums, 0, new List<int>(), res);
+        return res;
+    }
+
+    private void Build(int[] nums, int i, List<int> cur, List<List<int>> res)
+    {
+        if (i == nums.Length)                // decided about every element
+        {
+            res.Add(new List<int>(cur));     // save a COPY of the bag
+            return;
+        }
+        cur.Add(nums[i]);                    // CHOOSE: pick nums[i]
+        Build(nums, i + 1, cur, res);        // EXPLORE with it
+        cur.RemoveAt(cur.Count - 1);         // UN-CHOOSE: take it back out
+        Build(nums, i + 1, cur, res);        // EXPLORE without it (not pick)
+    }
+}` }
           ],
           dry: {
             head: ['#', 'path of decisions (1? 2? 3?)', 'cur at leaf i = 3', 'res size after'],
@@ -3290,6 +3899,59 @@ int main() {
         for (const auto& p : *r) { for (int x : p) cout << x; cout << ' '; }
         cout << '\\n';    // 123 132 213 231 312 321  /  123 132 213 231 321 312
     }
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Permutations
+{
+    // Method 1: used[] -- builds a fresh list, natural lexicographic order on sorted input
+    static void ByUsed(int[] a, bool[] used, List<int> cur, List<List<int>> res)
+    {
+        if (cur.Count == a.Length)                // every position filled
+        {
+            res.Add(new List<int>(cur));          // save a copy
+            return;
+        }
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (used[i]) continue;                // already placed
+            used[i] = true; cur.Add(a[i]);        // choose
+            ByUsed(a, used, cur, res);            // explore
+            used[i] = false; cur.RemoveAt(cur.Count - 1); // un-choose
+        }
+    }
+
+    // Method 2: swap -- the array itself is the state
+    static void BySwap(int[] a, int i, List<List<int>> res)
+    {
+        if (i == a.Length)
+        {
+            res.Add(new List<int>(a));
+            return;
+        }
+        for (int j = i; j < a.Length; j++)
+        {
+            Swap(a, i, j);                        // choose: put a[j] into slot i
+            BySwap(a, i + 1, res);                // explore the remaining slots
+            Swap(a, i, j);                        // un-choose: restore order
+        }
+    }
+
+    static void Swap(int[] a, int i, int j) { int t = a[i]; a[i] = a[j]; a[j] = t; }
+
+    static string Show(List<List<int>> r) => "[" + string.Join(", ", r.Select(p => "[" + string.Join(", ", p) + "]")) + "]";
+
+    static void Main()
+    {
+        int[] a = { 1, 2, 3 };
+        var r1 = new List<List<int>>(); var r2 = new List<List<int>>();
+        ByUsed(a, new bool[3], new List<int>(), r1);
+        BySwap(a, 0, r2);
+        Console.WriteLine(Show(r1)); // [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]
+        Console.WriteLine(Show(r2)); // [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 2, 1], [3, 1, 2]]
+    }
 }` }
       ] }],
     codeTitle: ['used[] method vs swap method'],
@@ -3401,6 +4063,35 @@ console.log(getPermutation(4, 9));         // 2314` },
 }
 int main() {
     cout << getPermutation(4, 9) << '\\n';    // 2314
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Text;
+
+class KthPerm
+{
+    static string GetPermutation(int n, int k)
+    {
+        var nums = new List<int>();
+        int[] fact = new int[n + 1];
+        fact[0] = 1;
+        for (int i = 1; i <= n; i++) { nums.Add(i); fact[i] = fact[i - 1] * i; }
+        k--;                                       // to 0-based
+        var sb = new StringBuilder();
+        for (int i = n; i >= 1; i--)
+        {
+            int block = fact[i - 1];               // perms per choice of this digit
+            int idx = k / block;
+            sb.Append(nums[idx]);
+            nums.RemoveAt(idx);                    // remove by index
+            k %= block;
+        }
+        return sb.ToString();
+    }
+    static void Main()
+    {
+        Console.WriteLine(GetPermutation(4, 9)); // 2314
+    }
 }` }
           ] }
       },
@@ -3506,6 +4197,28 @@ vector<vector<int>> permuteUnique(vector<int>& nums) {
     set<vector<int>> seen;
     gen(nums, 0, seen);
     return vector<vector<int>>(seen.begin(), seen.end());
+}` },
+            { lang: 'csharp', code: `List<List<int>> Brute(int[] nums)
+{
+    var seen = new HashSet<string>();           // "1,1,2" keys keep insertion order below
+    var res = new List<List<int>>();
+    Gen(nums, 0, seen, res);
+    return res;
+}
+void Gen(int[] a, int i, HashSet<string> seen, List<List<int>> res)
+{
+    if (i == a.Length)
+    {
+        if (seen.Add(string.Join(",", a)))      // duplicates silently dropped
+            res.Add(new List<int>(a));
+        return;
+    }
+    for (int j = i; j < a.Length; j++)
+    {
+        int t = a[i]; a[i] = a[j]; a[j] = t;
+        Gen(a, i + 1, seen, res);
+        t = a[i]; a[i] = a[j]; a[j] = t;
+    }
 }` }
           ]
         }
@@ -3622,7 +4335,39 @@ private:
             cur.pop_back(); used[i] = false;            // un-choose
         }
     }
-};` }
+};` },
+            { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public List<List<int>> PermuteUnique(int[] nums)
+    {
+        Array.Sort(nums);                          // equal values become neighbours
+        var res = new List<List<int>>();
+        Bt(nums, new bool[nums.Length], new List<int>(), res);
+        return res;
+    }
+
+    private void Bt(int[] a, bool[] used, List<int> cur, List<List<int>> res)
+    {
+        if (cur.Count == a.Length)
+        {
+            res.Add(new List<int>(cur));
+            return;
+        }
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (used[i]) continue;                 // already in cur
+            if (i > 0 && a[i] == a[i - 1] && !used[i - 1]) continue; // duplicate branch
+            used[i] = true;
+            cur.Add(a[i]);                         // choose
+            Bt(a, used, cur, res);                 // explore
+            cur.RemoveAt(cur.Count - 1);           // un-choose
+            used[i] = false;
+        }
+    }
+}` }
           ],
           dry: {
             head: ['cur', 'used', 'i tried', 'decision'],
@@ -3772,6 +4517,43 @@ int main() {
         for (int x : s) cout << x << ' ';
         cout << '\\n';                        // 2 2 3 / 7
     }
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class CombinationSum
+{
+    public List<List<int>> Solve(int[] candidates, int target)
+    {
+        Array.Sort(candidates);                       // enables the 'break' prune
+        var res = new List<List<int>>();
+        Bt(candidates, 0, target, new List<int>(), res);
+        return res;
+    }
+
+    private void Bt(int[] c, int start, int rem, List<int> cur, List<List<int>> res)
+    {
+        if (rem == 0)                                 // goal: exact sum
+        {
+            res.Add(new List<int>(cur));
+            return;
+        }
+        for (int i = start; i < c.Length; i++)
+        {
+            if (c[i] > rem) break;                    // sorted: everything after is too big
+            cur.Add(c[i]);                            // choose c[i]
+            Bt(c, i, rem - c[i], cur, res);           // i (not i+1): reuse allowed
+            cur.RemoveAt(cur.Count - 1);              // un-choose
+        }
+    }
+
+    static void Main()
+    {
+        var r = new CombinationSum().Solve(new[] { 2, 3, 6, 7 }, 7);
+        Console.WriteLine("[" + string.Join(", ", r.Select(p => "[" + string.Join(", ", p) + "]")) + "]");
+        // [[2, 2, 3], [7]]
+    }
 }` }
       ] }, { lang: 'java', code: `
       import java.util.*;
@@ -3871,6 +4653,41 @@ int main() {
         for (int x : s) cout << x << ' ';
         cout << '\\n';                        // 1 1 6 / 1 2 5 / 1 7 / 2 6
     }
+}` },
+          { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class CombinationSum2
+{
+    // Each number used at most once; input may contain duplicates.
+    public List<List<int>> Solve(int[] c, int target)
+    {
+        Array.Sort(c);
+        var res = new List<List<int>>();
+        Bt(c, 0, target, new List<int>(), res);
+        return res;
+    }
+
+    private void Bt(int[] c, int start, int rem, List<int> cur, List<List<int>> res)
+    {
+        if (rem == 0) { res.Add(new List<int>(cur)); return; }
+        for (int i = start; i < c.Length; i++)
+        {
+            if (i > start && c[i] == c[i - 1]) continue; // same value at same level -> skip
+            if (c[i] > rem) break;
+            cur.Add(c[i]);
+            Bt(c, i + 1, rem - c[i], cur, res);       // i + 1: no reuse
+            cur.RemoveAt(cur.Count - 1);
+        }
+    }
+
+    static void Main()
+    {
+        var r = new CombinationSum2().Solve(new[] { 10, 1, 2, 7, 6, 1, 5 }, 8);
+        Console.WriteLine("[" + string.Join(", ", r.Select(p => "[" + string.Join(", ", p) + "]")) + "]");
+        // [[1, 1, 6], [1, 2, 5], [1, 7], [2, 6]]
+    }
 }` }
         ] }],
     codeTitle: ['Combination Sum (reuse allowed)', 'Combination Sum II (use once, duplicates in input)'],
@@ -3953,6 +4770,34 @@ int main() {
     bt(3, 1, 9, cur, res);
     for (const auto& s : res) { for (int x : s) cout << x; cout << ' '; }   // 126 135 234
     cout << '\\n';
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Comb3
+{
+    static void Bt(int k, int start, int rem, List<int> cur, List<List<int>> res)
+    {
+        if (cur.Count == k)                    // size reached: check the sum
+        {
+            if (rem == 0) res.Add(new List<int>(cur));
+            return;
+        }
+        for (int d = start; d <= 9 && d <= rem; d++)
+        {
+            cur.Add(d);
+            Bt(k, d + 1, rem - d, cur, res);   // digits used once
+            cur.RemoveAt(cur.Count - 1);
+        }
+    }
+    static void Main()
+    {
+        var res = new List<List<int>>();
+        Bt(3, 1, 9, new List<int>(), res);
+        Console.WriteLine("[" + string.Join(", ", res.Select(p => "[" + string.Join(", ", p) + "]")) + "]");
+        // [[1, 2, 6], [1, 3, 5], [2, 3, 4]]
+    }
 }` }
           ] }
       },
@@ -4078,6 +4923,29 @@ vector<vector<int>> combinationSum(const vector<int>& c, int target) {
     vector<int> cur;
     go(c, target, cur, found);
     return vector<vector<int>>(found.begin(), found.end());
+}` },
+            { lang: 'csharp', code: `List<List<int>> Brute(int[] c, int target)
+{
+    var found = new Dictionary<string, List<int>>();   // key = sorted combination
+    Go(c, target, new List<int>(), found);
+    return new List<List<int>>(found.Values);
+}
+void Go(int[] c, int rem, List<int> cur, Dictionary<string, List<int>> found)
+{
+    if (rem < 0) return;
+    if (rem == 0)
+    {
+        var s = new List<int>(cur);
+        s.Sort();                       // canonical form for de-duplication
+        found[string.Join(",", s)] = s;
+        return;
+    }
+    foreach (int x in c)                // every candidate, every time
+    {
+        cur.Add(x);
+        Go(c, rem - x, cur, found);
+        cur.RemoveAt(cur.Count - 1);
+    }
 }` }
           ]
         }
@@ -4186,7 +5054,36 @@ private:
             cur.pop_back();
         }
     }
-};` }
+};` },
+            { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public List<List<int>> CombinationSum(int[] candidates, int target)
+    {
+        Array.Sort(candidates);                 // enables the 'break' prune
+        var res = new List<List<int>>();
+        Bt(candidates, 0, target, new List<int>(), res);
+        return res;
+    }
+
+    private void Bt(int[] c, int start, int rem, List<int> cur, List<List<int>> res)
+    {
+        if (rem == 0)
+        {
+            res.Add(new List<int>(cur));        // exact hit: save a copy
+            return;
+        }
+        for (int i = start; i < c.Length; i++)
+        {
+            if (c[i] > rem) break;              // too big, and so is everything after
+            cur.Add(c[i]);                      // choose
+            Bt(c, i, rem - c[i], cur, res);     // explore (same i = reuse)
+            cur.RemoveAt(cur.Count - 1);        // un-choose
+        }
+    }
+}` }
           ],
           dry: {
             head: ['cur', 'start', 'rem', 'loop', 'result'],
@@ -4350,6 +5247,49 @@ int main() {
         for (const string& row : b) cout << row << ' ';
         cout << '\\n';    // .Q.. ...Q Q... ..Q.  /  ..Q. Q... ...Q .Q..
     }
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class NQueens
+{
+    public List<List<string>> SolveNQueens(int n)
+    {
+        var res = new List<List<string>>();
+        var board = new char[n][];
+        for (int r = 0; r < n; r++) board[r] = new string('.', n).ToCharArray();
+        Place(0, n, board, new bool[n], new bool[2 * n - 1], new bool[2 * n - 1], res);
+        return res;
+    }
+
+    private void Place(int r, int n, char[][] board, bool[] cols, bool[] diag, bool[] anti,
+                       List<List<string>> res)
+    {
+        if (r == n)                                    // every row has a queen
+        {
+            var snap = new List<string>();
+            foreach (char[] row in board) snap.Add(new string(row)); // copy the board
+            res.Add(snap);
+            return;
+        }
+        for (int c = 0; c < n; c++)
+        {
+            int d = r - c + n - 1, a = r + c;          // diagonal ids
+            if (cols[c] || diag[d] || anti[a]) continue; // attacked -> prune
+            board[r][c] = 'Q';
+            cols[c] = diag[d] = anti[a] = true;        // choose
+            Place(r + 1, n, board, cols, diag, anti, res); // explore next row
+            board[r][c] = '.';
+            cols[c] = diag[d] = anti[a] = false;       // un-choose
+        }
+    }
+
+    static void Main()
+    {
+        foreach (var b in new NQueens().SolveNQueens(4)) Console.WriteLine("[" + string.Join(", ", b) + "]");
+        // [.Q.., ...Q, Q..., ..Q.]
+        // [..Q., Q..., ...Q, .Q..]
+    }
 }` }
       ] }, { lang: 'java', code: `
       class NQueensBits {
@@ -4428,6 +5368,35 @@ int countQueens(int n, int row, int cols, int diag, int anti) {
 int main() {
     for (int n = 1; n <= 10; n++) cout << countQueens(n, 0, 0, 0, 0) << ' ';
     cout << '\\n';                                    // 1 0 0 2 10 4 40 92 352 724
+}` },
+          { lang: 'csharp', run: true, code: `using System;
+
+class NQueensBits
+{
+    // Count solutions with bitmasks: bit c set = column c (or the diagonal hitting column c in this row) is attacked.
+    static int Count(int n, int row, int cols, int diag, int anti)
+    {
+        if (row == n) return 1;
+        int full = (1 << n) - 1;
+        int free = full & ~(cols | diag | anti);      // safe columns in this row
+        int total = 0;
+        while (free != 0)
+        {
+            int bit = free & -free;                   // lowest safe column
+            free -= bit;
+            total += Count(n, row + 1, cols | bit,
+                           (diag | bit) << 1,          // diagonals shift left for the next row
+                           (anti | bit) >> 1);         // anti-diagonals shift right
+        }
+        return total;
+    }
+
+    static void Main()
+    {
+        for (int n = 1; n <= 10; n++) Console.Write(Count(n, 0, 0, 0, 0) + " ");
+        Console.WriteLine();
+        // 1 0 0 2 10 4 40 92 352 724
+    }
 }` }
         ] }],
     codeTitle: ['N-Queens with O(1) checks (all boards)', 'N-Queens II with bitmasks (count only)'],
@@ -4503,6 +5472,27 @@ console.log(valid([0, 2, 1, 3]));          // false` },
 int main() {
     cout << boolalpha << valid({1, 3, 0, 2}) << '\\n';   // true
     cout << boolalpha << valid({0, 2, 1, 3}) << '\\n';   // false
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class ValidQueens
+{
+    static bool Valid(int[] colOfRow)                  // colOfRow[r] = column of the queen in row r
+    {
+        var cols = new HashSet<int>(); var d = new HashSet<int>(); var a = new HashSet<int>();
+        for (int r = 0; r < colOfRow.Length; r++)
+        {
+            int c = colOfRow[r];
+            if (!cols.Add(c) || !d.Add(r - c) || !a.Add(r + c)) return false;
+        }
+        return true;
+    }
+    static void Main()
+    {
+        Console.WriteLine(Valid(new[] { 1, 3, 0, 2 })); // True
+        Console.WriteLine(Valid(new[] { 0, 2, 1, 3 })); // False
+    }
 }` }
           ] }
       }
@@ -4633,6 +5623,32 @@ int main() {
             board.push_back(row);
         }
         res.push_back(board);
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `List<List<string>> Brute(int n)
+{
+    var res = new List<List<string>>();
+    int[] pos = new int[n];
+    int total = 1;
+    for (int i = 0; i < n; i++) total *= n;      // n^n assignments
+    for (int code = 0; code < total; code++)
+    {
+        int x = code;
+        for (int r = 0; r < n; r++) { pos[r] = x % n; x /= n; }
+        bool ok = true;
+        for (int i = 0; i < n && ok; i++)
+            for (int j = i + 1; j < n && ok; j++)
+                if (pos[i] == pos[j] || Math.Abs(pos[i] - pos[j]) == j - i) ok = false;
+        if (!ok) continue;
+        var board = new List<string>();
+        for (int r = 0; r < n; r++)
+        {
+            char[] row = new string('.', n).ToCharArray();
+            row[pos[r]] = 'Q';
+            board.Add(new string(row));
+        }
+        res.Add(board);
     }
     return res;
 }` }
@@ -4774,7 +5790,50 @@ private:
             board[r][c] = '.'; cols[c] = diag[d] = anti[a] = false;   // un-choose
         }
     }
-};` }
+};` },
+            { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    private List<List<string>> res;
+    private char[][] board;
+    private bool[] cols, diag, anti;
+    private int n;
+
+    public List<List<string>> SolveNQueens(int n)
+    {
+        this.n = n;
+        res = new List<List<string>>();
+        board = new char[n][];
+        for (int r = 0; r < n; r++) board[r] = new string('.', n).ToCharArray();
+        cols = new bool[n];
+        diag = new bool[2 * n - 1];                  // r - c + n - 1 in [0, 2n-2]
+        anti = new bool[2 * n - 1];                  // r + c in [0, 2n-2]
+        Place(0);
+        return res;
+    }
+
+    private void Place(int r)
+    {
+        if (r == n)
+        {
+            var snap = new List<string>();
+            foreach (char[] row in board) snap.Add(new string(row));
+            res.Add(snap);
+            return;
+        }
+        for (int c = 0; c < n; c++)
+        {
+            int d = r - c + n - 1, a = r + c;
+            if (cols[c] || diag[d] || anti[a]) continue;   // attacked
+            board[r][c] = 'Q';
+            cols[c] = diag[d] = anti[a] = true;            // choose
+            Place(r + 1);                                  // explore
+            board[r][c] = '.';
+            cols[c] = diag[d] = anti[a] = false;           // un-choose
+        }
+    }
+}` }
           ],
           dry: {
             head: ['row r', 'columns tried', 'safe col', 'marks set', 'event'],
@@ -4990,6 +6049,60 @@ int main() {
     SudokuSolver().solveSudoku(board);
     for (const auto& row : board) cout << string(row.begin(), row.end()) << '\\n';
     // 534678912 / 672195348 / 198342567 / 859761423 / 426853791 / 713924856 / 961537284 / 287419635 / 345286179
+}` },
+        { lang: 'csharp', run: true, code: `using System;
+
+class SudokuSolver
+{
+    private readonly bool[,] rows = new bool[9, 10];
+    private readonly bool[,] cols = new bool[9, 10];
+    private readonly bool[,] boxes = new bool[9, 10];
+
+    public void SolveSudoku(char[][] board)
+    {
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                if (board[r][c] != '.') Mark(r, c, board[r][c] - '0', true); // record givens
+        Solve(board, 0);
+    }
+
+    private bool Solve(char[][] b, int pos)
+    {
+        while (pos < 81 && b[pos / 9][pos % 9] != '.') pos++;   // skip filled cells
+        if (pos == 81) return true;                            // no empty cell: solved
+        int r = pos / 9, c = pos % 9, box = (r / 3) * 3 + c / 3;
+        for (int d = 1; d <= 9; d++)
+        {
+            if (rows[r, d] || cols[c, d] || boxes[box, d]) continue; // clash
+            b[r][c] = (char)('0' + d);
+            Mark(r, c, d, true);                               // choose
+            if (Solve(b, pos + 1)) return true;                // explore; keep answer on success
+            Mark(r, c, d, false);                              // un-choose
+            b[r][c] = '.';
+        }
+        return false;                                          // dead end: caller retries
+    }
+
+    private void Mark(int r, int c, int d, bool v)
+    {
+        rows[r, d] = v;
+        cols[c, d] = v;
+        boxes[(r / 3) * 3 + c / 3, d] = v;
+    }
+
+    static void Main()
+    {
+        string[] p = {
+            "53..7....", "6..195...", ".98....6.",
+            "8...6...3", "4..8.3..1", "7...2...6",
+            ".6....28.", "...419..5", "....8..79"
+        };
+        var board = new char[9][];
+        for (int i = 0; i < 9; i++) board[i] = p[i].ToCharArray();
+        new SudokuSolver().SolveSudoku(board);
+        foreach (char[] row in board) Console.WriteLine(new string(row));
+        // 534678912 / 672195348 / 198342567 / 859761423 / 426853791 / 713924856 / 961537284 / 287419635 / 345286179
+    }
 }` }
       ] }],
     codeTitle: ['Sudoku solver with O(1) row/column/box checks'],
@@ -5073,6 +6186,32 @@ int main() {
     vector<vector<char>> b(9, vector<char>(9, '.'));
     b[0][0] = '5'; b[1][1] = '5';                    // same box -> invalid
     cout << boolalpha << isValid(b) << '\\n';         // false
+}` },
+            { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class ValidSudoku
+{
+    static bool IsValid(char[][] b)
+    {
+        var seen = new HashSet<string>();
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+            {
+                char d = b[r][c];
+                if (d == '.') continue;
+                if (!seen.Add(d + " in row " + r) || !seen.Add(d + " in col " + c)
+                    || !seen.Add(d + " in box " + (r / 3) + "-" + (c / 3))) return false;
+            }
+        return true;
+    }
+    static void Main()
+    {
+        var b = new char[9][];
+        for (int r = 0; r < 9; r++) b[r] = new string('.', 9).ToCharArray();
+        b[0][0] = '5'; b[1][1] = '5';                // same box -> invalid
+        Console.WriteLine(IsValid(b));               // False
+    }
 }` }
           ] }
       },
@@ -5213,6 +6352,34 @@ bool bruteSolve(vector<vector<char>>& b) {
                 }
                 return false;
             }
+    return true;
+}` },
+            { lang: 'csharp', code: `bool BruteSolve(char[][] b)
+{
+    for (int r = 0; r < 9; r++)
+        for (int c = 0; c < 9; c++)
+            if (b[r][c] == '.')
+            {
+                for (char d = '1'; d <= '9'; d++)
+                {
+                    if (Ok(b, r, c, d))              // rescans 27 cells each time
+                    {
+                        b[r][c] = d;
+                        if (BruteSolve(b)) return true;
+                        b[r][c] = '.';
+                    }
+                }
+                return false;
+            }
+    return true;
+}
+bool Ok(char[][] b, int r, int c, char d)
+{
+    for (int i = 0; i < 9; i++)
+    {
+        if (b[r][i] == d || b[i][c] == d) return false;
+        if (b[3 * (r / 3) + i / 3][3 * (c / 3) + i % 3] == d) return false;
+    }
     return true;
 }` }
           ]
@@ -5396,7 +6563,57 @@ private:
         }
         return false;
     }
-};` }
+};` },
+            { lang: 'csharp', code: `public class Solution
+{
+    private int[] rowMask = new int[9], colMask = new int[9], boxMask = new int[9];
+
+    public void SolveSudoku(char[][] board)
+    {
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                if (board[r][c] != '.') Flip(r, c, board[r][c] - '1');
+        Solve(board);
+    }
+
+    private void Flip(int r, int c, int d)          // toggle digit d (0..8) at (r, c)
+    {
+        int bit = 1 << d;
+        rowMask[r] ^= bit;
+        colMask[c] ^= bit;
+        boxMask[(r / 3) * 3 + c / 3] ^= bit;
+    }
+
+    private static int BitCount(int x) { int n = 0; while (x != 0) { x &= x - 1; n++; } return n; }
+    private static int TrailingZeros(int x) { int n = 0; while ((x & 1) == 0) { x >>= 1; n++; } return n; }
+
+    private bool Solve(char[][] b)
+    {
+        // MRV: find the empty cell with the fewest legal digits
+        int bestR = -1, bestC = -1, bestFree = 0, bestCount = 10;
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+            {
+                if (b[r][c] != '.') continue;
+                int free = ~(rowMask[r] | colMask[c] | boxMask[(r / 3) * 3 + c / 3]) & 0x1FF;
+                int cnt = BitCount(free);
+                if (cnt < bestCount) { bestCount = cnt; bestR = r; bestC = c; bestFree = free; }
+            }
+        if (bestR == -1) return true;                // no empty cell: solved
+        while (bestFree != 0)                        // 0 candidates -> loop skipped -> false
+        {
+            int bit = bestFree & -bestFree;          // lowest candidate digit
+            bestFree -= bit;
+            int d = TrailingZeros(bit);
+            b[bestR][bestC] = (char)('1' + d);
+            Flip(bestR, bestC, d);                   // choose
+            if (Solve(b)) return true;               // explore
+            Flip(bestR, bestC, d);                   // un-choose
+            b[bestR][bestC] = '.';
+        }
+        return false;
+    }
+}` }
           ],
           dry: {
             head: ['step', 'cell (MRV pick)', 'candidates', 'action'],
@@ -5448,6 +6665,11 @@ private:
             { lang: 'cpp', code: `string reverseBrute(string s) {
     if (s.size() <= 1) return s;                   // base case
     return reverseBrute(s.substr(1)) + s[0];       // copies O(n) every call
+}` },
+            { lang: 'csharp', code: `string ReverseBrute(string s)
+{
+    if (s.Length <= 1) return s;                   // base case
+    return ReverseBrute(s.Substring(1)) + s[0];    // copies O(n) every call
 }` }
           ]
         }
@@ -5548,7 +6770,31 @@ private:
         swapPairs(s, lo, mid);
         swapPairs(s, mid, hi);
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public void ReverseString(char[] s)
+    {
+        SwapPairs(s, 0, s.Length / 2);     // pairs 0 .. n/2 - 1
+    }
+
+    // Pair i = s[i] and s[n - 1 - i]. Swap every pair in [lo, hi).
+    private void SwapPairs(char[] s, int lo, int hi)
+    {
+        if (hi - lo <= 0) return;          // base: no pairs (n = 0 or 1)
+        if (hi - lo == 1)                  // base: one pair -> swap it
+        {
+            int j = s.Length - 1 - lo;
+            char t = s[lo];
+            s[lo] = s[j];
+            s[j] = t;
+            return;
+        }
+        int mid = (lo + hi) >> 1;          // split the pairs in half
+        SwapPairs(s, lo, mid);             // depth is only log2(n / 2),
+        SwapPairs(s, mid, hi);             // so n = 10^5 needs about 16 frames
+    }
+}` }
       ],
       dry: { head: ['call', 'pairs [lo, hi)', 'action', 's after'], rows: [['swapPairs(0, 2)', '[0, 2)', 'two pairs → split at mid = 1', 'hello'], ['swapPairs(0, 1)', '[0, 1)', 'one pair: s[0] h ↔ s[4] o', 'oellh'], ['swapPairs(1, 2)', '[1, 2)', 'one pair: s[1] e ↔ s[3] l', 'olleh'], ['done', '—', H.c('g', "middle 'l' (index 2) never moves"), H.c('p', 'olleh')]] },
       complexity: `<p><b>Time O(n)</b>: n/2 swaps plus about n/2 internal calls. <b>Space O(log n)</b> stack (about 16 frames for n = 10<sup>5</sup>), versus O(n) for the one-pair-per-call version; the iterative two-pointer loop is O(1).</p>`,
@@ -5603,6 +6849,16 @@ private:
         string s(n, '0');                          // left-padded to length n
         for (int i = 0; i < n; i++) if ((m >> i) & 1) s[n - 1 - i] = '1';
         res.push_back(s);
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `List<string> Brute(int n)
+{
+    var res = new List<string>();
+    for (int m = 0; m < (1 << n); m++)
+    {
+        if ((m & (m >> 1)) != 0) continue;           // two adjacent set bits = "11"
+        res.Add(Convert.ToString(m, 2).PadLeft(n, '0')); // left-pad to length n
     }
     return res;
 }` }
@@ -5706,7 +6962,37 @@ private:
             sb.push_back('1'); bt(n, sb, res); sb.pop_back();
         }
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public List<string> Generate(int n)
+    {
+        var res = new List<string>();
+        Bt(n, new StringBuilder(), res);
+        return res;
+    }
+
+    private void Bt(int n, StringBuilder sb, List<string> res)
+    {
+        if (sb.Length == n)
+        {
+            res.Add(sb.ToString());
+            return;
+        }
+        sb.Append('0');                                   // '0' is always safe
+        Bt(n, sb, res);
+        sb.Length--;
+        if (sb.Length == 0 || sb[sb.Length - 1] != '1')
+        {
+            sb.Append('1');                               // '1' only after a '0' (or at start)
+            Bt(n, sb, res);
+            sb.Length--;
+        }
+    }
+}` }
       ],
       dry: { head: ['prefix', 'last char', 'allowed', 'event'], rows: [['""', '—', '0, 1', 'try 0'], ['"00"', '0', '0, 1', '→ 000, 001 saved'], ['"01"', '1', '0 only', '→ 010 saved'], ['"1"', '1', '0 only', '→ 100, 101 saved']] },
       complexity: `<p><b>Time O(n · F(n+2))</b> ≈ O(n · 1.618<sup>n</sup>): one O(n) copy per answer. <b>Space O(n)</b> recursion + builder.</p>`,
@@ -5763,6 +7049,17 @@ private:
     for (int mask = 0; mask < (1 << n); mask++) {
         int x = 0;
         for (int j = 0; j < n; j++) if (((mask >> j) & 1) == 1) x ^= nums[j];
+        total += x;
+    }
+    return total;
+}` },
+            { lang: 'csharp', code: `int Brute(int[] nums)
+{
+    int n = nums.Length, total = 0;
+    for (int mask = 0; mask < (1 << n); mask++)
+    {
+        int x = 0;
+        for (int j = 0; j < n; j++) if ((mask >> j & 1) == 1) x ^= nums[j];
         total += x;
     }
     return total;
@@ -5840,7 +7137,29 @@ private:
         if (i == (int)a.size()) return xr;    // one finished subset
         return f(a, i + 1, xr ^ a[i]) + f(a, i + 1, xr);   // pick + skip
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public int SubsetXORSum(int[] nums)
+    {
+        return F(nums, 0, 0);
+    }
+
+    private int F(int[] a, int i, int xr)
+    {
+        if (i == a.Length) return xr;          // one complete subset: its XOR total
+        return F(a, i + 1, xr ^ a[i])          // pick a[i]
+             + F(a, i + 1, xr);                // skip a[i]
+    }
+
+    // O(n) formula: each set bit of OR contributes in exactly half of the subsets
+    public int Formula(int[] nums)
+    {
+        int or = 0;
+        foreach (int x in nums) or |= x;
+        return or << (nums.Length - 1);
+    }
+}` }
       ],
       dry: { head: ['path (1? 3?)', 'xr at leaf', 'running sum'], rows: [['pick, pick', '1^3 = 2', '2'], ['pick, skip', '1', '3'], ['skip, pick', '3', '6'], ['skip, skip', '0', H.c('p', '6')]] },
       complexity: `<p>Recursion: <b>O(2<sup>n</sup>)</b> time, <b>O(n)</b> stack. Formula: O(n) time, O(1) space.</p>`,
@@ -5894,7 +7213,17 @@ private:
             if (__builtin_popcount(h) + __builtin_popcount(m) == turnedOn)
                 res.push_back(to_string(h) + ":" + (m < 10 ? "0" : "") + to_string(m));
     return res;
-}` }
+}` },
+            { lang: 'csharp', code: `List<string> Enumerate(int turnedOn)
+{
+    var res = new List<string>();
+    for (int h = 0; h < 12; h++)
+        for (int m = 0; m < 60; m++)
+            if (BitCount(h) + BitCount(m) == turnedOn)
+                res.Add(h + ":" + m.ToString("00"));
+    return res;
+}
+int BitCount(int x) { int n = 0; while (x != 0) { x &= x - 1; n++; } return n; }` }
           ]
         }
     },
@@ -6003,7 +7332,36 @@ private:
             bt(i + 1, k - 1, nh, nm, res);
         }
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    private static readonly int[] VAL = { 1, 2, 4, 8, 1, 2, 4, 8, 16, 32 }; // first 4 = hour LEDs
+
+    public List<string> ReadBinaryWatch(int turnedOn)
+    {
+        var res = new List<string>();
+        Bt(0, turnedOn, 0, 0, res);
+        return res;
+    }
+
+    private void Bt(int start, int k, int h, int m, List<string> res)
+    {
+        if (k == 0)
+        {
+            res.Add(h + ":" + m.ToString("00"));
+            return;
+        }
+        for (int i = start; i < 10; i++)
+        {
+            int nh = h, nm = m;
+            if (i < 4) nh += VAL[i]; else nm += VAL[i];
+            if (nh > 11 || nm > 59) continue;    // invalid time -> prune this LED
+            Bt(i + 1, k - 1, nh, nm, res);       // LEDs used at most once
+        }
+    }
+}` }
       ],
       dry: { head: ['LEDs chosen', 'h', 'm', 'event'], rows: [['{hour-1}', '1', '0', H.c('g', '"1:00"')], ['{hour-8}', '8', '0', H.c('g', '"8:00"')], ['{min-32}', '0', '32', H.c('g', '"0:32"')], ['{hour-4, hour-8} (k=2)', '12', '0', H.c('r', 'pruned')]] },
       complexity: `<p><b>Time O(C(10, k))</b> ≤ 252 sets — effectively O(1). <b>Space O(k)</b> recursion depth.</p>`,
@@ -6055,6 +7413,17 @@ private:
     for (int i = 2; i <= n; i++) {
         string next;
         for (size_t j = 0; j < row.size(); j++) next += row[j] == '0' ? "01" : "10";
+        row = next;
+    }
+    return row[k - 1] - '0';
+}` },
+            { lang: 'csharp', code: `int Brute(int n, int k)
+{
+    var row = new StringBuilder("0");
+    for (int i = 2; i <= n; i++)
+    {
+        var next = new StringBuilder();
+        for (int j = 0; j < row.Length; j++) next.Append(row[j] == '0' ? "01" : "10");
         row = next;
     }
     return row[k - 1] - '0';
@@ -6118,7 +7487,16 @@ public:
         int parent = kthGrammar(n - 1, (k + 1) / 2);      // the symbol that produced k
         return k % 2 == 1 ? parent : 1 - parent;          // right child is flipped
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    public int KthGrammar(int n, int k)
+    {
+        if (n == 1) return 0;                         // row 1 is "0"
+        int parent = KthGrammar(n - 1, (k + 1) / 2);  // the symbol that produced position k
+        return (k % 2 == 1) ? parent : 1 - parent;    // left child same, right child flipped
+    }
+}` }
       ],
       dry: { head: ['call', 'k odd?', 'parent value', 'returns'], rows: [['(1, 1)', '—', '—', H.c('g', '0 (base)')], ['(2, 2)', 'no (right child)', '0', '1 − 0 = 1'], ['(3, 3)', 'yes (left child)', '1', '1'], ['(4, 5)', 'yes (left child)', '1', H.c('p', '1')]] },
       complexity: `<p><b>Time O(n)</b>, <b>Space O(n)</b> stack (or O(1) with the bit-count formula).</p>`,
@@ -6176,7 +7554,20 @@ public:
         res.push_back(c);
     }
     return res;
-}` }
+}` },
+            { lang: 'csharp', code: `List<List<int>> Brute(int n, int k)
+{
+    var res = new List<List<int>>();
+    for (int m = 0; m < (1 << n); m++)
+    {
+        if (BitCount(m) != k) continue;
+        var c = new List<int>();
+        for (int j = 0; j < n; j++) if ((m >> j & 1) == 1) c.Add(j + 1);
+        res.Add(c);
+    }
+    return res;
+}
+int BitCount(int x) { int n = 0; while (x != 0) { x &= x - 1; n++; } return n; }` }
           ]
         }
     },
@@ -6278,7 +7669,34 @@ private:
             cur.pop_back();
         }
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public List<List<int>> Combine(int n, int k)
+    {
+        var res = new List<List<int>>();
+        Bt(n, k, 1, new List<int>(), res);
+        return res;
+    }
+
+    private void Bt(int n, int k, int start, List<int> cur, List<List<int>> res)
+    {
+        if (cur.Count == k)
+        {
+            res.Add(new List<int>(cur));
+            return;
+        }
+        int need = k - cur.Count;
+        for (int i = start; i <= n - need + 1; i++)     // leave room for the remaining picks
+        {
+            cur.Add(i);
+            Bt(n, k, i + 1, cur, res);
+            cur.RemoveAt(cur.Count - 1);
+        }
+    }
+}` }
       ],
       dry: { head: ['cur', 'start', 'loop range', 'event'], rows: [['[]', '1', '1..3', 'pick 1'], ['[1]', '2', '2..4', '[1,2] [1,3] [1,4]'], ['[]', '1', 'i = 2', '[2,3] [2,4]'], ['[]', '1', 'i = 3', '[3,4]; i = 4 excluded by prune']] },
       complexity: `<p><b>Time O(k · C(n, k))</b>, <b>Space O(k)</b> recursion + cur.</p>`,
@@ -6340,6 +7758,20 @@ private:
         seen.insert(s);
     }
     return vector<vector<int>>(seen.begin(), seen.end());
+}` },
+            { lang: 'csharp', code: `List<List<int>> Brute(int[] nums)
+{
+    Array.Sort(nums);                     // sorted input -> each generated subset is sorted
+    var seen = new HashSet<string>();
+    var res = new List<List<int>>();
+    int n = nums.Length;
+    for (int m = 0; m < (1 << n); m++)
+    {
+        var s = new List<int>();
+        for (int j = 0; j < n; j++) if ((m >> j & 1) == 1) s.Add(nums[j]);
+        if (seen.Add(string.Join(",", s))) res.Add(s);
+    }
+    return res;
 }` }
           ]
         }
@@ -6442,7 +7874,32 @@ private:
             cur.pop_back();
         }
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public List<List<int>> SubsetsWithDup(int[] nums)
+    {
+        Array.Sort(nums);
+        var res = new List<List<int>>();
+        Bt(nums, 0, new List<int>(), res);
+        return res;
+    }
+
+    private void Bt(int[] a, int start, List<int> cur, List<List<int>> res)
+    {
+        res.Add(new List<int>(cur));                       // every node is a subset
+        for (int j = start; j < a.Length; j++)
+        {
+            if (j > start && a[j] == a[j - 1]) continue;   // same value at this level: skip
+            cur.Add(a[j]);
+            Bt(a, j + 1, cur, res);
+            cur.RemoveAt(cur.Count - 1);
+        }
+    }
+}` }
       ],
       dry: { head: ['cur', 'start', 'j', 'event'], rows: [['[]', '0', '—', 'save []'], ['[1]', '1', '1 then 2', 'save [1], [1,2], [1,2,2]; j = 2 at start 1 skipped'], ['[]', '0', '1', 'save [2], [2,2]'], ['[]', '0', '2', H.c('r', 'skip (equal to j = 1 at the same level)')]] },
       complexity: `<p><b>Time O(n · 2<sup>n</sup>)</b> worst case, <b>Space O(n)</b> recursion (excluding output).</p>`,
@@ -6509,6 +7966,21 @@ private:
             if (((m >> j) & 1) == 1 && isalpha((unsigned char)c[j]))
                 c[j] = isupper((unsigned char)c[j]) ? tolower((unsigned char)c[j]) : toupper((unsigned char)c[j]);
         if (seen.insert(c).second) res.push_back(c);   // keep first-seen order, drop duplicates
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `List<string> Brute(string s)
+{
+    var seen = new HashSet<string>();
+    var res = new List<string>();
+    int n = s.Length;
+    for (int m = 0; m < (1 << n); m++)
+    {
+        char[] c = s.ToCharArray();
+        for (int j = 0; j < n; j++)
+            if ((m >> j & 1) == 1 && char.IsLetter(c[j]))
+                c[j] = char.IsUpper(c[j]) ? char.ToLower(c[j]) : char.ToUpper(c[j]);
+        if (seen.Add(new string(c))) res.Add(new string(c));
     }
     return res;
 }` }
@@ -6609,7 +8081,36 @@ private:
         c[i] = (char)tolower((unsigned char)c[i]); f(c, i + 1, res);
         c[i] = (char)toupper((unsigned char)c[i]); f(c, i + 1, res);
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public List<string> LetterCasePermutation(string s)
+    {
+        var res = new List<string>();
+        F(s.ToCharArray(), 0, res);
+        return res;
+    }
+
+    private void F(char[] c, int i, List<string> res)
+    {
+        if (i == c.Length)
+        {
+            res.Add(new string(c));                 // copy of the current string
+            return;
+        }
+        if (char.IsDigit(c[i]))
+        {
+            F(c, i + 1, res);                       // only one choice for digits
+            return;
+        }
+        c[i] = char.ToLower(c[i]);
+        F(c, i + 1, res);                           // branch 1: lowercase
+        c[i] = char.ToUpper(c[i]);
+        F(c, i + 1, res);                           // branch 2: uppercase
+    }
+}` }
       ],
       dry: { head: ['i', 'char', 'branches', 'strings below'], rows: [['0', 'a', 'a / A', '2 subtrees'], ['1', '1', 'digit: 1 branch', '—'], ['2', 'b', 'b / B', '2 leaves each'], ['4', '—', 'base', H.c('g', '4 strings total')]] },
       complexity: `<p><b>Time O(n · 2<sup>L</sup>)</b>, <b>Space O(n)</b> recursion + char array.</p>`,
@@ -6704,6 +8205,30 @@ private:
             }
         }
         if (ok) res.push_back(parts);
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `List<List<string>> Brute(string s)
+{
+    var res = new List<List<string>>();
+    int n = s.Length;
+    for (int m = 0; m < (1 << (n - 1)); m++)        // bit g = cut after position g
+    {
+        var parts = new List<string>();
+        int from = 0;
+        bool ok = true;
+        for (int g = 0; g < n; g++)
+        {
+            if (g == n - 1 || (m >> g & 1) == 1)
+            {
+                string p = s.Substring(from, g + 1 - from);
+                char[] rev = p.ToCharArray(); Array.Reverse(rev);
+                if (new string(rev) != p) { ok = false; break; }
+                parts.Add(p);
+                from = g + 1;
+            }
+        }
+        if (ok) res.Add(parts);
     }
     return res;
 }` }
@@ -6827,7 +8352,39 @@ private:
             cur.pop_back();
         }
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public List<List<string>> Partition(string s)
+    {
+        int n = s.Length;
+        bool[,] pal = new bool[n, n];
+        for (int i = n - 1; i >= 0; i--)
+            for (int j = i; j < n; j++)
+                pal[i, j] = s[i] == s[j] && (j - i < 2 || pal[i + 1, j - 1]);
+        var res = new List<List<string>>();
+        Bt(s, 0, pal, new List<string>(), res);
+        return res;
+    }
+
+    private void Bt(string s, int i, bool[,] pal, List<string> cur, List<List<string>> res)
+    {
+        if (i == s.Length)
+        {
+            res.Add(new List<string>(cur));
+            return;
+        }
+        for (int e = i; e < s.Length; e++)
+        {
+            if (!pal[i, e]) continue;                // piece s[i..e] must be a palindrome
+            cur.Add(s.Substring(i, e + 1 - i));      // choose this piece
+            Bt(s, e + 1, pal, cur, res);             // partition the rest
+            cur.RemoveAt(cur.Count - 1);             // un-choose
+        }
+    }
+}` }
       ],
       dry: { head: ['i', 'cur', 'end e tried', 'event'], rows: [['0', '[]', '0 ("a")', 'palindrome → choose'], ['1', '[a]', '1 ("a")', 'choose → [a,a] → e=2 "b" → ' + H.c('g', 'save [a,a,b]')], ['1', '[a]', '2 ("ab")', H.c('r', 'not palindrome')], ['0', '[]', '1 ("aa")', 'choose → "b" → ' + H.c('g', 'save [aa,b]')], ['0', '[]', '2 ("aab")', H.c('r', 'not palindrome')]] },
       complexity: `<p><b>Time O(n · 2<sup>n</sup>)</b> worst case (e.g. "aaaa…"), table O(n²). <b>Space O(n²)</b> for the table + O(n) recursion.</p>`,
@@ -6929,6 +8486,25 @@ bool exist(vector<vector<char>>& b, string w) {
             if (allPaths(b, r, c, sb, seen, w)) return true;
         }
     return false;
+}` },
+            { lang: 'csharp', code: `bool Brute(char[][] b, string w)
+{
+    for (int r = 0; r < b.Length; r++)
+        for (int c = 0; c < b[0].Length; c++)
+            if (AllPaths(b, r, c, new StringBuilder(), new bool[b.Length, b[0].Length], w)) return true;
+    return false;
+}
+bool AllPaths(char[][] b, int r, int c, StringBuilder sb, bool[,] seen, string w)
+{
+    if (r < 0 || c < 0 || r >= b.Length || c >= b[0].Length || seen[r, c]) return false;
+    sb.Append(b[r][c]);
+    seen[r, c] = true;
+    bool found = sb.Length == w.Length ? sb.ToString() == w       // compare only at full length
+        : AllPaths(b, r + 1, c, sb, seen, w) || AllPaths(b, r - 1, c, sb, seen, w)
+          || AllPaths(b, r, c + 1, sb, seen, w) || AllPaths(b, r, c - 1, sb, seen, w);
+    seen[r, c] = false;
+    sb.Length--;
+    return found;
 }` }
           ]
         }
@@ -7042,7 +8618,38 @@ private:
         b[r][c] = saved;                      // un-choose
         return found;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    private static readonly int[] DR = { 1, -1, 0, 0 }, DC = { 0, 0, 1, -1 };
+
+    public bool Exist(char[][] board, string word)
+    {
+        for (int r = 0; r < board.Length; r++)
+            for (int c = 0; c < board[0].Length; c++)
+                if (Dfs(board, word, r, c, 0)) return true;
+        return false;
+    }
+
+    private bool Dfs(char[][] b, string w, int r, int c, int i)
+    {
+        if (r < 0 || c < 0 || r >= b.Length || c >= b[0].Length) return false;
+        if (b[r][c] != w[i]) return false;                // mismatch (or '#' = visited)
+        if (i == w.Length - 1) return true;               // matched the last letter
+        char saved = b[r][c];
+        b[r][c] = '#';                                    // choose: mark visited
+        for (int d = 0; d < 4; d++)
+        {
+            if (Dfs(b, w, r + DR[d], c + DC[d], i + 1))
+            {
+                b[r][c] = saved;                          // restore even on success
+                return true;
+            }
+        }
+        b[r][c] = saved;                                  // un-choose
+        return false;
+    }
+}` }
       ],
       dry: { head: ['cell', 'letter needed', 'match?', 'event'], rows: [['(0,0)', 'A', 'yes', 'mark, go on'], ['(0,1)', 'B', 'yes', 'mark'], ['(0,2)', 'C', 'yes', 'mark'], ['(1,2)', 'C', 'yes', 'mark'], ['(2,2)', 'E', 'yes', 'mark'], ['(2,1)', 'D', 'yes, last letter', H.c('g', 'true — unwind, restoring cells')]] },
       complexity: `<p><b>Time O(m · n · 3<sup>L</sup>)</b>: from each start, every step has at most 3 new directions. <b>Space O(L)</b> recursion depth.</p>`,
@@ -7124,6 +8731,26 @@ function assign(nums, i, bucket) {
 bool canPartitionKSubsets(vector<int>& nums, int k) {
     vector<int> bucket(k, 0);
     return assign(nums, 0, bucket);
+}` },
+            { lang: 'csharp', code: `bool Brute(int[] nums, int k)
+{
+    int[] bucket = new int[k];
+    return Assign(nums, 0, bucket);
+}
+bool Assign(int[] nums, int i, int[] bucket)
+{
+    if (i == nums.Length)
+    {
+        foreach (int b in bucket) if (b != bucket[0]) return false;
+        return true;
+    }
+    for (int j = 0; j < bucket.Length; j++)            // no pruning at all
+    {
+        bucket[j] += nums[i];
+        if (Assign(nums, i + 1, bucket)) return true;
+        bucket[j] -= nums[i];
+    }
+    return false;
 }` }
           ]
         }
@@ -7260,7 +8887,41 @@ private:
         }
         return false;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System;
+using System.Linq;
+
+public class Solution
+{
+    public bool CanPartitionKSubsets(int[] nums, int k)
+    {
+        int sum = nums.Sum();
+        if (sum % k != 0) return false;
+        int target = sum / k;
+        Array.Sort(nums);
+        Array.Reverse(nums);                                   // descending: big numbers first
+        if (nums[0] > target) return false;
+        return Bt(nums, 0, new int[k], target);
+    }
+
+    private bool Bt(int[] nums, int i, int[] bucket, int target)
+    {
+        if (i == nums.Length) return true;                 // every number placed, sums never exceeded target
+        int x = nums[i];
+        for (int b = 0; b < bucket.Length; b++)
+        {
+            if (bucket[b] + x > target) continue;          // overflow
+            bool seenSame = false;
+            for (int p = 0; p < b; p++) if (bucket[p] == bucket[b]) { seenSame = true; break; }
+            if (seenSame) continue;                        // equivalent bucket already tried
+            bucket[b] += x;                                // choose
+            if (Bt(nums, i + 1, bucket, target)) return true; // explore
+            bucket[b] -= x;                                // un-choose
+            if (bucket[b] == 0) break;                     // empty buckets are all the same
+        }
+        return false;
+    }
+}` }
       ],
       dry: { head: ['x (desc)', 'buckets before', 'placed in', 'buckets after'], rows: [['5', '[0,0,0,0]', 'b0', '[5,0,0,0]'], ['4', '[5,0,0,0]', 'b1 (b0 full)', '[5,4,0,0]'], ['3', '[5,4,0,0]', 'b2', '[5,4,3,0]'], ['3', '[5,4,3,0]', 'b3 (b2 would be 6)', '[5,4,3,3]'], ['2, 2, 1', '…', 'b2, b3, b1', H.c('g', '[5,5,5,5] → true')]] },
       complexity: `<p><b>Time O(k<sup>n</sup>)</b> worst case but heavily pruned; the bitmask-DP alternative is O(n · 2<sup>n</sup>). <b>Space O(n)</b> recursion + O(k) buckets.</p>`,
@@ -7342,6 +9003,23 @@ function place(r, n, cols, d, a) {
 int totalNQueens(int n) {
     vector<bool> cols(n, false), d(2 * n - 1, false), a(2 * n - 1, false);
     return place(0, n, cols, d, a);
+}` },
+            { lang: 'csharp', code: `int Brute(int n)
+{
+    return Place(0, n, new bool[n], new bool[2 * n - 1], new bool[2 * n - 1]);
+}
+int Place(int r, int n, bool[] cols, bool[] d, bool[] a)
+{
+    if (r == n) return 1;
+    int total = 0;
+    for (int c = 0; c < n; c++)
+    {
+        if (cols[c] || d[r - c + n - 1] || a[r + c]) continue;
+        cols[c] = d[r - c + n - 1] = a[r + c] = true;
+        total += Place(r + 1, n, cols, d, a);
+        cols[c] = d[r - c + n - 1] = a[r + c] = false;
+    }
+    return total;
 }` }
           ]
         }
@@ -7471,7 +9149,43 @@ private:
         }
         return total;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `public class Solution
+{
+    private int full;
+
+    public int TotalNQueens(int n)
+    {
+        full = (1 << n) - 1;
+        int total = 0;
+        for (int c = 0; c < n / 2; c++)                    // left half of row 0
+        {
+            int bit = 1 << c;
+            total += Count(1, bit, bit << 1, bit >> 1);
+        }
+        total *= 2;                                        // mirror images
+        if (n % 2 == 1)                                    // middle column counted once
+        {
+            int bit = 1 << (n / 2);
+            total += Count(1, bit, bit << 1, bit >> 1);
+        }
+        return total;
+    }
+
+    private int Count(int row, int cols, int d, int a)
+    {
+        if (cols == full) return 1;                        // all n columns used = n queens placed
+        int free = full & ~(cols | d | a);
+        int total = 0;
+        while (free != 0)
+        {
+            int bit = free & -free;                        // lowest safe column
+            free -= bit;
+            total += Count(row + 1, cols | bit, (d | bit) << 1, (a | bit) >> 1);
+        }
+        return total;
+    }
+}` }
       ],
       dry: { head: ['n', 'left-half count', '× 2', 'middle col', 'total'], rows: [['4', '1 (col 1)', '2', '—', H.c('p', '2')], ['5', '4 (cols 0, 1)', '8', '+2', H.c('p', '10')], ['1', '0', '0', '+1', H.c('p', '1')]] },
       complexity: `<p><b>Time O(n!)</b> upper bound, about half the nodes of plain bitmask search; each node O(1) bit ops. <b>Space O(n)</b> recursion.</p>`,
@@ -7626,6 +9340,49 @@ vector<string> addOperators(string num, int target) {
         if (!regex_search(sb, regex("\\\\b0\\\\d")) && evaluate(sb) == target) res.push_back(sb);
     }
     return res;
+}` },
+            { lang: 'csharp', code: `List<string> Brute(string num, int target)
+{
+    var res = new List<string>();
+    int gaps = num.Length - 1;
+    int total = 1;
+    for (int i = 0; i < gaps; i++) total *= 4;
+    string ops = "+-*";
+    for (int code = 0; code < total; code++)
+    {
+        var sb = new StringBuilder().Append(num[0]);
+        int x = code;
+        for (int g = 0; g < gaps; g++)
+        {
+            int o = x % 4; x /= 4;
+            if (o < 3) sb.Append(ops[o]);              // o == 3 means "join digits"
+            sb.Append(num[g + 1]);
+        }
+        string e = sb.ToString();
+        if (!HasLeadingZero(e) && Eval(e) == target) res.Add(e);
+    }
+    return res;
+}
+bool HasLeadingZero(string e)                          // an operand like "05"
+{
+    for (int i = 0; i + 1 < e.Length; i++)
+        if (e[i] == '0' && char.IsDigit(e[i + 1]) && (i == 0 || !char.IsDigit(e[i - 1]))) return true;
+    return false;
+}
+long Eval(string e)                                    // + - * with precedence
+{
+    long sum = 0, term = 0, cur = 0;
+    char op = '+';
+    for (int i = 0; i <= e.Length; i++)
+    {
+        char ch = i < e.Length ? e[i] : '+';
+        if (char.IsDigit(ch)) { cur = cur * 10 + (ch - '0'); continue; }
+        if (op == '*') term *= cur;
+        else { sum += term; term = op == '+' ? cur : -cur; }
+        op = ch;
+        cur = 0;
+    }
+    return sum + term;
 }` }
           ]
         }
@@ -7773,7 +9530,54 @@ private:
             }
         }
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public List<string> AddOperators(string num, int target)
+    {
+        var res = new List<string>();
+        Bt(num, target, 0, 0, 0, new StringBuilder(), res);
+        return res;
+    }
+
+    private void Bt(string num, int target, int i, long value, long last, StringBuilder sb, List<string> res)
+    {
+        if (i == num.Length)
+        {
+            if (value == target) res.Add(sb.ToString());
+            return;
+        }
+        int len = sb.Length;                                // remember for un-choose
+        long cur = 0;
+        for (int j = i; j < num.Length; j++)
+        {
+            if (j > i && num[i] == '0') break;              // no operands with leading zero
+            cur = cur * 10 + (num[j] - '0');
+            string operand = num.Substring(i, j + 1 - i);
+            if (i == 0)                                     // first operand: no operator
+            {
+                sb.Append(operand);
+                Bt(num, target, j + 1, cur, cur, sb, res);
+                sb.Length = len;
+            }
+            else
+            {
+                sb.Append('+').Append(operand);
+                Bt(num, target, j + 1, value + cur, cur, sb, res);
+                sb.Length = len;
+                sb.Append('-').Append(operand);
+                Bt(num, target, j + 1, value - cur, -cur, sb, res);
+                sb.Length = len;
+                sb.Append('*').Append(operand);
+                Bt(num, target, j + 1, value - last + last * cur, last * cur, sb, res);
+                sb.Length = len;
+            }
+        }
+    }
+}` }
       ],
       dry: { head: ['expression so far', 'value', 'last', 'next step'], rows: [['"1"', '1', '1', 'append +2 / −2 / *2'], ['"1*2"', '1 − 1 + 1·2 = 2', '2', 'append *3'], ['"1*2*3"', '2 − 2 + 2·3 = 6', '6', H.c('g', 'i == n, 6 == target → save')], ['"1+2+3"', '6', '3', H.c('g', 'save')], ['"12-3"', '9', '−3', H.c('r', '9 ≠ 6')]] },
       complexity: `<p><b>Time O(n · 4<sup>n</sup>)</b>: each gap has 4 options and building each string costs O(n). <b>Space O(n)</b> recursion + builder.</p>`,
@@ -7882,6 +9686,31 @@ vector<string> removeInvalidParentheses(string s) {
         res.insert(t);
     }
     return vector<string>(res.begin(), res.end());
+}` },
+            { lang: 'csharp', code: `List<string> Brute(string s)
+{
+    int n = s.Length, best = -1;
+    var res = new HashSet<string>();
+    for (int m = 0; m < (1 << n); m++)                // m = characters to KEEP
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < n; i++) if ((m >> i & 1) == 1) sb.Append(s[i]);
+        string t = sb.ToString();
+        if (t.Length < best || !Valid(t)) continue;
+        if (t.Length > best) { best = t.Length; res.Clear(); }
+        res.Add(t);
+    }
+    return new List<string>(res);
+}
+bool Valid(string t)
+{
+    int bal = 0;
+    foreach (char ch in t)
+    {
+        if (ch == '(') bal++;
+        else if (ch == ')' && --bal < 0) return false;
+    }
+    return bal == 0;
 }` }
           ]
         }
@@ -8036,7 +9865,60 @@ private:
         dfs(s, i + 1, open + (ch == '(') - (ch == ')'), rmL, rmR, sb, res);
         sb.pop_back();
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public List<string> RemoveInvalidParentheses(string s)
+    {
+        int rmL = 0, rmR = 0;
+        foreach (char ch in s)                          // minimal removals
+        {
+            if (ch == '(') rmL++;
+            else if (ch == ')')
+            {
+                if (rmL > 0) rmL--;                     // matched
+                else rmR++;                             // unmatched ')'
+            }
+        }
+        var seen = new HashSet<string>();
+        var res = new List<string>();
+        Dfs(s, 0, 0, rmL, rmR, new StringBuilder(), seen, res);
+        return res;
+    }
+
+    private void Dfs(string s, int i, int open, int rmL, int rmR, StringBuilder sb, HashSet<string> seen, List<string> res)
+    {
+        if (rmL < 0 || rmR < 0 || open < 0) return;      // invalid path
+        if (i == s.Length)
+        {
+            if (rmL == 0 && rmR == 0 && open == 0 && seen.Add(sb.ToString())) res.Add(sb.ToString());
+            return;
+        }
+        char ch = s[i];
+        int len = sb.Length;
+        if (ch == '(')
+        {
+            Dfs(s, i + 1, open, rmL - 1, rmR, sb, seen, res);     // delete it
+            sb.Append(ch);
+            Dfs(s, i + 1, open + 1, rmL, rmR, sb, seen, res);     // keep it
+        }
+        else if (ch == ')')
+        {
+            Dfs(s, i + 1, open, rmL, rmR - 1, sb, seen, res);     // delete it
+            sb.Append(ch);
+            Dfs(s, i + 1, open - 1, rmL, rmR, sb, seen, res);     // keep it (needs open > 0)
+        }
+        else
+        {
+            sb.Append(ch);
+            Dfs(s, i + 1, open, rmL, rmR, sb, seen, res);         // letters always stay
+        }
+        sb.Length = len;                                          // un-choose
+    }
+}` }
       ],
       dry: { head: ['scan char', 'rmL', 'rmR', 'note'], rows: [['(', '1', '0', ''], [')', '0', '0', 'matched'], ['(', '1', '0', ''], [')', '0', '0', 'matched'], [')', '0', H.c('r', '1'), 'unmatched → must delete one ")"'], ['()', '0', '1', 'final quotas: rmL = 0, rmR = 1']] },
       complexity: `<p><b>Time O(2<sup>b</sup> · n)</b> worst case for b brackets (≤ 20), heavily cut by quotas and the open ≥ 0 check. <b>Space O(n)</b> recursion + builder (excluding results).</p>`,
@@ -8131,6 +10013,25 @@ vector<string> wordBreak(string s, vector<string>& wordDict) {
     vector<string> cur;
     go(s, 0, dict, cur, res);
     return res;
+}` },
+            { lang: 'csharp', code: `List<string> Brute(string s, IList<string> wordDict)
+{
+    var dict = new HashSet<string>(wordDict);
+    var res = new List<string>();
+    Go(s, 0, dict, new List<string>(), res);
+    return res;
+}
+void Go(string s, int i, HashSet<string> dict, List<string> cur, List<string> res)
+{
+    if (i == s.Length) { res.Add(string.Join(" ", cur)); return; }
+    for (int j = i + 1; j <= s.Length; j++)
+    {
+        string w = s.Substring(i, j - i);
+        if (!dict.Contains(w)) continue;
+        cur.Add(w);
+        Go(s, j, dict, cur, res);
+        cur.RemoveAt(cur.Count - 1);
+    }
 }` }
           ]
         }
@@ -8260,7 +10161,44 @@ private:
         }
         return memo[i] = out;
     }
-};` }
+};` },
+        { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    private HashSet<string> dict;
+    private int maxLen;
+    private Dictionary<int, List<string>> memo = new Dictionary<int, List<string>>();
+
+    public List<string> WordBreak(string s, IList<string> wordDict)
+    {
+        dict = new HashSet<string>(wordDict);
+        foreach (string w in wordDict) maxLen = Math.Max(maxLen, w.Length);
+        return Solve(s, 0);
+    }
+
+    private List<string> Solve(string s, int i)
+    {
+        List<string> cached;
+        if (memo.TryGetValue(i, out cached)) return cached;   // suffix already solved
+        var result = new List<string>();
+        if (i == s.Length)
+        {
+            result.Add("");                                   // one way to split nothing
+            return result;
+        }
+        for (int j = i + 1; j <= Math.Min(s.Length, i + maxLen); j++)
+        {
+            string w = s.Substring(i, j - i);
+            if (!dict.Contains(w)) continue;                  // prune: not a word
+            foreach (string tail in Solve(s, j))              // all sentences of the rest
+                result.Add(tail.Length == 0 ? w : w + " " + tail);
+        }
+        memo[i] = result;
+        return result;
+    }
+}` }
       ],
       dry: { head: ['i (suffix)', 'words tried', 'tails', 'memo[i]'], rows: [['7 ("dog")', 'dog', '[""]', '["dog"]'], ['4 ("anddog")', 'and', 'memo[7] = ["dog"]', '["and dog"]'], ['3 ("sanddog")', 'sand', 'memo[7]', '["sand dog"]'], ['0', 'cat → memo[3], cats → memo[4]', '—', H.c('g', '["cat sand dog", "cats and dog"]')]] },
       complexity: `<p><b>Time O(n · L + output size)</b> roughly — each suffix computed once (n states × up to L word checks, L = max word length), plus building the sentences, which can be exponential in the worst case but is bounded by the output. <b>Space</b>: memo of all suffix sentences + O(n) recursion.</p>`,

@@ -151,6 +151,29 @@ int tsp(const vector<vector<int>>& dist) {
     for (int last = 1; last < n; last++)             // close the tour back to city 0
         best = min(best, dp[full - 1][last] + dist[last][0]);
     return best;
+}` }, { lang: 'csharp', code: `// Held-Karp: Travelling Salesman in O(2^n * n^2) time, O(2^n * n) memory.
+int Tsp(int[][] dist) {
+    int n = dist.Length, full = 1 << n;
+    const int INF = int.MaxValue / 2;                // halved so INF + edge does not overflow
+    int[][] dp = new int[full][];
+    for (int m = 0; m < full; m++) { dp[m] = new int[n]; for (int i = 0; i < n; i++) dp[m][i] = INF; }
+    dp[1][0] = 0;                                    // visited {0}, standing at city 0
+    for (int mask = 1; mask < full; mask++) {
+        if ((mask & 1) == 0) continue;               // every useful path contains the start city
+        for (int last = 0; last < n; last++) {
+            if (dp[mask][last] >= INF) continue;     // unreachable state
+            for (int next = 0; next < n; next++) {
+                if ((mask >> next & 1) == 1) continue; // already visited
+                int nm = mask | (1 << next);
+                int cand = dp[mask][last] + dist[last][next];
+                if (cand < dp[nm][next]) dp[nm][next] = cand;
+            }
+        }
+    }
+    int best = INF;
+    for (int last = 1; last < n; last++)             // close the tour back to city 0
+        best = Math.Min(best, dp[full - 1][last] + dist[last][0]);
+    return n == 1 ? 0 : best;
 }` }] }, { lang: 'python', code: `# Held-Karp TSP + assignment in Python (runnable)
 def tsp(dist):
     n = len(dist)
@@ -347,6 +370,22 @@ int shortestPathLength(vector<vector<int>>& graph) {
         }
     }
     return -1;
+}` }, { lang: 'csharp', code: `int ShortestPathLength(int[][] graph) {
+    int n = graph.Length, full = (1 << n) - 1;
+    bool[,] seen = new bool[1 << n, n];
+    var q = new Queue<(int mask, int node)>();
+    for (int i = 0; i < n; i++) { q.Enqueue((1 << i, i)); seen[1 << i, i] = true; }
+    for (int steps = 0; q.Count > 0; steps++) {
+        for (int sz = q.Count; sz > 0; sz--) {
+            var s = q.Dequeue();
+            if (s.mask == full) return steps;
+            foreach (int nb in graph[s.node]) {
+                int nm = s.mask | (1 << nb);
+                if (!seen[nm, nb]) { seen[nm, nb] = true; q.Enqueue((nm, nb)); }
+            }
+        }
+    }
+    return -1;
 }` }] } },
       { title: 'Grouping with submask enumeration: Minimum Number of Work Sessions (LC 1986)', html: `<p>Tasks (n ≤ 14) must be packed into sessions of length ≤ T. Precompute <code>ok[sub]</code> = "sum of sub ≤ T". Then <code>dp[mask] = 1 + min dp[mask ^ sub]</code> over non-empty submasks <code>sub</code> of <code>mask</code> with <code>ok[sub]</code>. The loop <code>for (sub = mask; sub &gt; 0; sub = (sub - 1) &amp; mask)</code> walks every submask. Total work over all masks is <b>3<sup>n</sup></b> (each element is: out of mask, in mask but not in sub, or in sub). 3<sup>14</sup> ≈ 4.8 million.</p>`, code: { lang: 'java', code: `int minSessions(int[] tasks, int T) {
     int n = tasks.length, full = 1 << n;
@@ -408,6 +447,21 @@ int minSessions(vector<int>& tasks, int T) {
     for (int m = 1; m < full; m++)
         for (int sub = m; sub > 0; sub = (sub - 1) & m)   // every non-empty submask
             if (ok[sub]) dp[m] = min(dp[m], dp[m ^ sub] + 1);
+    return dp[full - 1];
+}` }, { lang: 'csharp', code: `int MinSessions(int[] tasks, int T) {
+    int n = tasks.Length, full = 1 << n;
+    bool[] ok = new bool[full];
+    for (int m = 0; m < full; m++) {
+        int s = 0;
+        for (int i = 0; i < n; i++) if ((m >> i & 1) == 1) s += tasks[i];
+        ok[m] = s <= T;
+    }
+    int[] dp = new int[full];
+    for (int m = 1; m < full; m++) dp[m] = int.MaxValue / 2;
+    dp[0] = 0;
+    for (int m = 1; m < full; m++)
+        for (int sub = m; sub > 0; sub = (sub - 1) & m)   // every non-empty submask
+            if (ok[sub]) dp[m] = Math.Min(dp[m], dp[m ^ sub] + 1);
     return dp[full - 1];
 }` }] } },
       { title: 'Memory check before you code', html: `<p>dp[2<sup>20</sup>][20] of <code>int</code> = 2<sup>20</sup>·20·4 bytes ≈ <b>84 MB</b> — risky on a 256 MB judge (in Java, object headers for 2<sup>20</sup> small arrays add ~16 MB more; a flat array avoids that, and a Python list of lists is far heavier still). Fixes: flatten to <code>int[(1&lt;&lt;n)*n]</code>, drop the start bit (fix city 0, store only masks of the other n−1 cities → half the memory), or use <code>short</code>/<code>float</code> when values fit.</p>` }
@@ -493,6 +547,20 @@ int minCost(vector<vector<int>>& cost) {
     };
     go(0, 0);
     return best;
+}` }, { lang: 'csharp', code: `int best;
+int BruteAssign(int[][] cost) {
+    best = int.MaxValue;
+    Go(cost, 0, new bool[cost.Length], 0);
+    return best;
+}
+void Go(int[][] cost, int w, bool[] used, int sum) {
+    if (w == cost.Length) { best = Math.Min(best, sum); return; }
+    for (int j = 0; j < cost.Length; j++) {
+        if (used[j]) continue;
+        used[j] = true;
+        Go(cost, w + 1, used, sum + cost[w][j]);   // worker w takes job j
+        used[j] = false;
+    }
 }` }] } },
       mcq: { q: 'Jobs {0, 2} are already taken (mask 101). Which worker must be assigned next if we always fill workers in order?', options: ['Worker 0', 'Worker 1', 'Worker 2', 'It depends on the order the jobs were taken'], answer: 2, explain: 'Two jobs are taken, so workers 0 and 1 are done; the next is worker bitCount(101) = 2. The order of the earlier choices does not matter — that is why one index (the mask) is enough.' },
       hints: [`<p><b>Aha:</b> after placing some workers, the only thing that matters for the rest is <i>which jobs are gone</i>. That set is a bitmask.</p>`, `<p>Assign workers in fixed order 0, 1, 2… Then the next worker is <code>bitCount(mask)</code>, so the state is just <code>dp[mask]</code>. Transition: try every free job.</p>`, `<p>Recipe: dp[0] = 0, rest = ∞. For mask from 0 up: w = bitCount(mask); if w == n skip; for each free job j: dp[mask | 1&lt;&lt;j] = min(…, dp[mask] + cost[w][j]). Answer dp[(1&lt;&lt;n) − 1]. Edge: n = 1 → cost[0][0].</p>`],
@@ -574,6 +642,26 @@ print(min_cost([[9, 2, 7], [6, 4, 3], [5, 8, 1]]))  # 9` }, { lang: 'js', code: 
                 dp[mask | 1 << j] = min(dp[mask | 1 << j], dp[mask] + cost[w][j]);
     }
     return dp[full - 1];
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int MinCost(int[][] cost) {
+        int n = cost.Length, full = 1 << n;
+        int[] dp = new int[full];
+        for (int m = 0; m < full; m++) dp[m] = int.MaxValue;
+        dp[0] = 0;                                     // no job taken yet
+        for (int mask = 0; mask < full; mask++) {
+            if (dp[mask] == int.MaxValue) continue;    // unreachable (never happens here, but safe)
+            int worker = BitCount(mask);               // next worker in fixed order
+            if (worker == n) continue;
+            for (int job = 0; job < n; job++) {
+                if ((mask & (1 << job)) != 0) continue;  // job already taken
+                int next = mask | (1 << job);
+                dp[next] = Math.Min(dp[next], dp[mask] + cost[worker][job]);
+            }
+        }
+        return dp[full - 1];
+    }
+
+    static int BitCount(int x) { int c = 0; for (; x != 0; x &= x - 1) c++; return c; }
 }` }],
         dry: { head: ['mask', 'dp[mask]', 'worker', 'transitions (job: new value)'], rows: [
           ['000', '0', 'W0', 'J0 → dp[001]=9, J1 → dp[010]=2, J2 → dp[100]=7'],
@@ -722,7 +810,35 @@ public:
         return go(0, 0, true);
     }
     long long countRange(long long L, long long R, int k) { return count(R, k) - count(L - 1, k); }
-};` }] }, { lang: 'python', code: `from functools import lru_cache
+};` }, { lang: 'csharp', code: `// Generic digit DP template: count x in [0, N] with (digit sum % K == 0).
+// Swap the 'rem' state and the final check to solve other digit problems.
+class DigitDP {
+    char[] d;            // digits of N
+    int K;
+    long[,] memo;        // memo[pos, rem], only for non-tight states
+
+    public long Count(long n, int K) {
+        if (n < 0) return 0;
+        this.K = K;
+        d = n.ToString().ToCharArray();
+        memo = new long[d.Length, K];
+        for (int i = 0; i < d.Length; i++) for (int r = 0; r < K; r++) memo[i, r] = -1;
+        return Go(0, 0, true);
+    }
+
+    long Go(int pos, int rem, bool tight) {
+        if (pos == d.Length) return rem == 0 ? 1 : 0;      // a full number was built
+        if (!tight && memo[pos, rem] != -1) return memo[pos, rem];
+        int limit = tight ? d[pos] - '0' : 9;              // tight → cannot exceed N's digit
+        long res = 0;
+        for (int dig = 0; dig <= limit; dig++)
+            res += Go(pos + 1, (rem + dig) % K, tight && dig == limit);
+        if (!tight) memo[pos, rem] = res;
+        return res;
+    }
+
+    public long CountRange(long L, long R, int K) { return Count(R, K) - Count(L - 1, K); }
+}` }] }, { lang: 'python', code: `from functools import lru_cache
 
 def count_upto(n, k):
     """How many x in [0, n] have digit sum divisible by k."""
@@ -864,6 +980,25 @@ long long countNoAdjEqual(long long n) {
     memo.assign(d.size(), {});
     for (auto& row : memo) row.fill(-1);
     return go(0, -1, true, false) - 1;               // minus the number 0
+}` }, { lang: 'csharp', code: `char[] d; long?[,] memo;   // memo[pos, last+1] for free, started states
+
+long CountNoAdjEqual(long n) {
+    d = n.ToString().ToCharArray();
+    memo = new long?[d.Length, 11];
+    return Go(0, -1, true, false) - 1;            // minus the number 0
+}
+long Go(int pos, int last, bool tight, bool started) {
+    if (pos == d.Length) return 1;
+    if (!tight && started && memo[pos, last + 1].HasValue) return memo[pos, last + 1].Value;
+    int limit = tight ? d[pos] - '0' : 9;
+    long res = 0;
+    for (int dig = 0; dig <= limit; dig++) {
+        bool nowStarted = started || dig != 0;
+        if (nowStarted && started && dig == last) continue;      // two equal neighbours
+        res += Go(pos + 1, nowStarted ? dig : -1, tight && dig == limit, nowStarted);
+    }
+    if (!tight && started) memo[pos, last + 1] = res;
+    return res;
 }` }] } },
       { title: 'Number of Digit One (LC 233): carry a count, not a yes/no', html: `<p>"Total number of digit 1 appearing in all numbers ≤ n". The state must carry <b>how many 1s so far</b>; at the end return that count instead of 1/0. State (pos, ones, tight): 10 × 10 × 2. The pattern "return a sum over completions instead of a count" covers "sum of digit sums" too.</p>`, code: { lang: 'java', code: `char[] s; Integer[][] memo;
 int countDigitOne(int n) {
@@ -925,6 +1060,20 @@ int countDigitOne(int n) {
     s = to_string(n);
     memo.assign(s.size(), vector<int>(s.size() + 1, -1));
     return go(0, 0, true);
+}` }, { lang: 'csharp', code: `char[] s; int?[,] memo;
+int CountDigitOne(int n) {
+    s = n.ToString().ToCharArray();
+    memo = new int?[s.Length, s.Length + 1];
+    return Go(0, 0, true);
+}
+int Go(int pos, int ones, bool tight) {
+    if (pos == s.Length) return ones;                    // this number contributes 'ones'
+    if (!tight && memo[pos, ones].HasValue) return memo[pos, ones].Value;
+    int limit = tight ? s[pos] - '0' : 9, res = 0;
+    for (int dig = 0; dig <= limit; dig++)
+        res += Go(pos + 1, ones + (dig == 1 ? 1 : 0), tight && dig == limit);
+    if (!tight) memo[pos, ones] = res;
+    return res;
 }` }] } },
       { title: 'K-th number with a property (counting + greedy descent)', html: `<p>"Find the K-th smallest positive integer whose digit sum is 10" — no upper bound! Fix the length first (count how many 1-, 2-, 3-digit numbers qualify using the free table), then pick digits left to right: try digit d, count completions with the free table; if K ≤ count, keep d, else K −= count and try d + 1. This is the same ways[k][s] table from the visualizer used in reverse.</p>` }
     ],
@@ -977,6 +1126,14 @@ long long countInRange(long long L, long long R, int K) {
     for (long long x = L; x <= R; x++) {
         long long s = 0, t = x;
         while (t > 0) { s += t % 10; t /= 10; }       // digit sum
+        if (s % K == 0) cnt++;
+    }
+    return cnt;
+}` }, { lang: 'csharp', code: `long Brute(long L, long R, int K) {
+    long cnt = 0;
+    for (long x = L; x <= R; x++) {
+        long s = 0, t = x;
+        while (t > 0) { s += t % 10; t /= 10; }  // digit sum
         if (s % K == 0) cnt++;
     }
     return cnt;
@@ -1096,7 +1253,33 @@ public:
         K = k;
         return count(R) - count(L - 1);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    char[] d; int K; long[,] memo;
+
+    long Count(long n) {                      // x in [0, n]
+        if (n < 0) return 0;
+        d = n.ToString().ToCharArray();
+        memo = new long[d.Length, K];
+        for (int i = 0; i < d.Length; i++) for (int r = 0; r < K; r++) memo[i, r] = -1;
+        return Go(0, 0, true);
+    }
+
+    long Go(int pos, int rem, bool tight) {
+        if (pos == d.Length) return rem == 0 ? 1 : 0;
+        if (!tight && memo[pos, rem] != -1) return memo[pos, rem];
+        int limit = tight ? d[pos] - '0' : 9;
+        long res = 0;
+        for (int dig = 0; dig <= limit; dig++)
+            res += Go(pos + 1, (rem + dig) % K, tight && dig == limit);
+        if (!tight) memo[pos, rem] = res;
+        return res;
+    }
+
+    public long CountInRange(long L, long R, int K) {
+        this.K = K;
+        return Count(R) - Count(L - 1);
+    }
+}` }],
         dry: { head: ['call', 'pos', 'digit tried', 'tight after?', 'state reached', 'ways'], rows: [
           ['f(20)', '0', '0', 'no', 'go(1, rem 0, free): last digit ∈ {0,3,6,9}', '4'],
           ['f(20)', '0', '1', 'no', 'go(1, rem 1, free): last digit ∈ {2,5,8}', '3'],
@@ -1242,6 +1425,34 @@ long long expectedRollsMod(int N) {
     vector<long long> E(N + 6, 0);
     for (int s = N - 1; s >= 0; s--) {
         long long sum = 0;
+        for (int face = 1; face <= 6; face++) sum += E[s + face];
+        E[s] = (1 + sum % MOD * inv6) % MOD;
+    }
+    return E[0];
+}` }, { lang: 'csharp', code: `// Expected number of fair-die rolls until the running total reaches at least N.
+// E[s] = 1 + (E[s+1] + ... + E[s+6]) / 6, and E[s] = 0 for s >= N.
+double ExpectedRolls(int N) {
+    double[] E = new double[N + 6];             // indices >= N stay 0.0 (already finished)
+    for (int s = N - 1; s >= 0; s--) {
+        double sum = 0;
+        for (int face = 1; face <= 6; face++) sum += E[s + face];
+        E[s] = 1 + sum / 6.0;                    // pay one roll, then average the futures
+    }
+    return E[0];
+}
+
+// Same thing, exact, printed as P * Q^(-1) mod 1e9+7.
+const long MOD = 1000000007L;
+long Power(long b, long e) {                     // fast modular exponentiation
+    long r = 1; b %= MOD;
+    for (; e > 0; e >>= 1, b = b * b % MOD) if ((e & 1) == 1) r = r * b % MOD;
+    return r;
+}
+long ExpectedRollsMod(int N) {
+    long inv6 = Power(6, MOD - 2);               // Fermat: 6^(p-2) = 1/6 (mod p)
+    long[] E = new long[N + 6];
+    for (int s = N - 1; s >= 0; s--) {
+        long sum = 0;
         for (int face = 1; face <= 6; face++) sum += E[s + face];
         E[s] = (1 + sum % MOD * inv6) % MOD;
     }
@@ -1403,6 +1614,13 @@ double knightProbability(int n, int k, int row, int column) {
     double p = 0;
     for (auto& m : MOVES) p += knightProbability(n, k - 1, row + m[0], column + m[1]) / 8.0;
     return p;
+}` }, { lang: 'csharp', code: `int[][] MOVES = { new[] {2,1}, new[] {1,2}, new[] {-1,2}, new[] {-2,1}, new[] {-2,-1}, new[] {-1,-2}, new[] {1,-2}, new[] {2,-1} };
+double BruteKnight(int n, int k, int r, int c) {
+    if (r < 0 || r >= n || c < 0 || c >= n) return 0.0;  // fell off
+    if (k == 0) return 1.0;                                // survived all moves
+    double p = 0;
+    foreach (var m in MOVES) p += BruteKnight(n, k - 1, r + m[0], c + m[1]) / 8.0;
+    return p;
 }` }] } },
       mcq: { q: 'Which state fully describes "the rest of the problem"?', options: ['(row, col) only', '(row, col, moves left)', '(the whole path so far)', '(moves left) only'], answer: 1, explain: 'The future only depends on where the knight stands and how many moves remain, not how it got there. n² × (k + 1) states.' },
       hints: [`<p><b>Aha:</b> instead of following random knights, move the <i>probability mass</i>: keep a grid P where P[r][c] = chance of being there now.</p>`, `<p>For each step build a fresh grid: every on-board target gets <code>P[r][c] / 8</code> from each source. Off-board targets are simply dropped.</p>`, `<p>Edge cases: k = 0 → 1.0; use double and divide by 8.0 (not 8 integer). Recipe: cur = zeros; cur[row][col] = 1; repeat k times: nxt = zeros; push; cur = nxt. Return the sum of cur.</p>`],
@@ -1502,6 +1720,28 @@ print(knight_probability(3, 2, 0, 0))  # 0.0625` }, { lang: 'js', code: `functio
     double total = 0;
     for (auto& line : cur) for (double p : line) total += p;
     return total;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public double KnightProbability(int n, int k, int row, int column) {
+        int[][] moves = { new[] {2,1}, new[] {1,2}, new[] {-1,2}, new[] {-2,1}, new[] {-2,-1}, new[] {-1,-2}, new[] {1,-2}, new[] {2,-1} };
+        double[,] cur = new double[n, n];
+        cur[row, column] = 1.0;                        // all mass on the start cell
+        for (int step = 0; step < k; step++) {
+            double[,] nxt = new double[n, n];
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++) {
+                    if (cur[r, c] == 0) continue;          // nothing to push
+                    foreach (var m in moves) {
+                        int nr = r + m[0], nc = c + m[1];
+                        if (nr >= 0 && nr < n && nc >= 0 && nc < n)
+                            nxt[nr, nc] += cur[r, c] / 8.0; // 1/8 of the mass per jump
+                    }
+                }
+            cur = nxt;
+        }
+        double total = 0;
+        foreach (double p in cur) total += p;
+        return total;
+    }
 }` }],
         dry: { head: ['step', 'cells holding mass', 'mass per cell', 'total on board'], rows: [
           ['0', '(0,0)', '1', '1'],
@@ -1616,6 +1856,21 @@ int lisFenwick(vector<int>& a) {
         for (int i = r; i <= m; i += i & -i) bit[i] = max(bit[i], cur); // values only grow -> max-BIT is valid
     }
     return best;
+}` }, { lang: 'csharp', code: `// LIS in O(N log N) with a Fenwick tree for prefix MAX over compressed values.
+int LisFenwick(int[] a) {
+    int[] sorted = a.Distinct().OrderBy(x => x).ToArray();            // coordinate compression
+    int m = sorted.Length;
+    int[] bit = new int[m + 1];                                        // bit[] stores prefix maxima
+    int best = 0;
+    foreach (int x in a) {
+        int r = Array.BinarySearch(sorted, x) + 1;                     // rank in 1..m
+        int q = 0;
+        for (int i = r - 1; i > 0; i -= i & -i) q = Math.Max(q, bit[i]); // best over values < x
+        int cur = q + 1;                                               // extend that chain by x
+        best = Math.Max(best, cur);
+        for (int i = r; i <= m; i += i & -i) bit[i] = Math.Max(bit[i], cur); // values only grow → max-BIT is valid
+    }
+    return best;
 }` }] }, { lang: 'java', code: `
       // Weighted job scheduling: dp over jobs sorted by end time, TreeMap gives "best profit by time t".
       int jobScheduling(int[] startTime, int[] endTime, int[] profit) {
@@ -1679,6 +1934,21 @@ int jobScheduling(vector<int>& startTime, vector<int>& endTime, vector<int>& pro
         if (take > best.rbegin()->second) best[endTime[i]] = take;   // keep values increasing
     }
     return best.rbegin()->second;
+}` }, { lang: 'csharp', code: `// Weighted job scheduling: dp over jobs sorted by end time; a sorted list gives "best profit by time t".
+int JobScheduling(int[] startTime, int[] endTime, int[] profit) {
+    int n = startTime.Length;
+    int[] idx = new int[n];
+    for (int i = 0; i < n; i++) idx[i] = i;
+    Array.Sort(idx, (p, q) => endTime[p] - endTime[q]);
+    var times = new List<int> { 0 };       // end times, increasing
+    var bests = new List<int> { 0 };       // best total profit up to each end time, increasing
+    foreach (int i in idx) {
+        int pos = times.BinarySearch(startTime[i]);              // floor entry: last end time <= my start
+        if (pos < 0) pos = ~pos - 1;
+        int take = bests[pos] + profit[i];
+        if (take > bests[bests.Count - 1]) { times.Add(endTime[i]); bests.Add(take); } // keep values increasing
+    }
+    return bests[bests.Count - 1];
 }` }] }],
     codeTitle: ['LIS with a Fenwick tree (prefix max over values)', 'Job scheduling with an ordered map (floor lookup)'],
     viz: [{
@@ -1795,6 +2065,19 @@ int maxResult(vector<int>& nums, int k) {
         dq.push_back(i);
     }
     return dp[n - 1];
+}` }, { lang: 'csharp', code: `int MaxResult(int[] nums, int k) {
+    int n = nums.Length;
+    int[] dp = new int[n];
+    var dq = new LinkedList<int>();
+    dp[0] = nums[0];
+    dq.AddLast(0);
+    for (int i = 1; i < n; i++) {
+        while (dq.First.Value < i - k) dq.RemoveFirst();        // expired
+        dp[i] = nums[i] + dp[dq.First.Value];                   // window max
+        while (dq.Count > 0 && dp[dq.Last.Value] <= dp[i]) dq.RemoveLast();
+        dq.AddLast(i);
+    }
+    return dp[n - 1];
 }` }] } },
       { title: 'Weighted job scheduling (LC 1235) by hand', html: `<p>Jobs (start, end, profit): (1,3,50), (2,4,10), (3,5,40), (3,6,70). Sorted by end: map {0:0}. Job (1,3,50): floor(1) = 0 → 50 → put 3:50. Job (2,4,10): floor(2)=0 → 10 &lt; 50 skip. Job (3,5,40): floor(3) = 50 → 90 → put 5:90. Job (3,6,70): floor(3) = 50 → 120 → put 6:120. <b>Answer 120</b>. The map always holds increasing profits, so floorEntry gives "best so far by that time".</p>` },
       { title: 'Counting LIS with a BIT of pairs', html: `<p>Number of Longest Increasing Subsequences (LC 673) for N = 10<sup>5</sup>: each BIT node stores <code>(len, count)</code>. Combining two pairs: larger len wins; equal len → add counts. Query prefix (values &lt; x) → (L, C); then x gives (L + 1, max(C, 1)). Update at x by combining. O(N log N) instead of O(N<sup>2</sup>).</p>` },
@@ -1857,6 +2140,16 @@ int constrainedSubsetSum(vector<int>& nums, int k) {
         for (int j = max(0, i - k); j < i; j++) prev = max(prev, dp[j]);
         dp[i] = nums[i] + prev;
         best = max(best, dp[i]);
+    }
+    return best;
+}` }, { lang: 'csharp', code: `int BruteConstrained(int[] nums, int k) {
+    int n = nums.Length, best = int.MinValue;
+    int[] dp = new int[n];
+    for (int i = 0; i < n; i++) {
+        int prev = 0;                                     // 0 = start a new subsequence here
+        for (int j = Math.Max(0, i - k); j < i; j++) prev = Math.Max(prev, dp[j]);
+        dp[i] = nums[i] + prev;
+        best = Math.Max(best, dp[i]);
     }
     return best;
 }` }] } },
@@ -1943,6 +2236,22 @@ print(constrained_subset_sum([10, 2, -10, 5, 20], 2))  # 37` }, { lang: 'js', co
         dq.push_back(i);
     }
     return best;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int ConstrainedSubsetSum(int[] nums, int k) {
+        int n = nums.Length;
+        int[] dp = new int[n];
+        var dq = new LinkedList<int>();              // indices, dp decreasing front -> back
+        int best = int.MinValue;
+        for (int i = 0; i < n; i++) {
+            while (dq.Count > 0 && dq.First.Value < i - k) dq.RemoveFirst();   // out of window
+            int bestPrev = dq.Count == 0 ? 0 : Math.Max(0, dp[dq.First.Value]);
+            dp[i] = nums[i] + bestPrev;
+            best = Math.Max(best, dp[i]);
+            while (dq.Count > 0 && dp[dq.Last.Value] <= dp[i]) dq.RemoveLast(); // dominated
+            dq.AddLast(i);
+        }
+        return best;
+    }
 }` }],
         dry: { head: ['i', 'nums[i]', 'front (dp)', 'dp[i]', 'deque after'], rows: [
           ['0', '10', '—', '10', '[0]'], ['1', '2', '0 (10)', '12', '[1] (0 popped: 10 ≤ 12)'], ['2', '−10', '1 (12)', '2', '[1, 2]'],
@@ -2080,7 +2389,31 @@ public:
         while (M.size() - head >= 2 && eval(head + 1, x) <= eval(head, x)) head++;
         return eval(head, x);
     }
-};` }] }, { lang: 'java', code: `
+};` }, { lang: 'csharp', code: `// Monotone CHT for MIN queries: slopes added in DECREASING order, queries x in INCREASING order.
+class MonotoneCHT {
+    long[] M, B;            // lines y = M[i] * x + B[i], stored in a deque [head, tail)
+    int head = 0, tail = 0;
+    public MonotoneCHT(int capacity) { M = new long[capacity]; B = new long[capacity]; }
+
+    // Is line l2 useless between l1 and l3? (slopes M[l1] > M[l2] > M[l3])
+    // l2 useless  <=>  x(l1,l3) <= x(l1,l2)  <=>  (B3-B1)(M1-M2) <= (B2-B1)(M1-M3)
+    private bool Bad(int l1, int l2, int l3) {
+        return (B[l3] - B[l1]) * (M[l1] - M[l2]) <= (B[l2] - B[l1]) * (M[l1] - M[l3]);
+    }
+    public void Add(long m, long b) {
+        M[tail] = m; B[tail] = b;
+        while (tail - head >= 2 && Bad(tail - 2, tail - 1, tail)) {   // pop useless last line
+            M[tail - 1] = M[tail]; B[tail - 1] = B[tail];
+            tail--;
+        }
+        tail++;
+    }
+    long Eval(int i, long x) { return M[i] * x + B[i]; }
+    public long Query(long x) {                // x never decreases between calls
+        while (tail - head >= 2 && Eval(head + 1, x) <= Eval(head, x)) head++;
+        return Eval(head, x);
+    }
+}` }] }, { lang: 'java', code: `
       // Li Chao tree: MIN over lines, any insertion order, any query order, integer x in [lo, hi].
       class LiChao {
           long[] M, B; boolean[] has; int lo, hi;
@@ -2221,7 +2554,39 @@ public:
     LiChao(int lo, int hi) : t(4 * (hi - lo + 1)), lo(lo), hi(hi) {}
     void add(long long m, long long b) { add(1, lo, hi, Line{m, b, true}); }
     long long query(long long x) const { return query(1, lo, hi, x); }
-};` }] }],
+};` }, { lang: 'csharp', code: `// Li Chao tree: MIN over lines, any insertion order, any query order, integer x in [lo, hi].
+class LiChao {
+    long[] M, B; bool[] has; int lo, hi;
+    public LiChao(int lo, int hi) {
+        this.lo = lo; this.hi = hi;
+        int sz = 4 * (hi - lo + 1);
+        M = new long[sz]; B = new long[sz]; has = new bool[sz];
+    }
+    long F(long m, long b, long x) { return m * x + b; }
+    public void Add(long m, long b) { Add(1, lo, hi, m, b); }
+    private void Add(int node, int l, int r, long m, long b) {
+        if (!has[node]) { has[node] = true; M[node] = m; B[node] = b; return; }
+        int mid = (l + r) >> 1;
+        bool leftBetter = F(m, b, l) < F(M[node], B[node], l);
+        bool midBetter = F(m, b, mid) < F(M[node], B[node], mid);
+        if (midBetter) {                       // node keeps the line that wins at mid
+            long tm = M[node], tb = B[node];
+            M[node] = m; B[node] = b; m = tm; b = tb;
+        }
+        if (l == r) return;
+        // the loser can only win on ONE side of mid: where the winners differ
+        if (leftBetter != midBetter) Add(2 * node, l, mid, m, b);
+        else Add(2 * node + 1, mid + 1, r, m, b);
+    }
+    public long Query(long x) { return Query(1, lo, hi, x); }
+    private long Query(int node, int l, int r, long x) {
+        if (!has[node]) return long.MaxValue;
+        long res = F(M[node], B[node], x);
+        if (l == r) return res;
+        int mid = (l + r) >> 1;
+        return Math.Min(res, x <= mid ? Query(2 * node, l, mid, x) : Query(2 * node + 1, mid + 1, r, x));
+    }
+}` }] }],
     codeTitle: ['Monotone CHT (deque of lines)', 'Li Chao tree (fully dynamic)'],
     viz: [{
       title: 'The lower envelope: which line is lowest at each x?',
@@ -2333,6 +2698,14 @@ long long queryAnyOrder(const vector<long long>& M, const vector<long long>& B, 
         else hi = mid;
     }
     return M[lo] * x + B[lo];
+}` }, { lang: 'csharp', code: `long QueryAnyOrder(long[] M, long[] B, int size, long x) {
+    int lo = 0, hi = size - 1;                          // lines 0..size-1 form a valid hull
+    while (lo < hi) {
+        int mid = (lo + hi) >> 1;
+        if (M[mid + 1] * x + B[mid + 1] <= M[mid] * x + B[mid]) lo = mid + 1;  // next line better: go right
+        else hi = mid;
+    }
+    return M[lo] * x + B[lo];
 }` }] } }
     ],
     deepDive: `<p><b>Why the envelope is "convex".</b> The minimum of lines is a concave function (a cap shape); its graph is the lower convex hull of the dual points (m, b) — hence the name. Each line on it owns one contiguous interval of x, and the owners appear in slope order. That ordering is what lets a pointer or binary search find the owner.</p>
@@ -2391,6 +2764,17 @@ long long frog3(vector<long long>& h, long long C) {
         for (int j = 0; j < i; j++) {
             long long d = h[i] - h[j];
             dp[i] = min(dp[i], dp[j] + d * d + C);
+        }
+    }
+    return dp[n - 1];
+}` }, { lang: 'csharp', code: `long BruteFrog(long[] h, long C) {
+    int n = h.Length;
+    long[] dp = new long[n];
+    for (int i = 1; i < n; i++) {
+        dp[i] = long.MaxValue;
+        for (int j = 0; j < i; j++) {
+            long d = h[i] - h[j];
+            dp[i] = Math.Min(dp[i], dp[j] + d * d + C);
         }
     }
     return dp[n - 1];
@@ -2512,6 +2896,41 @@ long long frog3(vector<long long>& h, long long C) {
         add(-2 * h[i], dp[i] + h[i] * h[i]);
     }
     return dp[n - 1];
+}` }, { lang: 'csharp', code: `public class Solution {
+    long[] M, B; int head, tail;
+
+    long Eval(int i, long x) { return M[i] * x + B[i]; }
+
+    // l2 is useless if intersection(l1,l3) is at or left of intersection(l1,l2)
+    bool Bad(int l1, int l2, int l3) {
+        return (B[l3] - B[l1]) * (M[l1] - M[l2]) <= (B[l2] - B[l1]) * (M[l1] - M[l3]);
+    }
+
+    void Add(long m, long b) {
+        M[tail] = m; B[tail] = b;
+        while (tail - head >= 2 && Bad(tail - 2, tail - 1, tail)) {
+            M[tail - 1] = M[tail]; B[tail - 1] = B[tail];    // drop the middle line
+            tail--;
+        }
+        tail++;
+    }
+
+    long Query(long x) {
+        while (tail - head >= 2 && Eval(head + 1, x) <= Eval(head, x)) head++;
+        return Eval(head, x);
+    }
+
+    public long Frog3(long[] h, long C) {
+        int n = h.Length;
+        M = new long[n]; B = new long[n]; head = 0; tail = 0;
+        long[] dp = new long[n];
+        Add(-2 * h[0], dp[0] + h[0] * h[0]);              // line for stone 0
+        for (int i = 1; i < n; i++) {
+            dp[i] = Query(h[i]) + h[i] * h[i] + C;
+            Add(-2 * h[i], dp[i] + h[i] * h[i]);
+        }
+        return dp[n - 1];
+    }
 }` }],
         dry: { head: ['i', 'h[i]', 'best j (front line)', 'dp[i]', 'why'], rows: [
           ['0', '1', '—', '0', 'start'], ['1', '2', '0', '7', '1 + 6'], ['2', '3', '0', '10', '(3−1)² + 6 = 10 beats 7 + 1 + 6 = 14'],
@@ -2681,7 +3100,43 @@ public:
         }
         return prev[n];
     }
-};` }] }, { lang: 'python', code: `import random
+};` }, { lang: 'csharp', code: `// Generic Divide & Conquer optimisation for  dp[k][i] = min_{j<i} dp[k-1][j] + cost(j, i).
+// cost(j, i) = cost of one group covering elements j+1..i (1-based prefix positions).
+class DivideConquerDP {
+    public delegate long Cost(int j, int i);
+    const long INF = long.MaxValue / 4;
+    long[] prev, cur;
+    Cost cost;
+
+    // Fill cur[l..r]; the best split for every i in [l, r] is known to lie in [optL, optR].
+    void Solve(int l, int r, int optL, int optR) {
+        if (l > r) return;
+        int mid = (l + r) >> 1;
+        long best = INF; int bestJ = optL;
+        for (int j = optL; j <= Math.Min(mid - 1, optR); j++) {
+            if (prev[j] >= INF) continue;
+            long v = prev[j] + cost(j, mid);
+            if (v < best) { best = v; bestJ = j; }      // strict '<' keeps the smallest argmin
+        }
+        cur[mid] = best;
+        Solve(l, mid - 1, optL, bestJ);                 // left half: splits ≤ bestJ
+        Solve(mid + 1, r, bestJ, optR);                 // right half: splits ≥ bestJ
+    }
+
+    public long Run(int n, int K, Cost c) {
+        cost = c;
+        prev = new long[n + 1];
+        for (int i = 0; i <= n; i++) prev[i] = INF;
+        for (int i = 1; i <= n; i++) prev[i] = cost(0, i);   // one group
+        for (int k = 2; k <= K; k++) {
+            cur = new long[n + 1];
+            for (int i = 0; i <= n; i++) cur[i] = INF;
+            Solve(k, n, k - 1, n - 1);                  // each of k groups needs ≥ 1 element
+            prev = cur;
+        }
+        return prev[n];
+    }
+}` }] }, { lang: 'python', code: `import random
 
 def brute(a, K):
     n = len(a); P = [0]
@@ -2849,6 +3304,22 @@ long long minSquaredSplit(vector<int>& a, int K) {
                     dp[k][i] = min(dp[k][i], dp[k - 1][j] + s * s);
                 }
     return dp[K][n];
+}` }, { lang: 'csharp', code: `long BruteSplit(int[] a, int K) {
+    int n = a.Length;
+    long[] P = new long[n + 1];
+    for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+    long INF = long.MaxValue / 4;
+    long[,] dp = new long[K + 1, n + 1];
+    for (int k = 0; k <= K; k++) for (int i = 0; i <= n; i++) dp[k, i] = INF;
+    dp[0, 0] = 0;
+    for (int k = 1; k <= K; k++)
+        for (int i = 1; i <= n; i++)
+            for (int j = 0; j < i; j++)                     // last group = a[j..i-1]
+                if (dp[k - 1, j] < INF) {
+                    long s = P[i] - P[j];
+                    dp[k, i] = Math.Min(dp[k, i], dp[k - 1, j] + s * s);
+                }
+    return dp[K, n];
 }` }] } },
       mcq: { q: 'In layer k we found opt(mid = 5) = 3. Which j values must solve() try for i = 6 or 7?', options: ['Only j ≥ 3', 'Only j ≤ 3', 'All j from k−1 to i−1', 'Only j = 3'], answer: 0, explain: 'Monotone opt: i &gt; mid ⇒ opt(i) ≥ opt(mid) = 3. The right half searches [3, optR]. The left half (i &lt; 5) searches [optL, 3].' },
       hints: [`<p><b>Aha:</b> dp[k][i] = min<sub>j</sub> dp[k−1][j] + (P[i] − P[j])². As i grows, the best start of the last group never moves left (non-negative values + convex square cost).</p>`, `<p>Compute each layer with solve(l, r, optL, optR): fix mid, scan j ∈ [optL, min(mid−1, optR)], then recurse with the found best split as the new bound.</p>`, `<p>Edge cases: K = 1 → (total)²; K = N → Σ a[i]²; groups must be non-empty → layer k fills i ∈ [k, n] and j ∈ [k−1, i−1]. Use 64-bit integers; keep the INF marker (about 2<sup>61</sup>) skipped explicitly.</p>`],
@@ -3003,7 +3474,41 @@ public:
         }
         return prev[n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    long[] P, prev, cur;
+
+    long Cost(int j, int i) { long s = P[i] - P[j]; return s * s; }   // group a[j..i-1]
+
+    void Compute(int l, int r, int optL, int optR) {
+        if (l > r) return;
+        int mid = (l + r) >> 1;
+        long best = long.MaxValue; int bestJ = optL;
+        for (int j = optL; j <= Math.Min(mid - 1, optR); j++) {
+            if (prev[j] == long.MaxValue) continue;              // impossible state
+            long v = prev[j] + Cost(j, mid);
+            if (v < best) { best = v; bestJ = j; }
+        }
+        cur[mid] = best;
+        Compute(l, mid - 1, optL, bestJ);
+        Compute(mid + 1, r, bestJ, optR);
+    }
+
+    public long MinSquaredSplit(int[] a, int K) {
+        int n = a.Length;
+        P = new long[n + 1];
+        for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+        prev = new long[n + 1];
+        for (int i = 0; i <= n; i++) prev[i] = long.MaxValue;
+        for (int i = 1; i <= n; i++) prev[i] = Cost(0, i);        // layer 1
+        for (int k = 2; k <= K; k++) {
+            cur = new long[n + 1];
+            for (int i = 0; i <= n; i++) cur[i] = long.MaxValue;
+            Compute(k, n, k - 1, n - 1);
+            prev = cur;
+        }
+        return prev[n];
+    }
+}` }],
         dry: { head: ['layer', 'call (l..r | optL..optR)', 'mid', 'j tried → value', 'dp[mid], opt'], rows: [
           ['2', '2..7 | 1..6', '4', '1→82, 2→52, 3→52', '52, j=2'],
           ['2', '5..7 | 2..6', '6', '2→160, 3→136, 4→136, 5→146', '136, j=3'],
@@ -3144,6 +3649,31 @@ long long minCostCuts(int n, vector<int> cuts) {
             dp[i][j] += pos[j] - pos[i];                        // the first cut costs the whole stick
         }
     return dp[0][m - 1];
+}` }, { lang: 'csharp', code: `// Minimum Cost to Cut a Stick (LC 1547) with Knuth: O(m^2) where m = cuts + 2.
+// dp[i][j] = min cost to perform all cuts strictly between pos[i] and pos[j].
+long MinCostCuts(int n, int[] cuts) {
+    int m = cuts.Length + 2;
+    int[] sorted = (int[])cuts.Clone();
+    Array.Sort(sorted);
+    int[] pos = new int[m];
+    pos[0] = 0; pos[m - 1] = n;
+    for (int i = 0; i < sorted.Length; i++) pos[i + 1] = sorted[i];
+    long[,] dp = new long[m, m];                   // dp[i, i+1] = 0: no cut inside
+    int[,] opt = new int[m, m];
+    for (int i = 0; i + 1 < m; i++) opt[i, i + 1] = i;   // sentinel, clamped below
+    for (int len = 2; len < m; len++)
+        for (int i = 0; i + len < m; i++) {
+            int j = i + len;
+            dp[i, j] = long.MaxValue;
+            int lo = Math.Max(i + 1, opt[i, j - 1]);       // Knuth window
+            int hi = Math.Min(j - 1, opt[i + 1, j]);
+            for (int k = lo; k <= hi; k++) {               // first cut at pos[k]
+                long v = dp[i, k] + dp[k, j];
+                if (v < dp[i, j]) { dp[i, j] = v; opt[i, j] = k; }
+            }
+            dp[i, j] += pos[j] - pos[i];                  // the first cut costs the whole stick
+        }
+    return dp[0, m - 1];
 }` }] }],
     codeTitle: ['Cutting a stick with Knuth'],
     viz: {
@@ -3254,6 +3784,20 @@ long long mergePiles(vector<int>& a) {
             dp[i][j] += P[j + 1] - P[i];              // final merge of [i..j]
         }
     return dp[0][n - 1];
+}` }, { lang: 'csharp', code: `long BruteMerge(int[] a) {
+    int n = a.Length;
+    long[] P = new long[n + 1];
+    for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+    long[,] dp = new long[n, n];
+    for (int len = 2; len <= n; len++)
+        for (int i = 0; i + len - 1 < n; i++) {
+            int j = i + len - 1;
+            dp[i, j] = long.MaxValue;
+            for (int k = i; k < j; k++)                   // every split point
+                dp[i, j] = Math.Min(dp[i, j], dp[i, k] + dp[k + 1, j]);
+            dp[i, j] += P[j + 1] - P[i];                  // final merge of [i..j]
+        }
+    return dp[0, n - 1];
 }` }] } },
       mcq: { q: 'opt[2][6] = 4 and opt[3][7] = 5. Which split points must be tried for the interval [2, 7]?', options: ['k = 4 and 5 only', 'k = 2..6', 'k = 5 only', 'k = 3..6'], answer: 0, explain: 'Knuth: opt[i][j−1] ≤ opt[i][j] ≤ opt[i+1][j], i.e. opt[2][6] = 4 ≤ opt[2][7] ≤ opt[3][7] = 5. Only k ∈ {4, 5}.' },
       hints: [`<p><b>Aha:</b> the last merge joins [i..k] and [k+1..j] and always costs sum(i..j). So dp[i][j] = min<sub>k</sub>(dp[i][k] + dp[k+1][j]) + sum(i..j).</p>`, `<p>w(i, j) = sum(i..j) satisfies the quadrangle inequality (with equality!) and is monotone on intervals → Knuth: scan k only in [opt[i][j−1], opt[i+1][j]].</p>`, `<p>Recipe: prefix sums; opt[i][i] = i; for len = 2..N, for i: j = i+len−1; lo = opt[i][j−1]; hi = min(opt[i+1][j], j−1); scan; add sum. N = 1 → 0. Memory: two N×N tables — consider int opt and long dp.</p>`],
@@ -3374,6 +3918,29 @@ long long mergePiles(vector<int>& a) {
         }
     }
     return dp[0][n - 1];
+}` }, { lang: 'csharp', code: `public class Solution {
+    public long MergePiles(int[] a) {
+        int n = a.Length;
+        long[] P = new long[n + 1];
+        for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+        long[,] dp = new long[n, n];
+        int[,] opt = new int[n, n];
+        for (int i = 0; i < n; i++) opt[i, i] = i;        // a single pile "splits" at itself
+        for (int len = 2; len <= n; len++) {
+            for (int i = 0; i + len - 1 < n; i++) {
+                int j = i + len - 1;
+                dp[i, j] = long.MaxValue;
+                int lo = opt[i, j - 1];                     // Knuth lower bound
+                int hi = Math.Min(opt[i + 1, j], j - 1);    // Knuth upper bound
+                for (int k = lo; k <= hi; k++) {
+                    long v = dp[i, k] + dp[k + 1, j];
+                    if (v < dp[i, j]) { dp[i, j] = v; opt[i, j] = k; }
+                }
+                dp[i, j] += P[j + 1] - P[i];                // cost of the final merge
+            }
+        }
+        return dp[0, n - 1];
+    }
 }` }],
         dry: { head: ['cell (i, j)', 'window [lo, hi]', 'naive range', 'best k', 'dp'], rows: [
           ['(0,1)…(3,4)', '[i, i]', '[i, i]', 'i', '5, 4, 5, 7'],
@@ -3537,6 +4104,35 @@ long long countAndZeroPairs(const vector<int>& a, int n) {
     long long pairs = 0;
     for (int x : a) pairs += F[full ^ x];            // partners must avoid every bit of x
     return pairs;
+}` }, { lang: 'csharp', code: `// SOS DP: F[mask] = sum of A[sub] over all sub ⊆ mask. O(n * 2^n).
+long[] SumOverSubsets(long[] A, int n) {
+    long[] F = (long[])A.Clone();
+    for (int bit = 0; bit < n; bit++)
+        for (int mask = 0; mask < (1 << n); mask++)
+            if ((mask & (1 << bit)) != 0)
+                F[mask] += F[mask ^ (1 << bit)];   // bring in the version without this bit
+    return F;
+}
+
+// Sum over SUPERsets: G[mask] = sum of A[sup] over all sup ⊇ mask.
+long[] SumOverSupersets(long[] A, int n) {
+    long[] G = (long[])A.Clone();
+    for (int bit = 0; bit < n; bit++)
+        for (int mask = 0; mask < (1 << n); mask++)
+            if ((mask & (1 << bit)) == 0)
+                G[mask] += G[mask | (1 << bit)];
+    return G;
+}
+
+// Count ordered pairs (i, j) with a[i] & a[j] == 0, values < 2^n.
+long CountAndZeroPairs(int[] a, int n) {
+    long[] cnt = new long[1 << n];
+    foreach (int x in a) cnt[x]++;
+    long[] F = SumOverSubsets(cnt, n);          // F[m] = how many values are submasks of m
+    int full = (1 << n) - 1;
+    long pairs = 0;
+    foreach (int x in a) pairs += F[full ^ x];  // partners must avoid every bit of x
+    return pairs;
 }` }] }, { lang: 'python', code: `def sos(A, n):
     F = A[:]
     for bit in range(n):
@@ -3641,6 +4237,14 @@ vector<int> compatible(vector<int>& a) {
         for (int j = 0; j < (int)a.size(); j++)
             if ((a[i] & a[j]) == 0) { res[i] = a[j]; break; }
     return res;
+}` }, { lang: 'csharp', code: `int[] BrutePartners(int[] a) {
+    int[] res = new int[a.Length];
+    for (int i = 0; i < a.Length; i++) {
+        res[i] = -1;
+        for (int j = 0; j < a.Length; j++)
+            if ((a[i] & a[j]) == 0) { res[i] = a[j]; break; }
+    }
+    return res;
 }` }] } },
       mcq: { q: 'a[i] = 0101 (4 bits). A valid partner must be…', options: ['a submask of 1010', 'a superset of 1010', 'equal to 1010', 'any number with an even popcount'], answer: 0, explain: 'a[i] &amp; x == 0 means x has no bit where a[i] has one, i.e. all of x\'s bits lie inside ~a[i] = 1010. So x ⊆ 1010 — a submask query.' },
       hints: [`<p><b>Aha:</b> a[i] &amp; x == 0 ⇔ x ⊆ complement(a[i]) = FULL ^ a[i]. So we need "any array value that is a submask of mask M" for M = FULL ^ a[i].</p>`, `<p>SOS with "any" instead of sum: any[v] = v for values in the array, −1 elsewhere; for each bit, for masks with the bit: if any[mask] == −1 take any[mask ^ bit].</p>`, `<p>Edge cases: duplicates are fine; a value can partner with itself only if it's 0 (not possible here since a[i] ≥ 1). Use FULL = 2<sup>22</sup> − 1; array of 4 M ints = 16 MB. Recipe: build any[], SOS pass over 22 bits, answer any[FULL ^ a[i]].</p>`],
@@ -3712,6 +4316,20 @@ vector<int> compatible(vector<int>& a) {
     res.reserve(a.size());
     for (int x : a) res.push_back(any[FULL ^ x]);
     return res;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int[] Compatible(int[] a) {
+        const int B = 22, FULL = (1 << B) - 1;
+        int[] any = new int[1 << B];
+        for (int m = 0; m <= FULL; m++) any[m] = -1;
+        foreach (int x in a) any[x] = x;                // every value is a submask of itself
+        for (int bit = 0; bit < B; bit++)
+            for (int mask = 0; mask <= FULL; mask++)
+                if ((mask & (1 << bit)) != 0 && any[mask] == -1)
+                    any[mask] = any[mask ^ (1 << bit)];   // inherit a witness without this bit
+        int[] res = new int[a.Length];
+        for (int i = 0; i < a.Length; i++) res[i] = any[FULL ^ a[i]];
+        return res;
+    }
 }` }],
         dry: { head: ['a[i]', 'binary', 'complement (4-bit view)', 'any[complement]', 'check'], rows: [
           ['10', '1010', '0101', '−1 (submasks 0101, 0100, 0001, 0000 absent)', '<span class="c-r">−1</span>'],
@@ -3786,6 +4404,20 @@ int countNumbersWithUniqueDigits(int n) {
         if (ok) count++;
     }
     return count;
+}` }, { lang: 'csharp', code: `int BruteUnique(int n) {
+    int limit = 1;
+    for (int i = 0; i < n; i++) limit *= 10;
+    int count = 0;
+    for (int x = 0; x < limit; x++) {
+        bool[] seen = new bool[10];
+        bool ok = true;
+        foreach (char c in x.ToString()) {
+            if (seen[c - '0']) { ok = false; break; }
+            seen[c - '0'] = true;
+        }
+        if (ok) count++;
+    }
+    return count;
 }` }] } },
     mcq: { q: 'How many 3-digit numbers (100..999) have distinct digits?', options: ['9 · 9 · 8 = 648', '9 · 10 · 10 = 900', '10 · 9 · 8 = 720', '9 · 8 · 7 = 504'], answer: 0, explain: 'First digit 1..9 (9 ways), second any of the other 9 digits (0 now allowed), third any of the remaining 8.' },
     hints: [`<p><b>Aha:</b> this is the free (non-tight) part of a digit DP with a "used digits" state — and because the bound is 10<sup>n</sup>, every length is completely free.</p>`, `<p>Count by length L: 9 choices for the first digit (no leading zero), then 9, 8, 7, … for the next ones.</p>`, `<p>n = 0 → 1 (just 0). Total = 10 (all 1-digit numbers incl. 0) + Σ<sub>L=2..n</sub> 9·9·8·…·(11 − L). Lengths above 10 add nothing (only 10 digits exist).</p>`],
@@ -3838,6 +4470,17 @@ int countNumbersWithUniqueDigits(int n) {
         total += cur;
     }
     return total;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int CountNumbersWithUniqueDigits(int n) {
+        if (n == 0) return 1;                     // only the number 0
+        int total = 10;                           // 0..9
+        int cur = 9;                              // first digit of a longer number: 1..9
+        for (int len = 2; len <= Math.Min(n, 10); len++) {
+            cur *= (11 - len);                    // 9, 8, 7, ... unused digits for the next slot
+            total += cur;
+        }
+        return total;
+    }
 }` }],
       dry: { head: ['len', 'count of that length', 'running total'], rows: [['1', '10 (incl. 0)', '10'], ['2', '9·9 = 81', '91'], ['3', '81·8 = 648', '739']] },
       complexity: `<p>O(min(n, 10)) time, O(1) space.</p>`,
@@ -3892,6 +4535,18 @@ double probabilityOfHeads(vector<double>& prob, int target) {
     double total = 0;
     for (int mask = 0; mask < (1 << n); mask++) {     // only feasible for n <= 20
         if (__builtin_popcount(mask) != target) continue;
+        double p = 1;
+        for (int i = 0; i < n; i++) p *= ((mask >> i & 1) == 1) ? prob[i] : 1 - prob[i];
+        total += p;
+    }
+    return total;
+}` }, { lang: 'csharp', code: `double BruteCoins(double[] prob, int target) {
+    int n = prob.Length;
+    double total = 0;
+    for (int mask = 0; mask < (1 << n); mask++) {       // only feasible for n <= 20
+        int bits = 0;
+        for (int x = mask; x != 0; x &= x - 1) bits++;
+        if (bits != target) continue;
         double p = 1;
         for (int i = 0; i < n; i++) p *= ((mask >> i & 1) == 1) ? prob[i] : 1 - prob[i];
         total += p;
@@ -3959,6 +4614,17 @@ double probabilityOfHeads(vector<double>& prob, int target) {
         dp[0] *= 1 - p;
     }
     return dp[target];
+}` }, { lang: 'csharp', code: `public class Solution {
+    public double ProbabilityOfHeads(double[] prob, int target) {
+        double[] dp = new double[target + 1];
+        dp[0] = 1.0;                                  // zero coins → zero heads with certainty
+        foreach (double p in prob) {
+            for (int j = target; j >= 1; j--)         // high → low: use each coin once
+                dp[j] = dp[j] * (1 - p) + dp[j - 1] * p;
+            dp[0] *= (1 - p);
+        }
+        return dp[target];
+    }
 }` }],
       complexity: `<p>O(n · target) time, O(target) space.</p>`,
       followUps: ['Probability of <i>at least</i> target heads → sum the tail of dp.', 'Expected number of heads → linearity: Σ prob[i], no DP needed.']
@@ -4009,6 +4675,16 @@ int maxResult(vector<int>& nums, int k) {
     for (int i = 1; i < n; i++) {
         int best = INT_MIN;
         for (int j = max(0, i - k); j < i; j++) best = max(best, dp[j]);   // scan the whole window
+        dp[i] = nums[i] + best;
+    }
+    return dp[n - 1];
+}` }, { lang: 'csharp', code: `int BruteJump(int[] nums, int k) {
+    int n = nums.Length;
+    int[] dp = new int[n];
+    dp[0] = nums[0];
+    for (int i = 1; i < n; i++) {
+        int best = int.MinValue;
+        for (int j = Math.Max(0, i - k); j < i; j++) best = Math.Max(best, dp[j]);
         dp[i] = nums[i] + best;
     }
     return dp[n - 1];
@@ -4099,6 +4775,21 @@ def max_result(nums, k):
         dq.push_back(i);
     }
     return dp[n - 1];
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int MaxResult(int[] nums, int k) {
+        int n = nums.Length;
+        int[] dp = new int[n];
+        var dq = new LinkedList<int>();
+        dp[0] = nums[0];
+        dq.AddLast(0);
+        for (int i = 1; i < n; i++) {
+            while (dq.First.Value < i - k) dq.RemoveFirst();                   // expired
+            dp[i] = nums[i] + dp[dq.First.Value];                              // best in window
+            while (dq.Count > 0 && dp[dq.Last.Value] <= dp[i]) dq.RemoveLast(); // dominated
+            dq.AddLast(i);
+        }
+        return dp[n - 1];
+    }
 }` }],
       dry: { head: ['i', 'nums[i]', 'window best', 'dp[i]'], rows: [['0', '1', '—', '1'], ['1', '−1', '1', '0'], ['2', '−2', '1', '−1'], ['3', '4', '0', '4'], ['4', '−7', '4', '−3'], ['5', '3', '4', '<span class="c-g">7</span>']] },
       complexity: `<p>O(n) time, O(k) extra space.</p>`,
@@ -4143,6 +4834,13 @@ vector<long long> sumOverSubmasks(vector<long long>& A, int n) {
     for (int m = 0; m < size; m++)
         for (int s = 0; s < size; s++)
             if ((s & m) == s) F[m] += A[s];           // s is a submask of m
+    return F;
+}` }, { lang: 'csharp', code: `long[] BruteSOS(long[] A, int n) {
+    int size = 1 << n;
+    long[] F = new long[size];
+    for (int m = 0; m < size; m++)
+        for (int s = 0; s < size; s++)
+            if ((s & m) == s) F[m] += A[s];          // s is a submask of m
     return F;
 }` }] } },
     mcq: { q: 'Which loop order is correct for SOS DP?', options: ['for bit { for mask { … } }', 'for mask { for bit { … } }', 'Either order works', 'for mask descending only'], answer: 0, explain: 'Bits must be processed one full pass at a time (like prefix sums along each axis). Putting the bit loop inside counts some submasks several times.' },
@@ -4191,6 +4889,14 @@ vector<long long> sumOverSubmasks(vector<long long>& A, int n) {
         for (int mask = 0; mask < (1 << n); mask++)
             if (mask >> bit & 1) F[mask] += F[mask ^ (1 << bit)];
     return F;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public long[] SumOverSubmasks(long[] A, int n) {
+        long[] F = (long[])A.Clone();
+        for (int bit = 0; bit < n; bit++)
+            for (int mask = 0; mask < (1 << n); mask++)
+                if ((mask & (1 << bit)) != 0) F[mask] += F[mask ^ (1 << bit)];
+        return F;
+    }
 }` }],
       complexity: `<p>O(n · 2<sup>n</sup>) ≈ 2·10<sup>7</sup> for n = 20; O(2<sup>n</sup>) space.</p>`,
       followUps: ['Supersets instead of subsets.', 'Recover A from F (Möbius inverse: same loops with −=).']
@@ -4283,6 +4989,24 @@ bool canPartitionKSubsets(vector<int>& nums, int k) {
         return false;
     };
     return place(0);
+}` }, { lang: 'csharp', code: `bool BruteK(int[] nums, int k) {
+    int sum = 0;
+    foreach (int x in nums) sum += x;
+    if (sum % k != 0) return false;
+    return Place(nums, 0, new int[k], sum / k);
+}
+bool Place(int[] nums, int i, int[] bucket, int target) {
+    if (i == nums.Length) {
+        foreach (int b in bucket) if (b != target) return false;
+        return true;
+    }
+    for (int b = 0; b < bucket.Length; b++) {
+        if (bucket[b] + nums[i] > target) continue;
+        bucket[b] += nums[i];
+        if (Place(nums, i + 1, bucket, target)) return true;
+        bucket[b] -= nums[i];
+    }
+    return false;
 }` }] } },
     mcq: { q: 'Why is dp[mask] = (sum of mask) mod target enough as the state?', options: ['Full buckets are interchangeable; only the fill level of the current bucket matters', 'Because k ≤ 16', 'Because numbers are positive', 'It is not enough'], answer: 0, explain: 'Fill buckets one at a time. Completed buckets are all equal, so the only live information is which items are used (the mask) and how full the open bucket is — which is determined by the mask\'s sum mod target.' },
     hints: [`<p><b>Aha:</b> fill buckets one after another. A used-set (mask) determines the total used; the current bucket's level is that total mod target.</p>`, `<p>dp[mask] = reachable? (store the level, −1 if unreachable). From a reachable mask add any unused number that still fits in the current bucket.</p>`, `<p>Pre-checks: sum % k ≠ 0 → false; any number &gt; target → false. Answer: dp[full] reachable. 2<sup>16</sup> · 16 ≈ 10<sup>6</sup> steps.</p>`],
@@ -4386,6 +5110,26 @@ bool canPartitionKSubsets(vector<int>& nums, int k) {
         }
     }
     return level[(1 << n) - 1] != -1;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public bool CanPartitionKSubsets(int[] nums, int k) {
+        int sum = 0;
+        foreach (int x in nums) sum += x;
+        if (sum % k != 0) return false;
+        int target = sum / k, n = nums.Length;
+        int[] level = new int[1 << n];         // fill of the open bucket, -1 = unreachable
+        for (int m = 0; m < (1 << n); m++) level[m] = -1;
+        level[0] = 0;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            if (level[mask] == -1) continue;
+            for (int i = 0; i < n; i++) {
+                if ((mask >> i & 1) == 1) continue;              // already used
+                if (level[mask] + nums[i] > target) continue;    // would overflow the bucket
+                int next = mask | (1 << i);
+                if (level[next] == -1) level[next] = (level[mask] + nums[i]) % target;
+            }
+        }
+        return level[(1 << n) - 1] != -1;
+    }
 }` }],
       complexity: `<p>O(2<sup>n</sup> · n) time, O(2<sup>n</sup>) space.</p>`,
       followUps: ['Return the actual subsets (store parent masks).', 'Matchsticks to Square (LC 473) is k = 4.']
@@ -4441,6 +5185,16 @@ int atMostNGivenDigitSet(vector<string>& digits, int n) {
         return count;
     };
     return gen(0);
+}` }, { lang: 'csharp', code: `int BruteDigitSet(string[] digits, int n) {
+    return Gen(digits, 0L, n);
+}
+int Gen(string[] digits, long cur, int n) {
+    int count = 0;
+    foreach (string d in digits) {
+        long next = cur * 10 + (d[0] - '0');            // digits are 1..9, so next > cur
+        if (next <= n) count += 1 + Gen(digits, next, n);
+    }
+    return count;
 }` }] } },
     mcq: { q: 'n = 3245, digits {1, 2, 4}. The first digit 1 or 2 is chosen. How many completions of length 4?', options: ['3<sup>3</sup> each', '4<sup>3</sup> each', '3<sup>4</sup> each', 'Depends on n\'s remaining digits'], answer: 0, explain: '1 and 2 are smaller than 3, so we are free: each of the 3 remaining positions can be any of the 3 digits → 27 numbers each.' },
     hints: [`<p><b>Aha:</b> numbers shorter than n are always fine: Σ D<sup>len</sup> for len &lt; L.</p>`, `<p>For length L, walk n's digits left to right (the tight path): a smaller allowed digit frees the rest (D<sup>remaining</sup>); an equal digit keeps you tight; if no equal digit exists, stop.</p>`, `<p>If you stay tight through all digits, n itself is writable → +1. Example n = 100: the first digit 1 equals → tight; second digit 0: no allowed digit ≤ 0 → stop.</p>`],
@@ -4531,6 +5285,23 @@ int atMostNGivenDigitSet(vector<string>& digits, int n) {
         if (!stayTight) return ans;                                // the tight path dies here
     }
     return ans + 1;                                                // n itself can be written
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int AtMostNGivenDigitSet(string[] digits, int n) {
+        string s = n.ToString();
+        int L = s.Length, D = digits.Length, ans = 0;
+        for (int len = 1; len < L; len++) ans += Pow(D, len);      // all shorter numbers
+        for (int i = 0; i < L; i++) {
+            bool canStayTight = false;
+            foreach (string dg in digits) {
+                char c = dg[0];
+                if (c < s[i]) ans += Pow(D, L - i - 1);             // smaller → rest is free
+                else if (c == s[i]) canStayTight = true;
+            }
+            if (!canStayTight) return ans;                         // tight path dies here
+        }
+        return ans + 1;                                             // n itself
+    }
+    private int Pow(int b, int e) { int r = 1; while (e-- > 0) r *= b; return r; }
 }` }],
       dry: { head: ['step', 'detail', 'ans'], rows: [['shorter', 'len 1: 4, len 2: 16', '20'], ['i = 0 (digit 1)', 'no digit &lt; 1; "1" equals → stay tight', '20'], ['i = 1 (digit 0)', 'no digit ≤ 0 → stop', '<span class="c-g">20</span>']] },
       complexity: `<p>O(L · D) where L ≤ 10.</p>`,
@@ -4574,6 +5345,12 @@ double soupServings(int a, int b) {                   // a, b in units of 25 ml
     if (b <= 0) return 0.0;
     return 0.25 * (soupServings(a - 4, b) + soupServings(a - 3, b - 1)
                  + soupServings(a - 2, b - 2) + soupServings(a - 1, b - 3));
+}` }, { lang: 'csharp', code: `double BruteSoup(int a, int b) {                 // a, b in units of 25 ml
+    if (a <= 0 && b <= 0) return 0.5;
+    if (a <= 0) return 1.0;
+    if (b <= 0) return 0.0;
+    return 0.25 * (BruteSoup(a - 4, b) + BruteSoup(a - 3, b - 1)
+                 + BruteSoup(a - 2, b - 2) + BruteSoup(a - 1, b - 3));
 }` }] } },
     mcq: { q: 'Why can we return 1.0 when n is large (≈ 4800+)?', options: ['A is served 2.5 units on average vs 1.5 for B, so A almost surely empties first and the answer is within 10<sup>−5</sup> of 1', 'Because the DP overflows', 'Because both soups always empty together', 'It is a LeetCode rule'], answer: 0, explain: 'The expected serving per turn is 62.5 ml of A vs 37.5 ml of B. As n grows, the probability mass shifts to "A first", and numerically it is within 10<sup>−5</sup> of 1 once n exceeds about 4800.' },
     hints: [`<p><b>Aha:</b> divide by 25 (round up) so moves become (4,0), (3,1), (2,2), (1,3). State (a, b) with memo.</p>`, `<p>Base cases: both ≤ 0 → 0.5; only a ≤ 0 → 1; only b ≤ 0 → 0. Otherwise average the four children.</p>`, `<p>For n &gt; 4800 return 1.0 (measure the threshold by printing the DP for growing n). States ≤ 193 × 193.</p>`],
@@ -4669,7 +5446,24 @@ public:
         memo.assign(m + 1, vector<double>(m + 1, -1.0));
         return go(m, m);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double SoupServings(int n) {
+        if (n > 4800) return 1.0;                  // converged within 1e-5
+        int m = (n + 24) / 25;                     // ceil(n / 25)
+        double?[,] memo = new double?[m + 1, m + 1];
+        return Go(m, m, memo);
+    }
+    private double Go(int a, int b, double?[,] memo) {
+        if (a <= 0 && b <= 0) return 0.5;
+        if (a <= 0) return 1.0;
+        if (b <= 0) return 0.0;
+        if (memo[a, b].HasValue) return memo[a, b].Value;
+        double r = 0.25 * (Go(a - 4, b, memo) + Go(a - 3, b - 1, memo)
+                         + Go(a - 2, b - 2, memo) + Go(a - 1, b - 3, memo));
+        memo[a, b] = r;
+        return r;
+    }
+}` }],
       complexity: `<p>O(m²) with m ≤ 192 → ~37 000 states, each O(1).</p>`,
       followUps: ['How would you choose the cut-off rigorously? (Increase n until the DP value exceeds 1 − 10<sup>−6</sup>.)', 'Return the exact probability as a fraction mod p.']
     }
@@ -4727,6 +5521,19 @@ function new21Game(n, k, maxPts) {
 double new21Game(int n, int k, int maxPts) {
     if (k == 0) return 1.0;
     vector<double> dp(n + 1, 0.0);
+    dp[0] = 1.0;
+    double ans = 0;
+    for (int i = 1; i <= n; i++) {
+        for (int d = 1; d <= maxPts; d++) {
+            int from = i - d;
+            if (from >= 0 && from < k) dp[i] += dp[from] / maxPts;   // only draw while < k
+        }
+        if (i >= k) ans += dp[i];
+    }
+    return ans;
+}` }, { lang: 'csharp', code: `double BruteNew21(int n, int k, int maxPts) {
+    if (k == 0) return 1.0;
+    double[] dp = new double[n + 1];
     dp[0] = 1.0;
     double ans = 0;
     for (int i = 1; i <= n; i++) {
@@ -4818,6 +5625,20 @@ double new21Game(int n, int k, int maxPts) {
         if (i - maxPts >= 0 && i - maxPts < k) window -= dp[i - maxPts];
     }
     return ans;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public double New21Game(int n, int k, int maxPts) {
+        if (k == 0 || n >= k - 1 + maxPts) return 1.0;   // she can never exceed n
+        double[] dp = new double[n + 1];
+        dp[0] = 1.0;
+        double windowSum = 1.0, ans = 0.0;
+        for (int i = 1; i <= n; i++) {
+            dp[i] = windowSum / maxPts;
+            if (i < k) windowSum += dp[i];                 // i can still draw
+            else ans += dp[i];                             // i is a final score <= n
+            if (i - maxPts >= 0 && i - maxPts < k) windowSum -= dp[i - maxPts];
+        }
+        return ans;
+    }
 }` }],
       complexity: `<p>O(n) time, O(n) space.</p>`,
       followUps: ['Expected final score.', 'Probability she ends with exactly n points.']
@@ -4896,6 +5717,20 @@ int minimumXORSum(vector<int>& nums1, vector<int>& nums2) {
     };
     perm(0, 0);
     return best;
+}` }, { lang: 'csharp', code: `int bestX;
+int BruteXor(int[] a, int[] b) {
+    bestX = int.MaxValue;
+    Perm(a, b, 0, new bool[b.Length], 0);
+    return bestX;
+}
+void Perm(int[] a, int[] b, int i, bool[] used, int sum) {
+    if (i == a.Length) { bestX = Math.Min(bestX, sum); return; }
+    for (int j = 0; j < b.Length; j++) {
+        if (used[j]) continue;
+        used[j] = true;
+        Perm(a, b, i + 1, used, sum + (a[i] ^ b[j]));
+        used[j] = false;
+    }
 }` }] } },
     mcq: { q: 'Which known problem is this in disguise?', options: ['Assignment problem with cost[i][j] = a[i] XOR b[j]', 'Travelling salesman', 'Knapsack', 'Longest common subsequence'], answer: 0, explain: 'Each nums1 index gets exactly one nums2 index — a perfect matching minimising total cost. Topic 1\'s dp[mask] with the popcount trick solves it in O(2<sup>n</sup>·n).' },
     hints: [`<p><b>Aha:</b> it's the worker–job assignment problem from topic 1.</p>`, `<p>dp[mask] = min sum after pairing nums1[0..popcount(mask)−1] with the nums2 elements in mask.</p>`, `<p>Recipe: dp[0] = 0; for mask ascending: i = bitCount(mask); for j not in mask: relax dp[mask | 1&lt;&lt;j] with dp[mask] + (nums1[i] ^ nums2[j]). Answer dp[full].</p>`],
@@ -4986,6 +5821,25 @@ int minimumXORSum(vector<int>& nums1, vector<int>& nums2) {
         }
     }
     return dp[(1 << n) - 1];
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumXORSum(int[] nums1, int[] nums2) {
+        int n = nums1.Length;
+        int[] dp = new int[1 << n];
+        for (int m = 0; m < (1 << n); m++) dp[m] = int.MaxValue;
+        dp[0] = 0;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            if (dp[mask] == int.MaxValue) continue;
+            int i = 0;
+            for (int x = mask; x != 0; x &= x - 1) i++;    // popcount = next nums1 index to pair
+            if (i == n) continue;
+            for (int j = 0; j < n; j++) {
+                if ((mask >> j & 1) == 1) continue;
+                int nm = mask | (1 << j);
+                dp[nm] = Math.Min(dp[nm], dp[mask] + (nums1[i] ^ nums2[j]));
+            }
+        }
+        return dp[(1 << n) - 1];
+    }
 }` }],
       complexity: `<p>O(2<sup>n</sup> · n) time, O(2<sup>n</sup>) space.</p>`,
       followUps: ['n = 1000 → Hungarian algorithm.', 'Maximise instead of minimise → flip min to max.']
@@ -5095,6 +5949,27 @@ string shortestSuperstring(vector<string>& w) {
     };
     permute(-1, "", 0);
     return best;
+}` }, { lang: 'csharp', code: `string bestS;
+string BruteSuperstring(string[] words) {
+    bestS = null;
+    Permute(words, new bool[words.Length], -1, "", 0);
+    return bestS;
+}
+void Permute(string[] w, bool[] used, int last, string cur, int placed) {
+    if (placed == w.Length) {
+        if (bestS == null || cur.Length < bestS.Length) bestS = cur;
+        return;
+    }
+    for (int j = 0; j < w.Length; j++) {
+        if (used[j]) continue;
+        int o = 0;
+        if (last >= 0)
+            for (int len = Math.Min(cur.Length, w[j].Length); len > 0; len--)
+                if (cur.EndsWith(w[j].Substring(0, len), StringComparison.Ordinal)) { o = len; break; }
+        used[j] = true;
+        Permute(w, used, j, cur + w[j].Substring(o), placed + 1);
+        used[j] = false;
+    }
 }` }] } },
     mcq: { q: 'What plays the role of "distance" between word i and word j in the TSP view?', options: ['−overlap(i, j): the longer the overlap, the cheaper the step', 'The edit distance', 'The length of word j', 'The number of common letters'], answer: 0, explain: 'Appending j after i adds len(j) − overlap(i, j) characters. Minimising total length = maximising total overlap along a path (no return edge).' },
     hints: [`<p><b>Aha:</b> precompute overlap[i][j] = longest suffix of words[i] that is a prefix of words[j]. Then pick an order (a path) maximising the sum of overlaps — TSP without returning home.</p>`, `<p>dp[mask][j] = max total overlap for a path visiting mask and ending at j. Store parent[mask][j] to rebuild the order.</p>`, `<p>Start states dp[1&lt;&lt;i][i] = 0 for every i (any start). After the DP, pick the best last word, walk parents back, glue words skipping their overlaps.</p>`],
@@ -5263,6 +6138,43 @@ string shortestSuperstring(vector<string>& w) {
     string result = words[order[0]];
     for (int t = 1; t < n; t++) result += words[order[t]].substr(gain[order[t - 1]][order[t]]);
     return result;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public string ShortestSuperstring(string[] words) {
+        int n = words.Length, full = 1 << n;
+        int[,] gain = new int[n, n];                  // overlap of words[i] followed by words[j]
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) if (i != j) {
+                int m = Math.Min(words[i].Length, words[j].Length);
+                for (int o = m; o >= 0; o--)
+                    if (words[i].EndsWith(words[j].Substring(0, o), StringComparison.Ordinal)) { gain[i, j] = o; break; }
+            }
+        int[,] dp = new int[full, n], parent = new int[full, n];
+        for (int m = 0; m < full; m++) for (int j = 0; j < n; j++) { dp[m, j] = -1; parent[m, j] = -1; }
+        for (int i = 0; i < n; i++) dp[1 << i, i] = 0;  // a path may start anywhere
+        for (int mask = 1; mask < full; mask++)
+            for (int j = 0; j < n; j++) {
+                if (dp[mask, j] < 0) continue;
+                for (int k = 0; k < n; k++) {
+                    if ((mask & (1 << k)) != 0) continue;
+                    int nm = mask | (1 << k), v = dp[mask, j] + gain[j, k];
+                    if (v > dp[nm, k]) { dp[nm, k] = v; parent[nm, k] = j; }
+                }
+            }
+        int last = 0;
+        for (int j = 1; j < n; j++) if (dp[full - 1, j] > dp[full - 1, last]) last = j;
+        int[] order = new int[n];
+        int cur = full - 1;
+        for (int pos = n - 1; pos >= 0; pos--) {       // walk the parent pointers back
+            order[pos] = last;
+            int p = parent[cur, last];
+            cur ^= 1 << last;
+            last = p;
+        }
+        var sb = new StringBuilder(words[order[0]]);
+        for (int t = 1; t < n; t++)
+            sb.Append(words[order[t]].Substring(gain[order[t - 1], order[t]]));
+        return sb.ToString();
+    }
 }` }],
       complexity: `<p>O(n<sup>2</sup>·L<sup>2</sup>) for overlaps + O(2<sup>n</sup>·n<sup>2</sup>) DP; O(2<sup>n</sup>·n) memory.</p>`,
       followUps: ['Words may be substrings of others → first delete contained words.', 'n = 1000 (DNA assembly) → greedy merging (conjectured 2-approximation, proven within 3.5) or overlap graphs/de Bruijn graphs.']
@@ -5314,6 +6226,16 @@ int numDupDigitsAtMostN(int n) {
     int count = 0;
     for (int x = 1; x <= n; x++) {
         bool seen[10] = {false};
+        for (int t = x; t > 0; t /= 10) {
+            if (seen[t % 10]) { count++; break; }
+            seen[t % 10] = true;
+        }
+    }
+    return count;
+}` }, { lang: 'csharp', code: `int BruteRepeated(int n) {
+    int count = 0;
+    for (int x = 1; x <= n; x++) {
+        bool[] seen = new bool[10];
         for (int t = x; t > 0; t /= 10) {
             if (seen[t % 10]) { count++; break; }
             seen[t % 10] = true;
@@ -5453,7 +6375,32 @@ public:
         int distinctInclZero = go(0, 0, true, false);     // counts 0..n with distinct digits
         return n - (distinctInclZero - 1);                // remove the number 0
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    char[] d; int?[,] memo;
+
+    public int NumDupDigitsAtMostN(int n) {
+        d = n.ToString().ToCharArray();
+        memo = new int?[d.Length, 1 << 10];
+        int distinctInclZero = Go(0, 0, true, false);  // counts 0..n with distinct digits
+        return n - (distinctInclZero - 1);              // remove the number 0
+    }
+
+    private int Go(int pos, int mask, bool tight, bool started) {
+        if (pos == d.Length) return 1;
+        if (!tight && started && memo[pos, mask].HasValue) return memo[pos, mask].Value;
+        int limit = tight ? d[pos] - '0' : 9, res = 0;
+        for (int dig = 0; dig <= limit; dig++) {
+            if (started || dig != 0) {
+                if ((mask & (1 << dig)) != 0) continue;   // digit already used
+                res += Go(pos + 1, mask | (1 << dig), tight && dig == limit, true);
+            } else {
+                res += Go(pos + 1, mask, tight && dig == limit, false); // still leading zeros
+            }
+        }
+        if (!tight && started) memo[pos, mask] = res;
+        return res;
+    }
+}` }],
       complexity: `<p>O(D · 2<sup>10</sup> · 10) ≈ 10<sup>5</sup> for D = 10 digits.</p>`,
       followUps: ['Count Special Integers (LC 2376) is the complement directly.', 'Count numbers in [L, R] whose digits are all distinct and sorted.']
     }
@@ -5508,6 +6455,16 @@ int lengthOfLIS(vector<int>& nums, int k) {
         for (int j = 0; j < i; j++)
             if (nums[j] < nums[i] && nums[i] - nums[j] <= k) dp[i] = max(dp[i], dp[j] + 1);
         best = max(best, dp[i]);
+    }
+    return best;
+}` }, { lang: 'csharp', code: `int BruteLis2(int[] nums, int k) {
+    int n = nums.Length, best = 0;
+    int[] dp = new int[n];
+    for (int i = 0; i < n; i++) {
+        dp[i] = 1;
+        for (int j = 0; j < i; j++)
+            if (nums[j] < nums[i] && nums[i] - nums[j] <= k) dp[i] = Math.Max(dp[i], dp[j] + 1);
+        best = Math.Max(best, dp[i]);
     }
     return best;
 }` }] } },
@@ -5637,6 +6594,30 @@ int lengthOfLIS(vector<int>& nums, int k) {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: `public class Solution {
+    public int LengthOfLIS(int[] nums, int k) {
+        int maxV = 0;
+        foreach (int x in nums) maxV = Math.Max(maxV, x);
+        int size = 1;
+        while (size < maxV + 1) size <<= 1;
+        int[] tree = new int[2 * size];                  // leaves at [size, 2*size)
+        int best = 0;
+        foreach (int x in nums) {
+            int lo = Math.Max(1, x - k), hi = x - 1, got = 0;
+            for (int l = lo + size, r = hi + size + 1; l < r; l >>= 1, r >>= 1) { // max on [lo, hi]
+                if ((l & 1) == 1) got = Math.Max(got, tree[l++]);
+                if ((r & 1) == 1) got = Math.Max(got, tree[--r]);
+            }
+            int cur = got + 1;
+            best = Math.Max(best, cur);
+            int p = x + size;
+            if (tree[p] < cur) {                              // point update, then fix parents
+                tree[p] = cur;
+                for (p >>= 1; p >= 1; p >>= 1) tree[p] = Math.Max(tree[2 * p], tree[2 * p + 1]);
+            }
+        }
+        return best;
+    }
 }` }],
       complexity: `<p>O(N log V) time, O(V) space (V = max value).</p>`,
       followUps: ['Values up to 10<sup>9</sup> → coordinate compression, then binary search the rank range.', 'Count the number of such longest subsequences → store (len, count) in nodes.']
@@ -5722,6 +6703,26 @@ int minDistance(vector<int>& houses, int k) {
             }
     long long best = INF;
     for (int t = 1; t <= k; t++) best = min(best, dp[t][n]);
+    return (int)best;
+}` }, { lang: 'csharp', code: `int BruteMailboxes(int[] houses, int k) {
+    int[] h = (int[])houses.Clone();
+    Array.Sort(h);
+    int n = h.Length;
+    long INF = long.MaxValue / 4;
+    long[,] dp = new long[k + 1, n + 1];
+    for (int t = 0; t <= k; t++) for (int i = 0; i <= n; i++) dp[t, i] = INF;
+    dp[0, 0] = 0;
+    for (int t = 1; t <= k; t++)
+        for (int i = 1; i <= n; i++)
+            for (int j = 0; j < i; j++) {
+                if (dp[t - 1, j] >= INF) continue;
+                int med = h[(j + i - 1) / 2];             // a mailbox at the median is optimal
+                long s = 0;
+                for (int q = j; q < i; q++) s += Math.Abs(h[q] - med);
+                dp[t, i] = Math.Min(dp[t, i], dp[t - 1, j] + s);
+            }
+    long best = INF;
+    for (int t = 1; t <= k; t++) best = Math.Min(best, dp[t, n]);
     return (int)best;
 }` }] } },
     mcq: { q: 'Where should one mailbox go for a group of sorted houses?', options: ['At the median house', 'At the mean position', 'At the first house', 'Anywhere between the two ends'], answer: 0, explain: 'Sum of absolute distances is minimised at a median: moving away from it increases the distance to more than half of the houses.' },
@@ -5892,7 +6893,47 @@ public:
         }
         return prev[n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    long[,] cost; long[] prev, cur;
+
+    public int MinDistance(int[] houses, int k) {
+        int[] h = (int[])houses.Clone();
+        Array.Sort(h);
+        int n = h.Length;
+        k = Math.Min(k, n);
+        cost = new long[n, n];                         // cost[i, j]: one mailbox for h[i..j]
+        for (int len = 2; len <= n; len++)
+            for (int i = 0; i + len - 1 < n; i++) {
+                int j = i + len - 1;
+                cost[i, j] = (len > 2 ? cost[i + 1, j - 1] : 0) + h[j] - h[i];
+            }
+        prev = new long[n + 1];
+        for (int i = 0; i <= n; i++) prev[i] = long.MaxValue;
+        for (int i = 1; i <= n; i++) prev[i] = cost[0, i - 1];   // one mailbox
+        for (int layer = 2; layer <= k; layer++) {
+            cur = new long[n + 1];
+            for (int i = 0; i <= n; i++) cur[i] = long.MaxValue;
+            Compute(layer, n, layer - 1, n - 1);
+            prev = cur;
+        }
+        return (int)prev[n];
+    }
+
+    // fill cur[l..r]; best split for each lies in [optL, optR]
+    private void Compute(int l, int r, int optL, int optR) {
+        if (l > r) return;
+        int mid = (l + r) >> 1;
+        long best = long.MaxValue; int bestJ = optL;
+        for (int j = optL; j <= Math.Min(mid - 1, optR); j++) {
+            if (prev[j] == long.MaxValue) continue;
+            long v = prev[j] + cost[j, mid - 1];       // last mailbox serves h[j..mid-1]
+            if (v < best) { best = v; bestJ = j; }
+        }
+        cur[mid] = best;
+        Compute(l, mid - 1, optL, bestJ);
+        Compute(mid + 1, r, bestJ, optR);
+    }
+}` }],
       complexity: `<p>O(n² + k·n log n) time, O(n²) space for the cost table.</p>`,
       followUps: ['Return the mailbox positions.', 'Weighted houses (several letters per house) → weighted median.', 'Large k → Knuth (O(n²)) or the Aliens trick.']
     }
@@ -5939,6 +6980,14 @@ long long minCost(vector<long long>& a, vector<long long>& b) {
     for (int i = 1; i < n; i++) {
         dp[i] = LLONG_MAX;
         for (int j = 0; j < i; j++) dp[i] = min(dp[i], dp[j] + b[j] * a[i]);
+    }
+    return dp[n - 1];
+}` }, { lang: 'csharp', code: `long BruteKalila(long[] a, long[] b) {
+    int n = a.Length;
+    long[] dp = new long[n];
+    for (int i = 1; i < n; i++) {
+        dp[i] = long.MaxValue;
+        for (int j = 0; j < i; j++) dp[i] = Math.Min(dp[i], dp[j] + b[j] * a[i]);
     }
     return dp[n - 1];
 }` }] } },
@@ -6044,6 +7093,31 @@ long long minCost(vector<long long>& a, vector<long long>& b) {
         M[tail] = m; C[tail] = c; tail++;
     }
     return dp;
+}` }, { lang: 'csharp', code: `using System.Numerics;
+
+public class Solution {
+    // compare x1*y1 with x2*y2 exactly (the products can exceed 64 bits)
+    static int Cmp128(long x1, long y1, long x2, long y2) {
+        return ((BigInteger)x1 * y1).CompareTo((BigInteger)x2 * y2);
+    }
+
+    public long MinCost(long[] a, long[] b) {
+        int n = a.Length;
+        long[] M = new long[n], C = new long[n], dp = new long[n];
+        int head = 0, tail = 0;
+        M[tail] = b[0]; C[tail] = 0; tail++;              // line for tree 0
+        for (int i = 1; i < n; i++) {
+            long x = a[i];
+            while (tail - head >= 2 && M[head + 1] * x + C[head + 1] <= M[head] * x + C[head]) head++;
+            dp[i] = M[head] * x + C[head];
+            long m = b[i], c = dp[i];
+            // drop line (tail-1) if x(l1, new) <= x(l1, l2)
+            while (tail - head >= 2 && Cmp128(c - C[tail - 2], M[tail - 2] - M[tail - 1],
+                                               C[tail - 1] - C[tail - 2], M[tail - 2] - m) <= 0) tail--;
+            M[tail] = m; C[tail] = c; tail++;
+        }
+        return dp[n - 1];
+    }
 }` }],
       complexity: `<p>O(n) amortised time, O(n) space.</p>`,
       followUps: ['Why is M·x + C itself safe from overflow? (b ≤ 10<sup>9</sup>, a ≤ 10<sup>9</sup> → 10<sup>18</sup>; plus dp ≤ ~10<sup>18</sup> — check the bound carefully or use overflow-checked multiplication: Math.multiplyExact in Java, __int128 in C++, BigInt in JS.)', 'Unsorted a → Li Chao tree over compressed a.']
@@ -6093,6 +7167,14 @@ int countAndZero(vector<int>& a) {                    // n <= 20 only
         int acc = -1;                                 // all ones
         for (int i = 0; i < n; i++) if (s >> i & 1) acc &= a[i];
         if (acc == 0) count++;
+    }
+    return count;
+}` }, { lang: 'csharp', code: `int BruteAndZero(int[] a) {                         // n <= 20 only
+    int n = a.Length, count = 0;
+    for (int s = 1; s < (1 << n); s++) {
+        int and = -1;                                 // all ones
+        for (int i = 0; i < n; i++) if ((s >> i & 1) == 1) and &= a[i];
+        if (and == 0) count++;
     }
     return count;
 }` }] } },
@@ -6195,7 +7277,28 @@ public:
         }
         return (int)ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int CountAndZero(int[] a) {
+        const int B = 20, MOD = 1000000007, SZ = 1 << B;
+        int[] g = new int[SZ];
+        foreach (int x in a) g[x]++;
+        for (int bit = 0; bit < B; bit++)                     // sum over supersets
+            for (int mask = 0; mask < SZ; mask++)
+                if ((mask & (1 << bit)) == 0) g[mask] += g[mask | (1 << bit)];
+        long[] pow2 = new long[a.Length + 1];
+        pow2[0] = 1;
+        for (int i = 1; i <= a.Length; i++) pow2[i] = pow2[i - 1] * 2 % MOD;
+        long ans = 0;
+        for (int mask = 0; mask < SZ; mask++) {
+            long ways = (pow2[g[mask]] - 1 + MOD) % MOD;      // subsets whose AND ⊇ mask
+            int bits = 0;
+            for (int x = mask; x != 0; x &= x - 1) bits++;
+            if ((bits & 1) == 1) ans = (ans - ways + MOD) % MOD;
+            else ans = (ans + ways) % MOD;
+        }
+        return (int)ans;
+    }
+}` }],
       complexity: `<p>O(B·2<sup>B</sup> + n) time, O(2<sup>B</sup>) space, B = 20.</p>`,
       followUps: ['Count subsets with OR = full mask (dual: sum over subsets).', 'Count subsets with AND exactly equal to X for every X (Möbius inversion of the 2<sup>G</sup> − 1 values).']
     }

@@ -186,7 +186,38 @@ public:
         SmtpMailer mailer;                       // ...and again
         mailer.send(email, "Here is your reset link");
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+// Every service creates its own SmtpMailer with "new".
+// Changing the email provider means editing EVERY one of these classes.
+class SmtpMailer {
+    public void Send(string to, string msg) {
+        Console.WriteLine("SMTP -> " + to + ": " + msg);
+    }
+}
+
+class SignupService {
+    public void Register(string email) {
+        SmtpMailer mailer = new SmtpMailer();   // hard-wired concrete class
+        mailer.Send(email, "Welcome!");
+    }
+}
+
+class OrderService {
+    public void Place(string email) {
+        SmtpMailer mailer = new SmtpMailer();   // same decision copy-pasted
+        mailer.Send(email, "Order placed");
+    }
+}
+
+class PasswordService {
+    public void Reset(string email) {
+        SmtpMailer mailer = new SmtpMailer();   // ...and again
+        mailer.Send(email, "Here is your reset link");
+    }
+}` }
 ] },
       { lang: 'java', title: 'Refactored: one factory decides, services depend on an interface', code: `
 // 1) Clients talk to an interface, not a concrete class.
@@ -365,6 +396,49 @@ int main() {
     // Changing provider = changing ONE string (usually read from config).
     auto mailer = MailerFactory::create("sendgrid");
     SignupService(*mailer).registerUser("asha@example.com");
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// 1) Clients talk to an interface, not a concrete class.
+interface IMailer {
+    void Send(string to, string msg);
+}
+
+class SmtpMailer : IMailer {
+    public void Send(string to, string msg) { Console.WriteLine("SMTP -> " + to + ": " + msg); }
+}
+
+class SendGridMailer : IMailer {
+    public void Send(string to, string msg) { Console.WriteLine("SendGrid API -> " + to + ": " + msg); }
+}
+
+// 2) ONE place knows how to pick and build the concrete class.
+static class MailerFactory {                 // static class: no instances
+    public static IMailer Create(string provider) {
+        switch (provider.ToLower()) {
+            case "smtp": return new SmtpMailer();
+            case "sendgrid": return new SendGridMailer();
+            default: throw new ArgumentException("Unknown mail provider: " + provider);
+        }
+    }
+}
+
+// 3) Services receive the dependency (constructor injection) -> easy to test.
+class SignupService {
+    private readonly IMailer mailer;
+
+    public SignupService(IMailer mailer) { this.mailer = mailer; }
+
+    public void Register(string email) { mailer.Send(email, "Welcome!"); }
+}
+
+class Program {
+    static void Main() {
+        // Changing provider = changing ONE string (usually read from config).
+        IMailer mailer = MailerFactory.Create("sendgrid");
+        new SignupService(mailer).Register("asha@example.com");
+    }
 }` }
 ] }
     ],
@@ -562,6 +636,30 @@ int main() {
     FakeGateway fake;
     bool ok = CheckoutService(fake).pay("asha", 4999);
     cout << boolalpha << ok << " [" << fake.calls[0] << "]\\n";   // true [asha:4999]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IPaymentGateway { bool Charge(string user, long cents); }
+
+class FakeGateway : IPaymentGateway {
+    public readonly List<string> Calls = new List<string>();
+    public bool Charge(string user, long cents) { Calls.Add(user + ":" + cents); return true; }
+}
+
+class CheckoutService {
+    private readonly IPaymentGateway gateway;          // injected, not created here
+    public CheckoutService(IPaymentGateway gateway) { this.gateway = gateway; }
+    public bool Pay(string user, long cents) { return cents > 0 && gateway.Charge(user, cents); }
+}
+
+class Program {
+    static void Main() {
+        FakeGateway fake = new FakeGateway();
+        bool ok = new CheckoutService(fake).Pay("asha", 4999);
+        Console.WriteLine(ok.ToString().ToLower() + " [" + string.Join(", ", fake.Calls) + "]");   // true [asha:4999]
+    }
 }` }
 ] } },
       { title: 'The 9-argument constructor (a Builder is waiting to happen)', html: `<p><code>new Pizza("L", "thin", "tomato", true, false, true, null, 2, "no onion")</code> — which <code>true</code> is cheese? Swap two booleans and it still compiles. When you see long parameter lists with many optional values, the creational fix is a <b>Builder</b> (topic 5). The brute force — many overloaded constructors — is called the <b>telescoping constructor</b> anti-pattern.</p>` },
@@ -628,6 +726,24 @@ struct Money {
 int main() {
     Money price(4999, "INR");                   // plain construction is the right call here
     cout << "Money[cents=" << price.cents << ", currency=" << price.currency << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+struct Money {
+    public readonly long Cents; public readonly string Currency;
+    public Money(long cents, string currency) {
+        if (cents < 0) throw new ArgumentException("negative money");
+        Cents = cents; Currency = currency;
+    }
+    public override string ToString() { return "Money[cents=" + Cents + ", currency=" + Currency + "]"; }
+}
+
+class Program {
+    static void Main() {
+        Money price = new Money(4999, "INR");   // plain new is the right call here
+        Console.WriteLine(price);
+    }
 }` }
 ] } },
       { title: 'Static factory methods: the JDK already does this', html: `<p><code>Integer.valueOf(100)</code> returns a <b>cached</b> object for -128..127, <code>List.of(1, 2)</code> returns a hidden immutable class, <code>EnumSet.noneOf(Day.class)</code> picks <code>RegularEnumSet</code> or <code>JumboEnumSet</code> based on size. A <b>named static method</b> that returns an object is the lightest creational tool: it can cache, pick a subclass, and has a meaningful name (<code>of</code>, <code>from</code>, <code>valueOf</code>, <code>newInstance</code>).</p>`, code: { lang: 'java', code: `
@@ -662,6 +778,18 @@ int main() {
     cout << boolalpha << (&use_facet<ctype<char>>(a) == &use_facet<ctype<char>>(b)) << "\\n";   // true
     auto items = {1, 2, 3};                      // std::initializer_list: the type is deduced, not named
     cout << items.size() << "\\n";                // 3
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        string a = string.Intern(new string('x', 3)), b = string.Intern("xxx");
+        Console.WriteLine(ReferenceEquals(a, b).ToString().ToLower());     // true: same interned object
+        IList<int> list = Array.AsReadOnly(new[] { 1, 2, 3 });             // concrete class is hidden
+        Console.WriteLine(list.GetType().Name);                            // ReadOnlyCollection\`1 (library internal)
+    }
 }` }
 ] } }
     ],
@@ -756,7 +884,27 @@ public:
         else if (format == "csv") return CsvExporter().exportRows(rows);
         throw invalid_argument(format);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class PdfExporter { public string Export(List<string> rows) { return "PDF[" + string.Join("|", rows) + "]"; } }
+class CsvExporter { public string Export(List<string> rows) { return string.Join(",", rows); } }
+
+class ReportService {
+    public string Daily(string format, List<string> rows) {
+        if (format == "pdf") return new PdfExporter().Export(rows);
+        else if (format == "csv") return new CsvExporter().Export(rows);
+        throw new ArgumentException(format);
+    }
+    public string Monthly(string format, List<string> rows) {
+        // same chain copy-pasted -- and someone forgot the case-insensitive compare here
+        if (format == "pdf") return new PdfExporter().Export(rows);
+        else if (format == "csv") return new CsvExporter().Export(rows);
+        throw new ArgumentException(format);
+    }
+}` }
                 ] }
         },
         mcq: { q: 'Product wants an XLSX export next sprint. In the refactored design, what is the ideal change?', options: ['Add an XlsxExporter class and one register("xlsx", XlsxExporter::new) line', 'Add another else-if in every ReportService method', 'Make ReportService extend XlsxExporter', 'Add a boolean isXlsx parameter to export()'], answer: 0, explain: 'A registry factory is open for extension (new class + one registration) and closed for modification (no existing method changes).' },
@@ -1059,6 +1207,82 @@ int main() {
         service.daily("xml", {});
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+interface IExporter {
+    string Export(List<string> rows);
+}
+
+class PdfExporter : IExporter {
+    public string Export(List<string> rows) { return "PDF[" + string.Join("|", rows) + "]"; }
+}
+
+class CsvExporter : IExporter {
+    public string Export(List<string> rows) { return string.Join(",", rows); }
+}
+
+class JsonExporter : IExporter {
+    public string Export(List<string> rows) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < rows.Count; i++) {
+            if (i > 0) sb.Append(',');
+            sb.Append('"').Append(rows[i]).Append('"');
+        }
+        return sb.Append(']').ToString();
+    }
+}
+
+sealed class ExporterFactory {
+    // format -> recipe that builds a fresh exporter
+    private readonly ConcurrentDictionary<string, Func<IExporter>> registry = new ConcurrentDictionary<string, Func<IExporter>>();
+
+    public ExporterFactory Register(string format, Func<IExporter> recipe) {
+        registry[format.ToLowerInvariant()] = recipe;
+        return this;                                   // allows chaining at startup
+    }
+
+    public IExporter Create(string format) {
+        Func<IExporter> recipe;
+        if (!registry.TryGetValue(format.ToLowerInvariant(), out recipe)) {
+            throw new ArgumentException("Unsupported format " + format
+                + ", supported: [" + string.Join(", ", registry.Keys.OrderBy(k => k, StringComparer.Ordinal)) + "]");
+        }
+        return recipe();
+    }
+}
+
+class ReportService {
+    private readonly ExporterFactory factory;
+
+    public ReportService(ExporterFactory factory) { this.factory = factory; }
+
+    public string Daily(string format, List<string> rows) { return factory.Create(format).Export(rows); }
+
+    public string Monthly(string format, List<string> rows) { return factory.Create(format).Export(rows); }
+}
+
+class Program {
+    static void Main() {
+        ExporterFactory factory = new ExporterFactory()
+            .Register("pdf", () => new PdfExporter())
+            .Register("csv", () => new CsvExporter())
+            .Register("json", () => new JsonExporter());
+        ReportService service = new ReportService(factory);
+        Console.WriteLine(service.Daily("CSV", new List<string> { "a", "b" }));    // a,b
+        Console.WriteLine(service.Monthly("json", new List<string> { "x" }));      // ["x"]
+        Console.WriteLine(service.Daily("Pdf", new List<string> { "q", "r" }));    // PDF[q|r]
+        try {
+            service.Daily("xml", new List<string>());
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);
+        }
     }
 }` }
           ],
@@ -1487,6 +1711,90 @@ int main() {
     cout << boolalpha << (&HolderConfig::getInstance() == &HolderConfig::getInstance()) << "\\n";        // true
     OnceConfig::getInstance().set("region", "ap-south-1");
     cout << OnceConfig::getInstance().get("region") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+// 1) EAGER: created when the class is initialised. Thread-safe for free (the CLR runs static initialisers once).
+sealed class EagerConfig {
+    private static readonly EagerConfig instance = new EagerConfig();
+    private EagerConfig() { }
+    public static EagerConfig GetInstance() { return instance; }
+}
+
+// 2) LAZY + lock on every call: correct, but every call takes the lock.
+sealed class SyncConfig {
+    private static SyncConfig instance;
+    private static readonly object gate = new object();
+    private SyncConfig() { }
+    public static SyncConfig GetInstance() {
+        lock (gate) {
+            if (instance == null) {
+                instance = new SyncConfig();
+            }
+            return instance;
+        }
+    }
+}
+
+// 3) DOUBLE-CHECKED LOCKING: volatile is mandatory.
+sealed class DclConfig {
+    private static volatile DclConfig instance;
+    private static readonly object gate = new object();
+    private DclConfig() { }
+    public static DclConfig GetInstance() {
+        DclConfig local = instance;              // one volatile read on the fast path
+        if (local == null) {                     // 1st check: no lock
+            lock (gate) {
+                local = instance;
+                if (local == null) {             // 2nd check: inside the lock
+                    instance = local = new DclConfig();
+                }
+            }
+        }
+        return local;
+    }
+}
+
+// 4) LAZY<T>: the library's initialization-on-demand; lazy + lock-free reads once created.
+sealed class HolderConfig {
+    private HolderConfig() { }
+    private static readonly Lazy<HolderConfig> holder = new Lazy<HolderConfig>(() => new HolderConfig());   // runs on first access
+    public static HolderConfig GetInstance() { return holder.Value; }
+}
+
+// 5) A sealed class with a private constructor and one static readonly instance: the C# stand-in for Java's enum singleton.
+sealed class EnumConfig {
+    public static readonly EnumConfig Instance = new EnumConfig();
+    private readonly ConcurrentDictionary<string, string> settings = new ConcurrentDictionary<string, string>();
+    private EnumConfig() { }
+    public string Get(string key) { string v; return settings.TryGetValue(key, out v) ? v : ""; }
+    public void Set(string key, string value) { settings[key] = value; }
+}
+
+class Program {
+    static void Main() {
+        ConcurrentDictionary<int, bool> ids = new ConcurrentDictionary<int, bool>();   // identity hash codes seen
+        ManualResetEventSlim start = new ManualResetEventSlim(false);
+        List<Task> tasks = new List<Task>();
+        for (int i = 0; i < 8; i++) {
+            tasks.Add(Task.Run(() => {
+                start.Wait();                                    // release all threads together
+                ids[RuntimeHelpers.GetHashCode(DclConfig.GetInstance())] = true;
+            }));
+        }
+        start.Set();
+        Task.WaitAll(tasks.ToArray());
+        Console.WriteLine("distinct DCL instances: " + ids.Count);   // 1
+        Console.WriteLine((HolderConfig.GetInstance() == HolderConfig.GetInstance()).ToString().ToLower()); // true
+        EnumConfig.Instance.Set("region", "ap-south-1");
+        Console.WriteLine(EnumConfig.Instance.Get("region"));
+    }
 }` }
 ] },
       { lang: 'java', title: 'Breaking a Singleton (reflection, serialization) and defending it', code: `
@@ -1640,6 +1948,53 @@ int main() {
     // Attack 2: serialization round-trip
     Settings& copy = Settings::deserialize(Settings::getInstance().serialize());
     cout << boolalpha << "same after deserialize? " << (&copy == &Settings::getInstance()) << "\\n";   // true
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Formatters.Binary;
+
+[Serializable]
+sealed class Settings : IObjectReference {
+    private static bool created = false;                     // initialised before Instance (textual order)
+    private static readonly object gate = new object();
+    private static readonly Settings instance = new Settings();
+
+    private Settings() {
+        lock (gate) {
+            if (created) {                                   // reflection guard
+                throw new InvalidOperationException("Use Settings.GetInstance()");
+            }
+            created = true;
+        }
+    }
+
+    public static Settings GetInstance() { return instance; }
+
+    // Serialization guard: replace the freshly deserialised copy with THE instance.
+    public object GetRealObject(StreamingContext context) { return instance; }
+}
+
+class Program {
+    static void Main() {
+        // Attack 1: reflection
+        ConstructorInfo ctor = typeof(Settings).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+        try {
+            ctor.Invoke(null);
+        } catch (TargetInvocationException e) {
+            Console.WriteLine("reflection blocked: " + e.InnerException.Message);
+        }
+
+        // Attack 2: serialization round-trip
+        MemoryStream bytes = new MemoryStream();
+        BinaryFormatter formatter = new BinaryFormatter();
+        formatter.Serialize(bytes, Settings.GetInstance());
+        bytes.Position = 0;
+        object copy = formatter.Deserialize(bytes);
+        Console.WriteLine("same after deserialize? " + ReferenceEquals(copy, Settings.GetInstance()).ToString().ToLower()); // true
+    }
 }` }
 ] }
     ],
@@ -1815,6 +2170,35 @@ public:
 int main() {
     cout << AppConfig::get().value("db.url") << "\\n";
     cout << boolalpha << (&AppConfig::get() == &AppConfig::get()) << "\\n";   // true
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+
+sealed class AppConfig {
+    private readonly ReadOnlyDictionary<string, string> values;
+
+    private AppConfig() {
+        // Imagine reading app.properties here; we fake it for the demo.
+        Dictionary<string, string> m = new Dictionary<string, string>();
+        m["db.url"] = "Server=localhost;Database=shop";
+        m["cache.ttl"] = "300";
+        values = new ReadOnlyDictionary<string, string>(m);   // immutable -> safe to share
+    }
+
+    private static readonly Lazy<AppConfig> holder = new Lazy<AppConfig>(() => new AppConfig());
+
+    public static AppConfig Get() { return holder.Value; }
+
+    public string Value(string key) { string v; return values.TryGetValue(key, out v) ? v : ""; }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(AppConfig.Get().Value("db.url"));
+        Console.WriteLine((AppConfig.Get() == AppConfig.Get()).ToString().ToLower());   // true
+    }
 }` }
 ] } },
       { title: 'Enum singleton logger with thread-safe state', html: `<p>An enum constant is created once when the enum class initialises. Keep internal state thread-safe (here an <code>AtomicLong</code> counter) because many threads will call it.</p>`, code: { lang: 'java', code: `
@@ -1897,6 +2281,27 @@ public:
 int main() {
     AuditLog::instance().log("user asha logged in");
     AuditLog::instance().log("order 42 placed");
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Threading;
+
+sealed class AuditLog {
+    public static readonly AuditLog Instance = new AuditLog();
+    private long lines;
+    private AuditLog() { }
+
+    public void Log(string msg) {
+        long n = Interlocked.Increment(ref lines);
+        Console.WriteLine("[" + n + "] " + msg);
+    }
+}
+
+class Program {
+    static void Main() {
+        AuditLog.Instance.Log("user asha logged in");
+        AuditLog.Instance.Log("order 42 placed");
+    }
 }` }
 ] } },
       { title: 'The testability problem and the DI fix', html: `<p><code>PriceService</code> calls <code>SystemClock.getInstance().now()</code> — tests cannot control time, so "expires after 30 days" is untestable. Fix: depend on an interface and <b>inject</b> it. Production wires the one real instance (still a single object — "singleton by configuration"), tests pass a fixed clock. This is why modern code prefers <b>one instance managed by DI</b> over the Singleton <i>pattern</i>.</p>`, code: { lang: 'java', code: `
@@ -2027,6 +2432,35 @@ int main() {
     FixedTime fixed(1000);
     cout << boolalpha << Coupon(fixed, 2000).valid() << "\\n";                   // true
     cout << Coupon(SystemTime::instance(), 0).valid() << "\\n";                  // false
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface ITimeSource { long NowMillis(); }
+
+sealed class SystemTime : ITimeSource {
+    public static readonly SystemTime Instance = new SystemTime();
+    private SystemTime() { }
+    public long NowMillis() { return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); }
+}
+sealed class FixedTime : ITimeSource {                       // test clock
+    private readonly long millis; public FixedTime(long millis) { this.millis = millis; }
+    public long NowMillis() { return millis; }
+}
+
+class Coupon {
+    private readonly ITimeSource time;
+    private readonly long expiresAt;
+    public Coupon(ITimeSource time, long expiresAt) { this.time = time; this.expiresAt = expiresAt; }
+    public bool Valid() { return time.NowMillis() < expiresAt; }
+}
+
+class Program {
+    static void Main() {
+        ITimeSource fixedClock = new FixedTime(1000L);
+        Console.WriteLine(new Coupon(fixedClock, 2000L).Valid().ToString().ToLower());          // true
+        Console.WriteLine(new Coupon(SystemTime.Instance, 0L).Valid().ToString().ToLower());    // false
+    }
 }` }
 ] } },
       { title: '"One per JVM" is not "one per system"', html: `<p>A Singleton is unique per <b>class loader</b> in <b>one JVM</b>. Run 10 pods of your service and you have 10 "singletons". Web servers with per-app class loaders can even have two in one JVM. If you need one-per-cluster (a single scheduler, a global counter) you need a <b>distributed</b> mechanism: leader election (ZooKeeper/etcd), a database row lock, or a Redis <code>INCR</code> — not a Java pattern.</p>` }
@@ -2113,7 +2547,22 @@ public:
 class InvoiceService {
 public:
     long long newInvoiceId() { return NaiveIdGenerator().nextId(); } // also 1 -> duplicates
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveIdGenerator {
+    private long next = 0;
+    public long NextId() { return ++next; }
+}
+
+class OrderService {
+    public long NewOrderId() { return new NaiveIdGenerator().NextId(); }   // always returns 1!
+}
+
+class InvoiceService {
+    public long NewInvoiceId() { return new NaiveIdGenerator().NextId(); } // also 1 -> duplicates
+}` }
                 ] }
         },
         mcq: { q: 'Even with a perfect single instance, why can nextId() still return duplicates?', options: ['++next is read-modify-write and not atomic', 'long fields are always cached per thread forever', 'static methods cannot be called concurrently', 'The JVM reuses object IDs'], answer: 0, explain: 'Two threads can read next = 41, both add 1 and both return 42. Use AtomicLong.incrementAndGet() or synchronize the method.' },
@@ -2279,6 +2728,43 @@ int main() {
     set<long long> seen;
     for (const auto& p : parts) seen.insert(p.begin(), p.end());
     cout << "distinct ids = " << seen.size() << " (expected " << threads * perThread << ")\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+sealed class IdGenerator {
+    private long next;                                          // atomic counter via Interlocked
+
+    private IdGenerator() { }                                   // no outside "new"
+
+    private static readonly Lazy<IdGenerator> holder = new Lazy<IdGenerator>(() => new IdGenerator());   // created on first use, once
+
+    public static IdGenerator GetInstance() { return holder.Value; }
+
+    public long NextId() { return Interlocked.Increment(ref next); }   // 1, 2, 3, ... never duplicated
+}
+
+class Program {
+    static void Main() {
+        int threads = 8, perThread = 10000;
+        ConcurrentDictionary<long, bool> seen = new ConcurrentDictionary<long, bool>();
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        List<Thread> workers = new List<Thread>();
+        for (int t = 0; t < threads; t++) {
+            Thread w = new Thread(() => {
+                go.Wait();
+                for (int i = 0; i < perThread; i++) seen[IdGenerator.GetInstance().NextId()] = true;
+            });
+            workers.Add(w); w.Start();
+        }
+        go.Set();
+        foreach (Thread w in workers) w.Join();
+        Console.WriteLine("distinct ids = " + seen.Count + " (expected " + threads * perThread + ")");
+    }
 }` }
           ],
           complexity: `<p><code>getInstance()</code>: O(1), lock-free after initialisation. <code>nextId()</code>: O(1) CAS; under extreme contention consider <code>LongAdder</code>-style striping or pre-allocated ID blocks per thread.</p>`,
@@ -2619,6 +3105,69 @@ int main() {
     // A plugin adds a channel at startup:
     factory.registerChannel("whatsapp", [] { return make_unique<WhatsAppNotification>(); });
     cout << factory.create("whatsapp")->send("asha", "Your order shipped") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+
+interface INotification {
+    string Send(string to, string text);
+}
+
+class EmailNotification : INotification {
+    public string Send(string to, string text) { return "EMAIL to " + to + ": " + text; }
+}
+
+class SmsNotification : INotification {
+    public string Send(string to, string text) { return "SMS to " + to + ": " + text; }
+}
+
+class PushNotification : INotification {
+    public string Send(string to, string text) { return "PUSH to device of " + to + ": " + text; }
+}
+
+sealed class LambdaNotification : INotification {              // lets a plugin register a lambda
+    private readonly Func<string, string, string> f;
+    public LambdaNotification(Func<string, string, string> f) { this.f = f; }
+    public string Send(string to, string text) { return f(to, text); }
+}
+
+sealed class NotificationFactory {
+    private readonly ConcurrentDictionary<string, Func<INotification>> registry = new ConcurrentDictionary<string, Func<INotification>>();
+
+    public NotificationFactory() {
+        Register("email", () => new EmailNotification());
+        Register("sms", () => new SmsNotification());
+        Register("push", () => new PushNotification());
+    }
+
+    // New channels plug in here -- no edits to Create() or to any client.
+    public void Register(string channel, Func<INotification> recipe) {
+        if (recipe == null) throw new ArgumentNullException("recipe");
+        registry[channel.ToLowerInvariant()] = recipe;
+    }
+
+    public INotification Create(string channel) {
+        Func<INotification> recipe;
+        if (!registry.TryGetValue(channel.ToLowerInvariant(), out recipe)) {
+            throw new ArgumentException("Unknown channel '" + channel + "'. Known: [" + string.Join(", ", registry.Keys) + "]");
+        }
+        return recipe();                           // a brand-new product each call
+    }
+}
+
+class Program {
+    static void Main() {
+        NotificationFactory factory = new NotificationFactory();
+        INotification n = factory.Create("SMS");     // client knows only the interface
+        Console.WriteLine(n.Send("+91-98xxxx", "OTP 4821"));
+
+        // A plugin adds a channel at startup:
+        factory.Register("whatsapp", () => new LambdaNotification((to, text) => "WHATSAPP to " + to + ": " + text));
+        Console.WriteLine(factory.Create("whatsapp").Send("asha", "Your order shipped"));
+    }
 }` }
 ] },
       { lang: 'java', title: 'GoF Factory Method: the parent workflow calls an overridable creation method', code: `
@@ -2834,6 +3383,57 @@ int main() {
     for (const auto& branch : branches) {
         cout << branch->planDelivery("200 boxes") << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface ITransport {
+    string Deliver(string cargo);
+}
+
+class Truck : ITransport {
+    public string Deliver(string cargo) { return cargo + " delivered by road in a truck"; }
+}
+
+class Ship : ITransport {
+    public string Deliver(string cargo) { return cargo + " delivered by sea in a container ship"; }
+}
+
+class Plane : ITransport {
+    public string Deliver(string cargo) { return cargo + " delivered by air"; }
+}
+
+abstract class Logistics {
+    // The FACTORY METHOD: the one step subclasses must supply.
+    protected abstract ITransport CreateTransport();
+
+    // Shared business logic written once; it does not know Truck/Ship/Plane.
+    public string PlanDelivery(string cargo) {
+        ITransport t = CreateTransport();
+        return "[plan] " + t.Deliver(cargo);
+    }
+}
+
+class RoadLogistics : Logistics {
+    protected override ITransport CreateTransport() { return new Truck(); }
+}
+
+class SeaLogistics : Logistics {
+    protected override ITransport CreateTransport() { return new Ship(); }
+}
+
+class AirLogistics : Logistics {
+    protected override ITransport CreateTransport() { return new Plane(); }
+}
+
+class Program {
+    static void Main() {
+        List<Logistics> branches = new List<Logistics> { new RoadLogistics(), new SeaLogistics(), new AirLogistics() };
+        foreach (Logistics branch in branches) {
+            Console.WriteLine(branch.PlanDelivery("200 boxes"));
+        }
+    }
 }` }
 ] }
     ],
@@ -2939,6 +3539,19 @@ int main() {
     auto vi = v.begin();                         // factory method: each container picks its iterator type
     auto si = s.begin();
     cout << *vi << " " << *si << "\\n";           // 3 1  (vector keeps insertion order, set sorts)
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        List<IEnumerable<int>> sources = new List<IEnumerable<int>> { new List<int> { 3, 1, 2 }, new SortedSet<int> { 3, 1, 2 } };
+        foreach (IEnumerable<int> src in sources) {
+            IEnumerator<int> it = src.GetEnumerator();         // factory method: each class picks its enumerator
+            Console.WriteLine(it.GetType().FullName);
+        }
+    }
 }` }
 ] } },
       { title: 'Enum-based factory: compile-time safe types', html: `<p>When the set of types is fixed and known, an <code>enum</code> where each constant knows how to build its product removes string typos and makes a <code>switch</code> unnecessary. Adding a constant forces you to implement <code>create</code> — the compiler checks completeness.</p>`, code: { lang: 'java', code: `
@@ -3027,6 +3640,33 @@ int main() {
     };
     for (const auto& t : types) {
         printf("%s area(2) = %.2f\\n", t.name.c_str(), t.create(2)->area());
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IShape { double Area(); }
+sealed class LambdaShape : IShape {
+    private readonly Func<double> area; public LambdaShape(Func<double> area) { this.area = area; }
+    public double Area() { return area(); }
+}
+
+// A type-safe enum: each constant is its own factory method.
+abstract class ShapeType {
+    public static readonly ShapeType CIRCLE = new CircleType(), SQUARE = new SquareType(), TRIANGLE = new TriangleType();
+    public static readonly ShapeType[] Values = { CIRCLE, SQUARE, TRIANGLE };
+    public abstract IShape Create(double size);
+    public override string ToString() { return GetType().Name.Replace("Type", "").ToUpper(); }
+    private sealed class CircleType : ShapeType { public override IShape Create(double s) { return new LambdaShape(() => Math.PI * s * s); } }
+    private sealed class SquareType : ShapeType { public override IShape Create(double s) { return new LambdaShape(() => s * s); } }
+    private sealed class TriangleType : ShapeType { public override IShape Create(double s) { return new LambdaShape(() => Math.Sqrt(3) / 4 * s * s); } }
+}
+
+class Program {
+    static void Main() {
+        foreach (ShapeType t in ShapeType.Values) {
+            Console.WriteLine(t + " area(2) = " + t.Create(2).Area().ToString("F2"));
+        }
     }
 }` }
 ] } },
@@ -3166,6 +3806,38 @@ int main() {
     vector<string> uploaded;
     TestJob job(uploaded);
     cout << job.run("sales") << " [" << uploaded[0] << "]\\n";   // fake://ok [SALES]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IUploader { string Upload(string data); }
+
+class S3Uploader : IUploader {
+    public string Upload(string data) { return "s3://bucket/report-" + data.Length; }
+}
+
+class ReportJob {
+    protected virtual IUploader CreateUploader() { return new S3Uploader(); }   // factory method seam
+
+    public string Run(string data) { return CreateUploader().Upload(data.ToUpper()); }
+}
+
+class FakeUploader : IUploader {
+    private readonly List<string> uploaded; public FakeUploader(List<string> uploaded) { this.uploaded = uploaded; }
+    public string Upload(string data) { uploaded.Add(data); return "fake://ok"; }
+}
+class TestReportJob : ReportJob {                       // the test overrides the seam
+    private readonly List<string> uploaded; public TestReportJob(List<string> uploaded) { this.uploaded = uploaded; }
+    protected override IUploader CreateUploader() { return new FakeUploader(uploaded); }
+}
+
+class Program {
+    static void Main() {
+        List<string> uploaded = new List<string>();
+        ReportJob job = new TestReportJob(uploaded);
+        Console.WriteLine(job.Run("sales") + " [" + string.Join(", ", uploaded) + "]");   // fake://ok [SALES]
+    }
 }` }
 ] } },
       { title: 'Choosing a parser by file extension (data-driven)', html: `<p>An importer gets <code>orders.csv</code>, <code>orders.json</code>, <code>orders.xml</code>. The extension is <b>data</b>, so a registry-based simple factory fits: <code>parsers.get(ext).get()</code>. Unknown extension → a clear "unsupported file type" error shown to the user, not a <code>NullPointerException</code>.</p>` }
@@ -3231,7 +3903,21 @@ public:
         if (type == "SUV") return 80 + 20LL * km + 50;
         throw invalid_argument(type);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class FareServiceNaive {
+    public long Fare(string type, int km) {
+        switch (type) {
+            case "AUTO": return 25 + 10L * km;
+            case "MINI": return 40 + 12L * km;
+            case "SEDAN": return 60 + 15L * km;
+            case "SUV": return 80 + 20L * km + 50;
+            default: throw new ArgumentException(type);
+        }
+    }
+}` }
                 ] }
         },
         mcq: { q: 'Where should the knowledge "SUV adds a ₹50 comfort fee" live?', options: ['In the SuvRide class (the product)', 'In FareService', 'In the factory\'s create() method', 'In the client UI'], answer: 0, explain: 'Products own their behaviour; the factory only decides which product to build. Keeping rules in the product keeps the factory tiny and the service generic.' },
@@ -3612,6 +4298,100 @@ int main() {
     try { factory.create("heli"); } catch (const exception& e) { cout << e.what() << "\\n"; }
     try { factory.registerType("auto", [] { return make_unique<StandardRide>("AUTO", 1, 1); }); } catch (const exception& e) { cout << e.what() << "\\n"; }
     try { factory.create("mini")->fare(0); } catch (const exception& e) { cout << e.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface IRide {
+    string Type { get; }
+    long Fare(int km);
+}
+
+class StandardRide : IRide {
+    private readonly string type;
+    private readonly long baseFare, perKm;
+
+    public StandardRide(string type, long baseFare, long perKm) {
+        this.type = type; this.baseFare = baseFare; this.perKm = perKm;
+    }
+
+    public string Type { get { return type; } }
+
+    public virtual long Fare(int km) {
+        if (km < 1) throw new ArgumentException("km must be >= 1");
+        return baseFare + perKm * km;
+    }
+}
+
+class SuvRide : StandardRide {
+    private const long ComfortFee = 50;
+
+    public SuvRide() : base("SUV", 80, 20) { }
+
+    public override long Fare(int km) { return base.Fare(km) + ComfortFee; }
+}
+
+sealed class RideFactory {
+    private readonly List<string> order = new List<string>();                              // registration order
+    private readonly Dictionary<string, Func<IRide>> registry = new Dictionary<string, Func<IRide>>();
+
+    public RideFactory() {
+        Register("AUTO", () => new StandardRide("AUTO", 25, 10));
+        Register("MINI", () => new StandardRide("MINI", 40, 12));
+        Register("SEDAN", () => new StandardRide("SEDAN", 60, 15));
+        Register("SUV", () => new SuvRide());
+    }
+
+    public void Register(string type, Func<IRide> recipe) {
+        string key = type.ToUpperInvariant();
+        if (registry.ContainsKey(key)) throw new InvalidOperationException("Duplicate type " + key);
+        registry[key] = recipe; order.Add(key);
+    }
+
+    public IRide Create(string type) {
+        Func<IRide> recipe;
+        if (!registry.TryGetValue(type.ToUpperInvariant(), out recipe)) throw new ArgumentException("Unknown ride type: " + type);
+        return recipe();
+    }
+
+    public IReadOnlyList<string> Types() { return order.AsReadOnly(); }
+}
+
+class FareService {
+    private readonly RideFactory factory;
+
+    public FareService(RideFactory factory) { this.factory = factory; }
+
+    public List<KeyValuePair<string, long>> QuoteAll(int km) {               // ordered quotes
+        return factory.Types().Select(t => new KeyValuePair<string, long>(t, factory.Create(t).Fare(km))).ToList();
+    }
+}
+
+class Program {
+    static void Main() {
+        RideFactory factory = new RideFactory();
+        FareService service = new FareService(factory);
+        Console.WriteLine("{" + string.Join(", ", service.QuoteAll(10).Select(q => q.Key + "=" + q.Value)) + "}");   // {AUTO=125, MINI=160, SEDAN=210, SUV=330}
+        factory.Register("BIKE", () => new StandardRide("BIKE", 15, 6));
+        Console.WriteLine(service.QuoteAll(10).First(q => q.Key == "BIKE").Value);   // 75
+        try {
+            factory.Create("heli");
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);                       // Unknown ride type: heli
+        }
+        try {
+            factory.Register("auto", () => new StandardRide("AUTO", 1, 1));
+        } catch (InvalidOperationException e) {
+            Console.WriteLine(e.Message);                       // Duplicate type AUTO
+        }
+        try {
+            factory.Create("mini").Fare(0);
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);                       // km must be >= 1
+        }
+    }
 }` }
           ],
           complexity: `<p><code>create</code>: O(1) hash lookup. <code>quoteAll</code>: O(T) for T ride types. Adding a type: one class (or one lambda) + one registration line.</p>`,
@@ -3946,6 +4726,73 @@ unique_ptr<ThemeFactory> themeFor(string name) {
 int main() {
     cout << SettingsScreen(*themeFor("dark")).draw() << "\\n";
     cout << SettingsScreen(*themeFor("light")).draw() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// Abstract products
+interface IButton { string Render(); }
+interface ICheckbox { string Render(bool checkedState); }
+
+// Concrete products: Light family
+class LightButton : IButton {
+    public string Render() { return "[ OK ] (black text on white)"; }
+}
+class LightCheckbox : ICheckbox {
+    public string Render(bool c) { return (c ? "[x]" : "[ ]") + " (grey border on white)"; }
+}
+
+// Concrete products: Dark family
+class DarkButton : IButton {
+    public string Render() { return "[ OK ] (white text on charcoal)"; }
+}
+class DarkCheckbox : ICheckbox {
+    public string Render(bool c) { return (c ? "[x]" : "[ ]") + " (teal border on charcoal)"; }
+}
+
+// The ABSTRACT FACTORY: one create method per product type.
+interface IThemeFactory {
+    IButton CreateButton();
+    ICheckbox CreateCheckbox();
+}
+
+class LightThemeFactory : IThemeFactory {
+    public IButton CreateButton() { return new LightButton(); }
+    public ICheckbox CreateCheckbox() { return new LightCheckbox(); }
+}
+
+class DarkThemeFactory : IThemeFactory {
+    public IButton CreateButton() { return new DarkButton(); }
+    public ICheckbox CreateCheckbox() { return new DarkCheckbox(); }
+}
+
+// Client: knows only interfaces. Cannot mix families by accident.
+class SettingsScreen {
+    private readonly IButton save;
+    private readonly ICheckbox notifications;
+
+    public SettingsScreen(IThemeFactory theme) {
+        save = theme.CreateButton();
+        notifications = theme.CreateCheckbox();
+    }
+
+    public string Draw() { return notifications.Render(true) + " | " + save.Render(); }
+}
+
+class Program {
+    // Pick the family ONCE (from config), usually at startup.
+    static IThemeFactory ThemeFor(string name) {
+        switch (name.ToLower()) {
+            case "dark": return new DarkThemeFactory();
+            case "light": return new LightThemeFactory();
+            default: throw new ArgumentException("Unknown theme " + name);
+        }
+    }
+
+    static void Main() {
+        Console.WriteLine(new SettingsScreen(ThemeFor("dark")).Draw());
+        Console.WriteLine(new SettingsScreen(ThemeFor("light")).Draw());
+    }
 }` }
 ] }
     ],
@@ -4197,6 +5044,44 @@ public:
 
 int main() {
     cout << Checkout(TestInfra()).run() << "\\n";   // both fakes, guaranteed
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IPayments { string Charge(long cents); }
+interface IMailer { string Mail(string to); }
+
+interface IInfraFactory {
+    IPayments Payments();
+    IMailer Mailer();
+}
+
+sealed class CardPayments : IPayments { public string Charge(long cents) { return "charged card " + cents; } }
+sealed class SmtpMailer : IMailer { public string Mail(string to) { return "smtp to " + to; } }
+sealed class FakePayments : IPayments { public string Charge(long cents) { return "FAKE charge " + cents; } }
+sealed class FakeMailer : IMailer { public string Mail(string to) { return "FAKE mail " + to; } }
+
+class ProdInfra : IInfraFactory {
+    public IPayments Payments() { return new CardPayments(); }
+    public IMailer Mailer() { return new SmtpMailer(); }
+}
+
+class TestInfra : IInfraFactory {
+    public IPayments Payments() { return new FakePayments(); }
+    public IMailer Mailer() { return new FakeMailer(); }
+}
+
+class Checkout {
+    private readonly IPayments payments;
+    private readonly IMailer mailer;
+    public Checkout(IInfraFactory infra) { payments = infra.Payments(); mailer = infra.Mailer(); }
+    public string Run() { return payments.Charge(999) + " / " + mailer.Mail("asha"); }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(new Checkout(new TestInfra()).Run());   // both fakes, guaranteed
+    }
 }` }
 ] } },
       { title: 'Database vendor family (dialect mismatch bug)', html: `<p>A reporting tool supports MySQL and PostgreSQL. Each needs a matching <b>connection URL builder</b>, <b>SQL dialect</b> (<code>AUTO_INCREMENT</code> vs <code>GENERATED ALWAYS AS IDENTITY</code>, backticks vs double quotes around names) and <b>migration runner</b>. Without a family factory a developer pairs the Postgres connection with the MySQL dialect and queries fail only at runtime. <code>DatabaseKitFactory</code> with <code>MySqlKit</code> and <code>PostgresKit</code> makes that pairing impossible.</p>` },
@@ -4276,7 +5161,23 @@ public:
         string evt = provider == "gcp" ? Sqs().send(region, name) : PubSub().send(region, name);
         return uri + " | " + evt;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class S3 { public string Put(string region, string n) { return "s3://" + region + "/" + n; } }
+class Gcs { public string Put(string region, string n) { return "gs://" + region + "/" + n; } }
+class Sqs { public string Send(string region, string m) { return "sqs[" + region + "]/" + m; } }
+class PubSub { public string Send(string region, string m) { return "pubsub[" + region + "]/" + m; } }
+
+class UploadServiceNaive {
+    public string Upload(string provider, string region, string name) {
+        string uri = provider == "aws" ? new S3().Put(region, name) : new Gcs().Put(region, name);
+        // BUG: someone copy-pasted the wrong condition -- AWS storage + GCP queue
+        string evt = provider == "gcp" ? new Sqs().Send(region, name) : new PubSub().Send(region, name);
+        return uri + " | " + evt;
+    }
+}` }
                 ] }
         },
         mcq: { q: 'The team later adds Azure. With the Abstract Factory design, what changes?', options: ['Add AzureKit + its two products, and one line in the provider switch', 'Edit UploadService and every other service', 'Add createAzure() to the CloudKit interface', 'Nothing can be added without rewriting'], answer: 0, explain: 'A new family is a new row: new factory and products, no change to clients or the interface.' },
@@ -4617,6 +5518,85 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IBlobStore { string Put(string name, byte[] data); }
+interface IEventBus { string Publish(string topic, string msg); }
+
+interface ICloudKit {
+    IBlobStore BlobStore();
+    IEventBus EventBus();
+}
+
+static class CloudKits {                                   // the chooser: one place knows every family
+    public static ICloudKit ForProvider(string provider, string region) {
+        switch (provider.ToLowerInvariant()) {
+            case "aws": return new AwsKit(region);
+            case "gcp": return new GcpKit(region);
+            default: throw new ArgumentException("Unsupported provider: " + provider);
+        }
+    }
+}
+
+sealed class AwsKit : ICloudKit {
+    private readonly string region;                 // shared by every product of this family
+    public AwsKit(string region) { this.region = region; }
+    public IBlobStore BlobStore() { return new S3(region); }
+    public IEventBus EventBus() { return new Sqs(region); }
+    private sealed class S3 : IBlobStore {
+        private readonly string region; public S3(string region) { this.region = region; }
+        public string Put(string name, byte[] data) { return "s3://" + region + "/" + name; }
+    }
+    private sealed class Sqs : IEventBus {
+        private readonly string region; public Sqs(string region) { this.region = region; }
+        public string Publish(string topic, string msg) { return "sqs[" + region + "]/" + topic + ": " + msg; }
+    }
+}
+
+sealed class GcpKit : ICloudKit {
+    private readonly string region;
+    public GcpKit(string region) { this.region = region; }
+    public IBlobStore BlobStore() { return new Gcs(region); }
+    public IEventBus EventBus() { return new PubSub(region); }
+    private sealed class Gcs : IBlobStore {
+        private readonly string region; public Gcs(string region) { this.region = region; }
+        public string Put(string name, byte[] data) { return "gs://" + region + "/" + name; }
+    }
+    private sealed class PubSub : IEventBus {
+        private readonly string region; public PubSub(string region) { this.region = region; }
+        public string Publish(string topic, string msg) { return "pubsub[" + region + "]/" + topic + ": " + msg; }
+    }
+}
+
+class UploadService {
+    private readonly IBlobStore store;
+    private readonly IEventBus bus;
+
+    public UploadService(ICloudKit kit) {           // both products from ONE family
+        store = kit.BlobStore();
+        bus = kit.EventBus();
+    }
+
+    public string Upload(string name, byte[] data) {
+        string uri = store.Put(name, data);
+        string evt = bus.Publish("uploads", name);
+        return uri + " | " + evt;
+    }
+}
+
+class Program {
+    static void Main() {
+        ICloudKit kit = CloudKits.ForProvider("aws", "ap-south-1");   // chosen once at startup
+        Console.WriteLine(new UploadService(kit).Upload("a.png", new byte[] { 1, 2, 3 }));
+        Console.WriteLine(new UploadService(CloudKits.ForProvider("GCP", "asia-south1")).Upload("b.png", new byte[0]));
+        try {
+            CloudKits.ForProvider("azure", "westeurope");
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);                  // Unsupported provider: azure
+        }
+    }
 }` }
           ],
           complexity: `<p>All operations O(1). Adding a provider: one kit + its products (new row). Adding a product type (e.g. <code>SecretStore</code>): edit the interface and every kit — call out this trade-off.</p>`,
@@ -4921,6 +5901,77 @@ int main() {
     } catch (const logic_error& e) {
         cout << "rejected: " << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Pizza {
+    private readonly string size;              // required: S, M or L
+    private readonly string crust;
+    private readonly string sauce;
+    private readonly bool cheese;
+    private readonly List<string> toppings;    // private copy
+
+    private Pizza(Builder b) {                 // only the Builder can call this
+        size = b.size;
+        crust = b.crust;
+        sauce = b.sauce;
+        cheese = b.cheese;
+        toppings = new List<string>(b.toppings);   // defensive copy -> truly immutable
+    }
+
+    public static Builder NewBuilder() { return new Builder(); }
+
+    public override string ToString() {
+        return size + " " + crust + " pizza, " + sauce + " sauce, cheese=" + cheese.ToString().ToLower() + ", toppings=[" + string.Join(", ", toppings) + "]";
+    }
+
+    public sealed class Builder {
+        internal string size;                        // no default: required
+        internal string crust = "regular";           // sensible defaults
+        internal string sauce = "tomato";
+        internal bool cheese = true;
+        internal readonly List<string> toppings = new List<string>();
+
+        internal Builder() { }
+
+        public Builder Size(string s) {
+            if (s != "S" && s != "M" && s != "L") throw new ArgumentException("size must be S, M or L");
+            size = s;
+            return this;                             // fluent chaining
+        }
+        public Builder Crust(string c) { if (c == null) throw new ArgumentNullException("c"); crust = c; return this; }
+        public Builder Sauce(string s) { if (s == null) throw new ArgumentNullException("s"); sauce = s; return this; }
+        public Builder Cheese(bool c) { cheese = c; return this; }
+        public Builder Topping(string t) { if (t == null) throw new ArgumentNullException("t"); toppings.Add(t); return this; }
+
+        public Pizza Build() {
+            // cross-field rules live here, checked once, before the object exists
+            if (size == null) throw new InvalidOperationException("size is required");
+            if (crust == "stuffed" && size != "L") throw new InvalidOperationException("stuffed crust only for L");
+            if (toppings.Count > 5) throw new InvalidOperationException("max 5 toppings");
+            return new Pizza(this);
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        Pizza p = Pizza.NewBuilder()
+            .Size("L")
+            .Crust("thin")
+            .Topping("olive")
+            .Topping("corn")
+            .Build();
+        Console.WriteLine(p);
+
+        try {
+            Pizza.NewBuilder().Size("M").Crust("stuffed").Build();
+        } catch (InvalidOperationException e) {
+            Console.WriteLine("rejected: " + e.Message);
+        }
+    }
 }` }
 ] }
     ],
@@ -5106,6 +6157,18 @@ int main() {
     cout << req.method << " " << req.uri;
     for (const auto& [k, v] : req.headers) cout << " " << k << "=" << v;
     cout << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class Program {
+    static void Main() {
+        // UriBuilder is the standard library's builder: set the parts you need, then read the finished Uri.
+        UriBuilder b = new UriBuilder("https", "api.example.com", 443, "/orders");
+        b.Query = "status=paid&page=2";
+        Uri uri = b.Uri;
+        Console.WriteLine(uri.Scheme + " " + uri.Host + " " + uri.AbsolutePath + " " + uri.Query);
+    }
 }` }
 ] } },
       { title: 'Director: reusable recipes on top of a builder', html: `<p>The GoF <b>Director</b> owns a <i>sequence</i> of builder calls so common configurations are not copy-pasted. A cafe has "Margherita" and "Veggie Supreme" presets; the director drives the same builder, and callers can still tweak before <code>build()</code>.</p>`, code: { lang: 'java', code: `
@@ -5256,6 +6319,39 @@ int main() {
     MealDirector d;
     cout << d.kidsCombo().build().str() << "\\n";
     cout << d.valueCombo().drink("extra water").build().str() << "\\n";   // tweak before build
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Meal {
+    public readonly List<string> Items;
+    public Meal(List<string> items) { Items = new List<string>(items); }
+    public override string ToString() { return string.Join(" + ", Items); }
+}
+
+class MealBuilder {
+    private readonly List<string> items = new List<string>();
+    public MealBuilder MainDish(string m) { items.Add(m); return this; }
+    public MealBuilder Side(string s) { items.Add(s); return this; }
+    public MealBuilder Drink(string d) { items.Add(d); return this; }
+    public Meal Build() {
+        if (items.Count == 0) throw new InvalidOperationException("empty meal");
+        return new Meal(items);
+    }
+}
+
+class MealDirector {                       // knows the recipes, not the representation
+    public MealBuilder KidsCombo() { return new MealBuilder().MainDish("mini burger").Side("apple slices").Drink("milk"); }
+    public MealBuilder ValueCombo() { return new MealBuilder().MainDish("burger").Side("fries").Drink("cola"); }
+}
+
+class Program {
+    static void Main() {
+        MealDirector d = new MealDirector();
+        Console.WriteLine(d.KidsCombo().Build());
+        Console.WriteLine(d.ValueCombo().Drink("extra water").Build());   // tweak before build
+    }
 }` }
 ] } },
       { title: 'toBuilder(): copy an immutable object with one change', html: `<p>Immutable objects cannot be edited, so "change the timeout" means "make a copy with a new timeout". A <code>toBuilder()</code> pre-fills a builder from the existing object — clean and safe. Records give you immutability for free; adding a small builder to a record is common when it has many optional components.</p>`, code: { lang: 'java', code: `
@@ -5363,6 +6459,37 @@ int main() {
     RetryPolicy base = RetryPolicyBuilder().build();
     RetryPolicy aggressive = RetryPolicyBuilder(base).maxAttempts(10).build();
     cout << base << " -> " << aggressive << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+sealed class RetryPolicy {
+    public readonly int MaxAttempts; public readonly long BackoffMs; public readonly bool Jitter;
+    public RetryPolicy(int maxAttempts, long backoffMs, bool jitter) {
+        if (maxAttempts < 1) throw new ArgumentException("maxAttempts >= 1");
+        MaxAttempts = maxAttempts; BackoffMs = backoffMs; Jitter = jitter;
+    }
+
+    public Builder ToBuilder() { return new Builder().WithMaxAttempts(MaxAttempts).WithBackoffMs(BackoffMs).WithJitter(Jitter); }
+    public override string ToString() { return "RetryPolicy[maxAttempts=" + MaxAttempts + ", backoffMs=" + BackoffMs + ", jitter=" + Jitter.ToString().ToLower() + "]"; }
+
+    public sealed class Builder {
+        private int maxAttempts = 3;
+        private long backoffMs = 200;
+        private bool jitter = true;
+        public Builder WithMaxAttempts(int v) { maxAttempts = v; return this; }
+        public Builder WithBackoffMs(long v) { backoffMs = v; return this; }
+        public Builder WithJitter(bool v) { jitter = v; return this; }
+        public RetryPolicy Build() { return new RetryPolicy(maxAttempts, backoffMs, jitter); }
+    }
+}
+
+class Program {
+    static void Main() {
+        RetryPolicy basePolicy = new RetryPolicy.Builder().Build();
+        RetryPolicy aggressive = basePolicy.ToBuilder().WithMaxAttempts(10).Build();
+        Console.WriteLine(basePolicy + " -> " + aggressive);
+    }
 }` }
 ] } },
       { title: 'Test Data Builders keep tests readable', html: `<p>Tests that need a <code>User</code> with 15 fields become noise. A builder with valid defaults lets each test state only what matters: <code>aUser().withAge(17).build()</code> for the "minors cannot buy" test. Readers instantly see the one field under test.</p>` }
@@ -5426,7 +6553,21 @@ public:
     ApiRequestNaive(string url) : url(url) { }
     ApiRequestNaive(string url, string method) : ApiRequestNaive(url) { this->method = method; }
     ApiRequestNaive(string url, string method, string body) : ApiRequestNaive(url, method) { this->body = body; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class ApiRequestNaive {
+    public string Url, Method, Body;
+    public Dictionary<string, string> Headers = new Dictionary<string, string>();   // repeated headers lost, mutable
+    public int TimeoutSeconds;                                                      // default 0 = no timeout?!
+
+    public ApiRequestNaive() { }
+    public ApiRequestNaive(string url) { Url = url; }
+    public ApiRequestNaive(string url, string method) : this(url) { Method = method; }
+    public ApiRequestNaive(string url, string method, string body) : this(url, method) { Body = body; }
+}` }
                 ] }
         },
         mcq: { q: 'Where should the rule "GET cannot have a body" be checked?', options: ['In build(), because it involves two fields (method and body)', 'In the body() setter', 'In the method() setter', 'In every caller'], answer: 0, explain: 'Cross-field rules belong in build(): the builder methods can be called in any order, so only build() sees the final combination.' },
@@ -5847,6 +6988,112 @@ int main() {
     attempt([] { return ApiRequest::builder("https://api.shop.com", "patch").build(); });
     attempt([] { return ApiRequest::builder("https://api.shop.com", "GET").timeoutSeconds(0).build(); });
     attempt([] { return ApiRequest::builder("http://a.io/ping", "get").timeoutSeconds(5).header("A", "1").header("A", "2").build(); });
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+sealed class ApiRequest {
+    private readonly string url, method, body;
+    private readonly int timeoutSeconds;
+    private readonly List<KeyValuePair<string, List<string>>> headers;      // ordered, deep-copied
+    private readonly List<KeyValuePair<string, string>> query;
+
+    private ApiRequest(Builder b) {
+        url = b.url;
+        method = b.method;
+        body = b.body;
+        timeoutSeconds = b.timeoutSeconds;
+        headers = b.headers.Select(h => new KeyValuePair<string, List<string>>(h.Key, new List<string>(h.Value))).ToList();   // deep copy
+        query = new List<KeyValuePair<string, string>>(b.query);
+    }
+
+    public static Builder NewBuilder(string url, string method) { return new Builder(url, method); }
+
+    public override string ToString() {
+        StringBuilder full = new StringBuilder(url);
+        string sep = "?";
+        foreach (var e in query) {
+            full.Append(sep).Append(e.Key).Append('=').Append(e.Value);
+            sep = "&";
+        }
+        string hs = "{" + string.Join(", ", headers.Select(h => h.Key + "=[" + string.Join(", ", h.Value) + "]")) + "}";
+        return method + " " + full + " headers=" + hs + " timeout=" + timeoutSeconds + "s"
+            + (body == null ? "" : " body=" + body);
+    }
+
+    public sealed class Builder {
+        private static readonly HashSet<string> Methods = new HashSet<string> { "GET", "POST", "PUT", "DELETE" };
+        internal readonly string url, method;
+        internal string body;
+        internal int timeoutSeconds = 30;
+        internal readonly List<KeyValuePair<string, List<string>>> headers = new List<KeyValuePair<string, List<string>>>();
+        internal readonly List<KeyValuePair<string, string>> query = new List<KeyValuePair<string, string>>();
+
+        internal Builder(string url, string method) {
+            if (url == null || !(url.StartsWith("http://") || url.StartsWith("https://")))
+                throw new ArgumentException("url must start with http:// or https://");
+            string m = method == null ? "" : method.ToUpperInvariant();
+            if (!Methods.Contains(m)) throw new ArgumentException("unsupported method " + method);
+            this.url = url;
+            this.method = m;
+        }
+
+        public Builder Header(string name, string value) {
+            if (name == null || value == null) throw new ArgumentNullException();
+            int i = headers.FindIndex(h => h.Key == name);
+            if (i < 0) { headers.Add(new KeyValuePair<string, List<string>>(name, new List<string>())); i = headers.Count - 1; }
+            headers[i].Value.Add(value);
+            return this;
+        }
+
+        public Builder Query(string name, string value) {
+            if (name == null || value == null) throw new ArgumentNullException();
+            query.RemoveAll(q => q.Key == name); query.Add(new KeyValuePair<string, string>(name, value));
+            return this;
+        }
+
+        public Builder TimeoutSeconds(int s) {
+            if (s < 1 || s > 120) throw new ArgumentException("timeout must be 1-120 seconds");
+            timeoutSeconds = s;
+            return this;
+        }
+
+        public Builder Body(string b) { if (b == null) throw new ArgumentNullException("b"); body = b; return this; }
+
+        public ApiRequest Build() {
+            bool needsBody = method == "POST" || method == "PUT";
+            if (needsBody && body == null) throw new InvalidOperationException(method + " requires a body");
+            if (!needsBody && body != null) throw new InvalidOperationException(method + " cannot have a body");
+            return new ApiRequest(this);
+        }
+    }
+}
+
+class Program {
+    static void Attempt(Func<ApiRequest> action) {
+        try {
+            Console.WriteLine(action());
+        } catch (Exception e) {
+            Console.WriteLine("rejected: " + e.Message);
+        }
+    }
+
+    static void Main() {
+        ApiRequest.Builder b = ApiRequest.NewBuilder("https://api.shop.com/orders", "post")
+            .Header("X-Trace", "a1").Query("page", "2").Body("{}");
+        ApiRequest req = b.Build();
+        b.Header("X-Trace", "LEAK?");                     // must not affect req
+        Console.WriteLine(req);
+        Attempt(() => ApiRequest.NewBuilder("https://api.shop.com/orders", "GET").Body("x").Build());
+        Attempt(() => ApiRequest.NewBuilder("https://api.shop.com/orders", "POST").Build());
+        Attempt(() => ApiRequest.NewBuilder("ftp://files.shop.com", "GET").Build());
+        Attempt(() => ApiRequest.NewBuilder("https://api.shop.com", "patch").Build());
+        Attempt(() => ApiRequest.NewBuilder("https://api.shop.com", "GET").TimeoutSeconds(0).Build());
+        Attempt(() => ApiRequest.NewBuilder("http://a.io/ping", "get").TimeoutSeconds(5).Header("A", "1").Header("A", "2").Build());
+    }
 }` }
           ],
           complexity: `<p>Each builder call O(1) amortised; <code>build()</code> O(H + Q) to copy H headers and Q query params. Memory O(H + Q).</p>`,
@@ -6126,6 +7373,71 @@ int main() {
     cout << a.str() << "\\n";
     cout << b.str() << "\\n";
     cout << registry.spawn("archer").str() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Position {
+    public int X, Y;                                      // mutable on purpose
+    public Position(int x, int y) { X = x; Y = y; }
+    public Position(Position p) : this(p.X, p.Y) { }      // copy constructor
+    public override string ToString() { return "(" + X + "," + Y + ")"; }
+}
+
+sealed class Enemy {
+    private readonly string kind;                         // immutable -> sharing is fine
+    private int health;                                   // value -> copied by value
+    private readonly List<string> loot;                   // mutable -> must be deep-copied
+    private readonly Position pos;                        // mutable -> must be deep-copied
+
+    public Enemy(string kind, int health, List<string> loot, Position pos) {
+        // Imagine expensive work here: loading a model, building an AI tree...
+        this.kind = kind;
+        this.health = health;
+        this.loot = new List<string>(loot);
+        this.pos = new Position(pos);
+    }
+
+    private Enemy(Enemy other) {                          // the prototype copy path
+        kind = other.kind;
+        health = other.health;
+        loot = new List<string>(other.loot);              // new list, same immutable strings
+        pos = new Position(other.pos);                    // new Position
+    }
+
+    public Enemy Copy() { return new Enemy(this); }
+
+    public Enemy At(int x, int y) { pos.X = x; pos.Y = y; return this; }
+    public void AddLoot(string item) { loot.Add(item); }
+    public override string ToString() { return kind + " hp=" + health + " loot=[" + string.Join(", ", loot) + "] at " + pos; }
+}
+
+sealed class EnemyRegistry {
+    private readonly Dictionary<string, Enemy> prototypes = new Dictionary<string, Enemy>();
+
+    public void Register(string key, Enemy prototype) { prototypes[key] = prototype; }
+
+    public Enemy Spawn(string key) {
+        Enemy proto;
+        if (!prototypes.TryGetValue(key, out proto)) throw new ArgumentException("No prototype for " + key);
+        return proto.Copy();                              // cheap copy instead of expensive build
+    }
+}
+
+class Program {
+    static void Main() {
+        EnemyRegistry registry = new EnemyRegistry();
+        registry.Register("orc", new Enemy("Orc", 120, new List<string> { "axe" }, new Position(0, 0)));
+        registry.Register("archer", new Enemy("Archer", 70, new List<string> { "bow", "arrows" }, new Position(0, 0)));
+
+        Enemy a = registry.Spawn("orc").At(5, 2);
+        Enemy b = registry.Spawn("orc").At(9, 4);
+        a.AddLoot("gold");                                // only a changes
+        Console.WriteLine(a);
+        Console.WriteLine(b);
+        Console.WriteLine(registry.Spawn("archer"));
+    }
 }` }
 ] },
       { lang: 'java', title: 'Cloneable: shallow by default, and how to deep-fix it', code: `
@@ -6288,6 +7600,45 @@ int main() {
     vector<int> copy = scores;                      // vectors copy their elements: value semantics
     copy[0] = 99;
     cout << scores[0] << "\\n";                      // 3
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Document : ICloneable {
+    public string Title;
+    public List<string> Pages = new List<string>();
+
+    public Document(string title) { Title = title; }
+
+    // Shallow: MemberwiseClone copies field values -> 'Pages' reference is SHARED.
+    public object Clone() { return MemberwiseClone(); }
+
+    public Document DeepClone() {
+        Document d = (Document)Clone();
+        d.Pages = new List<string>(Pages);    // replace shared list with a private copy
+        return d;
+    }
+}
+
+class Program {
+    static void Main() {
+        Document original = new Document("Spec");
+        original.Pages.Add("intro");
+
+        Document shallow = (Document)original.Clone();
+        shallow.Pages.Add("SURPRISE");
+        Console.WriteLine("[" + string.Join(", ", original.Pages) + "]");   // [intro, SURPRISE]  <- bug
+
+        Document deep = original.DeepClone();
+        deep.Pages.Add("only in deep");
+        Console.WriteLine("[" + string.Join(", ", original.Pages) + "]");   // unchanged by deep copy
+
+        int[] scores = { 3, 1, 2 };
+        int[] copy = (int[])scores.Clone();         // arrays: Clone() is the idiomatic copy
+        copy[0] = 99;
+        Console.WriteLine(scores[0]);               // 3
+    }
 }` }
 ] }
     ],
@@ -6388,6 +7739,21 @@ int main() {
     cout << (*original[0])[0] << "\\n";              // 99: elements are shared
     copy.push_back(make_shared<vector<int>>(vector<int>{7}));
     cout << original.size() << "\\n";                // 1: the vector itself is separate
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        List<int[]> original = new List<int[]>();
+        original.Add(new[] { 1, 2 });
+        List<int[]> copy = new List<int[]>(original);   // new list, SAME int[] inside
+        copy[0][0] = 99;
+        Console.WriteLine(original[0][0]);              // 99: elements are shared
+        copy.Add(new[] { 7 });
+        Console.WriteLine(original.Count);              // 1: the list itself is separate
+    }
 }` }
 ] } },
       { title: 'Invoice template per customer', html: `<p>A billing system prepares an <code>InvoiceTemplate</code>: company header, tax rules for the region, footer text, payment terms — loaded once from the database. For each of 10,000 customers it copies the template and fills in customer name and line items. Copying avoids 10,000 DB reads and guarantees every invoice starts from exactly the same configuration.</p>` },
@@ -6480,6 +7846,32 @@ int main() {
     Account b = a.clone();
     b.record("withdraw 500");
     cout << a.size() << "\\n";                       // 1 -- a's history changed through b
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Account : ICloneable {
+    private readonly List<string> history = new List<string>();   // readonly + mutable
+
+    public void Record(string e) { history.Add(e); }
+
+    public object Clone() {
+        Account c = (Account)MemberwiseClone();
+        // c.history = new List<string>(history);   <- would not compile: history is readonly
+        return c;                                    // so history stays SHARED
+    }
+
+    public int Size { get { return history.Count; } }
+}
+
+class Program {
+    static void Main() {
+        Account a = new Account();
+        Account b = (Account)a.Clone();
+        b.Record("withdraw 500");
+        Console.WriteLine(a.Size);   // 1 -- a's history changed through b
+    }
 }` }
 ] } },
       { title: 'Copy-paste in an editor', html: `<p>Diagram editors (Figma, draw.io) implement "duplicate" by asking the selected shape to copy itself: <code>Shape copy = selected.copy()</code>. The editor does not know whether it is a <code>Circle</code> or a <code>Group</code> of 40 shapes; each class knows how to copy itself (a <code>Group</code> deep-copies its children). That runtime polymorphic copy is exactly what Prototype adds over "just call new".</p>` }
@@ -6565,7 +7957,25 @@ public:
         c.inventory = inventory;    // same map
         return c;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Monster { public int Hp = 100; }
+
+class LevelNaive {
+    public string Name; public int[][] Tiles; public List<Monster> Monsters; public Dictionary<string, int> Inventory;
+
+    public LevelNaive ShallowCopy() {
+        LevelNaive c = new LevelNaive();
+        c.Name = Name;
+        c.Tiles = Tiles;            // same grid
+        c.Monsters = Monsters;      // same list, same monsters
+        c.Inventory = Inventory;    // same map
+        return c;
+    }
+}` }
                 ] }
         },
         mcq: { q: 'For int[][] tiles, which copy is truly independent?', options: ['Clone every row: copy[i] = tiles[i].clone()', 'tiles.clone()', 'copy = tiles', 'Arrays.asList(tiles)'], answer: 0, explain: 'tiles.clone() copies only the outer array of row references; rows are still shared. Each row (an int[]) must be cloned.' },
@@ -6760,6 +8170,64 @@ int main() {
     cout << "live  hp   = " << live.monsters[0].hp << "\\n";
     cout << "live  tile = " << live.tiles[0][0] << ", keys = " << live.inventory["key"] << "\\n";
     cout << "same monster object: " << boolalpha << (&live.monsters[0] == &saved.monsters[0]) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Monster {
+    public readonly string Type;
+    public int Hp;
+    public Monster(string type, int hp) { Type = type; Hp = hp; }
+    public Monster(Monster other) : this(other.Type, other.Hp) { }
+    public Monster Copy() { return new Monster(this); }
+}
+
+sealed class Level {
+    public readonly string Name;
+    public readonly int[][] Tiles;
+    public readonly List<Monster> Monsters;
+    public readonly Dictionary<string, int> Inventory;
+
+    public Level(string name, int[][] tiles, List<Monster> monsters, Dictionary<string, int> inventory) {
+        Name = name;
+        Tiles = tiles;
+        Monsters = monsters;
+        Inventory = inventory;
+    }
+
+    private Level(Level o) {
+        Name = o.Name;                                        // immutable: share
+        Tiles = new int[o.Tiles.Length][];
+        for (int r = 0; r < o.Tiles.Length; r++) {
+            Tiles[r] = (int[])o.Tiles[r].Clone();             // copy each row
+        }
+        Monsters = new List<Monster>(o.Monsters.Count);
+        foreach (Monster m in o.Monsters) Monsters.Add(m.Copy());   // deep copy elements
+        Inventory = new Dictionary<string, int>(o.Inventory); // string/int are immutable values
+    }
+
+    public Level Copy() { return new Level(this); }
+}
+
+class Program {
+    static void Main() {
+        Level live = new Level("Cave-1", new[] { new[] { 0, 1 }, new[] { 1, 0 } },
+            new List<Monster> { new Monster("bat", 100) }, new Dictionary<string, int> { { "key", 0 } });
+
+        Level saved = live.Copy();
+
+        live.Tiles[0][0] = 9;
+        live.Monsters[0].Hp -= 30;
+        live.Inventory["key"] += 1;
+
+        Console.WriteLine("saved tile = " + saved.Tiles[0][0]);            // 0
+        Console.WriteLine("saved hp   = " + saved.Monsters[0].Hp);         // 100
+        Console.WriteLine("saved keys = " + saved.Inventory["key"]);       // 0
+        Console.WriteLine("live  hp   = " + live.Monsters[0].Hp);          // 70
+        Console.WriteLine("live  tile = " + live.Tiles[0][0] + ", keys = " + live.Inventory["key"]);   // 9, 1
+        Console.WriteLine("same monster object: " + ReferenceEquals(live.Monsters[0], saved.Monsters[0]).ToString().ToLower());    // false
+    }
 }` }
           ],
           complexity: `<p>Time O(R·C + M + I) for an R×C grid, M monsters and I inventory entries; memory the same. No I/O, unlike rebuilding from the file.</p>`,
@@ -7213,6 +8681,99 @@ int main() {
     }
     for (auto& t : workers) t.join();
     cout << "30 tasks served by " << pool.createdCount() << " connections; idle=" << pool.idleCount() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+sealed class BoundedPool<T> {
+    private readonly ConcurrentQueue<T> idle = new ConcurrentQueue<T>();
+    private readonly SemaphoreSlim permits;          // how many may be borrowed at once
+    private readonly Func<T> factory;                // creates a new object (expensive)
+    private readonly Predicate<T> isHealthy;         // validation on borrow
+    private readonly Action<T> reset;                // clean state on return
+    private int created;
+
+    public BoundedPool(int max, Func<T> factory, Predicate<T> isHealthy, Action<T> reset) {
+        if (max < 1) throw new ArgumentException("max >= 1");
+        permits = new SemaphoreSlim(max, max);
+        this.factory = factory;
+        this.isHealthy = isHealthy;
+        this.reset = reset;
+    }
+
+    public Lease Acquire(TimeSpan timeout) {
+        if (!permits.Wait(timeout)) throw new TimeoutException("pool exhausted");
+        try {
+            T obj;
+            while (idle.TryDequeue(out obj)) {
+                if (isHealthy(obj)) return new Lease(this, obj);   // reuse a healthy idle object
+                Interlocked.Decrement(ref created);                 // drop a broken one
+            }
+            obj = factory();                                        // none idle: create
+            Interlocked.Increment(ref created);
+            return new Lease(this, obj);
+        } catch (Exception) {
+            permits.Release();                                      // never lose a permit
+            throw;
+        }
+    }
+
+    public int CreatedCount { get { return created; } }
+    public int IdleCount { get { return idle.Count; } }
+
+    /// using-block handle: Dispose() returns the object exactly once.
+    public sealed class Lease : IDisposable {
+        private readonly BoundedPool<T> pool;
+        private readonly T obj;
+        private int returned;                                       // 0 = held, 1 = returned
+        internal Lease(BoundedPool<T> pool, T obj) { this.pool = pool; this.obj = obj; }
+        public T Get() {
+            if (returned == 1) throw new InvalidOperationException("lease already returned");
+            return obj;
+        }
+        public void Dispose() {
+            if (Interlocked.CompareExchange(ref returned, 1, 0) != 0) return;   // double release ignored
+            try {
+                pool.reset(obj);
+                pool.idle.Enqueue(obj);
+            } finally {
+                pool.permits.Release();
+            }
+        }
+    }
+}
+
+sealed class FakeConnection {
+    private static int ids;
+    public readonly int Id = Interlocked.Increment(ref ids);
+    public bool Open = true;
+    public string TxState = "none";
+
+    public FakeConnection() { Thread.Sleep(20); }   // slow handshake
+}
+
+class Program {
+    static void Main() {
+        BoundedPool<FakeConnection> pool = new BoundedPool<FakeConnection>(3, () => new FakeConnection(),
+            c => c.Open, c => c.TxState = "none");
+
+        ThreadPool.SetMinThreads(10, 10);
+        List<Task> jobs = new List<Task>();
+        for (int i = 0; i < 30; i++) {
+            jobs.Add(Task.Run(() => {
+                using (BoundedPool<FakeConnection>.Lease lease = pool.Acquire(TimeSpan.FromSeconds(2))) {
+                    lease.Get().TxState = "open";                 // use it
+                    Thread.Sleep(5);
+                }                                                 // auto-returned + reset
+            }));
+        }
+        Task.WaitAll(jobs.ToArray());
+        Console.WriteLine("30 tasks served by " + pool.CreatedCount + " connections; idle=" + pool.IdleCount);
+    }
 }` }
 ] }
     ],
@@ -7356,6 +8917,25 @@ int main() {
     }
     for (auto& t : pool) t.join();
     cout << tasks << " tasks ran on at most " << workers << " reused threads (" << (used.size() <= workers) << ")\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+class Program {
+    static void Main() {
+        // The runtime's thread pool reuses a bounded set of workers; tasks queue up instead of spawning threads.
+        ThreadPool.SetMinThreads(2, 2);
+        ThreadPool.SetMaxThreads(4, 4);                      // at most 4 workers
+        ConcurrentDictionary<int, bool> workers = new ConcurrentDictionary<int, bool>();
+        List<Task> fs = new List<Task>();
+        for (int i = 0; i < 20; i++) fs.Add(Task.Run(() => { workers[Thread.CurrentThread.ManagedThreadId] = true; Thread.Sleep(2); }));
+        Task.WaitAll(fs.ToArray());
+        Console.WriteLine("20 tasks ran on " + workers.Count + " reused threads");
+    }
 }` }
 ] } },
       { title: 'Java 21 virtual threads: do NOT pool them', html: `<p>Virtual threads are cheap (a few hundred bytes, created in microseconds). Pooling them adds overhead and defeats their purpose. If you need to limit concurrency (e.g. at most 20 calls to a fragile API), use a <code>Semaphore</code> — the pool's <i>throttling</i> half without the <i>reuse</i> half.</p>`, code: { lang: 'java', code: `
@@ -7464,6 +9044,32 @@ int main() {
     }
     threads.clear();                                 // joins all
     cout << "completed " << done << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+class Program {
+    static void Main() {
+        SemaphoreSlim apiSlots = new SemaphoreSlim(20);          // throttle, not a pool
+        int done = 0;
+        List<Task> tasks = new List<Task>();
+        for (int i = 0; i < 1000; i++) {
+            tasks.Add(Task.Run(async () => {                     // async tasks: no thread is held while waiting
+                await apiSlots.WaitAsync();
+                try {
+                    await Task.Delay(1);                         // pretend remote call
+                    Interlocked.Increment(ref done);
+                } finally {
+                    apiSlots.Release();
+                }
+            }));
+        }
+        Task.WaitAll(tasks.ToArray());                           // waits for all tasks
+        Console.WriteLine("completed " + done);
+    }
 }` }
 ] } },
       { title: 'The leak that took down checkout', html: `<p>A service did <code>Connection c = pool.getConnection();</code> then returned early on a validation error <b>without closing</b>. Each bad request leaked one of 10 connections; after 10 bad requests every checkout request waited 30 s and timed out. Fixes: <b>try-with-resources</b> on every borrow, a <b>leak-detection</b> threshold that logs the borrower's stack trace, and <b>alerts</b> on pool "active = max" and "pending threads &gt; 0".</p>` }
@@ -7556,7 +9162,28 @@ public:
         c.close();
         return r;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Connection {
+    public readonly int Id;
+    public Connection(int id) { Id = id; /* imagine a slow TCP + TLS + auth handshake */ }
+    public void Close() { }
+}
+
+class OrderDao {
+    private static int nextId = 0;
+
+    public string FindOrder(long orderId) {
+        Connection c = new Connection(++nextId);   // new connection per call: slow + unbounded
+        try {
+            return "order " + orderId + " via connection " + c.Id;
+        } finally {
+            c.Close();
+        }
+    }
+}` }
                 ] }
         },
         mcq: { q: 'The factory throws while creating a connection inside borrow(). What must the pool do?', options: ['Release the permit it took, then rethrow', 'Keep the permit so the slot stays reserved', 'Return null to the caller', 'Retry forever'], answer: 0, explain: 'If the permit is not released, capacity silently shrinks by one with every failure until the pool is permanently exhausted.' },
@@ -8084,6 +9711,125 @@ int main() {
     } catch (const logic_error& ex) {
         cout << "borrow after shutdown: " << ex.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+sealed class Connection {
+    private static int ids;
+    public readonly int Id = Interlocked.Increment(ref ids);
+    public volatile bool Alive = true;
+    public volatile bool InTransaction = false;
+
+    public void Rollback() { InTransaction = false; }
+    public void Close() { Alive = false; }
+}
+
+sealed class ConnectionPool {
+    private readonly SemaphoreSlim permits;
+    private readonly ConcurrentQueue<Connection> idle = new ConcurrentQueue<Connection>();
+    private readonly HashSet<Connection> borrowed = new HashSet<Connection>();
+    private readonly object borrowedGate = new object();
+    private readonly Func<Connection> factory;
+    private volatile bool shutDown = false;
+
+    public ConnectionPool(int maxSize, Func<Connection> factory) {
+        if (maxSize < 1) throw new ArgumentException("maxSize >= 1");
+        permits = new SemaphoreSlim(maxSize, maxSize);
+        this.factory = factory;
+    }
+
+    public Connection Borrow(int timeoutMs) {
+        if (shutDown) throw new InvalidOperationException("pool is shut down");
+        if (!permits.Wait(timeoutMs)) {
+            throw new TimeoutException("no connection within " + timeoutMs + " ms");
+        }
+        try {
+            Connection c;
+            while (idle.TryDequeue(out c)) {
+                if (c.Alive) break;                 // healthy: reuse
+                c.Close();                          // dead: discard, does not count any more
+            }
+            if (c == null) c = factory();           // may throw
+            lock (borrowedGate) borrowed.Add(c);
+            return c;
+        } catch (Exception) {
+            permits.Release();                      // never lose capacity
+            throw;
+        }
+    }
+
+    public void GiveBack(Connection c) {
+        bool wasBorrowed;
+        lock (borrowedGate) wasBorrowed = borrowed.Remove(c);
+        if (!wasBorrowed) throw new InvalidOperationException("connection " + c.Id + " was not borrowed from this pool");
+        try {
+            if (c.InTransaction) c.Rollback();      // reset dirty state
+            if (shutDown || !c.Alive) c.Close();
+            else idle.Enqueue(c);
+        } finally {
+            permits.Release();
+        }
+    }
+
+    public void Shutdown() {
+        shutDown = true;
+        Connection c;
+        while (idle.TryDequeue(out c)) c.Close();
+    }
+
+    public int IdleCount { get { return idle.Count; } }
+}
+
+class Program {
+    static void Main() {
+        ConnectionPool pool = new ConnectionPool(2, () => new Connection());
+        Connection a = pool.Borrow(100);
+        Connection b = pool.Borrow(100);
+        try {
+            pool.Borrow(50);
+        } catch (TimeoutException te) {
+            Console.WriteLine("third borrow: " + te.Message);
+        }
+        a.InTransaction = true;
+        pool.GiveBack(a);                                     // rolled back + idle
+        Connection c = pool.Borrow(100);
+        Console.WriteLine("reused #" + c.Id + " (same as a: " + ReferenceEquals(c, a).ToString().ToLower() + "), tx=" + c.InTransaction.ToString().ToLower());
+        try {
+            pool.GiveBack(a);
+            pool.GiveBack(a);
+        } catch (InvalidOperationException dup) {
+            Console.WriteLine("double return rejected: " + dup.Message);
+        }
+        pool.GiveBack(b);
+        Console.WriteLine("idle = " + pool.IdleCount);                    // 2
+        Connection d = pool.Borrow(100);                                  // oldest idle: #1
+        d.Close();                                                        // dies while borrowed
+        pool.GiveBack(d);
+        Console.WriteLine("idle after dead return = " + pool.IdleCount);  // 1
+        b.Close();                                                        // dies while idle
+        Connection e = pool.Borrow(100);
+        Console.WriteLine("fresh #" + e.Id + " replaced the dead idle connection");
+        ConnectionPool broken = new ConnectionPool(1, () => { throw new InvalidOperationException("db down"); });
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                broken.Borrow(10);
+            } catch (InvalidOperationException ex) {
+                Console.WriteLine("try " + attempt + ": " + ex.Message);   // capacity is not lost
+            }
+        }
+        pool.GiveBack(e);
+        pool.Shutdown();
+        Console.WriteLine("idle after shutdown = " + pool.IdleCount);
+        try {
+            pool.Borrow(10);
+        } catch (InvalidOperationException ex) {
+            Console.WriteLine("borrow after shutdown: " + ex.Message);
+        }
+    }
 }` }
           ],
           complexity: `<p><code>borrow</code>/<code>giveBack</code>: O(1) amortised (plus discarded dead connections). Memory O(maxSize). Waiting threads are parked by the semaphore, not spinning.</p>`,
@@ -8147,7 +9893,20 @@ public:
 class TransferService {
 public:
     string transfer() { return AuditLoggerNaive("audit.log").log("transfer 500"); }   // always "1 ..."
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class AuditLoggerNaive {
+    private readonly string file;
+    private int seq = 0;                        // per-instance counter: duplicates across instances
+    public AuditLoggerNaive(string file) { this.file = file; /* opens a new handle each time */ }
+    public string Log(string msg) { return (++seq) + " " + msg + " -> " + file; }
+}
+
+class TransferService {
+    public string Transfer() { return new AuditLoggerNaive("audit.log").Log("transfer 500"); }   // always "1 ..."
+}` }
             ] }
     },
     mcq: { q: 'Which variant best satisfies "one instance, safe against reflection and serialization" with the least code?', options: ['enum AuditLog { INSTANCE }', 'Lazy getInstance() without locking', 'Public constructor plus a static field', 'A new instance per thread via ThreadLocal'], answer: 0, explain: 'The JVM guarantees enum constants are created once, refuses reflective creation of enums and serializes them by name.' },
@@ -8359,6 +10118,52 @@ int main() {
     cout << "same instance = " << (&AuditLog::instance() == &AuditLog::instance()) << "\\n";
     AuditLog::instance().log("late");
     cout << "snapshot unchanged = " << (snap.size() == 2000) << ", live size = " << AuditLog::instance().snapshot().size() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+sealed class AuditLog {
+    public static readonly AuditLog Instance = new AuditLog();   // the one instance, created by the runtime once
+    private readonly List<string> lines = new List<string>();
+    private readonly object gate = new object();
+    private long seq = 0;
+    private AuditLog() { }
+
+    public long Log(string msg) {                 // number + append happen atomically
+        lock (gate) {
+            seq++;
+            lines.Add(seq + " " + msg);
+            return seq;
+        }
+    }
+
+    public List<string> Snapshot() { lock (gate) return new List<string>(lines); }
+}
+
+class Program {
+    static void Main() {
+        Thread a = new Thread(() => { for (int i = 0; i < 1000; i++) AuditLog.Instance.Log("A" + i); });
+        Thread b = new Thread(() => { for (int i = 0; i < 1000; i++) AuditLog.Instance.Log("B" + i); });
+        a.Start(); b.Start(); a.Join(); b.Join();
+        List<string> snap = AuditLog.Instance.Snapshot();
+        bool numbered = true;
+        int nextA = 0, nextB = 0;
+        bool inOrder = true;
+        for (int i = 0; i < snap.Count; i++) {
+            string[] parts = snap[i].Split(' ');
+            if (parts[0] != (i + 1).ToString()) numbered = false;                      // numbers must be 1, 2, 3, ...
+            int n = int.Parse(parts[1].Substring(1));
+            if (parts[1][0] == 'A') { if (n != nextA++) inOrder = false; }           // each thread's own order is kept
+            else { if (n != nextB++) inOrder = false; }
+        }
+        Console.WriteLine(snap.Count + " lines, numbered 1.." + snap.Count + " = " + numbered.ToString().ToLower());
+        Console.WriteLine("each writer in order = " + inOrder.ToString().ToLower() + " (A=" + nextA + ", B=" + nextB + ")");
+        Console.WriteLine("same instance = " + ReferenceEquals(AuditLog.Instance, AuditLog.Instance).ToString().ToLower());
+        AuditLog.Instance.Log("late");
+        Console.WriteLine("snapshot unchanged = " + (snap.Count == 2000).ToString().ToLower() + ", live size = " + AuditLog.Instance.Snapshot().Count);
+    }
 }` }
       ],
       complexity: `<p>O(1) per log call; the lock serialises writers, which is what an ordered log needs. For very high throughput, use a lock-free queue and a single writer thread.</p>`,
@@ -8423,7 +10228,23 @@ public:
     }
 
     bool isOn(const string& f) { return flags.count(f) ? flags[f] : false; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class FeatureFlagsNaive {
+    private readonly Dictionary<string, bool> flags = new Dictionary<string, bool>();
+
+    public FeatureFlagsNaive(string config) {           // parsed again for EVERY request
+        foreach (string pair in config.Split(',')) {
+            string[] kv = pair.Split('=');
+            flags[kv[0].Trim()] = bool.Parse(kv[1].Trim());
+        }
+    }
+
+    public bool IsOn(string f) { bool v; return flags.TryGetValue(f, out v) && v; }
+}` }
             ] }
     },
     mcq: { q: 'Why is an eager singleton with an immutable Map safe to read from many threads without locks?', options: ['Class initialisation safely publishes the final field, and nobody can modify the map afterwards', 'HashMap is always thread-safe', 'Static fields are copied per thread', 'The JIT removes all races'], answer: 0, explain: 'Static initialisation happens-before any use of the class, and an unmodifiable map has no writes after construction, so there is nothing to race on.' },
@@ -8607,6 +10428,45 @@ int main() {
     cout << f.isOn("spaced") << " " << f.isOn("a") << " " << f.isOn("broken") << "\\n";
     cout << "flags loaded = " << f.size() << "\\n";
     cout << "same instance = " << (&FeatureFlags::get() == &f) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+
+sealed class FeatureFlags {
+    private static readonly FeatureFlags instance = new FeatureFlags(Load());
+
+    private readonly ReadOnlyDictionary<string, bool> flags;
+
+    private FeatureFlags(string config) {
+        Dictionary<string, bool> m = new Dictionary<string, bool>();
+        foreach (string pair in config.Split(',')) {
+            string[] kv = pair.Split('=');
+            if (kv.Length != 2 || string.IsNullOrWhiteSpace(kv[0])) continue;          // ignore malformed entries
+            m[kv[0].Trim()] = kv[1].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+        flags = new ReadOnlyDictionary<string, bool>(m);                               // immutable snapshot
+    }
+
+    private static string Load() { return "newCheckout=true,darkMode=false,broken,=oops,a=b=c, spaced = TRUE "; }   // stand-in for file/remote
+
+    public static FeatureFlags Get() { return instance; }
+
+    public bool IsOn(string flag) { bool v; return flags.TryGetValue(flag, out v) && v; }
+
+    public int Size { get { return flags.Count; } }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        FeatureFlags f = FeatureFlags.Get();
+        Console.WriteLine(B(f.IsOn("newCheckout")) + " " + B(f.IsOn("darkMode")) + " " + B(f.IsOn("beta")));
+        Console.WriteLine(B(f.IsOn("spaced")) + " " + B(f.IsOn("a")) + " " + B(f.IsOn("broken")));   // trimmed, malformed ignored
+        Console.WriteLine("flags loaded = " + f.Size);
+        Console.WriteLine("same instance = " + B(ReferenceEquals(FeatureFlags.Get(), f)));
+    }
 }` }
       ],
       complexity: `<p>Parse once: O(F) for F flags. Each <code>isOn</code>: O(1), lock-free.</p>`,
@@ -8676,7 +10536,22 @@ public:
         if (name == "square") return Square(size).area();
         throw invalid_argument(name);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Circle { public readonly double R; public Circle(double r) { R = r; } public double Area() { return Math.PI * R * R; } }
+class Square { public readonly double S; public Square(double s) { S = s; } public double Area() { return S * S; } }
+
+class CanvasScreen {
+    public double AddShape(string name, double size) {
+        switch (name) {                                  // copy #1 of the switch
+            case "circle": return new Circle(size).Area();
+            case "square": return new Square(size).Area();
+            default: throw new ArgumentException(name);
+        }
+    }
+}` }
             ] }
     },
     mcq: { q: 'What does Function&lt;Double, Shape&gt; represent in the registry?', options: ['A recipe that takes a size and builds a new Shape', 'A cached Shape object', 'The Shape interface itself', 'A comparator for shapes'], answer: 0, explain: 'Each map value is a creation function; calling apply(size) runs the constructor for that shape type.' },
@@ -9015,6 +10890,80 @@ int main() {
             cout << e.what() << "\\n";
         }
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IShape {
+    string Name { get; }
+    double Area();
+}
+
+sealed class Circle : IShape {
+    private readonly double r; public Circle(double r) { this.r = r; }
+    public string Name { get { return "circle"; } }
+    public double Area() { return Math.PI * r * r; }
+}
+
+sealed class Square : IShape {
+    private readonly double side; public Square(double side) { this.side = side; }
+    public string Name { get { return "square"; } }
+    public double Area() { return side * side; }
+}
+
+sealed class Triangle : IShape {                              // equilateral
+    private readonly double side; public Triangle(double side) { this.side = side; }
+    public string Name { get { return "triangle"; } }
+    public double Area() { return Math.Sqrt(3) / 4 * side * side; }
+}
+
+sealed class LambdaShape : IShape {                           // a shape defined inline by a plugin
+    private readonly string name; private readonly Func<double> area;
+    public LambdaShape(string name, Func<double> area) { this.name = name; this.area = area; }
+    public string Name { get { return name; } }
+    public double Area() { return area(); }
+}
+
+sealed class ShapeFactory {
+    private readonly SortedDictionary<string, Func<double, IShape>> recipes = new SortedDictionary<string, Func<double, IShape>>(StringComparer.Ordinal);
+
+    public ShapeFactory() {
+        Register("circle", s => new Circle(s));
+        Register("square", s => new Square(s));
+        Register("triangle", s => new Triangle(s));
+    }
+
+    public void Register(string name, Func<double, IShape> recipe) {
+        recipes[name.ToLowerInvariant()] = recipe;
+    }
+
+    public IShape Create(string name, double size) {
+        if (size <= 0) throw new ArgumentException("size must be > 0");
+        Func<double, IShape> recipe;
+        if (!recipes.TryGetValue(name.ToLowerInvariant(), out recipe)) throw new ArgumentException("unknown shape " + name + ", known [" + string.Join(", ", recipes.Keys) + "]");
+        return recipe(size);
+    }
+}
+
+class Program {
+    static string Show(IShape s) { return s.Name + " " + s.Area().ToString("F2"); }
+
+    static void Main() {
+        ShapeFactory f = new ShapeFactory();
+        Console.WriteLine(Show(f.Create("Circle", 2)));
+        Console.WriteLine(Show(f.Create("square", 3)));
+        Console.WriteLine(Show(f.Create("TRIANGLE", 2)));
+        f.Register("hexagon", s => new LambdaShape("hexagon", () => 3 * Math.Sqrt(3) / 2 * s * s));
+        Console.WriteLine(Show(f.Create("hexagon", 1)));
+        foreach (Func<IShape> bad in new Func<IShape>[] { () => f.Create("pentagon", 1), () => f.Create("circle", 0) }) {
+            try {
+                bad();
+            } catch (ArgumentException e) {
+                Console.WriteLine(e.Message);
+            }
+        }
+    }
 }` }
       ],
       complexity: `<p><code>create</code>: O(log K) with a TreeMap of K shapes (O(1) with a HashMap). Adding a shape: one class + one line.</p>`,
@@ -9094,7 +11043,26 @@ public:
         r.address = address;        // SHARED address -> bug
         return r;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Address { public string City; public string Pin; public Address(string c, string p) { City = c; Pin = p; } }
+
+class ResumeNaive {
+    public string Name, Headline;
+    public List<string> Skills;
+    public Address Address;
+
+    public ResumeNaive Copy() {
+        ResumeNaive r = new ResumeNaive();
+        r.Name = Name; r.Headline = Headline;
+        r.Skills = Skills;          // SHARED list -> bug
+        r.Address = Address;        // SHARED address -> bug
+        return r;
+    }
+}` }
             ] }
     },
     mcq: { q: 'Which fields of Resume can safely be shared by reference in a copy?', options: ['name and headline (Strings are immutable)', 'skills (List)', 'address (mutable class)', 'All of them'], answer: 0, explain: 'Immutable objects can be shared; mutable List and Address must be copied so edits stay local.' },
@@ -9293,6 +11261,58 @@ int main() {
     mine.address().city = "Bengaluru";
     cout << mine.str() << "\\n";
     cout << tmpl.str() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Address {
+    public string City, Pin;
+    public Address(string city, string pin) { City = city; Pin = pin; }
+    public Address(Address o) : this(o.City, o.Pin) { }
+    public override string ToString() { return City + "-" + Pin; }
+}
+
+sealed class Resume {
+    private string name;
+    private readonly string headline;
+    private readonly List<string> skills;
+    private readonly Address address;
+
+    public Resume(string name, string headline, List<string> skills, Address address) {
+        this.name = name;
+        this.headline = headline;
+        this.skills = new List<string>(skills);
+        this.address = new Address(address);
+    }
+
+    public Resume(Resume o) {                           // copy constructor = prototype copy
+        name = o.name;
+        headline = o.headline;
+        skills = new List<string>(o.skills);
+        address = new Address(o.address);
+    }
+
+    public Resume Personalised(string newName) {
+        Resume r = new Resume(this);
+        r.name = newName;
+        return r;
+    }
+
+    public void AddSkill(string s) { skills.Add(s); }
+    public Address Address { get { return address; } }
+    public override string ToString() { return name + " | " + headline + " | [" + string.Join(", ", skills) + "] | " + address; }
+}
+
+class Program {
+    static void Main() {
+        Resume template = new Resume("Your Name", "Backend Engineer", new List<string> { "Java", "SQL" }, new Address("Pune", "411001"));
+        Resume mine = template.Personalised("Asha");
+        mine.AddSkill("Kafka");
+        mine.Address.City = "Bengaluru";
+        Console.WriteLine(mine);
+        Console.WriteLine(template);
+    }
 }` }
       ],
       complexity: `<p>Copy: O(S) for S skills. No shared mutable state between copies.</p>`,
@@ -9362,7 +11382,19 @@ public:
 };
 
 class DeskA { public: RiskEngineNaive engine; };   // its own limits
-class DeskB { public: RiskEngineNaive engine; };   // different limits -> inconsistent risk` }
+class DeskB { public: RiskEngineNaive engine; };   // different limits -> inconsistent risk` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class RiskEngineNaive {
+    private readonly Dictionary<string, double> limits = new Dictionary<string, double>();
+    public void SetLimit(string desk, double v) { limits[desk] = v; }
+    public double? Limit(string desk) { double v; return limits.TryGetValue(desk, out v) ? v : (double?)null; }
+}
+
+class DeskA { public RiskEngineNaive Engine = new RiskEngineNaive(); }   // its own limits
+class DeskB { public RiskEngineNaive Engine = new RiskEngineNaive(); }   // different limits -> inconsistent risk` }
             ] }
     },
     mcq: { q: 'Which single change fixes clone, reflection AND serialization duplication at once?', options: ['Convert it to enum RiskEngine { INSTANCE; ... }', 'Add volatile to the field', 'Make getInstance() synchronized', 'Mark the class final'], answer: 0, explain: 'Enums cannot be cloned, cannot be created reflectively, and deserialize to the existing constant. Volatile only fixes the publication bug.' },
@@ -9587,6 +11619,68 @@ int main() {
     }
     const RiskEngine& engine = RiskEngine::getInstance();
     cout << "fx limit = " << fixed1(engine.limit("fx")) << ", eq limit = " << fixed1(engine.limit("eq")) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Formatters.Binary;
+
+// One instance per process: sealed, private constructor, a single static readonly field the runtime initialises once.
+[Serializable]
+sealed class RiskEngine : IObjectReference {
+    public static readonly RiskEngine Instance = new RiskEngine();
+    private static bool created;
+
+    [NonSerialized] private readonly ConcurrentDictionary<string, double> limits = new ConcurrentDictionary<string, double>();
+
+    private RiskEngine() {
+        if (created) throw new InvalidOperationException("use RiskEngine.GetInstance()");   // reflection guard
+        created = true;
+    }
+
+    public static RiskEngine GetInstance() { return Instance; }
+
+    public object GetRealObject(StreamingContext context) { return Instance; }   // deserialisation yields THE instance
+
+    public void SetLimit(string desk, double value) {
+        if (value < 0) throw new ArgumentException("limit must be >= 0");
+        limits[desk] = value;
+    }
+
+    public double Limit(string desk) { double v; return limits.TryGetValue(desk, out v) ? v : 0.0; }
+}
+
+class Program {
+    static void Main() {
+        RiskEngine.GetInstance().SetLimit("fx", 1000000);
+
+        // Serialization round-trip returns the same instance.
+        MemoryStream bytes = new MemoryStream();
+        BinaryFormatter formatter = new BinaryFormatter();
+        formatter.Serialize(bytes, RiskEngine.Instance);
+        bytes.Position = 0;
+        Console.WriteLine("same after round-trip: " + ReferenceEquals(formatter.Deserialize(bytes), RiskEngine.Instance).ToString().ToLower());
+
+        // Reflection cannot create a second instance: the guard in the constructor throws.
+        bool blocked = false;
+        try {
+            ConstructorInfo c = typeof(RiskEngine).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+            c.Invoke(null);
+        } catch (TargetInvocationException) {
+            blocked = true;
+        }
+        Console.WriteLine("second instance blocked: " + blocked.ToString().ToLower());
+
+        try {
+            RiskEngine.GetInstance().SetLimit("fx", -5);
+        } catch (ArgumentException e) {
+            Console.WriteLine("rejected: " + e.Message);
+        }
+        Console.WriteLine("fx limit = " + RiskEngine.GetInstance().Limit("fx").ToString("F1") + ", eq limit = " + RiskEngine.GetInstance().Limit("eq").ToString("F1"));
+    }
 }` }
       ],
       complexity: `<p>All operations O(1). Lock-free reads/writes via <code>ConcurrentHashMap</code>.</p>`,
@@ -9631,7 +11725,17 @@ struct NaiveClassifier {
         if (methodName.find("Factory") != string::npos || methodName.rfind("new", 0) == 0) return "Factory";
         return "No pattern";                                                          // wrong for iterator()
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+static class NaiveClassifier {
+    public static string Classify(string methodName) {
+        if (methodName.Contains("GetInstance")) return "Singleton";      // wrong for many factories
+        if (methodName.Contains("Factory") || methodName.StartsWith("Create")) return "Factory";
+        return "No pattern";                                               // wrong for GetEnumerator()
+    }
+}` }
             ] }
     },
     mcq: { q: 'Integer.valueOf(42) == Integer.valueOf(42) is true, but Integer.valueOf(1000) == Integer.valueOf(1000) is usually false. Which idea explains it?', options: ['A static factory method that caches a range of instances (-128..127)', 'Integer is a Singleton', 'The Builder pattern', 'Prototype cloning'], answer: 0, explain: 'valueOf is a static factory that returns cached instances for small values (a flyweight-like cache) and new objects otherwise.' },
@@ -9825,6 +11929,57 @@ int main() {
     } catch (const invalid_argument&) {
         cout << "Factory rejects bad input = true\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        // Singleton: one UTF8 encoding object per process
+        Console.WriteLine("Singleton: same instance = " + B(ReferenceEquals(Encoding.UTF8, Encoding.UTF8)));
+
+        // Factory Method: Guid.NewGuid() builds a fresh value each call
+        Console.WriteLine("Factory method: fresh object each call = " + B(Guid.NewGuid() != Guid.NewGuid()));
+
+        // Builder: StringBuilder assembles step by step
+        string built = new StringBuilder().Append("Hello").Append(", ").Append("world").ToString();
+        Console.WriteLine("Builder: " + built);
+
+        // Flyweight: string interning shares equal strings
+        Console.WriteLine("Flyweight cache: " + B(ReferenceEquals(string.Intern(new string('a', 2)), string.Intern("aa"))));
+
+        // Prototype: a copy constructor
+        List<string> original = new List<string> { "a", "b" };
+        List<string> copy = new List<string>(original);
+        copy.Add("c");
+        Console.WriteLine("Prototype copy: original=[" + string.Join(", ", original) + "] copy=[" + string.Join(", ", copy) + "]");
+
+        // Factory for pooled work: Task.Run hides which scheduler and threads are used
+        List<Task<int>> jobs = new List<Task<int>>();
+        for (int i = 0; i < 4; i++) {
+            int n = i;
+            jobs.Add(Task.Run(() => n * n));
+        }
+        int sum = jobs.Sum(j => j.Result);
+        Console.WriteLine("Executor factory: sum of squares = " + sum);
+
+        // Factory Method: the collection decides which enumerator to give you
+        IEnumerator<string> it = original.GetEnumerator();
+        it.MoveNext(); string first = it.Current; it.MoveNext();
+        Console.WriteLine("Iterator factory: " + first + it.Current);
+
+        // A factory rejects bad input instead of returning null
+        try {
+            int.Parse("x");
+        } catch (FormatException) {
+            Console.WriteLine("Factory rejects bad input = true");
+        }
+    }
 }` }
       ],
       complexity: `<p>Not an algorithmic problem; each demonstration is O(1). The value is in the reasoning: test behaviour (identity, class, copies) rather than trusting names.</p>`,
@@ -9889,7 +12044,21 @@ public:
         int sofa = sofaStyle == "modern" ? ModernSofa().price() : VictorianSofa().price();
         return (chair + sofa) * 9 / 10;          // happily mixes styles
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class ModernChair { public int Price() { return 4000; } }
+class VictorianSofa { public int Price() { return 42000; } }
+class ModernSofa { public int Price() { return 25000; } }
+
+class BundleNaive {
+    public int Total(string chairStyle, string sofaStyle) {
+        int chair = chairStyle == "modern" ? new ModernChair().Price() : 7500;
+        int sofa = sofaStyle == "modern" ? new ModernSofa().Price() : new VictorianSofa().Price();
+        return (chair + sofa) * 9 / 10;          // happily mixes styles
+    }
+}` }
             ] }
     },
     mcq: { q: 'Why does RoomBundle take a FurnitureFactory instead of two style strings?', options: ['One factory can only produce one collection, so mismatches become impossible', 'It is faster', 'Strings cannot be compared', 'To avoid using interfaces'], answer: 0, explain: 'Passing a single family object makes consistency structural rather than relying on callers to pass matching strings.' },
@@ -10229,6 +12398,78 @@ int main() {
         RoomBundle b(*factory);
         cout << b.describe() << " = Rs " << b.total() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IChair { string Describe(); int Price(); }
+interface ISofa { string Describe(); int Price(); }
+
+sealed class SimpleChair : IChair {
+    private readonly string collection; private readonly int price;
+    public SimpleChair(string collection, int price) { this.collection = collection; this.price = price; }
+    public string Describe() { return collection + " chair"; }
+    public int Price() { return price; }
+}
+
+sealed class SimpleSofa : ISofa {
+    private readonly string collection; private readonly int price;
+    public SimpleSofa(string collection, int price) { this.collection = collection; this.price = price; }
+    public string Describe() { return collection + " sofa"; }
+    public int Price() { return price; }
+}
+
+interface IFurnitureFactory {
+    IChair CreateChair();
+    ISofa CreateSofa();
+}
+
+class ModernFactory : IFurnitureFactory {
+    public IChair CreateChair() { return new SimpleChair("Modern", 4000); }
+    public ISofa CreateSofa() { return new SimpleSofa("Modern", 25000); }
+}
+
+class VictorianFactory : IFurnitureFactory {
+    public IChair CreateChair() { return new SimpleChair("Victorian", 7500); }
+    public ISofa CreateSofa() { return new SimpleSofa("Victorian", 42000); }
+}
+
+class ArtDecoFactory : IFurnitureFactory {          // new family: zero edits elsewhere
+    public IChair CreateChair() { return new SimpleChair("ArtDeco", 6000); }
+    public ISofa CreateSofa() { return new SimpleSofa("ArtDeco", 38000); }
+}
+
+class RoomBundle {
+    private readonly IChair chair;
+    private readonly ISofa sofa;
+
+    public RoomBundle(IFurnitureFactory factory) {
+        chair = factory.CreateChair();
+        sofa = factory.CreateSofa();
+    }
+
+    public int Total() { return (chair.Price() + sofa.Price()) * 90 / 100; }
+
+    public string Describe() { return chair.Describe() + " + " + sofa.Describe(); }
+}
+
+class Program {
+    static void Main() {
+        List<KeyValuePair<string, Func<IFurnitureFactory>>> styles = new List<KeyValuePair<string, Func<IFurnitureFactory>>> {
+            new KeyValuePair<string, Func<IFurnitureFactory>>("modern", () => new ModernFactory()),
+            new KeyValuePair<string, Func<IFurnitureFactory>>("victorian", () => new VictorianFactory()),
+            new KeyValuePair<string, Func<IFurnitureFactory>>("artdeco", () => new ArtDecoFactory()) };
+        foreach (string style in new[] { "modern", "victorian", "artdeco", "gothic" }) {
+            int idx = styles.FindIndex(s => s.Key == style);
+            if (idx < 0) {
+                Console.WriteLine("unknown style " + style + ", choose from [" + string.Join(", ", styles.ConvertAll(s => s.Key)) + "]");
+                continue;
+            }
+            RoomBundle b = new RoomBundle(styles[idx].Value());
+            Console.WriteLine(b.Describe() + " = Rs " + b.Total());
+        }
+    }
 }` }
       ],
       complexity: `<p>O(1) per bundle. New collection: one factory class. New product type (Table): edit the interface and every factory — the known trade-off.</p>`,
@@ -10295,7 +12536,23 @@ public:
     void setAge(int a) { age = a; }
     void setMarketingOptIn(bool b) { marketingOptIn = b; }   // no age check anywhere
     vector<string>& getInterests() { return interests; }    // leaks mutable list
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class UserProfileNaive {
+    private string username, email, phone;
+    private int age;
+    private bool marketingOptIn;
+    private List<string> interests = new List<string>();
+
+    public void SetUsername(string u) { username = u; }
+    public void SetEmail(string e) { email = e; }
+    public void SetAge(int a) { age = a; }
+    public void SetMarketingOptIn(bool b) { marketingOptIn = b; }   // no age check anywhere
+    public List<string> GetInterests() { return interests; }          // leaks mutable list
+}` }
             ] }
     },
     mcq: { q: 'Why use a LinkedHashSet for interests inside the builder?', options: ['It ignores duplicates while keeping insertion order', 'It sorts interests alphabetically', 'It is thread-safe', 'It is required by the Builder pattern'], answer: 0, explain: 'LinkedHashSet gives set semantics (no duplicates) and predictable iteration order, matching the requirements.' },
@@ -10705,6 +12962,100 @@ int main() {
         return b.build();
     });
     attempt([] { return UserProfile::builder("bob_1", "bob@mail.com").build(); });
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class UserProfile {
+    private readonly string username, email, phone;
+    private readonly int? age;
+    private readonly List<string> interests;
+    private readonly bool marketingOptIn;
+
+    private UserProfile(Builder b) {
+        username = b.username; email = b.email; phone = b.phone; age = b.age;
+        interests = new List<string>(b.interests);
+        marketingOptIn = b.marketingOptIn;
+    }
+
+    public static Builder NewBuilder(string username, string email) { return new Builder(username, email); }
+
+    public Builder ToBuilder() {
+        Builder b = new Builder(username, email);
+        b.phone = phone; b.age = age; foreach (string i in interests) b.interests.Add(i); b.marketingOptIn = marketingOptIn;
+        return b;
+    }
+
+    public override string ToString() {
+        return username + ", " + email + ", age=" + (age == null ? "null" : age.ToString()) + ", [" + string.Join(", ", interests) + "], optIn=" + marketingOptIn.ToString().ToLower();
+    }
+
+    public sealed class Builder {
+        internal readonly string username, email;
+        internal string phone;
+        internal int? age;
+        internal readonly List<string> interests = new List<string>();     // ordered, no duplicates
+        internal bool marketingOptIn = false;
+
+        internal Builder(string username, string email) {
+            if (username == null || !System.Text.RegularExpressions.Regex.IsMatch(username, "^[A-Za-z0-9_]{3,20}$"))
+                throw new ArgumentException("username must be 3-20 letters, digits or _");
+            if (email == null || email.IndexOf('@') <= 0 || email.IndexOf('@') != email.LastIndexOf('@'))
+                throw new ArgumentException("invalid email");
+            this.username = username;
+            this.email = email;
+        }
+
+        public Builder Phone(string p) { if (p == null) throw new ArgumentNullException("p"); phone = p; return this; }
+
+        public Builder Age(int a) {
+            if (a < 13 || a > 120) throw new ArgumentException("age must be 13-120");
+            age = a;
+            return this;
+        }
+
+        public Builder Interest(string i) {
+            if (i == null) throw new ArgumentNullException("i");
+            if (!interests.Contains(i) && interests.Count == 10) throw new ArgumentException("max 10 interests");
+            if (!interests.Contains(i)) interests.Add(i);
+            return this;
+        }
+
+        public Builder MarketingOptIn(bool v) { marketingOptIn = v; return this; }
+
+        public UserProfile Build() {
+            if (marketingOptIn && age != null && age < 18)
+                throw new InvalidOperationException("under-18 users cannot opt in");
+            return new UserProfile(this);
+        }
+    }
+}
+
+class Program {
+    static void Attempt(Func<UserProfile> action) {
+        try {
+            Console.WriteLine(action());
+        } catch (Exception e) {
+            Console.WriteLine("rejected: " + e.Message);
+        }
+    }
+
+    static void Main() {
+        UserProfile p = UserProfile.NewBuilder("asha_k", "asha@mail.com").Age(16).Interest("chess").Interest("chess").Build();
+        Console.WriteLine(p);
+        Attempt(() => p.ToBuilder().MarketingOptIn(true).Build());
+        Attempt(() => p.ToBuilder().Age(19).MarketingOptIn(true).Build());
+        Attempt(() => UserProfile.NewBuilder("ab", "x@y.com").Build());
+        Attempt(() => UserProfile.NewBuilder("bob_1", "bob@@mail").Build());
+        Attempt(() => UserProfile.NewBuilder("bob_1", "bob@mail.com").Age(5).Build());
+        Attempt(() => {
+            UserProfile.Builder b = UserProfile.NewBuilder("bob_1", "bob@mail.com");
+            for (int i = 0; i < 11; i++) b.Interest("topic" + i);
+            return b.Build();
+        });
+        Attempt(() => UserProfile.NewBuilder("bob_1", "bob@mail.com").Build());
+    }
 }` }
       ],
       complexity: `<p>Each setter O(1); <code>build()</code> O(I) to copy I interests; <code>toBuilder()</code> O(I).</p>`,
@@ -10772,7 +13123,24 @@ public:
         styleLoads++;                                  // expensive style/font load EVERY time
         for (auto& h : headings) sections.push_back(Section(h));
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Section { public string Heading, Body = ""; public Section(string h) { Heading = h; } }
+
+class DocumentNaive {
+    public static int StyleLoads = 0;
+    public string Title;
+    public List<Section> Sections = new List<Section>();
+
+    public DocumentNaive(string title, params string[] headings) {
+        Title = title;
+        StyleLoads++;                                  // expensive style/font load EVERY time
+        foreach (string h in headings) Sections.Add(new Section(h));
+    }
+}` }
             ] }
     },
     mcq: { q: 'Which part of Document should be SHARED between copies?', options: ['The immutable heavy Style', 'The List of sections', 'Each Section object', 'Nothing — share nothing ever'], answer: 0, explain: 'Immutable, heavy data is safe and efficient to share (Flyweight-like); mutable sections must be copied.' },
@@ -11068,6 +13436,85 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+sealed class Style {
+    public static int Loads = 0;
+    public readonly string Font;
+    public Style(string font) { Font = font; Loads++; }   // expensive in real life
+}
+
+sealed class Section {
+    public string Heading, Body = "";
+    public Section(string heading) { Heading = heading; }
+    public Section(Section o) { Heading = o.Heading; Body = o.Body; }
+}
+
+sealed class Document {
+    public string Title;
+    public readonly List<Section> Sections;
+    public readonly Style Style;
+
+    public Document(string title, Style style, params string[] headings) {
+        Title = title;
+        Style = style;
+        Sections = new List<Section>();
+        foreach (string h in headings) Sections.Add(new Section(h));
+    }
+
+    public Document(Document o) {
+        Title = o.Title;
+        Style = o.Style;                                        // immutable + heavy: share
+        Sections = new List<Section>();
+        foreach (Section s in o.Sections) Sections.Add(new Section(s));   // deep copy
+    }
+
+    public override string ToString() {
+        StringBuilder sb = new StringBuilder(Title + " [" + Style.Font + "]");
+        foreach (Section s in Sections) sb.Append(" | ").Append(s.Heading).Append(": '").Append(s.Body).Append("'");
+        return sb.ToString();
+    }
+}
+
+sealed class TemplateRegistry {
+    private readonly Dictionary<string, Document> prototypes = new Dictionary<string, Document>();
+
+    public void Register(string name, Document prototype) { prototypes[name] = prototype; }
+
+    public Document Create(string name, string title) {
+        Document proto;
+        if (!prototypes.TryGetValue(name, out proto)) throw new ArgumentException("no template " + name);
+        Document d = new Document(proto);
+        d.Title = title;
+        return d;
+    }
+}
+
+class Program {
+    static void Main() {
+        TemplateRegistry reg = new TemplateRegistry();
+        reg.Register("meeting-notes", new Document("Meeting", new Style("Inter"), "Agenda", "Notes", "Action Items"));
+        reg.Register("invoice", new Document("Invoice", new Style("Roboto Mono"), "Bill To", "Items", "Total"));
+
+        Document a = reg.Create("meeting-notes", "Sprint 12 planning");
+        Document b = reg.Create("meeting-notes", "Design review");
+        a.Sections.Add(new Section("Decisions"));
+        a.Sections[1].Body = "Ship on Friday";
+
+        Console.WriteLine(a);
+        Console.WriteLine(b);
+        Console.WriteLine("style loads = " + Style.Loads);       // 2 (one per template)
+        Console.WriteLine("shared style = " + ReferenceEquals(a.Style, b.Style).ToString().ToLower() + ", own sections = " + (!ReferenceEquals(a.Sections[0], b.Sections[0])).ToString().ToLower());
+        try {
+            reg.Create("memo", "x");
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);
+        }
+    }
 }` }
       ],
       complexity: `<p><code>create</code>: O(S) for S sections. Style loading: once per template instead of once per document.</p>`,
@@ -11129,7 +13576,21 @@ public:
         return "FAILED";
     }
 };
-// SmsServiceNaive duplicates the same loop with SmsChannelNaive()` }
+// SmsServiceNaive duplicates the same loop with SmsChannelNaive()` },
+  { lang: 'csharp', code: `
+using System;
+
+class EmailServiceNaive {
+    public string Deliver(string to, string msg) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            if (new SmtpChannelNaive().Send(to, msg)) return "SENT via EMAIL on attempt " + attempt;
+        }
+        return "FAILED";
+    }
+}
+
+class SmtpChannelNaive { public bool Send(string to, string msg) { return true; } }
+// SmsServiceNaive duplicates the same loop with new SmsChannelNaive() ...` }
             ] }
     },
     mcq: { q: 'Why is deliver() declared final?', options: ['So subclasses can only vary the product (channel), not the shared workflow', 'Final methods run faster', 'Abstract classes require it', 'To allow multiple inheritance'], answer: 0, explain: 'The template workflow (validate, retry, report) must be identical for all senders; subclasses customise only createChannel().' },
@@ -11452,6 +13913,78 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IChannel {
+    string Name { get; }
+    bool Send(string to, string msg);
+}
+
+sealed class LambdaChannel : IChannel {                        // a channel defined by a name and a send rule
+    private readonly string name; private readonly Func<string, string, bool> send;
+    public LambdaChannel(string name, Func<string, string, bool> send) { this.name = name; this.send = send; }
+    public string Name { get { return name; } }
+    public bool Send(string to, string msg) { return send(to, msg); }
+}
+
+abstract class NotificationSender {
+    private const int MaxAttempts = 3;
+
+    protected abstract IChannel CreateChannel();              // FACTORY METHOD
+
+    protected virtual string Prepare(string msg) { return msg; }      // optional hook
+
+    public string Deliver(string to, string msg) {            // not virtual: the algorithm is fixed
+        if (string.IsNullOrWhiteSpace(to)) throw new ArgumentException("recipient required");
+        IChannel channel = CreateChannel();
+        string text = Prepare(msg);
+        for (int attempt = 1; attempt <= MaxAttempts; attempt++) {
+            if (channel.Send(to, text)) {
+                return "SENT via " + channel.Name + " on attempt " + attempt + " (" + text.Length + " chars)";
+            }
+        }
+        return "FAILED after " + MaxAttempts + " attempts";
+    }
+}
+
+class EmailSender : NotificationSender {
+    protected override IChannel CreateChannel() {
+        return new LambdaChannel("EMAIL", (to, msg) => to.Contains("@"));
+    }
+}
+
+class SmsSender : NotificationSender {
+    protected override IChannel CreateChannel() {
+        return new LambdaChannel("SMS", (to, msg) => to.StartsWith("+"));
+    }
+
+    protected override string Prepare(string msg) { return msg.Length <= 160 ? msg : msg.Substring(0, 160); }
+}
+
+class FlakySender : NotificationSender {                      // test double: fails N times, then succeeds
+    private readonly int failures;
+    public FlakySender(int failures) { this.failures = failures; }
+    protected override IChannel CreateChannel() {
+        int left = failures;
+        return new LambdaChannel("TEST", (to, msg) => left-- <= 0);
+    }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(new SmsSender().Deliver("+919800000000", new string('x', 200)));
+        Console.WriteLine(new EmailSender().Deliver("asha@mail.com", "Your order shipped"));
+        Console.WriteLine(new FlakySender(2).Deliver("anyone", "hi"));
+        Console.WriteLine(new FlakySender(5).Deliver("anyone", "hi"));
+        Console.WriteLine(new SmsSender().Deliver("9800000000", "hello"));       // channel rejects the number
+        try {
+            new EmailSender().Deliver(" ", "hello");
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);
+        }
+    }
 }` }
       ],
       complexity: `<p>O(attempts) per delivery (≤ 3). Adding a channel: one subclass overriding <code>createChannel()</code>.</p>`,
@@ -11512,7 +14045,23 @@ struct EmailNaive {
 
 struct Sender {
     EmailNaive make() { return EmailNaive("ops@x.com", {}, {}, "Deploy", ""); }   // compiles, broken
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class EmailNaive {
+    public readonly string From, Subject, Body;
+    public readonly List<string> To, Cc;
+
+    public EmailNaive(string from, List<string> to, List<string> cc, string subject, string body) {
+        From = from; To = to; Cc = cc; Subject = subject; Body = body;   // nulls welcome
+    }
+}
+
+class Sender {
+    public EmailNaive Make() { return new EmailNaive("ops@x.com", null, null, "Deploy", null); }   // compiles, broken
+}` }
             ] }
     },
     mcq: { q: 'What makes a step builder enforce order at compile time?', options: ['Each step method returns a different interface exposing only the next allowed methods', 'Annotations on the fields', 'A runtime state machine', 'Making build() private'], answer: 0, explain: 'The type returned by each step limits what the compiler lets you call next.' },
@@ -11904,6 +14453,89 @@ int main() {
     } catch (const invalid_argument& ex) {
         cout << ex.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Email {
+    public interface IFromStep { IToStep From(string address); }
+    public interface IToStep { ISubjectStep To(string address); }
+    public interface ISubjectStep { IOptionalStep Subject(string subject); }
+    public interface IOptionalStep {
+        IOptionalStep To(string address);
+        IOptionalStep Cc(string address);
+        IOptionalStep Body(string body);
+        IOptionalStep Attachment(string fileName);
+        Email Build();
+    }
+
+    private readonly string from, subject, body;
+    private readonly List<string> to, cc, attachments;
+
+    private Email(Steps s) {
+        from = s.from; subject = s.subject; body = s.body;
+        to = new List<string>(s.to); cc = new List<string>(s.cc); attachments = new List<string>(s.attachments);
+    }
+
+    public static IFromStep NewBuilder() { return new Steps(); }
+
+    public override string ToString() {
+        return "Email[from=" + from + ", to=[" + string.Join(", ", to) + "], cc=[" + string.Join(", ", cc) + "], subject=" + subject + ", attachments=" + attachments.Count + "]";
+    }
+
+    private sealed class Steps : IFromStep, IToStep, ISubjectStep, IOptionalStep {
+        internal string from, subject, body = "";
+        internal readonly List<string> to = new List<string>(), cc = new List<string>(), attachments = new List<string>();
+
+        private static string Checked(string address) {
+            if (address == null || !address.Contains("@")) throw new ArgumentException("bad address: " + address);
+            return address;
+        }
+
+        public IToStep From(string a) { from = Checked(a); return this; }
+        public IOptionalStep Subject(string s) { if (s == null) throw new ArgumentNullException("s"); subject = s; return this; }
+        // Steps is both an ISubjectStep and an IOptionalStep: To() is implemented once per role.
+        ISubjectStep IToStep.To(string a) { to.Add(Checked(a)); return this; }
+        IOptionalStep IOptionalStep.To(string a) { to.Add(Checked(a)); return this; }
+        public IOptionalStep Cc(string a) { cc.Add(Checked(a)); return this; }
+        public IOptionalStep Body(string b) { if (b == null) throw new ArgumentNullException("b"); body = b; return this; }
+        public IOptionalStep Attachment(string f) {
+            if (attachments.Count == 5) throw new ArgumentException("max 5 attachments");
+            if (f == null) throw new ArgumentNullException("f");
+            attachments.Add(f);
+            return this;
+        }
+        public Email Build() { return new Email(this); }
+    }
+}
+
+class Program {
+    static void Main() {
+        Email e = Email.NewBuilder()
+            .From("ops@x.com")
+            .To("asha@x.com")
+            .Subject("Deploy")
+            .Cc("lead@x.com")
+            .Body("Done")
+            .Build();
+        Console.WriteLine(e);
+        // Email.NewBuilder().From("ops@x.com").Subject("Hi");   <- does not compile: IToStep has no Subject()
+        Email e2 = Email.NewBuilder().From("a@x.com").To("b@x.com").Subject("Hi")
+            .To("c@x.com").Attachment("r.pdf").Attachment("s.png").Build();
+        Console.WriteLine(e2);
+        try {
+            Email.NewBuilder().From("nope");
+        } catch (ArgumentException ex) {
+            Console.WriteLine(ex.Message);
+        }
+        try {
+            Email.IOptionalStep step = Email.NewBuilder().From("a@x.com").To("b@x.com").Subject("Many");
+            for (int i = 1; i <= 6; i++) step.Attachment("f" + i + ".txt");
+        } catch (ArgumentException ex) {
+            Console.WriteLine(ex.Message);
+        }
+    }
 }` }
       ],
       complexity: `<p>O(1) per step; <code>build()</code> O(T + C + A) for the list copies. Zero runtime cost for the ordering guarantee — it is all in the types.</p>`,
@@ -11980,7 +14612,27 @@ public:
         }
         return c;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class TenantContextNaive {
+    private static readonly Dictionary<string, TenantContextNaive> Cache = new Dictionary<string, TenantContextNaive>();
+    public readonly string Id;
+
+    private TenantContextNaive(string id) { Id = id; /* expensive load */ }
+
+    public static TenantContextNaive Of(string id) {
+        TenantContextNaive c;
+        Cache.TryGetValue(id, out c);                   // check...
+        if (c == null) {
+            c = new TenantContextNaive(id);             // ...then act: two threads both create
+            Cache[id] = c;                              // unsynchronised Dictionary write
+        }
+        return c;
+    }
+}` }
             ] }
     },
     mcq: { q: 'Why is ConcurrentHashMap.computeIfAbsent a good fit here?', options: ['It runs the creation function at most once per key atomically, locking only that key\'s bin', 'It locks the entire map during creation', 'It never calls the function', 'It is the same as get() then put()'], answer: 0, explain: 'computeIfAbsent is atomic per key; other keys in different bins proceed in parallel. Keep the function short and never modify the map inside it.' },
@@ -12376,6 +15028,95 @@ int main() {
     TenantContext::evict("t0");
     cout << "after evict, overflow ok? " << (TenantContext::of("overflow") != nullptr) << "\\n";
     cout << "total loads = " << TenantContext::LOADS << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+
+sealed class TenantContext {
+    public const int MaxTenants = 1000;
+    private static int loads;
+    public static int Loads { get { return loads; } }
+    private static readonly Dictionary<string, Lazy<TenantContext>> Registry = new Dictionary<string, Lazy<TenantContext>>();
+    private static readonly object gate = new object();              // guards the registry map only, never the load
+    private static int count;
+
+    public readonly string TenantId;
+    public readonly IReadOnlyDictionary<string, string> Settings;
+
+    private TenantContext(string tenantId) {
+        TenantId = tenantId;
+        Interlocked.Increment(ref loads);
+        Thread.Sleep(50);                                            // slow load
+        Settings = new Dictionary<string, string> { { "plan", "pro" }, { "region", "ap-south-1" } };
+    }
+
+    public static TenantContext Of(string tenantId) {
+        if (tenantId == null || !Regex.IsMatch(tenantId, "^[a-z0-9-]{1,32}$")) throw new ArgumentException("bad tenant id");
+        Lazy<TenantContext> task;
+        lock (gate) {                                                 // cheap: nothing is loaded inside the lock
+            if (!Registry.TryGetValue(tenantId, out task)) {
+                if (count >= MaxTenants) throw new InvalidOperationException("tenant limit reached");
+                count++;
+                task = new Lazy<TenantContext>(() => new TenantContext(tenantId), LazyThreadSafetyMode.ExecutionAndPublication);
+                Registry[tenantId] = task;
+            }
+        }
+        try {
+            return task.Value;                                        // only the first caller loads; others wait for THIS tenant only
+        } catch (Exception e) {
+            lock (gate) { Lazy<TenantContext> cur; if (Registry.TryGetValue(tenantId, out cur) && cur == task) { Registry.Remove(tenantId); count--; } }   // allow retry later
+            throw new InvalidOperationException("failed to load tenant " + tenantId, e);
+        }
+    }
+
+    public static void Evict(string tenantId) {
+        lock (gate) { if (Registry.Remove(tenantId)) count--; }
+    }
+}
+
+class Program {
+    static void Main() {
+        ThreadPool.SetMinThreads(64, 64);
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        ConcurrentDictionary<TenantContext, bool> seen = new ConcurrentDictionary<TenantContext, bool>();
+        List<Task> fs = new List<Task>();
+        for (int i = 0; i < 100; i++) {
+            string id = i % 10 == 0 ? "globex" : "acme";
+            fs.Add(Task.Run(() => { go.Wait(); seen[TenantContext.Of(id)] = true; }));
+        }
+        go.Set();
+        Task.WaitAll(fs.ToArray());
+        Console.WriteLine("distinct contexts = " + seen.Count + ", loads = " + TenantContext.Loads);   // 2, 2
+        TenantContext.Evict("acme");
+        Console.WriteLine("after evict, new acme? " + (!seen.ContainsKey(TenantContext.Of("acme"))).ToString().ToLower());
+        foreach (string bad in new[] { "Bad_ID", "" }) {
+            try {
+                TenantContext.Of(bad);
+            } catch (ArgumentException e) {
+                Console.WriteLine(e.Message + ": '" + bad + "'");
+            }
+        }
+        // fill the registry up to MaxTenants (globex and acme are already in)
+        List<Task> fill = new List<Task>();
+        for (int i = 0; i < TenantContext.MaxTenants - 2; i++) {
+            string id = "t" + i;
+            fill.Add(Task.Run(() => TenantContext.Of(id)));
+        }
+        Task.WaitAll(fill.ToArray());
+        try {
+            TenantContext.Of("overflow");
+        } catch (InvalidOperationException e) {
+            Console.WriteLine(e.Message);
+        }
+        TenantContext.Evict("t0");
+        Console.WriteLine("after evict, overflow ok? " + (TenantContext.Of("overflow") != null).ToString().ToLower());
+        Console.WriteLine("total loads = " + TenantContext.Loads);
+    }
 }` }
       ],
       complexity: `<p>Existing tenant: O(1) lock-free read. New tenant: one load per key; concurrent callers for the same key wait on its future; other keys proceed in parallel. Memory O(T) for T tenants.</p>`,
@@ -12440,7 +15181,20 @@ class OrderService {
 class InvoiceService {
     Clock clock;           // a second Clock: "singleton" duplicated
     OrderService orders;   // hard-wired, untestable
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Clock { public long Now() { return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); } }
+
+class OrderService {
+    private readonly Clock clock = new Clock();           // each service builds its own
+}
+
+class InvoiceService {
+    private readonly Clock clock = new Clock();           // a second Clock: "singleton" duplicated
+    private readonly OrderService orders = new OrderService();   // hard-wired, untestable
+}` }
             ] }
     },
     mcq: { q: 'Two threads call get(Db.class) for a SINGLETON binding at the same time for the first time. What must the container guarantee?', options: ['The factory runs once and both threads receive the same instance', 'Each thread gets its own instance', 'One thread gets null', 'The second call throws'], answer: 0, explain: 'Singleton scope means one instance per container: creation must be synchronised (or memoised atomically).' },
@@ -12838,6 +15592,98 @@ int main() {
         cout << e.what() << "\\n";
     }
     cout << "container still works: " << c.get<OrderService>()->clock->now() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
+
+enum Scope { SINGLETON, PROTOTYPE }
+
+sealed class Container {
+    private sealed class Binding {
+        public readonly Func<Container, object> Factory;
+        public readonly Scope Scope;
+        public volatile object Instance;                 // only used for SINGLETON
+        public Binding(Func<Container, object> factory, Scope scope) { Factory = factory; Scope = scope; }
+    }
+
+    private readonly ConcurrentDictionary<Type, Binding> bindings = new ConcurrentDictionary<Type, Binding>();
+    private readonly ThreadLocal<List<Type>> creating = new ThreadLocal<List<Type>>(() => new List<Type>());
+
+    public void Bind<T>(Func<Container, T> factory, Scope scope) where T : class {
+        if (!bindings.TryAdd(typeof(T), new Binding(c => factory(c), scope))) {
+            throw new InvalidOperationException("already bound: " + typeof(T).Name);
+        }
+    }
+
+    public T Get<T>() where T : class {
+        Type type = typeof(T);
+        Binding b;
+        if (!bindings.TryGetValue(type, out b)) throw new InvalidOperationException("no binding for " + type.Name);
+        if (b.Scope == Scope.SINGLETON && b.Instance != null) return (T)b.Instance;   // fast path
+
+        List<Type> stack = creating.Value;
+        int at = stack.IndexOf(type);
+        if (at >= 0) {
+            StringBuilder path = new StringBuilder();
+            for (int i = at; i < stack.Count; i++) path.Append(stack[i].Name).Append(" -> ");
+            throw new InvalidOperationException("circular dependency " + path + type.Name);
+        }
+        stack.Add(type);
+        try {
+            if (b.Scope == Scope.PROTOTYPE) return (T)b.Factory(this);
+            lock (b) {                                               // per-binding lock
+                if (b.Instance == null) b.Instance = b.Factory(this);
+                return (T)b.Instance;
+            }
+        } finally {
+            stack.RemoveAt(stack.Count - 1);
+        }
+    }
+}
+
+class Clock { public long Now() { return 42L; } }
+class OrderService {
+    public readonly Clock Clock;
+    public OrderService(Clock clock) { Clock = clock; }
+}
+class A { public A(B b) { } }
+class B { public B(A a) { } }
+class Missing { }
+
+class Program {
+    static string Bo(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        Container c = new Container();
+        c.Bind<Clock>(k => new Clock(), Scope.SINGLETON);
+        c.Bind<OrderService>(k => new OrderService(k.Get<Clock>()), Scope.PROTOTYPE);
+
+        OrderService s1 = c.Get<OrderService>(), s2 = c.Get<OrderService>();
+        Console.WriteLine("different services: " + Bo(s1 != s2) + ", shared clock: " + Bo(s1.Clock == s2.Clock));
+        Console.WriteLine("singleton is stable: " + Bo(c.Get<Clock>() == c.Get<Clock>()));
+        try {
+            c.Get<Missing>();
+        } catch (InvalidOperationException e) {
+            Console.WriteLine(e.Message);          // no binding for Missing
+        }
+        try {
+            c.Bind<Clock>(k => new Clock(), Scope.PROTOTYPE);
+        } catch (InvalidOperationException e) {
+            Console.WriteLine(e.Message);          // already bound: Clock
+        }
+
+        c.Bind<A>(k => new A(k.Get<B>()), Scope.SINGLETON);
+        c.Bind<B>(k => new B(k.Get<A>()), Scope.SINGLETON);
+        try {
+            c.Get<A>();
+        } catch (InvalidOperationException e) {
+            Console.WriteLine(e.Message);          // circular dependency A -> B -> A
+        }
+        Console.WriteLine("container still works: " + c.Get<OrderService>().Clock.Now());
+    }
 }` }
       ],
       complexity: `<p><code>get</code>: O(1) lookup + O(D) cycle check for current creation depth D; singleton fast path is one volatile read. Memory O(bindings).</p>`,
@@ -12883,7 +15729,17 @@ public:
         buf[0] = 1;                                // pretend to read/write
         return buf;                                // freed right after the response
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class RequestHandlerNaive {
+    public byte[] Handle(int payloadSize) {
+        byte[] buf = new byte[payloadSize];   // fresh allocation per request
+        buf[0] = 1;                           // pretend to read/write
+        return buf;                           // garbage right after the response
+    }
+}` }
             ] }
     },
     mcq: { q: 'Why must release() zero the buffer before pooling it?', options: ['The next borrower could otherwise read the previous request\'s data', 'The language requires arrays to be zeroed', 'It makes acquire() faster', 'To reduce the array length'], answer: 0, explain: 'Pooled buffers are shared across requests over time; stale contents are a data-leak vulnerability (think of Heartbleed-style bugs).' },
@@ -13198,6 +16054,91 @@ int main() {
     small.release(std::move(x));
     small.release(std::move(y));                     // class is full: dropped
     cout << "idle with limit 1 = " << small.idleCount() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+sealed class BufferPool {
+    private static readonly int[] Sizes = { 1024, 4096, 16384 };
+    private readonly int maxIdlePerClass;
+    private readonly List<ConcurrentQueue<byte[]>> queues = new List<ConcurrentQueue<byte[]>>();
+    private readonly int[] idle = new int[Sizes.Length];
+    private long hits, misses;
+    public long Hits { get { return Interlocked.Read(ref hits); } }
+    public long Misses { get { return Interlocked.Read(ref misses); } }
+
+    public BufferPool(int maxIdlePerClass) {
+        this.maxIdlePerClass = maxIdlePerClass;
+        for (int i = 0; i < Sizes.Length; i++) queues.Add(new ConcurrentQueue<byte[]>());
+    }
+
+    private static int ClassFor(int n) {
+        for (int i = 0; i < Sizes.Length; i++) if (n <= Sizes[i]) return i;
+        return -1;                                            // too big: unpooled
+    }
+
+    public byte[] Acquire(int bytesNeeded) {
+        if (bytesNeeded < 1) throw new ArgumentException("bytesNeeded >= 1");
+        int c = ClassFor(bytesNeeded);
+        if (c < 0) { Interlocked.Increment(ref misses); return new byte[bytesNeeded]; }
+        byte[] buf;
+        if (queues[c].TryDequeue(out buf)) {
+            Interlocked.Decrement(ref idle[c]);
+            Interlocked.Increment(ref hits);
+            return buf;
+        }
+        Interlocked.Increment(ref misses);
+        return new byte[Sizes[c]];
+    }
+
+    public void Release(byte[] buf) {
+        int c = Array.BinarySearch(Sizes, buf.Length);
+        if (c < 0) return;                                    // unpooled size: let GC take it
+        Array.Clear(buf, 0, buf.Length);                      // never leak previous contents
+        while (true) {
+            int now = idle[c];
+            if (now >= maxIdlePerClass) return;               // class full: drop
+            if (Interlocked.CompareExchange(ref idle[c], now + 1, now) == now) break;   // reserve a slot
+        }
+        queues[c].Enqueue(buf);
+    }
+
+    public int IdleCount() {
+        int total = 0;
+        foreach (int n in idle) total += n;
+        return total;
+    }
+}
+
+class Program {
+    static void Main() {
+        BufferPool pool = new BufferPool(64);
+        byte[] a = pool.Acquire(3000);
+        a[0] = 7;
+        Console.WriteLine("got " + a.Length);                     // 4096 (miss)
+        pool.Release(a);
+        byte[] b = pool.Acquire(2000);
+        Console.WriteLine("reused: " + ReferenceEquals(a, b).ToString().ToLower() + ", zeroed: " + (b[0] == 0).ToString().ToLower());   // true, true
+        Console.WriteLine("oversize: " + pool.Acquire(20000).Length);             // 20000
+        Console.WriteLine("hits=" + pool.Hits + " misses=" + pool.Misses);
+        Console.WriteLine("idle = " + pool.IdleCount());          // 0 (b is still in use)
+        pool.Release(b);
+        pool.Release(new byte[100]);                              // not a pool size: ignored
+        Console.WriteLine("idle = " + pool.IdleCount());          // 1
+        try {
+            pool.Acquire(0);
+        } catch (ArgumentException e) {
+            Console.WriteLine(e.Message);
+        }
+        BufferPool small = new BufferPool(1);
+        byte[] x = small.Acquire(10), y = small.Acquire(10);
+        small.Release(x);
+        small.Release(y);                                         // class is full: dropped
+        Console.WriteLine("idle with limit 1 = " + small.IdleCount());
+    }
 }` }
       ],
       complexity: `<p><code>acquire</code>/<code>release</code>: O(1) lock-free, plus O(size) to zero on release. Memory bounded by 64 × (1 + 4 + 16) KB = 1.3 MB of idle buffers.</p>`,

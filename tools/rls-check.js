@@ -117,6 +117,9 @@ function main() {
   // progress: size limit
   expectDenied('oversized done JSON is rejected on update', 'authenticated', A, `update public.progress set done=jsonb_build_object('big', repeat('x', 300000)) where user_id='${A}';`);
   expectDenied('oversized last JSON is rejected on update', 'authenticated', A, `update public.progress set last=jsonb_build_object('big', repeat('x', 300000)) where user_id='${A}';`);
+  expectDenied('oversized prefs JSON is rejected on update', 'authenticated', A, `update public.progress set prefs=jsonb_build_object('big', repeat('x', 300000)) where user_id='${A}';`);
+  expectDenied('oversized play JSON is rejected on update', 'authenticated', A, `update public.progress set play=jsonb_build_object('big', repeat('x', 300000)) where user_id='${A}';`);
+  expectOk('under-limit play JSON is accepted', 'authenticated', A, `update public.progress set play=jsonb_build_object('play', jsonb_build_object('bonus', 5), 'review', '[]'::jsonb, 'days', '[]'::jsonb, 'updatedAt', 1) where user_id='${A}';`);
   expectOk('under-limit JSON is accepted', 'authenticated', A, `update public.progress set done=jsonb_build_object('ok', repeat('x', 100000)) where user_id='${A}';`);
 
   // client_errors

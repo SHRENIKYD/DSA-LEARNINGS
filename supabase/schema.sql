@@ -111,3 +111,16 @@ begin
 end $$;
 
 revoke all on public.progress from anon;
+
+-- ---- 0005_progress_play.sql ----
+alter table public.progress add column if not exists play jsonb;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'progress_play_size_limit' and conrelid = 'public.progress'::regclass) then
+    alter table public.progress add constraint progress_play_size_limit
+      check (octet_length(coalesce(play::text, '')) <= 262144) not valid;
+  end if;
+end $$;
+
+revoke all on public.progress from anon;

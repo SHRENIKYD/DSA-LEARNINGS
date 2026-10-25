@@ -452,6 +452,121 @@ int main() {
     Library vip(premium);
     vip.addBook({"111", "Clean Code"});
     cout << "Premium due " << iso(vip.borrow(ravi, "111", day1).due()) << "\\n";  // 2026-01-31
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// ---- Entities: nouns from the requirements ----
+sealed class Book {
+    public readonly string Isbn, Title;
+    public Book(string isbn, string title) { Isbn = isbn; Title = title; }
+}
+
+class Member {
+    private readonly string id;
+    private readonly string name;
+    private readonly List<Loan> activeLoans = new List<Loan>();
+    public Member(string id, string name) { this.id = id; this.name = name; }
+    public string Id { get { return id; } }
+    public string Name { get { return name; } }
+    public List<Loan> ActiveLoans { get { return activeLoans; } }
+}
+
+/// A Loan is the "ticket" of a library: it links a member, a book and dates.
+class Loan {
+    private readonly Member member;
+    private readonly Book book;
+    private readonly DateTime due;
+    public Loan(Member member, Book book, DateTime due) { this.member = member; this.book = book; this.due = due; }
+    public Member Member { get { return member; } }
+    public Book Book { get { return book; } }
+    public DateTime Due { get { return due; } }
+    public bool IsOverdue(DateTime today) { return today > due; }
+}
+
+// ---- The rule that will change (premium members, students...) sits behind an interface ----
+interface ILendingPolicy {
+    int MaxBooks(Member m);
+    int LoanDays(Member m);
+}
+
+class StandardPolicy : ILendingPolicy {
+    public int MaxBooks(Member m) { return 3; }
+    public int LoanDays(Member m) { return 14; }
+}
+
+// ---- Facade with the public APIs we agreed on in step 3 ----
+class Library {
+    private readonly Dictionary<string, Book> catalog = new Dictionary<string, Book>();
+    private readonly Dictionary<string, Loan> loanByIsbn = new Dictionary<string, Loan>();
+    private readonly ILendingPolicy policy;
+
+    public Library(ILendingPolicy policy) { this.policy = policy; }
+
+    public void AddBook(Book b) { catalog[b.Isbn] = b; }
+
+    public Loan Borrow(Member m, string isbn, DateTime today) {
+        Book b;
+        if (!catalog.TryGetValue(isbn, out b)) throw new KeyNotFoundException("No book " + isbn);
+        if (loanByIsbn.ContainsKey(isbn)) throw new InvalidOperationException(b.Title + " is already lent out");
+        if (m.ActiveLoans.Count >= policy.MaxBooks(m))
+            throw new InvalidOperationException(m.Name + " reached the limit of " + policy.MaxBooks(m));
+        Loan loan = new Loan(m, b, today.AddDays(policy.LoanDays(m)));
+        loanByIsbn[isbn] = loan;
+        m.ActiveLoans.Add(loan);
+        return loan;
+    }
+
+    public void GiveBack(Member m, string isbn) {
+        Loan loan;
+        if (!loanByIsbn.TryGetValue(isbn, out loan) || loan.Member != m) throw new InvalidOperationException("This member does not hold " + isbn);
+        loanByIsbn.Remove(isbn);
+        m.ActiveLoans.Remove(loan);
+    }
+
+    public List<Loan> Overdue(DateTime today) {
+        List<Loan> result = new List<Loan>();
+        foreach (Loan l in loanByIsbn.Values) if (l.IsOverdue(today)) result.Add(l);
+        return result;
+    }
+}
+
+/// Next quarter's change is one new class, not an edit to Library.
+class PremiumPolicy : ILendingPolicy {
+    public int MaxBooks(Member m) { return 10; }
+    public int LoanDays(Member m) { return 30; }
+}
+
+class Program {
+    static void Attempt(Action action) {                      // shows the failure paths
+        try { action(); } catch (Exception e) { Console.WriteLine(e.Message); }
+    }
+
+    static void Main() {
+        Library lib = new Library(new StandardPolicy());
+        lib.AddBook(new Book("111", "Clean Code"));
+        lib.AddBook(new Book("222", "Refactoring"));
+        lib.AddBook(new Book("333", "Effective Java"));
+        lib.AddBook(new Book("444", "Domain-Driven Design"));
+        Member asha = new Member("M1", "Asha");
+        Member ravi = new Member("M2", "Ravi");
+        DateTime day1 = new DateTime(2026, 1, 1);
+        Loan l = lib.Borrow(asha, "111", day1);
+        Console.WriteLine("Due " + l.Due.ToString("yyyy-MM-dd"));                                     // 2026-01-15
+        Console.WriteLine("Overdue on Jan 20: " + lib.Overdue(day1.AddDays(19)).Count);                 // 1
+        Attempt(() => lib.Borrow(ravi, "111", day1));                           // already lent out
+        Attempt(() => lib.Borrow(ravi, "999", day1));                           // unknown ISBN
+        lib.GiveBack(asha, "111");
+        Console.WriteLine("Overdue after return: " + lib.Overdue(day1.AddDays(19)).Count);             // 0
+        lib.Borrow(asha, "111", day1); lib.Borrow(asha, "222", day1); lib.Borrow(asha, "333", day1);
+        Console.WriteLine(asha.Name + " holds " + asha.ActiveLoans.Count + " books");
+        Attempt(() => lib.Borrow(asha, "444", day1));                           // limit of 3
+        Attempt(() => lib.GiveBack(ravi, "111"));                               // Ravi never had it
+        Library vip = new Library(new PremiumPolicy());
+        vip.AddBook(new Book("111", "Clean Code"));
+        Console.WriteLine("Premium due " + vip.Borrow(ravi, "111", day1).Due.ToString("yyyy-MM-dd"));   // 2026-01-31
+    }
 }` }
     ],
     g2_sol: [
@@ -820,6 +935,106 @@ int main() {
     Lot weekend(layout(), make_unique<FirstFit>(), make_unique<WeekendPricing>(make_unique<PerHour>()));
     Ticket w = weekend.park("KA-05", VType::CAR, 9);
     cout << "Weekend car pays " << weekend.leave(w.id, 12) << "\\n";  // 60 * 1.5 = 90
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// The same behaviour, split by responsibility. Each class has one reason to change.
+enum SpotSize { S, M, L }
+
+// A type-safe enum with data: rate per hour and the spot sizes it fits (data, not if-else).
+sealed class VType {
+    public static readonly VType BIKE = new VType("BIKE", 10, SpotSize.S, SpotSize.M, SpotSize.L);
+    public static readonly VType CAR = new VType("CAR", 20, SpotSize.M, SpotSize.L);
+    public static readonly VType TRUCK = new VType("TRUCK", 50, SpotSize.L);
+    public readonly string Name; public readonly long Rate; public readonly IReadOnlyList<SpotSize> Fits;
+    private VType(string name, long rate, params SpotSize[] fits) { Name = name; Rate = rate; Fits = fits; }
+    public override string ToString() { return Name; }
+}
+
+class Spot {
+    public readonly int Id; public readonly SpotSize Size; public string Plate;
+    public Spot(int id, SpotSize size) { Id = id; Size = size; }
+    public bool Free() { return Plate == null; }
+}
+
+sealed class Ticket {
+    public readonly int Id; public readonly string Plate; public readonly VType Type; public readonly Spot Spot; public readonly long EntryHour;
+    public Ticket(int id, string plate, VType type, Spot spot, long entryHour) { Id = id; Plate = plate; Type = type; Spot = spot; EntryHour = entryHour; }
+}
+
+interface IAllocator { Spot Pick(List<Spot> spots, VType t); }     // null when full
+interface IPricer { long Fee(Ticket t, long exitHour); }
+
+class FirstFit : IAllocator {
+    public Spot Pick(List<Spot> spots, VType t) {
+        foreach (SpotSize want in t.Fits)
+            foreach (Spot s in spots) if (s.Free() && s.Size == want) return s;
+        return null;
+    }
+}
+
+class PerHour : IPricer {
+    public long Fee(Ticket t, long exitHour) { return Math.Max(1, exitHour - t.EntryHour) * t.Type.Rate; }
+}
+
+class Lot {
+    private readonly List<Spot> spots; private readonly IAllocator alloc; private readonly IPricer pricer;
+    private readonly Dictionary<int, Ticket> open = new Dictionary<int, Ticket>();
+    private readonly object gate = new object();
+    private int nextId = 1;
+    public Lot(List<Spot> spots, IAllocator a, IPricer p) { this.spots = spots; alloc = a; pricer = p; }
+
+    public Ticket Park(string plate, VType type, long hour) {
+        lock (gate) {
+            Spot s = alloc.Pick(spots, type);
+            if (s == null) throw new InvalidOperationException("Full for " + type);
+            s.Plate = plate;
+            Ticket t = new Ticket(nextId++, plate, type, s, hour);
+            open[t.Id] = t;
+            return t;
+        }
+    }
+
+    public long Leave(int ticketId, long hour) {
+        lock (gate) {
+            Ticket t;
+            if (!open.TryGetValue(ticketId, out t)) throw new ArgumentException("Bad ticket " + ticketId);
+            open.Remove(ticketId);
+            t.Spot.Plate = null;
+            return pricer.Fee(t, hour);
+        }
+    }
+}
+
+/// Weekend pricing is one more IPricer wrapped around the normal one. Lot is untouched.
+class WeekendPricing : IPricer {
+    private readonly IPricer inner;
+    public WeekendPricing(IPricer inner) { this.inner = inner; }
+    public long Fee(Ticket t, long exitHour) { return inner.Fee(t, exitHour) * 3 / 2; }   // 1.5x
+}
+
+class Program {
+    static List<Spot> Layout() {
+        return new List<Spot> { new Spot(0, SpotSize.S), new Spot(1, SpotSize.M), new Spot(2, SpotSize.M), new Spot(3, SpotSize.L) };
+    }
+
+    static void Main() {
+        Lot lot = new Lot(Layout(), new FirstFit(), new PerHour());
+        Ticket t = lot.Park("KA-01", VType.CAR, 9);
+        Console.WriteLine("Car at spot " + t.Spot.Id + ", pays " + lot.Leave(t.Id, 12)); // spot 1, pays 60
+        Ticket bike = lot.Park("KA-02", VType.BIKE, 10);
+        Console.WriteLine("Bike at spot " + bike.Spot.Id);                 // smallest fitting spot: 0
+        Ticket truck = lot.Park("KA-03", VType.TRUCK, 10);
+        Console.WriteLine("Truck at spot " + truck.Spot.Id);               // only LARGE fits: 3
+        try { lot.Park("KA-04", VType.TRUCK, 10); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        try { lot.Leave(99, 11); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        Console.WriteLine("Bike pays " + lot.Leave(bike.Id, 10));          // same hour still bills 1 hour: 10
+        Lot weekend = new Lot(Layout(), new FirstFit(), new WeekendPricing(new PerHour()));
+        Ticket w = weekend.Park("KA-05", VType.CAR, 9);
+        Console.WriteLine("Weekend car pays " + weekend.Leave(w.Id, 12)); // 60 * 1.5 = 90
+    }
 }` }
     ],
     g3_sol: [
@@ -1065,6 +1280,84 @@ int main() {
     }
     // NearestFirst: car 0-1 (LARGE on floor 0: less walking), bike 0-1 (COMPACT on floor 0)
     // BestFitFirst: car 1-1 (COMPACT on floor 1: keeps LARGE for trucks), bike 1-0 (the SMALL spot)
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum SpotType { SMALL, COMPACT, LARGE }
+
+sealed class VehicleType {
+    public static readonly VehicleType BIKE = new VehicleType(SpotType.SMALL, SpotType.COMPACT, SpotType.LARGE);
+    public static readonly VehicleType CAR = new VehicleType(SpotType.COMPACT, SpotType.LARGE);
+    public static readonly VehicleType TRUCK = new VehicleType(SpotType.LARGE);
+    private readonly IReadOnlyList<SpotType> fits;
+    private VehicleType(params SpotType[] f) { fits = f; }
+    public IReadOnlyList<SpotType> Fits { get { return fits; } }    // the ONLY place fit rules live
+}
+
+class Spot {
+    public readonly int Floor, Index; public readonly SpotType Type; public bool Taken;
+    public Spot(int floor, int index, SpotType type) { Floor = floor; Index = index; Type = type; }
+    public string Id() { return Floor + "-" + Index; }
+}
+
+interface ISpotAllocationStrategy {
+    Spot Find(List<List<Spot>> floors, VehicleType v);     // null when nothing fits
+}
+
+/// Stay as low as possible (less driving); on a floor, use the smallest spot that fits.
+class NearestFirst : ISpotAllocationStrategy {
+    public Spot Find(List<List<Spot>> floors, VehicleType v) {
+        foreach (List<Spot> floor in floors)
+            foreach (SpotType want in v.Fits)
+                foreach (Spot s in floor) if (!s.Taken && s.Type == want) return s;
+        return null;
+    }
+}
+
+/// Protect big spots: try the smallest fitting type on EVERY floor before using a bigger type.
+class BestFitFirst : ISpotAllocationStrategy {
+    public Spot Find(List<List<Spot>> floors, VehicleType v) {
+        foreach (SpotType want in v.Fits)
+            foreach (List<Spot> floor in floors)
+                foreach (Spot s in floor) if (!s.Taken && s.Type == want) return s;
+        return null;
+    }
+}
+
+class Program {
+    static List<List<Spot>> Build(params string[] floors) {
+        List<List<Spot>> result = new List<List<Spot>>();
+        for (int f = 0; f < floors.Length; f++) {
+            List<Spot> row = new List<Spot>();
+            for (int i = 0; i < floors[f].Length; i++) {
+                char c = floors[f][i];
+                row.Add(new Spot(f, i, c == 'S' ? SpotType.SMALL : c == 'M' ? SpotType.COMPACT : SpotType.LARGE));
+            }
+            result.Add(row);
+        }
+        return result;
+    }
+
+    static void Show(string strategy, string vehicle, Spot spot) {
+        Console.WriteLine(strategy + (spot != null ? " puts the " + vehicle + " at " + spot.Id()
+                                                   : " has no spot for the " + vehicle));
+    }
+
+    static void Main() {
+        var strategies = new List<KeyValuePair<string, ISpotAllocationStrategy>> {
+            new KeyValuePair<string, ISpotAllocationStrategy>("NearestFirst", new NearestFirst()),
+            new KeyValuePair<string, ISpotAllocationStrategy>("BestFitFirst", new BestFitFirst()) };
+        foreach (var kv in strategies) {
+            string name = kv.Key; ISpotAllocationStrategy st = kv.Value;
+            Show(name, "car", st.Find(Build("SL", "SM"), VehicleType.CAR));    // floor 0 has no COMPACT, floor 1 does
+            Show(name, "bike", st.Find(Build("LM", "SL"), VehicleType.BIKE));  // floor 0 has no SMALL, floor 1 does
+            Show(name, "car", st.Find(Build("S"), VehicleType.CAR));           // nothing fits a car
+        }
+        // NearestFirst: car 0-1 (LARGE on floor 0: less walking), bike 0-1 (COMPACT on floor 0)
+        // BestFitFirst: car 1-1 (COMPACT on floor 1: keeps LARGE for trucks), bike 1-0 (the SMALL spot)
+    }
 }` }
     ],
     g4_sol: [
@@ -1299,6 +1592,73 @@ int main() {
     show("bike 5 h", tariff.fee(VehicleType::Bike, hrs(5), false));              // 10 + 3*5 = 25
     show("bike 12 h", tariff.fee(VehicleType::Bike, hrs(12), false));            // 10 + 10*5 = 60, cap 60
     show("truck 3 h", tariff.fee(VehicleType::Truck, hrs(3), false));            // 100 + 2*100 = 300
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Every pricing rule is an IPricingStrategy; rules are combined by wrapping (Decorator).
+interface IPricingStrategy { long Fee(TimeSpan parked); }
+
+/// First block of time costs a flat amount, then a rate per started hour.
+class SlabPricing : IPricingStrategy {
+    private readonly long firstHours, firstBlock, perHourAfter;
+    public SlabPricing(long firstHours, long firstBlock, long perHourAfter) {
+        this.firstHours = firstHours; this.firstBlock = firstBlock; this.perHourAfter = perHourAfter;
+    }
+    public long Fee(TimeSpan parked) {
+        long hours = Math.Max(1, ((long)parked.TotalMinutes + 59) / 60);   // started hours, at least 1
+        return hours <= firstHours ? firstBlock : firstBlock + (hours - firstHours) * perHourAfter;
+    }
+}
+
+/// Decorator: caps whatever the wrapped strategy charges, per started 24-hour day.
+class DailyCap : IPricingStrategy {
+    private readonly IPricingStrategy inner; private readonly long capPerDay;
+    public DailyCap(IPricingStrategy inner, long capPerDay) { this.inner = inner; this.capPerDay = capPerDay; }
+    public long Fee(TimeSpan parked) {
+        long fullDays = (long)parked.TotalHours / 24;
+        TimeSpan rest = parked - TimeSpan.FromHours(fullDays * 24);
+        bool exactDays = fullDays > 0 && rest == TimeSpan.Zero;            // 24h, 48h...: no extra day to bill
+        long restFee = exactDays ? 0 : Math.Min(capPerDay, inner.Fee(rest));
+        return fullDays * capPerDay + restFee;
+    }
+}
+
+enum VehicleType { BIKE, CAR, TRUCK }
+
+/// One place that maps a vehicle type to its rule chain. New type = one new line here.
+class Tariff {
+    private readonly Dictionary<VehicleType, IPricingStrategy> rules = new Dictionary<VehicleType, IPricingStrategy>();
+    private readonly long lostTicketPenalty;
+    public Tariff(long lostTicketPenalty) {
+        this.lostTicketPenalty = lostTicketPenalty;
+        rules[VehicleType.BIKE] = new DailyCap(new SlabPricing(2, 10, 5), 60);
+        rules[VehicleType.CAR] = new DailyCap(new SlabPricing(2, 30, 20), 200);
+        rules[VehicleType.TRUCK] = new DailyCap(new SlabPricing(1, 100, 100), 800);
+    }
+    public long Fee(VehicleType t, TimeSpan parked, bool lostTicket) {
+        long normal = rules[t].Fee(parked);
+        return lostTicket ? Math.Max(normal, lostTicketPenalty) : normal;
+    }
+}
+
+class Program {
+    static void Show(string label, long fee) { Console.WriteLine(label + " -> " + fee); }
+
+    static void Main() {
+        Tariff tariff = new Tariff(500);
+        Show("car 90 min", tariff.Fee(VehicleType.CAR, TimeSpan.FromMinutes(90), false));      // 30 (inside first 2h)
+        Show("car 250 min", tariff.Fee(VehicleType.CAR, TimeSpan.FromMinutes(250), false));    // 5h -> 30 + 3*20 = 90
+        Show("car 30 h", tariff.Fee(VehicleType.CAR, TimeSpan.FromHours(30), false));          // 200 + fee(6h)=110 -> 310
+        Show("car 1 h lost ticket", tariff.Fee(VehicleType.CAR, TimeSpan.FromHours(1), true)); // lost ticket -> 500
+        Show("car 24 h", tariff.Fee(VehicleType.CAR, TimeSpan.FromHours(24), false));          // exactly one capped day: 200
+        Show("car 47 h 59 min", tariff.Fee(VehicleType.CAR, TimeSpan.FromMinutes(47 * 60 + 59), false)); // 200 + capped rest 200
+        Show("car 0 min", tariff.Fee(VehicleType.CAR, TimeSpan.Zero, false));                  // minimum charge: one block
+        Show("bike 5 h", tariff.Fee(VehicleType.BIKE, TimeSpan.FromHours(5), false));          // 10 + 3*5 = 25
+        Show("bike 12 h", tariff.Fee(VehicleType.BIKE, TimeSpan.FromHours(12), false));        // 10 + 10*5 = 60, cap 60
+        Show("truck 3 h", tariff.Fee(VehicleType.TRUCK, TimeSpan.FromHours(3), false));        // 100 + 2*100 = 300
+    }
 }` }
     ],
     g5_sol: [
@@ -1442,6 +1802,56 @@ int main() {
     cout << play(3, {{0, 0, 1}, {0, 1, 2}, {0, 2, 1}, {1, 2, 2}, {1, 0, 1}, {2, 0, 2}, {1, 1, 1}, {2, 2, 2}, {2, 1, 1}}) << "\\n";
     // 1x1: the only move wins
     cout << play(1, {{0, 0, 1}}) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// O(1) per move. Player 1 adds +1, player 2 adds -1 to the counters of the row, column
+/// and (if on them) diagonals. A line belongs entirely to one player exactly when its
+/// counter reaches +n or -n, because a mixed line can never reach the extreme.
+class TicTacToe {
+    private readonly int n;
+    private readonly int[] rows, cols;
+    private int diag, anti;
+
+    public TicTacToe(int n) { this.n = n; rows = new int[n]; cols = new int[n]; }
+
+    public int Move(int row, int col, int player) {
+        int add = player == 1 ? 1 : -1;
+        rows[row] += add;
+        cols[col] += add;
+        if (row == col) diag += add;
+        if (row + col == n - 1) anti += add;
+        int target = add * n;                            // +n for player 1, -n for player 2
+        if (rows[row] == target || cols[col] == target || diag == target || anti == target) return player;
+        return 0;
+    }
+}
+
+class Program {
+    /// Plays the moves on a fresh n x n game and returns every Move() result on one line.
+    static string Play(int n, int[][] moves) {
+        TicTacToe t = new TicTacToe(n);
+        List<string> result = new List<string>();
+        foreach (int[] m in moves) result.Add(t.Move(m[0], m[1], m[2]).ToString());
+        return string.Join(" ", result);
+    }
+
+    static int[] M(int r, int c, int p) { return new[] { r, c, p }; }
+
+    static void Main() {
+        // row 2 = 1,1,1 -> player 1 wins on the last move
+        Console.WriteLine(Play(3, new[] { M(0, 0, 1), M(0, 2, 2), M(2, 2, 1), M(1, 1, 2), M(2, 0, 1), M(1, 0, 2), M(2, 1, 1) }));
+        // anti-diagonal (0,2) (1,1) (2,0) -> player 2 wins
+        Console.WriteLine(Play(3, new[] { M(0, 0, 1), M(0, 2, 2), M(0, 1, 1), M(1, 1, 2), M(1, 0, 1), M(2, 0, 2) }));
+        // 4x4: column 0 -> player 1 wins after four cells
+        Console.WriteLine(Play(4, new[] { M(0, 0, 1), M(0, 1, 2), M(1, 0, 1), M(1, 1, 2), M(2, 0, 1), M(2, 1, 2), M(3, 0, 1) }));
+        // full board with no line: nobody wins
+        Console.WriteLine(Play(3, new[] { M(0, 0, 1), M(0, 1, 2), M(0, 2, 1), M(1, 2, 2), M(1, 0, 1), M(2, 0, 2), M(1, 1, 1), M(2, 2, 2), M(2, 1, 1) }));
+        // 1x1: the only move wins
+        Console.WriteLine(Play(1, new[] { M(0, 0, 1) }));
+    }
 }` }
     ],
     g6_sol: [
@@ -1860,6 +2270,111 @@ int main() {
     bool again = h.redo();
     cout << yes(again) << " " << h.row(0) << "\\n";  // true XXX: redo re-opens the win
     cout << tryPlay(h, 2, 2) << "\\n";               // game over - undo first
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Command pattern: each move knows how to do AND undo itself.
+interface ICommand { void Execute(); void Undo(); }
+
+class Board3 {
+    public readonly int N; public readonly char[][] Cells; public readonly int[][] Rows, Cols; public readonly int[] Diag, Anti;
+    public Board3(int n) {
+        N = n; Cells = new char[n][];
+        for (int r = 0; r < n; r++) { Cells[r] = new char[n]; for (int c = 0; c < n; c++) Cells[r][c] = '.'; }
+        Rows = new[] { new int[n], new int[n] }; Cols = new[] { new int[n], new int[n] }; Diag = new int[2]; Anti = new int[2];
+    }
+    /// delta = +1 to place, -1 to remove. Always updates ALL counters so undo is exact.
+    public void Apply(int r, int c, int p, char sym, int delta) {
+        Cells[r][c] = delta > 0 ? sym : '.';
+        Rows[p][r] += delta; Cols[p][c] += delta;
+        if (r == c) Diag[p] += delta;
+        if (r + c == N - 1) Anti[p] += delta;
+    }
+    public bool Wins(int r, int c, int p) {
+        return Rows[p][r] == N || Cols[p][c] == N || (r == c && Diag[p] == N) || (r + c == N - 1 && Anti[p] == N);
+    }
+}
+
+class MoveCommand : ICommand {
+    private readonly Board3 b; private readonly int r, c, p; private readonly char sym;
+    public MoveCommand(Board3 b, int r, int c, int p, char sym) { this.b = b; this.r = r; this.c = c; this.p = p; this.sym = sym; }
+    public void Execute() { b.Apply(r, c, p, sym, +1); }
+    public void Undo() { b.Apply(r, c, p, sym, -1); }
+    public bool Wins() { return b.Wins(r, c, p); }
+}
+
+class UndoableGame {
+    private readonly Board3 board;
+    private readonly Stack<MoveCommand> undoStack = new Stack<MoveCommand>(), redoStack = new Stack<MoveCommand>();
+    private readonly char[] symbols = { 'X', 'O' };
+    private int turn = 0; private bool over = false;
+    public UndoableGame(int n) { board = new Board3(n); }
+
+    public string Play(int r, int c) {
+        if (over) throw new InvalidOperationException("game over - undo first");
+        if (board.Cells[r][c] != '.') throw new ArgumentException("occupied");
+        MoveCommand m = new MoveCommand(board, r, c, turn, symbols[turn]);
+        m.Execute();
+        undoStack.Push(m);
+        redoStack.Clear();                                    // a new move kills the redo branch
+        if (m.Wins()) { over = true; return symbols[turn] + " wins"; }
+        turn ^= 1;
+        return "ok";
+    }
+
+    public bool Undo() {
+        if (undoStack.Count == 0) return false;
+        MoveCommand m = undoStack.Pop();
+        m.Undo();
+        redoStack.Push(m);
+        if (over) over = false; else turn ^= 1;          // winner's turn stays with them after undo
+        return true;
+    }
+
+    public bool Redo() {
+        if (redoStack.Count == 0) return false;
+        MoveCommand m = redoStack.Pop();
+        m.Execute();
+        undoStack.Push(m);
+        if (m.Wins()) over = true; else turn ^= 1;
+        return true;
+    }
+
+    public string Row(int r) { return new string(board.Cells[r]); }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static string TryPlay(UndoableGame g, int r, int c) {         // result, or the reason the move was refused
+        try { return g.Play(r, c); } catch (Exception e) { return e.Message; }
+    }
+
+    static UndoableGame XWinsOnTop() {                             // X completes row 0 on the fifth move
+        UndoableGame g = new UndoableGame(3);
+        g.Play(0, 0); g.Play(1, 0); g.Play(0, 1); g.Play(1, 1);
+        Console.WriteLine(g.Play(0, 2));                           // X wins
+        return g;
+    }
+
+    static void Main() {
+        UndoableGame g = XWinsOnTop();
+        Console.WriteLine(TryPlay(g, 2, 2));                       // game over - undo first
+        g.Undo();                                                  // take back the winning move
+        Console.WriteLine(g.Row(0));                               // XX.
+        Console.WriteLine(g.Play(2, 2));                           // ok  (X plays elsewhere instead)
+        Console.WriteLine(B(g.Redo()));                            // false: redo branch was cleared
+        Console.WriteLine(B(g.Undo()) + " " + B(g.Undo()));        // true true: takes back X(2,2) and O(1,1)
+        Console.WriteLine(B(g.Redo()) + " " + g.Row(1));           // true OO.: O(1,1) is back
+        Console.WriteLine(TryPlay(g, 0, 0));                       // occupied
+        Console.WriteLine(B(new UndoableGame(3).Undo()));          // false: nothing to undo
+
+        UndoableGame h = XWinsOnTop();                             // X wins
+        h.Undo();
+        Console.WriteLine(B(h.Redo()) + " " + h.Row(0));           // true XXX: redo re-opens the win
+        Console.WriteLine(TryPlay(h, 2, 2));                       // game over - undo first
+    }
 }` }
     ],
     p01_sol: [
@@ -2026,6 +2541,58 @@ int main() {
     cout << canPark("BUS", SpotType::Compact) << "\\n"; // false
     cout << show(fits("CAR")) << "\\n";                 // [COMPACT, LARGE]
     cout << show(fitsOf("PLANE")) << "\\n";             // unknown vehicle PLANE, then []
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Spot sizes are ordered: SMALL < COMPACT < LARGE. The enum's integer value gives that order for free.
+enum SpotType { SMALL, COMPACT, LARGE }
+
+/// Each vehicle states the smallest spot it needs. Any spot at least that big fits.
+enum VehicleType { BIKE, CAR, TRUCK, BUS }
+static class VehicleTypeExt {
+    private static SpotType MinSpot(VehicleType v) {
+        switch (v) {
+            case VehicleType.BIKE: return SpotType.SMALL;
+            case VehicleType.CAR: return SpotType.COMPACT;
+            default: return SpotType.LARGE;              // TRUCK and BUS
+        }
+    }
+
+    public static bool CanPark(this VehicleType v, SpotType spot) { return (int)spot >= (int)MinSpot(v); }
+
+    /// All fitting spot types, smallest first: the preference order for allocation.
+    public static List<SpotType> Fits(this VehicleType v) {
+        List<SpotType> result = new List<SpotType>();
+        foreach (SpotType s in Enum.GetValues(typeof(SpotType))) if (v.CanPark(s)) result.Add(s);
+        return result;
+    }
+}
+
+class Program {
+    static string Show(List<SpotType> l) { return "[" + string.Join(", ", l) + "]"; }
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static List<SpotType> FitsOf(string vehicle) {
+        VehicleType v;
+        if (!Enum.TryParse(vehicle, false, out v) || !Enum.IsDefined(typeof(VehicleType), v)) {
+            Console.WriteLine("unknown vehicle " + vehicle);
+            return new List<SpotType>();
+        }
+        return v.Fits();
+    }
+
+    static void Main() {
+        Console.WriteLine(B(VehicleType.CAR.CanPark(SpotType.SMALL)));   // false
+        Console.WriteLine(B(VehicleType.CAR.CanPark(SpotType.LARGE)));   // true
+        Console.WriteLine(Show(VehicleType.BIKE.Fits()));                // [SMALL, COMPACT, LARGE]
+        Console.WriteLine(Show(FitsOf("TRUCK")));                        // [LARGE]
+        Console.WriteLine(Show(FitsOf("BUS")));                          // [LARGE]: the one-line addition
+        Console.WriteLine(B(VehicleType.BUS.CanPark(SpotType.COMPACT))); // false
+        Console.WriteLine(Show(VehicleType.CAR.Fits()));                 // [COMPACT, LARGE]
+        Console.WriteLine(Show(FitsOf("PLANE")));                        // unknown vehicle PLANE, then []
+    }
 }` }
     ],
     p02_sol: [
@@ -2124,6 +2691,42 @@ int main() {
     cout << s.tictactoe({{0, 0}, {0, 2}, {1, 1}, {2, 2}, {2, 0}, {2, 1}, {0, 1}, {1, 2}}) << "\\n";  // B wins on move 8
     cout << s.tictactoe({{0, 0}, {2, 2}, {2, 0}, {1, 0}, {1, 2}, {2, 1}, {0, 1}, {0, 2}}) << "\\n";  // 8 moves, nobody yet: Pending
     cout << s.tictactoe({{1, 1}}) << "\\n";  // Pending
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+public class Solution {
+    /// LeetCode 1275. A = first player (+1), B = second player (-1). Counters per line.
+    public string Tictactoe(int[][] moves) {
+        int n = 3;
+        int[] rows = new int[n], cols = new int[n];
+        int diag = 0, anti = 0;
+        for (int i = 0; i < moves.Length; i++) {
+            int r = moves[i][0], c = moves[i][1];
+            int add = i % 2 == 0 ? 1 : -1;
+            rows[r] += add; cols[c] += add;
+            if (r == c) diag += add;
+            if (r + c == n - 1) anti += add;
+            if (Math.Abs(rows[r]) == n || Math.Abs(cols[c]) == n || Math.Abs(diag) == n || Math.Abs(anti) == n)
+                return add == 1 ? "A" : "B";
+        }
+        return moves.Length == n * n ? "Draw" : "Pending";
+    }
+}
+
+class Program {
+    static int[] M(int r, int c) { return new[] { r, c }; }
+    static void Main() {
+        Solution s = new Solution();
+        Console.WriteLine(s.Tictactoe(new[] { M(0, 0), M(2, 0), M(1, 1), M(2, 1), M(2, 2) }));                   // A: main diagonal
+        Console.WriteLine(s.Tictactoe(new[] { M(0, 0), M(1, 1), M(0, 1), M(0, 2), M(1, 0), M(2, 0) }));          // B: anti-diagonal
+        Console.WriteLine(s.Tictactoe(new[] { M(0, 0), M(1, 1) }));                                             // Pending
+        Console.WriteLine(s.Tictactoe(new[] { M(0, 0), M(2, 2), M(2, 0), M(1, 0), M(1, 2), M(2, 1), M(0, 1), M(0, 2), M(1, 1) })); // Draw
+        Console.WriteLine(s.Tictactoe(new[] { M(1, 2), M(1, 0), M(2, 0), M(1, 1), M(0, 0), M(2, 1), M(0, 1), M(2, 2), M(0, 2) })); // A wins on move 9, not a draw
+        Console.WriteLine(s.Tictactoe(new[] { M(0, 0), M(0, 2), M(1, 1), M(2, 2), M(2, 0), M(2, 1), M(0, 1), M(1, 2) }));         // B wins on move 8
+        Console.WriteLine(s.Tictactoe(new[] { M(0, 0), M(2, 2), M(2, 0), M(1, 0), M(1, 2), M(2, 1), M(0, 1), M(0, 2) }));         // 8 moves, nobody yet: Pending
+        Console.WriteLine(s.Tictactoe(new[] { M(1, 1) }));                                                      // Pending
+    }
 }` }
     ],
     p03_sol: [
@@ -2421,6 +3024,69 @@ int main() {
     try { lot.free(0); } catch (const runtime_error& e) { cout << e.what() << "\\n"; }    // already free
     cout << board.show() << "\\n";  // unchanged: failed calls publish nothing
     cout << "log: " << log.text() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum SpotType { SMALL, COMPACT, LARGE }
+
+/// Observer: anyone who wants to hear about spots changing.
+interface ISpotListener { void OnOccupied(SpotType t); void OnFreed(SpotType t); }
+
+/// The display board keeps running counters, so reading them is O(1).
+class DisplayBoard : ISpotListener {
+    private readonly Dictionary<SpotType, int> free = new Dictionary<SpotType, int>();
+    public DisplayBoard(Dictionary<SpotType, int> initial) { foreach (var kv in initial) free[kv.Key] = kv.Value; }
+    public void OnOccupied(SpotType t) { free[t]--; }
+    public void OnFreed(SpotType t) { free[t]++; }
+    public string Show() {                                 // explicit format, same text in every language
+        List<string> parts = new List<string>();
+        foreach (SpotType t in Enum.GetValues(typeof(SpotType))) parts.Add(t + "=" + free[t]);
+        return "{" + string.Join(", ", parts) + "}";
+    }
+}
+
+/// A second, unrelated subscriber: the lot code did not change to support it.
+class EventLog : ISpotListener {
+    private readonly List<string> lines = new List<string>();
+    public void OnOccupied(SpotType t) { lines.Add("occupied " + t); }
+    public void OnFreed(SpotType t) { lines.Add("freed " + t); }
+    public string Text() { return string.Join(", ", lines); }
+}
+
+/// The lot publishes events; it does not know or care who listens (screens, apps, analytics).
+class Lot {
+    private readonly SpotType[] types; private readonly bool[] taken;
+    private readonly List<ISpotListener> listeners = new List<ISpotListener>();
+    public Lot(params SpotType[] types) { this.types = types; taken = new bool[types.Length]; }
+    public void Subscribe(ISpotListener l) { listeners.Add(l); }
+    public Dictionary<SpotType, int> Counts() {
+        Dictionary<SpotType, int> m = new Dictionary<SpotType, int>();
+        foreach (SpotType t in Enum.GetValues(typeof(SpotType))) m[t] = 0;
+        for (int i = 0; i < types.Length; i++) if (!taken[i]) m[types[i]]++;
+        return m;
+    }
+    public void Occupy(int i) { if (taken[i]) throw new InvalidOperationException("taken"); taken[i] = true; foreach (ISpotListener l in listeners) l.OnOccupied(types[i]); }
+    public void Free(int i) { if (!taken[i]) throw new InvalidOperationException("already free"); taken[i] = false; foreach (ISpotListener l in listeners) l.OnFreed(types[i]); }
+}
+
+class Program {
+    static void Main() {
+        Lot lot = new Lot(SpotType.SMALL, SpotType.COMPACT, SpotType.COMPACT, SpotType.LARGE);
+        DisplayBoard board = new DisplayBoard(lot.Counts());   // seed once with a scan
+        EventLog log = new EventLog();
+        lot.Subscribe(board);
+        lot.Subscribe(log);
+        lot.Occupy(1); lot.Occupy(3);
+        Console.WriteLine(board.Show());                       // {SMALL=1, COMPACT=1, LARGE=0}
+        lot.Free(3);
+        Console.WriteLine(board.Show());                       // {SMALL=1, COMPACT=1, LARGE=1}
+        try { lot.Occupy(1); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // taken
+        try { lot.Free(0); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }     // already free
+        Console.WriteLine(board.Show());                       // unchanged: failed calls publish nothing
+        Console.WriteLine("log: " + log.Text());
+    }
 }` }
     ],
     p04_sol: [
@@ -2610,6 +3276,56 @@ int main() {
     cout << "promo(16) = " << calc.charge(16) << "\\n";   // 50
     try { calc.setStrategy(nullptr); } catch (const invalid_argument& e) { cout << e.what() << "\\n"; }
     try { calc.charge(-5); } catch (const invalid_argument& e) { cout << e.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+/// Strategy pattern: a single-method interface, so simple tariffs can even be lambdas.
+interface IPricingStrategy { long Fee(long minutes); }
+sealed class LambdaPricing : IPricingStrategy {
+    private readonly Func<long, long> f; public LambdaPricing(Func<long, long> f) { this.f = f; }
+    public long Fee(long minutes) { return f(minutes); }
+}
+
+class FlatPricing : IPricingStrategy {
+    private readonly long amount;
+    public FlatPricing(long amount) { this.amount = amount; }
+    public long Fee(long minutes) { return amount; }
+}
+
+class HourlyPricing : IPricingStrategy {
+    private readonly long perHour;
+    public HourlyPricing(long perHour) { this.perHour = perHour; }
+    public long Fee(long minutes) { return Math.Max(1, (minutes + 59) / 60) * perHour; }
+}
+
+/// The context: it holds a strategy and can be switched at runtime (e.g. on weekends).
+class FeeCalculator {
+    private IPricingStrategy strategy;
+    public FeeCalculator(IPricingStrategy s) { SetStrategy(s); }
+    public void SetStrategy(IPricingStrategy s) {
+        if (s == null) throw new ArgumentException("strategy required");
+        strategy = s;
+    }
+    public long Charge(long minutes) {
+        if (minutes < 0) throw new ArgumentException("minutes must not be negative");
+        return strategy.Fee(minutes);
+    }
+}
+
+class Program {
+    static void Main() {
+        FeeCalculator calc = new FeeCalculator(new HourlyPricing(40));
+        Console.WriteLine("hourly(61) = " + calc.Charge(61));      // 2 started hours -> 80
+        Console.WriteLine("hourly(0) = " + calc.Charge(0));        // at least one hour -> 40
+        calc.SetStrategy(new FlatPricing(100));
+        Console.WriteLine("flat(61) = " + calc.Charge(61));        // 100
+        calc.SetStrategy(new LambdaPricing(m => m <= 15 ? 0 : 50));   // "first 15 minutes free" as a lambda
+        Console.WriteLine("promo(10) = " + calc.Charge(10));       // 0
+        Console.WriteLine("promo(16) = " + calc.Charge(16));       // 50
+        try { calc.SetStrategy(null); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { calc.Charge(-5); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
     ],
     p05_sol: [
@@ -2736,6 +3452,50 @@ int main() {
     cout << boolalpha << s.validTicTacToe({"XXO", "XO ", "O X"}) << "\\n";  // false: O won but X moved again
     cout << boolalpha << s.validTicTacToe({"XOO", "XO ", "XX "}) << "\\n";  // true: X wins with a column
     cout << boolalpha << s.validTicTacToe({"XOX", "XOO", "OXX"}) << "\\n";  // true: full board, nobody won
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+public class Solution {
+    /// LeetCode 794: can this board appear in a real game where X moves first?
+    public bool ValidTicTacToe(string[] board) {
+        int x = 0, o = 0;
+        foreach (string row in board)
+            foreach (char ch in row) { if (ch == 'X') x++; else if (ch == 'O') o++; }
+        if (o > x || x - o > 1) return false;           // turns alternate, X first
+        bool xWin = Wins(board, 'X'), oWin = Wins(board, 'O');
+        if (xWin && oWin) return false;                 // the game would have stopped earlier
+        if (xWin && x != o + 1) return false;           // X just moved, so X has one extra
+        if (oWin && x != o) return false;               // O just moved, so counts are equal
+        return true;
+    }
+
+    private bool Wins(string[] b, char p) {
+        for (int i = 0; i < 3; i++) {
+            if (b[i][0] == p && b[i][1] == p && b[i][2] == p) return true;
+            if (b[0][i] == p && b[1][i] == p && b[2][i] == p) return true;
+        }
+        return (b[0][0] == p && b[1][1] == p && b[2][2] == p)
+            || (b[0][2] == p && b[1][1] == p && b[2][0] == p);
+    }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        Solution s = new Solution();
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "O  ", "   ", "   " })));   // false: O moved first
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XOX", " X ", "   " })));   // false: X has 2 extra
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XXX", "   ", "OOO" })));   // false: both won
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XOX", "O O", "XOX" })));   // true: full-looking, no line
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "   ", "   ", "   " })));   // true: empty board
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XXX", "OO ", "O  " })));   // false: X won but counts are equal: O moved after the win
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XXX", "OO ", "   " })));   // true: X won on its last move
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XXO", "XO ", "O  " })));   // true: O won on its last move
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XXO", "XO ", "O X" })));   // false: O won but X moved again
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XOO", "XO ", "XX " })));   // true: X wins with a column
+        Console.WriteLine(B(s.ValidTicTacToe(new[] { "XOX", "XOO", "OXX" })));   // true: full board, nobody won
+    }
 }` }
     ],
     p06_sol: [
@@ -2912,6 +3672,69 @@ int main() {
     cout << play(small, {0, 1, 0, 1}) << "\\n";
     for (int col : {0, 7, -1}) {  // full column, past the edge, before the edge
         try { small.drop(col, 'R'); } catch (const invalid_argument& e) { cout << e.what() << "\\n"; }
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Connect Four: gravity drop + check only the 4 lines through the new disc.
+class ConnectFour {
+    private readonly int rows, cols, k;
+    private readonly char[][] grid;
+    private readonly int[] height;                   // next free row per column, counted from the bottom
+    private int moves = 0;
+
+    public ConnectFour(int rows, int cols, int k) {
+        this.rows = rows; this.cols = cols; this.k = k;
+        grid = new char[rows][];
+        for (int r = 0; r < rows; r++) { grid[r] = new char[cols]; for (int c = 0; c < cols; c++) grid[r][c] = '.'; }
+        height = new int[cols];
+    }
+
+    /// Drops a disc; returns "WIN", "DRAW" or "OK". Throws on a full or bad column.
+    public string Drop(int col, char p) {
+        if (col < 0 || col >= cols || height[col] == rows) throw new ArgumentException("Column " + col + " is not playable");
+        int r = rows - 1 - height[col]++;            // row 0 is the top, so discs fall to the largest row
+        grid[r][col] = p;
+        moves++;
+        int[][] dirs = { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 1, 1 }, new[] { 1, -1 } };
+        foreach (int[] d in dirs) {
+            int count = 1 + Run(r, col, d[0], d[1], p) + Run(r, col, -d[0], -d[1], p);
+            if (count >= k) return "WIN";
+        }
+        return moves == rows * cols ? "DRAW" : "OK";
+    }
+
+    /// How many same discs continue from (r,c) in direction (dr,dc), not counting (r,c).
+    private int Run(int r, int c, int dr, int dc, char p) {
+        int n = 0;
+        for (int rr = r + dr, cc = c + dc; rr >= 0 && rr < rows && cc >= 0 && cc < cols && grid[rr][cc] == p; rr += dr, cc += dc) n++;
+        return n;
+    }
+
+    /// Red and Yellow alternate through the columns; returns every result on one line.
+    public static string Play(ConnectFour g, params int[] cols) {
+        List<string> result = new List<string>();
+        for (int i = 0; i < cols.Length; i++) result.Add(g.Drop(cols[i], i % 2 == 0 ? 'R' : 'Y'));
+        return string.Join(" ", result);
+    }
+}
+
+class Program {
+    static void Main() {
+        // red completes a diagonal (5,0) (4,1) (3,2) (2,3) on the last drop
+        Console.WriteLine(ConnectFour.Play(new ConnectFour(6, 7, 4), 0, 1, 1, 2, 2, 3, 2, 3, 3, 6, 3));
+        // red stacks column 0 while yellow stacks column 1: vertical win on a 4x4 board
+        Console.WriteLine(ConnectFour.Play(new ConnectFour(4, 4, 4), 0, 1, 0, 1, 0, 1, 0));
+        // bottom row 0,1,2,3 for red: horizontal win
+        Console.WriteLine(ConnectFour.Play(new ConnectFour(6, 7, 4), 0, 0, 1, 1, 2, 2, 3));
+        // 2x2 board, 3 in a row is impossible: the fourth disc ends in a draw
+        ConnectFour small = new ConnectFour(2, 2, 3);
+        Console.WriteLine(ConnectFour.Play(small, 0, 1, 0, 1));
+        foreach (int col in new[] { 0, 7, -1 }) {                 // full column, past the edge, before the edge
+            try { small.Drop(col, 'R'); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        }
     }
 }` }
     ],
@@ -3170,6 +3993,81 @@ int main() {
     else cout << "Winner: " << r << "\\n";
     for (auto [br, bc] : vector<pair<int, int>>{{0, 0}, {3, 0}}) {
         try { open.play(br, bc); } catch (const invalid_argument& e) { cout << e.what() << "\\n"; }
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+/// Rules are a strategy, so "3 in a row on 3x3" and "5 in a row on 15x15" share one Game class.
+interface IWinRule { bool IsWin(char[][] b, int r, int c); }
+
+/// K in a row in any of 4 directions, counted outward from the last move only: O(K) per move.
+class KInARow : IWinRule {
+    private readonly int k;
+    public KInARow(int k) { this.k = k; }
+    public bool IsWin(char[][] b, int r, int c) {
+        char p = b[r][c];
+        int[][] dirs = { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 1, 1 }, new[] { 1, -1 } };
+        foreach (int[] d in dirs) {
+            int count = 1;
+            for (int s = -1; s <= 1; s += 2) {             // walk both ways along the line
+                int rr = r + s * d[0], cc = c + s * d[1];
+                while (rr >= 0 && rr < b.Length && cc >= 0 && cc < b[0].Length && b[rr][cc] == p && count < k) {
+                    count++; rr += s * d[0]; cc += s * d[1];
+                }
+            }
+            if (count >= k) return true;
+        }
+        return false;
+    }
+}
+
+class GridGame {
+    private readonly char[][] b; private readonly IWinRule rule; private readonly char[] players; private int turn;
+    public GridGame(int rows, int cols, IWinRule rule, params char[] players) {
+        b = new char[rows][];
+        for (int r = 0; r < rows; r++) { b[r] = new char[cols]; for (int c = 0; c < cols; c++) b[r][c] = '.'; }
+        this.rule = rule; this.players = players;
+    }
+    /// Returns the winner symbol, or '.' if the game goes on.
+    public char Play(int r, int c) {
+        if (r < 0 || r >= b.Length || c < 0 || c >= b[0].Length) throw new ArgumentException("outside the board");
+        if (b[r][c] != '.') throw new ArgumentException("occupied");
+        char p = players[turn];
+        b[r][c] = p;
+        if (rule.IsWin(b, r, c)) return p;
+        turn = (turn + 1) % players.Length;
+        return '.';
+    }
+
+    /// Plays the moves in order and returns the last result: a winner symbol, or '.' while the game goes on.
+    public static char PlayAll(GridGame g, params int[][] moves) {
+        char last = '.';
+        foreach (int[] m in moves) last = g.Play(m[0], m[1]);
+        return last;
+    }
+}
+
+class Program {
+    static int[] M(int r, int c) { return new[] { r, c }; }
+    static void Main() {
+        // Gomoku: X builds row 7 from column 3 to 7 while O plays far away
+        GridGame gomoku = new GridGame(15, 15, new KInARow(5), 'X', 'O');
+        char w = GridGame.PlayAll(gomoku, M(7, 3), M(0, 0), M(7, 4), M(0, 1), M(7, 5), M(0, 2), M(7, 6), M(0, 3), M(7, 7));
+        Console.WriteLine("Winner: " + w);                                   // Winner: X
+        // the same class plays 3x3 tic-tac-toe: only the rule object differs
+        GridGame ttt = new GridGame(3, 3, new KInARow(3), 'X', 'O');
+        Console.WriteLine("Winner: " + GridGame.PlayAll(ttt, M(0, 0), M(1, 0), M(1, 1), M(2, 0), M(2, 2)));
+        // three players on 4x4, three in a row wins
+        GridGame three = new GridGame(4, 4, new KInARow(3), 'A', 'B', 'C');
+        Console.WriteLine("Winner: " + GridGame.PlayAll(three, M(0, 0), M(3, 3), M(3, 0), M(0, 1), M(2, 3), M(2, 0), M(0, 2)));   // Winner: A
+        // a game still running, then the two refused moves
+        GridGame open = new GridGame(3, 3, new KInARow(3), 'X', 'O');
+        char r = GridGame.PlayAll(open, M(0, 0), M(1, 1), M(0, 1), M(1, 0));
+        Console.WriteLine(r == '.' ? "nobody yet" : "Winner: " + r);          // nobody yet
+        foreach (int[] bad in new[] { M(0, 0), M(3, 0) }) {
+            try { open.Play(bad[0], bad[1]); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        }
     }
 }` }
     ],
@@ -3462,6 +4360,98 @@ int main() {
     cout << show(svc.reserve("TRUCK", 9, 10)) << "\\n"; // none: no TRUCK spots exist
     cout << "cancel R2 again: " << svc.cancel("R2") << "\\n";  // false: already cancelled
     try { svc.reserve("CAR", 5, 5); } catch (const invalid_argument& e) { cout << e.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+/// Each spot keeps its own calendar: start -> end, sorted, with no overlaps (half-open [start, end)).
+class SpotCalendar {
+    public readonly string SpotId;
+    private readonly SortedDictionary<int, int> booked = new SortedDictionary<int, int>();
+    public SpotCalendar(string spotId) { SpotId = spotId; }
+
+    /// Free if the booking just before ends by \`start\` and the one just after starts at or after \`end\`.
+    public bool IsFree(int start, int end) {
+        KeyValuePair<int, int>? before = null;
+        foreach (var kv in booked) { if (kv.Key <= start) before = kv; else break; }        // floor entry
+        if (before != null && before.Value.Value > start) return false;
+        int? after = booked.Keys.Where(k => k >= start).Cast<int?>().FirstOrDefault();  // ceiling key
+        return after == null || after >= end;
+    }
+    public void Book(int start, int end) { booked[start] = end; }
+    public void Cancel(int start) { booked.Remove(start); }
+}
+
+sealed class Reservation {
+    public readonly string Id, SpotId; public readonly int Start, End;
+    public Reservation(string id, string spotId, int start, int end) { Id = id; SpotId = spotId; Start = start; End = end; }
+}
+
+class ReservationService {
+    private readonly Dictionary<string, List<SpotCalendar>> calendarsByType = new Dictionary<string, List<SpotCalendar>>();
+    private readonly Dictionary<string, Reservation> byId = new Dictionary<string, Reservation>();
+    private readonly Dictionary<string, SpotCalendar> calendarById = new Dictionary<string, SpotCalendar>();
+    private readonly object gate = new object();
+    private int seq = 1;
+
+    public void AddSpot(string type, string spotId) {
+        SpotCalendar cal = new SpotCalendar(spotId);
+        List<SpotCalendar> list;
+        if (!calendarsByType.TryGetValue(type, out list)) { list = new List<SpotCalendar>(); calendarsByType[type] = list; }
+        list.Add(cal);
+        calendarById[spotId] = cal;
+    }
+
+    public Reservation Reserve(string type, int start, int end) {        // null when nothing is free
+        lock (gate) {
+            if (start >= end) throw new ArgumentException("start must be before end");
+            List<SpotCalendar> cals;
+            if (!calendarsByType.TryGetValue(type, out cals)) return null;
+            foreach (SpotCalendar cal in cals) {
+                if (cal.IsFree(start, end)) {
+                    cal.Book(start, end);
+                    Reservation r = new Reservation("R" + seq++, cal.SpotId, start, end);
+                    byId[r.Id] = r;
+                    return r;
+                }
+            }
+            return null;
+        }
+    }
+
+    public bool Cancel(string reservationId) {
+        lock (gate) {
+            Reservation r;
+            if (!byId.TryGetValue(reservationId, out r)) return false;
+            byId.Remove(reservationId);
+            calendarById[r.SpotId].Cancel(r.Start);
+            return true;
+        }
+    }
+
+    public static string Show(Reservation r) {
+        return r == null ? "none" : r.Id + " " + r.SpotId + " [" + r.Start + "," + r.End + ")";
+    }
+}
+
+class Program {
+    static void Main() {
+        ReservationService svc = new ReservationService();
+        svc.AddSpot("CAR", "A1"); svc.AddSpot("CAR", "A2");
+        Console.WriteLine(ReservationService.Show(svc.Reserve("CAR", 9, 12)));    // R1 on A1
+        Console.WriteLine(ReservationService.Show(svc.Reserve("CAR", 10, 11)));   // R2 on A2 (A1 busy 9-12)
+        Console.WriteLine(ReservationService.Show(svc.Reserve("CAR", 11, 13)));   // R3 on A2: its [10,11) ends exactly at 11
+        Console.WriteLine(ReservationService.Show(svc.Reserve("CAR", 12, 14)));   // R4 on A1: [9,12) and [12,14) touch, no overlap
+        Console.WriteLine("cancel R2: " + svc.Cancel("R2").ToString().ToLower());
+        Console.WriteLine(ReservationService.Show(svc.Reserve("CAR", 10, 11)));   // R5 on A2 (the freed 10-11 gap)
+        Console.WriteLine(ReservationService.Show(svc.Reserve("CAR", 9, 12)));    // none: both spots overlap this window
+        Console.WriteLine(ReservationService.Show(svc.Reserve("CAR", 13, 15)));   // R6 on A2: back-to-back after [11,13)
+        Console.WriteLine(ReservationService.Show(svc.Reserve("TRUCK", 9, 10)));  // none: no TRUCK spots exist
+        Console.WriteLine("cancel R2 again: " + svc.Cancel("R2").ToString().ToLower()); // false: already cancelled
+        try { svc.Reserve("CAR", 5, 5); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
     ],
     p09_sol: [
@@ -3707,6 +4697,73 @@ int main() {
     cout << regular->describe() << "\\n";                   // hourly@20 + valet
     cout << ev->fee(Stay(0, 0, false)) << "\\n";            // a stay bills at least one hour: 20
     try { Stay bad(-1, 0, false); } catch (const invalid_argument& e) { cout << e.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Globalization;
+
+/// What we know about one stay when we price it.
+sealed class Stay {
+    public readonly long Hours; public readonly double KwhCharged; public readonly bool Valet;
+    public Stay(long hours, double kwhCharged, bool valet) {
+        if (hours < 0 || kwhCharged < 0) throw new ArgumentException("stay values must not be negative");
+        Hours = hours; KwhCharged = kwhCharged; Valet = valet;
+    }
+}
+
+interface IPricing { long Fee(Stay s); string Describe(); }
+
+class Hourly : IPricing {
+    private readonly long rate;
+    public Hourly(long rate) { this.rate = rate; }
+    public long Fee(Stay s) { return Math.Max(1, s.Hours) * rate; }
+    public string Describe() { return "hourly@" + rate; }
+}
+
+/// Decorator base: wraps another IPricing and adds something on top.
+abstract class PricingAddOn : IPricing {
+    protected readonly IPricing inner;
+    protected PricingAddOn(IPricing inner) { this.inner = inner; }
+    public abstract long Fee(Stay s);
+    public abstract string Describe();
+}
+
+class ChargingAddOn : PricingAddOn {
+    private readonly double perKwh;
+    public ChargingAddOn(IPricing inner, double perKwh) : base(inner) { this.perKwh = perKwh; }
+    public override long Fee(Stay s) { return inner.Fee(s) + (long)Math.Round(s.KwhCharged * perKwh, MidpointRounding.AwayFromZero); }
+    public override string Describe() { return inner.Describe() + " + charging@" + perKwh.ToString("F1", CultureInfo.InvariantCulture) + "/kWh"; }
+}
+
+class ValetAddOn : PricingAddOn {
+    private readonly long valetFee;
+    public ValetAddOn(IPricing inner, long valetFee) : base(inner) { this.valetFee = valetFee; }
+    public override long Fee(Stay s) { return inner.Fee(s) + (s.Valet ? valetFee : 0); }
+    public override string Describe() { return inner.Describe() + " + valet"; }
+}
+
+enum SpotKind { REGULAR, EV }
+
+/// Picks the pricing chain by spot kind: an EV spot simply gets one more wrapper.
+static class PricingFactory {
+    public static IPricing ForSpot(SpotKind kind) {
+        IPricing p = new ValetAddOn(new Hourly(20), 100);
+        return kind == SpotKind.EV ? new ChargingAddOn(p, 15.0) : p;
+    }
+}
+
+class Program {
+    static void Main() {
+        IPricing ev = PricingFactory.ForSpot(SpotKind.EV);
+        IPricing regular = PricingFactory.ForSpot(SpotKind.REGULAR);
+        Console.WriteLine(ev.Describe());                                   // hourly@20 + valet + charging@15.0/kWh
+        Console.WriteLine(ev.Fee(new Stay(3, 10.0, false)));                // 60 + 150 = 210
+        Console.WriteLine(regular.Fee(new Stay(3, 0, true)));               // 60 + 100 = 160
+        Console.WriteLine(ev.Fee(new Stay(2, 1.5, true)));                  // 40 + 100 + round(22.5) = 163 (half rounds up)
+        Console.WriteLine(regular.Describe());                              // hourly@20 + valet
+        Console.WriteLine(ev.Fee(new Stay(0, 0, false)));                   // a stay bills at least one hour: 20
+        try { new Stay(-1, 0, false); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
     ],
     p10_sol: [
@@ -4005,6 +5062,113 @@ int main() {
     NearestToGate ties({{5, 5, 5}});  // equal distances: smaller id first
     int a = ties.allocate(0), b = ties.allocate(0), c = ties.allocate(0), d = ties.allocate(0);
     cout << a << " " << b << " " << c << " " << d << "\\n";  // 0 1 2 -1
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Strategy: choose a spot for an arriving vehicle at a given gate.
+interface IGateAwareStrategy {
+    int Allocate(int gate);          // returns spot id or -1
+    void Release(int spot);
+}
+
+/// A min-heap of (distance, spot) pairs: closest spot first, smaller id on ties.
+class MinHeap {
+    private readonly List<int[]> a = new List<int[]>();
+    public int Count { get { return a.Count; } }
+    private static bool Less(int[] x, int[] y) { return x[0] != y[0] ? x[0] < y[0] : x[1] < y[1]; }
+    public void Push(int dist, int spot) {
+        a.Add(new[] { dist, spot });
+        int i = a.Count - 1;
+        while (i > 0) { int p = (i - 1) / 2; if (!Less(a[i], a[p])) break; int[] t = a[i]; a[i] = a[p]; a[p] = t; i = p; }
+    }
+    public int Pop() {
+        int[] top = a[0]; int[] last = a[a.Count - 1]; a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last; int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && Less(a[l], a[m])) m = l;
+                if (r < a.Count && Less(a[r], a[m])) m = r;
+                if (m == i) break;
+                int[] t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top[1];
+    }
+}
+
+/// One min-heap of spots per gate, ordered by distance from that gate.
+/// A freed spot is pushed back into every heap that does not already hold it. Spots taken via
+/// another gate stay in this heap as stale entries and are skipped when popped (lazy deletion).
+class NearestToGate : IGateAwareStrategy {
+    private readonly int[][] dist;                   // dist[gate][spot]
+    private readonly bool[] taken;
+    private readonly bool[][] queued;                // queued[gate][spot]: spot is already in that gate's heap
+    private readonly List<MinHeap> heaps = new List<MinHeap>();
+    private readonly object gate = new object();
+
+    public NearestToGate(int[][] dist) {
+        this.dist = dist;
+        int spots = dist[0].Length;
+        taken = new bool[spots];
+        queued = new bool[dist.Length][];
+        for (int g = 0; g < dist.Length; g++) {
+            queued[g] = new bool[spots];
+            MinHeap pq = new MinHeap();
+            for (int s = 0; s < spots; s++) { pq.Push(dist[g][s], s); queued[g][s] = true; }
+            heaps.Add(pq);
+        }
+    }
+
+    public int Allocate(int g) {
+        lock (gate) {
+            MinHeap pq = heaps[g];
+            while (pq.Count > 0) {
+                int s = pq.Pop();
+                queued[g][s] = false;
+                if (!taken[s]) { taken[s] = true; return s; }   // stale entries are simply dropped
+            }
+            return -1;
+        }
+    }
+
+    public void Release(int spot) {
+        lock (gate) {
+            if (!taken[spot]) throw new InvalidOperationException("Spot " + spot + " is not taken");
+            taken[spot] = false;
+            for (int g = 0; g < heaps.Count; g++)
+                if (!queued[g][spot]) { heaps[g].Push(dist[g][spot], spot); queued[g][spot] = true; }   // never twice in one heap
+        }
+    }
+
+    public int Pending(int g) { lock (gate) return heaps[g].Count; }
+}
+
+class Program {
+    static void Main() {
+        int[][] dist = { new[] { 1, 2, 3, 4 }, new[] { 4, 3, 2, 1 } };       // gate 0 is near spot 0, gate 1 near spot 3
+        NearestToGate st = new NearestToGate(dist);
+        Console.WriteLine(st.Allocate(0));               // 0
+        Console.WriteLine(st.Allocate(1));               // 3
+        Console.WriteLine(st.Allocate(1));               // 2
+        st.Release(3);
+        Console.WriteLine(st.Allocate(1));               // 3 again
+        Console.WriteLine(st.Allocate(0));               // 1
+        Console.WriteLine(st.Allocate(0));               // -1: every spot is taken
+        st.Release(0);
+        Console.WriteLine(st.Allocate(1));               // 0: spot 1 is a stale entry in gate 1's heap and is skipped
+        st.Release(0);
+        try { st.Release(0); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+
+        NearestToGate busy = new NearestToGate(dist);
+        for (int i = 0; i < 1000; i++) busy.Release(busy.Allocate(1));   // churn through gate 1 only
+        Console.WriteLine("gate 0 heap holds " + busy.Pending(0) + " entries");   // still 4, not 1004
+
+        NearestToGate ties = new NearestToGate(new[] { new[] { 5, 5, 5 } });  // equal distances: smaller id first
+        Console.WriteLine(ties.Allocate(0) + " " + ties.Allocate(0) + " " + ties.Allocate(0) + " " + ties.Allocate(0));  // 0 1 2 -1
+    }
 }` }
     ],
     p11_sol: [
@@ -4354,6 +5518,93 @@ int main() {
     cout << "LATE parked: " << (lot.park("LATE", SpotType::Compact) != nullptr) << "\\n";  // true: it took the freed spot
     try { lot.park("LATE", SpotType::Compact); } catch (const logic_error& e) { cout << e.what() << "\\n"; }
     cout << "inside=" << lot.parkedCount() << "\\n";  // 500
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+enum SpotType { SMALL, COMPACT, LARGE }
+
+class Spot {
+    public readonly int Id; public readonly SpotType Type;
+    public string Plate;                                        // null = free; changed only with Interlocked
+    public Spot(int id, SpotType type) { Id = id; Type = type; }
+}
+
+/// Lock-free allocation: free spots per type live in a concurrent queue.
+/// TryDequeue hands each spot to exactly ONE thread, so two gates can never receive the same spot.
+/// The CAS on the spot is a second safety net (and catches bugs like double release).
+class ConcurrentLot {
+    private readonly Dictionary<SpotType, ConcurrentQueue<Spot>> free = new Dictionary<SpotType, ConcurrentQueue<Spot>>();
+    private readonly ConcurrentDictionary<string, Spot> byPlate = new ConcurrentDictionary<string, Spot>();
+    private readonly ConcurrentDictionary<string, bool> inside = new ConcurrentDictionary<string, bool>();   // plates that hold or are getting a spot
+
+    public ConcurrentLot(List<Spot> spots) {
+        foreach (SpotType t in Enum.GetValues(typeof(SpotType))) free[t] = new ConcurrentQueue<Spot>();
+        foreach (Spot s in spots) free[s.Type].Enqueue(s);
+    }
+
+    public Spot Park(string plate, SpotType type) {              // null when full
+        if (!inside.TryAdd(plate, true)) throw new InvalidOperationException(plate + " already inside"); // atomic claim
+        Spot s;
+        if (!free[type].TryDequeue(out s)) { bool ignored; inside.TryRemove(plate, out ignored); return null; }   // atomic hand-off
+        if (Interlocked.CompareExchange(ref s.Plate, plate, null) != null) throw new InvalidOperationException("corrupted spot " + s.Id);
+        byPlate[plate] = s;
+        return s;
+    }
+
+    public void Leave(string plate) {
+        Spot s;
+        if (!byPlate.TryRemove(plate, out s)) throw new KeyNotFoundException(plate + " is not inside");   // only one thread can remove a key
+        if (Interlocked.CompareExchange(ref s.Plate, null, plate) != plate) throw new InvalidOperationException("double release " + s.Id);
+        free[s.Type].Enqueue(s);                                 // publish AFTER clearing the spot
+        bool ignored; inside.TryRemove(plate, out ignored);
+    }
+
+    public int ParkedCount { get { return byPlate.Count; } }
+}
+
+class Program {
+    static void Main() {
+        List<Spot> spots = new List<Spot>();
+        for (int i = 0; i < 500; i++) spots.Add(new Spot(i, SpotType.COMPACT));
+        ConcurrentLot lot = new ConcurrentLot(spots);
+        int ok = 0;
+        ConcurrentDictionary<int, bool> used = new ConcurrentDictionary<int, bool>();
+        int dup = 0;
+        ConcurrentQueue<string> parked = new ConcurrentQueue<string>();
+
+        List<Thread> gates = new List<Thread>();                // 8 entry gates
+        for (int g = 0; g < 8; g++) {
+            int gateNo = g;
+            Thread t = new Thread(() => {
+                for (int i = 0; i < 125; i++) {                 // 1000 cars for 500 spots
+                    string plate = "G" + gateNo + "-" + i;
+                    Spot s = lot.Park(plate, SpotType.COMPACT);
+                    if (s != null) {
+                        Interlocked.Increment(ref ok);
+                        parked.Enqueue(plate);
+                        if (!used.TryAdd(s.Id, true)) Interlocked.Increment(ref dup);
+                    }
+                }
+            });
+            gates.Add(t); t.Start();
+        }
+        foreach (Thread t in gates) t.Join();
+        Console.WriteLine("parked=" + ok + " duplicates=" + dup + " inside=" + lot.ParkedCount);
+        // parked=500 duplicates=0 inside=500
+
+        Console.WriteLine("full lot refuses: " + (lot.Park("LATE", SpotType.COMPACT) == null).ToString().ToLower());   // true
+        try { lot.Leave("NOPE"); } catch (KeyNotFoundException e) { Console.WriteLine(e.Message); }
+        string first; parked.TryPeek(out first);
+        lot.Leave(first);                                                        // one car (any) drives out
+        Console.WriteLine("inside=" + lot.ParkedCount);                          // 499
+        Console.WriteLine("LATE parked: " + (lot.Park("LATE", SpotType.COMPACT) != null).ToString().ToLower());   // true: it took the freed spot
+        try { lot.Park("LATE", SpotType.COMPACT); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        Console.WriteLine("inside=" + lot.ParkedCount);                          // 500
+    }
 }` }
     ],
     p12_sol: [
@@ -4722,6 +5973,105 @@ int main() {
         MinimaxBot('O', 'X').chooseMove(fullBoard);
     } catch (const runtime_error& e) {
         cout << e.what() << "\\n";  // board is full
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+/// The same IPlayer interface the game already uses: a bot is just another strategy.
+interface IPlayer { char Symbol { get; } int[] ChooseMove(char[][] board); }
+
+/// Minimax with alpha-beta pruning: never loses at 3x3 tic-tac-toe.
+class MinimaxBot : IPlayer {
+    private readonly char me, them;
+    public MinimaxBot(char me, char them) { this.me = me; this.them = them; }
+    public char Symbol { get { return me; } }
+
+    public int[] ChooseMove(char[][] b) {
+        int best = int.MinValue; int[] move = null;
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++) {
+                if (b[r][c] != '.') continue;
+                b[r][c] = me;
+                int score = Minimax(b, false, 1, int.MinValue, int.MaxValue);
+                b[r][c] = '.';
+                if (score > best) { best = score; move = new[] { r, c }; }
+            }
+        if (move == null) throw new InvalidOperationException("board is full");
+        return move;
+    }
+
+    /// Score from the bot's view: +10 - depth for a win (win sooner is better), depth - 10 for a loss.
+    private int Minimax(char[][] b, bool myTurn, int depth, int alpha, int beta) {
+        if (Wins(b, me)) return 10 - depth;
+        if (Wins(b, them)) return depth - 10;
+        if (Full(b)) return 0;
+        int best = myTurn ? int.MinValue : int.MaxValue;
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++) {
+                if (b[r][c] != '.') continue;
+                b[r][c] = myTurn ? me : them;
+                int s = Minimax(b, !myTurn, depth + 1, alpha, beta);
+                b[r][c] = '.';
+                if (myTurn) { best = Math.Max(best, s); alpha = Math.Max(alpha, s); }
+                else { best = Math.Min(best, s); beta = Math.Min(beta, s); }
+                if (beta <= alpha) return best;            // prune: opponent will never allow this line
+            }
+        return best;
+    }
+
+    public static bool Wins(char[][] b, char p) {
+        for (int i = 0; i < 3; i++)
+            if ((b[i][0] == p && b[i][1] == p && b[i][2] == p) || (b[0][i] == p && b[1][i] == p && b[2][i] == p)) return true;
+        return (b[0][0] == p && b[1][1] == p && b[2][2] == p) || (b[0][2] == p && b[1][1] == p && b[2][0] == p);
+    }
+    public static bool Full(char[][] b) {
+        foreach (char[] row in b) foreach (char ch in row) if (ch == '.') return false;
+        return true;
+    }
+}
+
+/// A weak player that takes the first empty cell: it plugs into the same interface.
+class FirstFreePlayer : IPlayer {
+    private readonly char me;
+    public FirstFreePlayer(char me) { this.me = me; }
+    public char Symbol { get { return me; } }
+    public int[] ChooseMove(char[][] b) {
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) if (b[r][c] == '.') return new[] { r, c };
+        throw new InvalidOperationException("board is full");
+    }
+}
+
+class Program {
+    static char[][] Board(params string[] rows) {
+        char[][] b = new char[3][];
+        for (int i = 0; i < 3; i++) b[i] = rows[i].ToCharArray();
+        return b;
+    }
+
+    /// The existing game loop: ask each IPlayer in turn. It cannot tell a human from a bot.
+    static string Play(IPlayer x, IPlayer o) {
+        char[][] b = Board("...", "...", "...");
+        IPlayer[] turn = { x, o };
+        for (int i = 0; i < 9; i++) {
+            IPlayer p = turn[i % 2];
+            int[] m = p.ChooseMove(b);
+            b[m[0]][m[1]] = p.Symbol;
+            if (MinimaxBot.Wins(b, p.Symbol)) return p.Symbol.ToString();
+        }
+        return "draw";
+    }
+
+    static void Main() {
+        int[] m = new MinimaxBot('O', 'X').ChooseMove(Board("XX.", "OO.", "..."));
+        Console.WriteLine(m[0] + "," + m[1]);             // 1,2 : win now rather than block
+        int[] m2 = new MinimaxBot('O', 'X').ChooseMove(Board("XX.", ".O.", "..."));
+        Console.WriteLine(m2[0] + "," + m2[1]);           // 0,2 : must block X
+        Console.WriteLine(Play(new MinimaxBot('X', 'O'), new MinimaxBot('O', 'X')));       // draw: perfect play
+        Console.WriteLine(Play(new MinimaxBot('X', 'O'), new FirstFreePlayer('O')));       // X: the bot beats a weak player
+        Console.WriteLine(Play(new FirstFreePlayer('X'), new MinimaxBot('O', 'X')));       // O: and it wins from the second seat
+        try { new MinimaxBot('O', 'X').ChooseMove(Board("XOX", "XOO", "OXX")); }
+        catch (InvalidOperationException e) { Console.WriteLine(e.Message); }              // board is full
     }
 }` }
     ],
@@ -5250,6 +6600,144 @@ int main() {
     while (getline(cin, line)) {
         if (line.find_first_not_of(" \\t\\r") != string::npos) cout << interpreter.handle(line) << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Car {
+    public readonly string Plate, Colour;
+    public Car(string plate, string colour) { Plate = plate; Colour = colour; }
+}
+
+/// Domain: knows nothing about text commands. Nearest free slot = smallest number, kept in a SortedSet.
+class Garage {
+    private readonly Car[] slots;
+    private readonly SortedSet<int> freeSlots = new SortedSet<int>();
+    private readonly Dictionary<string, int> slotByPlate = new Dictionary<string, int>();
+    private readonly Dictionary<string, SortedSet<int>> slotsByColour = new Dictionary<string, SortedSet<int>>();
+
+    public Garage(int n) { slots = new Car[n + 1]; for (int i = 1; i <= n; i++) freeSlots.Add(i); }
+    public int Capacity { get { return slots.Length - 1; } }
+
+    public int? Park(Car car) {
+        if (slotByPlate.ContainsKey(car.Plate)) throw new InvalidOperationException(car.Plate + " already parked");
+        if (freeSlots.Count == 0) return null;
+        int s = freeSlots.Min; freeSlots.Remove(s);                     // O(log n) nearest slot
+        slots[s] = car;
+        slotByPlate[car.Plate] = s;
+        SortedSet<int> set;
+        if (!slotsByColour.TryGetValue(car.Colour.ToLower(), out set)) { set = new SortedSet<int>(); slotsByColour[car.Colour.ToLower()] = set; }
+        set.Add(s);
+        return s;
+    }
+
+    public bool Leave(int s) {
+        if (s < 1 || s > Capacity || slots[s] == null) return false;
+        Car car = slots[s];
+        slots[s] = null;
+        freeSlots.Add(s);
+        slotByPlate.Remove(car.Plate);
+        slotsByColour[car.Colour.ToLower()].Remove(s);
+        return true;
+    }
+
+    public List<int> SlotsWithColour(string colour) { SortedSet<int> set; return slotsByColour.TryGetValue(colour.ToLower(), out set) ? set.ToList() : new List<int>(); }
+    public Car CarAt(int s) { return slots[s]; }
+    public int? SlotOf(string plate) { int s; return slotByPlate.TryGetValue(plate, out s) ? s : (int?)null; }
+}
+
+/// Command pattern: each text command is one small class. A new command = one new class + one map entry.
+interface ICliCommand { string Execute(string[] args, Session session); }
+
+/// Holds the garage once it is created, so commands can share it.
+class Session { public Garage Garage; }
+
+/// Defensive parsing helpers shared by the commands.
+static class Cli {
+    public static int Number(string text) {
+        int n;
+        if (!int.TryParse(text, out n)) throw new ArgumentException("not a number: " + text);
+        return n;
+    }
+}
+
+class CreateCmd : ICliCommand {
+    public string Execute(string[] a, Session s) {
+        int n = Cli.Number(a[0]);
+        if (n < 1) throw new ArgumentException("capacity must be at least 1");
+        s.Garage = new Garage(n);
+        return "Created a parking lot with " + n + " slots";
+    }
+}
+
+class ParkCmd : ICliCommand {
+    public string Execute(string[] a, Session s) {
+        int? slot = s.Garage.Park(new Car(a[0], a[1]));
+        return slot != null ? "Allocated slot number: " + slot : "Sorry, parking lot is full";
+    }
+}
+
+class LeaveCmd : ICliCommand {
+    public string Execute(string[] a, Session s) {
+        int slot = Cli.Number(a[0]);
+        return s.Garage.Leave(slot) ? "Slot number " + slot + " is free" : "Slot " + slot + " is already empty";
+    }
+}
+
+class PlatesByColourCmd : ICliCommand {
+    public string Execute(string[] a, Session s) {
+        List<string> plates = new List<string>();
+        foreach (int slot in s.Garage.SlotsWithColour(a[0])) plates.Add(s.Garage.CarAt(slot).Plate);
+        return plates.Count == 0 ? "Not found" : string.Join(", ", plates);
+    }
+}
+
+class SlotForPlateCmd : ICliCommand {
+    public string Execute(string[] a, Session s) {
+        int? slot = s.Garage.SlotOf(a[0]);
+        return slot != null ? slot.ToString() : "Not found";
+    }
+}
+
+class Interpreter {
+    private readonly Dictionary<string, ICliCommand> commands = new Dictionary<string, ICliCommand>();
+    private readonly Dictionary<string, int> arity = new Dictionary<string, int>();
+    private readonly Session session = new Session();
+
+    public Interpreter() {
+        Register("create_parking_lot", 1, new CreateCmd());
+        Register("park", 2, new ParkCmd());
+        Register("leave", 1, new LeaveCmd());
+        Register("registration_numbers_for_cars_with_colour", 1, new PlatesByColourCmd());
+        Register("slot_number_for_registration_number", 1, new SlotForPlateCmd());
+    }
+
+    public void Register(string name, int args, ICliCommand c) { commands[name] = c; arity[name] = args; }
+
+    public string Handle(string line) {
+        string[] parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        ICliCommand cmd;
+        if (!commands.TryGetValue(parts[0], out cmd)) return "Unknown command: " + parts[0];
+        if (parts.Length - 1 != arity[parts[0]]) return "Usage: " + parts[0] + " needs " + arity[parts[0]] + " argument(s)";
+        if (session.Garage == null && !(cmd is CreateCmd)) return "Create a parking lot first";
+        try {
+            return cmd.Execute(parts.Skip(1).ToArray(), session);
+        } catch (Exception e) {
+            return "Error: " + e.Message;                 // one bad line never kills the program
+        }
+    }
+}
+
+class Program {
+    /// The program: read one command per line until the input ends, print one answer per command.
+    static void Main() {
+        Interpreter it = new Interpreter();
+        string line;
+        while ((line = Console.In.ReadLine()) != null)
+            if (!string.IsNullOrWhiteSpace(line)) Console.WriteLine(it.Handle(line));
+    }
 }` }
     ],
     p14_sol: [
@@ -5671,6 +7159,120 @@ int main() {
     e.play(0, 0);
     cout << tryPlay(e, 0, 0) << "\\n";  // illegal move: occupied
     cout << tryPlay(e, 3, 0) << "\\n";  // illegal move: outside the 3x3 board
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Events are facts that happened. The list of events IS the game (event sourcing, lite).
+abstract class GameEvent {
+    private GameEvent() { }                                   // closed set: only the nested variants exist
+    public sealed class MovePlayed : GameEvent {
+        public readonly int Seq, Row, Col; public readonly char Symbol;
+        public MovePlayed(int seq, char symbol, int row, int col) { Seq = seq; Symbol = symbol; Row = row; Col = col; }
+    }
+    public sealed class GameWon : GameEvent { public readonly char Symbol; public GameWon(char symbol) { Symbol = symbol; } }
+    public sealed class GameDrawn : GameEvent { }
+}
+
+/// Observer: spectators, loggers, a scoreboard... the game does not know which.
+interface IGameListener { void On(GameEvent e); }
+
+class MultiGame {
+    private readonly int n; private readonly char[] symbols; private readonly char[][] board;
+    private readonly int[][] rows, cols; private readonly int[] diag, anti;
+    private readonly List<GameEvent> log = new List<GameEvent>();
+    private readonly List<IGameListener> listeners = new List<IGameListener>();
+    private int turn = 0, moves = 0; private bool over = false;
+
+    /// P players on an (P+1) x (P+1) board, needing a full line to win.
+    public MultiGame(params char[] symbols) {
+        this.symbols = symbols; n = symbols.Length + 1;
+        board = new char[n][]; for (int r = 0; r < n; r++) { board[r] = new char[n]; for (int c = 0; c < n; c++) board[r][c] = '.'; }
+        rows = new int[symbols.Length][]; cols = new int[symbols.Length][];
+        for (int p = 0; p < symbols.Length; p++) { rows[p] = new int[n]; cols[p] = new int[n]; }
+        diag = new int[symbols.Length]; anti = new int[symbols.Length];
+    }
+
+    public void Subscribe(IGameListener l) { listeners.Add(l); }
+    private void Emit(GameEvent e) { log.Add(e); foreach (IGameListener l in listeners) l.On(e); }
+
+    public void Play(int r, int c) {
+        if (over) throw new InvalidOperationException("game over");
+        if (r < 0 || r >= n || c < 0 || c >= n || board[r][c] != '.') throw new ArgumentException("illegal move");
+        int p = turn;
+        board[r][c] = symbols[p]; moves++;
+        Emit(new GameEvent.MovePlayed(moves, symbols[p], r, c));
+        bool win = ++rows[p][r] == n | ++cols[p][c] == n
+                | (r == c && ++diag[p] == n) | (r + c == n - 1 && ++anti[p] == n);   // non-short-circuit: update all
+        if (win) { over = true; Emit(new GameEvent.GameWon(symbols[p])); }
+        else if (moves == n * n) { over = true; Emit(new GameEvent.GameDrawn()); }
+        else turn = (turn + 1) % symbols.Length;
+    }
+
+    public List<GameEvent> Events() { return new List<GameEvent>(log); }
+    public int Size { get { return n; } }
+
+    /// Rebuild the board as it looked after \`upTo\` moves, purely from the event log.
+    public static char[][] Replay(List<GameEvent> events, int n, int upTo) {
+        char[][] b = new char[n][]; for (int r = 0; r < n; r++) { b[r] = new char[n]; for (int c = 0; c < n; c++) b[r][c] = '.'; }
+        foreach (GameEvent e in events) {
+            GameEvent.MovePlayed m = e as GameEvent.MovePlayed;
+            if (m != null && m.Seq <= upTo) b[m.Row][m.Col] = m.Symbol;
+        }
+        return b;
+    }
+}
+
+class Spectator : IGameListener {
+    private readonly string name; public readonly List<string> Seen = new List<string>();
+    public Spectator(string name) { this.name = name; }
+    public void On(GameEvent e) {
+        string line;
+        if (e is GameEvent.MovePlayed m) line = m.Symbol + " plays " + m.Row + "," + m.Col;
+        else if (e is GameEvent.GameWon w) line = w.Symbol + " WINS";
+        else line = "draw";
+        Seen.Add(name + ": " + line);
+    }
+}
+
+class Program {
+    static string Rows(char[][] b) {                       // "XX../O.../..../...." one string per board
+        List<string> parts = new List<string>();
+        foreach (char[] row in b) parts.Add(new string(row));
+        return string.Join("/", parts);
+    }
+
+    static string TryPlay(MultiGame g, int r, int c) {     // the reason a move was refused, or "ok"
+        try { g.Play(r, c); return "ok"; } catch (Exception e) { return e.Message; }
+    }
+
+    static void Main() {
+        MultiGame g = new MultiGame('X', 'O', 'Z');            // 3 players, 4x4 board
+        Spectator tv = new Spectator("TV");
+        g.Subscribe(tv);
+        int[][] moves = { new[] {0,0}, new[] {1,0}, new[] {2,0}, new[] {0,1}, new[] {1,1}, new[] {2,1}, new[] {0,2}, new[] {1,2}, new[] {2,2}, new[] {0,3} };
+        foreach (int[] m in moves) g.Play(m[0], m[1]);
+        Console.WriteLine(tv.Seen[tv.Seen.Count - 1]);        // TV: X WINS  (row 0 complete)
+        Console.WriteLine(tv.Seen.Count);                     // 11: ten moves and the win
+        Console.WriteLine(Rows(MultiGame.Replay(g.Events(), g.Size, 3)));    // X.../O.../Z.../....
+        Console.WriteLine(Rows(MultiGame.Replay(g.Events(), g.Size, 10)));   // XXXX/OOO./ZZZ./....
+        Console.WriteLine(TryPlay(g, 3, 3));                  // game over
+
+        MultiGame d = new MultiGame('X', 'O');                // 2 players, 3x3: a full board with no line
+        Spectator board = new Spectator("BOARD");
+        d.Subscribe(board);
+        int[][] draw = { new[] {0,0}, new[] {0,1}, new[] {0,2}, new[] {1,2}, new[] {1,0}, new[] {2,0}, new[] {1,1}, new[] {2,2}, new[] {2,1} };
+        foreach (int[] m in draw) d.Play(m[0], m[1]);
+        Console.WriteLine(board.Seen[board.Seen.Count - 1]);  // BOARD: draw
+        Console.WriteLine(board.Seen.Count);                  // 10: nine moves and the draw
+        Console.WriteLine(TryPlay(d, 2, 2));                  // game over
+
+        MultiGame e = new MultiGame('X', 'O');
+        e.Play(0, 0);
+        Console.WriteLine(TryPlay(e, 0, 0));                  // illegal move: occupied
+        Console.WriteLine(TryPlay(e, 3, 0));                  // illegal move: outside the 3x3 board
+    }
 }` }
     ],
     t1_skeleton: [
@@ -5963,6 +7565,91 @@ int main() {
         auto booking = s->book(3, start, end);
         cout << (booking ? booking->room.name : "none") << "\\n";  // Huddle, Board, none
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// The framework applied to a NEW problem: "Design a meeting-room booker".
+// Step 1 (clarify): rooms have capacity; book a slot for N people; no overlaps; cancel allowed.
+// Step 2 (entities): Room, Booking.     Step 3 (APIs): Book(...), Cancel(...), BookingsFor(room).
+// Step 4 (diagram): Scheduler has Rooms, Room has Bookings.     Step 5 (patterns): Strategy for choosing a room.
+// Step 6 (extensibility): new selection rule = new class; nothing else changes.
+
+sealed class Room {
+    public readonly string Name; public readonly int Capacity;
+    public Room(string name, int capacity) { Name = name; Capacity = capacity; }
+}
+
+sealed class Booking {
+    public readonly string Id; public readonly Room Room; public readonly TimeSpan Start, End; public readonly int People;
+    public Booking(string id, Room room, TimeSpan start, TimeSpan end, int people) { Id = id; Room = room; Start = start; End = end; People = people; }
+    public bool Overlaps(TimeSpan s, TimeSpan e) { return s < End && Start < e; }   // half-open
+}
+
+/// Step 5: the rule most likely to change, behind an interface.
+interface IRoomSelectionStrategy {
+    Room Choose(List<Room> candidates, int people);      // null when nothing fits
+}
+
+/// Smallest room that is big enough: keeps big rooms free for big meetings.
+class SmallestFitStrategy : IRoomSelectionStrategy {
+    public Room Choose(List<Room> candidates, int people) {
+        return candidates.Where(r => r.Capacity >= people).OrderBy(r => r.Capacity).FirstOrDefault();
+    }
+}
+
+/// Step 3: the public API. Callers depend on this, not on the implementation.
+interface IMeetingScheduler {
+    Booking Book(int people, TimeSpan start, TimeSpan end);   // null when no room is free
+    bool Cancel(string bookingId);
+    List<Booking> BookingsFor(Room room);
+}
+
+class InMemoryScheduler : IMeetingScheduler {
+    private readonly List<Room> rooms;
+    private readonly IRoomSelectionStrategy strategy;
+    private readonly Dictionary<Room, List<Booking>> bookings = new Dictionary<Room, List<Booking>>();
+    private readonly object gate = new object();
+    private int seq = 1;
+
+    public InMemoryScheduler(List<Room> rooms, IRoomSelectionStrategy strategy) {
+        this.rooms = new List<Room>(rooms); this.strategy = strategy;
+        foreach (Room r in rooms) bookings[r] = new List<Booking>();
+    }
+
+    public Booking Book(int people, TimeSpan start, TimeSpan end) {
+        lock (gate) {
+            if (start >= end) throw new ArgumentException("start must be before end");
+            List<Room> free = rooms.Where(r => !bookings[r].Any(b => b.Overlaps(start, end))).ToList();
+            Room room = strategy.Choose(free, people);
+            if (room == null) return null;
+            Booking created = new Booking("B" + seq++, room, start, end, people);
+            bookings[room].Add(created);
+            return created;
+        }
+    }
+
+    public bool Cancel(string id) {
+        lock (gate) {
+            foreach (List<Booking> list in bookings.Values) if (list.RemoveAll(b => b.Id == id) > 0) return true;
+            return false;
+        }
+    }
+
+    public List<Booking> BookingsFor(Room room) { lock (gate) return new List<Booking>(bookings[room]); }
+}
+
+class Program {
+    static string RoomOf(Booking b) { return b == null ? "none" : b.Room.Name; }
+    static void Main() {
+        Room small = new Room("Huddle", 4), big = new Room("Board", 12);
+        IMeetingScheduler s = new InMemoryScheduler(new List<Room> { big, small }, new SmallestFitStrategy());
+        Console.WriteLine(RoomOf(s.Book(3, new TimeSpan(10, 0, 0), new TimeSpan(11, 0, 0))));   // Huddle
+        Console.WriteLine(RoomOf(s.Book(3, new TimeSpan(10, 30, 0), new TimeSpan(11, 0, 0))));  // Board
+        Console.WriteLine(RoomOf(s.Book(3, new TimeSpan(10, 30, 0), new TimeSpan(11, 0, 0))));  // none
+    }
 }` }
     ],
     t2_god: [
@@ -6115,6 +7802,59 @@ int main() {
     handle("IN TRUCK KA-77 9");
     handle("OUT 1 12 CASH");
     handle("SHOW");
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// ANTI-EXAMPLE: the "God class". Every requirement landed in the same file.
+// Read the comments marked SMELL: each one is a point an interviewer deducts.
+class Program {
+    // SMELL 1: parallel arrays instead of a ParkingSpot object
+    static string[] size = { "S", "M", "M", "L", "L" };
+    static string[] who = new string[5];
+    static long[] since = new long[5];
+    // SMELL 2: money and payment state live next to spot state
+    static long cashInDrawer = 0;
+    static int ticketCounter = 0;
+
+    static void Main() {
+        Handle("IN CAR KA-01 9");
+        Handle("IN TRUCK KA-77 9");
+        Handle("OUT 1 12 CASH");
+        Handle("SHOW");
+    }
+
+    // SMELL 3: one method parses input, applies rules, prices, takes payment and prints
+    static void Handle(string cmd) {
+        string[] p = cmd.Split(' ');
+        if (p[0] == "IN") {
+            for (int i = 0; i < size.Length; i++) {
+                // SMELL 4: fit rules hard-coded as string comparisons, duplicated elsewhere
+                bool fits = p[1] == "BIKE" || (p[1] == "CAR" && size[i] != "S") || (p[1] == "TRUCK" && size[i] == "L");
+                if (who[i] == null && fits) {
+                    who[i] = p[2] + "/" + p[1];             // SMELL 5: type smuggled inside a string
+                    since[i] = long.Parse(p[3]);
+                    ticketCounter++;
+                    Console.WriteLine("Ticket " + ticketCounter + " spot " + i);
+                    return;
+                }
+            }
+            Console.WriteLine("FULL");
+        } else if (p[0] == "OUT") {
+            int spot = int.Parse(p[1]);
+            string type = who[spot].Split('/')[1];
+            long hrs = Math.Max(1, long.Parse(p[2]) - since[spot]);
+            long fee = type == "BIKE" ? hrs * 10 : type == "CAR" ? hrs * 20 : hrs * 50;   // SMELL 6: pricing inline
+            if (p[3] == "CASH") cashInDrawer += fee;                                        // SMELL 7: payment inline
+            else Console.WriteLine("Calling card gateway...");
+            who[spot] = null;
+            Console.WriteLine("Paid " + fee);
+        } else if (p[0] == "SHOW") {
+            int free = 0;
+            foreach (string w in who) if (w == null) free++;
+            Console.WriteLine("Free spots: " + free + ", cash: " + cashInDrawer);   // SMELL 8: UI inside domain
+        }
+    }
 }` }
     ],
     ParkingLotDemo: [
@@ -6887,6 +8627,284 @@ int main() {
     cout << t4.id << " -> " << t4.spot->id() << "\\n";  // T4 -> F1-S2
     cout << t5.id << " -> " << t5.spot->id() << "\\n";  // T5 -> F1-S3
     try { in.enter({"KA-06-6666", VehicleType::Truck}); } catch (const ParkingLotFullException& e) { cout << e.what() << "\\n"; }  // all LARGE taken
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+// ===================== 1. Value types =====================
+
+/// Physical size of a spot painted on the floor.
+enum SpotType { SMALL, COMPACT, LARGE }
+
+/// Kind of vehicle. Each type knows which spot sizes it fits, best fit first.
+sealed class VehicleType {
+    public static readonly VehicleType BIKE = new VehicleType("BIKE", SpotType.SMALL, SpotType.COMPACT, SpotType.LARGE);
+    public static readonly VehicleType CAR = new VehicleType("CAR", SpotType.COMPACT, SpotType.LARGE);
+    public static readonly VehicleType TRUCK = new VehicleType("TRUCK", SpotType.LARGE);
+    private readonly string name; private readonly IReadOnlyList<SpotType> fits;
+    private VehicleType(string name, params SpotType[] fits) { this.name = name; this.fits = fits; }
+    /// Spot types this vehicle may use, in order of preference (smallest that fits first).
+    public IReadOnlyList<SpotType> Fits { get { return fits; } }
+    public override string ToString() { return name; }
+}
+
+/// A vehicle is pure data: a number plate and a type. Immutable.
+sealed class Vehicle {
+    public readonly string Plate; public readonly VehicleType Type;
+    public Vehicle(string plate, VehicleType type) {
+        if (plate == null) throw new ArgumentNullException("plate");
+        if (type == null) throw new ArgumentNullException("type");
+        Plate = plate; Type = type;
+    }
+}
+
+/// What the driver gets back at the exit gate.
+sealed class Receipt {
+    public readonly string TicketId, Plate; public readonly long MinutesParked, Amount;
+    public Receipt(string ticketId, string plate, long minutesParked, long amount) { TicketId = ticketId; Plate = plate; MinutesParked = minutesParked; Amount = amount; }
+}
+
+// ===================== 2. Core entities =====================
+
+/// One painted rectangle on one floor. Knows its own state: free or holding a vehicle.
+class ParkingSpot {
+    private readonly string id;          // e.g. "F0-S3"
+    private readonly int floor;
+    private readonly SpotType type;
+    private Vehicle vehicle;             // null means free
+
+    public ParkingSpot(string id, int floor, SpotType type) {
+        this.id = id; this.floor = floor; this.type = type;
+    }
+
+    public bool IsFree { get { return vehicle == null; } }
+
+    public void Assign(Vehicle v) {
+        if (!IsFree) throw new InvalidOperationException("Spot " + id + " already taken");
+        if (!v.Type.Fits.Contains(type)) throw new ArgumentException(v.Type + " cannot use " + type);
+        vehicle = v;
+    }
+
+    public void Release() { vehicle = null; }
+
+    public string Id { get { return id; } }
+    public int Floor { get { return floor; } }
+    public SpotType Type { get { return type; } }
+    public Vehicle Vehicle { get { return vehicle; } }
+}
+
+/// A floor is just an ordered group of spots.
+class ParkingFloor {
+    private readonly int number;
+    private readonly List<ParkingSpot> spots = new List<ParkingSpot>();
+
+    public ParkingFloor(int number, params SpotType[] layout) {
+        this.number = number;
+        for (int i = 0; i < layout.Length; i++) {
+            spots.Add(new ParkingSpot("F" + number + "-S" + i, number, layout[i]));
+        }
+    }
+
+    public int Number { get { return number; } }
+    public IReadOnlyList<ParkingSpot> Spots { get { return spots.AsReadOnly(); } }
+}
+
+/// Issued at the entry gate; the "receipt of a promise" that links a vehicle to a spot and a start time.
+class Ticket {
+    private readonly string id;
+    private readonly Vehicle vehicle;
+    private readonly ParkingSpot spot;
+    private readonly DateTime entryTime;
+
+    public Ticket(string id, Vehicle vehicle, ParkingSpot spot, DateTime entryTime) {
+        this.id = id; this.vehicle = vehicle; this.spot = spot; this.entryTime = entryTime;
+    }
+
+    public string Id { get { return id; } }
+    public Vehicle Vehicle { get { return vehicle; } }
+    public ParkingSpot Spot { get { return spot; } }
+    public DateTime EntryTime { get { return entryTime; } }
+}
+
+// ===================== 3. Strategies (the parts that change) =====================
+
+/// HOW we choose a spot. Swap implementations without touching ParkingLot (Strategy pattern).
+interface ISpotAllocationStrategy {
+    ParkingSpot FindSpot(List<ParkingFloor> floors, VehicleType type);   // null when none
+}
+
+/// Lowest floor first; on each floor, the smallest spot type that fits; then lowest index.
+class NearestFirstStrategy : ISpotAllocationStrategy {
+    public ParkingSpot FindSpot(List<ParkingFloor> floors, VehicleType type) {
+        foreach (ParkingFloor floor in floors) {
+            foreach (SpotType wanted in type.Fits) {
+                foreach (ParkingSpot s in floor.Spots) {
+                    if (s.IsFree && s.Type == wanted) return s;
+                }
+            }
+        }
+        return null;
+    }
+}
+
+/// HOW MUCH we charge. Another Strategy: weekend pricing, flat pricing, etc. plug in here.
+interface IPricingStrategy {
+    long Fee(Ticket ticket, DateTime exitTime);
+}
+
+/// Rate per started hour, by vehicle type. Minimum one hour.
+class HourlyPricing : IPricingStrategy {
+    private readonly Dictionary<VehicleType, long> ratePerHour;
+
+    public HourlyPricing(Dictionary<VehicleType, long> ratePerHour) { this.ratePerHour = new Dictionary<VehicleType, long>(ratePerHour); }
+
+    public long Fee(Ticket t, DateTime exitTime) {
+        long minutes = (long)(exitTime - t.EntryTime).TotalMinutes;
+        long hours = Math.Max(1, (minutes + 59) / 60);           // ceil, at least 1 hour
+        return hours * ratePerHour[t.Vehicle.Type];
+    }
+}
+
+/// Where "now" comes from. Injected so tests and demos can control time (Dependency Inversion).
+interface ITimeSource { DateTime Now(); }
+
+class FakeTime : ITimeSource {
+    private DateTime now = new DateTime(2026, 1, 1, 9, 0, 0);
+    public DateTime Now() { return now; }
+    public void Advance(TimeSpan d) { now = now + d; }
+}
+
+// ===================== 4. The facade the gates talk to =====================
+
+class ParkingLotFullException : Exception {
+    public ParkingLotFullException(VehicleType t) : base("No free spot for " + t) { }
+}
+
+class ParkingLot {
+    private readonly List<ParkingFloor> floors;
+    private readonly ISpotAllocationStrategy allocation;
+    private readonly IPricingStrategy pricing;
+    private readonly ITimeSource clock;
+    private readonly Dictionary<string, Ticket> activeTickets = new Dictionary<string, Ticket>();
+    private readonly HashSet<string> platesInside = new HashSet<string>();
+    private readonly object gate = new object();
+    private long ticketSeq = 0;
+
+    public ParkingLot(List<ParkingFloor> floors, ISpotAllocationStrategy allocation,
+               IPricingStrategy pricing, ITimeSource clock) {
+        this.floors = new List<ParkingFloor>(floors);
+        this.allocation = allocation;
+        this.pricing = pricing;
+        this.clock = clock;
+    }
+
+    /// Entry flow: find spot -> occupy it -> issue ticket. lock so two gates never get the same spot.
+    public Ticket Park(Vehicle v) {
+        lock (gate) {
+            if (platesInside.Contains(v.Plate)) throw new InvalidOperationException(v.Plate + " is already inside");
+            ParkingSpot spot = allocation.FindSpot(floors, v.Type);
+            if (spot == null) throw new ParkingLotFullException(v.Type);
+            spot.Assign(v);
+            Ticket t = new Ticket("T" + Interlocked.Increment(ref ticketSeq), v, spot, clock.Now());
+            activeTickets[t.Id] = t;
+            platesInside.Add(v.Plate);
+            return t;
+        }
+    }
+
+    /// Exit flow: look up ticket -> price it -> free the spot -> close the ticket.
+    public Receipt Unpark(string ticketId) {
+        lock (gate) {
+            Ticket t;
+            if (!activeTickets.TryGetValue(ticketId, out t)) throw new KeyNotFoundException("Unknown or already used ticket " + ticketId);
+            activeTickets.Remove(ticketId);
+            DateTime exit = clock.Now();
+            long amount = pricing.Fee(t, exit);
+            t.Spot.Release();
+            platesInside.Remove(t.Vehicle.Plate);
+            long minutes = (long)(exit - t.EntryTime).TotalMinutes;
+            return new Receipt(t.Id, t.Vehicle.Plate, minutes, amount);
+        }
+    }
+
+    /// For the display board at the entrance.
+    public SortedDictionary<SpotType, int> FreeSpots() {
+        lock (gate) {
+            SortedDictionary<SpotType, int> free = new SortedDictionary<SpotType, int>();
+            foreach (SpotType st in Enum.GetValues(typeof(SpotType))) free[st] = 0;
+            foreach (ParkingFloor f in floors)
+                foreach (ParkingSpot s in f.Spots)
+                    if (s.IsFree) free[s.Type]++;
+            return free;
+        }
+    }
+}
+
+// ===================== 5. Gates: thin, they only talk to the lot =====================
+
+class EntryGate {
+    private readonly ParkingLot lot;
+    public EntryGate(ParkingLot lot) { this.lot = lot; }
+    public Ticket Enter(Vehicle v) { return lot.Park(v); }
+}
+
+class ExitGate {
+    private readonly ParkingLot lot;
+    public ExitGate(ParkingLot lot) { this.lot = lot; }
+    public Receipt Exit(string ticketId) { return lot.Unpark(ticketId); }
+}
+
+// ===================== 6. Demo (what you show the interviewer at the end) =====================
+
+class Program {
+    static void Main() {
+        FakeTime time = new FakeTime();
+        List<ParkingFloor> floors = new List<ParkingFloor> {
+                new ParkingFloor(0, SpotType.SMALL, SpotType.COMPACT, SpotType.COMPACT, SpotType.LARGE),
+                new ParkingFloor(1, SpotType.SMALL, SpotType.COMPACT, SpotType.LARGE, SpotType.LARGE) };
+        ParkingLot lot = new ParkingLot(floors, new NearestFirstStrategy(),
+                new HourlyPricing(new Dictionary<VehicleType, long> { { VehicleType.BIKE, 10L }, { VehicleType.CAR, 20L }, { VehicleType.TRUCK, 50L } }),
+                time);
+        EntryGate entry = new EntryGate(lot);
+        ExitGate exitGate = new ExitGate(lot);
+
+        Ticket t1 = entry.Enter(new Vehicle("KA-01-1111", VehicleType.CAR));
+        Ticket t2 = entry.Enter(new Vehicle("KA-02-2222", VehicleType.BIKE));
+        Ticket t3 = entry.Enter(new Vehicle("KA-03-3333", VehicleType.TRUCK));
+        Console.WriteLine(t1.Id + " -> " + t1.Spot.Id);   // T1 -> F0-S1
+        Console.WriteLine(t2.Id + " -> " + t2.Spot.Id);   // T2 -> F0-S0
+        Console.WriteLine(t3.Id + " -> " + t3.Spot.Id);   // T3 -> F0-S3
+        Console.WriteLine("Free: {" + string.Join(", ", lot.FreeSpots().Select(kv => kv.Key + "=" + kv.Value)) + "}");   // {SMALL=1, COMPACT=2, LARGE=2}
+
+        try {
+            entry.Enter(new Vehicle("KA-01-1111", VehicleType.CAR)); // the same plate cannot be inside twice
+        } catch (InvalidOperationException e) {
+            Console.WriteLine(e.Message);
+        }
+
+        time.Advance(TimeSpan.FromMinutes(150));                  // 2h30m later
+        Receipt r = exitGate.Exit(t1.Id);
+        Console.WriteLine("Receipt " + r.TicketId + " " + r.Plate + " " + r.MinutesParked + " min, amount " + r.Amount); // 3 started hours x 20 = 60
+
+        try {
+            exitGate.Exit(t1.Id);                                 // same ticket twice
+        } catch (KeyNotFoundException e) {
+            Console.WriteLine("Rejected: " + e.Message);
+        }
+
+        Ticket t4 = entry.Enter(new Vehicle("KA-04-4444", VehicleType.TRUCK));
+        Ticket t5 = entry.Enter(new Vehicle("KA-05-5555", VehicleType.TRUCK));
+        Console.WriteLine(t4.Id + " -> " + t4.Spot.Id);   // T4 -> F1-S2
+        Console.WriteLine(t5.Id + " -> " + t5.Spot.Id);   // T5 -> F1-S3
+        try {
+            entry.Enter(new Vehicle("KA-06-6666", VehicleType.TRUCK)); // all three LARGE spots are taken
+        } catch (ParkingLotFullException e) {
+            Console.WriteLine(e.Message);
+        }
+    }
 }` }
     ],
     t4_flow: [
@@ -7266,6 +9284,113 @@ int main() {
     try { lot.exit(t.id); } catch (const logic_error& e) { cout << e.what() << "\\n"; }  // not paid yet
     cout << "Paid " << lot.pay(t.id, nine + chrono::minutes(95), PaymentMode::Upi) << "\\n";  // 2 hours -> 80
     lot.exit(t.id);  // [screen] A1 free
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// Focus: the TICKET LIFECYCLE across entry -> payment -> exit, with events for display boards.
+
+enum TicketStatus { ACTIVE, PAID, EXITED }        // a tiny state machine
+enum PaymentMode { CASH, CARD, UPI }
+
+/// Strategy for HOW money is collected. A real one would call a gateway; here they just succeed.
+interface IPaymentProcessor { bool Charge(string ticketId, long amount); }
+class CashProcessor : IPaymentProcessor { public bool Charge(string id, long amt) { return true; } }
+class UpiProcessor : IPaymentProcessor { public bool Charge(string id, long amt) { return amt > 0; } }
+
+/// Observer for screens at the entrance and on each floor.
+interface IParkingListener { void SpotTaken(string spotId); void SpotFreed(string spotId); }
+
+class FlowTicket {
+    public readonly string Id, SpotId; public readonly DateTime Entry; public TicketStatus Status = TicketStatus.ACTIVE; public long Paid;
+    public FlowTicket(string id, string spotId, DateTime entry) { Id = id; SpotId = spotId; Entry = entry; }
+
+    /// Only legal transitions are allowed; anything else is a bug or fraud.
+    public void MoveTo(TicketStatus next) {
+        bool ok = (Status == TicketStatus.ACTIVE && next == TicketStatus.PAID)
+               || (Status == TicketStatus.PAID && next == TicketStatus.EXITED);
+        if (!ok) throw new InvalidOperationException("Ticket " + Id + ": " + Status + " -> " + next + " not allowed");
+        Status = next;
+    }
+}
+
+class ParkingFlow {
+    private readonly LinkedList<string> freeSpots;
+    private readonly Dictionary<string, FlowTicket> tickets = new Dictionary<string, FlowTicket>();
+    private readonly Dictionary<PaymentMode, IPaymentProcessor> processors = new Dictionary<PaymentMode, IPaymentProcessor>();
+    private readonly List<IParkingListener> listeners = new List<IParkingListener>();
+    private readonly long ratePerHour;
+    private readonly object gate = new object();
+    private int seq = 1;
+
+    public ParkingFlow(List<string> spots, long ratePerHour) {
+        freeSpots = new LinkedList<string>(spots); this.ratePerHour = ratePerHour;
+        processors[PaymentMode.CASH] = new CashProcessor();
+        processors[PaymentMode.UPI] = new UpiProcessor();
+    }
+
+    public void AddListener(IParkingListener l) { listeners.Add(l); }
+
+    /// ENTRY GATE: take nearest spot, issue ticket, tell the screens.
+    public FlowTicket Enter(DateTime now) {
+        lock (gate) {
+            if (freeSpots.Count == 0) throw new InvalidOperationException("Lot full");
+            string spot = freeSpots.First.Value; freeSpots.RemoveFirst();
+            FlowTicket t = new FlowTicket("T" + seq++, spot, now);
+            tickets[t.Id] = t;
+            foreach (IParkingListener l in listeners) l.SpotTaken(spot);
+            return t;
+        }
+    }
+
+    /// PAY STATION: price the stay and collect money. Spot is NOT freed yet (car still inside).
+    public long Pay(string ticketId, DateTime now, PaymentMode mode) {
+        lock (gate) {
+            FlowTicket t = Find(ticketId);
+            long hours = Math.Max(1, ((long)(now - t.Entry).TotalMinutes + 59) / 60);
+            long amount = hours * ratePerHour;
+            IPaymentProcessor p;
+            if (!processors.TryGetValue(mode, out p)) throw new NotSupportedException(mode + " not accepted here");
+            if (!p.Charge(t.Id, amount)) throw new InvalidOperationException("Payment declined");
+            t.MoveTo(TicketStatus.PAID);
+            t.Paid = amount;
+            return amount;
+        }
+    }
+
+    /// EXIT GATE: barrier opens only for PAID tickets; then the spot is released.
+    public void Exit(string ticketId) {
+        lock (gate) {
+            FlowTicket t = Find(ticketId);
+            t.MoveTo(TicketStatus.EXITED);              // throws if not paid
+            freeSpots.AddFirst(t.SpotId);               // nearest-first reuse
+            foreach (IParkingListener l in listeners) l.SpotFreed(t.SpotId);
+        }
+    }
+
+    private FlowTicket Find(string id) {
+        FlowTicket t;
+        if (!tickets.TryGetValue(id, out t)) throw new KeyNotFoundException("No ticket " + id);
+        return t;
+    }
+}
+
+class Screen : IParkingListener {
+    public void SpotTaken(string s) { Console.WriteLine("[screen] " + s + " taken"); }
+    public void SpotFreed(string s) { Console.WriteLine("[screen] " + s + " free"); }
+}
+
+class Program {
+    static void Main() {
+        ParkingFlow lot = new ParkingFlow(new List<string> { "A1", "A2" }, 40);
+        lot.AddListener(new Screen());
+        DateTime nine = new DateTime(2026, 1, 1, 9, 0, 0);
+        FlowTicket t = lot.Enter(nine);                                            // [screen] A1 taken
+        try { lot.Exit(t.Id); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); } // not paid yet
+        Console.WriteLine("Paid " + lot.Pay(t.Id, nine.AddMinutes(95), PaymentMode.UPI)); // 2 hours -> 80
+        lot.Exit(t.Id);                                                            // [screen] A1 free
+    }
 }` }
     ],
     TicTacToeDemo: [
@@ -7885,6 +10010,196 @@ int main() {
     try {
         Game(3, {make_shared<ScriptedPlayer>("A", 'X', vector<pair<int, int>>{{0, 0}}), make_shared<ScriptedPlayer>("B", 'O')}).play();
     } catch (const logic_error& e) { cout << e.what() << "\\n"; }  // B has no moves
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// ===================== 1. Small value types =====================
+
+/// A move is just data: who played where.
+sealed class Move {
+    public readonly int Row, Col; public readonly IPlayer Player;
+    public Move(int row, int col, IPlayer player) { Row = row; Col = col; Player = player; }
+}
+
+enum GameStatus { IN_PROGRESS, WON, DRAW }
+
+// ===================== 2. Players (Strategy: how a move is chosen) =====================
+
+/// Anything that can pick a move: a human at a keyboard, a scripted test, a bot.
+interface IPlayer {
+    string Name { get; }
+    char Symbol { get; }
+    int[] ChooseMove(Board board);      // returns {row, col}
+}
+
+/// Plays a fixed list of moves. Perfect for demos and unit tests (no console input needed).
+class ScriptedPlayer : IPlayer {
+    private readonly string name;
+    private readonly char symbol;
+    private readonly Queue<int[]> moves = new Queue<int[]>();
+
+    public ScriptedPlayer(string name, char symbol, params int[][] script) {
+        this.name = name; this.symbol = symbol;
+        foreach (int[] m in script) moves.Enqueue(m);
+    }
+    public string Name { get { return name; } }
+    public char Symbol { get { return symbol; } }
+    public int[] ChooseMove(Board board) {
+        if (moves.Count == 0) throw new InvalidOperationException(name + " ran out of scripted moves");
+        return moves.Dequeue();
+    }
+}
+
+// ===================== 3. Board: owns cells and validation only =====================
+
+class Board {
+    public const char EMPTY = '.';
+    private readonly int n;
+    private readonly char[][] cells;
+    private int filled = 0;
+
+    public Board(int n) {
+        if (n < 3) throw new ArgumentException("Board must be at least 3x3");
+        this.n = n;
+        cells = new char[n][];
+        for (int r = 0; r < n; r++) { cells[r] = new char[n]; for (int c = 0; c < n; c++) cells[r][c] = EMPTY; }
+    }
+
+    public int Size { get { return n; } }
+    public bool IsFull { get { return filled == n * n; } }
+    public char At(int r, int c) { return cells[r][c]; }
+
+    public bool IsValid(int r, int c) {
+        return r >= 0 && r < n && c >= 0 && c < n && cells[r][c] == EMPTY;
+    }
+
+    public void Place(int r, int c, char symbol) {
+        if (!IsValid(r, c)) throw new ArgumentException("Illegal move (" + r + "," + c + ")");
+        cells[r][c] = symbol;
+        filled++;
+    }
+
+    public void Print() {
+        foreach (char[] row in cells) Console.WriteLine(new string(row));
+    }
+}
+
+// ===================== 4. Win detection: its own class, O(1) per move =====================
+
+/// Rule for "who won?". Separate interface so "4 in a row" or "corners win" variants plug in.
+interface IWinningStrategy {
+    bool IsWinningMove(Board board, Move move, int playerIndex);
+}
+
+/// Keeps a counter per (player, row), (player, col), and both diagonals.
+/// A player wins when any counter reaches n. Each move costs O(1) instead of rescanning O(n^2).
+class CounterWinningStrategy : IWinningStrategy {
+    private readonly int n;
+    private readonly int[][] rows, cols;
+    private readonly int[] diag, anti;
+
+    public CounterWinningStrategy(int n, int players) {
+        this.n = n;
+        rows = new int[players][]; cols = new int[players][];
+        for (int p = 0; p < players; p++) { rows[p] = new int[n]; cols[p] = new int[n]; }
+        diag = new int[players];
+        anti = new int[players];
+    }
+
+    public bool IsWinningMove(Board board, Move m, int p) {
+        int r = m.Row, c = m.Col;
+        if (++rows[p][r] == n) return true;
+        if (++cols[p][c] == n) return true;
+        if (r == c && ++diag[p] == n) return true;
+        return r + c == n - 1 && ++anti[p] == n;
+    }
+}
+
+// ===================== 5. Game: turn order + status (the orchestrator) =====================
+
+class Game {
+    private readonly Board board;
+    private readonly List<IPlayer> players;
+    private readonly IWinningStrategy rules;
+    private readonly List<Move> history = new List<Move>();
+    private int turn = 0;
+    private GameStatus status = GameStatus.IN_PROGRESS;
+    private IPlayer winner;
+
+    public Game(int n, List<IPlayer> players) {
+        if (players.Count < 2) throw new ArgumentException("Need at least 2 players");
+        HashSet<char> symbols = new HashSet<char>();
+        foreach (IPlayer p in players)
+            if (!symbols.Add(p.Symbol)) throw new ArgumentException("Duplicate symbol " + p.Symbol);
+        board = new Board(n);
+        this.players = new List<IPlayer>(players);
+        rules = new CounterWinningStrategy(n, players.Count);
+    }
+
+    /// Apply one move for the player whose turn it is. Returns the new status.
+    public GameStatus MakeMove(int r, int c) {
+        if (status != GameStatus.IN_PROGRESS) throw new InvalidOperationException("Game is over: " + status);
+        IPlayer p = players[turn];
+        board.Place(r, c, p.Symbol);                    // throws on illegal move; turn does not advance
+        Move m = new Move(r, c, p);
+        history.Add(m);
+        if (rules.IsWinningMove(board, m, turn)) {
+            status = GameStatus.WON;
+            winner = p;
+        } else if (board.IsFull) {
+            status = GameStatus.DRAW;
+        } else {
+            turn = (turn + 1) % players.Count;
+        }
+        return status;
+    }
+
+    /// Drive the game by asking each Player for a move until it ends.
+    public void Play() {
+        while (status == GameStatus.IN_PROGRESS) {
+            int[] rc = players[turn].ChooseMove(board);
+            MakeMove(rc[0], rc[1]);
+        }
+    }
+
+    public GameStatus Status { get { return status; } }
+    public IPlayer Winner { get { return winner; } }        // null until someone wins
+    public IReadOnlyList<Move> History { get { return history.AsReadOnly(); } }
+    public Board Board { get { return board; } }
+}
+
+// ===================== 6. Demo =====================
+
+class Program {
+    static void Main() {
+        IPlayer alice = new ScriptedPlayer("Alice", 'X', new[] { 0, 0 }, new[] { 1, 1 }, new[] { 2, 2 });
+        IPlayer bob = new ScriptedPlayer("Bob", 'O', new[] { 0, 1 }, new[] { 0, 2 });
+        Game game = new Game(3, new List<IPlayer> { alice, bob });
+        game.Play();
+        game.Board.Print();
+        // XOO
+        // .X.
+        // ..X
+        Console.WriteLine(game.Status + " winner=" + (game.Winner == null ? "none" : game.Winner.Name));
+        Console.WriteLine("Moves played: " + game.History.Count);   // 5
+
+        // Failure paths: each one is refused by exactly one class, and the game state stays valid.
+        Game g2 = new Game(3, new List<IPlayer> { new ScriptedPlayer("A", 'X'), new ScriptedPlayer("B", 'O') });
+        g2.MakeMove(0, 0);
+        try { g2.MakeMove(0, 0); } catch (ArgumentException e) { Console.WriteLine(e.Message); }  // occupied
+        g2.MakeMove(1, 1);                                  // still B's turn: the refused move did not advance it
+        g2.Board.Print();
+        // board now: X.. / .O. / ...
+        try { game.MakeMove(1, 0); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // game already won
+        try { new Game(3, new List<IPlayer> { alice, new ScriptedPlayer("Cy", 'X') }); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }                              // same symbol twice
+        try { new Game(2, new List<IPlayer> { alice, bob }); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { new Game(3, new List<IPlayer> { new ScriptedPlayer("A", 'X', new[] { 0, 0 }), new ScriptedPlayer("B", 'O') }).Play(); }
+        catch (InvalidOperationException e) { Console.WriteLine(e.Message); }                      // B has no moves
+    }
 }` }
     ],
     t6_extend: [
@@ -8373,6 +10688,122 @@ int main() {
     try {
         Game::builder().player(make_unique<ScriptedPlayer>('X', vector<Cell>{{0, 0}})).player(make_unique<ScriptedPlayer>('O')).build().play();
     } catch (const logic_error& e) { cout << e.what() << "\\n"; }  // O has no move to make
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Extension points in one place. Each follow-up question from the interviewer maps to
+// ONE new class plugged into an existing interface; the Game class itself never changes.
+
+interface IPlayer { char Symbol { get; } int[] Next(char[][] board); }                  // follow-up: "add a bot"
+interface IWinRule { bool Wins(char[][] b, int r, int c); }                             // follow-up: "K in a row"
+interface IGameListener { void Moved(char who, int r, int c); void Ended(string result); }  // "add a scoreboard"
+
+class ScriptedPlayer : IPlayer {
+    private readonly char sym; private readonly Queue<int[]> script;
+    public ScriptedPlayer(char sym, params int[][] moves) { this.sym = sym; script = new Queue<int[]>(moves); }
+    public char Symbol { get { return sym; } }
+    public int[] Next(char[][] b) { return script.Count == 0 ? null : script.Dequeue(); }
+}
+
+/// Follow-up answer #1: a bot is just another IPlayer. Seeded Random => reproducible tests.
+class RandomBot : IPlayer {
+    private readonly char sym; private readonly Random rnd;
+    public RandomBot(char sym, int seed) { this.sym = sym; rnd = new Random(seed); }
+    public char Symbol { get { return sym; } }
+    public int[] Next(char[][] b) {
+        List<int[]> free = new List<int[]>();
+        for (int r = 0; r < b.Length; r++) for (int c = 0; c < b.Length; c++) if (b[r][c] == '.') free.Add(new[] { r, c });
+        return free[rnd.Next(free.Count)];
+    }
+}
+
+/// Follow-up answer #2: "K in a row" on a bigger board. Checks only lines through the last move.
+class KInARow : IWinRule {
+    private readonly int k;
+    public KInARow(int k) { this.k = k; }
+    public bool Wins(char[][] b, int r, int c) {
+        int[][] dirs = { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 1, 1 }, new[] { 1, -1 } };
+        foreach (int[] d in dirs) {
+            int count = 1;
+            for (int s = -1; s <= 1; s += 2)
+                for (int rr = r + s * d[0], cc = c + s * d[1];
+                     rr >= 0 && rr < b.Length && cc >= 0 && cc < b.Length && b[rr][cc] == b[r][c];
+                     rr += s * d[0], cc += s * d[1]) count++;
+            if (count >= k) return true;
+        }
+        return false;
+    }
+}
+
+/// Builder: many optional knobs without a 7-argument constructor.
+class Game {
+    private readonly char[][] board; private readonly List<IPlayer> players; private readonly IWinRule rule;
+    private readonly List<IGameListener> listeners;
+
+    private Game(Builder b) {
+        board = new char[b.size][];
+        for (int r = 0; r < b.size; r++) board[r] = Enumerable.Repeat('.', b.size).ToArray();
+        players = new List<IPlayer>(b.players); rule = b.rule ?? new KInARow(b.size);
+        listeners = new List<IGameListener>(b.listeners);
+    }
+
+    public static Builder NewBuilder() { return new Builder(); }
+
+    public class Builder {
+        internal int size = 3; internal readonly List<IPlayer> players = new List<IPlayer>();
+        internal IWinRule rule; internal readonly List<IGameListener> listeners = new List<IGameListener>();
+        public Builder Size(int n) { size = n; return this; }
+        public Builder Player(IPlayer p) { players.Add(p); return this; }
+        public Builder Rule(IWinRule r) { rule = r; return this; }
+        public Builder Listener(IGameListener l) { listeners.Add(l); return this; }
+        public Game Build() {
+            if (players.Count < 2) throw new InvalidOperationException("need 2+ players");
+            return new Game(this);
+        }
+    }
+
+    public string Play() {
+        int cells = board.Length * board.Length;
+        for (int moves = 0, turn = 0; moves < cells; moves++, turn = (turn + 1) % players.Count) {
+            IPlayer p = players[turn];
+            int[] m = p.Next(board);
+            if (m == null || board[m[0]][m[1]] != '.') throw new InvalidOperationException(p.Symbol + " made an illegal move");
+            board[m[0]][m[1]] = p.Symbol;
+            foreach (IGameListener l in listeners) l.Moved(p.Symbol, m[0], m[1]);
+            if (rule.Wins(board, m[0], m[1])) { string res = p.Symbol + " wins"; foreach (IGameListener l in listeners) l.Ended(res); return res; }
+        }
+        foreach (IGameListener l in listeners) l.Ended("draw");
+        return "draw";
+    }
+}
+
+/// Follow-up answer #3: a scoreboard that just listens.
+class Scoreboard : IGameListener {
+    public readonly SortedDictionary<string, int> Results = new SortedDictionary<string, int>(StringComparer.Ordinal);
+    public void Moved(char who, int r, int c) { }
+    public void Ended(string result) { int n; Results.TryGetValue(result, out n); Results[result] = n + 1; }
+}
+
+class Program {
+    static void Main() {
+        Scoreboard score = new Scoreboard();
+        string r1 = Game.NewBuilder().Size(4).Rule(new KInARow(3))
+                .Player(new ScriptedPlayer('X', new[] { 0, 0 }, new[] { 1, 1 }, new[] { 2, 2 }))
+                .Player(new ScriptedPlayer('O', new[] { 0, 3 }, new[] { 1, 3 }))
+                .Listener(score).Build().Play();
+        Console.WriteLine(r1);                                    // X wins (3 in a row on 4x4)
+        for (int i = 0; i < 20; i++)
+            Game.NewBuilder().Player(new RandomBot('X', i)).Player(new RandomBot('O', 100 + i)).Listener(score).Build().Play();
+        int total = score.Results.Values.Sum();
+        Console.WriteLine("games recorded: " + total);            // 21
+        try { Game.NewBuilder().Player(new ScriptedPlayer('X')).Build(); }
+        catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // need 2+ players
+        try { Game.NewBuilder().Player(new ScriptedPlayer('X', new[] { 0, 0 })).Player(new ScriptedPlayer('O')).Build().Play(); }
+        catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // O has no move to make
+    }
 }` }
     ]
   };
@@ -8559,7 +10990,7 @@ int main() {
       statement: `<p>Apply the 7-step framework to a small library. Members borrow and return books; a member may hold at most <b>3</b> books; loans last <b>14 days</b>; the librarian can list overdue loans. The interviewer warns: <i>"next quarter, premium members get different limits"</i>. Produce entities, APIs and working code.</p>`,
       constraints: `In-memory only. Up to 10<sup>5</sup> books and members. Dates use your language's date type (<code>LocalDate</code> / <code>datetime.date</code> / <code>Date</code> / <code>std::chrono</code>). Borrowing an already-lent book or exceeding the limit must fail with a clear exception.`,
       example: `<p>Asha borrows <code>111</code> on ${H.c('b', '2026-01-01')} → due ${H.c('g', '2026-01-15')}. On 2026-01-20, <code>overdue()</code> returns ${H.c('r', '1 loan')}. After she returns it, ${H.c('g', '0 loans')}. Asha trying a 4th book → ${H.c('r', 'an error: reached the limit of 3')}.</p>`,
-      brute: { why: `<p>A single <code>LibrarySystem</code> class with two maps and string statuses ("FREE" / memberId). It passes a demo, but the limit 3 is hard-coded mid-method, there is no Loan object so "overdue" cannot even be computed (no due date stored), and the premium-member follow-up means editing the core method. Errors come back as magic strings that callers must remember.</p>`, code: { lang: 'java', code: J.g1_brute, alt: [{ lang: 'python', code: "# BRUTE FORCE: one class, dicts of strings, status as magic text.\n# It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem:\n    def __init__(self):\n        self.book_status = {}      # isbn -> \"FREE\" or member_id\n        self.borrowed_count = {}   # member_id -> count\n\n    def add_book(self, isbn):\n        self.book_status[isbn] = \"FREE\"\n\n    def borrow(self, member_id, isbn):\n        if isbn not in self.book_status: return \"NO_SUCH_BOOK\"\n        if self.book_status[isbn] != \"FREE\": return \"TAKEN\"\n        count = self.borrowed_count.get(member_id, 0)\n        if count >= 3: return \"LIMIT\"                # rule hard-coded in the middle of the flow\n        self.book_status[isbn] = member_id\n        self.borrowed_count[member_id] = count + 1\n        return \"OK\"\n\n    def give_back(self, member_id, isbn):\n        if self.book_status.get(isbn) != member_id: return \"NOT_YOURS\"\n        self.book_status[isbn] = \"FREE\"\n        self.borrowed_count[member_id] = self.borrowed_count.get(member_id, 0) - 1\n        return \"OK\"\n" }, { lang: 'ts', code: "// BRUTE FORCE: one class, maps of strings, status as magic text.\n// It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem {\n  private bookStatus = new Map<string, string>();      // isbn -> \"FREE\" or memberId\n  private borrowedCount = new Map<string, number>();   // memberId -> count\n\n  addBook(isbn: string): void { this.bookStatus.set(isbn, \"FREE\"); }\n\n  borrow(memberId: string, isbn: string): string {\n    if (!this.bookStatus.has(isbn)) return \"NO_SUCH_BOOK\";\n    if (this.bookStatus.get(isbn) !== \"FREE\") return \"TAKEN\";\n    const count = this.borrowedCount.get(memberId) ?? 0;\n    if (count >= 3) return \"LIMIT\";                  // rule hard-coded in the middle of the flow\n    this.bookStatus.set(isbn, memberId);\n    this.borrowedCount.set(memberId, count + 1);\n    return \"OK\";\n  }\n\n  giveBack(memberId: string, isbn: string): string {\n    if (this.bookStatus.get(isbn) !== memberId) return \"NOT_YOURS\";\n    this.bookStatus.set(isbn, \"FREE\");\n    this.borrowedCount.set(memberId, (this.borrowedCount.get(memberId) ?? 0) - 1);\n    return \"OK\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE FORCE: one class, maps of strings, status as magic text.\n// It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem {\n    unordered_map<string, string> bookStatus;   // isbn -> \"FREE\" or memberId\n    unordered_map<string, int> borrowedCount;   // memberId -> count\npublic:\n    void addBook(const string& isbn) { bookStatus[isbn] = \"FREE\"; }\n\n    string borrow(const string& memberId, const string& isbn) {\n        if (!bookStatus.count(isbn)) return \"NO_SUCH_BOOK\";\n        if (bookStatus[isbn] != \"FREE\") return \"TAKEN\";\n        int count = borrowedCount[memberId];\n        if (count >= 3) return \"LIMIT\";          // rule hard-coded in the middle of the flow\n        bookStatus[isbn] = memberId;\n        borrowedCount[memberId] = count + 1;\n        return \"OK\";\n    }\n\n    string giveBack(const string& memberId, const string& isbn) {\n        if (bookStatus[isbn] != memberId) return \"NOT_YOURS\";\n        bookStatus[isbn] = \"FREE\";\n        borrowedCount[memberId]--;\n        return \"OK\";\n    }\n};\n" }] } },
+      brute: { why: `<p>A single <code>LibrarySystem</code> class with two maps and string statuses ("FREE" / memberId). It passes a demo, but the limit 3 is hard-coded mid-method, there is no Loan object so "overdue" cannot even be computed (no due date stored), and the premium-member follow-up means editing the core method. Errors come back as magic strings that callers must remember.</p>`, code: { lang: 'java', code: J.g1_brute, alt: [{ lang: 'python', code: "# BRUTE FORCE: one class, dicts of strings, status as magic text.\n# It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem:\n    def __init__(self):\n        self.book_status = {}      # isbn -> \"FREE\" or member_id\n        self.borrowed_count = {}   # member_id -> count\n\n    def add_book(self, isbn):\n        self.book_status[isbn] = \"FREE\"\n\n    def borrow(self, member_id, isbn):\n        if isbn not in self.book_status: return \"NO_SUCH_BOOK\"\n        if self.book_status[isbn] != \"FREE\": return \"TAKEN\"\n        count = self.borrowed_count.get(member_id, 0)\n        if count >= 3: return \"LIMIT\"                # rule hard-coded in the middle of the flow\n        self.book_status[isbn] = member_id\n        self.borrowed_count[member_id] = count + 1\n        return \"OK\"\n\n    def give_back(self, member_id, isbn):\n        if self.book_status.get(isbn) != member_id: return \"NOT_YOURS\"\n        self.book_status[isbn] = \"FREE\"\n        self.borrowed_count[member_id] = self.borrowed_count.get(member_id, 0) - 1\n        return \"OK\"\n" }, { lang: 'ts', code: "// BRUTE FORCE: one class, maps of strings, status as magic text.\n// It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem {\n  private bookStatus = new Map<string, string>();      // isbn -> \"FREE\" or memberId\n  private borrowedCount = new Map<string, number>();   // memberId -> count\n\n  addBook(isbn: string): void { this.bookStatus.set(isbn, \"FREE\"); }\n\n  borrow(memberId: string, isbn: string): string {\n    if (!this.bookStatus.has(isbn)) return \"NO_SUCH_BOOK\";\n    if (this.bookStatus.get(isbn) !== \"FREE\") return \"TAKEN\";\n    const count = this.borrowedCount.get(memberId) ?? 0;\n    if (count >= 3) return \"LIMIT\";                  // rule hard-coded in the middle of the flow\n    this.bookStatus.set(isbn, memberId);\n    this.borrowedCount.set(memberId, count + 1);\n    return \"OK\";\n  }\n\n  giveBack(memberId: string, isbn: string): string {\n    if (this.bookStatus.get(isbn) !== memberId) return \"NOT_YOURS\";\n    this.bookStatus.set(isbn, \"FREE\");\n    this.borrowedCount.set(memberId, (this.borrowedCount.get(memberId) ?? 0) - 1);\n    return \"OK\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE FORCE: one class, maps of strings, status as magic text.\n// It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem {\n    unordered_map<string, string> bookStatus;   // isbn -> \"FREE\" or memberId\n    unordered_map<string, int> borrowedCount;   // memberId -> count\npublic:\n    void addBook(const string& isbn) { bookStatus[isbn] = \"FREE\"; }\n\n    string borrow(const string& memberId, const string& isbn) {\n        if (!bookStatus.count(isbn)) return \"NO_SUCH_BOOK\";\n        if (bookStatus[isbn] != \"FREE\") return \"TAKEN\";\n        int count = borrowedCount[memberId];\n        if (count >= 3) return \"LIMIT\";          // rule hard-coded in the middle of the flow\n        bookStatus[isbn] = memberId;\n        borrowedCount[memberId] = count + 1;\n        return \"OK\";\n    }\n\n    string giveBack(const string& memberId, const string& isbn) {\n        if (bookStatus[isbn] != memberId) return \"NOT_YOURS\";\n        bookStatus[isbn] = \"FREE\";\n        borrowedCount[memberId]--;\n        return \"OK\";\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\n// BRUTE FORCE: one class, maps of strings, status as magic text.\n// It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem {\n    private readonly Dictionary<string, string> bookStatus = new Dictionary<string, string>();   // isbn -> \"FREE\" or memberId\n    private readonly Dictionary<string, int> borrowedCount = new Dictionary<string, int>();      // memberId -> count\n\n    public void AddBook(string isbn) { bookStatus[isbn] = \"FREE\"; }\n\n    public string Borrow(string memberId, string isbn) {\n        if (!bookStatus.ContainsKey(isbn)) return \"NO_SUCH_BOOK\";\n        if (bookStatus[isbn] != \"FREE\") return \"TAKEN\";\n        int count; borrowedCount.TryGetValue(memberId, out count);\n        if (count >= 3) return \"LIMIT\";                // rule hard-coded in the middle of the flow\n        bookStatus[isbn] = memberId;\n        borrowedCount[memberId] = count + 1;\n        return \"OK\";\n    }\n\n    public string GiveBack(string memberId, string isbn) {\n        string holder; bookStatus.TryGetValue(isbn, out holder);\n        if (memberId != holder) return \"NOT_YOURS\";\n        bookStatus[isbn] = \"FREE\";\n        borrowedCount[memberId]--;\n        return \"OK\";\n    }\n}\n" }] } },
       mcq: { q: 'The interviewer says "premium members will have different limits". Where should that rule live?', options: ['Inside <code>borrow()</code> as an if-else on member type', 'In a <code>LendingPolicy</code> interface injected into Library', 'In the <code>Book</code> class', 'In a static constant'], answer: 1, explain: 'A rule that is announced to change goes behind an interface. A new PremiumPolicy class plugs in; Library never changes.' },
       hints: [
         `<p>Hint 1: underline nouns in the prompt — book, member, loan, library, limit. Which of them has its <i>own data</i>? A loan has a member, a book and a due date: it deserves a class.</p>`,
@@ -8783,7 +11214,7 @@ int main() {
       statement: `<p>You are given a working, single-class parking program (parallel arrays, type strings, inline pricing). Refactor it into a clean design <b>without changing its observable behaviour</b>: the demo must still print <code>Car at spot 1, pays 60</code>. Then show how "weekend pricing" would be added.</p>`,
       constraints: `Keep the same rules: bikes fit any spot, cars fit M or L, trucks only L; price per hour 10 / 20 / 50, minimum 1 hour. Tickets must not be reusable.`,
       example: `<p>Spots ${H.arr(['S', 'M', 'M', 'L'])} Car enters at hour 9 → ${H.c('g', 'spot 1')} (first M). Leaves at 12 → ${H.c('b', '3 h × 20 = 60')}. Leaving again with the same ticket → ${H.c('r', 'IllegalArgumentException')} (the brute force silently "frees" the spot twice).</p>`,
-      brute: { why: `<p>The original: everything static, rules duplicated as string comparisons, a ticket is just an array index (anyone can "leave" any spot), and pricing is tangled into <code>leave()</code>. Adding a vehicle type means editing both the fit check and the price ladder.</p>`, code: { lang: 'java', code: J.g2_brute, alt: [{ lang: 'python', code: "# THE GOD CLASS: everything about the parking lot lives in one place.\n# Spots are parallel lists, vehicle types are strings, prices are magic numbers.\nspot_size = [\"S\", \"M\", \"M\", \"L\"]   # S=bike, M=car, L=truck\nspot_plate = [None] * 4            # None = free\nspot_since = [0] * 4               # entry hour\n\ndef park(plate, type_, hour):\n    for i in range(len(spot_size)):\n        if spot_plate[i] is not None: continue\n        if (type_ == \"BIKE\" or (type_ == \"CAR\" and spot_size[i] != \"S\")\n                or (type_ == \"TRUCK\" and spot_size[i] == \"L\")):\n            spot_plate[i] = plate\n            spot_since[i] = hour\n            return i                           # the \"ticket\" is just an index\n    return -1                                  # full (or wrong type string, who knows)\n\ndef leave(spot, type_, hour):\n    hours = max(1, hour - spot_since[spot])\n    if type_ == \"BIKE\": fee = hours * 10       # pricing tangled into exit logic\n    elif type_ == \"CAR\": fee = hours * 20\n    else: fee = hours * 50\n    spot_plate[spot] = None                    # no check that the right car leaves\n    return fee\n\nif __name__ == \"__main__\":\n    t = park(\"KA-01\", \"CAR\", 9)\n    print(f\"Car at spot {t}, pays {leave(t, 'CAR', 12)}\")\n" }, { lang: 'ts', code: "// THE GOD CLASS: everything about the parking lot lives in one place.\n// Spots are parallel arrays, vehicle types are strings, prices are magic numbers.\nconst spotSize: string[] = [\"S\", \"M\", \"M\", \"L\"];            // S=bike, M=car, L=truck\nconst spotPlate: (string | null)[] = [null, null, null, null]; // null = free\nconst spotSince: number[] = [0, 0, 0, 0];                   // entry hour\n\nfunction park(plate: string, type: string, hour: number): number {\n  for (let i = 0; i < spotSize.length; i++) {\n    if (spotPlate[i] !== null) continue;\n    if (type === \"BIKE\" || (type === \"CAR\" && spotSize[i] !== \"S\")\n        || (type === \"TRUCK\" && spotSize[i] === \"L\")) {\n      spotPlate[i] = plate;\n      spotSince[i] = hour;\n      return i;                                 // the \"ticket\" is just an index\n    }\n  }\n  return -1;                                    // full (or wrong type string, who knows)\n}\n\nfunction leave(spot: number, type: string, hour: number): number {\n  const hours = Math.max(1, hour - spotSince[spot]);\n  let fee: number;\n  if (type === \"BIKE\") fee = hours * 10;        // pricing tangled into exit logic\n  else if (type === \"CAR\") fee = hours * 20;\n  else fee = hours * 50;\n  spotPlate[spot] = null;                       // no check that the right car leaves\n  return fee;\n}\n\nconst t = park(\"KA-01\", \"CAR\", 9);\nconsole.log(\"Car at spot \" + t + \", pays \" + leave(t, \"CAR\", 12));\n" }, { lang: 'cpp', code: "// THE GOD CLASS: everything about the parking lot lives in one place.\n// Spots are parallel arrays, vehicle types are strings, prices are magic numbers.\nstring spotSize[4] = {\"S\", \"M\", \"M\", \"L\"};   // S=bike, M=car, L=truck\nstring spotPlate[4];                          // \"\" = free\nlong long spotSince[4];                       // entry hour\n\nint park(const string& plate, const string& type, long long hour) {\n    for (int i = 0; i < 4; i++) {\n        if (!spotPlate[i].empty()) continue;\n        if (type == \"BIKE\" || (type == \"CAR\" && spotSize[i] != \"S\")\n                || (type == \"TRUCK\" && spotSize[i] == \"L\")) {\n            spotPlate[i] = plate;\n            spotSince[i] = hour;\n            return i;                           // the \"ticket\" is just an index\n        }\n    }\n    return -1;                                  // full (or wrong type string, who knows)\n}\n\nlong long leave(int spot, const string& type, long long hour) {\n    long long hours = max(1LL, hour - spotSince[spot]);\n    long long fee;\n    if (type == \"BIKE\") fee = hours * 10;       // pricing tangled into exit logic\n    else if (type == \"CAR\") fee = hours * 20;\n    else fee = hours * 50;\n    spotPlate[spot] = \"\";                       // no check that the right car leaves\n    return fee;\n}\n\nint main() {\n    int t = park(\"KA-01\", \"CAR\", 9);\n    cout << \"Car at spot \" << t << \", pays \" << leave(t, \"CAR\", 12) << endl;\n}\n" }] } },
+      brute: { why: `<p>The original: everything static, rules duplicated as string comparisons, a ticket is just an array index (anyone can "leave" any spot), and pricing is tangled into <code>leave()</code>. Adding a vehicle type means editing both the fit check and the price ladder.</p>`, code: { lang: 'java', code: J.g2_brute, alt: [{ lang: 'python', code: "# THE GOD CLASS: everything about the parking lot lives in one place.\n# Spots are parallel lists, vehicle types are strings, prices are magic numbers.\nspot_size = [\"S\", \"M\", \"M\", \"L\"]   # S=bike, M=car, L=truck\nspot_plate = [None] * 4            # None = free\nspot_since = [0] * 4               # entry hour\n\ndef park(plate, type_, hour):\n    for i in range(len(spot_size)):\n        if spot_plate[i] is not None: continue\n        if (type_ == \"BIKE\" or (type_ == \"CAR\" and spot_size[i] != \"S\")\n                or (type_ == \"TRUCK\" and spot_size[i] == \"L\")):\n            spot_plate[i] = plate\n            spot_since[i] = hour\n            return i                           # the \"ticket\" is just an index\n    return -1                                  # full (or wrong type string, who knows)\n\ndef leave(spot, type_, hour):\n    hours = max(1, hour - spot_since[spot])\n    if type_ == \"BIKE\": fee = hours * 10       # pricing tangled into exit logic\n    elif type_ == \"CAR\": fee = hours * 20\n    else: fee = hours * 50\n    spot_plate[spot] = None                    # no check that the right car leaves\n    return fee\n\nif __name__ == \"__main__\":\n    t = park(\"KA-01\", \"CAR\", 9)\n    print(f\"Car at spot {t}, pays {leave(t, 'CAR', 12)}\")\n" }, { lang: 'ts', code: "// THE GOD CLASS: everything about the parking lot lives in one place.\n// Spots are parallel arrays, vehicle types are strings, prices are magic numbers.\nconst spotSize: string[] = [\"S\", \"M\", \"M\", \"L\"];            // S=bike, M=car, L=truck\nconst spotPlate: (string | null)[] = [null, null, null, null]; // null = free\nconst spotSince: number[] = [0, 0, 0, 0];                   // entry hour\n\nfunction park(plate: string, type: string, hour: number): number {\n  for (let i = 0; i < spotSize.length; i++) {\n    if (spotPlate[i] !== null) continue;\n    if (type === \"BIKE\" || (type === \"CAR\" && spotSize[i] !== \"S\")\n        || (type === \"TRUCK\" && spotSize[i] === \"L\")) {\n      spotPlate[i] = plate;\n      spotSince[i] = hour;\n      return i;                                 // the \"ticket\" is just an index\n    }\n  }\n  return -1;                                    // full (or wrong type string, who knows)\n}\n\nfunction leave(spot: number, type: string, hour: number): number {\n  const hours = Math.max(1, hour - spotSince[spot]);\n  let fee: number;\n  if (type === \"BIKE\") fee = hours * 10;        // pricing tangled into exit logic\n  else if (type === \"CAR\") fee = hours * 20;\n  else fee = hours * 50;\n  spotPlate[spot] = null;                       // no check that the right car leaves\n  return fee;\n}\n\nconst t = park(\"KA-01\", \"CAR\", 9);\nconsole.log(\"Car at spot \" + t + \", pays \" + leave(t, \"CAR\", 12));\n" }, { lang: 'cpp', code: "// THE GOD CLASS: everything about the parking lot lives in one place.\n// Spots are parallel arrays, vehicle types are strings, prices are magic numbers.\nstring spotSize[4] = {\"S\", \"M\", \"M\", \"L\"};   // S=bike, M=car, L=truck\nstring spotPlate[4];                          // \"\" = free\nlong long spotSince[4];                       // entry hour\n\nint park(const string& plate, const string& type, long long hour) {\n    for (int i = 0; i < 4; i++) {\n        if (!spotPlate[i].empty()) continue;\n        if (type == \"BIKE\" || (type == \"CAR\" && spotSize[i] != \"S\")\n                || (type == \"TRUCK\" && spotSize[i] == \"L\")) {\n            spotPlate[i] = plate;\n            spotSince[i] = hour;\n            return i;                           // the \"ticket\" is just an index\n        }\n    }\n    return -1;                                  // full (or wrong type string, who knows)\n}\n\nlong long leave(int spot, const string& type, long long hour) {\n    long long hours = max(1LL, hour - spotSince[spot]);\n    long long fee;\n    if (type == \"BIKE\") fee = hours * 10;       // pricing tangled into exit logic\n    else if (type == \"CAR\") fee = hours * 20;\n    else fee = hours * 50;\n    spotPlate[spot] = \"\";                       // no check that the right car leaves\n    return fee;\n}\n\nint main() {\n    int t = park(\"KA-01\", \"CAR\", 9);\n    cout << \"Car at spot \" << t << \", pays \" << leave(t, \"CAR\", 12) << endl;\n}\n" }, { lang: 'csharp', code: "using System;\n\n// THE GOD CLASS: everything about the parking lot lives in one place.\n// Spots are parallel arrays, vehicle types are strings, prices are magic numbers.\nclass Program {\n    static string[] spotSize = { \"S\", \"M\", \"M\", \"L\" };   // S=bike, M=car, L=truck\n    static string[] spotPlate = new string[4];            // null = free\n    static long[] spotSince = new long[4];                // entry hour\n\n    static int Park(string plate, string type, long hour) {\n        for (int i = 0; i < spotSize.Length; i++) {\n            if (spotPlate[i] != null) continue;\n            if (type == \"BIKE\" || (type == \"CAR\" && spotSize[i] != \"S\")\n                    || (type == \"TRUCK\" && spotSize[i] == \"L\")) {\n                spotPlate[i] = plate;\n                spotSince[i] = hour;\n                return i;                               // the \"ticket\" is just an index\n            }\n        }\n        return -1;                                      // full (or wrong type string, who knows)\n    }\n\n    static long Leave(int spot, string type, long hour) {\n        long hours = Math.Max(1, hour - spotSince[spot]);\n        long fee;\n        if (type == \"BIKE\") fee = hours * 10;           // pricing tangled into exit logic\n        else if (type == \"CAR\") fee = hours * 20;\n        else fee = hours * 50;\n        spotPlate[spot] = null;                         // no check that the right car leaves\n        return fee;\n    }\n\n    static void Main() {\n        int t = Park(\"KA-01\", \"CAR\", 9);\n        Console.WriteLine(\"Car at spot \" + t + \", pays \" + Leave(t, \"CAR\", 12));\n    }\n}\n" }] } },
       mcq: { q: 'What is the FIRST safe step when refactoring a God class you did not write?', options: ['Rename everything to nicer names', 'Pin its current behaviour with a test or a demo whose output you record', 'Split it into ten classes at once', 'Add a Singleton'], answer: 1, explain: 'Characterization tests (or a recorded demo output) let you refactor in small steps and prove nothing broke.' },
       hints: [
         `<p>Hint 1: the type strings and their rules ("CAR fits M or L, costs 20") are data. Put them in an <code>enum VType</code> with a rate and a list of fitting sizes.</p>`,
@@ -8944,7 +11375,7 @@ int main() {
       statement: `<p>Model spot types and vehicle types so that the "which spots fit" rule lives in exactly one place. Then implement two interchangeable allocation strategies: <b>NearestFirst</b> (lowest floor first; on that floor the smallest fitting type) and <b>BestFitFirst</b> (smallest fitting type anywhere, then lowest floor — protects large spots for trucks).</p>`,
       constraints: `Floors ≤ 50, spots per floor ≤ 1000. Bikes fit SMALL, COMPACT, LARGE (in that preference); cars COMPACT, LARGE; trucks LARGE. Return empty when nothing fits.`,
       example: `<p>Floor 0 = ${H.arr(['S', 'L'])} Floor 1 = ${H.arr(['S', 'M'])} A car arrives.</p><p>NearestFirst → ${H.c('y', '0-1 (LARGE on floor 0)')}: less driving. BestFitFirst → ${H.c('g', '1-1 (COMPACT on floor 1)')}: keeps the large spot for a truck.</p>`,
-      brute: { why: `<p>One method with a hand-written branch per vehicle type and the fit rules copy-pasted into each branch. A second strategy means copying the whole method; adding a vehicle type means editing every copy.</p>`, code: { lang: 'java', code: J.g3_brute, alt: [{ lang: 'python', code: "# BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n# Adding a new strategy means copying the whole method; adding EV means editing every branch.\nclass SpotFinder:\n    # layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n    @staticmethod\n    def find(layout, taken, vehicle):\n        for f in range(len(layout)):\n            if vehicle == \"BIKE\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"S\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"M\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n            elif vehicle == \"CAR\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"M\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n            elif vehicle == \"TRUCK\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n        return \"FULL\"\n" }, { lang: 'ts', code: "// BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n// Adding a new strategy means copying the whole method; adding EV means editing every branch.\nclass SpotFinder {\n  // layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n  static find(layout: string[][], taken: boolean[][], vehicle: string): string {\n    for (let f = 0; f < layout.length; f++) {\n      if (vehicle === \"BIKE\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"S\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"M\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      } else if (vehicle === \"CAR\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"M\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      } else if (vehicle === \"TRUCK\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      }\n    }\n    return \"FULL\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n// Adding a new strategy means copying the whole method; adding EV means editing every branch.\nstruct SpotFinder {\n    // layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n    static string find(const vector<vector<string>>& layout, const vector<vector<bool>>& taken, const string& vehicle) {\n        for (int f = 0; f < (int)layout.size(); f++) {\n            int n = layout[f].size();\n            if (vehicle == \"BIKE\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"S\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"M\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            } else if (vehicle == \"CAR\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"M\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            } else if (vehicle == \"TRUCK\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            }\n        }\n        return \"FULL\";\n    }\n};\n" }] } },
+      brute: { why: `<p>One method with a hand-written branch per vehicle type and the fit rules copy-pasted into each branch. A second strategy means copying the whole method; adding a vehicle type means editing every copy.</p>`, code: { lang: 'java', code: J.g3_brute, alt: [{ lang: 'python', code: "# BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n# Adding a new strategy means copying the whole method; adding EV means editing every branch.\nclass SpotFinder:\n    # layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n    @staticmethod\n    def find(layout, taken, vehicle):\n        for f in range(len(layout)):\n            if vehicle == \"BIKE\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"S\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"M\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n            elif vehicle == \"CAR\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"M\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n            elif vehicle == \"TRUCK\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n        return \"FULL\"\n" }, { lang: 'ts', code: "// BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n// Adding a new strategy means copying the whole method; adding EV means editing every branch.\nclass SpotFinder {\n  // layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n  static find(layout: string[][], taken: boolean[][], vehicle: string): string {\n    for (let f = 0; f < layout.length; f++) {\n      if (vehicle === \"BIKE\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"S\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"M\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      } else if (vehicle === \"CAR\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"M\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      } else if (vehicle === \"TRUCK\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      }\n    }\n    return \"FULL\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n// Adding a new strategy means copying the whole method; adding EV means editing every branch.\nstruct SpotFinder {\n    // layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n    static string find(const vector<vector<string>>& layout, const vector<vector<bool>>& taken, const string& vehicle) {\n        for (int f = 0; f < (int)layout.size(); f++) {\n            int n = layout[f].size();\n            if (vehicle == \"BIKE\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"S\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"M\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            } else if (vehicle == \"CAR\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"M\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            } else if (vehicle == \"TRUCK\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            }\n        }\n        return \"FULL\";\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n// Adding a new strategy means copying the whole method; adding EV means editing every branch.\nstatic class SpotFinder {\n    // layout[floor][i] is \"S\", \"M\" or \"L\"; taken[floor][i] marks occupied spots\n    public static string Find(string[][] layout, bool[][] taken, string vehicle) {\n        for (int f = 0; f < layout.Length; f++) {\n            if (vehicle == \"BIKE\") {\n                for (int i = 0; i < layout[f].Length; i++) if (!taken[f][i] && layout[f][i] == \"S\") return f + \"-\" + i;\n                for (int i = 0; i < layout[f].Length; i++) if (!taken[f][i] && layout[f][i] == \"M\") return f + \"-\" + i;\n                for (int i = 0; i < layout[f].Length; i++) if (!taken[f][i] && layout[f][i] == \"L\") return f + \"-\" + i;\n            } else if (vehicle == \"CAR\") {\n                for (int i = 0; i < layout[f].Length; i++) if (!taken[f][i] && layout[f][i] == \"M\") return f + \"-\" + i;\n                for (int i = 0; i < layout[f].Length; i++) if (!taken[f][i] && layout[f][i] == \"L\") return f + \"-\" + i;\n            } else if (vehicle == \"TRUCK\") {\n                for (int i = 0; i < layout[f].Length; i++) if (!taken[f][i] && layout[f][i] == \"L\") return f + \"-\" + i;\n            }\n        }\n        return \"FULL\";\n    }\n}\n" }] } },
       mcq: { q: 'Where should "a CAR can use COMPACT or LARGE" be stored?', options: ['In every strategy class', 'In the VehicleType enum as data', 'In ParkingLot.park()', 'In the Spot constructor'], answer: 1, explain: 'It is a fact about the vehicle type. Storing it once on the enum means all strategies share it and a new type is one line.' },
       hints: [
         `<p>Hint 1: both strategies loop over the same three things (floors, fitting types, spots); they only differ in <b>loop order</b>. That is a sign the rule is data and the order is the strategy.</p>`,
@@ -9155,7 +11586,7 @@ int main() {
       statement: `<p>Implement exit pricing: cars pay <b>₹30 for the first 2 hours</b>, then <b>₹20 per started hour</b>, capped at <b>₹200 per 24-hour day</b>; bikes and trucks have their own numbers. A <b>lost ticket</b> costs <code>max(normal fee, ₹500)</code>. New tariffs must be addable without editing existing ones.</p>`,
       constraints: `Durations up to 30 days. Money as <code>long</code> rupees. Partial hours round up; minimum 1 hour.`,
       example: `<p>Car 90 min → ${H.c('g', '₹30')} (inside the first block). Car 250 min = 5 started hours → ${H.c('g', '30 + 3×20 = ₹90')}. Car 30 h → day 1 capped ${H.c('b', '₹200')} + remaining 6 h = ${H.c('b', '₹110')} → ${H.c('g', '₹310')}. Lost ticket after 1 h → ${H.c('r', '₹500')}.</p>`,
-      brute: { why: `<p>One <code>fee()</code> method with an if-else ladder per vehicle type, each repeating the slab arithmetic with different numbers. The cap is copy-pasted (and forgotten for trucks), multi-day stays are wrong (the cap is applied once, not per day), and adding a weekend tariff means another branch in every type.</p>`, code: { lang: 'java', code: J.g4_brute, alt: [{ lang: 'python', code: "# BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nclass ExitCounter:\n    @staticmethod\n    def fee(type_, minutes, lost_ticket):\n        if lost_ticket: return 500\n        hours = (minutes + 59) // 60\n        if type_ == \"CAR\":\n            fee = 30 if hours <= 2 else 30 + (hours - 2) * 20\n            if fee > 200: fee = 200\n        elif type_ == \"BIKE\":\n            fee = 10 if hours <= 2 else 10 + (hours - 2) * 5\n            if fee > 60: fee = 60\n        else:\n            fee = hours * 100                        # trucks: someone forgot the cap here\n        return fee\n" }, { lang: 'ts', code: "// BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nclass ExitCounter {\n  static fee(type: string, minutes: number, lostTicket: boolean): number {\n    if (lostTicket) return 500;\n    const hours = Math.floor((minutes + 59) / 60);\n    let fee: number;\n    if (type === \"CAR\") {\n      fee = hours <= 2 ? 30 : 30 + (hours - 2) * 20;\n      if (fee > 200) fee = 200;\n    } else if (type === \"BIKE\") {\n      fee = hours <= 2 ? 10 : 10 + (hours - 2) * 5;\n      if (fee > 60) fee = 60;\n    } else {\n      fee = hours * 100;                        // trucks: someone forgot the cap here\n    }\n    return fee;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nstruct ExitCounter {\n    static long long fee(const string& type, long long minutes, bool lostTicket) {\n        if (lostTicket) return 500;\n        long long hours = (minutes + 59) / 60;\n        long long fee;\n        if (type == \"CAR\") {\n            if (hours <= 2) fee = 30; else fee = 30 + (hours - 2) * 20;\n            if (fee > 200) fee = 200;\n        } else if (type == \"BIKE\") {\n            if (hours <= 2) fee = 10; else fee = 10 + (hours - 2) * 5;\n            if (fee > 60) fee = 60;\n        } else {\n            fee = hours * 100;                  // trucks: someone forgot the cap here\n        }\n        return fee;\n    }\n};\n" }] } },
+      brute: { why: `<p>One <code>fee()</code> method with an if-else ladder per vehicle type, each repeating the slab arithmetic with different numbers. The cap is copy-pasted (and forgotten for trucks), multi-day stays are wrong (the cap is applied once, not per day), and adding a weekend tariff means another branch in every type.</p>`, code: { lang: 'java', code: J.g4_brute, alt: [{ lang: 'python', code: "# BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nclass ExitCounter:\n    @staticmethod\n    def fee(type_, minutes, lost_ticket):\n        if lost_ticket: return 500\n        hours = (minutes + 59) // 60\n        if type_ == \"CAR\":\n            fee = 30 if hours <= 2 else 30 + (hours - 2) * 20\n            if fee > 200: fee = 200\n        elif type_ == \"BIKE\":\n            fee = 10 if hours <= 2 else 10 + (hours - 2) * 5\n            if fee > 60: fee = 60\n        else:\n            fee = hours * 100                        # trucks: someone forgot the cap here\n        return fee\n" }, { lang: 'ts', code: "// BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nclass ExitCounter {\n  static fee(type: string, minutes: number, lostTicket: boolean): number {\n    if (lostTicket) return 500;\n    const hours = Math.floor((minutes + 59) / 60);\n    let fee: number;\n    if (type === \"CAR\") {\n      fee = hours <= 2 ? 30 : 30 + (hours - 2) * 20;\n      if (fee > 200) fee = 200;\n    } else if (type === \"BIKE\") {\n      fee = hours <= 2 ? 10 : 10 + (hours - 2) * 5;\n      if (fee > 60) fee = 60;\n    } else {\n      fee = hours * 100;                        // trucks: someone forgot the cap here\n    }\n    return fee;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nstruct ExitCounter {\n    static long long fee(const string& type, long long minutes, bool lostTicket) {\n        if (lostTicket) return 500;\n        long long hours = (minutes + 59) / 60;\n        long long fee;\n        if (type == \"CAR\") {\n            if (hours <= 2) fee = 30; else fee = 30 + (hours - 2) * 20;\n            if (fee > 200) fee = 200;\n        } else if (type == \"BIKE\") {\n            if (hours <= 2) fee = 10; else fee = 10 + (hours - 2) * 5;\n            if (fee > 60) fee = 60;\n        } else {\n            fee = hours * 100;                  // trucks: someone forgot the cap here\n        }\n        return fee;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nstatic class ExitCounter {\n    public static long Fee(string type, long minutes, bool lostTicket) {\n        if (lostTicket) return 500;\n        long hours = (minutes + 59) / 60;\n        long fee;\n        if (type == \"CAR\") {\n            if (hours <= 2) fee = 30; else fee = 30 + (hours - 2) * 20;\n            if (fee > 200) fee = 200;\n        } else if (type == \"BIKE\") {\n            if (hours <= 2) fee = 10; else fee = 10 + (hours - 2) * 5;\n            if (fee > 60) fee = 60;\n        } else {\n            fee = hours * 100;                        // trucks: someone forgot the cap here\n        }\n        return fee;\n    }\n}\n" }] } },
       mcq: { q: 'You need "₹200 cap per day" on top of ANY tariff. Which pattern composes best?', options: ['Inheritance: CappedSlabPricing extends SlabPricing', 'Decorator: DailyCap wraps any PricingStrategy', 'A boolean flag capEnabled in every strategy', 'Singleton PriceManager'], answer: 1, explain: 'A decorator implements the same interface and wraps another strategy, so the cap works on slab, hourly or flat pricing without new subclasses.' },
       hints: [
         `<p>Hint 1: separate "what does N hours cost?" (slab rule) from "never more than X per day" (cap rule). They change independently, so they are different classes.</p>`,
@@ -9378,7 +11809,7 @@ int main() {
       statement: `<p>Design a class <code>TicTacToe(int n)</code> with <code>int move(int row, int col, int player)</code> where player is 1 or 2. Moves are guaranteed valid (empty cell, game not over). Return the winning player's number if this move wins, otherwise 0. Aim for better than O(n²) per move.</p>`,
       constraints: `2 ≤ n ≤ 100; player ∈ {1, 2}; at most n² calls; every move is on an empty cell.`,
       example: `<p>n = 3: moves (0,0,1) (0,2,2) (2,2,1) (1,1,2) (2,0,1) (1,0,2) (2,1,1) → outputs ${H.c('m', '0 0 0 0 0 0')} ${H.c('g', '1')}. The last move completes row 2 = 1, 1, 1 → rows[2] reaches +3.</p>`,
-      brute: { why: `<p>Store the board and, after each move, rescan every row, column and both diagonals: O(n²) per move and O(n⁴) for a whole game. For n = 100 that is 10,000 cells per move. Even the "check only the last move's lines" improvement is O(n).</p>`, code: { lang: 'java', code: J.g5_brute, alt: [{ lang: 'python', code: "# BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute:\n    def __init__(self, n):\n        self.n = n\n        self.board = [[0] * n for _ in range(n)]\n\n    def move(self, row, col, player):\n        \"\"\"player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet.\"\"\"\n        n, b = self.n, self.board\n        b[row][col] = player\n        for r in range(n):                               # every row\n            if all(b[r][c] == player for c in range(n)): return player\n        for c in range(n):                               # every column\n            if all(b[r][c] == player for r in range(n)): return player\n        d = all(b[i][i] == player for i in range(n))     # both diagonals\n        a = all(b[i][n - 1 - i] == player for i in range(n))\n        return player if d or a else 0\n" }, { lang: 'ts', code: "// BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute {\n  private board: number[][];\n  constructor(private n: number) { this.board = Array.from({ length: n }, () => new Array<number>(n).fill(0)); }\n\n  /** player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet. */\n  move(row: number, col: number, player: number): number {\n    const n = this.n, b = this.board;\n    b[row][col] = player;\n    for (let r = 0; r < n; r++) {                        // every row\n      if (b[r].every((v) => v === player)) return player;\n    }\n    for (let c = 0; c < n; c++) {                        // every column\n      if (b.every((rowArr) => rowArr[c] === player)) return player;\n    }\n    let d = true, a = true;                              // both diagonals\n    for (let i = 0; i < n; i++) { d = d && b[i][i] === player; a = a && b[i][n - 1 - i] === player; }\n    return d || a ? player : 0;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute {\n    int n;\n    vector<vector<int>> board;\npublic:\n    TicTacToeBrute(int n) : n(n), board(n, vector<int>(n, 0)) {}\n\n    /** player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet. */\n    int move(int row, int col, int player) {\n        board[row][col] = player;\n        for (int r = 0; r < n; r++) {                    // every row\n            bool all = true;\n            for (int c = 0; c < n; c++) all &= board[r][c] == player;\n            if (all) return player;\n        }\n        for (int c = 0; c < n; c++) {                    // every column\n            bool all = true;\n            for (int r = 0; r < n; r++) all &= board[r][c] == player;\n            if (all) return player;\n        }\n        bool d = true, a = true;                         // both diagonals\n        for (int i = 0; i < n; i++) { d &= board[i][i] == player; a &= board[i][n - 1 - i] == player; }\n        return d || a ? player : 0;\n    }\n};\n" }] } },
+      brute: { why: `<p>Store the board and, after each move, rescan every row, column and both diagonals: O(n²) per move and O(n⁴) for a whole game. For n = 100 that is 10,000 cells per move. Even the "check only the last move's lines" improvement is O(n).</p>`, code: { lang: 'java', code: J.g5_brute, alt: [{ lang: 'python', code: "# BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute:\n    def __init__(self, n):\n        self.n = n\n        self.board = [[0] * n for _ in range(n)]\n\n    def move(self, row, col, player):\n        \"\"\"player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet.\"\"\"\n        n, b = self.n, self.board\n        b[row][col] = player\n        for r in range(n):                               # every row\n            if all(b[r][c] == player for c in range(n)): return player\n        for c in range(n):                               # every column\n            if all(b[r][c] == player for r in range(n)): return player\n        d = all(b[i][i] == player for i in range(n))     # both diagonals\n        a = all(b[i][n - 1 - i] == player for i in range(n))\n        return player if d or a else 0\n" }, { lang: 'ts', code: "// BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute {\n  private board: number[][];\n  constructor(private n: number) { this.board = Array.from({ length: n }, () => new Array<number>(n).fill(0)); }\n\n  /** player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet. */\n  move(row: number, col: number, player: number): number {\n    const n = this.n, b = this.board;\n    b[row][col] = player;\n    for (let r = 0; r < n; r++) {                        // every row\n      if (b[r].every((v) => v === player)) return player;\n    }\n    for (let c = 0; c < n; c++) {                        // every column\n      if (b.every((rowArr) => rowArr[c] === player)) return player;\n    }\n    let d = true, a = true;                              // both diagonals\n    for (let i = 0; i < n; i++) { d = d && b[i][i] === player; a = a && b[i][n - 1 - i] === player; }\n    return d || a ? player : 0;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute {\n    int n;\n    vector<vector<int>> board;\npublic:\n    TicTacToeBrute(int n) : n(n), board(n, vector<int>(n, 0)) {}\n\n    /** player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet. */\n    int move(int row, int col, int player) {\n        board[row][col] = player;\n        for (int r = 0; r < n; r++) {                    // every row\n            bool all = true;\n            for (int c = 0; c < n; c++) all &= board[r][c] == player;\n            if (all) return player;\n        }\n        for (int c = 0; c < n; c++) {                    // every column\n            bool all = true;\n            for (int r = 0; r < n; r++) all &= board[r][c] == player;\n            if (all) return player;\n        }\n        bool d = true, a = true;                         // both diagonals\n        for (int i = 0; i < n; i++) { d &= board[i][i] == player; a &= board[i][n - 1 - i] == player; }\n        return d || a ? player : 0;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute {\n    private readonly int n;\n    private readonly int[,] board;\n    public TicTacToeBrute(int n) { this.n = n; board = new int[n, n]; }\n\n    /// player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet.\n    public int Move(int row, int col, int player) {\n        board[row, col] = player;\n        for (int r = 0; r < n; r++) {                    // every row\n            bool all = true;\n            for (int c = 0; c < n; c++) all &= board[r, c] == player;\n            if (all) return player;\n        }\n        for (int c = 0; c < n; c++) {                    // every column\n            bool all = true;\n            for (int r = 0; r < n; r++) all &= board[r, c] == player;\n            if (all) return player;\n        }\n        bool d = true, a = true;                         // both diagonals\n        for (int i = 0; i < n; i++) { d &= board[i, i] == player; a &= board[i, n - 1 - i] == player; }\n        return d || a ? player : 0;\n    }\n}\n" }] } },
       mcq: { q: 'Player 1 adds +1 and player 2 adds −1 to rows[r]. Why does rows[r] == n prove row r is all player 1?', options: ['Because n is odd', 'Because any player-2 cell lowers the sum below n, and the row has only n cells', 'Because rows are checked left to right', 'It does not prove it'], answer: 1, explain: 'Each of the n cells contributes at most +1; reaching exactly n needs every cell to be +1, i.e. player 1.' },
       hints: [
         `<p>Hint 1: you never need to know <i>which</i> cells are in a row — only whether one player owns all of them. A running sum can tell you that.</p>`,
@@ -9778,7 +12209,7 @@ int main() {
       statement: `<p>Extend Tic-Tac-Toe with <code>undo()</code> and <code>redo()</code>. Undo must restore the board, the turn, the game-over flag <b>and</b> the O(1) win-check counters exactly. A new move after an undo clears the redo history. Undo of a winning move re-opens the game.</p>`,
       constraints: `n ≤ 100, up to n² moves. undo/redo must be O(1). Return <code>false</code> when there is nothing to undo/redo.`,
       example: `<p>X(0,0) O(1,0) X(0,1) O(1,1) X(0,2) → ${H.c('g', 'X wins')}. <code>undo()</code> → row 0 becomes ${H.c('y', 'XX.')} and the game is open, still X to move. X plays (2,2) → ${H.c('b', 'ok')}. <code>redo()</code> → ${H.c('r', 'false')} (the redo branch was discarded).</p>`,
-      brute: { why: `<p>Copy the whole board before each move and pop a snapshot on undo. It restores the cells, but costs O(n²) time and memory per move, and it does <b>not</b> restore the counters, turn or game-over flag — after an undo the win check is silently wrong unless you rescan everything.</p>`, code: { lang: 'java', code: J.g6_brute, alt: [{ lang: 'python', code: "# BRUTE: copy the whole board before every move so undo can restore it.\n# Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame:\n    def __init__(self, n):\n        self.board = [[\".\"] * n for _ in range(n)]\n        self.history = []\n\n    def play(self, r, c, s):\n        self.history.append([row[:] for row in self.board])   # full deep copy, every move\n        self.board[r][c] = s\n\n    def undo(self):\n        if self.history: self.board = self.history.pop()\n" }, { lang: 'ts', code: "// BRUTE: copy the whole board before every move so undo can restore it.\n// Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame {\n  private board: string[][];\n  private history: string[][][] = [];\n  constructor(n: number) { this.board = Array.from({ length: n }, () => new Array<string>(n).fill(\".\")); }\n\n  play(r: number, c: number, s: string): void {\n    this.history.push(this.board.map((row) => row.slice()));   // full deep copy, every move\n    this.board[r][c] = s;\n  }\n\n  undo(): void { const prev = this.history.pop(); if (prev) this.board = prev; }\n}\n" }, { lang: 'cpp', code: "// BRUTE: copy the whole board before every move so undo can restore it.\n// Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame {\n    vector<vector<char>> board;\n    vector<vector<vector<char>>> history;\npublic:\n    SnapshotGame(int n) : board(n, vector<char>(n, '.')) {}\n\n    void play(int r, int c, char s) {\n        history.push_back(board);                 // full deep copy, every move\n        board[r][c] = s;\n    }\n\n    void undo() { if (!history.empty()) { board = history.back(); history.pop_back(); } }\n};\n" }] } },
+      brute: { why: `<p>Copy the whole board before each move and pop a snapshot on undo. It restores the cells, but costs O(n²) time and memory per move, and it does <b>not</b> restore the counters, turn or game-over flag — after an undo the win check is silently wrong unless you rescan everything.</p>`, code: { lang: 'java', code: J.g6_brute, alt: [{ lang: 'python', code: "# BRUTE: copy the whole board before every move so undo can restore it.\n# Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame:\n    def __init__(self, n):\n        self.board = [[\".\"] * n for _ in range(n)]\n        self.history = []\n\n    def play(self, r, c, s):\n        self.history.append([row[:] for row in self.board])   # full deep copy, every move\n        self.board[r][c] = s\n\n    def undo(self):\n        if self.history: self.board = self.history.pop()\n" }, { lang: 'ts', code: "// BRUTE: copy the whole board before every move so undo can restore it.\n// Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame {\n  private board: string[][];\n  private history: string[][][] = [];\n  constructor(n: number) { this.board = Array.from({ length: n }, () => new Array<string>(n).fill(\".\")); }\n\n  play(r: number, c: number, s: string): void {\n    this.history.push(this.board.map((row) => row.slice()));   // full deep copy, every move\n    this.board[r][c] = s;\n  }\n\n  undo(): void { const prev = this.history.pop(); if (prev) this.board = prev; }\n}\n" }, { lang: 'cpp', code: "// BRUTE: copy the whole board before every move so undo can restore it.\n// Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame {\n    vector<vector<char>> board;\n    vector<vector<vector<char>>> history;\npublic:\n    SnapshotGame(int n) : board(n, vector<char>(n, '.')) {}\n\n    void play(int r, int c, char s) {\n        history.push_back(board);                 // full deep copy, every move\n        board[r][c] = s;\n    }\n\n    void undo() { if (!history.empty()) { board = history.back(); history.pop_back(); } }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\n// BRUTE: copy the whole board before every move so undo can restore it.\n// Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame {\n    private char[][] board;\n    private readonly Stack<char[][]> history = new Stack<char[][]>();\n    public SnapshotGame(int n) { board = new char[n][]; for (int i = 0; i < n; i++) { board[i] = new char[n]; for (int j = 0; j < n; j++) board[i][j] = '.'; } }\n\n    public void Play(int r, int c, char s) {\n        char[][] copy = new char[board.Length][];\n        for (int i = 0; i < board.Length; i++) copy[i] = (char[])board[i].Clone();   // full deep copy, every move\n        history.Push(copy);\n        board[r][c] = s;\n    }\n\n    public void Undo() { if (history.Count > 0) board = history.Pop(); }\n}\n" }] } },
       mcq: { q: 'Why must the counter-update code avoid early returns once undo exists?', options: ['Early returns are slower', 'If the row check returns before the column/diagonal counters are incremented, undo (which decrements all of them) leaves counters wrong', 'The language forbids it', 'It breaks redo only'], answer: 1, explain: 'execute() and undo() must be exact mirrors. Update every counter, then check for a win.' },
       hints: [
         `<p>Hint 1: a move is fully described by (row, col, player). If applying it is "+1 to some counters and write a symbol", undoing it is "−1 to the same counters and clear the cell".</p>`,
@@ -9805,7 +12236,7 @@ int main() {
     statement: `<p>Model spot sizes and vehicle types so that <code>canPark(spotType)</code> works for every vehicle, and <code>fits()</code> lists the usable spot types smallest-first. Adding a new vehicle type (e.g. BUS needing LARGE) must be a one-line change.</p>`,
     constraints: `Spot sizes are ordered SMALL &lt; COMPACT &lt; LARGE. A vehicle fits any spot at least as big as its minimum.`,
     example: `<p><code>CAR.canPark(SMALL)</code> → ${H.c('r', 'false')}; <code>CAR.canPark(LARGE)</code> → ${H.c('g', 'true')}; <code>BIKE.fits()</code> → ${H.c('b', '[SMALL, COMPACT, LARGE]')}; <code>TRUCK.fits()</code> → ${H.c('b', '[LARGE]')}.</p>`,
-    brute: { why: `<p>String comparisons in a static helper: <code>"Car"</code> vs <code>"CAR"</code> silently returns false, the rule is duplicated wherever someone needs it, and a new type means editing an if-chain.</p>`, code: { lang: 'java', code: J.p01_brute, alt: [{ lang: 'python', code: "# BRUTE: string comparisons scattered wherever a fit check is needed.\nclass FitCheck:\n    @staticmethod\n    def can_park(vehicle, spot):\n        if vehicle == \"BIKE\": return True\n        if vehicle == \"CAR\": return spot == \"COMPACT\" or spot == \"LARGE\"\n        if vehicle == \"TRUCK\": return spot == \"LARGE\"\n        return False                                     # typo \"Car\" silently returns False\n" }, { lang: 'ts', code: "// BRUTE: string comparisons scattered wherever a fit check is needed.\nclass FitCheck {\n  static canPark(vehicle: string, spot: string): boolean {\n    if (vehicle === \"BIKE\") return true;\n    if (vehicle === \"CAR\") return spot === \"COMPACT\" || spot === \"LARGE\";\n    if (vehicle === \"TRUCK\") return spot === \"LARGE\";\n    return false;                                        // typo \"Car\" silently returns false\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: string comparisons scattered wherever a fit check is needed.\nstruct FitCheck {\n    static bool canPark(const string& vehicle, const string& spot) {\n        if (vehicle == \"BIKE\") return true;\n        if (vehicle == \"CAR\") return spot == \"COMPACT\" || spot == \"LARGE\";\n        if (vehicle == \"TRUCK\") return spot == \"LARGE\";\n        return false;                                    // typo \"Car\" silently returns false\n    }\n};\n" }] } },
+    brute: { why: `<p>String comparisons in a static helper: <code>"Car"</code> vs <code>"CAR"</code> silently returns false, the rule is duplicated wherever someone needs it, and a new type means editing an if-chain.</p>`, code: { lang: 'java', code: J.p01_brute, alt: [{ lang: 'python', code: "# BRUTE: string comparisons scattered wherever a fit check is needed.\nclass FitCheck:\n    @staticmethod\n    def can_park(vehicle, spot):\n        if vehicle == \"BIKE\": return True\n        if vehicle == \"CAR\": return spot == \"COMPACT\" or spot == \"LARGE\"\n        if vehicle == \"TRUCK\": return spot == \"LARGE\"\n        return False                                     # typo \"Car\" silently returns False\n" }, { lang: 'ts', code: "// BRUTE: string comparisons scattered wherever a fit check is needed.\nclass FitCheck {\n  static canPark(vehicle: string, spot: string): boolean {\n    if (vehicle === \"BIKE\") return true;\n    if (vehicle === \"CAR\") return spot === \"COMPACT\" || spot === \"LARGE\";\n    if (vehicle === \"TRUCK\") return spot === \"LARGE\";\n    return false;                                        // typo \"Car\" silently returns false\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: string comparisons scattered wherever a fit check is needed.\nstruct FitCheck {\n    static bool canPark(const string& vehicle, const string& spot) {\n        if (vehicle == \"BIKE\") return true;\n        if (vehicle == \"CAR\") return spot == \"COMPACT\" || spot == \"LARGE\";\n        if (vehicle == \"TRUCK\") return spot == \"LARGE\";\n        return false;                                    // typo \"Car\" silently returns false\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: string comparisons scattered wherever a fit check is needed.\nstatic class FitCheck {\n    public static bool CanPark(string vehicle, string spot) {\n        if (vehicle == \"BIKE\") return true;\n        if (vehicle == \"CAR\") return spot == \"COMPACT\" || spot == \"LARGE\";\n        if (vehicle == \"TRUCK\") return spot == \"LARGE\";\n        return false;                                    // typo \"Car\" silently returns false\n    }\n}\n" }] } },
     mcq: { q: 'Which representation turns "a vehicle fits any spot at least as big as X" into one comparison?', options: ['A hash map from vehicle name to a list of spot names', 'Enums whose declaration order is the size order, compared by their numeric order (<code>ordinal()</code> in Java, an <code>IntEnum</code> in Python, a numeric <code>enum</code> in TypeScript, enum order in C++)', 'A switch statement per vehicle', 'Subclasses Car, Bike, Truck'], answer: 1, explain: 'Declaring SMALL, COMPACT, LARGE in order makes the numeric order of the enum a size rank (<code>ordinal()</code> in Java, the <code>IntEnum</code> value in Python); fit = spot rank ≥ minimum rank.' },
     hints: [
       `<p>Hint 1: the rule is really "minimum size" — each vehicle needs one number (its smallest acceptable spot); everything else follows.</p>`,
@@ -9828,7 +12259,7 @@ int main() {
     statement: `<p>Given a list of moves on a 3×3 board (A plays first as X, then B as O, alternating), return <code>"A"</code> or <code>"B"</code> if that player wins, <code>"Draw"</code> if all 9 cells are filled with no winner, or <code>"Pending"</code> otherwise. All moves are valid and the game stops at a win.</p>`,
     constraints: `1 ≤ moves.length ≤ 9; moves[i] = [row, col]; 0 ≤ row, col ≤ 2; no repeated cells.`,
     example: `<p>moves = [[0,0],[2,0],[1,1],[2,1],[2,2]] → A has (0,0), (1,1), (2,2) = main diagonal → ${H.c('g', '"A"')}. moves = [[0,0],[1,1]] → ${H.c('y', '"Pending"')}.</p>`,
-    brute: { why: `<p>Rebuild the board and check all 8 lines for both players. Fine for 3×3 (it is "easy"), but it is O(n²) and does not stop at the winning move — in an interview, show you know the O(1)-per-move counter version.</p>`, code: { lang: 'java', code: J.p02_brute, alt: [{ lang: 'python', code: "# BRUTE: rebuild the whole board every move and check all 8 lines.\nclass WinnerBrute:\n    @staticmethod\n    def tictactoe(moves):\n        b = [[\"\"] * 3 for _ in range(3)]\n        for i, (r, c) in enumerate(moves):\n            b[r][c] = \"X\" if i % 2 == 0 else \"O\"\n        for p in \"XO\":\n            for i in range(3):\n                if b[i][0] == b[i][1] == b[i][2] == p: return \"A\" if p == \"X\" else \"B\"\n                if b[0][i] == b[1][i] == b[2][i] == p: return \"A\" if p == \"X\" else \"B\"\n            if b[0][0] == b[1][1] == b[2][2] == p: return \"A\" if p == \"X\" else \"B\"\n            if b[0][2] == b[1][1] == b[2][0] == p: return \"A\" if p == \"X\" else \"B\"\n        return \"Draw\" if len(moves) == 9 else \"Pending\"\n" }, { lang: 'ts', code: "// BRUTE: rebuild the whole board every move and check all 8 lines.\nclass WinnerBrute {\n  static tictactoe(moves: number[][]): string {\n    const b: string[][] = Array.from({ length: 3 }, () => [\"\", \"\", \"\"]);\n    moves.forEach(([r, c], i) => { b[r][c] = i % 2 === 0 ? \"X\" : \"O\"; });\n    for (const p of [\"X\", \"O\"]) {\n      const who = p === \"X\" ? \"A\" : \"B\";\n      for (let i = 0; i < 3; i++) {\n        if (b[i][0] === p && b[i][1] === p && b[i][2] === p) return who;\n        if (b[0][i] === p && b[1][i] === p && b[2][i] === p) return who;\n      }\n      if (b[0][0] === p && b[1][1] === p && b[2][2] === p) return who;\n      if (b[0][2] === p && b[1][1] === p && b[2][0] === p) return who;\n    }\n    return moves.length === 9 ? \"Draw\" : \"Pending\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: rebuild the whole board every move and check all 8 lines.\nstruct WinnerBrute {\n    static string tictactoe(const vector<vector<int>>& moves) {\n        char b[3][3] = {};\n        for (int i = 0; i < (int)moves.size(); i++) b[moves[i][0]][moves[i][1]] = i % 2 == 0 ? 'X' : 'O';\n        for (char p : {'X', 'O'}) {\n            string who = p == 'X' ? \"A\" : \"B\";\n            for (int i = 0; i < 3; i++) {\n                if (b[i][0] == p && b[i][1] == p && b[i][2] == p) return who;\n                if (b[0][i] == p && b[1][i] == p && b[2][i] == p) return who;\n            }\n            if (b[0][0] == p && b[1][1] == p && b[2][2] == p) return who;\n            if (b[0][2] == p && b[1][1] == p && b[2][0] == p) return who;\n        }\n        return moves.size() == 9 ? \"Draw\" : \"Pending\";\n    }\n};\n" }] } },
+    brute: { why: `<p>Rebuild the board and check all 8 lines for both players. Fine for 3×3 (it is "easy"), but it is O(n²) and does not stop at the winning move — in an interview, show you know the O(1)-per-move counter version.</p>`, code: { lang: 'java', code: J.p02_brute, alt: [{ lang: 'python', code: "# BRUTE: rebuild the whole board every move and check all 8 lines.\nclass WinnerBrute:\n    @staticmethod\n    def tictactoe(moves):\n        b = [[\"\"] * 3 for _ in range(3)]\n        for i, (r, c) in enumerate(moves):\n            b[r][c] = \"X\" if i % 2 == 0 else \"O\"\n        for p in \"XO\":\n            for i in range(3):\n                if b[i][0] == b[i][1] == b[i][2] == p: return \"A\" if p == \"X\" else \"B\"\n                if b[0][i] == b[1][i] == b[2][i] == p: return \"A\" if p == \"X\" else \"B\"\n            if b[0][0] == b[1][1] == b[2][2] == p: return \"A\" if p == \"X\" else \"B\"\n            if b[0][2] == b[1][1] == b[2][0] == p: return \"A\" if p == \"X\" else \"B\"\n        return \"Draw\" if len(moves) == 9 else \"Pending\"\n" }, { lang: 'ts', code: "// BRUTE: rebuild the whole board every move and check all 8 lines.\nclass WinnerBrute {\n  static tictactoe(moves: number[][]): string {\n    const b: string[][] = Array.from({ length: 3 }, () => [\"\", \"\", \"\"]);\n    moves.forEach(([r, c], i) => { b[r][c] = i % 2 === 0 ? \"X\" : \"O\"; });\n    for (const p of [\"X\", \"O\"]) {\n      const who = p === \"X\" ? \"A\" : \"B\";\n      for (let i = 0; i < 3; i++) {\n        if (b[i][0] === p && b[i][1] === p && b[i][2] === p) return who;\n        if (b[0][i] === p && b[1][i] === p && b[2][i] === p) return who;\n      }\n      if (b[0][0] === p && b[1][1] === p && b[2][2] === p) return who;\n      if (b[0][2] === p && b[1][1] === p && b[2][0] === p) return who;\n    }\n    return moves.length === 9 ? \"Draw\" : \"Pending\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: rebuild the whole board every move and check all 8 lines.\nstruct WinnerBrute {\n    static string tictactoe(const vector<vector<int>>& moves) {\n        char b[3][3] = {};\n        for (int i = 0; i < (int)moves.size(); i++) b[moves[i][0]][moves[i][1]] = i % 2 == 0 ? 'X' : 'O';\n        for (char p : {'X', 'O'}) {\n            string who = p == 'X' ? \"A\" : \"B\";\n            for (int i = 0; i < 3; i++) {\n                if (b[i][0] == p && b[i][1] == p && b[i][2] == p) return who;\n                if (b[0][i] == p && b[1][i] == p && b[2][i] == p) return who;\n            }\n            if (b[0][0] == p && b[1][1] == p && b[2][2] == p) return who;\n            if (b[0][2] == p && b[1][1] == p && b[2][0] == p) return who;\n        }\n        return moves.size() == 9 ? \"Draw\" : \"Pending\";\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: rebuild the whole board every move and check all 8 lines.\nstatic class WinnerBrute {\n    public static string Tictactoe(int[][] moves) {\n        char[,] b = new char[3, 3];\n        for (int i = 0; i < moves.Length; i++) b[moves[i][0], moves[i][1]] = i % 2 == 0 ? 'X' : 'O';\n        foreach (char p in new[] { 'X', 'O' }) {\n            for (int i = 0; i < 3; i++) {\n                if (b[i, 0] == p && b[i, 1] == p && b[i, 2] == p) return p == 'X' ? \"A\" : \"B\";\n                if (b[0, i] == p && b[1, i] == p && b[2, i] == p) return p == 'X' ? \"A\" : \"B\";\n            }\n            if (b[0, 0] == p && b[1, 1] == p && b[2, 2] == p) return p == 'X' ? \"A\" : \"B\";\n            if (b[0, 2] == p && b[1, 1] == p && b[2, 0] == p) return p == 'X' ? \"A\" : \"B\";\n        }\n        return moves.Length == 9 ? \"Draw\" : \"Pending\";\n    }\n}\n" }] } },
     mcq: { q: 'Move index i (0-based) belongs to which player?', options: ['A if i is odd', 'A if i is even', 'Whoever has fewer marks', 'Cannot tell'], answer: 1, explain: 'A moves first: indices 0, 2, 4, ... are A; 1, 3, 5, ... are B.' },
     hints: [
       `<p>Hint 1: player of move i = A if i % 2 == 0. You can decide the winner the moment their counter reaches 3.</p>`,
@@ -9851,7 +12282,7 @@ int main() {
     statement: `<p>The entrance screen shows free spots per type and refreshes many times a second. Instead of scanning every spot on each refresh, make the lot <b>publish</b> "occupied" and "freed" events and let the display board keep counters. The lot must not depend on the concrete board class (screens, a mobile app and analytics may all subscribe).</p>`,
     constraints: `Up to 10<sup>5</sup> spots; board reads must be O(1); occupying a taken spot or freeing a free spot is an error.`,
     example: `<p>Spots ${H.arr(['SMALL', 'COMPACT', 'COMPACT', 'LARGE'])} occupy(1), occupy(3) → board ${H.c('b', '{SMALL=1, COMPACT=1, LARGE=0}')}; free(3) → ${H.c('g', '{SMALL=1, COMPACT=1, LARGE=1}')}.</p>`,
-    brute: { why: `<p>Recount on every refresh: O(total spots) per read. With 10<sup>5</sup> spots and several screens refreshing 10× per second, that is millions of wasted checks per second — and the lot code ends up calling the screen directly.</p>`, code: { lang: 'java', code: J.p03_brute, alt: [{ lang: 'python', code: "# BRUTE: count free spots by scanning every spot each time the board refreshes.\nclass BoardScan:\n    @staticmethod\n    def free_counts(types, taken):\n        m = {}\n        for t, is_taken in zip(types, taken):\n            if not is_taken: m[t] = m.get(t, 0) + 1\n        return m                                         # O(total spots) per refresh, many refreshes per second\n" }, { lang: 'ts', code: "// BRUTE: count free spots by scanning every spot each time the board refreshes.\nclass BoardScan {\n  static freeCounts(types: string[], taken: boolean[]): Map<string, number> {\n    const m = new Map<string, number>();\n    for (let i = 0; i < types.length; i++) if (!taken[i]) m.set(types[i], (m.get(types[i]) ?? 0) + 1);\n    return m;                                            // O(total spots) per refresh, many refreshes per second\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: count free spots by scanning every spot each time the board refreshes.\nstruct BoardScan {\n    static map<string, int> freeCounts(const vector<string>& types, const vector<bool>& taken) {\n        map<string, int> m;\n        for (int i = 0; i < (int)types.size(); i++) if (!taken[i]) m[types[i]]++;\n        return m;                                        // O(total spots) per refresh, many refreshes per second\n    }\n};\n" }] } },
+    brute: { why: `<p>Recount on every refresh: O(total spots) per read. With 10<sup>5</sup> spots and several screens refreshing 10× per second, that is millions of wasted checks per second — and the lot code ends up calling the screen directly.</p>`, code: { lang: 'java', code: J.p03_brute, alt: [{ lang: 'python', code: "# BRUTE: count free spots by scanning every spot each time the board refreshes.\nclass BoardScan:\n    @staticmethod\n    def free_counts(types, taken):\n        m = {}\n        for t, is_taken in zip(types, taken):\n            if not is_taken: m[t] = m.get(t, 0) + 1\n        return m                                         # O(total spots) per refresh, many refreshes per second\n" }, { lang: 'ts', code: "// BRUTE: count free spots by scanning every spot each time the board refreshes.\nclass BoardScan {\n  static freeCounts(types: string[], taken: boolean[]): Map<string, number> {\n    const m = new Map<string, number>();\n    for (let i = 0; i < types.length; i++) if (!taken[i]) m.set(types[i], (m.get(types[i]) ?? 0) + 1);\n    return m;                                            // O(total spots) per refresh, many refreshes per second\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: count free spots by scanning every spot each time the board refreshes.\nstruct BoardScan {\n    static map<string, int> freeCounts(const vector<string>& types, const vector<bool>& taken) {\n        map<string, int> m;\n        for (int i = 0; i < (int)types.size(); i++) if (!taken[i]) m[types[i]]++;\n        return m;                                        // O(total spots) per refresh, many refreshes per second\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\n// BRUTE: count free spots by scanning every spot each time the board refreshes.\nstatic class BoardScan {\n    public static SortedDictionary<string, int> FreeCounts(string[] types, bool[] taken) {\n        SortedDictionary<string, int> m = new SortedDictionary<string, int>(StringComparer.Ordinal);\n        for (int i = 0; i < types.Length; i++) if (!taken[i]) { int n; m.TryGetValue(types[i], out n); m[types[i]] = n + 1; }\n        return m;                                        // O(total spots) per refresh, many refreshes per second\n    }\n}\n" }] } },
     mcq: { q: 'Why should ParkingLot depend on a <code>SpotListener</code> interface instead of <code>DisplayBoard</code>?', options: ['Interfaces are faster', 'So any number of different subscribers can be added without changing the lot (Dependency Inversion + Observer)', 'The language requires it', 'To make DisplayBoard a Singleton'], answer: 1, explain: 'The publisher knows only the interface; new subscribers (app, analytics) plug in with zero edits.' },
     hints: [
       `<p>Hint 1: a count changes only when a spot is occupied or freed — update it at that moment instead of recomputing later.</p>`,
@@ -9874,7 +12305,7 @@ int main() {
     statement: `<p>A fee calculator must support flat pricing, hourly pricing, and ad-hoc promotions ("first 15 minutes free"), switchable at runtime (e.g. on weekends). Design it so a new tariff never edits the calculator.</p>`,
     constraints: `Minutes 0 ≤ m ≤ 10<sup>6</sup>; hourly charges per started hour with a minimum of 1 hour.`,
     example: `<p>Hourly ₹40, 61 min → 2 started hours → ${H.c('g', '₹80')}. Switch to flat ₹100 → ${H.c('g', '₹100')}. Promotion lambda <code>m -&gt; m &lt;= 15 ? 0 : 50</code>, 10 min → ${H.c('g', '₹0')}.</p>`,
-    brute: { why: `<p>A <code>switch</code> on a mode string with copy-pasted formulas. Each new tariff (weekend, festival, promo) adds a case to the same method; a typo in the mode string is a runtime crash.</p>`, code: { lang: 'java', code: J.p04_brute, alt: [{ lang: 'python', code: "# BRUTE: a mode string decides the formula; every new tariff edits this switch.\nclass FeeCalc:\n    @staticmethod\n    def fee(mode, minutes):\n        if mode == \"FLAT\": return 100\n        if mode == \"HOURLY\": return max(1, (minutes + 59) // 60) * 40\n        if mode == \"WEEKEND\": return max(1, (minutes + 59) // 60) * 60   # copy-paste with a new number\n        raise ValueError(mode)\n" }, { lang: 'ts', code: "// BRUTE: a mode string decides the formula; every new tariff edits this switch.\nclass FeeCalc {\n  static fee(mode: string, minutes: number): number {\n    switch (mode) {\n      case \"FLAT\": return 100;\n      case \"HOURLY\": return Math.max(1, Math.floor((minutes + 59) / 60)) * 40;\n      case \"WEEKEND\": return Math.max(1, Math.floor((minutes + 59) / 60)) * 60;   // copy-paste with a new number\n      default: throw new Error(mode);\n    }\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: a mode string decides the formula; every new tariff edits this switch.\nstruct FeeCalc {\n    static long long fee(const string& mode, long long minutes) {\n        if (mode == \"FLAT\") return 100;\n        if (mode == \"HOURLY\") return max(1LL, (minutes + 59) / 60) * 40;\n        if (mode == \"WEEKEND\") return max(1LL, (minutes + 59) / 60) * 60;   // copy-paste with a new number\n        throw invalid_argument(mode);\n    }\n};\n" }] } },
+    brute: { why: `<p>A <code>switch</code> on a mode string with copy-pasted formulas. Each new tariff (weekend, festival, promo) adds a case to the same method; a typo in the mode string is a runtime crash.</p>`, code: { lang: 'java', code: J.p04_brute, alt: [{ lang: 'python', code: "# BRUTE: a mode string decides the formula; every new tariff edits this switch.\nclass FeeCalc:\n    @staticmethod\n    def fee(mode, minutes):\n        if mode == \"FLAT\": return 100\n        if mode == \"HOURLY\": return max(1, (minutes + 59) // 60) * 40\n        if mode == \"WEEKEND\": return max(1, (minutes + 59) // 60) * 60   # copy-paste with a new number\n        raise ValueError(mode)\n" }, { lang: 'ts', code: "// BRUTE: a mode string decides the formula; every new tariff edits this switch.\nclass FeeCalc {\n  static fee(mode: string, minutes: number): number {\n    switch (mode) {\n      case \"FLAT\": return 100;\n      case \"HOURLY\": return Math.max(1, Math.floor((minutes + 59) / 60)) * 40;\n      case \"WEEKEND\": return Math.max(1, Math.floor((minutes + 59) / 60)) * 60;   // copy-paste with a new number\n      default: throw new Error(mode);\n    }\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: a mode string decides the formula; every new tariff edits this switch.\nstruct FeeCalc {\n    static long long fee(const string& mode, long long minutes) {\n        if (mode == \"FLAT\") return 100;\n        if (mode == \"HOURLY\") return max(1LL, (minutes + 59) / 60) * 40;\n        if (mode == \"WEEKEND\") return max(1LL, (minutes + 59) / 60) * 60;   // copy-paste with a new number\n        throw invalid_argument(mode);\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: a mode string decides the formula; every new tariff edits this switch.\nstatic class FeeCalc {\n    public static long Fee(string mode, long minutes) {\n        switch (mode) {\n            case \"FLAT\": return 100;\n            case \"HOURLY\": return Math.Max(1, (minutes + 59) / 60) * 40;\n            case \"WEEKEND\": return Math.Max(1, (minutes + 59) / 60) * 60;   // copy-paste with a new number\n            default: throw new ArgumentException(mode);\n        }\n    }\n}\n" }] } },
     mcq: { q: 'Marking <code>PricingStrategy</code> with <code>@FunctionalInterface</code> buys you…', options: ['Faster execution', 'The ability to pass small tariffs as lambdas, plus a compile error if someone adds a second abstract method', 'Automatic thread safety', 'Nothing'], answer: 1, explain: 'One abstract method → lambdas allowed; the annotation enforces it.' },
     hints: [
       `<p>Hint 1: the varying part is a function minutes → amount. That is exactly what a one-method interface describes.</p>`,
@@ -9900,7 +12331,7 @@ int main() {
     statement: `<p>Given a 3×3 board as 3 strings of <code>'X'</code>, <code>'O'</code> and <code>' '</code>, return true if it can occur during a valid game: X moves first, players alternate, and nobody moves after someone wins.</p>`,
     constraints: `board.length == 3; each row has length 3; characters are 'X', 'O' or ' '.`,
     example: `<p>${H.c('r', '["O  ","   ","   "]')} → false (O cannot move first). ${H.c('r', '["XXX","   ","OOO"]')} → false (both cannot win). ${H.c('g', '["XOX","O O","XOX"]')} → true (4 X, 4 O, no winner).</p>`,
-    brute: { why: `<p>Generate every reachable position by DFS from the empty board (5,478 positions) and test membership. Correct and fast for 3×3, but it explores the whole game tree, and the idea collapses for larger boards — the interviewer wants the invariants.</p>`, code: { lang: 'java', code: J.p05_brute, alt: [{ lang: 'python', code: "# BRUTE: play every possible game from the empty board, remember every board we can reach,\n# then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute:\n    LINES = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]\n\n    def __init__(self):\n        self.reachable = set()\n\n    def valid_tic_tac_toe(self, board):\n        self._dfs([\".\"] * 9, \"X\")\n        return \"\".join(board).replace(\" \", \".\") in self.reachable\n\n    def _dfs(self, b, turn):\n        key = \"\".join(b)\n        if key in self.reachable: return\n        self.reachable.add(key)\n        if self._won(b, \"X\") or self._won(b, \"O\"): return    # nobody moves after a win\n        for i in range(9):\n            if b[i] == \".\":\n                b[i] = turn\n                self._dfs(b, \"O\" if turn == \"X\" else \"X\")\n                b[i] = \".\"\n\n    def _won(self, b, p):\n        return any(b[x] == p and b[y] == p and b[z] == p for x, y, z in self.LINES)\n" }, { lang: 'ts', code: "// BRUTE: play every possible game from the empty board, remember every board we can reach,\n// then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute {\n  private reachable = new Set<string>();\n  private static LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];\n\n  validTicTacToe(board: string[]): boolean {\n    this.dfs(new Array<string>(9).fill(\".\"), \"X\");\n    return this.reachable.has(board.join(\"\").replace(/ /g, \".\"));\n  }\n\n  private dfs(b: string[], turn: string): void {\n    const key = b.join(\"\");\n    if (this.reachable.has(key)) return;\n    this.reachable.add(key);\n    if (this.won(b, \"X\") || this.won(b, \"O\")) return;    // nobody moves after a win\n    for (let i = 0; i < 9; i++) if (b[i] === \".\") {\n      b[i] = turn;\n      this.dfs(b, turn === \"X\" ? \"O\" : \"X\");\n      b[i] = \".\";\n    }\n  }\n\n  private won(b: string[], p: string): boolean {\n    return ValidBrute.LINES.some(([x, y, z]) => b[x] === p && b[y] === p && b[z] === p);\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: play every possible game from the empty board, remember every board we can reach,\n// then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute {\n    set<string> reachable;\n\n    bool won(const string& b, char p) {\n        static const int lines[8][3] = {{0,1,2},{3,4,5},{6,7,8},{0,3,6},{1,4,7},{2,5,8},{0,4,8},{2,4,6}};\n        for (auto& l : lines) if (b[l[0]] == p && b[l[1]] == p && b[l[2]] == p) return true;\n        return false;\n    }\n\n    void dfs(string& b, char turn) {\n        if (!reachable.insert(b).second) return;\n        if (won(b, 'X') || won(b, 'O')) return;          // nobody moves after a win\n        for (int i = 0; i < 9; i++) if (b[i] == '.') {\n            b[i] = turn;\n            dfs(b, turn == 'X' ? 'O' : 'X');\n            b[i] = '.';\n        }\n    }\npublic:\n    bool validTicTacToe(const vector<string>& board) {\n        string start(9, '.');\n        dfs(start, 'X');\n        string key;\n        for (auto& row : board) key += row;\n        replace(key.begin(), key.end(), ' ', '.');\n        return reachable.count(key) > 0;\n    }\n};\n" }] } },
+    brute: { why: `<p>Generate every reachable position by DFS from the empty board (5,478 positions) and test membership. Correct and fast for 3×3, but it explores the whole game tree, and the idea collapses for larger boards — the interviewer wants the invariants.</p>`, code: { lang: 'java', code: J.p05_brute, alt: [{ lang: 'python', code: "# BRUTE: play every possible game from the empty board, remember every board we can reach,\n# then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute:\n    LINES = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]\n\n    def __init__(self):\n        self.reachable = set()\n\n    def valid_tic_tac_toe(self, board):\n        self._dfs([\".\"] * 9, \"X\")\n        return \"\".join(board).replace(\" \", \".\") in self.reachable\n\n    def _dfs(self, b, turn):\n        key = \"\".join(b)\n        if key in self.reachable: return\n        self.reachable.add(key)\n        if self._won(b, \"X\") or self._won(b, \"O\"): return    # nobody moves after a win\n        for i in range(9):\n            if b[i] == \".\":\n                b[i] = turn\n                self._dfs(b, \"O\" if turn == \"X\" else \"X\")\n                b[i] = \".\"\n\n    def _won(self, b, p):\n        return any(b[x] == p and b[y] == p and b[z] == p for x, y, z in self.LINES)\n" }, { lang: 'ts', code: "// BRUTE: play every possible game from the empty board, remember every board we can reach,\n// then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute {\n  private reachable = new Set<string>();\n  private static LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];\n\n  validTicTacToe(board: string[]): boolean {\n    this.dfs(new Array<string>(9).fill(\".\"), \"X\");\n    return this.reachable.has(board.join(\"\").replace(/ /g, \".\"));\n  }\n\n  private dfs(b: string[], turn: string): void {\n    const key = b.join(\"\");\n    if (this.reachable.has(key)) return;\n    this.reachable.add(key);\n    if (this.won(b, \"X\") || this.won(b, \"O\")) return;    // nobody moves after a win\n    for (let i = 0; i < 9; i++) if (b[i] === \".\") {\n      b[i] = turn;\n      this.dfs(b, turn === \"X\" ? \"O\" : \"X\");\n      b[i] = \".\";\n    }\n  }\n\n  private won(b: string[], p: string): boolean {\n    return ValidBrute.LINES.some(([x, y, z]) => b[x] === p && b[y] === p && b[z] === p);\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: play every possible game from the empty board, remember every board we can reach,\n// then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute {\n    set<string> reachable;\n\n    bool won(const string& b, char p) {\n        static const int lines[8][3] = {{0,1,2},{3,4,5},{6,7,8},{0,3,6},{1,4,7},{2,5,8},{0,4,8},{2,4,6}};\n        for (auto& l : lines) if (b[l[0]] == p && b[l[1]] == p && b[l[2]] == p) return true;\n        return false;\n    }\n\n    void dfs(string& b, char turn) {\n        if (!reachable.insert(b).second) return;\n        if (won(b, 'X') || won(b, 'O')) return;          // nobody moves after a win\n        for (int i = 0; i < 9; i++) if (b[i] == '.') {\n            b[i] = turn;\n            dfs(b, turn == 'X' ? 'O' : 'X');\n            b[i] = '.';\n        }\n    }\npublic:\n    bool validTicTacToe(const vector<string>& board) {\n        string start(9, '.');\n        dfs(start, 'X');\n        string key;\n        for (auto& row : board) key += row;\n        replace(key.begin(), key.end(), ' ', '.');\n        return reachable.count(key) > 0;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\n// BRUTE: play every possible game from the empty board, remember every board we can reach,\n// then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute {\n    private readonly HashSet<string> reachable = new HashSet<string>();\n\n    public bool ValidTicTacToe(string[] board) {\n        Dfs(new[] { '.', '.', '.', '.', '.', '.', '.', '.', '.' }, 'X');\n        return reachable.Contains(string.Join(\"\", board).Replace(' ', '.'));\n    }\n\n    private void Dfs(char[] b, char turn) {\n        string key = new string(b);\n        if (!reachable.Add(key)) return;\n        if (Won(b, 'X') || Won(b, 'O')) return;          // nobody moves after a win\n        for (int i = 0; i < 9; i++) if (b[i] == '.') {\n            b[i] = turn;\n            Dfs(b, turn == 'X' ? 'O' : 'X');\n            b[i] = '.';\n        }\n    }\n\n    private bool Won(char[] b, char p) {\n        int[][] lines = { new[] {0,1,2}, new[] {3,4,5}, new[] {6,7,8}, new[] {0,3,6}, new[] {1,4,7}, new[] {2,5,8}, new[] {0,4,8}, new[] {2,4,6} };\n        foreach (int[] l in lines) if (b[l[0]] == p && b[l[1]] == p && b[l[2]] == p) return true;\n        return false;\n    }\n}\n" }] } },
     mcq: { q: 'X has three in a row. What must be true of the counts for the board to be valid?', options: ['x == o', 'x == o + 1', 'o == x + 1', 'Anything'], answer: 1, explain: 'X just made the winning move, so X has played exactly one more time than O.' },
     hints: [
       `<p>Hint 1: think about what each move changes: counts of X and O, and possibly a winning line. Write down the invariants a real game must satisfy.</p>`,
@@ -9923,7 +12354,7 @@ int main() {
     statement: `<p>Design Connect Four on an R×C grid: <code>drop(col, symbol)</code> places a disc in the lowest empty cell of that column and returns <code>"WIN"</code>, <code>"DRAW"</code> or <code>"OK"</code>. A win is K or more same discs in a row horizontally, vertically or diagonally. Reject full or invalid columns.</p>`,
     constraints: `4 ≤ R, C ≤ 100; K ≤ min(R, C); up to R × C drops.`,
     example: `<p>6×7, K = 4. Drops by column, alternating R/Y: 0,1,1,2,2,3,2,3,3,6,3 → red discs at (5,0), (4,1), (3,2), (2,3) → ${H.c('g', '"WIN"')} on the last drop (a rising diagonal).</p>`,
-    brute: { why: `<p>After each drop, scan every cell in 4 directions: O(R × C × K) per move. Most of that work re-checks lines that could not have changed — only lines through the new disc can create a win.</p>`, code: { lang: 'java', code: J.p06_brute, alt: [{ lang: 'python', code: "# BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nclass ConnectFourBrute:\n    @staticmethod\n    def any_win(g, p):\n        R, C = len(g), len(g[0])\n        for r in range(R):\n            for c in range(C):\n                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):\n                    k = 0\n                    while k < 4:\n                        rr, cc = r + dr * k, c + dc * k\n                        if rr < 0 or rr >= R or cc < 0 or cc >= C or g[rr][cc] != p: break\n                        k += 1\n                    if k == 4: return True\n        return False\n" }, { lang: 'ts', code: "// BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nclass ConnectFourBrute {\n  static anyWin(g: string[][], p: string): boolean {\n    const R = g.length, C = g[0].length;\n    const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];\n    for (let r = 0; r < R; r++)\n      for (let c = 0; c < C; c++)\n        for (const [dr, dc] of dirs) {\n          let k = 0;\n          while (k < 4) {\n            const rr = r + dr * k, cc = c + dc * k;\n            if (rr < 0 || rr >= R || cc < 0 || cc >= C || g[rr][cc] !== p) break;\n            k++;\n          }\n          if (k === 4) return true;\n        }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nstruct ConnectFourBrute {\n    static bool anyWin(const vector<vector<char>>& g, char p) {\n        int R = g.size(), C = g[0].size();\n        int dirs[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++)\n                for (auto& d : dirs) {\n                    int k = 0;\n                    while (k < 4) {\n                        int rr = r + d[0] * k, cc = c + d[1] * k;\n                        if (rr < 0 || rr >= R || cc < 0 || cc >= C || g[rr][cc] != p) break;\n                        k++;\n                    }\n                    if (k == 4) return true;\n                }\n        return false;\n    }\n};\n" }] } },
+    brute: { why: `<p>After each drop, scan every cell in 4 directions: O(R × C × K) per move. Most of that work re-checks lines that could not have changed — only lines through the new disc can create a win.</p>`, code: { lang: 'java', code: J.p06_brute, alt: [{ lang: 'python', code: "# BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nclass ConnectFourBrute:\n    @staticmethod\n    def any_win(g, p):\n        R, C = len(g), len(g[0])\n        for r in range(R):\n            for c in range(C):\n                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):\n                    k = 0\n                    while k < 4:\n                        rr, cc = r + dr * k, c + dc * k\n                        if rr < 0 or rr >= R or cc < 0 or cc >= C or g[rr][cc] != p: break\n                        k += 1\n                    if k == 4: return True\n        return False\n" }, { lang: 'ts', code: "// BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nclass ConnectFourBrute {\n  static anyWin(g: string[][], p: string): boolean {\n    const R = g.length, C = g[0].length;\n    const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];\n    for (let r = 0; r < R; r++)\n      for (let c = 0; c < C; c++)\n        for (const [dr, dc] of dirs) {\n          let k = 0;\n          while (k < 4) {\n            const rr = r + dr * k, cc = c + dc * k;\n            if (rr < 0 || rr >= R || cc < 0 || cc >= C || g[rr][cc] !== p) break;\n            k++;\n          }\n          if (k === 4) return true;\n        }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nstruct ConnectFourBrute {\n    static bool anyWin(const vector<vector<char>>& g, char p) {\n        int R = g.size(), C = g[0].size();\n        int dirs[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++)\n                for (auto& d : dirs) {\n                    int k = 0;\n                    while (k < 4) {\n                        int rr = r + d[0] * k, cc = c + d[1] * k;\n                        if (rr < 0 || rr >= R || cc < 0 || cc >= C || g[rr][cc] != p) break;\n                        k++;\n                    }\n                    if (k == 4) return true;\n                }\n        return false;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nstatic class ConnectFourBrute {\n    public static bool AnyWin(char[][] g, char p) {\n        int R = g.Length, C = g[0].Length;\n        int[][] dirs = { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 1, 1 }, new[] { 1, -1 } };\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++)\n                foreach (int[] d in dirs) {\n                    int k = 0;\n                    while (k < 4) {\n                        int rr = r + d[0] * k, cc = c + d[1] * k;\n                        if (rr < 0 || rr >= R || cc < 0 || cc >= C || g[rr][cc] != p) break;\n                        k++;\n                    }\n                    if (k == 4) return true;\n                }\n        return false;\n    }\n}\n" }] } },
     mcq: { q: 'How do you find the landing row of a drop in O(1)?', options: ['Scan the column from the top', 'Keep <code>height[col]</code> = number of discs in the column', 'Binary search', 'You cannot'], answer: 1, explain: 'The next disc lands at row rows − 1 − height[col]; increment height after placing.' },
     hints: [
       `<p>Hint 1: a new win must include the disc just dropped, so only inspect the 4 lines through it.</p>`,
@@ -9946,7 +12377,7 @@ int main() {
     statement: `<p>Write a <code>GridGame</code> that supports any board size, any number of players and any win rule. Implement the rule <code>KInARow(k)</code> (Gomoku: 5 in a row on 15×15) so it checks only the lines through the last move. The game class must not change when a new rule is added.</p>`,
     constraints: `R, C ≤ 1000; 3 ≤ k ≤ 10; players 2–4.`,
     example: `<p>15×15, k = 5. X plays (7,3), (7,4), (7,5), (7,6), (7,7) while O plays elsewhere → ${H.c('g', 'Winner: X')} after X's 5th move. Counters per whole line would not work: the row has 15 cells but only 5 are needed.</p>`,
-    brute: { why: `<p>Rescan the whole board after each move: O(R × C × k). On a 1000×1000 board that is billions of operations over a game.</p>`, code: { lang: 'java', code: J.p07_brute, alt: [{ lang: 'python', code: "# BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nclass GomokuBrute:\n    @staticmethod\n    def wins(b, p, k):\n        R, C = len(b), len(b[0])\n        for r in range(R):\n            for c in range(C):\n                if b[r][c] != p: continue\n                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):\n                    length, rr, cc = 0, r, c\n                    while 0 <= rr < R and 0 <= cc < C and b[rr][cc] == p:\n                        length += 1\n                        rr += dr; cc += dc\n                    if length >= k: return True\n        return False\n" }, { lang: 'ts', code: "// BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nclass GomokuBrute {\n  static wins(b: string[][], p: string, k: number): boolean {\n    const R = b.length, C = b[0].length;\n    for (let r = 0; r < R; r++)\n      for (let c = 0; c < C; c++) {\n        if (b[r][c] !== p) continue;\n        for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {\n          let len = 0;\n          for (let rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C && b[rr][cc] === p; rr += dr, cc += dc) len++;\n          if (len >= k) return true;\n        }\n      }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nstruct GomokuBrute {\n    static bool wins(const vector<vector<char>>& b, char p, int k) {\n        int R = b.size(), C = b[0].size();\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                if (b[r][c] != p) continue;\n                int dirs[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};\n                for (auto& d : dirs) {\n                    int len = 0;\n                    for (int rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C && b[rr][cc] == p; rr += d[0], cc += d[1]) len++;\n                    if (len >= k) return true;\n                }\n            }\n        return false;\n    }\n};\n" }] } },
+    brute: { why: `<p>Rescan the whole board after each move: O(R × C × k). On a 1000×1000 board that is billions of operations over a game.</p>`, code: { lang: 'java', code: J.p07_brute, alt: [{ lang: 'python', code: "# BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nclass GomokuBrute:\n    @staticmethod\n    def wins(b, p, k):\n        R, C = len(b), len(b[0])\n        for r in range(R):\n            for c in range(C):\n                if b[r][c] != p: continue\n                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):\n                    length, rr, cc = 0, r, c\n                    while 0 <= rr < R and 0 <= cc < C and b[rr][cc] == p:\n                        length += 1\n                        rr += dr; cc += dc\n                    if length >= k: return True\n        return False\n" }, { lang: 'ts', code: "// BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nclass GomokuBrute {\n  static wins(b: string[][], p: string, k: number): boolean {\n    const R = b.length, C = b[0].length;\n    for (let r = 0; r < R; r++)\n      for (let c = 0; c < C; c++) {\n        if (b[r][c] !== p) continue;\n        for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {\n          let len = 0;\n          for (let rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C && b[rr][cc] === p; rr += dr, cc += dc) len++;\n          if (len >= k) return true;\n        }\n      }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nstruct GomokuBrute {\n    static bool wins(const vector<vector<char>>& b, char p, int k) {\n        int R = b.size(), C = b[0].size();\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                if (b[r][c] != p) continue;\n                int dirs[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};\n                for (auto& d : dirs) {\n                    int len = 0;\n                    for (int rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C && b[rr][cc] == p; rr += d[0], cc += d[1]) len++;\n                    if (len >= k) return true;\n                }\n            }\n        return false;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nstatic class GomokuBrute {\n    public static bool Wins(char[][] b, char p, int k) {\n        int R = b.Length, C = b[0].Length;\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                if (b[r][c] != p) continue;\n                int[][] dirs = { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 1, 1 }, new[] { 1, -1 } };\n                foreach (int[] d in dirs) {\n                    int len = 0;\n                    for (int rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C && b[rr][cc] == p; rr += d[0], cc += d[1]) len++;\n                    if (len >= k) return true;\n                }\n            }\n        return false;\n    }\n}\n" }] } },
     mcq: { q: 'Why can\'t the O(1) row/column counters from Tic-Tac-Toe detect 5-in-a-row on 15×15?', options: ['They can', 'A counter tells you how many marks a player has in the whole row, not whether they are consecutive', 'Counters overflow', 'Diagonals do not exist'], answer: 1, explain: 'Five X marks scattered across a 15-cell row reach count 5 without being a win.' },
     hints: [
       `<p>Hint 1: a win must pass through the last move. Check 4 directions from it: horizontal, vertical, two diagonals.</p>`,
@@ -9969,7 +12400,7 @@ int main() {
     statement: `<p>Add advance bookings: <code>reserve(type, start, end)</code> returns a reservation on some spot of that type free for the whole half-open window <code>[start, end)</code>, or empty. <code>cancel(id)</code> frees it. Overlapping bookings on one spot are forbidden; back-to-back ([9,12) then [12,14)) is allowed.</p>`,
     constraints: `Up to 10<sup>4</sup> spots and 10<sup>5</sup> reservations; times are integers (hours); start &lt; end.`,
     example: `<p>Spots A1, A2. reserve 9–12 → ${H.c('g', 'A1')}; 10–11 → ${H.c('g', 'A2')}; 11–13 → ${H.c('g', 'A2')} (A2's booking ends exactly at 11); 12–14 → ${H.c('g', 'A1')}; cancel R2, then 10–11 → ${H.c('g', 'A2')} again.</p>`,
-    brute: { why: `<p>A single list of every reservation, scanned once per spot per request: O(spots × reservations). At 10<sup>4</sup> × 10<sup>5</sup> that is 10<sup>9</sup> checks per request.</p>`, code: { lang: 'java', code: J.p08_brute, alt: [{ lang: 'python', code: "# BRUTE: one global list of reservations; every request scans all of them for every spot.\nclass ReservationsBrute:\n    def __init__(self, spots):\n        self.spots = spots\n        self.all = []                                  # (spot, start, end) tuples\n\n    def reserve(self, start, end):\n        for s in range(self.spots):\n            clash = False\n            for spot, rs, re in self.all:\n                if spot == s and start < re and rs < end:\n                    clash = True\n                    break\n            if not clash:\n                self.all.append((s, start, end))\n                return s\n        return -1                                      # O(spots * total reservations) per request\n" }, { lang: 'ts', code: "// BRUTE: one global list of reservations; every request scans all of them for every spot.\ninterface Res { spot: number; start: number; end: number }\nclass ReservationsBrute {\n  private all: Res[] = [];\n  constructor(private spots: number) {}\n\n  reserve(start: number, end: number): number {\n    for (let s = 0; s < this.spots; s++) {\n      let clash = false;\n      for (const r of this.all) if (r.spot === s && start < r.end && r.start < end) { clash = true; break; }\n      if (!clash) { this.all.push({ spot: s, start, end }); return s; }\n    }\n    return -1;                                         // O(spots * total reservations) per request\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one global list of reservations; every request scans all of them for every spot.\nclass ReservationsBrute {\n    struct Res { int spot, start, end; };\n    vector<Res> all;\n    int spots;\npublic:\n    ReservationsBrute(int spots) : spots(spots) {}\n\n    int reserve(int start, int end) {\n        for (int s = 0; s < spots; s++) {\n            bool clash = false;\n            for (const Res& r : all) if (r.spot == s && start < r.end && r.start < end) { clash = true; break; }\n            if (!clash) { all.push_back({s, start, end}); return s; }\n        }\n        return -1;                                     // O(spots * total reservations) per request\n    }\n};\n" }] } },
+    brute: { why: `<p>A single list of every reservation, scanned once per spot per request: O(spots × reservations). At 10<sup>4</sup> × 10<sup>5</sup> that is 10<sup>9</sup> checks per request.</p>`, code: { lang: 'java', code: J.p08_brute, alt: [{ lang: 'python', code: "# BRUTE: one global list of reservations; every request scans all of them for every spot.\nclass ReservationsBrute:\n    def __init__(self, spots):\n        self.spots = spots\n        self.all = []                                  # (spot, start, end) tuples\n\n    def reserve(self, start, end):\n        for s in range(self.spots):\n            clash = False\n            for spot, rs, re in self.all:\n                if spot == s and start < re and rs < end:\n                    clash = True\n                    break\n            if not clash:\n                self.all.append((s, start, end))\n                return s\n        return -1                                      # O(spots * total reservations) per request\n" }, { lang: 'ts', code: "// BRUTE: one global list of reservations; every request scans all of them for every spot.\ninterface Res { spot: number; start: number; end: number }\nclass ReservationsBrute {\n  private all: Res[] = [];\n  constructor(private spots: number) {}\n\n  reserve(start: number, end: number): number {\n    for (let s = 0; s < this.spots; s++) {\n      let clash = false;\n      for (const r of this.all) if (r.spot === s && start < r.end && r.start < end) { clash = true; break; }\n      if (!clash) { this.all.push({ spot: s, start, end }); return s; }\n    }\n    return -1;                                         // O(spots * total reservations) per request\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one global list of reservations; every request scans all of them for every spot.\nclass ReservationsBrute {\n    struct Res { int spot, start, end; };\n    vector<Res> all;\n    int spots;\npublic:\n    ReservationsBrute(int spots) : spots(spots) {}\n\n    int reserve(int start, int end) {\n        for (int s = 0; s < spots; s++) {\n            bool clash = false;\n            for (const Res& r : all) if (r.spot == s && start < r.end && r.start < end) { clash = true; break; }\n            if (!clash) { all.push_back({s, start, end}); return s; }\n        }\n        return -1;                                     // O(spots * total reservations) per request\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\n// BRUTE: one global list of reservations; every request scans all of them for every spot.\nclass ReservationsBrute {\n    sealed class Res { public readonly int Spot, Start, End; public Res(int spot, int start, int end) { Spot = spot; Start = start; End = end; } }\n    private readonly List<Res> all = new List<Res>();\n    private readonly int spots;\n    public ReservationsBrute(int spots) { this.spots = spots; }\n\n    public int Reserve(int start, int end) {\n        for (int s = 0; s < spots; s++) {\n            bool clash = false;\n            foreach (Res r in all) if (r.Spot == s && start < r.End && r.Start < end) { clash = true; break; }\n            if (!clash) { all.Add(new Res(s, start, end)); return s; }\n        }\n        return -1;                                     // O(spots * total reservations) per request\n    }\n}\n" }] } },
     mcq: { q: 'Bookings on a spot are non-overlapping and sorted by start. To test [s, e), which neighbours must you check?', options: ['All bookings', 'Only the booking with the greatest start ≤ s and the booking with the smallest start ≥ s', 'Only the first and last', 'None'], answer: 1, explain: 'Non-overlapping sorted intervals: only the immediate predecessor and successor can collide (a sorted map: <code>TreeMap.floorEntry</code> / <code>ceilingKey</code>, <code>bisect</code> on sorted starts, <code>std::map::lower_bound</code>).' },
     hints: [
       `<p>Hint 1: give every spot its own sorted calendar; then a free-check only looks at that spot's neighbours of <code>start</code>.</p>`,
@@ -9992,7 +12423,7 @@ int main() {
     statement: `<p>Pricing now has a base tariff plus optional add-ons: <b>EV charging</b> (per kWh) and <b>valet</b> (flat fee when used). Any combination must be possible, and adding a new add-on must not create new combination classes. EV spots automatically include the charging add-on.</p>`,
     constraints: `Stays up to 72 h; energy up to 100 kWh; money as long rupees (round charging to the nearest rupee).`,
     example: `<p>EV spot, 3 h, 10 kWh, no valet: hourly ₹20 × 3 = 60, + 10 × 15 = 150 → ${H.c('g', '₹210')}. Regular spot, 3 h, valet: 60 + 100 → ${H.c('g', '₹160')}. <code>describe()</code> → ${H.c('b', 'hourly@20 + valet + charging@15.0/kWh')}.</p>`,
-    brute: { why: `<p>Subclass explosion: HourlyWithCharging, HourlyWithValet, HourlyWithChargingAndValet, then the same again for flat and weekend tariffs. Classes = tariffs × 2<sup>add-ons</sup> — 3 tariffs and 3 add-ons already need 24 classes.</p>`, code: { lang: 'java', code: J.p09_brute, alt: [{ lang: 'python', code: "# BRUTE: subclass explosion. Every combination of features becomes a new class.\nclass HourlyFee:\n    def fee(self, hours, kwh): return hours * 20\nclass HourlyWithCharging(HourlyFee):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + round(kwh * 15)\nclass HourlyWithValet(HourlyFee):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + 100\nclass HourlyWithChargingAndValet(HourlyWithCharging):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + 100\n# ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }, { lang: 'ts', code: "// BRUTE: subclass explosion. Every combination of features becomes a new class.\nclass HourlyFee { fee(hours: number, kwh: number): number { return hours * 20; } }\nclass HourlyWithCharging extends HourlyFee { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + Math.round(kwh * 15); } }\nclass HourlyWithValet extends HourlyFee { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + 100; } }\nclass HourlyWithChargingAndValet extends HourlyWithCharging { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + 100; } }\n// ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }, { lang: 'cpp', code: "// BRUTE: subclass explosion. Every combination of features becomes a new class.\nstruct HourlyFee { virtual long long fee(long long hours, double kwh) { return hours * 20; } virtual ~HourlyFee() = default; };\nstruct HourlyWithCharging : HourlyFee { long long fee(long long hours, double kwh) override { return HourlyFee::fee(hours, kwh) + llround(kwh * 15); } };\nstruct HourlyWithValet : HourlyFee { long long fee(long long hours, double kwh) override { return HourlyFee::fee(hours, kwh) + 100; } };\nstruct HourlyWithChargingAndValet : HourlyWithCharging { long long fee(long long hours, double kwh) override { return HourlyWithCharging::fee(hours, kwh) + 100; } };\n// ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }] } },
+    brute: { why: `<p>Subclass explosion: HourlyWithCharging, HourlyWithValet, HourlyWithChargingAndValet, then the same again for flat and weekend tariffs. Classes = tariffs × 2<sup>add-ons</sup> — 3 tariffs and 3 add-ons already need 24 classes.</p>`, code: { lang: 'java', code: J.p09_brute, alt: [{ lang: 'python', code: "# BRUTE: subclass explosion. Every combination of features becomes a new class.\nclass HourlyFee:\n    def fee(self, hours, kwh): return hours * 20\nclass HourlyWithCharging(HourlyFee):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + round(kwh * 15)\nclass HourlyWithValet(HourlyFee):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + 100\nclass HourlyWithChargingAndValet(HourlyWithCharging):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + 100\n# ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }, { lang: 'ts', code: "// BRUTE: subclass explosion. Every combination of features becomes a new class.\nclass HourlyFee { fee(hours: number, kwh: number): number { return hours * 20; } }\nclass HourlyWithCharging extends HourlyFee { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + Math.round(kwh * 15); } }\nclass HourlyWithValet extends HourlyFee { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + 100; } }\nclass HourlyWithChargingAndValet extends HourlyWithCharging { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + 100; } }\n// ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }, { lang: 'cpp', code: "// BRUTE: subclass explosion. Every combination of features becomes a new class.\nstruct HourlyFee { virtual long long fee(long long hours, double kwh) { return hours * 20; } virtual ~HourlyFee() = default; };\nstruct HourlyWithCharging : HourlyFee { long long fee(long long hours, double kwh) override { return HourlyFee::fee(hours, kwh) + llround(kwh * 15); } };\nstruct HourlyWithValet : HourlyFee { long long fee(long long hours, double kwh) override { return HourlyFee::fee(hours, kwh) + 100; } };\nstruct HourlyWithChargingAndValet : HourlyWithCharging { long long fee(long long hours, double kwh) override { return HourlyWithCharging::fee(hours, kwh) + 100; } };\n// ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: subclass explosion. Every combination of features becomes a new class.\nclass HourlyFee { public virtual long Fee(long hours, double kwh) { return hours * 20; } }\nclass HourlyWithCharging : HourlyFee { public override long Fee(long hours, double kwh) { return base.Fee(hours, kwh) + (long)Math.Round(kwh * 15); } }\nclass HourlyWithValet : HourlyFee { public override long Fee(long hours, double kwh) { return base.Fee(hours, kwh) + 100; } }\nclass HourlyWithChargingAndValet : HourlyWithCharging { public override long Fee(long hours, double kwh) { return base.Fee(hours, kwh) + 100; } }\n// ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }] } },
     mcq: { q: 'With 3 base tariffs and 3 optional add-ons, how many classes do decorators need?', options: ['24', '6', '9', '3'], answer: 1, explain: '3 base classes + 3 decorator classes; combinations are built at runtime by wrapping.' },
     hints: [
       `<p>Hint 1: an add-on "is a" pricing (same interface) and "has a" pricing (the one it adds to). That double relationship is the Decorator signature.</p>`,
@@ -10015,7 +12446,7 @@ int main() {
     statement: `<p>A lot has G entry gates and S spots; <code>dist[g][s]</code> is the walking distance from gate g to spot s. Implement a <code>GateAwareStrategy</code>: <code>allocate(gate)</code> returns the free spot nearest that gate (ties → smaller id), <code>release(spot)</code> frees it. Make allocation faster than scanning all spots.</p>`,
     constraints: `G ≤ 20, S ≤ 10<sup>5</sup>, up to 10<sup>6</sup> operations.`,
     example: `<p>dist = gate0 ${H.arr([1, 2, 3, 4])} gate1 ${H.arr([4, 3, 2, 1])}. allocate(0) → ${H.c('g', '0')}; allocate(1) → ${H.c('g', '3')}; allocate(1) → ${H.c('g', '2')}; release(3); allocate(1) → ${H.c('g', '3')}; allocate(0) → ${H.c('g', '1')}.</p>`,
-    brute: { why: `<p>For every arriving car, scan all S spots and compute the minimum distance: O(S) per allocation — 10<sup>5</sup> × 10<sup>6</sup> operations is far too slow.</p>`, code: { lang: 'java', code: J.p10_brute, alt: [{ lang: 'python', code: "# BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nclass NearestBrute:\n    @staticmethod\n    def nearest(dist, taken, gate):\n        best = -1\n        for s in range(len(taken)):\n            if not taken[s] and (best == -1 or dist[gate][s] < dist[gate][best]): best = s\n        return best                                    # O(spots) per car, per gate\n" }, { lang: 'ts', code: "// BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nclass NearestBrute {\n  static nearest(dist: number[][], taken: boolean[], gate: number): number {\n    let best = -1;\n    for (let s = 0; s < taken.length; s++)\n      if (!taken[s] && (best === -1 || dist[gate][s] < dist[gate][best])) best = s;\n    return best;                                       // O(spots) per car, per gate\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nstruct NearestBrute {\n    static int nearest(const vector<vector<int>>& dist, const vector<bool>& taken, int gate) {\n        int best = -1;\n        for (int s = 0; s < (int)taken.size(); s++)\n            if (!taken[s] && (best == -1 || dist[gate][s] < dist[gate][best])) best = s;\n        return best;                                   // O(spots) per car, per gate\n    }\n};\n" }] } },
+    brute: { why: `<p>For every arriving car, scan all S spots and compute the minimum distance: O(S) per allocation — 10<sup>5</sup> × 10<sup>6</sup> operations is far too slow.</p>`, code: { lang: 'java', code: J.p10_brute, alt: [{ lang: 'python', code: "# BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nclass NearestBrute:\n    @staticmethod\n    def nearest(dist, taken, gate):\n        best = -1\n        for s in range(len(taken)):\n            if not taken[s] and (best == -1 or dist[gate][s] < dist[gate][best]): best = s\n        return best                                    # O(spots) per car, per gate\n" }, { lang: 'ts', code: "// BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nclass NearestBrute {\n  static nearest(dist: number[][], taken: boolean[], gate: number): number {\n    let best = -1;\n    for (let s = 0; s < taken.length; s++)\n      if (!taken[s] && (best === -1 || dist[gate][s] < dist[gate][best])) best = s;\n    return best;                                       // O(spots) per car, per gate\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nstruct NearestBrute {\n    static int nearest(const vector<vector<int>>& dist, const vector<bool>& taken, int gate) {\n        int best = -1;\n        for (int s = 0; s < (int)taken.size(); s++)\n            if (!taken[s] && (best == -1 || dist[gate][s] < dist[gate][best])) best = s;\n        return best;                                   // O(spots) per car, per gate\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nstatic class NearestBrute {\n    public static int Nearest(int[][] dist, bool[] taken, int gate) {\n        int best = -1;\n        for (int s = 0; s < taken.Length; s++)\n            if (!taken[s] && (best == -1 || dist[gate][s] < dist[gate][best])) best = s;\n        return best;                                   // O(spots) per car, per gate\n    }\n}\n" }] } },
     mcq: { q: 'A spot taken through gate 0 still sits in gate 1\'s heap. What is the cheapest correct handling?', options: ['Remove it from every heap immediately (O(S) each)', 'Lazy deletion: when gate 1 pops it later, see it is taken and pop again', 'Ignore it — double allocation is fine', 'Rebuild all heaps'], answer: 1, explain: 'Lazy deletion keeps operations O(log S) amortised; stale entries are skipped when popped.' },
     hints: [
       `<p>Hint 1: each gate needs its own ordering of spots, so keep one min-heap per gate keyed by that gate's distance.</p>`,
@@ -10041,7 +12472,7 @@ int main() {
     statement: `<p>Eight entry gates run on eight threads and call <code>park(plate, type)</code> at the same time; exit gates call <code>leave(plate)</code>. Guarantee: no spot is ever given to two vehicles, a plate cannot be inside twice, and gates should not all queue behind a single global lock. Prove it with a stress test.</p>`,
     constraints: `Up to 10<sup>5</sup> spots and 64 gate threads. park/leave should be lock-free or fine-grained. Return empty when no spot of that type is free.`,
     example: `<p>500 COMPACT spots, 8 threads × 125 cars = 1000 arrivals → ${H.c('g', 'parked=500 duplicates=0 inside=500')}. With the racy version the same test occasionally prints ${H.c('r', 'duplicates &gt; 0')} — and only occasionally, which is what makes races dangerous.</p>`,
-    brute: { why: `<p>Check-then-act on a shared array: two threads both read <code>spots[i] == null</code> and both write. Wrapping everything in one lock (<code>synchronized</code>, <code>threading.Lock</code>, <code>std::mutex</code>; in TypeScript the same bug appears whenever an <code>await</code> sits between the check and the act) fixes correctness but serialises every gate. The interviewer wants you to name the race, fix it, then improve throughput.</p>`, code: { lang: 'java', code: J.p11_brute, alt: [{ lang: 'python', code: "# BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n# and both write their car into it. Wrapping park() in one global lock fixes correctness\n# but makes every gate wait for every other gate.\nclass RacyLot:\n    def __init__(self, n):\n        self.spots = [None] * n\n\n    def park(self, plate):\n        for i in range(len(self.spots)):\n            if self.spots[i] is None:        # CHECK  <- another thread can run here\n                self.spots[i] = plate        # ACT    <- and both \"win\" the same spot\n                return i\n        return -1\n" }, { lang: 'ts', code: "// BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n// and both write their car into it. Wrapping park() in one global lock fixes correctness\n// but makes every gate wait for every other gate. (JavaScript runs one callback at a time, but the\n// same bug appears as soon as an await sits between the check and the act, as below.)\nclass RacyLot {\n  private spots: (string | null)[];\n  constructor(n: number) { this.spots = new Array<string | null>(n).fill(null); }\n\n  async park(plate: string): Promise<number> {\n    for (let i = 0; i < this.spots.length; i++) {\n      if (this.spots[i] === null) {        // CHECK  <- another request can run at the await\n        await Promise.resolve();\n        this.spots[i] = plate;             // ACT    <- and both \"win\" the same spot\n        return i;\n      }\n    }\n    return -1;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n// and both write their car into it. Wrapping park() in one global lock fixes correctness\n// but makes every gate wait for every other gate.\nclass RacyLot {\n    vector<string> spots;                    // \"\" = free\npublic:\n    RacyLot(int n) : spots(n) {}\n\n    int park(const string& plate) {\n        for (int i = 0; i < (int)spots.size(); i++) {\n            if (spots[i].empty()) {          // CHECK  <- another thread can run here\n                spots[i] = plate;            // ACT    <- and both \"win\" the same spot\n                return i;\n            }\n        }\n        return -1;\n    }\n};\n" }] } },
+    brute: { why: `<p>Check-then-act on a shared array: two threads both read <code>spots[i] == null</code> and both write. Wrapping everything in one lock (<code>synchronized</code>, <code>threading.Lock</code>, <code>std::mutex</code>; in TypeScript the same bug appears whenever an <code>await</code> sits between the check and the act) fixes correctness but serialises every gate. The interviewer wants you to name the race, fix it, then improve throughput.</p>`, code: { lang: 'java', code: J.p11_brute, alt: [{ lang: 'python', code: "# BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n# and both write their car into it. Wrapping park() in one global lock fixes correctness\n# but makes every gate wait for every other gate.\nclass RacyLot:\n    def __init__(self, n):\n        self.spots = [None] * n\n\n    def park(self, plate):\n        for i in range(len(self.spots)):\n            if self.spots[i] is None:        # CHECK  <- another thread can run here\n                self.spots[i] = plate        # ACT    <- and both \"win\" the same spot\n                return i\n        return -1\n" }, { lang: 'ts', code: "// BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n// and both write their car into it. Wrapping park() in one global lock fixes correctness\n// but makes every gate wait for every other gate. (JavaScript runs one callback at a time, but the\n// same bug appears as soon as an await sits between the check and the act, as below.)\nclass RacyLot {\n  private spots: (string | null)[];\n  constructor(n: number) { this.spots = new Array<string | null>(n).fill(null); }\n\n  async park(plate: string): Promise<number> {\n    for (let i = 0; i < this.spots.length; i++) {\n      if (this.spots[i] === null) {        // CHECK  <- another request can run at the await\n        await Promise.resolve();\n        this.spots[i] = plate;             // ACT    <- and both \"win\" the same spot\n        return i;\n      }\n    }\n    return -1;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n// and both write their car into it. Wrapping park() in one global lock fixes correctness\n// but makes every gate wait for every other gate.\nclass RacyLot {\n    vector<string> spots;                    // \"\" = free\npublic:\n    RacyLot(int n) : spots(n) {}\n\n    int park(const string& plate) {\n        for (int i = 0; i < (int)spots.size(); i++) {\n            if (spots[i].empty()) {          // CHECK  <- another thread can run here\n                spots[i] = plate;            // ACT    <- and both \"win\" the same spot\n                return i;\n            }\n        }\n        return -1;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n// and both write their car into it. Wrapping Park() in one global lock fixes correctness\n// but makes every gate wait for every other gate.\nclass RacyLot {\n    private readonly string[] spots;\n    public RacyLot(int n) { spots = new string[n]; }\n\n    public int Park(string plate) {\n        for (int i = 0; i < spots.Length; i++) {\n            if (spots[i] == null) {          // CHECK  <- another thread can run here\n                spots[i] = plate;            // ACT    <- and both \"win\" the same spot\n                return i;\n            }\n        }\n        return -1;\n    }\n}\n" }] } },
     mcq: { q: 'Why is the pop of a thread-safe queue (<code>ConcurrentLinkedQueue.poll()</code> in Java) enough to stop two gates getting the same free spot?', options: ['It is synchronized internally on the whole lot', 'It atomically removes the head: each element is returned to at most one caller', 'It sorts spots by distance', 'It blocks until a spot is free'], answer: 1, explain: 'The pop is atomic (<code>poll()</code> uses CAS; a mutex-guarded deque pops under its lock), so exactly one thread wins each element; the losing thread gets the next one or nothing.' },
     hints: [
       `<p>Hint 1: the dangerous moment is "find a free spot" + "mark it taken". Make that one atomic operation instead of two steps.</p>`,
@@ -10064,7 +12495,7 @@ int main() {
     statement: `<p>Implement <code>MinimaxBot implements Player</code> so it plugs into the existing game without any change to <code>Game</code>. The bot must never lose on 3×3: take a win when available, block the opponent's win, and prefer faster wins / slower losses.</p>`,
     constraints: `3×3 board; the bot may be X or O; respond within a few milliseconds.`,
     example: `<p>Board ${H.c('b', 'XX. / OO. / ...')}, bot = O → plays ${H.c('g', '(1,2)')} — winning now beats blocking. Board ${H.c('b', 'XX. / .O. / ...')}, bot = O → plays ${H.c('g', '(0,2)')} — the only move that does not lose.</p>`,
-    brute: { why: `<p>A "first free cell" bot. It fits the interface but loses to any human in a few moves. (Plain minimax without pruning is also acceptable for 3×3 — at most 9! ≈ 362,880 leaves — but alpha-beta is the expected upgrade and is essential for bigger boards.)</p>`, code: { lang: 'java', code: J.p12_brute, alt: [{ lang: 'python', code: "# BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nclass FirstFreeBot:\n    @staticmethod\n    def choose(b):\n        for r in range(3):\n            for c in range(3):\n                if b[r][c] == \".\": return (r, c)\n        raise RuntimeError(\"board full\")\n" }, { lang: 'ts', code: "// BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nclass FirstFreeBot {\n  static choose(b: string[][]): [number, number] {\n    for (let r = 0; r < 3; r++)\n      for (let c = 0; c < 3; c++)\n        if (b[r][c] === \".\") return [r, c];\n    throw new Error(\"board full\");\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nstruct FirstFreeBot {\n    static pair<int, int> choose(const vector<vector<char>>& b) {\n        for (int r = 0; r < 3; r++)\n            for (int c = 0; c < 3; c++)\n                if (b[r][c] == '.') return {r, c};\n        throw runtime_error(\"board full\");\n    }\n};\n" }] } },
+    brute: { why: `<p>A "first free cell" bot. It fits the interface but loses to any human in a few moves. (Plain minimax without pruning is also acceptable for 3×3 — at most 9! ≈ 362,880 leaves — but alpha-beta is the expected upgrade and is essential for bigger boards.)</p>`, code: { lang: 'java', code: J.p12_brute, alt: [{ lang: 'python', code: "# BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nclass FirstFreeBot:\n    @staticmethod\n    def choose(b):\n        for r in range(3):\n            for c in range(3):\n                if b[r][c] == \".\": return (r, c)\n        raise RuntimeError(\"board full\")\n" }, { lang: 'ts', code: "// BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nclass FirstFreeBot {\n  static choose(b: string[][]): [number, number] {\n    for (let r = 0; r < 3; r++)\n      for (let c = 0; c < 3; c++)\n        if (b[r][c] === \".\") return [r, c];\n    throw new Error(\"board full\");\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nstruct FirstFreeBot {\n    static pair<int, int> choose(const vector<vector<char>>& b) {\n        for (int r = 0; r < 3; r++)\n            for (int c = 0; c < 3; c++)\n                if (b[r][c] == '.') return {r, c};\n        throw runtime_error(\"board full\");\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nstatic class FirstFreeBot {\n    public static int[] Choose(char[][] b) {\n        for (int r = 0; r < 3; r++)\n            for (int c = 0; c < 3; c++)\n                if (b[r][c] == '.') return new[] { r, c };\n        throw new InvalidOperationException(\"board full\");\n    }\n}\n" }] } },
     mcq: { q: 'Why score a win as <code>10 − depth</code> rather than a flat +10?', options: ['To avoid integer overflow', 'So the bot prefers the fastest win (and the slowest loss) among equally winning lines', 'Depth is required by alpha-beta', 'It makes no difference'], answer: 1, explain: 'Without depth, a win in 1 and a win in 5 look the same and the bot may "play with its food" and dither.' },
     hints: [
       `<p>Hint 1: assume both sides play perfectly. The bot maximises the score, the opponent minimises it; recurse over every free cell.</p>`,
@@ -10095,7 +12526,7 @@ int main() {
       <p>Bad lines must print an error, never crash. New commands must be addable without touching the existing ones.</p>`,
     constraints: `Up to 10<sup>5</sup> slots and 10<sup>6</sup> commands; colour matching case-insensitive; outputs must match exactly. Commands arrive one per line on standard input and blank lines are skipped.`,
     example: `<p>create 3; park ×3 → ${H.c('g', 'slots 1, 2, 3')}; 4th park → ${H.c('r', 'Sorry, parking lot is full')}; leave 2 → ${H.c('b', 'Slot number 2 is free')}; park → ${H.c('g', 'Allocated slot number: 2')} (lowest free); colour White → ${H.c('g', 'KA-01-HH-1234, KA-01-BB-0001')}; <code>fly_away now</code> → ${H.c('r', 'Unknown command: fly_away')}.</p>`,
-    brute: { why: `<p>Everything in one class with an if-else ladder over the command word and linear scans for the nearest slot and colour queries: O(n) per park and query, no validation (a missing argument throws), and each new command grows the ladder. It may pass the sample but fails the evaluator's large hidden input and the code-quality rubric.</p>`, code: { lang: 'java', code: J.p13_brute, alt: [{ lang: 'python', code: "# BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nplate, colour = [], []\n\ndef run(line):\n    global plate, colour\n    p = line.split(\" \")\n    if p[0] == \"create_parking_lot\":\n        plate = [None] * int(p[1]); colour = [None] * len(plate)\n        print(\"Created a parking lot with\", len(plate), \"slots\")\n    elif p[0] == \"park\":\n        for i in range(len(plate)):                     # O(n) scan for the nearest slot\n            if plate[i] is None:\n                plate[i] = p[1]; colour[i] = p[2]\n                print(\"Allocated slot number:\", i + 1)\n                return\n        print(\"Sorry, parking lot is full\")\n    elif p[0] == \"leave\":\n        s = int(p[1]) - 1\n        plate[s] = None; colour[s] = None\n        print(\"Slot number\", s + 1, \"is free\")\n    elif p[0] == \"registration_numbers_for_cars_with_colour\":\n        found = [plate[i] for i in range(len(plate)) if colour[i] == p[1]]\n        print(\", \".join(found) if found else \"Not found\")\n    else:\n        print(\"Unknown command\")                        # every new command grows this ladder\n" }, { lang: 'ts', code: "// BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nlet plate: (string | null)[] = [], colour: (string | null)[] = [];\n\nfunction run(line: string): void {\n  const p = line.split(\" \");\n  if (p[0] === \"create_parking_lot\") {\n    plate = new Array<string | null>(parseInt(p[1])).fill(null); colour = new Array<string | null>(plate.length).fill(null);\n    console.log(\"Created a parking lot with \" + plate.length + \" slots\");\n  } else if (p[0] === \"park\") {\n    for (let i = 0; i < plate.length; i++)              // O(n) scan for the nearest slot\n      if (plate[i] === null) { plate[i] = p[1]; colour[i] = p[2]; console.log(\"Allocated slot number: \" + (i + 1)); return; }\n    console.log(\"Sorry, parking lot is full\");\n  } else if (p[0] === \"leave\") {\n    const s = parseInt(p[1]) - 1; plate[s] = null; colour[s] = null;\n    console.log(\"Slot number \" + (s + 1) + \" is free\");\n  } else if (p[0] === \"registration_numbers_for_cars_with_colour\") {\n    const found: string[] = [];\n    for (let i = 0; i < plate.length; i++) if (colour[i] === p[1]) found.push(plate[i]!);\n    console.log(found.length === 0 ? \"Not found\" : found.join(\", \"));\n  } else {\n    console.log(\"Unknown command\");                    // every new command grows this ladder\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nvector<string> plate, colour;                           // \"\" = free slot\n\nvoid run(const string& line) {\n    istringstream in(line);\n    vector<string> p; string w;\n    while (in >> w) p.push_back(w);\n    if (p[0] == \"create_parking_lot\") {\n        plate.assign(stoi(p[1]), \"\"); colour.assign(plate.size(), \"\");\n        cout << \"Created a parking lot with \" << plate.size() << \" slots\" << endl;\n    } else if (p[0] == \"park\") {\n        for (int i = 0; i < (int)plate.size(); i++)     // O(n) scan for the nearest slot\n            if (plate[i].empty()) { plate[i] = p[1]; colour[i] = p[2]; cout << \"Allocated slot number: \" << i + 1 << endl; return; }\n        cout << \"Sorry, parking lot is full\" << endl;\n    } else if (p[0] == \"leave\") {\n        int s = stoi(p[1]) - 1; plate[s] = \"\"; colour[s] = \"\";\n        cout << \"Slot number \" << s + 1 << \" is free\" << endl;\n    } else if (p[0] == \"registration_numbers_for_cars_with_colour\") {\n        string out;\n        for (int i = 0; i < (int)plate.size(); i++) if (colour[i] == p[1]) out += (out.empty() ? \"\" : \", \") + plate[i];\n        cout << (out.empty() ? \"Not found\" : out) << endl;\n    } else {\n        cout << \"Unknown command\" << endl;              // every new command grows this ladder\n    }\n}\n" }] } },
+    brute: { why: `<p>Everything in one class with an if-else ladder over the command word and linear scans for the nearest slot and colour queries: O(n) per park and query, no validation (a missing argument throws), and each new command grows the ladder. It may pass the sample but fails the evaluator's large hidden input and the code-quality rubric.</p>`, code: { lang: 'java', code: J.p13_brute, alt: [{ lang: 'python', code: "# BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nplate, colour = [], []\n\ndef run(line):\n    global plate, colour\n    p = line.split(\" \")\n    if p[0] == \"create_parking_lot\":\n        plate = [None] * int(p[1]); colour = [None] * len(plate)\n        print(\"Created a parking lot with\", len(plate), \"slots\")\n    elif p[0] == \"park\":\n        for i in range(len(plate)):                     # O(n) scan for the nearest slot\n            if plate[i] is None:\n                plate[i] = p[1]; colour[i] = p[2]\n                print(\"Allocated slot number:\", i + 1)\n                return\n        print(\"Sorry, parking lot is full\")\n    elif p[0] == \"leave\":\n        s = int(p[1]) - 1\n        plate[s] = None; colour[s] = None\n        print(\"Slot number\", s + 1, \"is free\")\n    elif p[0] == \"registration_numbers_for_cars_with_colour\":\n        found = [plate[i] for i in range(len(plate)) if colour[i] == p[1]]\n        print(\", \".join(found) if found else \"Not found\")\n    else:\n        print(\"Unknown command\")                        # every new command grows this ladder\n" }, { lang: 'ts', code: "// BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nlet plate: (string | null)[] = [], colour: (string | null)[] = [];\n\nfunction run(line: string): void {\n  const p = line.split(\" \");\n  if (p[0] === \"create_parking_lot\") {\n    plate = new Array<string | null>(parseInt(p[1])).fill(null); colour = new Array<string | null>(plate.length).fill(null);\n    console.log(\"Created a parking lot with \" + plate.length + \" slots\");\n  } else if (p[0] === \"park\") {\n    for (let i = 0; i < plate.length; i++)              // O(n) scan for the nearest slot\n      if (plate[i] === null) { plate[i] = p[1]; colour[i] = p[2]; console.log(\"Allocated slot number: \" + (i + 1)); return; }\n    console.log(\"Sorry, parking lot is full\");\n  } else if (p[0] === \"leave\") {\n    const s = parseInt(p[1]) - 1; plate[s] = null; colour[s] = null;\n    console.log(\"Slot number \" + (s + 1) + \" is free\");\n  } else if (p[0] === \"registration_numbers_for_cars_with_colour\") {\n    const found: string[] = [];\n    for (let i = 0; i < plate.length; i++) if (colour[i] === p[1]) found.push(plate[i]!);\n    console.log(found.length === 0 ? \"Not found\" : found.join(\", \"));\n  } else {\n    console.log(\"Unknown command\");                    // every new command grows this ladder\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nvector<string> plate, colour;                           // \"\" = free slot\n\nvoid run(const string& line) {\n    istringstream in(line);\n    vector<string> p; string w;\n    while (in >> w) p.push_back(w);\n    if (p[0] == \"create_parking_lot\") {\n        plate.assign(stoi(p[1]), \"\"); colour.assign(plate.size(), \"\");\n        cout << \"Created a parking lot with \" << plate.size() << \" slots\" << endl;\n    } else if (p[0] == \"park\") {\n        for (int i = 0; i < (int)plate.size(); i++)     // O(n) scan for the nearest slot\n            if (plate[i].empty()) { plate[i] = p[1]; colour[i] = p[2]; cout << \"Allocated slot number: \" << i + 1 << endl; return; }\n        cout << \"Sorry, parking lot is full\" << endl;\n    } else if (p[0] == \"leave\") {\n        int s = stoi(p[1]) - 1; plate[s] = \"\"; colour[s] = \"\";\n        cout << \"Slot number \" << s + 1 << \" is free\" << endl;\n    } else if (p[0] == \"registration_numbers_for_cars_with_colour\") {\n        string out;\n        for (int i = 0; i < (int)plate.size(); i++) if (colour[i] == p[1]) out += (out.empty() ? \"\" : \", \") + plate[i];\n        cout << (out.empty() ? \"Not found\" : out) << endl;\n    } else {\n        cout << \"Unknown command\" << endl;              // every new command grows this ladder\n    }\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\n// BRUTE: Main() with a giant if-else on the command word and linear scans everywhere.\nstatic class ParkingCli {\n    static string[] plate, colour;\n\n    public static void Run(string line) {\n        string[] p = line.Split(' ');\n        if (p[0] == \"create_parking_lot\") {\n            plate = new string[int.Parse(p[1])]; colour = new string[plate.Length];\n            Console.WriteLine(\"Created a parking lot with \" + plate.Length + \" slots\");\n        } else if (p[0] == \"park\") {\n            for (int i = 0; i < plate.Length; i++)          // O(n) scan for the nearest slot\n                if (plate[i] == null) { plate[i] = p[1]; colour[i] = p[2]; Console.WriteLine(\"Allocated slot number: \" + (i + 1)); return; }\n            Console.WriteLine(\"Sorry, parking lot is full\");\n        } else if (p[0] == \"leave\") {\n            int s = int.Parse(p[1]) - 1; plate[s] = null; colour[s] = null;\n            Console.WriteLine(\"Slot number \" + (s + 1) + \" is free\");\n        } else if (p[0] == \"registration_numbers_for_cars_with_colour\") {\n            List<string> j = new List<string>();\n            for (int i = 0; i < plate.Length; i++) if (p[1] == colour[i]) j.Add(plate[i]);\n            Console.WriteLine(j.Count == 0 ? \"Not found\" : string.Join(\", \", j));\n        } else {\n            Console.WriteLine(\"Unknown command\");        // every new command grows this ladder\n        }\n    }\n}\n" }] } },
     mcq: { q: 'Which structure gives "nearest free slot" in O(log n) and supports freeing any slot?', options: ['ArrayList scanned from the start', 'A sorted set or min-heap of free slots (<code>TreeSet</code> + <code>pollFirst()</code>, <code>heapq</code>, <code>std::set</code>)', 'HashSet&lt;Integer&gt;', 'Stack&lt;Integer&gt;'], answer: 1, explain: 'A sorted set keeps the smallest free slot first; add() on leave and pollFirst() on park are both O(log n). (A min-heap also works.)' },
     hints: [
       `<p>Hint 1: separate three layers: text parsing, command handlers, and the domain (<code>Garage</code>) that knows nothing about strings like "park".</p>`,
@@ -10118,7 +12549,7 @@ int main() {
     statement: `<p>Support P players on a (P+1)×(P+1) board (a full line wins). Spectators (TV screen, logger, scoreboard) must receive every event without the game knowing their classes. Every game must be <b>replayable</b>: rebuild the board as it looked after any move k from stored history alone.</p>`,
     constraints: `2 ≤ P ≤ 8; win check O(1) per move; replay O(moves); events are immutable.`,
     example: `<p>Players X, O, Z on 4×4. Moves (0,0) (1,0) (2,0) (0,1) (1,1) (2,1) (0,2) (1,2) (2,2) (0,3) → TV sees ${H.c('g', 'X WINS')} (row 0). <code>replay(events, 4, 3)</code> → ${H.c('b', 'X... / O... / Z... / ....')}.</p>`,
-    brute: { why: `<p>The game prints directly ("Player X played…") and copy-pastes a second println for the TV. No history is stored, so replay is impossible, and every new spectator means editing <code>play()</code>.</p>`, code: { lang: 'java', code: J.p14_brute, alt: [{ lang: 'python', code: "# BRUTE: the game prints straight to the console and keeps no history.\n# Spectators? Copy-paste print calls. Replay? Impossible: past states are gone.\nclass LoudGame:\n    def __init__(self):\n        self.b = [[None] * 4 for _ in range(4)]\n        self.syms = [\"X\", \"O\", \"Z\"]\n        self.turn = 0\n\n    def play(self, r, c):\n        self.b[r][c] = self.syms[self.turn]\n        print(f\"Player {self.syms[self.turn]} played {r},{c}\")           # UI glued into the model\n        print(f\"[TV screen] {self.syms[self.turn]} -> {r},{c}\")          # second \"spectator\", copy-pasted\n        self.turn = (self.turn + 1) % 3\n" }, { lang: 'ts', code: "// BRUTE: the game prints straight to the console and keeps no history.\n// Spectators? Copy-paste console.log calls. Replay? Impossible: past states are gone.\nclass LoudGame {\n  b: string[][] = Array.from({ length: 4 }, () => new Array<string>(4).fill(\"\"));\n  syms = [\"X\", \"O\", \"Z\"];\n  turn = 0;\n  play(r: number, c: number): void {\n    this.b[r][c] = this.syms[this.turn];\n    console.log(\"Player \" + this.syms[this.turn] + \" played \" + r + \",\" + c);    // UI glued into the model\n    console.log(\"[TV screen] \" + this.syms[this.turn] + \" -> \" + r + \",\" + c);    // second \"spectator\", copy-pasted\n    this.turn = (this.turn + 1) % 3;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: the game prints straight to the console and keeps no history.\n// Spectators? Copy-paste cout lines. Replay? Impossible: past states are gone.\nstruct LoudGame {\n    char b[4][4] = {};\n    char syms[3] = {'X', 'O', 'Z'};\n    int turn = 0;\n    void play(int r, int c) {\n        b[r][c] = syms[turn];\n        cout << \"Player \" << syms[turn] << \" played \" << r << \",\" << c << endl;    // UI glued into the model\n        cout << \"[TV screen] \" << syms[turn] << \" -> \" << r << \",\" << c << endl;    // second \"spectator\", copy-pasted\n        turn = (turn + 1) % 3;\n    }\n};\n" }] } },
+    brute: { why: `<p>The game prints directly ("Player X played…") and copy-pastes a second println for the TV. No history is stored, so replay is impossible, and every new spectator means editing <code>play()</code>.</p>`, code: { lang: 'java', code: J.p14_brute, alt: [{ lang: 'python', code: "# BRUTE: the game prints straight to the console and keeps no history.\n# Spectators? Copy-paste print calls. Replay? Impossible: past states are gone.\nclass LoudGame:\n    def __init__(self):\n        self.b = [[None] * 4 for _ in range(4)]\n        self.syms = [\"X\", \"O\", \"Z\"]\n        self.turn = 0\n\n    def play(self, r, c):\n        self.b[r][c] = self.syms[self.turn]\n        print(f\"Player {self.syms[self.turn]} played {r},{c}\")           # UI glued into the model\n        print(f\"[TV screen] {self.syms[self.turn]} -> {r},{c}\")          # second \"spectator\", copy-pasted\n        self.turn = (self.turn + 1) % 3\n" }, { lang: 'ts', code: "// BRUTE: the game prints straight to the console and keeps no history.\n// Spectators? Copy-paste console.log calls. Replay? Impossible: past states are gone.\nclass LoudGame {\n  b: string[][] = Array.from({ length: 4 }, () => new Array<string>(4).fill(\"\"));\n  syms = [\"X\", \"O\", \"Z\"];\n  turn = 0;\n  play(r: number, c: number): void {\n    this.b[r][c] = this.syms[this.turn];\n    console.log(\"Player \" + this.syms[this.turn] + \" played \" + r + \",\" + c);    // UI glued into the model\n    console.log(\"[TV screen] \" + this.syms[this.turn] + \" -> \" + r + \",\" + c);    // second \"spectator\", copy-pasted\n    this.turn = (this.turn + 1) % 3;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: the game prints straight to the console and keeps no history.\n// Spectators? Copy-paste cout lines. Replay? Impossible: past states are gone.\nstruct LoudGame {\n    char b[4][4] = {};\n    char syms[3] = {'X', 'O', 'Z'};\n    int turn = 0;\n    void play(int r, int c) {\n        b[r][c] = syms[turn];\n        cout << \"Player \" << syms[turn] << \" played \" << r << \",\" << c << endl;    // UI glued into the model\n        cout << \"[TV screen] \" << syms[turn] << \" -> \" << r << \",\" << c << endl;    // second \"spectator\", copy-pasted\n        turn = (turn + 1) % 3;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\n\n// BRUTE: the game prints straight to the console and keeps no history.\n// Spectators? Copy-paste WriteLine calls. Replay? Impossible: past states are gone.\nclass LoudGame {\n    char[,] b = new char[4, 4];\n    char[] syms = { 'X', 'O', 'Z' };\n    int turn = 0;\n    public void Play(int r, int c) {\n        b[r, c] = syms[turn];\n        Console.WriteLine(\"Player \" + syms[turn] + \" played \" + r + \",\" + c);    // UI glued into the model\n        Console.WriteLine(\"[TV screen] \" + syms[turn] + \" -> \" + r + \",\" + c);    // second \"spectator\", copy-pasted\n        turn = (turn + 1) % 3;\n    }\n}\n" }] } },
     mcq: { q: 'Why model events as a closed set of immutable types (a Java <b>sealed</b> interface of records, a TypeScript discriminated union, a C++ <code>std::variant</code>)?', options: ['Records are faster', 'The compiler knows every event type, so a <code>switch</code> / <code>match</code> / <code>std::visit</code> over events can be checked for exhaustiveness, and events are immutable', 'Sealed classes are required for Observer', 'To prevent subclassing Game'], answer: 1, explain: 'A closed set of immutable facts (sealed + records in Java, a discriminated union in TypeScript, <code>std::variant</code> in C++, frozen dataclasses in Python): pattern-matching switches must handle each one, and the compiler or type checker flags a missing case.' },
     hints: [
       `<p>Hint 1: anything that happened (move, win, draw) is a fact — store it as an immutable event in an append-only list.</p>`,

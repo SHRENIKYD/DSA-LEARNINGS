@@ -94,6 +94,21 @@ vector<long long> allFactors(long long n) {
     }
     small.insert(small.end(), big.rbegin(), big.rend());   // big partners reversed
     return small;
+}` }, { lang: 'csharp', code: String.raw`
+List<long> AllFactors(long n) {
+    var small = new List<long>();   // small partners: 1, 2, 3 ... (found in increasing order)
+    var big = new List<long>();     // big partners: n, n/2 ... (found in decreasing order)
+    for (long i = 1; i <= n / i; i++) {     // i <= n / i is i * i <= n without overflow
+        if (n % i == 0) {                   // i divides n, so (i, n / i) is a factor pair
+            small.Add(i);
+            if (i != n / i) {               // perfect square: i and n/i are the SAME number
+                big.Add(n / i);             // add the partner only if it is different
+            }
+        }
+    }
+    big.Reverse();                          // big partners were collected largest-first
+    small.AddRange(big);                    // stitch both halves -> fully sorted list
+    return small;
 }` }] },
     codeTitle: 'List all factors in sorted order (O(√N))',
     examples: [
@@ -157,6 +172,17 @@ long long sumProperDivisors(long long n) {
         }
     }
     return sum;                              // 28 -> 28, 12 -> 16
+}` }, { lang: 'csharp', code: String.raw`
+long SumProperDivisors(long n) {
+    if (n == 1) return 0;                 // 1 has no proper divisors
+    long sum = 1;                          // 1 divides everything (and its partner n is excluded)
+    for (long i = 2; i <= n / i; i++) {
+        if (n % i == 0) {
+            sum += i;                      // small partner
+            if (i != n / i) sum += n / i;  // big partner (only if different)
+        }
+    }
+    return sum;                            // 28 -> 28, 12 -> 16
 }` }] }
       },
       {
@@ -215,6 +241,17 @@ map<long long, int> primeFactors(long long n) {
     }
     if (n > 1) f[n]++;                       // whatever is left is one big prime
     return f;                                // 360 -> {2:3, 3:2, 5:1}
+}` }, { lang: 'csharp', code: String.raw`
+SortedDictionary<long, int> PrimeFactors(long n) {
+    var f = new SortedDictionary<long, int>();   // prime -> exponent, sorted
+    for (long i = 2; i <= n / i; i++) {          // i <= n / i is i * i <= n without overflow
+        while (n % i == 0) {                     // strip out every copy of i
+            f[i] = f.TryGetValue(i, out int c) ? c + 1 : 1;
+            n /= i;
+        }
+    }
+    if (n > 1) f[n] = f.TryGetValue(n, out int c2) ? c2 + 1 : 1;   // whatever is left is one big prime
+    return f;                                    // 360 -> {2=3, 3=2, 5=1}
 }` }] }
       },
       {
@@ -342,6 +379,15 @@ long long countFactors(long long n) {
         if (n % i == 0) count++;
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountFactors(long n) {
+        long count = 0;
+        for (long i = 1; i <= n; i++) {   // try every possible divisor
+            if (n % i == 0) count++;
+        }
+        return count;
+    }
 }` }] }
         },
         mcq: {
@@ -409,7 +455,23 @@ public:
         }
         return count;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    // Returns how many positive integers divide n exactly.
+    public long CountFactors(long n) {
+        long count = 0;
+        for (long i = 1; i <= n / i; i++) {   // i <= n / i: i * i <= n without overflow
+            if (n % i == 0) {                 // i divides n -> its partner n / i does too
+                if (i == n / i) {
+                    count += 1;               // perfect square: i and n/i are the same number
+                } else {
+                    count += 2;               // two different factors: i and n / i
+                }
+            }
+        }
+        return count;
+    }
+}` }
           ],
           dry: {
             head: ['i', 'i × i ≤ 36?', '36 % i', 'partner 36 / i', 'count'],
@@ -495,6 +557,15 @@ bool isPrime(long long n) {
         if (n % i == 0) return false;   // found a split -> composite
     }
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+bool IsPrime(long n) {
+    if (n < 2) return false;            // 0 and 1 are not prime
+    if (n < 4) return true;             // 2 and 3 are prime
+    if (n % 2 == 0) return false;       // even numbers > 2 are composite
+    for (long i = 3; i <= n / i; i += 2) {  // only odd divisors up to the square root (overflow-safe)
+        if (n % i == 0) return false;   // found a split -> composite
+    }
+    return true;                        // nothing divided n -> prime
 }` }] },
     codeTitle: 'Trial division (odd numbers only)',
     examples: [
@@ -547,6 +618,15 @@ bool isPrime6k(long long n) {
     if (n < 4) return true;                          // 2, 3
     if (n % 2 == 0 || n % 3 == 0) return false;
     for (long long i = 5; i <= n / i; i += 6) {      // i = 6k - 1, and i + 2 = 6k + 1
+        if (n % i == 0 || n % (i + 2) == 0) return false;
+    }
+    return true;
+}` }, { lang: 'csharp', code: String.raw`
+bool IsPrime6k(long n) {
+    if (n < 2) return false;
+    if (n < 4) return true;                       // 2, 3
+    if (n % 2 == 0 || n % 3 == 0) return false;
+    for (long i = 5; i <= n / i; i += 6) {        // i = 6k - 1, and i + 2 = 6k + 1
         if (n % i == 0 || n % (i + 2) == 0) return false;
     }
     return true;
@@ -607,6 +687,17 @@ long long nextPrime(long long n) {
     long long x = max(n, 2LL);
     while (!isPrime(x)) x++;    // gaps between primes are small on average (about ln n)
     return x;                   // nextPrime(90) -> 97
+}` }, { lang: 'csharp', code: String.raw`
+long NextPrime(long n) {
+    long x = Math.Max(n, 2);
+    while (!IsPrime(x)) x++;      // gaps between primes are small on average (about ln n)
+    return x;                     // NextPrime(90) -> 97
+}
+
+bool IsPrime(long n) {
+    if (n < 2) return false;
+    for (long i = 2; i <= n / i; i++) if (n % i == 0) return false;
+    return true;
 }` }] }
       },
       {
@@ -713,6 +804,15 @@ bool isPrime(long long n) {
         if (n % i == 0) return false;
     }
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPrime(long n) {
+        if (n < 2) return false;
+        for (long i = 2; i < n; i++) {    // every possible divisor
+            if (n % i == 0) return false;
+        }
+        return true;
+    }
 }` }] }
         },
         mcq: {
@@ -784,7 +884,18 @@ public:
         }
         return true;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPrime(long n) {
+        if (n < 2) return false;              // 0 and 1 are not prime
+        if (n < 4) return true;               // 2 and 3 are prime
+        if (n % 2 == 0) return false;         // even and bigger than 2 -> composite
+        for (long i = 3; i <= n / i; i += 2) { // odd divisors up to the square root (overflow-safe)
+            if (n % i == 0) return false;     // split found -> composite
+        }
+        return true;                          // no split exists -> prime
+    }
+}` }
           ],
           dry: {
             head: ['step', 'check', 'value', 'decision'],
@@ -880,6 +991,19 @@ vector<bool> sieve(int n) {
         for (long long m = p * p; m <= n; m += p) isPrime[m] = false;
     }
     return isPrime;
+}` }, { lang: 'csharp', code: String.raw`
+bool[] Sieve(int n) {
+    bool[] isPrime = new bool[n + 1];
+    Array.Fill(isPrime, true);                // everybody stands up
+    isPrime[0] = false;
+    if (n >= 1) isPrime[1] = false;           // 0 and 1 are not prime
+    for (int p = 2; (long)p * p <= n; p++) {  // only p up to the square root cross anything new
+        if (!isPrime[p]) continue;            // p was knocked out -> not prime, skip
+        for (int m = p * p; m <= n; m += p) { // smaller multiples were already crossed
+            isPrime[m] = false;               // multiple of p -> sit down
+        }
+    }
+    return isPrime;
 }` }] }, { lang: 'java', code: `
       int[] smallestPrimeFactor(int n) {
           int[] spf = new int[n + 1];               // spf[x] = smallest prime dividing x (0 = not set yet)
@@ -952,6 +1076,26 @@ vector<int> factorize(int x, const vector<int>& spf) {
         x /= spf[x];
     }
     return factors;
+}` }, { lang: 'csharp', code: String.raw`
+int[] SmallestPrimeFactor(int n) {
+    int[] spf = new int[n + 1];               // spf[x] = smallest prime dividing x (0 = not set yet)
+    for (int i = 2; i <= n; i++) {
+        if (spf[i] == 0) {                    // nobody marked i -> i is prime
+            for (int j = i; j <= n; j += i) {
+                if (spf[j] == 0) spf[j] = i;  // the first prime to reach j is its smallest factor
+            }
+        }
+    }
+    return spf;
+}
+
+List<int> Factorize(int x, int[] spf) {
+    var factors = new List<int>();
+    while (x > 1) {
+        factors.Add(spf[x]);                  // peel off the smallest prime
+        x /= spf[x];
+    }
+    return factors;
 }` }] }],
     codeTitle: ['Classic sieve', 'Smallest-prime-factor sieve + fast factorization'],
     examples: [
@@ -1001,6 +1145,16 @@ vector<int> primePrefix(int n) {
             for (long long m = p * p; m <= n; m += p) composite[m] = true;
     for (int x = 2; x <= n; x++) cnt[x] = cnt[x - 1] + (composite[x] ? 0 : 1);   // running count
     return cnt;                          // query [L, R]: cnt[R] - cnt[L - 1]
+}` }, { lang: 'csharp', code: String.raw`
+int[] PrimePrefix(int n) {
+    bool[] composite = new bool[n + 1];              // false = still "maybe prime"
+    int[] cnt = new int[n + 1];
+    for (int p = 2; (long)p * p <= n; p++)
+        if (!composite[p])
+            for (int m = p * p; m <= n; m += p) composite[m] = true;
+    for (int x = 2; x <= n; x++)
+        cnt[x] = cnt[x - 1] + (composite[x] ? 0 : 1);   // running count of primes
+    return cnt;                                      // query [L, R]: cnt[R] - cnt[L - 1]
 }` }] }
       },
       {
@@ -1042,6 +1196,13 @@ vector<int> divisorCounts(int n) {
     vector<int> divs(n + 1, 0);
     for (int d = 1; d <= n; d++)
         for (int m = d; m <= n; m += d) divs[m]++;   // d divides m
+    return divs;
+}` }, { lang: 'csharp', code: String.raw`
+int[] DivisorCounts(int n) {
+    int[] divs = new int[n + 1];
+    for (int d = 1; d <= n; d++)
+        for (int m = d; m <= n; m += d)
+            divs[m]++;          // d divides m
     return divs;
 }` }] }
       }
@@ -1168,6 +1329,19 @@ int countPrimes(int n) {
         if (prime) count++;
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int CountPrimes(int n) {
+        int count = 0;
+        for (int x = 2; x <= n; x++) {
+            bool prime = true;
+            for (int i = 2; (long)i * i <= x; i++) {   // trial division for each x
+                if (x % i == 0) { prime = false; break; }
+            }
+            if (prime) count++;
+        }
+        return count;
+    }
 }` }] }
         },
         mcq: {
@@ -1249,7 +1423,29 @@ public:
         }
         return (int) count(isPrime.begin() + 2, isPrime.end(), true);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int CountPrimes(int n) {
+        if (n < 2) return 0;                        // no primes below 2
+        bool[] isPrime = new bool[n + 1];
+        Array.Fill(isPrime, true);                  // everybody starts as "maybe prime"
+        isPrime[0] = false;
+        isPrime[1] = false;                         // 0 and 1 are not prime
+        for (int p = 2; (long)p * p <= n; p++) {    // only primes up to the square root cross anything
+            if (!isPrime[p]) continue;              // p is composite -> its multiples are already out
+            for (int m = p * p; m <= n; m += p) {   // start at p*p: smaller multiples already crossed
+                isPrime[m] = false;
+            }
+        }
+        int count = 0;
+        for (int i = 2; i <= n; i++) {
+            if (isPrime[i]) count++;                // survivors are primes
+        }
+        return count;
+    }
+}` }
           ],
           dry: {
             head: ['p', 'isPrime[p]?', 'inner loop visits', 'newly crossed'],
@@ -1363,6 +1559,22 @@ long long gcdRecursive(long long a, long long b) {
 
 long long lcmSafe(long long a, long long b) {
     return a / gcdIter(a, b) * b;   // divide FIRST; std::gcd / std::lcm also exist in <numeric>
+}` }, { lang: 'csharp', code: String.raw`
+long Gcd(long a, long b) {
+    while (b != 0) {          // when b becomes 0, a holds the answer
+        long r = a % b;       // remainder = what is left after cutting b-sized squares from a
+        a = b;                // the old small side becomes the big side
+        b = r;                // the leftover becomes the small side
+    }
+    return a;
+}
+
+long GcdRecursive(long a, long b) {
+    return b == 0 ? a : GcdRecursive(b, a % b);   // same rule, written in one line
+}
+
+long Lcm(long a, long b) {
+    return a / Gcd(a, b) * b;  // divide FIRST to keep the intermediate value small (no built-in gcd in .NET Framework)
 }` }] }],
     codeTitle: ['Euclid GCD (iterative + recursive) and LCM'],
     examples: [
@@ -1401,7 +1613,15 @@ string simplify(long long num, long long den) {
     num /= g; den /= g;
     if (den < 0) { num = -num; den = -den; }       // keep the sign on top
     return to_string(num) + "/" + to_string(den);  // simplify(84, 126) -> "2/3"
-}` }] }
+}` }, { lang: 'csharp', code: String.raw`
+string Simplify(long num, long den) {
+    long g = Gcd(Math.Abs(num), Math.Abs(den));   // gcd works on non-negative values
+    num /= g; den /= g;
+    if (den < 0) { num = -num; den = -den; }       // keep the sign on top: -2/3, not 2/-3
+    return num + "/" + den;                        // Simplify(84, 126) -> "2/3"
+}
+
+long Gcd(long a, long b) { return b == 0 ? a : Gcd(b, a % b); }` }] }
       },
       {
         title: 'Bus timetable: lcm(4, 6, 10)',
@@ -1560,6 +1780,18 @@ long long gcdAndLcm(vector<long long>& arr) {
         if (ok) return d;
     }
     return 1;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long GcdAndLcm(long[] arr) {
+        long mn = long.MaxValue;
+        foreach (long x in arr) mn = Math.Min(mn, x);
+        for (long d = mn; d >= 1; d--) {          // try every candidate from the top
+            bool ok = true;
+            foreach (long x in arr) if (x % d != 0) { ok = false; break; }
+            if (ok) return d;
+        }
+        return 1;
+    }
 }` }] }
         },
         mcq: {
@@ -1637,7 +1869,29 @@ public:
         }
         return {g, l};
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    // Euclid: gcd(a, b) = gcd(b, a % b), finished when b == 0
+    static long Gcd(long a, long b) {
+        while (b != 0) {
+            long r = a % b;   // leftover after removing as many b's as possible
+            a = b;
+            b = r;
+        }
+        return a;
+    }
+
+    // returns {gcd of all, lcm of all}
+    public long[] GcdAndLcm(long[] arr) {
+        long g = arr[0];
+        long l = arr[0];
+        for (int i = 1; i < arr.Length; i++) {
+            g = Gcd(g, arr[i]);                 // common part of everything so far
+            l = l / Gcd(l, arr[i]) * arr[i];    // divide FIRST so we never overflow needlessly
+        }
+        return new[] { g, l };
+    }
+}` }
           ],
           dry: {
             head: ['i', 'arr[i]', 'g = gcd(g, arr[i])', 'gcd(l, arr[i])', 'l = l / that × arr[i]'],
@@ -1772,6 +2026,32 @@ long long powMod(long long a, long long e) {          // fast power (next topic)
 
 long long divMod(long long a, long long b) {          // prime modulus, b not divisible by MOD
     return mulMod(a, powMod(b, MOD - 2));             // Fermat inverse
+}` }, { lang: 'csharp', code: String.raw`
+const long MOD = 1000000007L;
+
+long AddMod(long a, long b) { return (a % MOD + b % MOD) % MOD; }
+
+long SubMod(long a, long b) {
+    return ((a % MOD - b % MOD) % MOD + MOD) % MOD;  // C# % keeps the sign of the dividend: add MOD
+}
+
+long MulMod(long a, long b) {
+    return (a % MOD) * (b % MOD) % MOD;              // each factor < MOD -> product < 10^18 fits in long
+}
+
+long PowMod(long a, long e) {                        // fast power (next topic)
+    long res = 1; a %= MOD;
+    while (e > 0) {
+        if ((e & 1) == 1) res = res * a % MOD;
+        a = a * a % MOD;
+        e >>= 1;
+    }
+    return res;
+}
+
+long DivMod(long a, long b) {                        // a / b under a PRIME modulus, b not divisible by MOD
+    long inverse = PowMod(b, MOD - 2);               // Fermat: b^(MOD-2) is 1/b on the clock
+    return MulMod(a, inverse);
 }` }] },
     codeTitle: 'Safe modular helpers',
     examples: [
@@ -1803,6 +2083,13 @@ int bigMod(const string& digits, int m) {
     long long r = 0;
     for (char ch : digits) r = (r * 10 + (ch - '0')) % m;   // shift, add digit, reduce
     return (int) r;                                          // bigMod("1234", 7) -> 2
+}` }, { lang: 'csharp', code: String.raw`
+int BigMod(string digits, int m) {
+    long r = 0;
+    foreach (char ch in digits) {
+        r = (r * 10 + (ch - '0')) % m;   // shift left one decimal place, add digit, reduce
+    }
+    return (int)r;                       // BigMod("1234", 7) -> 2
 }` }] }
       },
       {
@@ -1933,6 +2220,18 @@ long long sumPairProducts(vector<long long>& a) {
         }
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long SumPairProducts(long[] a) {
+        const long MOD = 1000000007L;
+        long ans = 0;
+        for (int i = 0; i < a.Length; i++) {
+            for (int j = i + 1; j < a.Length; j++) {
+                ans = (ans + (a[i] % MOD) * (a[j] % MOD)) % MOD;   // every pair, one by one
+            }
+        }
+        return ans;
+    }
 }` }] }
         },
         mcq: {
@@ -2004,7 +2303,21 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    const long MOD = 1000000007L;
+
+    public long SumPairProducts(long[] a) {
+        long pre = 0;   // (a[0] + ... + a[j-1]) % MOD : everything to the left of j
+        long ans = 0;
+        for (int j = 0; j < a.Length; j++) {
+            long x = a[j] % MOD;               // reduce first so x < MOD
+            ans = (ans + x * pre) % MOD;       // x pairs with every earlier element at once
+            pre = (pre + x) % MOD;             // now x becomes "earlier" for later elements
+        }
+        return ans;
+    }
+}` }
           ],
           dry: {
             head: ['j', 'A[j]', 'pre before', 'x × pre', 'ans', 'pre after'],
@@ -2091,6 +2404,18 @@ long long power(long long a, long long b, long long m) {
         b >>= 1;
     }
     return result;
+}` }, { lang: 'csharp', code: String.raw`
+long Power(long a, long b, long m) {
+    long result = 1 % m;          // "1 % m" also handles m == 1 correctly
+    long b2 = a % m;              // b2 = a^(2^k) for the current bit k
+    while (b > 0) {
+        if ((b & 1) == 1) {       // current lowest bit is ON -> this coin is needed
+            result = result * b2 % m;
+        }
+        b2 = b2 * b2 % m;         // next coin: a^(2^(k+1)) = (a^(2^k))^2
+        b >>= 1;                  // drop the bit we just handled
+    }
+    return result;
 }` }] }, { lang: 'java', code: `
       long powerRec(long a, long b, long m) {
           if (b == 0) return 1 % m;               // a^0 = 1
@@ -2133,6 +2458,16 @@ long long powerRec(long long a, long long b, long long m) {
 
 long long modInverse(long long x, long long p) {    // p must be prime and x % p != 0
     return powerRec(x, p - 2, p);                   // Fermat's little theorem
+}` }, { lang: 'csharp', code: String.raw`
+long PowerRec(long a, long b, long m) {
+    if (b == 0) return 1 % m;               // a^0 = 1
+    long half = PowerRec(a, b / 2, m);      // solve the half-size problem once
+    long sq = half * half % m;              // a^(2*(b/2))
+    return (b % 2 == 0) ? sq : sq * (a % m) % m;  // odd b needs one extra a
+}
+
+long ModInverse(long x, long p) {           // p must be prime and x % p != 0
+    return PowerRec(x, p - 2, p);           // Fermat's little theorem
 }` }] }],
     codeTitle: ['Iterative binary exponentiation', 'Recursive version + modular inverse'],
     examples: [
@@ -2225,6 +2560,25 @@ long long fib(long long n, long long m) {       // F(0) = 0, F(1) = 1
         n >>= 1;
     }
     return result[0][1];                        // fib(10, 1000000007) -> 55
+}` }, { lang: 'csharp', code: String.raw`
+long[,] Mul(long[,] A, long[,] B, long m) {
+    long[,] C = new long[2, 2];                      // rectangular 2D array, all zeros
+    for (int i = 0; i < 2; i++)
+        for (int j = 0; j < 2; j++)
+            for (int k = 0; k < 2; k++)
+                C[i, j] = (C[i, j] + A[i, k] * B[k, j]) % m;
+    return C;
+}
+
+long Fib(long n, long m) {                           // F(0)=0, F(1)=1
+    long[,] result = { { 1, 0 }, { 0, 1 } };         // identity matrix = "1"
+    long[,] b = { { 1, 1 }, { 1, 0 } };
+    while (n > 0) {
+        if ((n & 1) == 1) result = Mul(result, b, m);
+        b = Mul(b, b, m);
+        n >>= 1;
+    }
+    return result[0, 1];                             // Fib(10, 1000000007) -> 55
 }` }] }
       }
     ],
@@ -2322,6 +2676,16 @@ long long power(long long a, long long b) {
         res = res * (a % MOD) % MOD;   // one multiplication per unit of b
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long Power(long a, long b) {
+        const long MOD = 1000000007L;
+        long res = 1;
+        for (long i = 0; i < b; i++) {
+            res = res * (a % MOD) % MOD;   // one multiplication per unit of b
+        }
+        return res;
+    }
 }` }] }
         },
         mcq: {
@@ -2398,7 +2762,23 @@ public:
         }
         return result;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    const long MOD = 1000000007L;
+
+    public long Power(long a, long b) {
+        long result = 1;                       // a^0 = 1
+        long coin = a % MOD;                   // current coin: a^(2^k) mod MOD
+        while (b > 0) {
+            if ((b & 1) == 1) {                // this bit of b is 1 -> use this coin
+                result = result * coin % MOD;
+            }
+            coin = coin * coin % MOD;          // next coin by squaring
+            b >>= 1;                           // move to the next bit
+        }
+        return result;
+    }
+}` }
           ],
           dry: {
             head: ['round', 'b (binary)', 'b &amp; 1', 'result', 'base after squaring'],
@@ -2490,6 +2870,18 @@ vector<vector<long long>> pascal(int n, long long mod) {
         }
     }
     return C;                                   // works for ANY modulus (no division)
+}` }, { lang: 'csharp', code: String.raw`
+long[][] Pascal(int n, long mod) {
+    long[][] C = new long[n + 1][];
+    for (int i = 0; i <= n; i++) {
+        C[i] = new long[n + 1];
+        C[i][0] = 1 % mod;                         // one way to choose nothing
+        for (int j = 1; j <= i; j++) {
+            // last item is either IN (choose j-1 from i-1) or OUT (choose j from i-1)
+            C[i][j] = (C[i - 1][j - 1] + C[i - 1][j]) % mod;
+        }
+    }
+    return C;                                      // works for ANY modulus (no division)
 }` }] }, { lang: 'java', code: `
       static final int MOD = 1_000_000_007;
       static long[] fact, invFact;
@@ -2573,6 +2965,28 @@ void precompute(int n) {
 long long nCr(int n, int r) {
     if (r < 0 || r > n) return 0;                                        // impossible choice
     return fact[n] * invFact[r] % MOD * invFact[n - r] % MOD;
+}` }, { lang: 'csharp', code: String.raw`
+const int MOD = 1000000007;
+static long[] fact, invFact;
+
+static long Power(long a, long e) {
+    long r = 1; a %= MOD;
+    while (e > 0) { if ((e & 1) == 1) r = r * a % MOD; a = a * a % MOD; e >>= 1; }
+    return r;
+}
+
+static void Precompute(int n) {
+    fact = new long[n + 1];
+    invFact = new long[n + 1];
+    fact[0] = 1;
+    for (int i = 1; i <= n; i++) fact[i] = fact[i - 1] * i % MOD;       // i! mod p
+    invFact[n] = Power(fact[n], MOD - 2);                                // one Fermat inverse
+    for (int i = n; i > 0; i--) invFact[i - 1] = invFact[i] * i % MOD;  // 1/(i-1)! = i / i!
+}
+
+static long NCr(int n, int r) {
+    if (r < 0 || r > n) return 0;                                        // impossible choice
+    return fact[n] * invFact[r] % MOD * invFact[n - r] % MOD;
 }` }] }, { lang: 'java', code: `
       long nCrExact(int n, int r) {           // exact value, safe for n <= 61
           r = Math.min(r, n - r);             // symmetry: fewer steps, smaller numbers
@@ -2603,6 +3017,14 @@ long long nCrExact(int n, int r) {     // exact value, safe for n <= 61
     long long res = 1;
     for (int i = 0; i < r; i++) {
         res = res * (n - i) / (i + 1); // after step i, res = C(n, i + 1): division is exact
+    }
+    return res;
+}` }, { lang: 'csharp', code: String.raw`
+long NCrExact(int n, int r) {           // exact value, safe for n <= 61
+    r = Math.Min(r, n - r);             // symmetry: fewer steps, smaller numbers
+    long res = 1;
+    for (int i = 0; i < r; i++) {
+        res = res * (n - i) / (i + 1);  // after step i, res = C(n, i + 1): division is always exact
     }
     return res;
 }` }] }],
@@ -2745,6 +3167,13 @@ long long anagrams(const string& w, const vector<long long>& fact, const vector<
     long long res = fact[w.size()];                      // all orders as if letters were distinct
     for (int k : cnt) res = res * invFact[k] % mod;      // divide out swaps of identical letters
     return res;                                          // "BANANA" -> 60
+}` }, { lang: 'csharp', code: String.raw`
+long Anagrams(string w, long[] fact, long[] invFact, long mod) {
+    int[] cnt = new int[26];
+    foreach (char c in w) cnt[c - 'A']++;
+    long res = fact[w.Length];                     // all orders as if letters were distinct
+    foreach (int k in cnt) res = res * invFact[k] % mod; // divide out swaps of identical letters
+    return res;                                    // "BANANA" -> 60
 }` }] }
       },
       {
@@ -2786,6 +3215,15 @@ vector<long long> pascalRow(int k) {
         c = c * (k - j) / (j + 1);   // next coefficient from the current one
     }
     return row;                      // pascalRow(5) -> [1, 5, 10, 10, 5, 1]
+}` }, { lang: 'csharp', code: String.raw`
+List<long> PascalRow(int k) {
+    var row = new List<long>();
+    long c = 1;
+    for (int j = 0; j <= k; j++) {
+        row.Add(c);
+        c = c * (k - j) / (j + 1);    // next coefficient from the current one
+    }
+    return row;                        // PascalRow(5) -> [1, 5, 10, 10, 5, 1]
 }` }] }
       }
     ],
@@ -2885,7 +3323,24 @@ public:
         }
         return res;
     }
-};` }] }
+};` }, { lang: 'csharp', code: String.raw`
+public class Brute {
+    const long MOD = 1000000007L;
+    static long Power(long a, long e) {
+        long r = 1; a %= MOD;
+        while (e > 0) { if ((e & 1) == 1) r = r * a % MOD; a = a * a % MOD; e >>= 1; }
+        return r;
+    }
+    public long NCr(int n, int r) {
+        if (r < 0 || r > n) return 0;
+        long res = 1;
+        for (int i = 0; i < r; i++) {
+            res = res * (n - i) % MOD;                 // multiply the next top factor
+            res = res * Power(i + 1, MOD - 2) % MOD;   // "divide" by i + 1 (one inverse per step!)
+        }
+        return res;
+    }
+}` }] }
         },
         mcq: {
           q: `You have fact[] up to 10<sup>6</sup>. What is the cheapest way to get all invFact[] values?`,
@@ -3014,7 +3469,46 @@ public:
         for (auto& q : queries) ans.push_back(nCr(q[0], q[1]));
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    const long MOD = 1000000007L;
+    long[] fact, invFact;
+
+    long Power(long a, long e) {
+        long r = 1; a %= MOD;
+        while (e > 0) {
+            if ((e & 1) == 1) r = r * a % MOD;
+            a = a * a % MOD;
+            e >>= 1;
+        }
+        return r;
+    }
+
+    void Precompute(int n) {
+        fact = new long[n + 1];
+        invFact = new long[n + 1];
+        fact[0] = 1;
+        for (int i = 1; i <= n; i++) fact[i] = fact[i - 1] * i % MOD;
+        invFact[n] = Power(fact[n], MOD - 2);                   // Fermat, once
+        for (int i = n; i > 0; i--) invFact[i - 1] = invFact[i] * i % MOD;
+    }
+
+    long NCr(int n, int r) {
+        if (r < 0 || r > n) return 0;
+        return fact[n] * invFact[r] % MOD * invFact[n - r] % MOD; // reduce after each multiply
+    }
+
+    public long[] Solve(int[][] queries) {
+        int maxN = 1;
+        foreach (int[] q in queries) maxN = Math.Max(maxN, q[0]);
+        Precompute(maxN);
+        long[] ans = new long[queries.Length];
+        for (int i = 0; i < queries.Length; i++) ans[i] = NCr(queries[i][0], queries[i][1]);
+        return ans;
+    }
+}` }
           ],
           dry: {
             head: ['i', 'fact[i]', 'invFact[i]', 'note'],
@@ -3122,6 +3616,24 @@ vector<int> divisibleSubarray(const vector<int>& a) {
         firstSeen[prefix] = j;
     }
     throw logic_error("impossible by the pigeonhole principle");
+}` }, { lang: 'csharp', code: String.raw`
+// Returns {l, r} (0-based, inclusive) of a non-empty subarray whose sum is divisible by n = a.Length.
+// Pigeonhole guarantees it exists: n + 1 prefix sums but only n remainders.
+int[] DivisibleSubarray(int[] a) {
+    int n = a.Length;
+    int[] firstSeen = new int[n];            // firstSeen[rem] = prefix index where remainder rem first appeared
+    Array.Fill(firstSeen, -1);
+    firstSeen[0] = 0;                        // P0 = 0 (the empty prefix) has remainder 0
+    long prefix = 0;
+    for (int j = 1; j <= n; j++) {
+        prefix = (prefix + a[j - 1]) % n;    // P_j mod n (a[] holds non-negative values here)
+        int rem = (int)prefix;
+        if (firstSeen[rem] != -1) {          // second pigeon in this box!
+            return new[] { firstSeen[rem], j - 1 };   // a[firstSeen .. j-1] sums to a multiple of n
+        }
+        firstSeen[rem] = j;
+    }
+    throw new InvalidOperationException("impossible by the pigeonhole principle");
 }` }] },
     codeTitle: 'Guaranteed subarray with sum divisible by n',
     viz: [
@@ -3287,6 +3799,22 @@ int findMinDifference(const vector<string>& timePoints) {
         prev = m;
     }
     return min(best, 1440 - prev + first);             // wrap around midnight
+}` }, { lang: 'csharp', code: String.raw`
+int FindMinDifference(IList<string> timePoints) {
+    if (timePoints.Count > 1440) return 0;            // pigeonhole: a duplicate minute exists
+    bool[] seen = new bool[1440];
+    foreach (string t in timePoints) {
+        int m = int.Parse(t.Substring(0, 2)) * 60 + int.Parse(t.Substring(3));
+        if (seen[m]) return 0;                        // exact duplicate
+        seen[m] = true;
+    }
+    int first = -1, prev = -1, best = int.MaxValue;
+    for (int m = 0; m < 1440; m++) {
+        if (!seen[m]) continue;
+        if (first == -1) first = m; else best = Math.Min(best, m - prev);
+        prev = m;
+    }
+    return Math.Min(best, 1440 - prev + first);       // wrap around midnight
 }` }] }
       },
       {
@@ -3363,6 +3891,19 @@ vector<int> divisibleSubarray(vector<int>& a) {
         }
     }
     return {-1, -1};                           // never happens (pigeonhole)
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] DivisibleSubarray(int[] a) {
+        int n = a.Length;
+        for (int l = 0; l < n; l++) {
+            long sum = 0;
+            for (int r = l; r < n; r++) {
+                sum += a[r];
+                if (sum % n == 0) return new[] { l, r };   // found one
+            }
+        }
+        return new[] { -1, -1 };                           // never happens (pigeonhole)
+    }
 }` }] }
         },
         mcq: {
@@ -3444,7 +3985,27 @@ public:
         }
         return {-1, -1};                // unreachable by pigeonhole
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[] DivisibleSubarray(int[] a) {
+        int n = a.Length;
+        int[] firstSeen = new int[n];         // remainder -> earliest prefix index
+        Array.Fill(firstSeen, -1);
+        firstSeen[0] = 0;                     // empty prefix P0 = 0
+        long p = 0;
+        for (int j = 1; j <= n; j++) {
+            p = (p + a[j - 1]) % n;           // remainder of P_j
+            int rem = (int)p;
+            if (firstSeen[rem] != -1) {
+                return new[] { firstSeen[rem], j - 1 };  // P_j - P_first is a multiple of n
+            }
+            firstSeen[rem] = j;
+        }
+        return new[] { -1, -1 };              // unreachable: pigeonhole guarantees a repeat
+    }
+}` }
           ],
           dry: {
             head: ['j', 'A[j−1]', 'P mod 5', 'firstSeen[rem]', 'action'],
@@ -3501,6 +4062,14 @@ bool checkPerfectNumber(int num) {
     long long sum = 0;
     for (int i = 1; i < num; i++) if (num % i == 0) sum += i;   // every candidate divisor
     return sum == num;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool CheckPerfectNumber(int num) {
+        if (num <= 1) return false;
+        long sum = 0;
+        for (int i = 1; i < num; i++) if (num % i == 0) sum += i;   // every candidate divisor
+        return sum == num;
+    }
 }` }] }
     },
     mcq: { q: `Walking i up to √28, which pairs (i, 28 / i) contribute to the sum?`, options: [`(1, 28), (2, 14), (4, 7) — but exclude 28 itself`, `Only (2, 14)`, `(1, 28), (2, 14), (4, 7), (7, 4)`, `All i from 1 to 28`], answer: 0, explain: `Pairs with i ≤ √28 ≈ 5.29 are (1, 28), (2, 14), (4, 7). The number itself is excluded, so the sum is 1 + 2 + 14 + 4 + 7 = 28.` },
@@ -3566,7 +4135,20 @@ public:
         }
         return sum == num;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool CheckPerfectNumber(int num) {
+        if (num <= 1) return false;            // 1 has no proper divisors
+        long sum = 1;                          // divisor 1 (its partner num is excluded)
+        for (long i = 2; i * i <= num; i++) {
+            if (num % i == 0) {
+                sum += i;                      // small partner
+                if (i != num / i) sum += num / i;  // big partner, if different
+            }
+        }
+        return sum == num;
+    }
+}` }
       ],
       dry: { head: ['i', 'num % i', 'added', 'sum'], rows: [['start', '—', '1', '1'], ['2', '0', '2 + 14', '17'], ['3', '1', '—', '17'], ['4', '0', '4 + 7', '28'], ['5', '3', '—', '28'], ['6', '36 &gt; 28 stop', '—', H.c('g', '28 == 28 → true')]] },
       complexity: `<p><b>Time O(√num)</b> (10<sup>4</sup> steps for 10<sup>8</sup>), <b>space O(1)</b>. Fun fact: only 5 perfect numbers are ≤ 10<sup>8</sup> (6, 28, 496, 8128, 33550336).</p>`
@@ -3616,6 +4198,19 @@ string gcdOfStrings(string s1, string s2) {
         if (repeat(base, s1.size() / len) == s1 && repeat(base, s2.size() / len) == s2) return base;
     }
     return "";
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Linq;
+
+public class Solution {
+    public string GcdOfStrings(string s1, string s2) {
+        for (int len = Math.Min(s1.Length, s2.Length); len >= 1; len--) {
+            if (s1.Length % len != 0 || s2.Length % len != 0) continue;
+            string b = s1.Substring(0, len);
+            if (string.Concat(Enumerable.Repeat(b, s1.Length / len)) == s1 && string.Concat(Enumerable.Repeat(b, s2.Length / len)) == s2) return b;
+        }
+        return "";
+    }
 }` }] }
     },
     mcq: { q: `If <code>str1 + str2</code> equals <code>str2 + str1</code>, what is the answer's length?`, options: [`min(len1, len2)`, `gcd(len1, len2)`, `lcm(len1, len2)`, `1`], answer: 1, explain: `Equal concatenations mean both strings are repetitions of one common block; the longest common block has length gcd(len1, len2), exactly like cutting two ribbons into the longest equal pieces.` },
@@ -3660,7 +4255,18 @@ public:
         if (s1 + s2 != s2 + s1) return "";                    // no common building block
         return s1.substr(0, std::gcd(s1.size(), s2.size()));  // longest block length
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string GcdOfStrings(string s1, string s2) {
+        if (s1 + s2 != s2 + s1) return "";             // no common building block
+        int g = Gcd(s1.Length, s2.Length);             // longest block length
+        return s1.Substring(0, g);
+    }
+
+    private int Gcd(int a, int b) {
+        return b == 0 ? a : Gcd(b, a % b);
+    }
+}` }
       ],
       dry: { head: ['step', 'value'], rows: [['s1 + s2', 'ABABABABAB'], ['s2 + s1', 'ABABABABAB (equal)'], ['gcd(6, 4)', '6 % 4 = 2 → gcd(4, 2) → 4 % 2 = 0 → 2'], ['answer', H.c('g', '"AB"')]] },
       complexity: `<p><b>Time O(n + m)</b> for the concatenation compare plus O(log) for gcd. <b>Space O(n + m)</b> for the concatenated strings.</p>`
@@ -3718,6 +4324,18 @@ bool isUgly(int n) {
         }
     }
     return n <= 5;                       // leftover is 1 or a single prime
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsUgly(int n) {
+        if (n <= 0) return false;
+        for (long i = 2; i * i <= n; i++) {
+            while (n % i == 0) {
+                if (i > 5) return false;     // found a prime factor bigger than 5
+                n /= (int)i;
+            }
+        }
+        return n <= 5;                       // leftover is 1 or a single prime
+    }
 }` }] }
     },
     mcq: { q: `After dividing out every 2, 3 and 5 from n, what must remain for n to be ugly?`, options: [`0`, `1`, `Any prime`, `A multiple of 7`], answer: 1, explain: `If only 2s, 3s and 5s made up n, removing them all leaves exactly 1. Anything else left over is a product of other primes.` },
@@ -3766,7 +4384,16 @@ public:
         }
         return n == 1;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsUgly(int n) {
+        if (n <= 0) return false;              // 0 and negatives are never ugly (and 0 would loop forever)
+        foreach (int p in new[] { 2, 3, 5 }) {
+            while (n % p == 0) n /= p;         // remove every copy of an allowed prime
+        }
+        return n == 1;                         // nothing else may be left
+    }
+}` }
       ],
       dry: { head: ['p', 'n before', 'n after'], rows: [['2', '60', '15'], ['3', '15', '5'], ['5', '5', '1'], ['check', '1', H.c('g', 'true')]] },
       complexity: `<p><b>Time O(log n)</b>: each division shrinks n by at least half. <b>Space O(1)</b>.</p>`,
@@ -3841,6 +4468,27 @@ vector<vector<int>> generate(int numRows) {
         rows.push_back(row);
     }
     return rows;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<int>> Generate(int numRows) {
+        var rows = new List<IList<int>>();
+        for (int i = 0; i < numRows; i++) {
+            var row = new List<int>();
+            for (int j = 0; j <= i; j++) {
+                row.Add((int)(Fact(i) / (Fact(j) * Fact(i - j))));   // n! / (r! (n-r)!)
+            }
+            rows.Add(row);
+        }
+        return rows;
+    }
+
+    decimal Fact(int n) {               // decimal holds 28 digits: 27! still fits (BigInteger would go further)
+        decimal f = 1;
+        for (int k = 2; k <= n; k++) f *= k;
+        return f;
+    }
 }` }] }
     },
     mcq: { q: `Row 6 of the triangle (starting from row 0) sums to…`, options: [`6`, `36`, `64`, `720`], answer: 2, explain: `Row n sums to 2<sup>n</sup> because every subset of n items is counted once: 2<sup>6</sup> = 64 (1 + 6 + 15 + 20 + 15 + 6 + 1).` },
@@ -3898,7 +4546,23 @@ public:
         }
         return rows;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<int>> Generate(int numRows) {
+        var rows = new List<IList<int>>();
+        for (int i = 0; i < numRows; i++) {
+            var row = new List<int>();
+            for (int j = 0; j <= i; j++) {
+                if (j == 0 || j == i) row.Add(1);                          // edges: choose none / all
+                else row.Add(rows[i - 1][j - 1] + rows[i - 1][j]);         // Pascal's rule
+            }
+            rows.Add(row);
+        }
+        return rows;
+    }
+}` }
       ],
       dry: { head: ['i', 'built from', 'row'], rows: [['0', '—', '[1]'], ['1', 'edges', '[1, 1]'], ['2', '1+1', '[1, 2, 1]'], ['3', '1+2, 2+1', '[1, 3, 3, 1]'], ['4', '1+3, 3+3, 3+1', '[1, 4, 6, 4, 1]']] },
       complexity: `<p><b>Time O(n²)</b> — one addition per entry, and there are n(n+1)/2 entries. <b>Space O(n²)</b> for the output.</p>`,
@@ -3943,6 +4607,16 @@ double myPow(double x, int n) {
     double r = 1.0;
     for (long long i = 0; i < e; i++) r *= x;   // one multiply per unit of the exponent
     return n < 0 ? 1 / r : r;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public double MyPow(double x, int n) {
+        long e = Math.Abs((long)n);
+        double r = 1.0;
+        for (long i = 0; i < e; i++) r *= x;   // one multiply per unit of the exponent
+        return n < 0 ? 1 / r : r;
+    }
 }` }] }
     },
     mcq: { q: `Why convert n to <code>long</code> before negating it?`, options: [`Doubles need longs`, `−(−2<sup>31</sup>) = 2<sup>31</sup> does not fit in an int and wraps back to −2<sup>31</sup>`, `To make the loop faster`, `It is not necessary`], answer: 1, explain: `int ranges from −2<sup>31</sup> to 2<sup>31</sup> − 1, so negating Integer.MIN_VALUE overflows to itself. Widening to long first gives the correct positive exponent.` },
@@ -4007,7 +4681,20 @@ public:
         }
         return result;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public double MyPow(double x, int n) {
+        long e = n;                         // widen first: -(-2^31) doesn't fit in int
+        if (e < 0) { x = 1 / x; e = -e; }   // x^(-e) = (1/x)^e
+        double result = 1.0;
+        while (e > 0) {
+            if ((e & 1) == 1) result *= x;  // this bit is ON -> multiply the current power in
+            x *= x;                         // next power: x^(2^(k+1))
+            e >>= 1;
+        }
+        return result;
+    }
+}` }
       ],
       dry: { head: ['e (binary)', 'bit', 'result', 'x after squaring'], rows: [['1010', '0', '1', '4'], ['101', '1', '4', '16'], ['10', '0', '4', '256'], ['1', '1', H.c('g', '1024'), '65536']] },
       complexity: `<p><b>Time O(log |n|)</b> — at most 32 rounds. <b>Space O(1)</b>.</p>`
@@ -4048,6 +4735,14 @@ int countGoodNumbers(long long n) {
     long long ans = 1;
     for (long long i = 0; i < n; i++) ans = ans * (i % 2 == 0 ? 5 : 4) % MOD;   // one position at a time
     return (int) ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int CountGoodNumbers(long n) {
+        const long MOD = 1000000007L;
+        long ans = 1;
+        for (long i = 0; i < n; i++) ans = ans * (i % 2 == 0 ? 5 : 4) % MOD;   // one position at a time
+        return (int)ans;
+    }
 }` }] }
     },
     mcq: { q: `For n = 7, how many even indices and odd indices are there?`, options: [`3 even, 4 odd`, `4 even (0, 2, 4, 6), 3 odd`, `3.5 each`, `7 even`], answer: 1, explain: `Indices 0..6: even ones are 0, 2, 4, 6 → ⌈7/2⌉ = 4; odd ones are 1, 3, 5 → ⌊7/2⌋ = 3. Answer = 5<sup>4</sup> × 4<sup>3</sup>.` },
@@ -4114,7 +4809,26 @@ public:
     int countGoodNumbers(long long n) {
         return (int) (power(5, (n + 1) / 2) * power(4, n / 2) % MOD);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    const long MOD = 1000000007L;
+
+    long Power(long a, long e) {
+        long r = 1; a %= MOD;
+        while (e > 0) {
+            if ((e & 1) == 1) r = r * a % MOD;
+            a = a * a % MOD;
+            e >>= 1;
+        }
+        return r;
+    }
+
+    public int CountGoodNumbers(long n) {
+        long evenSlots = (n + 1) / 2;   // indices 0, 2, 4, ... -> 5 choices each
+        long oddSlots = n / 2;          // indices 1, 3, 5, ... -> 4 choices each
+        return (int)(Power(5, evenSlots) * Power(4, oddSlots) % MOD);
+    }
+}` }
       ],
       dry: { head: ['n', 'even slots', 'odd slots', 'answer'], rows: [['1', '1', '0', '5'], ['4', '2', '2', '25 × 16 = 400'], ['5', '3', '2', '125 × 16 = 2000']] },
       complexity: `<p><b>Time O(log n)</b> (≈ 50 squarings each). <b>Space O(1)</b>.</p>`
@@ -4170,6 +4884,20 @@ int superPow(int a, vector<int>& b) {
         r = r * (a % 1337) % 1337;       // one multiplication per unit of b
     }
     return (int) r;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SuperPow(int a, int[] b) {
+        int[] e = (int[])b.Clone();          // a huge number as a digit array: up to 2000 digits
+        long r = 1;
+        while (true) {
+            int i = e.Length - 1;            // e -= 1 on the digit array
+            while (i >= 0 && e[i] == 0) e[i--] = 9;
+            if (i < 0) break;                // e was zero: done
+            e[i]--;
+            r = r * (a % 1337) % 1337;       // one multiplication per unit of b
+        }
+        return (int)r;
+    }
 }` }] }
     },
     mcq: { q: `If b = [1, 2, 3] means 123, which identity lets you process digits left to right?`, options: [`a<sup>123</sup> = a<sup>1</sup> + a<sup>2</sup> + a<sup>3</sup>`, `a<sup>123</sup> = (a<sup>12</sup>)<sup>10</sup> × a<sup>3</sup>`, `a<sup>123</sup> = a<sup>12</sup> × 10 × a<sup>3</sup>`, `a<sup>123</sup> = (a<sup>3</sup>)<sup>12</sup>`], answer: 1, explain: `123 = 12 × 10 + 3, so a<sup>123</sup> = a<sup>12×10</sup> × a<sup>3</sup> = (a<sup>12</sup>)<sup>10</sup> × a<sup>3</sup>. Like reading a number digit by digit (Horner), but in the exponent.` },
@@ -4237,7 +4965,25 @@ public:
         for (int d : b) result = powMod(result, 10) * powMod(a, d) % M;
         return result;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    const int M = 1337;
+
+    private int PowMod(int x, int e) {      // e is at most 10, so a plain loop is enough
+        int r = 1;
+        x %= M;
+        for (int i = 0; i < e; i++) r = r * x % M;
+        return r;
+    }
+
+    public int SuperPow(int a, int[] b) {
+        int result = 1;                      // a^(digits read so far) mod M
+        foreach (int d in b) {
+            result = PowMod(result, 10) * PowMod(a, d) % M;   // shift exponent left one decimal digit, add d
+        }
+        return result;
+    }
+}` }
       ],
       dry: { head: ['digit d', 'result¹⁰', 'a^d', 'result'], rows: [['start', '—', '—', '1'], ['1', '1', '2', '2'], ['0', '1024', '1', H.c('g', '1024')]] },
       complexity: `<p><b>Time O(len(b) × 20)</b> multiplications. <b>Space O(1)</b>. (Alternative: since 1337 = 7 × 191, Euler's theorem could shrink the exponent mod φ(1337) = 1140, but only when gcd(a, 1337) = 1 — the digit method needs no such care.)</p>`
@@ -4318,6 +5064,29 @@ bool canMeasureWater(int x, int y, int target) {
         }
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public bool CanMeasureWater(int x, int y, int target) {
+        var q = new Queue<int[]>();
+        var seen = new HashSet<long>();
+        q.Enqueue(new[] { 0, 0 });
+        seen.Add(0L);
+        while (q.Count > 0) {
+            int[] s = q.Dequeue();
+            int a = s[0], b = s[1];
+            if (a + b == target) return true;
+            int pourAB = Math.Min(a, y - b), pourBA = Math.Min(b, x - a);
+            int[][] next = { new[] { x, b }, new[] { a, y }, new[] { 0, b }, new[] { a, 0 }, new[] { a - pourAB, b + pourAB }, new[] { a + pourBA, b - pourBA } };
+            foreach (int[] nx in next) {
+                long key = (long)nx[0] * (y + 1) + nx[1];     // encode the pair (a, b)
+                if (seen.Add(key)) q.Enqueue(nx);
+            }
+        }
+        return false;
+    }
 }` }] }
     },
     mcq: { q: `With jugs of 6 and 10 litres, which totals are reachable?`, options: [`Every amount 0..16`, `Multiples of 2 up to 16`, `Only 6, 10 and 16`, `Multiples of 6 or 10`], answer: 1, explain: `gcd(6, 10) = 2. Every fill/pour keeps totals as combinations 6p + 10q, which are multiples of 2, and Bézout guarantees every multiple of 2 within capacity is reachable.` },
@@ -4361,7 +5130,17 @@ public:
         if ((long long) x + y < target) return false;
         return target % std::gcd(x, y) == 0;   // reachable totals = multiples of the gcd
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool CanMeasureWater(int x, int y, int target) {
+        if ((long)x + y < target) return false;      // both jugs together can't hold it
+        return target % Gcd(x, y) == 0;              // reachable totals = multiples of gcd
+    }
+
+    private int Gcd(int a, int b) {
+        return b == 0 ? a : Gcd(b, a % b);
+    }
+}` }
       ],
       dry: { head: ['x', 'y', 'target', 'gcd', 'answer'], rows: [['3', '5', '4', '1', H.c('g', 'true')], ['2', '6', '5', '2', H.c('r', 'false (5 % 2 = 1)')], ['1', '2', '3', '1', H.c('g', 'true (fill both)')]] },
       complexity: `<p><b>Time O(log min(x, y))</b>, <b>space O(1)</b> (recursion depth is logarithmic too).</p>`
@@ -4420,6 +5199,19 @@ int subarraysDivByK(vector<int>& nums, int k) {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SubarraysDivByK(int[] nums, int k) {
+        int count = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            int sum = 0;
+            for (int j = i; j < nums.Length; j++) {
+                sum += nums[j];
+                if (sum % k == 0) count++;   // -10 % 5 == 0 is fine; only non-zero remainders keep a sign
+            }
+        }
+        return count;
+    }
 }` }] }
     },
     mcq: { q: `In Java, C++ or JS, prefix = −1 and k = 5. Which index should you use in the remainder count array?`, options: [`−1 (crash)`, `(−1 % 5 + 5) % 5 = 4`, `1`, `0`], answer: 1, explain: `Java, C++ and JS % keep the sign, so −1 % 5 = −1 (Python already gives 4). Normalising gives 4, which is correct: −1 and 4 differ by 5, so they are the same remainder class.` },
@@ -4482,7 +5274,20 @@ public:
         }
         return result;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SubarraysDivByK(int[] nums, int k) {
+        int[] count = new int[k];          // count[r] = prefixes seen so far with remainder r
+        count[0] = 1;                      // the empty prefix
+        int prefix = 0, result = 0;
+        foreach (int x in nums) {
+            prefix = ((prefix + x) % k + k) % k;   // normalise: C# % can be negative
+            result += count[prefix];               // pair with every earlier equal remainder
+            count[prefix]++;
+        }
+        return result;
+    }
+}` }
       ],
       dry: { head: ['x', 'prefix mod 5', 'count[prefix] before', 'result'], rows: [['4', '4', '0', '0'], ['5', '4', '1', '1'], ['0', '4', '2', '3'], ['−2', '2', '0', '3'], ['−3', '4', '3', '6'], ['1', '0', '1', H.c('g', '7')]] },
       complexity: `<p><b>Time O(N + k)</b>, <b>space O(k)</b>.</p>`,
@@ -4553,6 +5358,22 @@ vector<int> closestPrimes(int left, int right) {
         prev = x;
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[] ClosestPrimes(int left, int right) {
+        int prev = -1;
+        int[] best = { -1, -1 };
+        for (int x = Math.Max(left, 2); x <= right; x++) {
+            bool prime = true;
+            for (int i = 2; (long)i * i <= x; i++) if (x % i == 0) { prime = false; break; }
+            if (!prime) continue;
+            if (prev != -1 && (best[0] == -1 || x - prev < best[1] - best[0])) { best[0] = prev; best[1] = x; }
+            prev = x;
+        }
+        return best;
+    }
 }` }] }
     },
     mcq: { q: `Once you find two primes with gap 2, can a later pair (further right) ever beat them?`, options: [`Yes, gap 1 pairs are common`, `No — the only gap-1 pair is (2, 3), which would already have appeared first`, `Yes, gap 0`, `Only if right &gt; 10<sup>6</sup>`], answer: 1, explain: `Apart from 2 and 3, all primes are odd, so consecutive primes differ by at least 2. Ties go to the smaller num1, so you can stop at the first gap-2 pair.` },
@@ -4651,7 +5472,31 @@ public:
         }
         return best;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int[] ClosestPrimes(int left, int right) {
+        bool[] composite = new bool[right + 1];
+        composite[0] = true;
+        if (right >= 1) composite[1] = true;               // 0 and 1 are not prime
+        for (int p = 2; (long)p * p <= right; p++)
+            if (!composite[p])
+                for (int m = p * p; m <= right; m += p) composite[m] = true;
+        int prev = -1;
+        int[] best = { -1, -1 };
+        for (int x = Math.Max(left, 2); x <= right; x++) {
+            if (composite[x]) continue;
+            if (prev != -1 && (best[0] == -1 || x - prev < best[1] - best[0])) {
+                best[0] = prev;
+                best[1] = x;
+                if (x - prev <= 2) return best;            // can't be beaten (see MCQ)
+            }
+            prev = x;
+        }
+        return best;
+    }
+}` }
       ],
       dry: { head: ['x (prime)', 'prev', 'gap', 'best'], rows: [['11', '—', '—', '[−1, −1]'], ['13', '11', '2', H.c('g', '[11, 13] → early return')]] },
       complexity: `<p><b>Time O(R log log R)</b> for the sieve + O(R − L) scan. <b>Space O(R)</b>.</p>`
@@ -4684,6 +5529,12 @@ function uniquePaths(m, n) {      // paths from the top-left corner of an m x n 
 int uniquePaths(int m, int n) {   // paths from the top-left corner of an m x n grid to its bottom-right
     if (m == 1 || n == 1) return 1;        // a single straight line
     return uniquePaths(m - 1, n) + uniquePaths(m, n - 1);
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int UniquePaths(int m, int n) {   // paths from the top-left corner of an m x n grid to its bottom-right
+        if (m == 1 || n == 1) return 1;        // a single straight line
+        return UniquePaths(m - 1, n) + UniquePaths(m, n - 1);
+    }
 }` }] }
     },
     mcq: { q: `For an m × n grid, how many moves does every path make, and how many of them are "down"?`, options: [`m + n moves, m down`, `m + n − 2 moves, m − 1 down`, `m × n moves`, `max(m, n) moves`], answer: 1, explain: `You must go down m − 1 rows and right n − 1 columns: (m − 1) + (n − 1) moves, choose which m − 1 are downs → C(m + n − 2, m − 1).` },
@@ -4730,7 +5581,20 @@ public:
         for (int i = 0; i < k; i++) res = res * (total - i) / (i + 1);   // exact: res = C(total, i + 1)
         return (int) res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int UniquePaths(int m, int n) {
+        int total = m + n - 2;               // total moves
+        int k = Math.Min(m - 1, n - 1);      // choose positions of the rarer move
+        long res = 1;
+        for (int i = 0; i < k; i++) {
+            res = res * (total - i) / (i + 1);   // now res = C(total, i + 1), always an integer
+        }
+        return (int)res;
+    }
+}` }
       ],
       dry: { head: ['i', 'res × (8 − i)', '÷ (i + 1)', 'res = C(8, i+1)'], rows: [['0', '1 × 8 = 8', '÷ 1', '8'], ['1', '8 × 7 = 56', '÷ 2', H.c('g', '28')]] },
       complexity: `<p><b>Time O(min(m, n))</b>, <b>space O(1)</b> — versus O(m × n) for the DP table.</p>`,
@@ -4806,6 +5670,38 @@ int distinctPrimeFactors(vector<int>& nums) {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int DistinctPrimeFactors(int[] nums) {
+        var prod = new List<int> { 1 };              // enormous number: decimal digits, least significant first
+        foreach (int x in nums) {
+            long carry = 0;
+            for (int i = 0; i < prod.Count; i++) { long cur = (long)prod[i] * x + carry; prod[i] = (int)(cur % 10); carry = cur / 10; }
+            while (carry > 0) { prod.Add((int)(carry % 10)); carry /= 10; }
+        }
+        int count = 0;
+        for (int p = 2; p <= 1000; p++) {            // all prime factors are <= 1000 here
+            if (Mod(prod, p) == 0) {
+                count++;
+                while (Mod(prod, p) == 0) Divide(prod, p);
+            }
+        }
+        return count;
+    }
+
+    static long Mod(List<int> prod, int p) {
+        long r = 0;
+        for (int i = prod.Count - 1; i >= 0; i--) r = (r * 10 + prod[i]) % p;
+        return r;
+    }
+
+    static void Divide(List<int> prod, int p) {
+        long r = 0;
+        for (int i = prod.Count - 1; i >= 0; i--) { r = r * 10 + prod[i]; prod[i] = (int)(r / p); r %= p; }
+        while (prod.Count > 1 && prod[prod.Count - 1] == 0) prod.RemoveAt(prod.Count - 1);
+    }
 }` }] }
     },
     mcq: { q: `Why is the set of prime factors of a × b equal to (primes of a) ∪ (primes of b)?`, options: [`Because of the pigeonhole principle`, `If a prime divides a product it must divide one of the factors (Euclid's lemma), and unique factorization`, `It isn't — the product can have new primes`, `Because gcd(a, b) = 1`], answer: 1, explain: `Multiplying never creates new primes: a × b's factorization is just a's and b's factorizations combined. And any prime dividing a × b divides a or b (Euclid's lemma).` },
@@ -4879,7 +5775,25 @@ public:
         }
         return primes.size();
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int DistinctPrimeFactors(int[] nums) {
+        var primes = new HashSet<int>();
+        foreach (int value in nums) {
+            int x = value;
+            for (int p = 2; p * p <= x; p++) {
+                if (x % p == 0) {
+                    primes.Add(p);
+                    while (x % p == 0) x /= p;    // strip every copy of p
+                }
+            }
+            if (x > 1) primes.Add(x);             // leftover is a prime bigger than sqrt(value)
+        }
+        return primes.Count;
+    }
+}` }
       ],
       dry: { head: ['value', 'primes found', 'set'], rows: [['2', '2', '{2}'], ['4', '2', '{2}'], ['3', '3', '{2, 3}'], ['7', '7 (leftover)', '{2, 3, 7}'], ['10', '2, 5', '{2, 3, 5, 7}'], ['6', '2, 3', H.c('g', 'size 4')]] },
       complexity: `<p><b>Time O(N √V)</b> ≈ 10<sup>4</sup> × 31. <b>Space O(π(V))</b> ≤ 168 primes below 1000. With many more queries, an SPF sieve up to 1000 makes each factorization O(log V).</p>`
@@ -4939,6 +5853,20 @@ vector<long long> primesInRange(long long L, long long R) {
         if (prime) res.push_back(x);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<long> PrimesInRange(long L, long R) {
+        var res = new List<long>();
+        for (long x = Math.Max(L, 2); x <= R; x++) {
+            bool prime = true;
+            for (long i = 2; i <= x / i; i++) if (x % i == 0) { prime = false; break; }
+            if (prime) res.Add(x);
+        }
+        return res;
+    }
 }` }] }
     },
     mcq: { q: `In the window [L, R], where should prime p start crossing out?`, options: [`At L`, `At p`, `At max(p × p, the first multiple of p that is ≥ L)`, `At 2p`], answer: 2, explain: `Multiples below p² were handled by smaller primes, and p itself must not be crossed if it lies inside the window. ⌈L/p⌉ × p is the first multiple ≥ L.` },
@@ -5044,7 +5972,35 @@ public:
             if (x >= 2 && !composite[x - L]) primes.push_back(x);
         return primes;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<long> PrimesInRange(long L, long R) {
+        int lim = (int)Math.Sqrt((double)R);
+        while ((long)(lim + 1) * (lim + 1) <= R) lim++;     // fix floating-point rounding
+        while ((long)lim * lim > R) lim--;
+        bool[] small = new bool[lim + 1];                    // small[i] = true -> composite
+        var basePrimes = new List<int>();
+        for (int i = 2; i <= lim; i++) {
+            if (small[i]) continue;
+            basePrimes.Add(i);
+            for (long j = (long)i * i; j <= lim; j += i) small[(int)j] = true;
+        }
+        int size = (int)(R - L + 1);
+        bool[] composite = new bool[size];                   // composite[x - L]
+        foreach (int p in basePrimes) {
+            long start = Math.Max((long)p * p, (L + p - 1) / p * p);   // never cross p itself
+            for (long m = start; m <= R; m += p) composite[(int)(m - L)] = true;
+        }
+        var primes = new List<long>();
+        for (long x = L; x <= R; x++) {
+            if (x >= 2 && !composite[(int)(x - L)]) primes.Add(x);
+        }
+        return primes;
+    }
+}` }
       ],
       dry: { head: ['base prime p', 'start = max(p², ⌈10/p⌉·p)', 'crossed in [10, 30]'], rows: [['2', 'max(4, 10) = 10', '10, 12, …, 30'], ['3', 'max(9, 12) = 12', '12, 15, 18, 21, 24, 27, 30'], ['5', 'max(25, 10) = 25', '25, 30'], ['survivors', '—', H.c('g', '11, 13, 17, 19, 23, 29')]] },
       complexity: `<p><b>Time O(√R log log √R + (R − L) log log R)</b>. <b>Space O(√R + (R − L))</b> ≈ 2 MB instead of 10<sup>12</sup> bytes.</p>`
@@ -5101,6 +6057,20 @@ int nthMagicalNumber(int n, int a, int b) {
         if (nb == cur) y++;              // shared multiple counted once
     }
     return (int) (cur % 1000000007LL);
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int NthMagicalNumber(int n, int a, int b) {
+        long x = 0, y = 0, cur = 0;        // how many multiples of a and b used so far
+        for (int i = 0; i < n; i++) {
+            long na = (x + 1) * a, nb = (y + 1) * b;
+            cur = Math.Min(na, nb);
+            if (na == cur) x++;
+            if (nb == cur) y++;             // shared multiple counted once
+        }
+        return (int)(cur % 1000000007L);
+    }
 }` }] }
     },
     mcq: { q: `How many magical numbers are ≤ 12 for a = 2, b = 3?`, options: [`10`, `8`, `6`, `4`], answer: 1, explain: `⌊12/2⌋ + ⌊12/3⌋ − ⌊12/lcm(2,3)⌋ = 6 + 4 − 2 = 8 (2, 3, 4, 6, 8, 9, 10, 12). Multiples of 6 were counted twice, so subtract them once.` },
@@ -5170,7 +6140,26 @@ public:
         }
         return (int) (lo % MOD);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int NthMagicalNumber(int n, int a, int b) {
+        const long MOD = 1000000007L;
+        long l = a / Gcd(a, b) * b;                                  // lcm, divide first
+        long lo = Math.Min(a, b), hi = (long)n * Math.Min(a, b);     // the n-th multiple of min(a,b) is magical
+        while (lo < hi) {
+            long mid = lo + (hi - lo) / 2;
+            long count = mid / a + mid / b - mid / l;                // inclusion-exclusion
+            if (count >= n) hi = mid; else lo = mid + 1;             // smallest x with count(x) >= n
+        }
+        return (int)(lo % MOD);
+    }
+
+    private long Gcd(long x, long y) {
+        return y == 0 ? x : Gcd(y, x % y);
+    }
+}` }
       ],
       dry: { head: ['lo', 'hi', 'mid', 'count(mid)', 'move'], rows: [['2', '8', '5', '2 + 1 − 0 = 3', 'lo = 6'], ['6', '8', '7', '3 + 2 − 1 = 4', 'hi = 7'], ['6', '7', '6', '3 + 2 − 1 = 4', 'hi = 6'], ['6', '6', '—', '—', H.c('g', 'answer 6')]] },
       complexity: `<p><b>Time O(log(n · min(a, b)))</b> ≈ 46 iterations. <b>Space O(1)</b>.</p>`,
@@ -5260,6 +6249,29 @@ long long countAnagrams(string s) {
         ans = ans * perms.size() % 1000000007LL;
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int CountAnagrams(string s) {
+        long ans = 1;
+        foreach (string w in s.Split(' ')) {
+            var perms = new HashSet<string>();
+            Permute(w.ToCharArray(), 0, perms);            // every ordering, deduplicated
+            ans = ans * perms.Count % 1000000007L;
+        }
+        return (int)ans;
+    }
+
+    void Permute(char[] c, int i, HashSet<string> result) {
+        if (i == c.Length) { result.Add(new string(c)); return; }
+        for (int j = i; j < c.Length; j++) {
+            char t = c[i]; c[i] = c[j]; c[j] = t;          // choose
+            Permute(c, i + 1, result);                      // explore
+            t = c[i]; c[i] = c[j]; c[j] = t;               // un-choose
+        }
+    }
 }` }] }
     },
     mcq: { q: `How many distinct arrangements does "level" have?`, options: [`120`, `30`, `60`, `20`], answer: 1, explain: `5 letters: l ×2, e ×2, v ×1 → 5! / (2! × 2! × 1!) = 120 / 4 = 30.` },
@@ -5377,7 +6389,38 @@ public:
         }
         return (int) ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    const long MOD = 1000000007L;
+
+    long Power(long a, long e) {
+        long r = 1; a %= MOD;
+        while (e > 0) {
+            if ((e & 1) == 1) r = r * a % MOD;
+            a = a * a % MOD;
+            e >>= 1;
+        }
+        return r;
+    }
+
+    public int CountAnagrams(string s) {
+        int n = s.Length;
+        long[] fact = new long[n + 1];
+        long[] invFact = new long[n + 1];
+        fact[0] = 1;
+        for (int i = 1; i <= n; i++) fact[i] = fact[i - 1] * i % MOD;
+        invFact[n] = Power(fact[n], MOD - 2);
+        for (int i = n; i > 0; i--) invFact[i - 1] = invFact[i] * i % MOD;
+        long ans = 1;
+        foreach (string w in s.Split(' ')) {
+            int[] cnt = new int[26];
+            foreach (char c in w) cnt[c - 'a']++;
+            ans = ans * fact[w.Length] % MOD;                 // all orders as if letters were distinct
+            foreach (int c in cnt) ans = ans * invFact[c] % MOD;   // divide out swaps of equal letters
+        }
+        return (int)ans;
+    }
+}` }
       ],
       dry: { head: ['word', 'len!', 'letter counts', 'word count', 'ans'], rows: [['too', '6', 't:1, o:2', '6 / 2 = 3', '3'], ['hot', '6', 'h:1, o:1, t:1', '6', H.c('g', '18')]] },
       complexity: `<p><b>Time O(n + log p)</b> (each letter processed once, plus 26 multiplications per word). <b>Space O(n)</b> for the factorial tables.</p>`
@@ -5439,6 +6482,22 @@ int countDifferentSubsequenceGCDs(vector<int>& nums) {
         gcds.insert(g);
     }
     return gcds.size();
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int CountDifferentSubsequenceGCDs(int[] nums) {
+        int n = nums.Length;                     // only feasible for n <= 20
+        var gcds = new HashSet<int>();
+        for (int mask = 1; mask < (1 << n); mask++) {
+            int g = 0;
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) g = Gcd(g, nums[i]);
+            gcds.Add(g);
+        }
+        return gcds.Count;
+    }
+
+    int Gcd(int a, int b) { return b == 0 ? a : Gcd(b, a % b); }
 }` }] }
     },
     mcq: { q: `For a candidate g, which elements could belong to a subsequence whose GCD is exactly g?`, options: [`Any element`, `Only multiples of g — and g is achievable iff the gcd of ALL present multiples of g equals g`, `Only elements equal to g`, `Only primes`], answer: 1, explain: `Every element of such a subsequence is a multiple of g. Taking more multiples can only lower (or keep) the gcd, so using all of them gives the smallest possible gcd; g is achievable exactly when that equals g.` },
@@ -5536,7 +6595,34 @@ public:
         }
         return count;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int CountDifferentSubsequenceGCDs(int[] nums) {
+        int max = 0;
+        foreach (int x in nums) max = Math.Max(max, x);
+        bool[] present = new bool[max + 1];
+        foreach (int x in nums) present[x] = true;
+        int count = 0;
+        for (int g = 1; g <= max; g++) {
+            int cur = 0;                              // gcd of all present multiples of g
+            for (int m = g; m <= max; m += g) {
+                if (present[m]) {
+                    cur = Gcd(cur, m);
+                    if (cur == g) break;              // can't go lower: all are multiples of g
+                }
+            }
+            if (cur == g) count++;
+        }
+        return count;
+    }
+
+    private int Gcd(int a, int b) {
+        while (b != 0) { int t = a % b; a = b; b = t; }
+        return a;
+    }
+}` }
       ],
       dry: { head: ['g', 'present multiples', 'gcd of them', 'achievable?'], rows: [['1', '3, 6, 10', '1', H.c('g', 'yes')], ['2', '6, 10', '2', H.c('g', 'yes')], ['3', '3, 6', '3', H.c('g', 'yes')], ['4', 'none', '0', 'no'], ['5', '10', '10', 'no'], ['6', '6', '6', H.c('g', 'yes')], ['10', '10', '10', H.c('g', 'yes → total 5')]] },
       complexity: `<p><b>Time O(M log M × log M)</b> (harmonic sum of multiples, each with a gcd), M = 2 × 10<sup>5</sup>. <b>Space O(M)</b>.</p>`
@@ -5581,6 +6667,15 @@ long long countPairs(vector<int>& nums, int k) {
         for (int j = i + 1; j < (int) nums.size(); j++)
             if ((long long) nums[i] * nums[j] % k == 0) pairs++;
     return pairs;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountPairs(int[] nums, int k) {
+        long pairs = 0;
+        for (int i = 0; i < nums.Length; i++)
+            for (int j = i + 1; j < nums.Length; j++)
+                if ((long)nums[i] * nums[j] % k == 0) pairs++;
+        return pairs;
+    }
 }` }] }
     },
     mcq: { q: `k = 12, x = 8, y = 9. gcd(x, 12) = 4, gcd(y, 12) = 3. Is x × y divisible by 12?`, options: [`No`, `Yes — 4 × 3 = 12 is divisible by 12, and that test is exact`, `Only if x + y is`, `Can't tell from the gcds`], answer: 1, explain: `k divides x·y exactly when k divides gcd(x,k)·gcd(y,k): per prime, min(eₓ, e_k) + min(e_y, e_k) ≥ e_k ⇔ eₓ + e_y ≥ e_k. 72 = 6 × 12 ✓.` },
@@ -5650,7 +6745,27 @@ public:
         }
         return pairs;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public long CountPairs(int[] nums, int k) {
+        var cnt = new Dictionary<int, int>();   // gcd(x, k) -> how many seen so far
+        long pairs = 0;
+        foreach (int x in nums) {
+            int g = Gcd(x, k);
+            foreach (var e in cnt) {
+                if ((long)g * e.Key % k == 0) pairs += e.Value;   // compatible earlier numbers
+            }
+            cnt[g] = cnt.TryGetValue(g, out int c) ? c + 1 : 1;
+        }
+        return pairs;
+    }
+
+    private int Gcd(int a, int b) {
+        return b == 0 ? a : Gcd(b, a % b);
+    }
+}` }
       ],
       dry: { head: ['x', 'g = gcd(x, 2)', 'map before', 'added', 'pairs'], rows: [['1', '1', '{}', '0', '0'], ['2', '2', '{1:1}', '1 (2·1 even)', '1'], ['3', '1', '{1:1, 2:1}', '1 (with g=2)', '2'], ['4', '2', '{1:2, 2:1}', '3 (all)', '5'], ['5', '1', '{1:2, 2:2}', '2 (with g=2)', H.c('g', '7')]] },
       complexity: `<p><b>Time O(N × d(k) + N log k)</b>, with d(k) ≤ 128 for k ≤ 10<sup>5</sup> → about 1.3 × 10<sup>7</sup> steps. <b>Space O(d(k))</b>.</p>`

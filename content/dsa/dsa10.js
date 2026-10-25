@@ -130,6 +130,17 @@ int binarySearch(const vector<int>& a, int target) {
         else hi = mid - 1;                  // target is left of mid
     }
     return -1;                              // window empty: not present
+}` }, { lang: 'csharp', code: String.raw`
+// Template A: closed window [lo, hi]. Use for "find exact value".
+int BinarySearch(int[] a, int target) {
+    int lo = 0, hi = a.Length - 1;          // window = whole array
+    while (lo <= hi) {                       // window not empty
+        int mid = lo + (hi - lo) / 2;        // overflow-safe middle
+        if (a[mid] == target) return mid;    // found it
+        if (a[mid] < target) lo = mid + 1;   // target is right of mid
+        else hi = mid - 1;                   // target is left of mid
+    }
+    return -1;                               // window empty: not present (Array.BinarySearch does the same)
 }` }
       ] }, { lang: 'java', code: `
       // Template B: shrink until one candidate is left.
@@ -176,6 +187,17 @@ int firstAtLeast(const vector<int>& a, int target) {
         else lo = mid + 1;                  // mid is too small: drop it
     }
     return lo;   // same as lower_bound(a.begin(), a.end(), target) - a.begin()
+}` }, { lang: 'csharp', code: String.raw`
+// Template B: shrink until one candidate is left.
+// Finds the FIRST index whose value is >= target (n if none).
+int FirstAtLeast(int[] a, int target) {
+    int lo = 0, hi = a.Length;               // hi = n means "none found"
+    while (lo < hi) {                        // more than one candidate
+        int mid = lo + (hi - lo) / 2;        // lower middle (never equals hi)
+        if (a[mid] >= target) hi = mid;      // mid could be the answer: keep it
+        else lo = mid + 1;                   // mid is too small: drop it
+    }
+    return lo;                               // lo == hi: the single survivor
 }` }
       ] }],
     codeTitle: ['Template A: while (lo <= hi)', 'Template B: while (lo < hi)'],
@@ -256,7 +278,17 @@ console.log((lo + hi) >>> 1);             // 1750000000: unsigned shift, safe be
             { lang: 'cpp', code: `int lo = 1500000000, hi = 2000000000;
 // cout << (lo + hi) / 2;               // signed overflow: undefined behaviour in C++
 cout << lo + (hi - lo) / 2 << "\\n";      // 1750000000  (safe)
-cout << ((long long)lo + hi) / 2 << "\\n"; // 1750000000  (safe, 64-bit sum)` }
+cout << ((long long)lo + hi) / 2 << "\\n"; // 1750000000  (safe, 64-bit sum)` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int lo = 1500000000, hi = 2000000000;
+        Console.WriteLine((lo + hi) / 2);              // -397483648  (overflow: wraps silently)
+        Console.WriteLine(lo + (hi - lo) / 2);         // 1750000000  (safe)
+        Console.WriteLine((int)((uint)(lo + hi) >> 1)); // 1750000000  (safe, unsigned shift)
+    }
+}`, run: true }
           ] }
       },
       {
@@ -323,6 +355,14 @@ cout << ((long long)lo + hi) / 2 << "\\n"; // 1750000000  (safe, 64-bit sum)` }
         if (nums[i] == target) return i;   // found
     }
     return -1;                             // checked all N items
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int Search(int[] nums, int target) {
+        for (int i = 0; i < nums.Length; i++) {
+            if (nums[i] == target) return i;   // found
+        }
+        return -1;                             // checked all N items
+    }
 }` }
           ]
         }
@@ -408,7 +448,23 @@ public:
         }
         return -1;                                  // window empty: target not present
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int Search(int[] nums, int target) {
+        int lo = 0, hi = nums.Length - 1;       // the window we still trust
+        while (lo <= hi) {                       // window still has at least 1 item
+            int mid = lo + (hi - lo) / 2;        // middle, written so it can't overflow
+            if (nums[mid] == target) {
+                return mid;                      // lucky: found it
+            } else if (nums[mid] < target) {
+                lo = mid + 1;                    // mid and everything left of it are too small
+            } else {
+                hi = mid - 1;                    // mid and everything right of it are too big
+            }
+        }
+        return -1;                               // window empty: target not present
+    }
+}` }
         ],
         dry: {
           head: ['target', 'lo', 'hi', 'mid', 'nums[mid]', 'action'],
@@ -563,6 +619,32 @@ int upperBound(const vector<int>& a, int x) {
 int countOf(const vector<int>& a, int x) {
     auto [first, last] = equal_range(a.begin(), a.end(), x);
     return (int)(last - first);           // == upperBound(a, x) - lowerBound(a, x)
+}` }, { lang: 'csharp', code: String.raw`
+// Lower bound: first index i with a[i] >= x (returns n if none).
+static int LowerBound(int[] a, int x) {
+    int lo = 0, hi = a.Length;          // answer lies in [0, n]
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (a[mid] >= x) hi = mid;      // mid is a "yes": answer is mid or to its left
+        else lo = mid + 1;              // mid is a "no": answer is to its right
+    }
+    return lo;
+}
+
+// Upper bound: first index i with a[i] > x (returns n if none).
+static int UpperBound(int[] a, int x) {
+    int lo = 0, hi = a.Length;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (a[mid] > x) hi = mid;       // only the comparison changed: > instead of >=
+        else lo = mid + 1;
+    }
+    return lo;
+}
+
+// How many times does x appear? Two O(log n) searches.
+static int CountOf(int[] a, int x) {
+    return UpperBound(a, x) - LowerBound(a, x);
 }` }
       ] },
     codeTitle: 'lowerBound / upperBound / count',
@@ -634,7 +716,19 @@ console.log(ub - lb); // 4` },
             { lang: 'cpp', code: `vector<int> a = {1, 3, 7, 7, 7, 7, 9, 12};
 auto lb = lower_bound(a.begin(), a.end(), 7);   // first element >= 7 (index 2)
 auto ub = upper_bound(a.begin(), a.end(), 7);   // first element > 7  (index 6)
-cout << (ub - lb) << "\\n";                     // 4` }
+cout << (ub - lb) << "\\n";                     // 4` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 1, 3, 7, 7, 7, 7, 9, 12 };
+        int lb = 0, hi = a.Length;
+        while (lb < hi) { int mid = lb + (hi - lb) / 2; if (a[mid] >= 7) hi = mid; else lb = mid + 1; }
+        int ub = 0; hi = a.Length;
+        while (ub < hi) { int mid = ub + (hi - ub) / 2; if (a[mid] > 7) hi = mid; else ub = mid + 1; }
+        Console.WriteLine(ub - lb); // 4
+    }
+}`, run: true }
           ] }
       },
       {
@@ -680,7 +774,17 @@ console.log(times.slice(from, to));             // [905, 905, 912]` },
 bool present = binary_search(times.begin(), times.end(), 905LL);
 auto from = lower_bound(times.begin(), times.end(), 905LL);   // first 905 (index 1)
 auto to = upper_bound(times.begin(), times.end(), 920LL);     // first after 09:20 (index 4)
-cout << (present ? "905 present" : "905 missing") << ", " << (to - from) << " events\\n";` }
+cout << (present ? "905 present" : "905 missing") << ", " << (to - from) << " events\\n";` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        long[] times = { 900, 905, 905, 912, 930 };     // minutes written as hhmm for readability
+        int from = Array.BinarySearch(times, 905L);     // some index of 905 (not guaranteed first!)
+        Console.WriteLine(from >= 0 ? "905 present" : "905 missing");
+        // a negative result is ~insertionPoint: the first index with a bigger value
+    }
+}`, run: true }
           ] }
       }
     ],
@@ -744,6 +848,18 @@ cout << (present ? "905 present" : "905 missing") << ", " << (to - from) << " ev
         }
     }
     return {first, last};
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] SearchRange(int[] nums, int target) {
+        int first = -1, last = -1;
+        for (int i = 0; i < nums.Length; i++) {
+            if (nums[i] == target) {
+                if (first == -1) first = i;   // first time we see it
+                last = i;                     // keep moving the end
+            }
+        }
+        return new[] { first, last };
+    }
 }` }
           ]
         }
@@ -875,7 +991,34 @@ public:
         return {first, findEdge(nums, target, false)};
         // Library view: std::equal_range(nums.begin(), nums.end(), target) gives both bounds.
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] SearchRange(int[] nums, int target) {
+        int first = FindEdge(nums, target, true);   // lean left
+        if (first == -1) return new[] { -1, -1 };   // not present at all
+        int last = FindEdge(nums, target, false);   // lean right
+        return new[] { first, last };
+    }
+
+    // leanLeft = true  -> first occurrence
+    // leanLeft = false -> last occurrence
+    private int FindEdge(int[] nums, int target, bool leanLeft) {
+        int lo = 0, hi = nums.Length - 1, ans = -1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] == target) {
+                ans = mid;                       // a real match: remember it
+                if (leanLeft) hi = mid - 1;      // maybe an earlier copy exists
+                else lo = mid + 1;               // maybe a later copy exists
+            } else if (nums[mid] < target) {
+                lo = mid + 1;                    // all copies are to the right
+            } else {
+                hi = mid - 1;                    // all copies are to the left
+            }
+        }
+        return ans;
+    }
+}` }
         ],
         dry: {
           head: ['search', 'lo', 'hi', 'mid', 'nums[mid]', 'action', 'ans'],
@@ -1044,6 +1187,13 @@ public:
     for (size_t i = 0; i < nums.size(); i++)
         if (nums[i] == target) return i;   // check every element
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int Search(int[] nums, int target) {
+        for (int i = 0; i < nums.Length; i++)
+            if (nums[i] == target) return i;   // check every element
+        return -1;
+    }
 }` }
           ]
         }
@@ -1155,7 +1305,33 @@ public:
         }
         return -1;                                                // not present
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int Search(int[] nums, int target) {
+        int lo = 0, hi = nums.Length - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] == target) return mid;          // found
+
+            if (nums[lo] <= nums[mid]) {
+                // LEFT half [lo..mid] is sorted (no drop inside it)
+                if (nums[lo] <= target && target < nums[mid]) {
+                    hi = mid - 1;                         // target lies in the sorted left part
+                } else {
+                    lo = mid + 1;                         // otherwise it can only be on the right
+                }
+            } else {
+                // RIGHT half [mid..hi] is sorted
+                if (nums[mid] < target && target <= nums[hi]) {
+                    lo = mid + 1;                         // target lies in the sorted right part
+                } else {
+                    hi = mid - 1;                         // otherwise it can only be on the left
+                }
+            }
+        }
+        return -1;                                        // not present
+    }
+}` }
         ],
         dry: {
           head: ['lo', 'hi', 'mid', 'nums[mid]', 'sorted half', 'target in it?', 'action'],
@@ -1262,7 +1438,20 @@ while (lo < hi) {
     int mid = lo + (hi - lo) / 2;
     if (a[mid] < a[mid + 1]) lo = mid + 1; else hi = mid;
 }
-cout << lo << "\\n"; // 3` }
+cout << lo << "\\n"; // 3` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] a = { 0, 2, 5, 9, 7, 3, 1 };
+        int lo = 0, hi = a.Length - 1;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (a[mid] < a[mid + 1]) lo = mid + 1; else hi = mid;
+        }
+        Console.WriteLine(lo); // 3
+    }
+}`, run: true }
           ] }
       },
       {
@@ -1321,6 +1510,14 @@ cout << lo << "\\n"; // 3` }
     for (int i = 1; i < (int)nums.size(); i++)
         if (nums[i] > nums[best]) best = i;   // the global max is always a peak
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindPeakElement(int[] nums) {
+        int best = 0;
+        for (int i = 1; i < nums.Length; i++)
+            if (nums[i] > nums[best]) best = i;   // the global max is always a peak
+        return best;
+    }
 }` }
           ]
         }
@@ -1402,7 +1599,22 @@ public:
         }
         return lo;                                 // lo == hi: the last candidate is a peak
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindPeakElement(int[] nums) {
+        int lo = 0, hi = nums.Length - 1;
+        // Promise: there is always a peak inside [lo, hi].
+        while (lo < hi) {                          // at least 2 candidates left
+            int mid = lo + (hi - lo) / 2;           // mid < hi, so mid + 1 is safe
+            if (nums[mid] < nums[mid + 1]) {
+                lo = mid + 1;                       // uphill to the right: a peak is on the right
+            } else {
+                hi = mid;                           // downhill: mid or something left of it is a peak
+            }
+        }
+        return lo;                                  // lo == hi: the last candidate is a peak
+    }
+}` }
         ],
         dry: {
           head: ['lo', 'hi', 'mid', 'nums[mid]', 'nums[mid+1]', 'action'],
@@ -1503,6 +1715,20 @@ int mySqrt(int n) {
         }
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+// Integer square root: largest x with x*x <= n.
+static int MySqrt(int n) {
+    int lo = 0, hi = n, ans = 0;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        if ((long)mid * mid <= n) {    // long: mid*mid can be ~4*10^18
+            ans = mid;                 // mid fits: remember it
+            lo = mid + 1;              // try a bigger side
+        } else {
+            hi = mid - 1;              // too big: try smaller
+        }
+    }
+    return ans;
 }` }
       ] }, { lang: 'java', code: `
       // Real-valued search: cube root of a positive number, any precision.
@@ -1539,6 +1765,16 @@ function cubeRoot(v) {
         { lang: 'cpp', code: `// Real-valued search: cube root of a positive number, any precision.
 double cubeRoot(double v) {
     double lo = 0, hi = max(1.0, v);        // the answer lies in [0, max(1, v)]
+    for (int it = 0; it < 100; it++) {      // 100 halvings: gap becomes tiny
+        double mid = (lo + hi) / 2;
+        if (mid * mid * mid < v) lo = mid;  // too small: answer is right of mid
+        else hi = mid;                      // big enough: answer is mid or left
+    }
+    return lo;
+}` }, { lang: 'csharp', code: String.raw`
+// Real-valued search: cube root of a positive number, any precision.
+static double CubeRoot(double v) {
+    double lo = 0, hi = Math.Max(1.0, v);   // the answer lies in [0, max(1, v)]
     for (int it = 0; it < 100; it++) {      // 100 halvings: gap becomes tiny
         double mid = (lo + hi) / 2;
         if (mid * mid * mid < v) lo = mid;  // too small: answer is right of mid
@@ -1635,7 +1871,20 @@ while (lo <= hi) {
     if (mid <= x / mid) { ans = mid; lo = mid + 1; }   // mid*mid <= x, no multiplication
     else hi = mid - 1;
 }
-cout << ans << "\\n"; // 46340` }
+cout << ans << "\\n"; // 46340` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int x = 2147483647, lo = 1, hi = x, ans = 0;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (mid <= x / mid) { ans = mid; lo = mid + 1; }   // mid*mid <= x, no multiplication
+            else hi = mid - 1;
+        }
+        Console.WriteLine(ans); // 46340
+    }
+}`, run: true }
           ] }
       },
       {
@@ -1697,6 +1946,13 @@ cout << ans << "\\n"; // 46340` }
     long long k = 0;
     while ((k + 1) * (k + 1) <= x) k++;   // walk up one by one
     return (int)k;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MySqrt(int x) {
+        long k = 0;
+        while ((k + 1) * (k + 1) <= x) k++;   // walk up one by one
+        return (int)k;
+    }
 }` }
           ]
         }
@@ -1790,7 +2046,23 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MySqrt(int x) {
+        int lo = 0, hi = x, ans = 0;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;          // safe middle
+            long sq = (long)mid * mid;              // square in long: no overflow
+            if (sq <= x) {
+                ans = mid;                          // mid works: best so far
+                lo = mid + 1;                       // look for a bigger one
+            } else {
+                hi = mid - 1;                       // mid too big, so are all larger values
+            }
+        }
+        return ans;
+    }
+}` }
         ],
         dry: {
           head: ['lo', 'hi', 'mid', 'mid²', '≤ 20?', 'action', 'ans'],
@@ -1954,7 +2226,21 @@ while (lo <= hi) {
     for (size_t i = 1; i < pos.size(); i++) if (pos[i] - last >= d) { count++; last = pos[i]; }
     if (count >= m) { ans = d; lo = d + 1; } else hi = d - 1;
 }
-cout << ans << "\\n"; // 3` }
+cout << ans << "\\n"; // 3` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] pos = { 1, 2, 3, 4, 7 };
+        int m = 3, lo = 1, hi = pos[pos.Length - 1] - pos[0], ans = 0;
+        while (lo <= hi) {
+            int d = lo + (hi - lo) / 2, count = 1, last = pos[0];
+            for (int i = 1; i < pos.Length; i++) if (pos[i] - last >= d) { count++; last = pos[i]; }
+            if (count >= m) { ans = d; lo = d + 1; } else hi = d - 1;
+        }
+        Console.WriteLine(ans); // 3
+    }
+}`, run: true }
           ] }
       },
       {
@@ -2047,6 +2333,23 @@ cout << ans << "\\n"; // 3` }
         else break;                 // bigger d can only be worse
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int AggressiveCows(int[] stalls, int k) {
+        Array.Sort(stalls);
+        int best = 0;
+        for (int d = 1; d <= stalls[stalls.Length - 1] - stalls[0]; d++) {
+            int count = 1, last = stalls[0];
+            for (int i = 1; i < stalls.Length; i++) {
+                if (stalls[i] - last >= d) { count++; last = stalls[i]; }
+            }
+            if (count >= k) best = d;   // d is achievable
+            else break;                 // bigger d can only be worse
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -2180,7 +2483,40 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    // Can we place k cows so that every two neighbouring cows are >= d apart?
+    static bool CanPlace(int[] stalls, int k, int d) {
+        int count = 1;                  // first cow goes into the first stall
+        int last = stalls[0];           // position of the most recent cow
+        for (int i = 1; i < stalls.Length; i++) {
+            if (stalls[i] - last >= d) { // far enough from the previous cow
+                count++;
+                last = stalls[i];
+                if (count >= k) return true; // all cows placed: early exit
+            }
+        }
+        return count >= k;
+    }
+
+    public int AggressiveCows(int[] stalls, int k) {
+        Array.Sort(stalls);                                 // greedy needs left-to-right order
+        int lo = 1, hi = stalls[stalls.Length - 1] - stalls[0];
+        int ans = 0;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;                   // a guessed minimum distance
+            if (CanPlace(stalls, k, mid)) {
+                ans = mid;                                  // feasible: remember it
+                lo = mid + 1;                               // try to spread cows further
+            } else {
+                hi = mid - 1;                               // too ambitious: shrink the gap
+            }
+        }
+        return ans;
+    }
+}` }
         ],
         dry: {
           head: ['lo', 'hi', 'mid (d)', 'greedy cows at', 'count', 'feasible?', 'action', 'ans'],
@@ -2334,7 +2670,21 @@ while (lo <= hi) {
     for (int x : w) { if (load + x > cap) { need++; load = 0; } load += x; }
     if (need <= days) { ans = cap; hi = cap - 1; } else lo = cap + 1;
 }
-cout << ans << "\\n"; // 15` }
+cout << ans << "\\n"; // 15` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] w = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+        int days = 5, lo = 10, hi = 55, ans = hi;
+        while (lo <= hi) {
+            int cap = lo + (hi - lo) / 2, need = 1, load = 0;
+            foreach (int x in w) { if (load + x > cap) { need++; load = 0; } load += x; }
+            if (need <= days) { ans = cap; hi = cap - 1; } else lo = cap + 1;
+        }
+        Console.WriteLine(ans); // 15
+    }
+}`, run: true }
           ] }
       },
       {
@@ -2427,6 +2777,25 @@ long long minTime(const vector<int>& boards, int k) {
         if (painters <= k) return L;     // first limit that works
     }
     return sum;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    // Try every limit from max to sum; the first feasible one is the answer.
+    public long MinTime(int[] boards, int k) {
+        long max = 0, sum = 0;
+        foreach (int b in boards) { max = Math.Max(max, b); sum += b; }
+        for (long L = max; L <= sum; L++) {
+            int painters = 1;
+            long load = 0;
+            foreach (int b in boards) {
+                if (load + b > L) { painters++; load = 0; }
+                load += b;
+            }
+            if (painters <= k) return L;     // first limit that works
+        }
+        return sum;
+    }
 }` }
           ]
         }
@@ -2557,7 +2926,43 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    // How many painters are needed if nobody may paint more than limit?
+    static int PaintersNeeded(int[] boards, long limit) {
+        int painters = 1;
+        long load = 0;                       // length given to the current painter
+        foreach (int b in boards) {
+            if (load + b > limit) {          // this board does not fit: next painter
+                painters++;
+                load = 0;
+            }
+            load += b;
+        }
+        return painters;
+    }
+
+    public long MinTime(int[] boards, int k) {
+        long lo = 0, hi = 0;
+        foreach (int b in boards) {
+            lo = Math.Max(lo, b);            // someone must paint the longest board
+            hi += b;                         // one painter does everything
+        }
+        long ans = hi;
+        while (lo <= hi) {
+            long mid = lo + (hi - lo) / 2;   // a guessed maximum time
+            if (PaintersNeeded(boards, mid) <= k) {
+                ans = mid;                   // feasible: remember, then try smaller
+                hi = mid - 1;
+            } else {
+                lo = mid + 1;                // needs too many painters: allow more time
+            }
+        }
+        return ans;
+    }
+}` }
         ],
         dry: {
           head: ['lo', 'hi', 'mid', 'greedy groups', 'painters', '≤ 2?', 'action'],
@@ -2655,6 +3060,27 @@ long long findPages(const vector<int>& pages, int start, int students) {
         best = min(best, max(first, rest));
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    // Recursively try every cut position; returns the best possible max load.
+    public long FindPages(int[] pages, int start, int students) {
+        int n = pages.Length;
+        if (students == 1) {                       // last student takes everything left
+            long s = 0;
+            for (int i = start; i < n; i++) s += pages[i];
+            return s;
+        }
+        long best = long.MaxValue, first = 0;
+        // first student takes books start..end, leaving >= students-1 books for the rest
+        for (int end = start; end <= n - students; end++) {
+            first += pages[end];
+            long rest = FindPages(pages, end + 1, students - 1);
+            best = Math.Min(best, Math.Max(first, rest));
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -2791,7 +3217,45 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    // Number of students needed if nobody may read more than limit pages.
+    static int StudentsNeeded(int[] pages, long limit) {
+        int students = 1;
+        long reading = 0;                          // pages of the current student
+        foreach (int p in pages) {
+            if (reading + p > limit) {             // book doesn't fit: next student
+                students++;
+                reading = 0;
+            }
+            reading += p;
+        }
+        return students;
+    }
+
+    public long FindPages(int[] pages, int m) {
+        int n = pages.Length;
+        if (m > n) return -1;                      // someone would get no book
+        long lo = 0, hi = 0;
+        foreach (int p in pages) {
+            lo = Math.Max(lo, p);                  // thickest book must fit
+            hi += p;                               // one student reads all
+        }
+        long ans = hi;
+        while (lo <= hi) {
+            long mid = lo + (hi - lo) / 2;
+            if (StudentsNeeded(pages, mid) <= m) {
+                ans = mid;                         // feasible: try to lower the max
+                hi = mid - 1;
+            } else {
+                lo = mid + 1;                      // too many students needed: raise limit
+            }
+        }
+        return ans;
+    }
+}` }
         ],
         dry: {
           head: ['lo', 'hi', 'mid', 'greedy groups', 'students', '≤ 2?', 'action'],
@@ -2922,6 +3386,28 @@ int minEatingSpeed(const vector<int>& piles, int h) {
         for (int p : piles) hours += (p + k - 1) / k;   // ceil(p / k)
         return hours <= h;
     });
+}` }, { lang: 'csharp', code: String.raw`
+// The universal "first yes" helper: ok(x) must be false...false true...true on [lo, hi].
+// Returns the smallest x with ok(x) == true, or hi + 1 if none is true.
+static long FirstTrue(long lo, long hi, Func<long, bool> ok) {
+    long ans = hi + 1;
+    while (lo <= hi) {
+        long mid = lo + (hi - lo) / 2;
+        if (ok(mid)) { ans = mid; hi = mid - 1; }   // works: remember, look for smaller
+        else lo = mid + 1;                          // fails: need a bigger value
+    }
+    return ans;
+}
+
+// Koko with the helper: minimum speed so that total hours <= h.
+static int MinEatingSpeed(int[] piles, int h) {
+    int max = 0;
+    foreach (int p in piles) max = Math.Max(max, p);
+    return (int)FirstTrue(1, max, k => {
+        long hours = 0;                                   // long: can reach 10^13 when k = 1
+        foreach (int p in piles) hours += (p + k - 1) / k; // ceil(p / k)
+        return hours <= h;
+    });
 }` }
       ] }, { lang: 'python', run: true, title: 'Same recipe in Python (runnable)', code: `def first_true(lo, hi, ok):
     """Smallest x in [lo, hi] with ok(x) True (ok must be F..F T..T). hi+1 if none."""
@@ -3019,7 +3505,18 @@ console.log(bad + " vs " + good);       // -1294967296 vs 3000000000` },
 int k = 1;
 long long goodSum = 0;            // an int sum here would overflow: undefined behaviour in C++
 for (int p : piles) goodSum += (p - 1) / k + 1;
-cout << goodSum << "\\n";          // 3000000000` }
+cout << goodSum << "\\n";          // 3000000000` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] piles = { 1000000000, 1000000000, 1000000000 };
+        int k = 1;
+        int badSum = 0; long goodSum = 0;
+        foreach (int p in piles) { badSum += (p - 1) / k + 1; goodSum += (p - 1) / k + 1; }
+        Console.WriteLine(badSum + " vs " + goodSum);   // -1294967296 vs 3000000000 (int wraps silently)
+    }
+}`, run: true }
           ] }
       },
       {
@@ -3084,6 +3581,15 @@ cout << goodSum << "\\n";          // 3000000000` }
         long long hours = 0;
         for (int p : piles) hours += ((long long)p + k - 1) / k;
         if (hours <= h) return k;                // first speed that works
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MinEatingSpeed(int[] piles, int h) {
+        for (int k = 1; ; k++) {                    // try every speed in order
+            long hours = 0;
+            foreach (int p in piles) hours += (p + (long)k - 1) / k;
+            if (hours <= h) return k;               // first speed that works
+        }
     }
 }` }
           ]
@@ -3188,7 +3694,35 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    // Hours Koko needs at speed k. long: up to 10^4 piles * 10^9 hours.
+    private long HoursNeeded(int[] piles, int k) {
+        long hours = 0;
+        foreach (int p in piles) {
+            hours += (p + (long)k - 1) / k;    // ceil(p / k) without floating point
+        }
+        return hours;
+    }
+
+    public int MinEatingSpeed(int[] piles, int h) {
+        int lo = 1, hi = 0;
+        foreach (int p in piles) hi = Math.Max(hi, p);  // speed max(piles) always works
+        int ans = hi;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;          // a guessed speed
+            if (HoursNeeded(piles, mid) <= h) {
+                ans = mid;                         // fast enough: remember it
+                hi = mid - 1;                      // try to go slower
+            } else {
+                lo = mid + 1;                      // too slow: must eat faster
+            }
+        }
+        return ans;
+    }
+}` }],
         dry: {
           head: ['lo', 'hi', 'mid', 'hours at mid', '≤ 8?', 'action', 'ans'],
           rows: [
@@ -3238,6 +3772,13 @@ public:
     for (int i = 0; i < (int)nums.size(); i++)
         if (nums[i] >= target) return i;   // first slot that is not smaller
     return nums.size();                    // bigger than everything
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SearchInsert(int[] nums, int target) {
+        for (int i = 0; i < nums.Length; i++)
+            if (nums[i] >= target) return i;   // first slot that is not smaller
+        return nums.Length;                    // bigger than everything
+    }
 }` }
           ]
         }
@@ -3310,7 +3851,21 @@ public:
         }
         return lo;   // same as lower_bound(nums.begin(), nums.end(), target) - nums.begin()
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SearchInsert(int[] nums, int target) {
+        int lo = 0, hi = nums.Length;      // answer can be anything in [0, n]
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] >= target) {
+                hi = mid;                  // mid could be the slot: keep it
+            } else {
+                lo = mid + 1;              // mid is too small: slot is to the right
+            }
+        }
+        return lo;                         // first index with nums[i] >= target
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[mid]', '≥ 2?', 'action'],
@@ -3372,6 +3927,16 @@ public:
         if (idx < (int)arr.size() && arr[idx] == num) idx++;   // present: not missing
         else if (--k == 0) return num;                         // missing: count it
         num++;
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindKthPositive(int[] arr, int k) {
+        int idx = 0, num = 1;
+        while (true) {
+            if (idx < arr.Length && arr[idx] == num) idx++;   // present: not missing
+            else if (--k == 0) return num;                    // missing: count it
+            num++;
+        }
     }
 }` }
           ]
@@ -3451,7 +4016,23 @@ public:
         }
         return lo + k;                             // lo present values + k missing ones
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindKthPositive(int[] arr, int k) {
+        int lo = 0, hi = arr.Length;              // answer index in [0, n]
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            int missing = arr[mid] - (mid + 1);   // how many positives are absent before arr[mid]
+            if (missing < k) {
+                lo = mid + 1;                     // not enough missing yet: go right
+            } else {
+                hi = mid;                         // enough missing: answer is before arr[mid]
+            }
+        }
+        // lo array values are smaller than the answer, plus k missing ones
+        return lo + k;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'arr[mid]', 'missing', '&lt; 5?', 'action'],
@@ -3516,7 +4097,16 @@ public:
         for (long long x = 1; x <= n; x++) if (guess((int)x) == 0) return (int)x;   // one by one
         return -1;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int FindMin(int[] nums) {
+        int best = nums[0];
+        foreach (int x in nums) best = Math.Min(best, x);   // look at everything
+        return best;
+    }
+}` }
           ]
         }
     },
@@ -3589,7 +4179,21 @@ public:
         }
         return nums[lo];                              // lo == hi points at the minimum
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindMin(int[] nums) {
+        int lo = 0, hi = nums.Length - 1;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] > nums[hi]) {
+                lo = mid + 1;          // drop is right of mid: min is in (mid, hi]
+            } else {
+                hi = mid;              // mid..hi is sorted: min is mid or left of it
+            }
+        }
+        return nums[lo];               // lo == hi points at the minimum
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[mid]', 'nums[hi]', 'action'],
@@ -3636,6 +4240,13 @@ public:
             { lang: 'cpp', code: `bool isPerfectSquare(int num) {
     for (long long k = 1; k * k <= num; k++) if (k * k == num) return true;
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SingleNonDuplicate(int[] nums) {
+        int x = 0;
+        foreach (int v in nums) x ^= v;   // equal pairs cancel out
+        return x;
+    }
 }` }
           ]
         }
@@ -3712,7 +4323,22 @@ public:
         }
         return nums[lo];
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SingleNonDuplicate(int[] nums) {
+        int lo = 0, hi = nums.Length - 1;   // both even (n is odd)
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (mid % 2 == 1) mid--;        // look at a pair that should start at an even index
+            if (nums[mid] == nums[mid + 1]) {
+                lo = mid + 2;               // pair is aligned: single is further right
+            } else {
+                hi = mid;                   // alignment broken: single is mid or left
+            }
+        }
+        return nums[lo];
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid (even)', 'nums[mid], nums[mid+1]', 'action'],
@@ -3771,6 +4397,16 @@ public:
     int best = nums[0];
     for (int x : nums) best = min(best, x);   // look at everything
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+public class GuessGame {
+    private readonly int pick;
+    public GuessGame(int pick) { this.pick = pick; }
+    int Guess(int num) { return pick.CompareTo(num); }   // the judge's API
+
+    public int BruteGuess(int n) {
+        for (int x = 1; x <= n; x++) if (Guess(x) == 0) return x;   // one by one
+        return -1;
+    }
 }` }
           ]
         }
@@ -3878,7 +4514,25 @@ public:
         }
         return -1;                             // unreachable for valid input
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    private readonly int pick;
+    public Solution(int pick) { this.pick = pick; }
+    // Stand-in for the judge's API: -1 = guess too high, 1 = guess too low, 0 = correct.
+    int Guess(int num) { return pick.CompareTo(num); }
+
+    public int GuessNumber(int n) {
+        int lo = 1, hi = n;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;      // no overflow even near 2^31 - 1
+            int r = Guess(mid);
+            if (r == 0) return mid;            // correct
+            if (r == 1) lo = mid + 1;          // pick is higher than mid
+            else hi = mid - 1;                 // pick is lower than mid
+        }
+        return -1;                             // unreachable for valid input
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'guess(mid)', 'action'],
@@ -3924,6 +4578,12 @@ public:
     int x = 0;
     for (int v : nums) x ^= v;   // equal pairs cancel out
     return x;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPerfectSquare(int num) {
+        for (long k = 1; k * k <= num; k++) if (k * k == num) return true;
+        return false;
+    }
 }` }
           ]
         }
@@ -4003,7 +4663,20 @@ public:
         }
         return false;                              // no integer squares to num
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPerfectSquare(int num) {
+        long lo = 1, hi = num;
+        while (lo <= hi) {
+            long mid = lo + (hi - lo) / 2;
+            long sq = mid * mid;                 // long: no overflow
+            if (sq == num) return true;          // found an exact root
+            if (sq < num) lo = mid + 1;          // root must be bigger
+            else hi = mid - 1;                   // root must be smaller
+        }
+        return false;                            // no integer squares to num
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'mid²', 'vs 14', 'action'],
@@ -4058,6 +4731,14 @@ public:
         for (int v : row)
             if (v == target) return true;
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool SearchMatrix(int[][] matrix, int target) {
+        foreach (int[] row in matrix)
+            foreach (int v in row)
+                if (v == target) return true;
+        return false;
+    }
 }` }
           ]
         }
@@ -4142,7 +4823,21 @@ public:
         }
         return false;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool SearchMatrix(int[][] matrix, int target) {
+        int m = matrix.Length, n = matrix[0].Length;
+        int lo = 0, hi = m * n - 1;              // virtual indices of the flattened matrix
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            int v = matrix[mid / n][mid % n];    // map back to (row, col)
+            if (v == target) return true;
+            if (v < target) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        return false;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', '(row, col)', 'value', 'action'],
@@ -4187,6 +4882,12 @@ public:
             { lang: 'cpp', code: `bool search(const vector<int>& nums, int target) {
     for (int v : nums) if (v == target) return true;
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool Search(int[] nums, int target) {
+        foreach (int v in nums) if (v == target) return true;
+        return false;
+    }
 }` }
           ]
         }
@@ -4293,7 +4994,27 @@ public:
         }
         return false;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool Search(int[] nums, int target) {
+        int lo = 0, hi = nums.Length - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] == target) return true;
+            if (nums[lo] == nums[mid] && nums[mid] == nums[hi]) {
+                lo++;                                   // ends equal nums[mid] != target:
+                hi--;                                   // safe to drop both
+            } else if (nums[lo] <= nums[mid]) {         // left half sorted
+                if (nums[lo] <= target && target < nums[mid]) hi = mid - 1;
+                else lo = mid + 1;
+            } else {                                    // right half sorted
+                if (nums[mid] < target && target <= nums[hi]) lo = mid + 1;
+                else hi = mid - 1;
+            }
+        }
+        return false;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[lo], nums[mid], nums[hi]', 'case (target = 3)', 'action'],
@@ -4362,6 +5083,20 @@ public:
         for (int w : weights) { if (load + w > cap) { need++; load = 0; } load += w; }
         if (need <= days) return cap;                         // first capacity that works
         cap++;
+    }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int ShipWithinDays(int[] weights, int days) {
+        int cap = 0;
+        foreach (int w in weights) cap = Math.Max(cap, w);   // smallest sensible capacity
+        while (true) {
+            int need = 1, load = 0;
+            foreach (int w in weights) { if (load + w > cap) { need++; load = 0; } load += w; }
+            if (need <= days) return cap;                    // first capacity that works
+            cap++;
+        }
     }
 }` }
           ]
@@ -4471,7 +5206,31 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    private int DaysNeeded(int[] weights, int cap) {
+        int days = 1, load = 0;
+        foreach (int w in weights) {
+            if (load + w > cap) { days++; load = 0; }   // ship is full: next day
+            load += w;
+        }
+        return days;
+    }
+
+    public int ShipWithinDays(int[] weights, int days) {
+        int lo = 0, hi = 0;
+        foreach (int w in weights) { lo = Math.Max(lo, w); hi += w; }
+        int ans = hi;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (DaysNeeded(weights, mid) <= days) { ans = mid; hi = mid - 1; }
+            else lo = mid + 1;
+        }
+        return ans;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'days needed', '≤ 3?', 'action'],
@@ -4555,6 +5314,24 @@ public:
         if (made >= m) return d;
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MinDays(int[] bloomDay, int m, int k) {
+        if ((long)m * k > bloomDay.Length) return -1;
+        int[] days = (int[])bloomDay.Clone();
+        Array.Sort(days);
+        foreach (int d in days) {                        // candidate answers in order
+            int made = 0, run = 0;
+            foreach (int b in bloomDay) {
+                run = b <= d ? run + 1 : 0;
+                if (run == k) { made++; run = 0; }
+            }
+            if (made >= m) return d;
+        }
+        return -1;
+    }
 }` }
           ]
         }
@@ -4683,7 +5460,36 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    private bool CanMake(int[] bloomDay, int m, int k, int day) {
+        int made = 0, run = 0;
+        foreach (int b in bloomDay) {
+            if (b <= day) {
+                run++;                         // one more bloomed neighbour
+                if (run == k) { made++; run = 0; if (made >= m) return true; }
+            } else {
+                run = 0;                       // gap breaks adjacency
+            }
+        }
+        return false;
+    }
+
+    public int MinDays(int[] bloomDay, int m, int k) {
+        if ((long)m * k > bloomDay.Length) return -1;   // not enough flowers ever
+        int lo = int.MaxValue, hi = 0;
+        foreach (int b in bloomDay) { lo = Math.Min(lo, b); hi = Math.Max(hi, b); }
+        int ans = hi;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (CanMake(bloomDay, m, k, mid)) { ans = mid; hi = mid - 1; }
+            else lo = mid + 1;
+        }
+        return ans;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'bloomed', 'bouquets', '≥ 2?', 'action'],
@@ -4767,6 +5573,24 @@ public:
                 if (dp[j - 1][p] != LLONG_MAX)
                     dp[j][i] = min(dp[j][i], max(dp[j - 1][p], pre[i] - pre[p]));
     return (int)dp[k][n];
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int SplitArray(int[] nums, int k) {
+        int n = nums.Length;
+        long[] pre = new long[n + 1];
+        for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+        long[,] dp = new long[k + 1, n + 1];
+        for (int j = 0; j <= k; j++) for (int i = 0; i <= n; i++) dp[j, i] = long.MaxValue;
+        dp[0, 0] = 0;
+        for (int j = 1; j <= k; j++)
+            for (int i = 1; i <= n; i++)
+                for (int p = j - 1; p < i; p++)            // last part is nums[p..i-1]
+                    if (dp[j - 1, p] != long.MaxValue)
+                        dp[j, i] = Math.Min(dp[j, i], Math.Max(dp[j - 1, p], pre[i] - pre[p]));
+        return (int)dp[k, n];
+    }
 }` }
           ]
         }
@@ -4877,7 +5701,32 @@ public:
         }
         return (int)ans;                   // the answer is at most 10^9: fits int
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    private int PartsNeeded(int[] nums, long limit) {
+        int parts = 1;
+        long run = 0;
+        foreach (int x in nums) {
+            if (run + x > limit) { parts++; run = 0; }   // start a new subarray
+            run += x;
+        }
+        return parts;
+    }
+
+    public int SplitArray(int[] nums, int k) {
+        long lo = 0, hi = 0;
+        foreach (int x in nums) { lo = Math.Max(lo, x); hi += x; }
+        long ans = hi;
+        while (lo <= hi) {
+            long mid = lo + (hi - lo) / 2;
+            if (PartsNeeded(nums, mid) <= k) { ans = mid; hi = mid - 1; }
+            else lo = mid + 1;
+        }
+        return (int)ans;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'greedy parts', 'count', '≤ 2?', 'action'],
@@ -4949,6 +5798,17 @@ public:
     while (j < B.size()) all.push_back(B[j++]);
     int t = all.size();
     return t % 2 == 1 ? all[t / 2] : (all[t / 2 - 1] + (long long)all[t / 2]) / 2.0;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public double FindMedianSortedArrays(int[] A, int[] B) {
+        int[] all = new int[A.Length + B.Length];
+        int i = 0, j = 0, k = 0;
+        while (i < A.Length && j < B.Length) all[k++] = A[i] <= B[j] ? A[i++] : B[j++];
+        while (i < A.Length) all[k++] = A[i++];
+        while (j < B.Length) all[k++] = B[j++];
+        int t = all.Length;
+        return t % 2 == 1 ? all[t / 2] : (all[t / 2 - 1] + (long)all[t / 2]) / 2.0;
+    }
 }` }
           ]
         }
@@ -5079,7 +5939,34 @@ public:
         }
         throw invalid_argument("inputs were not sorted");
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public double FindMedianSortedArrays(int[] A, int[] B) {
+        if (A.Length > B.Length) return FindMedianSortedArrays(B, A);  // search the shorter one
+        int m = A.Length, n = B.Length;
+        int half = (m + n + 1) / 2;                 // size of the left half
+        int lo = 0, hi = m;                         // i = how many elements A gives
+        while (lo <= hi) {
+            int i = lo + (hi - lo) / 2;
+            int j = half - i;                       // B gives the rest
+            int aLeft  = i == 0 ? int.MinValue : A[i - 1];
+            int aRight = i == m ? int.MaxValue : A[i];
+            int bLeft  = j == 0 ? int.MinValue : B[j - 1];
+            int bRight = j == n ? int.MaxValue : B[j];
+            if (aLeft <= bRight && bLeft <= aRight) {           // valid cut
+                if ((m + n) % 2 == 1) return Math.Max(aLeft, bLeft);
+                return (Math.Max(aLeft, bLeft) + (long)Math.Min(aRight, bRight)) / 2.0;
+            } else if (aLeft > bRight) {
+                hi = i - 1;                         // A gave too many: move cut left
+            } else {
+                lo = i + 1;                         // A gave too few: move cut right
+            }
+        }
+        throw new ArgumentException("inputs were not sorted");
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'i', 'j', 'A[i−1] | A[i]', 'B[j−1] | B[j]', 'check', 'action'],
@@ -5128,6 +6015,15 @@ public:
     int best = nums[0];
     for (int v : nums) best = min(best, v);
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int FindMin(int[] nums) {
+        int best = nums[0];
+        foreach (int v in nums) best = Math.Min(best, v);
+        return best;
+    }
 }` }
           ]
         }
@@ -5207,7 +6103,23 @@ public:
         }
         return nums[lo];
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindMin(int[] nums) {
+        int lo = 0, hi = nums.Length - 1;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] > nums[hi]) {
+                lo = mid + 1;          // drop is right of mid
+            } else if (nums[mid] < nums[hi]) {
+                hi = mid;              // mid..hi sorted: min is mid or left
+            } else {
+                hi--;                  // tie: hi's value also lives at mid, drop hi
+            }
+        }
+        return nums[lo];
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[mid] vs nums[hi]', 'action'],
@@ -5266,6 +6178,18 @@ public:
         for (int j = 1; j <= n; j++) all.push_back(i * j);
     sort(all.begin(), all.end());
     return all[k - 1];
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int FindKthNumber(int m, int n, int k) {
+        int[] all = new int[m * n];
+        int idx = 0;
+        for (int i = 1; i <= m; i++)
+            for (int j = 1; j <= n; j++) all[idx++] = i * j;
+        Array.Sort(all);
+        return all[k - 1];
+    }
 }` }
           ]
         }
@@ -5359,7 +6283,26 @@ public:
         }
         return ans;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    private long CountAtMost(int m, int n, int x) {
+        long c = 0;
+        for (int i = 1; i <= m; i++) c += Math.Min(x / i, n);   // multiples of i that are <= x
+        return c;
+    }
+
+    public int FindKthNumber(int m, int n, int k) {
+        int lo = 1, hi = m * n, ans = hi;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (CountAtMost(m, n, mid) >= k) { ans = mid; hi = mid - 1; }  // enough values <= mid
+            else lo = mid + 1;
+        }
+        return ans;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'count(mid) = rows 1+2+3', '≥ 5?', 'action'],

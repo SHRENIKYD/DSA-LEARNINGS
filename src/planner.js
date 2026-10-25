@@ -4,7 +4,7 @@
      imastery.route  — Learn.pref(): hours, interviewDate, restDay, placement
      imastery.done   — '@score:<mod>': quiz percentage, '@rev:<mod>': inserted review done, '@mock:<YYYY-MM-DD>': mock percentage,
                        '@tested:<mod>': known (placement or readiness check)
-     imastery.days   — device-only list of days with activity (streak and catch-up)
+     imastery.days   — list of days with activity (streak and catch-up); synced with the account inside progress.play (src/auth.js)
    Rules (from the approved demo): a score under 60 inserts a review and extra practice before moving on; 85 or more fast-tracks the
    recommended modules of that stage; an interview date trims optional, then recommended modules until the core fits, and books mock
    rounds in the last 7 days; missed days are spread over the rest of the week, capped at 1.5x the daily budget. */
@@ -135,7 +135,7 @@ var Planner = (function () {
   function touch() {
     var d = days(), t = ymd();
     if (d[d.length - 1] === t) return;
-    d.push(t); set('imastery.days', d.slice(-60)); fire();
+    d.push(t); set('imastery.days', d.slice(-60)); if (typeof window !== 'undefined' && window.Auth && Auth.changed) Auth.changed('play'); fire();
   }
   function streak() {
     var d = {}, n = 0, t = midnight(), rest = pref().restDay;

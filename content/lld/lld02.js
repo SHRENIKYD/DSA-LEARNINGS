@@ -194,6 +194,28 @@ public:
 
 int main() {
     cout << OrderManager().placeOrder("Book", 100, "a@b.com") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class OrderManager {
+    // Four different "bosses" can ask for changes here:
+    // finance (tax), DBA (SQL), design team (invoice), ops (email).
+    public double PlaceOrder(string item, double price, string email) {
+        double tax = price * 0.18;                       // finance rule, hard-coded
+        double total = price + tax;
+        string sql = "INSERT INTO orders VALUES('" + item + "'," + total + ")";
+        Console.WriteLine("MySQL> " + sql);              // talks to MySQL directly
+        string pdf = "%PDF invoice: " + item + " = " + total;  // invoice layout
+        Console.WriteLine("SMTP to " + email + ": " + pdf);    // talks to SMTP directly
+        return total;
+    }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(new OrderManager().PlaceOrder("Book", 100, "a@b.com"));
+    }
 }` }
         ] }, { lang: 'java', title: 'After: each concern behind its own small interface (SOLID preview)', code: `interface TaxPolicy { double on(double price); }
 interface OrderRepository { void save(String item, double total); }
@@ -403,6 +425,51 @@ int main() {
     OrderService svc(make_unique<GstTax>(), make_unique<MySqlOrderRepository>(),
                      make_unique<PdfInvoiceRenderer>(), make_unique<EmailNotifier>());   // wiring happens at the edge
     cout << svc.placeOrder("Book", 100, "a@b.com") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface ITaxPolicy { double On(double price); }
+interface IOrderRepository { void Save(string item, double total); }
+interface IInvoiceRenderer { string Render(string item, double total); }
+interface INotifier { void Send(string to, string body); }
+
+class GstTax : ITaxPolicy { public double On(double p) { return p * 0.18; } }
+class MySqlOrderRepository : IOrderRepository {
+    public void Save(string item, double total) { Console.WriteLine("MySQL> save " + item + " " + total); }
+}
+class PdfInvoiceRenderer : IInvoiceRenderer {
+    public string Render(string item, double total) { return "%PDF invoice: " + item + " = " + total; }
+}
+class EmailNotifier : INotifier {
+    public void Send(string to, string body) { Console.WriteLine("SMTP to " + to + ": " + body); }
+}
+
+// High-level policy: knows WHAT happens, not HOW each tool works.
+class OrderService {
+    private readonly ITaxPolicy tax;
+    private readonly IOrderRepository repo;
+    private readonly IInvoiceRenderer renderer;
+    private readonly INotifier notifier;
+
+    public OrderService(ITaxPolicy tax, IOrderRepository repo, IInvoiceRenderer renderer, INotifier notifier) {
+        this.tax = tax; this.repo = repo; this.renderer = renderer; this.notifier = notifier;
+    }
+
+    public double PlaceOrder(string item, double price, string email) {
+        double total = price + tax.On(price);
+        repo.Save(item, total);
+        notifier.Send(email, renderer.Render(item, total));
+        return total;
+    }
+}
+
+class Program {
+    static void Main() {
+        OrderService svc = new OrderService(new GstTax(), new MySqlOrderRepository(),
+                new PdfInvoiceRenderer(), new EmailNotifier());   // wiring happens at the edge
+        Console.WriteLine(svc.PlaceOrder("Book", 100, "a@b.com"));
+    }
 }` }
         ] }],
     codeTitle: ['Bad: God class', 'Good: SOLID split'],
@@ -484,7 +551,16 @@ public:
     double discountFor(double cartTotal, int loyaltyYears) const override {
         return cartTotal * min(0.10, loyaltyYears * 0.02);   // 2% per year, max 10%
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IDiscountPolicy { double DiscountFor(double cartTotal, int loyaltyYears); }
+class LoyaltyDiscount : IDiscountPolicy {
+    public double DiscountFor(double cartTotal, int loyaltyYears) {
+        return cartTotal * Math.Min(0.10, loyaltyYears * 0.02);   // 2% per year, max 10%
+    }
+}` }
         ] } }
     ],
     deepDive: `<p><b>Where SOLID came from.</b> The ideas are older than the acronym: Bertrand Meyer described Open/Closed in 1988 (<i>Object-Oriented Software Construction</i>), Barbara Liskov gave the substitution keynote in 1987 (formalised with Jeannette Wing in 1994), and Robert C. Martin wrote "Design Principles and Design Patterns" (2000). Michael Feathers coined S-O-L-I-D around 2004. Martin's later book <i>Clean Architecture</i> (2017) re-frames SRP around <b>actors</b> (the people or groups who request changes).</p>
@@ -625,7 +701,24 @@ public:
 
     // Shared helper. HR changes it for reports -> payroll silently changes too!
     int regularHours() const { return min(hoursThisWeek, 40); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Employee {
+    public string Name; public double HourlyRate; public int HoursThisWeek;
+
+    public Employee(string name, double hourlyRate, int hoursThisWeek) {
+        Name = name; HourlyRate = hourlyRate; HoursThisWeek = hoursThisWeek;
+    }
+
+    public double CalculatePay() { return RegularHours() * HourlyRate; }           // Accounting
+    public string ReportHours() { return Name + " worked " + RegularHours() + "h"; } // HR
+    public void Save() { Console.WriteLine("UPDATE employee SET ... WHERE name='" + Name + "'"); } // DBA
+
+    // Shared helper. HR changes it for reports -> payroll silently changes too!
+    int RegularHours() { return Math.Min(HoursThisWeek, 40); }
+}` }
         ] }, { lang: 'java', title: 'After: one class per actor, shared data in a record, optional facade', code: `record EmployeeData(String name, double hourlyRate, int hoursThisWeek) {}
 
 // Accounting owns this. Its own notion of "regular hours".
@@ -828,6 +921,57 @@ int main() {
     cout << f.pay(asha) << "\\n";   // 40*20 + 5*30 = 950
     cout << f.report(asha) << "\\n";
     f.save(asha);
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class EmployeeData {
+    public readonly string Name; public readonly double HourlyRate; public readonly int HoursThisWeek;
+    public EmployeeData(string name, double hourlyRate, int hoursThisWeek) { Name = name; HourlyRate = hourlyRate; HoursThisWeek = hoursThisWeek; }
+}
+
+// Accounting owns this. Its own notion of "regular hours".
+class PayCalculator {
+    private const int RegularLimit = 40;
+    public double WeeklyPay(EmployeeData e) {
+        int regular = Math.Min(e.HoursThisWeek, RegularLimit);
+        int overtime = Math.Max(0, e.HoursThisWeek - RegularLimit);
+        return regular * e.HourlyRate + overtime * e.HourlyRate * 1.5;
+    }
+}
+
+// HR owns this. Can change freely without touching pay.
+class HourReporter {
+    public string Report(EmployeeData e) { return e.Name + " worked " + e.HoursThisWeek + "h this week"; }
+}
+
+// DBA owns this.
+class EmployeeRepository {
+    private readonly Dictionary<string, EmployeeData> table = new Dictionary<string, EmployeeData>();
+    public void Save(EmployeeData e) { table[e.Name] = e; }
+    public EmployeeData Find(string name) { EmployeeData e; return table.TryGetValue(name, out e) ? e : null; }
+}
+
+// Facade: one convenient entry point, zero business logic of its own.
+class EmployeeFacade {
+    private readonly PayCalculator pay = new PayCalculator();
+    private readonly HourReporter reporter = new HourReporter();
+    private readonly EmployeeRepository repo = new EmployeeRepository();
+
+    public double Pay(EmployeeData e) { return pay.WeeklyPay(e); }
+    public string Report(EmployeeData e) { return reporter.Report(e); }
+    public void Save(EmployeeData e) { repo.Save(e); }
+}
+
+class Program {
+    static void Main() {
+        EmployeeData asha = new EmployeeData("Asha", 20.0, 45);
+        EmployeeFacade f = new EmployeeFacade();
+        Console.WriteLine(f.Pay(asha).ToString("0.0"));   // 40*20 + 5*30 = 950.0
+        Console.WriteLine(f.Report(asha));
+        f.Save(asha);
+    }
 }` }
         ] }],
     codeTitle: ['Bad: three actors, one class', 'Good: split by actor'],
@@ -962,7 +1106,25 @@ class SimpleLogger {
 public:
     SimpleLogger(const LogLayout& layout, LogAppender& appender) : layout_(layout), appender_(appender) {}
     void info(const string& msg) { appender_.append(layout_.format("INFO", msg)); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+interface ILogLayout { string Format(string level, string msg); }
+interface ILogAppender { void Append(string line); }
+
+class JsonLayout : ILogLayout {
+    public string Format(string level, string msg) {
+        return "{\\"level\\":\\"" + level + "\\",\\"msg\\":\\"" + msg + "\\"}";
+    }
+}
+class ConsoleAppender : ILogAppender { public void Append(string line) { Console.WriteLine(line); } }
+
+class SimpleLogger {
+    private readonly ILogLayout layout; private readonly ILogAppender appender;
+    public SimpleLogger(ILogLayout layout, ILogAppender appender) { this.layout = layout; this.appender = appender; }
+    public void Info(string msg) { appender.Append(layout.Format("INFO", msg)); }
+}` }
         ] } },
       { title: 'A report job with four actors', html: `<p>"Every night, fetch sales from the DB, compute totals per region, render an Excel file and email it to managers." Four reasons to change: data source (DBA), the maths (finance), the file format (managers' preferences), delivery (IT). ${H.table(['Class', 'Actor'], [['<code>SalesQuery</code>', 'DBA'], ['<code>RegionTotals</code>', 'Finance'], ['<code>ExcelReportWriter</code>', 'Managers'], ['<code>ReportMailer</code>', 'IT'], ['<code>NightlyReportJob</code> (orchestrates)', 'nobody — only wires steps']])} The orchestrator reads like a story: fetch → compute → render → send.</p>` },
       { title: 'Accidental vs real duplication', html: `<p>After the split, PayCalculator and HourReporter both mention "40 hours". Is that a DRY violation? <b>No</b> — it is <i>accidental</i> duplication: the numbers match today but belong to different actors and may diverge tomorrow. Real duplication is the same knowledge with the same owner (e.g. the GST rate typed in five places). Merge real duplication; keep accidental duplication separate.</p>` }
@@ -1040,7 +1202,27 @@ public:
         users[email] = hash;                                      // storage concern
         cout << "To " << email << ": Welcome aboard!\\n";          // marketing concern
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
+
+class UserRegistration {
+    private readonly Dictionary<string, string> users = new Dictionary<string, string>();
+
+    public void Register(string email, string password) {
+        if (email == null || !email.Contains("@")) throw new ArgumentException("invalid email");
+        if (password == null || password.Length < 8) throw new ArgumentException("weak password");
+        if (users.ContainsKey(email)) throw new InvalidOperationException("duplicate");
+        string hash;
+        using (SHA256 sha = SHA256.Create())                                 // security concern
+            hash = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(password))).Replace("-", "").ToLower();
+        users[email] = hash;                                                 // storage concern
+        Console.WriteLine("To " + email + ": Welcome aboard!");              // marketing concern
+    }
+}` }
               ] }
       },
       mcq: { q: 'Marketing wants a new welcome message. In a good SRP design, how many classes change?', options: ['Exactly one (the mailer / message class)', 'The registration service and the mailer', 'All of them, because register() calls them', 'None — use a config file only'], answer: 0, explain: 'Each actor owns one class. The orchestrator only calls <code>mailer.sendWelcome(email)</code>, so the message content can change without touching it.' },
@@ -1419,6 +1601,82 @@ int main() {
     RegistrationService flaky(UserValidator(), make_unique<Sha256Hasher>(), repo, make_unique<FlakyMailer>());
     flaky.registerUser("ravi@x.com", "longpassword");
     cout << "saved despite mail failure: " << boolalpha << repo->exists("ravi@x.com") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
+
+class UserValidator {                                   // product rules
+    public void Validate(string email, string password) {
+        if (email == null || !email.Contains("@")) throw new ArgumentException("invalid email");
+        if (password == null || password.Length < 8) throw new ArgumentException("weak password");
+    }
+}
+
+interface IPasswordHasher { string Hash(string raw); }  // security team
+class Sha256Hasher : IPasswordHasher {
+    public string Hash(string raw) {
+        using (SHA256 sha = SHA256.Create())
+            return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(raw))).Replace("-", "").ToLower();
+    }
+}
+
+interface IUserRepository {                             // DBA
+    bool Exists(string email);
+    void Save(string email, string passwordHash);
+}
+class InMemoryUserRepository : IUserRepository {
+    private readonly Dictionary<string, string> users = new Dictionary<string, string>();
+    public bool Exists(string email) { return users.ContainsKey(email); }
+    public void Save(string email, string hash) { users[email] = hash; }
+    public string HashOf(string email) { return users[email]; }   // for the demo only
+}
+
+interface IWelcomeMailer { void SendWelcome(string email); }   // marketing
+class ConsoleWelcomeMailer : IWelcomeMailer {
+    public void SendWelcome(string email) { Console.WriteLine("To " + email + ": Welcome aboard!"); }
+}
+class FlakyMailer : IWelcomeMailer {                            // simulates a mail server outage
+    public void SendWelcome(string email) { throw new InvalidOperationException("smtp down"); }
+}
+
+class RegistrationService {                             // orchestration only
+    private readonly UserValidator validator;
+    private readonly IPasswordHasher hasher;
+    private readonly IUserRepository repo;
+    private readonly IWelcomeMailer mailer;
+
+    public RegistrationService(UserValidator v, IPasswordHasher h, IUserRepository r, IWelcomeMailer m) {
+        validator = v; hasher = h; repo = r; mailer = m;
+    }
+
+    public void Register(string email, string password) {
+        validator.Validate(email, password);
+        if (repo.Exists(email)) throw new InvalidOperationException("duplicate email");
+        repo.Save(email, hasher.Hash(password));
+        try { mailer.SendWelcome(email); }
+        catch (Exception e) { Console.WriteLine("mail failed, will retry: " + e.Message); }
+    }
+}
+
+class Program {
+    static void Main() {
+        InMemoryUserRepository repo = new InMemoryUserRepository();
+        RegistrationService s = new RegistrationService(new UserValidator(), new Sha256Hasher(),
+                repo, new ConsoleWelcomeMailer());
+        s.Register("asha@x.com", "secret123");
+        Console.WriteLine("stored hash " + repo.HashOf("asha@x.com").Substring(0, 16));
+        string[][] attempts = { new[] { "bad", "123" }, new[] { "ravi@x.com", "short" }, new[] { "asha@x.com", "secret123" } };
+        foreach (string[] a in attempts) {
+            try { s.Register(a[0], a[1]); }
+            catch (Exception e) when (e is ArgumentException || e is InvalidOperationException) { Console.WriteLine("rejected: " + e.Message); }
+        }
+        new RegistrationService(new UserValidator(), new Sha256Hasher(), repo, new FlakyMailer())
+                .Register("ravi@x.com", "longpassword");
+        Console.WriteLine("saved despite mail failure: " + repo.Exists("ravi@x.com").ToString().ToLower());
+    }
 }` }
         ],
         complexity: `<p>Runtime is the same as before: O(1) map operations plus O(P) hashing for password length P. The win is in <b>change cost</b>: each requirement change touches 1 class instead of 1 file shared by 4 teams, and each class is testable in isolation.</p>`,
@@ -1532,7 +1790,21 @@ public:
         // Festive sale? Students? Bulk orders? -> edit this method again and again
         throw invalid_argument("Unknown type " + customerType);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class DiscountCalculator {
+    public double Discount(string customerType, double amount) {
+        switch (customerType) {
+            case "REGULAR":  return 0;
+            case "PREMIUM":  return amount * 0.10;
+            case "EMPLOYEE": return amount * 0.30;
+            // Festive sale? Students? Bulk orders? -> edit this method again and again
+            default: throw new ArgumentException("Unknown type " + customerType);
+        }
+    }
+}` }
         ] }, { lang: 'java', title: 'After: Strategy + registry — new discounts plug in', code: `interface DiscountPolicy {
     double discount(double amount);
 }
@@ -1696,6 +1968,47 @@ int main() {
     Checkout c(std::move(wiring));
     cout << c.payable("FESTIVE", 1000) << "\\n";   // 800
     cout << c.payable("REGULAR", 1000) << "\\n";   // 1000
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IDiscountPolicy {
+    double Discount(double amount);
+}
+
+class NoDiscount : IDiscountPolicy { public double Discount(double a) { return 0; } }
+class PremiumDiscount : IDiscountPolicy { public double Discount(double a) { return a * 0.10; } }
+class EmployeeDiscount : IDiscountPolicy { public double Discount(double a) { return a * 0.30; } }
+
+// Closed: this class never changes when a new discount appears.
+class Checkout {
+    private readonly Dictionary<string, IDiscountPolicy> policies;
+
+    public Checkout(Dictionary<string, IDiscountPolicy> policies) { this.policies = new Dictionary<string, IDiscountPolicy>(policies); }
+
+    public double Payable(string customerType, double amount) {
+        IDiscountPolicy p;
+        if (!policies.TryGetValue(customerType, out p)) p = new NoDiscount();
+        return amount - p.Discount(amount);
+    }
+}
+
+// Open: a brand-new class, written months later, no old file edited.
+class FestiveDiscount : IDiscountPolicy {
+    public double Discount(double a) { return Math.Min(a * 0.20, 500); }   // 20%, capped at 500
+}
+
+class Program {
+    static void Main() {
+        var wiring = new Dictionary<string, IDiscountPolicy>();      // composition root
+        wiring["PREMIUM"] = new PremiumDiscount();
+        wiring["EMPLOYEE"] = new EmployeeDiscount();
+        wiring["FESTIVE"] = new FestiveDiscount();                   // the only "edit": one line of wiring
+        Checkout c = new Checkout(wiring);
+        Console.WriteLine(c.Payable("FESTIVE", 1000).ToString("0.0"));   // 800.0
+        Console.WriteLine(c.Payable("REGULAR", 1000).ToString("0.0"));   // 1000.0
+    }
 }` }
         ] }],
     codeTitle: ['Bad: growing switch', 'Good: plug-in strategies'],
@@ -1875,7 +2188,23 @@ public:
         for (const auto& s : shapes) sum += s->area();
         return sum;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IShape { double Area(); }
+sealed class Circle : IShape { readonly double r; public Circle(double r) { this.r = r; } public double Area() { return Math.PI * r * r; } }
+sealed class Rect : IShape { readonly double w, h; public Rect(double w, double h) { this.w = w; this.h = h; } public double Area() { return w * h; } }
+sealed class Triangle : IShape { readonly double b, h; public Triangle(double b, double h) { this.b = b; this.h = h; } public double Area() { return 0.5 * b * h; } } // added later, nothing edited
+
+static class AreaCalculator {
+    public static double Total(List<IShape> shapes) {
+        double sum = 0;
+        foreach (IShape s in shapes) sum += s.Area();
+        return sum;
+    }
+}` }
         ] } },
       { title: 'Standard libraries already follow OCP: sort comparators', html: `<p><code>List.sort(Comparator)</code> (in Python <code>sorted(key=…)</code>, in JavaScript <code>sort(compare)</code>, in C++ <code>std::sort</code> with a lambda) was written once and never changes, yet you can sort by price, by name, by date, descending, with ties broken… by passing a new <code>Comparator</code>. The sort algorithm is <b>closed</b>; the ordering is <b>open</b>. That is the Strategy pattern, and lambdas make "a new class" as small as one line.</p>`, code: { lang: 'java', code: `record Product(String name, double price) {}
 class SortDemo {
@@ -1914,6 +2243,23 @@ int main() {
         return tie(a.price, a.name) < tie(b.price, b.name);
     });
     for (const Product& p : ps) cout << p.name << " " << p.price << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Product {
+    public readonly string Name; public readonly double Price;
+    public Product(string name, double price) { Name = name; Price = price; }
+    public override string ToString() { return "Product[name=" + Name + ", price=" + Price.ToString("0.0") + "]"; }
+}
+class Program {
+    static void Main() {
+        var ps = new List<Product> { new Product("pen", 10), new Product("bag", 50), new Product("ink", 10) };
+        ps = ps.OrderBy(p => p.Price).ThenBy(p => p.Name, StringComparer.Ordinal).ToList(); // new behaviour, no edits to the sort
+        Console.WriteLine("[" + string.Join(", ", ps) + "]");
+    }
 }` }
         ] } },
       { title: 'When a switch is actually fine: sealed types and exhaustive matching', html: `<p>If the set of <b>types is fixed</b> but you keep adding <b>operations</b> (e.g. a compiler's AST, or <code>PaymentResult = Success | Failure | Pending</code>), a closed set of variants with exhaustive matching is the better trade-off (Java <code>sealed</code> + <code>switch</code>, a TypeScript discriminated union, C++ <code>std::variant</code> + <code>std::visit</code>, Python <code>match</code> checked by a type checker): the compiler errors if a case is missing. OCP is about the <b>axis of change</b>: new types → polymorphism; new operations over fixed types → sealed + switch (or Visitor).</p>`, code: { lang: 'java', code: `sealed interface PaymentResult permits Success, Failure, Pending {}
@@ -1988,6 +2334,25 @@ string describe(const PaymentResult& r) {
         [](const Failure& f) { return "Failed: " + f.reason; },
         [](const Pending& p) { return "Retry in " + to_string(p.retryInSec) + "s"; },
     }, r);
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// A closed set of variants: the base constructor is private, so only the nested classes can derive.
+abstract class PaymentResult {
+    private PaymentResult() { }
+    public sealed class Success : PaymentResult { public readonly string TxnId; public Success(string txnId) { TxnId = txnId; } }
+    public sealed class Failure : PaymentResult { public readonly string Reason; public Failure(string reason) { Reason = reason; } }
+    public sealed class Pending : PaymentResult { public readonly int RetryInSec; public Pending(int retryInSec) { RetryInSec = retryInSec; } }
+}
+
+static class ResultText {
+    public static string Describe(PaymentResult r) {
+        if (r is PaymentResult.Success s) return "Paid, id " + s.TxnId;      // every variant handled here
+        if (r is PaymentResult.Failure f) return "Failed: " + f.Reason;
+        if (r is PaymentResult.Pending p) return "Retry in " + p.RetryInSec + "s";
+        throw new ArgumentException("unknown result");
+    }
 }` }
         ] } }
     ],
@@ -2063,7 +2428,24 @@ public:
             throw invalid_argument("unknown method " + method);
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class PaymentProcessor {
+    public double Pay(string method, double amount) {
+        if (method == "CARD") {
+            return amount + amount * 0.02;
+        } else if (method == "UPI") {
+            return amount;
+        } else if (method == "WALLET") {
+            if (amount > 10000) throw new InvalidOperationException("wallet limit");
+            return amount + amount * 0.01;
+        } else {
+            throw new ArgumentException("unknown method " + method);
+        }
+    }
+}` }
               ] }
       },
       mcq: { q: 'Where should the knowledge "WALLET fails above 10,000" live after the refactor?', options: ['Inside the WalletPayment class', 'Inside PaymentProcessor, before calling the strategy', 'In a global constants class', 'In the caller (UI)'], answer: 0, explain: 'Each strategy owns all of its rules. If the processor checked wallet limits, it would still change whenever wallet rules change — OCP and SRP both broken.' },
@@ -2353,6 +2735,68 @@ int main() {
     } catch (const exception& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IPaymentMethod {
+    string Code { get; }
+    double Charge(double amount);   // returns total charged
+}
+
+class CardPayment : IPaymentMethod {
+    public string Code { get { return "CARD"; } }
+    public double Charge(double amount) { return amount + amount * 0.02; }
+}
+class UpiPayment : IPaymentMethod {
+    public string Code { get { return "UPI"; } }
+    public double Charge(double amount) { return amount; }
+}
+class WalletPayment : IPaymentMethod {
+    private const double Limit = 10000;
+    public string Code { get { return "WALLET"; } }
+    public double Charge(double amount) {
+        if (amount > Limit) throw new InvalidOperationException("wallet limit");
+        return amount + amount * 0.01;
+    }
+}
+// Added next sprint: a NEW file, nothing else edited.
+class NetBankingPayment : IPaymentMethod {
+    public string Code { get { return "NETBANKING"; } }
+    public double Charge(double amount) { return amount + 15; }
+}
+
+class PaymentProcessor {
+    private readonly Dictionary<string, IPaymentMethod> methods = new Dictionary<string, IPaymentMethod>();
+
+    public PaymentProcessor(IEnumerable<IPaymentMethod> available) {
+        foreach (IPaymentMethod m in available) {
+            if (methods.ContainsKey(m.Code)) throw new ArgumentException("duplicate method " + m.Code);
+            methods[m.Code] = m;
+        }
+    }
+
+    public double Pay(string code, double amount) {
+        if (amount <= 0) throw new ArgumentException("amount must be positive");
+        IPaymentMethod m;
+        if (!methods.TryGetValue(code, out m)) throw new ArgumentException("unknown method " + code);
+        return m.Charge(amount);
+    }
+}
+
+class Program {
+    static void Main() {
+        PaymentProcessor p = new PaymentProcessor(new IPaymentMethod[] {
+                new CardPayment(), new UpiPayment(), new WalletPayment(), new NetBankingPayment() });
+        foreach (string code in new[] { "CARD", "UPI", "WALLET", "NETBANKING" })
+            Console.WriteLine(code + " " + p.Pay(code, 1000).ToString("F2"));
+        try { p.Pay("WALLET", 20000); } catch (Exception e) { Console.WriteLine(e.Message); }
+        try { p.Pay("BITCOIN", 500); } catch (Exception e) { Console.WriteLine(e.Message); }
+        try { p.Pay("UPI", 0); } catch (Exception e) { Console.WriteLine(e.Message); }
+        try { new PaymentProcessor(new IPaymentMethod[] { new UpiPayment(), new UpiPayment() }); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
         complexity: `<p>O(1) lookup per payment (HashMap), O(k) construction for k methods. Adding a method: 1 new class + 1 wiring entry; 0 existing classes edited, 0 existing tests re-run.</p>`,
@@ -2515,6 +2959,33 @@ int main() {
     Square square;
     stretch(rect);
     stretch(square);
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class Rectangle {
+    protected int width, height;
+    public virtual void SetWidth(int w) { width = w; }
+    public virtual void SetHeight(int h) { height = h; }
+    public int Area() { return width * height; }
+}
+
+class Square : Rectangle {
+    // keeps sides equal -> silently changes the OTHER side too
+    public override void SetWidth(int s) { width = s; height = s; }
+    public override void SetHeight(int s) { width = s; height = s; }
+}
+
+class Program {
+    static void Stretch(Rectangle r) {
+        r.SetWidth(5);
+        r.SetHeight(4);
+        Console.WriteLine("expected 20, got " + r.Area());   // Square prints 16!
+    }
+    static void Main() {
+        Stretch(new Rectangle());
+        Stretch(new Square());
+    }
 }` }
         ] }, { lang: 'java', title: 'After: siblings under a shared, honest abstraction (immutable)', code: `interface Shape { double area(); }
 
@@ -2650,6 +3121,39 @@ int main() {
     Rectangle r(5, 4);
     Square s(4);
     cout << totalArea({&r, &s}) << "\\n";   // 36
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface IShape { double Area(); }
+
+// Immutable value objects: no setters, so no broken "SetWidth" promise exists.
+sealed class Rectangle : IShape {
+    public readonly double Width, Height;
+    public Rectangle(double width, double height) {
+        if (width <= 0 || height <= 0) throw new ArgumentException("sides must be positive");
+        Width = width; Height = height;
+    }
+    public double Area() { return Width * Height; }
+    public Rectangle WithWidth(double w) { return new Rectangle(w, Height); }   // "change" = new object
+}
+
+sealed class Square : IShape {
+    public readonly double Side;
+    public Square(double side) { if (side <= 0) throw new ArgumentException("side must be positive"); Side = side; }
+    public double Area() { return Side * Side; }
+    public Rectangle ToRectangle() { return new Rectangle(Side, Side); }
+}
+
+class Program {
+    static double TotalArea(List<IShape> shapes) {         // works for ANY IShape, no type checks
+        return shapes.Sum(s => s.Area());
+    }
+    static void Main() {
+        Console.WriteLine(TotalArea(new List<IShape> { new Rectangle(5, 4), new Square(4) }).ToString("0.0"));  // 36.0
+    }
 }` }
         ] }],
     codeTitle: ['Bad: Square extends Rectangle', 'Good: Shape siblings'],
@@ -2739,6 +3243,17 @@ try {
     const vector<int> fixed = {1, 2, 3};
     // fixed.push_back(4);   // compile error: push_back is not a const member function
     cout << "const vector size " << fixed.size() << " (mutation is rejected at compile time)\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        IList<int> fixedList = Array.AsReadOnly(new[] { 1, 2, 3 });
+        try { fixedList.Add(4); }
+        catch (NotSupportedException e) { Console.WriteLine("a read-only list is immutable: " + e.Message); }
+    }
 }` }
         ] } },
       { title: 'java.sql.Timestamp extends java.util.Date (equals is not symmetric)', html: `<p>The Javadoc itself warns: <code>date.equals(timestamp)</code> can be true while <code>timestamp.equals(date)</code> is false, because Timestamp adds nanoseconds. Any code that puts Dates and Timestamps in the same <code>HashSet</code> can misbehave. The JDK authors note this "inheritance is implementation inheritance, not type inheritance" — a textbook LSP violation kept for backward compatibility.</p>` },
@@ -2820,7 +3335,26 @@ public:
         balance_ -= amount;
         return Approved{"PP-" + to_string(chrono::steady_clock::now().time_since_epoch().count())};
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class ChargeResult {
+    private ChargeResult() { }
+    public sealed class Approved : ChargeResult { public readonly string TxnId; public Approved(string txnId) { TxnId = txnId; } }
+    public sealed class Declined : ChargeResult { public readonly string Reason; public Declined(string reason) { Reason = reason; } }
+}
+
+interface IPaymentGateway { ChargeResult Charge(double amount); }
+
+class PrepaidCardGateway : IPaymentGateway {
+    private double balance = 300;
+    public ChargeResult Charge(double amount) {
+        if (amount > balance) return new ChargeResult.Declined("insufficient prepaid balance");   // allowed by contract
+        balance -= amount;
+        return new ChargeResult.Approved("PP-" + DateTime.UtcNow.Ticks);
+    }
+}` }
         ] } }
     ],
     deepDive: `<p><b>Formal version (Liskov & Wing, 1994):</b> "Let φ(x) be a property provable about objects x of type T. Then φ(y) should be true for objects y of type S where S is a subtype of T." The provable property for Rectangle is "after setWidth(a), setHeight(b), area = a·b". Square cannot satisfy it, so Square is not a behavioural subtype — even though the compiler accepts <code>extends</code>.</p>
@@ -2921,7 +3455,31 @@ struct MonthlyFeeJob {
     static void run(vector<Account*>& accounts, double fee) {
         for (Account* a : accounts) a->withdraw(fee);   // crashes on the first FD
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Account {
+    protected double balance;
+    public Account(double opening) { balance = opening; }
+    public void Deposit(double amt) { balance += amt; }
+    public virtual void Withdraw(double amt) {
+        if (amt > balance) throw new InvalidOperationException("insufficient funds");
+        balance -= amt;
+    }
+    public double Balance { get { return balance; } }
+}
+class SavingsAccount : Account { public SavingsAccount(double o) : base(o) { } }
+class FixedDepositAccount : Account {
+    public FixedDepositAccount(double o) : base(o) { }
+    public override void Withdraw(double amt) { throw new NotSupportedException("FD locked"); }
+}
+static class MonthlyFeeJob {
+    public static void Run(List<Account> accounts, double fee) {
+        foreach (Account a in accounts) a.Withdraw(fee);   // crashes on the first FD
+    }
+}` }
               ] }
       },
       mcq: { q: 'Which LSP rule does <code>FixedDepositAccount.withdraw</code> break?', options: ['It strengthens the precondition (and adds a surprise exception)', 'It weakens the postcondition of deposit', 'It changes the return type', 'None — throwing is always allowed'], answer: 0, explain: 'The parent accepts any amount up to the balance; the child accepts nothing. Callers relying on the parent contract break.' },
@@ -3198,6 +3756,63 @@ int main() {
     }
     cout << "matured payout " << fd.mature() << "\\n";
     cout << "FD balance " << fd.balance() << " matured " << boolalpha << fd.isMatured() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IAccount {
+    void Deposit(double amt);
+    double Balance { get; }
+}
+interface IWithdrawable : IAccount {
+    bool Withdraw(double amt);          // promise: true and balance reduced, or false and unchanged
+}
+
+class SavingsAccount : IWithdrawable {
+    private double balance;
+    public SavingsAccount(double opening) { balance = opening; }
+    public void Deposit(double amt) { if (amt <= 0) throw new ArgumentException("amount must be positive"); balance += amt; }
+    public double Balance { get { return balance; } }
+    public bool Withdraw(double amt) {
+        if (amt <= 0 || amt > balance) return false;
+        balance -= amt;
+        return true;
+    }
+}
+
+class FixedDepositAccount : IAccount {
+    private double balance;
+    private bool matured;
+    public FixedDepositAccount(double opening) { balance = opening; }
+    public void Deposit(double amt) { if (amt <= 0) throw new ArgumentException("amount must be positive"); balance += amt; }
+    public double Balance { get { return balance; } }
+    public void AddInterest(double rate) { balance += balance * rate; }
+    public double Mature() { matured = true; double result = balance; balance = 0; return result; }
+    public bool IsMatured { get { return matured; } }
+}
+
+static class MonthlyFeeJob {
+    public static int Run(IEnumerable<IWithdrawable> accounts, double fee) {
+        int charged = 0;
+        foreach (IWithdrawable a in accounts) if (a.Withdraw(fee)) charged++;
+        return charged;
+    }
+}
+
+class Program {
+    static void Main() {
+        SavingsAccount s1 = new SavingsAccount(1000), s2 = new SavingsAccount(50);
+        FixedDepositAccount fd = new FixedDepositAccount(5000);
+        Console.WriteLine("charged " + MonthlyFeeJob.Run(new[] { s1, s2 }, 100));   // charged 1: s2 cannot cover the fee
+        // MonthlyFeeJob.Run(new IAccount[] { s1, fd }, 100);  // does not compile: FD is not IWithdrawable
+        fd.Deposit(500);                                              // top-ups still work
+        fd.AddInterest(0.07);
+        Console.WriteLine(s1.Balance.ToString("F2") + " " + s2.Balance.ToString("F2") + " " + fd.Balance.ToString("F2"));
+        try { s1.Deposit(-1); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        Console.WriteLine("matured payout " + fd.Mature().ToString("F2"));
+        Console.WriteLine("FD balance " + fd.Balance.ToString("F2") + " matured " + fd.IsMatured.ToString().ToLower());
+    }
 }` }
         ],
         complexity: `<p>O(n) for the job over n accounts, O(1) per operation. The real gain: a whole class of runtime crashes became compile-time errors.</p>`,
@@ -3351,7 +3966,28 @@ public:
     void flush(const vector<string>& docs) {
         for (const string& d : docs) machine_.print(d);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IMachine {
+    void Print(string doc);
+    string Scan(string doc);
+    void Fax(string doc, string number);
+}
+
+class BasicPrinter : IMachine {
+    public void Print(string doc) { Console.WriteLine("Printing " + doc); }
+    public string Scan(string doc) { throw new NotSupportedException("cannot scan"); }  // forced lie
+    public void Fax(string doc, string n) { throw new NotSupportedException("cannot fax"); }  // forced lie
+}
+
+class PrintQueue {                // only prints, but sees (and is coupled to) Scan + Fax
+    private readonly IMachine machine;
+    public PrintQueue(IMachine machine) { this.machine = machine; }
+    public void Flush(List<string> docs) { docs.ForEach(machine.Print); }
+}` }
         ] }, { lang: 'java', title: 'After: role interfaces, each client depends on what it uses', code: `interface Printer { void print(String doc); }
 interface Scanner { String scan(String doc); }
 interface Fax     { void fax(String doc, String number); }
@@ -3507,6 +4143,41 @@ int main() {
     PrintQueue(basic).flush({"a.pdf", "b.pdf"});
     PrintQueue(office).flush({"c.pdf"});   // office machine is also a Printer
     office.copy("id-card");
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IPrinter { void Print(string doc); }
+interface IScanner { string Scan(string doc); }
+interface IFax     { void Fax(string doc, string number); }
+interface ICopier : IPrinter, IScanner { }       // composed role for clients that need both
+static class CopierExt {
+    public static void Copy(this ICopier c, string doc) { c.Print(c.Scan(doc)); }   // shared behaviour on the role
+}
+
+class BasicPrinter : IPrinter {
+    public void Print(string doc) { Console.WriteLine("Printing " + doc); }
+}
+
+class OfficeMachine : ICopier, IFax {
+    public void Print(string doc) { Console.WriteLine("Office printing " + doc); }
+    public string Scan(string doc) { return "[scanned " + doc + "]"; }
+    public void Fax(string doc, string number) { Console.WriteLine("Fax " + doc + " to " + number); }
+}
+
+class PrintQueue {
+    private readonly IPrinter printer;              // narrow dependency
+    public PrintQueue(IPrinter printer) { this.printer = printer; }
+    public void Flush(List<string> docs) { docs.ForEach(printer.Print); }
+}
+
+class Program {
+    static void Main() {
+        new PrintQueue(new BasicPrinter()).Flush(new List<string> { "a.pdf", "b.pdf" });
+        new PrintQueue(new OfficeMachine()).Flush(new List<string> { "c.pdf" });   // office machine is also an IPrinter
+        new OfficeMachine().Copy("id-card");
+    }
 }` }
         ] }],
     codeTitle: ['Bad: fat interface', 'Good: segregated roles'],
@@ -3602,6 +4273,18 @@ public:
 int main() {
     Lease lease;
     cout << "working\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class Lease : IDisposable {
+    public Lease() { Console.WriteLine("lease taken"); }
+    public void Dispose() { Console.WriteLine("lease released"); }   // the ONLY method required
+}
+class Program {
+    static void Main() {
+        using (Lease l = new Lease()) { Console.WriteLine("working"); }   // works with any IDisposable
+    }
 }` }
         ] } },
       { title: 'Reader vs Writer: a repository split', html: `<p>A <code>ProductRepository</code> with 25 methods (find, search, save, delete, bulkImport, exportCsv, stats…) is used by the product page (reads), the admin panel (writes) and the nightly import (bulk). ${H.c('g', 'ISP split:')} <code>ProductReader</code>, <code>ProductWriter</code>, <code>ProductBulkImporter</code>. The product page now cannot accidentally delete; its tests fake 2 methods instead of 25; read side can later be served from a cache or replica without touching writers. This is CQRS in miniature.</p>`, code: { lang: 'java', code: `record Product(String sku, String name, double price) {}
@@ -3732,7 +4415,32 @@ public:
         auto p = reader_.bySku(sku);
         return p ? p->name : "Not found";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Product {
+    public readonly string Sku, Name; public readonly double Price;
+    public Product(string sku, string name, double price) { Sku = sku; Name = name; Price = price; }
+}
+interface IProductReader { Product BySku(string sku); List<Product> Search(string text); }   // BySku: null when absent
+interface IProductWriter { void Save(Product p); void Delete(string sku); }
+
+class InMemoryProducts : IProductReader, IProductWriter {     // one class, two roles
+    private readonly Dictionary<string, Product> data = new Dictionary<string, Product>();
+    public Product BySku(string sku) { Product p; return data.TryGetValue(sku, out p) ? p : null; }
+    public List<Product> Search(string t) { return data.Values.Where(p => p.Name.Contains(t)).ToList(); }
+    public void Save(Product p) { data[p.Sku] = p; }
+    public void Delete(string sku) { data.Remove(sku); }
+}
+
+class ProductPage {                       // can only read: deleting is impossible by type
+    private readonly IProductReader reader;
+    public ProductPage(IProductReader reader) { this.reader = reader; }
+    public string Render(string sku) { Product p = reader.BySku(sku); return p == null ? "Not found" : p.Name; }
+}` }
         ] } },
       { title: 'Worker and Robot: "eat()" does not belong to everyone', html: `<p>${H.c('r', 'Bad:')} <code>interface Worker { void work(); void eat(); void sleep(); }</code>. A <code>Robot</code> worker must implement <code>eat()</code> and <code>sleep()</code> as empty methods. A canteen scheduler that calls <code>eat()</code> on all workers "feeds" robots. ${H.c('g', 'Fix:')} <code>Workable</code>, <code>Feedable</code>, <code>Restable</code>; <code>HumanWorker implements all three</code>, <code>Robot implements Workable</code> (plus maybe <code>Chargeable</code>). The canteen takes <code>List&lt;Feedable&gt;</code>.</p>` },
       { title: 'Do not "fix" fat interfaces with default methods', html: `<p>Default methods (Java 8+; a default body in a Python or C++ base class is the same trap) tempt people to write <code>default void fax(String d, String n) { throw new UnsupportedOperationException(); }</code> in the fat interface so implementers need not override. The compile error disappears, but the lie remains: every <code>Machine</code> still <i>claims</i> to fax. Defaults are great for adding <b>genuinely shared</b> behaviour built from other methods (like <code>copy()</code> above), not for hiding missing capabilities.</p>` }
@@ -3842,7 +4550,32 @@ struct Scene {
             try { d->setBrightness(10); } catch (const logic_error&) { }  // smell
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface ISmartDevice {
+    void TurnOn(); void TurnOff();
+    void SetBrightness(int pct);
+    void SetTemperature(int celsius);
+    void PlayMusic(string song);
+}
+class Bulb : ISmartDevice {
+    public void TurnOn() { Console.WriteLine("bulb on"); }
+    public void TurnOff() { Console.WriteLine("bulb off"); }
+    public void SetBrightness(int p) { Console.WriteLine("bulb " + p + "%"); }
+    public void SetTemperature(int c) { throw new NotSupportedException(); }
+    public void PlayMusic(string s) { throw new NotSupportedException(); }
+}
+static class Scene {
+    public static void GoodNight(List<ISmartDevice> all) {
+        foreach (ISmartDevice d in all) {
+            d.TurnOff();
+            try { d.SetBrightness(10); } catch (NotSupportedException) { }  // smell
+        }
+    }
+}` }
               ] }
       },
       mcq: { q: 'What should the "Good night" scene depend on to turn everything off?', options: ['A small <code>Switchable</code> interface implemented by all devices', 'The fat <code>SmartDevice</code> interface', 'Each concrete class (Bulb, Speaker…)', 'A static utility with instanceof checks'], answer: 0, explain: 'The scene needs only on/off for everyone and brightness for some. Each need is a role: Switchable for all, Dimmable for lights.' },
@@ -4172,6 +4905,64 @@ int main() {
         cout << "rejected: " << e.what() << "\\n";
     }
     Speaker().play("Raga");
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface ISwitchable { void TurnOn(); void TurnOff(); string Name { get; } }
+interface IDimmable : ISwitchable { void SetBrightness(int pct); }
+interface IThermostatic : ISwitchable { void SetTemperature(int celsius); }
+interface IMusicPlayer : ISwitchable { void Play(string song); }
+
+class Bulb : IDimmable {
+    public string Name { get { return "Bulb"; } }
+    public void TurnOn() { Console.WriteLine("Bulb on"); }
+    public void TurnOff() { Console.WriteLine("Bulb off"); }
+    public void SetBrightness(int pct) {
+        if (pct < 0 || pct > 100) throw new ArgumentException("0-100");
+        Console.WriteLine("Bulb at " + pct + "%");
+    }
+}
+class Thermostat : IThermostatic {
+    public string Name { get { return "Thermostat"; } }
+    public void TurnOn() { Console.WriteLine("Thermostat on"); }
+    public void TurnOff() { Console.WriteLine("Thermostat off"); }
+    public void SetTemperature(int c) {
+        if (c < 16 || c > 30) throw new ArgumentException("16-30");
+        Console.WriteLine("Thermostat set to " + c);
+    }
+}
+class Speaker : IMusicPlayer {
+    public string Name { get { return "Speaker"; } }
+    public void TurnOn() { Console.WriteLine("Speaker on"); }
+    public void TurnOff() { Console.WriteLine("Speaker off"); }
+    public void Play(string song) { Console.WriteLine("Playing " + song); }
+}
+class LampSpeaker : IDimmable, IMusicPlayer {      // two roles, zero fakes
+    public string Name { get { return "LampSpeaker"; } }
+    public void TurnOn() { Console.WriteLine("LampSpeaker on"); }
+    public void TurnOff() { Console.WriteLine("LampSpeaker off"); }
+    public void SetBrightness(int pct) { Console.WriteLine("LampSpeaker light " + pct + "%"); }
+    public void Play(string song) { Console.WriteLine("LampSpeaker plays " + song); }
+}
+
+class GoodNightScene {
+    public void Run(IEnumerable<ISwitchable> devices) {
+        foreach (ISwitchable d in devices) {
+            if (d is IDimmable light) light.SetBrightness(10);   // capability check at ONE boundary
+            d.TurnOff();
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        new GoodNightScene().Run(new ISwitchable[] { new Bulb(), new Thermostat(), new Speaker(), new LampSpeaker() });
+        try { new Bulb().SetBrightness(150); } catch (ArgumentException e) { Console.WriteLine("rejected: " + e.Message); }
+        try { new Thermostat().SetTemperature(35); } catch (ArgumentException e) { Console.WriteLine("rejected: " + e.Message); }
+        new Speaker().Play("Raga");
+    }
 }` }
         ],
         complexity: `<p>O(n) over devices. Fake methods: 7 before → 0 after. A change to <code>play()</code> now affects only music players.</p>`,
@@ -4350,7 +5141,35 @@ public:
         repo_.insert(o);
         mailer_.send(o.email, "Order " + o.id + " placed");
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+sealed class Order {
+    public readonly string Id, Email; public readonly double Amount;
+    public Order(string id, string email, double amount) { Id = id; Email = email; Amount = amount; }
+}
+
+class MySqlOrderRepository {
+    public MySqlOrderRepository(string url) { Console.WriteLine("connecting to " + url); }   // real I/O in constructor
+    public void Insert(Order o) { Console.WriteLine("INSERT order " + o.Id); }
+}
+class SmtpMailer {
+    public SmtpMailer(string host) { Console.WriteLine("opening SMTP to " + host); }
+    public void Send(string to, string body) { Console.WriteLine("mail " + to + ": " + body); }
+}
+
+class OrderService {
+    // hard-wired: tests hit production-like servers; swapping vendors means editing this class
+    private readonly MySqlOrderRepository repo = new MySqlOrderRepository("Server=prod-db;Database=shop");
+    private readonly SmtpMailer mailer = new SmtpMailer("smtp.company.com");
+
+    public void Place(Order o) {
+        if (o.Amount <= 0) throw new ArgumentException("bad amount");
+        repo.Insert(o);
+        mailer.Send(o.Email, "Order " + o.Id + " placed");
+    }
+}` }
         ] }, { lang: 'java', title: 'After: domain owns the ports, infrastructure plugs in, tests use fakes', code: `record Order(String id, String email, double amount) {}
 
 // ---- domain (high-level): policy + the interfaces it NEEDS ----
@@ -4616,6 +5435,69 @@ int main() {
     RecordingNotifier notifier;
     OrderService(repo, notifier).place({"o2", "c@d.com", 99});
     cout << boolalpha << repo.find("o2").has_value() << " [" << notifier.sent[0] << "]\\n";   // true [c@d.com|Order o2 placed]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Order {
+    public readonly string Id, Email; public readonly double Amount;
+    public Order(string id, string email, double amount) { Id = id; Email = email; Amount = amount; }
+}
+
+// ---- domain (high-level): policy + the interfaces it NEEDS ----
+interface IOrderRepository { void Save(Order o); Order Find(string id); }   // Find: null when absent
+interface INotifier { void Notify(string to, string message); }
+
+class OrderService {
+    private readonly IOrderRepository repo;
+    private readonly INotifier notifier;
+
+    public OrderService(IOrderRepository repo, INotifier notifier) {       // constructor injection
+        if (repo == null) throw new ArgumentNullException("repo");
+        if (notifier == null) throw new ArgumentNullException("notifier");
+        this.repo = repo; this.notifier = notifier;
+    }
+
+    public void Place(Order o) {
+        if (o.Amount <= 0) throw new ArgumentException("bad amount");
+        repo.Save(o);
+        notifier.Notify(o.Email, "Order " + o.Id + " placed");
+    }
+}
+
+// ---- infrastructure (low-level): details depend on the domain's abstractions ----
+class SqlOrderRepository : IOrderRepository {
+    private readonly Dictionary<string, Order> fakeTable = new Dictionary<string, Order>();   // stands in for ADO.NET here
+    public void Save(Order o) { Console.WriteLine("SQL INSERT " + o.Id); fakeTable[o.Id] = o; }
+    public Order Find(string id) { Order o; return fakeTable.TryGetValue(id, out o) ? o : null; }
+}
+class EmailNotifier : INotifier {
+    public void Notify(string to, string m) { Console.WriteLine("email " + to + ": " + m); }
+}
+
+// ---- test doubles: no DB, no network, runs in microseconds ----
+class InMemoryOrderRepository : IOrderRepository {
+    public readonly Dictionary<string, Order> Saved = new Dictionary<string, Order>();
+    public void Save(Order o) { Saved[o.Id] = o; }
+    public Order Find(string id) { Order o; return Saved.TryGetValue(id, out o) ? o : null; }
+}
+class RecordingNotifier : INotifier {
+    public readonly List<string> Sent = new List<string>();
+    public void Notify(string to, string m) { Sent.Add(to + "|" + m); }
+}
+
+// ---- composition root: the ONLY place that knows concrete classes ----
+class Program {
+    static void Main() {
+        new OrderService(new SqlOrderRepository(), new EmailNotifier()).Place(new Order("o1", "a@b.com", 499));
+
+        // "unit test" style check with fakes
+        InMemoryOrderRepository repo = new InMemoryOrderRepository();
+        RecordingNotifier notifier = new RecordingNotifier();
+        new OrderService(repo, notifier).Place(new Order("o2", "c@d.com", 99));
+        Console.WriteLine((repo.Find("o2") != null).ToString().ToLower() + " [" + string.Join(", ", notifier.Sent) + "]");   // true [c@d.com|Order o2 placed]
+    }
 }` }
         ] }],
     codeTitle: ['Bad: hard-wired details', 'Good: inverted dependencies + DI'],
@@ -4721,6 +5603,21 @@ int main() {
     using namespace chrono;
     auto fixed = [] { return year_month_day{year{2026}, January, day{2}}; };
     cout << boolalpha << Coupon(year_month_day{year{2026}, January, day{1}}, fixed).isExpired() << "\\n";   // true, deterministic
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class Coupon {
+    private readonly DateTime expiry;
+    private readonly Func<DateTime> clock;              // "now" as a dependency
+    public Coupon(DateTime expiry, Func<DateTime> clock) { this.expiry = expiry; this.clock = clock; }
+    public bool IsExpired() { return clock().Date > expiry; }
+}
+class Program {
+    static void Main() {
+        Func<DateTime> fixedClock = () => new DateTime(2026, 1, 2, 10, 0, 0);
+        Console.WriteLine(new Coupon(new DateTime(2026, 1, 1), fixedClock).IsExpired().ToString().ToLower());   // true, deterministic
+    }
 }` }
         ] } },
       { title: 'Payment gateway port: swapping Stripe for Razorpay', html: `<p>The checkout domain defines <code>interface PaymentGateway { PaymentResult charge(Money amount, String token); }</code>. <code>StripeGateway</code> and <code>RazorpayGateway</code> are adapters translating to each vendor's SDK. Expanding to India means writing one adapter and changing one wiring line, and a <code>FakeGateway</code> lets you test declines, timeouts and retries without a sandbox account. This is <b>hexagonal architecture</b> (ports and adapters) — DIP applied to a whole application.</p>` },
@@ -4807,7 +5704,25 @@ public:
         if (t > 45 || (t > 40 && !quiet))
             cout << "SMS: heat alert in " << city << " " << t << "\\n";   // hidden dependency 3
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class HttpWeatherClient {
+    public double CurrentTemp(string city) {
+        Console.WriteLine("GET https://api.weather.example/" + city);   // pretend network call
+        return 41.5;
+    }
+}
+class WeatherAlertService {
+    public void CheckAndAlert(string city) {
+        double t = new HttpWeatherClient().CurrentTemp(city);   // hidden dependency 1
+        int hour = DateTime.Now.Hour;                           // hidden dependency 2
+        bool quiet = hour >= 22 || hour < 7;
+        if (t > 45 || (t > 40 && !quiet))
+            Console.WriteLine("SMS: heat alert in " + city + " " + t);   // hidden dependency 3
+    }
+}` }
               ] }
       },
       mcq: { q: 'Which of these should become injected dependencies?', options: ['Weather source, clock and alert sender', 'Only the weather source', 'Only the alert sender', 'None — use static mocking instead'], answer: 0, explain: 'All three are volatile or non-deterministic: network, time and an external vendor. Each gets a domain-owned interface (or a standard clock abstraction).' },
@@ -5155,6 +6070,75 @@ int main() {
     SmsAlertSender sms;
     FixedClock afternoon("14:00");
     WeatherAlertService(http, sms, afternoon).checkAndAlert("Delhi");
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IWeatherProvider { double CurrentTempC(string city); }
+interface IAlertSender { void Send(string message); }
+
+class WeatherAlertService {
+    private readonly IWeatherProvider weather;
+    private readonly IAlertSender sender;
+    private readonly Func<DateTime> clock;
+
+    public WeatherAlertService(IWeatherProvider weather, IAlertSender sender, Func<DateTime> clock) {
+        this.weather = weather; this.sender = sender; this.clock = clock;
+    }
+
+    public bool CheckAndAlert(string city) {
+        double t = weather.CurrentTempC(city);
+        int hour = clock().Hour;
+        bool quiet = hour >= 22 || hour < 7;
+        bool alert = t > 45 || (t > 40 && !quiet);
+        if (alert) sender.Send("Heat alert in " + city + ": " + t.ToString("F1") + "C");
+        return alert;
+    }
+}
+
+// production adapters (would wrap real HTTP / SMS SDKs)
+class HttpWeatherProvider : IWeatherProvider {
+    public double CurrentTempC(string city) { Console.WriteLine("GET weather for " + city); return 41.5; }
+}
+class SmsAlertSender : IAlertSender {
+    public void Send(string m) { Console.WriteLine("SMS: " + m); }
+}
+
+// test fakes
+class FixedWeather : IWeatherProvider {
+    private readonly double t; public FixedWeather(double t) { this.t = t; }
+    public double CurrentTempC(string city) { return t; }
+}
+class RecordingSender : IAlertSender {
+    public readonly List<string> Sent = new List<string>();
+    public void Send(string m) { Sent.Add(m); }
+}
+
+class Program {
+    static Func<DateTime> At(string hhmm) {
+        DateTime fixedTime = DateTime.Parse("2026-05-01T" + hhmm + ":00");
+        return () => fixedTime;
+    }
+    static void Check(double temp, string time, bool expected) {
+        RecordingSender s = new RecordingSender();
+        bool got = new WeatherAlertService(new FixedWeather(temp), s, At(time)).CheckAndAlert("Delhi");
+        if (got != expected || s.Sent.Count != (expected ? 1 : 0))
+            throw new Exception(temp + "C at " + time + " expected " + expected);
+        Console.WriteLine("ok: " + temp.ToString("F1") + "C at " + time + " -> " + got.ToString().ToLower());
+    }
+    static void Main() {
+        Check(42, "14:00", true);
+        Check(42, "23:30", false);
+        Check(46, "23:30", true);
+        Check(30, "12:00", false);
+        Check(40.1, "21:59", true);
+        Check(40.1, "22:00", false);
+        Check(45.0, "06:59", false);
+        Check(42, "07:00", true);
+        // production wiring (a real app passes () => DateTime.Now; fixed here so the output is repeatable)
+        new WeatherAlertService(new HttpWeatherProvider(), new SmsAlertSender(), At("14:00")).CheckAndAlert("Delhi");
+    }
 }` }
         ],
         complexity: `<p>O(1) per check. Test suite: 8 boundary cases in a few milliseconds with zero network or SMS cost — impossible before the refactor.</p>`,
@@ -5376,7 +6360,42 @@ public:
     virtual string pdf(const vector<Sale>& s) = 0;
     virtual string xlsx(const vector<Sale>& s) = 0;
     virtual string html(const vector<Sale>& s) = 0;
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Sale {
+    public readonly string Region; public readonly double Amount;
+    public Sale(string region, double amount) { Region = region; Amount = amount; }
+}
+
+class MySqlSales { public List<Sale> Query(string sql) { return new List<Sale> { new Sale("N", 100), new Sale("S", 250) }; } }
+class SmtpClient { public void Send(string to, string body) { Console.WriteLine("SMTP " + to + ":\\n" + body); } }
+
+class ReportService {
+    private readonly MySqlSales db = new MySqlSales();                    // D: concrete DB inside policy
+    public virtual string Run(string format, string email) {              // S: query + math + format + email
+        List<Sale> sales = db.Query("SELECT * FROM sales");
+        double total = 0;
+        foreach (Sale s in sales) total += s.Amount;
+        string result;
+        if (format == "CSV") result = "region,amount\\n" + total;          // O: every format edits this
+        else if (format == "PDF") result = "%PDF total=" + total;
+        else throw new ArgumentException(format);
+        new SmtpClient().Send(email, result);                             // D: concrete mailer
+        return result;
+    }
+}
+
+class ScreenReportService : ReportService {                               // L: refuses the parent's job
+    public override string Run(string format, string email) { throw new NotSupportedException("no email"); }
+}
+
+interface IExporter {                                                     // I: every exporter must do 4 formats
+    string Csv(List<Sale> s); string Pdf(List<Sale> s);
+    string Xlsx(List<Sale> s); string Html(List<Sale> s);
+}` }
         ] }, { lang: 'java', title: 'After: small roles, plug-in formats, injected I/O', code: `record Sale(String region, double amount) {}
 record SalesSummary(List<Sale> sales, double total) {
     static SalesSummary of(List<Sale> sales) {                                        // S: the maths, nothing else
@@ -5673,6 +6692,81 @@ int main() {
     ScreenDelivery screen;
     job.run("CSV", email);
     job.run("TEXT", screen);
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+sealed class Sale {
+    public readonly string Region; public readonly double Amount;
+    public Sale(string region, double amount) { Region = region; Amount = amount; }
+}
+sealed class SalesSummary {
+    public readonly List<Sale> Sales; public readonly double Total;
+    private SalesSummary(List<Sale> sales, double total) { Sales = sales; Total = total; }
+    public static SalesSummary Of(List<Sale> sales) {                                   // S: the maths, nothing else
+        return new SalesSummary(sales, sales.Sum(s => s.Amount));
+    }
+}
+
+interface ISalesSource { List<Sale> Load(); }                                           // D: domain-owned ports
+interface IReportDelivery { void Deliver(string content); }
+interface IReportFormat { string Code { get; } string Render(SalesSummary s); }          // I: one role, O: plug-in
+
+class CsvFormat : IReportFormat {
+    public string Code { get { return "CSV"; } }
+    public string Render(SalesSummary s) {
+        StringBuilder sb = new StringBuilder("region,amount\\n");
+        foreach (Sale x in s.Sales) sb.Append(x.Region).Append(',').Append(x.Amount.ToString("0.0")).Append('\\n');
+        return sb.Append("TOTAL,").Append(s.Total.ToString("0.0")).ToString();
+    }
+}
+class TextFormat : IReportFormat {
+    public string Code { get { return "TEXT"; } }
+    public string Render(SalesSummary s) { return "Total sales: " + s.Total.ToString("0.0"); }
+}
+
+class EmailDelivery : IReportDelivery {
+    private readonly string to;
+    public EmailDelivery(string to) { this.to = to; }
+    public void Deliver(string c) { Console.WriteLine("email to " + to + ":\\n" + c); }
+}
+class ScreenDelivery : IReportDelivery {                                                // L: an honest sibling
+    public void Deliver(string c) { Console.WriteLine("[screen]\\n" + c); }
+}
+sealed class LambdaSource : ISalesSource {                                              // lambda = tiny adapter
+    private readonly Func<List<Sale>> load;
+    public LambdaSource(Func<List<Sale>> load) { this.load = load; }
+    public List<Sale> Load() { return load(); }
+}
+
+class ReportJob {                                                                       // orchestration only
+    private readonly ISalesSource source;
+    private readonly Dictionary<string, IReportFormat> formats = new Dictionary<string, IReportFormat>();
+
+    public ReportJob(ISalesSource source, IEnumerable<IReportFormat> available) {
+        this.source = source;
+        foreach (IReportFormat f in available) formats[f.Code] = f;
+    }
+
+    public string Run(string formatCode, IReportDelivery delivery) {
+        IReportFormat f;
+        if (!formats.TryGetValue(formatCode, out f)) throw new ArgumentException("unknown format " + formatCode);
+        string result = f.Render(SalesSummary.Of(source.Load()));
+        delivery.Deliver(result);
+        return result;
+    }
+}
+
+class Program {
+    static void Main() {
+        ISalesSource fake = new LambdaSource(() => new List<Sale> { new Sale("N", 100), new Sale("S", 250) });
+        ReportJob job = new ReportJob(fake, new IReportFormat[] { new CsvFormat(), new TextFormat() });
+        job.Run("CSV", new EmailDelivery("boss@shop.com"));
+        job.Run("TEXT", new ScreenDelivery());
+    }
 }` }
         ] }],
     codeTitle: ['Bad: all five violations', 'Good: SOLID refactor'],
@@ -5805,6 +6899,25 @@ public:
 int main() {
     Pricing p([](const Order& o) { return o.amount > 1000 ? 100.0 : 0.0; }, [] { return string("2026-01-01T00:00:00Z"); });
     cout << p.quote({"A1", 1500}) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+sealed class Order {
+    public readonly string Id; public readonly double Amount;
+    public Order(string id, double amount) { Id = id; Amount = amount; }
+}
+class Pricing {
+    private readonly Func<Order, double> discount;      // strategy as a function (OCP)
+    private readonly Func<DateTime> now;                // time as a dependency (DIP)
+    public Pricing(Func<Order, double> discount, Func<DateTime> now) { this.discount = discount; this.now = now; }
+    public string Quote(Order o) { return o.Id + " pays " + (o.Amount - discount(o)).ToString("0.0") + " at " + now().ToString("yyyy-MM-ddTHH:mm:ssZ"); }
+}
+class Program {
+    static void Main() {
+        Pricing p = new Pricing(o => o.Amount > 1000 ? 100.0 : 0.0, () => new DateTime(2026, 1, 1, 0, 0, 0));
+        Console.WriteLine(p.Quote(new Order("A1", 1500)));
+    }
 }` }
         ] } },
       { title: 'Refactoring safely: the order of moves', html: `<p>Never "big-bang" rewrite. A safe sequence on legacy code: (1) write <b>characterization tests</b> that pin current behaviour; (2) apply DIP first — inject the DB/mail clients so the class becomes testable; (3) extract classes by actor (SRP) with IDE refactorings; (4) replace conditionals with polymorphism (OCP); (5) split interfaces as clients emerge (ISP); (6) run contract tests on all implementations (LSP). Each step is a small commit with green tests.</p>` }
@@ -5947,7 +7060,41 @@ public:
         else ok = false;
         ofstream("notify.log", ios::app) << userId << " " << pref << " " << ok << "\\n";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.IO;
+
+interface IChannel {
+    void Send(string to, string text);
+    void Schedule(string to, string text, long epochMillis);
+    void Attach(string fileName);
+}
+class TwilioClient { public void Sms(string to, string t) { Console.WriteLine("twilio " + to + " " + t); } }
+
+class EmailChannel : IChannel {
+    public virtual void Send(string to, string text) { Console.WriteLine("email " + to + " " + text); }
+    public void Schedule(string to, string text, long at) { Console.WriteLine("scheduled email"); }
+    public virtual void Attach(string f) { Console.WriteLine("attached " + f); }
+}
+class PushChannel : EmailChannel {
+    public override void Send(string to, string text) { Console.WriteLine("push " + to + " " + text); }
+    public override void Attach(string f) { throw new NotSupportedException("push has no attachments"); }
+}
+
+class NotificationManager {
+    public void NotifyOrderShipped(string userId, string pref, string contact, string orderId) {
+        string text = "Your order #" + orderId + " has shipped";
+        bool ok = true;
+        switch (pref) {
+            case "SMS": new TwilioClient().Sms(contact, text); break;
+            case "EMAIL": new EmailChannel().Send(contact, text); break;
+            case "PUSH": new PushChannel().Send(contact, text); break;
+            default: ok = false; break;
+        }
+        File.AppendAllText("notify.log", userId + " " + pref + " " + ok + "\\n");
+    }
+}` }
               ] }
       },
       mcq: { q: 'Product adds WhatsApp. In the refactored design, what is the minimal change?', options: ['Add a WhatsAppChannel class and register it in the composition root', 'Add a case to NotificationService and a WhatsAppChannel class', 'Make WhatsAppChannel extend SmsChannel', 'Add whatsapp() to the Channel interface'], answer: 0, explain: 'With a registry of <code>Channel</code> implementations keyed by name (OCP) and injected into the service (DIP), the new class plus one wiring line is all that changes.' },
@@ -6493,6 +7640,123 @@ public:
 int main() {
     cout << boolalpha;
     NotificationDemo::run();
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Contact {
+    public readonly string UserId, PreferredChannel, Address;
+    public Contact(string userId, string preferredChannel, string address) { UserId = userId; PreferredChannel = preferredChannel; Address = address; }
+}
+sealed class Message {
+    public readonly string Title, Body;
+    public Message(string title, string body) { Title = title; Body = body; }
+}
+
+interface IChannel { string Name { get; } void Send(Contact to, Message m); }
+interface ISupportsAttachments { void SendWithAttachment(Contact to, Message m, string fileName); }   // optional role (ISP)
+interface IMessageTemplates { Message OrderShipped(string orderId); }
+interface IDeliveryLog { void Record(string userId, string channel, bool ok); }
+
+class DefaultTemplates : IMessageTemplates {
+    public Message OrderShipped(string orderId) { return new Message("Shipped", "Your order #" + orderId + " has shipped"); }
+}
+
+// adapters (would wrap vendor SDKs)
+class SmsChannel : IChannel {
+    public string Name { get { return "SMS"; } }
+    public void Send(Contact to, Message m) { Console.WriteLine("SMS to " + to.Address + ": " + m.Body); }
+}
+class EmailChannel : IChannel, ISupportsAttachments {
+    public string Name { get { return "EMAIL"; } }
+    public void Send(Contact to, Message m) { Console.WriteLine("Email to " + to.Address + ": " + m.Title + " - " + m.Body); }
+    public void SendWithAttachment(Contact to, Message m, string f) { Send(to, m); Console.WriteLine("  + " + f); }
+}
+class PushChannel : IChannel {                               // sibling, not a broken subclass
+    public string Name { get { return "PUSH"; } }
+    public void Send(Contact to, Message m) { Console.WriteLine("Push to " + to.Address + ": " + m.Body); }
+}
+class WhatsAppChannel : IChannel {                           // added later: new class only
+    public string Name { get { return "WHATSAPP"; } }
+    public void Send(Contact to, Message m) { Console.WriteLine("WhatsApp to " + to.Address + ": " + m.Body); }
+}
+
+class NotificationService {
+    private readonly Dictionary<string, IChannel> channels = new Dictionary<string, IChannel>();
+    private readonly IChannel fallback;
+    private readonly IMessageTemplates templates;
+    private readonly IDeliveryLog log;
+
+    public NotificationService(IEnumerable<IChannel> available, string fallbackName, IMessageTemplates templates, IDeliveryLog log) {
+        foreach (IChannel c in available) channels[c.Name] = c;
+        if (!channels.TryGetValue(fallbackName, out fallback)) throw new ArgumentException("fallback channel missing");
+        this.templates = templates; this.log = log;
+    }
+
+    public bool NotifyOrderShipped(Contact to, string orderId) {
+        IChannel ch;
+        if (!channels.TryGetValue(to.PreferredChannel, out ch)) ch = fallback;
+        try {
+            ch.Send(to, templates.OrderShipped(orderId));
+            log.Record(to.UserId, ch.Name, true);
+            return true;
+        } catch (Exception) {
+            log.Record(to.UserId, ch.Name, false);
+            return false;
+        }
+    }
+}
+
+// fakes for tests
+class InMemoryLog : IDeliveryLog {
+    public readonly List<string> Lines = new List<string>();
+    public void Record(string u, string c, bool ok) { Lines.Add(u + " " + c + " " + (ok ? "ok" : "failed")); }
+}
+class RecordingChannel : IChannel {
+    private readonly string name; public readonly List<string> Sent = new List<string>();
+    public RecordingChannel(string name) { this.name = name; }
+    public string Name { get { return name; } }
+    public void Send(Contact to, Message m) { Sent.Add(to.Address + "|" + m.Body); }
+}
+
+class BrokenChannel : IChannel {                              // simulates a vendor outage
+    public string Name { get { return "PUSH"; } }
+    public void Send(Contact to, Message m) { throw new InvalidOperationException("push gateway down"); }
+}
+
+class Program {
+    static void Main() {
+        // production-style wiring
+        InMemoryLog log = new InMemoryLog();
+        NotificationService prod = new NotificationService(
+                new IChannel[] { new SmsChannel(), new EmailChannel(), new PushChannel(), new WhatsAppChannel() },
+                "EMAIL", new DefaultTemplates(), log);
+        prod.NotifyOrderShipped(new Contact("u1", "SMS", "+91-90000"), "42");
+        prod.NotifyOrderShipped(new Contact("u2", "WHATSAPP", "+91-80000"), "43");
+        prod.NotifyOrderShipped(new Contact("u3", "PIGEON", "u3@x.com"), "44");   // falls back to EMAIL
+        Console.WriteLine(string.Join(" | ", log.Lines));
+
+        // optional role: only channels that implement ISupportsAttachments can send files
+        new EmailChannel().SendWithAttachment(new Contact("u4", "EMAIL", "u4@x.com"), new DefaultTemplates().OrderShipped("45"), "invoice.pdf");
+        Console.WriteLine("push supports attachments: " + (new PushChannel() is ISupportsAttachments).ToString().ToLower());
+
+        // test-style wiring: fakes only
+        RecordingChannel email = new RecordingChannel("EMAIL");
+        InMemoryLog testLog = new InMemoryLog();
+        new NotificationService(new IChannel[] { email }, "EMAIL", new DefaultTemplates(), testLog)
+                .NotifyOrderShipped(new Contact("t1", "SMS", "t@x.com"), "7");
+        if (!email.Sent.SequenceEqual(new[] { "t@x.com|Your order #7 has shipped" })) throw new Exception(string.Join(",", email.Sent));
+        Console.WriteLine("test passed: " + string.Join(" | ", testLog.Lines));
+
+        // failure path: the chosen channel throws, so delivery is logged as failed
+        InMemoryLog failLog = new InMemoryLog();
+        bool delivered = new NotificationService(new IChannel[] { new BrokenChannel(), new RecordingChannel("EMAIL") }, "EMAIL",
+                new DefaultTemplates(), failLog).NotifyOrderShipped(new Contact("t2", "PUSH", "t@x.com"), "8");
+        Console.WriteLine("delivered: " + delivered.ToString().ToLower());
+        Console.WriteLine(string.Join(" | ", failLog.Lines));
+    }
 }` }
         ],
         complexity: `<p>O(1) channel lookup per notification. Adding a channel: 1 new class + 1 wiring entry, 0 edits. Tests run without vendors, files or network.</p>`,
@@ -6564,7 +7828,25 @@ public:
         ofstream w(path);
         w << title << "\\n" << author << "\\n" << text << "\\n";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.IO;
+
+class Book {
+    public string Title, Author, Text;
+    public Book(string title, string author, string text) { Title = title; Author = author; Text = text; }
+
+    public void PrintToConsole() {                       // UI team's concern
+        Console.WriteLine(Title + " by " + Author);
+        Console.WriteLine(Text);
+    }
+    public void SaveToFile(string path) {                // infra team's concern
+        using (StreamWriter w = new StreamWriter(path)) {
+            w.WriteLine(Title); w.WriteLine(Author); w.WriteLine(Text);
+        }
+    }
+}` }
             ] }
     },
     mcq: { q: 'Which principle does <code>Book.saveToFile</code> most directly violate?', options: ['Single Responsibility', 'Liskov Substitution', 'Interface Segregation', 'None — books should save themselves'], answer: 0, explain: 'Persistence is a different actor\'s concern (infra) from the book\'s data and from printing (UI). Three actors → three reasons to change.' },
@@ -6756,7 +8038,41 @@ public:
     }
 };
 
-int main() { LibraryDemo::run(); }` }
+int main() { LibraryDemo::run(); }` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Book {
+    public readonly string Title, Author, Text;
+    public Book(string title, string author, string text) {
+        if (string.IsNullOrWhiteSpace(title)) throw new ArgumentException("title required");
+        Title = title; Author = author; Text = text;
+    }
+}
+
+class BookPrinter {                                   // UI team owns this
+    public string Render(Book b) { return b.Title + " by " + b.Author + "\\n" + b.Text; }
+}
+
+interface IBookStore { void Save(Book b); Book Load(string title); }   // infra team owns implementations; Load: null when absent
+
+class InMemoryBookStore : IBookStore {                // stands in for File/S3 in this demo
+    private readonly Dictionary<string, Book> data = new Dictionary<string, Book>();
+    public void Save(Book b) { data[b.Title] = b; }
+    public Book Load(string title) { Book b; return data.TryGetValue(title, out b) ? b : null; }
+}
+
+class Program {
+    static void Main() {
+        Book b = new Book("SOLID 101", "Asha", "Small classes, clear roles.");
+        IBookStore store = new InMemoryBookStore();
+        store.Save(b);
+        Console.WriteLine(new BookPrinter().Render(store.Load("SOLID 101")));
+        Console.WriteLine("found: " + (store.Load("Missing") != null).ToString().ToLower());
+        try { new Book(" ", "Asha", "text"); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
+}` }
         ],
       complexity: `<p>O(size of text) to render, O(1) average to save/load in the map. Change cost: 1 class per requirement instead of re-opening <code>Book</code>.</p>`,
       followUps: ['Should <code>Book</code> have a <code>wordCount()</code> method, or is that another responsibility?', 'How would you add an HTML renderer without touching BookPrinter?']
@@ -6826,7 +8142,23 @@ public:
 };
 struct Chorus {
     static void sing(vector<Duck*>& pond) { for (Duck* d : pond) d->quack(); }   // crashes on decoys
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Duck {
+    public virtual void Quack() { Console.WriteLine("Quack"); }
+    public virtual void Fly() { Console.WriteLine("Flap flap"); }
+}
+class MallardDuck : Duck { }
+class DecoyDuck : Duck {
+    public override void Quack() { throw new NotSupportedException("wooden"); }
+    public override void Fly() { throw new NotSupportedException("wooden"); }
+}
+static class Chorus {
+    public static void Sing(List<Duck> pond) { pond.ForEach(d => d.Quack()); }   // crashes on decoys
+}` }
             ] }
     },
     mcq: { q: 'What is the best fix?', options: ['Split capabilities into small interfaces (Floatable, Quackable, Flyable) and let each duck implement what it can', 'Catch the exception in the chorus', 'Make DecoyDuck.quack() print nothing', 'Add <code>if (d instanceof DecoyDuck) continue;</code>'], answer: 0, explain: 'An empty quack silently breaks the promise too (weakened postcondition). Capabilities as role interfaces let the type system keep decoys out of the chorus.' },
@@ -7022,6 +8354,45 @@ int main() {
     // Pond::chorus({&m, &d});  // compile error: DecoyDuck* is not Quackable*
     cout << m.fly() << "\\n";
     cout << "Decoy can quack: " << boolalpha << (dynamic_cast<const Quackable*>(&d) != nullptr) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface IFloatable { string Name { get; } }
+interface IQuackable { string Quack(); }
+interface IFlyable { string Fly(); }
+
+class MallardDuck : IFloatable, IQuackable, IFlyable {
+    public string Name { get { return "Mallard"; } }
+    public string Quack() { return "Quack"; }
+    public string Fly() { return "Flap flap"; }
+}
+class RubberDuck : IFloatable, IQuackable {
+    public string Name { get { return "Rubber"; } }
+    public string Quack() { return "Squeak"; }
+}
+class DecoyDuck : IFloatable {
+    public string Name { get { return "Decoy"; } }
+}
+
+class Pond {
+    public static List<string> Chorus(IEnumerable<IQuackable> singers) {
+        return singers.Select(s => s.Quack()).ToList();
+    }
+}
+
+class Program {
+    static void Main() {
+        MallardDuck m = new MallardDuck(); RubberDuck r = new RubberDuck(); DecoyDuck d = new DecoyDuck();
+        List<IFloatable> pond = new List<IFloatable> { m, d, r };
+        Console.WriteLine(string.Join(", ", pond.Select(f => f.Name)));          // all float
+        Console.WriteLine(string.Join(", ", Pond.Chorus(new IQuackable[] { m, r })));   // Quack, Squeak
+        // Pond.Chorus(new IQuackable[] { m, d });  // compile error: DecoyDuck is not IQuackable
+        Console.WriteLine(m.Fly());
+        Console.WriteLine("Decoy can quack: " + (d is IQuackable).ToString().ToLower());
+    }
 }` }
         ],
       complexity: `<p>O(n) for the chorus. Runtime crash risk from decoys: eliminated by the type system.</p>`,
@@ -7097,7 +8468,25 @@ struct AreaCalculator {
         }
         return sum;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Circle { public double R; public Circle(double r) { R = r; } }
+class Rectangle { public double W, H; public Rectangle(double w, double h) { W = w; H = h; } }
+
+static class AreaCalculator {
+    public static double Total(List<object> shapes) {
+        double sum = 0;
+        foreach (object s in shapes) {
+            if (s is Circle c) sum += Math.PI * c.R * c.R;
+            else if (s is Rectangle r) sum += r.W * r.H;
+            // Triangle? Hexagon? -> edit here, and in Perimeter(), and in Draw()...
+        }
+        return sum;
+    }
+}` }
             ] }
     },
     mcq: { q: 'Where should the formula for a triangle\'s area live after the refactor?', options: ['In the Triangle class itself', 'In AreaCalculator', 'In a ShapeUtils class', 'In the UI'], answer: 0, explain: 'Replace conditional with polymorphism: each shape knows its own area, so the calculator only calls <code>s.area()</code>.' },
@@ -7290,6 +8679,42 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface IShape { double Area(); }
+
+sealed class Circle : IShape {
+    public readonly double R;
+    public Circle(double r) { if (r <= 0) throw new ArgumentException("radius > 0"); R = r; }
+    public double Area() { return Math.PI * R * R; }
+}
+sealed class Rectangle : IShape {
+    public readonly double W, H;
+    public Rectangle(double w, double h) { if (w <= 0 || h <= 0) throw new ArgumentException("sides > 0"); W = w; H = h; }
+    public double Area() { return W * H; }
+}
+sealed class Triangle : IShape {                                    // added later, nothing edited
+    public readonly double Base, Height;
+    public Triangle(double b, double h) { if (b <= 0 || h <= 0) throw new ArgumentException("> 0"); Base = b; Height = h; }
+    public double Area() { return 0.5 * Base * Height; }
+}
+
+static class AreaCalculator {
+    public static double Total(IEnumerable<IShape> shapes) {
+        return shapes.Sum(s => s.Area());
+    }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(AreaCalculator.Total(new IShape[] { new Circle(1), new Rectangle(2, 3) }).ToString("F2"));                      // 9.14
+        Console.WriteLine(AreaCalculator.Total(new IShape[] { new Circle(1), new Rectangle(2, 3), new Triangle(4, 3) }).ToString("F2"));  // 15.14
+        try { new Circle(-1); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
       complexity: `<p>O(n) over shapes. New shape: 1 new record, 0 edited files.</p>`,
@@ -7349,7 +8774,20 @@ class Car {
     PetrolEngine engine;   // glued forever
 public:
     string drive() { return engine.start() ? "driving" : "engine failed to start"; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class PetrolEngine {
+    public bool Start() {
+        Console.WriteLine("crank... vroom (slow simulation)");
+        return true;
+    }
+}
+class Car {
+    private readonly PetrolEngine engine = new PetrolEngine();   // glued forever
+    public string Drive() { return engine.Start() ? "driving" : "engine failed to start"; }
+}` }
             ] }
     },
     mcq: { q: 'Who should own the <code>Engine</code> interface?', options: ['The Car side (the high-level module that needs it)', 'The PetrolEngine package', 'A shared utils package', 'Nobody — use abstract classes only'], answer: 0, explain: 'In DIP the abstraction is shaped by and belongs to the client that uses it; engines plug into the car\'s "socket".' },
@@ -7518,6 +8956,39 @@ int main() {
     string r = Car(make_unique<FailingEngine>()).drive();
     if (r != "engine failed to start") throw runtime_error(r);
     cout << "test ok: " << r << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IEngine { bool Start(); string Sound(); }
+
+class PetrolEngine : IEngine {
+    public bool Start() { return true; }
+    public string Sound() { return "vroom"; }
+}
+class ElectricMotor : IEngine {
+    public bool Start() { return true; }
+    public string Sound() { return "silent whirr"; }
+}
+class FailingEngine : IEngine {                  // test double
+    public bool Start() { return false; }
+    public string Sound() { return "click"; }
+}
+
+class Car {
+    private readonly IEngine engine;
+    public Car(IEngine engine) { if (engine == null) throw new ArgumentNullException("engine"); this.engine = engine; }
+    public string Drive() { return engine.Start() ? engine.Sound() + "... driving" : "engine failed to start"; }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(new Car(new PetrolEngine()).Drive());
+        Console.WriteLine(new Car(new ElectricMotor()).Drive());
+        string r = new Car(new FailingEngine()).Drive();
+        if (r != "engine failed to start") throw new Exception(r);
+        Console.WriteLine("test ok: " + r);
+    }
 }` }
         ],
       complexity: `<p>O(1). Adding a hybrid engine: 1 new class, <code>Car</code> untouched; tests no longer need the slow simulation.</p>`,
@@ -7615,7 +9086,33 @@ class Dashboard {
 public:
     Dashboard(CustomerRepository& repo) : repo(repo) {}
     string render() { return "Customers per city: " + to_string(repo.countByCity().size()); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Customer {
+    public readonly string Id, City; public readonly bool Active;
+    public Customer(string id, string city, bool active) { Id = id; City = city; Active = active; }
+}
+
+interface ICustomerRepository {
+    Customer FindById(string id);
+    List<Customer> FindAll();
+    SortedDictionary<string, long> CountByCity();
+    void Save(Customer c);
+    void Delete(string id);
+    void BulkImport(List<Customer> cs);
+    string ExportCsv();
+    int PurgeInactive();
+}
+
+class Dashboard {
+    private readonly ICustomerRepository repo;          // sees everything, including PurgeInactive()
+    public Dashboard(ICustomerRepository repo) { this.repo = repo; }
+    public string Render() { return "Customers per city: {" + string.Join(", ", repo.CountByCity().Select(kv => kv.Key + "=" + kv.Value)) + "}"; }
+}` }
             ] }
     },
     mcq: { q: 'How should the 8 methods be grouped?', options: ['By client role: reader (find/count), writer (save/delete), admin (bulk/export/purge)', 'Alphabetically into two interfaces', 'One interface per method', 'Keep one interface but add Javadoc warnings'], answer: 0, explain: 'ISP splits by who uses the methods. Three roles match three kinds of clients; one-method-per-interface would be needless fragmentation.' },
@@ -7990,6 +9487,83 @@ int main() {
     cout << "find 3: " << (three ? three->city : "none") << "\\n";
     cout << store.exportCsv();
     cout << Dashboard(FakeReader()).render() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+sealed class Customer {
+    public readonly string Id, City; public readonly bool Active;
+    public Customer(string id, string city, bool active) { Id = id; City = city; Active = active; }
+}
+
+interface ICustomerReader {
+    Customer FindById(string id);                       // null when absent
+    List<Customer> FindAll();
+    SortedDictionary<string, long> CountByCity();
+}
+interface ICustomerWriter { void Save(Customer c); void Delete(string id); }
+interface ICustomerAdmin { void BulkImport(List<Customer> cs); string ExportCsv(); int PurgeInactive(); }
+
+class InMemoryCustomerStore : ICustomerReader, ICustomerWriter, ICustomerAdmin {
+    private readonly List<Customer> data = new List<Customer>();      // insertion order kept
+    public Customer FindById(string id) { return data.FirstOrDefault(c => c.Id == id); }
+    public List<Customer> FindAll() { return new List<Customer>(data); }
+    public SortedDictionary<string, long> CountByCity() {
+        var m = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        foreach (Customer c in data) { long n; m.TryGetValue(c.City, out n); m[c.City] = n + 1; }
+        return m;
+    }
+    public void Save(Customer c) { Delete(c.Id); data.Add(c); }
+    public void Delete(string id) { data.RemoveAll(c => c.Id == id); }
+    public void BulkImport(List<Customer> cs) { cs.ForEach(Save); }
+    public string ExportCsv() {
+        StringBuilder sb = new StringBuilder("id,city,active\\n");
+        foreach (Customer c in data) sb.Append(c.Id).Append(',').Append(c.City).Append(',').Append(c.Active.ToString().ToLower()).Append('\\n');
+        return sb.ToString();
+    }
+    public int PurgeInactive() {
+        int before = data.Count;
+        data.RemoveAll(c => !c.Active);
+        return before - data.Count;
+    }
+}
+
+class Dashboard {
+    private readonly ICustomerReader reader;             // read-only by type
+    public Dashboard(ICustomerReader reader) { this.reader = reader; }
+    public string Render() {
+        string body = string.Join(", ", reader.CountByCity().Select(e => e.Key + "=" + e.Value));
+        return "Customers per city: {" + body + "}";
+    }
+}
+class AdminTool {
+    private readonly ICustomerAdmin admin;
+    public AdminTool(ICustomerAdmin admin) { this.admin = admin; }
+    public string NightlyCleanup() { return "purged " + admin.PurgeInactive(); }
+}
+
+class FakeReader : ICustomerReader {              // a dashboard test fakes 3 methods, not 8
+    public Customer FindById(string id) { return null; }
+    public List<Customer> FindAll() { return new List<Customer>(); }
+    public SortedDictionary<string, long> CountByCity() { return new SortedDictionary<string, long> { { "Goa", 4L } }; }
+}
+
+class Program {
+    static string CityOf(Customer c) { return c == null ? "none" : c.City; }
+    static void Main() {
+        InMemoryCustomerStore store = new InMemoryCustomerStore();
+        store.BulkImport(new List<Customer> { new Customer("1", "Pune", true), new Customer("2", "Pune", true), new Customer("3", "Delhi", false) });
+        Console.WriteLine(new Dashboard(store).Render());        // {Delhi=1, Pune=2}
+        Console.WriteLine(new AdminTool(store).NightlyCleanup()); // purged 1
+        Console.WriteLine(new Dashboard(store).Render());        // {Pune=2}
+        Console.WriteLine("find 1: " + CityOf(store.FindById("1")));
+        Console.WriteLine("find 3: " + CityOf(store.FindById("3")));
+        Console.Write(store.ExportCsv());
+        Console.WriteLine(new Dashboard(new FakeReader()).Render());
+    }
 }` }
         ],
       complexity: `<p>Same O(1)/O(n) operations as before. Dashboard dependency surface: 8 methods → 3; destructive calls from read-only code: impossible.</p>`,
@@ -8055,7 +9629,22 @@ public:
         else if (region == "REMOTE") base *= 1.35;
         return round(base * 100) / 100.0;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class ShippingCalculator {
+    public double Cost(string carrier, double kg, string region) {
+        double baseCost;
+        if (carrier == "BLUEDART") baseCost = 50 + 20 * kg;
+        else if (carrier == "DELHIVERY") baseCost = 40 + 25 * kg;
+        else if (carrier == "INDIAPOST") baseCost = 30 + 15 * kg;
+        else throw new ArgumentException(carrier);
+        if (region == "TIER2") baseCost *= 1.10;
+        else if (region == "REMOTE") baseCost *= 1.35;
+        return Math.Round(baseCost * 100, MidpointRounding.AwayFromZero) / 100.0;
+    }
+}` }
             ] }
     },
     mcq: { q: 'Finance changes REMOTE surcharge to 40%. In the good design, which class changes?', options: ['Only the surcharge policy', 'Every carrier class', 'The calculator and every carrier', 'The Region enum and the calculator'], answer: 0, explain: 'Carrier rates and regional surcharges are separate responsibilities with separate owners, so they live in separate classes.' },
@@ -8351,6 +9940,57 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum Region { METRO, TIER2, REMOTE }
+
+interface ICarrierRate { string Code { get; } double BaseCost(double kg); }
+
+class BlueDart : ICarrierRate { public string Code { get { return "BLUEDART"; } } public double BaseCost(double kg) { return 50 + 20 * kg; } }
+class Delhivery : ICarrierRate { public string Code { get { return "DELHIVERY"; } } public double BaseCost(double kg) { return 40 + 25 * kg; } }
+class IndiaPost : ICarrierRate { public string Code { get { return "INDIAPOST"; } } public double BaseCost(double kg) { return 30 + 15 * kg; } }
+class Shadowfax : ICarrierRate { public string Code { get { return "SHADOWFAX"; } } public double BaseCost(double kg) { return 35 + 18 * kg; } }   // new: zero edits elsewhere
+
+class SurchargePolicy {                                       // finance owns this
+    private readonly Dictionary<Region, double> multiplier = new Dictionary<Region, double> { { Region.METRO, 1.00 }, { Region.TIER2, 1.10 }, { Region.REMOTE, 1.35 } };
+    public double Apply(Region r, double amount) { return amount * multiplier[r]; }
+}
+
+class ShippingCalculator {
+    private readonly Dictionary<string, ICarrierRate> carriers = new Dictionary<string, ICarrierRate>();
+    private readonly SurchargePolicy surcharges;
+
+    public ShippingCalculator(IEnumerable<ICarrierRate> rates, SurchargePolicy surcharges) {
+        foreach (ICarrierRate r in rates) {
+            if (carriers.ContainsKey(r.Code)) throw new ArgumentException("dup " + r.Code);
+            carriers[r.Code] = r;
+        }
+        this.surcharges = surcharges;
+    }
+
+    public double Cost(string carrier, double kg, Region region) {
+        if (kg <= 0 || kg > 50) throw new ArgumentException("weight must be in (0, 50]");
+        ICarrierRate rate;
+        if (!carriers.TryGetValue(carrier, out rate)) throw new ArgumentException("unknown carrier " + carrier);
+        return Math.Round(surcharges.Apply(region, rate.BaseCost(kg)) * 100, MidpointRounding.AwayFromZero) / 100.0;
+    }
+}
+
+class Program {
+    static void Main() {
+        ShippingCalculator c = new ShippingCalculator(
+                new ICarrierRate[] { new BlueDart(), new Delhivery(), new IndiaPost(), new Shadowfax() }, new SurchargePolicy());
+        Console.WriteLine(c.Cost("BLUEDART", 2, Region.TIER2).ToString("F2"));   // 99.00
+        Console.WriteLine(c.Cost("INDIAPOST", 1, Region.REMOTE).ToString("F2")); // 60.75
+        Console.WriteLine(c.Cost("SHADOWFAX", 3, Region.METRO).ToString("F2"));  // 89.00
+        try { c.Cost("BLUEDART", 0, Region.METRO); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { c.Cost("DTDC", 1, Region.METRO); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        try { new ShippingCalculator(new ICarrierRate[] { new BlueDart(), new BlueDart() }, new SurchargePolicy()); }
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
       complexity: `<p>O(1) per quote. New carrier: 1 class + 1 list entry. Surcharge change: 1 class. Neither re-tests the other axis.</p>`,
@@ -8432,7 +10072,27 @@ struct FleetService {
     static void topUpAll(vector<Vehicle*>& fleet) {
         for (Vehicle* v : fleet) v->refuel(v->tank());   // boom on the first EV
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Vehicle {
+    protected double fuelLitres, tankLitres, kmPerLitre;
+    public Vehicle(double tank, double kmpl, double current) { tankLitres = tank; kmPerLitre = kmpl; fuelLitres = current; }
+    public virtual void Refuel(double litres) { fuelLitres = Math.Min(tankLitres, fuelLitres + litres); }
+    public double Range() { return fuelLitres * kmPerLitre; }
+    public double TankLitres { get { return tankLitres; } }
+}
+class ElectricCar : Vehicle {
+    public ElectricCar() : base(0, 0, 0) { }
+    public override void Refuel(double litres) { throw new NotSupportedException("EVs charge!"); }
+}
+static class FleetService {
+    public static void TopUpAll(List<Vehicle> fleet) {
+        foreach (Vehicle v in fleet) v.Refuel(v.TankLitres);   // boom on the first EV
+    }
+}` }
             ] }
     },
     mcq: { q: 'What is the root cause of this LSP violation?', options: ['The base type exposes a petrol-specific detail (litres) as if every vehicle had it', 'ElectricCar forgot to call super', 'refuel should be static', 'The language lacks multiple inheritance'], answer: 0, explain: 'The abstraction is wrong. A neutral contract ("top up to full", "range") that every energy source can honour fixes the hierarchy.' },
@@ -8720,6 +10380,60 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface IEnergySource { void FillUp(); double RangeKm(); }
+
+class FuelTank : IEnergySource {
+    private readonly double capacityL, kmPerL; private double litres;
+    public FuelTank(double capacityL, double kmPerL, double litres) { this.capacityL = capacityL; this.kmPerL = kmPerL; this.litres = litres; }
+    public void Add(double l) { if (l <= 0) throw new ArgumentException("litres must be positive"); litres = Math.Min(capacityL, litres + l); }   // petrol-specific
+    public void FillUp() { litres = capacityL; }
+    public double RangeKm() { return litres * kmPerL; }
+}
+class Battery : IEnergySource {
+    private readonly double capacityKwh, kmPerKwh; private double kwh;
+    public Battery(double capacityKwh, double kmPerKwh, double kwh) { this.capacityKwh = capacityKwh; this.kmPerKwh = kmPerKwh; this.kwh = kwh; }
+    public void FillUp() { kwh = capacityKwh; }
+    public double RangeKm() { return kwh * kmPerKwh; }
+}
+class HybridSource : IEnergySource {          // composite: still honours the contract
+    private readonly List<IEnergySource> parts;
+    public HybridSource(params IEnergySource[] parts) { this.parts = new List<IEnergySource>(parts); }
+    public void FillUp() { parts.ForEach(p => p.FillUp()); }
+    public double RangeKm() { return parts.Sum(p => p.RangeKm()); }
+}
+
+sealed class Vehicle {
+    public readonly string Plate; public readonly IEnergySource Energy;
+    public Vehicle(string plate, IEnergySource energy) { Plate = plate; Energy = energy; }
+}
+
+static class FleetService {
+    public static void TopUpAll(List<Vehicle> fleet) { fleet.ForEach(v => v.Energy.FillUp()); }
+}
+
+class Program {
+    static void Main() {
+        List<Vehicle> fleet = new List<Vehicle> {
+                new Vehicle("MH12-P", new FuelTank(40, 15, 10)),
+                new Vehicle("MH12-E", new Battery(60, 6, 20)),
+                new Vehicle("MH12-H", new HybridSource(new FuelTank(30, 20, 5), new Battery(10, 7, 2))) };
+        fleet.ForEach(v => Console.WriteLine(v.Plate + " before " + v.Energy.RangeKm().ToString("F0") + " km"));
+        FleetService.TopUpAll(fleet);
+        fleet.ForEach(v => Console.WriteLine(v.Plate + " after " + v.Energy.RangeKm().ToString("F0") + " km"));
+
+        FuelTank tank = new FuelTank(40, 15, 10);                      // petrol-only operation stays on FuelTank
+        tank.Add(5);
+        Console.WriteLine("tank after add(5): " + tank.RangeKm().ToString("F0") + " km");
+        tank.Add(100);                                                 // capped at capacity
+        Console.WriteLine("tank after add(100): " + tank.RangeKm().ToString("F0") + " km");
+        try { tank.Add(0); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
       complexity: `<p>O(n) over the fleet. New energy type = 1 class; the job never changes and never throws for a vehicle type.</p>`,
@@ -8811,7 +10525,30 @@ public:
         if (!c || time(nullptr) > c->expires || cart < c->minCart) return 0;   // hidden dependency 2
         return min(cart * c->percent / 100.0, c->maxOff);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Coupon {
+    public readonly string Code; public readonly int Percent; public readonly double MaxOff, MinCart; public readonly DateTime Expires;
+    public Coupon(string code, int percent, double maxOff, double minCart, DateTime expires) { Code = code; Percent = percent; MaxOff = maxOff; MinCart = minCart; Expires = expires; }
+}
+
+class CouponDb {                                          // global singleton
+    private static readonly CouponDb Instance = new CouponDb();
+    private readonly Dictionary<string, Coupon> rows = new Dictionary<string, Coupon>();
+    public static CouponDb GetInstance() { return Instance; }
+    public Coupon Find(string code) { Coupon c; return rows.TryGetValue(code, out c) ? c : null; }
+}
+
+class CouponService {
+    public double Apply(string code, double cart) {
+        Coupon c = CouponDb.GetInstance().Find(code);     // hidden dependency 1
+        if (c == null || DateTime.Today > c.Expires || cart < c.MinCart) return 0;   // hidden dependency 2
+        return Math.Min(cart * c.Percent / 100.0, c.MaxOff);
+    }
+}` }
             ] }
     },
     mcq: { q: 'Why inject <code>java.time.Clock</code> instead of calling <code>LocalDate.now()</code>?', options: ['So tests can fix "now" to any instant and zone deterministically', 'Because LocalDate.now() is deprecated', 'Clock is faster', 'To avoid time zones entirely'], answer: 0, explain: 'A clock abstraction (Java\'s built-in <code>Clock</code>, or an injected function that returns now) lets tests fix the date. <code>Clock.fixed</code> makes expiry boundaries testable; production passes <code>Clock.system(zone)</code>.' },
@@ -9093,6 +10830,59 @@ int main() {
     CouponTests::expect("2026-03-01", "SAVE20", 500, 100, "ok");      // exactly at minimum
     CouponTests::expect("2026-03-01", "SAVE20", 499.99, 0, "below");
     CouponTests::expect("2026-03-01", "NOPE", 1000, 0, "unknown");
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Coupon {
+    public readonly string Code; public readonly int Percent; public readonly double MaxOff, MinCart; public readonly DateTime Expires;
+    public Coupon(string code, int percent, double maxOff, double minCart, DateTime expires) { Code = code; Percent = percent; MaxOff = maxOff; MinCart = minCart; Expires = expires; }
+}
+sealed class CouponResult {
+    public readonly double Discount; public readonly string Reason;
+    public CouponResult(double discount, string reason) { Discount = discount; Reason = reason; }
+    public override string ToString() { return "CouponResult[discount=" + Discount + ", reason=" + Reason + "]"; }
+}
+
+interface ICouponRepository { Coupon Find(string code); }   // null when unknown
+
+class InMemoryCoupons : ICouponRepository {
+    private readonly Dictionary<string, Coupon> rows = new Dictionary<string, Coupon>();
+    public InMemoryCoupons(params Coupon[] cs) { foreach (Coupon c in cs) rows[c.Code] = c; }
+    public Coupon Find(string code) { Coupon c; return rows.TryGetValue(code, out c) ? c : null; }
+}
+
+class CouponService {
+    private readonly ICouponRepository repo;
+    private readonly Func<DateTime> clock;
+    public CouponService(ICouponRepository repo, Func<DateTime> clock) { this.repo = repo; this.clock = clock; }
+
+    public CouponResult Apply(string code, double cart) {
+        Coupon c = repo.Find(code);
+        if (c == null) return new CouponResult(0, "unknown coupon");
+        if (clock().Date > c.Expires) return new CouponResult(0, "expired");
+        if (cart < c.MinCart) return new CouponResult(0, "below minimum " + c.MinCart.ToString("F0"));
+        return new CouponResult(Math.Min(cart * c.Percent / 100.0, c.MaxOff), "ok");
+    }
+}
+
+class Program {
+    static CouponService At(string date) {
+        DateTime fixedTime = DateTime.Parse(date).AddHours(23).AddMinutes(59);
+        return new CouponService(new InMemoryCoupons(new Coupon("SAVE20", 20, 150, 500, new DateTime(2026, 3, 31))), () => fixedTime);
+    }
+    static void Expect(CouponResult r, double amount, string reason) {
+        if (r.Discount != amount || !r.Reason.StartsWith(reason)) throw new Exception(r.ToString());
+        Console.WriteLine("ok " + r.Discount.ToString("F2") + " " + r.Reason);
+    }
+    static void Main() {
+        Expect(At("2026-03-31").Apply("SAVE20", 1000), 150, "ok");        // last valid day, capped
+        Expect(At("2026-04-01").Apply("SAVE20", 1000), 0, "expired");
+        Expect(At("2026-03-01").Apply("SAVE20", 500), 100, "ok");         // exactly at minimum
+        Expect(At("2026-03-01").Apply("SAVE20", 499.99), 0, "below");
+        Expect(At("2026-03-01").Apply("NOPE", 1000), 0, "unknown");
+    }
 }` }
         ],
       complexity: `<p>O(1) per application. Tests: 5 deterministic boundary cases in milliseconds, no shared DB, no dependence on the real date.</p>`,
@@ -9177,7 +10967,29 @@ public:
         throw invalid_argument(country);
     }
     void print() { cout << "INVOICE (" << country << ") total = " << total() << "\\n"; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Invoice {
+    private readonly string country;
+    private readonly List<double[]> lines = new List<double[]>();   // {qty, unitPrice}
+    public Invoice(string country) { this.country = country; }
+    public void Add(int qty, double price) { lines.Add(new[] { qty, price }); }
+
+    public double Total() {
+        double sub = 0;
+        foreach (double[] l in lines) sub += l[0] * l[1];
+        switch (country) {
+            case "IN": return sub * 1.18;
+            case "UK": return sub * 1.20;
+            case "US": return sub;
+            default: throw new ArgumentException(country);
+        }
+    }
+    public void Print() { Console.WriteLine("INVOICE (" + country + ") total = " + Total()); }
+}` }
             ] }
     },
     mcq: { q: 'Where should "Germany charges 19%" be written after the refactor?', options: ['In a new GermanVat class implementing TaxPolicy', 'In the Invoice switch', 'In the InvoicePrinter', 'In a properties file read by Invoice.print()'], answer: 0, explain: 'Tax rules are their own responsibility with their own axis of change (countries), so each country is a TaxPolicy implementation.' },
@@ -9532,6 +11344,75 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+sealed class LineItem {
+    public readonly string Name; public readonly int Qty; public readonly decimal UnitPrice;
+    public LineItem(string name, int qty, decimal unitPrice) { Name = name; Qty = qty; UnitPrice = unitPrice; }
+    public decimal Amount() { return UnitPrice * Qty; }
+}
+
+interface ITaxPolicy { string Country { get; } decimal TaxOn(decimal subtotal); }
+
+sealed class FlatRateTax : ITaxPolicy {                         // data-driven policy
+    private readonly string country; private readonly decimal rate;
+    public FlatRateTax(string country, decimal rate) { this.country = country; this.rate = rate; }
+    public string Country { get { return country; } }
+    public decimal TaxOn(decimal sub) { return Math.Round(sub * rate, 2, MidpointRounding.AwayFromZero); }
+}
+
+class TaxPolicies {
+    private readonly Dictionary<string, ITaxPolicy> byCountry = new Dictionary<string, ITaxPolicy>();
+    public TaxPolicies(IEnumerable<ITaxPolicy> all) { foreach (ITaxPolicy p in all) byCountry[p.Country] = p; }
+    public ITaxPolicy ForCountry(string c) {
+        ITaxPolicy p;
+        if (!byCountry.TryGetValue(c, out p)) throw new ArgumentException("no tax policy for " + c);
+        return p;
+    }
+}
+
+class Invoice {
+    private readonly List<LineItem> items = new List<LineItem>();
+    private readonly ITaxPolicy tax;
+    public Invoice(ITaxPolicy tax) { this.tax = tax; }
+    public void Add(LineItem i) { items.Add(i); }
+    public List<LineItem> Items() { return new List<LineItem>(items); }
+    public string Country { get { return tax.Country; } }
+    public decimal Subtotal() { return items.Sum(i => i.Amount()); }
+    public decimal TaxAmount() { return tax.TaxOn(Subtotal()); }
+    public decimal Total() { return Math.Round(Subtotal() + TaxAmount(), 2, MidpointRounding.AwayFromZero); }
+}
+
+class InvoicePrinter {                                        // design team owns layout
+    public string Render(Invoice inv) {
+        StringBuilder sb = new StringBuilder("INVOICE [" + inv.Country + "]\\n");
+        foreach (LineItem i in inv.Items()) sb.Append(string.Format("{0,-8} x{1} {2,10}", i.Name, i.Qty, i.Amount().ToString("F2"))).Append('\\n');
+        return sb.Append("Tax: ").Append(inv.TaxAmount().ToString("F2")).Append("\\nTotal: ").Append(inv.Total().ToString("F2")).ToString();
+    }
+}
+
+class Program {
+    static Invoice Sample(ITaxPolicy tax) {
+        Invoice inv = new Invoice(tax);
+        inv.Add(new LineItem("Pen", 2, 100.00m));
+        inv.Add(new LineItem("Ink", 1, 50.00m));
+        return inv;
+    }
+
+    static void Main() {
+        TaxPolicies taxes = new TaxPolicies(new ITaxPolicy[] {
+                new FlatRateTax("IN", 0.18m), new FlatRateTax("UK", 0.20m),
+                new FlatRateTax("US", 0m), new FlatRateTax("DE", 0.19m),
+                new FlatRateTax("SG", 0.09m) });
+        Console.WriteLine(new InvoicePrinter().Render(Sample(taxes.ForCountry("DE"))));   // Tax 47.50, Total 297.50
+        Console.WriteLine("IN total " + Sample(taxes.ForCountry("IN")).Total().ToString("F2"));   // 295.00
+        try { taxes.ForCountry("XX"); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
       complexity: `<p>O(items) per total. New country: one registry entry (or one class for complex rules like US state taxes). New layout: one printer class.</p>`,
@@ -9610,7 +11491,25 @@ public:
             ofstream("app.log", ios::app) << line << "\\n";
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+class Logger {
+    private readonly string destination;   // "console" or "file"
+    private readonly string minLevel;
+    public Logger(string destination, string minLevel) { this.destination = destination; this.minLevel = minLevel; }
+
+    public void Log(string level, string msg) {
+        List<string> order = new List<string> { "DEBUG", "INFO", "WARN", "ERROR" };
+        if (order.IndexOf(level) < order.IndexOf(minLevel)) return;
+        string line = DateTime.Now.ToString("HH:mm:ss.fff") + " " + level + " " + msg;
+        if (destination == "console") Console.WriteLine(line);
+        else if (destination == "file") File.AppendAllText("app.log", line + "\\n");
+    }
+}` }
             ] }
     },
     mcq: { q: 'Which split mirrors real logging frameworks (Logback/Log4j)?', options: ['Logger (level filter) → Appender (destination) → Layout (format)', 'One Logger subclass per destination', 'A static LogUtils class', 'Separate loggers per level'], answer: 0, explain: 'Frameworks separate what/whether to log, where it goes and how it looks — each an independent axis of change.' },
@@ -9912,6 +11811,63 @@ int main() {
     log.log(Level::Error, "said \\"no\\"");
     log.log(Level::Error, "path C:\\\\tmp");
     for (const string& line : mem->lines) cout << line << "\\n";   // the memory appender still got every line
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum Level { DEBUG, INFO, WARN, ERROR }
+
+interface ILogFormat { string Format(Level level, string msg); }
+interface IAppender { void Append(string line); }
+sealed class Sink {
+    public readonly ILogFormat Format; public readonly IAppender Appender;
+    public Sink(ILogFormat format, IAppender appender) { Format = format; Appender = appender; }
+}
+
+class TextFormat : ILogFormat { public string Format(Level l, string m) { return l + " " + m; } }
+class JsonFormat : ILogFormat {
+    public string Format(Level l, string m) {
+        string escaped = m.Replace("\\\\", "\\\\\\\\").Replace("\\"", "\\\\\\"");   // minimal escaping; real libraries use a JSON encoder
+        return "{\\"level\\":\\"" + l + "\\",\\"msg\\":\\"" + escaped + "\\"}";
+    }
+}
+class ConsoleAppender : IAppender { public void Append(string line) { Console.WriteLine(line); } }
+class MemoryAppender : IAppender {
+    public readonly List<string> Lines = new List<string>();
+    public void Append(string line) { Lines.Add(line); }
+}
+class BrokenAppender : IAppender { public void Append(string line) { throw new InvalidOperationException("disk full"); } }
+
+class Logger {
+    private readonly Level min;
+    private readonly List<Sink> sinks;
+    public Logger(Level min, IEnumerable<Sink> sinks) { this.min = min; this.sinks = new List<Sink>(sinks); }
+
+    public void Log(Level level, string msg) {
+        if (level < min) return;
+        foreach (Sink s in sinks) {
+            try { s.Appender.Append(s.Format.Format(level, msg)); }
+            catch (Exception e) { Console.WriteLine("appender failed: " + e.Message); }   // isolate failures
+        }
+    }
+    public void Debug(string m) { Log(Level.DEBUG, m); }
+    public void Warn(string m) { Log(Level.WARN, m); }
+}
+
+class Program {
+    static void Main() {
+        MemoryAppender mem = new MemoryAppender();
+        Logger log = new Logger(Level.INFO, new[] {
+                new Sink(new TextFormat(), new ConsoleAppender()),
+                new Sink(new JsonFormat(), new BrokenAppender()),
+                new Sink(new JsonFormat(), mem) });
+        log.Debug("ignored");
+        log.Warn("disk 91%");
+        log.Log(Level.ERROR, "said \\"no\\"");
+        log.Log(Level.ERROR, "path C:\\\\tmp");
+        mem.Lines.ForEach(Console.WriteLine);   // the memory appender still got every line
+    }
 }` }
         ],
       complexity: `<p>O(sinks) per log call. New format or destination: 1 class, 0 edits. Tests read <code>MemoryAppender.lines</code> instead of files.</p>`,
@@ -10048,7 +12004,42 @@ public:
         cout << "RECEIPT " << plate << " " << hours << "h " << fee << "\\n";
         return fee;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class CardTerminal { public bool Charge(double amt) { Console.WriteLine("card charged " + amt); return true; } }
+
+class ParkingLot {
+    private readonly Dictionary<string, int> free = new Dictionary<string, int> { { "BIKE", 2 }, { "CAR", 2 }, { "TRUCK", 1 } };
+    private readonly Dictionary<string, string[]> tickets = new Dictionary<string, string[]>();   // plate -> {type, startMillis}
+
+    public string Park(string type, string plate) {
+        int n; free.TryGetValue(type, out n);
+        if (n == 0) return "FULL";
+        free[type] = n - 1;
+        tickets[plate] = new[] { type, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString() };
+        return "TICKET-" + plate;
+    }
+
+    public double Exit(string plate, string payBy) {
+        string[] t = tickets[plate]; tickets.Remove(plate);
+        long hours = Math.Max(1, (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - long.Parse(t[1]) + 3599999) / 3600000);
+        double fee;
+        switch (t[0]) {
+            case "BIKE": fee = 10 + (hours - 1) * 5; break;
+            case "CAR": fee = 30 + (hours - 1) * 20; break;
+            case "TRUCK": fee = 60 + (hours - 1) * 40; break;
+            default: throw new ArgumentException(t[0]);
+        }
+        if (payBy == "CARD") new CardTerminal().Charge(fee);
+        else if (payBy == "CASH") Console.WriteLine("collect cash " + fee);
+        free[t[0]]++;
+        Console.WriteLine("RECEIPT " + plate + " " + hours + "h " + fee);
+        return fee;
+    }
+}` }
             ] }
     },
     mcq: { q: 'Weekend pricing (+25%) should be added how?', options: ['As a decorator/wrapper PricingPolicy around the base policy, using the injected Clock', 'As another case in the fee switch', 'Inside the payment classes', 'By subclassing ParkingLot as WeekendParkingLot'], answer: 0, explain: 'A <code>WeekendSurcharge implements PricingPolicy</code> wrapping the base policy adds behaviour without editing it (OCP), and reading time from the ticket/Clock keeps it testable (DIP).' },
@@ -10711,6 +12702,127 @@ public:
 int main() {
     cout << boolalpha;
     ParkingDemo::run();
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum VehicleType { BIKE, CAR, EV, TRUCK }
+sealed class Ticket {
+    public readonly string Id, Plate; public readonly VehicleType Type; public readonly DateTime Entry;
+    public Ticket(string id, string plate, VehicleType type, DateTime entry) { Id = id; Plate = plate; Type = type; Entry = entry; }
+}
+
+interface IPricingPolicy { double Fee(Ticket t, DateTime exit); }
+interface IPaymentMethod { string Code { get; } bool Pay(double amount); }
+interface IClock { DateTime Now { get; } }                              // time as a dependency
+
+class BaseRates : IPricingPolicy {
+    private readonly Dictionary<VehicleType, double[]> rates = new Dictionary<VehicleType, double[]> {
+            { VehicleType.BIKE, new double[] { 10, 5 } }, { VehicleType.CAR, new double[] { 30, 20 } },
+            { VehicleType.EV, new double[] { 30, 20 } }, { VehicleType.TRUCK, new double[] { 60, 40 } } };
+    public static long Hours(Ticket t, DateTime exit) {
+        long min = Math.Max(1, (long)(exit - t.Entry).TotalMinutes);
+        return (min + 59) / 60;                                    // started hours, at least 1
+    }
+    public double Fee(Ticket t, DateTime exit) {
+        double[] r = rates[t.Type];
+        return r[0] + (Hours(t, exit) - 1) * r[1];
+    }
+}
+class EvChargingFee : IPricingPolicy {                             // decorator: adds, never removes
+    private readonly IPricingPolicy inner;
+    public EvChargingFee(IPricingPolicy inner) { this.inner = inner; }
+    public double Fee(Ticket t, DateTime exit) {
+        double f = inner.Fee(t, exit);
+        return t.Type == VehicleType.EV ? f + 15 * BaseRates.Hours(t, exit) : f;
+    }
+}
+class WeekendSurcharge : IPricingPolicy {
+    private readonly IPricingPolicy inner;
+    public WeekendSurcharge(IPricingPolicy inner) { this.inner = inner; }
+    public double Fee(Ticket t, DateTime exit) {
+        DayOfWeek d = t.Entry.DayOfWeek;
+        bool weekend = d == DayOfWeek.Saturday || d == DayOfWeek.Sunday;
+        return inner.Fee(t, exit) * (weekend ? 1.25 : 1.0);
+    }
+}
+
+class SpotInventory {
+    private readonly Dictionary<VehicleType, int> free;
+    public SpotInventory(Dictionary<VehicleType, int> capacity) { free = new Dictionary<VehicleType, int>(capacity); }
+    public bool Take(VehicleType t) { int n; free.TryGetValue(t, out n); if (n == 0) return false; free[t] = n - 1; return true; }
+    public void Release(VehicleType t) { int n; free.TryGetValue(t, out n); free[t] = n + 1; }
+}
+
+class ReceiptFormatter {
+    public string Format(Ticket t, double fee, string method) { return "RECEIPT " + t.Plate + " " + t.Type + " " + fee.ToString("F2") + " via " + method; }
+}
+
+class ParkingService {
+    private readonly SpotInventory spots; private readonly IPricingPolicy pricing; private readonly IClock clock;
+    private readonly Dictionary<string, IPaymentMethod> methods = new Dictionary<string, IPaymentMethod>();
+    private readonly Dictionary<string, Ticket> open = new Dictionary<string, Ticket>();
+    private readonly ReceiptFormatter receipts = new ReceiptFormatter();
+    private int seq = 0;
+
+    public ParkingService(SpotInventory spots, IPricingPolicy pricing, IEnumerable<IPaymentMethod> ms, IClock clock) {
+        this.spots = spots; this.pricing = pricing; this.clock = clock;
+        foreach (IPaymentMethod m in ms) methods[m.Code] = m;
+    }
+
+    public Ticket Park(string plate, VehicleType type) {              // null when full
+        if (!spots.Take(type)) return null;
+        Ticket t = new Ticket("T" + (++seq), plate, type, clock.Now);
+        open[t.Id] = t;
+        return t;
+    }
+
+    public string Exit(string ticketId, string methodCode) {
+        Ticket t;
+        if (!open.TryGetValue(ticketId, out t)) throw new InvalidOperationException("unknown or already paid ticket");
+        IPaymentMethod m;
+        if (!methods.TryGetValue(methodCode, out m)) throw new ArgumentException("unsupported payment " + methodCode);
+        double fee = Math.Round(pricing.Fee(t, clock.Now) * 100, MidpointRounding.AwayFromZero) / 100.0;
+        if (!m.Pay(fee)) return "DECLINED";                      // ticket stays open, spot stays taken
+        open.Remove(ticketId);
+        spots.Release(t.Type);
+        return receipts.Format(t, fee, m.Code);
+    }
+}
+
+// adapters + fakes
+class CashPayment : IPaymentMethod { public string Code { get { return "CASH"; } } public bool Pay(double a) { return true; } }
+class UpiPayment : IPaymentMethod { public string Code { get { return "UPI"; } } public bool Pay(double a) { return a < 100000; } }
+
+class MutableClock : IClock {                                     // test clock we can move forward
+    private DateTime now;
+    public MutableClock(DateTime start) { now = start; }
+    public void Advance(TimeSpan d) { now = now + d; }
+    public DateTime Now { get { return now; } }
+}
+
+class Program {
+    static void Main() {
+        MutableClock clock = new MutableClock(new DateTime(2026, 3, 7, 10, 0, 0));   // Saturday
+        IPricingPolicy pricing = new WeekendSurcharge(new EvChargingFee(new BaseRates()));
+        ParkingService svc = new ParkingService(new SpotInventory(new Dictionary<VehicleType, int> { { VehicleType.CAR, 2 }, { VehicleType.EV, 1 } }),
+                pricing, new IPaymentMethod[] { new CashPayment(), new UpiPayment() }, clock);
+
+        Ticket car = svc.Park("MH12AB1234", VehicleType.CAR);
+        Ticket second = svc.Park("MH12CD0001", VehicleType.CAR);
+        Console.WriteLine((svc.Park("MH12EF0002", VehicleType.CAR) != null).ToString().ToLower());   // false: full
+        clock.Advance(TimeSpan.FromMinutes(150));
+        Console.WriteLine(svc.Exit(car.Id, "UPI"));                                                 // 87.50 (3h, weekend)
+        try { svc.Exit(car.Id, "UPI"); } catch (InvalidOperationException e) { Console.WriteLine("blocked: " + e.Message); }
+        Console.WriteLine((svc.Park("MH12EF0002", VehicleType.CAR) != null).ToString().ToLower());   // true: the exit freed a spot
+        try { svc.Exit(second.Id, "CRYPTO"); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+
+        clock.Advance(TimeSpan.FromMinutes(2670));                                                 // Sat 12:30 -> Mon 09:00
+        Ticket ev = svc.Park("MH12EV0003", VehicleType.EV);
+        clock.Advance(TimeSpan.FromMinutes(60));
+        Console.WriteLine(svc.Exit(ev.Id, "CASH"));                                                 // 45.00: no weekend surcharge, EV charging added
+    }
 }` }
         ],
       complexity: `<p>O(1) per park/exit (hash maps, EnumMap). Each new requirement (UPI, EV fee, weekend) was a new class; <code>ParkingService</code> never changed for them. Tests simulate Saturdays and 150 minutes instantly via <code>MutableClock</code>.</p>`,
@@ -10769,7 +12881,21 @@ public:
         if (censor) t = regex_replace(t, regex("darn", regex::icase), "****");   // banned list hard-coded
         return t;                                                                 // new rule? new boolean + new if
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Text.RegularExpressions;
+
+class TextProcessor {
+    public string Process(string text, bool trim, bool lower, bool maskEmails, bool censor) {
+        string t = text;
+        if (trim) t = t.Trim();
+        if (lower) t = t.ToLower();
+        if (maskEmails) t = Regex.Replace(t, @"[\\w.+-]+@[\\w-]+\\.[\\w.]+", "***@***");
+        if (censor) t = Regex.Replace(t, "darn", "****", RegexOptions.IgnoreCase);   // banned list hard-coded
+        return t;                                                                    // new rule? new boolean + new if
+    }
+}` }
             ] }
     },
     mcq: { q: 'What makes the pipeline open for extension?', options: ['A TextFilter interface plus a name → factory registry used to build the chain from config', 'An enum of all filters with a switch', 'Subclassing TextProcessor for each combination', 'More boolean parameters with default values'], answer: 0, explain: 'Filters implement one interface and register themselves by name; the pipeline composes whatever the config lists. The core code never learns about specific filters.' },
@@ -11164,6 +13290,83 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+interface ITextFilter { string Apply(string s); }
+
+class TrimFilter : ITextFilter { public string Apply(string s) { return s.Trim(); } }
+class LowerFilter : ITextFilter { public string Apply(string s) { return s.ToLower(); } }
+class MaskEmailsFilter : ITextFilter {
+    private static readonly Regex Email = new Regex(@"[\\w.+-]+@[\\w-]+\\.[\\w.]+");
+    public string Apply(string s) { return Email.Replace(s, "***@***"); }
+}
+class CensorFilter : ITextFilter {
+    private readonly List<Regex> banned;
+    public CensorFilter(IEnumerable<string> words) {
+        banned = words.Select(w => new Regex(@"\\b" + Regex.Escape(w) + @"\\b", RegexOptions.IgnoreCase)).ToList();
+    }
+    public string Apply(string s) {
+        string result = s;
+        foreach (Regex p in banned) result = p.Replace(result, m => new string('*', m.Value.Length));
+        return result;
+    }
+}
+class MaskPhonesFilter : ITextFilter {                    // NEW: added without touching anything else
+    private static readonly Regex Phone = new Regex(@"\\+?\\d[\\d -]{8,}\\d");
+    public string Apply(string s) { return Phone.Replace(s, "[phone]"); }
+}
+
+class FilterRegistry {
+    private readonly List<string> order = new List<string>();                                   // registration order
+    private readonly Dictionary<string, Func<ITextFilter>> factories = new Dictionary<string, Func<ITextFilter>>();
+    public FilterRegistry Register(string name, Func<ITextFilter> f) {
+        if (factories.ContainsKey(name)) throw new ArgumentException("duplicate filter " + name);
+        factories[name] = f; order.Add(name);
+        return this;
+    }
+    public ITextFilter Create(string name) {
+        Func<ITextFilter> f;
+        if (!factories.TryGetValue(name, out f)) throw new ArgumentException("unknown filter '" + name + "', known: [" + string.Join(", ", order) + "]");
+        return f();
+    }
+}
+
+class Pipeline {
+    private readonly List<ITextFilter> steps;
+    public Pipeline(IEnumerable<ITextFilter> steps) { this.steps = new List<ITextFilter>(steps); }
+    public static Pipeline FromConfig(string config, FilterRegistry reg) {
+        List<ITextFilter> steps = new List<ITextFilter>();
+        foreach (string name in config.Split(',')) if (!string.IsNullOrWhiteSpace(name)) steps.Add(reg.Create(name.Trim()));
+        return new Pipeline(steps);
+    }
+    public string Run(string text) {
+        string t = text;
+        foreach (ITextFilter f in steps) t = f.Apply(t);
+        return t;
+    }
+}
+
+class Program {
+    static void Main() {
+        List<string> banned = new List<string> { "darn" };               // would come from a config service
+        FilterRegistry reg = new FilterRegistry()
+                .Register("trim", () => new TrimFilter())
+                .Register("lower", () => new LowerFilter())
+                .Register("mask-emails", () => new MaskEmailsFilter())
+                .Register("censor", () => new CensorFilter(banned))
+                .Register("mask-phones", () => new MaskPhonesFilter());   // the only line added for the new filter
+
+        Console.WriteLine(Pipeline.FromConfig("trim,mask-emails,censor", reg).Run("  Mail me at a@b.com, darn it  "));
+        Console.WriteLine(Pipeline.FromConfig("trim,mask-phones", reg).Run(" call +91 98765 43210 now "));
+        try { Pipeline.FromConfig("trim,translate", reg); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+        Console.WriteLine(Pipeline.FromConfig("lower,trim", reg).Run("  HeLLo  "));   // order comes from config
+        try { reg.Register("trim", () => new TrimFilter()); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
       complexity: `<p>O(k × n) for k filters over text of length n (each regex pass is linear in practice). Adding a filter: 1 class + 1 registration; Pipeline and existing filters unchanged.</p>`,
@@ -11256,7 +13459,29 @@ struct Scheduler {
         for (int i = 0; i < 3; i++) jobs.pushItem("job" + to_string(i));   // crashes for BoundedStack(2)
         jobs.insert(jobs.begin(), "sneaky");                                // inherited: breaks LIFO silently
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class LifoStack<T> : List<T> {
+    public virtual void Push(T x) { Add(x); }
+    public T Pop() { T x = this[Count - 1]; RemoveAt(Count - 1); return x; }   // throws on empty
+}
+class BoundedStack<T> : LifoStack<T> {
+    private readonly int capacity;
+    public BoundedStack(int capacity) { this.capacity = capacity; }
+    public override void Push(T x) {
+        if (Count == capacity) throw new InvalidOperationException("full");   // strengthened precondition
+        base.Push(x);
+    }
+}
+static class Scheduler {
+    public static void RunAll(LifoStack<string> jobs) {
+        for (int i = 0; i < 3; i++) jobs.Push("job" + i);   // crashes for BoundedStack(2)
+        jobs.Insert(0, "sneaky");                            // inherited: breaks LIFO silently
+    }
+}` }
             ] }
     },
     mcq: { q: 'How can a bounded stack and an unbounded stack share one honest contract?', options: ['Make push return boolean ("accepted or not") in the interface, so "full" is part of the contract', 'Let the bounded stack silently drop the item and return void', 'Catch IllegalStateException in every caller', 'Make capacity a static constant'], answer: 0, explain: 'Like <code>Queue.offer</code>, a boolean result lets every implementation keep the promise. The unbounded one always returns true; the bounded one returns false when full. Callers wrote code for the contract, so nothing surprises them.' },
@@ -11582,6 +13807,74 @@ int main() {
     } catch (const invalid_argument& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface ILifoStack<T> {
+    /// Contract: returns true and places x on top, or returns false and leaves the stack unchanged.
+    bool Push(T x);
+    bool TryPop(out T item);
+    bool TryPeek(out T item);
+    int Count { get; }
+}
+static class LifoStackExt {
+    public static bool IsEmpty<T>(this ILifoStack<T> s) { return s.Count == 0; }
+}
+
+class ArrayLifoStack<T> : ILifoStack<T> {                 // composition: nothing from Stack<T> leaks out
+    private readonly Stack<T> items = new Stack<T>();
+    public bool Push(T x) { if (x == null) throw new ArgumentNullException("x"); items.Push(x); return true; }
+    public bool TryPop(out T item) { if (items.Count == 0) { item = default(T); return false; } item = items.Pop(); return true; }
+    public bool TryPeek(out T item) { if (items.Count == 0) { item = default(T); return false; } item = items.Peek(); return true; }
+    public int Count { get { return items.Count; } }
+}
+
+class BoundedLifoStack<T> : ILifoStack<T> {               // decorator honouring the same contract
+    private readonly ILifoStack<T> inner; private readonly int capacity;
+    public BoundedLifoStack(ILifoStack<T> inner, int capacity) {
+        if (capacity <= 0) throw new ArgumentException("capacity > 0");
+        this.inner = inner; this.capacity = capacity;
+    }
+    public bool Push(T x) { return Count < capacity && inner.Push(x); }
+    public bool TryPop(out T item) { return inner.TryPop(out item); }
+    public bool TryPeek(out T item) { return inner.TryPeek(out item); }
+    public int Count { get { return inner.Count; } }
+}
+
+static class LifoStackContract {                           // run against EVERY implementation
+    static T Top<T>(ILifoStack<T> s) { T x; if (!s.TryPeek(out x)) throw new InvalidOperationException("empty"); return x; }
+    static T Popped<T>(ILifoStack<T> s) { T x; if (!s.TryPop(out x)) throw new InvalidOperationException("empty"); return x; }
+    public static void Verify(string name, Func<ILifoStack<string>> fresh) {
+        ILifoStack<string> s = fresh();
+        string ignored;
+        Check(s.IsEmpty() && !s.TryPop(out ignored) && !s.TryPeek(out ignored), "empty behaviour");
+        Check(s.Push("A") && s.Push("B"), "accepts at least 2 items");
+        Check(Top(s) == "B" && s.Count == 2, "peek top without removing");
+        int before = s.Count;
+        bool accepted = s.Push("C");
+        Check(accepted ? s.Count == before + 1 : s.Count == before && Top(s) == "B", "rejected push leaves stack unchanged");
+        if (accepted) Check(Popped(s) == "C", "LIFO order");
+        Check(Popped(s) == "B" && Popped(s) == "A", "LIFO order");
+        Check(s.IsEmpty(), "empty after pops");
+        Console.WriteLine(name + ": contract OK");
+    }
+    static void Check(bool cond, string what) { if (!cond) throw new Exception(what); }
+}
+
+class Program {
+    static void Main() {
+        LifoStackContract.Verify("ArrayLifoStack", () => new ArrayLifoStack<string>());
+        LifoStackContract.Verify("BoundedLifoStack(2)", () => new BoundedLifoStack<string>(new ArrayLifoStack<string>(), 2));
+        LifoStackContract.Verify("BoundedLifoStack(10)", () => new BoundedLifoStack<string>(new ArrayLifoStack<string>(), 10));
+
+        ILifoStack<string> jobs = new BoundedLifoStack<string>(new ArrayLifoStack<string>(), 2);
+        for (int i = 0; i < 3; i++) Console.WriteLine("push job" + i + " -> " + jobs.Push("job" + i).ToString().ToLower());   // true, true, false
+        string top; jobs.TryPop(out top);
+        Console.WriteLine("pop -> " + top);                                                                                  // job1
+        try { new BoundedLifoStack<string>(new ArrayLifoStack<string>(), 0); } catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
       complexity: `<p>All operations O(1) amortised (ArrayDeque). The contract test is O(1) per implementation and catches LSP regressions automatically in CI.</p>`,
@@ -11683,7 +13976,31 @@ public:
         SmtpMailer().send(email, "Order confirmed");                               // failure here kills checkout
         return "CONFIRMED";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class InventoryDb {                                 // static global, 12 methods in real life
+    public static readonly Dictionary<string, int> Stock = new Dictionary<string, int> { { "pen", 5 } };
+    public static bool Reserve(string sku, int qty) {
+        int have; Stock.TryGetValue(sku, out have);
+        if (have < qty) return false;
+        Stock[sku] = have - qty;
+        return true;
+    }
+}
+class RazorpayClient { public RazorpayClient(string key) { } public bool Charge(double amt) { return amt < 1000; } }
+class SmtpMailer { public void Send(string to, string body) { Console.WriteLine("mail " + to + " " + body); } }
+
+class CheckoutService {
+    public string Checkout(string sku, int qty, double total, string email) {
+        if (!InventoryDb.Reserve(sku, qty)) return "OUT_OF_STOCK";
+        if (!new RazorpayClient("live_key").Charge(total)) return "PAYMENT_DECLINED";   // BUG: stock never released
+        new SmtpMailer().Send(email, "Order confirmed");                               // failure here kills checkout
+        return "CONFIRMED";
+    }
+}` }
             ] }
     },
     mcq: { q: 'Which inventory interface should checkout depend on?', options: ['A narrow StockReservations port: reserve(lines) and release(lines)', 'The full 12-method InventoryDb', 'A generic Repository&lt;Object&gt;', 'None — call the DB directly from checkout'], answer: 0, explain: 'ISP + DIP: the checkout domain defines the small port it needs, shaped by its use case (reserve/release), and the inventory adapter implements it.' },
@@ -12159,6 +14476,94 @@ int main() {
     Cart twoLines{"a@b.com", {{"pen", 3}, {"pen", 3}}, 120.0};   // 6 pens in total
     CheckoutTests::eq(CheckoutService(s5, pay5, n5).checkout(twoLines), CheckoutStatus::OutOfStock, "duplicate lines counted together");
     CheckoutTests::eq(s5.qty["pen"], 5, "stock untouched after rejected duplicate lines");
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Line {
+    public readonly string Sku; public readonly int Qty;
+    public Line(string sku, int qty) { Sku = sku; Qty = qty; }
+}
+sealed class Cart {
+    public readonly string CustomerEmail; public readonly List<Line> Lines; public readonly double Total;
+    public Cart(string customerEmail, List<Line> lines, double total) { CustomerEmail = customerEmail; Lines = lines; Total = total; }
+}
+enum CheckoutStatus { CONFIRMED, OUT_OF_STOCK, PAYMENT_DECLINED }
+
+// ---- ports owned by the checkout domain ----
+interface IStockReservations { bool Reserve(List<Line> lines); void Release(List<Line> lines); }
+interface IPaymentGateway { bool Charge(double amount, string reference); }
+interface IOrderNotifier { void Confirmed(string email, string orderRef); }
+
+class CheckoutService {
+    private readonly IStockReservations stock; private readonly IPaymentGateway payments; private readonly IOrderNotifier notifier;
+    private int seq = 0;
+    public CheckoutService(IStockReservations s, IPaymentGateway p, IOrderNotifier n) { stock = s; payments = p; notifier = n; }
+
+    public CheckoutStatus Checkout(Cart cart) {
+        if (!stock.Reserve(cart.Lines)) return CheckoutStatus.OUT_OF_STOCK;
+        string reference = "ORD-" + (++seq);
+        if (!payments.Charge(cart.Total, reference)) {
+            stock.Release(cart.Lines);                                // compensation
+            return CheckoutStatus.PAYMENT_DECLINED;
+        }
+        try { notifier.Confirmed(cart.CustomerEmail, reference); }
+        catch (Exception e) { Console.WriteLine("notify failed, queued for retry: " + e.Message); }
+        return CheckoutStatus.CONFIRMED;
+    }
+}
+
+// ---- fakes (an in-memory adapter can also serve local dev) ----
+class InMemoryStock : IStockReservations {
+    public readonly Dictionary<string, int> Qty = new Dictionary<string, int>();
+    public InMemoryStock(Dictionary<string, int> initial) { foreach (var kv in initial) Qty[kv.Key] = kv.Value; }
+    public bool Reserve(List<Line> lines) {
+        Dictionary<string, int> need = new Dictionary<string, int>();                     // two lines may share a sku
+        foreach (Line l in lines) { int n; need.TryGetValue(l.Sku, out n); need[l.Sku] = n + l.Qty; }
+        foreach (var e in need) { int have; Qty.TryGetValue(e.Key, out have); if (have < e.Value) return false; }   // check all first: all-or-nothing
+        foreach (var e in need) Qty[e.Key] -= e.Value;
+        return true;
+    }
+    public void Release(List<Line> lines) { foreach (Line l in lines) { int n; Qty.TryGetValue(l.Sku, out n); Qty[l.Sku] = n + l.Qty; } }
+}
+class ScriptedGateway : IPaymentGateway {
+    private readonly bool approve; public readonly List<string> Charged = new List<string>();
+    public ScriptedGateway(bool approve) { this.approve = approve; }
+    public bool Charge(double amount, string reference) { Charged.Add(reference + ":" + amount); return approve; }
+}
+class TestNotifier : IOrderNotifier {
+    private readonly bool fail; public readonly List<string> Sent = new List<string>();
+    public TestNotifier(bool fail) { this.fail = fail; }
+    public void Confirmed(string email, string reference) { if (fail) throw new InvalidOperationException("SMTP down"); Sent.Add(email + " " + reference); }
+}
+
+class Program {
+    static Cart MakeCart(int qty) { return new Cart("a@b.com", new List<Line> { new Line("pen", qty) }, 20.0 * qty); }
+    static Dictionary<string, int> Pens(int n) { return new Dictionary<string, int> { { "pen", n } }; }
+    static void Eq(object a, object b, string what) { if (!a.Equals(b)) throw new Exception(what + ": " + a + " != " + b); Console.WriteLine("ok " + what); }
+
+    static void Main() {
+        InMemoryStock s1 = new InMemoryStock(Pens(5)); TestNotifier n1 = new TestNotifier(false);
+        Eq(new CheckoutService(s1, new ScriptedGateway(true), n1).Checkout(MakeCart(2)), CheckoutStatus.CONFIRMED, "success");
+        Eq(s1.Qty["pen"], 3, "stock reduced"); Eq(n1.Sent.Count, 1, "email sent");
+
+        InMemoryStock s2 = new InMemoryStock(Pens(5));
+        Eq(new CheckoutService(s2, new ScriptedGateway(true), new TestNotifier(false)).Checkout(MakeCart(9)), CheckoutStatus.OUT_OF_STOCK, "out of stock");
+        Eq(s2.Qty["pen"], 5, "stock untouched");
+
+        InMemoryStock s3 = new InMemoryStock(Pens(5));
+        Eq(new CheckoutService(s3, new ScriptedGateway(false), new TestNotifier(false)).Checkout(MakeCart(2)), CheckoutStatus.PAYMENT_DECLINED, "declined");
+        Eq(s3.Qty["pen"], 5, "stock released after decline");
+
+        InMemoryStock s4 = new InMemoryStock(Pens(5));
+        Eq(new CheckoutService(s4, new ScriptedGateway(true), new TestNotifier(true)).Checkout(MakeCart(1)), CheckoutStatus.CONFIRMED, "email failure tolerated");
+
+        InMemoryStock s5 = new InMemoryStock(Pens(5));
+        Cart twoLines = new Cart("a@b.com", new List<Line> { new Line("pen", 3), new Line("pen", 3) }, 120.0);   // 6 pens in total
+        Eq(new CheckoutService(s5, new ScriptedGateway(true), new TestNotifier(false)).Checkout(twoLines), CheckoutStatus.OUT_OF_STOCK, "duplicate lines counted together");
+        Eq(s5.Qty["pen"], 5, "stock untouched after rejected duplicate lines");
+    }
 }` }
         ],
       complexity: `<p>O(lines) per checkout. Four business scenarios verified in milliseconds; vendor swaps (Razorpay → Stripe, SMTP → SES) are new adapters only.</p>`,
