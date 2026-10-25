@@ -16,9 +16,18 @@ const TRUSTED = ['freeCodeCamp.org', 'NeetCode', 'NeetCodeIO', 'Abdul Bari', 'ta
 const LANGS = { java: { name: 'Java', re: /\bjava\b/i }, python: { name: 'Python', re: /\bpython\b/i }, js: { name: 'JavaScript', re: /\b(javascript|js|node\.?js|typescript)\b/i }, cpp: { name: 'C++', re: /(c\+\+|\bcpp\b)/i }, csharp: { name: 'C#', re: /(c#|\bc ?sharp\b|\.net\b|\bdotnet\b)/i } };
 const LANG_TRACKS = ['dsa', 'lld'];
 
+// A topic with no good match is retried after this many days (YouTube keeps adding videos); older misses without a date retry now.
+const RETRY_DAYS = 30;
+const today = () => new Date().toISOString().slice(0, 10);
+function due(miss) { return !miss.at || (Date.parse(today()) - Date.parse(miss.at)) / 864e5 >= RETRY_DAYS; }
 function strip(s) { return String(s || '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim(); }
 function seconds(iso) { const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || ''); return m ? (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0) : 0; }
-function words(s) { return strip(s).toLowerCase().split(/[^a-z0-9+#]+/).filter((w) => w.length > 3); }
+// Topic notes in brackets ("BST search (and min, max)") are dropped from queries and matching; acronyms such as BST,
+// DFS or LRU count as words even though they are short.
+function core(s) { return strip(s).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim() || strip(s); }
+function words(s) {
+  return strip(s).split(/[^A-Za-z0-9+#]+/).filter((w) => w.length > 3 || /^[A-Z][A-Z0-9+#]{1,4}$/.test(w) || /^(c\+\+|c#)$/i.test(w)).map((w) => w.toLowerCase());
+}
 
 function topics() {
   const ctx = { console, MODULES: [], window: {} };
@@ -33,7 +42,7 @@ function topics() {
     vm.runInContext(fs.readFileSync(f, 'utf8'), ctx, { filename: f });
     const m = ctx.MODULES[0];
     if (!m) return;
-    (m.topics || []).forEach((tp, i) => out.push({ id: pm.id + '-t' + i, title: strip(tp.title), trackId: t.id, query: ((QUERY_PREFIX[t.id] || '') + ' ' + strip(tp.title)).trim().slice(0, 120), track: ti, module: mi, topic: i }));
+    (m.topics || []).forEach((tp, i) => out.push({ id: pm.id + '-t' + i, title: strip(tp.title), trackId: t.id, query: ((QUERY_PREFIX[t.id] || '') + ' ' + core(tp.title)).trim().slice(0, 120), track: ti, module: mi, topic: i }));
   }));
   return out;
 }
@@ -46,11 +55,11 @@ function searchOrder(list) {
 
 // Scores the candidates for one topic and returns the best one, or null when none qualifies.
 function pick(cands, topicTitle) {
-  const want = words(topicTitle);
+  const want = words(core(topicTitle));
   let best = null;
   cands.forEach((c, rank) => {
     if (!c.embeddable || c.privacy !== 'public' || c.live) return;
-    if (c.secs < 180 || c.secs > 2700) return;
+    if (c.secs < 180 || c.secs > 5400) return; // 3 to 90 minutes
     const have = new Set(words(c.title)), overlap = want.length ? want.filter((w) => have.has(w)).length / want.length : 0;
     if (want.length && overlap < 0.35) return;
     let s = Math.log10((c.views || 0) + 1) + Math.min(1.5, c.views ? (c.likes || 0) / c.views * 40 : 0) + overlap * 2 - rank * 0.25;
@@ -75,36 +84,38 @@ async function details(ids) {
   if (!ids.length) return [];
   const d = await api('videos', { part: 'snippet,contentDetails,statistics,status', id: ids.join(','), maxResults: 50 });
   return (d.items || []).map((v) => ({
-    id: v.id, title: v.snippet.title, channel: v.snippet.channelTitle, lang: v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || '',
+    id: v.id, title: v.snippet.title, channel: v.snippet.channelTitle, desc: v.snippet.description || '', lang: v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || '',
     live: v.snippet.liveBroadcastContent !== 'none', secs: seconds(v.contentDetails.duration), views: +v.statistics.viewCount || 0, likes: +v.statistics.likeCount || 0,
     embeddable: !!v.status.embeddable, privacy: v.status.privacyStatus
   }));
 }
 
 async function searchBest(query, title, lang) {
-  const s = await api('search', { part: 'snippet', q: query, type: 'video', maxResults: 8, videoEmbeddable: 'true', videoSyndicated: 'true', safeSearch: 'strict', relevanceLanguage: 'en' });
+  const s = await api('search', { part: 'snippet', q: query, type: 'video', maxResults: lang ? 15 : 8, videoEmbeddable: 'true', videoSyndicated: 'true', safeSearch: 'strict', relevanceLanguage: 'en' });
   const order = (s.items || []).map((x) => x.id.videoId).filter(Boolean), info = {};
   (await details(order)).forEach((v) => { info[v.id] = v; });
   let cands = order.map((id) => info[id]).filter(Boolean);
-  if (lang) cands = cands.filter((c) => LANGS[lang].re.test(c.title + ' ' + c.channel));
+  // The language may be named in the title, the channel or the description ("Code in Java: ...").
+  if (lang) cands = cands.filter((c) => LANGS[lang].re.test(c.title + ' ' + c.channel + ' ' + String(c.desc || '').slice(0, 400)));
   return pick(cands, title);
 }
 
 // Topics in the language-dependent tracks (dsa, lld) that have no byLang[lang] pick yet, in searchOrder.
 function langTodo(all, db, lang) {
-  return searchOrder(all.filter((t) => LANG_TRACKS.indexOf(t.trackId) >= 0 && !(db.videos[t.id] && db.videos[t.id].byLang && db.videos[t.id].byLang[lang])));
+  const pickOf = (t) => db.videos[t.id] && db.videos[t.id].byLang && db.videos[t.id].byLang[lang];
+  return searchOrder(all.filter((t) => LANG_TRACKS.indexOf(t.trackId) >= 0 && (!pickOf(t) || (!pickOf(t).id && due(pickOf(t))))));
 }
 async function searchLang(db, all, lang, max) {
   const todo = langTodo(all, db, lang).slice(0, max);
   let found = 0, none = 0, searched = 0;
   for (const t of todo) {
     try {
-      const best = await searchBest(LANGS[lang].name + ' ' + t.title, t.title, lang);
+      const best = await searchBest(LANGS[lang].name + ' ' + core(t.title), t.title, lang);
       searched++;
       const e = db.videos[t.id] || (db.videos[t.id] = { t: t.title });
       e.byLang = e.byLang || {};
       if (best) { e.byLang[lang] = { id: best.id, title: best.title, channel: best.channel, secs: best.secs }; found++; }
-      else { e.byLang[lang] = { id: null }; none++; }
+      else { e.byLang[lang] = { id: null, at: today() }; none++; }
     } catch (e) {
       if (e.quota) { console.log('quota reached, stopping'); break; }
       console.warn('skip ' + t.id + ': ' + e.message);
@@ -125,6 +136,38 @@ function save(db) {
   const sorted = {}; Object.keys(db.videos).sort().forEach((k) => { sorted[k] = db.videos[k]; });
   fs.mkdirSync(path.dirname(FILE), { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify({ v: 1, videos: sorted }, null, 1) + '\n');
+}
+
+// The default (language-neutral) pass. An entry that only holds byLang picks (no "id" key) still needs its default
+// search; a dated miss (id null) is retried after RETRY_DAYS; a curated video YouTube no longer serves (available
+// false) gets a searched replacement, with the old pick kept in "was" (an unsuccessful replacement search retries
+// after RETRY_DAYS too).
+function needsDefault(db, t) {
+  const e = db.videos[t.id];
+  if (!e) return true;
+  if (e.curated) return e.available === false && due({ at: e.searchedAt });
+  return e.id === undefined || (e.id === null && due(e));
+}
+async function searchDefault(db, all, max) {
+  const todo = searchOrder(all.filter((t) => needsDefault(db, t))).slice(0, max);
+  let found = 0, none = 0, replaced = 0;
+  for (const t of todo) {
+    try {
+      const best = await searchBest(t.query, t.title, '');
+      const prev = db.videos[t.id], keep = prev && prev.byLang ? { byLang: prev.byLang } : {};
+      if (prev && prev.curated) {
+        if (!best) { prev.searchedAt = today(); none++; continue; } // stays hidden for review until a replacement is found
+        keep.was = { id: prev.id, title: prev.title, channel: prev.channel, note: prev.note, reviewedAt: prev.reviewedAt, replacedAt: today() };
+        replaced++;
+      }
+      if (best) { db.videos[t.id] = Object.assign({ t: t.title, id: best.id, title: best.title, channel: best.channel, secs: best.secs }, keep); found++; }
+      else { db.videos[t.id] = Object.assign({ t: t.title, id: null, at: today() }, keep); none++; }
+    } catch (e) {
+      if (e.quota) { console.log('quota reached, stopping'); break; }
+      console.warn('skip ' + t.id + ': ' + e.message);
+    }
+  }
+  return { found, none, replaced };
 }
 
 async function main() {
@@ -178,25 +221,11 @@ async function main() {
     console.log('lang ' + lang + ': ' + r.found + ' found, ' + r.none + ' with no good match, ' + r.remaining + ' dsa/lld topics still without a ' + LANGS[lang].name + ' pick');
     return;
   }
-  // An entry that only holds byLang picks (no "id" key at all) still needs its default search.
-  const needsDefault = (t) => !db.videos[t.id] || (db.videos[t.id].id === undefined && !db.videos[t.id].curated);
-  const todo = searchOrder(all.filter(needsDefault)).slice(0, max);
-  let found = 0, none = 0;
-  for (const t of todo) {
-    try {
-      const best = await searchBest(t.query, t.title, '');
-      const keep = db.videos[t.id] && db.videos[t.id].byLang ? { byLang: db.videos[t.id].byLang } : {};
-      if (best) { db.videos[t.id] = Object.assign({ t: t.title, id: best.id, title: best.title, channel: best.channel, secs: best.secs }, keep); found++; }
-      else { db.videos[t.id] = Object.assign({ t: t.title, id: null }, keep); none++; }
-    } catch (e) {
-      if (e.quota) { console.log('quota reached, stopping'); break; }
-      console.warn('skip ' + t.id + ': ' + e.message);
-    }
-  }
+  const { found, none, replaced } = await searchDefault(db, all, max);
   save(db);
   const total = all.length, have = Object.keys(db.videos).filter((k) => db.videos[k].id && db.videos[k].available !== false && !db.videos[k].stale).length;
-  console.log('search: ' + found + ' found, ' + none + ' with no good match, ' + removed + ' stale removed · ' + have + '/' + total + ' topics have a video, ' + all.filter((t) => !db.videos[t.id]).length + ' not searched yet');
+  console.log('search: ' + found + ' found (' + replaced + ' replacing removed curated videos), ' + none + ' with no good match, ' + removed + ' stale removed · ' + have + '/' + total + ' topics have a video, ' + all.filter((t) => !db.videos[t.id]).length + ' not searched yet');
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { LANGS, LANG_TRACKS, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };
+module.exports = { LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };

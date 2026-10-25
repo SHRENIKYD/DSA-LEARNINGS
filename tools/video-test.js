@@ -88,6 +88,24 @@ assert.equal(env.window.R.a.id, ID_A);
 delete store['imastery.route'];
 assert.equal(env.window.R.a.id, ID_A, 'no chosen language: default pick');
 
+// A miss is retried once it is RETRY_DAYS old; an undated (older-format) miss retries now.
+{
+  const d = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+  assert.equal(discovery.due({ id: null }), true, 'undated miss is retried');
+  assert.equal(discovery.due({ id: null, at: d(1) }), false, 'fresh miss waits');
+  assert.equal(discovery.due({ id: null, at: d(discovery.RETRY_DAYS) }), true, 'old miss is retried');
+  const all = discovery.topics(), t = all.find((x) => x.trackId === 'dsa');
+  const fresh = { videos: { [t.id]: { t: t.title, byLang: { csharp: { id: null, at: d(1) } } } } };
+  const old = { videos: { [t.id]: { t: t.title, byLang: { csharp: { id: null, at: d(40) } } } } };
+  assert.ok(!discovery.langTodo(all, fresh, 'csharp').some((x) => x.id === t.id), 'fresh language miss is not searched again');
+  assert.ok(discovery.langTodo(all, old, 'csharp').some((x) => x.id === t.id), 'old language miss is searched again');
+}
+
+// Matching: bracketed notes are dropped and short acronyms count as words.
+assert.equal(discovery.core('BST Search & Insert (and Min, Max, Floor, Ceil)'), 'BST Search & Insert');
+assert.deepEqual(discovery.words('DFS on a grid with LRU cache'), ['dfs', 'grid', 'with', 'lru', 'cache']);
+assert.ok(discovery.pick([{ id: 'LONGLECTURE', title: 'BST search and insert full lecture', channel: 'X', embeddable: true, privacy: 'public', live: false, secs: 4800, views: 1000, likes: 50 }], 'BST Search & Insert (and Min, Max)'), 'an 80-minute lecture can be picked');
+
 // find-videos --lang with a mocked YouTube client (no network, no key).
 (async () => {
   const all = discovery.topics(), calls = [];
@@ -112,6 +130,22 @@ assert.equal(env.window.R.a.id, ID_A, 'no chosen language: default pick');
   assert.equal(calls.find((c) => c[0] === 'search')[1].videoEmbeddable, 'true');
   assert(!discovery.langTodo(all, mem, 'python').some((t) => t.id === dsaTopic.id), 'already-picked topics are not searched again');
   assert(discovery.langTodo(all, mem, 'cpp').some((t) => t.id === dsaTopic.id), 'other languages are still todo');
+  // A curated pick YouTube no longer serves is replaced by a searched one; the old pick is kept in "was".
+  const pyMem = { v: 1, videos: {} };
+  const ct = all.find((t) => t.trackId === 'dsa' && t.id !== dsaTopic.id);
+  discovery.setClient(async (endpoint) => endpoint === 'search' ? { items: [{ id: { videoId: 'REPLACEMENT' } }] } : { items: [
+    { id: 'REPLACEMENT', snippet: { title: discovery.core(ct.title) + ' tutorial', channelTitle: 'NeetCode', liveBroadcastContent: 'none' }, contentDetails: { duration: 'PT12M' }, statistics: { viewCount: '9000', likeCount: '400' }, status: { embeddable: true, privacyStatus: 'public' } }] });
+  pyMem.videos[ct.id] = { t: ct.title, id: 'GONEVIDEO01', title: 'Old', channel: 'Old', secs: 300, curated: true, note: 'n', reviewedAt: '2026-01-01', available: false };
+  assert.ok(discovery.needsDefault(pyMem, ct), 'a removed curated video is due for a replacement search');
+  const rr = await discovery.searchDefault(pyMem, all.filter((t) => t.id === ct.id), 5);
+  assert.equal(rr.replaced, 1);
+  assert.equal(pyMem.videos[ct.id].id, 'REPLACEMENT', 'the replacement becomes the shown video');
+  assert.equal(pyMem.videos[ct.id].curated, undefined, 'the replacement is a bot pick, not curated');
+  assert.equal(pyMem.videos[ct.id].was.id, 'GONEVIDEO01', 'the removed curated pick is kept for review');
+  assert.ok(!discovery.needsDefault(pyMem, ct), 'a replaced topic is not searched again');
+  // A dated default miss waits; an undated one is searched.
+  assert.ok(!discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null, at: new Date().toISOString().slice(0, 10) } } }, ct));
+  assert.ok(discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null } } }, ct));
   discovery.setClient(null);
   finish();
 })().catch((e) => { console.error(e); process.exit(1); });
