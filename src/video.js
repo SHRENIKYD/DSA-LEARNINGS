@@ -9,7 +9,7 @@
     // Bare shift/comparison operators (<<, >>) are text, not HTML tags.
     return String(s || '').replace(/<\/?[a-z][a-z0-9]*(?:\s+[^<>]*)?\/?>/gi, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
   }
-  var LANGS = ['java', 'python', 'js', 'cpp'], LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript', cpp: 'C++' };
+  var LANGS = ['java', 'python', 'js', 'cpp', 'csharp'], LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript', cpp: 'C++', csharp: 'C#' };
   var ID = /^[A-Za-z0-9_-]{11}$/;
   function clean(v) {
     var start = time(v.start), end = time(v.end);

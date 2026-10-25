@@ -159,6 +159,28 @@ array<long long, 3> extGcdIter(long long a, long long b) {
         tie(oldT, t) = make_pair(t, oldT - q * t);   // same step on the y-coefficients
     }
     return {oldR, oldS, oldT};
+}` }, { lang: 'csharp', code: `// Recursive Extended Euclid: returns {g, x, y} with a*x + b*y = g = gcd(a, b)
+static long[] ExtGcd(long a, long b) {
+    if (b == 0) return new long[] { a, 1, 0 };     // a*1 + 0*0 = a
+    long[] r = ExtGcd(b, a % b);                   // solves b*x1 + (a % b)*y1 = g
+    long g = r[0], x1 = r[1], y1 = r[2];
+    // substitute a % b = a - (a / b) * b and regroup by a and b
+    return new long[] { g, y1, x1 - (a / b) * y1 };
+}
+
+// Iterative version (no recursion, same answer). Keeps the invariant
+//   oldR = a*oldS + b*oldT   and   r = a*s + b*t   at every step.
+static long[] ExtGcdIter(long a, long b) {
+    long oldR = a, r = b;
+    long oldS = 1, s = 0;
+    long oldT = 0, t = 1;
+    while (r != 0) {
+        long q = oldR / r;
+        long tmp = oldR - q * r; oldR = r; r = tmp;   // plain Euclid step
+        tmp = oldS - q * s;      oldS = s; s = tmp;   // same step on the x-coefficients
+        tmp = oldT - q * t;      oldT = t; t = tmp;   // same step on the y-coefficients
+    }
+    return new long[] { oldR, oldS, oldT };
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): check Bezout on a few pairs', code: `def ext_gcd(a, b):
     """Return (g, x, y) with a*x + b*y == g == gcd(a, b)."""
     if b == 0:
@@ -272,6 +294,12 @@ vector<long long> solve(long long a, long long b, long long c) {
         if (rest % b == 0) return {x, rest / b};
     }
     return {-1, -1};
+}` }, { lang: 'csharp', code: `static long[] Brute(long a, long b, long c) {
+    for (long x = 0; x < b; x++) {                 // x repeats its behaviour every b/g, so b tries suffice
+        long rest = c - a * x;
+        if (rest % b == 0) return new long[] { x, rest / b };
+    }
+    return new long[] { -1, -1 };
 }` }] } },
       mcq: { q: 'You found one solution (x₀, y₀) of 6x + 9y = 21. Which step moves to the next solution while keeping the sum 21?', options: ['x + 3, y − 2', 'x + 9, y − 6 only', 'x + 1, y − 1', 'x + 6, y + 9'], answer: 0, explain: 'Step is b/g = 9/3 = 3 for x and a/g = 6/3 = 2 for y: 6·3 − 9·2 = 0, so the total is unchanged. (x + 9, y − 6) also works but skips solutions.' },
       hints: [`<p>Hint 1: The left side is always a multiple of g = gcd(a, b). So if g does not divide c, return [-1, -1] immediately.</p>`, `<p>Hint 2: Extended Euclid gives a·x + b·y = g. Multiply both by c/g to get one solution (x₀, y₀). All solutions are x₀ + k·(b/g), y₀ − k·(a/g).</p>`, `<p>Hint 3: The smallest non-negative x is <code>x₀ mod (b/g)</code>, taken in [0, b/g). Then y = (c − a·x) / b exactly. Recipe: g, x, y = extGcd(a, b) → check c % g → step = b/g → x = (x·(c/g)) mod step, made non-negative → y = (c − a·x)/b. Use a 64-bit integer: |x·(c/g)| ≤ 10<sup>9</sup>·10<sup>9</sup> fits (JavaScript needs BigInt here).</p>`],
@@ -359,7 +387,26 @@ public:
         long long best = ((x0 % step) + step) % step;
         return {best, (c - a * best) / b};
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    static long[] ExtGcd(long a, long b) {
+        if (b == 0) return new long[] { a, 1, 0 };
+        long[] r = ExtGcd(b, a % b);
+        return new long[] { r[0], r[2], r[1] - (a / b) * r[2] };
+    }
+
+    static long FloorMod(long a, long m) { long r = a % m; return r < 0 ? r + m : r; }
+
+    public long[] Solve(long a, long b, long c) {
+        long[] e = ExtGcd(a, b);
+        long g = e[0], x = e[1];
+        if (c % g != 0) return new long[] { -1, -1 };   // left side is always a multiple of g
+        long step = b / g;                              // x repeats with period b/g
+        long x0 = x * (c / g);                          // |x| <= b/g and c/g <= 1e9: fits in long
+        long bestX = FloorMod(x0, step);                // smallest non-negative member of x0 + k*step
+        long y = (c - a * bestX) / b;                   // exact division by construction
+        return new long[] { bestX, y };
+    }
+}` }],
         dry: { head: ['call', 'q = a/b', 'returns (g, x, y)', 'check'], rows: [
           ['extGcd(3, 0)', '—', '(3, 1, 0)', '3·1 = 3'],
           ['extGcd(6, 3)', '2', '(3, 0, 1 − 2·0 = 1)', '6·0 + 3·1 = 3'],
@@ -570,6 +617,49 @@ vector<long long> inverseTable(int n, long long p) {
         inv[i] = (p - p / i) % p * inv[p % i] % p;
     }
     return inv;
+}` }, { lang: 'csharp', code: `const long MOD = 1000000007L;
+
+// Fast power: base^exp mod m in O(log exp). Uses long; safe because m <= ~3e9 keeps products < 9.2e18.
+static long Power(long b, long exp, long m) {
+    long result = 1 % m;
+    b %= m;
+    if (b < 0) b += m;
+    while (exp > 0) {
+        if ((exp & 1) == 1) result = result * b % m;      // this bit is set: multiply it in
+        b = b * b % m;                                    // square for the next bit
+        exp >>= 1;
+    }
+    return result;
+}
+
+// Method 1: Fermat. Only valid when p is prime and a % p != 0.
+static long InvFermat(long a, long p) {
+    return Power(a, p - 2, p);
+}
+
+static long FloorMod(long a, long m) { long r = a % m; return r < 0 ? r + m : r; }
+
+// Method 2: Extended Euclid. Valid for any m when gcd(a, m) == 1. Returns -1 if no inverse.
+static long InvExtGcd(long a, long m) {
+    long oldR = FloorMod(a, m), r = m, oldS = 1, s = 0;
+    while (r != 0) {
+        long q = oldR / r;
+        long t = oldR - q * r; oldR = r; r = t;
+        t = oldS - q * s; oldS = s; s = t;
+    }
+    if (oldR != 1) return -1;              // gcd(a, m) != 1: no inverse exists
+    return FloorMod(oldS, m);              // make it land in [0, m)
+}
+
+// Method 3: all inverses 1..n mod prime p in O(n). Needs n < p.
+static long[] InverseTable(int n, long p) {
+    long[] inv = new long[n + 1];
+    inv[1] = 1;
+    for (int i = 2; i <= n; i++) {
+        // p = (p / i) * i + (p % i)  ->  0 = (p / i) * i + (p % i)  (mod p)  -> solve for 1/i
+        inv[i] = (p - p / i) % p * inv[(int)(p % i)] % p;
+    }
+    return inv;
 }` }] }, { lang: 'java', code: `// nCr mod p with factorials + inverse factorials: O(N) precompute, O(1) per query
 static final int MAXN = 1_000_000;
 static final long P = 1_000_000_007L;
@@ -652,6 +742,27 @@ void precompute() {
 }
 
 long long nCr(int n, int r) {
+    if (r < 0 || r > n) return 0;
+    return fact[n] * invFact[r] % P * invFact[n - r] % P;
+}` }, { lang: 'csharp', code: `// nCr mod p with factorials + inverse factorials: O(N) precompute, O(1) per query
+const int MAXN = 1000000;
+const long P = 1000000007L;
+static long[] fact = new long[MAXN + 1], invFact = new long[MAXN + 1];
+
+static long Pw(long b, long e) {
+    long r = 1; b %= P;
+    while (e > 0) { if ((e & 1) == 1) r = r * b % P; b = b * b % P; e >>= 1; }
+    return r;
+}
+
+static void Precompute() {
+    fact[0] = 1;
+    for (int i = 1; i <= MAXN; i++) fact[i] = fact[i - 1] * i % P;
+    invFact[MAXN] = Pw(fact[MAXN], P - 2);                 // ONE Fermat inverse
+    for (int i = MAXN; i > 0; i--) invFact[i - 1] = invFact[i] * i % P;   // 1/(i-1)! = i / i!
+}
+
+static long NCr(int n, int r) {
     if (r < 0 || r > n) return 0;
     return fact[n] * invFact[r] % P * invFact[n - r] % P;
 }` }] }],
@@ -750,6 +861,15 @@ function pascal(n, mod) {
 vector<vector<long long>> pascal(int n, long long mod) {
     vector<vector<long long>> c(n + 1, vector<long long>(n + 1, 0));
     for (int i = 0; i <= n; i++) {
+        c[i][0] = 1;
+        for (int j = 1; j <= i; j++) c[i][j] = (c[i - 1][j - 1] + c[i - 1][j]) % mod;
+    }
+    return c;
+}` }, { lang: 'csharp', code: `// Pascal's triangle: correct but O(N^2) time and memory - only fine for N <= ~5000
+static long[][] Pascal(int n, long mod) {
+    long[][] c = new long[n + 1][];
+    for (int i = 0; i <= n; i++) {
+        c[i] = new long[n + 1];
         c[i][0] = 1;
         for (int j = 1; j <= i; j++) c[i][j] = (c[i - 1][j - 1] + c[i - 1][j]) % mod;
     }
@@ -868,7 +988,37 @@ public:
         }
         return out;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    const long P = 1000000007L;
+    long[] fact, invFact;
+
+    long Pw(long b, long e) {
+        long r = 1; b %= P;
+        while (e > 0) { if ((e & 1) == 1) r = r * b % P; b = b * b % P; e >>= 1; }
+        return r;
+    }
+
+    void Build(int max) {
+        fact = new long[max + 1];
+        invFact = new long[max + 1];
+        fact[0] = 1;
+        for (int i = 1; i <= max; i++) fact[i] = fact[i - 1] * i % P;
+        invFact[max] = Pw(fact[max], P - 2);
+        for (int i = max; i > 0; i--) invFact[i - 1] = invFact[i] * i % P;
+    }
+
+    public long[] Answer(int[][] queries) {
+        int max = 1;
+        foreach (var q in queries) max = Math.Max(max, q[0]);
+        Build(max);
+        long[] res = new long[queries.Length];
+        for (int i = 0; i < queries.Length; i++) {
+            int n = queries[i][0], r = queries[i][1];
+            res[i] = (r < 0 || r > n) ? 0 : fact[n] * invFact[r] % P * invFact[n - r] % P;
+        }
+        return res;
+    }
+}` }],
         dry: { head: ['step', 'value', 'why'], rows: [
           ['fact[5]', '120', '1·2·3·4·5'],
           ['invFact[2]', '500000004', '= 1/2 mod p'],
@@ -1007,6 +1157,29 @@ vector<int> phiSieve(int N) {
         }
     }
     return phi;
+}` }, { lang: 'csharp', code: `// phi(n) for a single n in O(sqrt n)
+static long Phi(long n) {
+    long result = n;
+    for (long p = 2; p * p <= n; p++) {
+        if (n % p == 0) {                    // p is a prime factor (smaller factors already removed)
+            while (n % p == 0) n /= p;       // strip every copy of p
+            result -= result / p;            // result *= (1 - 1/p), exact in integers
+        }
+    }
+    if (n > 1) result -= result / n;         // leftover n is a prime > sqrt(original n)
+    return result;
+}
+
+// phi for every number 0..N with a sieve, O(N log log N)
+static int[] PhiSieve(int N) {
+    int[] phi = new int[N + 1];
+    for (int i = 0; i <= N; i++) phi[i] = i;
+    for (int p = 2; p <= N; p++) {
+        if (phi[p] == p) {                   // untouched so far => p is prime
+            for (int j = p; j <= N; j += p) phi[j] -= phi[j] / p;
+        }
+    }
+    return phi;
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): formula vs brute force', code: `from math import gcd
 
 def phi(n):
@@ -1111,7 +1284,14 @@ long long countFractions(int N) {
         for (int n = 1; n < d; n++)
             if (gcd(n, d) == 1) count++;
     return count;
-}` }] } },
+}` }, { lang: 'csharp', code: `static long Brute(int N) {
+    long count = 0;
+    for (int d = 2; d <= N; d++)
+        for (int n = 1; n < d; n++)
+            if (Gcd(n, d) == 1) count++;
+    return count;
+}
+static int Gcd(int a, int b) { return b == 0 ? a : Gcd(b, a % b); }` }] } },
       mcq: { q: 'For a fixed denominator d, how many reduced proper fractions n/d exist?', options: ['φ(d)', 'd − 1', 'number of divisors of d', 'd / 2'], answer: 0, explain: 'n ranges over 1..d−1 with gcd(n, d) = 1, which is exactly φ(d) for d ≥ 2.' },
       hints: [`<p>Hint 1: Fix the denominator d. The numerators that work are exactly the numbers below d that are coprime with d — that is φ(d).</p>`, `<p>Hint 2: So the answer is φ(2) + φ(3) + … + φ(N). Compute all φ values at once with a sieve.</p>`, `<p>Hint 3: phi[i] = i; for each prime p (phi[p] == p) and each multiple j: phi[j] -= phi[j]/p. Sum into a 64-bit integer. Store phi in a 32-bit integer array (10<sup>7</sup> entries = 40 MB), not a 64-bit one.</p>`],
       tests: { sig: 'int -> long', fn: 'countFractions', cases: [
@@ -1178,7 +1358,20 @@ public:
         for (int d = 2; d <= N; d++) total += phi[d];
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long CountFractions(int N) {
+        int[] phi = new int[N + 1];
+        for (int i = 0; i <= N; i++) phi[i] = i;
+        for (int p = 2; p <= N; p++) {
+            if (phi[p] == p) {                       // p is prime
+                for (int j = p; j <= N; j += p) phi[j] -= phi[j] / p;
+            }
+        }
+        long total = 0;
+        for (int d = 2; d <= N; d++) total += phi[d];
+        return total;
+    }
+}` }],
         dry: { head: ['step', 'phi[2..8] after the step', 'note'], rows: [
           ['init', '2 3 4 5 6 7 8', 'phi[i] = i'],
           ['p = 2', '<b>1</b> 3 <b>2</b> 5 <b>3</b> 7 <b>4</b>', 'halve 2, 4, 6, 8'],
@@ -1359,6 +1552,45 @@ long long crt(const vector<long long>& a, const vector<long long>& m) {
         cur = *next;
     }
     return cur.first;
+}` }, { lang: 'csharp', code: `// General CRT: merge x = a1 (mod m1) and x = a2 (mod m2), moduli may share factors.
+// Returns {x, lcm} with 0 <= x < lcm, or null if the system has no solution.
+static long[] ExtGcd(long a, long b) {
+    long oldR = a, r = b, oldS = 1, s = 0;
+    while (r != 0) {
+        long q = oldR / r, t;
+        t = oldR - q * r; oldR = r; r = t;
+        t = oldS - q * s; oldS = s; s = t;
+    }
+    return new long[] { oldR, oldS };       // oldR = gcd, a*oldS = gcd (mod b)
+}
+
+static long FloorMod(long a, long m) { long r = a % m; return r < 0 ? r + m : r; }
+
+static long MulMod(long a, long b, long m) {  // overflow-safe (a*b) mod m
+    return (long)((System.Numerics.BigInteger)a * b % m);
+}
+
+static long[] CrtMerge(long a1, long m1, long a2, long m2) {
+    a1 = FloorMod(a1, m1);
+    a2 = FloorMod(a2, m2);
+    long[] e = ExtGcd(m1, m2);
+    long g = e[0], inv = e[1];              // m1 * inv = g (mod m2)
+    long diff = a2 - a1;
+    if (diff % g != 0) return null;          // the two clocks never agree
+    long m2g = m2 / g;
+    // k = (diff / g) * (m1 / g)^-1 mod (m2 / g); inv already plays the role of (m1/g)^-1
+    long k = MulMod(FloorMod(diff / g, m2g), FloorMod(inv, m2g), m2g);
+    long lcm = m1 / g * m2;                  // caller guarantees this fits in a long
+    return new long[] { a1 + m1 * k, lcm };  // a1 + m1*k < m1 + m1*(m2/g - 1) <= lcm
+}
+
+static long Crt(long[] a, long[] m) {
+    long[] cur = { 0, 1 };                   // x = 0 (mod 1): no constraint yet
+    for (int i = 0; i < a.Length; i++) {
+        cur = CrtMerge(cur[0], cur[1], a[i], m[i]);
+        if (cur == null) return -1;
+    }
+    return cur[0];
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): classic formula vs general merge', code: `from math import gcd
 
 def crt_coprime(a, m):
@@ -1491,6 +1723,13 @@ long long solve(vector<long long>& a, vector<long long>& m, long long limit) {
         if (ok) return x;
     }
     return -1;
+}` }, { lang: 'csharp', code: `static long Brute(long[] a, long[] m, long limit) {
+    for (long x = 0; x < limit; x++) {
+        bool ok = true;
+        for (int i = 0; i < a.Length && ok; i++) ok = (x % m[i] == a[i]);
+        if (ok) return x;
+    }
+    return -1;
 }` }] } },
       mcq: { q: 'Merging x ≡ 3 (mod 8) with x ≡ 7 (mod 12). What happens?', options: ['Solvable: x ≡ 19 (mod 24)', 'No solution because gcd(8,12) = 4 does not divide 4', 'Solvable: x ≡ 19 (mod 96)', 'Need the moduli to be coprime, so CRT does not apply'], answer: 0, explain: 'g = 4 divides 7 − 3 = 4, so a solution exists. Jumping 3, 11, 19: 19 mod 12 = 7 ✓. New modulus is lcm(8, 12) = 24, not 96.' },
       hints: [`<p>Hint 1: Merge two congruences at a time into one: x ≡ a (mod L). After processing all of them you have the full answer.</p>`, `<p>Hint 2: x = a₁ + m₁k, so m₁k ≡ a₂ − a₁ (mod m₂). With g = gcd(m₁, m₂): no solution unless g | (a₂ − a₁); otherwise k ≡ ((a₂−a₁)/g)·(m₁/g)<sup>−1</sup> (mod m₂/g).</p>`, `<p>Hint 3: Start with (0 mod 1). Reduce factors before multiplying and use a safe mulmod (values reach 10<sup>18</sup>). The merged residue a₁ + m₁k is already in [0, lcm).</p>`],
@@ -1615,7 +1854,40 @@ public:
         }
         return cur;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Numerics;
+
+public class Solution {
+    static long[] ExtGcd(long a, long b) {
+        long oldR = a, r = b, oldS = 1, s = 0;
+        while (r != 0) {
+            long q = oldR / r, t;
+            t = oldR - q * r; oldR = r; r = t;
+            t = oldS - q * s; oldS = s; s = t;
+        }
+        return new long[] { oldR, oldS };
+    }
+
+    static long FloorMod(long a, long m) { long r = a % m; return r < 0 ? r + m : r; }
+
+    static long MulMod(long a, long b, long m) {
+        return (long)((BigInteger)a * b % m);
+    }
+
+    public long Solve(long[] a, long[] m) {
+        long cur = 0, L = 1;                          // x = 0 (mod 1)
+        for (int i = 0; i < a.Length; i++) {
+            long[] e = ExtGcd(L, m[i]);
+            long g = e[0], inv = e[1];                // L * inv = g (mod m[i])
+            long diff = a[i] - cur;
+            if (diff % g != 0) return -1;             // contradiction
+            long mg = m[i] / g;
+            long k = MulMod(FloorMod(diff / g, mg), FloorMod(inv, mg), mg);
+            cur = cur + L * k;                        // < lcm, fits by the guarantee
+            L = L / g * m[i];
+        }
+        return cur;
+    }
+}` }],
         dry: { head: ['merge', 'extGcd → (g, inv)', 'diff', 'k', 'new (x mod L)'], rows: [
           ['start', '—', '—', '—', '(0 mod 1)'],
           ['+ (2 mod 3)', 'extGcd(1,3) = (1, 1)', '2', '2·1 mod 3 = 2', '(0 + 1·2 = 2 mod 3)'],
@@ -1789,6 +2061,40 @@ long long fib(long long n) {
     if (n == 0) return 0;
     Matrix T = {{1, 1}, {1, 0}};
     return matPow(T, n)[0][1];                         // T^n = [[F(n+1), F(n)], [F(n), F(n-1)]]
+}` }, { lang: 'csharp', code: `const long MOD = 1000000007L;
+
+// C = A * B (mod MOD) for square matrices
+static long[][] Multiply(long[][] A, long[][] B) {
+    int k = A.Length;
+    long[][] C = new long[k][];
+    for (int i = 0; i < k; i++) C[i] = new long[k];
+    for (int i = 0; i < k; i++)
+        for (int t = 0; t < k; t++) {
+            if (A[i][t] == 0) continue;               // small speed-up for sparse matrices
+            long a = A[i][t];
+            for (int j = 0; j < k; j++) C[i][j] = (C[i][j] + a * B[t][j]) % MOD;
+        }
+    return C;
+}
+
+// M^p by repeated squaring: O(k^3 log p)
+static long[][] MatPow(long[][] M, long p) {
+    int k = M.Length;
+    long[][] result = new long[k][];
+    for (int i = 0; i < k; i++) { result[i] = new long[k]; result[i][i] = 1; }   // identity matrix = "do nothing"
+    while (p > 0) {
+        if ((p & 1) == 1) result = Multiply(result, M);
+        M = Multiply(M, M);
+        p >>= 1;
+    }
+    return result;
+}
+
+// F(n) mod MOD for n up to 1e18
+static long Fib(long n) {
+    if (n == 0) return 0;
+    long[][] T = { new long[] { 1, 1 }, new long[] { 1, 0 } };
+    return MatPow(T, n)[0][1];                       // T^n = [[F(n+1), F(n)], [F(n), F(n-1)]]
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): Fibonacci and a 3-term recurrence', code: `MOD = 10**9 + 7
 
 def mat_mul(A, B):
@@ -1918,6 +2224,16 @@ long long tribonacci(long long n) {
         a = b; b = c; c = d;
     }
     return c;
+}` }, { lang: 'csharp', code: `static long Brute(long n) {
+    const long MOD = 1000000007L;
+    if (n == 0) return 0;
+    if (n <= 2) return 1;
+    long a = 0, b = 1, c = 1;                  // T(i-3), T(i-2), T(i-1)
+    for (long i = 3; i <= n; i++) {
+        long d = (a + b + c) % MOD;
+        a = b; b = c; c = d;
+    }
+    return c;
 }` }] } },
       mcq: { q: 'Which 3×3 matrix M makes [T(n+1), T(n), T(n−1)] = M · [T(n), T(n−1), T(n−2)]?', options: ['[[1,1,1],[1,0,0],[0,1,0]]', '[[1,1,1],[0,1,0],[0,0,1]]', '[[0,1,0],[0,0,1],[1,1,1]]', '[[1,0,0],[1,1,0],[1,1,1]]'], answer: 0, explain: 'Row 1 sums all three previous values; row 2 copies T(n) down; row 3 copies T(n−1) down. Option 3 also describes Tribonacci but for a state written in the opposite order [T(n−2), T(n−1), T(n)].' },
       hints: [`<p>Hint 1: The step from (T(n), T(n−1), T(n−2)) to (T(n+1), T(n), T(n−1)) is the same linear map every time → a 3×3 matrix.</p>`, `<p>Hint 2: With v = [T(2), T(1), T(0)] = [1, 1, 0], M<sup>n</sup>·v = [T(n+2), T(n+1), T(n)]. So T(n) is the last entry: M<sup>n</sup>[2][0]·1 + M<sup>n</sup>[2][1]·1.</p>`, `<p>Hint 3: Binary exponentiation of M, mod after every multiply. n = 0 must return 0 (identity matrix works automatically). Recipe: build M, P = M<sup>n</sup>, answer = (P[2][0] + P[2][1]) % MOD.</p>`],
@@ -2032,7 +2348,33 @@ public:
         }
         return (P[2][0] + P[2][1]) % MOD;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    const long MOD = 1000000007L;
+
+    long[][] Mul(long[][] A, long[][] B) {
+        int k = A.Length;
+        long[][] C = new long[k][];
+        for (int i = 0; i < k; i++) C[i] = new long[k];
+        for (int i = 0; i < k; i++)
+            for (int t = 0; t < k; t++)
+                for (int j = 0; j < k; j++)
+                    C[i][j] = (C[i][j] + A[i][t] * B[t][j]) % MOD;
+        return C;
+    }
+
+    public long Tribonacci(long n) {
+        long[][] M = { new long[] { 1, 1, 1 }, new long[] { 1, 0, 0 }, new long[] { 0, 1, 0 } };
+        long[][] P = { new long[] { 1, 0, 0 }, new long[] { 0, 1, 0 }, new long[] { 0, 0, 1 } };   // identity
+        long e = n;
+        while (e > 0) {
+            if ((e & 1) == 1) P = Mul(P, M);
+            M = Mul(M, M);
+            e >>= 1;
+        }
+        // P * [T(2), T(1), T(0)] = P * [1, 1, 0]; last row gives T(n)
+        return (P[2][0] + P[2][1]) % MOD;
+    }
+}` }],
         dry: { head: ['k', 'M^k · [1, 1, 0]', 'last entry = T(k)'], rows: [
           ['0', '[1, 1, 0]', '0'],
           ['1', '[2, 1, 1]', '1'],
@@ -2213,6 +2555,38 @@ long long countCoprime(long long N, long long M) {
         if (M % p == 0) { primes.push_back(p); while (M % p == 0) M /= p; }
     if (M > 1) primes.push_back(M);
     return N - countDivisibleByAny(N, primes);
+}` }, { lang: 'csharp', code: `// How many integers in [1, N] are divisible by at least one of a[0..k-1]?  O(2^k * k * log)
+static long CountDivisibleByAny(long N, long[] a) {
+    int k = a.Length;
+    long total = 0;
+    for (int mask = 1; mask < (1 << k); mask++) {
+        long l = 1;
+        bool tooBig = false;
+        for (int i = 0; i < k && !tooBig; i++) {
+            if ((mask >> i & 1) == 0) continue;
+            long g = Gcd(l, a[i]);
+            // l / g * a[i] > N  <=>  l / g > N / a[i]   (avoids overflow)
+            if (l / g > N / a[i]) tooBig = true;
+            else l = l / g * a[i];
+        }
+        if (tooBig) continue;                       // floor(N / lcm) would be 0
+        long term = N / l;
+        if (BitCount(mask) % 2 == 1) total += term;   // odd group size: add
+        else total -= term;                           // even group size: subtract
+    }
+    return total;
+}
+
+static int BitCount(int x) { int c = 0; for (; x != 0; x &= x - 1) c++; return c; }
+static long Gcd(long a, long b) { return b == 0 ? a : Gcd(b, a % b); }
+
+// Numbers in [1, N] coprime with M: complement of "divisible by some prime factor of M"
+static long CountCoprime(long N, long M) {
+    var primes = new List<long>();
+    for (long p = 2; p * p <= M; p++)
+        if (M % p == 0) { primes.Add(p); while (M % p == 0) M /= p; }
+    if (M > 1) primes.Add(M);
+    return N - CountDivisibleByAny(N, primes.ToArray());
 }` }] }, { lang: 'java', code: `// Derangements D(n) mod p with the recurrence D(n) = (n - 1) * (D(n-1) + D(n-2))
 static long derangements(int n, long p) {
     if (n == 0) return 1;
@@ -2251,6 +2625,16 @@ long long derangements(int n, long long p) {
     long long d2 = 1, d1 = 0;                // D(0), D(1)
     for (int i = 2; i <= n; i++) {
         long long d = (long long)(i - 1) % p * ((d1 + d2) % p) % p;
+        d2 = d1; d1 = d;
+    }
+    return d1;
+}` }, { lang: 'csharp', code: `// Derangements D(n) mod p with the recurrence D(n) = (n - 1) * (D(n-1) + D(n-2))
+static long Derangements(int n, long p) {
+    if (n == 0) return 1;
+    if (n == 1) return 0;
+    long d2 = 1, d1 = 0;                 // D(0), D(1)
+    for (int i = 2; i <= n; i++) {
+        long d = (long)(i - 1) % p * ((d1 + d2) % p) % p;
         d2 = d1; d1 = d;
     }
     return d1;
@@ -2348,6 +2732,14 @@ long long countAny(long long N, vector<long long>& a) {
     long long count = 0;
     for (long long x = 1; x <= N; x++) {
         for (long long d : a) {
+            if (x % d == 0) { count++; break; }
+        }
+    }
+    return count;
+}` }, { lang: 'csharp', code: `static long Brute(long N, long[] a) {
+    long count = 0;
+    for (long x = 1; x <= N; x++) {
+        foreach (long d in a) {
             if (x % d == 0) { count++; break; }
         }
     }
@@ -2458,7 +2850,29 @@ public:
         }
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    static long Gcd(long a, long b) { return b == 0 ? a : Gcd(b, a % b); }
+    static int BitCount(int x) { int c = 0; for (; x != 0; x &= x - 1) c++; return c; }
+
+    public long CountAny(long N, long[] a) {
+        int k = a.Length;
+        long total = 0;
+        for (int mask = 1; mask < (1 << k); mask++) {
+            long l = 1;
+            bool big = false;
+            for (int i = 0; i < k; i++) {
+                if ((mask >> i & 1) == 0) continue;
+                long g = Gcd(l, a[i]);
+                if (l / g > N / a[i]) { big = true; break; }   // lcm would exceed N
+                l = l / g * a[i];
+            }
+            if (big) continue;
+            if (BitCount(mask) % 2 == 1) total += N / l;
+            else total -= N / l;
+        }
+        return total;
+    }
+}` }],
         dry: { head: ['mask', 'group', 'lcm', 'sign', 'term', 'running'], rows: [
           ['001', '{2}', '2', '+', '15', '15'], ['010', '{3}', '3', '+', '10', '25'], ['011', '{2,3}', '6', '−', '5', '20'], ['100', '{5}', '5', '+', '6', '26'], ['101', '{2,5}', '10', '−', '3', '23'], ['110', '{3,5}', '15', '−', '2', '21'], ['111', '{2,3,5}', '30', '+', '1', '<b>22</b>']
         ] },
@@ -2598,6 +3012,29 @@ long long catalanMod(int n, long long p) {
     for (size_t i = 1; i < fact.size(); i++) fact[i] = fact[i - 1] * i % p;
     long long denom = fact[n + 1] * fact[n] % p;     // (n+1)! * n!  so  C_n = (2n)! / ((n+1)! n!)
     return fact[2 * n] * power(denom, p - 2, p) % p;
+}` }, { lang: 'csharp', code: `// O(n^2) DP straight from the recurrence (exact up to n = 35 in a long)
+static long[] CatalanDP(int n) {
+    long[] c = new long[n + 1];
+    c[0] = 1;
+    for (int m = 1; m <= n; m++)
+        for (int i = 0; i < m; i++)
+            c[m] += c[i] * c[m - 1 - i];    // left part has i pairs, right part has m-1-i
+    return c;
+}
+
+// O(n) closed form mod a prime: C(2n, n) / (n + 1)
+static long CatalanMod(int n, long p) {
+    long[] fact = new long[2 * n + 2];
+    fact[0] = 1;
+    for (int i = 1; i < fact.Length; i++) fact[i] = fact[i - 1] * i % p;
+    long denom = fact[n + 1] * fact[n] % p;          // (n+1)! * n!  so  C_n = (2n)! / ((n+1)! n!)
+    return fact[2 * n] * Power(denom, p - 2, p) % p;
+}
+
+static long Power(long b, long e, long m) {
+    long r = 1; b %= m;
+    while (e > 0) { if ((e & 1) == 1) r = r * b % m; b = b * b % m; e >>= 1; }
+    return r;
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): three formulas agree with brute force', code: `from math import comb
 from itertools import product
 
@@ -2700,6 +3137,12 @@ long long numTrees(int n) {
     for (int root = 1; root <= n; root++)
         total += numTrees(root - 1) * numTrees(n - root);   // recomputes the same sizes many times
     return total;
+}` }, { lang: 'csharp', code: `static long CountTrees(int n) {
+    if (n <= 1) return 1;                        // empty tree or a single node
+    long total = 0;
+    for (int root = 1; root <= n; root++)
+        total += CountTrees(root - 1) * CountTrees(n - root);   // recomputes the same sizes many times
+    return total;
 }` }] } },
       mcq: { q: 'With n keys and root k, how many keys go into the left subtree?', options: ['k − 1', 'n − k', 'k', 'n / 2'], answer: 0, explain: 'Every key smaller than k must be on the left: 1 … k−1. The right side gets n − k keys.' },
       hints: [`<p>Hint 1: Only the <b>number</b> of keys matters, not which keys. Let G[m] = number of BSTs with m keys.</p>`, `<p>Hint 2: Choose the root k: left side has k−1 keys, right side n−k. So G[n] = ∑ G[k−1]·G[n−k]. That is the Catalan recurrence.</p>`, `<p>Hint 3: G[0] = G[1] = 1. Fill G[2..n] bottom-up in O(n²), or use C(2n, n)/(n+1) with 64-bit integers and careful order of operations.</p>`],
@@ -2748,7 +3191,16 @@ public:
             for (int root = 1; root <= m; root++) G[m] += G[root - 1] * G[m - root];
         return (int)G[n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int NumTrees(int n) {
+        long[] G = new long[n + 1];
+        G[0] = 1;                                   // empty subtree: exactly one way
+        for (int m = 1; m <= n; m++)
+            for (int root = 1; root <= m; root++)
+                G[m] += G[root - 1] * G[m - root];   // left size x right size
+        return (int)G[n];
+    }
+}` }],
         dry: { head: ['m', 'terms G[root−1]·G[m−root]', 'G[m]'], rows: [
           ['0', 'base case', '1'], ['1', 'G0·G0 = 1', '1'], ['2', 'G0·G1 + G1·G0 = 1 + 1', '2'], ['3', 'G0·G2 + G1·G1 + G2·G0 = 2 + 1 + 2', '<b>5</b>']
         ] },
@@ -2928,6 +3380,41 @@ long long lucas(long long n, long long r) {
         r /= P;
     }
     return result;
+}` }, { lang: 'csharp', code: `// Lucas: C(n, r) mod p for a prime p (works for any n, r up to 1e18)
+static long[] fact, invFact;
+static long P;
+
+static long Pw(long b, long e, long m) {
+    long r = 1; b %= m;
+    while (e > 0) { if ((e & 1) == 1) r = r * b % m; b = b * b % m; e >>= 1; }
+    return r;
+}
+
+static void Init(int p) {                       // O(p) precomputation
+    P = p;
+    fact = new long[p];
+    invFact = new long[p];
+    fact[0] = 1;
+    for (int i = 1; i < p; i++) fact[i] = fact[i - 1] * i % p;
+    invFact[p - 1] = Pw(fact[p - 1], p - 2, p);
+    for (int i = p - 1; i > 0; i--) invFact[i - 1] = invFact[i] * i % p;
+}
+
+static long SmallC(int a, int b) {              // a, b < p
+    if (b < 0 || b > a) return 0;
+    return fact[a] * invFact[b] % P * invFact[a - b] % P;
+}
+
+static long Lucas(long n, long r) {
+    long result = 1;
+    while (n > 0 || r > 0) {
+        int ni = (int)(n % P), ri = (int)(r % P);      // current base-p digits
+        if (ri > ni) return 0;                         // a digit of r exceeds n's digit
+        result = result * SmallC(ni, ri) % P;
+        n /= P;
+        r /= P;
+    }
+    return result;
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): Lucas vs exact binomials', code: `from math import comb
 
 def lucas(n, r, p):
@@ -3043,6 +3530,14 @@ long long brute(int n, int r, int p) {
     row[0] = 1;
     for (int i = 1; i <= n; i++)
         for (int j = min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % p;
+    return row[r];
+}` }, { lang: 'csharp', code: `// Exact Pascal row by row: O(n * r) - only for very small n
+static long Brute(int n, int r, int p) {
+    if (r > n) return 0;
+    long[] row = new long[r + 1];
+    row[0] = 1;
+    for (int i = 1; i <= n; i++)
+        for (int j = Math.Min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % p;
     return row[r];
 }` }] } },
       mcq: { q: 'p = 3. Which of these is 0 mod 3?', options: ['C(10, 3) because the middle base-3 digit of r exceeds n\'s', 'C(9, 0)', 'C(4, 1)', 'C(8, 4)'], answer: 0, explain: '10 = 101₃ and 3 = 010₃: digit (0,1) gives C(0,1) = 0. C(9,0) = 1; C(4,1) = 4 ≡ 1; C(8,4) = 70 ≡ 1 (8 = 22₃, 4 = 11₃ → C(2,1)² = 4 ≡ 1).' },
@@ -3172,7 +3667,38 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    long p;
+    long[] fact, invFact;
+
+    long Pw(long b, long e) {
+        long r = 1; b %= p;
+        while (e > 0) { if ((e & 1) == 1) r = r * b % p; b = b * b % p; e >>= 1; }
+        return r;
+    }
+
+    public Solution(int prime) {
+        p = prime;
+        fact = new long[prime];
+        invFact = new long[prime];
+        fact[0] = 1;
+        for (int i = 1; i < prime; i++) fact[i] = fact[i - 1] * i % p;
+        invFact[prime - 1] = Pw(fact[prime - 1], p - 2);
+        for (int i = prime - 1; i > 0; i--) invFact[i - 1] = invFact[i] * i % p;
+    }
+
+    public long Query(long n, long r) {
+        long res = 1;
+        while (n > 0 || r > 0) {
+            int ni = (int)(n % p), ri = (int)(r % p);
+            if (ri > ni) return 0;
+            res = res * fact[ni] % p * invFact[ri] % p * invFact[ni - ri] % p;
+            n /= p;
+            r /= p;
+        }
+        return res;
+    }
+}` }],
         dry: { head: ['loop', 'n', 'r', 'digits (n_i, r_i)', 'C(n_i, r_i) mod 5', 'res'], rows: [
           ['1', '12', '5', '(2, 0)', '1', '1'],
           ['2', '2', '1', '(2, 1)', '2', '2'],
@@ -3321,6 +3847,34 @@ long long power(long long b, long long e, long long m) {
 long long expectedDieMod(long long mod) {
     long long inv2 = power(2, mod - 2, mod);
     return 7 * inv2 % mod;
+}` }, { lang: 'csharp', code: `// Expected number of fair-die rolls until the running total reaches at least N
+static double ExpectedRolls(int N) {
+    double[] E = new double[N + 6];            // E[s] = 0 for s >= N (already done)
+    for (int s = N - 1; s >= 0; s--) {
+        double sum = 0;
+        for (int face = 1; face <= 6; face++) sum += E[s + face];
+        E[s] = 1 + sum / 6;                    // pay one roll, then average the 6 futures
+    }
+    return E[0];
+}
+
+// Coupon collector: expected draws to see all n types = n * (1 + 1/2 + ... + 1/n)
+static double CouponCollector(int n) {
+    double total = 0;
+    for (int i = 0; i < n; i++) total += (double)n / (n - i);   // wait for the (i+1)-th new type
+    return total;
+}
+
+// The same die example, but exact modulo a prime: E = 7/2 -> 7 * inverse(2)
+static long ExpectedDieMod(long mod) {
+    long inv2 = Pow(2, mod - 2, mod);
+    return 7 * inv2 % mod;
+}
+
+static long Pow(long b, long e, long m) {
+    long r = 1; b %= m;
+    while (e > 0) { if ((e & 1) == 1) r = r * b % m; b = b * b % m; e >>= 1; }
+    return r;
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): simulation vs exact formula', code: `import random
 random.seed(7)
 
@@ -3458,6 +4012,19 @@ double new21Game(int n, int k, int maxPts) {
         if (x >= k) ans += dp[x];                     // she stopped at x <= n
     }
     return ans;
+}` }, { lang: 'csharp', code: `static double Brute(int n, int k, int W) {
+    if (k == 0) return 1.0;
+    double[] dp = new double[n + 1];
+    dp[0] = 1.0;
+    double ans = 0;
+    for (int x = 1; x <= n; x++) {
+        for (int j = 1; j <= W; j++) {
+            int from = x - j;
+            if (from >= 0 && from < k) dp[x] += dp[from] / W;   // only totals < k keep drawing
+        }
+        if (x >= k) ans += dp[x];                               // she stopped at x <= n
+    }
+    return ans;
 }` }] } },
       mcq: { q: 'Which states are allowed to "pass probability forward" into dp[x]?', options: ['Only totals below k (she keeps drawing there)', 'All totals below x', 'Only totals ≥ k', 'Only total 0'], answer: 0, explain: 'At a total ≥ k she stops, so that probability never flows further. That is why the window sum only includes indices < k.' },
       hints: [`<p>Hint 1: dp[x] = probability that her total is ever exactly x. dp[0] = 1. dp[x] = (1/W)·∑ dp[x−j] for j in 1..W, but only over x−j &lt; k.</p>`, `<p>Hint 2: Keep a running window sum of the last W dp values that are &lt; k. Add dp[x] when x &lt; k, subtract dp[x−W] when x−W ≥ 0 and x−W &lt; k.</p>`, `<p>Hint 3: Answer = ∑ dp[x] for k ≤ x ≤ n. Early exit: if k == 0 or n ≥ k − 1 + W, every possible end total is ≤ n → return 1.0.</p>`],
@@ -3547,7 +4114,23 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double New21Game(int n, int k, int maxPts) {
+        if (k == 0 || n >= k - 1 + maxPts) return 1.0;   // every finishing total is <= n
+        double[] dp = new double[n + 1];
+        dp[0] = 1.0;
+        double window = 1.0;                              // sum of dp[x-W..x-1] restricted to < k
+        double ans = 0.0;
+        for (int x = 1; x <= n; x++) {
+            dp[x] = window / maxPts;
+            if (x < k) window += dp[x];                   // still drawing: feeds future totals
+            else ans += dp[x];                            // stopped here with x <= n
+            int left = x - maxPts;
+            if (left >= 0 && left < k) window -= dp[left];   // slide the window
+        }
+        return ans;
+    }
+}` }],
         dry: { head: ['x', 'dp[x] = window / 3', 'x &lt; k ?', 'window after', 'ans'], rows: [
           ['0', '1 (start)', 'yes', '1', '0'],
           ['1', '1/3', 'yes → add', '4/3', '0'],
@@ -3693,6 +4276,31 @@ string nimMove(const vector<int>& heaps) {
             return "first player wins: reduce heap " + to_string(i) + " from " + to_string(heaps[i]) + " to " + to_string(target);
     }
     throw logic_error("unreachable: some heap always has X's top bit");
+}` }, { lang: 'csharp', code: `// Grundy numbers for a single pile in a subtraction game with move set S
+static int[] Grundy(int maxN, int[] moves) {
+    int[] g = new int[maxN + 1];               // g[0] = 0: no moves -> losing
+    for (int n = 1; n <= maxN; n++) {
+        bool[] seen = new bool[moves.Length + 2];   // mex is at most |moves|
+        foreach (int m in moves)
+            if (m <= n && g[n - m] < seen.Length) seen[g[n - m]] = true;
+        int mex = 0;
+        while (seen[mex]) mex++;               // smallest value not reachable
+        g[n] = mex;
+    }
+    return g;
+}
+
+// Nim: does the first player win, and what is a winning move?
+static string NimMove(int[] heaps) {
+    int x = 0;
+    foreach (int h in heaps) x ^= h;
+    if (x == 0) return "second player wins (XOR = 0)";
+    for (int i = 0; i < heaps.Length; i++) {
+        int target = heaps[i] ^ x;
+        if (target < heaps[i])                 // this heap has X's highest set bit
+            return "first player wins: reduce heap " + i + " from " + heaps[i] + " to " + target;
+    }
+    throw new InvalidOperationException("unreachable: some heap always has X's top bit");
 }` }] }, { lang: 'python', run: true, title: 'Python (runnable): brute-force game search confirms the XOR rule', code: `from functools import lru_cache
 from itertools import product
 
@@ -3900,6 +4508,23 @@ bool firstWins(vector<int>& piles, vector<int>& S) {
             }
     memo[piles] = win;
     return win;
+}` }, { lang: 'csharp', code: `// Memoised win/lose over the whole tuple: only feasible for 2-3 tiny piles
+static Dictionary<string, bool> memo = new Dictionary<string, bool>();
+static bool FirstWins(int[] piles, int[] S) {
+    string key = string.Join(",", piles);
+    bool cached;
+    if (memo.TryGetValue(key, out cached)) return cached;
+    bool win = false;
+    for (int i = 0; i < piles.Length && !win; i++)
+        foreach (int s in S)
+            if (piles[i] >= s) {
+                piles[i] -= s;
+                bool oppWins = FirstWins(piles, S);
+                piles[i] += s;
+                if (!oppWins) { win = true; break; }   // found a move to a losing position
+            }
+    memo[key] = win;
+    return win;
 }` }] } },
       mcq: { q: 'g values of three independent piles are 2, 3 and 1. What is the verdict?', options: ['Second player wins (2 ⊕ 3 ⊕ 1 = 0)', 'First player wins (sum 6 ≠ 0)', 'First player wins (max is 3)', 'Cannot tell without the full game tree'], answer: 0, explain: 'Sprague–Grundy: the combined Grundy number is the XOR, 2 ⊕ 3 ⊕ 1 = 0, so the player to move loses. Sum and max mean nothing here.' },
       hints: [`<p>Hint 1: Each pile is its own little game; a move touches exactly one pile. That is a sum of games → Sprague–Grundy.</p>`, `<p>Hint 2: Compute g(0..maxPile) once: g(x) = mex{ g(x − s) : s ∈ S, s ≤ x }. Then XOR g(pile) over all piles.</p>`, `<p>Hint 3: mex ≤ |S|, so a boolean array of size |S|+2 per x suffices → O(maxPile·|S|). XOR ≠ 0 → "First", else "Second". Pile 0 has g = 0 and does not change the XOR.</p>`],
@@ -3986,7 +4611,24 @@ public:
         for (int p : piles) x ^= g[p];
         return x ? "First" : "Second";
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string Winner(int[] piles, int[] S) {
+        int max = 0;
+        foreach (int p in piles) max = Math.Max(max, p);
+        int[] g = new int[max + 1];
+        for (int x = 1; x <= max; x++) {
+            bool[] seen = new bool[S.Length + 2];
+            foreach (int s in S)
+                if (s <= x && g[x - s] < seen.Length) seen[g[x - s]] = true;
+            int mex = 0;
+            while (seen[mex]) mex++;
+            g[x] = mex;
+        }
+        int xor = 0;
+        foreach (int p in piles) xor ^= g[p];
+        return xor != 0 ? "First" : "Second";
+    }
+}` }],
         dry: { head: ['x', 'reachable g', 'g(x) = mex'], rows: [
           ['0', '{}', '0'], ['1', '{g0} = {0}', '1'], ['2', '{g1} = {1}', '0'], ['3', '{g2, g0} = {0}', '1'], ['4', '{g3, g1, g0} = {1, 0}', '2'], ['5', '{g4, g2, g1} = {2, 0, 1}', '3'], ['6', '{g5, g3, g2} = {3, 1, 0}', '2'], ['piles [5, 6]', '3 ⊕ 2', '<b>1 → First</b>']
         ] },
@@ -4033,6 +4675,12 @@ bool canWinNim(int n) {
         for (int take = 1; take <= 3 && take <= i; take++)
             if (!win[i - take]) { win[i] = 1; break; }
     return win[n];
+}` }, { lang: 'csharp', code: `static bool Brute(int n) {
+    bool[] win = new bool[n + 1];              // win[0] = false: no stones, you already lost
+    for (int i = 1; i <= n; i++)
+        for (int take = 1; take <= 3 && take <= i; take++)
+            if (!win[i - take]) { win[i] = true; break; }
+    return win[n];
 }` }] } },
     mcq: { q: 'Which heap sizes are losing for the player to move?', options: ['Multiples of 4', 'Multiples of 3', 'Odd numbers', 'Powers of 2'], answer: 0, explain: 'From 4k every move leaves 4k−1, 4k−2 or 4k−3, and the opponent restores a multiple of 4.' },
     hints: [`<p>Hint 1: Label 0 as losing, then 1, 2, 3 as winning (take everything). What about 4?</p>`, `<p>Hint 2: Every move from 4 lands on 1, 2 or 3 — all winning for the opponent. The pattern repeats every 4.</p>`, `<p>Hint 3: Return n % 4 != 0. Strategy: always take n % 4 stones.</p>`],
@@ -4072,7 +4720,11 @@ public:
     bool canWinNim(int n) {
         return n % 4 != 0;                           // multiples of 4 are the losing positions
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool CanWinNim(int n) {
+        return n % 4 != 0;      // multiples of 4 are the losing (P) positions
+    }
+}` }],
       dry: { head: ['n', 'moves lead to', 'label'], rows: [['0', '—', 'P (lose)'], ['1, 2, 3', 'can reach 0', 'N (win)'], ['4', '3, 2, 1 (all N)', 'P'], ['5', 'can reach 4', 'N']] },
       complexity: `<p>O(1) time and space.</p>`,
       followUps: ['Allowed removals are 1..k.', 'Several heaps at once.']
@@ -4104,6 +4756,10 @@ function inverse(a, p) {
 long long inverse(long long a, long long p) {
     long long r = ((a % p) + p) % p;
     for (long long x = 1; x < p; x++) if (r * x % p == 1) return x;
+    return -1;
+}` }, { lang: 'csharp', code: `static long Brute(long a, long p) {
+    long r = ((a % p) + p) % p;
+    for (long x = 1; x < p; x++) if (r * x % p == 1) return x;
     return -1;
 }` }] } },
     mcq: { q: 'Why must a be reduced into [0, p) before calling power(a, p − 2, p)?', options: ['In Java, JavaScript and C++ the % operator can return a negative value (Python\'s cannot), and a ≡ 0 must be detected', 'Fermat requires a &lt; 10', 'To make p prime', 'It is not necessary'], answer: 0, explain: 'A negative base breaks the "result in [0, p)" contract, and a ≡ 0 (mod p) must return −1 instead of 0.' },
@@ -4181,7 +4837,22 @@ public:
         if (r == 0) return -1;
         return power(r, p - 2, p);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    long Power(long b, long e, long m) {
+        long r = 1 % m; b %= m;
+        while (e > 0) {
+            if ((e & 1) == 1) r = r * b % m;
+            b = b * b % m;
+            e >>= 1;
+        }
+        return r;
+    }
+    public long Inverse(long a, long p) {
+        long r = ((a % p) + p) % p;              // floor mod: lands in [0, p)
+        if (r == 0) return -1;
+        return Power(r, p - 2, p);
+    }
+}` }],
       dry: { head: ['exp bit', 'base', 'result'], rows: [['p−2 = 5 = 101₂, bit0 = 1', '3', '3'], ['bit1 = 0', '9 ≡ 2', '3'], ['bit2 = 1', '4', '3·4 = 12 ≡ <b>5</b>']] },
       complexity: `<p>O(log p) time, O(1) space.</p>`,
       followUps: ['p is not prime — switch to Extended Euclid.', 'Invert 10<sup>6</sup> different values fast (batch inversion).']
@@ -4214,6 +4885,10 @@ function count(N, A, B) {
 long long count(long long N, long long A, long long B) {
     long long c = 0;
     for (long long x = 1; x <= N; x++) if (x % A == 0 || x % B == 0) c++;
+    return c;
+}` }, { lang: 'csharp', code: `static long Brute(long N, long A, long B) {
+    long c = 0;
+    for (long x = 1; x <= N; x++) if (x % A == 0 || x % B == 0) c++;
     return c;
 }` }] } },
     mcq: { q: 'How many numbers in [1, 20] are divisible by both 4 and 6?', options: ['1', '0', '2', '3'], answer: 0, explain: 'Divisible by both ⇔ divisible by lcm(4, 6) = 12 → only 12.' },
@@ -4266,7 +4941,13 @@ public:
         long long lcm = A / gcd(A, B) * B;           // divide first to avoid overflow
         return N / A + N / B - N / lcm;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    long Gcd(long a, long b) { return b == 0 ? a : Gcd(b, a % b); }
+    public long Count(long N, long A, long B) {
+        long lcm = A / Gcd(A, B) * B;            // divide first to avoid overflow
+        return N / A + N / B - N / lcm;
+    }
+}` }],
       dry: { head: ['term', 'value'], rows: [['⌊20/4⌋', '5'], ['⌊20/6⌋', '3'], ['lcm(4,6) = 12 → ⌊20/12⌋', '1'], ['5 + 3 − 1', '<b>7</b>']] },
       complexity: `<p>O(log min(A, B)) for the gcd; O(1) space.</p>`,
       followUps: ['Three numbers A, B, C.', 'Count numbers divisible by exactly one of them.']
@@ -4303,7 +4984,12 @@ long long phi(long long n) {
     long long c = 0;
     for (long long i = 1; i <= n; i++) if (gcd(i, n) == 1) c++;
     return c;
-}` }] } },
+}` }, { lang: 'csharp', code: `static long Brute(long n) {
+    long c = 0;
+    for (long i = 1; i <= n; i++) if (Gcd(i, n) == 1) c++;
+    return c;
+}
+static long Gcd(long a, long b) { return b == 0 ? a : Gcd(b, a % b); }` }] } },
     mcq: { q: 'After the loop "p·p ≤ n" ends, n is still 97. What does that mean?', options: ['97 is a prime factor of the original n and must be applied', 'n was prime from the start, so φ = n', 'Nothing, ignore it', 'There is a bug'], answer: 0, explain: 'Every prime ≤ √(remaining n) was stripped, so a leftover > 1 is a single prime factor. Apply result −= result / 97.' },
     hints: [`<p>Hint 1: φ(n) = n·∏(1 − 1/p) over distinct primes p | n.</p>`, `<p>Hint 2: Trial divide by p while p·p ≤ n; on a hit, strip all copies of p and do result −= result / p.</p>`, `<p>Hint 3: Do not forget the leftover prime when n &gt; 1 after the loop. Use 64-bit integers everywhere.</p>`],
     tests: { sig: 'long -> long', fn: 'phi', cases: [
@@ -4384,7 +5070,19 @@ public:
         if (n > 1) result -= result / n;             // one prime factor larger than sqrt remains
         return result;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long Phi(long n) {
+        long result = n;
+        for (long p = 2; p * p <= n; p++) {
+            if (n % p == 0) {
+                while (n % p == 0) n /= p;
+                result -= result / p;
+            }
+        }
+        if (n > 1) result -= result / n;     // one prime factor larger than sqrt remains
+        return result;
+    }
+}` }],
       dry: { head: ['p', 'n after strip', 'result'], rows: [['start', '36', '36'], ['2', '9', '36 − 18 = 18'], ['3', '1', '18 − 6 = <b>12</b>']] },
       complexity: `<p>O(√n) time, O(1) space.</p>`,
       followUps: ['φ for all numbers up to 10<sup>7</sup>.', 'n up to 10<sup>18</sup> (Pollard rho).']
@@ -4464,6 +5162,21 @@ bool canMeasureWater(int x, int y, int target) {
             if (!seen[na][nb]) { seen[na][nb] = 1; q.push({na, nb}); }
     }
     return false;
+}` }, { lang: 'csharp', code: `static bool Brute(int x, int y, int target) {
+    if (target > x + y) return false;
+    bool[,] seen = new bool[x + 1, y + 1];
+    var q = new Queue<int[]>();
+    q.Enqueue(new[] { 0, 0 }); seen[0, 0] = true;
+    while (q.Count > 0) {
+        int[] s = q.Dequeue();
+        int a = s[0], b = s[1];
+        if (a + b == target) return true;
+        int pourAB = Math.Min(a, y - b), pourBA = Math.Min(b, x - a);
+        int[][] next = { new[] {x, b}, new[] {a, y}, new[] {0, b}, new[] {a, 0}, new[] {a - pourAB, b + pourAB}, new[] {a + pourBA, b - pourBA} };
+        foreach (var n in next)
+            if (!seen[n[0], n[1]]) { seen[n[0], n[1]] = true; q.Enqueue(n); }
+    }
+    return false;
 }` }] } },
     mcq: { q: 'x = 6, y = 10. Which target is reachable?', options: ['8', '7', '17', '5'], answer: 0, explain: 'gcd(6, 10) = 2, so only even amounts ≤ 16 are possible: 8 yes; 7 and 5 are odd; 17 > 16.' },
     hints: [`<p>Hint 1: Every operation changes the total by ±x, ±y or 0. So the total is always a·x + b·y for integers a, b.</p>`, `<p>Hint 2: Bezout: a·x + b·y can be exactly the multiples of gcd(x, y).</p>`, `<p>Hint 3: Also the total can never exceed x + y. Answer: target ≤ x + y and target % gcd(x, y) == 0.</p>`],
@@ -4521,7 +5234,13 @@ public:
         if (target > x + y) return false;            // the jugs cannot hold more
         return target % gcd(x, y) == 0;              // Bezout: multiples of gcd only
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    int Gcd(int a, int b) { return b == 0 ? a : Gcd(b, a % b); }
+    public bool CanMeasureWater(int x, int y, int target) {
+        if (target > x + y) return false;          // the jugs cannot hold more
+        return target % Gcd(x, y) == 0;            // Bezout: multiples of gcd only
+    }
+}` }],
       dry: { head: ['step', '3 L jug', '5 L jug'], rows: [['fill 5', '0', '5'], ['pour 5→3', '3', '2'], ['empty 3', '0', '2'], ['pour 5→3', '2', '0'], ['fill 5', '2', '5'], ['pour 5→3', '3', '4'], ['empty 3', '0', '<b>4</b> (total 4 ✓)']] },
       complexity: `<p>O(log min(x, y)) time, O(1) space.</p>`,
       followUps: ['Return the minimum number of operations.', 'Three jugs.']
@@ -4560,6 +5279,12 @@ function nthUglyNumber(n, a, b, c) {
 long long nthUglyNumber(int n, long long a, long long b, long long c) {
     int found = 0;
     for (long long x = 1; ; x++) {
+        if (x % a == 0 || x % b == 0 || x % c == 0) found++;
+        if (found == n) return x;
+    }
+}` }, { lang: 'csharp', code: `static long Brute(int n, long a, long b, long c) {
+    int found = 0;
+    for (long x = 1; ; x++) {
         if (x % a == 0 || x % b == 0 || x % c == 0) found++;
         if (found == n) return x;
     }
@@ -4652,7 +5377,22 @@ public:
         }
         return (int)lo;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    long Gcd(long a, long b) { return b == 0 ? a : Gcd(b, a % b); }
+    long Lcm(long a, long b) { return a / Gcd(a, b) * b; }
+
+    public int NthUglyNumber(int n, int a, int b, int c) {
+        long ab = Lcm(a, b), ac = Lcm(a, c), bc = Lcm(b, c), abc = Lcm(ab, c);
+        long lo = 1, hi = 2000000000L;
+        while (lo < hi) {
+            long mid = lo + (hi - lo) / 2;
+            long cnt = mid / a + mid / b + mid / c - mid / ab - mid / ac - mid / bc + mid / abc;
+            if (cnt >= n) hi = mid;        // mid might be the answer: keep it
+            else lo = mid + 1;
+        }
+        return (int)lo;
+    }
+}` }],
       dry: { head: ['mid (last few steps)', 'count (a,b,c = 2,3,5)', 'decision'], rows: [['5', '2+1+1−0−0−0+0 = 4', '≥ 3 → hi = 5'], ['3', '1+1+0 = 2', '&lt; 3 → lo = 4'], ['4', '2+1+0 = 3', '≥ 3 → hi = 4 → answer <b>4</b>']] },
       complexity: `<p>O(log(2·10<sup>9</sup>)) ≈ 31 iterations, O(1) space.</p>`,
       followUps: ['k numbers instead of 3 (bitmask inclusion–exclusion).', 'Magical Number (two numbers, answer mod 10<sup>9</sup>+7).']
@@ -4697,6 +5437,13 @@ int superPow(int a, vector<int>& b) {
     for (int d : b) e = e * 10 + d;
     long long r = 1, base = a % 1337;
     for (long long i = 0; i < e; i++) r = r * base % 1337;
+    return (int)r;
+}` }, { lang: 'csharp', code: `static int Brute(int a, int[] b) {
+    // only valid when b fits in a long (a handful of digits)
+    long e = 0;
+    foreach (int d in b) e = e * 10 + d;
+    long r = 1, bse = a % 1337;
+    for (long i = 0; i < e; i++) r = r * bse % 1337;
     return (int)r;
 }` }] } },
     mcq: { q: 'If b = 10·q + d, then a<sup>b</sup> equals…', options: ['(a<sup>q</sup>)<sup>10</sup> · a<sup>d</sup>', 'a<sup>q</sup> · a<sup>10d</sup>', '(a<sup>10</sup>)<sup>d</sup> · a<sup>q</sup>', 'a<sup>q+d</sup>'], answer: 0, explain: 'a<sup>10q + d</sup> = (a<sup>q</sup>)<sup>10</sup>·a<sup>d</sup>. Process digits left to right: result = result<sup>10</sup>·a<sup>digit</sup>.' },
@@ -4781,7 +5528,23 @@ public:
         for (int d : b) r = power(r, 10) * power(a, d) % MOD;
         return r;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    const int MOD = 1337;
+    int Pow(int b, int e) {
+        int r = 1; b %= MOD;
+        while (e > 0) {
+            if ((e & 1) == 1) r = r * b % MOD;        // values < 1337, products < 2^21: int is safe
+            b = b * b % MOD;
+            e >>= 1;
+        }
+        return r;
+    }
+    public int SuperPow(int a, int[] b) {
+        int r = 1;
+        foreach (int d in b) r = Pow(r, 10) * Pow(a, d) % MOD;
+        return r;
+    }
+}` }],
       dry: { head: ['digit', 'r = r^10 · 2^d mod 1337'], rows: [['start', '1'], ['1', '1 · 2 = 2'], ['0', '2^10 · 1 = 1024 → <b>1024</b>']] },
       complexity: `<p>O(len(b) · log 10) multiplications, O(1) space.</p>`,
       followUps: ['Modulus is a large prime p: reduce b mod (p−1) digit by digit.', 'Power tower a<sup>b<sup>c</sup></sup> mod m (generalised Euler).']
@@ -4829,6 +5592,13 @@ double knightProbability(int n, int k, int row, int column) {
     if (k == 0) return 1;
     double p = 0;
     for (auto& d : D) p += knightProbability(n, k - 1, row + d[0], column + d[1]) / 8.0;   // exponential
+    return p;
+}` }, { lang: 'csharp', code: `static readonly int[][] D = { new[] {1,2}, new[] {2,1}, new[] {-1,2}, new[] {-2,1}, new[] {1,-2}, new[] {2,-1}, new[] {-1,-2}, new[] {-2,-1} };
+static double Brute(int n, int k, int r, int c) {
+    if (r < 0 || c < 0 || r >= n || c >= n) return 0;   // fell off
+    if (k == 0) return 1;
+    double p = 0;
+    foreach (var d in D) p += Brute(n, k - 1, r + d[0], c + d[1]) / 8.0;   // exponential
     return p;
 }` }] } },
     mcq: { q: 'What is the right DP state?', options: ['(steps done, row, col) → probability of being there', '(row, col) only', 'number of moves left only', 'the whole path'], answer: 0, explain: 'Probability mass on each cell after s steps is all we need; the next layer only depends on the current one.' },
@@ -4933,7 +5703,28 @@ public:
         for (auto& line : dp) total += accumulate(line.begin(), line.end(), 0.0);
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    static readonly int[][] D = { new[] {1,2}, new[] {2,1}, new[] {-1,2}, new[] {-2,1}, new[] {1,-2}, new[] {2,-1}, new[] {-1,-2}, new[] {-2,-1} };
+    public double KnightProbability(int n, int k, int row, int column) {
+        double[,] dp = new double[n, n];
+        dp[row, column] = 1.0;
+        for (int step = 0; step < k; step++) {
+            double[,] next = new double[n, n];
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++) {
+                    if (dp[r, c] == 0) continue;
+                    foreach (var d in D) {
+                        int nr = r + d[0], nc = c + d[1];
+                        if (nr >= 0 && nc >= 0 && nr < n && nc < n) next[nr, nc] += dp[r, c] / 8.0;
+                    }
+                }
+            dp = next;
+        }
+        double total = 0;
+        foreach (double v in dp) total += v;
+        return total;
+    }
+}` }],
       dry: { head: ['step', 'cells with mass (3×3, start (0,0))', 'total'], rows: [['0', '(0,0): 1', '1'], ['1', '(1,2): 1/8, (2,1): 1/8', '0.25'], ['2', '(0,0): 2/64 (reached from both), (2,0): 1/64, (0,2): 1/64', '4/64 = <b>0.0625</b>']] },
       complexity: `<p>O(k·n²·8) ≈ 100·625·8 = 5·10<sup>5</sup>; O(n²) memory.</p>`,
       followUps: ['k up to 10<sup>9</sup>: matrix power of a 625×625 transition is too big — what else?', 'Expected number of moves before falling off.']
@@ -4992,6 +5783,17 @@ int brute(vector<int>& perm, int pos, vector<char>& used) {
         used[v] = 1; perm[pos] = v;
         count += brute(perm, pos + 1, used);
         used[v] = 0;
+    }
+    return count;
+}` }, { lang: 'csharp', code: `static int Brute(int[] perm, int pos, bool[] used) {
+    int n = perm.Length;
+    if (pos == n) return 1;
+    int count = 0;
+    for (int v = 1; v <= n; v++) {
+        if (used[v] || v == pos + 1) continue;     // value v may not sit at its home index
+        used[v] = true; perm[pos] = v;
+        count += Brute(perm, pos + 1, used);
+        used[v] = false;
     }
     return count;
 }` }] } },
@@ -5062,7 +5864,19 @@ public:
         }
         return (int)prev1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int FindDerangement(int n) {
+        const long MOD = 1000000007L;
+        if (n == 1) return 0;
+        long prev2 = 0, prev1 = 1;                 // D(1), D(2)
+        for (int i = 3; i <= n; i++) {
+            long cur = (long)(i - 1) * ((prev1 + prev2) % MOD) % MOD;
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return (int)prev1;
+    }
+}` }],
       dry: { head: ['i', 'D(i−1)', 'D(i−2)', 'D(i)'], rows: [['2', '—', '—', '1'], ['3', '1', '0', '2·1 = 2'], ['4', '2', '1', '3·3 = <b>9</b>']] },
       complexity: `<p>O(n) time, O(1) space.</p>`,
       followUps: ['Count permutations with exactly k fixed points: C(n, k)·D(n − k).', 'Probability a random permutation is a derangement as n → ∞ (1/e).']
@@ -5102,6 +5916,13 @@ function countBalanced(n) {
 long long countBalanced(int n) {
     const long long MOD = 1'000'000'007LL;
     vector<long long> c(n + 1, 0);
+    c[0] = 1;
+    for (int m = 1; m <= n; m++)
+        for (int i = 0; i < m; i++) c[m] = (c[m] + c[i] * c[m - 1 - i]) % MOD;   // O(n^2)
+    return c[n];
+}` }, { lang: 'csharp', code: `static long Brute(int n) {
+    const long MOD = 1000000007L;
+    long[] c = new long[n + 1];
     c[0] = 1;
     for (int m = 1; m <= n; m++)
         for (int i = 0; i < m; i++) c[m] = (c[m] + c[i] * c[m - 1 - i]) % MOD;   // O(n^2)
@@ -5192,7 +6013,21 @@ public:
         long long denom = fact[n] * (fact[n] * (n + 1) % MOD) % MOD;   // n! * (n+1)!
         return fact[2 * n] * power(denom, MOD - 2) % MOD;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    const long MOD = 1000000007L;
+    long Pw(long b, long e) {
+        long r = 1; b %= MOD;
+        while (e > 0) { if ((e & 1) == 1) r = r * b % MOD; b = b * b % MOD; e >>= 1; }
+        return r;
+    }
+    public long CountBalanced(int n) {
+        long[] fact = new long[2 * n + 1];
+        fact[0] = 1;
+        for (int i = 1; i <= 2 * n; i++) fact[i] = fact[i - 1] * i % MOD;
+        long denom = fact[n] * (fact[n] * (n + 1) % MOD) % MOD;      // n! * (n+1)!
+        return fact[2 * n] * Pw(denom, MOD - 2) % MOD;
+    }
+}` }],
       dry: { head: ['quantity (n = 3)', 'value'], rows: [['(2n)! = 6!', '720'], ['n! · (n+1)! = 6 · 24', '144'], ['720 / 144', '<b>5</b>']] },
       complexity: `<p>O(n + log p) time, O(n) memory.</p>`,
       followUps: ['Brackets of k types: multiply by k<sup>n</sup>.', 'Count balanced strings with a fixed prefix (reflection principle).']
@@ -5254,6 +6089,18 @@ long long countVowelStrings(long long n) {
         long long ni = (e + o) % MOD;
         long long no = i % MOD;
         long long nu = (i + o) % MOD;
+        a = na; e = ne; i = ni; o = no; u = nu;
+    }
+    return (a + e + i + o + u) % MOD;
+}` }, { lang: 'csharp', code: `static long Brute(long n) {
+    const long MOD = 1000000007L;
+    long a = 1, e = 1, i = 1, o = 1, u = 1;          // strings of length 1 ending in each vowel
+    for (long len = 2; len <= n; len++) {
+        long na = (e + i + u) % MOD;                 // who may precede 'a': e, i, u
+        long ne = (a + i) % MOD;
+        long ni = (e + o) % MOD;
+        long no = i % MOD;
+        long nu = (i + o) % MOD;
         a = na; e = ne; i = ni; o = no; u = nu;
     }
     return (a + e + i + o + u) % MOD;
@@ -5398,7 +6245,37 @@ public:
             for (long long v : row) total = (total + v) % MOD;
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    const long MOD = 1000000007L;
+    long[,] Mul(long[,] A, long[,] B) {
+        long[,] C = new long[5, 5];
+        for (int i = 0; i < 5; i++)
+            for (int t = 0; t < 5; t++)
+                for (int j = 0; j < 5; j++) C[i, j] = (C[i, j] + A[i, t] * B[t, j]) % MOD;
+        return C;
+    }
+    public long CountVowelStrings(long n) {
+        // order a, e, i, o, u ; M[x, y] = 1 if y may follow x
+        long[,] M = {
+            { 0, 1, 0, 0, 0 },     // a -> e
+            { 1, 0, 1, 0, 0 },     // e -> a, i
+            { 1, 1, 0, 1, 1 },     // i -> a, e, o, u
+            { 0, 0, 1, 0, 1 },     // o -> i, u
+            { 1, 0, 0, 0, 0 }      // u -> a
+        };
+        long[,] R = new long[5, 5];
+        for (int i = 0; i < 5; i++) R[i, i] = 1;
+        long e = n - 1;
+        while (e > 0) {
+            if ((e & 1) == 1) R = Mul(R, M);
+            M = Mul(M, M);
+            e >>= 1;
+        }
+        long total = 0;
+        foreach (long v in R) total = (total + v) % MOD;
+        return total;
+    }
+}` }],
       dry: { head: ['n', 'matrix', 'sum of entries'], rows: [['1', 'M⁰ = I', '5'], ['2', 'M¹', '1+2+4+2+1 = <b>10</b>'], ['5', 'M⁴', '68']] },
       complexity: `<p>O(125·log n) ≈ 125·60·2 multiplications; O(1) memory.</p>`,
       followUps: ['Count only strings that start with "a" — which row?', 'Forbid a specific 3-letter pattern: what is the new state?']
@@ -5438,7 +6315,13 @@ long long brute(int N) {
     for (int j = 2; j <= N; j++)
         for (int i = 1; i < j; i++) s += gcd(i, j);
     return s;
-}` }] } },
+}` }, { lang: 'csharp', code: `static long Brute(int N) {
+    long s = 0;
+    for (int j = 2; j <= N; j++)
+        for (int i = 1; i < j; i++) s += Gcd(i, j);
+    return s;
+}
+static int Gcd(int a, int b) { return b == 0 ? a : Gcd(b, a % b); }` }] } },
     mcq: { q: 'For fixed j, how many i in [1, j] have gcd(i, j) = d (d | j)?', options: ['φ(j / d)', 'φ(d)', 'j / d', 'd'], answer: 0, explain: 'gcd(i, j) = d ⇔ i = d·t with gcd(t, j/d) = 1 and 1 ≤ t ≤ j/d → φ(j/d) choices.' },
     hints: [`<p>Hint 1: f(j) = ∑<sub>i&lt;j</sub> gcd(i, j) = ∑<sub>d | j, d &lt; j</sub> d·φ(j/d). Then G(N) = f(2) + … + f(N), a prefix sum.</p>`, `<p>Hint 2: Sieve φ up to N. Then for each d and each k ≥ 2 with d·k ≤ N, add d·φ(k) to f[d·k] — a harmonic loop, O(N log N).</p>`, `<p>Hint 3: Prefix-sum f once, answer every test case in O(1). Use 64-bit integers for f and the prefix (values reach ~10<sup>13</sup>).</p>`],
     tests: { cls: 'Solution', sigs: { Solution: 'int', query: 'int -> long' }, cases: [
@@ -5527,7 +6410,23 @@ public:
     }
 
     long long query(int N) { return prefix[N]; }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    long[] prefix;
+    public Solution(int maxN) {
+        int[] phi = new int[maxN + 1];
+        for (int i = 0; i <= maxN; i++) phi[i] = i;
+        for (int p = 2; p <= maxN; p++)
+            if (phi[p] == p)
+                for (int j = p; j <= maxN; j += p) phi[j] -= phi[j] / p;
+        long[] f = new long[maxN + 1];
+        for (int d = 1; d <= maxN; d++)
+            for (int k = 2; (long)d * k <= maxN; k++)
+                f[d * k] += (long)d * phi[k];          // pairs (i, d*k) with gcd exactly d
+        prefix = new long[maxN + 1];
+        for (int j = 1; j <= maxN; j++) prefix[j] = prefix[j - 1] + f[j];
+    }
+    public long Query(int N) { return prefix[N]; }
+}` }],
       dry: { head: ['j', 'proper divisors d → d·φ(j/d)', 'f(j)', 'G'], rows: [['2', '1·φ(2)=1', '1', '1'], ['3', '1·φ(3)=2', '2', '3'], ['4', '1·φ(4)=2, 2·φ(2)=2', '4', '7'], ['…', '…', '…', '…'], ['10', '1·4 + 2·4 + 5·1 = 17', '17', '<b>67</b>']] },
       complexity: `<p>Precompute O(N log N) time, O(N) memory; each query O(1).</p>`,
       followUps: ['∑ lcm(i, j) over pairs.', '∑ over i, j ≤ N of gcd(i, j) with N up to 10<sup>10</sup> (Dirichlet / sublinear sums).']
@@ -5566,6 +6465,12 @@ int nCrMod1001(int n, int r) {
     row[0] = 1;
     for (int i = 1; i <= n; i++)
         for (int j = min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % 1001;
+    return row[r];
+}` }, { lang: 'csharp', code: `static int Brute(int n, int r) {
+    int[] row = new int[r + 1];
+    row[0] = 1;
+    for (int i = 1; i <= n; i++)
+        for (int j = Math.Min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % 1001;
     return row[r];
 }` }] } },
     mcq: { q: 'Why does Lucas + CRT work for 1001 but not for 1000?', options: ['1001 is square-free (7·11·13); 1000 = 2³·5³ has prime powers where Lucas fails', '1000 is even', 'CRT needs an odd modulus', 'Lucas only works below 1001'], answer: 0, explain: 'Lucas gives C mod p for primes p. Square-free means the modulus is a product of distinct primes, so CRT can rebuild the answer. Prime powers need Granville / exLucas.' },
@@ -5738,7 +6643,42 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    static readonly int[] PR = { 7, 11, 13 };
+    const int M = 1001;
+
+    long SmallC(int a, int b, int p) {
+        if (b < 0 || b > a) return 0;
+        long num = 1, den = 1;
+        for (int i = 0; i < b; i++) { num = num * (a - i) % p; den = den * (i + 1) % p; }
+        return num * Pw(den, p - 2, p) % p;          // den is nonzero mod p since b < p
+    }
+    long Pw(long b, long e, long m) {
+        long r = 1; b %= m;
+        while (e > 0) { if ((e & 1) == 1) r = r * b % m; b = b * b % m; e >>= 1; }
+        return r;
+    }
+    long Lucas(long n, long r, int p) {
+        long res = 1;
+        while (n > 0 || r > 0) {
+            int ni = (int)(n % p), ri = (int)(r % p);
+            if (ri > ni) return 0;
+            res = res * SmallC(ni, ri, p) % p;
+            n /= p; r /= p;
+        }
+        return res;
+    }
+    public long NCrMod1001(long n, long r) {
+        if (r < 0 || r > n) return 0;
+        long ans = 0;
+        foreach (int p in PR) {
+            int Mi = M / p;                                   // product of the other primes
+            long e = (long)Mi * Pw(Mi % p, p - 2, p) % M;     // e = 1 (mod p), 0 (mod others)
+            ans = (ans + Lucas(n, r, p) * e) % M;
+        }
+        return ans;
+    }
+}` }],
       dry: { head: ['prime p', 'C(10, 3) mod p (Lucas)', 'basis e_p', 'contribution'], rows: [['7', '120 mod 7 = 1', '143·inv(3) mod 7 = 143·5 = 715', '715'], ['11', '10', '91·inv(3) mod 11 = 91·4 = 364', '3640'], ['13', '3', '77·inv(12) mod 13 = 77·12 = 924', '2772'], ['sum mod 1001', '', '', '7127 mod 1001 = <b>120</b> ✓']] },
       complexity: `<p>O(∑<sub>p</sub> log<sub>p</sub> n · p) per query (tiny); O(1) memory.</p>`,
       followUps: ['Modulus 142857 = 3³·11·13·37 — what changes for the 27 part?', 'Precompute factorials per prime to make each digit O(1).']
@@ -5822,6 +6762,22 @@ bool wins(vector<int>& a, int erased) {
     }
     memo[erased] = res;
     return res;
+}` }, { lang: 'csharp', code: `// Memoised minimax over the bitmask of erased numbers (n <= 20 only)
+static Dictionary<int, bool> memo = new Dictionary<int, bool>();
+static bool Wins(int[] a, int erased) {
+    bool cached;
+    if (memo.TryGetValue(erased, out cached)) return cached;
+    int x = 0, left = 0;
+    for (int i = 0; i < a.Length; i++) if ((erased >> i & 1) == 0) { x ^= a[i]; left++; }
+    bool res;
+    if (x == 0) res = true;                         // XOR already 0 on my turn: I win
+    else {
+        res = false;
+        for (int i = 0; i < a.Length && !res; i++)
+            if ((erased >> i & 1) == 0 && (x ^ a[i]) != 0 && !Wins(a, erased | (1 << i))) res = true;
+    }
+    memo[erased] = res;
+    return res;
 }` }] } },
     mcq: { q: 'n is even and XOR ≠ 0. Why can the player to move always erase safely?', options: ['If every number equalled the XOR X, the XOR of an even count of X\'s would be 0 — contradiction', 'Because n is even, all numbers are equal', 'Because XOR of an even count is always 0', 'They cannot; it depends on the numbers'], answer: 0, explain: 'A move is unsafe only for a number equal to X (removing it makes XOR 0). If all n numbers equal X with n even, their XOR is 0, contradicting X ≠ 0. So a safe move exists, and parity stays even for her turns.' },
     hints: [`<p>Hint 1: If the starting XOR is 0, Alice wins instantly.</p>`, `<p>Hint 2: Erasing number v is losing only if v equals the current XOR X. When the count is even and X ≠ 0, not all numbers can equal X (their XOR would be 0).</p>`, `<p>Hint 3: So with an even count Alice always has a safe move, and Bob always faces an odd count. Answer: xor == 0 || n % 2 == 0.</p>`],
@@ -5874,7 +6830,13 @@ public:
         for (int v : nums) x ^= v;
         return x == 0 || nums.size() % 2 == 0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool XorGame(int[] nums) {
+        int x = 0;
+        foreach (int v in nums) x ^= v;
+        return x == 0 || nums.Length % 2 == 0;
+    }
+}` }],
       dry: { head: ['nums', 'XOR', 'n even?', 'Alice wins?'], rows: [['[1, 1, 2]', '2', 'no', 'false'], ['[0, 1]', '1', 'yes', 'true'], ['[1, 2, 3]', '0', '—', 'true (instant)']] },
       complexity: `<p>O(n) time, O(1) space.</p>`,
       followUps: ['Prove Bob wins when n is odd and XOR ≠ 0.', 'What if the rule were "make XOR 0 and you WIN"?']
@@ -5932,6 +6894,19 @@ bool firstWins(vector<int> piles) {
             next.push_back(a);
             next.push_back(p - a);
             if (!firstWins(next)) return true;        // move to a losing position
+        }
+    }
+    return false;                                     // no move or all moves lose
+}` }, { lang: 'csharp', code: `// Plain recursion on a multiset of piles - exponential, only for tiny inputs
+static bool FirstWins(List<int> piles) {
+    for (int idx = 0; idx < piles.Count; idx++) {
+        int p = piles[idx];
+        for (int a = 1; 2 * a < p; a++) {            // a < p - a: unequal split
+            var next = new List<int>(piles);
+            next.RemoveAt(idx);
+            next.Add(a);
+            next.Add(p - a);
+            if (!FirstWins(next)) return true;       // move to a losing position
         }
     }
     return false;                                     // no move or all moves lose
@@ -6021,7 +6996,23 @@ public:
         for (int p : piles) x ^= g[p];
         return x ? "First" : "Second";
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string Winner(int[] piles) {
+        int max = 3;
+        foreach (int p in piles) max = Math.Max(max, p);
+        int[] g = new int[max + 1];                  // g[0..2] = 0
+        for (int n = 3; n <= max; n++) {
+            bool[] seen = new bool[256];
+            for (int a = 1; 2 * a < n; a++) seen[g[a] ^ g[n - a]] = true;
+            int mex = 0;
+            while (seen[mex]) mex++;
+            g[n] = mex;
+        }
+        int x = 0;
+        foreach (int p in piles) x ^= g[p];
+        return x != 0 ? "First" : "Second";
+    }
+}` }],
       dry: { head: ['n', 'splits → g(a) ⊕ g(n−a)', 'g(n)'], rows: [['3', '1+2 → 0⊕0 = 0', '1'], ['4', '1+3 → 0⊕1 = 1', '0'], ['5', '1+4 → 0, 2+3 → 1', '2'], ['6', '1+5 → 2, 2+4 → 0', '1'], ['[5, 6]', '2 ⊕ 1', '<b>3 → First</b>']] },
       complexity: `<p>O(max²/2) to build g, O(#piles) for the XOR; O(max) memory.</p>`,
       followUps: ['Allow equal splits too — how does g change?', 'Kayles: remove one or two adjacent pins from a row (also a splitting game).']

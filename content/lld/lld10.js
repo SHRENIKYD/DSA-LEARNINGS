@@ -435,6 +435,65 @@ int main() {
         cout << left << setw(14) << name << " expected=" << static_cast<long long>(threads) * per << " got=" << got << " "
              << (got == static_cast<long long>(threads) * per ? "OK" : "LOST UPDATES") << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+// Which counters survive 4 threads x 100000 increments each?
+interface ICounter { void Increment(); long Get(); }
+
+class UnsafeCounter : ICounter {                  // BRUTE FORCE: no coordination at all
+    private long count;
+    public void Increment() { count++; }          // READ, ADD, WRITE: three steps, not atomic
+    public long Get() { return count; }
+}
+
+class SyncCounter : ICounter {                    // monitor pattern: a private lock guards count
+    private readonly object gate = new object();
+    private long count;                           // guarded by "gate"
+    public void Increment() { lock (gate) { count++; } }
+    public long Get() { lock (gate) { return count; } }   // reads need the lock too (visibility)
+}
+
+class AtomicCounter : ICounter {                  // lock-free: compare-and-swap loop inside the runtime
+    private long count;
+    public void Increment() { Interlocked.Increment(ref count); }
+    public long Get() { return Interlocked.Read(ref count); }
+}
+
+class AdderCounter : ICounter {                   // best for write-heavy stats: striped cells (like LongAdder)
+    private readonly long[] cells = new long[16 * 8];   // one cell per 64-byte line, 16 stripes
+    public void Increment() { Interlocked.Increment(ref cells[(Thread.CurrentThread.ManagedThreadId & 15) * 8]); }
+    public long Get() { long s = 0; for (int i = 0; i < 16; i++) s += Interlocked.Read(ref cells[i * 8]); return s; }
+}
+
+class Program {
+    static long Hammer(ICounter c, int threads, int perThread) {
+        Thread[] ts = new Thread[threads];
+        ManualResetEventSlim start = new ManualResetEventSlim(false);   // release all threads at the same moment
+        for (int i = 0; i < threads; i++) {
+            ts[i] = new Thread(() => {
+                start.Wait();
+                for (int k = 0; k < perThread; k++) c.Increment();
+            });
+            ts[i].Start();
+        }
+        start.Set();
+        foreach (Thread t in ts) t.Join();              // join = wait for them AND see their writes
+        return c.Get();
+    }
+
+    static void Main() {
+        int threads = 4, per = 100000;
+        List<ICounter> all = new List<ICounter> { new UnsafeCounter(), new SyncCounter(), new AtomicCounter(), new AdderCounter() };
+        foreach (ICounter c in all) {
+            long got = Hammer(c, threads, per);
+            Console.WriteLine(string.Format("{0,-14} expected={1} got={2} {3}", c.GetType().Name,
+                    (long)threads * per, got, got == (long)threads * per ? "OK" : "LOST UPDATES"));
+        }
+    }
 }` }
         ] }, { lang: 'java', title: 'The three cures in code: lock an invariant, go immutable, confine to a thread', code: `// CURE 3 (coordinate): an invariant spanning TWO fields (lower <= upper).
 // Two separate AtomicIntegers could NOT protect it - check and act must happen under ONE lock.
@@ -663,6 +722,66 @@ int main() {
     cout << boolalpha << r.contains(15) << "\\n";                          // true
     cout << Money(500, "INR").plus(Money(250, "INR")).str() << "\\n";      // Money[paise=750, currency=INR]
     cout << label("asha", 7) << "\\n";                                     // asha#7
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Text;
+using System.Threading;
+
+// CURE 3 (coordinate): an invariant spanning TWO fields (lower <= upper).
+// Two separate Interlocked ints could NOT protect it - check and act must happen under ONE lock.
+class NumberRange {
+    private readonly object gate = new object();
+    private int lower = 0, upper = 10;            // both guarded by "gate"
+
+    public void SetLower(int v) {
+        lock (gate) {
+            if (v > upper) throw new ArgumentException("lower > upper");
+            lower = v;
+        }
+    }
+    public void SetUpper(int v) {
+        lock (gate) {
+            if (v < lower) throw new ArgumentException("upper < lower");
+            upper = v;
+        }
+    }
+    public bool Contains(int x) { lock (gate) { return lower <= x && x <= upper; } }
+}
+
+// CURE 2 (don't mutate): immutable value object. Share it with 1000 threads, no lock needed.
+sealed class Money {
+    public readonly long Paise; public readonly string Currency;
+    public Money(long paise, string currency) {
+        if (paise < 0) throw new ArgumentException("negative amount");
+        if (currency == null) throw new ArgumentNullException("currency");
+        Paise = paise; Currency = currency;
+    }
+    public Money Plus(Money o) {
+        if (Currency != o.Currency) throw new ArgumentException("currency mismatch");
+        return new Money(Paise + o.Paise, Currency);   // a NEW object; this one never changes
+    }
+    public override string ToString() { return "Money[paise=" + Paise + ", currency=" + Currency + "]"; }
+}
+
+// CURE 1 (don't share): each thread gets its own copy of a non-thread-safe helper.
+static class Formatters {
+    private static readonly ThreadLocal<StringBuilder> BUF = new ThreadLocal<StringBuilder>(() => new StringBuilder());
+    public static string Label(string user, int n) {
+        StringBuilder sb = BUF.Value;     // this thread's private builder
+        sb.Length = 0;
+        return sb.Append(user).Append('#').Append(n).ToString();
+    }
+}
+
+class Program {
+    static void Main() {
+        NumberRange r = new NumberRange();
+        r.SetUpper(20);
+        Console.WriteLine(r.Contains(15).ToString().ToLower());                 // true
+        Console.WriteLine(new Money(500, "INR").Plus(new Money(250, "INR")));   // Money[paise=750, currency=INR]
+        Console.WriteLine(Formatters.Label("asha", 7));                         // asha#7
+    }
 }` }
         ] }],
     codeTitle: ['Lost update proven, then fixed three ways', 'Lock / immutable / confined'],
@@ -829,7 +948,23 @@ public:
         static Config instance;
         return instance;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+class Config {
+    private Config() { Console.WriteLine("loading config once"); }
+
+    // BROKEN: check-then-act without a lock
+    private static Config unsafeInstance;
+    public static Config GetUnsafe() {
+        if (unsafeInstance == null) unsafeInstance = new Config();   // two threads can both see null
+        return unsafeInstance;
+    }
+
+    // SAFE and lazy: the runtime initialises Holder exactly once, on first use
+    private static class Holder { public static readonly Config INSTANCE = new Config(); static Holder() { } }
+    public static Config Get() { return Holder.INSTANCE; }
+}` }
         ] },
       { title: 'Visibility: the loop that never stops', html: `<p>Without <code>volatile</code>, the JIT compiler may hoist <code>running</code> into a register and the worker loops forever even after <code>stop()</code>. <code>volatile</code> forces every read to see the latest write. Note: volatile fixes <i>visibility</i> only — <code>volatile int count; count++</code> is <span class="c-r">still a race</span>.</p>`, code: `class Worker implements Runnable {
     private volatile boolean running = true;   // remove volatile and the loop may spin forever
@@ -925,6 +1060,29 @@ int main() {
     w.stop();
     t.join();                                      // join = wait for it AND see its writes
     cout << boolalpha << "worker alive? " << t.joinable() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Threading;
+class Worker {
+    private volatile bool running = true;      // remove volatile and the loop may spin forever
+    private long ticks;
+
+    public void Run() {
+        while (running) ticks++;
+        Console.WriteLine("stopped after " + (ticks > 0 ? "some" : "zero") + " ticks");
+    }
+    public void Stop() { running = false; }
+
+    static void Main() {
+        Worker w = new Worker();
+        Thread t = new Thread(w.Run);
+        t.Start();
+        Thread.Sleep(50);
+        w.Stop();
+        t.Join(2000);                            // bounded wait so a demo can never hang
+        Console.WriteLine("worker alive? " + t.IsAlive.ToString().ToLower());
+    }
 }` }
         ] },
       { title: 'Two atomics do not make one atomic invariant', html: `<p><code>lower</code> and <code>upper</code> as two <code>AtomicInteger</code>s, range (0, 10). Thread A calls <code>setLower(5)</code>: checks 5 ≤ upper(10) ✓. Thread B calls <code>setUpper(4)</code>: checks 4 ≥ lower(0) ✓. Both write. Now the range is (5, 4) — ${H.c('r', 'impossible state')}. Each field was updated atomically, but the <i>rule linking them</i> was not. Whenever an invariant ties several variables together, <b>one lock must guard all of them</b> (see <code>NumberRange</code> above), or bundle them into one immutable object swapped with an <code>AtomicReference</code>.</p>` }
@@ -962,7 +1120,7 @@ int main() {
         all.sort((a, b) -> b.getValue() - a.getValue());
         return new ArrayList<>(all.subList(0, Math.min(k, all.size())));
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass NaivePageViews:\n    def __init__(self):\n        self.views = {}\n        self.lock = threading.Lock()\n\n    # BRUTE 1: race - get then set is two steps (a thread can be switched out in between)\n    def record_view_unsafe(self, page):\n        self.views[page] = self.views.get(page, 0) + 1\n\n    # BRUTE 2: correct but every thread waits on ONE lock, even for unrelated pages\n    def record_view(self, page):\n        with self.lock:\n            self.views[page] = self.views.get(page, 0) + 1\n\n    def top(self, k):                                  # sorts while holding the lock\n        with self.lock:\n            return sorted(self.views.items(), key=lambda kv: -kv[1])[:k]\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass NaivePageViews {\n  private views = new Map<string, number>();\n  private mutex = new Mutex();\n\n  // BRUTE 1: race - get then set is two steps (workers sharing the map, or an await in between)\n  recordViewUnsafe(page: string): void {\n    this.views.set(page, (this.views.get(page) ?? 0) + 1);\n  }\n\n  // BRUTE 2: correct but every caller waits on ONE lock, even for unrelated pages\n  recordView(page: string): Promise<void> {\n    return this.mutex.runExclusive(() => { this.views.set(page, (this.views.get(page) ?? 0) + 1); });\n  }\n  top(k: number): Promise<[string, number][]> {         // sorts while holding the lock\n    return this.mutex.runExclusive(() => [...this.views].sort((a, b) => b[1] - a[1]).slice(0, k));\n  }\n}\n" }, { lang: 'cpp', code: "class NaivePageViews {\n    unordered_map<string, int> views;\n    mutex m;\npublic:\n    // BRUTE 1: race - find then assign is two steps; unordered_map itself is not thread-safe\n    void recordViewUnsafe(const string& page) {\n        views[page] = views[page] + 1;\n    }\n\n    // BRUTE 2: correct but every thread waits on ONE lock, even for unrelated pages\n    void recordView(const string& page) {\n        lock_guard<mutex> g(m);\n        views[page] = views[page] + 1;\n    }\n    vector<pair<string, int>> top(int k) {               // sorts while holding the lock\n        lock_guard<mutex> g(m);\n        vector<pair<string, int>> all(views.begin(), views.end());\n        sort(all.begin(), all.end(), [](auto& a, auto& b) { return a.second > b.second; });\n        all.resize(min<size_t>(k, all.size()));\n        return all;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass NaivePageViews:\n    def __init__(self):\n        self.views = {}\n        self.lock = threading.Lock()\n\n    # BRUTE 1: race - get then set is two steps (a thread can be switched out in between)\n    def record_view_unsafe(self, page):\n        self.views[page] = self.views.get(page, 0) + 1\n\n    # BRUTE 2: correct but every thread waits on ONE lock, even for unrelated pages\n    def record_view(self, page):\n        with self.lock:\n            self.views[page] = self.views.get(page, 0) + 1\n\n    def top(self, k):                                  # sorts while holding the lock\n        with self.lock:\n            return sorted(self.views.items(), key=lambda kv: -kv[1])[:k]\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass NaivePageViews {\n  private views = new Map<string, number>();\n  private mutex = new Mutex();\n\n  // BRUTE 1: race - get then set is two steps (workers sharing the map, or an await in between)\n  recordViewUnsafe(page: string): void {\n    this.views.set(page, (this.views.get(page) ?? 0) + 1);\n  }\n\n  // BRUTE 2: correct but every caller waits on ONE lock, even for unrelated pages\n  recordView(page: string): Promise<void> {\n    return this.mutex.runExclusive(() => { this.views.set(page, (this.views.get(page) ?? 0) + 1); });\n  }\n  top(k: number): Promise<[string, number][]> {         // sorts while holding the lock\n    return this.mutex.runExclusive(() => [...this.views].sort((a, b) => b[1] - a[1]).slice(0, k));\n  }\n}\n" }, { lang: 'cpp', code: "class NaivePageViews {\n    unordered_map<string, int> views;\n    mutex m;\npublic:\n    // BRUTE 1: race - find then assign is two steps; unordered_map itself is not thread-safe\n    void recordViewUnsafe(const string& page) {\n        views[page] = views[page] + 1;\n    }\n\n    // BRUTE 2: correct but every thread waits on ONE lock, even for unrelated pages\n    void recordView(const string& page) {\n        lock_guard<mutex> g(m);\n        views[page] = views[page] + 1;\n    }\n    vector<pair<string, int>> top(int k) {               // sorts while holding the lock\n        lock_guard<mutex> g(m);\n        vector<pair<string, int>> all(views.begin(), views.end());\n        sort(all.begin(), all.end(), [](auto& a, auto& b) { return a.second > b.second; });\n        all.resize(min<size_t>(k, all.size()));\n        return all;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\nclass NaivePageViews {\n    private readonly Dictionary<string, int> views = new Dictionary<string, int>();\n    private readonly object gate = new object();\n\n    // BRUTE 1: race - get then put is two steps; Dictionary itself is not thread-safe\n    public void RecordViewUnsafe(string page) {\n        int n; views.TryGetValue(page, out n);\n        views[page] = n + 1;\n    }\n\n    // BRUTE 2: correct but every thread waits on ONE lock, even for unrelated pages\n    public void RecordView(string page) {\n        lock (gate) { int n; views.TryGetValue(page, out n); views[page] = n + 1; }\n    }\n    public List<KeyValuePair<string, int>> Top(int k) {   // sorts while holding the lock\n        lock (gate) {\n            List<KeyValuePair<string, int>> all = views.ToList();\n            all.Sort((a, b) => b.Value - a.Value);\n            return all.Take(k).ToList();\n        }\n    }\n}\n" }] } },
       mcq: { q: 'You switch to <code>ConcurrentHashMap&lt;String, Integer&gt;</code> but keep <code>map.put(p, map.getOrDefault(p, 0) + 1)</code>. Is it fixed?', options: ['Yes — ConcurrentHashMap is thread-safe', 'No — each call is safe, but get-then-put is still two separate steps, so updates are still lost', 'No — ConcurrentHashMap does not allow Integer values', 'Yes, as long as the JVM has more than one core'], answer: 1, explain: 'A thread-safe collection makes each <i>single</i> call atomic. A compound action built from two calls is not. Use <code>merge(p, 1, Integer::sum)</code>, <code>compute</code>, or <code>computeIfAbsent(p, k -&gt; new LongAdder()).increment()</code>.' },
       hints: [`<p>Hint 1: The bug is a <b>read-modify-write</b> on a shared map entry. You need the "add one" to be a single atomic step per key.</p>`, `<p>Hint 2: <code>ConcurrentHashMap</code> gives per-key atomic <code>computeIfAbsent</code>; <code>LongAdder</code> gives a contention-friendly counter. Combine them: one adder per page.</p>`, `<p>Hint 3: For <code>top(k)</code>, take a <b>snapshot</b> (copy page → sum into a list) without any global lock, then sort the copy. Writers keep running; the report is a few ms stale, which the constraints allow.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "[/home=20000, /cart=10000, /pay=10000]\nhome=20000 missing=0 top0=[]\n" }] },
@@ -1140,6 +1298,70 @@ int main() {
     for (auto& th : pool) th.join();
     cout << fmt(c.top(3)) << "\\n";
     cout << "home=" << c.views("/home") << " missing=" << c.views("/missing") << " top0=" << fmt(c.top(0)) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+/// Striped counter: threads increment different cells, Sum() adds them up (the LongAdder idea).
+sealed class LongAdder {
+    private readonly long[] cells = new long[16 * 8];
+    public void Increment() { Interlocked.Increment(ref cells[(Thread.CurrentThread.ManagedThreadId & 15) * 8]); }
+    public long Sum() { long s = 0; for (int i = 0; i < 16; i++) s += Interlocked.Read(ref cells[i * 8]); return s; }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class PageViewCounter {
+    private readonly ConcurrentDictionary<string, LongAdder> views = new ConcurrentDictionary<string, LongAdder>();
+
+    public void RecordView(string page) {
+        // atomic per key: only ONE LongAdder is ever published for a page (a losing racer's adder is discarded unused)
+        views.GetOrAdd(page, k => new LongAdder()).Increment();
+    }
+
+    public long Views(string page) {
+        LongAdder a;
+        return views.TryGetValue(page, out a) ? a.Sum() : 0;
+    }
+
+    // weakly consistent snapshot: no global lock, writers never wait for the report
+    public List<KeyValuePair<string, long>> Top(int k) {
+        List<KeyValuePair<string, long>> snap = new List<KeyValuePair<string, long>>();
+        foreach (var kv in views) snap.Add(new KeyValuePair<string, long>(kv.Key, kv.Value.Sum()));
+        snap.Sort((x, y) => {                                // most views first, ties by page name
+            int c = y.Value.CompareTo(x.Value);
+            return c != 0 ? c : string.CompareOrdinal(x.Key, y.Key);
+        });
+        return snap.Take(k).ToList();
+    }
+
+    static string Show(List<KeyValuePair<string, long>> l) { return "[" + string.Join(", ", l.Select(kv => kv.Key + "=" + kv.Value)) + "]"; }
+
+    static void Main() {
+        PageViewCounter c = new PageViewCounter();
+        FixedPool pool = new FixedPool(8);
+        string[] pages = { "/home", "/cart", "/home", "/pay" };
+        for (int i = 0; i < 40000; i++) {
+            string p = pages[i % pages.Length];
+            pool.Execute(() => c.RecordView(p));
+        }
+        pool.ShutdownAndWait(10000);                       // no new tasks; finish queued ones; bounded wait
+        Console.WriteLine(Show(c.Top(3)));                 // [/home=20000, /cart=10000, /pay=10000]
+        Console.WriteLine("home=" + c.Views("/home") + " missing=" + c.Views("/missing") + " top0=" + Show(c.Top(0)));
+    }
 }` }
         ],
         dry: { head: ['Step', 'Thread T1', 'Thread T2', 'views["/home"]'], rows: [['1', 'computeIfAbsent("/home") → creates adder', 'computeIfAbsent("/home") waits for that bin', 'adder(0)'], ['2', 'increment()', 'gets the SAME adder', 'adder(1)'], ['3', '—', 'increment()', H.c('g', 'adder(2) — nothing lost')]] },
@@ -1413,6 +1635,74 @@ int main() {
     cout << "cow = [";
     for (size_t i = 0; i < cow.size(); i++) cout << (i ? ", " : "") << cow[i];
     cout << "]\\n";                                   // [1, 2, 3, 99]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+/// A list whose every write copies the array, so readers iterate a snapshot without locks (CopyOnWriteArrayList).
+sealed class CopyOnWriteList<T> : IEnumerable<T> {
+    private volatile T[] items = new T[0];
+    private readonly object gate = new object();
+    public CopyOnWriteList() { }
+    public CopyOnWriteList(IEnumerable<T> init) { items = new List<T>(init).ToArray(); }
+    public void Add(T x) { lock (gate) { T[] n = new T[items.Length + 1]; Array.Copy(items, n, items.Length); n[items.Length] = x; items = n; } }
+    public IEnumerator<T> GetEnumerator() { return ((IEnumerable<T>)items).GetEnumerator(); }
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() { return GetEnumerator(); }
+    public override string ToString() { return "[" + string.Join(", ", items) + "]"; }
+}
+
+/// A plain dictionary where every single call takes the lock (Collections.synchronizedMap).
+sealed class SynchronizedMap {
+    private readonly Dictionary<string, string> map = new Dictionary<string, string>();
+    public bool ContainsKey(string k) { lock (map) return map.ContainsKey(k); }
+    public void Put(string k, string v) { lock (map) map[k] = v; }
+}
+
+class CollectionsDemo {
+    static void Main() {
+        // ---- Trap 1: check-then-act on a synchronized map ----
+        SynchronizedMap sync = new SynchronizedMap();
+        int winners = 0;
+        RunTwice(() => {
+            if (!sync.ContainsKey("neo")) {          // CHECK  (lock taken and released)
+                Thread.Yield();                      // widen the gap so the race is easy to see
+                sync.Put("neo", Thread.CurrentThread.Name);          // ACT (lock taken again)
+                Interlocked.Increment(ref winners);
+            }
+        });
+        Console.WriteLine("synchronizedMap, check-then-act winners: " + winners + " (1 is correct)");
+
+        // Fix: one atomic call
+        ConcurrentDictionary<string, string> chm = new ConcurrentDictionary<string, string>();
+        int winners2 = 0;
+        RunTwice(() => {
+            if (chm.TryAdd("neo", Thread.CurrentThread.Name)) Interlocked.Increment(ref winners2);
+        });
+        Console.WriteLine("putIfAbsent winners: " + winners2);
+
+        // ---- Trap 2: iterating a synchronized list needs client-side locking ----
+        List<int> list = new List<int> { 1, 2, 3 };
+        int sum = 0;
+        lock (list) {                                 // REQUIRED while iterating a lock-wrapped list
+            foreach (int x in list) sum += x;
+        }
+        Console.WriteLine("sum = " + sum);
+
+        // Or: a snapshot iterator that can never throw "collection was modified"
+        CopyOnWriteList<int> cow = new CopyOnWriteList<int>(new[] { 1, 2, 3 });
+        foreach (int x in cow) if (x == 2) cow.Add(99);    // safe: the loop sees the old snapshot
+        Console.WriteLine("cow = " + cow);                 // [1, 2, 3, 99]
+    }
+
+    // runs the same task on 2 threads at once (the race shows up only on unlucky timings)
+    static void RunTwice(Action task) {
+        Thread a = new Thread(() => task()) { Name = "A" }, b = new Thread(() => task()) { Name = "B" };
+        a.Start(); b.Start();
+        a.Join(); b.Join();
+    }
 }` }
         ] }, { lang: 'java', title: 'ConcurrentHashMap atomic-operation cheat sheet', code: `class ChmCheatSheet {
     final ConcurrentHashMap<String, Long> hits = new ConcurrentHashMap<>();
@@ -1589,6 +1879,49 @@ int main() {
     bool second = c.reserveOne("tee");
     cout << "{/home=" << c.hits["/home"] << "} {asha=[" << c.inbox["asha"][0] << ", " << c.inbox["asha"][1] << "]} "
          << boolalpha << first << " " << second << "\\n";   // {/home=2} {asha=[hi, lunch?]} true false
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+
+class ChmCheatSheet {
+    public readonly ConcurrentDictionary<string, long> Hits = new ConcurrentDictionary<string, long>();
+    public readonly ConcurrentDictionary<string, ConcurrentQueue<string>> Inbox = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
+    public readonly ConcurrentDictionary<string, int> Stock = new ConcurrentDictionary<string, int>();
+
+    public void Hit(string page) { Hits.AddOrUpdate(page, 1L, (k, v) => v + 1); }            // atomic counter per key
+
+    public void Deliver(string user, string msg) {
+        // GetOrAdd publishes one queue per user, but the VALUE must also be thread-safe:
+        // a List here would race on Add(). Use a concurrent queue.
+        Inbox.GetOrAdd(user, u => new ConcurrentQueue<string>()).Enqueue(msg);
+    }
+
+    public bool ReserveOne(string sku) {
+        // CAS loop: check stock AND decrement as one atomic step (TryUpdate succeeds only if qty is unchanged)
+        while (true) {
+            int qty;
+            if (!Stock.TryGetValue(sku, out qty) || qty <= 0) return false;
+            if (Stock.TryUpdate(sku, qty - 1, qty)) return true;
+        }
+    }
+
+    public bool CasPrice(string sku, int expected, int next) {
+        return Stock.TryUpdate(sku, next, expected);      // succeeds only if value is still "expected"
+    }
+
+    static void Main() {
+        ChmCheatSheet c = new ChmCheatSheet();
+        c.Hit("/home"); c.Hit("/home");
+        c.Deliver("asha", "hi"); c.Deliver("asha", "lunch?");
+        c.Stock["tee"] = 1;
+        string hits = "{" + string.Join(", ", c.Hits.Select(kv => kv.Key + "=" + kv.Value)) + "}";
+        string inbox = "{" + string.Join(", ", c.Inbox.Select(kv => kv.Key + "=[" + string.Join(", ", kv.Value) + "]")) + "}";
+        Console.WriteLine(hits + " " + inbox + " " + c.ReserveOne("tee").ToString().ToLower() + " " + c.ReserveOne("tee").ToString().ToLower());
+        // {/home=2} {asha=[hi, lunch?]} true false
+    }
 }` }
         ] }],
     codeTitle: ['Traps & fixes', 'CHM atomic methods'],
@@ -1693,7 +2026,21 @@ public:
         }
         for (const auto& l : *snap) l(event);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class EventBus {
+    private volatile Action<string>[] listeners = new Action<string>[0];   // copy-on-write array
+    private readonly object gate = new object();
+    public void Subscribe(Action<string> l) {                                // copies the array: rare, fine
+        lock (gate) { List<Action<string>> n = new List<Action<string>>(listeners); n.Add(l); listeners = n.ToArray(); }
+    }
+    public void Publish(string ev) {
+        foreach (Action<string> l in listeners) l(ev);                     // snapshot iteration, lock-free
+    }
+}` }
         ] },
       { title: 'Vector is not magic: isEmpty then remove', html: `<p><code>Vector&lt;Job&gt; jobs</code>, two workers run <code>if (!jobs.isEmpty()) jobs.remove(0);</code>. One job left: both see "not empty", first removes it, second gets ${H.c('r', 'ArrayIndexOutOfBoundsException')}. The fix is either a lock around both calls or, better, the right abstraction: a <code>BlockingQueue</code> whose <code>poll()</code> returns <code>null</code> atomically when empty.</p>`, code: `class Workers {
     private final BlockingQueue<String> jobs = new LinkedBlockingQueue<>(List.of("j1"));
@@ -1731,7 +2078,13 @@ public:
         jobs_.pop_front();
         return j;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Collections.Concurrent;
+class Workers {
+    private readonly BlockingCollection<string> jobs = new BlockingCollection<string>(new ConcurrentQueue<string>(new[] { "j1" }));
+    public string Next() { string j; return jobs.TryTake(out j) ? j : null; }   // atomic "take if present", null when empty
+}` }
         ] },
       { title: 'computeIfAbsent with a non-thread-safe value', html: `<p><code>map.computeIfAbsent(user, u -&gt; new ArrayList&lt;&gt;()).add(order)</code> on a CHM: the map entry is created once, safely. But then two threads call <code>add</code> on the <b>same ArrayList</b> with no lock → lost elements or a corrupted array. Thread safety must hold at <i>every level</i>: use <code>ConcurrentLinkedQueue</code> / <code>CopyOnWriteArrayList</code> as the value, or do the add <i>inside</i> <code>compute</code> so it runs under the bin lock.</p>`, code: `class Orders {
     final ConcurrentHashMap<String, List<String>> byUser = new ConcurrentHashMap<>();
@@ -1773,7 +2126,17 @@ public:
         lock_guard lk(mu_);                    // create-or-get AND append in one critical section
         byUser[user].push_back(order);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+class Orders {
+    public readonly ConcurrentDictionary<string, List<string>> ByUser = new ConcurrentDictionary<string, List<string>>();
+    public void Add(string user, string order) {
+        List<string> l = ByUser.GetOrAdd(user, u => new List<string>());   // one list per user
+        lock (l) l.Add(order);                                              // the list itself is guarded by its own monitor
+    }
+}` }
         ] },
       { title: 'Why ConcurrentHashMap refuses null', html: `<p>On a plain <code>HashMap</code>, <code>get(k) == null</code> could mean "absent" or "mapped to null"; you disambiguate with <code>containsKey</code>. On a concurrent map, that second call is a <b>check-then-act</b> — the answer may change between calls. So CHM bans null keys and values: ${H.c('g', 'null always means absent')}, and <code>putIfAbsent</code> returning null always means "you inserted it".</p>` }
     ],
@@ -1823,7 +2186,7 @@ public:
         return true;
     }
     synchronized List<String> all() { return new ArrayList<>(users.keySet()); }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass RegistryGlobalLock:\n    def __init__(self):\n        self.users = {}\n        self.lock = threading.Lock()\n\n    def register(self, name, id_):\n        with self.lock:\n            if name in self.users: return False\n            self.users[name] = id_\n            return True\n\n    def rename(self, old_n, new_n, id_):\n        with self.lock:\n            cur = self.users.get(old_n)\n            if cur is None or cur != id_ or new_n in self.users: return False\n            del self.users[old_n]\n            self.users[new_n] = id_\n            return True\n\n    def all(self):\n        with self.lock:\n            return list(self.users)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass RegistryGlobalLock {\n  private users = new Map<string, number>();\n  private mutex = new Mutex();\n\n  register(name: string, id: number): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      if (this.users.has(name)) return false;\n      this.users.set(name, id);\n      return true;\n    });\n  }\n  rename(oldN: string, newN: string, id: number): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      const cur = this.users.get(oldN);\n      if (cur === undefined || cur !== id || this.users.has(newN)) return false;\n      this.users.delete(oldN);\n      this.users.set(newN, id);\n      return true;\n    });\n  }\n  all(): Promise<string[]> { return this.mutex.runExclusive(() => [...this.users.keys()]); }\n}\n" }, { lang: 'cpp', code: "class RegistryGlobalLock {\n    unordered_map<string, long long> users;\n    mutex m;\npublic:\n    bool registerUser(const string& name, long long id) {\n        lock_guard<mutex> g(m);\n        if (users.count(name)) return false;\n        users[name] = id;\n        return true;\n    }\n    bool rename(const string& oldN, const string& newN, long long id) {\n        lock_guard<mutex> g(m);\n        auto it = users.find(oldN);\n        if (it == users.end() || it->second != id || users.count(newN)) return false;\n        users.erase(it);\n        users[newN] = id;\n        return true;\n    }\n    vector<string> all() {\n        lock_guard<mutex> g(m);\n        vector<string> out;\n        for (auto& kv : users) out.push_back(kv.first);\n        return out;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass RegistryGlobalLock:\n    def __init__(self):\n        self.users = {}\n        self.lock = threading.Lock()\n\n    def register(self, name, id_):\n        with self.lock:\n            if name in self.users: return False\n            self.users[name] = id_\n            return True\n\n    def rename(self, old_n, new_n, id_):\n        with self.lock:\n            cur = self.users.get(old_n)\n            if cur is None or cur != id_ or new_n in self.users: return False\n            del self.users[old_n]\n            self.users[new_n] = id_\n            return True\n\n    def all(self):\n        with self.lock:\n            return list(self.users)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass RegistryGlobalLock {\n  private users = new Map<string, number>();\n  private mutex = new Mutex();\n\n  register(name: string, id: number): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      if (this.users.has(name)) return false;\n      this.users.set(name, id);\n      return true;\n    });\n  }\n  rename(oldN: string, newN: string, id: number): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      const cur = this.users.get(oldN);\n      if (cur === undefined || cur !== id || this.users.has(newN)) return false;\n      this.users.delete(oldN);\n      this.users.set(newN, id);\n      return true;\n    });\n  }\n  all(): Promise<string[]> { return this.mutex.runExclusive(() => [...this.users.keys()]); }\n}\n" }, { lang: 'cpp', code: "class RegistryGlobalLock {\n    unordered_map<string, long long> users;\n    mutex m;\npublic:\n    bool registerUser(const string& name, long long id) {\n        lock_guard<mutex> g(m);\n        if (users.count(name)) return false;\n        users[name] = id;\n        return true;\n    }\n    bool rename(const string& oldN, const string& newN, long long id) {\n        lock_guard<mutex> g(m);\n        auto it = users.find(oldN);\n        if (it == users.end() || it->second != id || users.count(newN)) return false;\n        users.erase(it);\n        users[newN] = id;\n        return true;\n    }\n    vector<string> all() {\n        lock_guard<mutex> g(m);\n        vector<string> out;\n        for (auto& kv : users) out.push_back(kv.first);\n        return out;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass RegistryGlobalLock {\n    private readonly Dictionary<string, long> users = new Dictionary<string, long>();\n    private readonly object gate = new object();\n    public bool Register(string name, long id) {\n        lock (gate) {\n            if (users.ContainsKey(name)) return false;\n            users[name] = id;\n            return true;\n        }\n    }\n    public bool Rename(string oldN, string newN, long id) {\n        lock (gate) {\n            long cur;\n            if (!users.TryGetValue(oldN, out cur) || cur != id || users.ContainsKey(newN)) return false;\n            users.Remove(oldN);\n            users[newN] = id;\n            return true;\n        }\n    }\n    public List<string> All() { lock (gate) return new List<string>(users.Keys); }\n}\n" }] } },
       mcq: { q: 'For <code>rename</code>, which order of atomic steps is safe without a global lock?', options: ['remove(old) first, then putIfAbsent(new)', 'putIfAbsent(new, id) first; if it succeeds, remove(old, id)', 'put(new, id) then remove(old)', 'containsKey(new) then put(new, id)'], answer: 1, explain: 'Claim the new name atomically first; if someone else owns it you have changed nothing. Removing old first could leave the user with no name if the claim then fails. <code>remove(old, id)</code> only removes if old still maps to this user.' },
       hints: [`<p>Hint 1: Look for any place two map calls must agree with each other — those are the races. There are three.</p>`, `<p>Hint 2: <code>ConcurrentHashMap</code> has single-call versions: <code>putIfAbsent</code> (register), <code>remove(key, value)</code> (conditional delete), and iteration that never throws.</p>`, `<p>Hint 3: For rename, do the step that can fail <b>first</b> (claim new name), then the step that cannot conflict (conditional remove of old). Returning a copy of <code>keySet()</code> is a cheap weakly consistent snapshot.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "owners of neo: 1\nrename neo->trinity: true\nregister trinity again: false\nrename by non-owner: false\nrename into taken name: false\nnames: [morpheus, trinity]\n" }] },
@@ -2022,6 +2385,70 @@ int main() {
     cout << "names: [";
     for (size_t i = 0; i < names.size(); i++) cout << (i ? ", " : "") << names[i];
     cout << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Registry {
+    public readonly ConcurrentDictionary<string, long> Users = new ConcurrentDictionary<string, long>();
+
+    public bool Register(string name, long id) {
+        return Users.TryAdd(name, id);                        // check + insert in one step
+    }
+
+    /// Conditional remove: succeeds only while the entry still maps to \`id\` (ConcurrentHashMap.remove(key, value)).
+    private bool RemoveIf(string name, long id) {
+        return ((ICollection<KeyValuePair<string, long>>)Users).Remove(new KeyValuePair<string, long>(name, id));
+    }
+
+    public bool Rename(string oldN, string newN, long id) {
+        long cur;
+        if (!Users.TryGetValue(oldN, out cur) || cur != id) return false;   // not yours (fast-path hint)
+        if (!Users.TryAdd(newN, id)) return false;            // claim new name atomically
+        if (!RemoveIf(oldN, id)) {                            // old changed meanwhile?
+            RemoveIf(newN, id);                               // roll back our claim
+            return false;
+        }
+        return true;
+    }
+
+    public List<string> All() { return new List<string>(Users.Keys); }   // never throws "collection modified"
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        Registry r = new Registry();
+        int wins = 0;
+        FixedPool pool = new FixedPool(8);
+        for (int i = 0; i < 100; i++) {
+            long id = i;
+            pool.Execute(() => { if (r.Register("neo", id)) Interlocked.Increment(ref wins); });
+        }
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine("owners of neo: " + wins);   // always 1
+        long owner = r.Users["neo"];
+        Console.WriteLine("rename neo->trinity: " + B(r.Rename("neo", "trinity", owner)));       // true
+        Console.WriteLine("register trinity again: " + B(r.Register("trinity", 777)));          // false
+        r.Register("morpheus", 7);
+        Console.WriteLine("rename by non-owner: " + B(r.Rename("morpheus", "oracle", 8)));      // false
+        Console.WriteLine("rename into taken name: " + B(r.Rename("morpheus", "trinity", 7)));  // false
+        List<string> names = r.All();
+        names.Sort(StringComparer.Ordinal);
+        Console.WriteLine("names: [" + string.Join(", ", names) + "]");                          // [morpheus, trinity]
+    }
 }` }
         ],
         complexity: `<p>All operations O(1) average; contention only between threads touching the same username's bin. <code>all()</code> O(n) without blocking writers.</p>`,
@@ -2304,6 +2731,90 @@ int main() {
             pool.emplace_back([&] { for (int i = 0; i < 100; i++) if (shared.tryAcquire(1)) ok++; });
     }
     cout << "granted under contention: " << ok << "\\n";                           // 4
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
+
+class TokenBucket {
+    private readonly long capacity;
+    private readonly double refillPerNano;
+    private readonly Func<long> clock;     // Stopwatch nanos in production, a fake clock in tests
+    private double tokens;                 // guarded by "gate"
+    private long lastRefill;               // guarded by "gate"
+    private readonly object gate = new object();
+
+    public TokenBucket(long capacity, double tokensPerSecond, Func<long> clock) {
+        if (capacity <= 0 || tokensPerSecond <= 0) throw new ArgumentException("bad limits");
+        this.capacity = capacity;
+        refillPerNano = tokensPerSecond / 1000000000.0;
+        this.clock = clock;
+        tokens = capacity;                 // start full: allows an initial burst
+        lastRefill = clock();
+    }
+
+    // refill + check + take happen under ONE lock hold: no two threads can take the same token
+    public bool TryAcquire(int permits) {
+        if (permits <= 0 || permits > capacity) throw new ArgumentException("permits");
+        lock (gate) {
+            Refill();
+            if (tokens >= permits) { tokens -= permits; return true; }
+            return false;
+        }
+    }
+
+    // how long until "permits" tokens will exist (for a Retry-After header)
+    public long NanosUntil(int permits) {
+        lock (gate) {
+            Refill();
+            return tokens >= permits ? 0 : (long)Math.Ceiling((permits - tokens) / refillPerNano);
+        }
+    }
+
+    private void Refill() {                // lazy: no background thread, O(1)
+        long now = clock();
+        long elapsed = now - lastRefill;
+        if (elapsed > 0) {
+            tokens = Math.Min(capacity, tokens + elapsed * refillPerNano);
+            lastRefill = now;
+        }
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class TokenBucketDemo {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        long fakeNow = 0;                                               // we control time: no sleeping
+        TokenBucket b = new TokenBucket(4, 2.0, () => Interlocked.Read(ref fakeNow));  // burst 4, 2 per second
+        StringBuilder sb = new StringBuilder("t=0.0: ");
+        for (int i = 0; i < 5; i++) sb.Append(b.TryAcquire(1) ? "Y " : "N ");
+        Console.WriteLine(sb);                                          // Y Y Y Y N
+        Interlocked.Exchange(ref fakeNow, 500000000L);                  // +0.5 s => +1 token
+        Console.WriteLine("t=0.5: " + B(b.TryAcquire(1)) + " then " + B(b.TryAcquire(1)));   // true then false
+        Console.WriteLine("retry after ms: " + b.NanosUntil(1) / 1000000);                 // 500
+
+        // concurrency check: 8 threads x 100 attempts at a frozen time => exactly 4 succeed
+        TokenBucket shared = new TokenBucket(4, 2.0, () => 0L);
+        int ok = 0;
+        FixedPool pool = new FixedPool(8);
+        for (int i = 0; i < 800; i++) pool.Execute(() => { if (shared.TryAcquire(1)) Interlocked.Increment(ref ok); });
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine("granted under contention: " + ok);                               // 4
+    }
 }` }
         ] }, { lang: 'java', title: 'Lock-free variant (CAS on an immutable state) + per-client limiter', code: `class CasTokenBucket {
     private record State(double tokens, long last) {}       // immutable snapshot of both fields
@@ -2533,6 +3044,61 @@ int main() {
     RateLimiter rl(2, 1, [] { return 0LL; });
     bool a = rl.allow("asha"), b = rl.allow("asha"), c = rl.allow("asha"), d = rl.allow("bala");
     cout << boolalpha << a << " " << b << " " << c << " | bala: " << d << "\\n";   // true true false | bala: true
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Threading;
+
+class CasTokenBucket {
+    private sealed class State {                                 // immutable snapshot of both fields
+        public readonly double Tokens; public readonly long Last;
+        public State(double tokens, long last) { Tokens = tokens; Last = last; }
+    }
+    private State state;                                         // swapped only with Interlocked.CompareExchange
+    private readonly double capacity, perNano;
+    private readonly Func<long> clock;
+
+    public CasTokenBucket(double capacity, double perSecond, Func<long> clock) {
+        this.capacity = capacity;
+        perNano = perSecond / 1e9;
+        this.clock = clock;
+        state = new State(capacity, clock());
+    }
+
+    public bool TryAcquire() {
+        while (true) {                                           // classic CAS retry loop
+            State s = Volatile.Read(ref state);
+            long now = Math.Max(clock(), s.Last);
+            double t = Math.Min(capacity, s.Tokens + (now - s.Last) * perNano);
+            if (t < 1) return false;
+            if (Interlocked.CompareExchange(ref state, new State(t - 1, now), s) == s) return true;
+            // another thread changed the state between the read and the CAS: recompute and retry
+        }
+    }
+}
+
+class RateLimiter {
+    private readonly ConcurrentDictionary<string, CasTokenBucket> buckets = new ConcurrentDictionary<string, CasTokenBucket>();
+    private readonly double capacity, perSecond;
+    private readonly Func<long> clock;
+
+    public RateLimiter(double capacity, double perSecond, Func<long> clock) {
+        this.capacity = capacity; this.perSecond = perSecond; this.clock = clock;
+    }
+
+    public bool Allow(string clientId) {
+        // one bucket per client; GetOrAdd publishes exactly one even under a thundering herd
+        return buckets.GetOrAdd(clientId, id => new CasTokenBucket(capacity, perSecond, clock))
+                      .TryAcquire();
+    }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        RateLimiter rl = new RateLimiter(2, 1, () => 0L);
+        Console.WriteLine(B(rl.Allow("asha")) + " " + B(rl.Allow("asha")) + " " + B(rl.Allow("asha"))
+                + " | bala: " + B(rl.Allow("bala")));              // true true false | bala: true
+    }
 }` }
         ] }],
     codeTitle: ['Synchronized TokenBucket', 'CAS bucket + per-client map'],
@@ -2679,7 +3245,32 @@ public:
         lock_guard lk(mu_);
         tokens_ = min(capacity_, tokens_ + unusedTokens);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Diagnostics;
+class TeamQuota {
+    private static long NanoTime() { return (long)(Stopwatch.GetTimestamp() * (1e9 / Stopwatch.Frequency)); }
+    private readonly double capacity = 90000, perNano = 1500 / 1e9;   // 90k tokens per minute
+    private double tokens = 90000;                                     // guarded by gate
+    private long last = NanoTime();                                    // guarded by gate
+    private readonly object gate = new object();
+
+    // the same token bucket, but each request costs "estimatedTokens" permits
+    public bool Admit(int estimatedTokens) {
+        lock (gate) {
+            long now = NanoTime();
+            tokens = Math.Min(capacity, tokens + (now - last) * perNano);
+            last = now;
+            if (tokens < estimatedTokens) return false;    // caller answers 429
+            tokens -= estimatedTokens;
+            return true;
+        }
+    }
+
+    // after the response reports real usage, give back what we over-reserved
+    public void Refund(int unusedTokens) { lock (gate) tokens = Math.Min(capacity, tokens + unusedTokens); }
+}` }
         ] },
       { title: 'Blocking acquire without holding the lock while sleeping', html: `<p>Sometimes a client should <b>wait</b> instead of being rejected (a batch job calling a partner API). The naive version sleeps inside <code>synchronized</code> — every other thread is blocked for the whole sleep. The better pattern (used by Guava's <code>RateLimiter</code>) is <b>reservation</b>: under the lock, compute your wait time and take the tokens "on credit" (tokens may go negative); release the lock; then sleep.</p>`, code: `class PacedClient {
     private final double perNano;
@@ -2752,7 +3343,30 @@ public:
         }
         this_thread::sleep_until(start);          // sleep OUTSIDE the lock (returns at once if start is past)
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Diagnostics;
+using System.Threading;
+class PacedClient {
+    private static long NanoTime() { return (long)(Stopwatch.GetTimestamp() * (1e9 / Stopwatch.Frequency)); }
+    private readonly double perNano;
+    private long nextFree;                 // guarded by gate: earliest time the next permit is free
+    private readonly object gate = new object();
+
+    public PacedClient(double perSecond) { perNano = perSecond / 1e9; nextFree = NanoTime(); }
+
+    public void Acquire() {
+        long waitNanos;
+        lock (gate) {                      // short critical section: just arithmetic
+            long now = NanoTime();
+            long start = Math.Max(now, nextFree);
+            waitNanos = start - now;
+            nextFree = start + (long)(1 / perNano);   // reserve our slot
+        }
+        if (waitNanos > 0) Thread.Sleep(TimeSpan.FromTicks(waitNanos / 100));   // sleep OUTSIDE the lock
+    }
+}` }
         ] },
       { title: 'The integer-refill starvation bug', html: `<p>A common hand-written refill: <code>long add = (now - last) / 1000 * rate; tokens += add; last = now;</code> with millisecond time and rate 1/s. If a client calls every 400 ms, each call computes <code>400 / 1000 = 0</code> tokens <i>and still resets <code>last</code></i>. The bucket ${H.c('r', 'never refills')} for a steady caller. Fixes: keep fractional tokens (double, or tokens scaled ×10⁹), or only advance <code>last</code> by the time that was actually converted into tokens.</p>` }
     ],
@@ -2789,7 +3403,7 @@ public:
     private synchronized void refillAll() {
         tokens.replaceAll((k, v) -> Math.min(capacity, v + 1));
     }
-}`, alt: [{ lang: 'python', code: "import threading, time\n\nclass GlobalLockLimiter:\n    def __init__(self, capacity):\n        self.tokens = {}\n        self.capacity = capacity\n        self.lock = threading.Lock()\n        # walks EVERY client every second while holding the global lock\n        threading.Thread(target=self._refill_loop, daemon=True).start()\n\n    def allow(self, client):                          # every request in the service waits here\n        with self.lock:\n            t = self.tokens.get(client, self.capacity)\n            if t == 0: return False\n            self.tokens[client] = t - 1\n            return True\n\n    def _refill_loop(self):\n        while True:\n            time.sleep(1)\n            with self.lock:\n                for k in self.tokens: self.tokens[k] = min(self.capacity, self.tokens[k] + 1)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass GlobalLockLimiter {\n  private tokens = new Map<string, number>();\n  private mutex = new Mutex();\n  constructor(private capacity: number) {\n    // walks EVERY client every second while holding the global lock\n    setInterval(() => this.refillAll(), 1000);\n  }\n  allow(client: string): Promise<boolean> {           // every request in the service waits here\n    return this.mutex.runExclusive(() => {\n      const t = this.tokens.get(client) ?? this.capacity;\n      if (t === 0) return false;\n      this.tokens.set(client, t - 1);\n      return true;\n    });\n  }\n  private refillAll(): Promise<void> {\n    return this.mutex.runExclusive(() => {\n      for (const [k, v] of this.tokens) this.tokens.set(k, Math.min(this.capacity, v + 1));\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class GlobalLockLimiter {\n    unordered_map<string, int> tokens;\n    int capacity;\n    mutex m;\n    void refillAll() {\n        lock_guard<mutex> g(m);\n        for (auto& kv : tokens) kv.second = min(capacity, kv.second + 1);\n    }\npublic:\n    GlobalLockLimiter(int capacity) : capacity(capacity) {\n        // walks EVERY client every second while holding the global lock\n        thread([this] { while (true) { this_thread::sleep_for(chrono::seconds(1)); refillAll(); } }).detach();\n    }\n    bool allow(const string& client) {                 // every request in the service waits here\n        lock_guard<mutex> g(m);\n        auto it = tokens.try_emplace(client, capacity).first;\n        if (it->second == 0) return false;\n        it->second--;\n        return true;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading, time\n\nclass GlobalLockLimiter:\n    def __init__(self, capacity):\n        self.tokens = {}\n        self.capacity = capacity\n        self.lock = threading.Lock()\n        # walks EVERY client every second while holding the global lock\n        threading.Thread(target=self._refill_loop, daemon=True).start()\n\n    def allow(self, client):                          # every request in the service waits here\n        with self.lock:\n            t = self.tokens.get(client, self.capacity)\n            if t == 0: return False\n            self.tokens[client] = t - 1\n            return True\n\n    def _refill_loop(self):\n        while True:\n            time.sleep(1)\n            with self.lock:\n                for k in self.tokens: self.tokens[k] = min(self.capacity, self.tokens[k] + 1)\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass GlobalLockLimiter {\n  private tokens = new Map<string, number>();\n  private mutex = new Mutex();\n  constructor(private capacity: number) {\n    // walks EVERY client every second while holding the global lock\n    setInterval(() => this.refillAll(), 1000);\n  }\n  allow(client: string): Promise<boolean> {           // every request in the service waits here\n    return this.mutex.runExclusive(() => {\n      const t = this.tokens.get(client) ?? this.capacity;\n      if (t === 0) return false;\n      this.tokens.set(client, t - 1);\n      return true;\n    });\n  }\n  private refillAll(): Promise<void> {\n    return this.mutex.runExclusive(() => {\n      for (const [k, v] of this.tokens) this.tokens.set(k, Math.min(this.capacity, v + 1));\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class GlobalLockLimiter {\n    unordered_map<string, int> tokens;\n    int capacity;\n    mutex m;\n    void refillAll() {\n        lock_guard<mutex> g(m);\n        for (auto& kv : tokens) kv.second = min(capacity, kv.second + 1);\n    }\npublic:\n    GlobalLockLimiter(int capacity) : capacity(capacity) {\n        // walks EVERY client every second while holding the global lock\n        thread([this] { while (true) { this_thread::sleep_for(chrono::seconds(1)); refillAll(); } }).detach();\n    }\n    bool allow(const string& client) {                 // every request in the service waits here\n        lock_guard<mutex> g(m);\n        auto it = tokens.try_emplace(client, capacity).first;\n        if (it->second == 0) return false;\n        it->second--;\n        return true;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nclass GlobalLockLimiter {\n    private readonly Dictionary<string, int> tokens = new Dictionary<string, int>();\n    private readonly int capacity;\n    private readonly object gate = new object();\n    private readonly Timer timer;\n    public GlobalLockLimiter(int capacity) {\n        this.capacity = capacity;\n        // walks EVERY client every second while holding the global lock\n        timer = new Timer(_ => RefillAll(), null, 1000, 1000);\n    }\n    public bool Allow(string client) {          // every request in the service waits here\n        lock (gate) {\n            int t; if (!tokens.TryGetValue(client, out t)) t = capacity;\n            if (t == 0) return false;\n            tokens[client] = t - 1;\n            return true;\n        }\n    }\n    private void RefillAll() {\n        lock (gate) { foreach (string k in tokens.Keys.ToList()) tokens[k] = Math.Min(capacity, tokens[k] + 1); }\n    }\n}\n" }] } },
       mcq: { q: 'Two threads call <code>allow("asha")</code> for the first time at the same instant. With <code>buckets.computeIfAbsent(id, k -&gt; new Bucket())</code>, how many buckets exist for asha afterwards?', options: ['Two — each thread creates one', 'Exactly one — computeIfAbsent runs the factory at most once per key and both threads get the same bucket', 'Zero until the next refill', 'It depends on the hash code'], answer: 1, explain: 'CHM.computeIfAbsent is atomic per key. A <code>get</code>, then <code>if null put(new)</code> sequence would race and could hand the two threads different buckets — each would get a full burst.' },
       hints: [`<p>Hint 1: Separate the problem: (a) find-or-create the client's bucket atomically, (b) make one bucket's refill+check+take atomic. Different clients should never share a lock.</p>`, `<p>Hint 2: <code>ConcurrentHashMap.computeIfAbsent</code> for (a); a small <code>synchronized</code> method on the bucket for (b). Refill lazily from elapsed nanoTime.</p>`, `<p>Hint 3: Inject a clock for testing. retryAfter = ceil((1 − tokens) / rate). Edge cases: elapsed ≤ 0, idle client must not exceed capacity, permits &gt; capacity is invalid.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "YYYN retry=1000ms bala=true\nafter 1s: true retry=1000ms unknown=0ms\ntracked=2\ntracked after idle=0\nadmitted=3\n" }] },
@@ -3178,6 +3792,106 @@ int main() {
         pool.emplace_back([&] { for (int i = 0; i < 10; i++) if (rl2.allow("hot")) ok++; });
     for (auto& th : pool) th.join();
     cout << "admitted=" << ok << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
+
+class ClientRateLimiter {
+    public sealed class Bucket {
+        private readonly double capacity, perNano;
+        private double tokens;
+        private long last;
+        private readonly object gate = new object();
+        public Bucket(double capacity, double perSecond, long now) {
+            this.capacity = capacity; perNano = perSecond / 1e9; tokens = capacity; last = now;
+        }
+        public bool Take(long now) {
+            lock (gate) {
+                Refill(now);
+                if (tokens >= 1) { tokens -= 1; return true; }
+                return false;
+            }
+        }
+        public long RetryAfterNanos(long now) {
+            lock (gate) {
+                Refill(now);
+                return tokens >= 1 ? 0 : (long)Math.Ceiling((1 - tokens) / perNano);
+            }
+        }
+        public bool IsFullAt(long now) { lock (gate) { Refill(now); return tokens >= capacity; } }
+        private void Refill(long now) {
+            if (now > last) { tokens = Math.Min(capacity, tokens + (now - last) * perNano); last = now; }
+        }
+    }
+
+    private readonly ConcurrentDictionary<string, Bucket> buckets = new ConcurrentDictionary<string, Bucket>();
+    private readonly double capacity, perSecond;
+    private readonly Func<long> clock;
+
+    public ClientRateLimiter(double capacity, double perSecond, Func<long> clock) {
+        this.capacity = capacity; this.perSecond = perSecond; this.clock = clock;
+    }
+
+    public bool Allow(string clientId) {
+        long now = clock();
+        return buckets.GetOrAdd(clientId, id => new Bucket(capacity, perSecond, now)).Take(now);
+    }
+
+    public long RetryAfterMillis(string clientId) {
+        Bucket b;
+        return buckets.TryGetValue(clientId, out b) ? b.RetryAfterNanos(clock()) / 1000000 : 0;
+    }
+
+    public int Tracked() { return buckets.Count; }
+
+    // call from a single housekeeping thread now and then: drop buckets that are full again
+    public void EvictIdle() {
+        long now = clock();
+        foreach (var kv in buckets)
+            if (kv.Value.IsFullAt(now)) ((ICollection<KeyValuePair<string, Bucket>>)buckets).Remove(kv);   // remove only if still the same bucket
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class RateLimiterDemo {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        long now = 0;
+        ClientRateLimiter rl = new ClientRateLimiter(3, 1, () => Interlocked.Read(ref now));
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 4; i++) sb.Append(rl.Allow("asha") ? "Y" : "N");
+        Console.WriteLine(sb + " retry=" + rl.RetryAfterMillis("asha") + "ms bala=" + B(rl.Allow("bala"))); // YYYN retry=1000ms bala=true
+
+        Interlocked.Exchange(ref now, 1000000000L);                 // one second later: one token has refilled
+        Console.WriteLine("after 1s: " + B(rl.Allow("asha")) + " retry=" + rl.RetryAfterMillis("asha")
+                + "ms unknown=" + rl.RetryAfterMillis("zed") + "ms");
+        Console.WriteLine("tracked=" + rl.Tracked());
+        Interlocked.Exchange(ref now, 10000000000L);                // long idle: every bucket is full again
+        rl.EvictIdle();
+        Console.WriteLine("tracked after idle=" + rl.Tracked());
+
+        // 50 threads hammer one client at frozen time: exactly 3 admitted
+        int ok = 0;
+        ClientRateLimiter rl2 = new ClientRateLimiter(3, 1, () => 0L);
+        FixedPool pool = new FixedPool(50);
+        for (int i = 0; i < 500; i++) pool.Execute(() => { if (rl2.Allow("hot")) Interlocked.Increment(ref ok); });
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine("admitted=" + ok);   // 3
+    }
 }` }
         ],
         dry: { head: ['time', 'client', 'tokens before (after refill)', 'result', 'tokens after'], rows: [['0.0', 'asha', '3', 'Y', '2'], ['0.0', 'asha', '2 → 1', 'Y, Y', '0'], ['0.0', 'asha', '0', H.c('r', 'N (retry 1000 ms)'), '0'], ['0.0', 'bala', '3 (new bucket)', 'Y', '2'], ['1.0', 'asha', '0 + 1×1 = 1', 'Y', '0']] },
@@ -3362,6 +4076,48 @@ int main() {
         out += to_string(s) + (rl.allow("u1") ? ":Y " : ":N ");
     }
     cout << out << "\\n";   // 1:Y 2:Y 3:Y 8:N 11:Y 12:Y 13:Y 14:N 25:Y
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
+
+class SlidingWindowLogLimiter {
+    private readonly int limit;
+    private readonly long windowNanos;
+    private readonly Func<long> clock;
+    // key -> timestamps of ACCEPTED requests, oldest first. Each queue is guarded by its own monitor.
+    private readonly ConcurrentDictionary<string, Queue<long>> logs = new ConcurrentDictionary<string, Queue<long>>();
+
+    public SlidingWindowLogLimiter(int limit, TimeSpan window, Func<long> clock) {
+        this.limit = limit;
+        windowNanos = window.Ticks * 100;
+        this.clock = clock;
+    }
+
+    public bool Allow(string key) {
+        Queue<long> log = logs.GetOrAdd(key, k => new Queue<long>());
+        lock (log) {                                         // lock ONLY this key's log
+            long now = clock();
+            while (log.Count > 0 && log.Peek() <= now - windowNanos) log.Dequeue();   // slide out
+            if (log.Count < limit) { log.Enqueue(now); return true; }
+            return false;                                    // rejected requests are NOT logged
+        }
+    }
+
+    static void Main() {
+        long t = 0;
+        SlidingWindowLogLimiter rl = new SlidingWindowLogLimiter(3, TimeSpan.FromSeconds(10), () => Interlocked.Read(ref t));
+        long[] times = { 1, 2, 3, 8, 11, 12, 13, 14, 25 };
+        StringBuilder sb = new StringBuilder();
+        foreach (long s in times) {
+            Interlocked.Exchange(ref t, s * 1000000000L);
+            sb.Append(s).Append(rl.Allow("u1") ? ":Y " : ":N ");
+        }
+        Console.WriteLine(sb);   // 1:Y 2:Y 3:Y 8:N 11:Y 12:Y 13:Y 14:N 25:Y
+    }
 }` }
         ] }, { lang: 'java', title: 'Sliding window COUNTER limiter: O(1) memory per key', code: `class SlidingWindowCounterLimiter {
     private static final class Window {          // guarded by its own monitor
@@ -3549,6 +4305,57 @@ int main() {
         out += to_string(s) + (rl.allow("u") ? ":Y " : ":N ");
     }
     cout << out << "\\n";   // 8:Y 9:Y 9:Y 10:N 11:N 16:Y 19:Y  (no boundary burst at 10-11)
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Text;
+using System.Threading;
+
+class SlidingWindowCounterLimiter {
+    private sealed class Window {               // guarded by its own monitor
+        public long Start;                      // start of the current fixed window
+        public int Prev, Curr;
+    }
+    private readonly int limit;
+    private readonly long w;                    // window length in nanos
+    private readonly Func<long> clock;
+    private readonly ConcurrentDictionary<string, Window> windows = new ConcurrentDictionary<string, Window>();
+
+    public SlidingWindowCounterLimiter(int limit, long windowNanos, Func<long> clock) {
+        this.limit = limit; w = windowNanos; this.clock = clock;
+    }
+
+    private static long FloorMod(long a, long m) { long r = a % m; return r < 0 ? r + m : r; }
+
+    public bool Allow(string key) {
+        long now = clock();
+        Window win = windows.GetOrAdd(key, k => new Window { Start = now - FloorMod(now, w) });
+        lock (win) {
+            long currentStart = now - FloorMod(now, w);
+            if (currentStart != win.Start) {                 // roll forward
+                win.Prev = (currentStart - win.Start == w) ? win.Curr : 0;  // gap of 2+ windows => 0
+                win.Curr = 0;
+                win.Start = currentStart;
+            }
+            double weightPrev = 1.0 - (double)(now - win.Start) / w;
+            double estimate = win.Prev * weightPrev + win.Curr;
+            if (estimate + 1 <= limit) { win.Curr++; return true; }
+            return false;
+        }
+    }
+
+    static void Main() {
+        long t = 0;
+        long sec = 1000000000L;
+        SlidingWindowCounterLimiter rl = new SlidingWindowCounterLimiter(3, 10 * sec, () => Interlocked.Read(ref t));
+        StringBuilder sb = new StringBuilder();
+        foreach (long s in new long[] { 8, 9, 9, 10, 11, 16, 19 }) {
+            Interlocked.Exchange(ref t, s * sec);
+            sb.Append(s).Append(rl.Allow("u") ? ":Y " : ":N ");
+        }
+        Console.WriteLine(sb);   // 8:Y 9:Y 9:Y 10:N 11:N 16:Y 19:Y  (no boundary burst at 10-11)
+    }
 }` }
         ] }],
     codeTitle: ['Exact: sliding log', 'Cheap: sliding counter'],
@@ -3698,7 +4505,20 @@ public:
         }
         return after <= limit_;     // note: still counts rejected hits (fine for fixed window)
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Collections.Concurrent;
+class FixedWindowLimiter {
+    private readonly ConcurrentDictionary<string, int> counts = new ConcurrentDictionary<string, int>();
+    private readonly int limit; private readonly long windowMillis;
+    public FixedWindowLimiter(int limit, long windowMillis) { this.limit = limit; this.windowMillis = windowMillis; }
+
+    public bool Allow(string client, long nowMillis) {
+        string key = client + ":" + (nowMillis / windowMillis);
+        int after = counts.AddOrUpdate(key, 1, (k, c) => c + 1);   // atomic per key: no lost increments
+        return after <= limit;        // note: still counts rejected hits (fine for fixed window)
+    }
+}` }
         ] },
       { title: 'Why rejected requests must not be logged', html: `<p>Limit 3 per 10 s; a bot retries every second. If rejected attempts were appended to the log, the deque always contains ~10 recent entries, the count never drops below 3, and the client is ${H.c('r', 'locked out forever')} — even though it should be allowed again 10 s after its third accepted request. Only <b>accepted</b> requests consume capacity.</p>` },
       { title: 'Sliding counter worked by hand', html: `<p>Limit 100/min. Previous minute: 84 requests. We are 18 s into the current minute with 36 requests so far.</p>
@@ -3732,7 +4552,7 @@ ${H.table(['piece', 'value'], [['weight of previous', '1 − 18/60 = 0.7'], ['pr
         l.add(nowSec);
         return true;
     }
-}`, alt: [{ lang: 'python', code: "class OtpLimiterBrute:\n    def __init__(self):\n        self.sent = {}                                # not thread-safe at all\n\n    # BRUTE: no locking; the purge + length check + append are separate steps on a shared list\n    def try_send(self, phone, now_sec):\n        l = self.sent.setdefault(phone, [])\n        l[:] = [t for t in l if t > now_sec - 600]\n        if len(l) >= 3: return False\n        l.append(now_sec)\n        return True\n" }, { lang: 'ts', code: "class OtpLimiterBrute {\n  private sent = new Map<string, number[]>();          // not safe once workers or awaits interleave\n\n  // BRUTE: no locking; the purge + length check + push are separate steps on a shared array\n  trySend(phone: string, nowSec: number): boolean {\n    if (!this.sent.has(phone)) this.sent.set(phone, []);\n    const l = this.sent.get(phone)!;\n    for (let i = l.length - 1; i >= 0; i--) if (l[i] <= nowSec - 600) l.splice(i, 1);\n    if (l.length >= 3) return false;\n    l.push(nowSec);\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class OtpLimiterBrute {\n    unordered_map<string, vector<long long>> sent;     // not thread-safe at all\npublic:\n    // BRUTE: no locking; erase + size + push_back are separate steps on a shared vector\n    bool trySend(const string& phone, long long nowSec) {\n        auto& l = sent[phone];\n        l.erase(remove_if(l.begin(), l.end(), [&](long long t) { return t <= nowSec - 600; }), l.end());\n        if (l.size() >= 3) return false;\n        l.push_back(nowSec);\n        return true;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class OtpLimiterBrute:\n    def __init__(self):\n        self.sent = {}                                # not thread-safe at all\n\n    # BRUTE: no locking; the purge + length check + append are separate steps on a shared list\n    def try_send(self, phone, now_sec):\n        l = self.sent.setdefault(phone, [])\n        l[:] = [t for t in l if t > now_sec - 600]\n        if len(l) >= 3: return False\n        l.append(now_sec)\n        return True\n" }, { lang: 'ts', code: "class OtpLimiterBrute {\n  private sent = new Map<string, number[]>();          // not safe once workers or awaits interleave\n\n  // BRUTE: no locking; the purge + length check + push are separate steps on a shared array\n  trySend(phone: string, nowSec: number): boolean {\n    if (!this.sent.has(phone)) this.sent.set(phone, []);\n    const l = this.sent.get(phone)!;\n    for (let i = l.length - 1; i >= 0; i--) if (l[i] <= nowSec - 600) l.splice(i, 1);\n    if (l.length >= 3) return false;\n    l.push(nowSec);\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class OtpLimiterBrute {\n    unordered_map<string, vector<long long>> sent;     // not thread-safe at all\npublic:\n    // BRUTE: no locking; erase + size + push_back are separate steps on a shared vector\n    bool trySend(const string& phone, long long nowSec) {\n        auto& l = sent[phone];\n        l.erase(remove_if(l.begin(), l.end(), [&](long long t) { return t <= nowSec - 600; }), l.end());\n        if (l.size() >= 3) return false;\n        l.push_back(nowSec);\n        return true;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass OtpLimiterBrute {\n    private readonly Dictionary<string, List<long>> sent = new Dictionary<string, List<long>>();   // not thread-safe at all\n\n    // BRUTE: no locking; RemoveAll + Count + Add are separate steps on a shared list\n    public bool TrySend(string phone, long nowSec) {\n        List<long> l;\n        if (!sent.TryGetValue(phone, out l)) { l = new List<long>(); sent[phone] = l; }\n        l.RemoveAll(t => t <= nowSec - 600);\n        if (l.Count >= 3) return false;\n        l.Add(nowSec);\n        return true;\n    }\n}\n" }] } },
       mcq: { q: 'A user is rejected at 0:05 and keeps retrying every second until 0:12. When is the next send allowed with a correct sliding log?', options: ['Never — the retries keep the log full', 'At 0:10:00 exactly (0:00 is evicted when ts ≤ now − 600)', 'At 0:15', 'Only after a manual reset'], answer: 1, explain: 'Only accepted sends are logged, so the log is [0:00, 0:01, 0:02]. At 0:10:00, 0:00 ≤ 0:10:00 − 10 min, so it slides out and a slot opens.' },
       hints: [`<p>Hint 1: "Any rolling window" + "exact" = keep the timestamps of accepted sends, not a counter.</p>`, `<p>Hint 2: <code>ConcurrentHashMap&lt;String, ArrayDeque&lt;Long&gt;&gt;</code> with <code>computeIfAbsent</code>, then <code>synchronized (deque)</code> around evict + check + append.</p>`, `<p>Hint 3: secondsUntilNext = 0 if size &lt; 3, else (oldest + window − now). Don't log rejections. Inject the clock for tests.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "YYYN wait=300s\nunknown number wait=0s\nat 10:00 -> true\nconcurrent sends allowed: 3\n" }] },
@@ -3988,6 +4808,77 @@ int main() {
         pool.emplace_back([&, t] { for (int i = t; i < 40; i += 16) if (lim.trySend("97yy")) ok++; });
     for (auto& th : pool) th.join();
     cout << "concurrent sends allowed: " << ok << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
+
+class OtpLimiter {
+    private const int LIMIT = 3;
+    private readonly long windowSec;
+    private readonly Func<long> clockSec;
+    private readonly ConcurrentDictionary<string, Queue<long>> sent = new ConcurrentDictionary<string, Queue<long>>();
+
+    public OtpLimiter(long windowSec, Func<long> clockSec) { this.windowSec = windowSec; this.clockSec = clockSec; }
+
+    public bool TrySend(string phone) {
+        Queue<long> log = sent.GetOrAdd(phone, p => new Queue<long>());
+        lock (log) {
+            long now = clockSec();
+            Evict(log, now);
+            if (log.Count >= LIMIT) return false;   // rejected: NOT recorded
+            log.Enqueue(now);
+            return true;
+        }
+    }
+
+    public long SecondsUntilNext(string phone) {
+        Queue<long> log;
+        if (!sent.TryGetValue(phone, out log)) return 0;
+        lock (log) {
+            long now = clockSec();
+            Evict(log, now);
+            return log.Count < LIMIT ? 0 : log.Peek() + windowSec - now;
+        }
+    }
+
+    private void Evict(Queue<long> log, long now) {
+        while (log.Count > 0 && log.Peek() <= now - windowSec) log.Dequeue();
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static void Main() {
+        long now = 0;
+        OtpLimiter lim = new OtpLimiter(600, () => Interlocked.Read(ref now));
+        StringBuilder sb = new StringBuilder();
+        foreach (long t in new long[] { 0, 60, 120, 300 }) { Interlocked.Exchange(ref now, t); sb.Append(lim.TrySend("98xx") ? "Y" : "N"); }
+        Console.WriteLine(sb + " wait=" + lim.SecondsUntilNext("98xx") + "s");   // YYYN wait=300s
+        Console.WriteLine("unknown number wait=" + lim.SecondsUntilNext("00zz") + "s");   // 0s
+        Interlocked.Exchange(ref now, 600);
+        Console.WriteLine("at 10:00 -> " + lim.TrySend("98xx").ToString().ToLower());    // true
+
+        // 40 concurrent resend clicks from a fresh number at the same instant: exactly 3 pass
+        int ok = 0;
+        FixedPool pool = new FixedPool(16);
+        for (int i = 0; i < 40; i++) pool.Execute(() => { if (lim.TrySend("97yy")) Interlocked.Increment(ref ok); });
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine("concurrent sends allowed: " + ok);                            // 3
+    }
 }` }
         ],
         dry: { head: ['now (s)', 'log before', 'evicted', 'decision', 'log after'], rows: [['0', '[]', '-', 'Y', '[0]'], ['60, 120', '[0] → [0,60]', '-', 'Y, Y', '[0,60,120]'], ['300', '[0,60,120]', '-', H.c('r', 'N (wait 300)'), '[0,60,120]'], ['600', '[0,60,120]', '0', H.c('g', 'Y'), '[60,120,600]']] },
@@ -4220,6 +5111,55 @@ int main() {
     for (auto& t : cons) t.join();
 
     cout << "processed " << processed << " of " << producers * perProducer << "\\n";   // 12 of 12
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class OrderPipeline {
+    sealed class Order { public readonly int Id; public readonly string Item; public Order(int id, string item) { Id = id; Item = item; } }
+    static readonly Order POISON = new Order(-1, "STOP");        // sentinel, compared by identity
+
+    static void Main() {
+        BlockingCollection<Order> queue = new BlockingCollection<Order>(5); // bounded => backpressure
+        int producers = 2, consumers = 3, perProducer = 6;
+        int processed = 0;
+        CountdownEvent producersDone = new CountdownEvent(producers);
+
+        List<Thread> threads = new List<Thread>();
+        for (int p = 0; p < producers; p++) {
+            int b = p * 100;
+            threads.Add(new Thread(() => {
+                try {
+                    for (int i = 1; i <= perProducer; i++) queue.Add(new Order(b + i, "item" + i)); // blocks when full
+                } finally {
+                    producersDone.Signal();
+                }
+            }) { Name = "producer-" + p });
+        }
+        for (int c = 0; c < consumers; c++) {
+            threads.Add(new Thread(() => {
+                try {
+                    while (true) {
+                        Order o = queue.Take();                      // blocks when empty
+                        if (o == POISON) return;                     // closing time
+                        Interlocked.Increment(ref processed);
+                    }
+                } catch (ThreadInterruptedException) {
+                    // interrupted while blocked: just exit
+                }
+            }) { Name = "consumer-" + c });
+        }
+        foreach (Thread t in threads) t.Start();
+
+        producersDone.Wait();                                        // all real orders are queued
+        for (int c = 0; c < consumers; c++) queue.Add(POISON);       // ONE pill per consumer
+        foreach (Thread t in threads) t.Join(5000);                  // bounded wait
+
+        Console.WriteLine("processed " + processed + " of " + producers * perProducer); // 12 of 12
+    }
 }` }
         ] }, { lang: 'java', title: 'Bounded buffer from scratch: ReentrantLock + two Conditions', code: `class BoundedBuffer<T> {
     private final Object[] items;
@@ -4395,7 +5335,53 @@ int main() {
         for (int i = 0; i < 5; i++) cout << "took " << buf.take() << "\\n";
     });
     for (int i = 1; i <= 5; i++) buf.put(i);       // blocks whenever 2 items are waiting
-}                                                  // the jthread joins here` }
+}                                                  // the jthread joins here` },
+  { lang: 'csharp', code: `
+using System;
+using System.Threading;
+
+class BoundedBuffer<T> {
+    private readonly object[] items;
+    private int head, tail, count;                 // all guarded by gate
+    private readonly object gate = new object();   // one monitor; Wait/PulseAll replace the two Conditions
+
+    public BoundedBuffer(int capacity) { items = new object[capacity]; }
+
+    public void Put(T x) {
+        lock (gate) {                                       // released automatically, even on exceptions
+            while (count == items.Length) Monitor.Wait(gate);   // WHILE, not if: re-check after waking
+            items[tail] = x;
+            tail = (tail + 1) % items.Length;
+            count++;
+            Monitor.PulseAll(gate);                         // wake waiters; a C# monitor has one wait set, so wake all
+        }
+    }
+
+    public T Take() {
+        lock (gate) {
+            while (count == 0) Monitor.Wait(gate);
+            T x = (T)items[head];
+            items[head] = null;                             // let GC reclaim it
+            head = (head + 1) % items.Length;
+            count--;
+            Monitor.PulseAll(gate);                         // wake a waiting producer
+            return x;
+        }
+    }
+
+}
+
+class Program {
+    static void Main() {
+        BoundedBuffer<int> buf = new BoundedBuffer<int>(2);
+        Thread consumer = new Thread(() => {
+            for (int i = 0; i < 5; i++) Console.WriteLine("took " + buf.Take());
+        });
+        consumer.Start();
+        for (int i = 1; i <= 5; i++) buf.Put(i);   // blocks whenever 2 items are waiting
+        consumer.Join(5000);
+    }
+}` }
         ] }],
     codeTitle: ['BlockingQueue pipeline', 'Hand-made bounded buffer'],
     viz: {
@@ -4555,7 +5541,29 @@ public:
         monitor_.notify_all();
         return x;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Threading;
+class MonitorBuffer {
+    private readonly int[] buf = new int[4];
+    private int head, tail, count;
+
+    public void Put(int x) {
+        lock (this) {
+            while (count == buf.Length) Monitor.Wait(this);   // releases the monitor while waiting
+            buf[tail] = x; tail = (tail + 1) % buf.Length; count++;
+            Monitor.PulseAll(this);                           // wake everyone; each re-checks its while loop
+        }
+    }
+    public int Take() {
+        lock (this) {
+            while (count == 0) Monitor.Wait(this);
+            int x = buf[head]; head = (head + 1) % buf.Length; count--;
+            Monitor.PulseAll(this);
+            return x;
+        }
+    }
+}` }
         ] },
       { title: 'Async logger: never block the request thread', html: `<p>Request threads call <code>log(msg)</code>; one background thread writes to disk. If the disk is slow and the queue is full, what should <code>log</code> do? Options: block (<code>put</code>) — safe but slows requests; drop and count (<code>offer</code> returns false) — keeps latency low; drop oldest. Log4j2's async appender and Logback's <code>AsyncAppender</code> expose exactly this choice. Here we drop DEBUG when full and block for ERROR.</p>`, code: `class AsyncLogger implements AutoCloseable {
     private final BlockingQueue<String> q = new ArrayBlockingQueue<>(1024);
@@ -4710,7 +5718,33 @@ public:
         notEmpty_.notify_all();
         if (writer_.joinable()) writer_.join();
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Threading;
+class AsyncLogger : IDisposable {
+    private readonly BlockingCollection<string> q = new BlockingCollection<string>(1024);
+    private long dropped;
+    private readonly Thread writer;
+    private volatile bool closed;
+
+    private AsyncLogger() { writer = new Thread(Drain) { Name = "log-writer", IsBackground = true }; }
+    // start the thread AFTER construction so "this" never escapes half-built
+    public static AsyncLogger Start() { AsyncLogger l = new AsyncLogger(); l.writer.Start(); return l; }
+
+    public void Debug(string m) { if (!q.TryAdd(m)) Interlocked.Increment(ref dropped); }   // never blocks
+    public void Error(string m) { q.Add("ERROR " + m); }                                      // must not be lost
+
+    private void Drain() {
+        while (!closed || q.Count > 0) {
+            string m;
+            if (q.TryTake(out m, 100)) Console.WriteLine(m);              // wake up to notice close
+        }
+    }
+
+    public void Dispose() { closed = true; writer.Join(2000); }
+}` }
         ] },
       { title: 'SynchronousQueue: zero-capacity hand-off', html: `<p>A <code>SynchronousQueue</code> has no slots. <code>put</code> blocks until a consumer calls <code>take</code> — like handing a baton directly. <code>Executors.newCachedThreadPool()</code> uses one: a task is handed to an idle thread, or a new thread is created. Great for latency, dangerous for bursty load (unbounded thread creation).</p>`, code: `class HandOff {
     public static void main(String[] args) throws InterruptedException {
@@ -4811,6 +5845,39 @@ int main() {
     SynchronousQueue<string> baton;
     jthread runner([&] { cout << "got " << baton.take() << "\\n"; });
     baton.put("baton");                               // returns only once the runner has taken it
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Threading;
+
+/// Zero-capacity hand-off: Put returns only after a taker has received the item (SynchronousQueue).
+class SynchronousQueue<T> {
+    private readonly object gate = new object();
+    private T item; private bool full;
+    public void Put(T x) {
+        lock (gate) {
+            while (full) Monitor.Wait(gate);
+            item = x; full = true; Monitor.PulseAll(gate);
+            while (full) Monitor.Wait(gate);              // wait until someone took it
+        }
+    }
+    public T Take() {
+        lock (gate) {
+            while (!full) Monitor.Wait(gate);
+            T x = item; item = default(T); full = false; Monitor.PulseAll(gate);
+            return x;
+        }
+    }
+}
+
+class HandOff {
+    static void Main() {
+        SynchronousQueue<string> baton = new SynchronousQueue<string>();
+        Thread runner = new Thread(() => Console.WriteLine("got " + baton.Take()));
+        runner.Start();
+        baton.Put("baton");          // returns only once the runner has taken it
+        runner.Join(2000);
+    }
 }` }
         ] },
       { title: 'Executor = producer-consumer you do not have to write', html: `<p><code>new ThreadPoolExecutor(4, 4, 0, SECONDS, new ArrayBlockingQueue&lt;&gt;(100), new ThreadPoolExecutor.CallerRunsPolicy())</code>: submitters are producers, the 4 workers are consumers, the queue is bounded, and <b>CallerRunsPolicy</b> is backpressure (when full, the submitting thread runs the task itself, which slows the producer). Avoid <code>Executors.newFixedThreadPool</code> for untrusted load — its <code>LinkedBlockingQueue</code> is unbounded.</p>` }
@@ -4839,7 +5906,7 @@ int main() {
     // BRUTE: busy-wait + no lock => burns CPU and races (two producers fill the last slot)
     void enqueue(int x) { while (list.size() >= cap) { Thread.onSpinWait(); } list.addLast(x); }
     int dequeue()       { while (list.isEmpty())     { Thread.onSpinWait(); } return list.removeFirst(); }
-}`, alt: [{ lang: 'python', code: "import time\nfrom collections import deque\n\nclass SpinQueue:\n    def __init__(self, cap):\n        self.items = deque()\n        self.cap = cap\n\n    # BRUTE: busy-wait + no lock => burns CPU and races (two producers fill the last slot)\n    def enqueue(self, x):\n        while len(self.items) >= self.cap: time.sleep(0)\n        self.items.append(x)\n\n    def dequeue(self):\n        while not self.items: time.sleep(0)\n        return self.items.popleft()\n" }, { lang: 'ts', code: "class SpinQueue {\n  private list: number[] = [];\n  constructor(private cap: number) {}\n\n  // BRUTE: busy-wait + no lock => burns CPU (and the event loop never runs the other side)\n  enqueue(x: number): void { while (this.list.length >= this.cap) { } this.list.push(x); }\n  dequeue(): number     { while (this.list.length === 0)         { } return this.list.shift()!; }\n}\n" }, { lang: 'cpp', code: "class SpinQueue {\n    list<int> items;\n    int cap;\npublic:\n    SpinQueue(int cap) : cap(cap) {}\n\n    // BRUTE: busy-wait + no lock => burns CPU and races (two producers fill the last slot)\n    void enqueue(int x) { while ((int)items.size() >= cap) { this_thread::yield(); } items.push_back(x); }\n    int dequeue() {\n        while (items.empty()) { this_thread::yield(); }\n        int x = items.front(); items.pop_front(); return x;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import time\nfrom collections import deque\n\nclass SpinQueue:\n    def __init__(self, cap):\n        self.items = deque()\n        self.cap = cap\n\n    # BRUTE: busy-wait + no lock => burns CPU and races (two producers fill the last slot)\n    def enqueue(self, x):\n        while len(self.items) >= self.cap: time.sleep(0)\n        self.items.append(x)\n\n    def dequeue(self):\n        while not self.items: time.sleep(0)\n        return self.items.popleft()\n" }, { lang: 'ts', code: "class SpinQueue {\n  private list: number[] = [];\n  constructor(private cap: number) {}\n\n  // BRUTE: busy-wait + no lock => burns CPU (and the event loop never runs the other side)\n  enqueue(x: number): void { while (this.list.length >= this.cap) { } this.list.push(x); }\n  dequeue(): number     { while (this.list.length === 0)         { } return this.list.shift()!; }\n}\n" }, { lang: 'cpp', code: "class SpinQueue {\n    list<int> items;\n    int cap;\npublic:\n    SpinQueue(int cap) : cap(cap) {}\n\n    // BRUTE: busy-wait + no lock => burns CPU and races (two producers fill the last slot)\n    void enqueue(int x) { while ((int)items.size() >= cap) { this_thread::yield(); } items.push_back(x); }\n    int dequeue() {\n        while (items.empty()) { this_thread::yield(); }\n        int x = items.front(); items.pop_front(); return x;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nusing System.Threading;\nclass SpinQueue {\n    private readonly LinkedList<int> list = new LinkedList<int>();\n    private readonly int cap;\n    public SpinQueue(int cap) { this.cap = cap; }\n\n    // BRUTE: busy-wait + no lock => burns CPU and races (two producers fill the last slot)\n    public void Enqueue(int x) { while (list.Count >= cap) { Thread.SpinWait(1); } list.AddLast(x); }\n    public int Dequeue()       { while (list.Count == 0)   { Thread.SpinWait(1); } int x = list.First.Value; list.RemoveFirst(); return x; }\n}\n" }] } },
       mcq: { q: 'Why must <code>await()</code> be inside <code>while (count == capacity)</code> rather than <code>if</code>?', options: ['Because await() might return early (spurious wakeup) or another producer may fill the slot before we reacquire the lock', 'Because if is slower than while', 'Because await() never returns otherwise', 'It is only a style preference'], answer: 0, explain: 'Waking up only means "the condition might be true now". Between the signal and re-acquiring the lock, another thread can change the state, and the spec allows spurious wakeups. Re-check every time.' },
       hints: [`<p>Hint 1: You need two "waiting rooms": producers wait for "not full", consumers wait for "not empty". One lock protects the array and counters.</p>`, `<p>Hint 2: <code>ReentrantLock</code> + <code>newCondition()</code> ×2, a circular array with head/tail/count. Unlock in <code>finally</code>.</p>`, `<p>Hint 3: Recipe — enqueue: lock; while full await notFull; write at tail; count++; signal notEmpty; unlock. Dequeue mirrors it. size() also takes the lock (visibility).</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "sum=500500 expected=500500 size=0\ncapacity 0 rejected: capacity must be positive\nblocked consumer cancelled: true\n" }] },
@@ -5133,6 +6200,64 @@ int main() {
     blocked.request_stop();                            // cooperative cancellation
     blocked.join();
     cout << "blocked consumer cancelled: " << boolalpha << cancelled << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Threading;
+
+class BoundedBlockingQueue {
+    private readonly int[] a;
+    private int head, tail, count;
+    private readonly object gate = new object();     // one monitor: Wait/PulseAll stand in for the two Conditions
+
+    public BoundedBlockingQueue(int capacity) {
+        if (capacity <= 0) throw new ArgumentException("capacity must be positive");   // 0 would block forever
+        a = new int[capacity];
+    }
+
+    public void Enqueue(int x) {
+        lock (gate) {
+            while (count == a.Length) Monitor.Wait(gate);   // throws ThreadInterruptedException when cancelled
+            a[tail] = x; tail = (tail + 1) % a.Length; count++;
+            Monitor.PulseAll(gate);
+        }
+    }
+
+    public int Dequeue() {
+        lock (gate) {
+            while (count == 0) Monitor.Wait(gate);
+            int x = a[head]; head = (head + 1) % a.Length; count--;
+            Monitor.PulseAll(gate);
+            return x;
+        }
+    }
+
+    public int Size() { lock (gate) return count; }
+
+    static void Main() {
+        BoundedBlockingQueue q = new BoundedBlockingQueue(2);
+        int n = 1000;
+        long[] sum = new long[1];
+        Thread prod = new Thread(() => { for (int i = 1; i <= n; i++) q.Enqueue(i); });
+        Thread cons = new Thread(() => { for (int i = 1; i <= n; i++) sum[0] += q.Dequeue(); });
+        prod.Start(); cons.Start();
+        prod.Join(5000); cons.Join(5000);
+        Console.WriteLine("sum=" + sum[0] + " expected=" + (long)n * (n + 1) / 2 + " size=" + q.Size());
+
+        try { new BoundedBlockingQueue(0); }
+        catch (ArgumentException e) { Console.WriteLine("capacity 0 rejected: " + e.Message); }
+
+        BoundedBlockingQueue empty = new BoundedBlockingQueue(1);
+        bool[] cancelled = new bool[1];
+        Thread blocked = new Thread(() => {
+            try { empty.Dequeue(); } catch (ThreadInterruptedException) { cancelled[0] = true; }
+        });
+        blocked.Start();
+        Thread.Sleep(50);                       // let it block on the empty queue
+        blocked.Interrupt();                    // cancel a blocked thread: Monitor.Wait throws in that thread
+        blocked.Join(2000);
+        Console.WriteLine("blocked consumer cancelled: " + cancelled[0].ToString().ToLower());
+    }
 }` }
         ],
         dry: { head: ['step', 'thread', 'action', 'buffer', 'waiting'], rows: [['1', 'P', 'enqueue 1', '[1]', '-'], ['2', 'P', 'enqueue 2', '[1,2]', '-'], ['3', 'P', 'enqueue 3 → full → await notFull', '[1,2]', 'P on notFull'], ['4', 'C', 'dequeue → 1, signal notFull', '[2]', '-'], ['5', 'P', 'wakes, re-checks, enqueue 3', '[2,3]', '-']] },
@@ -5429,6 +6554,97 @@ int main() {
             });
     }
     cout << "size=" << cache.size() << " consistent=" << boolalpha << cache.consistent() << "\\n";   // size=10 consistent=true
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class ConcurrentLRUCache<K, V> where V : class {
+    private sealed class Node {
+        public readonly K Key; public V Val; public Node Prev, Next;
+        public Node(K k, V v) { Key = k; Val = v; }
+    }
+    private readonly int capacity;
+    private readonly Dictionary<K, Node> map = new Dictionary<K, Node>();   // guarded by gate
+    private readonly Node head = new Node(default(K), null);                // sentinel: head.Next = MRU
+    private readonly Node tail = new Node(default(K), null);                // sentinel: tail.Prev = LRU
+    private readonly object gate = new object();
+
+    public ConcurrentLRUCache(int capacity) {
+        if (capacity <= 0) throw new ArgumentException("capacity");
+        this.capacity = capacity;
+        head.Next = tail; tail.Prev = head;
+    }
+
+    public V Get(K key) {
+        lock (gate) {                      // EXCLUSIVE even for reads: Get() relinks the list
+            Node n;
+            if (!map.TryGetValue(key, out n)) return null;
+            Unlink(n); AddFront(n);
+            return n.Val;
+        }
+    }
+
+    public void Put(K key, V val) {
+        lock (gate) {
+            Node n;
+            if (map.TryGetValue(key, out n)) { n.Val = val; Unlink(n); AddFront(n); return; }
+            if (map.Count == capacity) {                    // evict in the SAME critical section
+                Node lru = tail.Prev;
+                Unlink(lru);
+                map.Remove(lru.Key);
+            }
+            n = new Node(key, val);
+            map[key] = n;
+            AddFront(n);
+        }
+    }
+
+    public int Size() { lock (gate) return map.Count; }
+
+    // invariant check: the list and the map describe the same set of keys
+    public bool Consistent() {
+        lock (gate) {
+            int count = 0;
+            for (Node n = head.Next; n != tail; n = n.Next) { Node m; if (!map.TryGetValue(n.Key, out m) || m != n) return false; count++; }
+            return count == map.Count && count <= capacity;
+        }
+    }
+
+    private void Unlink(Node n) { n.Prev.Next = n.Next; n.Next.Prev = n.Prev; }
+    private void AddFront(Node n) { n.Next = head.Next; n.Prev = head; head.Next.Prev = n; head.Next = n; }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static void Main() {
+        ConcurrentLRUCache<int, object> cache = new ConcurrentLRUCache<int, object>(10);
+        FixedPool pool = new FixedPool(8);
+        for (int t = 0; t < 8; t++) {
+            int seed = t;
+            pool.Execute(() => {
+                Random r = new Random(seed);                  // one generator per thread
+                for (int i = 0; i < 20000; i++) {
+                    int k = r.Next(100);
+                    if (r.Next(2) == 0) cache.Put(k, k * k); else cache.Get(k);
+                }
+            });
+        }
+        pool.ShutdownAndWait(10000);
+        Console.WriteLine("size=" + cache.Size() + " consistent=" + cache.Consistent().ToString().ToLower()); // size=10 consistent=true
+    }
 }` }
         ] }, { lang: 'java', title: 'Shortcuts: synchronized LinkedHashMap, and a striped LRU for more throughput', code: `class SimpleLRU<K, V> {
     private final Map<K, V> map;
@@ -5640,6 +6856,62 @@ int main() {
     for (const char* s : {"a", "b", "c", "d", "e", "f"}) c.put(s, static_cast<int>(strlen(s)));
     auto a = c.get("a"), f = c.get("f");
     cout << (a ? to_string(*a) : "null") << " " << (f ? to_string(*f) : "null") << "\\n";   // values (or null if evicted)
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+/// Access-ordered map with a size cap (LinkedHashMap accessOrder=true + removeEldestEntry), every call under one lock.
+class SimpleLRU<K, V> where V : class {
+    private readonly int capacity;
+    private readonly Dictionary<K, LinkedListNode<KeyValuePair<K, V>>> map = new Dictionary<K, LinkedListNode<KeyValuePair<K, V>>>();
+    private readonly LinkedList<KeyValuePair<K, V>> order = new LinkedList<KeyValuePair<K, V>>();   // last = most recent
+    private readonly object gate = new object();
+
+    public SimpleLRU(int capacity) { this.capacity = capacity; }
+    public V Get(K k) {                                           // get MUTATES the order, so it takes the lock too
+        lock (gate) {
+            LinkedListNode<KeyValuePair<K, V>> n;
+            if (!map.TryGetValue(k, out n)) return null;
+            order.Remove(n); order.AddLast(n);
+            return n.Value.Value;
+        }
+    }
+    public void Put(K k, V v) {
+        lock (gate) {
+            LinkedListNode<KeyValuePair<K, V>> n;
+            if (map.TryGetValue(k, out n)) order.Remove(n);
+            n = order.AddLast(new KeyValuePair<K, V>(k, v));
+            map[k] = n;
+            if (map.Count > capacity) { map.Remove(order.First.Value.Key); order.RemoveFirst(); }   // evict the eldest
+        }
+    }
+}
+
+// N independent LRUs; a key always maps to the same stripe. Threads on different stripes never wait.
+// Trade-off: eviction is LRU *within a stripe*, so globally it is approximate.
+class StripedLRU<K, V> where V : class {
+    private readonly List<SimpleLRU<K, V>> stripes = new List<SimpleLRU<K, V>>();
+
+    public StripedLRU(int stripeCount, int capacityPerStripe) {
+        for (int i = 0; i < stripeCount; i++) stripes.Add(new SimpleLRU<K, V>(capacityPerStripe));
+    }
+    private SimpleLRU<K, V> Stripe(K key) {
+        int h = key.GetHashCode();
+        h ^= (int)((uint)h >> 16);                        // spread high bits like a hash map does
+        int idx = h % stripes.Count; if (idx < 0) idx += stripes.Count;
+        return stripes[idx];
+    }
+    public V Get(K k) { return Stripe(k).Get(k); }
+    public void Put(K k, V v) { Stripe(k).Put(k, v); }
+}
+
+class Program {
+    static void Main() {
+        StripedLRU<string, object> c = new StripedLRU<string, object>(4, 2);
+        foreach (string s in new[] { "a", "b", "c", "d", "e", "f" }) c.Put(s, s.Length);
+        Console.WriteLine((c.Get("a") ?? "null") + " " + (c.Get("f") ?? "null"));   // values (or null if evicted from its stripe)
+    }
 }` }
         ] }],
     codeTitle: ['ConcurrentLRUCache', 'LinkedHashMap + striping'],
@@ -5791,7 +7063,14 @@ struct ClockSlot {
     atomic<V> value;                  // readers and the clock hand touch these without a lock
     atomic<bool> referenced{false};   // set on every hit: a cheap write, no relinking
     ClockSlot(K k, V v) : key(std::move(k)), value(v) {}
-};` }
+};` },
+  { lang: 'csharp', code: `
+class ClockSlot<K, V> where V : class {
+    public readonly K Key;
+    public volatile V Value;
+    public volatile bool Referenced;      // set on every hit: a cheap write, no relinking
+    public ClockSlot(K key, V value) { Key = key; Value = value; }
+}` }
         ] },
       { title: 'Choosing the policy in practice', html: `${H.table(['Workload', 'Good policy', 'Why'], [['session data, recency matters', 'LRU', 'recent users come back soon'], ['product catalog with steady hot items', 'LFU / TinyLFU', 'popular items stay even after a scan'], ['one-off big scans (reports)', 'LRU fails (scan pollution)', 'TinyLFU admission filter rejects one-hit wonders'], ['need O(1) and huge QPS in Java', 'Caffeine (W-TinyLFU)', 'near-optimal hit rate, concurrent by design']])}` }
     ],
@@ -5826,7 +7105,7 @@ struct ClockSlot {
         if (v == null) { v = loader.apply(key); map.put(key, v); }
         return v;
     }
-}`, alt: [{ lang: 'python', code: "import threading\nfrom collections import OrderedDict\n\nclass LoadingLRUBrute:\n    def __init__(self, capacity, loader):\n        self.capacity, self.loader = capacity, loader\n        self.map = OrderedDict()                      # insertion order = recency order\n        self.lock = threading.Lock()\n\n    # BRUTE: the slow loader runs while holding the ONLY lock => hits queue behind DB calls\n    def get(self, key):\n        with self.lock:\n            if key in self.map:\n                self.map.move_to_end(key)\n                return self.map[key]\n            v = self.loader(key)\n            self.map[key] = v\n            if len(self.map) > self.capacity: self.map.popitem(last=False)\n            return v\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass LoadingLRUBrute<K, V> {\n  private map = new Map<K, V>();                      // insertion order = recency order\n  private mutex = new Mutex();\n  constructor(private capacity: number, private loader: (k: K) => Promise<V>) {}\n\n  // BRUTE: the slow loader runs while holding the ONLY lock => hits queue behind DB calls\n  get(key: K): Promise<V> {\n    return this.mutex.runExclusive(async () => {\n      let v = this.map.get(key);\n      if (v !== undefined) this.map.delete(key);      // re-inserted below as most recent\n      else v = await this.loader(key);\n      this.map.set(key, v);\n      if (this.map.size > this.capacity) this.map.delete(this.map.keys().next().value as K);\n      return v;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "template <class K, class V>\nclass LoadingLRUBrute {\n    list<pair<K, V>> order;                           // front = most recently used\n    unordered_map<K, typename list<pair<K, V>>::iterator> map;\n    function<V(const K&)> loader;\n    size_t capacity;\n    mutex m;\npublic:\n    LoadingLRUBrute(size_t capacity, function<V(const K&)> loader) : loader(loader), capacity(capacity) {}\n\n    // BRUTE: the slow loader runs while holding the ONLY lock => hits queue behind DB calls\n    V get(const K& key) {\n        lock_guard<mutex> g(m);\n        auto it = map.find(key);\n        if (it != map.end()) { order.splice(order.begin(), order, it->second); return it->second->second; }\n        V v = loader(key);\n        order.emplace_front(key, v);\n        map[key] = order.begin();\n        if (order.size() > capacity) { map.erase(order.back().first); order.pop_back(); }\n        return v;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\nfrom collections import OrderedDict\n\nclass LoadingLRUBrute:\n    def __init__(self, capacity, loader):\n        self.capacity, self.loader = capacity, loader\n        self.map = OrderedDict()                      # insertion order = recency order\n        self.lock = threading.Lock()\n\n    # BRUTE: the slow loader runs while holding the ONLY lock => hits queue behind DB calls\n    def get(self, key):\n        with self.lock:\n            if key in self.map:\n                self.map.move_to_end(key)\n                return self.map[key]\n            v = self.loader(key)\n            self.map[key] = v\n            if len(self.map) > self.capacity: self.map.popitem(last=False)\n            return v\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass LoadingLRUBrute<K, V> {\n  private map = new Map<K, V>();                      // insertion order = recency order\n  private mutex = new Mutex();\n  constructor(private capacity: number, private loader: (k: K) => Promise<V>) {}\n\n  // BRUTE: the slow loader runs while holding the ONLY lock => hits queue behind DB calls\n  get(key: K): Promise<V> {\n    return this.mutex.runExclusive(async () => {\n      let v = this.map.get(key);\n      if (v !== undefined) this.map.delete(key);      // re-inserted below as most recent\n      else v = await this.loader(key);\n      this.map.set(key, v);\n      if (this.map.size > this.capacity) this.map.delete(this.map.keys().next().value as K);\n      return v;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "template <class K, class V>\nclass LoadingLRUBrute {\n    list<pair<K, V>> order;                           // front = most recently used\n    unordered_map<K, typename list<pair<K, V>>::iterator> map;\n    function<V(const K&)> loader;\n    size_t capacity;\n    mutex m;\npublic:\n    LoadingLRUBrute(size_t capacity, function<V(const K&)> loader) : loader(loader), capacity(capacity) {}\n\n    // BRUTE: the slow loader runs while holding the ONLY lock => hits queue behind DB calls\n    V get(const K& key) {\n        lock_guard<mutex> g(m);\n        auto it = map.find(key);\n        if (it != map.end()) { order.splice(order.begin(), order, it->second); return it->second->second; }\n        V v = loader(key);\n        order.emplace_front(key, v);\n        map[key] = order.begin();\n        if (order.size() > capacity) { map.erase(order.back().first); order.pop_back(); }\n        return v;\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass LoadingLRUBrute<K, V> where V : class {\n    private readonly int capacity;\n    private readonly Dictionary<K, V> map = new Dictionary<K, V>();\n    private readonly LinkedList<K> order = new LinkedList<K>();       // last = most recently used\n    private readonly Func<K, V> loader;\n    private readonly object gate = new object();\n    public LoadingLRUBrute(int capacity, Func<K, V> loader) { this.capacity = capacity; this.loader = loader; }\n    // BRUTE: the slow loader runs while holding the ONLY lock => hits queue behind DB calls\n    public V Get(K key) {\n        lock (gate) {\n            V v;\n            if (map.TryGetValue(key, out v)) { order.Remove(key); order.AddLast(key); return v; }\n            v = loader(key);\n            map[key] = v; order.AddLast(key);\n            if (map.Count > capacity) { map.Remove(order.First.Value); order.RemoveFirst(); }\n            return v;\n        }\n    }\n}\n" }] } },
       mcq: { q: 'Why not just call <code>chm.computeIfAbsent(key, loader)</code> on a ConcurrentHashMap and be done?', options: ['It has no eviction (unbounded), and the slow loader runs while holding that key\'s bin lock, blocking other keys in the same bin', 'computeIfAbsent may call the loader twice for one key', 'computeIfAbsent is not thread-safe', 'It cannot store null values, which is fine, so it is perfect'], answer: 0, explain: 'computeIfAbsent does give single-flight, but the function runs under the bin lock (other keys hashing to that bin wait), it must not touch the map, and there is no capacity bound or LRU order. Combine an LRU (under a short lock) with a separate in-flight map of futures.' },
       hints: [`<p>Hint 1: Separate two concerns: (1) the LRU structure — fast ops under a short lock; (2) loading — slow, must happen with <b>no</b> lock held.</p>`, `<p>Hint 2: Keep a <code>ConcurrentHashMap&lt;K, CompletableFuture&lt;V&gt;&gt; inFlight</code>. The thread whose <code>putIfAbsent</code> wins does the load; everyone else <code>join()</code>s the winner's future.</p>`, `<p>Hint 3: Winner: re-check the LRU (someone may have just finished), load, put into LRU, complete the future (or completeExceptionally), and finally <code>inFlight.remove(key, future)</code> so the next miss can retry.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "db calls=1 distinct results=[value-of-p42]\nsmall cache loads=4\nloader failed: db down\nloader failed: db down\nloads after failures=6 (failures are not cached)\n" }] },
@@ -6194,6 +7473,118 @@ int main() {
         catch (const runtime_error& e) { cout << "loader failed: " << e.what() << "\\n"; }
     }
     cout << "loads after failures=" << loads << " (failures are not cached)\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+/// Access-ordered bounded map (LinkedHashMap accessOrder=true), every call under its own short lock.
+class LruMap<K, V> where V : class {
+    private readonly int capacity;
+    private readonly Dictionary<K, LinkedListNode<KeyValuePair<K, V>>> map = new Dictionary<K, LinkedListNode<KeyValuePair<K, V>>>();
+    private readonly LinkedList<KeyValuePair<K, V>> order = new LinkedList<KeyValuePair<K, V>>();
+    private readonly object gate = new object();
+    public LruMap(int capacity) { this.capacity = capacity; }
+    public V Get(K k) {
+        lock (gate) {
+            LinkedListNode<KeyValuePair<K, V>> n;
+            if (!map.TryGetValue(k, out n)) return null;
+            order.Remove(n); order.AddLast(n);
+            return n.Value.Value;
+        }
+    }
+    public void Put(K k, V v) {
+        lock (gate) {
+            LinkedListNode<KeyValuePair<K, V>> n;
+            if (map.TryGetValue(k, out n)) order.Remove(n);
+            map[k] = order.AddLast(new KeyValuePair<K, V>(k, v));
+            if (map.Count > capacity) { map.Remove(order.First.Value.Key); order.RemoveFirst(); }
+        }
+    }
+}
+
+class LoadingLRU<K, V> where V : class {
+    private readonly LruMap<K, V> lru;                                   // short critical sections only
+    private readonly ConcurrentDictionary<K, TaskCompletionSource<V>> inFlight = new ConcurrentDictionary<K, TaskCompletionSource<V>>();
+    private readonly Func<K, V> loader;
+
+    public LoadingLRU(int capacity, Func<K, V> loader) { this.loader = loader; lru = new LruMap<K, V>(capacity); }
+
+    public V Get(K key) {
+        V v = lru.Get(key);                                   // hit: O(1), never waits on I/O
+        if (v != null) return v;
+
+        TaskCompletionSource<V> mine = new TaskCompletionSource<V>();
+        TaskCompletionSource<V> existing = inFlight.GetOrAdd(key, mine);
+        if (existing != mine) return existing.Task.GetAwaiter().GetResult();   // someone else is loading: wait for it
+
+        try {
+            V again = lru.Get(key);                           // a load may have finished just now
+            V loaded = again != null ? again : loader(key);   // slow call, NO lock held
+            lru.Put(key, loaded);
+            mine.SetResult(loaded);
+            return loaded;
+        } catch (Exception e) {
+            mine.SetException(e);                              // every waiter sees the failure
+            throw;
+        } finally {
+            ((ICollection<KeyValuePair<K, TaskCompletionSource<V>>>)inFlight).Remove(new KeyValuePair<K, TaskCompletionSource<V>>(key, mine));   // only remove OUR flight
+        }
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static void Main() {
+        int dbCalls = 0;
+        LoadingLRU<string, string> cache = new LoadingLRU<string, string>(100, k => {
+            Interlocked.Increment(ref dbCalls);
+            Thread.Sleep(20);
+            return "value-of-" + k;
+        });
+        FixedPool pool = new FixedPool(32);
+        ManualResetEventSlim go = new ManualResetEventSlim(false);
+        ConcurrentDictionary<string, bool> results = new ConcurrentDictionary<string, bool>();
+        for (int i = 0; i < 100; i++) {
+            pool.Execute(() => {
+                go.Wait();
+                results[cache.Get("p42")] = true;
+            });
+        }
+        go.Set();
+        pool.ShutdownAndWait(10000);
+        Console.WriteLine("db calls=" + dbCalls + " distinct results=[" + string.Join(", ", results.Keys.OrderBy(k => k, StringComparer.Ordinal)) + "]");  // db calls=1
+
+        int loads = 0;
+        LoadingLRU<string, string> small = new LoadingLRU<string, string>(2, k => {
+            Interlocked.Increment(ref loads);
+            if (k == "bad") throw new InvalidOperationException("db down");
+            return k.ToUpper();
+        });
+        small.Get("a"); small.Get("b"); small.Get("a");      // a is a hit and becomes most recent
+        small.Get("c");                                      // evicts b, the least recently used
+        small.Get("b");                                      // b must be loaded again (evicts a)
+        Console.WriteLine("small cache loads=" + loads);                                   // 4
+        for (int i = 0; i < 2; i++) {
+            try { small.Get("bad"); }
+            catch (InvalidOperationException e) { Console.WriteLine("loader failed: " + e.Message); }
+        }
+        Console.WriteLine("loads after failures=" + loads + " (failures are not cached)");   // 6
+    }
 }` }
         ],
         complexity: `<p>Hit: O(1) under a ~100 ns lock. Miss: one loader call per key per flight; waiters block only on their key's future. Memory: O(capacity + keys currently loading).</p>`,
@@ -6446,6 +7837,56 @@ int main() {
         if (s.ownerOf(3) != s.ownerOf(4)) throw runtime_error("split booking");
     }
     cout << "200 rounds: always exactly one winner, never a deadlock, never a split booking\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+class Show {
+    enum Status { AVAILABLE, BOOKED }
+    private readonly Status[] seats;
+    private readonly string[] owner;
+    private readonly object[] locks;                     // one lock per seat
+
+    public Show(int n) {
+        seats = new Status[n]; owner = new string[n]; locks = new object[n];
+        for (int i = 0; i < n; i++) { seats[i] = Status.AVAILABLE; locks[i] = new object(); }
+    }
+
+    // returns true only if ALL requested seats were booked for this user
+    public bool Book(string user, params int[] wanted) {
+        int[] ids = wanted.Distinct().OrderBy(x => x).ToArray();   // GLOBAL ORDER => no circular wait
+        int locked = 0;
+        try {
+            foreach (int id in ids) {
+                if (!Monitor.TryEnter(locks[id], 200)) return false;   // bounded wait, back off
+                locked++;
+            }
+            foreach (int id in ids) if (seats[id] != Status.AVAILABLE) return false;  // check ALL first
+            foreach (int id in ids) { seats[id] = Status.BOOKED; owner[id] = user; }  // then act on ALL
+            return true;
+        } finally {
+            for (int i = locked - 1; i >= 0; i--) Monitor.Exit(locks[ids[i]]);        // release what we took
+        }
+    }
+
+    public string OwnerOf(int id) { lock (locks[id]) return owner[id]; }
+
+    static void Main() {
+        for (int round = 0; round < 200; round++) {
+            Show s = new Show(6);
+            bool ra = false, rb = false;
+            Thread a = new Thread(() => ra = s.Book("asha", 3, 4));
+            Thread b = new Thread(() => rb = s.Book("bala", 4, 3));   // opposite click order
+            a.Start(); b.Start();
+            if (!a.Join(2000) || !b.Join(2000)) throw new InvalidOperationException("deadlock, round " + round);
+            if (ra == rb) throw new InvalidOperationException("exactly one must win, round " + round);
+            if (s.OwnerOf(3) != s.OwnerOf(4)) throw new InvalidOperationException("split booking");
+        }
+        Console.WriteLine("200 rounds: always exactly one winner, never a deadlock, never a split booking");
+    }
 }` }
         ] }, { lang: 'java', title: 'Optimistic: CAS seat holds with expiry and rollback', code: `class SeatHolds {
     record Hold(String user, long expiresAt, boolean confirmed) {}
@@ -6706,6 +8147,75 @@ int main() {
     cout << "asha confirms:  " << show.confirm("asha", {3, 4}) << "\\n"; // false
     cout << "bala holds 4:   " << show.hold("bala", {4}) << "\\n";       // true: expired seat reusable
     cout << "bala confirms:  " << show.confirm("bala", {4}) << "\\n";    // true
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+class SeatHolds {
+    sealed class Hold {
+        public readonly string User; public readonly long ExpiresAt; public readonly bool Confirmed;
+        public Hold(string user, long expiresAt, bool confirmed) { User = user; ExpiresAt = expiresAt; Confirmed = confirmed; }
+    }
+    private readonly Hold[] seats;                        // null = AVAILABLE; changed only with CAS
+    private readonly Func<long> clock;
+    private readonly long holdMillis;
+
+    public SeatHolds(int n, long holdMillis, Func<long> clockMillis) {
+        seats = new Hold[n];
+        this.holdMillis = holdMillis;
+        clock = clockMillis;
+    }
+
+    private bool Cas(int id, Hold expected, Hold next) { return Interlocked.CompareExchange(ref seats[id], next, expected) == expected; }
+    private bool IsFree(Hold h, long now) { return h == null || (!h.Confirmed && h.ExpiresAt <= now); }
+
+    // all-or-nothing hold; never blocks, never deadlocks
+    public bool HoldSeats(string user, params int[] ids) {
+        long now = clock();
+        Hold mine = new Hold(user, now + holdMillis, false);
+        int[] sorted = ids.Distinct().OrderBy(x => x).ToArray();
+        List<int> taken = new List<int>();
+        foreach (int id in sorted) {
+            Hold cur = Volatile.Read(ref seats[id]);
+            // CAS succeeds only if nobody changed this seat since we read it
+            if (!IsFree(cur, now) || !Cas(id, cur, mine)) {
+                foreach (int t in taken) Cas(t, mine, null);   // roll back our holds
+                return false;
+            }
+            taken.Add(id);
+        }
+        return true;
+    }
+
+    // payment succeeded: HELD(user) -> BOOKED(user), only if our hold is still live
+    public bool Confirm(string user, params int[] ids) {
+        long now = clock();
+        foreach (int id in ids) {
+            Hold h = Volatile.Read(ref seats[id]);
+            if (h == null || h.User != user || h.Confirmed || h.ExpiresAt <= now) return false;
+        }
+        foreach (int id in ids) {
+            Hold h = Volatile.Read(ref seats[id]);
+            if (!Cas(id, h, new Hold(user, long.MaxValue, true))) return false;
+        }
+        return true;
+    }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        long now = 0;
+        SeatHolds show = new SeatHolds(10, 600000, () => Interlocked.Read(ref now));     // 10-minute holds
+        Console.WriteLine("asha holds 3,4: " + B(show.HoldSeats("asha", 3, 4)));   // true
+        Console.WriteLine("bala holds 4,5: " + B(show.HoldSeats("bala", 4, 5)));   // false (4 is held), 5 rolled back
+        Console.WriteLine("bala holds 5:   " + B(show.HoldSeats("bala", 5)));      // true: rollback freed it
+        Interlocked.Exchange(ref now, 700000);                                     // asha never paid: hold expired
+        Console.WriteLine("asha confirms:  " + B(show.Confirm("asha", 3, 4)));     // false
+        Console.WriteLine("bala holds 4:   " + B(show.HoldSeats("bala", 4)));      // true: expired seat reusable
+        Console.WriteLine("bala confirms:  " + B(show.Confirm("bala", 4)));        // true
+    }
 }` }
         ] }],
     codeTitle: ['Ordered per-seat locks', 'CAS holds + expiry'],
@@ -6874,7 +8384,26 @@ public:
         }
         return show->book(ids);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Collections.Concurrent;
+class Theater {
+    sealed class ShowSeats {
+        private readonly bool[] booked;
+        public ShowSeats(int n) { booked = new bool[n]; }
+        public bool Book(params int[] ids) {              // lock = this show only
+            lock (this) {
+                foreach (int id in ids) if (booked[id]) return false;
+                foreach (int id in ids) booked[id] = true;
+                return true;
+            }
+        }
+    }
+    private readonly ConcurrentDictionary<string, ShowSeats> shows = new ConcurrentDictionary<string, ShowSeats>();
+    public bool Book(string showId, params int[] ids) {
+        return shows.GetOrAdd(showId, s => new ShowSeats(100)).Book(ids);
+    }
+}` }
         ] },
       { title: 'Flash sale: never oversell 100 units', html: `<p>One counter, a million buyers. A global lock works but convoys; <code>if (stock.get() &gt; 0) stock.decrementAndGet()</code> ${H.c('r', 'oversells')} (check-then-act across two atomic calls). Use a single conditional atomic update that can never go below zero.</p>`, code: `class FlashSale {
     private final AtomicInteger stock = new AtomicInteger(100);
@@ -6922,7 +8451,20 @@ public:
             if (stock_.compare_exchange_weak(s, s - 1)) return true;   // on failure s is reloaded: retry
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System.Threading;
+class FlashSale {
+    private int stock = 100;
+
+    public bool Buy() {
+        while (true) {
+            int s = Volatile.Read(ref stock);
+            if (s == 0) return false;                                            // sold out: fail fast
+            if (Interlocked.CompareExchange(ref stock, s - 1, s) == s) return true;   // succeeds only if nobody changed it
+        }
+    }
+}` }
         ] },
       { title: 'The same race in SQL, and its fixes', html: `<p>Race: <code>SELECT status FROM seat WHERE id=4</code> → 'FREE' (two sessions), then both <code>UPDATE seat SET status='BOOKED'</code>. Fixes:</p>
 ${H.table(['Technique', 'SQL', 'Behaviour'], [['Conditional update', "<code>UPDATE seat SET status='HELD', user_id=? WHERE id=? AND status='FREE'</code>", 'check+act in one statement; rows-affected = 0 means you lost'], ['Pessimistic', '<code>SELECT ... WHERE id IN (3,4) ORDER BY id FOR UPDATE</code>', 'row locks in id order (no deadlock), released at commit'], ['Optimistic version', '<code>... WHERE id=? AND version=?</code>', 'retry on conflict; great when conflicts are rare'], ['Unique constraint', '<code>UNIQUE(show_id, seat_id)</code> on bookings', 'second INSERT fails with a duplicate-key error']])}` },
@@ -6954,7 +8496,7 @@ ${H.table(['Technique', 'SQL', 'Behaviour'], [['Conditional update', "<code>UPDA
         list.add(new int[]{start, end});
         return true;
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass RoomBookerBrute:\n    def __init__(self):\n        self.rooms = {}\n        self.lock = threading.Lock()\n\n    # correct only because EVERYTHING is serialized on one lock; O(n) scan inside the lock\n    def book(self, room_id, start, end, user):\n        with self.lock:\n            lst = self.rooms.setdefault(room_id, [])\n            for s, e in lst:\n                if start < e and s < end: return False       # overlap test\n            lst.append((start, end))\n            return True\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass RoomBookerBrute {\n  private rooms = new Map<string, number[][]>();\n  private mutex = new Mutex();\n\n  // correct only because EVERYTHING is serialized on one lock; O(n) scan inside the lock\n  book(roomId: string, start: number, end: number, user: string): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      if (!this.rooms.has(roomId)) this.rooms.set(roomId, []);\n      const list = this.rooms.get(roomId)!;\n      for (const b of list) if (start < b[1] && b[0] < end) return false;   // overlap test\n      list.push([start, end]);\n      return true;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class RoomBookerBrute {\n    unordered_map<string, vector<pair<int, int>>> rooms;\n    mutex m;\npublic:\n    // correct only because EVERYTHING is serialized on one mutex; O(n) scan inside the lock\n    bool book(const string& roomId, int start, int end, const string& user) {\n        lock_guard<mutex> g(m);\n        auto& list = rooms[roomId];\n        for (auto& b : list) if (start < b.second && b.first < end) return false;   // overlap test\n        list.push_back({start, end});\n        return true;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass RoomBookerBrute:\n    def __init__(self):\n        self.rooms = {}\n        self.lock = threading.Lock()\n\n    # correct only because EVERYTHING is serialized on one lock; O(n) scan inside the lock\n    def book(self, room_id, start, end, user):\n        with self.lock:\n            lst = self.rooms.setdefault(room_id, [])\n            for s, e in lst:\n                if start < e and s < end: return False       # overlap test\n            lst.append((start, end))\n            return True\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass RoomBookerBrute {\n  private rooms = new Map<string, number[][]>();\n  private mutex = new Mutex();\n\n  // correct only because EVERYTHING is serialized on one lock; O(n) scan inside the lock\n  book(roomId: string, start: number, end: number, user: string): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      if (!this.rooms.has(roomId)) this.rooms.set(roomId, []);\n      const list = this.rooms.get(roomId)!;\n      for (const b of list) if (start < b[1] && b[0] < end) return false;   // overlap test\n      list.push([start, end]);\n      return true;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class RoomBookerBrute {\n    unordered_map<string, vector<pair<int, int>>> rooms;\n    mutex m;\npublic:\n    // correct only because EVERYTHING is serialized on one mutex; O(n) scan inside the lock\n    bool book(const string& roomId, int start, int end, const string& user) {\n        lock_guard<mutex> g(m);\n        auto& list = rooms[roomId];\n        for (auto& b : list) if (start < b.second && b.first < end) return false;   // overlap test\n        list.push_back({start, end});\n        return true;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass RoomBookerBrute {\n    private readonly Dictionary<string, List<int[]>> rooms = new Dictionary<string, List<int[]>>();\n    private readonly object gate = new object();\n\n    // correct only because EVERYTHING is serialized on one monitor; O(n) scan inside the lock\n    public bool Book(string roomId, int start, int end, string user) {\n        lock (gate) {\n            List<int[]> list;\n            if (!rooms.TryGetValue(roomId, out list)) { list = new List<int[]>(); rooms[roomId] = list; }\n            foreach (int[] b in list) if (start < b[1] && b[0] < end) return false;   // overlap test\n            list.Add(new[] { start, end });\n            return true;\n        }\n    }\n}\n" }] } },
       mcq: { q: 'In <code>bookAny</code>, why must you <b>not</b> lock all candidate rooms first and then pick one?', options: ['Locking many rooms blocks unrelated bookers and, without a global order, can deadlock with another bookAny using a different list order', 'Because a thread can hold only one lock at a time', 'Because TreeMap is not thread-safe', 'It is fine and the fastest approach'], answer: 0, explain: 'Each room\'s booking is independent, so try rooms one at a time: lock room, check, book or move on. You hold at most one lock at any moment, which makes deadlock impossible and keeps contention low.' },
       hints: [`<p>Hint 1: The unit of conflict is a <b>room</b>. Give each room its own lock and its own sorted structure.</p>`, `<p>Hint 2: A <code>TreeMap&lt;Integer, Integer&gt;</code> (start → end) per room: the only intervals that can overlap [s, e) are <code>floorEntry(s)</code> (must end ≤ s) and <code>ceilingEntry(s)</code> (must start ≥ e). O(log n).</p>`, `<p>Hint 3: <code>ConcurrentHashMap.computeIfAbsent</code> creates each Room once; <code>synchronized</code> methods on Room do check + insert atomically. bookAny = loop over rooms, call room.book, stop at the first success — never hold two room locks.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "false false true\nempty interval rejected: empty interval\nbookAny: true R3 bookings=1\nbookAny only R1: false\nwinners for R2 [700,760): 1\n" }] },
@@ -7243,6 +8785,86 @@ int main() {
         });
     for (auto& th : pool) th.join();
     cout << "winners for R2 [700,760): " << wins << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class RoomBooker {
+    public sealed class Room {
+        private readonly SortedDictionary<int, int> bookings = new SortedDictionary<int, int>();   // start -> end, guarded by this
+        private readonly Dictionary<int, string> owners = new Dictionary<int, string>();          // start -> user, guarded by this
+
+        public bool Book(int start, int end, string user) {
+            lock (this) {
+                if (start >= end) throw new ArgumentException("empty interval");
+                int? beforeEnd = null, afterStart = null;
+                foreach (var kv in bookings) {                                     // floor entry and ceiling key
+                    if (kv.Key <= start) beforeEnd = kv.Value;
+                    if (kv.Key >= start) { afterStart = kv.Key; break; }
+                }
+                if (beforeEnd != null && beforeEnd > start) return false;         // previous meeting runs into us
+                if (afterStart != null && afterStart < end) return false;         // next meeting starts before we end
+                bookings[start] = end;
+                owners[start] = user;
+                return true;
+            }
+        }
+        public int Count() { lock (this) return bookings.Count; }
+    }
+
+    private readonly ConcurrentDictionary<string, Room> rooms = new ConcurrentDictionary<string, Room>();
+
+    private Room RoomOf(string id) { return rooms.GetOrAdd(id, r => new Room()); }
+
+    public bool Book(string roomId, int start, int end, string user) { return RoomOf(roomId).Book(start, end, user); }
+
+    // holds at most ONE room lock at a time => no deadlock, minimal blocking
+    public bool BookAny(List<string> roomIds, int start, int end, string user) {
+        foreach (string id in roomIds) if (RoomOf(id).Book(start, end, user)) return true;
+        return false;
+    }
+
+    public int BookingsIn(string roomId) { return RoomOf(roomId).Count(); }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        RoomBooker rb = new RoomBooker();
+        rb.Book("R1", 600, 660, "dev");
+        Console.WriteLine(B(rb.Book("R1", 630, 700, "asha")) + " " + B(rb.Book("R1", 650, 720, "bala"))
+                + " " + B(rb.Book("R1", 660, 720, "chen")));                 // false false true
+
+        try { rb.Book("R1", 700, 700, "zed"); }
+        catch (ArgumentException e) { Console.WriteLine("empty interval rejected: " + e.Message); }
+        Console.WriteLine("bookAny: " + B(rb.BookAny(new List<string> { "R1", "R3" }, 600, 660, "dana"))      // R1 is busy -> falls to R3
+                + " R3 bookings=" + rb.BookingsIn("R3"));
+        Console.WriteLine("bookAny only R1: " + B(rb.BookAny(new List<string> { "R1" }, 610, 620, "eve")));   // false
+
+        // 64 threads race for the same slot in R2: exactly one wins
+        int wins = 0;
+        FixedPool pool = new FixedPool(16);
+        for (int i = 0; i < 64; i++) {
+            string u = "u" + i;
+            pool.Execute(() => { if (rb.Book("R2", 700, 760, u)) Interlocked.Increment(ref wins); });
+        }
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine("winners for R2 [700,760): " + wins);   // 1
+    }
 }` }
         ],
         dry: { head: ['request', 'floorEntry(start)', 'ceilingEntry(start)', 'result'], rows: [['[630,700) asha', '600→660 (660 &gt; 630)', '-', H.c('r', 'overlap → false')], ['[650,720) bala', '600→660 (660 &gt; 650)', '-', H.c('r', 'false')], ['[660,720) chen', '600→660 (660 ≤ 660 ok)', 'none', H.c('g', 'book → true')]] },
@@ -7269,7 +8891,7 @@ int main() {
         if (instance == null) instance = new MetricsRegistryBrute();
         return instance;
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass MetricsRegistryBrute:\n    _instance = None\n    _lock = threading.Lock()\n\n    @staticmethod\n    def get_unsafe():                                  # race: two threads both see None\n        if MetricsRegistryBrute._instance is None: MetricsRegistryBrute._instance = MetricsRegistryBrute()\n        return MetricsRegistryBrute._instance\n\n    @staticmethod\n    def get_locked():                                  # correct, but locks on EVERY call\n        with MetricsRegistryBrute._lock:\n            if MetricsRegistryBrute._instance is None: MetricsRegistryBrute._instance = MetricsRegistryBrute()\n            return MetricsRegistryBrute._instance\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass MetricsRegistryBrute {\n  private static instance: MetricsRegistryBrute | undefined;\n  private static mutex = new Mutex();\n  private constructor() { }\n  private static async create(): Promise<MetricsRegistryBrute> { return new MetricsRegistryBrute(); }   // async set-up\n\n  static async getUnsafe(): Promise<MetricsRegistryBrute> {   // race: two callers both see undefined across the await\n    if (!MetricsRegistryBrute.instance) MetricsRegistryBrute.instance = await MetricsRegistryBrute.create();\n    return MetricsRegistryBrute.instance;\n  }\n  static getLocked(): Promise<MetricsRegistryBrute> {         // correct, but locks on EVERY call\n    return MetricsRegistryBrute.mutex.runExclusive(async () => {\n      if (!MetricsRegistryBrute.instance) MetricsRegistryBrute.instance = await MetricsRegistryBrute.create();\n      return MetricsRegistryBrute.instance;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class MetricsRegistryBrute {\n    static MetricsRegistryBrute* instance;\n    static mutex m;\n    MetricsRegistryBrute() { }\npublic:\n    static MetricsRegistryBrute* getUnsafe() {         // race: two threads both see nullptr\n        if (instance == nullptr) instance = new MetricsRegistryBrute();\n        return instance;\n    }\n    static MetricsRegistryBrute* getLocked() {         // correct, but locks on EVERY call\n        lock_guard<mutex> g(m);\n        if (instance == nullptr) instance = new MetricsRegistryBrute();\n        return instance;\n    }\n};\nMetricsRegistryBrute* MetricsRegistryBrute::instance = nullptr;\nmutex MetricsRegistryBrute::m;\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass MetricsRegistryBrute:\n    _instance = None\n    _lock = threading.Lock()\n\n    @staticmethod\n    def get_unsafe():                                  # race: two threads both see None\n        if MetricsRegistryBrute._instance is None: MetricsRegistryBrute._instance = MetricsRegistryBrute()\n        return MetricsRegistryBrute._instance\n\n    @staticmethod\n    def get_locked():                                  # correct, but locks on EVERY call\n        with MetricsRegistryBrute._lock:\n            if MetricsRegistryBrute._instance is None: MetricsRegistryBrute._instance = MetricsRegistryBrute()\n            return MetricsRegistryBrute._instance\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass MetricsRegistryBrute {\n  private static instance: MetricsRegistryBrute | undefined;\n  private static mutex = new Mutex();\n  private constructor() { }\n  private static async create(): Promise<MetricsRegistryBrute> { return new MetricsRegistryBrute(); }   // async set-up\n\n  static async getUnsafe(): Promise<MetricsRegistryBrute> {   // race: two callers both see undefined across the await\n    if (!MetricsRegistryBrute.instance) MetricsRegistryBrute.instance = await MetricsRegistryBrute.create();\n    return MetricsRegistryBrute.instance;\n  }\n  static getLocked(): Promise<MetricsRegistryBrute> {         // correct, but locks on EVERY call\n    return MetricsRegistryBrute.mutex.runExclusive(async () => {\n      if (!MetricsRegistryBrute.instance) MetricsRegistryBrute.instance = await MetricsRegistryBrute.create();\n      return MetricsRegistryBrute.instance;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class MetricsRegistryBrute {\n    static MetricsRegistryBrute* instance;\n    static mutex m;\n    MetricsRegistryBrute() { }\npublic:\n    static MetricsRegistryBrute* getUnsafe() {         // race: two threads both see nullptr\n        if (instance == nullptr) instance = new MetricsRegistryBrute();\n        return instance;\n    }\n    static MetricsRegistryBrute* getLocked() {         // correct, but locks on EVERY call\n        lock_guard<mutex> g(m);\n        if (instance == nullptr) instance = new MetricsRegistryBrute();\n        return instance;\n    }\n};\nMetricsRegistryBrute* MetricsRegistryBrute::instance = nullptr;\nmutex MetricsRegistryBrute::m;\n" }, { lang: 'csharp', code: "class MetricsRegistryBrute {\n    private static MetricsRegistryBrute instance;\n    private static readonly object gate = new object();\n    private MetricsRegistryBrute() { }\n    public static MetricsRegistryBrute GetUnsafe() {                // race: two threads both see null\n        if (instance == null) instance = new MetricsRegistryBrute();\n        return instance;\n    }\n    public static MetricsRegistryBrute GetLocked() {                // correct, but locks on EVERY call\n        lock (gate) {\n            if (instance == null) instance = new MetricsRegistryBrute();\n            return instance;\n        }\n    }\n}\n" }] } },
     mcq: { q: 'In double-checked locking, why must the field be <code>volatile</code>?', options: ['Without it, another thread may see a non-null reference to an object whose constructor writes are not yet visible', 'volatile makes the constructor run faster', 'Without it the code does not compile', 'volatile is needed only on 32-bit JVMs'], answer: 0, explain: 'The JIT/CPU may publish the reference before the constructor\'s field writes are visible. volatile adds the happens-before edge from the write of the reference to the unsynchronized read.' },
     hints: [`<p>Hint 1: You need "initialize exactly once" plus "every thread sees a fully built object".</p>`, `<p>Hint 2: The runtime may already guarantee one-time, thread-safe initialization: Java class loading, a C++ function-local <code>static</code>, a Python module import.</p>`, `<p>Hint 3: Holder idiom: a private static nested class with a <code>static final</code> field. Alternative: enum singleton, or double-checked locking with a <code>volatile</code> field.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "same object: true\nholder distinct=1 constructed=1\ndcl distinct=1 constructed=2\n" }] },
@@ -7450,6 +9072,61 @@ int main() {
     cout << "same object: " << boolalpha << (&MetricsRegistry::getInstance() == &MetricsRegistry::getInstance()) << "\\n";
     cout << "holder " << stress([] { return &MetricsRegistry::getInstance(); }) << "\\n";
     cout << "dcl " << stress([] { return MetricsRegistry::getDcl(); }) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class MetricsRegistry {
+    public static int Constructed = 0;
+    private MetricsRegistry() { Interlocked.Increment(ref Constructed); }
+
+    // the runtime runs Holder's type initializer exactly once, on first use (explicit static ctor = truly lazy)
+    private static class Holder { public static readonly MetricsRegistry INSTANCE = new MetricsRegistry(); static Holder() { } }
+    public static MetricsRegistry GetInstance() { return Holder.INSTANCE; }      // lazy, once, lock-free reads
+
+    // alternative: double-checked locking (field MUST be volatile)
+    private static volatile MetricsRegistry dcl;
+    private static readonly object dclLock = new object();
+    public static MetricsRegistry GetDcl() {
+        MetricsRegistry r = dcl;                        // one volatile read on the fast path
+        if (r == null) {
+            lock (dclLock) {
+                r = dcl;
+                if (r == null) dcl = r = new MetricsRegistry();
+            }
+        }
+        return r;
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine("same object: " + (MetricsRegistry.GetInstance() == MetricsRegistry.GetInstance()).ToString().ToLower());
+        Console.WriteLine("holder " + Stress(MetricsRegistry.GetInstance));        // distinct=1 constructed=1
+        Console.WriteLine("dcl " + Stress(MetricsRegistry.GetDcl));                // distinct=1 constructed=2 (the DCL instance)
+    }
+
+    static string Stress(Func<MetricsRegistry> accessor) {
+        ConcurrentDictionary<MetricsRegistry, bool> seen = new ConcurrentDictionary<MetricsRegistry, bool>();
+        FixedPool pool = new FixedPool(16);
+        for (int i = 0; i < 1000; i++) pool.Execute(() => seen[accessor()] = true);
+        pool.ShutdownAndWait(5000);
+        return "distinct=" + seen.Count + " constructed=" + MetricsRegistry.Constructed;
+    }
 }` }
         ],
       complexity: `<p>O(1) per call; zero lock acquisitions after initialization.</p>`,
@@ -7465,7 +9142,7 @@ int main() {
     brute: { why: `<p><code>++counter</code> is read-add-write; two threads read 41 and both return ORD-42. Making it <code>volatile</code> does not help (visibility, not atomicity). Wrapping in <code>synchronized</code> works but is heavier than needed for one variable.</p>`, code: { lang: 'java', code: `class OrderIdBrute {
     private long counter;                       // volatile would NOT fix it
     String next() { return "ORD-" + (++counter); }  // lost updates => duplicate IDs
-}`, alt: [{ lang: 'python', code: "class OrderIdBrute:\n    def __init__(self):\n        self.counter = 0                              # a plain int: += is read, add, write\n\n    def next(self):\n        self.counter += 1                             # lost updates => duplicate IDs\n        return f\"ORD-{self.counter}\"\n" }, { lang: 'ts', code: "class OrderIdBrute {\n  private counter = 0;                                // a plain number: ++ is read, add, write\n  next(): string { return \"ORD-\" + (++this.counter); }   // lost updates across workers => duplicate IDs\n}\n" }, { lang: 'cpp', code: "class OrderIdBrute {\n    long long counter = 0;                            // volatile would NOT fix it\npublic:\n    string next() { return \"ORD-\" + to_string(++counter); }   // lost updates => duplicate IDs\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class OrderIdBrute:\n    def __init__(self):\n        self.counter = 0                              # a plain int: += is read, add, write\n\n    def next(self):\n        self.counter += 1                             # lost updates => duplicate IDs\n        return f\"ORD-{self.counter}\"\n" }, { lang: 'ts', code: "class OrderIdBrute {\n  private counter = 0;                                // a plain number: ++ is read, add, write\n  next(): string { return \"ORD-\" + (++this.counter); }   // lost updates across workers => duplicate IDs\n}\n" }, { lang: 'cpp', code: "class OrderIdBrute {\n    long long counter = 0;                            // volatile would NOT fix it\npublic:\n    string next() { return \"ORD-\" + to_string(++counter); }   // lost updates => duplicate IDs\n};\n" }, { lang: 'csharp', code: "class OrderIdBrute {\n    private long counter;                            // volatile would NOT fix it\n    public string Next() { return \"ORD-\" + (++counter); }   // lost updates => duplicate IDs\n}\n" }] } },
     mcq: { q: 'Which single call makes the increment atomic?', options: ['<code>counter.incrementAndGet()</code> on an AtomicLong', '<code>counter++</code> on a volatile long', '<code>Thread.yield()</code> before ++', '<code>Math.addExact(counter, 1)</code>'], answer: 0, explain: 'AtomicLong.incrementAndGet performs read-add-write as one hardware atomic operation (lock xadd / CAS loop).' },
     hints: [`<p>Hint 1: The shared state is one number; the race is read-modify-write.</p>`, `<p>Hint 2: <code>java.util.concurrent.atomic.AtomicLong</code>.</p>`, `<p>Hint 3: Format the string after getting the number — building the string does not need to be atomic, only the increment does.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "distinct ids: 80000\nnext id: ORD-80001\n" }] },
@@ -7570,6 +9247,28 @@ int main() {
     for (auto& th : threads) th.join();
     cout << "distinct ids: " << ids.size() << "\\n";
     cout << "next id: " << g.next() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Threading;
+
+class OrderIdGenerator {
+    private long counter;
+    public string Next() { return "ORD-" + Interlocked.Increment(ref counter); }
+
+    static void Main() {
+        OrderIdGenerator g = new OrderIdGenerator();
+        ConcurrentDictionary<string, bool> ids = new ConcurrentDictionary<string, bool>();
+        Thread[] ts = new Thread[8];
+        for (int i = 0; i < ts.Length; i++) {
+            ts[i] = new Thread(() => { for (int k = 0; k < 10000; k++) ids[g.Next()] = true; });
+            ts[i].Start();
+        }
+        foreach (Thread t in ts) t.Join();
+        Console.WriteLine("distinct ids: " + ids.Count);     // 80000
+        Console.WriteLine("next id: " + g.Next());            // ORD-80001, no gaps and no repeats
+    }
 }` }
         ],
       complexity: `<p>O(1) per ID, lock-free.</p>`,
@@ -7594,7 +9293,7 @@ int main() {
         if (!cache.containsKey(key)) cache.put(key, "value-of-" + key);
         return cache.get(key);
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass ConfigCacheLocked:\n    def __init__(self):\n        self.cache = {}\n        self.lock = threading.Lock()\n\n    def get(self, key):                               # correct but every read takes the lock\n        with self.lock:\n            if key not in self.cache: self.cache[key] = \"value-of-\" + key\n            return self.cache[key]\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass ConfigCacheLocked {\n  private cache = new Map<string, string>();\n  private mutex = new Mutex();\n  get(key: string): Promise<string> {                 // correct but every read takes the lock\n    return this.mutex.runExclusive(() => {\n      if (!this.cache.has(key)) this.cache.set(key, \"value-of-\" + key);\n      return this.cache.get(key)!;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class ConfigCacheLocked {\n    unordered_map<string, string> cache;\n    mutex m;\npublic:\n    string get(const string& key) {                   // correct but every read takes the lock\n        lock_guard<mutex> g(m);\n        if (!cache.count(key)) cache[key] = \"value-of-\" + key;\n        return cache[key];\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass ConfigCacheLocked:\n    def __init__(self):\n        self.cache = {}\n        self.lock = threading.Lock()\n\n    def get(self, key):                               # correct but every read takes the lock\n        with self.lock:\n            if key not in self.cache: self.cache[key] = \"value-of-\" + key\n            return self.cache[key]\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass ConfigCacheLocked {\n  private cache = new Map<string, string>();\n  private mutex = new Mutex();\n  get(key: string): Promise<string> {                 // correct but every read takes the lock\n    return this.mutex.runExclusive(() => {\n      if (!this.cache.has(key)) this.cache.set(key, \"value-of-\" + key);\n      return this.cache.get(key)!;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class ConfigCacheLocked {\n    unordered_map<string, string> cache;\n    mutex m;\npublic:\n    string get(const string& key) {                   // correct but every read takes the lock\n        lock_guard<mutex> g(m);\n        if (!cache.count(key)) cache[key] = \"value-of-\" + key;\n        return cache[key];\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass ConfigCacheLocked {\n    private readonly Dictionary<string, string> cache = new Dictionary<string, string>();\n    private readonly object gate = new object();\n    public string Get(string key) {                         // correct but every read takes the lock\n        lock (gate) {\n            if (!cache.ContainsKey(key)) cache[key] = \"value-of-\" + key;\n            return cache[key];\n        }\n    }\n}\n" }] } },
     mcq: { q: 'Which is the best fix here?', options: ['<code>ConcurrentHashMap.computeIfAbsent(key, this::load)</code>', 'Make the map field volatile', 'Use Collections.synchronizedMap and keep the same code', 'Use Hashtable'], answer: 0, explain: 'computeIfAbsent is atomic per key: one load, value returned from the same call, lock-free reads afterwards. A synchronized wrapper keeps the check-then-act race.' },
     hints: [`<p>Hint 1: Count the separate map calls in <code>get</code>. Each gap is a race window.</p>`, `<p>Hint 2: Collapse "check, load, put, read" into one atomic call.</p>`, `<p>Hint 3: Because the load is fast and doesn't touch the map, it is safe inside <code>computeIfAbsent</code>.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "value-of-db.url loads=1\nfailed: no such key: missing.x\nfailed: no such key: missing.x\nloads=3 (a failed load is not cached)\n" }] },
@@ -7755,6 +9454,55 @@ int main() {
         catch (const out_of_range& e) { cout << "failed: " << e.what() << "\\n"; }
     }
     cout << "loads=" << c.loads_ << " (a failed load is not cached)\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class ConfigCache {
+    // Lazy<T> makes the load run once per key even when GetOrAdd races; a failed Lazy is removed so nothing is cached
+    private readonly ConcurrentDictionary<string, Lazy<string>> cache = new ConcurrentDictionary<string, Lazy<string>>();
+    public int Loads = 0;
+
+    private string LoadFromFile(string key) {
+        Interlocked.Increment(ref Loads);
+        if (key.StartsWith("missing.")) throw new KeyNotFoundException("no such key: " + key);   // a failed load stores nothing
+        return "value-of-" + key;
+    }
+
+    public string Get(string key) {
+        Lazy<string> entry = cache.GetOrAdd(key, k => new Lazy<string>(() => LoadFromFile(k), LazyThreadSafetyMode.ExecutionAndPublication));
+        try { return entry.Value; }
+        catch { ((ICollection<KeyValuePair<string, Lazy<string>>>)cache).Remove(new KeyValuePair<string, Lazy<string>>(key, entry)); throw; }
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static void Main() {
+        ConfigCache c = new ConfigCache();
+        FixedPool pool = new FixedPool(8);
+        for (int i = 0; i < 1000; i++) pool.Execute(() => c.Get("db.url"));
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine(c.Get("db.url") + " loads=" + c.Loads);   // value-of-db.url loads=1
+        for (int i = 0; i < 2; i++) {
+            try { c.Get("missing.x"); }
+            catch (KeyNotFoundException e) { Console.WriteLine("failed: " + e.Message); }
+        }
+        Console.WriteLine("loads=" + c.Loads + " (a failed load is not cached)");   // 3
+    }
 }` }
         ],
       complexity: `<p>O(1) average; one load per key.</p>`,
@@ -7775,7 +9523,7 @@ int main() {
         }
     }
     void shutdown() { stopped = true; }
-}`, alt: [{ lang: 'python', code: "import threading, time\n\nclass PollerBrute:\n    def __init__(self):\n        self.stopped = False                          # a plain flag; no way to wake the sleeping loop\n\n    def run(self):\n        while not self.stopped:\n            try: time.sleep(1)\n            except Exception: pass                    # swallows errors/interrupts!\n\n    def shutdown(self): self.stopped = True           # takes up to a second to be noticed\n" }, { lang: 'ts', code: "class PollerBrute {\n  private stopped = false;                            // a plain flag; the loop only checks it between sleeps\n  async run(): Promise<void> {\n    while (!this.stopped) {\n      try { await new Promise((r) => setTimeout(r, 1000)); } catch { }   // swallows errors!\n    }\n  }\n  shutdown(): void { this.stopped = true; }           // takes up to a second to be noticed\n}\n" }, { lang: 'cpp', code: "class PollerBrute {\n    bool stopped = false;                             // not atomic: the loop may never see \"true\"\npublic:\n    void run() {\n        while (!stopped) {\n            this_thread::sleep_for(chrono::seconds(1));   // shutdown is noticed up to a second late\n        }\n    }\n    void shutdown() { stopped = true; }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading, time\n\nclass PollerBrute:\n    def __init__(self):\n        self.stopped = False                          # a plain flag; no way to wake the sleeping loop\n\n    def run(self):\n        while not self.stopped:\n            try: time.sleep(1)\n            except Exception: pass                    # swallows errors/interrupts!\n\n    def shutdown(self): self.stopped = True           # takes up to a second to be noticed\n" }, { lang: 'ts', code: "class PollerBrute {\n  private stopped = false;                            // a plain flag; the loop only checks it between sleeps\n  async run(): Promise<void> {\n    while (!this.stopped) {\n      try { await new Promise((r) => setTimeout(r, 1000)); } catch { }   // swallows errors!\n    }\n  }\n  shutdown(): void { this.stopped = true; }           // takes up to a second to be noticed\n}\n" }, { lang: 'cpp', code: "class PollerBrute {\n    bool stopped = false;                             // not atomic: the loop may never see \"true\"\npublic:\n    void run() {\n        while (!stopped) {\n            this_thread::sleep_for(chrono::seconds(1));   // shutdown is noticed up to a second late\n        }\n    }\n    void shutdown() { stopped = true; }\n};\n" }, { lang: 'csharp', code: "using System.Threading;\nclass PollerBrute {\n    private bool stopped;                    // not volatile: the loop may never see \"true\"\n    public void Run() {\n        while (!stopped) {\n            try { Thread.Sleep(1000); } catch (ThreadInterruptedException) { }   // swallows interrupt!\n        }\n    }\n    public void Shutdown() { stopped = true; }\n}\n" }] } },
     mcq: { q: 'What does <code>volatile</code> fix here, and what does it NOT fix?', options: ['It makes the flag visible; it does not wake a sleeping thread — use interrupt for that', 'It makes the loop atomic and wakes sleeping threads', 'It fixes nothing; only synchronized works', 'It prevents the thread from sleeping'], answer: 0, explain: 'volatile guarantees the next read sees the write. Interrupting the thread makes sleep() throw InterruptedException immediately, so shutdown is prompt.' },
     hints: [`<p>Hint 1: Two problems: visibility of the flag, and latency while sleeping.</p>`, `<p>Hint 2: <code>volatile</code> for the flag; <code>Thread.interrupt()</code> to cut the sleep short.</p>`, `<p>Hint 3: In the catch block, restore the interrupt status and exit the loop — never swallow it.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "stopped promptly=true alive=false polls=1\nrepeated and early shutdown are safe\n" }] },
@@ -7955,6 +9703,49 @@ int main() {
     Poller never;
     never.shutdown();                                              // so is stopping one that never started
     cout << "repeated and early shutdown are safe\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Diagnostics;
+using System.Threading;
+
+class Poller {
+    private volatile bool stopped;
+    private int polls = 0;
+    private Thread worker;
+
+    public void Run() {
+        while (!stopped) {
+            Interlocked.Increment(ref polls);          // PollOnce()
+            try {
+                Thread.Sleep(1000);
+            } catch (ThreadInterruptedException) {
+                return;                                // woken for shutdown: leave the loop
+            }
+        }
+    }
+
+    public void Start() { worker = new Thread(Run) { Name = "poller" }; worker.Start(); }
+
+    public void Shutdown() {
+        stopped = true;          // visible thanks to volatile
+        if (worker == null) return;   // never started: nothing to wake or join
+        worker.Interrupt();      // wakes it from sleep immediately
+        worker.Join(2000);
+    }
+
+    static void Main() {
+        Poller p = new Poller();
+        p.Start();
+        Thread.Sleep(50);
+        Stopwatch sw = Stopwatch.StartNew();
+        p.Shutdown();
+        long ms = sw.ElapsedMilliseconds;
+        Console.WriteLine("stopped promptly=" + (ms < 500).ToString().ToLower() + " alive=" + p.worker.IsAlive.ToString().ToLower() + " polls=" + p.polls);
+        p.Shutdown();                      // a second call is harmless
+        new Poller().Shutdown();           // so is stopping one that never started
+        Console.WriteLine("repeated and early shutdown are safe");
+    }
 }` }
         ],
       complexity: `<p>O(1); shutdown latency ≈ time to deliver the interrupt.</p>`,
@@ -7977,7 +9768,7 @@ int main() {
             for (Consumer<String> l : listeners) l.accept(e);   // self-unsubscribe => CME anyway
         }
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass EventBusBrute:\n    def __init__(self):\n        self.listeners = []\n        self.lock = threading.RLock()\n\n    def subscribe(self, l):\n        with self.lock: self.listeners.append(l)\n\n    def unsubscribe(self, l):\n        with self.lock: self.listeners.remove(l)\n\n    def publish(self, e):\n        with self.lock:                               # blocks subscribers during ALL callbacks\n            for l in self.listeners: l(e)             # self-unsubscribe mutates the list mid-loop: callbacks skipped\n" }, { lang: 'ts', code: "class EventBusBrute {\n  private listeners: Array<(e: string) => void> = [];\n  subscribe(l: (e: string) => void): void { this.listeners.push(l); }\n  unsubscribe(l: (e: string) => void): void { this.listeners.splice(this.listeners.indexOf(l), 1); }\n  publish(e: string): void {\n    for (const l of this.listeners) l(e);             // self-unsubscribe mutates the array mid-loop: callbacks skipped\n  }\n}\n" }, { lang: 'cpp', code: "class EventBusBrute {\n    vector<function<void(const string&)>> listeners;\n    mutex m;\npublic:\n    void subscribe(function<void(const string&)> l) { lock_guard<mutex> g(m); listeners.push_back(l); }\n    void publish(const string& e) {\n        lock_guard<mutex> g(m);                       // blocks subscribers during ALL callbacks\n        for (auto& l : listeners) l(e);               // self-unsubscribe => iterator invalidation (undefined behaviour)\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass EventBusBrute:\n    def __init__(self):\n        self.listeners = []\n        self.lock = threading.RLock()\n\n    def subscribe(self, l):\n        with self.lock: self.listeners.append(l)\n\n    def unsubscribe(self, l):\n        with self.lock: self.listeners.remove(l)\n\n    def publish(self, e):\n        with self.lock:                               # blocks subscribers during ALL callbacks\n            for l in self.listeners: l(e)             # self-unsubscribe mutates the list mid-loop: callbacks skipped\n" }, { lang: 'ts', code: "class EventBusBrute {\n  private listeners: Array<(e: string) => void> = [];\n  subscribe(l: (e: string) => void): void { this.listeners.push(l); }\n  unsubscribe(l: (e: string) => void): void { this.listeners.splice(this.listeners.indexOf(l), 1); }\n  publish(e: string): void {\n    for (const l of this.listeners) l(e);             // self-unsubscribe mutates the array mid-loop: callbacks skipped\n  }\n}\n" }, { lang: 'cpp', code: "class EventBusBrute {\n    vector<function<void(const string&)>> listeners;\n    mutex m;\npublic:\n    void subscribe(function<void(const string&)> l) { lock_guard<mutex> g(m); listeners.push_back(l); }\n    void publish(const string& e) {\n        lock_guard<mutex> g(m);                       // blocks subscribers during ALL callbacks\n        for (auto& l : listeners) l(e);               // self-unsubscribe => iterator invalidation (undefined behaviour)\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass EventBusBrute {\n    private readonly List<Action<string>> listeners = new List<Action<string>>();\n    public void Subscribe(Action<string> l) { lock (listeners) listeners.Add(l); }\n    public void Unsubscribe(Action<string> l) { lock (listeners) listeners.Remove(l); }\n    public void Publish(string e) {\n        lock (listeners) {                                // blocks subscribers during ALL callbacks\n            foreach (Action<string> l in listeners) l(e); // self-unsubscribe => \"collection was modified\" anyway\n        }\n    }\n}\n" }] } },
     mcq: { q: 'Why is CopyOnWriteArrayList a good fit here but a bad fit for an event <i>log</i> that appends 10k entries/sec?', options: ['Each write copies the whole array: cheap when writes are rare, very expensive when writes are frequent', 'It cannot be iterated', 'It is not thread-safe for writes', 'It loses elements under contention'], answer: 0, explain: 'COW makes reads/iteration lock-free snapshots by paying O(n) per write. Listener lists are read-mostly; logs are write-heavy.' },
     hints: [`<p>Hint 1: Publishing is read-mostly; changes are rare. Iteration should see a stable snapshot.</p>`, `<p>Hint 2: <code>CopyOnWriteArrayList</code> iterators are snapshots that never throw CME, even if the same thread modifies the list.</p>`, `<p>Hint 3: Catch exceptions per listener so one bad listener cannot stop the others.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "listener failed: boom\nlistener failed: boom\n[L1:a, L2:a, L1:b]\n" }] },
@@ -8158,6 +9949,36 @@ int main() {
     cout << "[";
     for (size_t i = 0; i < got.size(); i++) cout << (i ? ", " : "") << got[i];
     cout << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class EventBus {
+    private volatile Action<string>[] listeners = new Action<string>[0];   // copy-on-write snapshot array
+    private readonly object gate = new object();
+    public void Subscribe(Action<string> l) { lock (gate) { var n = new List<Action<string>>(listeners); n.Add(l); listeners = n.ToArray(); } }
+    public void Unsubscribe(Action<string> l) { lock (gate) { var n = new List<Action<string>>(listeners); n.Remove(l); listeners = n.ToArray(); } }
+
+    public void Publish(string ev) {
+        foreach (Action<string> l in listeners) {          // snapshot iteration: lock-free, never "collection modified"
+            try { l(ev); }
+            catch (Exception ex) { Console.WriteLine("listener failed: " + ex.Message); }
+        }
+    }
+
+    static void Main() {
+        EventBus bus = new EventBus();
+        List<string> got = new List<string>();
+        bus.Subscribe(e => got.Add("L1:" + e));
+        Action<string> oneShot = null;
+        oneShot = e => { got.Add("L2:" + e); bus.Unsubscribe(oneShot); };   // one-shot
+        bus.Subscribe(oneShot);
+        bus.Subscribe(e => { throw new InvalidOperationException("boom"); });  // one bad listener must not stop the rest
+        bus.Publish("a");
+        bus.Publish("b");
+        Console.WriteLine("[" + string.Join(", ", got) + "]");   // [L1:a, L2:a, L1:b]
+    }
 }` }
         ],
       complexity: `<p>publish O(L) lock-free; subscribe/unsubscribe O(L) copy.</p>`,
@@ -8181,7 +10002,7 @@ int main() {
             else Thread.onSpinWait();
         }
     }
-}`, alt: [{ lang: 'python', code: "import time\n\nclass OddEvenSpin:\n    def __init__(self):\n        self.next = 1\n\n    # correct but wastes CPU: each thread spins while it is not its turn\n    def run(self, n, parity):\n        while True:\n            v = self.next\n            if v > n: return\n            if v % 2 == parity:\n                print(v)\n                self.next = v + 1\n            else:\n                time.sleep(0)\n" }, { lang: 'ts', code: "class OddEvenSpin {\n  // backed by a SharedArrayBuffer so two workers can see each other's writes\n  constructor(private shared: Int32Array) { Atomics.store(shared, 0, 1); }\n\n  // correct but wastes CPU: each worker spins while it is not its turn\n  run(n: number, parity: number): void {\n    while (true) {\n      const v = Atomics.load(this.shared, 0);\n      if (v > n) return;\n      if (v % 2 === parity) { console.log(v); Atomics.store(this.shared, 0, v + 1); }\n    }\n  }\n}\n" }, { lang: 'cpp', code: "class OddEvenSpin {\n    atomic<int> next{1};\npublic:\n    // correct but wastes CPU: each thread spins while it is not its turn\n    void run(int n, int parity) {\n        while (true) {\n            int v = next.load();\n            if (v > n) return;\n            if (v % 2 == parity) { cout << v << endl; next = v + 1; }\n            else this_thread::yield();\n        }\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import time\n\nclass OddEvenSpin:\n    def __init__(self):\n        self.next = 1\n\n    # correct but wastes CPU: each thread spins while it is not its turn\n    def run(self, n, parity):\n        while True:\n            v = self.next\n            if v > n: return\n            if v % 2 == parity:\n                print(v)\n                self.next = v + 1\n            else:\n                time.sleep(0)\n" }, { lang: 'ts', code: "class OddEvenSpin {\n  // backed by a SharedArrayBuffer so two workers can see each other's writes\n  constructor(private shared: Int32Array) { Atomics.store(shared, 0, 1); }\n\n  // correct but wastes CPU: each worker spins while it is not its turn\n  run(n: number, parity: number): void {\n    while (true) {\n      const v = Atomics.load(this.shared, 0);\n      if (v > n) return;\n      if (v % 2 === parity) { console.log(v); Atomics.store(this.shared, 0, v + 1); }\n    }\n  }\n}\n" }, { lang: 'cpp', code: "class OddEvenSpin {\n    atomic<int> next{1};\npublic:\n    // correct but wastes CPU: each thread spins while it is not its turn\n    void run(int n, int parity) {\n        while (true) {\n            int v = next.load();\n            if (v > n) return;\n            if (v % 2 == parity) { cout << v << endl; next = v + 1; }\n            else this_thread::yield();\n        }\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Threading;\nclass OddEvenSpin {\n    private volatile int next = 1;\n    // correct but wastes CPU: each thread spins while it is not its turn\n    public void Run(int n, int parity) {\n        while (true) {\n            int v = next;\n            if (v > n) return;\n            if (v % 2 == parity) { Console.WriteLine(v); next = v + 1; }\n            else Thread.SpinWait(1);\n        }\n    }\n}\n" }] } },
     mcq: { q: 'With two semaphores <code>odd = new Semaphore(1)</code> and <code>even = new Semaphore(0)</code>, what does ODD do after printing?', options: ['<code>even.release()</code> — hand the turn to EVEN', '<code>odd.release()</code>', '<code>even.acquire()</code>', 'Nothing'], answer: 0, explain: 'Each thread acquires its own semaphore (waits for its turn), prints, then releases the other thread\'s semaphore (passes the baton).' },
     hints: [`<p>Hint 1: Think of a baton passed back and forth: you may print only while holding it.</p>`, `<p>Hint 2: Two semaphores, one per thread. Start with ODD's permit = 1, EVEN's = 0.</p>`, `<p>Hint 3: Loop: acquire mine → print → release the other's. Compute how many numbers each thread prints so both loops end.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "n=7 -> ODD:1 EVEN:2 ODD:3 EVEN:4 ODD:5 EVEN:6 ODD:7\nn=2 -> ODD:1 EVEN:2\nn=0 -> (nothing)\n" }] },
@@ -8368,6 +10189,45 @@ int main() {
         string s = run(n);
         cout << "n=" << n << " -> " << (s.empty() ? "(nothing)" : s) << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Text;
+using System.Threading;
+
+class OddEvenPrinter {
+    private readonly SemaphoreSlim oddTurn = new SemaphoreSlim(1), evenTurn = new SemaphoreSlim(0);
+    private readonly StringBuilder sb = new StringBuilder();   // only one thread writes at a time (turns alternate)
+
+    public void PrintOdds(int n) {
+        for (int v = 1; v <= n; v += 2) {
+            oddTurn.Wait();
+            sb.Append("ODD:").Append(v).Append(' ');
+            evenTurn.Release();
+        }
+    }
+    public void PrintEvens(int n) {
+        for (int v = 2; v <= n; v += 2) {
+            evenTurn.Wait();
+            sb.Append("EVEN:").Append(v).Append(' ');
+            oddTurn.Release();
+        }
+    }
+
+    static string Run(int n) {
+        OddEvenPrinter p = new OddEvenPrinter();
+        Thread odd = new Thread(() => p.PrintOdds(n)), even = new Thread(() => p.PrintEvens(n));
+        odd.Start(); even.Start();
+        odd.Join(2000); even.Join(2000);
+        return p.sb.ToString().Trim();
+    }
+
+    static void Main() {
+        foreach (int n in new[] { 7, 2, 0 }) {
+            string s = Run(n);
+            Console.WriteLine("n=" + n + " -> " + (s.Length == 0 ? "(nothing)" : s));
+        }
+    }
 }` }
         ],
       complexity: `<p>O(N) total, two context switches per number; no busy waiting.</p>`,
@@ -8389,7 +10249,7 @@ int main() {
         balance[from] -= amt; balance[to] += amt;
         return true;
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass BankGlobalLock:\n    def __init__(self, n, init):\n        self.balance = [init] * n\n        self.lock = threading.Lock()\n\n    # correct, deadlock-free, but only ONE transfer in the whole bank at a time\n    def transfer(self, from_, to, amt):\n        with self.lock:\n            if self.balance[from_] < amt: return False\n            self.balance[from_] -= amt; self.balance[to] += amt\n            return True\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass BankGlobalLock {\n  private balance: number[];\n  private mutex = new Mutex();\n  constructor(n: number, init: number) { this.balance = new Array<number>(n).fill(init); }\n  // correct, deadlock-free, but only ONE transfer in the whole bank at a time\n  transfer(from: number, to: number, amt: number): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      if (this.balance[from] < amt) return false;\n      this.balance[from] -= amt; this.balance[to] += amt;\n      return true;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class BankGlobalLock {\n    vector<long long> balance;\n    mutex m;\npublic:\n    BankGlobalLock(int n, long long init) : balance(n, init) {}\n    // correct, deadlock-free, but only ONE transfer in the whole bank at a time\n    bool transfer(int from, int to, long long amt) {\n        lock_guard<mutex> g(m);\n        if (balance[from] < amt) return false;\n        balance[from] -= amt; balance[to] += amt;\n        return true;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass BankGlobalLock:\n    def __init__(self, n, init):\n        self.balance = [init] * n\n        self.lock = threading.Lock()\n\n    # correct, deadlock-free, but only ONE transfer in the whole bank at a time\n    def transfer(self, from_, to, amt):\n        with self.lock:\n            if self.balance[from_] < amt: return False\n            self.balance[from_] -= amt; self.balance[to] += amt\n            return True\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass BankGlobalLock {\n  private balance: number[];\n  private mutex = new Mutex();\n  constructor(n: number, init: number) { this.balance = new Array<number>(n).fill(init); }\n  // correct, deadlock-free, but only ONE transfer in the whole bank at a time\n  transfer(from: number, to: number, amt: number): Promise<boolean> {\n    return this.mutex.runExclusive(() => {\n      if (this.balance[from] < amt) return false;\n      this.balance[from] -= amt; this.balance[to] += amt;\n      return true;\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class BankGlobalLock {\n    vector<long long> balance;\n    mutex m;\npublic:\n    BankGlobalLock(int n, long long init) : balance(n, init) {}\n    // correct, deadlock-free, but only ONE transfer in the whole bank at a time\n    bool transfer(int from, int to, long long amt) {\n        lock_guard<mutex> g(m);\n        if (balance[from] < amt) return false;\n        balance[from] -= amt; balance[to] += amt;\n        return true;\n    }\n};\n" }, { lang: 'csharp', code: "class BankGlobalLock {\n    private readonly long[] balance;\n    private readonly object gate = new object();\n    public BankGlobalLock(int n, long init) { balance = new long[n]; for (int i = 0; i < n; i++) balance[i] = init; }\n    // correct, deadlock-free, but only ONE transfer in the whole bank at a time\n    public bool Transfer(int from, int to, long amt) {\n        lock (gate) {\n            if (balance[from] < amt) return false;\n            balance[from] -= amt; balance[to] += amt;\n            return true;\n        }\n    }\n}\n" }] } },
     mcq: { q: 'Which change alone removes the deadlock?', options: ['Always lock the account with the smaller id first', 'Make balance volatile', 'Use AtomicLong for each balance and no locks', 'Lock "to" before "from"'], answer: 0, explain: 'A global order on lock acquisition makes a cycle in the wait-for graph impossible. Atomics per account would break the two-account invariant (money briefly missing; overdraft checks race).' },
     hints: [`<p>Hint 1: Draw the wait-for graph for A→B and B→A at the same time.</p>`, `<p>Hint 2: Break circular wait with a global order: lock by account id, not by role (from/to).</p>`, `<p>Hint 3: Handle from == to (reject or no-op), check balance inside both locks, and verify with a stress test that the total never changes.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "move 300 from 0 to 1: true\nmove 800 from 0 to 1: false\nmove 50 from 2 to 2: false\nmove -5 from 1 to 2: false\nbalances: 700 1300 1000 total=3000\nfinished=true total=10000\n" }] },
@@ -8674,6 +10534,76 @@ int main() {
             });
     }
     cout << "finished=true total=" << bank.total() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class Bank {
+    public sealed class Account {
+        public readonly int Id; public long Balance; public readonly object Lock = new object();
+        public Account(int id, long b) { Id = id; Balance = b; }
+    }
+    public readonly Account[] Accounts;
+    public Bank(int n, long init) { Accounts = new Account[n]; for (int i = 0; i < n; i++) Accounts[i] = new Account(i, init); }
+
+    public bool Transfer(int from, int to, long amt) {
+        if (from == to || amt <= 0) return false;
+        Account a = Accounts[from], b = Accounts[to];
+        Account first = a.Id < b.Id ? a : b, second = a.Id < b.Id ? b : a;   // GLOBAL ORDER
+        lock (first.Lock) {
+            lock (second.Lock) {
+                if (a.Balance < amt) return false;
+                a.Balance -= amt;
+                b.Balance += amt;
+                return true;
+            }
+        }
+    }
+
+    public long Balance(int id) { Account x = Accounts[id]; lock (x.Lock) return x.Balance; }
+
+    public long Total() {                                   // lock all in order for a consistent snapshot
+        foreach (Account x in Accounts) Monitor.Enter(x.Lock);
+        try { long s = 0; foreach (Account x in Accounts) s += x.Balance; return s; }
+        finally { for (int i = Accounts.Length - 1; i >= 0; i--) Monitor.Exit(Accounts[i].Lock); }
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        Bank small = new Bank(3, 1000);
+        Console.WriteLine("move 300 from 0 to 1: " + B(small.Transfer(0, 1, 300)));
+        Console.WriteLine("move 800 from 0 to 1: " + B(small.Transfer(0, 1, 800)));
+        Console.WriteLine("move 50 from 2 to 2: " + B(small.Transfer(2, 2, 50)));
+        Console.WriteLine("move -5 from 1 to 2: " + B(small.Transfer(1, 2, -5)));
+        Console.WriteLine("balances: " + small.Balance(0) + " " + small.Balance(1) + " " + small.Balance(2) + " total=" + small.Total());
+
+        Bank bank = new Bank(10, 1000);
+        FixedPool pool = new FixedPool(16);
+        for (int i = 0; i < 100000; i++) {
+            int seed = i;
+            pool.Execute(() => {
+                Random r = new Random(seed);
+                bank.Transfer(r.Next(10), r.Next(10), r.Next(1, 50));
+            });
+        }
+        Console.WriteLine("finished=" + B(pool.ShutdownAndWait(20000)) + " total=" + bank.Total()); // total=10000
+    }
 }` }
         ],
       complexity: `<p>O(1) per transfer; contention only between transfers sharing an account.</p>`,
@@ -8698,7 +10628,7 @@ int main() {
         s[1]++;                                                 // racy increment
         return true;
     }
-}`, alt: [{ lang: 'python', code: "class QuotaBrute:\n    def __init__(self, limit):\n        self.state = {}                               # key -> [window_id, count], unsynchronized\n        self.limit = limit\n\n    def allow(self, key, now_millis):\n        w = now_millis // 60_000\n        s = self.state.setdefault(key, [w, 0])\n        if s[0] != w: s[0] = w; s[1] = 0              # racy reset\n        if s[1] >= self.limit: return False           # racy check\n        s[1] += 1                                     # racy increment\n        return True\n" }, { lang: 'ts', code: "class QuotaBrute {\n  private state = new Map<string, number[]>();       // key -> [windowId, count], unsynchronized\n  constructor(private limit: number) {}\n  allow(key: string, nowMillis: number): boolean {\n    const w = Math.floor(nowMillis / 60_000);\n    if (!this.state.has(key)) this.state.set(key, [w, 0]);\n    const s = this.state.get(key)!;\n    if (s[0] !== w) { s[0] = w; s[1] = 0; }           // racy reset\n    if (s[1] >= this.limit) return false;             // racy check\n    s[1]++;                                           // racy increment\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class QuotaBrute {\n    unordered_map<string, array<long long, 2>> state;   // {windowId, count}, unsynchronized\n    int limit;\npublic:\n    QuotaBrute(int limit) : limit(limit) {}\n    bool allow(const string& key, long long nowMillis) {\n        long long w = nowMillis / 60'000;\n        auto s = state.try_emplace(key, array<long long, 2>{w, 0}).first;\n        auto& v = s->second;\n        if (v[0] != w) { v[0] = w; v[1] = 0; }          // racy reset\n        if (v[1] >= limit) return false;                // racy check\n        v[1]++;                                         // racy increment\n        return true;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class QuotaBrute:\n    def __init__(self, limit):\n        self.state = {}                               # key -> [window_id, count], unsynchronized\n        self.limit = limit\n\n    def allow(self, key, now_millis):\n        w = now_millis // 60_000\n        s = self.state.setdefault(key, [w, 0])\n        if s[0] != w: s[0] = w; s[1] = 0              # racy reset\n        if s[1] >= self.limit: return False           # racy check\n        s[1] += 1                                     # racy increment\n        return True\n" }, { lang: 'ts', code: "class QuotaBrute {\n  private state = new Map<string, number[]>();       // key -> [windowId, count], unsynchronized\n  constructor(private limit: number) {}\n  allow(key: string, nowMillis: number): boolean {\n    const w = Math.floor(nowMillis / 60_000);\n    if (!this.state.has(key)) this.state.set(key, [w, 0]);\n    const s = this.state.get(key)!;\n    if (s[0] !== w) { s[0] = w; s[1] = 0; }           // racy reset\n    if (s[1] >= this.limit) return false;             // racy check\n    s[1]++;                                           // racy increment\n    return true;\n  }\n}\n" }, { lang: 'cpp', code: "class QuotaBrute {\n    unordered_map<string, array<long long, 2>> state;   // {windowId, count}, unsynchronized\n    int limit;\npublic:\n    QuotaBrute(int limit) : limit(limit) {}\n    bool allow(const string& key, long long nowMillis) {\n        long long w = nowMillis / 60'000;\n        auto s = state.try_emplace(key, array<long long, 2>{w, 0}).first;\n        auto& v = s->second;\n        if (v[0] != w) { v[0] = w; v[1] = 0; }          // racy reset\n        if (v[1] >= limit) return false;                // racy check\n        v[1]++;                                         // racy increment\n        return true;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass QuotaBrute {\n    private readonly Dictionary<string, long[]> state = new Dictionary<string, long[]>();   // {windowId, count}, unsynchronized\n    private readonly int limit;\n    public QuotaBrute(int limit) { this.limit = limit; }\n    public bool Allow(string key, long nowMillis) {\n        long w = nowMillis / 60000;\n        long[] s;\n        if (!state.TryGetValue(key, out s)) { s = new long[] { w, 0 }; state[key] = s; }\n        if (s[0] != w) { s[0] = w; s[1] = 0; }                 // racy reset\n        if (s[1] >= limit) return false;                        // racy check\n        s[1]++;                                                 // racy increment\n        return true;\n    }\n}\n" }] } },
     mcq: { q: 'Why store an <b>immutable</b> record (window, count) and replace it inside <code>compute</code>?', options: ['compute runs atomically per key, and an immutable value means no thread can observe a half-updated pair', 'Records are faster than arrays', 'compute only accepts records', 'It avoids the need for a limit'], answer: 0, explain: 'The window id and count form one invariant. Replacing the whole value under the per-key lock keeps them consistent and safely published.' },
     hints: [`<p>Hint 1: Per key, the state is (windowId, count). Both must update together.</p>`, `<p>Hint 2: <code>ConcurrentHashMap.compute(key, (k, old) -&gt; ...)</code> runs atomically for that key.</p>`, `<p>Hint 3: Inside compute: if old is null or from an older window → new (w, 1); else if count &lt; L → (w, count+1); else keep old and remember "rejected" in a local holder.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "allowed=100 used=100\n101st request: false\nother key: true\nnext minute: true\nlate request after rollover: true used now=2\n" }] },
@@ -8887,6 +10817,67 @@ int main() {
     cout << "next minute: " << q.allow("k1", 60'000) << "\\n";
     bool late = q.allow("k1", 10'000);
     cout << "late request after rollover: " << late << " used now=" << q.used("k1", 60'000) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class MinuteQuota {
+    sealed class QuotaWindow { public readonly long Id; public readonly int Count; public QuotaWindow(long id, int count) { Id = id; Count = count; } }
+    private readonly ConcurrentDictionary<string, QuotaWindow> state = new ConcurrentDictionary<string, QuotaWindow>();
+    private readonly int limit;
+    public MinuteQuota(int limit) { this.limit = limit; }
+
+    public bool Allow(string key, long nowMillis) {
+        long w = nowMillis / 60000;
+        while (true) {                                                // CAS loop on an immutable window
+            QuotaWindow old;
+            if (!state.TryGetValue(key, out old)) {
+                if (state.TryAdd(key, new QuotaWindow(w, 1))) return true;
+                continue;
+            }
+            QuotaWindow next;
+            if (old.Id < w) next = new QuotaWindow(w, 1);                              // newer minute: reset
+            // a late request (old.Id > w, clock skew) is counted in the current window, never resets it
+            else if (old.Count < limit) next = new QuotaWindow(old.Id, old.Count + 1);
+            else return false;                                                         // rejected
+            if (state.TryUpdate(key, next, old)) return true;
+        }
+    }
+
+    public int Used(string key, long nowMillis) {
+        QuotaWindow win;
+        return (!state.TryGetValue(key, out win) || win.Id != nowMillis / 60000) ? 0 : win.Count;
+    }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        MinuteQuota q = new MinuteQuota(100);
+        int ok = 0;
+        FixedPool pool = new FixedPool(32);
+        for (int i = 0; i < 1000; i++) pool.Execute(() => { if (q.Allow("k1", 10000)) Interlocked.Increment(ref ok); });
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine("allowed=" + ok + " used=" + q.Used("k1", 10000));
+        Console.WriteLine("101st request: " + B(q.Allow("k1", 10000)));
+        Console.WriteLine("other key: " + B(q.Allow("k2", 10000)));
+        Console.WriteLine("next minute: " + B(q.Allow("k1", 60000)));
+        Console.WriteLine("late request after rollover: " + B(q.Allow("k1", 10000)) + " used now=" + q.Used("k1", 60000));
+    }
 }` }
         ],
       complexity: `<p>O(1) per call; O(keys) memory.</p>`,
@@ -8904,7 +10895,7 @@ int main() {
     // BRUTE: readers can see an empty or half-filled map during reload; HashMap is not thread-safe
     void reload(Map<String, Integer> fresh) { flags.clear(); flags.putAll(fresh); }
     boolean isEnabled(String f, long user) { return Math.floorMod(user, 100) < flags.getOrDefault(f, 0); }
-}`, alt: [{ lang: 'python', code: "class FlagsInPlace:\n    def __init__(self):\n        self.flags = {}\n\n    # BRUTE: readers can see an empty or half-filled dict during reload; no synchronization at all\n    def reload(self, fresh):\n        self.flags.clear(); self.flags.update(fresh)\n\n    def is_enabled(self, f, user): return user % 100 < self.flags.get(f, 0)\n" }, { lang: 'ts', code: "class FlagsInPlace {\n  private flags = new Map<string, number>();\n  // BRUTE: readers can see an empty or half-filled map during reload (another worker, or an await mid-reload)\n  reload(fresh: Map<string, number>): void { this.flags.clear(); fresh.forEach((v, k) => this.flags.set(k, v)); }\n  isEnabled(f: string, user: number): boolean { return ((user % 100) + 100) % 100 < (this.flags.get(f) ?? 0); }\n}\n" }, { lang: 'cpp', code: "class FlagsInPlace {\n    unordered_map<string, int> flags;\npublic:\n    // BRUTE: readers can see an empty or half-filled map during reload; unordered_map is not thread-safe\n    void reload(const unordered_map<string, int>& fresh) { flags.clear(); flags.insert(fresh.begin(), fresh.end()); }\n    bool isEnabled(const string& f, long long user) {\n        auto it = flags.find(f);\n        return ((user % 100) + 100) % 100 < (it == flags.end() ? 0 : it->second);\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class FlagsInPlace:\n    def __init__(self):\n        self.flags = {}\n\n    # BRUTE: readers can see an empty or half-filled dict during reload; no synchronization at all\n    def reload(self, fresh):\n        self.flags.clear(); self.flags.update(fresh)\n\n    def is_enabled(self, f, user): return user % 100 < self.flags.get(f, 0)\n" }, { lang: 'ts', code: "class FlagsInPlace {\n  private flags = new Map<string, number>();\n  // BRUTE: readers can see an empty or half-filled map during reload (another worker, or an await mid-reload)\n  reload(fresh: Map<string, number>): void { this.flags.clear(); fresh.forEach((v, k) => this.flags.set(k, v)); }\n  isEnabled(f: string, user: number): boolean { return ((user % 100) + 100) % 100 < (this.flags.get(f) ?? 0); }\n}\n" }, { lang: 'cpp', code: "class FlagsInPlace {\n    unordered_map<string, int> flags;\npublic:\n    // BRUTE: readers can see an empty or half-filled map during reload; unordered_map is not thread-safe\n    void reload(const unordered_map<string, int>& fresh) { flags.clear(); flags.insert(fresh.begin(), fresh.end()); }\n    bool isEnabled(const string& f, long long user) {\n        auto it = flags.find(f);\n        return ((user % 100) + 100) % 100 < (it == flags.end() ? 0 : it->second);\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass FlagsInPlace {\n    private readonly Dictionary<string, int> flags = new Dictionary<string, int>();\n    // BRUTE: readers can see an empty or half-filled map during reload; Dictionary is not thread-safe\n    public void Reload(Dictionary<string, int> fresh) { flags.Clear(); foreach (var kv in fresh) flags[kv.Key] = kv.Value; }\n    public bool IsEnabled(string f, long user) { int pct; flags.TryGetValue(f, out pct); long b = user % 100; if (b < 0) b += 100; return b < pct; }\n}\n" }] } },
     mcq: { q: 'Why does a <code>volatile</code> reference to an <b>immutable</b> map give atomic reloads?', options: ['Readers read one reference: they get either the old whole map or the new whole map; volatile makes the new map\'s contents visible', 'volatile locks the map during reads', 'Immutable maps are faster to iterate', 'It doesn\'t; you need synchronized'], answer: 0, explain: 'The switch is a single reference write. Build the new map fully, freeze it (Map.copyOf), then publish via the volatile write — happens-before guarantees readers see the fully built contents.' },
     hints: [`<p>Hint 1: Instead of changing the map, build a new one and swap.</p>`, `<p>Hint 2: Hold the current snapshot in a <code>volatile</code> field (or <code>AtomicReference</code>) pointing to an immutable map.</p>`, `<p>Hint 3: Readers copy the reference into a local once per request so all checks in that request use the same snapshot.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "torn reads: 0, user 42 newCheckout: false\nuser 5 newCheckout: true, unknown flag: false, user -1 darkMode: false\n" }] },
@@ -9085,6 +11076,51 @@ int main() {
     cout << "user 5 newCheckout: " << ff.isEnabled("newCheckout", 5)
          << ", unknown flag: " << ff.isEnabled("noSuchFlag", 5)
          << ", user -1 darkMode: " << ff.isEnabled("darkMode", -1) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+class FeatureFlags {
+    private volatile IReadOnlyDictionary<string, int> snapshot = new Dictionary<string, int>();   // never mutated, swapped atomically
+
+    public void Reload(IDictionary<string, int> fresh) {
+        snapshot = new Dictionary<string, int>(fresh);   // build fully, then publish with ONE volatile write
+    }
+
+    public bool IsEnabled(string flag, long userId) {
+        IReadOnlyDictionary<string, int> s = snapshot;   // one read; use s for the whole decision
+        int pct; s.TryGetValue(flag, out pct);
+        long bucket = userId % 100; if (bucket < 0) bucket += 100;   // floorMod keeps buckets 0..99
+        return bucket < pct;
+    }
+
+    public IReadOnlyDictionary<string, int> Current() { return snapshot; }
+
+    static Dictionary<string, int> M(int a, int b) { return new Dictionary<string, int> { { "newCheckout", a }, { "darkMode", b } }; }
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        FeatureFlags ff = new FeatureFlags();
+        ff.Reload(M(10, 0));
+        int torn = 0;
+        Thread reader = new Thread(() => {
+            for (int i = 0; i < 200000; i++) {
+                var s = ff.Current();
+                bool oldSet = s["newCheckout"] == 10 && s["darkMode"] == 0;
+                bool newSet = s["newCheckout"] == 50 && s["darkMode"] == 100;
+                if (!oldSet && !newSet) torn++;
+            }
+        });
+        reader.Start();
+        for (int i = 0; i < 1000; i++) ff.Reload(i % 2 == 0 ? M(50, 100) : M(10, 0));
+        reader.Join(5000);
+        Console.WriteLine("torn reads: " + torn + ", user 42 newCheckout: " + B(ff.IsEnabled("newCheckout", 42)));
+        Console.WriteLine("user 5 newCheckout: " + B(ff.IsEnabled("newCheckout", 5))
+                + ", unknown flag: " + B(ff.IsEnabled("noSuchFlag", 5))
+                + ", user -1 darkMode: " + B(ff.IsEnabled("darkMode", -1)));
+    }
 }` }
         ],
       complexity: `<p>Read O(1) lock-free; reload O(F) to copy F flags.</p>`,
@@ -9109,7 +11145,7 @@ int main() {
         }
         return seen;
     }
-}`, alt: [{ lang: 'python', code: "from collections import deque\n\nclass CrawlerBrute:\n    # correct but single-threaded: every fetch waits for the previous one\n    def crawl(self, start, web):\n        seen = {start: None}                           # dict keeps insertion order\n        q = deque([start])\n        host = start.split(\"/\")[2]\n        while q:\n            for n in web.get(q.popleft(), []):\n                if n.split(\"/\")[2] == host and n not in seen:\n                    seen[n] = None\n                    q.append(n)\n        return list(seen)\n" }, { lang: 'ts', code: "class CrawlerBrute {\n  // correct but single-threaded: every fetch waits for the previous one\n  crawl(start: string, web: Map<string, string[]>): Set<string> {\n    const seen = new Set<string>([start]);\n    const q: string[] = [start];\n    const host = start.split(\"/\")[2];\n    while (q.length) {\n      for (const n of web.get(q.shift()!) ?? [])\n        if (n.split(\"/\")[2] === host && !seen.has(n)) { seen.add(n); q.push(n); }\n    }\n    return seen;\n  }\n}\n" }, { lang: 'cpp', code: "class CrawlerBrute {\n    static string host(const string& url) { size_t a = url.find(\"//\") + 2; return url.substr(a, url.find('/', a) - a); }\npublic:\n    // correct but single-threaded: every fetch waits for the previous one\n    vector<string> crawl(const string& start, const unordered_map<string, vector<string>>& web) {\n        vector<string> order{start};\n        unordered_set<string> seen{start};\n        deque<string> q{start};\n        string h = host(start);\n        while (!q.empty()) {\n            string u = q.front(); q.pop_front();\n            auto it = web.find(u);\n            if (it == web.end()) continue;\n            for (auto& n : it->second)\n                if (host(n) == h && seen.insert(n).second) { order.push_back(n); q.push_back(n); }\n        }\n        return order;\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "from collections import deque\n\nclass CrawlerBrute:\n    # correct but single-threaded: every fetch waits for the previous one\n    def crawl(self, start, web):\n        seen = {start: None}                           # dict keeps insertion order\n        q = deque([start])\n        host = start.split(\"/\")[2]\n        while q:\n            for n in web.get(q.popleft(), []):\n                if n.split(\"/\")[2] == host and n not in seen:\n                    seen[n] = None\n                    q.append(n)\n        return list(seen)\n" }, { lang: 'ts', code: "class CrawlerBrute {\n  // correct but single-threaded: every fetch waits for the previous one\n  crawl(start: string, web: Map<string, string[]>): Set<string> {\n    const seen = new Set<string>([start]);\n    const q: string[] = [start];\n    const host = start.split(\"/\")[2];\n    while (q.length) {\n      for (const n of web.get(q.shift()!) ?? [])\n        if (n.split(\"/\")[2] === host && !seen.has(n)) { seen.add(n); q.push(n); }\n    }\n    return seen;\n  }\n}\n" }, { lang: 'cpp', code: "class CrawlerBrute {\n    static string host(const string& url) { size_t a = url.find(\"//\") + 2; return url.substr(a, url.find('/', a) - a); }\npublic:\n    // correct but single-threaded: every fetch waits for the previous one\n    vector<string> crawl(const string& start, const unordered_map<string, vector<string>>& web) {\n        vector<string> order{start};\n        unordered_set<string> seen{start};\n        deque<string> q{start};\n        string h = host(start);\n        while (!q.empty()) {\n            string u = q.front(); q.pop_front();\n            auto it = web.find(u);\n            if (it == web.end()) continue;\n            for (auto& n : it->second)\n                if (host(n) == h && seen.insert(n).second) { order.push_back(n); q.push_back(n); }\n        }\n        return order;\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass CrawlerBrute {\n    // correct but single-threaded: every fetch waits for the previous one\n    public List<string> Crawl(string start, Dictionary<string, List<string>> web) {\n        List<string> order = new List<string> { start };\n        HashSet<string> seen = new HashSet<string> { start };\n        Queue<string> q = new Queue<string>(); q.Enqueue(start);\n        string host = start.Split('/')[2];\n        while (q.Count > 0) {\n            List<string> links;\n            if (!web.TryGetValue(q.Dequeue(), out links)) continue;\n            foreach (string n in links)\n                if (n.Split('/')[2] == host && seen.Add(n)) { order.Add(n); q.Enqueue(n); }\n        }\n        return order;\n    }\n}\n" }] } },
     mcq: { q: 'How do you know the crawl is finished when workers keep discovering new URLs?', options: ['Count pending tasks: increment before each submit, decrement when a task ends; when it reaches 0, signal done', 'Wait until the queue is empty once', 'Call awaitTermination right after the first submit', 'Sleep for a fixed time'], answer: 0, explain: 'A task may be running (about to submit children) while the queue is momentarily empty. A pending counter that is incremented before submit and decremented after the task finishes reaches zero only when no task can create more work.' },
     hints: [`<p>Hint 1: "Exactly once" = an atomic test-and-add on a concurrent set: <code>visited.add(u)</code> returns false if already present.</p>`, `<p>Hint 2: Use <code>ConcurrentHashMap.newKeySet()</code> and an <code>ExecutorService</code>.</p>`, `<p>Hint 3: Track outstanding tasks with an <code>AtomicInteger</code>; the task that brings it to 0 counts down a latch. Then shut the pool down.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[http://a.com/, http://a.com/dead, http://a.com/x, http://a.com/y, http://a.com/z]\n[http://zzz.com/]\n" }] },
@@ -9334,6 +11370,60 @@ int main() {
     };
     print(Crawler(web).crawl("http://a.com/"));
     print(Crawler(web).crawl("http://zzz.com/"));          // unknown start: just itself
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+class Crawler {
+    private readonly Dictionary<string, List<string>> web;
+    public Crawler(Dictionary<string, List<string>> web) { this.web = web; }
+
+    private List<string> Fetch(string url) {                 // pretend network call
+        Thread.Sleep(2);
+        List<string> l; return web.TryGetValue(url, out l) ? l : new List<string>();
+    }
+    private static string Host(string url) { return url.Split('/')[2]; }
+
+    public ICollection<string> Crawl(string start) {
+        ConcurrentDictionary<string, bool> visited = new ConcurrentDictionary<string, bool>();
+        int pending = 0;
+        ManualResetEventSlim done = new ManualResetEventSlim(false);
+        string h = Host(start);
+        Action<string> task = null;
+        task = url => {
+            try {
+                foreach (string next in Fetch(url)) {
+                    if (Host(next) == h && visited.TryAdd(next, true)) {   // atomic claim
+                        Interlocked.Increment(ref pending);               // BEFORE submit
+                        string n = next;
+                        ThreadPool.QueueUserWorkItem(_ => task(n));
+                    }
+                }
+            } finally {
+                if (Interlocked.Decrement(ref pending) == 0) done.Set();
+            }
+        };
+        visited.TryAdd(start, true);
+        Interlocked.Increment(ref pending);
+        ThreadPool.QueueUserWorkItem(_ => task(start));
+        done.Wait(10000);
+        return visited.Keys;
+    }
+
+    static string Show(ICollection<string> s) { return "[" + string.Join(", ", s.OrderBy(x => x, StringComparer.Ordinal)) + "]"; }
+
+    static void Main() {
+        var web = new Dictionary<string, List<string>> {
+            { "http://a.com/", new List<string> { "http://a.com/x", "http://a.com/y" } },
+            { "http://a.com/x", new List<string> { "http://a.com/y", "http://b.com/", "http://a.com/dead" } },
+            { "http://a.com/y", new List<string> { "http://a.com/", "http://a.com/z" } } };
+        Console.WriteLine(Show(new Crawler(web).Crawl("http://a.com/")));
+        Console.WriteLine(Show(new Crawler(web).Crawl("http://zzz.com/")));     // unknown start: just itself
+    }
 }` }
         ],
       complexity: `<p>O(V + E) fetch work spread over 8 threads; O(V) memory.</p>`,
@@ -9369,7 +11459,7 @@ int main() {
         }
         m.put(k, new int[]{v, 1, ++tick});
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass LfuScanBrute:\n    def __init__(self, cap):\n        self.m = {}                                    # key -> [value, freq, last_used_tick]\n        self.cap, self.tick = cap, 0\n        self.lock = threading.Lock()\n\n    def get(self, k):\n        with self.lock:\n            e = self.m.get(k)\n            if e is None: return None\n            e[1] += 1; self.tick += 1; e[2] = self.tick\n            return e[0]\n\n    def put(self, k, v):\n        with self.lock:\n            if k in self.m:\n                e = self.m[k]; e[0] = v; e[1] += 1; self.tick += 1; e[2] = self.tick\n                return\n            if len(self.m) == self.cap:                # O(n) scan while holding the lock\n                victim = min(self.m, key=lambda key: (self.m[key][1], self.m[key][2]))\n                del self.m[victim]\n            self.tick += 1\n            self.m[k] = [v, 1, self.tick]\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass LfuScanBrute {\n  private m = new Map<number, number[]>();             // key -> [value, freq, lastUsedTick]\n  private tick = 0;\n  private mutex = new Mutex();\n  constructor(private cap: number) {}\n\n  get(k: number): Promise<number | null> {\n    return this.mutex.runExclusive(() => {\n      const e = this.m.get(k);\n      if (!e) return null;\n      e[1]++; e[2] = ++this.tick;\n      return e[0];\n    });\n  }\n  put(k: number, v: number): Promise<void> {\n    return this.mutex.runExclusive(() => {\n      const e = this.m.get(k);\n      if (e) { e[0] = v; e[1]++; e[2] = ++this.tick; return; }\n      if (this.m.size === this.cap) {                  // O(n) scan while holding the lock\n        let victim = -1; let best: number[] | null = null;\n        for (const [key, cur] of this.m) {\n          if (best === null || cur[1] < best[1] || (cur[1] === best[1] && cur[2] < best[2])) { best = cur; victim = key; }\n        }\n        this.m.delete(victim);\n      }\n      this.m.set(k, [v, 1, ++this.tick]);\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class LfuScanBrute {\n    unordered_map<int, array<int, 3>> m;               // key -> {value, freq, lastUsedTick}\n    int cap, tick = 0;\n    mutex mu;\npublic:\n    LfuScanBrute(int cap) : cap(cap) {}\n    optional<int> get(int k) {\n        lock_guard<mutex> g(mu);\n        auto it = m.find(k);\n        if (it == m.end()) return nullopt;\n        it->second[1]++; it->second[2] = ++tick;\n        return it->second[0];\n    }\n    void put(int k, int v) {\n        lock_guard<mutex> g(mu);\n        auto it = m.find(k);\n        if (it != m.end()) { it->second[0] = v; it->second[1]++; it->second[2] = ++tick; return; }\n        if ((int)m.size() == cap) {                    // O(n) scan while holding the lock\n            int victim = -1; array<int, 3>* best = nullptr;\n            for (auto& [key, e] : m) {\n                if (best == nullptr || e[1] < (*best)[1] || (e[1] == (*best)[1] && e[2] < (*best)[2])) { best = &e; victim = key; }\n            }\n            m.erase(victim);\n        }\n        m[k] = {v, 1, ++tick};\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass LfuScanBrute:\n    def __init__(self, cap):\n        self.m = {}                                    # key -> [value, freq, last_used_tick]\n        self.cap, self.tick = cap, 0\n        self.lock = threading.Lock()\n\n    def get(self, k):\n        with self.lock:\n            e = self.m.get(k)\n            if e is None: return None\n            e[1] += 1; self.tick += 1; e[2] = self.tick\n            return e[0]\n\n    def put(self, k, v):\n        with self.lock:\n            if k in self.m:\n                e = self.m[k]; e[0] = v; e[1] += 1; self.tick += 1; e[2] = self.tick\n                return\n            if len(self.m) == self.cap:                # O(n) scan while holding the lock\n                victim = min(self.m, key=lambda key: (self.m[key][1], self.m[key][2]))\n                del self.m[victim]\n            self.tick += 1\n            self.m[k] = [v, 1, self.tick]\n" }, { lang: 'ts', code: "import { Mutex } from \"async-mutex\";\n\nclass LfuScanBrute {\n  private m = new Map<number, number[]>();             // key -> [value, freq, lastUsedTick]\n  private tick = 0;\n  private mutex = new Mutex();\n  constructor(private cap: number) {}\n\n  get(k: number): Promise<number | null> {\n    return this.mutex.runExclusive(() => {\n      const e = this.m.get(k);\n      if (!e) return null;\n      e[1]++; e[2] = ++this.tick;\n      return e[0];\n    });\n  }\n  put(k: number, v: number): Promise<void> {\n    return this.mutex.runExclusive(() => {\n      const e = this.m.get(k);\n      if (e) { e[0] = v; e[1]++; e[2] = ++this.tick; return; }\n      if (this.m.size === this.cap) {                  // O(n) scan while holding the lock\n        let victim = -1; let best: number[] | null = null;\n        for (const [key, cur] of this.m) {\n          if (best === null || cur[1] < best[1] || (cur[1] === best[1] && cur[2] < best[2])) { best = cur; victim = key; }\n        }\n        this.m.delete(victim);\n      }\n      this.m.set(k, [v, 1, ++this.tick]);\n    });\n  }\n}\n" }, { lang: 'cpp', code: "class LfuScanBrute {\n    unordered_map<int, array<int, 3>> m;               // key -> {value, freq, lastUsedTick}\n    int cap, tick = 0;\n    mutex mu;\npublic:\n    LfuScanBrute(int cap) : cap(cap) {}\n    optional<int> get(int k) {\n        lock_guard<mutex> g(mu);\n        auto it = m.find(k);\n        if (it == m.end()) return nullopt;\n        it->second[1]++; it->second[2] = ++tick;\n        return it->second[0];\n    }\n    void put(int k, int v) {\n        lock_guard<mutex> g(mu);\n        auto it = m.find(k);\n        if (it != m.end()) { it->second[0] = v; it->second[1]++; it->second[2] = ++tick; return; }\n        if ((int)m.size() == cap) {                    // O(n) scan while holding the lock\n            int victim = -1; array<int, 3>* best = nullptr;\n            for (auto& [key, e] : m) {\n                if (best == nullptr || e[1] < (*best)[1] || (e[1] == (*best)[1] && e[2] < (*best)[2])) { best = &e; victim = key; }\n            }\n            m.erase(victim);\n        }\n        m[k] = {v, 1, ++tick};\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Generic;\nclass LfuScanBrute {\n    private readonly Dictionary<int, int[]> m = new Dictionary<int, int[]>();   // key -> {value, freq, lastUsedTick}\n    private readonly int cap; private int tick;\n    private readonly object gate = new object();\n    public LfuScanBrute(int cap) { this.cap = cap; }\n    public int? Get(int k) {\n        lock (gate) {\n            int[] e;\n            if (!m.TryGetValue(k, out e)) return null;\n            e[1]++; e[2] = ++tick;\n            return e[0];\n        }\n    }\n    public void Put(int k, int v) {\n        lock (gate) {\n            int[] e;\n            if (m.TryGetValue(k, out e)) { e[0] = v; e[1]++; e[2] = ++tick; return; }\n            if (m.Count == cap) {                                   // O(n) scan while holding the lock\n                int victim = -1; int[] best = null;\n                foreach (var en in m) {\n                    int[] x = en.Value;\n                    if (best == null || x[1] < best[1] || (x[1] == best[1] && x[2] < best[2])) { best = x; victim = en.Key; }\n                }\n                m.Remove(victim);\n            }\n            m[k] = new[] { v, 1, ++tick };\n        }\n    }\n}\n" }] } },
     mcq: { q: 'After inserting a brand-new key into a full LFU cache, what is minFreq?', options: ['1 — the new key has frequency 1, which is the smallest possible', 'Unchanged', 'The evicted key\'s frequency + 1', '0'], answer: 0, explain: 'Every new key starts at frequency 1, and nothing can be lower, so minFreq resets to 1.' },
     hints: [`<p>Hint 1: Three maps: key → value, key → freq, freq → LinkedHashSet of keys (insertion order = recency within the same freq). Plus an int minFreq.</p>`, `<p>Hint 2: get: move key from bucket f to f+1; if bucket f is now empty and f == minFreq, minFreq++. put new: if full, evict the first key of bucket minFreq; insert with freq 1; minFreq = 1.</p>`, `<p>Hint 3: These are invariants across several fields → wrap each whole operation in one ReentrantLock (get too — it mutates). Stress-test with a consistency check.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "null 3\nnull 3 4\ncapacity 0: null\nupdate keeps one entry: 11 null 30\ntie broken by age: null 2 3\nconsistent after stress: true\n" }] },
@@ -9767,6 +11857,102 @@ int main() {
             });
     }
     cout << "consistent after stress: " << boolalpha << big.consistent() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class ConcurrentLFUCache {
+    private readonly int capacity;
+    private readonly Dictionary<int, int> vals = new Dictionary<int, int>(), freq = new Dictionary<int, int>();
+    private readonly Dictionary<int, LinkedList<int>> buckets = new Dictionary<int, LinkedList<int>>();   // insertion-ordered per frequency
+    private int minFreq;
+    private readonly object gate = new object();
+
+    public ConcurrentLFUCache(int capacity) { this.capacity = capacity; }
+
+    public int? Get(int key) {
+        lock (gate) {
+            if (!vals.ContainsKey(key)) return null;
+            Touch(key);
+            return vals[key];
+        }
+    }
+
+    public void Put(int key, int value) {
+        if (capacity <= 0) return;
+        lock (gate) {
+            if (vals.ContainsKey(key)) { vals[key] = value; Touch(key); return; }
+            if (vals.Count == capacity) {
+                LinkedList<int> b = buckets[minFreq];
+                int victim = b.First.Value;                     // oldest key at the lowest frequency
+                b.RemoveFirst();
+                vals.Remove(victim); freq.Remove(victim);
+            }
+            vals[key] = value;
+            freq[key] = 1;
+            Bucket(1).AddLast(key);
+            minFreq = 1;
+        }
+    }
+
+    private LinkedList<int> Bucket(int f) { LinkedList<int> b; if (!buckets.TryGetValue(f, out b)) { b = new LinkedList<int>(); buckets[f] = b; } return b; }
+
+    private void Touch(int key) {                               // caller holds the lock
+        int f = freq[key];
+        LinkedList<int> b = buckets[f];
+        b.Remove(key);
+        if (b.Count == 0 && f == minFreq) minFreq++;
+        freq[key] = f + 1;
+        Bucket(f + 1).AddLast(key);
+    }
+
+    public bool Consistent() {
+        lock (gate) {
+            int inBuckets = 0;
+            foreach (var e in buckets)
+                foreach (int k in e.Value) { if (freq[k] != e.Key) return false; inBuckets++; }
+            return inBuckets == vals.Count && vals.Count <= capacity;
+        }
+    }
+
+    static string S(int? v) { return v.HasValue ? v.Value.ToString() : "null"; }
+
+    static void Main() {
+        ConcurrentLFUCache c = new ConcurrentLFUCache(2);
+        c.Put(1, 1); c.Put(2, 2); c.Get(1); c.Put(3, 3);
+        Console.WriteLine(S(c.Get(2)) + " " + S(c.Get(3)));
+        c.Put(4, 4);
+        Console.WriteLine(S(c.Get(1)) + " " + S(c.Get(3)) + " " + S(c.Get(4)));
+
+        ConcurrentLFUCache zero = new ConcurrentLFUCache(0);
+        zero.Put(1, 1);
+        Console.WriteLine("capacity 0: " + S(zero.Get(1)));
+
+        ConcurrentLFUCache u = new ConcurrentLFUCache(2);
+        u.Put(1, 10); u.Put(1, 11);
+        u.Put(2, 20); u.Put(3, 30);
+        Console.WriteLine("update keeps one entry: " + S(u.Get(1)) + " " + S(u.Get(2)) + " " + S(u.Get(3)));
+
+        ConcurrentLFUCache ties = new ConcurrentLFUCache(2);
+        ties.Put(1, 1); ties.Put(2, 2); ties.Put(3, 3);
+        Console.WriteLine("tie broken by age: " + S(ties.Get(1)) + " " + S(ties.Get(2)) + " " + S(ties.Get(3)));
+
+        ConcurrentLFUCache big = new ConcurrentLFUCache(50);
+        Thread[] ts = new Thread[16];
+        for (int t = 0; t < 16; t++) {
+            int seed = t;
+            ts[t] = new Thread(() => {
+                Random r = new Random(seed);
+                for (int i = 0; i < 20000; i++) { int k = r.Next(200); if (r.Next(2) == 0) big.Put(k, i); else big.Get(k); }
+            });
+            ts[t].Start();
+        }
+        foreach (Thread t in ts) t.Join();
+        Console.WriteLine("consistent after stress: " + big.Consistent().ToString().ToLower());
+    }
 }` }
         ],
       complexity: `<p>O(1) per op; O(capacity) memory; one short critical section per op.</p>`,
@@ -9787,7 +11973,7 @@ int main() {
             catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }).start();
     }
-}`, alt: [{ lang: 'python', code: "import threading, time\n\nclass ThreadPerJobScheduler:\n    # BRUTE: one sleeping thread per job; 100k jobs = 100k threads\n    def schedule(self, job, delay_millis):\n        def run():\n            time.sleep(delay_millis / 1000)\n            job()\n        threading.Thread(target=run).start()\n" }, { lang: 'ts', code: "import { Worker } from \"worker_threads\";\n\nclass ThreadPerJobScheduler {\n  // BRUTE: one sleeping worker thread per job; 100k jobs = 100k threads\n  schedule(job: () => void, delayMillis: number): void {\n    const w = new Worker(\n      \"const { parentPort, workerData } = require('worker_threads');\" +\n      \"Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, workerData); parentPort.postMessage('due');\",\n      { eval: true, workerData: delayMillis });\n    w.once(\"message\", () => { job(); w.terminate(); });\n  }\n}\n" }, { lang: 'cpp', code: "class ThreadPerJobScheduler {\npublic:\n    // BRUTE: one sleeping thread per job; 100k jobs = 100k threads\n    void schedule(function<void()> job, long long delayMillis) {\n        thread([job, delayMillis] {\n            this_thread::sleep_for(chrono::milliseconds(delayMillis));\n            job();\n        }).detach();\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading, time\n\nclass ThreadPerJobScheduler:\n    # BRUTE: one sleeping thread per job; 100k jobs = 100k threads\n    def schedule(self, job, delay_millis):\n        def run():\n            time.sleep(delay_millis / 1000)\n            job()\n        threading.Thread(target=run).start()\n" }, { lang: 'ts', code: "import { Worker } from \"worker_threads\";\n\nclass ThreadPerJobScheduler {\n  // BRUTE: one sleeping worker thread per job; 100k jobs = 100k threads\n  schedule(job: () => void, delayMillis: number): void {\n    const w = new Worker(\n      \"const { parentPort, workerData } = require('worker_threads');\" +\n      \"Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, workerData); parentPort.postMessage('due');\",\n      { eval: true, workerData: delayMillis });\n    w.once(\"message\", () => { job(); w.terminate(); });\n  }\n}\n" }, { lang: 'cpp', code: "class ThreadPerJobScheduler {\npublic:\n    // BRUTE: one sleeping thread per job; 100k jobs = 100k threads\n    void schedule(function<void()> job, long long delayMillis) {\n        thread([job, delayMillis] {\n            this_thread::sleep_for(chrono::milliseconds(delayMillis));\n            job();\n        }).detach();\n    }\n};\n" }, { lang: 'csharp', code: "using System;\nusing System.Threading;\nclass ThreadPerJobScheduler {\n    // BRUTE: one sleeping thread per job; 100k jobs = 100k threads\n    public void Schedule(Action job, int delayMillis) {\n        new Thread(() => {\n            try { Thread.Sleep(delayMillis); job(); }\n            catch (ThreadInterruptedException) { }\n        }).Start();\n    }\n}\n" }] } },
     mcq: { q: 'How do you make "cancel vs. start" race-free for a job?', options: ['Give each job an AtomicInteger state SCHEDULED → RUNNING/CANCELLED changed by CAS; only the winner of the CAS proceeds', 'Remove it from the queue and hope no worker took it', 'Mark a non-volatile boolean cancelled', 'Synchronize the whole scheduler'], answer: 0, explain: 'The worker CASes SCHEDULED→RUNNING before running; cancel CASes SCHEDULED→CANCELLED. Exactly one succeeds, so a job either runs or is cancelled, never both.' },
     hints: [`<p>Hint 1: A <code>DelayQueue</code> hands out an element only when its delay has expired — workers just <code>take()</code>.</p>`, `<p>Hint 2: Each job object carries an atomic state. Cancel = CAS to CANCELLED (and optionally remove from the queue to free memory).</p>`, `<p>Hint 3: Shutdown: set a flag and interrupt workers (take() throws InterruptedException); join them with a timeout.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "cancel C: true\ncancel C again: false\ncancel unknown: false\njob 4 failed: boom\nran: [B, A]\nschedule after shutdown rejected: scheduler is shut down\n" }] },
@@ -10191,6 +12377,105 @@ int main() {
     cout << "]\\n";
     try { s.schedule([] {}, 1); }
     catch (const runtime_error& e) { cout << "schedule after shutdown rejected: " << e.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+
+class JobScheduler {
+    public const int SCHEDULED = 0, RUNNING = 1, CANCELLED = 2;
+    static long NowMs() { return Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency; }
+
+    public sealed class Job {
+        public readonly long Id, DueMs; public readonly Action Task;
+        public int State = SCHEDULED;                       // changed only with Interlocked.CompareExchange
+        public Job(long id, long dueMs, Action task) { Id = id; DueMs = dueMs; Task = task; }
+    }
+
+    // delay queue: jobs ordered by (due, id); workers wait on the monitor until the head is due
+    private readonly SortedSet<Job> queue = new SortedSet<Job>(Comparer<Job>.Create((a, b) => a.DueMs != b.DueMs ? a.DueMs.CompareTo(b.DueMs) : a.Id.CompareTo(b.Id)));
+    private readonly object gate = new object();
+    private readonly ConcurrentDictionary<long, Job> jobs = new ConcurrentDictionary<long, Job>();
+    private long ids = 0;
+    private readonly List<Thread> workers = new List<Thread>();
+    private volatile bool shut;
+
+    public JobScheduler(int nWorkers) {
+        for (int i = 0; i < nWorkers; i++) workers.Add(new Thread(WorkLoop) { Name = "worker-" + i });
+    }
+    public void Start() { foreach (Thread w in workers) w.Start(); }      // start after construction (no "this" escape)
+
+    public long Schedule(Action task, long delayMillis) {
+        if (shut) throw new InvalidOperationException("scheduler is shut down");
+        Job j = new Job(Interlocked.Increment(ref ids), NowMs() + delayMillis, task);
+        jobs[j.Id] = j;
+        lock (gate) { queue.Add(j); Monitor.PulseAll(gate); }
+        return j.Id;
+    }
+
+    public bool Cancel(long id) {
+        Job j;
+        if (!jobs.TryGetValue(id, out j) || Interlocked.CompareExchange(ref j.State, CANCELLED, SCHEDULED) != SCHEDULED) return false;   // too late or unknown
+        lock (gate) queue.Remove(j);          // free memory early; workers would skip it anyway
+        jobs.TryRemove(id, out j);
+        return true;
+    }
+
+    private Job TakeDue() {                   // blocks until a job is due; throws when interrupted
+        lock (gate) {
+            while (true) {
+                if (queue.Count == 0) { Monitor.Wait(gate); continue; }
+                Job head = queue.Min;
+                long wait = head.DueMs - NowMs();
+                if (wait <= 0) { queue.Remove(head); return head; }
+                Monitor.Wait(gate, (int)wait);
+            }
+        }
+    }
+
+    private void WorkLoop() {
+        try {
+            while (!shut) {
+                Job j = TakeDue();
+                if (Interlocked.CompareExchange(ref j.State, RUNNING, SCHEDULED) != SCHEDULED) continue;   // was cancelled
+                Job ignored; jobs.TryRemove(j.Id, out ignored);
+                try { j.Task(); } catch (Exception e) { Console.WriteLine("job " + j.Id + " failed: " + e.Message); }
+            }
+        } catch (ThreadInterruptedException) {
+            // shutdown path
+        }
+    }
+
+    public void Shutdown() {
+        shut = true;
+        foreach (Thread w in workers) w.Interrupt();
+        foreach (Thread w in workers) w.Join(2000);
+    }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        JobScheduler s = new JobScheduler(2);
+        s.Start();
+        List<string> ran = new List<string>();
+        CountdownEvent twoDone = new CountdownEvent(2);
+        s.Schedule(() => { lock (ran) ran.Add("A"); twoDone.Signal(); }, 60);
+        s.Schedule(() => { lock (ran) ran.Add("B"); twoDone.Signal(); }, 10);
+        long c = s.Schedule(() => { lock (ran) ran.Add("C"); }, 30);
+        s.Schedule(() => { throw new InvalidOperationException("boom"); }, 20);
+        Console.WriteLine("cancel C: " + B(s.Cancel(c)));
+        Console.WriteLine("cancel C again: " + B(s.Cancel(c)));
+        Console.WriteLine("cancel unknown: " + B(s.Cancel(99)));
+        twoDone.Wait(2000);
+        Thread.Sleep(50);
+        s.Shutdown();
+        lock (ran) Console.WriteLine("ran: [" + string.Join(", ", ran) + "]");
+        try { s.Schedule(() => { }, 1); }
+        catch (InvalidOperationException e) { Console.WriteLine("schedule after shutdown rejected: " + e.Message); }
+    }
 }` }
         ],
       complexity: `<p>schedule O(log n), cancel O(n) for <code>queue.remove</code> (or O(1) if you skip removal and let workers discard), take O(log n). Idle workers use no CPU.</p>`,
@@ -10210,7 +12495,7 @@ int main() {
         for (int i = 0; i < n; i++) lines.put("line-" + i);
         lines.put(POISON);
     }
-}`, alt: [{ lang: 'python', code: "class PipelineBrute:\n    POISON = \"EOF\"\n\n    # BRUTE: only ONE pill for THREE parsers => two parsers block on get() forever; the process never exits\n    @staticmethod\n    def reader_puts_one_pill(lines, n):\n        for i in range(n): lines.put(f\"line-{i}\")\n        lines.put(PipelineBrute.POISON)\n" }, { lang: 'ts', code: "class PipelineBrute {\n  static readonly POISON = \"EOF\";\n  // BRUTE: only ONE pill for THREE parsers => two parsers await take() forever; the process never exits\n  static async readerPutsOnePill(lines: { put(x: string): Promise<void> }, n: number): Promise<void> {\n    for (let i = 0; i < n; i++) await lines.put(\"line-\" + i);\n    await lines.put(PipelineBrute.POISON);\n  }\n}\n" }, { lang: 'cpp', code: "struct PipelineBrute {\n    static constexpr const char* POISON = \"EOF\";\n    // BRUTE: only ONE pill for THREE parsers => two parsers block on pop() forever; the process never exits\n    template <class Queue>\n    static void readerPutsOnePill(Queue& lines, int n) {\n        for (int i = 0; i < n; i++) lines.push(\"line-\" + to_string(i));\n        lines.push(POISON);\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "class PipelineBrute:\n    POISON = \"EOF\"\n\n    # BRUTE: only ONE pill for THREE parsers => two parsers block on get() forever; the process never exits\n    @staticmethod\n    def reader_puts_one_pill(lines, n):\n        for i in range(n): lines.put(f\"line-{i}\")\n        lines.put(PipelineBrute.POISON)\n" }, { lang: 'ts', code: "class PipelineBrute {\n  static readonly POISON = \"EOF\";\n  // BRUTE: only ONE pill for THREE parsers => two parsers await take() forever; the process never exits\n  static async readerPutsOnePill(lines: { put(x: string): Promise<void> }, n: number): Promise<void> {\n    for (let i = 0; i < n; i++) await lines.put(\"line-\" + i);\n    await lines.put(PipelineBrute.POISON);\n  }\n}\n" }, { lang: 'cpp', code: "struct PipelineBrute {\n    static constexpr const char* POISON = \"EOF\";\n    // BRUTE: only ONE pill for THREE parsers => two parsers block on pop() forever; the process never exits\n    template <class Queue>\n    static void readerPutsOnePill(Queue& lines, int n) {\n        for (int i = 0; i < n; i++) lines.push(\"line-\" + to_string(i));\n        lines.push(POISON);\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Concurrent;\nclass PipelineBrute {\n    public const string POISON = \"EOF\";\n    // BRUTE: only ONE pill for THREE parsers => two parsers block on Take() forever; the process never exits\n    public static void ReaderPutsOnePill(BlockingCollection<string> lines, int n) {\n        for (int i = 0; i < n; i++) lines.Add(\"line-\" + i);\n        lines.Add(POISON);\n    }\n}\n" }] } },
     mcq: { q: 'When is it safe to send poison pills to stage 2?', options: ['Only after ALL stage-1 threads have finished (e.g. the last parser to exit sends one pill per writer)', 'As soon as the first parser sees a pill', 'Immediately after the reader finishes', 'Never — writers should be interrupted'], answer: 0, explain: 'Stage 2 must not stop while any parser may still emit records. A countdown of live parsers lets the last one out forward the pills.' },
     hints: [`<p>Hint 1: Each stage needs one pill per thread in that stage, and pills must follow all real items.</p>`, `<p>Hint 2: Track live parsers with an <code>AtomicInteger</code> (or a <code>CountDownLatch</code> plus a coordinator).</p>`, `<p>Hint 3: The parser that decrements the live count to 0 puts W pills into the writer queue. join() everything with timeouts; use bounded <code>ArrayBlockingQueue</code>s for backpressure.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "records=10000 distinct=10000 all threads exited\nmessy input: kept=2 dropped=3 all threads exited\nempty input: records=0 all threads exited\n" }] },
@@ -10532,6 +12817,75 @@ int main() {
     auto good = TwoStagePipeline::run(messy, 3, 2);
     cout << "messy input: kept=" << good.size() << " dropped=" << messy.size() - good.size() << " all threads exited\\n";
     cout << "empty input: records=" << TwoStagePipeline::run(0, 3, 2).size() << " all threads exited\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+class TwoStagePipeline {
+    public sealed class Rec { public readonly int Id; public readonly string Text; public Rec(int id, string text) { Id = id; Text = text; } }
+    static readonly string LINE_PILL = new string("EOF".ToCharArray());   // unique identity
+    static readonly Rec REC_PILL = new Rec(-1, "EOF");
+
+    public static List<Rec> Run(int n, int parsers, int writers) {
+        List<string> input = new List<string>();
+        for (int i = 0; i < n; i++) input.Add("line-" + i);
+        return Run(input, parsers, writers);
+    }
+
+    public static List<Rec> Run(List<string> input, int parsers, int writers) {
+        BlockingCollection<string> lines = new BlockingCollection<string>(100);
+        BlockingCollection<Rec> recs = new BlockingCollection<Rec>(100);
+        List<Rec> sink = new List<Rec>();
+        int liveParsers = parsers;
+        List<Thread> all = new List<Thread>();
+
+        all.Add(new Thread(() => {                                   // reader
+            foreach (string line in input) lines.Add(line);
+            for (int p = 0; p < parsers; p++) lines.Add(LINE_PILL);   // one pill per parser
+        }) { Name = "reader" });
+
+        for (int p = 0; p < parsers; p++) all.Add(new Thread(() => {   // stage 1
+            while (true) {
+                string line = lines.Take();
+                if (ReferenceEquals(line, LINE_PILL)) break;
+                Rec rec;
+                try { rec = new Rec(int.Parse(line.Substring(5)), line.ToUpper()); }
+                catch (Exception) { continue; }          // malformed line: drop it, keep the thread alive
+                recs.Add(rec);
+            }
+            if (Interlocked.Decrement(ref liveParsers) == 0)          // LAST parser out
+                for (int w = 0; w < writers; w++) recs.Add(REC_PILL);
+        }) { Name = "parser-" + p });
+
+        for (int w = 0; w < writers; w++) all.Add(new Thread(() => {   // stage 2
+            while (true) {
+                Rec r = recs.Take();
+                if (r == REC_PILL) return;
+                lock (sink) sink.Add(r);
+            }
+        }) { Name = "writer-" + w });
+
+        foreach (Thread t in all) t.Start();
+        foreach (Thread t in all) t.Join(10000);
+        int alive = all.Count(t => t.IsAlive);
+        if (alive > 0) throw new InvalidOperationException(alive + " threads still alive");
+        return sink;
+    }
+
+    static void Main() {
+        List<Rec> res = Run(10000, 3, 2);
+        int distinct = res.Select(r => r.Id).Distinct().Count();
+        Console.WriteLine("records=" + res.Count + " distinct=" + distinct + " all threads exited");
+
+        List<string> messy = new List<string> { "line-1", "garbage", "line-x", "line-7", "" };
+        List<Rec> good = Run(messy, 3, 2);
+        Console.WriteLine("messy input: kept=" + good.Count + " dropped=" + (messy.Count - good.Count) + " all threads exited");
+        Console.WriteLine("empty input: records=" + Run(0, 3, 2).Count + " all threads exited");
+    }
 }` }
         ],
       complexity: `<p>O(N) total work; memory bounded by queue capacities (≈200 items in flight).</p>`,
@@ -10554,7 +12908,7 @@ int main() {
         userTokens.put(user, u - 1);                 // consumed even if global rejects below
         return globalTokens.getAndDecrement() > 0;   // can also drive the counter negative
     }
-}`, alt: [{ lang: 'python', code: "import threading\n\nclass LeakyHierarchyBrute:\n    def __init__(self):\n        self.user_tokens = {}\n        self.global_tokens = 3\n\n    # BRUTE: takes the user token, then fails on global => the user token is lost; also check-then-act races\n    def allow(self, user):\n        u = self.user_tokens.get(user, 2)\n        if u == 0: return False\n        self.user_tokens[user] = u - 1                 # consumed even if global rejects below\n        self.global_tokens -= 1                        # can also drive the counter negative\n        return self.global_tokens + 1 > 0\n" }, { lang: 'ts', code: "class LeakyHierarchyBrute {\n  private userTokens = new Map<string, number>();\n  private globalTokens = 3;\n  // BRUTE: takes the user token, then fails on global => the user token is lost; also check-then-act races\n  allow(user: string): boolean {\n    const u = this.userTokens.get(user) ?? 2;\n    if (u === 0) return false;\n    this.userTokens.set(user, u - 1);                  // consumed even if global rejects below\n    return this.globalTokens-- > 0;                    // can also drive the counter negative\n  }\n}\n" }, { lang: 'cpp', code: "class LeakyHierarchyBrute {\n    unordered_map<string, int> userTokens;\n    mutex m;                                           // guards the map only, not the check-then-act\n    atomic<int> globalTokens{3};\n    int getUser(const string& u) { lock_guard<mutex> g(m); auto it = userTokens.find(u); return it == userTokens.end() ? 2 : it->second; }\n    void putUser(const string& u, int v) { lock_guard<mutex> g(m); userTokens[u] = v; }\npublic:\n    // BRUTE: takes the user token, then fails on global => the user token is lost; also check-then-act races\n    bool allow(const string& user) {\n        int u = getUser(user);\n        if (u == 0) return false;\n        putUser(user, u - 1);                          // consumed even if global rejects below\n        return globalTokens.fetch_sub(1) > 0;          // can also drive the counter negative\n    }\n};\n" }] } },
+}`, alt: [{ lang: 'python', code: "import threading\n\nclass LeakyHierarchyBrute:\n    def __init__(self):\n        self.user_tokens = {}\n        self.global_tokens = 3\n\n    # BRUTE: takes the user token, then fails on global => the user token is lost; also check-then-act races\n    def allow(self, user):\n        u = self.user_tokens.get(user, 2)\n        if u == 0: return False\n        self.user_tokens[user] = u - 1                 # consumed even if global rejects below\n        self.global_tokens -= 1                        # can also drive the counter negative\n        return self.global_tokens + 1 > 0\n" }, { lang: 'ts', code: "class LeakyHierarchyBrute {\n  private userTokens = new Map<string, number>();\n  private globalTokens = 3;\n  // BRUTE: takes the user token, then fails on global => the user token is lost; also check-then-act races\n  allow(user: string): boolean {\n    const u = this.userTokens.get(user) ?? 2;\n    if (u === 0) return false;\n    this.userTokens.set(user, u - 1);                  // consumed even if global rejects below\n    return this.globalTokens-- > 0;                    // can also drive the counter negative\n  }\n}\n" }, { lang: 'cpp', code: "class LeakyHierarchyBrute {\n    unordered_map<string, int> userTokens;\n    mutex m;                                           // guards the map only, not the check-then-act\n    atomic<int> globalTokens{3};\n    int getUser(const string& u) { lock_guard<mutex> g(m); auto it = userTokens.find(u); return it == userTokens.end() ? 2 : it->second; }\n    void putUser(const string& u, int v) { lock_guard<mutex> g(m); userTokens[u] = v; }\npublic:\n    // BRUTE: takes the user token, then fails on global => the user token is lost; also check-then-act races\n    bool allow(const string& user) {\n        int u = getUser(user);\n        if (u == 0) return false;\n        putUser(user, u - 1);                          // consumed even if global rejects below\n        return globalTokens.fetch_sub(1) > 0;          // can also drive the counter negative\n    }\n};\n" }, { lang: 'csharp', code: "using System.Collections.Concurrent;\nusing System.Threading;\nclass LeakyHierarchyBrute {\n    private readonly ConcurrentDictionary<string, int> userTokens = new ConcurrentDictionary<string, int>();\n    private int globalTokens = 3;\n    // BRUTE: takes the user token, then fails on global => the user token is lost; also check-then-act races\n    public bool Allow(string user) {\n        int u; if (!userTokens.TryGetValue(user, out u)) u = 2;\n        if (u == 0) return false;\n        userTokens[user] = u - 1;                                  // consumed even if global rejects below\n        return Interlocked.Decrement(ref globalTokens) + 1 > 0;   // can also drive the counter negative\n    }\n}\n" }] } },
     mcq: { q: 'Which ordering keeps "rejected requests consume nothing" without holding two locks at once?', options: ['Take from the user bucket; then try the global bucket; if global fails, refund the user token', 'Take global first and never refund', 'Hold the global lock while checking every user bucket', 'Check both without taking, then take both without checking'], answer: 0, explain: 'Acquire-then-compensate: each bucket operation is individually atomic; on partial failure, undo the part that succeeded. Refund must cap at capacity. The tiny window where the user token is "borrowed" is harmless.' },
     hints: [`<p>Hint 1: Treat each bucket as an independent atomic object with <code>tryAcquire()</code> and <code>refund()</code>.</p>`, `<p>Hint 2: Order: the narrow, low-contention bucket first (user), the hot shared bucket second (global). On global failure, refund the user.</p>`, `<p>Hint 3: Make the global bucket lock-free (CAS on an immutable state) since every request touches it; refund = add a token back, capped at capacity.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "YYNYN chenTokens=2.00\nrefill: YNY\nadmitted=50 (global cap 50)\n" }] },
@@ -10918,6 +13272,97 @@ int main() {
             });
     }
     cout << "admitted=" << ok << " (global cap 50)\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
+
+class HierarchicalLimiter {
+    public sealed class Bucket {
+        private sealed class State { public readonly double Tokens; public readonly long Last; public State(double t, long l) { Tokens = t; Last = l; } }
+        private State st;
+        private readonly double cap, perNano;
+        private readonly Func<long> clock;
+        public Bucket(double cap, double perSec, Func<long> clock) {
+            this.cap = cap; perNano = perSec / 1e9; this.clock = clock;
+            st = new State(cap, clock());
+        }
+        private State Refilled(State s) {
+            long now = Math.Max(clock(), s.Last);
+            return new State(Math.Min(cap, s.Tokens + (now - s.Last) * perNano), now);
+        }
+        public bool TryAcquire() {
+            while (true) {
+                State s = Volatile.Read(ref st), r = Refilled(s);
+                if (r.Tokens < 1) return false;
+                if (Interlocked.CompareExchange(ref st, new State(r.Tokens - 1, r.Last), s) == s) return true;
+            }
+        }
+        public void Refund() {
+            while (true) {
+                State s = Volatile.Read(ref st), r = Refilled(s);
+                if (Interlocked.CompareExchange(ref st, new State(Math.Min(cap, r.Tokens + 1), r.Last), s) == s) return;
+            }
+        }
+        public double Tokens() { return Refilled(Volatile.Read(ref st)).Tokens; }
+    }
+
+    private readonly ConcurrentDictionary<string, Bucket> users = new ConcurrentDictionary<string, Bucket>();
+    private readonly Bucket global;
+    private readonly double userCap, userRate;
+    private readonly Func<long> clock;
+
+    public HierarchicalLimiter(double userCap, double userRate, double globalCap, double globalRate, Func<long> clock) {
+        this.userCap = userCap; this.userRate = userRate; this.clock = clock;
+        global = new Bucket(globalCap, globalRate, clock);
+    }
+
+    public bool Allow(string user) {
+        Bucket u = users.GetOrAdd(user, k => new Bucket(userCap, userRate, clock));
+        if (!u.TryAcquire()) return false;          // user over limit: nothing consumed
+        if (global.TryAcquire()) return true;       // both OK
+        u.Refund();                                 // global full: give the user token back
+        return false;
+    }
+
+    public double UserTokens(string user) { Bucket b; return users.TryGetValue(user, out b) ? b.Tokens() : userCap; }
+}
+
+/// Fixed-size worker pool: Execute queues work, ShutdownAndWait drains the queue and joins the threads.
+sealed class FixedPool {
+    private readonly BlockingCollection<Action> q = new BlockingCollection<Action>();
+    private readonly List<Thread> workers = new List<Thread>();
+    public FixedPool(int n) {
+        for (int i = 0; i < n; i++) { Thread t = new Thread(() => { foreach (Action a in q.GetConsumingEnumerable()) a(); }); t.IsBackground = true; workers.Add(t); t.Start(); }
+    }
+    public void Execute(Action a) { q.Add(a); }
+    public bool ShutdownAndWait(int millis) { q.CompleteAdding(); bool ok = true; foreach (Thread t in workers) ok &= t.Join(millis); return ok; }
+}
+
+class Program {
+    static void Main() {
+        HierarchicalLimiter h = new HierarchicalLimiter(2, 2, 3, 3, () => 0L);   // frozen clock
+        StringBuilder sb = new StringBuilder();
+        foreach (string u in new[] { "asha", "asha", "asha", "bala", "chen" }) sb.Append(h.Allow(u) ? "Y" : "N");
+        Console.WriteLine(sb + " chenTokens=" + h.UserTokens("chen").ToString("F2"));
+
+        long now = 0;
+        HierarchicalLimiter h3 = new HierarchicalLimiter(1, 1, 1, 1, () => Interlocked.Read(ref now));
+        string refill = (h3.Allow("a") ? "Y" : "N") + (h3.Allow("b") ? "Y" : "N");
+        Interlocked.Exchange(ref now, 1000000000L);
+        refill += h3.Allow("b") ? "Y" : "N";
+        Console.WriteLine("refill: " + refill);
+
+        HierarchicalLimiter h2 = new HierarchicalLimiter(5, 5, 50, 50, () => 0L);
+        int ok = 0;
+        FixedPool pool = new FixedPool(32);
+        for (int i = 0; i < 2000; i++) { string u = "u" + (i % 40); pool.Execute(() => { if (h2.Allow(u)) Interlocked.Increment(ref ok); }); }
+        pool.ShutdownAndWait(5000);
+        Console.WriteLine("admitted=" + ok + " (global cap 50)");
+    }
 }` }
         ],
       complexity: `<p>O(1) amortized per request; CAS retries only under contention on the global bucket. Memory O(active users).</p>`,

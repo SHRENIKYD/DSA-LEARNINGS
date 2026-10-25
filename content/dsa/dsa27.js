@@ -267,7 +267,67 @@ public:
         where[key] = items.begin();
     }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `// LRU cache: Dictionary for O(1) lookup + doubly linked list for O(1) reordering.
+class LRUCache {
+    // One node per cached entry. It stores the key too, so on eviction
+    // we know which map entry to delete.
+    private class Node {
+        public int key, val;
+        public Node prev, next;
+        public Node(int k, int v) { key = k; val = v; }
+    }
+
+    private readonly int capacity;
+    private readonly Dictionary<int, Node> map = new Dictionary<int, Node>();
+    // Sentinels: head.next is the MOST recent, tail.prev is the LEAST recent.
+    private readonly Node head = new Node(0, 0), tail = new Node(0, 0);
+
+    public LRUCache(int capacity) {
+        this.capacity = capacity;
+        head.next = tail;
+        tail.prev = head;
+    }
+
+    public int Get(int key) {
+        Node n;
+        if (!map.TryGetValue(key, out n)) return -1;   // miss
+        Remove(n);                     // unhook from current position
+        AddFront(n);                   // it is now the most recently used
+        return n.val;
+    }
+
+    public void Put(int key, int value) {
+        Node n;
+        if (map.TryGetValue(key, out n)) {   // update existing key = also a "use"
+            n.val = value;
+            Remove(n);
+            AddFront(n);
+            return;
+        }
+        if (map.Count == capacity) {   // full: evict least recently used
+            Node lru = tail.prev;
+            Remove(lru);
+            map.Remove(lru.key);       // the classic forgotten line!
+        }
+        Node fresh = new Node(key, value);
+        AddFront(fresh);
+        map[key] = fresh;
+    }
+
+    // Unhook n from the list: its neighbours now point at each other.
+    private void Remove(Node n) {
+        n.prev.next = n.next;
+        n.next.prev = n.prev;
+    }
+
+    // Insert n right after head (the "most recent" end).
+    private void AddFront(Node n) {
+        n.next = head.next;
+        n.prev = head;
+        head.next.prev = n;
+        head.next = n;
+    }
+}` }] }, { lang: 'java', code: `
       // The 10-line production shortcut: LinkedHashMap already IS a hash map + doubly linked list.
       // accessOrder = true moves an entry to the end on every get/put;
       // removeEldestEntry is called after each put and evicts the head (least recent).
@@ -398,7 +458,49 @@ int main() {
     c.put(3, "C");               // evicts 2
     c.print();                   // 1 3
 }
-` }] }],
+` }, { lang: 'csharp', code: `// The short production-style version: the base library has no access-ordered map,
+// but LinkedList<T> (doubly linked, O(1) unlink) + Dictionary gives the same thing in a few lines.
+using System;
+using System.Collections.Generic;
+
+class LinkedLRU<K, V> {
+    private readonly int capacity;
+    private readonly Dictionary<K, LinkedListNode<KeyValuePair<K, V>>> map = new Dictionary<K, LinkedListNode<KeyValuePair<K, V>>>();
+    private readonly LinkedList<KeyValuePair<K, V>> order = new LinkedList<KeyValuePair<K, V>>();   // First = least recent
+
+    public LinkedLRU(int capacity) { this.capacity = capacity; }
+
+    public V Get(K key) {
+        LinkedListNode<KeyValuePair<K, V>> n;
+        if (!map.TryGetValue(key, out n)) return default(V);
+        order.Remove(n);
+        order.AddLast(n);              // touched: move to the most-recent end
+        return n.Value.Value;
+    }
+
+    public void Put(K key, V value) {
+        LinkedListNode<KeyValuePair<K, V>> n;
+        if (map.TryGetValue(key, out n)) order.Remove(n);
+        else if (map.Count == capacity) {               // evict the least recent (the First node)
+            map.Remove(order.First.Value.Key);
+            order.RemoveFirst();
+        }
+        map[key] = order.AddLast(new KeyValuePair<K, V>(key, value));
+    }
+
+    public IEnumerable<K> Keys() { foreach (var e in order) yield return e.Key; }   // least recent first
+}
+
+class Program {
+    static void Main() {
+        var c = new LinkedLRU<int, string>(2);
+        c.Put(1, "A");
+        c.Put(2, "B");
+        c.Get(1);                      // 1 becomes most recent
+        c.Put(3, "C");                 // evicts 2
+        Console.WriteLine("[" + string.Join(", ", c.Keys()) + "]"); // [1, 3]  (least recent first)
+    }
+}`, run: true }] }],
     codeTitle: ['LRU from scratch: the answer interviewers expect','Built-in ordered map shortcut (mention it, then build from scratch)'],
     viz: {
       title: 'LRU cache: watch the list reorder and the tail get evicted',
@@ -572,7 +674,29 @@ public:
         }
     }
 };
-` }] }
+` }, { lang: 'csharp', code: `class TtlLru {
+    private class Entry { public string key; public long value, expiresAt; }
+    private readonly int cap;
+    private readonly Dictionary<string, LinkedListNode<Entry>> m = new Dictionary<string, LinkedListNode<Entry>>();
+    private readonly LinkedList<Entry> order = new LinkedList<Entry>();   // First = least recently used
+    public TtlLru(int cap) { this.cap = cap; }
+    public long? Get(string k, long now) {
+        LinkedListNode<Entry> e;
+        if (!m.TryGetValue(k, out e)) return null;
+        if (now >= e.Value.expiresAt) { order.Remove(e); m.Remove(k); return null; }   // lazy expiry
+        order.Remove(e); order.AddLast(e);                                             // a hit = most recent
+        return e.Value.value;
+    }
+    public void Put(string k, long v, long ttl, long now) {
+        LinkedListNode<Entry> old;
+        if (m.TryGetValue(k, out old)) order.Remove(old);
+        m[k] = order.AddLast(new Entry { key = k, value = v, expiresAt = now + ttl });
+        if (m.Count > cap) {
+            m.Remove(order.First.Value.key);               // least recently used
+            order.RemoveFirst();
+        }
+    }
+}` }] }
       },
       {
         title: 'Why LRU fails on a scan — and how Segmented LRU fixes it',
@@ -684,7 +808,24 @@ public:
         order.insert(order.begin(), key);
         vals[key] = value;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class LRUBrute {
+    private readonly int cap;
+    private readonly Dictionary<int, int> vals = new Dictionary<int, int>();
+    private readonly List<int> order = new List<int>();   // index 0 = most recent
+    public LRUBrute(int cap) { this.cap = cap; }
+    public int Get(int key) {
+        if (!vals.ContainsKey(key)) return -1;
+        order.Remove(key);                     // O(N) scan + shift: the wasted work
+        order.Insert(0, key);                  // O(N) shift again
+        return vals[key];
+    }
+    public void Put(int key, int value) {
+        if (vals.ContainsKey(key)) order.Remove(key);
+        else if (vals.Count == cap) { vals.Remove(order[order.Count - 1]); order.RemoveAt(order.Count - 1); }
+        order.Insert(0, key);
+        vals[key] = value;
+    }
+}` }] }
       },
       mcq: { q: 'You have the map (key → node). Which list type lets you delete that node from the middle in O(1)?', options: ['Singly linked list', 'Doubly linked list', 'ArrayList', 'A min-heap ordered by time'], answer: 1, explain: 'Deleting needs the predecessor. A doubly linked node knows its <code>prev</code>, so unlinking is 2 pointer writes. A singly linked list must walk from the head to find the predecessor.' },
       hints: [
@@ -875,7 +1016,55 @@ public:
         where[key] = items.begin();
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class LRUCache {
+    private class Node {
+        public int key, val;
+        public Node prev, next;
+        public Node(int k, int v) { key = k; val = v; }
+    }
+    private readonly int cap;
+    private readonly Dictionary<int, Node> map = new Dictionary<int, Node>();
+    private readonly Node head = new Node(-1, -1), tail = new Node(-1, -1);
+
+    public LRUCache(int capacity) {
+        cap = capacity;
+        head.next = tail;
+        tail.prev = head;
+    }
+
+    public int Get(int key) {
+        Node n;
+        if (!map.TryGetValue(key, out n)) return -1;
+        Unlink(n);
+        PushFront(n);
+        return n.val;
+    }
+
+    public void Put(int key, int value) {
+        Node n;
+        if (map.TryGetValue(key, out n)) {   // update counts as a use
+            n.val = value;
+            Unlink(n);
+            PushFront(n);
+            return;
+        }
+        if (map.Count == cap) {           // evict least recently used
+            Node victim = tail.prev;
+            Unlink(victim);
+            map.Remove(victim.key);
+        }
+        n = new Node(key, value);
+        PushFront(n);
+        map[key] = n;
+    }
+
+    private void Unlink(Node n) { n.prev.next = n.next; n.next.prev = n.prev; }
+
+    private void PushFront(Node n) {
+        n.next = head.next; n.prev = head;
+        head.next.prev = n; head.next = n;
+    }
+}` }],
         dry: {
           head: ['call', 'list (MRU → LRU)', 'map keys', 'output / note'],
           rows: [
@@ -1125,7 +1314,69 @@ public:
         minFreq = 1;
     }
 };
-` }] }],
+` }, { lang: 'csharp', code: `// LFU cache in O(1): key -> node, freq -> doubly linked list of nodes (oldest at head side).
+class LFUCache {
+    private class Node {
+        public int key, val, freq = 1;
+        public Node prev, next;
+        public Node(int k, int v) { key = k; val = v; }
+    }
+    // A tiny doubly linked list with sentinels; AddLast = newest, RemoveFirst = oldest.
+    private class DList {
+        public readonly Node head = new Node(0, 0), tail = new Node(0, 0);
+        public int size;
+        public DList() { head.next = tail; tail.prev = head; }
+        public void AddLast(Node n) {
+            n.prev = tail.prev; n.next = tail;
+            tail.prev.next = n; tail.prev = n; size++;
+        }
+        public void Remove(Node n) { n.prev.next = n.next; n.next.prev = n.prev; size--; }
+        public Node RemoveFirst() { Node n = head.next; Remove(n); return n; }
+    }
+
+    private readonly int capacity;
+    private int minFreq = 0;
+    private readonly Dictionary<int, Node> keyMap = new Dictionary<int, Node>();
+    private readonly Dictionary<int, DList> freqMap = new Dictionary<int, DList>();
+
+    public LFUCache(int capacity) { this.capacity = capacity; }
+
+    public int Get(int key) {
+        Node n;
+        if (!keyMap.TryGetValue(key, out n)) return -1;
+        Touch(n);
+        return n.val;
+    }
+
+    public void Put(int key, int value) {
+        if (capacity == 0) return;               // nothing can ever be stored
+        Node n;
+        if (keyMap.TryGetValue(key, out n)) { n.val = value; Touch(n); return; }
+        if (keyMap.Count == capacity) {          // evict oldest key among the least used
+            Node victim = freqMap[minFreq].RemoveFirst();
+            keyMap.Remove(victim.key);
+        }
+        n = new Node(key, value);                // brand-new key: freq 1
+        keyMap[key] = n;
+        Bucket(1).AddLast(n);
+        minFreq = 1;                             // nothing can be lower than 1
+    }
+
+    private DList Bucket(int f) {
+        DList b;
+        if (!freqMap.TryGetValue(f, out b)) freqMap[f] = b = new DList();
+        return b;
+    }
+
+    // Move n from bucket f to bucket f+1, keeping minFreq correct.
+    private void Touch(Node n) {
+        DList bucket = freqMap[n.freq];
+        bucket.Remove(n);
+        if (bucket.size == 0 && n.freq == minFreq) minFreq++;
+        n.freq++;
+        Bucket(n.freq).AddLast(n);
+    }
+}` }] }],
     codeTitle: ['LFU with per-frequency doubly linked lists'],
     viz: {
       title: 'LFU cache: keys climb frequency buckets; the victim is the oldest in the lowest bucket',
@@ -1240,7 +1491,12 @@ unordered_map<int, list<int>> buckets;
 
 // Oldest key in the lowest bucket = the LFU victim (ties broken by recency).
 int victim(int minFreq) { return buckets[minFreq].front(); }
-` }] }
+` }, { lang: 'csharp', code: `class TinyLfuBuckets {
+    // Each bucket is an insertion-ordered set: a LinkedList plus a node map for O(1) removal.
+    Dictionary<int, LinkedList<int>> buckets = new Dictionary<int, LinkedList<int>>();
+    // Oldest key in the lowest bucket = the LFU victim (ties broken by recency).
+    public int Victim(int minFreq) { return buckets[minFreq].First.Value; }
+}` }] }
       }
     ],
     deepDive: `<p><b>Proof that <code>minFreq++</code> is enough.</b> In <code>touch</code>, the key moves from bucket f to f+1. If bucket f empties and f was the minimum, then no key has count &lt; f+1, and our key now sits in bucket f+1 → the new minimum is exactly f+1. Every other path is covered: a <code>get</code> miss changes nothing; a new insert sets <code>minFreq = 1</code>; an eviction is always immediately followed by an insert (which resets to 1), so we never need to "find the next minimum" after an eviction. That is why there is no loop anywhere.</p>
@@ -1370,7 +1626,32 @@ public:
         }
         m[key] = {value, 1, ++time};
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class LFUBrute {
+    private readonly int cap;
+    private int time = 0;
+    private readonly Dictionary<int, int[]> m = new Dictionary<int, int[]>();  // key -> {value, count, lastUsed}
+    public LFUBrute(int cap) { this.cap = cap; }
+    public int Get(int key) {
+        int[] e;
+        if (!m.TryGetValue(key, out e)) return -1;
+        e[1]++; e[2] = ++time;
+        return e[0];
+    }
+    public void Put(int key, int value) {
+        if (cap == 0) return;
+        int[] e;
+        if (m.TryGetValue(key, out e)) { e[0] = value; e[1]++; e[2] = ++time; return; }
+        if (m.Count == cap) {                  // O(N) scan: the wasted work
+            int victim = -1; int[] best = null;
+            foreach (var x in m) {
+                int[] v = x.Value;
+                if (best == null || v[1] < best[1] || (v[1] == best[1] && v[2] < best[2])) { best = v; victim = x.Key; }
+            }
+            m.Remove(victim);
+        }
+        m[key] = new[] { value, 1, ++time };
+    }
+}` }] }
       },
       mcq: { q: 'After moving a key from count 3 to count 4, bucket 3 is empty and minFreq was 3. What is the new minFreq?', options: ['1', '4', 'We must scan all buckets to find it', '3 (unchanged)'], answer: 1, explain: 'No key has count below 3 (minFreq was 3), bucket 3 is now empty, and our key is in bucket 4 → the minimum is exactly 4. No scan needed.' },
       hints: [
@@ -1563,7 +1844,55 @@ public:
         minFreq = 1;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class LFUCache {
+    private readonly int cap;
+    private int minFreq = 0;
+    private readonly Dictionary<int, int> vals = new Dictionary<int, int>();
+    private readonly Dictionary<int, int> counts = new Dictionary<int, int>();
+    // bucket f = keys with frequency f, oldest first; node map gives O(1) removal from the middle
+    private readonly Dictionary<int, LinkedList<int>> buckets = new Dictionary<int, LinkedList<int>>();
+    private readonly Dictionary<int, LinkedListNode<int>> where = new Dictionary<int, LinkedListNode<int>>();
+
+    public LFUCache(int capacity) { cap = capacity; }
+
+    public int Get(int key) {
+        if (!vals.ContainsKey(key)) return -1;
+        Touch(key);
+        return vals[key];
+    }
+
+    public void Put(int key, int value) {
+        if (cap <= 0) return;
+        if (vals.ContainsKey(key)) { vals[key] = value; Touch(key); return; }
+        if (vals.Count == cap) {
+            LinkedList<int> low = buckets[minFreq];
+            int victim = low.First.Value;             // oldest among least used
+            low.RemoveFirst();
+            vals.Remove(victim);
+            counts.Remove(victim);
+            where.Remove(victim);
+        }
+        vals[key] = value;
+        counts[key] = 1;
+        where[key] = Bucket(1).AddLast(key);
+        minFreq = 1;
+    }
+
+    private LinkedList<int> Bucket(int f) {
+        LinkedList<int> b;
+        if (!buckets.TryGetValue(f, out b)) buckets[f] = b = new LinkedList<int>();
+        return b;
+    }
+
+    private void Touch(int key) {
+        int f = counts[key];
+        LinkedList<int> b = buckets[f];
+        b.Remove(where[key]);
+        if (b.Count == 0 && f == minFreq) minFreq++;
+        counts[key] = f + 1;
+        where[key] = Bucket(f + 1).AddLast(key);
+    }
+}` }],
         dry: {
           head: ['call', 'buckets (count: keys, oldest first)', 'minFreq', 'result'],
           rows: [
@@ -1828,7 +2157,69 @@ public:
         return true;
     }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `// Skip list (LeetCode 1206 style): search / add (duplicates allowed) / erase one copy.
+class Skiplist {
+    private const int MAX_LEVEL = 16;             // enough for ~2^16 = 65,536 keys at p = 1/2
+    private const double P = 0.5;                 // chance of being promoted one more level
+
+    private class Node {
+        public readonly int val;
+        public readonly Node[] next;              // next[i] = following node on level i
+        public Node(int val, int levels) { this.val = val; this.next = new Node[levels]; }
+    }
+
+    private readonly Node head = new Node(int.MinValue, MAX_LEVEL);
+    private int level = 1;                        // number of levels currently in use
+    private readonly Random rnd = new Random(42); // fixed seed = repeatable tests
+
+    private int RandomLevel() {
+        int lvl = 1;
+        while (lvl < MAX_LEVEL && rnd.NextDouble() < P) lvl++;   // keep flipping heads
+        return lvl;
+    }
+
+    // Walk down from the top; update[i] = last node on level i whose value < target.
+    private Node[] FindPredecessors(int target) {
+        Node[] update = new Node[MAX_LEVEL];
+        Node cur = head;
+        for (int i = level - 1; i >= 0; i--) {
+            while (cur.next[i] != null && cur.next[i].val < target) cur = cur.next[i];  // ride right
+            update[i] = cur;                                                           // then drop down
+        }
+        return update;
+    }
+
+    public bool Search(int target) {
+        Node cand = FindPredecessors(target)[0].next[0];
+        return cand != null && cand.val == target;
+    }
+
+    public void Add(int num) {
+        Node[] update = FindPredecessors(num);
+        int lvl = RandomLevel();
+        if (lvl > level) {                         // new top levels start from the head
+            for (int i = level; i < lvl; i++) update[i] = head;
+            level = lvl;
+        }
+        Node n = new Node(num, lvl);
+        for (int i = 0; i < lvl; i++) {            // splice into each of its lanes
+            n.next[i] = update[i].next[i];
+            update[i].next[i] = n;
+        }
+    }
+
+    public bool Erase(int num) {
+        Node[] update = FindPredecessors(num);
+        Node target = update[0].next[0];
+        if (target == null || target.val != num) return false;
+        for (int i = 0; i < level; i++) {
+            if (update[i].next[i] != target) break;  // target is not this tall
+            update[i].next[i] = target.next[i];
+        }
+        while (level > 1 && head.next[level - 1] == null) level--;  // shrink empty top lanes
+        return true;
+    }
+}` }] }, { lang: 'java', code: `
       // In real Java code you rarely hand-roll it: ConcurrentSkipListMap is a lock-free sorted map.
       class LeaderboardDemo {
           public static void main(String[] args) {
@@ -1885,7 +2276,24 @@ int main() {
     for (auto it = byScore.lower_bound(1700); it != byScore.end() && it->first >= 1550; ++it)
         cout << "in range 1700..1550: " << it->first << "=" << it->second << "\\n";         // 1610=chen
 }
-` }] }],
+` }, { lang: 'csharp', code: `// In real C# code you rarely hand-roll it: SortedSet / SortedDictionary (red-black trees) give the same ordered queries.
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class LeaderboardDemo {
+    static void Main() {
+        var byScore = new SortedDictionary<int, string>(Comparer<int>.Create((a, b) => b.CompareTo(a)));   // highest first
+        byScore[1500] = "asha";
+        byScore[1720] = "ben";
+        byScore[1610] = "chen";
+        var top = byScore.First();
+        Console.WriteLine("top: " + top.Key + "=" + top.Value);                                  // 1720=ben
+        Console.WriteLine("first score <= 1650: " + byScore.Keys.First(k => k <= 1650));           // reversed order -> 1610
+        var slice = byScore.Where(e => e.Key <= 1700 && e.Key >= 1550).Select(e => e.Key + "=" + e.Value);
+        Console.WriteLine("scores 1700..1550: {" + string.Join(", ", slice) + "}");                // {1610=chen}
+    }
+}`, run: true }] }],
     codeTitle: ['Skip list from scratch','A library sorted map (Java ConcurrentSkipListMap) and its equivalents'],
     viz: {
       title: 'Skip list search and insert: ride the express lanes, then drop down',
@@ -2134,7 +2542,27 @@ public:
         c->next = c->next->next;
         return true;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class SortedListBrute {
+    private class N { public int v; public N next; public N(int v) { this.v = v; } }
+    private readonly N head = new N(int.MinValue);
+    public bool Search(int t) {
+        N c = head.next;
+        while (c != null && c.v < t) c = c.next;   // O(N) walk
+        return c != null && c.v == t;
+    }
+    public void Add(int x) {
+        N c = head;
+        while (c.next != null && c.next.v < x) c = c.next;
+        N n = new N(x); n.next = c.next; c.next = n;
+    }
+    public bool Erase(int x) {
+        N c = head;
+        while (c.next != null && c.next.v < x) c = c.next;
+        if (c.next == null || c.next.v != x) return false;
+        c.next = c.next.next;
+        return true;
+    }
+}` }] }
       },
       mcq: { q: 'During insert, what does update[i] hold?', options: ['The new node\'s height', 'The last node on lane i whose value is less than the new key', 'The first node on lane i greater than the key', 'A copy of lane i'], answer: 1, explain: 'It is where the search dropped down from lane i — the new node must be spliced right after it on that lane.' },
       hints: [
@@ -2352,7 +2780,50 @@ public:
         return true;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Skiplist {
+    private const int MAX = 16;
+    private class Node {
+        public int val; public Node[] next;
+        public Node(int v, int h) { val = v; next = new Node[h]; }
+    }
+    private readonly Node head = new Node(-1, MAX);
+    private int level = 1;
+    private readonly Random rnd = new Random();
+
+    private Node[] Preds(int t) {
+        Node[] up = new Node[MAX];
+        Node c = head;
+        for (int i = level - 1; i >= 0; i--) {
+            while (c.next[i] != null && c.next[i].val < t) c = c.next[i];
+            up[i] = c;
+        }
+        return up;
+    }
+
+    public bool Search(int target) {
+        Node n = Preds(target)[0].next[0];
+        return n != null && n.val == target;
+    }
+
+    public void Add(int num) {
+        Node[] up = Preds(num);
+        int h = 1;
+        while (h < MAX && rnd.Next(2) == 0) h++;
+        for (int i = level; i < h; i++) up[i] = head;
+        level = Math.Max(level, h);
+        Node n = new Node(num, h);
+        for (int i = 0; i < h; i++) { n.next[i] = up[i].next[i]; up[i].next[i] = n; }
+    }
+
+    public bool Erase(int num) {
+        Node[] up = Preds(num);
+        Node t = up[0].next[0];
+        if (t == null || t.val != num) return false;
+        for (int i = 0; i < level && up[i].next[i] == t; i++) up[i].next[i] = t.next[i];
+        while (level > 1 && head.next[level - 1] == null) level--;
+        return true;
+    }
+}` }],
         dry: {
           head: ['call', 'walk / predecessors', 'height (coin flips)', 'result'],
           rows: [
@@ -2592,7 +3063,57 @@ int main() {
     cout << "m=" << f.bitsCount() << " bits, k=" << f.hashes() << ", measured FP rate = " << fp / 10000.0 << "\\n";
     cout << "user42 -> " << boolalpha << f.mightContain("user42") << "\\n";   // always true: no false negatives
 }
-` }] }, { lang: 'python', run: true, title: 'Measure the false-positive rate yourself (runnable Python)', code: `
+` }, { lang: 'csharp', code: `// A Bloom filter with double hashing: position_i = h1 + i * h2 (mod m)  [Kirsch & Mitzenmacher].
+using System;
+using System.Collections;
+
+class BloomFilter {
+    private readonly BitArray bits;
+    public readonly int m, k;
+
+    // Size the filter from the expected item count n and target false-positive rate p.
+    public BloomFilter(int n, double p) {
+        this.m = (int)Math.Ceiling(-n * Math.Log(p) / (Math.Log(2) * Math.Log(2)));
+        this.k = Math.Max(1, (int)Math.Round((double)m / n * Math.Log(2)));
+        this.bits = new BitArray(m);
+    }
+
+    private static int H1(string s) {               // polynomial hash (same recipe as Java's String.hashCode)
+        int h = 0;
+        unchecked { foreach (char c in s) h = 31 * h + c; }
+        return h;
+    }
+
+    private static int H2(string s) {               // FNV-1a: a second, independent-ish hash
+        int h = unchecked((int)0x811C9DC5);
+        unchecked { foreach (char c in s) { h ^= c; h *= 16777619; } }
+        return h | 1;                               // odd step so positions differ for every i
+    }
+
+    private int Index(string s, int i) {
+        int combined = unchecked(H1(s) + i * H2(s));
+        return ((combined % m) + m) % m;            // floor mod: never negative
+    }
+
+    public void Add(string s) {
+        for (int i = 0; i < k; i++) bits[Index(s, i)] = true;
+    }
+
+    public bool MightContain(string s) {
+        for (int i = 0; i < k; i++)
+            if (!bits[Index(s, i)]) return false;       // a single 0 bit = definitely absent
+        return true;                                    // all 1 = probably present
+    }
+
+    static void Main() {
+        var f = new BloomFilter(1000, 0.01);
+        for (int i = 0; i < 1000; i++) f.Add("user" + i);
+        int fp = 0;
+        for (int i = 1000; i < 11000; i++) if (f.MightContain("user" + i)) fp++;
+        Console.WriteLine("m=" + f.m + " bits, k=" + f.k + ", measured FP rate = " + fp / 10000.0);
+        Console.WriteLine("user42 -> " + f.MightContain("user42"));   // always True: no false negatives
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Measure the false-positive rate yourself (runnable Python)', code: `
 import math, hashlib
 
 class Bloom:
@@ -2741,7 +3262,11 @@ class ExactSet {
 public:
     void add(const string& s) { seen.insert(s); }
     bool mightContain(const string& s) { return seen.count(s) > 0; }
-};` }] }
+};` }, { lang: 'csharp', code: `public class ExactSet {
+    private readonly HashSet<string> seen = new HashSet<string>();   // exact but memory-hungry
+    public void Add(string s) { seen.Add(s); }
+    public bool MightContain(string s) { return seen.Contains(s); }
+}` }] }
       },
       mcq: { q: 'mightContain(x) finds one of x\'s k bits equal to 0. What can you conclude?', options: ['x was probably added', 'x was definitely never added', 'x was added and later deleted', 'Nothing — try again with more hashes'], answer: 1, explain: 'Adding x would have set all its k bits to 1, and bits are never cleared. One 0 bit proves x was never added — Bloom filters have no false negatives.' },
       hints: [
@@ -2932,7 +3457,53 @@ public:
         return pow(1 - exp(-(double)k * n / m), k);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class BloomFilter {
+    private readonly bool[] bits;
+    private readonly int m, k;
+    private long n = 0;
+
+    public BloomFilter(int m, int k) {
+        this.m = m;
+        this.k = k;
+        this.bits = new bool[m];
+    }
+
+    // Polynomial string hash (31 * h + c, wrapping): the first hash
+    private static int Poly(string s) {
+        int h = 0;
+        unchecked { foreach (char c in s) h = 31 * h + c; }
+        return h;
+    }
+
+    // FNV-1a: the second hash
+    private static int Fnv1a(string s) {
+        int h = unchecked((int)0x811C9DC5);
+        unchecked { foreach (char c in s) { h ^= c; h *= 16777619; } }
+        return h;
+    }
+
+    private int Pos(int h1, int h2, int i) {
+        int x = unchecked(h1 + i * h2);
+        return ((x % m) + m) % m;                        // floor mod: never negative
+    }
+
+    public void Add(string s) {
+        int h1 = Poly(s), h2 = Fnv1a(s) | 1;
+        for (int i = 0; i < k; i++) bits[Pos(h1, h2, i)] = true;
+        n++;
+    }
+
+    public bool MightContain(string s) {
+        int h1 = Poly(s), h2 = Fnv1a(s) | 1;
+        for (int i = 0; i < k; i++)
+            if (!bits[Pos(h1, h2, i)]) return false;      // proof of absence
+        return true;
+    }
+
+    public double EstimatedFpRate() {
+        return Math.Pow(1 - Math.Exp(-(double)k * n / m), k);
+    }
+}` }],
         dry: {
           head: ['call', 'positions (k = 2, m = 16)', 'bits set after', 'answer'],
           rows: [
@@ -3208,7 +3779,60 @@ int main() {
     for (auto& s : hr.replicasFor("key7", 3)) reps += (reps.empty() ? "" : ", ") + s;
     cout << "replicas of key7: [" << reps << "]\\n";
 }
-` }] }, { lang: 'python', run: true, title: 'Mod-N vs ring: count how many keys move (runnable Python)', code: `
+` }, { lang: 'csharp', code: `// Consistent hash ring with virtual nodes, backed by a sorted set (a red-black tree) of positions.
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class HashRing {
+    private readonly SortedSet<long> positions = new SortedSet<long>();
+    private readonly Dictionary<long, string> owner = new Dictionary<long, string>();
+    private readonly int vnodes;
+
+    public HashRing(int vnodes) { this.vnodes = vnodes; }
+
+    // 64-bit FNV-1a: fast, decent spread. Production systems use MurmurHash3 / xxHash.
+    static long Hash(string s) {
+        long h = unchecked((long)0xcbf29ce484222325UL);
+        unchecked { foreach (char c in s) { h ^= c; h *= 0x100000001b3L; } }
+        return h & long.MaxValue;                 // keep it non-negative for a clean ring
+    }
+
+    public void AddServer(string server) {
+        for (int i = 0; i < vnodes; i++) { long h = Hash(server + "#" + i); positions.Add(h); owner[h] = server; }
+    }
+
+    public void RemoveServer(string server) {
+        for (int i = 0; i < vnodes; i++) { long h = Hash(server + "#" + i); positions.Remove(h); owner.Remove(h); }
+    }
+
+    // First vnode clockwise from the key's position; wrap to the smallest if none.
+    public string ServerFor(string key) {
+        if (positions.Count == 0) throw new InvalidOperationException("no servers");
+        var ahead = positions.GetViewBetween(Hash(key), long.MaxValue);
+        return owner[ahead.Count > 0 ? ahead.Min : positions.Min];
+    }
+
+    // R distinct physical servers for replication (Dynamo-style preference list).
+    public List<string> ReplicasFor(string key, int r) {
+        var picked = new List<string>();
+        foreach (long p in positions.GetViewBetween(Hash(key), long.MaxValue)) { if (picked.Count == r) break; if (!picked.Contains(owner[p])) picked.Add(owner[p]); }
+        foreach (long p in positions) { if (picked.Count == r) break; if (!picked.Contains(owner[p])) picked.Add(owner[p]); }   // wrap around
+        return picked;
+    }
+
+    static void Main() {
+        var hr = new HashRing(100);
+        foreach (string s in new[] { "A", "B", "C", "D" }) hr.AddServer(s);
+        var before = new Dictionary<string, string>();
+        for (int i = 0; i < 10000; i++) before["key" + i] = hr.ServerFor("key" + i);
+        hr.AddServer("E");
+        int moved = 0;
+        for (int i = 0; i < 10000; i++) if (before["key" + i] != hr.ServerFor("key" + i)) moved++;
+        Console.WriteLine("keys moved after adding E: " + moved + " of 10000 (ideal = 1/5 = 2000)");
+        Console.WriteLine("replicas of key7: [" + string.Join(", ", hr.ReplicasFor("key7", 3)) + "]");
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Mod-N vs ring: count how many keys move (runnable Python)', code: `
 import bisect, hashlib
 
 def h(s):
@@ -3462,7 +4086,31 @@ public:
         }
         return names[(best ? best : smallest)->second];
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class RingBrute {
+    private readonly List<long[]> pts = new List<long[]>();   // {position, serverIndex}
+    private readonly List<string> names = new List<string>();
+    private readonly int v;
+    public RingBrute(int v) { this.v = v; }
+    static long Hash(string s) {
+        long h = unchecked((long)0xcbf29ce484222325UL);
+        unchecked { foreach (char c in s) { h ^= c; h *= 0x100000001b3L; } }
+        return h & long.MaxValue;
+    }
+    public void AddServer(string s) {
+        names.Add(s);
+        for (int i = 0; i < v; i++) pts.Add(new[] { Hash(s + "#" + i), (long)names.Count - 1 });
+    }
+    public string GetServer(string key) {
+        if (pts.Count == 0) return null;
+        long h = Hash(key);
+        long[] best = null, smallest = null;
+        foreach (var p in pts) {                     // O(V) scan per lookup
+            if (p[0] >= h && (best == null || p[0] < best[0])) best = p;
+            if (smallest == null || p[0] < smallest[0]) smallest = p;
+        }
+        return names[(int)(best != null ? best : smallest)[1]];
+    }
+}` }] }
       },
       mcq: { q: 'hash(key) is larger than every vnode position on the ring. Who owns the key?', options: ['Nobody — return null', 'The server with the largest position', 'The server with the smallest position (wrap around)', 'A random server'], answer: 2, explain: 'The ring is a circle: walking clockwise past the largest position brings you back to position 0, so the first vnode you meet is the smallest one.' },
       hints: [
@@ -3628,7 +4276,38 @@ public:
         return it->second;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Ring {
+    private readonly SortedSet<long> positions = new SortedSet<long>();            // ordered ring positions
+    private readonly Dictionary<long, string> owner = new Dictionary<long, string>();
+    private readonly int v;
+
+    public Ring(int v) { this.v = v; }
+
+    static long Hash(string s) {
+        long h = unchecked((long)0xcbf29ce484222325UL);
+        unchecked { foreach (char c in s) { h ^= c; h *= 0x100000001b3L; } }
+        return h & long.MaxValue;
+    }
+
+    public void AddServer(string s) {
+        for (int i = 0; i < v; i++) { long h = Hash(s + "#" + i); positions.Add(h); owner[h] = s; }
+    }
+
+    public void RemoveServer(string s) {
+        for (int i = 0; i < v; i++) {
+            long h = Hash(s + "#" + i);
+            string cur;
+            if (owner.TryGetValue(h, out cur) && cur == s) { owner.Remove(h); positions.Remove(h); }   // remove only if still owned by s
+        }
+    }
+
+    public string GetServer(string key) {
+        if (positions.Count == 0) return null;
+        var ahead = positions.GetViewBetween(Hash(key), long.MaxValue);   // first vnode clockwise
+        long pos = ahead.Count > 0 ? ahead.Min : positions.Min;            // wrap around the circle
+        return owner[pos];
+    }
+}` }],
         dry: {
           head: ['call', 'ring (pos → server, simplified 0–99)', 'lookup', 'result'],
           rows: [
@@ -3785,7 +4464,38 @@ public:
         return pos == v.begin() ? "" : prev(pos)->second;
     }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `// LeetCode 981: append-only version lists + "floor" binary search.
+class TimeMap {
+    // Parallel lists keep the timestamps unboxed (faster, less memory).
+    private class Versions {
+        public readonly List<int> times = new List<int>();
+        public readonly List<string> values = new List<string>();
+    }
+    private readonly Dictionary<string, Versions> store = new Dictionary<string, Versions>();
+
+    public void Set(string key, string value, int timestamp) {
+        Versions v;
+        if (!store.TryGetValue(key, out v)) store[key] = v = new Versions();
+        v.times.Add(timestamp);          // timestamps strictly increase -> list stays sorted
+        v.values.Add(value);
+    }
+
+    public string Get(string key, int timestamp) {
+        Versions v;
+        if (!store.TryGetValue(key, out v)) return "";
+        int lo = 0, hi = v.times.Count - 1, ans = -1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;            // overflow-safe midpoint
+            if (v.times[mid] <= timestamp) {         // candidate: maybe a later one fits too
+                ans = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;                         // too new, go left
+            }
+        }
+        return ans == -1 ? "" : v.values[ans];
+    }
+}` }] }, { lang: 'java', code: `
       // Out-of-order timestamps: one TreeMap per key; floorEntry does the binary search for us.
       class TimeMapAnyOrder {
           private final Map<String, TreeMap<Long, String>> store = new HashMap<>();
@@ -3868,7 +4578,27 @@ public:
         return pos == it->second.begin() ? "" : prev(pos)->second;   // largest time <= ts
     }
 };
-` }] }],
+` }, { lang: 'csharp', code: `// Out-of-order timestamps: one sorted structure per key; the floor lookup is a binary search over its keys.
+class TimeMapAnyOrder {
+    private readonly Dictionary<string, SortedList<long, string>> store = new Dictionary<string, SortedList<long, string>>();
+
+    public void Set(string key, string value, long ts) {
+        SortedList<long, string> t;
+        if (!store.TryGetValue(key, out t)) store[key] = t = new SortedList<long, string>();
+        t[ts] = value;                                                        // keeps keys sorted
+    }
+
+    public string Get(string key, long ts) {
+        SortedList<long, string> t;
+        if (!store.TryGetValue(key, out t)) return "";
+        int lo = 0, hi = t.Count - 1, ans = -1;
+        while (lo <= hi) {                                                    // largest time <= ts
+            int mid = (lo + hi) >> 1;
+            if (t.Keys[mid] <= ts) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+        }
+        return ans == -1 ? "" : t.Values[ans];
+    }
+}` }] }],
     codeTitle: ['TimeMap with append + binary search','Out-of-order variant: a sorted map and floor lookup'],
     viz: {
       title: 'Time-based get: binary search for the last version at or before t',
@@ -4029,7 +4759,30 @@ public:
         return prev(it)->second;
     }
 };
-` }] }
+` }, { lang: 'csharp', code: `class SnapshotArray {
+    private readonly List<int[]>[] hist;   // per index: list of {snapId, value}
+    private int snapId = 0;
+    public SnapshotArray(int length) {
+        hist = new List<int[]>[length];
+        for (int i = 0; i < length; i++) { hist[i] = new List<int[]>(); hist[i].Add(new[] { 0, 0 }); }
+    }
+    public void Set(int index, int val) {
+        List<int[]> h = hist[index];
+        int[] last = h[h.Count - 1];
+        if (last[0] == snapId) last[1] = val;          // overwrite within the same snapshot
+        else h.Add(new[] { snapId, val });
+    }
+    public int Snap() { return snapId++; }
+    public int Get(int index, int sid) {
+        List<int[]> h = hist[index];
+        int lo = 0, hi = h.Count - 1, ans = 0;
+        while (lo <= hi) {
+            int mid = (lo + hi) >> 1;
+            if (h[mid][0] <= sid) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+        }
+        return h[ans][1];
+    }
+}` }] }
       },
       {
         title: 'MVCC: how databases use this exact structure',
@@ -4115,7 +4868,22 @@ public:
             if (l[i].first <= t) return l[i].second;
         return "";
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class TimeMapBrute {
+    private class Version { public int t; public string v; }
+    private readonly Dictionary<string, List<Version>> m = new Dictionary<string, List<Version>>();
+    public void Set(string key, string value, int t) {
+        List<Version> l;
+        if (!m.TryGetValue(key, out l)) m[key] = l = new List<Version>();
+        l.Add(new Version { t = t, v = value });
+    }
+    public string Get(string key, int t) {
+        List<Version> l;
+        if (!m.TryGetValue(key, out l)) return "";
+        for (int i = l.Count - 1; i >= 0; i--)             // O(V) linear scan
+            if (l[i].t <= t) return l[i].v;
+        return "";
+    }
+}` }] }
       },
       mcq: { q: 'Why can set() just append, with no sorting?', options: ['HashMap keeps lists sorted', 'Timestamps for set are strictly increasing, so each new one is the largest', 'Binary search works on unsorted lists', 'Lists sort themselves on insert'], answer: 1, explain: 'The problem guarantees increasing set timestamps, so appending preserves sorted order — set is O(1) and get can binary search.' },
       hints: [
@@ -4221,7 +4989,30 @@ public:
         return pos == v.begin() ? "" : prev(pos)->second;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class TimeMap {
+    private readonly Dictionary<string, List<int>> times = new Dictionary<string, List<int>>();
+    private readonly Dictionary<string, List<string>> vals = new Dictionary<string, List<string>>();
+
+    public void Set(string key, string value, int timestamp) {
+        List<int> t; List<string> v;
+        if (!times.TryGetValue(key, out t)) { times[key] = t = new List<int>(); vals[key] = new List<string>(); }
+        v = vals[key];
+        t.Add(timestamp);
+        v.Add(value);
+    }
+
+    public string Get(string key, int timestamp) {
+        List<int> t;
+        if (!times.TryGetValue(key, out t)) return "";
+        int lo = 0, hi = t.Count - 1, ans = -1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >> 1;
+            if (t[mid] <= timestamp) { ans = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return ans < 0 ? "" : vals[key][ans];
+    }
+}` }],
         dry: {
           head: ['call', 'times[foo]', 'binary search', 'result'],
           rows: [
@@ -4399,7 +5190,36 @@ public:
         return ans;
     }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `// Peeking iterator (LeetCode 284): wrap any IEnumerator and cache one element ahead.
+class PeekingIterator<T> {
+    private readonly IEnumerator<T> it;
+    private T nextVal;          // the element Peek() would return
+    private bool has;           // is nextVal valid?
+
+    public PeekingIterator(IEnumerator<T> iterator) {
+        it = iterator;
+        Advance();              // pre-fetch the first element
+    }
+
+    private void Advance() {
+        has = it.MoveNext();
+        nextVal = has ? it.Current : default(T);
+    }
+
+    public T Peek() {
+        if (!has) throw new InvalidOperationException("no more elements");
+        return nextVal;
+    }
+
+    public bool HasNext() { return has; }    // idempotent: just reads a flag
+
+    public T Next() {
+        if (!has) throw new InvalidOperationException("no more elements");
+        T ans = nextVal;
+        Advance();              // keep exactly one element cached
+        return ans;
+    }
+}` }] }, { lang: 'java', code: `
       // Zigzag / round-robin over k iterators (LeetCode 281 generalised).
       class RoundRobin implements Iterator<Integer> {
           private final Deque<Iterator<Integer>> q = new ArrayDeque<>();
@@ -4475,7 +5295,28 @@ public:
         return lists[k][i];
     }
 };
-` }] }, { lang: 'python', run: true, title: 'Python generators make lazy iterators almost free (runnable)', code: `
+` }, { lang: 'csharp', code: `// Zigzag / round-robin over k iterators (LeetCode 281 generalised).
+class RoundRobin {
+    // each entry = (enumerator, does it hold a current element?)
+    private readonly Queue<IEnumerator<int>> q = new Queue<IEnumerator<int>>();
+
+    public RoundRobin(IList<IList<int>> lists) {
+        foreach (var l in lists) {
+            var it = l.GetEnumerator();
+            if (it.MoveNext()) q.Enqueue(it);        // skip empty lists up front; Current is now valid
+        }
+    }
+
+    public bool HasNext() { return q.Count > 0; }
+
+    public int Next() {
+        if (q.Count == 0) throw new InvalidOperationException("no more elements");
+        var it = q.Dequeue();
+        int v = it.Current;
+        if (it.MoveNext()) q.Enqueue(it);           // still has items: back of the line
+        return v;
+    }
+}` }] }, { lang: 'python', run: true, title: 'Python generators make lazy iterators almost free (runnable)', code: `
 def flatten(nested):
     """Lazily yield integers from arbitrarily nested lists."""
     for x in nested:
@@ -4628,7 +5469,20 @@ public:
         return v[row][col++];
     }
 };
-` }] }
+` }, { lang: 'csharp', code: `class Vector2D {
+    private readonly int[][] v;
+    private int row = 0, col = 0;
+    public Vector2D(int[][] vec) { v = vec; }
+    private void SkipEmpty() {
+        while (row < v.Length && col == v[row].Length) { row++; col = 0; }   // hop over finished/empty rows
+    }
+    public bool HasNext() { SkipEmpty(); return row < v.Length; }
+    public int Next() {
+        SkipEmpty();
+        if (row >= v.Length) throw new InvalidOperationException("no more elements");
+        return v[row][col++];
+    }
+}` }] }
       },
       {
         title: 'BST iterator: in-order, one node at a time',
@@ -4703,7 +5557,17 @@ public:
 
     bool hasNext() { return !st.empty(); }
 };
-` }] }
+` }, { lang: 'csharp', code: `class BSTIterator {
+    private readonly Stack<TreeNode> st = new Stack<TreeNode>();
+    public BSTIterator(TreeNode root) { PushLeft(root); }
+    private void PushLeft(TreeNode n) { while (n != null) { st.Push(n); n = n.left; } }
+    public bool HasNext() { return st.Count > 0; }
+    public int Next() {
+        TreeNode n = st.Pop();
+        PushLeft(n.right);            // the next smallest values live in the right subtree's left spine
+        return n.val;
+    }
+}` }] }
       },
       {
         title: 'Merging k sorted iterators with a heap',
@@ -4800,7 +5664,21 @@ public:
     EagerNestedIterator(vector<NestedInteger>& nested) { fill(nested); }   // O(N) work + memory up front
     bool hasNext() { return pos < (int)flat.size(); }
     int next() { return flat[pos++]; }
-};` }] }
+};` }, { lang: 'csharp', code: `public interface NestedInteger {
+    bool IsInteger();
+    int GetInteger();
+    IList<NestedInteger> GetList();
+}
+public class EagerNestedIterator {
+    private readonly List<int> flat = new List<int>();
+    private int pos = 0;
+    public EagerNestedIterator(IList<NestedInteger> nested) { Fill(nested); }   // O(N) work + memory up front
+    private void Fill(IList<NestedInteger> l) {
+        foreach (var x in l) { if (x.IsInteger()) flat.Add(x.GetInteger()); else Fill(x.GetList()); }
+    }
+    public bool HasNext() { return pos < flat.Count; }
+    public int Next() { return flat[pos++]; }
+}` }] }
       },
       mcq: { q: 'Input is [[],[[]]]. What must hasNext() do on its first call?', options: ['Return true because the outer list is non-empty', 'Dig through the empty lists, popping them, and return false', 'Throw an exception', 'Return true and let next() handle it'], answer: 1, explain: 'There are no integers at all. hasNext must advance past empty lists until it finds an integer or runs out — otherwise the caller would call next() on nothing.' },
       hints: [
@@ -4936,7 +5814,39 @@ vector<int> flattenAll(string s) {
     while (it.hasNext()) out.push_back(it.next());
     return out;
 }
-`
+`, csharp: `public class Check {
+    class NI : NestedInteger {
+        public int? v; public IList<NestedInteger> l;
+        public bool IsInteger() { return v.HasValue; }
+        public int GetInteger() { return v.Value; }
+        public IList<NestedInteger> GetList() { return l; }
+    }
+
+    // Builds the nested list from JSON text (no recursion, so any depth works), then drains the iterator.
+    public static List<int> FlattenAll(string s) {
+        var st = new Stack<IList<NestedInteger>>();
+        IList<NestedInteger> root = null;
+        int i = 0;
+        while (i < s.Length) {
+            char c = s[i];
+            if (c == '[') {
+                IList<NestedInteger> nl = new List<NestedInteger>();
+                if (st.Count == 0) root = nl; else { var n = new NI(); n.l = nl; st.Peek().Add(n); }
+                st.Push(nl); i++;
+            } else if (c == ']') { st.Pop(); i++; }
+            else if (c == ',') i++;
+            else {
+                int j = i;
+                while (j < s.Length && (s[j] == '-' || char.IsDigit(s[j]))) j++;
+                var n = new NI(); n.v = int.Parse(s.Substring(i, j - i)); st.Peek().Add(n); i = j;
+            }
+        }
+        var it = new NestedIterator(root);
+        var res = new List<int>();
+        while (it.HasNext()) res.Add(it.Next());
+        return res;
+    }
+}`
         }, cases: [
           [['[[1,1],2,[1,1]]'], [1, 1, 2, 1, 1]],
           [['[1,[4,[6]]]'], [1, 4, 6]],
@@ -5077,7 +5987,38 @@ public:
         return pending;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public interface NestedInteger {
+    bool IsInteger();
+    int GetInteger();
+    IList<NestedInteger> GetList();
+}
+
+public class NestedIterator {
+    private readonly Stack<IEnumerator<NestedInteger>> stack = new Stack<IEnumerator<NestedInteger>>();
+    private int? pending = null;         // integer found by HasNext, not yet returned
+
+    public NestedIterator(IList<NestedInteger> nestedList) {
+        stack.Push(nestedList.GetEnumerator());
+    }
+
+    public bool HasNext() {
+        while (pending == null && stack.Count > 0) {
+            var top = stack.Peek();
+            if (!top.MoveNext()) { stack.Pop(); continue; }      // this list is finished
+            NestedInteger x = top.Current;
+            if (x.IsInteger()) pending = x.GetInteger();         // found one: cache it
+            else stack.Push(x.GetList().GetEnumerator());        // dig into the sub-list
+        }
+        return pending != null;
+    }
+
+    public int Next() {
+        if (!HasNext()) throw new InvalidOperationException("no more elements");
+        int ans = pending.Value;
+        pending = null;
+        return ans;
+    }
+}` }],
         dry: {
           head: ['call', 'stack (top on the right)', 'pending', 'returns'],
           rows: [
@@ -5219,7 +6160,29 @@ public:
         return total;
     }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `// LeetCode 362 follow-up: O(1) memory regardless of traffic, using 300 circular buckets.
+class HitCounter {
+    private const int WINDOW = 300;
+    private readonly int[] times = new int[WINDOW];    // which second each bucket currently holds
+    private readonly int[] counts = new int[WINDOW];   // how many hits in that second
+
+    public void Hit(int timestamp) {
+        int i = timestamp % WINDOW;
+        if (times[i] != timestamp) {                // bucket holds an expired second: recycle it
+            times[i] = timestamp;
+            counts[i] = 1;
+        } else {
+            counts[i]++;                            // another hit in the same second
+        }
+    }
+
+    public int GetHits(int timestamp) {
+        int total = 0;
+        for (int i = 0; i < WINDOW; i++)
+            if (counts[i] > 0 && timestamp - times[i] < WINDOW) total += counts[i];   // still in window
+        return total;
+    }
+}` }] }, { lang: 'java', code: `
       // Token bucket rate limiter: smooth limit with bursts up to 'capacity'.
       class TokenBucket {
           private final double capacity, refillPerSec;
@@ -5303,7 +6266,31 @@ public:
         return false;                                              // over the limit: reject (HTTP 429)
     }
 };
-` }] }, { lang: 'python', run: true, title: 'Queue vs buckets on the same trace (runnable Python)', code: `
+` }, { lang: 'csharp', code: `// Token bucket rate limiter: smooth limit with bursts up to 'capacity'.
+class TokenBucket {
+    private readonly double capacity, refillPerSec;
+    private double tokens;
+    private long lastTicks;
+    private readonly object gate = new object();
+
+    public TokenBucket(double capacity, double refillPerSec) {
+        this.capacity = capacity;
+        this.refillPerSec = refillPerSec;
+        this.tokens = capacity;                       // start full: allow an initial burst
+        this.lastTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+    }
+
+    public bool TryAcquire() {
+        lock (gate) {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            double elapsed = (double)(now - lastTicks) / System.Diagnostics.Stopwatch.Frequency;
+            tokens = Math.Min(capacity, tokens + elapsed * refillPerSec);  // lazy refill
+            lastTicks = now;
+            if (tokens >= 1) { tokens -= 1; return true; }
+            return false;                             // over the limit: reject (HTTP 429)
+        }
+    }
+}` }] }, { lang: 'python', run: true, title: 'Queue vs buckets on the same trace (runnable Python)', code: `
 from collections import deque
 
 class QueueCounter:
@@ -5458,7 +6445,15 @@ public:
         return true;
     }
 };
-` }] }
+` }, { lang: 'csharp', code: `class Logger {
+    private readonly Dictionary<string, int> nextAllowed = new Dictionary<string, int>();
+    public bool ShouldPrintMessage(int timestamp, string message) {
+        int allowedAt;
+        if (nextAllowed.TryGetValue(message, out allowedAt) && timestamp < allowedAt) return false;   // still muted
+        nextAllowed[message] = timestamp + 10;
+        return true;
+    }
+}` }] }
       },
       {
         title: 'Distributed hit counting with Redis',
@@ -5523,7 +6518,15 @@ public:
         for (int x : all) if (t - x < 300) c++;       // O(all hits ever)
         return c;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class HitCounterBrute {
+    private readonly List<int> all = new List<int>();
+    public void Hit(int t) { all.Add(t); }           // never cleaned up
+    public int GetHits(int t) {
+        int c = 0;
+        foreach (int x in all) if (t - x < 300) c++;   // O(all hits ever)
+        return c;
+    }
+}` }] }
       },
       mcq: { q: 'In the bucket version, hit(t) finds times[t % 300] != t. Why is it safe to overwrite that bucket?', options: ['Because counts are approximate anyway', 'Because the stored second is at least 300 seconds older than t, so its hits are out of every future window', 'Because buckets are cleared by a timer', 'It is not safe; we must add the counts'], answer: 1, explain: 'Seconds sharing a bucket differ by a multiple of 300; with non-decreasing time the stored one is ≤ t − 300, so it can never be inside (t′ − 300, t′] for any t′ ≥ t.' },
       hints: [
@@ -5618,7 +6621,23 @@ public:
         return total;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class HitCounter {
+    private readonly int[] times = new int[300];
+    private readonly int[] counts = new int[300];
+
+    public void Hit(int timestamp) {
+        int i = timestamp % 300;
+        if (times[i] != timestamp) { times[i] = timestamp; counts[i] = 1; }
+        else counts[i]++;
+    }
+
+    public int GetHits(int timestamp) {
+        int total = 0;
+        for (int i = 0; i < 300; i++)
+            if (timestamp - times[i] < 300) total += counts[i];
+        return total;
+    }
+}` }],
         dry: {
           head: ['call', 'bucket i = t % 300', 'bucket state (time, count)', 'answer'],
           rows: [
@@ -5858,7 +6877,61 @@ public:
         return cur ? cur->top : vector<string>{};
     }
 };
-` }] }],
+` }, { lang: 'csharp', code: `// Autocomplete with a trie whose nodes cache their top-3 sentences (design B).
+class AutocompleteSystem {
+    private class Node {
+        public readonly Dictionary<char, Node> kids = new Dictionary<char, Node>();
+        public readonly List<string> top = new List<string>();     // best <= 3 sentences below this node
+    }
+
+    private readonly Node root = new Node();
+    private readonly Dictionary<string, int> count = new Dictionary<string, int>();
+    private readonly StringBuilder typed = new StringBuilder();
+    private Node cur;                                           // node for what has been typed so far
+    private bool fellOff = false;                               // typed prefix not in the trie
+
+    public AutocompleteSystem(string[] sentences, int[] times) {
+        cur = root;
+        for (int i = 0; i < sentences.Length; i++) Add(sentences[i], times[i]);
+    }
+
+    // Higher count first; ties: smaller string (ordinal) first.
+    private int Better(string a, string b) {
+        int ca = count[a], cb = count[b];
+        return ca != cb ? cb.CompareTo(ca) : string.CompareOrdinal(a, b);
+    }
+
+    private void Add(string s, int times) {
+        int c;
+        count.TryGetValue(s, out c);
+        count[s] = c + times;
+        Node n = root;
+        foreach (char ch in s) {
+            Node kid;
+            if (!n.kids.TryGetValue(ch, out kid)) n.kids[ch] = kid = new Node();
+            n = kid;
+            if (!n.top.Contains(s)) n.top.Add(s);              // s may enter this node's top list
+            n.top.Sort(Better);                                 // at most 4 items: cheap
+            if (n.top.Count > 3) n.top.RemoveAt(3);             // keep only the best 3
+        }
+    }
+
+    public IList<string> Input(char c) {
+        if (c == '#') {                                         // sentence finished: record it, reset
+            Add(typed.ToString(), 1);
+            typed.Length = 0;
+            cur = root;
+            fellOff = false;
+            return new List<string>();
+        }
+        typed.Append(c);
+        if (fellOff) return new List<string>();
+        Node next;
+        if (!cur.kids.TryGetValue(c, out next)) { fellOff = true; return new List<string>(); }
+        cur = next;                                             // one step down — not a walk from the root
+        return new List<string>(cur.top);                       // O(k): read the sticky note
+    }
+}` }] }],
     codeTitle: ['Autocomplete system, top-3 cached per node'],
     viz: {
       title: 'Autocomplete: each keystroke moves one trie step and reads that node\'s top-3',
@@ -6024,7 +7097,21 @@ public:
         if (m.size() > 3) m.resize(3);
         return m;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class AutocompleteBrute {
+    private readonly Dictionary<string, int> cnt = new Dictionary<string, int>();
+    private readonly StringBuilder typed = new StringBuilder();
+    public AutocompleteBrute(string[] s, int[] t) { for (int i = 0; i < s.Length; i++) Bump(s[i], t[i]); }
+    private void Bump(string s, int by) { int c; cnt.TryGetValue(s, out c); cnt[s] = c + by; }
+    public IList<string> Input(char c) {
+        if (c == '#') { Bump(typed.ToString(), 1); typed.Length = 0; return new List<string>(); }
+        typed.Append(c);
+        string p = typed.ToString();
+        var m = new List<string>();
+        foreach (string s in cnt.Keys) if (s.StartsWith(p, StringComparison.Ordinal)) m.Add(s);   // O(N * L) every keystroke
+        m.Sort((a, b) => cnt[a] == cnt[b] ? string.CompareOrdinal(a, b) : cnt[b] - cnt[a]);
+        return m.GetRange(0, Math.Min(3, m.Count));
+    }
+}` }] }
       },
       mcq: { q: 'Two sentences both have count 7: "apple pie" and "apple". Which ranks first?', options: ['"apple pie" — it is longer', '"apple" — a proper prefix is smaller in ASCII/lexicographic order', 'Either; ties are random', 'Neither; ties are excluded'], answer: 1, explain: 'Lexicographic comparison: "apple" runs out of characters first, and a proper prefix compares as smaller. So "apple" comes first.' },
       hints: [
@@ -6206,7 +7293,51 @@ public:
         return cur ? cur->top : vector<string>{};
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class AutocompleteSystem {
+    private class Node {
+        public Dictionary<char, Node> kids = new Dictionary<char, Node>();
+        public List<string> top = new List<string>();
+    }
+    private readonly Node root = new Node();
+    private readonly Dictionary<string, int> cnt = new Dictionary<string, int>();
+    private readonly StringBuilder typed = new StringBuilder();
+    private Node cur;
+
+    public AutocompleteSystem(string[] sentences, int[] times) {
+        cur = root;
+        for (int i = 0; i < sentences.Length; i++) Record(sentences[i], times[i]);
+    }
+
+    private void Record(string s, int add) {
+        int c;
+        cnt.TryGetValue(s, out c);
+        cnt[s] = c + add;
+        Node n = root;
+        foreach (char ch in s) {
+            Node kid;
+            if (!n.kids.TryGetValue(ch, out kid)) n.kids[ch] = kid = new Node();
+            n = kid;
+            if (!n.top.Contains(s)) n.top.Add(s);
+            n.top.Sort((a, b) => {
+                int ca = cnt[a], cb = cnt[b];
+                return ca != cb ? cb - ca : string.CompareOrdinal(a, b);
+            });
+            if (n.top.Count > 3) n.top.RemoveAt(3);
+        }
+    }
+
+    public IList<string> Input(char c) {
+        if (c == '#') {
+            Record(typed.ToString(), 1);
+            typed.Length = 0;
+            cur = root;
+            return new List<string>();
+        }
+        typed.Append(c);
+        if (cur != null) { Node next; cur = cur.kids.TryGetValue(c, out next) ? next : null; }   // null = fell off the trie
+        return cur == null ? new List<string>() : new List<string>(cur.top);
+    }
+}` }],
         dry: {
           head: ['input', 'typed', 'node', 'returned'],
           rows: [
@@ -6524,7 +7655,77 @@ int main() {
         cout << name << ": " << c.stats() << "\\n";
     }
 }
-` }] }, { lang: 'python', run: true, title: 'Hit-rate showdown on a skewed (Zipf-like) workload (runnable Python)', code: `
+` }, { lang: 'csharp', code: `// Strategy pattern: one cache, pluggable eviction policies. Great for "compare LRU vs FIFO" follow-ups.
+using System;
+using System.Collections.Generic;
+
+interface IEvictionPolicy<K> {
+    void OnInsert(K key);
+    void OnAccess(K key);
+    K Victim();                 // choose and forget the key to evict
+    void OnRemove(K key);
+}
+
+// Insertion-ordered set: LinkedList for order + node map for O(1) removal (what LinkedHashSet does in Java).
+class OrderedKeys<K> {
+    readonly LinkedList<K> order = new LinkedList<K>();
+    readonly Dictionary<K, LinkedListNode<K>> where = new Dictionary<K, LinkedListNode<K>>();
+    public void AddLast(K k) { if (!where.ContainsKey(k)) where[k] = order.AddLast(k); }
+    public void Remove(K k) { LinkedListNode<K> n; if (where.TryGetValue(k, out n)) { order.Remove(n); where.Remove(k); } }
+    public K First() { return order.First.Value; }
+}
+
+class LruPolicy<K> : IEvictionPolicy<K> {
+    private readonly OrderedKeys<K> order = new OrderedKeys<K>();                 // first = least recent
+    public void OnInsert(K k) { order.AddLast(k); }
+    public void OnAccess(K k) { order.Remove(k); order.AddLast(k); }               // move to the end = most recent
+    public K Victim() { K k = order.First(); order.Remove(k); return k; }
+    public void OnRemove(K k) { order.Remove(k); }
+}
+
+class FifoPolicy<K> : IEvictionPolicy<K> {
+    private readonly OrderedKeys<K> order = new OrderedKeys<K>();                 // first = oldest insert
+    public void OnInsert(K k) { order.AddLast(k); }
+    public void OnAccess(K k) { }                                                  // FIFO ignores reads
+    public K Victim() { K k = order.First(); order.Remove(k); return k; }
+    public void OnRemove(K k) { order.Remove(k); }
+}
+
+class PolicyCache<K, V> {
+    private readonly int capacity;
+    private readonly Dictionary<K, V> data = new Dictionary<K, V>();
+    private readonly IEvictionPolicy<K> policy;
+    private int hits, misses;
+
+    public PolicyCache(int capacity, IEvictionPolicy<K> policy) { this.capacity = capacity; this.policy = policy; }
+
+    public bool TryGet(K key, out V value) {
+        if (!data.TryGetValue(key, out value)) { misses++; return false; }
+        hits++;
+        policy.OnAccess(key);
+        return true;
+    }
+
+    public void Put(K key, V value) {
+        if (data.ContainsKey(key)) { data[key] = value; policy.OnAccess(key); return; }
+        if (data.Count == capacity) data.Remove(policy.Victim());
+        data[key] = value;
+        policy.OnInsert(key);
+    }
+
+    public string Stats() { return "hits=" + hits + " misses=" + misses; }
+}
+
+class Program {
+    static void Main() {
+        int[] trace = { 1, 2, 3, 1, 4, 1, 2, 5, 1, 2, 3, 4, 5 };
+        foreach (string name in new[] { "LRU", "FIFO" }) {
+            var c = new PolicyCache<int, int>(3, name == "LRU" ? (IEvictionPolicy<int>)new LruPolicy<int>() : new FifoPolicy<int>());
+            foreach (int k in trace) { int v; if (!c.TryGet(k, out v)) c.Put(k, k * 10); }   // read-through on miss
+            Console.WriteLine(name + ": " + c.Stats());
+        }
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Hit-rate showdown on a skewed (Zipf-like) workload (runnable Python)', code: `
 import random
 from collections import OrderedDict, defaultdict
 
@@ -6753,7 +7954,15 @@ public:
     void remove(int k) {
         pairs.erase(remove_if(pairs.begin(), pairs.end(), [&](auto& p) { return p.first == k; }), pairs.end());
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class MyHashMapBrute {
+    private readonly List<int[]> pairs = new List<int[]>();
+    public void Put(int k, int v) {
+        foreach (var p in pairs) if (p[0] == k) { p[1] = v; return; }   // O(N) scan
+        pairs.Add(new[] { k, v });
+    }
+    public int Get(int k) { foreach (var p in pairs) if (p[0] == k) return p[1]; return -1; }
+    public void Remove(int k) { pairs.RemoveAll(p => p[0] == k); }
+}` }] }
     },
     mcq: { q: 'Two different keys land in the same bucket. With separate chaining, what happens?', options: ['The second key overwrites the first', 'Both live in that bucket\'s list; lookups compare keys', 'The map must resize immediately', 'The second key is rejected'], answer: 1, explain: 'Chaining stores colliding entries together in a small list; get walks the list comparing keys. Resizing keeps those lists short on average.' },
     hints: [
@@ -6881,7 +8090,39 @@ public:
         buckets[key % B].remove_if([key](const pair<int, int>& e) { return e.first == key; });
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class MyHashMap {
+    private class Node {
+        public int key, val; public Node next;
+        public Node(int k, int v, Node n) { key = k; val = v; next = n; }
+    }
+    private const int B = 2069;                       // prime bucket count
+    private readonly Node[] buckets = new Node[B];
+
+    private int Idx(int key) { return key % B; }
+
+    public void Put(int key, int value) {
+        int i = Idx(key);
+        for (Node n = buckets[i]; n != null; n = n.next)
+            if (n.key == key) { n.val = value; return; }  // update in place
+        buckets[i] = new Node(key, value, buckets[i]);  // prepend new entry
+    }
+
+    public int Get(int key) {
+        for (Node n = buckets[Idx(key)]; n != null; n = n.next)
+            if (n.key == key) return n.val;
+        return -1;
+    }
+
+    public void Remove(int key) {
+        int i = Idx(key);
+        Node dummy = new Node(-1, -1, buckets[i]), prev = dummy;
+        while (prev.next != null) {
+            if (prev.next.key == key) { prev.next = prev.next.next; break; }
+            prev = prev.next;
+        }
+        buckets[i] = dummy.next;
+    }
+}` }],
         complexity: `<p>Average O(1 + N/B) per operation; O(N) worst case if all keys collide. Space O(B + N).</p>`,
       followUps: ['Add resizing with a load factor.', 'Use open addressing (linear probing) — how does delete work (tombstones)?', 'How does Java 8 HashMap protect against long chains?']
     }
@@ -6940,7 +8181,17 @@ public:
         printed.push_back({t, m});
         return true;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class LoggerBrute {
+    private readonly List<(int t, string m)> printed = new List<(int t, string m)>();
+    public bool ShouldPrintMessage(int t, string m) {
+        for (int i = printed.Count - 1; i >= 0; i--) {            // O(N) scan
+            var p = printed[i];
+            if (p.m == m && t - p.t < 10) return false;
+        }
+        printed.Add((t, m));
+        return true;
+    }
+}` }] }
     },
     mcq: { q: 'What is the minimum state per message needed?', options: ['All timestamps it appeared at', 'The next time it is allowed to print', 'A count of prints', 'Nothing; use a global timer'], answer: 1, explain: 'One number per message — nextAllowed = lastPrinted + 10 — decides every future call.' },
     hints: [
@@ -7008,7 +8259,16 @@ public:
         return true;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Logger {
+    private readonly Dictionary<string, int> nextAllowed = new Dictionary<string, int>();
+
+    public bool ShouldPrintMessage(int timestamp, string message) {
+        int allowedAt;
+        if (nextAllowed.TryGetValue(message, out allowedAt) && timestamp < allowedAt) return false;   // still muted
+        nextAllowed[message] = timestamp + 10;
+        return true;
+    }
+}` }],
         complexity: `<p>O(|message|) per call for hashing; O(distinct messages) memory (bounded to the last 10 seconds' messages with cleanup).</p>`,
       followUps: ['Bound the memory to messages seen in the last 10 seconds.', 'Make it thread-safe for many producers.', 'Limit each message to at most 3 prints per minute.']
     }
@@ -7060,7 +8320,15 @@ public:
         for (int x : all) if (x >= t - 3000) c++;     // rescans expired pings forever
         return c;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class RecentCounterBrute {
+    private readonly List<int> all = new List<int>();
+    public int Ping(int t) {
+        all.Add(t);
+        int c = 0;
+        foreach (int x in all) if (x >= t - 3000) c++;   // rescans expired pings forever
+        return c;
+    }
+}` }] }
     },
     mcq: { q: 'Times are strictly increasing. Which end of the queue do expired pings leave from?', options: ['The back', 'The front', 'Either', 'They never leave'], answer: 1, explain: 'The oldest pings are at the front, and they expire first. Pop from the front while front &lt; t − 3000.' },
     hints: [
@@ -7128,7 +8396,15 @@ public:
         return (int)q.size();
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class RecentCounter {
+    private readonly Queue<int> q = new Queue<int>();
+
+    public int Ping(int t) {
+        q.Enqueue(t);
+        while (q.Peek() < t - 3000) q.Dequeue();      // drop pings outside [t-3000, t]
+        return q.Count;
+    }
+}` }],
         complexity: `<p>Amortised O(1) per ping; memory O(pings within 3000 ms) — at most 3001 since times are strictly increasing integers.</p>`,
       followUps: ['Times can repeat (non-decreasing). Does anything change?', 'Use a fixed-size circular array instead of a deque.']
     }
@@ -7192,7 +8468,18 @@ public:
         for (int i = from; i < (int)all.size(); i++) s += all[i];    // O(size) re-sum
         return (double)s / (all.size() - from);
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class MovingAverageBrute {
+    private readonly int size;
+    private readonly List<int> all = new List<int>();
+    public MovingAverageBrute(int size) { this.size = size; }
+    public double Next(int val) {
+        all.Add(val);
+        int from = Math.Max(0, all.Count - size);
+        long s = 0;
+        for (int i = from; i < all.Count; i++) s += all[i];   // O(size) re-sum
+        return (double)s / (all.Count - from);
+    }
+}` }] }
     },
     mcq: { q: 'The window is full and a new value arrives. How do you update the running sum in O(1)?', options: ['Recompute it from scratch', 'sum += new − oldest', 'sum = new', 'sum *= size'], answer: 1, explain: 'Exactly one value enters and one leaves, so add the new one and subtract the evicted one.' },
     hints: [
@@ -7278,7 +8565,22 @@ public:
         return (double)sum / min<long long>(count, buf.size());
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class MovingAverage {
+    private readonly int[] buf;
+    private int count = 0;
+    private long sum = 0;
+
+    public MovingAverage(int size) { buf = new int[size]; }
+
+    public double Next(int val) {
+        int i = count % buf.Length;
+        if (count >= buf.Length) sum -= buf[i];   // evict the oldest value in this slot
+        buf[i] = val;
+        sum += val;
+        count++;
+        return (double)sum / Math.Min(count, buf.Length);
+    }
+}` }],
         complexity: `<p>O(1) per call, O(size) memory.</p>`,
       followUps: ['Exponential moving average needs no buffer — how?', 'Moving median of the window (two heaps with lazy deletion).']
     }
@@ -7340,7 +8642,14 @@ public:
     int peek() { return all[i]; }
     int next() { return all[i++]; }
     bool hasNext() { return i < (int)all.size(); }
-};` }] }
+};` }, { lang: 'csharp', code: `public class PeekingCopy {
+    private readonly List<int> all = new List<int>();
+    private int i = 0;
+    public PeekingCopy(IEnumerator<int> it) { while (it.MoveNext()) all.Add(it.Current); }   // eager copy
+    public int Peek() { return all[i]; }
+    public int Next() { return all[i++]; }
+    public bool HasNext() { return i < all.Count; }
+}` }] }
     },
     mcq: { q: 'What is the smallest extra state that makes peek() possible?', options: ['A copy of all elements', 'One cached element plus a "has cached" flag', 'A stack', 'A counter of calls'], answer: 1, explain: 'Pre-fetch exactly one element ahead. peek returns it, next returns it and pre-fetches the following one.' },
     hints: [
@@ -7424,7 +8733,18 @@ vector<int> runPeeking(vector<int> data, vector<string> ops) {
     }
     return out;
 }
-`
+`, csharp: `public class Check {
+    public static List<int> RunPeeking(int[] data, string[] ops) {
+        var p = new PeekingIterator(((IEnumerable<int>)data).GetEnumerator());
+        var res = new List<int>();
+        foreach (string op in ops) {
+            if (op == "next") res.Add(p.Next());
+            else if (op == "peek") res.Add(p.Peek());
+            else res.Add(p.HasNext() ? 1 : 0);
+        }
+        return res;
+    }
+}`
         }, cases: [
           [[[1, 2, 3], ['next', 'peek', 'next', 'next', 'hasNext']], [1, 2, 2, 3, 0]],
           [[[5], ['hasNext', 'peek', 'peek', 'next', 'hasNext']], [1, 5, 5, 5, 0]],
@@ -7534,7 +8854,31 @@ public:
 
     bool hasNext() const { return has; }
 };
-` }],
+` }, { lang: 'csharp', code: `public class PeekingIterator {
+    private readonly IEnumerator<int> it;
+    private int cached;
+    private bool has;
+
+    public PeekingIterator(IEnumerator<int> iterator) {
+        it = iterator;
+        Fill();
+    }
+
+    private void Fill() {
+        has = it.MoveNext();
+        cached = has ? it.Current : 0;
+    }
+
+    public int Peek() { return cached; }
+
+    public int Next() {
+        int ans = cached;
+        Fill();
+        return ans;
+    }
+
+    public bool HasNext() { return has; }
+}` }],
         complexity: `<p>O(1) per call, O(1) extra memory.</p>`,
       followUps: ['Make it generic over T.', 'Support peek(k) — look k elements ahead (a small queue buffer).', 'Why can this iterator not support remove() after peek()?']
     }
@@ -7603,7 +8947,18 @@ public:
 
     int next() { return out[i++]; }
     bool hasNext() { return i < (int)out.size(); }
-};` }] }
+};` }, { lang: 'csharp', code: `public class ZigzagEager {
+    private readonly List<int> res = new List<int>();
+    private int i = 0;
+    public ZigzagEager(IList<int> a, IList<int> b) {
+        for (int j = 0; j < Math.Max(a.Count, b.Count); j++) {
+            if (j < a.Count) res.Add(a[j]);
+            if (j < b.Count) res.Add(b[j]);
+        }
+    }
+    public int Next() { return res[i++]; }
+    public bool HasNext() { return i < res.Count; }
+}` }] }
     },
     mcq: { q: 'For k lists, which structure gives clean round-robin with skipping of finished lists?', options: ['A stack of iterators', 'A queue of non-empty iterators', 'A min-heap', 'A hash set'], answer: 1, explain: 'Pop the front iterator, take one element, push it back if it still has elements. Finished iterators simply are not re-queued.' },
     hints: [
@@ -7694,7 +9049,23 @@ public:
 
     bool hasNext() { return !q.empty(); }
 };
-` }],
+` }, { lang: 'csharp', code: `public class ZigzagIterator {
+    private readonly Queue<IEnumerator<int>> q = new Queue<IEnumerator<int>>();   // each holds a valid Current
+
+    public ZigzagIterator(IList<int> v1, IList<int> v2) {
+        var a = v1.GetEnumerator(); if (a.MoveNext()) q.Enqueue(a);
+        var b = v2.GetEnumerator(); if (b.MoveNext()) q.Enqueue(b);
+    }
+
+    public int Next() {
+        var it = q.Dequeue();
+        int v = it.Current;
+        if (it.MoveNext()) q.Enqueue(it);     // back of the line
+        return v;
+    }
+
+    public bool HasNext() { return q.Count > 0; }
+}` }],
         complexity: `<p>O(1) per call; O(k) memory for k lists.</p>`,
       followUps: ['Weighted round-robin: list i gets w[i] turns.', 'Merge k sorted iterators instead (heap).']
     }
@@ -7767,7 +9138,14 @@ public:
     BSTIteratorEager(TreeNode* root) { inorder(root); }
     int next() { return vals[i++]; }
     bool hasNext() { return i < (int)vals.size(); }
-};` }] }
+};` }, { lang: 'csharp', code: `public class BSTIteratorEager {
+    private readonly List<int> vals = new List<int>();
+    private int i = 0;
+    public BSTIteratorEager(TreeNode root) { Inorder(root); }
+    private void Inorder(TreeNode n) { if (n == null) return; Inorder(n.left); vals.Add(n.val); Inorder(n.right); }
+    public int Next() { return vals[i++]; }
+    public bool HasNext() { return i < vals.Count; }
+}` }] }
     },
     mcq: { q: 'After popping node n from the stack, what do you push?', options: ['n.left and its right spine', 'The left spine of n.right', 'Both children', 'Nothing'], answer: 1, explain: 'Everything in n\'s left subtree was already returned. The next smallest values are in n.right, starting at its leftmost node — so push n.right and all its left descendants.' },
     hints: [
@@ -7912,7 +9290,42 @@ vector<int> runBst(string spec, vector<string> ops) {
     for (auto& op : ops) out.push_back(op == "next" ? it.next() : (it.hasNext() ? 1 : 0));
     return out;
 }
-`
+`, csharp: `public class Check {
+    // "7,3,15,#,#,9,20" = level order with # for a missing child; "L100000" / "R100000" = a left / right chain of that many nodes
+    static TreeNode BuildTree(string spec) {
+        char c0 = spec[0];
+        if (c0 == 'L' || c0 == 'R') {
+            int n = int.Parse(spec.Substring(1));
+            TreeNode root = new TreeNode(c0 == 'L' ? n : 1), cur = root;
+            for (int i = 1; i < n; i++) {
+                TreeNode nx = new TreeNode(c0 == 'L' ? n - i : i + 1);
+                if (c0 == 'L') cur.left = nx; else cur.right = nx;
+                cur = nx;
+            }
+            return root;
+        }
+        string[] t = spec.Split(',');
+        TreeNode r = new TreeNode(int.Parse(t[0]));
+        var q = new Queue<TreeNode>();
+        q.Enqueue(r);
+        int k = 1;
+        while (q.Count > 0 && k < t.Length) {
+            TreeNode node = q.Dequeue();
+            if (k < t.Length && t[k] != "#") { node.left = new TreeNode(int.Parse(t[k])); q.Enqueue(node.left); }
+            k++;
+            if (k < t.Length && t[k] != "#") { node.right = new TreeNode(int.Parse(t[k])); q.Enqueue(node.right); }
+            k++;
+        }
+        return r;
+    }
+
+    public static List<int> RunBst(string spec, string[] ops) {
+        var it = new BSTIterator(BuildTree(spec));
+        var res = new List<int>();
+        foreach (string op in ops) res.Add(op == "next" ? it.Next() : (it.HasNext() ? 1 : 0));
+        return res;
+    }
+}`
         }, cases: [
           [['7,3,15,#,#,9,20', ['next', 'next', 'hasNext', 'next', 'next', 'next', 'hasNext']], [3, 7, 1, 9, 15, 20, 0]],
           [['1', ['hasNext', 'next', 'hasNext']], [1, 1, 0]],
@@ -8004,7 +9417,23 @@ public:
 
     bool hasNext() { return !st.empty(); }
 };
-` }],
+` }, { lang: 'csharp', code: `public class BSTIterator {
+    private readonly Stack<TreeNode> st = new Stack<TreeNode>();
+
+    public BSTIterator(TreeNode root) { PushLeft(root); }
+
+    private void PushLeft(TreeNode n) {
+        while (n != null) { st.Push(n); n = n.left; }
+    }
+
+    public int Next() {
+        TreeNode n = st.Pop();
+        PushLeft(n.right);
+        return n.val;
+    }
+
+    public bool HasNext() { return st.Count > 0; }
+}` }],
         complexity: `<p>Amortised O(1) per next (each node pushed/popped once), worst O(h) for one call; memory O(h).</p>`,
       followUps: ['Add prev() / hasPrev() (bidirectional iterator).', 'Iterate in descending order.', 'Morris traversal: O(1) memory — but it temporarily modifies the tree.']
     }
@@ -8069,7 +9498,14 @@ public:
     }
 
     int get(int i, int s) { return snaps[s][i]; }
-};` }] }
+};` }, { lang: 'csharp', code: `public class SnapshotCopy {
+    private readonly int[] cur;
+    private readonly List<int[]> snaps = new List<int[]>();
+    public SnapshotCopy(int n) { cur = new int[n]; }
+    public void Set(int i, int v) { cur[i] = v; }
+    public int Snap() { snaps.Add((int[])cur.Clone()); return snaps.Count - 1; }   // O(length) per snap
+    public int Get(int i, int s) { return snaps[s][i]; }
+}` }] }
     },
     mcq: { q: 'Index 0 has history [(0,5), (2,6)] as (snapId, value). What is get(0, 1)?', options: ['0', '5', '6', 'Undefined'], answer: 1, explain: 'Floor search: the last snapId ≤ 1 is 0, whose value is 5.' },
     hints: [
@@ -8198,7 +9634,37 @@ public:
         return prev(it)->second;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class SnapshotArray {
+    private readonly List<int[]>[] hist;
+    private int snapId = 0;
+
+    public SnapshotArray(int length) {
+        hist = new List<int[]>[length];
+        for (int i = 0; i < length; i++) {
+            hist[i] = new List<int[]>();
+            hist[i].Add(new[] { 0, 0 });                  // value 0 as of snapshot 0
+        }
+    }
+
+    public void Set(int index, int val) {
+        List<int[]> h = hist[index];
+        int[] last = h[h.Count - 1];
+        if (last[0] == snapId) last[1] = val;         // same snapshot: overwrite
+        else h.Add(new[] { snapId, val });
+    }
+
+    public int Snap() { return snapId++; }
+
+    public int Get(int index, int sid) {
+        List<int[]> h = hist[index];
+        int lo = 0, hi = h.Count - 1;
+        while (lo < hi) {                              // find last entry with snap <= sid
+            int mid = (lo + hi + 1) >> 1;              // upper mid avoids infinite loop
+            if (h[mid][0] <= sid) lo = mid; else hi = mid - 1;
+        }
+        return h[lo][1];
+    }
+}` }],
         complexity: `<p>set O(1), snap O(1), get O(log changes at that index). Memory O(length + number of sets).</p>`,
       followUps: ['Use TreeMap&lt;Integer,Integer&gt; per index — trade-offs?', 'Lazily allocate histories only for touched indexes.']
     }
@@ -8275,7 +9741,14 @@ public:
         for (auto& [t, p] : byTime) best = min(best, p);
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class StockBrute {
+    private readonly Dictionary<int, int> byTime = new Dictionary<int, int>();
+    private int latest = 0;
+    public void Update(int t, int p) { byTime[t] = p; latest = Math.Max(latest, t); }
+    public int Current() { return byTime[latest]; }
+    public int Maximum() { return byTime.Values.Max(); }   // O(N)
+    public int Minimum() { return byTime.Values.Min(); }   // O(N)
+}` }] }
     },
     mcq: { q: 'A correction replaces price 10 at time 1 with 3. What must happen to the multiset of prices?', options: ['Add 3 only', 'Remove one 10 and add 3', 'Remove all 10s', 'Nothing'], answer: 1, explain: 'Exactly one occurrence of the old price disappears (another timestamp might also have price 10), and the new price is added.' },
     hints: [
@@ -8428,7 +9901,29 @@ public:
     int maximum() { return priceCount.rbegin()->first; }
     int minimum() { return priceCount.begin()->first; }
 };
-` }],
+` }, { lang: 'csharp', code: `public class StockPrice {
+    private readonly Dictionary<int, int> byTime = new Dictionary<int, int>();
+    private readonly Dictionary<int, int> priceCount = new Dictionary<int, int>();   // price -> how many timestamps hold it
+    private readonly SortedSet<int> prices = new SortedSet<int>();                   // distinct prices, ordered
+    private int latest = 0;
+
+    public void Update(int timestamp, int price) {
+        int old;
+        if (byTime.TryGetValue(timestamp, out old)) {            // correction: drop one copy of the old price
+            if (--priceCount[old] == 0) { priceCount.Remove(old); prices.Remove(old); }
+        }
+        byTime[timestamp] = price;
+        int c;
+        priceCount.TryGetValue(price, out c);
+        priceCount[price] = c + 1;
+        prices.Add(price);
+        latest = Math.Max(latest, timestamp);
+    }
+
+    public int Current() { return byTime[latest]; }
+    public int Maximum() { return prices.Max; }
+    public int Minimum() { return prices.Min; }
+}` }],
         complexity: `<p>update O(log N); current O(1); maximum/minimum O(log N) (TreeMap end access). Memory O(N).</p>`,
       followUps: ['Max price within a time range (segment tree or TreeMap of times + RMQ).', 'Heaps with lazy deletion — when do they beat the TreeMap?']
     }
@@ -8504,7 +9999,20 @@ public:
         }
         return false;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class WordDictBrute {
+    private readonly List<string> words = new List<string>();
+    public void AddWord(string w) { words.Add(w); }
+    public bool Search(string p) {
+        foreach (string w in words) {                     // O(N * L)
+            if (w.Length != p.Length) continue;
+            bool ok = true;
+            for (int i = 0; i < p.Length && ok; i++)
+                if (p[i] != '.' && p[i] != w[i]) ok = false;
+            if (ok) return true;
+        }
+        return false;
+    }
+}` }] }
     },
     mcq: { q: 'During trie search, the pattern has "." at the current position. What do you do?', options: ['Fail', 'Try every existing child recursively', 'Skip to the end of the word', 'Pick the first child only'], answer: 1, explain: 'A dot matches any letter, so the search branches into each child that exists and succeeds if any branch matches the rest.' },
     hints: [
@@ -8633,7 +10141,32 @@ public:
 
     bool search(const string& word) const { return dfs(root, word, 0); }
 };
-` }],
+` }, { lang: 'csharp', code: `public class WordDictionary {
+    private class Node { public Node[] kids = new Node[26]; public bool end; }
+    private readonly Node root = new Node();
+
+    public void AddWord(string word) {
+        Node n = root;
+        foreach (char c in word) {
+            if (n.kids[c - 'a'] == null) n.kids[c - 'a'] = new Node();
+            n = n.kids[c - 'a'];
+        }
+        n.end = true;
+    }
+
+    public bool Search(string word) { return Dfs(root, word, 0); }
+
+    private bool Dfs(Node n, string w, int i) {
+        if (i == w.Length) return n.end;
+        char c = w[i];
+        if (c == '.') {
+            foreach (Node k in n.kids) if (k != null && Dfs(k, w, i + 1)) return true;   // branch on wildcard
+            return false;
+        }
+        Node kid = n.kids[c - 'a'];
+        return kid != null && Dfs(kid, w, i + 1);
+    }
+}` }],
         complexity: `<p>addWord O(L). search O(L) without dots; with d dots up to O(26<sup>d</sup> · L) in the worst case. Memory O(total characters × 26 pointers).</p>`,
       followUps: ['Support "*" (any sequence of letters).', 'Return all matching words, sorted.']
     }
@@ -8737,7 +10270,21 @@ public:
         for (auto& [k, v] : cnt) if (v < b) { b = v; best = k; }
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class AllOneBrute {
+    private readonly Dictionary<string, int> cnt = new Dictionary<string, int>();
+    public void Inc(string k) { int c; cnt.TryGetValue(k, out c); cnt[k] = c + 1; }
+    public void Dec(string k) { if (--cnt[k] == 0) cnt.Remove(k); }
+    public string GetMaxKey() {                       // O(N) scan
+        string best = ""; int b = int.MinValue;
+        foreach (var e in cnt) if (e.Value > b) { b = e.Value; best = e.Key; }
+        return best;
+    }
+    public string GetMinKey() {
+        string best = ""; int b = int.MaxValue;
+        foreach (var e in cnt) if (e.Value < b) { b = e.Value; best = e.Key; }
+        return best;
+    }
+}` }] }
     },
     mcq: { q: 'inc(key) moves a key from the count-3 bucket. Where can its new bucket be?', options: ['Anywhere in the list', 'Only immediately after the count-3 bucket (existing count-4 bucket or a new one inserted there)', 'At the tail', 'At the head'], answer: 1, explain: 'Buckets are sorted by count and the new count is exactly 4, so the target is the next bucket if it has count 4, or a brand-new bucket spliced right after the current one.' },
     hints: [
@@ -8971,7 +10518,59 @@ public:
     string getMaxKey() { return buckets.empty() ? "" : *buckets.back().keys.begin(); }
     string getMinKey() { return buckets.empty() ? "" : *buckets.front().keys.begin(); }
 };
-` }],
+` }, { lang: 'csharp', code: `public class AllOne {
+    private class Bucket {
+        public int count;
+        public HashSet<string> keys = new HashSet<string>();
+        public Bucket prev, next;
+        public Bucket(int c) { count = c; }
+    }
+    private readonly Bucket head = new Bucket(0), tail = new Bucket(0);
+    private readonly Dictionary<string, Bucket> where = new Dictionary<string, Bucket>();
+
+    public AllOne() { head.next = tail; tail.prev = head; }
+
+    private Bucket InsertAfter(Bucket b, int count) {
+        Bucket n = new Bucket(count);
+        n.prev = b; n.next = b.next;
+        b.next.prev = n; b.next = n;
+        return n;
+    }
+
+    private void RemoveKey(Bucket b, string key) {
+        b.keys.Remove(key);
+        if (b.keys.Count == 0) { b.prev.next = b.next; b.next.prev = b.prev; }   // unlink empty bucket
+    }
+
+    public void Inc(string key) {
+        Bucket cur;
+        where.TryGetValue(key, out cur);
+        Bucket from = cur == null ? head : cur;
+        int target = from.count + 1;
+        Bucket nxt = from.next;
+        if (nxt == tail || nxt.count != target) nxt = InsertAfter(from, target);
+        nxt.keys.Add(key);
+        where[key] = nxt;
+        if (cur != null) RemoveKey(cur, key);
+    }
+
+    public void Dec(string key) {
+        Bucket cur;
+        if (!where.TryGetValue(key, out cur)) return;
+        if (cur.count == 1) {
+            where.Remove(key);
+        } else {
+            Bucket prv = cur.prev;
+            if (prv == head || prv.count != cur.count - 1) prv = InsertAfter(cur.prev, cur.count - 1);
+            prv.keys.Add(key);
+            where[key] = prv;
+        }
+        RemoveKey(cur, key);
+    }
+
+    public string GetMaxKey() { return tail.prev == head ? "" : tail.prev.keys.First(); }
+    public string GetMinKey() { return head.next == tail ? "" : head.next.keys.First(); }
+}` }],
         complexity: `<p>All four operations O(1) average (hash set/map operations + constant pointer work). Memory O(number of keys).</p>`,
       followUps: ['Return all keys with the max count.', 'Support inc(key, delta) with arbitrary delta — what breaks?']
     }
@@ -9054,7 +10653,20 @@ public:
         freq[v]--;
         return v;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class FreqStackBrute {
+    private readonly List<int> all = new List<int>();
+    private readonly Dictionary<int, int> freq = new Dictionary<int, int>();
+    public void Push(int v) { all.Add(v); int c; freq.TryGetValue(v, out c); freq[v] = c + 1; }
+    public int Pop() {
+        int best = -1;
+        for (int i = all.Count - 1; i >= 0; i--)                // O(N) scan from the top
+            if (best == -1 || freq[all[i]] > freq[all[best]]) best = i;
+        int val = all[best];
+        all.RemoveAt(best);
+        freq[val]--;
+        return val;
+    }
+}` }] }
     },
     mcq: { q: 'After pushing 5 three times, which stacks hold a 5?', options: ['Only group[3]', 'group[1], group[2] and group[3]', 'Only group[1]', 'None — 5 is stored in freq only'], answer: 1, explain: 'Each push of 5 lands in the stack for its new frequency: 1, then 2, then 3. Popping from group[3] leaves the earlier copies so 5 is still correctly at frequency 2.' },
     hints: [
@@ -9163,7 +10775,29 @@ public:
         return val;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class FreqStack {
+    private readonly Dictionary<int, int> freq = new Dictionary<int, int>();
+    private readonly Dictionary<int, Stack<int>> group = new Dictionary<int, Stack<int>>();
+    private int maxFreq = 0;
+
+    public void Push(int val) {
+        int f;
+        freq.TryGetValue(val, out f);
+        freq[val] = ++f;
+        Stack<int> g;
+        if (!group.TryGetValue(f, out g)) group[f] = g = new Stack<int>();
+        g.Push(val);
+        maxFreq = Math.Max(maxFreq, f);
+    }
+
+    public int Pop() {
+        Stack<int> top = group[maxFreq];
+        int val = top.Pop();
+        freq[val]--;
+        if (top.Count == 0) maxFreq--;         // the next level down is non-empty by construction
+        return val;
+    }
+}` }],
         complexity: `<p>push and pop O(1) average. Memory O(N) — each push adds exactly one stack entry.</p>`,
       followUps: ['Why is group[maxFreq − 1] guaranteed non-empty after group[maxFreq] empties?', 'Add peek() and a remove(val) operation.']
     }
@@ -9242,7 +10876,13 @@ public:
     }
 
     int getRandom() { return list[rnd() % list.size()]; }
-};` }] }
+};` }, { lang: 'csharp', code: `public class RandomBagBrute {
+    private readonly List<int> list = new List<int>();
+    private readonly Random rnd = new Random();
+    public bool Insert(int v) { bool fresh = !list.Contains(v); list.Add(v); return fresh; }   // O(N) Contains
+    public bool Remove(int v) { return list.Remove(v); }                                      // O(N) search + shift
+    public int GetRandom() { return list[rnd.Next(list.Count)]; }
+}` }] }
     },
     mcq: { q: 'How do you delete from the middle of the array in O(1)?', options: ['Shift everything left', 'Overwrite the slot with the last element, then remove the last slot', 'Mark it deleted and never compact', 'Sort and binary search'], answer: 1, explain: 'Swap-with-last-and-pop keeps the array dense for uniform random picks — but you must update the index bookkeeping of the moved element.' },
     hints: [
@@ -9397,7 +11037,37 @@ public:
         return vals[uniform_int_distribution<int>(0, (int)vals.size() - 1)(rng)];
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class RandomizedCollection {
+    private readonly List<int> vals = new List<int>();
+    private readonly Dictionary<int, HashSet<int>> idx = new Dictionary<int, HashSet<int>>();
+    private readonly Random rnd = new Random();
+
+    public bool Insert(int val) {
+        HashSet<int> s;
+        if (!idx.TryGetValue(val, out s)) idx[val] = s = new HashSet<int>();
+        s.Add(vals.Count);
+        vals.Add(val);
+        return s.Count == 1;                       // first copy?
+    }
+
+    public bool Remove(int val) {
+        HashSet<int> s;
+        if (!idx.TryGetValue(val, out s) || s.Count == 0) return false;
+        int hole = s.First();
+        s.Remove(hole);
+        int lastIdx = vals.Count - 1;
+        int lastVal = vals[lastIdx];
+        vals[hole] = lastVal;                      // move the last element into the hole
+        HashSet<int> ls = idx[lastVal];
+        ls.Add(hole);
+        ls.Remove(lastIdx);                        // works even when hole == lastIdx
+        vals.RemoveAt(lastIdx);
+        if (s.Count == 0) idx.Remove(val);
+        return true;
+    }
+
+    public int GetRandom() { return vals[rnd.Next(vals.Count)]; }
+}` }],
         complexity: `<p>All operations O(1) average. Memory O(N).</p>`,
       followUps: ['Why does "add hole, then remove lastIdx" order matter when the removed value is the last element?', 'getRandom weighted by a separate weight per value (prefix sums + binary search, or alias method).']
     }

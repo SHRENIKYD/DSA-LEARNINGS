@@ -183,7 +183,43 @@ int main() {
     cout << "doubling = " << c << "\\n";   // 32
     cout << "halving  = " << d << "\\n";   // 15
     cout << "sqrt     = " << e << "\\n";   // 2
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class LoopCounts {
+    static void Main() {
+        int n = 8;
+
+        // (a) simple loop: runs n times
+        long a = 0;
+        for (int i = 0; i < n; i++) a++;
+
+        // (b) triangle loop: (n-1) + (n-2) + ... + 0 = n*(n-1)/2
+        long b = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) b++;
+
+        // (c) doubling inner loop: n * (floor(log2 n) + 1)
+        long c = 0;
+        for (int j = 1; j <= n; j++)
+            for (int i = 1; i <= n; i *= 2) c++;
+
+        // (d) halving outer, linear inner: n + n/2 + n/4 + ... < 2n
+        long d = 0;
+        for (int i = n; i > 0; i /= 2)
+            for (int j = 0; j < i; j++) d++;
+
+        // (e) square-root loop: floor(sqrt(n)) times
+        long e = 0;
+        for (int i = 1; (long)i * i <= n; i++) e++;
+
+        Console.WriteLine("simple   = " + a);   // 8
+        Console.WriteLine("triangle = " + b);   // 28
+        Console.WriteLine("doubling = " + c);   // 32
+        Console.WriteLine("halving  = " + d);   // 15
+        Console.WriteLine("sqrt     = " + e);   // 2
+    }
+}`, run: true }
     ] },
     codeTitle: 'Count the strokes of five classic loop shapes',
     viz: [
@@ -340,7 +376,18 @@ console.log(count); // 10 = 5*4/2`, run: true },
 for (int i = 0; i < n; i++)
     for (int j = 0; j < i; j++)
         count++;
-cout << count << endl; // 10 = 5*4/2` }
+cout << count << endl; // 10 = 5*4/2` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int n = 5, count = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < i; j++)
+                count++;
+        Console.WriteLine(count); // 10 = 5*4/2
+    }
+}`, run: true }
         ] }
       },
       {
@@ -376,7 +423,17 @@ console.log(runs); // 44721`, run: true },
           { lang: 'cpp', code: `long long n = 2000000000LL; int runs = 0;
 // with int i, i * i would overflow: undefined behaviour in C++, not just a wrap
 for (long long i = 1; i * i <= n; i++) runs++;
-cout << runs << endl; // 44721` }
+cout << runs << endl; // 44721` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        long n = 2000000000L; int runs = 0;
+        // with int i, i * i would silently wrap around (C# is unchecked by default) and the loop would misbehave
+        for (long i = 1; i * i <= n; i++) runs++;   // long math: no overflow
+        Console.WriteLine(runs); // 44721
+    }
+}`, run: true }
         ] }
       }
     ],
@@ -438,6 +495,17 @@ long long countHandshakes(int n) {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountHandshakes(int n) {
+        long count = 0;
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                count++;           // one stroke per handshake
+            }
+        }
+        return count;
+    }
 }` }] }
         },
         mcq: {
@@ -499,6 +567,23 @@ console.log(String(countHandshakes(1e9)));    // 499999999500000000`, run: true 
             { lang: 'cpp', code: `long long countHandshakes(long long n) {
     // n*(n-1) is always even, so /2 is exact; 10^18 fits in long long
     return n * (n - 1) / 2;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    // O(1): triangle formula. n*(n-1) is always even, so /2 is exact.
+    public long CountHandshakes(long n) {
+        return n * (n - 1) / 2;   // long math: 10^9 * 10^9 = 10^18 fits in a 64-bit long
+    }
+
+    // O(n^2): the original slow loop, kept only to cross-check small n.
+    public long CountByLoop(int n) {
+        long count = 0;
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                count++;
+            }
+        }
+        return count;
+    }
 }` }
           ],
           dry: {
@@ -565,6 +650,17 @@ long long countIterations(long long n) {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long CountIterations(long n) {
+        long count = 0;
+        for (long i = 1; i <= n; i++) {
+            for (long j = 1; j <= i; j *= 2) {
+                count++;
+            }
+        }
+        return count;
+    }
 }` }] }
         },
         mcq: {
@@ -637,6 +733,22 @@ console.log(String(countIterations(5)));   // 11`, run: true },
         b++;
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long CountIterations(long n) {
+        long total = 0;
+        long lo = 1;   // first i of the current group: 1, 2, 4, 8, ...
+        int b = 1;     // every i in this group makes the inner loop run b times
+        while (lo <= n) {
+            long hi = Math.Min(n, 2 * lo - 1);  // last i of this group (cut by n)
+            total += (long)b * (hi - lo + 1);   // b runs for each of the (hi-lo+1) values
+            lo = 2 * lo;                        // next group starts at the next power of 2
+            b++;
+        }
+        return total;
+    }
 }` }
           ],
           dry: {
@@ -788,7 +900,37 @@ int main() {
     cout << countTerms(3, 19, 4) << "\\n";  // 5
     cout << gpSum(1, 2, 5) << "\\n";        // 31
     cout << gpSum(1, 3, 4) << "\\n";        // 40
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Progressions {
+    // Sum of n terms of an AP: a, a+d, a+2d, ...
+    static long ApSum(long a, long d, long n) {
+        // n*a + d * (0 + 1 + ... + (n-1)) ; n*(n-1) is even, so /2 is exact
+        return n * a + d * (n * (n - 1) / 2);
+    }
+
+    // Number of terms from lo to hi (inclusive) with step d, assuming (hi-lo) % d == 0
+    static long CountTerms(long lo, long hi, long d) {
+        return (hi - lo) / d + 1;
+    }
+
+    // Sum of n terms of a GP: a, a*r, a*r^2, ...  (small values, no modulo)
+    static long GpSum(long a, long r, int n) {
+        if (r == 1) return a * n;          // every term equals a
+        long power = 1;
+        for (int i = 0; i < n; i++) power *= r;   // r^n
+        return a * (power - 1) / (r - 1);  // a * (r^n - 1) / (r - 1)
+    }
+
+    static void Main() {
+        Console.WriteLine(ApSum(1, 1, 100));      // 5050 (Gauss)
+        Console.WriteLine(ApSum(3, 4, 5));        // 3+7+11+15+19 = 55
+        Console.WriteLine(CountTerms(3, 19, 4));  // 5
+        Console.WriteLine(GpSum(1, 2, 5));        // 1+2+4+8+16 = 31
+        Console.WriteLine(GpSum(1, 3, 4));        // 1+3+9+27 = 40
+    }
+}`, run: true }
     ] }],
     codeTitle: ['AP and GP formulas'],
     viz: [
@@ -924,7 +1066,17 @@ console.log(ans); // 233168`, run: true },
           { lang: 'cpp', code: `long long below = 999;                       // "below 1000" means up to 999
 long long m3 = below / 3, m5 = below / 5, m15 = below / 15;
 long long ans = 3 * m3 * (m3 + 1) / 2 + 5 * m5 * (m5 + 1) / 2 - 15 * m15 * (m15 + 1) / 2;
-cout << ans << endl; // 233168` }
+cout << ans << endl; // 233168` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        long below = 999;                        // "below 1000" means up to 999
+        long m3 = below / 3, m5 = below / 5, m15 = below / 15;
+        long ans = 3 * m3 * (m3 + 1) / 2 + 5 * m5 * (m5 + 1) / 2 - 15 * m15 * (m15 + 1) / 2;
+        Console.WriteLine(ans); // 233168
+    }
+}`, run: true }
         ] }
       },
       {
@@ -1011,6 +1163,21 @@ vector<long long> answerQueries(const vector<vector<long long>>& queries) {
         ans.push_back(sum);
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long[] AnswerQueries(long[][] queries) {
+        long[] ans = new long[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            long a = queries[q][0], d = queries[q][1], n = queries[q][2];
+            long sum = 0, term = a;
+            for (long k = 0; k < n; k++) {
+                sum += term;     // add current term
+                term += d;       // move to next term
+            }
+            ans[q] = sum;
+        }
+        return ans;
+    }
 }` }] }
         },
         mcq: {
@@ -1081,6 +1248,21 @@ console.log(answerQueries([[3, 4, 5], [1, 1, 100], [10, -2, 6]]).join(' '));   /
         ans.push_back(n * a + d * tri);    // up to 5e17: fits in long long
     }
     return ans;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    // Sum of n terms: a, a+d, ..., a+(n-1)d
+    static long ApSum(long a, long d, long n) {
+        long tri = n * (n - 1) / 2;   // 0 + 1 + ... + (n-1), always exact
+        return n * a + d * tri;       // n copies of a, plus tri copies of d
+    }
+
+    public long[] AnswerQueries(long[][] queries) {
+        long[] ans = new long[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            ans[q] = ApSum(queries[q][0], queries[q][1], queries[q][2]);
+        }
+        return ans;
+    }
 }` }
           ],
           dry: {
@@ -1235,7 +1417,39 @@ int main() {
     cout << bit_width(100ULL) - 1 << "\\n";             // 6 (C++20 <bit>)
     cout << log2Floor(1000000000000000000LL) << "\\n";  // 59
     cout << digits(4096) << "\\n";                      // 4
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Logs {
+    // floor(log2 n) by repeated halving: O(log n)
+    static int Log2Floor(long n) {
+        int steps = 0;
+        while (n > 1) {
+            n /= 2;        // throw away half
+            steps++;
+        }
+        return steps;
+    }
+
+    // number of decimal digits by repeated division by 10: O(log10 n)
+    static int Digits(long n) {
+        if (n == 0) return 1;
+        int d = 0;
+        while (n > 0) {
+            n /= 10;
+            d++;
+        }
+        return d;
+    }
+
+    static void Main() {
+        Console.WriteLine(Log2Floor(100));                     // 6
+        Console.WriteLine((int)Math.Floor(Math.Log(100, 2)));  // 6 (doubles: fine for small n, risky near 2^53+)
+        Console.WriteLine(Log2Floor(1000000000000000000L));    // 59
+        Console.WriteLine(Digits(4096));                       // 4
+        // .NET Core 3+ also has System.Numerics.BitOperations.Log2(ulong) as the exact bit trick.
+    }
+}`, run: true }
     ] },
     codeTitle: 'log₂ and digit count with integers only',
     viz: {
@@ -1332,7 +1546,19 @@ cout << (int)log10((double)n) + 1 << endl;   // 19  (wrong: double rounding)
 int d = 0;
 for (long long x = n; x > 0; x /= 10) d++;
 cout << d << endl;                           // 18  (correct)
-cout << to_string(n).size() << endl;         // 18  (also exact)` }
+cout << to_string(n).size() << endl;         // 18  (also exact)` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        long n = 999999999999999999L;
+        Console.WriteLine((int)Math.Log10(n) + 1);   // 19  (wrong: double rounding)
+        int d = 0;
+        for (long x = n; x > 0; x /= 10) d++;
+        Console.WriteLine(d);                        // 18  (correct)
+        Console.WriteLine(n.ToString().Length);      // 18  (also exact)
+    }
+}`, run: true }
         ] }
       },
       {
@@ -1377,7 +1603,21 @@ console.log(String(power(3, 13)));   // 1594323`, run: true },
         exp >>= 1;                     // halve the exponent -> O(log exp) rounds
     }
     return result;                     // power(3, 13) = 1594323
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static long Power(long b, long exp) {
+        long result = 1;
+        while (exp > 0) {
+            if ((exp & 1) == 1) result *= b;    // this bit is 1: use the current square
+            b *= b;                             // 3, 9, 81, 6561 ...
+            exp >>= 1;                          // halve the exponent -> O(log exp) rounds
+        }
+        return result;
+    }
+    static void Main() { Console.WriteLine(Power(3, 13)); }   // 1594323
+}`, run: true }
         ] }
       },
       {
@@ -1421,6 +1661,14 @@ function halvings(n) {
 int halvings(long long n) {
     // Looks clever, but floating point rounding can be off by one for large n
     return (int) (log((double) n) / log(2.0));
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int Halvings(long n) {
+        // Looks clever, but floating point rounding can be off by one for large n
+        return (int)(Math.Log(n) / Math.Log(2));
+    }
 }` }] }
         },
         mcq: {
@@ -1492,6 +1740,23 @@ console.log(halvings((1n << 60n) - 1n));  // 59`, run: true },
         steps++;
     }
     return steps;         // same as 63 - __builtin_clzll(n)
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int Halvings(long n) {
+        int steps = 0;
+        while (n > 1) {      // stop when one page is left
+            n /= 2;          // keep half (integer division rounds down)
+            steps++;         // one more tear
+        }
+        return steps;        // equals floor(log2 n)
+    }
+
+    // Same answer in O(1) by finding the highest set bit
+    public int HalvingsFast(long n) {
+        int bit = 0;
+        while ((n >> (bit + 1)) != 0) bit++;   // (.NET Core 3+: BitOperations.Log2)
+        return bit;
+    }
 }` }
           ],
           dry: {
@@ -1697,6 +1962,42 @@ bool contains(const vector<int>& sorted, int target) {
         if (sorted[mid] < target) lo = mid + 1; else hi = mid - 1;
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class GrowthExamples {
+    // O(1): same work for any n
+    public static int First(int[] a) { return a[0]; }
+
+    // O(N): one pass
+    public static long Sum(int[] a) {
+        long s = 0;
+        foreach (int x in a) s += x;
+        return s;
+    }
+
+    // O(N^2): every pair (i, j) with i < j  ->  N(N-1)/2 comparisons
+    public static int CountEqualPairs(int[] a) {
+        int c = 0;
+        for (int i = 0; i < a.Length; i++)
+            for (int j = i + 1; j < a.Length; j++)
+                if (a[i] == a[j]) c++;
+        return c;
+    }
+
+    // O(N + M): two different inputs, one after the other
+    public static long SumBoth(int[] a, int[] b) {
+        return Sum(a) + Sum(b);
+    }
+
+    // O(log N): the range halves every step (Array.BinarySearch does the same)
+    public static bool Contains(int[] sorted, int target) {
+        int lo = 0, hi = sorted.Length - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;   // avoids int overflow of lo + hi
+            if (sorted[mid] == target) return true;
+            if (sorted[mid] < target) lo = mid + 1; else hi = mid - 1;
+        }
+        return false;
+    }
 }` }
     ] },
     codeTitle: 'One function for each common growth rate',
@@ -1811,7 +2112,20 @@ string s;
 s.reserve(n);                          // optional: one allocation up front
 for (int i = 0; i < n; i++) s += 'a';  // std::string is mutable: += is O(1) amortised
 // s = s + 'a' would build a new string each time: O(N^2)
-cout << s.size() << endl;              // 100000` }
+cout << s.size() << endl;              // 100000` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+class Program {
+    static void Main() {
+        int n = 100000;
+        var sb = new StringBuilder();
+        for (int i = 0; i < n; i++) sb.Append('a');   // O(N) total
+        string s = sb.ToString();
+        Console.WriteLine(s.Length);                  // 100000
+        // s += 'a' in a loop copies the whole string each time: O(N^2)
+    }
+}`, run: true }
         ] }
       },
       {
@@ -1867,6 +2181,16 @@ bool containsDuplicate(const vector<int>& a) {
         }
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool ContainsDuplicate(int[] a) {
+        for (int i = 0; i < a.Length; i++) {
+            for (int j = i + 1; j < a.Length; j++) {
+                if (a[i] == a[j]) return true;   // found a repeated value
+            }
+        }
+        return false;
+    }
 }` }] }
         },
         mcq: {
@@ -1968,7 +2292,32 @@ public:
         sort(a.begin(), a.end());
         return adjacent_find(a.begin(), a.end()) != a.end();
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    // O(N) average time, O(N) extra space
+    public bool ContainsDuplicate(int[] a) {
+        var seen = new HashSet<int>();
+        foreach (int x in a) {
+            if (!seen.Add(x)) {   // Add() returns false when x is already in the set
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // O(N log N) time (the sort), no extra set
+    public bool ContainsDuplicateBySorting(int[] a) {
+        int[] b = (int[])a.Clone();   // do not disturb the caller's array
+        Array.Sort(b);                // equal values become neighbours
+        for (int i = 1; i < b.Length; i++) {
+            if (b[i] == b[i - 1]) return true;
+        }
+        return false;
+    }
+}` }
           ],
           dry: {
             head: ['i', 'a[i]', 'set before', 'seen.add(a[i])', 'action'],
@@ -2120,7 +2469,35 @@ vector<long long> prefixSums(const vector<int>& a) {
 int main() {
     cout << sumRecursive(5) << "\\n";   // 15, but needed 6 frames at once
     cout << sumLoop(5) << "\\n";        // 15, with one variable
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class SpaceExamples {
+    // O(n) extra space: n stack frames alive at the deepest point (main thread stack is ~1 MB on .NET)
+    static long SumRecursive(int n) {
+        if (n == 0) return 0;              // base case: the plate pile stops growing
+        return n + SumRecursive(n - 1);    // this frame waits for the inner call
+    }
+
+    // O(1) extra space: one running total, no matter how big n is
+    static long SumLoop(int n) {
+        long total = 0;
+        for (int i = 1; i <= n; i++) total += i;
+        return total;
+    }
+
+    // O(n) extra space: a brand-new array of size n
+    static long[] PrefixSums(int[] a) {
+        long[] pf = new long[a.Length];
+        for (int i = 0; i < a.Length; i++) pf[i] = (i == 0 ? 0 : pf[i - 1]) + a[i];
+        return pf;
+    }
+
+    static void Main() {
+        Console.WriteLine(SumRecursive(5));  // 15, but needed 6 frames at once
+        Console.WriteLine(SumLoop(5));       // 15, with one variable
+    }
+}`, run: true }
     ] },
     codeTitle: 'Same answer, different memory',
     viz: {
@@ -2226,6 +2603,19 @@ console.log(lcs('abcde', 'ace'));   // 3`, run: true },
         swap(prev, cur);   // O(1): swaps the buffers, copies nothing
     }
     return prev[b.size()];
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Lcs {
+    public static int Compute(string a, string b) {
+        int[] prev = new int[b.Length + 1], cur = new int[b.Length + 1];
+        for (int i = 1; i <= a.Length; i++) {
+            for (int j = 1; j <= b.Length; j++)
+                cur[j] = a[i - 1] == b[j - 1] ? prev[j - 1] + 1 : Math.Max(prev[j], cur[j - 1]);
+            int[] t = prev; prev = cur; cur = t;   // swap rows: O(M) memory total
+        }
+        return prev[b.Length];
+    }
 }` }
         ] }
       },
@@ -2254,6 +2644,15 @@ int countIterative(ListNode* head) {
     int c = 0;
     for (ListNode* cur = head; cur != nullptr; cur = cur->next) c++;   // O(1) extra space
     return c;
+}` }, { lang: 'csharp', code: String.raw`
+public class ListNode { public int val; public ListNode next; }   // LeetCode-style node
+
+public class Counting {
+    public static int CountIterative(ListNode head) {
+        int c = 0;
+        for (ListNode cur = head; cur != null; cur = cur.next) c++;  // O(1) extra space
+        return c;
+    }
 }` }
         ] }
       },
@@ -2304,6 +2703,14 @@ void reverse(vector<int>& a) {
     vector<int> copy(n);              // O(N) extra memory
     for (int i = 0; i < n; i++) copy[i] = a[n - 1 - i];
     for (int i = 0; i < n; i++) a[i] = copy[i];
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Reverse(int[] a) {
+        int n = a.Length;
+        int[] copy = new int[n];          // O(N) extra memory
+        for (int i = 0; i < n; i++) copy[i] = a[n - 1 - i];
+        for (int i = 0; i < n; i++) a[i] = copy[i];
+    }
 }` }] }
         },
         mcq: {
@@ -2378,7 +2785,20 @@ public:
         while (L < R) swap(a[L++], a[R--]);
         // built-in equivalent: std::reverse(a.begin(), a.end())
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public void Reverse(int[] a) {
+        int L = 0, R = a.Length - 1;   // the two ends
+        while (L < R) {                // stop when they meet or cross
+            int temp = a[L];           // the ONLY extra storage: one int
+            a[L] = a[R];
+            a[R] = temp;
+            L++;                       // move both ends inward
+            R--;
+        }
+        // built-in equivalent, also in place: Array.Reverse(a)
+    }
+}` }
           ],
           dry: {
             head: ['L', 'R', 'swap', 'array after'],
@@ -2600,7 +3020,55 @@ string maxAllowed(long long n, double seconds) {
 int main() {
     for (long long n : {10LL, 20LL, 2000LL, 100000LL, 10000000LL, 1000000000000000000LL})
         cout << n << " " << maxAllowed(n, 1) << "\\n";
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class ComplexityBudget {
+    // Classic ladder, most expensive first. Each entry: name + log10(operations).
+    static readonly string[] NAMES = { "O(N!)", "O(2^N * N)", "O(2^N)", "O(N^3)", "O(N^2 log N)",
+                                       "O(N^2)", "O(N sqrt N)", "O(N log N)", "O(N)", "O(sqrt N)", "O(log N)", "O(1)" };
+
+    static double Log10Ops(int k, long n) {
+        double lg = Math.Log10(n), log2n = Math.Max(1.0, Math.Log(n) / Math.Log(2));
+        switch (k) {
+            case 0: {                                   // N! : only small N can ever fit
+                if (n > 30) return double.PositiveInfinity;
+                double s = 0;
+                for (int i = 2; i <= n; i++) s += Math.Log10(i);
+                return s;
+            }
+            case 1: return n * Math.Log10(2) + lg;      // 2^N * N
+            case 2: return n * Math.Log10(2);           // 2^N
+            case 3: return 3 * lg;                      // N^3
+            case 4: return 2 * lg + Math.Log10(log2n);  // N^2 log N
+            case 5: return 2 * lg;                      // N^2
+            case 6: return 1.5 * lg;                    // N * sqrt(N)
+            case 7: return lg + Math.Log10(log2n);      // N log N
+            case 8: return lg;                          // N
+            case 9: return 0.5 * lg;                    // sqrt(N)
+            case 10: return Math.Log10(log2n);          // log N
+            default: return 0;                          // O(1)
+        }
+    }
+
+    // Most expensive class whose operation count fits in seconds * 10^8.
+    static string MaxAllowed(long n, double seconds) {
+        double budget = Math.Log10(seconds * 1e8);
+        for (int k = 0; k < NAMES.Length; k++) {
+            if (Log10Ops(k, n) <= budget + 1e-9) return NAMES[k];
+        }
+        return "O(1)";
+    }
+
+    static void Main() {
+        Console.WriteLine(MaxAllowed(10, 1));                    // O(N!)
+        Console.WriteLine(MaxAllowed(20, 1));                    // O(2^N * N)
+        Console.WriteLine(MaxAllowed(2000, 1));                  // O(N^2 log N)
+        Console.WriteLine(MaxAllowed(100000, 1));                // O(N sqrt N)
+        Console.WriteLine(MaxAllowed(10000000, 1));              // O(N)
+        Console.WriteLine(MaxAllowed(1000000000000000000L, 1));  // O(log N)
+    }
+}`, run: true }
     ] }],
     codeTitle: ['Constraint → maximum complexity, computed in log space'],
     viz: [
@@ -2831,6 +3299,30 @@ string maxAllowed(long long n, int t) {
     if ((__int128) n * n <= budget) return "O(N^2)";
     if (n <= budget) return "O(N)";
     return "O(log N)";
+}` }, { lang: 'csharp', code: String.raw`
+public class Brute {
+    public static string MaxAllowed(long n, int t) {
+        // decimal holds about 28 digits exactly (System.Numerics.BigInteger would be unbounded): still hopeless
+        decimal budget = 100000000m * t;
+        // N! computed exactly: hopeless for big n (and n can be 10^18!)
+        decimal fact = 1;
+        for (long i = 2; i <= n && fact <= budget; i++) fact *= i;
+        if (fact <= budget) return "O(N!)";
+        // 2^N computed exactly: decimal overflows after about 96 doublings
+        if (n < 90) {
+            decimal two = 1;
+            for (long i = 0; i < n; i++) two *= 2;
+            if (two * n <= budget) return "O(2^N * N)";
+            if (two <= budget) return "O(2^N)";
+        }
+        // n^3 only fits in a decimal for n below about 10^9
+        if (n < 1000000000L && (decimal)n * n * n <= budget) return "O(N^3)";
+        // ...and every remaining class needs logs or square roots anyway,
+        // so exact arithmetic does not even help for the rest.
+        if ((decimal)n * n <= budget) return "O(N^2)";
+        if (n <= budget) return "O(N)";
+        return "O(log N)";
+    }
 }` }] }
         },
         mcq: {
@@ -2947,6 +3439,44 @@ console.log(maxAllowed(1e12, 1));   // O(sqrt N)`, run: true },
     for (int k = 0; k < 12; k++)
         if (costs[k] <= budget + 1e-9) return NAMES[k];   // most expensive class that fits
     return "O(1)";
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    static readonly string[] NAMES = { "O(N!)", "O(2^N * N)", "O(2^N)", "O(N^3)", "O(N^2 log N)",
+                                       "O(N^2)", "O(N sqrt N)", "O(N log N)", "O(N)", "O(sqrt N)", "O(log N)", "O(1)" };
+
+    // log10 of the operation count of ladder entry k at size n
+    static double Log10Ops(int k, long n) {
+        double lg = Math.Log10(n);
+        double lgLog = Math.Log10(Math.Max(1.0, Math.Log(n) / Math.Log(2)));  // log10(log2 n), clamped
+        switch (k) {
+            case 0: {
+                if (n > 30) return double.PositiveInfinity;      // 30! is already ~10^32
+                double s = 0;
+                for (int i = 2; i <= n; i++) s += Math.Log10(i);
+                return s;
+            }
+            case 1: return n * Math.Log10(2) + lg;
+            case 2: return n * Math.Log10(2);
+            case 3: return 3 * lg;
+            case 4: return 2 * lg + lgLog;
+            case 5: return 2 * lg;
+            case 6: return 1.5 * lg;
+            case 7: return lg + lgLog;
+            case 8: return lg;
+            case 9: return 0.5 * lg;
+            case 10: return lgLog;
+            default: return 0;
+        }
+    }
+
+    public string MaxAllowed(long n, int t) {
+        double budget = Math.Log10(t * 1e8);
+        for (int k = 0; k < NAMES.Length; k++)
+            if (Log10Ops(k, n) <= budget + 1e-9) return NAMES[k];   // first (most expensive) that fits
+        return "O(1)";
+    }
 }` }
           ],
           dry: {
@@ -3024,6 +3554,19 @@ int missingNumber(const vector<int>& nums) {
         if (!found) return v;
     }
     return -1;                              // never reached for valid input
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MissingNumber(int[] nums) {
+        int n = nums.Length;
+        for (int v = 0; v <= n; v++) {          // every candidate value
+            bool found = false;
+            foreach (int x in nums) {           // scan the whole array for it
+                if (x == v) { found = true; break; }
+            }
+            if (!found) return v;
+        }
+        return -1;                              // never reached for valid input
+    }
 }` }] }
     },
     mcq: {
@@ -3078,6 +3621,15 @@ console.log(missingNumber([3, 0, 1]));   // 2`, run: true },
     long long expected = n * (n + 1) / 2;   // ~5e9 for n = 1e5: too big for int
     long long actual = accumulate(nums.begin(), nums.end(), 0LL);   // 0LL: sum in long long
     return (int)(expected - actual);
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MissingNumber(int[] nums) {
+        long n = nums.Length;
+        long expected = n * (n + 1) / 2;   // 0 + 1 + ... + n, Gauss formula
+        long actual = 0;
+        foreach (int x in nums) actual += x;   // one pass, O(1) extra space
+        return (int)(expected - actual);   // only the missing value survives
+    }
 }` }],
       dry: {
         head: ['step', 'value', 'note'],
@@ -3127,6 +3679,15 @@ long long solve(long long n) {
         if (i % 3 == 0 || i % 5 == 0) sum += i;
     }
     return sum;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long Solve(long n) {
+        long sum = 0;
+        for (long i = 1; i < n; i++) {
+            if (i % 3 == 0 || i % 5 == 0) sum += i;
+        }
+        return sum;
+    }
 }` }] }
     },
     mcq: {
@@ -3196,6 +3757,18 @@ console.log(String(solve(1000)));   // 233168`, run: true },
 long long solve(long long n) {
     long long lim = n - 1;                // strictly below n
     return sumOfMultiples(3, lim) + sumOfMultiples(5, lim) - sumOfMultiples(15, lim);
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    // k + 2k + ... + m*k where m*k <= limit
+    static long SumOfMultiples(long k, long limit) {
+        long m = limit / k;            // how many multiples
+        return k * (m * (m + 1) / 2);  // k * (1 + 2 + ... + m)
+    }
+
+    public long Solve(long n) {
+        long lim = n - 1;              // strictly below n
+        return SumOfMultiples(3, lim) + SumOfMultiples(5, lim) - SumOfMultiples(15, lim);
+    }
 }` }
       ],
       dry: {
@@ -3235,6 +3808,14 @@ function digits(n, b) {
 int digits(long long n, int b) {
     // Fast-looking but wrong for n = 1000, b = 10 (prints 3) and undefined for n = 0
     return (int) (log((double) n) / log((double) b)) + 1;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int Digits(long n, int b) {
+        // Fast-looking but wrong for n = 1000, b = 10 (prints 3) and undefined for n = 0
+        return (int)(Math.Log(n) / Math.Log(b)) + 1;
+    }
 }` }] }
     },
     mcq: {
@@ -3311,6 +3892,17 @@ console.log(Math.floor(Math.log(1000) / Math.log(10)) + 1);      // 3  <- the fl
         count++;
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int Digits(long n, int b) {
+        if (n == 0) return 1;      // "0" is one digit
+        int count = 0;
+        while (n > 0) {
+            n /= b;                // drop the last base-b digit
+            count++;
+        }
+        return count;              // = floor(log_b n) + 1, computed exactly
+    }
 }` }
       ],
       dry: {
@@ -3364,6 +3956,16 @@ long long arrangeCoins(long long n) {
         n -= k;            // build row k
     }
     return k;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long ArrangeCoins(long n) {
+        long k = 0;
+        while (n >= k + 1) {   // enough coins for the next row?
+            k++;
+            n -= k;            // build row k
+        }
+        return k;
+    }
 }` }] }
     },
     mcq: {
@@ -3435,6 +4037,17 @@ console.log(String(arrangeCoins(8)));   // 3`, run: true },
         else hi = mid - 1;
     }
     return lo;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long ArrangeCoins(long n) {
+        long lo = 0, hi = 2000000000L;           // sqrt(2 * 10^18) < 1.5e9, so 2e9 is a safe upper bound
+        while (lo < hi) {
+            long mid = lo + (hi - lo + 1) / 2;   // upper middle: avoids infinite loop when lo = mid
+            if (mid * (mid + 1) / 2 <= n) lo = mid;   // mid rows fit -> answer is mid or more
+            else hi = mid - 1;                        // too many rows
+        }
+        return lo;
+    }
 }` }
       ],
       dry: {
@@ -3480,6 +4093,13 @@ long long isqrt(long long x) {
     long long r = 0;
     while ((r + 1) * (r + 1) <= x) r++;   // ~sqrt(x) iterations
     return r;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long Isqrt(long x) {
+        long r = 0;
+        while ((r + 1) * (r + 1) <= x) r++;   // ~sqrt(x) iterations
+        return r;
+    }
 }` }] }
     },
     mcq: {
@@ -3564,6 +4184,27 @@ console.log(Math.floor(Math.sqrt(999999999999999999))); // 1000000000 (wrong)`, 
         else hi = mid - 1;
     }
     return lo;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long Isqrt(long x) {
+        long lo = 0, hi = Math.Min(x, 2000000000L);   // sqrt(1e18) = 1e9, so 2e9 is plenty
+        while (lo < hi) {
+            long mid = lo + (hi - lo + 1) / 2;         // upper middle
+            if (mid <= x / mid) lo = mid;              // mid*mid <= x without overflow
+            else hi = mid - 1;
+        }
+        return lo;
+    }
+
+    // O(1) alternative: floating guess + exact integer correction
+    public long IsqrtFast(long x) {
+        long r = (long)Math.Sqrt((double)x);
+        while (r > 0 && r > x / r) r--;                // guess too big
+        while ((r + 1) <= x / (r + 1)) r++;            // guess too small
+        return r;
+    }
 }` }
       ],
       dry: {
@@ -3607,6 +4248,13 @@ long long modPow(long long a, long long b, long long m) {
     long long r = 1 % m;
     for (long long i = 0; i < b; i++) r = r * (a % m) % m;   // b iterations
     return r;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long ModPow(long a, long b, long m) {
+        long r = 1 % m;
+        for (long i = 0; i < b; i++) r = r * (a % m) % m;   // b iterations
+        return r;
+    }
 }` }] }
     },
     mcq: {
@@ -3683,6 +4331,18 @@ console.log(String(modPow(3, 13, 1000)));   // 323`, run: true },
         b >>= 1;
     }
     return result;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long ModPow(long a, long b, long m) {
+        long result = 1 % m;          // handles m = 1
+        long b2 = a % m;              // current power of a: a, a^2, a^4, ...
+        while (b > 0) {
+            if ((b & 1) == 1) result = result * b2 % m;   // this bit contributes b2 (products < 4e18 fit)
+            b2 = b2 * b2 % m;
+            b >>= 1;                                      // next bit: b halves
+        }
+        return result;
+    }
 }` }
       ],
       dry: {
@@ -3740,6 +4400,16 @@ long long tripleLoopCount(long long n) {
             for (long long k = j + 1; k < n; k++)
                 count++;
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long TripleLoopCount(long n) {
+        long count = 0;
+        for (long i = 0; i < n; i++)
+            for (long j = i + 1; j < n; j++)
+                for (long k = j + 1; k < n; k++)
+                    count++;
+        return count;
+    }
 }` }] }
     },
     mcq: {
@@ -3804,6 +4474,17 @@ console.log(String(tripleLoopCount(3000000)));   // 4499995500001000000`, run: t
     for (auto& x : f) if (x % 2 == 0) { x /= 2; break; }
     for (auto& x : f) if (x % 3 == 0) { x /= 3; break; }
     return f[0] * f[1] * f[2];          // <= 4.5e18, fits
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long TripleLoopCount(long n) {
+        if (n < 3) return 0;
+        long[] f = { n, n - 1, n - 2 };
+        // cancel the 2: at least one of two neighbours is even
+        for (int t = 0; t < 3; t++) if (f[t] % 2 == 0) { f[t] /= 2; break; }
+        // cancel the 3: one of three consecutive numbers is a multiple of 3
+        for (int t = 0; t < 3; t++) if (f[t] % 3 == 0) { f[t] /= 3; break; }
+        return f[0] * f[1] * f[2];          // <= 4.5e18, fits in long
+    }
 }` }
       ],
       dry: {
@@ -3860,6 +4541,17 @@ long long bulbSwitch(int n) {
     long long count = 0;
     for (int j = 1; j <= n; j++) if (on[j]) count++;
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long BulbSwitch(int n) {
+        bool[] on = new bool[n + 1];
+        for (int i = 1; i <= n; i++)
+            for (int j = i; j <= n; j += i)   // harmonic loop: n/1 + n/2 + ... + n/n
+                on[j] = !on[j];
+        long count = 0;
+        for (int j = 1; j <= n; j++) if (on[j]) count++;
+        return count;
+    }
 }` }] }
     },
     mcq: {
@@ -3918,6 +4610,16 @@ console.log(String(bulbSwitch(999999999999999999n)));   // 999999999`, run: true
     while (r > 0 && r > n / r) r--;                  // guess too big
     while (r + 1 <= n / (r + 1)) r++;                // guess too small
     return r;                                        // number of squares 1, 4, 9, ... <= n
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long BulbSwitch(long n) {
+        long r = (long)Math.Sqrt((double)n);
+        while (r > 0 && r > n / r) r--;            // fix double rounding up
+        while ((r + 1) <= n / (r + 1)) r++;        // fix double rounding down
+        return r;                                  // number of squares 1, 4, 9, ... <= n
+    }
 }` }
       ],
       dry: {
@@ -4018,6 +4720,32 @@ int minMoves(int target, int maxDoubles) {
         }
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int MinMoves(int target, int maxDoubles) {
+        // state = value * (maxDoubles + 1) + doublesUsed ; fine only for tiny targets
+        int w = maxDoubles + 1;
+        int[] dist = new int[(target + 1) * w];
+        Array.Fill(dist, -1);
+        dist[1 * w] = 0;
+        var q = new Queue<int[]>();
+        q.Enqueue(new[] { 1, 0 });
+        while (q.Count > 0) {
+            int[] cur = q.Dequeue();
+            int v = cur[0], d = cur[1], here = dist[v * w + d];
+            if (v == target) return here;
+            int[][] next = { new[] { v + 1, d }, new[] { v * 2, d + 1 } };
+            foreach (int[] nx in next) {
+                if (nx[0] > target || nx[1] > maxDoubles) continue;
+                int id = nx[0] * w + nx[1];
+                if (dist[id] == -1) { dist[id] = here + 1; q.Enqueue(nx); }
+            }
+        }
+        return -1;
+    }
 }` }] }
     },
     mcq: {
@@ -4099,6 +4827,21 @@ console.log(minMoves(19, 2));   // 7`, run: true },
         moves++;
     }
     return moves + (target - 1);   // only +1 moves remain
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MinMoves(int target, int maxDoubles) {
+        int moves = 0;
+        while (target > 1 && maxDoubles > 0) {
+            if (target % 2 == 1) {
+                target--;               // make it even
+            } else {
+                target /= 2;            // reverse of a double
+                maxDoubles--;
+            }
+            moves++;
+        }
+        return moves + (target - 1);    // only +1 moves remain: jump straight to 1
+    }
 }` }
       ],
       dry: {
@@ -4150,6 +4893,15 @@ long long totalDigits(long long n) {
         for (long long x = p; x > 0; x /= 10) total++;   // digits of page p
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long TotalDigits(long n) {
+        long total = 0;
+        for (long p = 1; p <= n; p++) {
+            for (long x = p; x > 0; x /= 10) total++;   // digits of page p
+        }
+        return total;
+    }
 }` }] }
     },
     mcq: {
@@ -4223,6 +4975,21 @@ console.log(String(totalDigits(13)), String(totalDigits(100)));   // 17 192`, ru
         d++;
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long TotalDigits(long n) {
+        long total = 0, start = 1;
+        int d = 1;
+        while (start <= n) {
+            long end = Math.Min(n, start * 10 - 1);   // last page with d digits (n <= 1e17, so start*10 fits)
+            total += (long)d * (end - start + 1);     // every page in the group prints d digits
+            start *= 10;
+            d++;
+        }
+        return total;
+    }
 }` }
       ],
       dry: {
@@ -4272,6 +5039,15 @@ int findNthDigit(long long n) {
         string s = to_string(num);
         if (n <= (long long) s.size()) return s[n - 1] - '0';
         n -= s.size();            // skip this whole number
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindNthDigit(long n) {
+        for (long num = 1; ; num++) {
+            string s = num.ToString();
+            if (n <= s.Length) return s[(int)(n - 1)] - '0';
+            n -= s.Length;            // skip this whole number
+        }
     }
 }` }] }
     },
@@ -4350,6 +5126,20 @@ console.log(findNthDigit(11), findNthDigit(190));   // 0 1`, run: true },
     }
     long long num = start + (n - 1) / d;     // the number containing the digit
     return to_string(num)[(n - 1) % d] - '0';
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FindNthDigit(long n) {
+        long d = 1, count = 9, start = 1;     // block of 1-digit numbers: 1..9
+        while (n > d * count) {               // whole block lies before the answer
+            n -= d * count;
+            d++;
+            count *= 10;                      // 9, 90, 900, ...
+            start *= 10;                      // 1, 10, 100, ...
+        }
+        long num = start + (n - 1) / d;       // the number containing the digit
+        string s = num.ToString();
+        return s[(int)((n - 1) % d)] - '0';
+    }
 }` }
       ],
       dry: {
@@ -4399,6 +5189,13 @@ long long harmonicCount(long long n) {
     long long total = 0;
     for (long long i = 1; i <= n; i++) total += n / i;   // O(n): 10^12 iterations for the max n
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long HarmonicCount(long n) {
+        long total = 0;
+        for (long i = 1; i <= n; i++) total += n / i;   // O(n): 10^12 iterations for the max n
+        return total;
+    }
 }` }] }
     },
     mcq: {
@@ -4470,6 +5267,18 @@ console.log(harmonicCount(10));   // 27`, run: true },
         i = last + 1;
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long HarmonicCount(long n) {
+        long total = 0;
+        for (long i = 1; i <= n; ) {
+            long q = n / i;              // the quotient for this block
+            long last = n / q;           // last index with the same quotient
+            total += q * (last - i + 1); // whole block at once
+            i = last + 1;                // jump to the next distinct quotient
+        }
+        return total;
+    }
 }` }
       ],
       dry: {
@@ -4523,6 +5332,16 @@ long long gpSum(long long r, long long n, long long m) {
         term = term * (r % m) % m;
     }
     return sum;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long GpSum(long r, long n, long m) {
+        long sum = 0, term = 1 % m;
+        for (long i = 0; i < n; i++) {
+            sum = (sum + term) % m;
+            term = term * (r % m) % m;
+        }
+        return sum;
+    }
 }` }] }
     },
     mcq: {
@@ -4626,7 +5445,31 @@ public:
         R = r % m;
         return gp(n).first;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    private long R, M;
+
+    // returns (S(n) mod M, R^n mod M)
+    private (long sum, long pow) Gp(long n) {
+        if (n == 0) return (0, 1 % M);
+        if (n % 2 == 1) {
+            var t = Gp(n - 1);                                // S(n-1), R^(n-1)
+            long s = (1 + R * t.sum) % M;                     // S(n) = 1 + R * S(n-1)
+            long p = t.pow * R % M;                           // R^n
+            return (s, p);
+        }
+        var h = Gp(n / 2);                                    // S(n/2), R^(n/2)
+        long s2 = h.sum * ((1 + h.pow) % M) % M;              // S(n) = S(n/2) * (1 + R^(n/2))
+        long p2 = h.pow * h.pow % M;                          // R^n = (R^(n/2))^2
+        return (s2, p2);
+    }
+
+    public long GpSum(long r, long n, long m) {
+        M = m;
+        R = r % m;
+        return Gp(n).sum;                                     // depth <= ~120 frames
+    }
+}` }
       ],
       dry: {
         head: ['call', 'rule', 'S', 'rⁿ'],
@@ -4707,6 +5550,22 @@ int preimageSizeFZF(long long k) {
         long long zx = zeros(x);
         if (zx == k) count++;
         else if (zx > k) return count;
+    }
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    static long Zeros(long x) {
+        long c = 0;
+        for (long p = 5; p <= x; p *= 5) c += x / p;   // log_5(x) terms
+        return c;
+    }
+
+    public int PreimageSizeFZF(long k) {
+        int count = 0;
+        for (long x = 0; ; x++) {
+            long zx = Zeros(x);
+            if (zx == k) count++;
+            else if (zx > k) return count;
+        }
     }
 }` }] }
     },
@@ -4821,6 +5680,32 @@ long long lowerBound(long long t) {    // smallest x with zeros(x) >= t
 
 int preimageSizeFZF(long long k) {
     return (int)(lowerBound(k + 1) - lowerBound(k));
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    // trailing zeroes of x!  (Legendre: count factors of 5)
+    static long Z(long x) {
+        long c = 0;
+        while (x > 0) {
+            x /= 5;           // x/5 + x/25 + x/125 + ...
+            c += x;
+        }
+        return c;
+    }
+
+    // smallest x with Z(x) >= t
+    static long LowerBound(long t) {
+        long lo = 0, hi = 5 * t;      // 5 * (1e9 + 1) needs long
+        while (lo < hi) {
+            long mid = lo + (hi - lo) / 2;
+            if (Z(mid) < t) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
+    }
+
+    public int PreimageSizeFZF(long k) {
+        return (int)(LowerBound(k + 1) - LowerBound(k));
+    }
 }` }
       ],
       dry: {
@@ -4894,6 +5779,21 @@ string smallestGoodBase(string s) {
         if (allOnes) return to_string(k);
     }
     return to_string(n - 1);
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string SmallestGoodBase(string s) {
+        long n = long.Parse(s);
+        for (long k = 2; k < n; k++) {          // up to 10^18 candidate bases
+            long x = n;
+            bool allOnes = true;
+            while (x > 0) {
+                if (x % k != 1) { allOnes = false; break; }
+                x /= k;
+            }
+            if (allOnes) return k.ToString();
+        }
+        return (n - 1).ToString();
+    }
 }` }] }
     },
     mcq: {
@@ -4996,7 +5896,34 @@ public:
         }
         return to_string(n - 1);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    // does 1 + k + k^2 + ... + k^m equal n exactly? (overflow-safe)
+    static bool GpEquals(long k, int m, long n) {
+        long sum = 1, cur = 1;
+        for (int i = 1; i <= m; i++) {
+            if (cur > (n - sum) / k) return false;   // cur*k would push sum past n
+            cur *= k;
+            sum += cur;
+        }
+        return sum == n;
+    }
+
+    public string SmallestGoodBase(string s) {
+        long n = long.Parse(s);
+        int maxM = 0;
+        while ((n >> (maxM + 1)) != 0) maxM++;              // floor(log2 n)
+        for (int m = maxM; m >= 2; m--) {                   // more ones first = smaller base
+            long k = (long)Math.Pow(n, 1.0 / m);
+            for (long cand = k - 1; cand <= k + 1; cand++) {
+                if (cand >= 2 && GpEquals(cand, m, n)) return cand.ToString();
+            }
+        }
+        return (n - 1).ToString();                          // "11" in base n-1 always works
+    }
+}` }
       ],
       dry: {
         head: ['m', 'k ≈ 13<sup>1/m</sup>', 'candidates', 'check'],

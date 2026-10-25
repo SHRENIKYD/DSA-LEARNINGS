@@ -1,7 +1,7 @@
 // Picks one embeddable YouTube video per lesson topic and stores it in data/videos.json.
 // usage: YOUTUBE_API_KEY=<key> node tools/find-videos.js [--max 95]   search topics that have no video yet
 //        YOUTUBE_API_KEY=<key> node tools/find-videos.js --check      drop videos that were removed or can no longer be embedded (default picks and byLang picks)
-//        YOUTUBE_API_KEY=<key> node tools/find-videos.js --lang python [--max 40]   search dsa/lld topics that lack a byLang.python pick (java|python|js|cpp)
+//        YOUTUBE_API_KEY=<key> node tools/find-videos.js --lang python [--max 40]   search dsa/lld topics that lack a byLang.python pick (java|python|js|cpp|csharp)
 // Quota: a search costs 100 units and the free daily quota is 10,000, so --max 95 fits in one day.
 const fs = require('fs');
 const path = require('path');
@@ -13,7 +13,7 @@ const API = 'https://www.googleapis.com/youtube/v3/';
 const QUERY_PREFIX = { dsa: 'DSA', java: 'Java', py: 'Python', js: 'JavaScript', cpp: 'C++', sql: 'SQL', lld: 'low level design', hld: 'system design', fe: 'frontend', be: 'backend', ai: 'AI', cs: '', beh: 'behavioral interview' };
 const TRUSTED = ['freeCodeCamp.org', 'NeetCode', 'NeetCodeIO', 'Abdul Bari', 'take U forward', 'Back To Back SWE', 'William Fiset', 'mycodeschool', 'CS Dojo', 'Fireship', 'ByteByteGo', 'Gaurav Sen', 'Hussein Nasser', 'Computerphile', '3Blue1Brown', 'StatQuest with Josh Starmer', 'Andrej Karpathy', 'Corey Schafer', 'Tech With Tim', 'Web Dev Simplified', 'Traversy Media', 'Amigoscode', 'Telusko', 'Kunal Kushwaha', 'Neso Academy', 'Gate Smashers', 'Jenny\'s Lectures CS IT', 'The Coding Train', 'Programming with Mosh', 'Bro Code', 'Theo - t3․gg', 'Jack Herrington', 'Kevin Powell', 'Net Ninja', 'Coding with John', 'Defog Tech', 'Arpit Bhayani', 'Jordan has no life', 'Exponent', 'IBM Technology', 'Google Cloud Tech', 'AWS Events', 'CppCon', 'Cherno', 'The Cherno', 'mCoding', 'ArjanCodes', 'Hitesh Choudhary', 'Striver'];
 
-const LANGS = { java: { name: 'Java', re: /\bjava\b/i }, python: { name: 'Python', re: /\bpython\b/i }, js: { name: 'JavaScript', re: /\b(javascript|js|node\.?js|typescript)\b/i }, cpp: { name: 'C++', re: /(c\+\+|\bcpp\b)/i } };
+const LANGS = { java: { name: 'Java', re: /\bjava\b/i }, python: { name: 'Python', re: /\bpython\b/i }, js: { name: 'JavaScript', re: /\b(javascript|js|node\.?js|typescript)\b/i }, cpp: { name: 'C++', re: /(c\+\+|\bcpp\b)/i }, csharp: { name: 'C#', re: /(c#|\bc ?sharp\b|\.net\b|\bdotnet\b)/i } };
 const LANG_TRACKS = ['dsa', 'lld'];
 
 function strip(s) { return String(s || '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim(); }

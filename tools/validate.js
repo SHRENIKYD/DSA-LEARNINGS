@@ -1,5 +1,6 @@
 // Usage: node tools/validate.js content/<track>/<id>.js [--code]
-//   --code  also compiles/runs every code snippet (Java, Python, JS/TS, C++, SQL, JSON)
+//   --code  also compiles/runs every code snippet (Java, Python, JS/TS, C++, C#, SQL, JSON)
+//           C# needs mono (mcs) or the .NET SDK (dotnet); `run: true` C# programs are also executed, like Python and JS.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -178,7 +179,7 @@ if (lc('Easy') < 3) E('module', 'practice needs >= 3 Easy'); if (lc('Medium') < 
 pr.forEach((p, k) => problem('practice[' + k + '] "' + String(p.title).slice(0, 40) + '"', p, false));
 if (m.langNotes) {
   if (typeof m.langNotes !== 'object') E('module', 'langNotes must be an object {java, python, js, cpp}');
-  else Object.keys(m.langNotes).forEach((k) => { if (!['java', 'python', 'js', 'ts', 'cpp'].includes(k)) E('langNotes', 'unknown language key ' + k); html('langNotes.' + k, m.langNotes[k], 40); });
+  else Object.keys(m.langNotes).forEach((k) => { if (!['java', 'python', 'js', 'ts', 'cpp', 'csharp'].includes(k)) E('langNotes', 'unknown language key ' + k); html('langNotes.' + k, m.langNotes[k], 40); });
 }
 const qz = m.quiz || [];
 if (qz.length < 10) E('module', 'quiz needs >= 10 MCQs (got ' + qz.length + ')');
@@ -198,7 +199,7 @@ function codeCheck() {
   const norm = (c) => { const L = c.replace(/\r/g, '').split('\n'); const mn = Math.min(...L.filter((l) => l.trim()).map((l) => l.match(/^ */)[0].length)); return L.map((l) => l.slice(mn)).join('\n'); };
   const fail = (s, msg) => E(s.where, (s.lang || '?') + ' check failed:\n      ' + String(msg).split('\n').filter((l) => l.trim()).slice(0, 8).join('\n      '));
   const by = {};
-  snippets.forEach((s) => { const l = ({ javascript: 'js', jsx: 'js', typescript: 'ts', tsx: 'ts', py: 'python', c: 'cpp' })[s.lang] || s.lang; (by[l] = by[l] || []).push(Object.assign(s, { lang: l, code: norm(s.code) })); });
+  snippets.forEach((s) => { const l = ({ javascript: 'js', jsx: 'js', typescript: 'ts', tsx: 'ts', py: 'python', c: 'cpp', 'c#': 'csharp', cs: 'csharp' })[s.lang] || s.lang; (by[l] = by[l] || []).push(Object.assign(s, { lang: l, code: norm(s.code) })); });
   let ok = 0, total = 0;
   // Java
   if (by.java) {
@@ -295,6 +296,38 @@ function codeCheck() {
       fail(s, msg.replace(new RegExp(tmp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/', 'g'), ''));
     });
   }
+  // C#: mono (mcs/mono) or the .NET SDK via tools/harness/cs-compile.js. A snippet may be a whole program, a class, bare
+  // members or statements; `run: true` programs must also exit 0 (their output is not compared, as for Python and JS).
+  if (by.csharp) {
+    const cs = require('./harness/cs-compile.js');
+    if (!cs.toolchain()) { W('csharp', 'no C# compiler (mcs or dotnet), ' + by.csharp.length + ' C# snippet(s) not checked'); total += by.csharp.length; ok += by.csharp.length; }
+    else {
+      const USING = 'using System;\nusing System.Collections;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Text;\n';
+      const CS_STUBS = {
+        ListNode: 'public class ListNode { public int val; public ListNode next; public ListNode(int val = 0, ListNode next = null) { this.val = val; this.next = next; } }',
+        TreeNode: 'public class TreeNode { public int val; public TreeNode left; public TreeNode right; public TreeNode(int val = 0, TreeNode left = null, TreeNode right = null) { this.val = val; this.left = left; this.right = right; } }'
+      };
+      const USING_RE = /^[ \t]*using\s+(static\s+)?[\w.]+(\s*=\s*[\w.<>, ]+)?\s*;[ \t]*$/gm;
+      by.csharp.forEach((s, k) => {
+        total++;
+        let stubs = '';
+        for (const [n, d] of Object.entries(CS_STUBS)) if (new RegExp('\\b' + n + '\\b').test(s.code) && !new RegExp('(class|struct)\\s+' + n + '\\b').test(s.code)) stubs += d + '\n';
+        const usings = (s.code.match(USING_RE) || []).map((u) => u.trim()).join('\n') + '\n', body = s.code.replace(USING_RE, '');
+        const head = USING + usings + stubs;
+        const tries = s.run ? [head + body] : [head + body, head + 'class Snip__ {\n' + body + '\n}\n', head + 'class Snip__ {\n  void Run__() {\n' + body + '\n  }\n}\n'];
+        let msg = '';
+        for (let i = 0; i < tries.length; i++) {
+          const r = cs.compile(path.join(tmp, 'cs' + k + '_' + i), tries[i], { exe: !!s.run, timeout: 180000 });
+          if (r.ok) {
+            if (s.run) { const x = r.run('', 10000); if (x.status !== 0) { msg = 'runtime error: ' + ((x.stderr || (x.error && x.error.message) || x.stdout || '') + '').toString().slice(-800); break; } }
+            ok++; return;
+          }
+          if (i === 0) msg = r.err;
+        }
+        fail(s, msg);
+      });
+    }
+  }
   (by.json || []).forEach((s) => { total++; try { JSON.parse(s.code); ok++; } catch (e) { fail(s, e.message); } });
   [].concat(by.bash || [], by.sh || []).forEach((s, k) => {
     total++;
@@ -308,7 +341,7 @@ function codeCheck() {
     const r = spawnSync('python3', ['-c', 'import sys, yaml; list(yaml.safe_load_all(open(sys.argv[1])))', f], { encoding: 'utf8' });
     if (r.status === 0) ok++; else fail(s, (r.stderr || '').split('\n').slice(-4).join('\n'));
   });
-  const unchecked = Object.keys(by).filter((l) => !['java', 'python', 'sql', 'js', 'ts', 'cpp', 'json', 'bash', 'sh', 'yaml'].includes(l)).reduce((a, l) => a + by[l].length, 0);
+  const unchecked = Object.keys(by).filter((l) => !['java', 'python', 'sql', 'js', 'ts', 'cpp', 'csharp', 'json', 'bash', 'sh', 'yaml'].includes(l)).reduce((a, l) => a + by[l].length, 0);
   console.log('code: ' + ok + '/' + total + ' checked snippets pass' + (unchecked ? ' (' + unchecked + ' in unchecked languages)' : ''));
   fs.rmSync(tmp, { recursive: true, force: true });
 }

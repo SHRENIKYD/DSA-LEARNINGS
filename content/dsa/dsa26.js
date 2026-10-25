@@ -270,6 +270,40 @@ double distanceToLine(const array<ll, 2>& a, const array<ll, 2>& b, const array<
     double area2 = fabs((double)cross(a[0], a[1], b[0], b[1], p[0], p[1]));
     double base = hypot((double)(b[0] - a[0]), (double)(b[1] - a[1]));
     return area2 / base;
+}` }, { lang: 'csharp', code: `// Orientation toolkit. All arithmetic in long: coordinates up to ~1e9 give
+// products up to ~4e18, which still fits in a signed 64-bit long (max ~9.22e18).
+static long Cross(long ox, long oy, long ax, long ay, long bx, long by) {
+    // (A - O) x (B - O)
+    return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+}
+
+// +1 = counter-clockwise (left turn), -1 = clockwise (right turn), 0 = collinear
+static int Orientation(long[] o, long[] a, long[] b) {
+    return Math.Sign(Cross(o[0], o[1], a[0], a[1], b[0], b[1]));
+}
+
+// Twice the triangle area: stays an exact integer, divide by 2 only when printing.
+static long TwiceTriangleArea(long[] a, long[] b, long[] c) {
+    return Math.Abs(Cross(a[0], a[1], b[0], b[1], c[0], c[1]));
+}
+
+// Dot product of (A - O) and (B - O): sign tells acute (>0), right (0) or obtuse (<0) angle at O.
+static long Dot(long ox, long oy, long ax, long ay, long bx, long by) {
+    return (ax - ox) * (bx - ox) + (ay - oy) * (by - oy);
+}
+
+// Is P on the closed segment AB? Collinear AND inside AB's bounding box.
+static bool OnSegment(long[] a, long[] b, long[] p) {
+    if (Cross(a[0], a[1], b[0], b[1], p[0], p[1]) != 0) return false;
+    return Math.Min(a[0], b[0]) <= p[0] && p[0] <= Math.Max(a[0], b[0])
+        && Math.Min(a[1], b[1]) <= p[1] && p[1] <= Math.Max(a[1], b[1]);
+}
+
+// Distance from P to the infinite line through A and B = |cross| / |AB| (area / base).
+static double DistanceToLine(long[] a, long[] b, long[] p) {
+    double area2 = Math.Abs((double)Cross(a[0], a[1], b[0], b[1], p[0], p[1]));
+    double dx = b[0] - a[0], dy = b[1] - a[1];
+    return area2 / Math.Sqrt(dx * dx + dy * dy);
 }` }] }, { lang: 'python', run: true, code: `def cross(o, a, b):
     """(A - O) x (B - O): > 0 left turn, < 0 right turn, 0 straight."""
     return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
@@ -333,7 +367,36 @@ int main() {
         cout << "(" << o[0] << ", " << o[1] << ") (" << a[0] << ", " << a[1] << ") (" << b[0] << ", " << b[1]
              << ") cross = " << c << " -> " << turn(o, a, b) << " | triangle area = " << llabs(c) / 2.0 << endl;
     }
-}` }, { lang: 'java', code: `public class Main {
+}` }, { lang: 'csharp', code: `using System;
+
+class Program {
+    // (A - O) x (B - O): > 0 left turn, < 0 right turn, 0 straight.
+    static long Cross(long[] o, long[] a, long[] b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+
+    static string Turn(long[] o, long[] a, long[] b) {
+        long c = Cross(o, a, b);
+        if (c > 0) return "LEFT  (counter-clockwise)";
+        if (c < 0) return "RIGHT (clockwise)";
+        return "STRAIGHT (collinear)";
+    }
+
+    static string P(long[] p) { return "(" + p[0] + ", " + p[1] + ")"; }
+
+    static void Main() {
+        long[][][] cases = {
+            new[] { new long[] {0, 0}, new long[] {4, 0}, new long[] {2, 3} },
+            new[] { new long[] {0, 0}, new long[] {4, 0}, new long[] {6, -2} },
+            new[] { new long[] {1, 1}, new long[] {2, 2}, new long[] {5, 5} },
+            new[] { new long[] {0, 0}, new long[] {0, 5}, new long[] {0, -3} }   // vertical line: slopes would divide by zero
+        };
+        foreach (var t in cases) {
+            long c = Cross(t[0], t[1], t[2]);
+            Console.WriteLine(P(t[0]) + " " + P(t[1]) + " " + P(t[2]) + " cross = " + c + " -> " + Turn(t[0], t[1], t[2]) + " | triangle area = " + Math.Abs(c) / 2.0);
+        }
+    }
+}`, run: true }, { lang: 'java', code: `public class Main {
     static long cross(long[] o, long[] a, long[] b) {
         // (A - O) x (B - O): > 0 left turn, < 0 right turn, 0 straight.
         return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
@@ -406,7 +469,9 @@ print(twice / 2)   # 9.5` }, { lang: 'js', code: `const a = [1, 1], b = [5, 2], 
 const twice = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
 console.log(twice / 2);   // 9.5` }, { lang: 'cpp', code: `long long a[] = {1, 1}, b[] = {5, 2}, c[] = {2, 6};
 long long twice = llabs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
-cout << twice / 2.0 << endl;   // 9.5` }] } },
+cout << twice / 2.0 << endl;   // 9.5` }, { lang: 'csharp', code: `long[] a = { 1, 1 }, b = { 5, 2 }, c = { 2, 6 };
+long twice = Math.Abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+Console.WriteLine(twice / 2.0);   // 9.5` }] } },
       { title: 'Which side of the fence is the cow on?', html: `<p>A straight fence runs from F1 = (0,0) to F2 = (10,10). Cow at (2,7): cross = 10·7 − 10·2 = 50 &gt; 0 → <span class="c-g">left side</span>. Cow at (8,3): 10·3 − 10·8 = −50 → <span class="c-r">right side</span>. Two cows are on the same side exactly when their cross products have the same sign — this is the core of segment intersection (Topic 2).</p>` },
       { title: 'Distance from a point to a line', html: `<p>Line through A=(0,0), B=(3,4) (length 5). P = (4,0). |cross| = |3·0 − 4·4| = 16 = parallelogram area. Height = area ÷ base = 16 / 5 = <b>3.2</b>. Same formula gives the distance to a segment when the projection lands inside it (check with two dot products), otherwise take the distance to the nearer endpoint.</p>` },
       { title: 'Acute or obtuse? Use the dot product', html: `<p>At O=(0,0) with A=(3,1) and B=(−1,2): dot = 3·(−1) + 1·2 = −1 &lt; 0 → the angle AOB is <b>obtuse</b> (over 90°). With B = (1,3): dot = 3 + 3 = 6 &gt; 0 → acute. Dot = 0 means a perfect right angle — handy for "is this a rectangle / right triangle?" questions.</p>` }
@@ -481,7 +546,20 @@ public:
                 }
         return true;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    // Brute force: every triple must be collinear. O(N^3).
+    public bool CheckStraightLine(int[][] p) {
+        int n = p.Length;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++) {
+                    long c = (long)(p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                           - (long)(p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                    if (c != 0) return false;   // this triple bends
+                }
+        return true;
+    }
+}` }] }
       },
       mcq: { q: 'Points (2,1), (2,5), (2,9). A slope-based solution computes (5−1)/(2−2). What should you do instead?', options: ['Catch the ArithmeticException and return true', 'Compute cross((2,1),(2,5),(2,9)) = 0·8 − 4·0 = 0 → collinear', 'Use Double.compare on slopes', 'Sort the points first'], answer: 1, explain: 'The cross product needs no division, so vertical lines are not special. It equals 0 here, so the points are collinear.' },
       hints: [
@@ -771,7 +849,17 @@ public:
             if (dx * (p[i][1] - y0) - dy * (p[i][0] - x0) != 0) return false;   // off the line
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool CheckStraightLine(int[][] p) {
+        long x0 = p[0][0], y0 = p[0][1];
+        long dx = p[1][0] - x0, dy = p[1][1] - y0;    // direction of the line A -> B
+        for (int i = 2; i < p.Length; i++) {
+            long ex = p[i][0] - x0, ey = p[i][1] - y0; // vector A -> P_i
+            if (dx * ey - dy * ex != 0) return false;  // P_i is off the line
+        }
+        return true;
+    }
+}` }],
         dry: { head: ['i', 'point', 'e = P − A', 'dx·ey − dy·ex', 'verdict'], rows: [
           ['—', '(1,1) = A, (2,2)', 'd = (1,1)', '—', 'line fixed'],
           ['2', '(3,4)', '(2,3)', '1·3 − 1·2 = 1', '<span class="c-r">≠ 0 → return false</span>'],
@@ -917,6 +1005,28 @@ bool segmentsIntersect(const P& p1, const P& p2, const P& q1, const P& q2) {
     if (o3 == 0 && inBox(q1, q2, p1)) return true;       // P1 lies on Q1Q2
     if (o4 == 0 && inBox(q1, q2, p2)) return true;       // P2 lies on Q1Q2
     return false;                                        // separated
+}` }, { lang: 'csharp', code: `static long Cross(long[] o, long[] a, long[] b) {
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+}
+
+// p is already known to be collinear with a-b; is it inside the segment's bounding box?
+static bool InBox(long[] a, long[] b, long[] p) {
+    return Math.Min(a[0], b[0]) <= p[0] && p[0] <= Math.Max(a[0], b[0])
+        && Math.Min(a[1], b[1]) <= p[1] && p[1] <= Math.Max(a[1], b[1]);
+}
+
+// True if closed segments P1P2 and Q1Q2 share at least one point (touching counts).
+static bool SegmentsIntersect(long[] p1, long[] p2, long[] q1, long[] q2) {
+    int o1 = Math.Sign(Cross(p1, p2, q1));
+    int o2 = Math.Sign(Cross(p1, p2, q2));
+    int o3 = Math.Sign(Cross(q1, q2, p1));
+    int o4 = Math.Sign(Cross(q1, q2, p2));
+    if (o1 != o2 && o3 != o4) return true;            // proper crossing or T-touch
+    if (o1 == 0 && InBox(p1, p2, q1)) return true;    // Q1 lies on P1P2
+    if (o2 == 0 && InBox(p1, p2, q2)) return true;    // Q2 lies on P1P2
+    if (o3 == 0 && InBox(q1, q2, p1)) return true;    // P1 lies on Q1Q2
+    if (o4 == 0 && InBox(q1, q2, p2)) return true;    // P2 lies on Q1Q2
+    return false;                                     // separated
 }` }] }, { lang: 'java', code: `
       // Crossing point of two NON-parallel segments, or null if they do not cross.
       // Exact test on integers; only the final coordinates use doubles.
@@ -978,6 +1088,20 @@ pair<bool, array<double, 2>> crossingPoint(const P& p1, const P& p2, const P& q1
     if (tNum < 0 || tNum > den || uNum < 0 || uNum > den) return {false, {0, 0}};   // outside a segment
     double t = (double)tNum / den;
     return {true, {p1[0] + t * rx, p1[1] + t * ry}};
+}` }, { lang: 'csharp', code: `// Crossing point of two NON-parallel segments, or null if they do not cross.
+// Exact test on integers; only the final coordinates use doubles.
+static double[] CrossingPoint(long[] p1, long[] p2, long[] q1, long[] q2) {
+    long rx = p2[0] - p1[0], ry = p2[1] - p1[1];      // r = P2 - P1
+    long sx = q2[0] - q1[0], sy = q2[1] - q1[1];      // s = Q2 - Q1
+    long qx = q1[0] - p1[0], qy = q1[1] - p1[1];      // Q1 - P1
+    long den = rx * sy - ry * sx;                     // r x s
+    if (den == 0) return null;                        // parallel or collinear: handle separately
+    long tNum = qx * sy - qy * sx;                    // (Q1 - P1) x s
+    long uNum = qx * ry - qy * rx;                    // (Q1 - P1) x r
+    if (den < 0) { den = -den; tNum = -tNum; uNum = -uNum; }   // make the denominator positive
+    if (tNum < 0 || tNum > den || uNum < 0 || uNum > den) return null; // outside a segment
+    double t = (double)tNum / den;
+    return new[] { p1[0] + t * rx, p1[1] + t * ry };
 }` }] }],
     codeTitle: ['Yes/no intersection test (handles every touching case)', 'Where they cross (parametric form, exact range check)'],
     viz: {
@@ -1049,7 +1173,9 @@ print("r x s =", rxs, "-> parallel, never divide by this")` }, { lang: 'js', cod
 const rxs = (p2[0] - p1[0]) * (q2[1] - q1[1]) - (p2[1] - p1[1]) * (q2[0] - q1[0]);
 console.log('r x s = ' + rxs + ' -> parallel, never divide by this');` }, { lang: 'cpp', code: `long long p1[] = {0, 0}, p2[] = {4, 0}, q1[] = {0, 2}, q2[] = {4, 2};
 long long rxs = (p2[0] - p1[0]) * (q2[1] - q1[1]) - (p2[1] - p1[1]) * (q2[0] - q1[0]);
-cout << "r x s = " << rxs << " -> parallel, never divide by this" << endl;` }] } }
+cout << "r x s = " << rxs << " -> parallel, never divide by this" << endl;` }, { lang: 'csharp', code: `long[] p1 = { 0, 0 }, p2 = { 4, 0 }, q1 = { 0, 2 }, q2 = { 4, 2 };
+long rxs = (p2[0] - p1[0]) * (q2[1] - q1[1]) - (p2[1] - p1[1]) * (q2[0] - q1[0]);
+Console.WriteLine("r x s = " + rxs + " -> parallel, never divide by this");` }] } }
     ],
     deepDive: `<p><b>Why "o1 ≠ o2 and o3 ≠ o4" is enough (with zeros).</b> If, say, o1 = 0 and o2 ≠ 0, the two lines are not parallel and meet exactly at Q1. The condition o3 ≠ o4 says P1 and P2 are on different sides of (or on) line Q1Q2, so the meeting point Q1 lies between P1 and P2 — on the segment. When both o1 and o2 are 0 the segments are collinear and the bounding-box checks take over. This is the version in CLRS (Section 33.1).</p>
       <p><b>Overflow and signs.</b> Never test <code>c1 * c2 &lt; 0</code> on raw cross products: each can be ~10<sup>18</sup>, and their product overflows a 64-bit integer. Compare the <em>signs</em> instead (<code>Long.signum</code> in Java, <code>(c &gt; 0) - (c &lt; 0)</code> elsewhere). For the crossing point keep <code>tNum</code>, <code>uNum</code> and <code>den</code> as exact integers and compare <code>0 ≤ tNum ≤ den</code> after normalising the sign; divide only at the end. If an exact rational point is required (judges sometimes want fractions), output <code>(p1.x·den + tNum·rx) / den</code> reduced by gcd.</p>
@@ -1123,7 +1249,19 @@ public:
         if (x < min(s2[0], e2[0]) || x > max(s2[0], e2[0])) return {};
         return {x, y};
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    // Naive slope-intercept solution: shown to illustrate the special cases it gets wrong.
+    public double[] Intersection(int[] s1, int[] e1, int[] s2, int[] e2) {
+        if (s1[0] == e1[0] || s2[0] == e2[0]) return new double[0];   // BUG: gives up on vertical segments
+        double k1 = (double)(e1[1] - s1[1]) / (e1[0] - s1[0]), b1 = s1[1] - k1 * s1[0];
+        double k2 = (double)(e2[1] - s2[1]) / (e2[0] - s2[0]), b2 = s2[1] - k2 * s2[0];
+        if (k1 == k2) return new double[0];                              // BUG: collinear overlaps ignored
+        double x = (b2 - b1) / (k1 - k2), y = k1 * x + b1;
+        if (x < Math.Min(s1[0], e1[0]) || x > Math.Max(s1[0], e1[0])) return new double[0];
+        if (x < Math.Min(s2[0], e2[0]) || x > Math.Max(s2[0], e2[0])) return new double[0];
+        return new[] { x, y };
+    }
+}` }] }
       },
       mcq: { q: 'You computed r × s = 0 for the two direction vectors. What is the next check?', options: ['Return empty — parallel segments never meet', 'Check whether (Q1 − P1) × r = 0; if so they are collinear and may overlap', 'Divide anyway; floating-point division just returns Infinity', 'Swap the segments and recompute'], answer: 1, explain: 'r × s = 0 means parallel. They can still overlap if they lie on the same line, which is exactly when Q1 − P1 is also parallel to r.' },
       hints: [
@@ -1290,7 +1428,38 @@ public:
         double t = (double)tNum / den;
         return {s1[0] + t * rx, s1[1] + t * ry};
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double[] Intersection(int[] s1, int[] e1, int[] s2, int[] e2) {
+        long[] p1 = { s1[0], s1[1] }, p2 = { e1[0], e1[1] }, q1 = { s2[0], s2[1] }, q2 = { e2[0], e2[1] };
+        long rx = p2[0] - p1[0], ry = p2[1] - p1[1];          // r = P2 - P1
+        long sx = q2[0] - q1[0], sy = q2[1] - q1[1];          // s = Q2 - Q1
+        long qx = q1[0] - p1[0], qy = q1[1] - p1[1];          // Q1 - P1
+        long den = rx * sy - ry * sx;                         // r x s
+        if (den == 0) {
+            if (qx * ry - qy * rx != 0 || qx * sy - qy * sx != 0)
+                return new double[0];                          // parallel, different lines (or a point off the line)
+            double[] best = null;                              // collinear: best shared endpoint
+            foreach (var c in new[] { p1, p2, q1, q2 }) {
+                if (InBox(p1, p2, c) && InBox(q1, q2, c)) {
+                    if (best == null || c[0] < best[0] || (c[0] == best[0] && c[1] < best[1]))
+                        best = new double[] { c[0], c[1] };
+                }
+            }
+            return best == null ? new double[0] : best;
+        }
+        long tNum = qx * sy - qy * sx;                        // (Q1 - P1) x s
+        long uNum = qx * ry - qy * rx;                        // (Q1 - P1) x r
+        if (den < 0) { den = -den; tNum = -tNum; uNum = -uNum; }
+        if (tNum < 0 || tNum > den || uNum < 0 || uNum > den) return new double[0];
+        double t = (double)tNum / den;
+        return new[] { p1[0] + t * rx, p1[1] + t * ry };
+    }
+
+    private bool InBox(long[] a, long[] b, long[] p) {
+        return Math.Min(a[0], b[0]) <= p[0] && p[0] <= Math.Max(a[0], b[0])
+            && Math.Min(a[1], b[1]) <= p[1] && p[1] <= Math.Max(a[1], b[1]);
+    }
+}` }],
         dry: { head: ['quantity', 'value', 'meaning'], rows: [
           ['r = P2 − P1', '(1, 0)', 'direction of segment 1'],
           ['s = Q2 − Q1', '(−1, −2)', 'direction of segment 2'],
@@ -1433,6 +1602,30 @@ vector<P> convexHull(vector<P> p) {
     }
     h.resize(k - 1);                                    // the last point equals the first one
     return h;
+}` }, { lang: 'csharp', code: `// Andrew's monotone chain. Returns hull vertices counter-clockwise, no collinear
+// boundary points, no duplicates. O(N log N) time, O(N) extra space.
+static long Cross(long[] o, long[] a, long[] b) {
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+}
+
+static List<long[]> ConvexHull(long[][] input) {
+    long[][] p = (long[][])input.Clone();
+    Array.Sort(p, (a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : a[1].CompareTo(b[1]));
+    int n = 0;                                          // drop duplicate points (adjacent after sorting)
+    foreach (var q in p) if (n == 0 || p[n - 1][0] != q[0] || p[n - 1][1] != q[1]) p[n++] = q;
+    if (n < 3) return new List<long[]>(p.Take(n));
+    long[][] h = new long[2 * n][];
+    int k = 0;
+    for (int i = 0; i < n; i++) {                       // lower hull, left -> right
+        while (k >= 2 && Cross(h[k - 2], h[k - 1], p[i]) <= 0) k--;  // pop dents
+        h[k++] = p[i];
+    }
+    for (int i = n - 2, lower = k + 1; i >= 0; i--) {   // upper hull, right -> left
+        while (k >= lower && Cross(h[k - 2], h[k - 1], p[i]) <= 0) k--;
+        h[k++] = p[i];
+    }
+    // the last point equals the first one, so leave it out
+    return new List<long[]>(h.Take(k - 1));
 }` }] }, { lang: 'java', code: `
       // Graham scan: pivot = lowest (then leftmost) point; sort others by angle using cross.
       static long cross(long[] o, long[] a, long[] b) {
@@ -1563,6 +1756,41 @@ vector<P> grahamScan(vector<P> pts) {
         st.push_back(pts[i]);
     }
     return st;                                            // counter-clockwise from p0
+}` }, { lang: 'csharp', code: `// Graham scan: pivot = lowest (then leftmost) point; sort others by angle using cross.
+static long Cross(long[] o, long[] a, long[] b) {
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+}
+static long Dist2(long[] a, long[] b) {
+    long dx = a[0] - b[0], dy = a[1] - b[1];
+    return dx * dx + dy * dy;
+}
+
+static List<long[]> GrahamScan(long[][] pts) {
+    int n = pts.Length, piv = 0;
+    for (int i = 1; i < n; i++)
+        if (pts[i][1] < pts[piv][1] || (pts[i][1] == pts[piv][1] && pts[i][0] < pts[piv][0])) piv = i;
+    long[] p0 = pts[piv];
+    var rest = new List<long[]>();
+    for (int i = 0; i < n; i++) if (i != piv) rest.Add(pts[i]);
+    // All points are above p0 (or level and to its right), so angles lie in [0, pi)
+    // and the cross-product comparer is a valid total order.
+    rest.Sort((a, b) => {
+        long c = Cross(p0, a, b);
+        if (c != 0) return c > 0 ? -1 : 1;            // a has the smaller angle
+        return Dist2(p0, a).CompareTo(Dist2(p0, b));  // same ray: nearer first
+    });
+    var st = new Stack<long[]>();
+    st.Push(p0);
+    foreach (var p in rest) {
+        while (st.Count >= 2) {
+            long[] top = st.Pop();
+            if (Cross(st.Peek(), top, p) > 0) { st.Push(top); break; }  // left turn: keep top
+        }
+        st.Push(p);
+    }
+    var hull = new List<long[]>(st);
+    hull.Reverse();                                      // counter-clockwise from p0
+    return hull;
 }` }] }],
     codeTitle: ['Andrew\'s monotone chain (interview default)', 'Graham scan (angle sort + stack)'],
     viz: {
@@ -1674,7 +1902,14 @@ for (size_t i = 0; i < hull.size(); i++) {
     auto a = hull[i], b = hull[(i + 1) % hull.size()];
     per += hypot((double)(b[0] - a[0]), (double)(b[1] - a[1]));
 }
-cout << per << endl;   // 16` }] } },
+cout << per << endl;   // 16` }, { lang: 'csharp', code: `long[][] hull = { new long[] {0, 0}, new long[] {4, 0}, new long[] {4, 4}, new long[] {0, 4} };
+double per = 0;
+for (int i = 0; i < hull.Length; i++) {
+    long[] a = hull[i], b = hull[(i + 1) % hull.Length];
+    double dx = b[0] - a[0], dy = b[1] - a[1];
+    per += Math.Sqrt(dx * dx + dy * dy);
+}
+Console.WriteLine(per);   // 16` }] } },
       { title: 'Farthest pair (diameter) with rotating calipers', html: `<p>The two farthest points of a set are always hull vertices. After the hull (H vertices), sweep two "calipers": for each edge, advance the opposite pointer while the triangle area (|cross|) keeps growing. Each pointer moves at most H steps → O(H) after the hull, versus O(N<sup>2</sup>) for checking all pairs.</p>` }
     ],
     deepDive: `<p><b>Lower bound.</b> Any comparison-based hull algorithm needs Ω(N log N): put numbers x<sub>i</sub> on the parabola (x<sub>i</sub>, x<sub>i</sub><sup>2</sup>); all are hull vertices and the hull visits them in sorted order, so a faster hull would sort faster than possible.</p>
@@ -1798,7 +2033,33 @@ public:
         for (int k = 0; k < n; k++) if (on[k]) res.push_back(t[k]);
         return res;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[][] OuterTrees(int[][] t) {
+        int n = t.Length;
+        bool[] on = new bool[n];
+        if (n <= 3) return t;                              // all of them touch the rope
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) {
+                if (i == j) continue;
+                bool edge = true;
+                for (int k = 0; k < n && edge; k++)
+                    if (Cross(t[i], t[j], t[k]) < 0) edge = false;   // someone is on the right
+                if (!edge) continue;
+                for (int k = 0; k < n; k++)                     // trees on this fence stretch
+                    if (Cross(t[i], t[j], t[k]) == 0 && Between(t[i], t[j], t[k])) on[k] = true;
+            }
+        var res = new List<int[]>();
+        for (int k = 0; k < n; k++) if (on[k]) res.Add(t[k]);
+        return res.ToArray();
+    }
+    private int Cross(int[] o, int[] a, int[] b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+    private bool Between(int[] a, int[] b, int[] p) {
+        return Math.Min(a[0], b[0]) <= p[0] && p[0] <= Math.Max(a[0], b[0])
+            && Math.Min(a[1], b[1]) <= p[1] && p[1] <= Math.Max(a[1], b[1]);
+    }
+}` }] }
       },
       mcq: { q: 'In the monotone chain, which pop condition keeps trees that lie exactly on a fence edge?', options: ['Pop while cross ≤ 0', 'Pop while cross &lt; 0', 'Pop while cross ≥ 0', 'Never pop'], answer: 1, explain: 'A tree on a straight stretch makes a zero cross product. Popping only on strictly negative (right) turns keeps it.' },
       hints: [
@@ -2067,7 +2328,34 @@ public:
             if (!used[h[i]]) { used[h[i]] = true; res.push_back(trees[h[i]]); }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[][] OuterTrees(int[][] trees) {
+        int n = trees.Length;
+        if (n <= 3) return trees;
+        int[][] p = (int[][])trees.Clone();
+        Array.Sort(p, (a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : a[1].CompareTo(b[1]));
+        int[] h = new int[2 * n];          // stack of indices into p
+        int k = 0;
+        for (int i = 0; i < n; i++) {                                   // lower chain
+            while (k >= 2 && Cross(p[h[k - 2]], p[h[k - 1]], p[i]) < 0) k--;
+            h[k++] = i;
+        }
+        for (int i = n - 2, floor = k + 1; i >= 0; i--) {              // upper chain
+            while (k >= floor && Cross(p[h[k - 2]], p[h[k - 1]], p[i]) < 0) k--;
+            h[k++] = i;
+        }
+        bool[] used = new bool[n];
+        var res = new List<int[]>();
+        for (int i = 0; i < k - 1; i++) {   // h[k-1] is p[0] again
+            if (!used[h[i]]) { used[h[i]] = true; res.Add(p[h[i]]); }
+        }
+        return res.ToArray();
+    }
+
+    private int Cross(int[] o, int[] a, int[] b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+}` }],
         dry: { head: ['step', 'new point', 'turn test', 'stack after'], rows: [
           ['sort', '—', '—', 'order: (1,1) (2,0) (2,2) (2,4) (3,3) (4,2)'],
           ['lower', '(1,1), (2,0)', 'push both', '[(1,1), (2,0)]'],
@@ -2284,6 +2572,48 @@ pair<ll, ll> latticeCounts(const Poly& p) {
     }
     ll twiceA = llabs(twiceSignedArea(p));
     return {(twiceA - b + 2) / 2, b};                    // {interior, boundary}
+}` }, { lang: 'csharp', code: `// Twice the SIGNED area: > 0 counter-clockwise, < 0 clockwise. Exact in long.
+static long TwiceSignedArea(long[][] p) {
+    long s = 0;
+    int n = p.Length;
+    for (int i = 0; i < n; i++) {
+        long[] a = p[i], b = p[(i + 1) % n];           // wrap around to the first vertex
+        s += a[0] * b[1] - b[0] * a[1];                 // cross(P_i, P_{i+1})
+    }
+    return s;
+}
+
+static double Area(long[][] p) {
+    return Math.Abs(TwiceSignedArea(p)) / 2.0;
+}
+
+// Convex iff all non-zero turns have the same sign (vertices in order, simple polygon).
+static bool IsConvex(long[][] p) {
+    int n = p.Length, sign = 0;
+    for (int i = 0; i < n; i++) {
+        long[] a = p[i], b = p[(i + 1) % n], c = p[(i + 2) % n];
+        long cr = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        int s = Math.Sign(cr);
+        if (s == 0) continue;                           // straight angle: fine
+        if (sign == 0) sign = s;
+        else if (s != sign) return false;               // a left AND a right turn
+    }
+    return true;
+}
+
+static long Gcd(long a, long b) { return b == 0 ? Math.Abs(a) : Gcd(b, a % b); }
+
+// Pick's theorem: A = I + B/2 - 1  ->  I = (2A - B + 2) / 2. Lattice polygon required.
+static long[] LatticeCounts(long[][] p) {
+    int n = p.Length;
+    long b = 0;
+    for (int i = 0; i < n; i++) {
+        long[] u = p[i], v = p[(i + 1) % n];
+        b += Gcd(Math.Abs(v[0] - u[0]), Math.Abs(v[1] - u[1])); // lattice steps on this edge
+    }
+    long twiceA = Math.Abs(TwiceSignedArea(p));
+    long inside = (twiceA - b + 2) / 2;
+    return new[] { inside, b };
 }` }] }, { lang: 'java', code: `
       // Point in polygon (even-odd rule) with exact integer math.
       // Returns 1 = inside, 0 = on the boundary, -1 = outside.
@@ -2360,6 +2690,25 @@ int pointInPolygon(const vector<array<ll, 2>>& poly, ll px, ll py) {
             ll side = (hi[0] - lo[0]) * (py - lo[1]) - (hi[1] - lo[1]) * (px - lo[0]);
             if (side > 0) inside = !inside;              // point left of the upward edge
         }                                                // = edge crosses the ray to the right
+    }
+    return inside ? 1 : -1;
+}` }, { lang: 'csharp', code: `// Point in polygon (even-odd rule) with exact integer math.
+// Returns 1 = inside, 0 = on the boundary, -1 = outside.
+static int PointInPolygon(long[][] poly, long px, long py) {
+    int n = poly.Length;
+    bool inside = false;
+    for (int i = 0; i < n; i++) {
+        long[] a = poly[i], b = poly[(i + 1) % n];
+        long cr = (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0]);
+        bool inBox = Math.Min(a[0], b[0]) <= px && px <= Math.Max(a[0], b[0])
+                  && Math.Min(a[1], b[1]) <= py && py <= Math.Max(a[1], b[1]);
+        if (cr == 0 && inBox) return 0;                 // exactly on an edge
+        // Half-open rule: count edges whose y-range contains py as [low, high).
+        long[] lo = a[1] <= b[1] ? a : b, hi = a[1] <= b[1] ? b : a;
+        if (lo[1] <= py && py < hi[1]) {
+            long side = (hi[0] - lo[0]) * (py - lo[1]) - (hi[1] - lo[1]) * (px - lo[0]);
+            if (side > 0) inside = !inside;             // point left of the upward edge
+        }                                               // = edge crosses the ray to the right
     }
     return inside ? 1 : -1;
 }` }] }, { lang: 'python', run: true, code: `from math import gcd
@@ -2478,7 +2827,54 @@ int main() {
     for (int x = 0; x <= 4; x++)
         for (int y = 0; y <= 5; y++) count += strictlyInside(x, y, house);
     cout << "brute force interior count: " << count << endl;
-}` }, { lang: 'java', code: `public class Main {
+}` }, { lang: 'csharp', code: `using System;
+
+class Program {
+    static long Gcd(long a, long b) { return b == 0 ? a : Gcd(b, a % b); }
+
+    static long TwiceSignedArea(long[][] p) {
+        int n = p.Length;
+        long s = 0;
+        for (int i = 0; i < n; i++) s += p[i][0] * p[(i + 1) % n][1] - p[(i + 1) % n][0] * p[i][1];
+        return s;
+    }
+
+    static long[] Pick(long[][] p) {
+        int n = p.Length;
+        long b = 0;
+        for (int i = 0; i < n; i++) b += Gcd(Math.Abs(p[(i + 1) % n][0] - p[i][0]), Math.Abs(p[(i + 1) % n][1] - p[i][1]));
+        long a2 = Math.Abs(TwiceSignedArea(p));
+        return new[] { (a2 - b + 2) / 2, b };      // interior, boundary
+    }
+
+    // brute-force check of Pick's theorem for the house
+    static bool StrictlyInside(long x, long y, long[][] poly) {
+        bool res = false;
+        int n = poly.Length;
+        for (int i = 0; i < n; i++) {
+            long x1 = poly[i][0], y1 = poly[i][1], x2 = poly[(i + 1) % n][0], y2 = poly[(i + 1) % n][1];
+            if ((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1) == 0 && Math.Min(x1, x2) <= x && x <= Math.Max(x1, x2) && Math.Min(y1, y2) <= y && y <= Math.Max(y1, y2))
+                return false;                        // on the boundary
+            if ((y1 > y) != (y2 > y) && x < x1 + (double)(y - y1) * (x2 - x1) / (y2 - y1))
+                res = !res;
+        }
+        return res;
+    }
+
+    static void Main() {
+        long[][] house = { new long[] {0, 0}, new long[] {4, 0}, new long[] {4, 3}, new long[] {2, 5}, new long[] {0, 3} };
+        long s = TwiceSignedArea(house);
+        Console.WriteLine("2*signed area = " + s + " -> area " + Math.Abs(s) / 2.0 + " " + (s > 0 ? "CCW" : "CW"));
+        long[][] reversed = (long[][])house.Clone();
+        Array.Reverse(reversed);
+        Console.WriteLine("clockwise listing gives " + TwiceSignedArea(reversed));
+        long[] pick = Pick(house);
+        Console.WriteLine("lattice points inside: " + pick[0] + " on boundary: " + pick[1]);
+        int count = 0;
+        for (long x = 0; x < 5; x++) for (long y = 0; y < 6; y++) if (StrictlyInside(x, y, house)) count++;
+        Console.WriteLine("brute force interior count: " + count);
+    }
+}`, run: true }, { lang: 'java', code: `public class Main {
     static long twiceSignedArea(long[][] p) {
         int n = p.length;
         long s = 0;
@@ -2604,7 +3000,15 @@ for (int i = 0; i < 5; i++)
             long long c = (long long)(p[j][0] - p[i][0]) * (p[k][1] - p[i][1]) - (long long)(p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
             best = max(best, llabs(c));
         }
-cout << best / 2.0 << endl;   // 2` }] } }
+cout << best / 2.0 << endl;   // 2` }, { lang: 'csharp', code: `int[][] p = { new[] {0, 0}, new[] {0, 1}, new[] {1, 0}, new[] {0, 2}, new[] {2, 0} };
+long best = 0;
+for (int i = 0; i < p.Length; i++)
+    for (int j = i + 1; j < p.Length; j++)
+        for (int k = j + 1; k < p.Length; k++) {
+            long c = (long)(p[j][0] - p[i][0]) * (p[k][1] - p[i][1]) - (long)(p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+            best = Math.Max(best, Math.Abs(c));
+        }
+Console.WriteLine(best / 2.0);   // 2` }] } }
     ],
     deepDive: `<p><b>Why the cancellation works.</b> The shoelace is the discrete form of Green's theorem: area = ½∮(x dy − y dx). Geometrically, triangle (O, P<sub>i</sub>, P<sub>i+1</sub>) has signed area ½·cross(P<sub>i</sub>, P<sub>i+1</sub>). Any point outside the polygon is covered by as many positive triangles as negative ones; any point inside is covered exactly once more positively (for CCW order). The choice of origin does not matter — moving it changes every term but the total telescopes back. In practice, <b>subtract P<sub>0</sub> from every vertex</b> first: the numbers get smaller, which reduces overflow risk and floating error for coordinates like GPS values (~10<sup>6</sup> with decimals).</p>
       <p><b>Overflow.</b> Coordinates ≤ 10<sup>9</sup> make each product ≤ 10<sup>18</sup>; the running sum of N such terms can overflow even when the final area fits. Shifting by P<sub>0</sub> helps; otherwise accumulate in <code>BigInteger</code> or use <code>Math.addExact</code> to detect it.</p>
@@ -2689,7 +3093,24 @@ public:
         }
         return true;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsConvex(IList<IList<int>> points) {
+        int n = points.Count;
+        for (int i = 0; i < n; i++) {
+            IList<int> a = points[i], b = points[(i + 1) % n];
+            int pos = 0, neg = 0;
+            for (int k = 0; k < n; k++) {               // every vertex vs this edge line
+                IList<int> c = points[k];
+                long cr = (long)(b[0] - a[0]) * (c[1] - a[1])
+                        - (long)(b[1] - a[1]) * (c[0] - a[0]);
+                if (cr > 0) pos++;
+                else if (cr < 0) neg++;
+            }
+            if (pos > 0 && neg > 0) return false;      // vertices on both sides
+        }
+        return true;
+    }
+}` }] }
       },
       mcq: { q: 'Walking the polygon you see turn signs: −, −, 0, −, −. Is it convex?', options: ['No — a zero means a dent', 'Yes — zeros are straight angles; all non-zero turns agree', 'Only if N is even', 'Cannot tell without the area'], answer: 1, explain: 'A zero cross product is a 180° angle (collinear vertices). Convexity only fails when both a positive and a negative turn appear.' },
       hints: [
@@ -2913,7 +3334,21 @@ public:
         }
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsConvex(IList<IList<int>> points) {
+        int n = points.Count, sign = 0;
+        for (int i = 0; i < n; i++) {
+            IList<int> a = points[i], b = points[(i + 1) % n], c = points[(i + 2) % n];
+            long cr = (long)(b[0] - a[0]) * (c[1] - a[1])
+                    - (long)(b[1] - a[1]) * (c[0] - a[0]);
+            int s = Math.Sign(cr);
+            if (s == 0) continue;                 // straight angle: allowed
+            if (sign == 0) sign = s;              // first real turn fixes the direction
+            else if (s != sign) return false;     // turned the other way: dent
+        }
+        return true;
+    }
+}` }],
         dry: { head: ['i', 'triple', 'cross', 'sign', 'state'], rows: [
           ['0', '(0,0) (0,10) (10,10)', '0·10 − 10·10 = −100', '−', 'sign = −'],
           ['1', '(0,10) (10,10) (10,0)', '10·(−10) − 0·10 = −100', '−', 'agrees'],
@@ -3015,6 +3450,20 @@ vector<T> reservoirSample(It first, It last, int k, mt19937& rng) {
         }
     }
     return res;                                  // fewer than k items if the stream was short
+}` }, { lang: 'csharp', code: `// Algorithm R: k uniform samples from a sequence of unknown length, O(k) memory.
+static List<T> ReservoirSample<T>(IEnumerable<T> stream, int k, Random rnd) {
+    var res = new List<T>(k);
+    int i = 0;                                   // number of items seen so far
+    foreach (T item in stream) {
+        if (i < k) {
+            res.Add(item);                       // fill phase
+        } else {
+            int j = rnd.Next(i + 1);             // uniform in [0, i]  (Next has no modulo bias)
+            if (j < k) res[j] = item;            // enter with prob k/(i+1), evict a random member
+        }
+        i++;
+    }
+    return res;                                  // fewer than k items if the stream was short
 }` }] }, { lang: 'java', code: `
       // Weighted reservoir (Efraimidis-Spirakis "A-Res"): item with weight w gets key u^(1/w),
       // u uniform in (0,1); keep the k LARGEST keys. Heavier items tend to get larger keys.
@@ -3102,6 +3551,19 @@ vector<string> weightedSample(const vector<string>& items, const vector<double>&
     vector<string> out;
     for (; !heap.empty(); heap.pop()) out.push_back(items[heap.top().second]);
     return out;
+}` }, { lang: 'csharp', code: `// Weighted reservoir (Efraimidis-Spirakis "A-Res"): item with weight w gets key u^(1/w),
+// u uniform in (0,1); keep the k LARGEST keys. Heavier items tend to get larger keys.
+static List<string> WeightedSample(string[] items, double[] w, int k, Random rnd) {
+    var heap = new SortedSet<(double key, int i)>();            // ordered set as a min-heap by key
+    for (int i = 0; i < items.Length; i++) {
+        double u = 1.0 - rnd.NextDouble();                      // (0, 1], avoids log/pow of 0
+        double key = Math.Pow(u, 1.0 / w[i]);
+        if (heap.Count < k) heap.Add((key, i));
+        else if (key > heap.Min.key) { heap.Remove(heap.Min); heap.Add((key, i)); }
+    }
+    var result = new List<string>();
+    foreach (var e in heap) result.Add(items[e.i]);
+    return result;
 }` }] }, { lang: 'python', run: true, code: `import random
 
 def reservoir(stream, k, rnd):
@@ -3208,7 +3670,45 @@ int main() {
     cout << setprecision(3) << "wrong 'coin flip' variant:";
     for (int c : count) cout << " " << (double)c / trials;
     cout << endl;
-}` }, { lang: 'java', code: `public class Main {
+}` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Program {
+    static List<int> Reservoir(IEnumerable<int> stream, int k, Random rnd) {
+        var res = new List<int>();
+        int i = 0;
+        foreach (int x in stream) {
+            if (i < k) res.Add(x);
+            else {
+                int j = rnd.Next(i + 1);         // uniform in [0, i]
+                if (j < k) res[j] = x;
+            }
+            i++;
+        }
+        return res;
+    }
+
+    static void Main() {
+        var rnd = new Random(2026);              // fixed seed -> reproducible
+        int n = 6, k = 2, trials = 60000;
+        int[] count = new int[n];
+        for (int t = 0; t < trials; t++)
+            foreach (int x in Reservoir(Enumerable.Range(0, n), k, rnd)) count[x]++;
+        Console.WriteLine("expected frequency k/n = " + Math.Round((double)k / n, 4));
+        for (int x = 0; x < n; x++)
+            Console.WriteLine("item " + x + " chosen " + Math.Round((double)count[x] / trials, 4));
+
+        // A WRONG variant: replace with probability 1/2 every time -> late items dominate
+        count = new int[n];
+        for (int t = 0; t < trials; t++) {
+            int pick = 0;
+            for (int x = 1; x < n; x++) if (rnd.NextDouble() < 0.5) pick = x;
+            count[pick]++;
+        }
+        Console.WriteLine("wrong 'coin flip' variant: [" + string.Join(", ", count.Select(c => Math.Round((double)c / trials, 3))) + "]");
+    }
+}`, run: true }, { lang: 'java', code: `public class Main {
     static List<Integer> reservoir(int n, int k, Random rnd) {
         List<Integer> res = new ArrayList<>();
         for (int i = 0; i < n; i++) {                // the stream is 0, 1, ..., n-1
@@ -3347,7 +3847,15 @@ for (int i = 0; i < (int)nums.size(); i++) {
     count++;
     if (uniform_int_distribution<int>(0, count - 1)(rng) == 0) pick = i;   // keep with probability 1/count
 }
-cout << pick << endl;` }] } },
+cout << pick << endl;` }, { lang: 'csharp', code: `int[] nums = { 1, 2, 3, 3, 3 };
+int target = 3, count = 0, pick = -1;
+var rnd = new Random(1);
+for (int i = 0; i < nums.Length; i++) {
+    if (nums[i] != target) continue;
+    count++;
+    if (rnd.Next(count) == 0) pick = i;   // keep with probability 1/count
+}
+Console.WriteLine(pick);` }] } },
       { title: 'Distributed reservoir merge', html: `<p>Shard A saw 900 items and keeps a sample of k; shard B saw 100. To merge into one uniform sample of k, draw each output slot from A with probability 900/1000 and from B with 100/1000 (sampling without replacement inside each reservoir, updating the remaining counts). Simply concatenating and re-sampling equally would over-represent B 9×.</p>` }
     ],
     deepDive: `<p><b>Algorithm L (skip ahead).</b> Algorithm R calls the RNG N times. Vitter's/Li's <b>Algorithm L</b> computes how many items to <i>skip</i> before the next replacement using a geometric distribution: <code>W ← W · exp(log(random())/k)</code>, <code>skip = floor(log(random()) / log(1 − W))</code>. Expected RNG calls drop to O(k(1 + log(N/k))) — a big win when the stream is a fast file scan and RNG cost dominates.</p>
@@ -3411,7 +3919,18 @@ public:
     int getRandom() {
         return vals[rnd() % vals.size()];
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly List<int> vals = new List<int>();
+    private readonly Random rnd = new Random();
+
+    public Solution(ListNode head) {
+        for (ListNode cur = head; cur != null; cur = cur.next) vals.Add(cur.val);  // O(N) memory
+    }
+
+    public int GetRandom() {
+        return vals[rnd.Next(vals.Count)];
+    }
+}` }] }
       },
       mcq: { q: 'While walking the list you are at the 5th node (1-based). With what probability should it replace the current pick?', options: ['1/2', '1/5', '5/N', '1/N — but N is unknown'], answer: 1, explain: 'Reservoir with k = 1 keeps the i-th item with probability 1/i. The telescoping product then makes every node’s final chance 1/N.' },
       hints: [
@@ -3481,6 +4000,20 @@ public:
         counts[it == pos.end() ? vals.size() : it->second]++;
     }
     return counts;
+}`, csharp: `public class Check {
+    public static List<int> SampleList(int[] vals, int trials) {
+        ListNode head = null;
+        for (int i = vals.Length - 1; i >= 0; i--) head = new ListNode(vals[i], head);
+        var s = new Solution(head);
+        var pos = new Dictionary<int, int>();
+        for (int i = 0; i < vals.Length; i++) pos[vals[i]] = i;
+        int[] counts = new int[vals.Length + 1];          // last slot: values that are not in the list
+        for (int t = 0; t < trials; t++) {
+            int i;
+            counts[pos.TryGetValue(s.GetRandom(), out i) ? i : vals.Length]++;
+        }
+        return new List<int>(counts);
+    }
 }`
         },
         cases: [
@@ -3550,7 +4083,23 @@ public:
         }
         return pick;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly ListNode head;
+    private readonly Random rnd = new Random();
+
+    public Solution(ListNode head) {
+        this.head = head;                       // O(1) memory: keep only the head
+    }
+
+    public int GetRandom() {
+        int pick = head.val, i = 1;             // first node: chosen with probability 1/1
+        for (ListNode cur = head.next; cur != null; cur = cur.next) {
+            i++;
+            if (rnd.Next(i) == 0) pick = cur.val;   // replace with probability 1/i
+        }
+        return pick;
+    }
+}` }],
         dry: { head: ['node (i)', 'value', 'roll in [0, i)', 'replace?', 'pick'], rows: [
           ['1', '1', '—', 'start', '1'],
           ['2', '2', '1', 'no (need 0)', '1'],
@@ -3652,6 +4201,21 @@ void sattolo(vector<int>& a, mt19937& rng) {
         int j = uniform_int_distribution<int>(0, i - 1)(rng);   // excludes i
         swap(a[i], a[j]);
     }
+}` }, { lang: 'csharp', code: `// Fisher-Yates: every one of the n! permutations has probability exactly 1/n!.
+static void Shuffle(int[] a, Random rnd) {
+    for (int i = a.Length - 1; i > 0; i--) {
+        int j = rnd.Next(i + 1);      // uniform in [0, i] -- NOT [0, n-1]
+        int t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+}
+
+// Sattolo's variant: j in [0, i-1] produces a uniformly random single CYCLE
+// (nobody stays in place) -- useful for "secret santa" style derangements of one loop.
+static void Sattolo(int[] a, Random rnd) {
+    for (int i = a.Length - 1; i > 0; i--) {
+        int j = rnd.Next(i);          // excludes i
+        int t = a[i]; a[i] = a[j]; a[j] = t;
+    }
 }` }] }, { lang: 'java', code: `
       // Randomized quickselect with 3-way partition. Returns the k-th smallest (0-based k).
       // Expected O(N) time, O(1) extra space; robust to duplicates and sorted input.
@@ -3724,6 +4288,22 @@ int quickselect(vector<int>& a, int k, mt19937& rng) {
         if (k < lt) hi = lt - 1;                 // answer is in the "smaller" part
         else if (k > gt) lo = gt + 1;            // answer is in the "larger" part
         else return pivot;                       // k lands in the "equal" block
+    }
+}` }, { lang: 'csharp', code: `// Randomized quickselect with 3-way partition. Returns the k-th smallest (0-based k).
+// Expected O(N) time, O(1) extra space; robust to duplicates and sorted input.
+static int Quickselect(int[] a, int k, Random rnd) {
+    int lo = 0, hi = a.Length - 1;
+    while (true) {
+        int pivot = a[lo + rnd.Next(hi - lo + 1)];
+        int lt = lo, i = lo, gt = hi;            // a[lo..lt-1] < p, a[lt..i-1] == p, a[gt+1..hi] > p
+        while (i <= gt) {
+            if (a[i] < pivot) { int t = a[lt]; a[lt] = a[i]; a[i] = t; lt++; i++; }
+            else if (a[i] > pivot) { int t = a[gt]; a[gt] = a[i]; a[i] = t; gt--; }
+            else i++;
+        }
+        if (k < lt) hi = lt - 1;                  // answer is in the "smaller" part
+        else if (k > gt) lo = gt + 1;             // answer is in the "larger" part
+        else return pivot;                        // k lands in the "equal" block
     }
 }` }] }, { lang: 'python', run: true, code: `from itertools import product
 from collections import Counter
@@ -3808,7 +4388,44 @@ int main() {
     int n = 3;
     report("naive  (27 equally likely runs)", {3, 3, 3}, true, n);
     report("Fisher-Yates (6 equally likely runs)", {3, 2}, false, n);   // j ranges [0..2], [0..1]
-}` }, { lang: 'java', code: `public class Main {
+}` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Program {
+    static string Apply(int[] choices, string mode, int n) {
+        char[] a = "ABCD".Substring(0, n).ToCharArray();
+        if (mode == "naive") {                     // for i in 0..n-1: swap a[i], a[rand(0..n-1)]
+            for (int i = 0; i < n; i++) { int j = choices[i]; char t = a[i]; a[i] = a[j]; a[j] = t; }
+        } else {                                   // Fisher-Yates: for i = n-1..1: swap a[i], a[rand(0..i)]
+            for (int i = n - 1, c = 0; i > 0; i--, c++) { int j = choices[c]; char t = a[i]; a[i] = a[j]; a[j] = t; }
+        }
+        return new string(a);
+    }
+
+    static string Show(Dictionary<string, int> d) {
+        return "{" + string.Join(", ", d.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => "'" + e.Key + "': " + e.Value)) + "}";
+    }
+
+    static void Main() {
+        int n = 3;
+        var naive = new Dictionary<string, int>();
+        for (int c0 = 0; c0 < n; c0++)            // every one of the 27 equally likely runs
+            for (int c1 = 0; c1 < n; c1++)
+                for (int c2 = 0; c2 < n; c2++) {
+                    string s = Apply(new[] { c0, c1, c2 }, "naive", n);
+                    int cnt; naive.TryGetValue(s, out cnt); naive[s] = cnt + 1;
+                }
+        var fy = new Dictionary<string, int>();
+        for (int c0 = 0; c0 <= 2; c0++)           // j ranges [0..2], [0..1]
+            for (int c1 = 0; c1 <= 1; c1++) {
+                string s = Apply(new[] { c0, c1 }, "fy", n);
+                int cnt; fy.TryGetValue(s, out cnt); fy[s] = cnt + 1;
+            }
+        Console.WriteLine("naive  (27 equally likely runs): " + Show(naive));
+        Console.WriteLine("Fisher-Yates (6 equally likely runs): " + Show(fy));
+    }
+}`, run: true }, { lang: 'java', code: `public class Main {
     static String apply(int[] choices, boolean naive, int n) {
         char[] a = "ABCD".substring(0, n).toCharArray();
         if (naive) {                               // for i in 0..n-1: swap a[i], a[rand(0..n-1)]
@@ -3980,7 +4597,15 @@ do {
     y = (unit(rng) * 2 - 1) * r;
     tries++;
 } while (x * x + y * y > r * r);          // reject points outside the circle
-cout << x << ", " << y << " after " << tries << " tries" << endl;` }] } }
+cout << x << ", " << y << " after " << tries << " tries" << endl;` }, { lang: 'csharp', code: `var rnd = new Random(7);
+double r = 1.0, x, y;
+int tries = 0;
+do {
+    x = (rnd.NextDouble() * 2 - 1) * r;
+    y = (rnd.NextDouble() * 2 - 1) * r;
+    tries++;
+} while (x * x + y * y > r * r);          // reject points outside the circle
+Console.WriteLine(x + ", " + y + " after " + tries + " tries");` }] } }
     ],
     deepDive: `<p><b>Quickselect's exact expectation.</b> Using indicator variables (elements i and j are compared iff one of them is the first pivot chosen among the values between them), expected comparisons for quickselect are at most ≈ 3.39N (and 2N ln N ≈ 1.39 N log<sub>2</sub>N for quicksort). <b>Floyd–Rivest</b> picks the pivot from a small random sample and needs only about N + min(k, N−k) + o(N) comparisons. Deterministic linear time exists — <b>median of medians</b> (groups of 5, recursion on the medians) — but its constant (~20N) makes it slower in practice; libraries use <b>introselect</b> (C++ <code>std::nth_element</code>): quickselect, falling back to a guaranteed method if recursion gets too deep.</p>
       <p><b>Adversaries.</b> A deterministic pivot rule can be attacked: McIlroy's "killer adversary" builds inputs that make any fixed-pivot quicksort quadratic. Randomness defeats this <i>only if the attacker cannot predict the RNG</i> — the same reason hash tables use random seeds (hash-flooding DoS attacks, 2011). Java's <code>Arrays.sort</code> for primitives is a dual-pivot quicksort that falls back to heapsort when recursion gets too deep, so it cannot be driven quadratic; for objects it uses TimSort (stable, worst case O(N log N)). C++ <code>std::sort</code> is an introsort with the same heapsort fallback, and Python's <code>sort</code> and JavaScript's <code>Array.prototype.sort</code> are TimSort too.</p>
@@ -4020,7 +4645,13 @@ public:
         sort(a.begin(), a.end());                     // O(N log N): orders everything
         return a[a.size() - k];
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int FindKthLargest(int[] nums, int k) {
+        int[] a = (int[])nums.Clone();
+        Array.Sort(a);                  // O(N log N): orders everything
+        return a[a.Length - k];
+    }
+}` }] }
       },
       mcq: { q: 'nums has 10<sup>5</sup> copies of the same number. Which quickselect variant stays fast?', options: ['Lomuto partition with a random pivot', 'Hoare partition with pivot = first element', '3-way (Dutch flag) partition with a random pivot', 'Any — duplicates do not matter'], answer: 2, explain: 'With 2-way partitions all equal keys go to one side, so each round removes one element → O(N²). A 3-way partition puts all equal keys in the middle block and finishes in one round.' },
       hints: [
@@ -4264,7 +4895,28 @@ public:
         }
         // std::nth_element(nums.begin(), nums.begin() + target, nums.end()) does the same job.
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly Random rnd = new Random();
+
+    public int FindKthLargest(int[] nums, int k) {
+        int target = nums.Length - k;            // index in ascending order
+        int lo = 0, hi = nums.Length - 1;
+        while (true) {
+            int pivot = nums[lo + rnd.Next(hi - lo + 1)];
+            int lt = lo, i = lo, gt = hi;        // < pivot | == pivot | unknown | > pivot
+            while (i <= gt) {
+                if (nums[i] < pivot) Swap(nums, lt++, i++);
+                else if (nums[i] > pivot) Swap(nums, i, gt--);
+                else i++;
+            }
+            if (target < lt) hi = lt - 1;        // go left
+            else if (target > gt) lo = gt + 1;   // go right
+            else return pivot;                   // inside the equal block
+        }
+    }
+
+    private void Swap(int[] a, int i, int j) { int t = a[i]; a[i] = a[j]; a[j] = t; }
+}` }],
         dry: { head: ['round', 'range', 'pivot', 'array after partition', 'lt..gt', 'target 4 is…'], rows: [
           ['1', '[0, 5]', '3', '[2, 1, <b>3</b>, 6, 4, 5]', '2..2', 'right → lo = 3'],
           ['2', '[3, 5]', '5', '[2, 1, 3, 4, <b>5</b>, 6]', '4..4', '<span class="c-g">equal block → return 5</span>']
@@ -4430,7 +5082,36 @@ public:
     }
 
     int size() const { return n; }
-};` }] }, { lang: 'java', code: `
+};` }, { lang: 'csharp', code: `// A growable int array: amortized O(1) add/removeLast, memory always O(size).
+class IntVector {
+    private int[] data = new int[1];
+    private int size = 0;
+
+    public void Add(int x) {
+        if (size == data.Length) Resize(2 * data.Length);   // full: DOUBLE (geometric growth)
+        data[size++] = x;
+    }
+
+    public int RemoveLast() {
+        if (size == 0) throw new InvalidOperationException("empty");
+        int x = data[--size];
+        // Shrink only at 1/4 full, not 1/2: halving at 1/2 would let an add/remove
+        // pair at the boundary trigger a full copy every time (thrashing).
+        if (size > 0 && size == data.Length / 4) Resize(data.Length / 2);
+        return x;
+    }
+
+    public int Get(int i) {
+        if (i < 0 || i >= size) throw new ArgumentOutOfRangeException("i");
+        return data[i];
+    }
+
+    public int Size() { return size; }
+
+    private void Resize(int cap) {
+        Array.Resize(ref data, Math.Max(1, cap));          // O(size) copy, rare
+    }
+}` }] }, { lang: 'java', code: `
       // Binary counter: one increment may flip many bits, but N increments flip < 2N bits.
       static int increment(int[] bits) {          // bits[0] = least significant bit
           int flips = 0, i = 0;
@@ -4546,7 +5227,31 @@ public:
         if (rnk[ra] == rnk[rb]) rnk[ra]++;
         return true;
     }
-};` }] }, { lang: 'java', code: `
+};` }, { lang: 'csharp', code: `// Binary counter: one increment may flip many bits, but N increments flip < 2N bits.
+static int Increment(int[] bits) {          // bits[0] = least significant bit
+    int flips = 0, i = 0;
+    while (i < bits.Length && bits[i] == 1) { bits[i++] = 0; flips++; }   // trailing 1s -> 0
+    if (i < bits.Length) { bits[i] = 1; flips++; }                          // first 0 -> 1
+    return flips;
+}
+
+// Union-Find with union by rank + path compression: O(alpha(N)) amortized per op.
+static int[] parent, rank;
+static int Find(int x) {
+    while (parent[x] != x) {
+        parent[x] = parent[parent[x]];       // path halving (a form of compression)
+        x = parent[x];
+    }
+    return x;
+}
+static bool Union(int a, int b) {
+    int ra = Find(a), rb = Find(b);
+    if (ra == rb) return false;
+    if (rank[ra] < rank[rb]) { int t = ra; ra = rb; rb = t; }
+    parent[rb] = ra;                         // attach the shorter tree under the taller
+    if (rank[ra] == rank[rb]) rank[ra]++;
+    return true;
+}` }] }, { lang: 'java', code: `
       // Monotonic stack: inner while looks quadratic, but every index is pushed once
       // and popped at most once -> O(N) total. Returns next greater element (or -1).
       static int[] nextGreater(int[] a) {
@@ -4586,6 +5291,18 @@ vector<int> nextGreater(const vector<int>& a) {
     for (int i = 0; i < (int)a.size(); i++) {
         while (!st.empty() && a[st.back()] < a[i]) { ans[st.back()] = a[i]; st.pop_back(); }
         st.push_back(i);
+    }
+    return ans;
+}` }, { lang: 'csharp', code: `// Monotonic stack: inner while looks quadratic, but every index is pushed once
+// and popped at most once -> O(N) total. Returns next greater element (or -1).
+static int[] NextGreater(int[] a) {
+    int n = a.Length;
+    int[] ans = new int[n];
+    for (int i = 0; i < n; i++) ans[i] = -1;
+    var st = new Stack<int>();                 // indices with decreasing values
+    for (int i = 0; i < n; i++) {
+        while (st.Count > 0 && a[st.Peek()] < a[i]) ans[st.Pop()] = a[i];
+        st.Push(i);
     }
     return ans;
 }` }] }],
@@ -4693,7 +5410,11 @@ for (int x = 1; x <= 3; x++) in.push(x);                  // enqueue 1, 2, 3
 if (out.empty()) while (!in.empty()) { out.push(in.top()); in.pop(); }   // one O(N) transfer
 int first = out.top(); out.pop();
 int second = out.top(); out.pop();
-cout << first << " " << second << endl;                   // 1 2 (FIFO), next pops are O(1)` }] } },
+cout << first << " " << second << endl;                   // 1 2 (FIFO), next pops are O(1)` }, { lang: 'csharp', code: `var inS = new Stack<int>();
+var outS = new Stack<int>();
+for (int x = 1; x <= 3; x++) inS.Push(x);         // enqueue 1, 2, 3
+if (outS.Count == 0) while (inS.Count > 0) outS.Push(inS.Pop());   // one O(N) transfer
+Console.WriteLine(outS.Pop() + " " + outS.Pop()); // 1 2 (FIFO), next pops are O(1)` }] } },
       { title: 'Union-find: one slow find, then fast forever', html: `<p>A chain 1 → 2 → 3 → 4 → 5 (root 5). <code>find(1)</code> walks 4 links (slow) but path compression points 1, 2, 3 directly at 5. The next <code>find(1)</code> takes 1 step. The expensive walk "pays" for flattening, so the total over M operations is O(M α(N)).</p>
         ${H.arr(['1→2', '2→3', '3→4', '4→5'], { label: 'before' })}${H.arr(['1→5', '2→5', '3→5', '4→5'], { label: 'after find(1)', hl: { 0: 'g', 1: 'g', 2: 'g' } })}` },
       { title: 'Amortized vs expected vs worst case', html: `<p>Three different promises:</p>
@@ -4806,7 +5527,27 @@ public:
     int get(int i) const { return data[i]; }
     void set(int i, int x) { data[i] = x; }
     int size() const { return data.size(); }
-};` }] }
+};` }, { lang: 'csharp', code: `public class GrowableArray {
+    private int[] data = new int[0];
+
+    public void Add(int x) {
+        int[] bigger = new int[data.Length + 1];          // grow by ONE: O(N) every time
+        Array.Copy(data, bigger, data.Length);
+        bigger[data.Length] = x;
+        data = bigger;
+    }
+
+    public int RemoveLast() {
+        if (data.Length == 0) throw new InvalidOperationException("empty");
+        int x = data[data.Length - 1];
+        Array.Resize(ref data, data.Length - 1);          // shrink by ONE: O(N) every time
+        return x;
+    }
+
+    public int Get(int i) { return data[i]; }
+    public void Set(int i, int x) { data[i] = x; }
+    public int Size() { return data.Length; }
+}` }] }
       },
       mcq: { q: 'You double when full. When should you halve the capacity during removals?', options: ['When size drops to capacity / 2', 'When size drops to capacity / 4', 'Never — memory is cheap', 'On every removal'], answer: 1, explain: 'Halving at ½ lets an add/remove pair at the boundary trigger a full copy every time. At ¼, after halving the array is half full, so at least capacity/4 cheap operations happen before the next resize.' },
       hints: [
@@ -4901,6 +5642,26 @@ public:
         else if (c == -8) { a.add(0); a.removeLast(); }
     }
     return res;
+}`, csharp: `public class Check {
+    // script: x >= 0 add(x); -1 record removeLast(); -2 record get(last); -3 record size();
+    // -4 record 1 if capacity stays within 4 * size; -5 set(last, -old - 1); -6 record get(size / 2);
+    // -7 removeLast() without recording; -8 add(0) then removeLast()
+    public static List<int> DriveArray(int[] script) {
+        var a = new GrowableArray();
+        var res = new List<int>();
+        foreach (int c in script) {
+            if (c >= 0) a.Add(c);
+            else if (c == -1) res.Add(a.RemoveLast());
+            else if (c == -2) res.Add(a.Get(a.Size() - 1));
+            else if (c == -3) res.Add(a.Size());
+            else if (c == -4) res.Add(a.Capacity() >= a.Size() && (a.Size() == 0 || a.Capacity() <= 4 * a.Size()) ? 1 : 0);
+            else if (c == -5) a.Set(a.Size() - 1, -a.Get(a.Size() - 1) - 1);
+            else if (c == -6) res.Add(a.Get(a.Size() / 2));
+            else if (c == -7) a.RemoveLast();
+            else if (c == -8) { a.Add(0); a.RemoveLast(); }
+        }
+        return res;
+    }
 }`
         },
         cases: [
@@ -5132,7 +5893,37 @@ public:
     void set(int i, int x) { check(i); data[i] = x; }
     int size() const { return n; }
     int capacity() const { return data.size(); }
-};` }],
+};` }, { lang: 'csharp', code: `public class GrowableArray {
+    private int[] data = new int[1];
+    private int size = 0;
+
+    public void Add(int x) {
+        if (size == data.Length) Resize(data.Length * 2);       // geometric growth
+        data[size++] = x;
+    }
+
+    public int RemoveLast() {
+        if (size == 0) throw new InvalidOperationException("empty");
+        int x = data[--size];
+        if (size > 0 && size == data.Length / 4) Resize(data.Length / 2);  // lazy shrink
+        return x;
+    }
+
+    public int Get(int i) { Check(i); return data[i]; }
+    public void Set(int i, int x) { Check(i); data[i] = x; }
+    public int Size() { return size; }
+    public int Capacity() { return data.Length; }
+
+    private void Check(int i) {
+        if (i < 0 || i >= size) throw new ArgumentOutOfRangeException("i", "index " + i + ", size " + size);
+    }
+
+    private void Resize(int cap) {
+        int[] next = new int[Math.Max(1, cap)];
+        Array.Copy(data, next, size);                            // O(size), rare
+        data = next;
+    }
+}` }],
         dry: { head: ['operation', 'size', 'capacity', 'copies', 'note'], rows: [
           ['add 5', '1', '1', '0', 'fits'],
           ['add 7', '2', '2', '1', 'full → double'],
@@ -5445,7 +6236,77 @@ public:
         Node* cand = update[0]->next[0];
         return cand ? optional<int>(cand->val) : nullopt;
     }
-};` }] }, { lang: 'python', run: true, code: `import random, math
+};` }, { lang: 'csharp', code: `// A complete skip list for ints (duplicates allowed), expected O(log N) per operation.
+class SkipList {
+    private const int MAX_LEVEL = 16;                 // enough for ~2^16 = 65k elements at p = 1/2
+    private const double P = 0.5;                     // promotion probability
+
+    private sealed class Node {
+        public readonly int val;
+        public readonly Node[] next;                  // next[l] = successor on level l
+        public Node(int val, int height) { this.val = val; this.next = new Node[height]; }
+    }
+
+    private readonly Node head = new Node(int.MinValue, MAX_LEVEL); // sentinel on every level
+    private int levels = 1;                           // levels currently in use
+    private readonly Random rnd;
+
+    public SkipList(int seed) { rnd = new Random(seed); }
+
+    private int RandomHeight() {                      // 1 + number of consecutive heads
+        int h = 1;
+        while (h < MAX_LEVEL && rnd.NextDouble() < P) h++;
+        return h;
+    }
+
+    public bool Contains(int x) {
+        Node cur = head;
+        for (int l = levels - 1; l >= 0; l--)         // top level down
+            while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l]; // ride right
+        cur = cur.next[0];
+        return cur != null && cur.val == x;
+    }
+
+    public void Insert(int x) {
+        Node[] update = new Node[MAX_LEVEL];
+        Node cur = head;
+        for (int l = levels - 1; l >= 0; l--) {
+            while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+            update[l] = cur;                          // x goes right after cur on level l
+        }
+        int h = RandomHeight();
+        for (int l = levels; l < h; l++) update[l] = head;   // brand-new top levels start at head
+        levels = Math.Max(levels, h);
+        Node node = new Node(x, h);
+        for (int l = 0; l < h; l++) {                 // splice into each of its levels
+            node.next[l] = update[l].next[l];
+            update[l].next[l] = node;
+        }
+    }
+
+    public bool Remove(int x) {
+        Node[] update = new Node[MAX_LEVEL];
+        Node cur = head;
+        for (int l = levels - 1; l >= 0; l--) {
+            while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+            update[l] = cur;
+        }
+        Node target = cur.next[0];
+        if (target == null || target.val != x) return false;
+        for (int l = 0; l < target.next.Length; l++)  // unlink from every level it is on
+            if (update[l].next[l] == target) update[l].next[l] = target.next[l];
+        while (levels > 1 && head.next[levels - 1] == null) levels--;   // drop empty top levels
+        return true;
+    }
+
+    // Smallest key >= x, or null: an ordered query a hash table cannot answer.
+    public int? Ceiling(int x) {
+        Node cur = head;
+        for (int l = levels - 1; l >= 0; l--)
+            while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+        return cur.next[0] == null ? (int?)null : cur.next[0].val;
+    }
+}` }] }, { lang: 'python', run: true, code: `import random, math
 
 class SkipList:
     MAX = 24
@@ -5607,7 +6468,65 @@ int main() {
         printf("N=%7d  levels=%2d  avg steps=%6.1f  log2 N=%5.1f  (theory ~ 2*log2 N = %5.1f)\\n",
                n, sl.levels, total / 300, log2((double)n), 2 * log2((double)n));
     }
-}` }, { lang: 'java', code: `public class Main {
+}` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class SkipList {
+    const int MAX = 24;
+    class Node { public int val; public Node[] next; public Node(int v, int h) { val = v; next = new Node[h]; } }
+    readonly double p; readonly Random rnd; public int levels = 1;
+    readonly Node head = new Node(int.MinValue, MAX);
+
+    public SkipList(double p = 0.5, int seed = 1) { this.p = p; rnd = new Random(seed); }
+
+    int Height() {
+        int h = 1;
+        while (h < MAX && rnd.NextDouble() < p) h++;
+        return h;
+    }
+
+    public void Insert(int x) {
+        var update = new Node[MAX];
+        for (int l = 0; l < MAX; l++) update[l] = head;
+        Node cur = head;
+        for (int l = levels - 1; l >= 0; l--) {
+            while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+            update[l] = cur;
+        }
+        int h = Height();
+        levels = Math.Max(levels, h);
+        var node = new Node(x, h);
+        for (int l = 0; l < h; l++) { node.next[l] = update[l].next[l]; update[l].next[l] = node; }
+    }
+
+    public int SearchSteps(int x) {
+        Node cur = head; int steps = 0;
+        for (int l = levels - 1; l >= 0; l--) {
+            while (cur.next[l] != null && cur.next[l].val < x) { cur = cur.next[l]; steps++; }
+            steps++;                                      // the drop-down
+        }
+        return steps;
+    }
+}
+
+class Program {
+    static void Main() {
+        foreach (int n in new[] { 1000, 10000, 100000 }) {
+            var sl = new SkipList(0.5, 7);
+            int[] keys = Enumerable.Range(0, n).ToArray();
+            var shuf = new Random(3);
+            for (int i = n - 1; i > 0; i--) { int j = shuf.Next(i + 1); int t = keys[i]; keys[i] = keys[j]; keys[j] = t; }
+            foreach (int k in keys) sl.Insert(k);
+            var probeRnd = new Random(5);
+            double total = 0;
+            for (int i = 0; i < 300; i++) total += sl.SearchSteps(probeRnd.Next(n));
+            double avg = total / 300;
+            Console.WriteLine("N=" + n.ToString().PadLeft(7) + "  levels=" + sl.levels.ToString().PadLeft(2) + "  avg steps=" + avg.ToString("F1").PadLeft(6)
+                + "  log2 N=" + Math.Log(n, 2).ToString("F1").PadLeft(5) + "  (theory ~ 2*log2 N = " + (2 * Math.Log(n, 2)).ToString("F1").PadLeft(5) + ")");
+        }
+    }
+}`, run: true }, { lang: 'java', code: `public class Main {
     static final int MAX = 24;
 
     static class Node {
@@ -5767,7 +6686,10 @@ console.log(s.slice(lowerBound(s, 8), lowerBound(s, 21)));     // [ 9, 12, 19 ]`
 set<int> s = {3, 7, 9, 12, 19, 21, 25, 26};
 cout << *s.lower_bound(8) << endl;                      // 9   ceiling(8)
 for (auto it = s.lower_bound(8); it != s.upper_bound(20); ++it) cout << *it << " ";   // 9 12 19
-cout << endl;` }] } },
+cout << endl;` }, { lang: 'csharp', code: `// .NET ships an ordered set (a red-black tree) with the same ordered queries a skip list gives.
+var s = new SortedSet<int> { 3, 7, 9, 12, 19, 21, 25, 26 };
+Console.WriteLine(s.GetViewBetween(8, int.MaxValue).Min);           // 9  (ceiling of 8)
+Console.WriteLine("[" + string.Join(", ", s.GetViewBetween(8, 20)) + "]");   // [9, 12, 19]` }] } },
       { title: 'Why p = 1/4 in Redis', html: `<p>Expected search cost ≈ (log<sub>1/p</sub>N)/p. For p = ½: 2·log<sub>2</sub>N. For p = ¼: 4·log<sub>4</sub>N = 2·log<sub>2</sub>N — the <b>same</b> number of steps, but only 1/(1−p) = 1.33 pointers per node instead of 2. Redis uses p = ¼ and a max level of 32 for its sorted sets, trading nothing in speed for less memory.</p>` }
     ],
     deepDive: `<p><b>Analysis (Pugh, 1990).</b> Look at the search path <b>backwards</b>: from the target, climb up whenever the current node has a higher level (probability p), otherwise step left. Climbing log<sub>1/p</sub>N levels needs on average (log<sub>1/p</sub>N)/p steps, plus O(1/(1−p)) at the top. Height exceeds c·log N with probability at most N<sup>1−c</sup> — so O(log N) holds <b>with high probability</b>, not just in expectation. Space: expected N/(1−p) pointers.</p>
@@ -5874,7 +6796,26 @@ public:
         list.erase(it);                               // O(N) shift
         return true;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Skiplist {
+    private readonly List<int> list = new List<int>();   // always sorted
+
+    public bool Search(int target) {
+        return list.BinarySearch(target) >= 0;            // O(log N)
+    }
+
+    public void Add(int num) {
+        int i = list.BinarySearch(num);
+        if (i < 0) i = ~i;
+        list.Insert(i, num);                              // O(N) shift
+    }
+
+    public bool Erase(int num) {
+        int i = list.BinarySearch(num);
+        if (i < 0) return false;
+        list.RemoveAt(i);                                 // O(N) shift
+        return true;
+    }
+}` }] }
       },
       mcq: { q: 'During add(num), what does update[l] store?', options: ['The node num itself on level l', 'The last node on level l whose value is &lt; num (num is spliced right after it)', 'The first node on level l whose value is ≥ num', 'The head of level l'], answer: 1, explain: 'The search drops a level exactly when the next value is ≥ num, so the current node is the predecessor on that level. New levels above the current top use the head as predecessor.' },
       hints: [
@@ -5936,6 +6877,19 @@ public:
         else res.push_back(s.erase(v) ? 1 : 0);
     }
     return res;
+}`, csharp: `public class Check {
+    // script entry = kind * 100000 + value: kind 0 add, 1 search (records 1 or 0), 2 erase (records 1 or 0)
+    public static List<int> DriveSkiplist(int[] script) {
+        var s = new Skiplist();
+        var res = new List<int>();
+        foreach (int c in script) {
+            int kind = c / 100000, v = c % 100000;
+            if (kind == 0) s.Add(v);
+            else if (kind == 1) res.Add(s.Search(v) ? 1 : 0);
+            else res.Add(s.Erase(v) ? 1 : 0);
+        }
+        return res;
+    }
 }`
         },
         cases: [
@@ -6518,7 +7472,66 @@ public:
         while (level > 1 && !head->next[level - 1]) level--;
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Skiplist {
+    private const int MAX_LEVEL = 16;
+    private const double P = 0.5;
+
+    private sealed class Node {
+        public readonly int val;
+        public readonly Node[] next;
+        public Node(int val, int h) { this.val = val; this.next = new Node[h]; }
+    }
+
+    private readonly Node head = new Node(-1, MAX_LEVEL);
+    private int level = 1;
+    private readonly Random rnd = new Random();
+
+    public Skiplist() { }
+
+    private int RandomLevel() {
+        int h = 1;
+        while (h < MAX_LEVEL && rnd.NextDouble() < P) h++;
+        return h;
+    }
+
+    // Fills update[l] with the last node < x on each level; returns the level-0 predecessor.
+    private Node FindPredecessors(int x, Node[] update) {
+        Node cur = head;
+        for (int l = level - 1; l >= 0; l--) {
+            while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+            if (update != null) update[l] = cur;
+        }
+        return cur;
+    }
+
+    public bool Search(int target) {
+        Node cand = FindPredecessors(target, null).next[0];
+        return cand != null && cand.val == target;
+    }
+
+    public void Add(int num) {
+        Node[] update = new Node[MAX_LEVEL];
+        FindPredecessors(num, update);
+        int h = RandomLevel();
+        for (int l = level; l < h; l++) update[l] = head;     // new top levels
+        level = Math.Max(level, h);
+        Node node = new Node(num, h);
+        for (int l = 0; l < h; l++) {
+            node.next[l] = update[l].next[l];
+            update[l].next[l] = node;
+        }
+    }
+
+    public bool Erase(int num) {
+        Node[] update = new Node[MAX_LEVEL];
+        Node target = FindPredecessors(num, update).next[0];
+        if (target == null || target.val != num) return false;
+        for (int l = 0; l < target.next.Length; l++)
+            if (update[l].next[l] == target) update[l].next[l] = target.next[l];
+        while (level > 1 && head.next[level - 1] == null) level--;
+        return true;
+    }
+}` }],
         dry: { head: ['call', 'walk / coin flips', 'structure after (L1 / L0)', 'returns'], rows: [
           ['add 1', 'flips H,T → height 2', 'L1: 1 · L0: 1', '—'],
           ['add 2', 'flips T → height 1', 'L1: 1 · L0: 1 2', '—'],
@@ -6589,7 +7602,18 @@ public:
         double s2 = (double)(p[2][1] - p[0][1]) / dx2;
         return s1 != s2;                              // fragile double comparison
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsBoomerang(int[][] p) {
+        if (Same(p[0], p[1]) || Same(p[0], p[2]) || Same(p[1], p[2])) return false;
+        int dx1 = p[1][0] - p[0][0], dx2 = p[2][0] - p[0][0];
+        if (dx1 == 0 && dx2 == 0) return false;          // both vertical: same line
+        if (dx1 == 0 || dx2 == 0) return true;           // exactly one vertical
+        double s1 = (double)(p[1][1] - p[0][1]) / dx1;
+        double s2 = (double)(p[2][1] - p[0][1]) / dx2;
+        return s1 != s2;                                  // fragile double comparison
+    }
+    private bool Same(int[] a, int[] b) { return a[0] == b[0] && a[1] == b[1]; }
+}` }] }
     },
     mcq: { q: 'Why does a single cross-product test also catch duplicate points?', options: ['It does not; you must check duplicates separately', 'A duplicate makes one of the vectors (0,0), so the cross product is 0', 'Duplicates make the cross product negative', 'Because the constraints forbid duplicates'], answer: 1, explain: 'If two points coincide, B − A or C − A is the zero vector, and anything crossed with the zero vector is 0 — reported as "collinear", which is exactly "not a boomerang".' },
     hints: [
@@ -6652,7 +7676,12 @@ public:
         return (p[1][0] - p[0][0]) * (p[2][1] - p[0][1])
              - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]) != 0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsBoomerang(int[][] p) {
+        return (p[1][0] - p[0][0]) * (p[2][1] - p[0][1])
+             - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]) != 0;
+    }
+}` }],
       dry: { head: ['input', 'B − A', 'C − A', 'cross', 'answer'], rows: [['[[1,1],[2,3],[3,2]]', '(1,2)', '(2,1)', '1·1 − 2·2 = −3', 'true'], ['[[1,1],[2,2],[3,3]]', '(1,1)', '(2,2)', '1·2 − 1·2 = 0', 'false'], ['[[0,0],[0,0],[1,2]]', '(0,0)', '(1,2)', '0', 'false']] },
       complexity: `<p>O(1) time and space.</p>`,
       followUps: ['Return the area of the triangle.', 'Given N points, count triples that form boomerangs.']
@@ -6729,7 +7758,22 @@ public:
                 }
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double LargestTriangleArea(int[][] p) {
+        double best = 0;
+        int n = p.Length;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++) {
+                    double a = Dist(p[i], p[j]), b = Dist(p[j], p[k]), c = Dist(p[i], p[k]);
+                    double s = (a + b + c) / 2;
+                    double sq = s * (s - a) * (s - b) * (s - c);   // can be slightly negative
+                    best = Math.Max(best, Math.Sqrt(Math.Max(0, sq)));
+                }
+        return best;
+    }
+    private double Dist(int[] u, int[] v) { double dx = u[0] - v[0], dy = u[1] - v[1]; return Math.Sqrt(dx * dx + dy * dy); }
+}` }] }
     },
     mcq: { q: 'Which formula gives the exact doubled area of triangle ABC from integer coordinates?', options: ['|AB| · |AC| / 2', '|(B−A) × (C−A)|', 'Heron with sides rounded to integers', '(B−A) · (C−A)'], answer: 1, explain: 'The absolute cross product equals the parallelogram area = 2 × triangle area, computed exactly with integer multiplication.' },
     hints: [
@@ -6833,7 +7877,19 @@ public:
                 }
         return best / 2.0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double LargestTriangleArea(int[][] p) {
+        int n = p.Length, best = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++) {
+                    int c = (p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                          - (p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                    best = Math.Max(best, Math.Abs(c));     // twice the area, exact
+                }
+        return best / 2.0;
+    }
+}` }],
       dry: { head: ['triple', 'cross', '|cross|/2', 'best'], rows: [['(0,0),(0,1),(1,0)', '0·0 − 1·1 = −1', '0.5', '0.5'], ['(0,0),(0,2),(2,0)', '0·0 − 2·2 = −4', '2', '2'], ['(0,1),(0,2),(2,0)', '0·(−1) − 1·2 = −2', '1', '2']] },
       complexity: `<p>O(N<sup>3</sup>) = ~2·10<sup>4</sup> triples, O(1) space. Expert follow-up: hull first, then O(H<sup>2</sup>) with a rotating pointer.</p>`,
       followUps: ['N = 10<sup>5</sup>: why do the optimal vertices lie on the convex hull?', 'Largest quadrilateral area.']
@@ -6881,7 +7937,15 @@ public:
                 if (x >= b[0] && x + 1 <= b[2] && y >= b[1] && y + 1 <= b[3]) return true;
         return false;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    // Only usable for tiny coordinates: tests each unit cell of rec1.
+    public bool IsRectangleOverlap(int[] a, int[] b) {
+        for (long x = a[0]; x < a[2]; x++)
+            for (long y = a[1]; y < a[3]; y++)
+                if (x >= b[0] && x + 1 <= b[2] && y >= b[1] && y + 1 <= b[3]) return true;
+        return false;
+    }
+}` }] }
     },
     mcq: { q: 'Two rectangles overlap with positive area exactly when…', options: ['their x-intervals overlap OR their y-intervals overlap', 'their x-intervals overlap with positive length AND their y-intervals overlap with positive length', 'one corner of A is inside B', 'their centres are closer than the sum of half-diagonals'], answer: 1, explain: 'The intersection of two axis-aligned rectangles is the product of the x-overlap and the y-overlap; it has positive area only if both lengths are positive. "Corner inside" fails for a plus-sign (cross) arrangement.' },
     hints: [
@@ -6949,7 +8013,13 @@ public:
         bool yOverlap = min(a[3], b[3]) > max(a[1], b[1]);
         return xOverlap && yOverlap;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsRectangleOverlap(int[] a, int[] b) {
+        bool xOverlap = Math.Min(a[2], b[2]) > Math.Max(a[0], b[0]);
+        bool yOverlap = Math.Min(a[3], b[3]) > Math.Max(a[1], b[1]);
+        return xOverlap && yOverlap;
+    }
+}` }],
       dry: { head: ['pair', 'x overlap', 'y overlap', 'answer'], rows: [['[0,0,2,2] & [1,1,3,3]', 'min(2,3) − max(0,1) = 1', '1', 'true'], ['[0,0,1,1] & [1,0,2,1]', 'min(1,2) − max(0,1) = 0', '1', 'false (edge only)'], ['[0,0,1,1] & [2,2,3,3]', '1 − 2 = −1', '−1', 'false']] },
       complexity: `<p>O(1) time and space. The subtraction-free comparison form avoids overflow with coordinates near ±10<sup>9</sup>.</p>`,
       followUps: ['Return the overlap area (Rectangle Area, LeetCode 223).', 'Union area of N rectangles (Rectangle Area II — practice Hard).']
@@ -7023,7 +8093,18 @@ public:
     int pop() { int x = s.top(); s.pop(); return x; }
     int peek() { return s.top(); }
     bool empty() { return s.empty(); }
-};` }] }
+};` }, { lang: 'csharp', code: `public class MyQueue {
+    private readonly Stack<int> s = new Stack<int>(), tmp = new Stack<int>();
+
+    public void Push(int x) {                       // O(N) every time
+        while (s.Count > 0) tmp.Push(s.Pop());
+        s.Push(x);
+        while (tmp.Count > 0) s.Push(tmp.Pop());
+    }
+    public int Pop() { return s.Pop(); }
+    public int Peek() { return s.Peek(); }
+    public bool Empty() { return s.Count == 0; }
+}` }] }
     },
     mcq: { q: 'Over a long sequence, how many times can one element be moved from the in-stack to the out-stack?', options: ['Once per pop call', 'At most once in its lifetime', 'log N times', 'N times'], answer: 1, explain: 'We only transfer when out is empty, and an element in out leaves only by being popped. So each element is pushed to in once, moved once, popped once: O(1) amortized.' },
     hints: [
@@ -7408,7 +8489,22 @@ public:
     int pop() { shift(); int x = out.top(); out.pop(); return x; }   // amortized O(1)
     int peek() { shift(); return out.top(); }
     bool empty() { return in.empty() && out.empty(); }
-};` }],
+};` }, { lang: 'csharp', code: `public class MyQueue {
+    private readonly Stack<int> inS = new Stack<int>(), outS = new Stack<int>();
+
+    public void Push(int x) { inS.Push(x); }                // O(1)
+
+    public int Pop() { Shift(); return outS.Pop(); }        // amortized O(1)
+
+    public int Peek() { Shift(); return outS.Peek(); }
+
+    public bool Empty() { return inS.Count == 0 && outS.Count == 0; }
+
+    private void Shift() {
+        if (outS.Count == 0)                                 // only when out is dry
+            while (inS.Count > 0) outS.Push(inS.Pop());      // each element moves once, ever
+    }
+}` }],
       dry: { head: ['op', 'in (bottom→top)', 'out (bottom→top)', 'result'], rows: [['push 1', '[1]', '[]', '—'], ['push 2', '[1, 2]', '[]', '—'], ['peek', '[]', '[2, 1]', '1 (transfer once)'], ['pop', '[]', '[2]', '1'], ['push 3', '[3]', '[2]', '—'], ['pop', '[3]', '[]', '2 (no transfer)']] },
       complexity: `<p>push O(1); pop/peek <b>amortized O(1)</b>, worst case O(N) for a single call; space O(N).</p>`,
       followUps: ['Implement a stack using queues (LeetCode 225).', 'Make pop worst-case O(1) (incremental transfer / real-time queue).']
@@ -7487,7 +8583,22 @@ public:
         }
         return res;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly int[] orig;
+    private readonly Random rnd = new Random();
+    public Solution(int[] nums) { orig = (int[])nums.Clone(); }
+    public int[] Reset() { return (int[])orig.Clone(); }
+    public int[] Shuffle() {
+        var pool = new List<int>(orig);
+        int[] res = new int[orig.Length];
+        for (int i = 0; i < res.Length; i++) {
+            int j = rnd.Next(pool.Count);
+            res[i] = pool[j];
+            pool.RemoveAt(j);                                // O(N) removal each time
+        }
+        return res;
+    }
+}` }] }
     },
     mcq: { q: 'Which loop produces a uniformly random permutation?', options: ['for i in 0..n−1: swap(a[i], a[rand(0..n−1)])', 'for i in n−1..1: swap(a[i], a[rand(0..i)])', 'for i in n−1..1: swap(a[i], a[rand(0..i−1)])', 'sort with a random comparator'], answer: 1, explain: 'Fisher–Yates draws j from [0, i] so the number of equally likely runs is n!. Option A gives n^n runs (biased), option C is Sattolo (single cycles only), option D is biased and may violate the comparator contract.' },
     hints: [
@@ -7588,6 +8699,29 @@ public:
     sort(counts.begin(), counts.end());
     res.insert(res.end(), counts.begin(), counts.end());
     return res;
+}`, csharp: `public class Check {
+    public static List<int> ShuffleStats(int[] nums, int trials) {
+        var s = new Solution((int[])nums.Clone());
+        int[] baseArr = (int[])nums.Clone();
+        Array.Sort(baseArr);
+        var seen = new Dictionary<string, int>();
+        int valid = 1, changed = 0;
+        for (int t = 0; t < trials; t++) {
+            int[] a = s.Shuffle();
+            int[] sorted = (int[])a.Clone();
+            Array.Sort(sorted);
+            if (!sorted.SequenceEqual(baseArr)) valid = 0;        // must be a permutation
+            if (!a.SequenceEqual(nums)) changed = 1;
+            if (nums.Length <= 4) { string k = string.Join(",", a); int c; seen.TryGetValue(k, out c); seen[k] = c + 1; }
+            if (t % 997 == 0 && !s.Reset().SequenceEqual(nums)) valid = 0;   // reset restores the original
+        }
+        if (!s.Reset().SequenceEqual(nums)) valid = 0;
+        var counts = new List<int>(seen.Values);
+        counts.Sort();
+        var res = new List<int> { valid, changed };
+        res.AddRange(counts);
+        return res;
+    }
 }`
       },
       cases: [
@@ -7678,7 +8812,23 @@ public:
         }
         return a;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly int[] orig;
+    private readonly Random rnd = new Random();
+
+    public Solution(int[] nums) { orig = (int[])nums.Clone(); }
+
+    public int[] Reset() { return (int[])orig.Clone(); }
+
+    public int[] Shuffle() {
+        int[] a = (int[])orig.Clone();
+        for (int i = a.Length - 1; i > 0; i--) {
+            int j = rnd.Next(i + 1);             // uniform in [0, i]
+            int t = a[i]; a[i] = a[j]; a[j] = t;
+        }
+        return a;
+    }
+}` }],
       dry: { head: ['i', 'j drawn', 'array after swap'], rows: [['—', '—', '[1, 2, 3]'], ['2', '0', '[3, 2, 1]'], ['1', '1', '[3, 2, 1] (stays)']] },
       complexity: `<p>shuffle O(N) time, O(N) for the returned copy; reset O(N).</p>`,
       followUps: ['Shuffle a stream that does not fit in memory (assign random keys and external-sort, or reservoir-style "inside-out" Fisher–Yates).', 'Why can a 32-bit seeded RNG not produce all 52! deck orders?']
@@ -7744,7 +8894,23 @@ public:
         vector<int>& l = pos[target];
         return l[rnd() % l.size()];
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly Dictionary<int, List<int>> pos = new Dictionary<int, List<int>>();
+    private readonly Random rnd = new Random();
+
+    public Solution(int[] nums) {
+        for (int i = 0; i < nums.Length; i++) {
+            List<int> l;
+            if (!pos.TryGetValue(nums[i], out l)) pos[nums[i]] = l = new List<int>();
+            l.Add(i);                                         // O(N) memory
+        }
+    }
+
+    public int Pick(int target) {
+        List<int> l = pos[target];
+        return l[rnd.Next(l.Count)];
+    }
+}` }] }
     },
     mcq: { q: 'Scanning left to right, you meet the 3rd index whose value equals target. With what probability do you switch your answer to it?', options: ['1/2', '1/3', '1/N', 'Always'], answer: 1, explain: 'Run reservoir sampling only over matching indices: the c-th match replaces the answer with probability 1/c.' },
     hints: [
@@ -7802,6 +8968,16 @@ public:
         counts[i >= 0 && i < (int)nums.size() && nums[i] == target ? i : nums.size()]++;
     }
     return counts;
+}`, csharp: `public class Check {
+    public static List<int> SamplePick(int[] nums, int target, int trials) {
+        var s = new Solution(nums);
+        int[] counts = new int[nums.Length + 1];          // last slot: indices that do not hold target
+        for (int t = 0; t < trials; t++) {
+            int i = s.Pick(target);
+            counts[i >= 0 && i < nums.Length && nums[i] == target ? i : nums.Length]++;
+        }
+        return new List<int>(counts);
+    }
 }`
       },
       cases: [
@@ -7873,7 +9049,22 @@ public:
         }
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly int[] nums;
+    private readonly Random rnd = new Random();
+
+    public Solution(int[] nums) { this.nums = nums; }
+
+    public int Pick(int target) {
+        int ans = -1, count = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            if (nums[i] != target) continue;
+            count++;
+            if (rnd.Next(count) == 0) ans = i;      // keep with probability 1/count
+        }
+        return ans;
+    }
+}` }],
       dry: { head: ['i', 'nums[i]', 'count', 'roll in [0, count)', 'ans'], rows: [['2', '3', '1', '0 → take', '2'], ['3', '3', '2', '1 → keep', '2'], ['4', '3', '3', '0 → take', '4']] },
       complexity: `<p>pick: O(N) time, <b>O(1)</b> extra space. Hash-map alternative: O(1) per pick, O(N) space.</p>`,
       followUps: ['Pick k distinct indices of the target uniformly.', 'Which version would you ship for 10<sup>9</sup> calls on a static array?']
@@ -7951,7 +9142,23 @@ public:
             if (ticket <= prefix[i]) return i;
         return prefix.size() - 1;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly int[] prefix;
+    private readonly Random rnd = new Random();
+
+    public Solution(int[] w) {
+        prefix = new int[w.Length];
+        int s = 0;
+        for (int i = 0; i < w.Length; i++) { s += w[i]; prefix[i] = s; }
+    }
+
+    public int PickIndex() {
+        int ticket = rnd.Next(prefix[prefix.Length - 1]) + 1;      // 1..total
+        for (int i = 0; i < prefix.Length; i++)                     // O(N) scan
+            if (ticket <= prefix[i]) return i;
+        return prefix.Length - 1;
+    }
+}` }] }
     },
     mcq: { q: 'Prefix sums are [2, 5, 6] and the ticket drawn uniformly from 1..6 is 5. Which index is returned?', options: ['0', '1', '2', 'It depends on the seed'], answer: 1, explain: 'Index 1 owns tickets 3..5 (prefix[0] = 2 < 5 ≤ prefix[1] = 5). The answer is the first prefix ≥ ticket — a lower-bound binary search.' },
     hints: [
@@ -8011,6 +9218,16 @@ public:
         counts[i >= 0 && i < (int)w.size() ? i : w.size()]++;
     }
     return counts;
+}`, csharp: `public class Check {
+    public static List<int> SampleWeights(int[] w, int trials) {
+        var s = new Solution(w);
+        int[] counts = new int[w.Length + 1];             // last slot: answers outside 0..n-1
+        for (int t = 0; t < trials; t++) {
+            int i = s.PickIndex();
+            counts[i >= 0 && i < w.Length ? i : w.Length]++;
+        }
+        return new List<int>(counts);
+    }
 }`
       },
       cases: [
@@ -8083,7 +9300,26 @@ public:
         long long ticket = uniform_int_distribution<long long>(1, prefix.back())(rng);   // 1..total
         return lower_bound(prefix.begin(), prefix.end(), ticket) - prefix.begin();       // first >= ticket
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly long[] prefix;
+    private readonly Random rnd = new Random();
+
+    public Solution(int[] w) {
+        prefix = new long[w.Length];
+        long s = 0;
+        for (int i = 0; i < w.Length; i++) { s += w[i]; prefix[i] = s; }
+    }
+
+    public int PickIndex() {
+        long ticket = (long)(rnd.NextDouble() * prefix[prefix.Length - 1]) + 1; // 1..total
+        int lo = 0, hi = prefix.Length - 1;
+        while (lo < hi) {                       // first i with prefix[i] >= ticket
+            int mid = (lo + hi) >> 1;
+            if (prefix[mid] >= ticket) hi = mid; else lo = mid + 1;
+        }
+        return lo;
+    }
+}` }],
       dry: { head: ['w', 'prefix', 'ticket', 'binary search', 'index'], rows: [['[2, 3, 1]', '[2, 5, 6]', '1', 'prefix[0] = 2 ≥ 1', '0'], ['[2, 3, 1]', '[2, 5, 6]', '5', 'prefix[1] = 5 ≥ 5', '1'], ['[2, 3, 1]', '[2, 5, 6]', '6', 'prefix[2] = 6 ≥ 6', '2']] },
       complexity: `<p>Constructor O(N), pickIndex <b>O(log N)</b>, space O(N).</p>`,
       followUps: ['Weights change between picks: use a Fenwick tree for O(log N) updates and picks.', 'Alias method: O(1) per pick — explain the table construction.']
@@ -8122,7 +9358,16 @@ public:
         sort(points.begin(), points.end(), [&](auto& a, auto& b) { return dist(a) < dist(b); });   // O(N log N)
         return vector<vector<int>>(points.begin(), points.begin() + k);
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[][] KClosest(int[][] points, int k) {
+        int[][] p = (int[][])points.Clone();
+        Array.Sort(p, (a, b) => Dist(a).CompareTo(Dist(b)));   // O(N log N)
+        int[][] res = new int[k][];
+        Array.Copy(p, res, k);
+        return res;
+    }
+    private long Dist(int[] q) { return (long)q[0] * q[0] + (long)q[1] * q[1]; }
+}` }] }
     },
     mcq: { q: 'Why compare x² + y² instead of √(x² + y²)?', options: ['A square root function does not exist', 'Squaring preserves the order of non-negative distances, and stays exact in integers', 'It changes which points are closest', 'Square roots are faster'], answer: 1, explain: 'For d ≥ 0, d₁ < d₂ ⇔ d₁² < d₂². Skipping the square root keeps everything in exact integer arithmetic.' },
     hints: [
@@ -8462,7 +9707,33 @@ public:
         points.resize(k);
         return points;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly Random rnd = new Random();
+
+    public int[][] KClosest(int[][] points, int k) {
+        int lo = 0, hi = points.Length - 1, target = k - 1;
+        while (lo < hi) {
+            long pivot = Dist(points[lo + rnd.Next(hi - lo + 1)]);
+            int lt = lo, i = lo, gt = hi;
+            while (i <= gt) {
+                long d = Dist(points[i]);
+                if (d < pivot) Swap(points, lt++, i++);
+                else if (d > pivot) Swap(points, i, gt--);
+                else i++;
+            }
+            if (target < lt) hi = lt - 1;
+            else if (target > gt) lo = gt + 1;
+            else break;                          // boundary found
+        }
+        int[][] res = new int[k][];
+        Array.Copy(points, res, k);
+        return res;
+    }
+
+    private long Dist(int[] p) { return (long)p[0] * p[0] + (long)p[1] * p[1]; }
+
+    private void Swap(int[][] a, int i, int j) { int[] t = a[i]; a[i] = a[j]; a[j] = t; }
+}` }],
       dry: { head: ['round', 'range', 'pivot dist', 'partition (dists)', 'target 1 in…'], rows: [['1', '[0,2]', '26', '[18, 20 | 26 | ]', 'left → hi = 1'], ['2', '[0,1]', '18', '[ | 18 | 20]', 'right → lo = 1'], ['3', 'lo == hi', '—', '—', 'stop → first 2 points']] },
       complexity: `<p>Expected <b>O(N)</b> time, O(1) extra space (in place). Heap: O(N log k) time, O(k) space, works on streams.</p>`,
       followUps: ['Points arrive as a stream: keep a max-heap of size k.', 'Return them sorted by distance — sort only the k results: O(N + k log k).']
@@ -8520,7 +9791,16 @@ public:
         for (int i = (int)prices.size() - 1; i >= 0 && prices[i] <= price; i--) span++;   // O(N)
         return span;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class StockSpanner {
+    private readonly List<int> prices = new List<int>();
+
+    public int Next(int price) {
+        prices.Add(price);
+        int span = 0;
+        for (int i = prices.Count - 1; i >= 0 && prices[i] <= price; i--) span++;  // O(N)
+        return span;
+    }
+}` }] }
     },
     mcq: { q: 'The inner while pops many entries for a single call. Why is the total still O(N) over N calls?', options: ['Because prices are bounded by 10<sup>5</sup>', 'Each day is pushed once and popped at most once', 'Because the stack is sorted', 'It is not; it is O(N log N)'], answer: 1, explain: 'Aggregate method: total pops ≤ total pushes = N, so all calls together do O(N) work → amortized O(1) per call.' },
     hints: [
@@ -8696,7 +9976,17 @@ public:
         st.push_back({price, span});
         return span;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class StockSpanner {
+    private readonly Stack<(int price, int span)> st = new Stack<(int price, int span)>();   // prices strictly decreasing
+
+    public int Next(int price) {
+        int span = 1;
+        while (st.Count > 0 && st.Peek().price <= price)
+            span += st.Pop().span;                        // absorb the smaller block
+        st.Push((price, span));
+        return span;
+    }
+}` }],
       dry: { head: ['price', 'popped', 'span', 'stack after (price:span)'], rows: [['100', '—', '1', '100:1'], ['80', '—', '1', '100:1, 80:1'], ['60', '—', '1', '…, 80:1, 60:1'], ['70', '60:1', '2', '…, 80:1, 70:2'], ['60', '—', '1', '…, 70:2, 60:1'], ['75', '60:1, 70:2', '4', '100:1, 80:1, 75:4'], ['85', '75:4, 80:1', '6', '100:1, 85:6']] },
       complexity: `<p><b>Amortized O(1)</b> per call (worst single call O(N)); space O(N).</p>`,
       followUps: ['Daily Temperatures (next greater to the right) — same stack, offline.', 'Return the span for an arbitrary past day in O(log N).']
@@ -8756,7 +10046,17 @@ public:
         double rho = unit(rnd) * r;
         return {cx + rho * cos(theta), cy + rho * sin(theta)};
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly double r, cx, cy;
+    private readonly Random rnd = new Random();
+    public Solution(double radius, double x, double y) { r = radius; cx = x; cy = y; }
+
+    public double[] RandPoint() {               // BIASED: radius should be r * sqrt(u)
+        double theta = rnd.NextDouble() * 2 * Math.PI;
+        double rho = rnd.NextDouble() * r;
+        return new[] { cx + rho * Math.Cos(theta), cy + rho * Math.Sin(theta) };
+    }
+}` }] }
     },
     mcq: { q: 'To sample uniformly by angle and radius, the radius should be…', options: ['r · u', 'r · u²', 'r · √u', 'r · log(u)'], answer: 2, explain: 'The area within radius ρ grows like ρ². For a uniform point, P(radius ≤ ρ) = (ρ/r)², so ρ = r·√u inverts that CDF.' },
     hints: [
@@ -8833,6 +10133,20 @@ public:
         c[3 + (dx >= 0 ? 0 : 1) + (dy >= 0 ? 0 : 2)]++;
     }
     return c;
+}`, csharp: `public class Check {
+    public static List<int> SampleCircle(double r, double cx, double cy, int trials) {
+        var s = new Solution(r, cx, cy);
+        int[] c = new int[7];                  // outside, within r/2, within r/sqrt2, four quadrants
+        for (int t = 0; t < trials; t++) {
+            double[] p = s.RandPoint();
+            double dx = p[0] - cx, dy = p[1] - cy, d = Math.Sqrt(dx * dx + dy * dy);
+            if (!(d <= r * (1 + 1e-9) + 1e-9)) c[0]++;
+            if (d <= r / 2) c[1]++;
+            if (d <= r / Math.Sqrt(2)) c[2]++;
+            c[3 + (dx >= 0 ? 0 : 1) + (dy >= 0 ? 0 : 2)]++;
+        }
+        return new List<int>(c);
+    }
 }`
       },
       cases: [
@@ -8919,7 +10233,28 @@ public:
             if (x * x + y * y <= r * r) return {cx + x, cy + y};
         }
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private readonly double r, cx, cy;
+    private readonly Random rnd = new Random();
+
+    public Solution(double radius, double xCenter, double yCenter) {
+        r = radius; cx = xCenter; cy = yCenter;
+    }
+
+    public double[] RandPoint() {
+        double theta = rnd.NextDouble() * 2 * Math.PI;
+        double rho = r * Math.Sqrt(rnd.NextDouble());       // sqrt corrects the area density
+        return new[] { cx + rho * Math.Cos(theta), cy + rho * Math.Sin(theta) };
+    }
+
+    // Alternative: rejection sampling, also exactly uniform.
+    public double[] RandPointRejection() {
+        while (true) {
+            double x = (rnd.NextDouble() * 2 - 1) * r, y = (rnd.NextDouble() * 2 - 1) * r;
+            if (x * x + y * y <= r * r) return new[] { cx + x, cy + y };
+        }
+    }
+}` }],
       dry: { head: ['u', 'naive ρ = r·u', 'correct ρ = r·√u', 'fraction of area inside ρ'], rows: [['0.25', '0.25r', '0.5r', '25%'], ['0.5', '0.5r', '0.707r', '50%'], ['0.81', '0.81r', '0.9r', '81%']] },
       complexity: `<p>O(1) per call (rejection: expected O(1), about 1.27 iterations).</p>`,
       followUps: ['Uniform point on the circle boundary only.', 'Uniform point in non-overlapping rectangles (LeetCode 497): weight by integer point count + binary search.', 'Uniform point inside a triangle (reflect when u + v &gt; 1).']
@@ -9010,7 +10345,25 @@ public:
             }
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MaxPoints(int[][] p) {
+        int n = p.Length;
+        if (n <= 2) return n;
+        int best = 2;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                int cnt = 2;
+                for (int k = 0; k < n; k++) {
+                    if (k == i || k == j) continue;
+                    long c = (long)(p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                           - (long)(p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                    if (c == 0) cnt++;
+                }
+                best = Math.Max(best, cnt);
+            }
+        return best;
+    }
+}` }] }
     },
     mcq: { q: 'Directions (2, 4) and (−1, −2) from the same anchor should count as the same line. Which key handles that exactly?', options: ['the double dy/dx', 'the pair (dx/g, dy/g) with g = gcd(|dx|,|dy|) and a fixed sign rule', 'the string dx + "/" + dy', 'atan2(dy, dx) rounded to 6 decimals'], answer: 1, explain: 'Dividing by the gcd gives (1, 2) and (−1, −2); forcing dx &gt; 0 (or dx = 0, dy &gt; 0) maps both to (1, 2). Exact, no floating point, no division by zero for vertical lines.' },
     hints: [
@@ -9272,7 +10625,28 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MaxPoints(int[][] p) {
+        int n = p.Length, best = 1;
+        for (int i = 0; i < n; i++) {
+            var count = new Dictionary<long, int>();
+            for (int j = i + 1; j < n; j++) {
+                int dx = p[j][0] - p[i][0], dy = p[j][1] - p[i][1];
+                int g = Gcd(Math.Abs(dx), Math.Abs(dy));      // > 0 because points are distinct
+                dx /= g; dy /= g;
+                if (dx < 0 || (dx == 0 && dy < 0)) { dx = -dx; dy = -dy; }  // canonical sign
+                long key = ((long)dx << 32) ^ (dy & 0xffffffffL);
+                int c;
+                count.TryGetValue(key, out c);
+                count[key] = c + 1;
+                best = Math.Max(best, c + 2);
+            }
+        }
+        return best;
+    }
+
+    private int Gcd(int a, int b) { return b == 0 ? a : Gcd(b, a % b); }
+}` }],
       dry: { head: ['anchor', 'other point', '(dx, dy)', 'reduced key', 'count'], rows: [['(3,2)', '(5,3)', '(2,1)', '(2,1)', '1'], ['(3,2)', '(4,1)', '(1,−1)', '(1,−1)', '1'], ['(3,2)', '(2,3)', '(−1,1)', '(1,−1)', '2'], ['(3,2)', '(1,4)', '(−2,2)', '(1,−1)', '3 → best = 4']] },
       complexity: `<p>Time <b>O(N<sup>2</sup> log C)</b> (gcd on coordinates up to C), space O(N) per anchor.</p>`,
       followUps: ['Points may repeat: count duplicates of the anchor separately and add them to every line.', 'Return the line itself as a·x + b·y = c with integer coefficients.']
@@ -9352,7 +10726,23 @@ public:
                  && min(r[i][3], r[j][3]) > max(r[i][1], r[j][1])) return false;
         return true;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsRectangleCover(int[][] r) {
+        long area = 0;
+        int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+        foreach (var a in r) {
+            area += (long)(a[2] - a[0]) * (a[3] - a[1]);
+            x1 = Math.Min(x1, a[0]); y1 = Math.Min(y1, a[1]);
+            x2 = Math.Max(x2, a[2]); y2 = Math.Max(y2, a[3]);
+        }
+        if (area != (long)(x2 - x1) * (y2 - y1)) return false;
+        for (int i = 0; i < r.Length; i++)                // O(N^2) overlap checks
+            for (int j = i + 1; j < r.Length; j++)
+                if (Math.Min(r[i][2], r[j][2]) > Math.Max(r[i][0], r[j][0])
+                 && Math.Min(r[i][3], r[j][3]) > Math.Max(r[i][1], r[j][1])) return false;
+        return true;
+    }
+}` }] }
     },
     mcq: { q: 'In a perfect cover, how often does an interior corner point (not one of the 4 outer corners) appear among all rectangle corners?', options: ['Exactly once', 'An even number of times (2 or 4)', 'Exactly 3 times', 'It never appears'], answer: 1, explain: 'Inside a perfect tiling every corner is shared by 2 rectangles (a T-junction) or 4 (a cross). Only the 4 bounding corners belong to a single rectangle. Toggling corners in a set leaves exactly those 4.' },
     hints: [
@@ -9715,7 +11105,26 @@ public:
         if (area != (long long)(maxX - minX) * (maxY - minY)) return false;
         return corners == set<pair<int, int>>{{minX, minY}, {minX, maxY}, {maxX, minY}, {maxX, maxY}};
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsRectangleCover(int[][] rects) {
+        long area = 0;
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+        var corners = new HashSet<long>();
+        foreach (var r in rects) {
+            area += (long)(r[2] - r[0]) * (r[3] - r[1]);
+            minX = Math.Min(minX, r[0]); minY = Math.Min(minY, r[1]);
+            maxX = Math.Max(maxX, r[2]); maxY = Math.Max(maxY, r[3]);
+            foreach (long c in new[] { Key(r[0], r[1]), Key(r[0], r[3]), Key(r[2], r[1]), Key(r[2], r[3]) })
+                if (!corners.Add(c)) corners.Remove(c);          // toggle: keeps odd-count corners
+        }
+        if (area != (long)(maxX - minX) * (maxY - minY)) return false;
+        return corners.Count == 4
+            && corners.Contains(Key(minX, minY)) && corners.Contains(Key(minX, maxY))
+            && corners.Contains(Key(maxX, minY)) && corners.Contains(Key(maxX, maxY));
+    }
+
+    private long Key(int x, int y) { return ((long)x << 32) ^ (y & 0xffffffffL); }
+}` }],
       dry: { head: ['rectangle', 'area', 'corners toggled', 'set size after'], rows: [['[1,1,3,3]', '4', '(1,1) (1,3) (3,1) (3,3) added', '4'], ['[3,1,4,2]', '1', '(3,1) removed; (3,2) (4,1) (4,2) added', '6'], ['[3,2,4,4]', '2', '(3,2) (4,2) removed; (3,4) (4,4) added', '6'], ['[1,3,2,4]', '1', '(1,3) removed; (1,4) (2,3) (2,4) added', '8'], ['[2,3,3,4]', '1', '(2,3) (2,4) (3,3) (3,4) removed', '<span class="c-g">4 = outer corners, area 9 = 9 → true</span>']] },
       complexity: `<p>Time <b>O(N)</b> expected (hash set), space O(N).</p>`,
       followUps: ['Return the overlapping pair if not perfect (sweep line with an interval tree: O(N log N)).', 'Prove why area + corner parity is sufficient.']
@@ -9798,7 +11207,27 @@ public:
                 if (covered[i][j]) area += (long long)(X[i + 1] - X[i]) * (Y[j + 1] - Y[j]);
         return (int)(area % 1'000'000'007LL);
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int RectangleArea(int[][] rects) {
+        var xs = new SortedSet<int>();
+        var ys = new SortedSet<int>();
+        foreach (var r in rects) { xs.Add(r[0]); xs.Add(r[2]); ys.Add(r[1]); ys.Add(r[3]); }
+        int[] X = xs.ToArray(), Y = ys.ToArray();
+        var xi = new Dictionary<int, int>();
+        var yi = new Dictionary<int, int>();
+        for (int i = 0; i < X.Length; i++) xi[X[i]] = i;
+        for (int i = 0; i < Y.Length; i++) yi[Y[i]] = i;
+        bool[,] covered = new bool[X.Length, Y.Length];
+        foreach (var r in rects)
+            for (int i = xi[r[0]]; i < xi[r[2]]; i++)
+                for (int j = yi[r[1]]; j < yi[r[3]]; j++) covered[i, j] = true;
+        long area = 0;
+        for (int i = 0; i + 1 < X.Length; i++)
+            for (int j = 0; j + 1 < Y.Length; j++)
+                if (covered[i, j]) area += (long)(X[i + 1] - X[i]) * (Y[j + 1] - Y[j]);
+        return (int)(area % 1000000007L);
+    }
+}` }] }
     },
     mcq: { q: 'In the sweep, what do you multiply between two consecutive event x-coordinates?', options: ['The number of active rectangles × strip width', 'The total length of the UNION of active y-intervals × strip width', 'The sum of active y-interval lengths × strip width', 'The largest active y-interval × strip width'], answer: 1, explain: 'Inside a vertical strip with no events the covered set is constant: the union of the active y-intervals. Summing raw lengths would double-count overlaps.' },
     hints: [
@@ -10277,7 +11706,43 @@ public:
         }
         return area % 1000000007LL;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int RectangleArea(int[][] rects) {
+        var events = new List<int[]>();                         // {x, type, y1, y2}
+        foreach (var r in rects) {
+            events.Add(new[] { r[0], 1, r[1], r[3] });          // left edge: open
+            events.Add(new[] { r[2], -1, r[1], r[3] });         // right edge: close
+        }
+        events.Sort((a, b) => a[0].CompareTo(b[0]));
+        var active = new List<int[]>();
+        long area = 0;
+        int prevX = events[0][0];
+        foreach (var e in events) {
+            area += CoveredY(active) * (long)(e[0] - prevX);    // strip [prevX, x)
+            prevX = e[0];
+            if (e[1] == 1) active.Add(new[] { e[2], e[3] });
+            else {
+                for (int i = 0; i < active.Count; i++)
+                    if (active[i][0] == e[2] && active[i][1] == e[3]) { active.RemoveAt(i); break; }
+            }
+        }
+        return (int)(area % 1000000007L);
+    }
+
+    // Length of the union of y-intervals (Merge Intervals).
+    private long CoveredY(List<int[]> active) {
+        if (active.Count == 0) return 0;
+        var iv = new List<int[]>(active);
+        iv.Sort((a, b) => a[0].CompareTo(b[0]));
+        long total = 0;
+        int lo = iv[0][0], hi = iv[0][1];
+        foreach (var s in iv) {
+            if (s[0] > hi) { total += hi - lo; lo = s[0]; hi = s[1]; }   // gap: close the block
+            else hi = Math.Max(hi, s[1]);                                  // overlap: extend
+        }
+        return total + (hi - lo);
+    }
+}` }],
       dry: { head: ['event x', 'strip', 'active before event', 'covered y', 'area +=', 'total'], rows: [['0 (open [0,2])', '—', '{}', '0', '0', '0'], ['1 (open [0,3], [0,1])', '[0,1]', '{[0,2]}', '2', '2', '2'], ['2 (close [0,2], [0,3])', '[1,2]', '{[0,2],[0,3],[0,1]}', '3', '3', '5'], ['3 (close [0,1])', '[2,3]', '{[0,1]}', '1', '1', '<span class="c-g">6</span>']] },
       complexity: `<p>Time <b>O(N<sup>2</sup> log N)</b>, space O(N). With a segment tree over compressed y storing "cover count + covered length": <b>O(N log N)</b> (see DSA 21).</p>`,
       followUps: ['N = 10<sup>5</sup>: implement the segment-tree version.', 'Perimeter of the union (IOI 1998 "Picture").', 'Union area of circles (numerical integration / Green\'s theorem on arcs).']
@@ -10418,7 +11883,37 @@ public:
             }
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Solution {
+    public double[] OuterTrees(int[][] t) {
+        int n = t.Length;
+        if (n == 1) return new double[] { t[0][0], t[0][1], 0 };
+        double[] best = null;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                best = Better(best, Circle2(t[i], t[j]), t);
+                for (int k = j + 1; k < n; k++) best = Better(best, Circle3(t[i], t[j], t[k]), t);
+            }
+        return best;
+    }
+    private double[] Better(double[] best, double[] c, int[][] t) {
+        if (c == null || (best != null && c[2] >= best[2])) return best;
+        foreach (var q in t) if (Hypot(q[0] - c[0], q[1] - c[1]) > c[2] + 1e-7) return best;  // O(N) verify
+        return c;
+    }
+    private double Hypot(double x, double y) { return Math.Sqrt(x * x + y * y); }
+    private double[] Circle2(int[] a, int[] b) {
+        double cx = (a[0] + b[0]) / 2.0, cy = (a[1] + b[1]) / 2.0;
+        return new[] { cx, cy, Hypot(a[0] - cx, a[1] - cy) };
+    }
+    private double[] Circle3(int[] a, int[] b, int[] c) {
+        double bx = b[0] - a[0], by = b[1] - a[1], cx = c[0] - a[0], cy = c[1] - a[1];
+        double d = 2 * (bx * cy - by * cx);
+        if (d == 0) return null;                                  // collinear: no circumcircle
+        double b2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+        double ux = (cy * b2 - by * c2) / d, uy = (bx * c2 - cx * b2) / d;
+        return new[] { a[0] + ux, a[1] + uy, Hypot(ux, uy) };
+    }
+}` }] }
     },
     mcq: { q: 'Why does Welzl\'s algorithm shuffle the points first?', options: ['To make the answer unique', 'So that a point falls outside the current circle rarely: the i-th point is on the final boundary with probability ≤ 3/i, giving expected O(N)', 'Because the circle must be computed in sorted order', 'To avoid floating-point error'], answer: 1, explain: 'Backwards analysis: the minimal circle of the first i points is fixed by at most 3 of them, so the i-th (random) point is one of them with probability ≤ 3/i. Expensive inner loops are entered rarely, and the expected total work telescopes to O(N).' },
     hints: [
@@ -10785,7 +12280,59 @@ public:
         }
         return {c[0], c[1], c[2]};
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private const double EPS = 1e-7;
+
+    public double[] OuterTrees(int[][] trees) {
+        int n = trees.Length;
+        double[][] p = new double[n][];
+        for (int i = 0; i < n; i++) p[i] = new double[] { trees[i][0], trees[i][1] };
+        var rnd = new Random(20260);
+        for (int i = n - 1; i > 0; i--) {                    // Fisher-Yates: random order
+            int j = rnd.Next(i + 1);
+            double[] t = p[i]; p[i] = p[j]; p[j] = t;
+        }
+        double[] c = { p[0][0], p[0][1], 0 };
+        for (int i = 1; i < n; i++) {
+            if (Inside(c, p[i])) continue;
+            c = new[] { p[i][0], p[i][1], 0 };               // p[i] is on the boundary
+            for (int j = 0; j < i; j++) {
+                if (Inside(c, p[j])) continue;
+                c = Diameter(p[i], p[j]);                    // p[i], p[j] on the boundary
+                for (int k = 0; k < j; k++) {
+                    if (Inside(c, p[k])) continue;
+                    c = Circumcircle(p[i], p[j], p[k]);      // all three on the boundary
+                }
+            }
+        }
+        return c;
+    }
+
+    private static double Hypot(double x, double y) { return Math.Sqrt(x * x + y * y); }
+
+    private bool Inside(double[] c, double[] q) {
+        return Hypot(q[0] - c[0], q[1] - c[1]) <= c[2] + EPS;
+    }
+
+    private double[] Diameter(double[] a, double[] b) {
+        double cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
+        return new[] { cx, cy, Hypot(a[0] - cx, a[1] - cy) };
+    }
+
+    private double[] Circumcircle(double[] a, double[] b, double[] c) {
+        double bx = b[0] - a[0], by = b[1] - a[1], cx = c[0] - a[0], cy = c[1] - a[1];
+        double d = 2 * (bx * cy - by * cx);
+        if (Math.Abs(d) < 1e-12) {                           // collinear (rounding): widest pair
+            double[] best = Diameter(a, b), d2 = Diameter(a, c), d3 = Diameter(b, c);
+            if (d2[2] > best[2]) best = d2;
+            if (d3[2] > best[2]) best = d3;
+            return best;
+        }
+        double b2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+        double ux = (cy * b2 - by * c2) / d, uy = (bx * c2 - cx * b2) / d;
+        return new[] { a[0] + ux, a[1] + uy, Hypot(ux, uy) };
+    }
+}` }],
       dry: { head: ['step (order 1,2 | 2,2 | 4,2)', 'point', 'inside current?', 'new circle'], rows: [['start', '(1,2)', '—', 'centre (1,2), r 0'], ['i = 1', '(2,2)', 'no', 'diameter (1,2)-(2,2): centre (1.5,2), r 0.5'], ['i = 2', '(4,2)', 'no', 'start at (4,2) r 0; j = 0: (1,2) outside → diameter: centre (2.5,2), r 1.5'], ['i = 2, j = 1', '(2,2)', 'yes (distance 0.5 ≤ 1.5)', 'unchanged → answer [2.5, 2, 1.5]']] },
       complexity: `<p><b>Expected O(N)</b> time (worst case O(N<sup>3</sup>) with vanishing probability), O(N) space for the shuffled copy.</p>`,
       followUps: ['Prove the ≤ 3/i probability with backwards analysis.', 'Smallest enclosing sphere in 3D (same algorithm, up to 4 boundary points).', 'Why use a fixed seed in tests but a random seed in production?']

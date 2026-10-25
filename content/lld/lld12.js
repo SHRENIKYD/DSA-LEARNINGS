@@ -1678,7 +1678,277 @@ ${H.arr(['log.warn()', 'level gate', 'build message', 'handler 1', 'handler 2', 
       '"Attach requestId/userId to every log line" → MDC (per-thread context: Java <code>ThreadLocal</code>, Python <code>threading.local</code>, C++ <code>thread_local</code>, Node <code>AsyncLocalStorage</code>).',
       '"Thread-safe" → immutable LogMessage, locked or single-writer appenders, a concurrent (or locked) registry map.'
     ],
-    code: [{ lang: 'java', code: LOG_CORE, alt: [{ lang: 'python', code: LOG_CORE_PY }, { lang: 'ts', code: LOG_CORE_TS }, { lang: 'cpp', code: LOG_CORE_CPP }] }],
+    code: [{ lang: 'java', code: LOG_CORE, alt: [{ lang: 'python', code: LOG_CORE_PY }, { lang: 'ts', code: LOG_CORE_TS }, { lang: 'cpp', code: LOG_CORE_CPP },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+
+// ===== A small but real logging framework (think: a mini log4net / NLog) =====
+
+// 1) Levels: an enum with a number, so "is WARN at least INFO?" is one comparison.
+enum LogLevel { DEBUG = 10, INFO = 20, WARN = 30, ERROR = 40, FATAL = 50 }
+static class LogLevelExt { public static bool AtLeast(this LogLevel l, LogLevel other) { return (int)l >= (int)other; } }
+
+// 2) The message: immutable. Built ONCE, then shared by every handler/appender.
+sealed class LogMessage {
+    public readonly LogLevel Level; public readonly string Logger, Text, Thread; public readonly long EpochMillis;
+    public readonly IReadOnlyDictionary<string, string> Context;
+    public LogMessage(LogLevel level, string logger, string text, long epochMillis, string thread, IDictionary<string, string> context) {
+        Level = level; Logger = logger; Text = text; EpochMillis = epochMillis; Thread = thread;
+        Context = new SortedDictionary<string, string>(context, StringComparer.Ordinal);
+    }
+}
+
+// 3) MDC = "Mapped Diagnostic Context": per-thread key/values (requestId, userId)
+//    that get stamped on every message without passing them as parameters.
+static class MDC {
+    private static readonly ThreadLocal<Dictionary<string, string>> CTX = new ThreadLocal<Dictionary<string, string>>(() => new Dictionary<string, string>());
+    public static void Put(string k, string v) { CTX.Value[k] = v; }
+    public static void Clear() { CTX.Value.Clear(); }
+    public static Dictionary<string, string> Snapshot() { return new Dictionary<string, string>(CTX.Value); }  // copy: message must not change later
+}
+
+// 4) Formatter = HOW a message looks (Strategy pattern).
+interface ILogFormatter { string Format(LogMessage m); }
+
+class PlainFormatter : ILogFormatter {
+    public string Format(LogMessage m) {
+        string ctx = m.Context.Count == 0 ? "" : " {" + string.Join(", ", m.Context.Select(kv => kv.Key + "=" + kv.Value)) + "}";
+        return string.Format("{0,-5} [{1}] {2} -{3} {4}", m.Level, m.Thread, m.Logger, ctx, m.Text);
+    }
+}
+
+class JsonFormatter : ILogFormatter {
+    public string Format(LogMessage m) {
+        StringBuilder sb = new StringBuilder("{");
+        sb.Append("\\"ts\\":").Append(m.EpochMillis)
+          .Append(",\\"level\\":\\"").Append(m.Level).Append('"')
+          .Append(",\\"logger\\":\\"").Append(m.Logger).Append('"')
+          .Append(",\\"msg\\":\\"").Append(m.Text.Replace("\\"", "'")).Append('"');
+        foreach (var e in m.Context) sb.Append(",\\"").Append(e.Key).Append("\\":\\"").Append(e.Value).Append('"');
+        return sb.Append('}').ToString();
+    }
+}
+
+// 5) Appender = WHERE a message goes (console, file, network...). New target = new class.
+interface IAppender {
+    void Append(LogMessage m);
+    void Close();
+}
+
+class ConsoleAppender : IAppender {
+    private readonly ILogFormatter formatter;
+    private readonly object gate = new object();
+    public ConsoleAppender(ILogFormatter formatter) { this.formatter = formatter; }
+    // locked: two threads must not interleave half-lines
+    public void Append(LogMessage m) { lock (gate) Console.WriteLine(formatter.Format(m)); }
+    public void Close() { }
+}
+
+// Stands in for a FileAppender: keeps lines in memory so the demo has no disk side effects.
+class MemoryAppender : IAppender {
+    private readonly ILogFormatter formatter;
+    private readonly List<string> lines = new List<string>();
+    public MemoryAppender(ILogFormatter formatter) { this.formatter = formatter; }
+    public void Append(LogMessage m) { string line = formatter.Format(m); lock (lines) lines.Add(line); }
+    public List<string> Lines() { lock (lines) return new List<string>(lines); }
+    public void Close() { }
+}
+
+// Decorator: makes ANY appender asynchronous. Callers only pay for a queue offer.
+class AsyncAppender : IAppender {
+    private static readonly LogMessage POISON = new LogMessage(LogLevel.FATAL, "", "", 0, "", new Dictionary<string, string>());
+    private readonly IAppender target;
+    private readonly BlockingCollection<LogMessage> queue;
+    private long dropped;
+    private readonly Thread worker;
+
+    public AsyncAppender(IAppender target, int capacity) {
+        this.target = target;
+        queue = new BlockingCollection<LogMessage>(capacity);
+        worker = new Thread(Drain) { Name = "log-writer", IsBackground = true };   // never keeps the process alive
+        worker.Start();
+    }
+
+    public void Append(LogMessage m) {
+        if (m.Level.AtLeast(LogLevel.WARN)) queue.Add(m);           // important messages: wait for space
+        else if (!queue.TryAdd(m)) Interlocked.Increment(ref dropped);   // DEBUG/INFO under pressure: drop, but count it
+    }
+
+    private void Drain() {
+        while (true) {
+            LogMessage m = queue.Take();
+            if (m == POISON) return;
+            target.Append(m);
+        }
+    }
+
+    public void Close() {
+        queue.Add(POISON);                // everything queued before it gets written first
+        worker.Join(2000);                // bounded wait: shutdown can never hang
+        target.Close();
+    }
+    public long Dropped() { return Interlocked.Read(ref dropped); }
+}
+
+// 6) Chain of Responsibility: each handler checks its own minimum level,
+//    writes if it cares, then passes the SAME message to the next handler.
+abstract class LogHandler {
+    private LogHandler next;
+    protected readonly LogLevel MinLevel;
+    protected LogHandler(LogLevel minLevel) { MinLevel = minLevel; }
+    public LogHandler LinkWith(LogHandler next) { this.next = next; return next; }  // returns next for fluent chaining
+    public void Handle(LogMessage m) {                                              // template method: order is fixed
+        if (m.Level.AtLeast(MinLevel)) Write(m);
+        if (next != null) next.Handle(m);
+    }
+    protected abstract void Write(LogMessage m);
+}
+
+class AppenderHandler : LogHandler {
+    private readonly IAppender appender;
+    public AppenderHandler(LogLevel minLevel, IAppender appender) : base(minLevel) { this.appender = appender; }
+    protected override void Write(LogMessage m) { appender.Append(m); }
+}
+
+// 7) Logger: named, hierarchical ("com.shop.db" -> "com.shop" -> "com" -> root).
+class Logger {
+    private readonly string name;
+    private readonly Logger parent;
+    private volatile object level;            // boxed LogLevel; null = inherit from parent
+    private volatile LogHandler handlers;     // head of this logger's chain (may be null)
+    private volatile bool additive = true;    // also send to parent's handlers?
+
+    public Logger(string name, Logger parent) { this.name = name; this.parent = parent; }
+
+    public void SetLevel(LogLevel lv) { level = lv; }
+    public void SetHandlers(LogHandler head) { handlers = head; }
+    public void SetAdditive(bool a) { additive = a; }
+
+    public LogLevel EffectiveLevel() {
+        for (Logger l = this; l != null; l = l.parent) { object lv = l.level; if (lv != null) return (LogLevel)lv; }
+        return LogLevel.INFO;                 // safe default if even root has none
+    }
+    public bool IsEnabled(LogLevel lv) { return lv.AtLeast(EffectiveLevel()); }
+
+    static long NowMillis() { return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); }
+    static string ThreadName() { return System.Threading.Thread.CurrentThread.Name ?? "main"; }
+
+    // Cheap exit FIRST: if disabled we never build the string.
+    public void Log(LogLevel lv, string pattern, params object[] args) {
+        if (!IsEnabled(lv)) return;
+        Dispatch(new LogMessage(lv, name, Fill(pattern, args), NowMillis(), ThreadName(), MDC.Snapshot()));
+    }
+    // Lazy variant: the delegate runs only when the level is enabled.
+    public void Log(LogLevel lv, Func<string> lazy) {
+        if (!IsEnabled(lv)) return;
+        Dispatch(new LogMessage(lv, name, lazy(), NowMillis(), ThreadName(), MDC.Snapshot()));
+    }
+    public void Debug(string p, params object[] a) { Log(LogLevel.DEBUG, p, a); }
+    public void Info(string p, params object[] a)  { Log(LogLevel.INFO, p, a); }
+    public void Warn(string p, params object[] a)  { Log(LogLevel.WARN, p, a); }
+    public void Error(string p, params object[] a) { Log(LogLevel.ERROR, p, a); }
+
+    // Second chain: walk up the logger tree until a non-additive logger stops it.
+    private void Dispatch(LogMessage m) {
+        for (Logger l = this; l != null; l = l.parent) {
+            LogHandler h = l.handlers;
+            if (h != null) h.Handle(m);
+            if (!l.additive) break;
+        }
+    }
+
+    // "{}" placeholders, SLF4J style. Plain text is NEVER interpreted (no lookups -> no Log4Shell).
+    public static string Fill(string pattern, params object[] args) {
+        StringBuilder sb = new StringBuilder();
+        int a = 0, i = 0;
+        while (i < pattern.Length) {
+            if (a < args.Length && string.CompareOrdinal(pattern, i, "{}", 0, 2) == 0) { sb.Append(args[a++]); i += 2; }
+            else sb.Append(pattern[i++]);
+        }
+        return sb.ToString();
+    }
+}
+
+// 8) LogManager: the single registry (Singleton + Factory). Same name -> same Logger object.
+sealed class LogManager {
+    private static readonly LogManager INSTANCE = new LogManager();
+    private readonly Logger root = new Logger("root", null);
+    private readonly ConcurrentDictionary<string, Logger> loggers = new ConcurrentDictionary<string, Logger>();
+    private LogManager() { }
+    public static LogManager Get() { return INSTANCE; }
+    public Logger Root() { return root; }
+
+    public Logger GetLogger(string name) {
+        Logger existing;
+        if (loggers.TryGetValue(name, out existing)) return existing;
+        int dot = name.LastIndexOf('.');
+        Logger parent = dot < 0 ? root : GetLogger(name.Substring(0, dot));   // create ancestors first
+        return loggers.GetOrAdd(name, n => new Logger(n, parent));
+    }
+}
+
+class LoggingDemo {
+    static string L(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        LogManager lm = LogManager.Get();
+        MemoryAppender file = new MemoryAppender(new JsonFormatter());
+        MemoryAppender pager = new MemoryAppender(new PlainFormatter());
+
+        // root chain: Console(>=DEBUG) -> File(>=INFO) -> Pager(>=ERROR)
+        LogHandler head = new AppenderHandler(LogLevel.DEBUG, new ConsoleAppender(new PlainFormatter()));
+        head.LinkWith(new AppenderHandler(LogLevel.INFO, file))
+            .LinkWith(new AppenderHandler(LogLevel.ERROR, pager));
+        lm.Root().SetLevel(LogLevel.INFO);
+        lm.Root().SetHandlers(head);
+
+        Logger db = lm.GetLogger("com.shop.db");
+        Logger pay = lm.GetLogger("com.shop.payment");
+        db.SetLevel(LogLevel.DEBUG);                // turn on DEBUG only for the DB package
+
+        MDC.Put("requestId", "r-77");
+        db.Debug("SELECT took {} ms", 12);          // console only (DEBUG < INFO for file)
+        pay.Debug("never built: {}", "x");          // payment inherits INFO from root -> skipped cheaply
+        pay.Info("charged order {} amount {}", 42, 499);
+        pay.Error("gateway timeout for order {}", 43);
+        MDC.Clear();
+
+        // The clock differs on every run, so the demo prints the JSON lines with "ts" zeroed.
+        List<string> fileLines = file.Lines().Select(l => Regex.Replace(l, "\\"ts\\":\\\\d+", "\\"ts\\":0")).ToList();
+        Console.WriteLine("file got  " + fileLines.Count + " lines: " + L(fileLines));
+        Console.WriteLine("pager got " + pager.Lines().Count + " line: " + L(pager.Lines()));
+        Console.WriteLine("same object? " + (lm.GetLogger("com.shop.db") == db).ToString().ToLower());
+
+        // A disabled call never builds its message (the lazy delegate is not even called).
+        int built = 0;
+        pay.Log(LogLevel.DEBUG, () => { built++; return "expensive text"; });
+        Console.WriteLine("lazy message built while disabled? " + (built > 0).ToString().ToLower());
+
+        // additive = false keeps a private audit log away from the root handlers.
+        MemoryAppender auditFile = new MemoryAppender(new PlainFormatter());
+        Logger audit = lm.GetLogger("com.shop.audit");
+        audit.SetHandlers(new AppenderHandler(LogLevel.INFO, auditFile));
+        audit.SetAdditive(false);
+        audit.Info("user {} exported data", "asha");
+        Console.WriteLine("audit file " + L(auditFile.Lines()) + ", root file still " + file.Lines().Count + " lines");
+
+        // Async decorator with a tiny queue: DEBUG/INFO may be dropped, WARN+ never.
+        // How many INFOs are dropped depends on thread timing, so only the invariants are printed.
+        MemoryAppender slowDisk = new MemoryAppender(new PlainFormatter());
+        AsyncAppender async = new AsyncAppender(slowDisk, 4);
+        for (int i = 0; i < 50; i++)
+            async.Append(new LogMessage(i % 10 == 0 ? LogLevel.WARN : LogLevel.INFO, "load", "msg " + i, 0, "main", new Dictionary<string, string>()));
+        async.Close();
+        List<string> warns = slowDisk.Lines().Where(l => l.StartsWith("WARN")).ToList();
+        Console.WriteLine("async: written + dropped = " + (slowDisk.Lines().Count + async.Dropped()) + " of 50");
+        Console.WriteLine("WARN lines kept: " + warns.Count + " " + L(warns));
+    }
+}` }] }],
     codeTitle: ['Complete logging framework — levels, MDC, formatters, appenders, async decorator, handler chain, logger hierarchy (runnable main)'],
     viz: [
       { title: 'Class diagram tour: who does what in the logging framework', gen: function () { return logClassViz(); } },
@@ -1768,6 +2038,28 @@ int main() {
     SlackAppender slack("payments-alerts");
     slack.append("ERROR gateway timeout order=43");
     cout << "[" << slack.sent()[0] << "]\n";  // [#payments-alerts: ERROR gateway timeout order=43]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IAppender { void Append(string line); }
+
+// A brand-new destination. Nothing else changes.
+class SlackAppender : IAppender {
+    private readonly string channel;
+    private readonly List<string> sent = new List<string>();   // stands in for an HTTP client
+    public SlackAppender(string channel) { this.channel = channel; }
+    public void Append(string line) { sent.Add("#" + channel + ": " + line); }
+    public List<string> Sent() { return sent; }
+}
+
+class SlackDemo {
+    static void Main() {
+        SlackAppender slack = new SlackAppender("payments-alerts");
+        slack.Append("ERROR gateway timeout order=43");
+        Console.WriteLine("[" + string.Join(", ", slack.Sent()) + "]");   // [#payments-alerts: ERROR gateway timeout order=43]
+    }
 }` }
         ] } },
       { title: 'Logger hierarchy: one setting, many packages', html: `<p>Config: root = INFO, <code>com.shop.db</code> = DEBUG, nothing else set.</p>
@@ -1921,6 +2213,34 @@ int main() {
     chain.setNext(make_unique<InfoH>())->setNext(make_unique<ErrorH>());
     chain.handle(Lvl::INFO, "user logged in");    // InfoHandler handled
     chain.handle(Lvl::ERROR, "db down");          // ErrorHandler handled
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+enum Lvl { DEBUG, INFO, ERROR }
+
+abstract class StrictHandler {
+    private StrictHandler next;
+    public StrictHandler SetNext(StrictHandler n) { next = n; return n; }
+    public void Handle(Lvl lvl, string msg) {
+        if (CanHandle(lvl)) { Console.WriteLine(Name() + " handled: " + msg); return; }   // stop here
+        if (next != null) next.Handle(lvl, msg);
+        else Console.WriteLine("nobody handled: " + msg);
+    }
+    protected abstract bool CanHandle(Lvl lvl);
+    protected abstract string Name();
+}
+class DebugH : StrictHandler { protected override bool CanHandle(Lvl l) { return l == Lvl.DEBUG; } protected override string Name() { return "DebugHandler"; } }
+class InfoH  : StrictHandler { protected override bool CanHandle(Lvl l) { return l == Lvl.INFO; }  protected override string Name() { return "InfoHandler"; } }
+class ErrorH : StrictHandler { protected override bool CanHandle(Lvl l) { return l == Lvl.ERROR; } protected override string Name() { return "ErrorHandler"; } }
+
+class StrictDemo {
+    static void Main() {
+        StrictHandler chain = new DebugH();
+        chain.SetNext(new InfoH()).SetNext(new ErrorH());
+        chain.Handle(Lvl.INFO, "user logged in");     // InfoHandler handled
+        chain.Handle(Lvl.ERROR, "db down");           // ErrorHandler handled
+    }
 }` }
         ] } },
       { title: 'Async appender under load: drop or block?', html: `<p>Queue capacity 4, a burst of 50 messages (45 INFO, 5 WARN), slow disk. Policy: <b>WARN+ blocks</b> until there is space; <b>INFO is dropped</b> when full (and counted). Result in the demo: all 5 WARNs are written, and some INFOs are dropped. How many depends on thread timing, so the demo prints the invariant <code>written + dropped = 50</code> and the 5 WARN lines (operators would get the count as a metric). JavaScript cannot block a caller, so the TypeScript version always accepts WARN+ and drops only INFO/DEBUG. Logback\'s <code>AsyncAppender</code> does something very similar: when the queue is 80% full it discards TRACE/DEBUG/INFO by default (<code>discardingThreshold</code>), and <code>neverBlock=true</code> drops instead of blocking.</p>` }
@@ -1967,7 +2287,7 @@ class NaiveLogger {
         log("DEBUG", "a"); log("INFO", "b"); log("ERROR", "c");
         System.out.println("file=" + file + " alerts=" + alerts);
     }
-}`, alt: [{ lang: 'python', code: "# fragile string ladder: every new level = edit log()\nlevel = \"INFO\"\nto_console = to_file = to_alert = True\nfile, alerts = [], []\n\ndef log(lvl, msg):\n    if lvl == \"DEBUG\" and level != \"DEBUG\": return\n    if lvl == \"INFO\" and level in (\"WARN\", \"ERROR\"): return\n    if lvl == \"WARN\" and level == \"ERROR\": return\n    line = f\"[{lvl}] {msg}\"\n    if to_console: print(line)\n    if to_file and lvl != \"DEBUG\": file.append(line)\n    if to_alert and lvl == \"ERROR\": alerts.append(line)   # new sink? edit this function again\n\nif __name__ == \"__main__\":\n    log(\"DEBUG\", \"a\"); log(\"INFO\", \"b\"); log(\"ERROR\", \"c\")\n    print(f\"file={file} alerts={alerts}\")\n" }, { lang: 'ts', code: "class NaiveLogger {\n  static level = \"INFO\";\n  static toConsole = true; static toFile = true; static toAlert = true;\n  static file: string[] = []; static alerts: string[] = [];\n\n  static log(lvl: string, msg: string): void {\n    // fragile string ladder: every new level = edit here\n    if (lvl === \"DEBUG\" && NaiveLogger.level !== \"DEBUG\") return;\n    if (lvl === \"INFO\" && (NaiveLogger.level === \"WARN\" || NaiveLogger.level === \"ERROR\")) return;\n    if (lvl === \"WARN\" && NaiveLogger.level === \"ERROR\") return;\n    const line = \"[\" + lvl + \"] \" + msg;\n    if (NaiveLogger.toConsole) console.log(line);\n    if (NaiveLogger.toFile && lvl !== \"DEBUG\") NaiveLogger.file.push(line);\n    if (NaiveLogger.toAlert && lvl === \"ERROR\") NaiveLogger.alerts.push(line);   // new sink? edit this method again\n  }\n}\n\nNaiveLogger.log(\"DEBUG\", \"a\"); NaiveLogger.log(\"INFO\", \"b\"); NaiveLogger.log(\"ERROR\", \"c\");\nconsole.log(\"file=\" + JSON.stringify(NaiveLogger.file) + \" alerts=\" + JSON.stringify(NaiveLogger.alerts));\n" }, { lang: 'cpp', code: "struct NaiveLogger {\n    static inline string level = \"INFO\";\n    static inline bool toConsole = true, toFile = true, toAlert = true;\n    static inline vector<string> file, alerts;\n\n    static void log(const string& lvl, const string& msg) {\n        // fragile string ladder: every new level = edit here\n        if (lvl == \"DEBUG\" && level != \"DEBUG\") return;\n        if (lvl == \"INFO\" && (level == \"WARN\" || level == \"ERROR\")) return;\n        if (lvl == \"WARN\" && level == \"ERROR\") return;\n        string line = \"[\" + lvl + \"] \" + msg;\n        if (toConsole) cout << line << endl;\n        if (toFile && lvl != \"DEBUG\") file.push_back(line);\n        if (toAlert && lvl == \"ERROR\") alerts.push_back(line);   // new sink? edit this method again\n    }\n};\n\nint main() {\n    NaiveLogger::log(\"DEBUG\", \"a\"); NaiveLogger::log(\"INFO\", \"b\"); NaiveLogger::log(\"ERROR\", \"c\");\n    cout << \"file=\" << NaiveLogger::file.size() << \" alerts=\" << NaiveLogger::alerts.size() << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "# fragile string ladder: every new level = edit log()\nlevel = \"INFO\"\nto_console = to_file = to_alert = True\nfile, alerts = [], []\n\ndef log(lvl, msg):\n    if lvl == \"DEBUG\" and level != \"DEBUG\": return\n    if lvl == \"INFO\" and level in (\"WARN\", \"ERROR\"): return\n    if lvl == \"WARN\" and level == \"ERROR\": return\n    line = f\"[{lvl}] {msg}\"\n    if to_console: print(line)\n    if to_file and lvl != \"DEBUG\": file.append(line)\n    if to_alert and lvl == \"ERROR\": alerts.append(line)   # new sink? edit this function again\n\nif __name__ == \"__main__\":\n    log(\"DEBUG\", \"a\"); log(\"INFO\", \"b\"); log(\"ERROR\", \"c\")\n    print(f\"file={file} alerts={alerts}\")\n" }, { lang: 'ts', code: "class NaiveLogger {\n  static level = \"INFO\";\n  static toConsole = true; static toFile = true; static toAlert = true;\n  static file: string[] = []; static alerts: string[] = [];\n\n  static log(lvl: string, msg: string): void {\n    // fragile string ladder: every new level = edit here\n    if (lvl === \"DEBUG\" && NaiveLogger.level !== \"DEBUG\") return;\n    if (lvl === \"INFO\" && (NaiveLogger.level === \"WARN\" || NaiveLogger.level === \"ERROR\")) return;\n    if (lvl === \"WARN\" && NaiveLogger.level === \"ERROR\") return;\n    const line = \"[\" + lvl + \"] \" + msg;\n    if (NaiveLogger.toConsole) console.log(line);\n    if (NaiveLogger.toFile && lvl !== \"DEBUG\") NaiveLogger.file.push(line);\n    if (NaiveLogger.toAlert && lvl === \"ERROR\") NaiveLogger.alerts.push(line);   // new sink? edit this method again\n  }\n}\n\nNaiveLogger.log(\"DEBUG\", \"a\"); NaiveLogger.log(\"INFO\", \"b\"); NaiveLogger.log(\"ERROR\", \"c\");\nconsole.log(\"file=\" + JSON.stringify(NaiveLogger.file) + \" alerts=\" + JSON.stringify(NaiveLogger.alerts));\n" }, { lang: 'cpp', code: "struct NaiveLogger {\n    static inline string level = \"INFO\";\n    static inline bool toConsole = true, toFile = true, toAlert = true;\n    static inline vector<string> file, alerts;\n\n    static void log(const string& lvl, const string& msg) {\n        // fragile string ladder: every new level = edit here\n        if (lvl == \"DEBUG\" && level != \"DEBUG\") return;\n        if (lvl == \"INFO\" && (level == \"WARN\" || level == \"ERROR\")) return;\n        if (lvl == \"WARN\" && level == \"ERROR\") return;\n        string line = \"[\" + lvl + \"] \" + msg;\n        if (toConsole) cout << line << endl;\n        if (toFile && lvl != \"DEBUG\") file.push_back(line);\n        if (toAlert && lvl == \"ERROR\") alerts.push_back(line);   // new sink? edit this method again\n    }\n};\n\nint main() {\n    NaiveLogger::log(\"DEBUG\", \"a\"); NaiveLogger::log(\"INFO\", \"b\"); NaiveLogger::log(\"ERROR\", \"c\");\n    cout << \"file=\" << NaiveLogger::file.size() << \" alerts=\" << NaiveLogger::alerts.size() << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\n\nstatic class NaiveLogger {\n    static string level = \"INFO\";\n    static bool toConsole = true, toFile = true, toAlert = true;\n    static readonly List<string> file = new List<string>(), alerts = new List<string>();\n\n    static void Log(string lvl, string msg) {\n        // fragile string ladder: every new level = edit here\n        if (lvl == \"DEBUG\" && level != \"DEBUG\") return;\n        if (lvl == \"INFO\" && (level == \"WARN\" || level == \"ERROR\")) return;\n        if (lvl == \"WARN\" && level == \"ERROR\") return;\n        string line = \"[\" + lvl + \"] \" + msg;\n        if (toConsole) Console.WriteLine(line);\n        if (toFile && lvl != \"DEBUG\") file.Add(line);\n        if (toAlert && lvl == \"ERROR\") alerts.Add(line);   // new sink? edit this method again\n    }\n\n    static void Main() {\n        Log(\"DEBUG\", \"a\"); Log(\"INFO\", \"b\"); Log(\"ERROR\", \"c\");\n        Console.WriteLine(\"file=[\" + string.Join(\", \", file) + \"] alerts=[\" + string.Join(\", \", alerts) + \"]\");\n    }\n}\n" }] }
       },
       mcq: { q: 'Product asks: "send WARN and above to a new Kafka topic." In the good design, what changes?', options: ['Add a KafkaSink class and link it into the chain via config', 'Edit Logger.log() to add a Kafka branch', 'Add a boolean toKafka flag to every logger', 'Subclass Logger as KafkaLogger'], answer: 0, explain: 'A new sink is a new class implementing the sink interface, linked into the chain. Nothing existing is edited — Open/Closed.' },
       hints: [
@@ -2369,6 +2689,87 @@ int main() {
     cout << "INFO built " << built << " strings\n";
     log.log(Level::ERROR, [&] { built++; return string("kept"); });
     cout << "ERROR built " << built << " strings in total\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+enum Level { DEBUG, INFO, WARN, ERROR }
+static class LevelExt { public static bool AtLeast(this Level l, Level o) { return (int)l >= (int)o; } }
+
+sealed class Msg {
+    public readonly Level Level; public readonly string Text; public readonly long Time;
+    public Msg(Level level, string text, long time) { Level = level; Text = text; Time = time; }
+}
+
+delegate string Formatter(Msg m);
+
+abstract class Sink {
+    private readonly Level min;
+    private readonly Formatter fmt;
+    private Sink next;
+    protected readonly List<string> Written = new List<string>();
+    protected readonly object Gate = new object();
+    protected Sink(Level min, Formatter fmt) { this.min = min; this.fmt = fmt; }
+    public Sink LinkWith(Sink n) { next = n; return n; }
+    public void Handle(Msg m) {
+        if (m.Level.AtLeast(min)) Write(fmt(m));
+        if (next != null) next.Handle(m);
+    }
+    protected virtual void Write(string line) { lock (Gate) Written.Add(line); }
+    public List<string> Lines() { lock (Gate) return new List<string>(Written); }
+}
+class ConsoleSink : Sink {
+    public ConsoleSink(Level min, Formatter f) : base(min, f) { }
+    protected override void Write(string line) { lock (Gate) { base.Write(line); Console.WriteLine(line); } }
+}
+class FileSink : Sink { public FileSink(Level min, Formatter f) : base(min, f) { } }
+class AlertSink : Sink { public AlertSink(Level min, Formatter f) : base(min, f) { } }
+
+class SimpleLogger {
+    private volatile int level;                         // stored as int so it can be volatile
+    private readonly Sink head;
+    public SimpleLogger(Level level, Sink head) { this.level = (int)level; this.head = head; }
+    public void SetLevel(Level l) { level = (int)l; }
+    public void Log(Level l, Func<string> text) {
+        if (!l.AtLeast((Level)level)) return;           // gate first: no string built
+        head.Handle(new Msg(l, text(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+    }
+    public void Debug(string s) { Log(Level.DEBUG, () => s); }
+    public void Info(string s)  { Log(Level.INFO, () => s); }
+    public void Error(string s) { Log(Level.ERROR, () => s); }
+}
+
+class LoggerSolution {
+    static string L(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        Formatter plain = m => "[" + m.Level + "] " + m.Text;
+        ConsoleSink console = new ConsoleSink(Level.DEBUG, plain);
+        FileSink file = new FileSink(Level.INFO, plain);
+        AlertSink alert = new AlertSink(Level.ERROR, m => "PAGE: " + m.Text);
+        console.LinkWith(file).LinkWith(alert);
+        SimpleLogger log = new SimpleLogger(Level.INFO, console);
+
+        log.Debug("a"); log.Info("b"); log.Error("c");
+        Console.WriteLine("file=" + L(file.Lines()) + " alert=" + L(alert.Lines()));
+
+        // concurrency smoke test: 4 threads x 100 lines, nothing lost
+        FileSink sink = new FileSink(Level.INFO, plain);
+        SimpleLogger multi = new SimpleLogger(Level.INFO, sink);
+        Thread[] ts = new Thread[4];
+        for (int t = 0; t < 4; t++) { ts[t] = new Thread(() => { for (int i = 0; i < 100; i++) multi.Info("x" + i); }); ts[t].Start(); }
+        foreach (Thread t in ts) t.Join(5000);
+        Console.WriteLine("concurrent lines = " + sink.Lines().Count);   // 400
+
+        // raise the level at run time: a disabled call never builds its text
+        int built = 0;
+        log.SetLevel(Level.ERROR);
+        log.Log(Level.INFO, () => { built++; return "hidden"; });
+        Console.WriteLine("INFO built " + built + " strings");
+        log.Log(Level.ERROR, () => { built++; return "kept"; });
+        Console.WriteLine("ERROR built " + built + " strings in total");
+    }
 }` }
         ],
         complexity: `<p>Gate check O(1). A passing message costs O(H) for H sinks in the chain plus formatting. Memory: one immutable message per call shared by all sinks.</p>`,
@@ -3492,7 +3893,243 @@ ${H.table(['Word', 'Plain meaning'], [
       '"Slow consumers must not affect producers" → pull model, bounded retention, lag monitoring.',
       '"Messages older than 7 days can be deleted" → retention by time/size; reset policy (earliest/latest) for expired offsets.'
     ],
-    code: [{ lang: 'java', code: MQ_CORE, alt: [{ lang: 'python', code: MQ_CORE_PY }, { lang: 'ts', code: MQ_CORE_TS }, { lang: 'cpp', code: MQ_CORE_CPP }] }],
+    code: [{ lang: 'java', code: MQ_CORE, alt: [{ lang: 'python', code: MQ_CORE_PY }, { lang: 'ts', code: MQ_CORE_TS }, { lang: 'cpp', code: MQ_CORE_CPP },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+// ===== A Kafka-like, in-memory pub-sub log: topics, partitions, offsets, consumer groups =====
+
+// One stored message. The offset is its permanent "page number" inside its partition.
+sealed class StoredMessage {
+    public readonly long Offset; public readonly string Key, Value; public readonly long Timestamp;
+    public StoredMessage(long offset, string key, string value, long timestamp) { Offset = offset; Key = key; Value = value; Timestamp = timestamp; }
+    public override string ToString() { return (Key ?? "null") + ":" + Value + "@" + Offset; }   // short form for printing
+}
+
+// Where a published message landed.
+sealed class RecordMetadata {
+    public readonly string Topic; public readonly int Partition; public readonly long Offset;
+    public RecordMetadata(string topic, int partition, long offset) { Topic = topic; Partition = partition; Offset = offset; }
+}
+
+// Identifies one partition of one topic (used as a map key for offsets).
+sealed class TopicPartition : IEquatable<TopicPartition> {
+    public readonly string Topic; public readonly int Partition;
+    public TopicPartition(string topic, int partition) { Topic = topic; Partition = partition; }
+    public bool Equals(TopicPartition o) { return o != null && o.Topic == Topic && o.Partition == Partition; }
+    public override bool Equals(object o) { return Equals(o as TopicPartition); }
+    public override int GetHashCode() { return Topic.GetHashCode() * 31 + Partition; }
+    public override string ToString() { return Topic + "-" + Partition; }   // short form for printing
+}
+
+// A partition = an append-only list. Messages are never changed, only appended (and old ones expired).
+class Partition {
+    private readonly int id;
+    private readonly List<StoredMessage> log = new List<StoredMessage>();
+    private long startOffset = 0;               // first offset still kept after retention
+    private readonly object gate = new object();
+
+    public Partition(int id) { this.id = id; }
+    public int Id() { return id; }
+
+    public long Append(string key, string value) {
+        lock (gate) {
+            long offset = startOffset + log.Count; // next page number
+            log.Add(new StoredMessage(offset, key, value, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            return offset;
+        }
+    }
+
+    // Read up to max messages starting AT fromOffset. Reading never deletes anything.
+    public List<StoredMessage> Read(long fromOffset, int max) {
+        lock (gate) {
+            if (fromOffset < startOffset) throw new ArgumentException("offset " + fromOffset + " already deleted");
+            int from = (int)(fromOffset - startOffset);
+            int to = Math.Min(log.Count, from + max);
+            return from >= to ? new List<StoredMessage>() : log.GetRange(from, to - from);
+        }
+    }
+
+    public long StartOffset() { lock (gate) return startOffset; }
+    public long EndOffset() { lock (gate) return startOffset + log.Count; }   // "log-end offset": next offset to write
+
+    // Retention: drop everything before newStart (time/size based in real Kafka).
+    public void DeleteBefore(long newStart) {
+        lock (gate) {
+            int n = (int)Math.Min(log.Count, Math.Max(0, newStart - startOffset));
+            log.RemoveRange(0, n);
+            startOffset += n;
+        }
+    }
+}
+
+// Strategy: which partition gets a message.
+interface IPartitioner { int Choose(string key, int numPartitions); }
+
+class KeyHashPartitioner : IPartitioner {
+    private int roundRobin = -1;
+    static int FloorMod(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
+    static int StableHash(string s) { int h = 0; foreach (char c in s) h = unchecked(31 * h + c); return h; }   // same on every run and machine
+    public int Choose(string key, int n) {
+        if (key == null) return FloorMod(Interlocked.Increment(ref roundRobin), n);   // no key: spread evenly
+        return FloorMod(StableHash(key), n);                                          // same key -> same partition -> ordered
+    }
+}
+
+class Topic {
+    public readonly string Name;
+    public readonly List<Partition> Partitions = new List<Partition>();
+    public Topic(string name, int count) {
+        Name = name;
+        for (int i = 0; i < count; i++) Partitions.Add(new Partition(i));
+    }
+}
+
+// The broker owns topics and the committed offsets of every consumer group.
+class Broker {
+    private readonly ConcurrentDictionary<string, Topic> topics = new ConcurrentDictionary<string, Topic>();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<TopicPartition, long>> committed = new ConcurrentDictionary<string, ConcurrentDictionary<TopicPartition, long>>();
+
+    public Topic CreateTopic(string name, int partitions) { return topics.GetOrAdd(name, n => new Topic(n, partitions)); }
+    public Topic TopicOf(string name) {
+        Topic t;
+        if (!topics.TryGetValue(name, out t)) throw new ArgumentException("no topic " + name);
+        return t;
+    }
+    public RecordMetadata Append(string topic, int partition, string key, string value) {
+        long off = TopicOf(topic).Partitions[partition].Append(key, value);
+        return new RecordMetadata(topic, partition, off);
+    }
+    // Committed offset = "next offset this GROUP should read". Missing = never committed.
+    public void Commit(string group, TopicPartition tp, long nextOffset) {
+        committed.GetOrAdd(group, g => new ConcurrentDictionary<TopicPartition, long>()).AddOrUpdate(tp, nextOffset, (k, old) => Math.Max(old, nextOffset));
+    }
+    public long? Committed(string group, TopicPartition tp) {
+        ConcurrentDictionary<TopicPartition, long> m; long v;
+        return committed.TryGetValue(group, out m) && m.TryGetValue(tp, out v) ? v : (long?)null;
+    }
+}
+
+class Producer {
+    private readonly Broker broker;
+    private readonly IPartitioner partitioner;
+    public Producer(Broker broker, IPartitioner partitioner) { this.broker = broker; this.partitioner = partitioner; }
+    public RecordMetadata Send(string topic, string key, string value) {
+        int p = partitioner.Choose(key, broker.TopicOf(topic).Partitions.Count);
+        return broker.Append(topic, p, key, value);
+    }
+}
+
+// Group coordinator: decides which member reads which partition (each partition -> exactly ONE member).
+class ConsumerGroup {
+    public readonly string GroupId;
+    public readonly string Topic;
+    private readonly Broker broker;
+    private readonly List<GroupConsumer> members = new List<GroupConsumer>();
+    private readonly object gate = new object();
+    public ConsumerGroup(string groupId, string topic, Broker broker) { GroupId = groupId; Topic = topic; this.broker = broker; }
+
+    public GroupConsumer Join(string consumerId) {
+        lock (gate) {
+            GroupConsumer c = new GroupConsumer(consumerId, this, broker);
+            members.Add(c);
+            Rebalance();
+            return c;
+        }
+    }
+    public void Leave(GroupConsumer c) { lock (gate) { members.Remove(c); Rebalance(); } }   // crash or shutdown
+
+    // Round-robin assignment; every member restarts from the COMMITTED offsets.
+    private void Rebalance() {
+        members.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+        foreach (GroupConsumer m in members) m.ClearAssignment();
+        int n = broker.TopicOf(Topic).Partitions.Count;
+        for (int p = 0; p < n && members.Count > 0; p++)
+            members[p % members.Count].Assign(new TopicPartition(Topic, p));
+    }
+}
+
+class GroupConsumer {
+    public readonly string Id;
+    private readonly ConsumerGroup group;
+    private readonly Broker broker;
+    private readonly SortedDictionary<int, KeyValuePair<TopicPartition, long>> position = new SortedDictionary<int, KeyValuePair<TopicPartition, long>>();   // by partition number
+
+    public GroupConsumer(string id, ConsumerGroup group, Broker broker) { Id = id; this.group = group; this.broker = broker; }
+
+    public void ClearAssignment() { position.Clear(); }
+    public void Assign(TopicPartition tp) {
+        Partition p = broker.TopicOf(tp.Topic).Partitions[tp.Partition];
+        long start = broker.Committed(group.GroupId, tp) ?? p.StartOffset();          // auto.offset.reset = earliest
+        position[tp.Partition] = new KeyValuePair<TopicPartition, long>(tp, Math.Max(start, p.StartOffset()));   // committed offset may be expired
+    }
+    public List<TopicPartition> Assignment() { return position.Values.Select(kv => kv.Key).ToList(); }
+
+    // Pull model: the consumer asks for data at its own pace.
+    public List<StoredMessage> Poll(int maxPerPartition) {
+        List<StoredMessage> result = new List<StoredMessage>();
+        foreach (int k in position.Keys.ToList()) {
+            var e = position[k];
+            Partition p = broker.TopicOf(e.Key.Topic).Partitions[e.Key.Partition];
+            List<StoredMessage> batch = p.Read(e.Value, maxPerPartition);
+            if (batch.Count > 0) position[k] = new KeyValuePair<TopicPartition, long>(e.Key, batch[batch.Count - 1].Offset + 1);   // advance local position
+            result.AddRange(batch);
+        }
+        return result;
+    }
+    // At-least-once: call AFTER processing. A crash before this = those messages are re-read by someone.
+    public void CommitSync() { foreach (var e in position.Values) broker.Commit(group.GroupId, e.Key, e.Value); }
+}
+
+class PubSubDemo {
+    static string L<T>(IEnumerable<T> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        Broker broker = new Broker();
+        broker.CreateTopic("orders", 3);
+        Producer producer = new Producer(broker, new KeyHashPartitioner());
+        string[][] events = { new[] { "u1", "login" }, new[] { "u2", "view" }, new[] { "u1", "cart" }, new[] { "u3", "view" },
+                              new[] { "u2", "pay" }, new[] { "u1", "buy" }, new[] { "u3", "exit" }, new[] { null, "heartbeat" } };
+        foreach (string[] ev in events) {
+            RecordMetadata md = producer.Send("orders", ev[0], ev[1]);
+            Console.WriteLine("sent " + (ev[0] ?? "null") + ":" + ev[1] + " -> p" + md.Partition + "@" + md.Offset);
+        }
+
+        ConsumerGroup billing = new ConsumerGroup("billing", "orders", broker);
+        GroupConsumer c1 = billing.Join("c1");
+        GroupConsumer c2 = billing.Join("c2");
+        Console.WriteLine("c1 owns " + L(c1.Assignment()) + ", c2 owns " + L(c2.Assignment()));
+
+        Console.WriteLine("c1 polled " + L(c1.Poll(2)));
+        c1.CommitSync();
+        Console.WriteLine("c2 polled " + L(c2.Poll(2)) + "  ...and crashes before commit!");
+        billing.Leave(c2);                                   // rebalance: c1 now owns all partitions
+        List<StoredMessage> again = c1.Poll(10);
+        Console.WriteLine("after rebalance c1 got " + again.Count + " msgs (includes c2's uncommitted = redelivery)");
+        c1.CommitSync();
+
+        // A second group reads the SAME data independently, from the beginning.
+        ConsumerGroup analytics = new ConsumerGroup("analytics", "orders", broker);
+        GroupConsumer a1 = analytics.Join("a1");
+        Console.WriteLine("analytics read " + a1.Poll(100).Count + " of 8 messages");
+
+        // Retention deletes old messages; an expired committed offset jumps to the earliest kept one.
+        broker.TopicOf("orders").Partitions[0].DeleteBefore(1);
+        Console.WriteLine("p0 now starts at offset " + broker.TopicOf("orders").Partitions[0].StartOffset());
+
+        // Failure paths: reading a deleted offset, and a stale bookmark that points at a deleted message.
+        try { broker.TopicOf("orders").Partitions[0].Read(0, 5); }
+        catch (ArgumentException e) { Console.WriteLine("read p0@0: " + e.Message); }
+        broker.Commit("audit", new TopicPartition("orders", 0), 0);
+        GroupConsumer audit = new ConsumerGroup("audit", "orders", broker).Join("x1");
+        Console.WriteLine("audit polled " + audit.Poll(100).Count + " of 8 (p0@0 was deleted, stale bookmark skipped ahead)");
+        try { producer.Send("payments", "u1", "x"); }
+        catch (ArgumentException e) { Console.WriteLine("send: " + e.Message); }
+    }
+}` }] }],
     codeTitle: ['Complete in-memory pub-sub log — partitions, key partitioner, broker-stored offsets, consumer group rebalance, retention (runnable main)'],
     viz: [
       { title: 'Class diagram tour: producer → broker → partitions ← consumer groups', gen: function () { return mqClassViz(); } },
@@ -3604,6 +4241,32 @@ int main() {
     b.handle({"o2", 50});
     b.handle({"o1", 100});                          // re-delivered after a crash
     cout << "charged = " << b.totalCharged() << "\n";   // 150, not 250
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Event { public readonly string OrderId; public readonly int Amount; public Event(string o, int a) { OrderId = o; Amount = a; } }
+
+class IdempotentBilling {
+    private readonly HashSet<string> processed = new HashSet<string>();   // in production: a DB table with a unique key
+    private int totalCharged = 0;
+
+    public void Handle(Event e) {
+        if (!processed.Add(e.OrderId)) {                     // Add() returns false if already present
+            Console.WriteLine("skip duplicate " + e.OrderId);
+            return;
+        }
+        totalCharged += e.Amount;
+    }
+
+    static void Main() {
+        IdempotentBilling b = new IdempotentBilling();
+        b.Handle(new Event("o1", 100));
+        b.Handle(new Event("o2", 50));
+        b.Handle(new Event("o1", 100));                      // re-delivered after a crash
+        Console.WriteLine("charged = " + b.totalCharged);    // 150, not 250
+    }
 }` }
         ] } },
       { title: 'Delivery semantics cheat sheet', html: `${H.table(['Guarantee', 'Recipe', 'Failure effect', 'Use for'], [
@@ -3654,7 +4317,7 @@ class NaiveBus {
         bus.publish("orders", "m2");
         System.out.println("publisher spent ~" + (System.nanoTime() - t) / 1_000_000 + " ms waiting for slow B");
     }
-}`, alt: [{ lang: 'python', code: "import time\n\nclass NaiveBus:\n    def __init__(self): self.subs = {}\n    def subscribe(self, topic, s): self.subs.setdefault(topic, []).append(s)\n    def publish(self, topic, msg):\n        for s in self.subs.get(topic, []):\n            s.consume(msg)              # publisher blocked by slow subscribers; an exception stops the loop\n                                        # message not stored anywhere: no replay possible\n\nclass A:\n    id = \"A\"\n    def consume(self, m): print(\"A got\", m)\n\nclass B:\n    id = \"B\"\n    def consume(self, m): time.sleep(0.02)\n\nif __name__ == \"__main__\":\n    bus = NaiveBus()\n    bus.subscribe(\"orders\", A())\n    t = time.perf_counter()\n    bus.subscribe(\"orders\", B())\n    bus.publish(\"orders\", \"m1\")\n    bus.publish(\"orders\", \"m2\")\n    print(f\"publisher spent ~{int((time.perf_counter() - t) * 1000)} ms waiting for slow B\")\n" }, { lang: 'ts', code: "interface Sub { id: string; consume(msg: string): void }\n\nclass NaiveBus {\n  private subs = new Map<string, Sub[]>();\n  subscribe(topic: string, s: Sub): void {\n    if (!this.subs.has(topic)) this.subs.set(topic, []);\n    this.subs.get(topic)!.push(s);\n  }\n  publish(topic: string, msg: string): void {\n    for (const s of this.subs.get(topic) ?? [])\n      s.consume(msg);              // publisher blocked by slow subscribers; an exception stops the loop\n  }                                // message not stored anywhere: no replay possible\n}\n\nconst sleepMs = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);\nconst bus = new NaiveBus();\nbus.subscribe(\"orders\", { id: \"A\", consume: (m) => console.log(\"A got \" + m) });\nconst t = Date.now();\nbus.subscribe(\"orders\", { id: \"B\", consume: () => sleepMs(20) });\nbus.publish(\"orders\", \"m1\");\nbus.publish(\"orders\", \"m2\");\nconsole.log(\"publisher spent ~\" + (Date.now() - t) + \" ms waiting for slow B\");\n" }, { lang: 'cpp', code: "struct Sub { virtual string id() = 0; virtual void consume(const string& msg) = 0; virtual ~Sub() = default; };\n\nclass NaiveBus {\n    unordered_map<string, vector<Sub*>> subs;\npublic:\n    void subscribe(const string& topic, Sub* s) { subs[topic].push_back(s); }\n    void publish(const string& topic, const string& msg) {\n        for (Sub* s : subs[topic])\n            s->consume(msg);             // publisher blocked by slow subscribers; an exception stops the loop\n    }                                    // message not stored anywhere: no replay possible\n};\n\nstruct A : Sub { string id() override { return \"A\"; } void consume(const string& m) override { cout << \"A got \" << m << endl; } };\nstruct B : Sub { string id() override { return \"B\"; } void consume(const string&) override { this_thread::sleep_for(chrono::milliseconds(20)); } };\n\nint main() {\n    NaiveBus bus; A a; B b;\n    bus.subscribe(\"orders\", &a);\n    auto t = chrono::steady_clock::now();\n    bus.subscribe(\"orders\", &b);\n    bus.publish(\"orders\", \"m1\");\n    bus.publish(\"orders\", \"m2\");\n    cout << \"publisher spent ~\" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t).count() << \" ms waiting for slow B\" << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "import time\n\nclass NaiveBus:\n    def __init__(self): self.subs = {}\n    def subscribe(self, topic, s): self.subs.setdefault(topic, []).append(s)\n    def publish(self, topic, msg):\n        for s in self.subs.get(topic, []):\n            s.consume(msg)              # publisher blocked by slow subscribers; an exception stops the loop\n                                        # message not stored anywhere: no replay possible\n\nclass A:\n    id = \"A\"\n    def consume(self, m): print(\"A got\", m)\n\nclass B:\n    id = \"B\"\n    def consume(self, m): time.sleep(0.02)\n\nif __name__ == \"__main__\":\n    bus = NaiveBus()\n    bus.subscribe(\"orders\", A())\n    t = time.perf_counter()\n    bus.subscribe(\"orders\", B())\n    bus.publish(\"orders\", \"m1\")\n    bus.publish(\"orders\", \"m2\")\n    print(f\"publisher spent ~{int((time.perf_counter() - t) * 1000)} ms waiting for slow B\")\n" }, { lang: 'ts', code: "interface Sub { id: string; consume(msg: string): void }\n\nclass NaiveBus {\n  private subs = new Map<string, Sub[]>();\n  subscribe(topic: string, s: Sub): void {\n    if (!this.subs.has(topic)) this.subs.set(topic, []);\n    this.subs.get(topic)!.push(s);\n  }\n  publish(topic: string, msg: string): void {\n    for (const s of this.subs.get(topic) ?? [])\n      s.consume(msg);              // publisher blocked by slow subscribers; an exception stops the loop\n  }                                // message not stored anywhere: no replay possible\n}\n\nconst sleepMs = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);\nconst bus = new NaiveBus();\nbus.subscribe(\"orders\", { id: \"A\", consume: (m) => console.log(\"A got \" + m) });\nconst t = Date.now();\nbus.subscribe(\"orders\", { id: \"B\", consume: () => sleepMs(20) });\nbus.publish(\"orders\", \"m1\");\nbus.publish(\"orders\", \"m2\");\nconsole.log(\"publisher spent ~\" + (Date.now() - t) + \" ms waiting for slow B\");\n" }, { lang: 'cpp', code: "struct Sub { virtual string id() = 0; virtual void consume(const string& msg) = 0; virtual ~Sub() = default; };\n\nclass NaiveBus {\n    unordered_map<string, vector<Sub*>> subs;\npublic:\n    void subscribe(const string& topic, Sub* s) { subs[topic].push_back(s); }\n    void publish(const string& topic, const string& msg) {\n        for (Sub* s : subs[topic])\n            s->consume(msg);             // publisher blocked by slow subscribers; an exception stops the loop\n    }                                    // message not stored anywhere: no replay possible\n};\n\nstruct A : Sub { string id() override { return \"A\"; } void consume(const string& m) override { cout << \"A got \" << m << endl; } };\nstruct B : Sub { string id() override { return \"B\"; } void consume(const string&) override { this_thread::sleep_for(chrono::milliseconds(20)); } };\n\nint main() {\n    NaiveBus bus; A a; B b;\n    bus.subscribe(\"orders\", &a);\n    auto t = chrono::steady_clock::now();\n    bus.subscribe(\"orders\", &b);\n    bus.publish(\"orders\", \"m1\");\n    bus.publish(\"orders\", \"m2\");\n    cout << \"publisher spent ~\" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t).count() << \" ms waiting for slow B\" << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nusing System.Diagnostics;\nusing System.Threading;\n\ninterface ISub { string Id(); void Consume(string msg); }\nclass FastSub : ISub { public string Id() { return \"A\"; } public void Consume(string m) { Console.WriteLine(\"A got \" + m); } }\nclass SlowSub : ISub { public string Id() { return \"B\"; } public void Consume(string m) { Thread.Sleep(20); } }\n\nclass NaiveBus {\n    private readonly Dictionary<string, List<ISub>> subs = new Dictionary<string, List<ISub>>();\n    public void Subscribe(string topic, ISub s) { List<ISub> l; if (!subs.TryGetValue(topic, out l)) { l = new List<ISub>(); subs[topic] = l; } l.Add(s); }\n    public void Publish(string topic, string msg) {\n        List<ISub> l;\n        if (!subs.TryGetValue(topic, out l)) return;\n        foreach (ISub s in l) s.Consume(msg);   // publisher blocked by slow subscribers; an exception stops the loop\n    }                                           // message not stored anywhere: no replay possible\n\n    static void Main() {\n        NaiveBus bus = new NaiveBus();\n        bus.Subscribe(\"orders\", new FastSub());\n        Stopwatch sw = Stopwatch.StartNew();\n        bus.Subscribe(\"orders\", new SlowSub());\n        bus.Publish(\"orders\", \"m1\");\n        bus.Publish(\"orders\", \"m2\");\n        Console.WriteLine(\"publisher spent ~\" + sw.ElapsedMilliseconds + \" ms waiting for slow B\");\n    }\n}\n" }] }
       },
       mcq: { q: 'Subscriber B is 100× slower than A. In the log + offset design, what happens?', options: ['B\'s offset falls behind (lag grows); A and the publisher are unaffected', 'The publisher blocks until B catches up', 'A must wait for B to keep order', 'Messages are dropped for B'], answer: 0, explain: 'Each subscriber reads from the shared log at its own offset on its own thread. Slowness shows up as lag, not as back-pressure on others (until retention deletes data B has not read).' },
       hints: [
@@ -4303,6 +4966,128 @@ int main() {
     catch (const invalid_argument& e) { cout << "publish failed: " << e.what() << "\n"; }
     q.shutdown();
     cout << "shutdown complete\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+interface ISubscriber { string Id(); void Consume(string msg); }
+
+class TopicLog {
+    public readonly string Name;
+    private readonly List<string> messages = new List<string>();
+    public TopicLog(string name) { Name = name; }
+    public void Publish(string m) { lock (messages) { messages.Add(m); Monitor.PulseAll(messages); } }
+    // Re-reads the offset inside the loop, so a ResetOffset() wakes us up correctly.
+    public int AwaitReadable(Func<int> offset) {
+        lock (messages) {
+            while (offset() >= messages.Count) Monitor.Wait(messages);   // no busy-waiting; Interrupt() wakes it with an exception
+            return offset();
+        }
+    }
+    public string Get(int i) { lock (messages) return messages[i]; }
+    public void WakeAll() { lock (messages) Monitor.PulseAll(messages); }
+}
+
+class SubscriberWorker {
+    public readonly TopicLog Topic;
+    public readonly ISubscriber Sub;
+    private int offset;
+    public readonly ConcurrentQueue<string> Errors = new ConcurrentQueue<string>();   // failed deliveries, so tests can read them
+    public SubscriberWorker(TopicLog topic, ISubscriber sub) { Topic = topic; Sub = sub; }
+    public void Run() {
+        try {
+            while (true) {
+                int off = Topic.AwaitReadable(() => Volatile.Read(ref offset));
+                string msg = Topic.Get(off);
+                try { Sub.Consume(msg); }
+                catch (Exception e) { Errors.Enqueue(Sub.Id() + " failed on " + msg + ": " + e.Message); }  // one bad message never stops the loop
+                Interlocked.CompareExchange(ref offset, off + 1, off);    // if reset happened meanwhile, keep the reset
+            }
+        } catch (ThreadInterruptedException) { /* shutdown */ }
+    }
+    public void Reset(int newOffset) { Interlocked.Exchange(ref offset, newOffset); Topic.WakeAll(); }
+}
+
+class MessageQueue {
+    private readonly ConcurrentDictionary<string, TopicLog> topics = new ConcurrentDictionary<string, TopicLog>();
+    private readonly ConcurrentDictionary<string, SubscriberWorker> workers = new ConcurrentDictionary<string, SubscriberWorker>();
+    private readonly List<SubscriberWorker> order = new List<SubscriberWorker>();
+    private readonly List<Thread> threads = new List<Thread>();
+
+    public void CreateTopic(string name) { topics.TryAdd(name, new TopicLog(name)); }
+    public void Publish(string topic, string msg) { Get(topic).Publish(msg); }
+    public void Subscribe(string topic, ISubscriber s) {
+        SubscriberWorker w = new SubscriberWorker(Get(topic), s);
+        workers[topic + "/" + s.Id()] = w;
+        Thread t = new Thread(w.Run) { Name = "sub-" + s.Id(), IsBackground = true };
+        lock (threads) { threads.Add(t); order.Add(w); }
+        t.Start();
+    }
+    public void ResetOffset(string topic, string subId, int offset) { workers[topic + "/" + subId].Reset(offset); }
+    public List<string> Errors() {
+        List<string> all = new List<string>();
+        lock (threads) foreach (SubscriberWorker w in order) all.AddRange(w.Errors);
+        return all;
+    }
+    public void Shutdown() {
+        List<Thread> ts; lock (threads) ts = new List<Thread>(threads);
+        foreach (Thread t in ts) t.Interrupt();
+        foreach (Thread t in ts) t.Join(2000);
+    }
+    private TopicLog Get(string name) {
+        TopicLog t;
+        if (!topics.TryGetValue(name, out t)) throw new ArgumentException("unknown topic " + name);
+        return t;
+    }
+}
+
+class RecordingSub : ISubscriber {
+    readonly string id; readonly ManualResetEventSlim gate; readonly string poison; readonly CountdownEvent latch;
+    public readonly List<string> Got = new List<string>();
+    // gate: a slow subscriber is stuck until the gate opens (null = fast); poison: a message that makes Consume() throw
+    public RecordingSub(string id, ManualResetEventSlim gate, string poison, CountdownEvent latch) {
+        this.id = id; this.gate = gate; this.poison = poison; this.latch = latch;
+    }
+    public string Id() { return id; }
+    public void Consume(string m) {
+        if (gate != null) gate.Wait();
+        if (m == poison) throw new Exception("bad message");
+        lock (Got) Got.Add(m);
+        latch.Signal();
+    }
+    public int Count() { lock (Got) return Got.Count; }
+    public override string ToString() { lock (Got) return "[" + string.Join(", ", Got) + "]"; }
+}
+
+class PubSubSolution {
+    static void Main() {
+        MessageQueue q = new MessageQueue();
+        q.CreateTopic("orders");
+        CountdownEvent done = new CountdownEvent(11);                    // A: 3 + 3 replayed, B: 3, C: 2 (m2 fails)
+        ManualResetEventSlim gateB = new ManualResetEventSlim(false);    // B is "slow": stuck until we open the gate
+        RecordingSub a = new RecordingSub("A", null, null, done);
+        RecordingSub b = new RecordingSub("B", gateB, null, done);
+        RecordingSub c = new RecordingSub("C", null, "m2", done);
+        q.Subscribe("orders", a);
+        q.Subscribe("orders", b);
+        q.Subscribe("orders", c);
+        foreach (string m in new[] { "m1", "m2", "m3" }) q.Publish("orders", m);
+        Console.WriteLine("published 3 messages while B was stuck, B has received " + b.Count());
+        gateB.Set();                                                     // B wakes up and catches up
+        while (a.Count() < 3) Thread.Sleep(1);
+        q.ResetOffset("orders", "A", 0);                                 // replay for A only
+        bool ok = done.Wait(2000);
+        Console.WriteLine("all delivered=" + ok.ToString().ToLower() + " A=" + a + " B=" + b + " C=" + c);
+        Console.WriteLine("errors=[" + string.Join(", ", q.Errors()) + "]");
+        try { q.Publish("audit", "x"); }
+        catch (ArgumentException e) { Console.WriteLine("publish failed: " + e.Message); }
+        q.Shutdown();
+        Console.WriteLine("shutdown complete");
+    }
 }` }
         ],
         complexity: `<p>publish O(1) amortised + waking waiters. Each delivery O(1). Memory O(total messages) — stored once regardless of subscriber count. Threads: one per subscriber (use a pool / virtual threads for thousands).</p>`,
@@ -5892,7 +6677,316 @@ ${H.table(['Stage', 'Question', 'Who answers', 'Example rejection'], [
       '"Detect checkmate and stalemate" → count all legal moves of the side to move + in-check flag.',
       '"Online multiplayer / timers" → Observer for move events, Game state machine, server-side validation.'
     ],
-    code: [{ lang: 'java', code: CHESS_CORE, alt: [{ lang: 'python', code: CHESS_CORE_PY }, { lang: 'ts', code: CHESS_CORE_TS }, { lang: 'cpp', code: CHESS_CORE_CPP }] }],
+    code: [{ lang: 'java', code: CHESS_CORE, alt: [{ lang: 'python', code: CHESS_CORE_PY }, { lang: 'ts', code: CHESS_CORE_TS }, { lang: 'cpp', code: CHESS_CORE_CPP },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+// ===== Chess core: pieces know HOW they move; the rule engine knows WHAT is legal =====
+
+enum Color { WHITE, BLACK }
+static class ColorExt { public static Color Opposite(this Color c) { return c == Color.WHITE ? Color.BLACK : Color.WHITE; } }
+
+enum PieceType { KING, QUEEN, ROOK, BISHOP, KNIGHT, PAWN }
+static class PieceTypeExt { public static char Symbol(this PieceType t) { return "KQRBNP"[(int)t]; } }
+
+// row 0 = rank 1, col 0 = file a.  "e4" -> (3, 4)
+sealed class Position : IEquatable<Position> {
+    public readonly int Row, Col;
+    public Position(int row, int col) { Row = row; Col = col; }
+    public static Position Of(string sq) { return new Position(sq[1] - '1', sq[0] - 'a'); }
+    public bool OnBoard() { return Row >= 0 && Row < 8 && Col >= 0 && Col < 8; }
+    public Position Plus(int dr, int dc) { return new Position(Row + dr, Col + dc); }
+    public bool Equals(Position o) { return o != null && o.Row == Row && o.Col == Col; }
+    public override bool Equals(object o) { return Equals(o as Position); }
+    public override int GetHashCode() { return Row * 8 + Col; }
+    public override string ToString() { return "" + (char)('a' + Col) + (char)('1' + Row); }
+}
+
+enum MoveType { NORMAL, DOUBLE_PAWN, EN_PASSANT, CASTLE_KING, CASTLE_QUEEN, PROMOTION }
+
+sealed class Move {
+    public readonly Position From, To; public readonly MoveType Type;
+    public Move(Position from, Position to, MoveType type) { From = from; To = to; Type = type; }
+    public override string ToString() { return From + "-" + To + (Type == MoveType.NORMAL ? "" : "(" + Type + ")"); }
+}
+
+// Pieces are immutable: no position, no hasMoved flag. The Board owns that state.
+abstract class Piece {
+    public readonly Color Color;
+    protected Piece(Color color) { Color = color; }
+    public abstract PieceType Type();
+    // Moves that follow the piece's movement rule, ignoring "does this leave my king in check?"
+    public abstract List<Move> PseudoLegalMoves(Board b, Position from);
+    // Squares this piece attacks (used for check detection). Same as moves for most pieces.
+    public virtual List<Position> Attacks(Board b, Position from) { return PseudoLegalMoves(b, from).Select(m => m.To).ToList(); }
+    public char Symbol() { return Color == Color.WHITE ? Type().Symbol() : char.ToLower(Type().Symbol()); }
+
+    // Rook/Bishop/Queen: walk each direction until the edge or a piece.
+    protected List<Move> Slide(Board b, Position from, int[][] dirs) {
+        List<Move> result = new List<Move>();
+        foreach (int[] d in dirs) {
+            for (Position p = from.Plus(d[0], d[1]); p.OnBoard(); p = p.Plus(d[0], d[1])) {
+                Piece occ = b.At(p);
+                if (occ == null) { result.Add(new Move(from, p, MoveType.NORMAL)); continue; }
+                if (occ.Color != Color) result.Add(new Move(from, p, MoveType.NORMAL));   // capture
+                break;                                                                     // blocked either way
+            }
+        }
+        return result;
+    }
+    // King/Knight: fixed jumps.
+    protected List<Move> Jumps(Board b, Position from, int[][] deltas) {
+        List<Move> result = new List<Move>();
+        foreach (int[] d in deltas) {
+            Position p = from.Plus(d[0], d[1]);
+            if (p.OnBoard() && (b.At(p) == null || b.At(p).Color != Color)) result.Add(new Move(from, p, MoveType.NORMAL));
+        }
+        return result;
+    }
+    protected static readonly int[][] STRAIGHT = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } };
+    protected static readonly int[][] DIAGONAL = { new[] { 1, 1 }, new[] { 1, -1 }, new[] { -1, 1 }, new[] { -1, -1 } };
+    protected static readonly int[][] ALL8 = STRAIGHT.Concat(DIAGONAL).ToArray();
+}
+
+class Rook : Piece { public Rook(Color c) : base(c) { } public override PieceType Type() { return PieceType.ROOK; }
+    public override List<Move> PseudoLegalMoves(Board b, Position f) { return Slide(b, f, STRAIGHT); } }
+class Bishop : Piece { public Bishop(Color c) : base(c) { } public override PieceType Type() { return PieceType.BISHOP; }
+    public override List<Move> PseudoLegalMoves(Board b, Position f) { return Slide(b, f, DIAGONAL); } }
+class Queen : Piece { public Queen(Color c) : base(c) { } public override PieceType Type() { return PieceType.QUEEN; }
+    public override List<Move> PseudoLegalMoves(Board b, Position f) { return Slide(b, f, ALL8); } }
+class Knight : Piece { public Knight(Color c) : base(c) { } public override PieceType Type() { return PieceType.KNIGHT; }
+    static readonly int[][] L = { new[] { 2, 1 }, new[] { 2, -1 }, new[] { -2, 1 }, new[] { -2, -1 }, new[] { 1, 2 }, new[] { 1, -2 }, new[] { -1, 2 }, new[] { -1, -2 } };
+    public override List<Move> PseudoLegalMoves(Board b, Position f) { return Jumps(b, f, L); } }
+
+class King : Piece {
+    public King(Color c) : base(c) { }
+    public override PieceType Type() { return PieceType.KING; }
+    // attacks = one step only (castling never attacks anything; also avoids infinite recursion)
+    public override List<Position> Attacks(Board b, Position f) { return Jumps(b, f, ALL8).Select(m => m.To).ToList(); }
+    public override List<Move> PseudoLegalMoves(Board b, Position f) {
+        List<Move> result = Jumps(b, f, ALL8);
+        int r = Color == Color.WHITE ? 0 : 7;
+        Color enemy = Color.Opposite();
+        if (!f.Equals(new Position(r, 4)) || b.IsAttacked(f, enemy)) return result;       // cannot castle out of check
+        char k = Color == Color.WHITE ? 'K' : 'k', q = Color == Color.WHITE ? 'Q' : 'q';
+        if (b.Castling.IndexOf(k) >= 0 && b.At(new Position(r, 5)) == null && b.At(new Position(r, 6)) == null
+                && !b.IsAttacked(new Position(r, 5), enemy) && !b.IsAttacked(new Position(r, 6), enemy))
+            result.Add(new Move(f, new Position(r, 6), MoveType.CASTLE_KING));
+        if (b.Castling.IndexOf(q) >= 0 && b.At(new Position(r, 3)) == null && b.At(new Position(r, 2)) == null
+                && b.At(new Position(r, 1)) == null
+                && !b.IsAttacked(new Position(r, 3), enemy) && !b.IsAttacked(new Position(r, 2), enemy))
+            result.Add(new Move(f, new Position(r, 2), MoveType.CASTLE_QUEEN));
+        return result;
+    }
+}
+
+class Pawn : Piece {
+    public Pawn(Color c) : base(c) { }
+    public override PieceType Type() { return PieceType.PAWN; }
+    private int Dir() { return Color == Color.WHITE ? 1 : -1; }
+    public override List<Position> Attacks(Board b, Position f) {          // pawns capture diagonally, move straight
+        List<Position> result = new List<Position>();
+        foreach (int dc in new[] { -1, 1 }) { Position p = f.Plus(Dir(), dc); if (p.OnBoard()) result.Add(p); }
+        return result;
+    }
+    public override List<Move> PseudoLegalMoves(Board b, Position f) {
+        List<Move> result = new List<Move>();
+        int startRow = Color == Color.WHITE ? 1 : 6, lastRow = Color == Color.WHITE ? 7 : 0;
+        Position one = f.Plus(Dir(), 0);
+        if (one.OnBoard() && b.At(one) == null) {
+            result.Add(new Move(f, one, one.Row == lastRow ? MoveType.PROMOTION : MoveType.NORMAL));
+            Position two = f.Plus(2 * Dir(), 0);
+            if (f.Row == startRow && b.At(two) == null) result.Add(new Move(f, two, MoveType.DOUBLE_PAWN));
+        }
+        foreach (Position d in Attacks(b, f)) {
+            Piece t = b.At(d);
+            if (t != null && t.Color != Color) result.Add(new Move(f, d, d.Row == lastRow ? MoveType.PROMOTION : MoveType.NORMAL));
+            else if (t == null && d.Equals(b.EnPassantTarget)) result.Add(new Move(f, d, MoveType.EN_PASSANT));
+        }
+        return result;
+    }
+}
+
+// The Board = the full position: squares + castling rights + en-passant square.
+class Board {
+    private readonly Piece[][] grid = new Piece[8][];
+    public string Castling = "KQkq";            // FEN-style rights still available
+    public Position EnPassantTarget;            // square a pawn may capture INTO this move, or null
+
+    public Board() { for (int r = 0; r < 8; r++) grid[r] = new Piece[8]; }
+    public Piece At(Position p) { return grid[p.Row][p.Col]; }
+    public void Put(Position p, Piece x) { grid[p.Row][p.Col] = x; }
+
+    public static Board Standard() {
+        Board b = new Board();
+        for (int c = 0; c < 8; c++) { b.grid[1][c] = new Pawn(Color.WHITE); b.grid[6][c] = new Pawn(Color.BLACK); }
+        foreach (Color s in new[] { Color.WHITE, Color.BLACK }) {
+            int r = s == Color.WHITE ? 0 : 7;
+            b.grid[r][0] = new Rook(s); b.grid[r][7] = new Rook(s);
+            b.grid[r][1] = new Knight(s); b.grid[r][6] = new Knight(s);
+            b.grid[r][2] = new Bishop(s); b.grid[r][5] = new Bishop(s);
+            b.grid[r][3] = new Queen(s); b.grid[r][4] = new King(s);
+        }
+        return b;
+    }
+
+    public Board Copy() {                        // pieces are immutable, so a shallow grid copy is enough
+        Board b = new Board();
+        for (int r = 0; r < 8; r++) b.grid[r] = (Piece[])grid[r].Clone();
+        b.Castling = Castling;
+        b.EnPassantTarget = EnPassantTarget;
+        return b;
+    }
+
+    public Position KingOf(Color c) {
+        for (int r = 0; r < 8; r++) for (int col = 0; col < 8; col++) {
+            Piece p = grid[r][col];
+            if (p != null && p.Color == c && p.Type() == PieceType.KING) return new Position(r, col);
+        }
+        throw new InvalidOperationException("no " + c + " king");
+    }
+
+    public bool IsAttacked(Position target, Color by) {
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) {
+            Piece p = grid[r][c];
+            if (p != null && p.Color == by && p.Attacks(this, new Position(r, c)).Contains(target)) return true;
+        }
+        return false;
+    }
+
+    // Executes a move that is already known to be legal; handles all special rules.
+    public void Apply(Move m) {
+        Piece p = At(m.From);
+        Put(m.To, p);
+        Put(m.From, null);
+        int r = m.From.Row;
+        switch (m.Type) {
+            case MoveType.EN_PASSANT: Put(new Position(r, m.To.Col), null); break;              // captured pawn is beside us
+            case MoveType.CASTLE_KING: Put(new Position(r, 5), At(new Position(r, 7))); Put(new Position(r, 7), null); break;
+            case MoveType.CASTLE_QUEEN: Put(new Position(r, 3), At(new Position(r, 0))); Put(new Position(r, 0), null); break;
+            case MoveType.PROMOTION: Put(m.To, new Queen(p.Color)); break;                        // auto-queen (extension: ask player)
+        }
+        EnPassantTarget = m.Type == MoveType.DOUBLE_PAWN ? new Position((m.From.Row + m.To.Row) / 2, m.From.Col) : null;
+        LoseRights(m.From);
+        LoseRights(m.To);                                                                        // a captured rook also loses rights
+    }
+    private void LoseRights(Position sq) {
+        string s = sq.ToString();
+        if (s == "e1") Castling = Castling.Replace("K", "").Replace("Q", "");
+        if (s == "h1") Castling = Castling.Replace("K", "");
+        if (s == "a1") Castling = Castling.Replace("Q", "");
+        if (s == "e8") Castling = Castling.Replace("k", "").Replace("q", "");
+        if (s == "h8") Castling = Castling.Replace("k", "");
+        if (s == "a8") Castling = Castling.Replace("q", "");
+    }
+
+    public string Render() {
+        StringBuilder sb = new StringBuilder();
+        for (int r = 7; r >= 0; r--) {
+            sb.Append(r + 1).Append(' ');
+            for (int c = 0; c < 8; c++) sb.Append(grid[r][c] == null ? '.' : grid[r][c].Symbol()).Append(' ');
+            sb.Append('\\n');
+        }
+        return sb.Append("  a b c d e f g h").ToString();
+    }
+}
+
+// Rule engine: the ONLY place that knows "a move may not leave your own king in check".
+static class MoveValidator {
+    public static List<Move> LegalMoves(Board b, Color side, Position from) {
+        Piece p = b.At(from);
+        if (p == null || p.Color != side) return new List<Move>();
+        List<Move> legal = new List<Move>();
+        foreach (Move m in p.PseudoLegalMoves(b, from)) {
+            Board next = b.Copy();                                   // copy-make: simulate, then test
+            next.Apply(m);
+            if (!next.IsAttacked(next.KingOf(side), side.Opposite())) legal.Add(m);
+        }
+        return legal;
+    }
+    public static List<Move> AllLegalMoves(Board b, Color side) {
+        List<Move> all = new List<Move>();
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) all.AddRange(LegalMoves(b, side, new Position(r, c)));
+        return all;
+    }
+    // perft = count leaf positions at a depth; the standard way to test a move generator.
+    public static long Perft(Board b, Color side, int depth) {
+        if (depth == 0) return 1;
+        long n = 0;
+        foreach (Move m in AllLegalMoves(b, side)) { Board next = b.Copy(); next.Apply(m); n += Perft(next, side.Opposite(), depth - 1); }
+        return n;
+    }
+}
+
+enum GameStatus { ACTIVE, CHECK, CHECKMATE, STALEMATE }
+
+class Game {
+    private Board board = Board.Standard();
+    private Color turn = Color.WHITE;
+    private GameStatus status = GameStatus.ACTIVE;
+    private readonly Stack<Board> history = new Stack<Board>();     // Memento: snapshots for undo
+    private readonly List<Move> moves = new List<Move>();
+
+    public string MakeMove(string from, string to) {
+        if (status == GameStatus.CHECKMATE || status == GameStatus.STALEMATE) return "game over: " + status;
+        Position f = Position.Of(from), t = Position.Of(to);
+        Piece p = board.At(f);
+        if (p == null) return "illegal: no piece on " + from;
+        if (p.Color != turn) return "illegal: it is " + turn + "'s turn";
+        foreach (Move m in MoveValidator.LegalMoves(board, turn, f)) {
+            if (m.To.Equals(t)) {
+                history.Push(board.Copy());
+                board.Apply(m);
+                moves.Add(m);
+                turn = turn.Opposite();
+                UpdateStatus();
+                return "ok " + m + (status == GameStatus.ACTIVE ? "" : " -> " + status);
+            }
+        }
+        bool pseudo = p.PseudoLegalMoves(board, f).Any(m => m.To.Equals(t));
+        return pseudo ? "illegal: " + from + "-" + to + " would leave your king in check" : "illegal: " + p.Type() + " cannot move like that";
+    }
+
+    public bool Undo() {
+        if (history.Count == 0) return false;
+        board = history.Pop();
+        moves.RemoveAt(moves.Count - 1);
+        turn = turn.Opposite();
+        UpdateStatus();
+        return true;
+    }
+
+    private void UpdateStatus() {
+        bool inCheck = board.IsAttacked(board.KingOf(turn), turn.Opposite());
+        bool canMove = MoveValidator.AllLegalMoves(board, turn).Count > 0;
+        status = canMove ? (inCheck ? GameStatus.CHECK : GameStatus.ACTIVE) : (inCheck ? GameStatus.CHECKMATE : GameStatus.STALEMATE);
+    }
+    public GameStatus Status() { return status; }
+    public Board CurrentBoard() { return board; }
+}
+
+class ChessDemo {
+    static void Main() {
+        Console.WriteLine("perft(1..3) = " + MoveValidator.Perft(Board.Standard(), Color.WHITE, 1) + ", "
+            + MoveValidator.Perft(Board.Standard(), Color.WHITE, 2) + ", "
+            + MoveValidator.Perft(Board.Standard(), Color.WHITE, 3) + "   (expected 20, 400, 8902)");
+
+        Game g = new Game();
+        Console.WriteLine(g.MakeMove("e2", "e5"));           // pawn cannot jump 3
+        Console.WriteLine(g.MakeMove("e7", "e5"));           // wrong turn
+        string[][] scholar = { new[] { "e2", "e4" }, new[] { "e7", "e5" }, new[] { "f1", "c4" }, new[] { "b8", "c6" }, new[] { "d1", "h5" }, new[] { "g8", "f6" }, new[] { "h5", "f7" } };
+        foreach (string[] m in scholar) Console.WriteLine(m[0] + m[1] + ": " + g.MakeMove(m[0], m[1]));
+        Console.WriteLine(g.CurrentBoard().Render());
+        Console.WriteLine("status = " + g.Status());         // CHECKMATE
+        g.Undo();
+        Console.WriteLine("after undo: " + g.Status() + ", white to move again");
+        Console.WriteLine("black tries to move: " + g.MakeMove("a7", "a6"));      // not black's turn
+        Console.WriteLine("replay Qxf7: " + g.MakeMove("h5", "f7"));
+    }
+}` }] }],
     codeTitle: ['Chess core — pieces, board with castling/en passant/promotion, rule engine, perft self-test, game with check/checkmate/stalemate and undo (runnable main)'],
     viz: [
       { title: 'Class diagram tour: Game, Board, Pieces, MoveValidator', gen: function () { return chessClassViz(); } },
@@ -5958,7 +7052,7 @@ class NaiveChess {
         // A pinned piece moving away would also be accepted: no king check at all.
         System.out.println("Bishop shape c1-h6 accepted? " + shapeOnly('B', 0, 2, 5, 7));
     }
-}`, alt: [{ lang: 'python', code: "class NaiveChess:\n    # row 0 = rank 1\n    @staticmethod\n    def shape_only(piece, fr, fc, tr, tc):\n        dr, dc = abs(tr - fr), abs(tc - fc)\n        p = piece.upper()\n        if p == \"R\": return fr == tr or fc == tc            # no path check!\n        if p == \"B\": return dr == dc\n        if p == \"Q\": return fr == tr or fc == tc or dr == dc\n        if p == \"N\": return dr * dc == 2\n        if p == \"K\": return dr <= 1 and dc <= 1\n        return tc == fc and tr == fr + 1                    # pawn, white only, no captures\n\nif __name__ == \"__main__\":\n    # White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\n    print(\"Ra1-a8 through a2 pawn accepted?\", NaiveChess.shape_only(\"R\", 0, 0, 7, 0))\n    # A pinned piece moving away would also be accepted: no king check at all.\n    print(\"Bishop shape c1-h6 accepted?\", NaiveChess.shape_only(\"B\", 0, 2, 5, 7))\n" }, { lang: 'ts', code: "class NaiveChess {\n  // row 0 = rank 1\n  static shapeOnly(piece: string, fr: number, fc: number, tr: number, tc: number): boolean {\n    const dr = Math.abs(tr - fr), dc = Math.abs(tc - fc);\n    switch (piece.toUpperCase()) {\n      case \"R\": return fr === tr || fc === tc;          // no path check!\n      case \"B\": return dr === dc;\n      case \"Q\": return fr === tr || fc === tc || dr === dc;\n      case \"N\": return dr * dc === 2;\n      case \"K\": return dr <= 1 && dc <= 1;\n      default:  return tc === fc && tr === fr + 1;      // pawn, white only, no captures\n    }\n  }\n}\n// White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\nconsole.log(\"Ra1-a8 through a2 pawn accepted? \" + NaiveChess.shapeOnly(\"R\", 0, 0, 7, 0));\n// A pinned piece moving away would also be accepted: no king check at all.\nconsole.log(\"Bishop shape c1-h6 accepted? \" + NaiveChess.shapeOnly(\"B\", 0, 2, 5, 7));\n" }, { lang: 'cpp', code: "struct NaiveChess {\n    // row 0 = rank 1\n    static bool shapeOnly(char piece, int fr, int fc, int tr, int tc) {\n        int dr = abs(tr - fr), dc = abs(tc - fc);\n        switch (toupper(piece)) {\n            case 'R': return fr == tr || fc == tc;          // no path check!\n            case 'B': return dr == dc;\n            case 'Q': return fr == tr || fc == tc || dr == dc;\n            case 'N': return dr * dc == 2;\n            case 'K': return dr <= 1 && dc <= 1;\n            default:  return tc == fc && tr == fr + 1;      // pawn, white only, no captures\n        }\n    }\n};\n\nint main() {\n    // White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\n    cout << \"Ra1-a8 through a2 pawn accepted? \" << boolalpha << NaiveChess::shapeOnly('R', 0, 0, 7, 0) << endl;\n    // A pinned piece moving away would also be accepted: no king check at all.\n    cout << \"Bishop shape c1-h6 accepted? \" << NaiveChess::shapeOnly('B', 0, 2, 5, 7) << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "class NaiveChess:\n    # row 0 = rank 1\n    @staticmethod\n    def shape_only(piece, fr, fc, tr, tc):\n        dr, dc = abs(tr - fr), abs(tc - fc)\n        p = piece.upper()\n        if p == \"R\": return fr == tr or fc == tc            # no path check!\n        if p == \"B\": return dr == dc\n        if p == \"Q\": return fr == tr or fc == tc or dr == dc\n        if p == \"N\": return dr * dc == 2\n        if p == \"K\": return dr <= 1 and dc <= 1\n        return tc == fc and tr == fr + 1                    # pawn, white only, no captures\n\nif __name__ == \"__main__\":\n    # White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\n    print(\"Ra1-a8 through a2 pawn accepted?\", NaiveChess.shape_only(\"R\", 0, 0, 7, 0))\n    # A pinned piece moving away would also be accepted: no king check at all.\n    print(\"Bishop shape c1-h6 accepted?\", NaiveChess.shape_only(\"B\", 0, 2, 5, 7))\n" }, { lang: 'ts', code: "class NaiveChess {\n  // row 0 = rank 1\n  static shapeOnly(piece: string, fr: number, fc: number, tr: number, tc: number): boolean {\n    const dr = Math.abs(tr - fr), dc = Math.abs(tc - fc);\n    switch (piece.toUpperCase()) {\n      case \"R\": return fr === tr || fc === tc;          // no path check!\n      case \"B\": return dr === dc;\n      case \"Q\": return fr === tr || fc === tc || dr === dc;\n      case \"N\": return dr * dc === 2;\n      case \"K\": return dr <= 1 && dc <= 1;\n      default:  return tc === fc && tr === fr + 1;      // pawn, white only, no captures\n    }\n  }\n}\n// White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\nconsole.log(\"Ra1-a8 through a2 pawn accepted? \" + NaiveChess.shapeOnly(\"R\", 0, 0, 7, 0));\n// A pinned piece moving away would also be accepted: no king check at all.\nconsole.log(\"Bishop shape c1-h6 accepted? \" + NaiveChess.shapeOnly(\"B\", 0, 2, 5, 7));\n" }, { lang: 'cpp', code: "struct NaiveChess {\n    // row 0 = rank 1\n    static bool shapeOnly(char piece, int fr, int fc, int tr, int tc) {\n        int dr = abs(tr - fr), dc = abs(tc - fc);\n        switch (toupper(piece)) {\n            case 'R': return fr == tr || fc == tc;          // no path check!\n            case 'B': return dr == dc;\n            case 'Q': return fr == tr || fc == tc || dr == dc;\n            case 'N': return dr * dc == 2;\n            case 'K': return dr <= 1 && dc <= 1;\n            default:  return tc == fc && tr == fr + 1;      // pawn, white only, no captures\n        }\n    }\n};\n\nint main() {\n    // White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\n    cout << \"Ra1-a8 through a2 pawn accepted? \" << boolalpha << NaiveChess::shapeOnly('R', 0, 0, 7, 0) << endl;\n    // A pinned piece moving away would also be accepted: no king check at all.\n    cout << \"Bishop shape c1-h6 accepted? \" << NaiveChess::shapeOnly('B', 0, 2, 5, 7) << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nstatic class NaiveChess {\n    // row 0 = rank 1\n    public static bool ShapeOnly(char piece, int fr, int fc, int tr, int tc) {\n        int dr = Math.Abs(tr - fr), dc = Math.Abs(tc - fc);\n        switch (char.ToUpper(piece)) {\n            case 'R': return fr == tr || fc == tc;          // no path check!\n            case 'B': return dr == dc;\n            case 'Q': return fr == tr || fc == tc || dr == dc;\n            case 'N': return dr * dc == 2;\n            case 'K': return dr <= 1 && dc <= 1;\n            default:  return tc == fc && tr == fr + 1;      // pawn, white only, no captures\n        }\n    }\n    static void Main() {\n        // White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\n        Console.WriteLine(\"Ra1-a8 through a2 pawn accepted? \" + ShapeOnly('R', 0, 0, 7, 0).ToString().ToLower());\n        // A pinned piece moving away would also be accepted: no king check at all.\n        Console.WriteLine(\"Bishop shape c1-h6 accepted? \" + ShapeOnly('B', 0, 2, 5, 7).ToString().ToLower());\n    }\n}\n" }] }
       },
       mcq: { q: 'Your king is in check from a bishop. Which approach correctly finds ALL legal replies (block, capture, king move)?', options: ['Simulate every pseudo-legal move on a copy and keep those where the king is not attacked', 'Only generate king moves', 'Only generate captures of the checking piece', 'Generate moves normally; check is handled at the end of the game'], answer: 0, explain: 'Copy-make + isAttacked covers blocks, captures and king moves uniformly, including double checks where only king moves work.' },
       hints: [
@@ -6364,6 +7458,98 @@ int main() {
                                         "........", "........", "...r....", "....K..."});
     cout << "Ke1-e2 into rook check " << ChessRules::isLegal(rookNear, "e1", "e2", true) << "\n";   // false
     cout << "Ke1xd2 takes the rook " << ChessRules::isLegal(rookNear, "e1", "d2", true) << "\n";    // true
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+delegate bool MoveRule(char[][] b, int fr, int fc, int tr, int tc);
+
+static class ChessRules {
+    public static readonly Dictionary<char, MoveRule> RULES = new Dictionary<char, MoveRule>();
+    static ChessRules() {
+        RULES['R'] = (b, fr, fc, tr, tc) => (fr == tr || fc == tc) && PathClear(b, fr, fc, tr, tc);
+        RULES['B'] = (b, fr, fc, tr, tc) => Math.Abs(fr - tr) == Math.Abs(fc - tc) && PathClear(b, fr, fc, tr, tc);
+        RULES['Q'] = (b, fr, fc, tr, tc) => RULES['R'](b, fr, fc, tr, tc) || RULES['B'](b, fr, fc, tr, tc);
+        RULES['N'] = (b, fr, fc, tr, tc) => Math.Abs(fr - tr) * Math.Abs(fc - tc) == 2;
+        RULES['K'] = (b, fr, fc, tr, tc) => Math.Abs(fr - tr) <= 1 && Math.Abs(fc - tc) <= 1;
+        RULES['P'] = (b, fr, fc, tr, tc) => {
+            bool white = char.IsUpper(b[fr][fc]);
+            int dir = white ? 1 : -1, dr = tr - fr, dc = Math.Abs(tc - fc);
+            char target = b[tr][tc];
+            if (dc == 0 && dr == dir) return target == '.';
+            if (dc == 0 && dr == 2 * dir) return fr == (white ? 1 : 6) && target == '.' && b[fr + dir][fc] == '.';
+            return dc == 1 && dr == dir && target != '.' && char.IsUpper(target) != white;
+        };
+    }
+
+    // Walk from (fr,fc) toward (tr,tc) one step at a time; every square in between must be empty.
+    public static bool PathClear(char[][] b, int fr, int fc, int tr, int tc) {
+        int sr = Math.Sign(tr - fr), sc = Math.Sign(tc - fc);
+        for (int r = fr + sr, c = fc + sc; r != tr || c != tc; r += sr, c += sc)
+            if (b[r][c] != '.') return false;
+        return true;
+    }
+
+    public static char[][] Parse(string[] ranks8to1) {
+        char[][] b = new char[8][];
+        for (int i = 0; i < 8; i++) b[7 - i] = ranks8to1[i].ToCharArray();   // row 0 = rank 1
+        return b;
+    }
+
+    public static bool IsLegal(char[][] b, string from, string to, bool whiteToMove) {
+        int fr = from[1] - '1', fc = from[0] - 'a', tr = to[1] - '1', tc = to[0] - 'a';
+        char piece = b[fr][fc];
+        if (piece == '.' || char.IsUpper(piece) != whiteToMove) return false;   // empty or wrong side
+        if (fr == tr && fc == tc) return false;
+        char target = b[tr][tc];
+        if (target != '.' && char.IsUpper(target) == whiteToMove) return false; // own piece
+        MoveRule rule;
+        if (!RULES.TryGetValue(char.ToUpper(piece), out rule) || !rule(b, fr, fc, tr, tc)) return false;
+        char[][] next = new char[8][];
+        for (int r = 0; r < 8; r++) next[r] = (char[])b[r].Clone();
+        next[tr][tc] = piece;
+        next[fr][fc] = '.';
+        return !InCheck(next, whiteToMove);
+    }
+
+    public static bool InCheck(char[][] b, bool white) {
+        char king = white ? 'K' : 'k';
+        int kr = -1, kc = -1;
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) if (b[r][c] == king) { kr = r; kc = c; }
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) {
+            char p = b[r][c];
+            if (p == '.' || char.IsUpper(p) == white) continue;              // only enemy pieces
+            if (RULES[char.ToUpper(p)](b, r, c, kr, kc)) return true;
+        }
+        return false;
+    }
+}
+
+class ChessValidatorDemo {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        char[][] start = ChessRules.Parse(new[] {
+            "rnbqkbnr", "pppppppp", "........", "........", "........", "........", "PPPPPPPP", "RNBQKBNR" });
+        Console.WriteLine("e2-e4 " + B(ChessRules.IsLegal(start, "e2", "e4", true)));   // true
+        Console.WriteLine("e2-e5 " + B(ChessRules.IsLegal(start, "e2", "e5", true)));   // false
+        Console.WriteLine("f1-c4 " + B(ChessRules.IsLegal(start, "f1", "c4", true)));   // false (blocked)
+        Console.WriteLine("g1-f3 " + B(ChessRules.IsLegal(start, "g1", "f3", true)));   // true
+        Console.WriteLine("e7-e5 " + B(ChessRules.IsLegal(start, "e7", "e5", true)));   // false (not your piece)
+
+        char[][] pin = ChessRules.Parse(new[] {
+            "......k.", "....r...", "........", "........", "........", "........", "...PR...", "....K..." });
+        Console.WriteLine("pinned Re2-g2 " + B(ChessRules.IsLegal(pin, "e2", "g2", true)));  // false
+        Console.WriteLine("pinned Re2-e7 " + B(ChessRules.IsLegal(pin, "e2", "e7", true)));  // true (capture)
+        Console.WriteLine("Ke1-f2 " + B(ChessRules.IsLegal(pin, "e1", "f2", true)));         // true
+
+        Console.WriteLine("empty square e3-e4 " + B(ChessRules.IsLegal(start, "e3", "e4", true)));   // false
+        Console.WriteLine("own piece d1-d2 " + B(ChessRules.IsLegal(start, "d1", "d2", true)));      // false
+        char[][] rookNear = ChessRules.Parse(new[] {
+            "k.......", "........", "........", "........", "........", "........", "...r....", "....K..." });
+        Console.WriteLine("Ke1-e2 into rook check " + B(ChessRules.IsLegal(rookNear, "e1", "e2", true)));   // false
+        Console.WriteLine("Ke1xd2 takes the rook " + B(ChessRules.IsLegal(rookNear, "e1", "d2", true)));    // true
+    }
 }` }
         ],
         dry: { head: ['Move', 'Basic checks', 'Rule', 'Simulated king safe?', 'Result'], rows: [['e2→e4 (start)', 'ok', 'pawn double step, e3 & e4 empty', 'yes', H.c('g', 'true')], ['f1→c4 (start)', 'ok', 'bishop diagonal, but e2 occupied', '—', H.c('r', 'false')], ['Re2→g2 (pin)', 'ok', 'rook straight, f2 empty', 'no: re7 sees Ke1', H.c('r', 'false')], ['Re2→e7 (pin)', 'ok', 'rook straight, e3..e6 empty', 'yes: attacker captured', H.c('g', 'true')]] },
@@ -7279,7 +8465,191 @@ ${H.table(['Design', 'BEGIN', 'Write', 'GET', 'ROLLBACK', 'Good for'], [
       '"Each client has its own transaction" → per-session overlay write-sets, or optimistic WATCH-style versioning.',
       '"Design Redis-lite" → command parsing (Command pattern), data structures, expiry, persistence (AOF/snapshot) as follow-ups.'
     ],
-    code: [{ lang: 'java', code: KV_CORE, alt: [{ lang: 'python', code: KV_CORE_PY }, { lang: 'ts', code: KV_CORE_TS }, { lang: 'cpp', code: KV_CORE_CPP }] }],
+    code: [{ lang: 'java', code: KV_CORE, alt: [{ lang: 'python', code: KV_CORE_PY }, { lang: 'ts', code: KV_CORE_TS }, { lang: 'cpp', code: KV_CORE_CPP },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// ===== In-memory key-value store: GET/SET/DEL/COUNT, nested BEGIN/ROLLBACK/COMMIT, TTL =====
+
+// Time is injected so tests can move the clock by hand (no Thread.Sleep in tests!).
+interface ITicker { long NowMillis(); }
+
+class ManualTicker : ITicker {
+    private long now;
+    public long NowMillis() { return now; }
+    public void Advance(long ms) { now += ms; }
+}
+
+// expireAt == 0 means "never expires".
+sealed class Entry {
+    public readonly string Value; public readonly long ExpireAt;
+    public Entry(string value, long expireAt) { Value = value; ExpireAt = expireAt; }
+    public bool Expired(long now) { return ExpireAt > 0 && now >= ExpireAt; }
+}
+
+class KVStore {
+    private readonly Dictionary<string, Entry> data = new Dictionary<string, Entry>();
+    private readonly Dictionary<string, int> valueCount = new Dictionary<string, int>();      // value -> how many keys hold it
+    // Undo log per open transaction: key -> value BEFORE the transaction first touched it
+    // (null = key did not exist). Top of the stack = innermost transaction.
+    private readonly Stack<Dictionary<string, Entry>> txStack = new Stack<Dictionary<string, Entry>>();
+    // Min-heap of scheduled expiries ordered by (time, key, seq); stale ones are skipped when popped.
+    private readonly SortedSet<Tuple<long, long, string>> expiries = new SortedSet<Tuple<long, long, string>>();
+    private long expirySeq = 0;
+    private readonly ITicker clock;
+    private readonly object gate = new object();
+
+    public KVStore(ITicker clock) { this.clock = clock; }
+
+    // ---------- reads ----------
+    public string Get(string key) {
+        lock (gate) {
+            Entry e;
+            if (!data.TryGetValue(key, out e)) return null;
+            if (e.Expired(clock.NowMillis())) { WriteRaw(key, null); return null; }   // LAZY expiry on access
+            return e.Value;
+        }
+    }
+    public int Count(string value) {
+        lock (gate) {
+            ExpireDue();                                   // make the index exact before answering
+            int n; return valueCount.TryGetValue(value, out n) ? n : 0;
+        }
+    }
+    // Redis-style TTL: -2 = no such key, -1 = no expiry, else milliseconds left.
+    public long Ttl(string key) {
+        lock (gate) {
+            if (Get(key) == null) return -2;
+            Entry e = data[key];
+            return e.ExpireAt == 0 ? -1 : e.ExpireAt - clock.NowMillis();
+        }
+    }
+
+    // ---------- writes (all go through RecordUndo + WriteRaw) ----------
+    public void Set(string key, string value) { Set(key, value, 0); }
+    public void Set(string key, string value, long ttlMillis) {
+        lock (gate) {
+            RecordUndo(key);
+            WriteRaw(key, new Entry(value, ttlMillis > 0 ? clock.NowMillis() + ttlMillis : 0));
+        }
+    }
+    public bool Delete(string key) {
+        lock (gate) {
+            if (Get(key) == null) return false;
+            RecordUndo(key);
+            WriteRaw(key, null);
+            return true;
+        }
+    }
+
+    // ---------- transactions ----------
+    public void Begin() { lock (gate) txStack.Push(new Dictionary<string, Entry>()); }
+
+    public bool Rollback() {
+        lock (gate) {
+            if (txStack.Count == 0) return false;           // "NO TRANSACTION"
+            Dictionary<string, Entry> undo = txStack.Pop();
+            foreach (var kv in undo) WriteRaw(kv.Key, kv.Value);   // put every touched key back
+            return true;
+        }
+    }
+
+    // Commit the innermost transaction. Its undo info moves into the parent,
+    // so rolling back the parent later still restores the ORIGINAL values.
+    public bool Commit() {
+        lock (gate) {
+            if (txStack.Count == 0) return false;
+            Dictionary<string, Entry> top = txStack.Pop();
+            if (txStack.Count > 0) {
+                Dictionary<string, Entry> parent = txStack.Peek();
+                foreach (var kv in top) if (!parent.ContainsKey(kv.Key)) parent[kv.Key] = kv.Value;   // parent's older snapshot wins
+            }
+            return true;
+        }
+    }
+    public int Depth() { lock (gate) return txStack.Count; }
+
+    // ---------- expiry ----------
+    // ACTIVE expiry: remove everything whose time has come (a scheduler would call this every 100 ms).
+    public int ExpireDue() {
+        lock (gate) {
+            int removed = 0;
+            long now = clock.NowMillis();
+            while (expiries.Count > 0 && expiries.Min.Item1 <= now) {
+                var x = expiries.Min; expiries.Remove(x);
+                Entry e;
+                if (data.TryGetValue(x.Item3, out e) && e.ExpireAt == x.Item1) { WriteRaw(x.Item3, null); removed++; }   // skip stale heap entries
+            }
+            return removed;
+        }
+    }
+
+    // ---------- internals ----------
+    private void RecordUndo(string key) {
+        if (txStack.Count == 0) return;
+        Dictionary<string, Entry> top = txStack.Peek();
+        if (!top.ContainsKey(key)) { Entry cur; data.TryGetValue(key, out cur); top[key] = cur; }  // first touch only
+    }
+    // The ONLY method that changes data; keeps the value index and expiry heap in sync.
+    private void WriteRaw(string key, Entry e) {
+        Entry old; data.TryGetValue(key, out old);
+        if (e == null) data.Remove(key); else data[key] = e;
+        if (old != null) { int c = valueCount[old.Value] - 1; if (c == 0) valueCount.Remove(old.Value); else valueCount[old.Value] = c; }
+        if (e != null) {
+            int c; valueCount.TryGetValue(e.Value, out c); valueCount[e.Value] = c + 1;
+            if (e.ExpireAt > 0) expiries.Add(Tuple.Create(e.ExpireAt, expirySeq++, key));
+        }
+    }
+}
+
+class KVStoreDemo {
+    static string S(string v) { return v ?? "null"; }
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        ManualTicker clock = new ManualTicker();
+        KVStore kv = new KVStore(clock);
+
+        kv.Set("a", "10");
+        kv.Begin();                         // T1
+        kv.Set("a", "20");
+        kv.Set("b", "20");
+        Console.WriteLine("T1: a=" + S(kv.Get("a")) + " count(20)=" + kv.Count("20"));     // 20, 2
+        kv.Begin();                         // T2 (nested)
+        kv.Delete("a");
+        Console.WriteLine("T2: a=" + S(kv.Get("a")));                                      // null
+        kv.Rollback();                      // undo T2 only
+        Console.WriteLine("after rollback T2: a=" + S(kv.Get("a")));                       // 20
+        kv.Commit();                        // T1 becomes permanent
+        Console.WriteLine("after commit: a=" + S(kv.Get("a")) + " b=" + S(kv.Get("b")) + " depth=" + kv.Depth());
+
+        kv.Begin();
+        kv.Set("a", "99");
+        kv.Begin();
+        kv.Set("a", "100");
+        kv.Commit();                        // inner commit merges undo into outer
+        kv.Rollback();                      // outer rollback must restore 20, not 99
+        Console.WriteLine("nested commit then outer rollback: a=" + S(kv.Get("a")));       // 20
+        Console.WriteLine("rollback with no tx -> " + B(kv.Rollback()));                    // false
+
+        kv.Set("session", "s-1", 5000);     // TTL 5 s
+        kv.Set("otp", "1234", 2000);        // TTL 2 s
+        clock.Advance(1000);
+        Console.WriteLine("t=1s ttl(otp)=" + kv.Ttl("otp") + "ms, ttl(a)=" + kv.Ttl("a"));
+        clock.Advance(1500);
+        Console.WriteLine("t=2.5s otp=" + S(kv.Get("otp")) + " (lazy expiry on read)");
+        kv.Set("session", "s-2", 10000);    // overwrite -> old heap entry becomes stale
+        kv.Set("cache", "v", 1000);         // nobody will read this one: only the active sweep frees it
+        clock.Advance(4000);
+        Console.WriteLine("t=6.5s expireDue removed " + kv.ExpireDue() + ", session=" + S(kv.Get("session")));
+
+        kv.Begin();
+        kv.Set("session", "s-3");           // remove TTL inside a tx
+        kv.Rollback();                      // TTL entry restored, including its expiry time
+        Console.WriteLine("after rollback ttl(session)=" + kv.Ttl("session") + "ms");
+        Console.WriteLine("commit with no tx -> " + B(kv.Commit()) + ", delete of a missing key -> " + B(kv.Delete("nope")));
+    }
+}` }] }],
     codeTitle: ['KV store — undo-log transactions (nested commit/rollback), value-count index, lazy + active TTL with an injected clock (runnable main)'],
     viz: [
       { title: 'Class diagram tour: one facade, four data structures', gen: function () { return kvClassViz(); } },
@@ -7475,6 +8845,45 @@ int main() {
     cout << "inside tx a=" << s.get("a").value_or("null") << "\n";        // null
     s.rollback();
     cout << "after rollback a=" << s.get("a").value_or("null") << "\n";   // 10
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class OverlayStore {
+    private const string TOMBSTONE = "\\u0000deleted";
+    private readonly Dictionary<string, string> b = new Dictionary<string, string>();
+    private readonly LinkedList<Dictionary<string, string>> layers = new LinkedList<Dictionary<string, string>>();   // First = top; per session in a real server
+
+    public void Begin() { layers.AddFirst(new Dictionary<string, string>()); }
+    public void Set(string k, string v) { (layers.Count == 0 ? b : layers.First.Value)[k] = v; }
+    public void Delete(string k) { if (layers.Count == 0) b.Remove(k); else layers.First.Value[k] = TOMBSTONE; }
+    public string Get(string k) {
+        foreach (Dictionary<string, string> layer in layers) {                // iterates top -> bottom
+            string v;
+            if (layer.TryGetValue(k, out v)) return v == TOMBSTONE ? null : v;
+        }
+        string bv; return b.TryGetValue(k, out bv) ? bv : null;
+    }
+    public bool Rollback() { if (layers.Count == 0) return false; layers.RemoveFirst(); return true; }   // O(1): just drop the layer
+    public bool Commit() {
+        if (layers.Count == 0) return false;
+        Dictionary<string, string> top = layers.First.Value; layers.RemoveFirst();
+        Dictionary<string, string> target = layers.Count == 0 ? null : layers.First.Value;
+        foreach (var kv in top) {
+            if (target != null) target[kv.Key] = kv.Value;
+            else if (kv.Value == TOMBSTONE) b.Remove(kv.Key); else b[kv.Key] = kv.Value;
+        }
+        return true;
+    }
+    static void Main() {
+        OverlayStore s = new OverlayStore();
+        s.Set("a", "10");
+        s.Begin(); s.Set("a", "20"); s.Delete("a");
+        Console.WriteLine("inside tx a=" + (s.Get("a") ?? "null"));   // null
+        s.Rollback();
+        Console.WriteLine("after rollback a=" + s.Get("a")); // 10
+    }
 }` }
         ] } },
       { title: 'COUNT with an index vs a scan', html: `<p>Keys a=10, b=10, c=20. <code>COUNT 10</code>:</p>${H.kv([['10', '2'], ['20', '1']], { label: 'valueCount' })}<p>Scan: look at all n keys → O(n) per query. Index: one map lookup → O(1). The price: every write, delete, rollback and expiry must update the index — which is why the code funnels <b>all</b> changes through <code>writeRaw()</code>. Remove a counter when it reaches 0 so the index does not leak memory.</p>` },
@@ -7530,7 +8939,7 @@ class SnapshotDb {
     public static void main(String[] args) {
         System.out.println(new SnapshotDb().run(List.of("SET a 10", "BEGIN", "SET a 20", "ROLLBACK", "GET a")));  // [10]
     }
-}`, alt: [{ lang: 'python', code: "class SnapshotDb:\n    def __init__(self):\n        self.data = {}\n        self.snapshots = []\n\n    def run(self, cmds):\n        out = []\n        for line in cmds:\n            t = line.split(\" \")\n            if t[0] == \"SET\": self.data[t[1]] = t[2]\n            elif t[0] == \"UNSET\": self.data.pop(t[1], None)\n            elif t[0] == \"GET\": out.append(self.data.get(t[1], \"NULL\"))\n            elif t[0] == \"NUMEQUALTO\": out.append(str(sum(1 for v in self.data.values() if v == t[1])))   # O(n) scan\n            elif t[0] == \"BEGIN\": self.snapshots.append(dict(self.data))                                  # O(n) copy\n            elif t[0] == \"ROLLBACK\":\n                if not self.snapshots: out.append(\"NO TRANSACTION\")\n                else: self.data = self.snapshots.pop()\n            elif t[0] == \"COMMIT\":\n                if not self.snapshots: out.append(\"NO TRANSACTION\")\n                else: self.snapshots.clear()\n        return out\n\nif __name__ == \"__main__\":\n    print(SnapshotDb().run([\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"]))  # ['10']\n" }, { lang: 'ts', code: "class SnapshotDb {\n  private data = new Map<string, string>();\n  private snapshots: Map<string, string>[] = [];\n\n  run(cmds: string[]): string[] {\n    const out: string[] = [];\n    for (const line of cmds) {\n      const t = line.split(\" \");\n      switch (t[0]) {\n        case \"SET\": this.data.set(t[1], t[2]); break;\n        case \"UNSET\": this.data.delete(t[1]); break;\n        case \"GET\": out.push(this.data.get(t[1]) ?? \"NULL\"); break;\n        case \"NUMEQUALTO\": out.push(String([...this.data.values()].filter((v) => v === t[1]).length)); break;   // O(n) scan\n        case \"BEGIN\": this.snapshots.push(new Map(this.data)); break;                                            // O(n) copy\n        case \"ROLLBACK\": { const s = this.snapshots.pop(); if (!s) out.push(\"NO TRANSACTION\"); else this.data = s; break; }\n        case \"COMMIT\": if (this.snapshots.length === 0) out.push(\"NO TRANSACTION\"); else this.snapshots = []; break;\n      }\n    }\n    return out;\n  }\n}\n\nconsole.log(new SnapshotDb().run([\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"]));  // [ '10' ]\n" }, { lang: 'cpp', code: "class SnapshotDb {\n    map<string, string> data;\n    vector<map<string, string>> snapshots;\npublic:\n    vector<string> run(const vector<string>& cmds) {\n        vector<string> out;\n        for (const string& line : cmds) {\n            istringstream in(line);\n            vector<string> t; string w;\n            while (in >> w) t.push_back(w);\n            if (t[0] == \"SET\") data[t[1]] = t[2];\n            else if (t[0] == \"UNSET\") data.erase(t[1]);\n            else if (t[0] == \"GET\") out.push_back(data.count(t[1]) ? data[t[1]] : \"NULL\");\n            else if (t[0] == \"NUMEQUALTO\") out.push_back(to_string(count_if(data.begin(), data.end(), [&](auto& kv) { return kv.second == t[1]; })));   // O(n) scan\n            else if (t[0] == \"BEGIN\") snapshots.push_back(data);                                                                                      // O(n) copy\n            else if (t[0] == \"ROLLBACK\") { if (snapshots.empty()) out.push_back(\"NO TRANSACTION\"); else { data = snapshots.back(); snapshots.pop_back(); } }\n            else if (t[0] == \"COMMIT\") { if (snapshots.empty()) out.push_back(\"NO TRANSACTION\"); else snapshots.clear(); }\n        }\n        return out;\n    }\n};\n\nint main() {\n    for (auto& s : SnapshotDb().run({\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"})) cout << s << endl;   // 10\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "class SnapshotDb:\n    def __init__(self):\n        self.data = {}\n        self.snapshots = []\n\n    def run(self, cmds):\n        out = []\n        for line in cmds:\n            t = line.split(\" \")\n            if t[0] == \"SET\": self.data[t[1]] = t[2]\n            elif t[0] == \"UNSET\": self.data.pop(t[1], None)\n            elif t[0] == \"GET\": out.append(self.data.get(t[1], \"NULL\"))\n            elif t[0] == \"NUMEQUALTO\": out.append(str(sum(1 for v in self.data.values() if v == t[1])))   # O(n) scan\n            elif t[0] == \"BEGIN\": self.snapshots.append(dict(self.data))                                  # O(n) copy\n            elif t[0] == \"ROLLBACK\":\n                if not self.snapshots: out.append(\"NO TRANSACTION\")\n                else: self.data = self.snapshots.pop()\n            elif t[0] == \"COMMIT\":\n                if not self.snapshots: out.append(\"NO TRANSACTION\")\n                else: self.snapshots.clear()\n        return out\n\nif __name__ == \"__main__\":\n    print(SnapshotDb().run([\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"]))  # ['10']\n" }, { lang: 'ts', code: "class SnapshotDb {\n  private data = new Map<string, string>();\n  private snapshots: Map<string, string>[] = [];\n\n  run(cmds: string[]): string[] {\n    const out: string[] = [];\n    for (const line of cmds) {\n      const t = line.split(\" \");\n      switch (t[0]) {\n        case \"SET\": this.data.set(t[1], t[2]); break;\n        case \"UNSET\": this.data.delete(t[1]); break;\n        case \"GET\": out.push(this.data.get(t[1]) ?? \"NULL\"); break;\n        case \"NUMEQUALTO\": out.push(String([...this.data.values()].filter((v) => v === t[1]).length)); break;   // O(n) scan\n        case \"BEGIN\": this.snapshots.push(new Map(this.data)); break;                                            // O(n) copy\n        case \"ROLLBACK\": { const s = this.snapshots.pop(); if (!s) out.push(\"NO TRANSACTION\"); else this.data = s; break; }\n        case \"COMMIT\": if (this.snapshots.length === 0) out.push(\"NO TRANSACTION\"); else this.snapshots = []; break;\n      }\n    }\n    return out;\n  }\n}\n\nconsole.log(new SnapshotDb().run([\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"]));  // [ '10' ]\n" }, { lang: 'cpp', code: "class SnapshotDb {\n    map<string, string> data;\n    vector<map<string, string>> snapshots;\npublic:\n    vector<string> run(const vector<string>& cmds) {\n        vector<string> out;\n        for (const string& line : cmds) {\n            istringstream in(line);\n            vector<string> t; string w;\n            while (in >> w) t.push_back(w);\n            if (t[0] == \"SET\") data[t[1]] = t[2];\n            else if (t[0] == \"UNSET\") data.erase(t[1]);\n            else if (t[0] == \"GET\") out.push_back(data.count(t[1]) ? data[t[1]] : \"NULL\");\n            else if (t[0] == \"NUMEQUALTO\") out.push_back(to_string(count_if(data.begin(), data.end(), [&](auto& kv) { return kv.second == t[1]; })));   // O(n) scan\n            else if (t[0] == \"BEGIN\") snapshots.push_back(data);                                                                                      // O(n) copy\n            else if (t[0] == \"ROLLBACK\") { if (snapshots.empty()) out.push_back(\"NO TRANSACTION\"); else { data = snapshots.back(); snapshots.pop_back(); } }\n            else if (t[0] == \"COMMIT\") { if (snapshots.empty()) out.push_back(\"NO TRANSACTION\"); else snapshots.clear(); }\n        }\n        return out;\n    }\n};\n\nint main() {\n    for (auto& s : SnapshotDb().run({\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"})) cout << s << endl;   // 10\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\nclass SnapshotDb {\n    private Dictionary<string, string> data = new Dictionary<string, string>();\n    private readonly Stack<Dictionary<string, string>> snapshots = new Stack<Dictionary<string, string>>();\n\n    public List<string> Run(List<string> cmds) {\n        List<string> result = new List<string>();\n        foreach (string line in cmds) {\n            string[] t = line.Split(' ');\n            switch (t[0]) {\n                case \"SET\": data[t[1]] = t[2]; break;\n                case \"UNSET\": data.Remove(t[1]); break;\n                case \"GET\": { string v; result.Add(data.TryGetValue(t[1], out v) ? v : \"NULL\"); break; }\n                case \"NUMEQUALTO\": result.Add(data.Values.Count(v => v == t[1]).ToString()); break;     // O(n) scan\n                case \"BEGIN\": snapshots.Push(new Dictionary<string, string>(data)); break;              // O(n) copy\n                case \"ROLLBACK\": if (snapshots.Count == 0) result.Add(\"NO TRANSACTION\"); else data = snapshots.Pop(); break;\n                case \"COMMIT\": if (snapshots.Count == 0) result.Add(\"NO TRANSACTION\"); else snapshots.Clear(); break;\n            }\n        }\n        return result;\n    }\n    static void Main() {\n        Console.WriteLine(\"[\" + string.Join(\", \", new SnapshotDb().Run(new List<string> { \"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\" })) + \"]\");  // [10]\n    }\n}\n" }] }
       },
       mcq: { q: 'With the undo-log design, what does ROLLBACK cost?', options: ['O(number of keys the innermost transaction changed)', 'O(total keys in the database)', 'O(1) always', 'O(depth of the transaction stack × n)'], answer: 0, explain: 'Each open transaction remembers only the keys it touched (old value saved once). Rollback writes exactly those back.' },
       hints: [
@@ -7807,6 +9216,63 @@ int main() {
     // failure paths: no transaction, unset of a missing name, unknown command, END stops the run
     cout << show(SimpleDatabase().run({
         "COMMIT", "UNSET zzz", "GET zzz", "FLY away", "NUMEQUALTO 5", "END", "GET a"})) << "\n";     // [NO TRANSACTION, NULL, UNKNOWN FLY, 0]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class SimpleDatabase {
+    private readonly Dictionary<string, string> data = new Dictionary<string, string>();
+    private readonly Dictionary<string, int> counts = new Dictionary<string, int>();
+    private readonly Stack<Dictionary<string, string>> undo = new Stack<Dictionary<string, string>>();   // value null = key did not exist
+
+    private void Apply(string name, string value) {           // the ONLY mutation point
+        string old; data.TryGetValue(name, out old);
+        if (value == null) data.Remove(name); else data[name] = value;
+        if (old != null) { int c = counts[old]; if (c == 1) counts.Remove(old); else counts[old] = c - 1; }
+        if (value != null) { int c; counts.TryGetValue(value, out c); counts[value] = c + 1; }
+    }
+    private void Write(string name, string value) {
+        if (undo.Count > 0) {
+            Dictionary<string, string> top = undo.Peek();
+            if (!top.ContainsKey(name)) { string cur; data.TryGetValue(name, out cur); top[name] = cur; }   // remember first old value
+        }
+        Apply(name, value);
+    }
+
+    public List<string> Run(List<string> commands) {
+        List<string> result = new List<string>();
+        foreach (string line in commands) {
+            string[] t = line.Trim().Split(' ');
+            switch (t[0]) {
+                case "SET": Write(t[1], t[2]); break;
+                case "UNSET": if (data.ContainsKey(t[1])) Write(t[1], null); break;
+                case "GET": { string v; result.Add(data.TryGetValue(t[1], out v) ? v : "NULL"); break; }
+                case "NUMEQUALTO": { int c; counts.TryGetValue(t[1], out c); result.Add(c.ToString()); break; }
+                case "BEGIN": undo.Push(new Dictionary<string, string>()); break;
+                case "ROLLBACK":
+                    if (undo.Count == 0) result.Add("NO TRANSACTION");
+                    else foreach (var kv in undo.Pop()) Apply(kv.Key, kv.Value);   // restore old values (null = delete)
+                    break;
+                case "COMMIT": if (undo.Count == 0) result.Add("NO TRANSACTION"); else undo.Clear(); break;
+                case "END": return result;
+                default: result.Add("UNKNOWN " + t[0]); break;
+            }
+        }
+        return result;
+    }
+
+    static string Run(params string[] cmds) { return "[" + string.Join(", ", new SimpleDatabase().Run(new List<string>(cmds))) + "]"; }
+
+    static void Main() {
+        Console.WriteLine(Run("SET a 10", "SET b 10", "NUMEQUALTO 10", "BEGIN", "SET a 20", "NUMEQUALTO 10",
+            "ROLLBACK", "NUMEQUALTO 10", "GET a", "ROLLBACK", "END"));      // [2, 1, 2, 10, NO TRANSACTION]
+        Console.WriteLine(Run("BEGIN", "SET a 30", "BEGIN", "SET a 40", "COMMIT", "GET a", "ROLLBACK", "END"));  // [40, NO TRANSACTION]
+        Console.WriteLine(Run("SET a 50", "BEGIN", "GET a", "SET a 60", "BEGIN", "UNSET a", "GET a",
+            "ROLLBACK", "GET a", "COMMIT", "GET a", "END"));                   // [50, NULL, 60, 60]
+        // failure paths: no transaction, unset of a missing name, unknown command, END stops the run
+        Console.WriteLine(Run("COMMIT", "UNSET zzz", "GET zzz", "FLY away", "NUMEQUALTO 5", "END", "GET a"));  // [NO TRANSACTION, NULL, UNKNOWN FLY, 0]
+    }
 }` }
         ],
         dry: { head: ['Command', 'data', 'undo stack', 'counts', 'output'], rows: [['SET a 10, SET b 10', 'a=10 b=10', '[]', '10→2', ''], ['BEGIN, SET a 20', 'a=20 b=10', '[{a:10}]', '10→1, 20→1', ''], ['NUMEQUALTO 10', '', '', '', '1'], ['ROLLBACK', 'a=10 b=10', '[]', '10→2', ''], ['ROLLBACK', '', '[]', '', 'NO TRANSACTION']] },
@@ -7838,7 +9304,7 @@ class LevelScan {
         Map<String, String> cfg = Map.of("root", "INFO", "com.shop", "WARN", "com.shop.db", "DEBUG");
         System.out.println(shouldLog(cfg, "com.shopx", "INFO"));         // false: boundary bug (should be true)
     }
-}`, alt: [{ lang: 'python', code: "class LevelScan:\n    ORDER = [\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"]\n\n    @staticmethod\n    def should_log(cfg, logger, level):\n        best, best_len = \"root\", -1\n        for name in cfg:                                          # O(C) per query\n            if name != \"root\" and logger.startswith(name) and len(name) > best_len: best, best_len = name, len(name)\n        return LevelScan.ORDER.index(level) >= LevelScan.ORDER.index(cfg[best])\n\nif __name__ == \"__main__\":\n    cfg = {\"root\": \"INFO\", \"com.shop\": \"WARN\", \"com.shop.db\": \"DEBUG\"}\n    print(LevelScan.should_log(cfg, \"com.shopx\", \"INFO\"))         # False: boundary bug (should be True)\n" }, { lang: 'ts', code: "class LevelScan {\n  static ORDER = [\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"];\n  static shouldLog(cfg: Map<string, string>, logger: string, level: string): boolean {\n    let best = \"root\", bestLen = -1;\n    for (const name of cfg.keys())                                // O(C) per query\n      if (name !== \"root\" && logger.startsWith(name) && name.length > bestLen) { best = name; bestLen = name.length; }\n    return LevelScan.ORDER.indexOf(level) >= LevelScan.ORDER.indexOf(cfg.get(best)!);\n  }\n}\nconst cfg = new Map([[\"root\", \"INFO\"], [\"com.shop\", \"WARN\"], [\"com.shop.db\", \"DEBUG\"]]);\nconsole.log(LevelScan.shouldLog(cfg, \"com.shopx\", \"INFO\"));       // false: boundary bug (should be true)\n" }, { lang: 'cpp', code: "struct LevelScan {\n    static bool shouldLog(const map<string, string>& cfg, const string& logger, const string& level) {\n        static const vector<string> ORDER = {\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"};\n        string best = \"root\"; int bestLen = -1;\n        for (auto& [name, lvl] : cfg)                                 // O(C) per query\n            if (name != \"root\" && logger.rfind(name, 0) == 0 && (int)name.size() > bestLen) { best = name; bestLen = name.size(); }\n        auto idx = [&](const string& l) { return find(ORDER.begin(), ORDER.end(), l) - ORDER.begin(); };\n        return idx(level) >= idx(cfg.at(best));\n    }\n};\n\nint main() {\n    map<string, string> cfg = {{\"root\", \"INFO\"}, {\"com.shop\", \"WARN\"}, {\"com.shop.db\", \"DEBUG\"}};\n    cout << boolalpha << LevelScan::shouldLog(cfg, \"com.shopx\", \"INFO\") << endl;   // false: boundary bug (should be true)\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "class LevelScan:\n    ORDER = [\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"]\n\n    @staticmethod\n    def should_log(cfg, logger, level):\n        best, best_len = \"root\", -1\n        for name in cfg:                                          # O(C) per query\n            if name != \"root\" and logger.startswith(name) and len(name) > best_len: best, best_len = name, len(name)\n        return LevelScan.ORDER.index(level) >= LevelScan.ORDER.index(cfg[best])\n\nif __name__ == \"__main__\":\n    cfg = {\"root\": \"INFO\", \"com.shop\": \"WARN\", \"com.shop.db\": \"DEBUG\"}\n    print(LevelScan.should_log(cfg, \"com.shopx\", \"INFO\"))         # False: boundary bug (should be True)\n" }, { lang: 'ts', code: "class LevelScan {\n  static ORDER = [\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"];\n  static shouldLog(cfg: Map<string, string>, logger: string, level: string): boolean {\n    let best = \"root\", bestLen = -1;\n    for (const name of cfg.keys())                                // O(C) per query\n      if (name !== \"root\" && logger.startsWith(name) && name.length > bestLen) { best = name; bestLen = name.length; }\n    return LevelScan.ORDER.indexOf(level) >= LevelScan.ORDER.indexOf(cfg.get(best)!);\n  }\n}\nconst cfg = new Map([[\"root\", \"INFO\"], [\"com.shop\", \"WARN\"], [\"com.shop.db\", \"DEBUG\"]]);\nconsole.log(LevelScan.shouldLog(cfg, \"com.shopx\", \"INFO\"));       // false: boundary bug (should be true)\n" }, { lang: 'cpp', code: "struct LevelScan {\n    static bool shouldLog(const map<string, string>& cfg, const string& logger, const string& level) {\n        static const vector<string> ORDER = {\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"};\n        string best = \"root\"; int bestLen = -1;\n        for (auto& [name, lvl] : cfg)                                 // O(C) per query\n            if (name != \"root\" && logger.rfind(name, 0) == 0 && (int)name.size() > bestLen) { best = name; bestLen = name.size(); }\n        auto idx = [&](const string& l) { return find(ORDER.begin(), ORDER.end(), l) - ORDER.begin(); };\n        return idx(level) >= idx(cfg.at(best));\n    }\n};\n\nint main() {\n    map<string, string> cfg = {{\"root\", \"INFO\"}, {\"com.shop\", \"WARN\"}, {\"com.shop.db\", \"DEBUG\"}};\n    cout << boolalpha << LevelScan::shouldLog(cfg, \"com.shopx\", \"INFO\") << endl;   // false: boundary bug (should be true)\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nstatic class LevelScan {\n    static readonly List<string> ORDER = new List<string> { \"DEBUG\", \"INFO\", \"WARN\", \"ERROR\" };\n    public static bool ShouldLog(Dictionary<string, string> cfg, string logger, string level) {\n        string best = \"root\"; int bestLen = -1;\n        foreach (string name in cfg.Keys)                                  // O(C) per query\n            if (name != \"root\" && logger.StartsWith(name) && name.Length > bestLen) { best = name; bestLen = name.Length; }\n        return ORDER.IndexOf(level) >= ORDER.IndexOf(cfg[best]);\n    }\n    static void Main() {\n        var cfg = new Dictionary<string, string> { { \"root\", \"INFO\" }, { \"com.shop\", \"WARN\" }, { \"com.shop.db\", \"DEBUG\" } };\n        Console.WriteLine(ShouldLog(cfg, \"com.shopx\", \"INFO\").ToString().ToLower());   // false: boundary bug (should be true)\n    }\n}\n" }] }
     },
     mcq: { q: 'Which lookup sequence finds the effective level of <code>a.b.c</code>?', options: ['a.b.c → a.b → a → root, stop at the first configured one', 'root → a → a.b → a.b.c, take the last configured', 'Only a.b.c, else root', 'Any config key that is a substring of a.b.c'], answer: 0, explain: 'Climbing from the most specific name and stopping at the first hit gives the closest ancestor in O(depth) hash lookups. Option 2 also works but always walks the full depth.' },
     hints: [
@@ -7980,6 +9446,38 @@ int main() {
     cout << r.shouldLog("com.shopx", Lv::INFO) << "\n";            // true
     cout << name(r.effective("com.shop")) << " " << r.shouldLog("com.shop.db", Lv::ERROR) << "\n";   // WARN true
     cout << name(LevelResolver({}).effective("a.b.c")) << "\n";    // INFO (nothing configured)
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum Lv { DEBUG, INFO, WARN, ERROR }
+
+class LevelResolver {
+    private readonly Dictionary<string, Lv> cfg;
+    public LevelResolver(Dictionary<string, Lv> cfg) { this.cfg = cfg; }
+
+    public Lv Effective(string logger) {
+        string name = logger;
+        while (true) {
+            Lv lv;
+            if (cfg.TryGetValue(name, out lv)) return lv;
+            int dot = name.LastIndexOf('.');
+            if (dot < 0) return cfg.TryGetValue("root", out lv) ? lv : Lv.INFO;
+            name = name.Substring(0, dot);                      // climb exactly one level
+        }
+    }
+    public bool ShouldLog(string logger, Lv level) { return (int)level >= (int)Effective(logger); }
+
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        LevelResolver r = new LevelResolver(new Dictionary<string, Lv> { { "root", Lv.INFO }, { "com.shop", Lv.WARN }, { "com.shop.db", Lv.DEBUG } });
+        Console.WriteLine(B(r.ShouldLog("com.shop.db.pool", Lv.DEBUG)));  // true
+        Console.WriteLine(B(r.ShouldLog("com.shop.cart", Lv.INFO)));      // false
+        Console.WriteLine(B(r.ShouldLog("com.shopx", Lv.INFO)));          // true
+        Console.WriteLine(r.Effective("com.shop") + " " + B(r.ShouldLog("com.shop.db", Lv.ERROR)));  // WARN true
+        Console.WriteLine(new LevelResolver(new Dictionary<string, Lv>()).Effective("a.b.c"));       // INFO (nothing configured)
+    }
 }` }
       ],
       complexity: `<p>O(D) hash lookups per query, D = number of name parts (≤ 10). Memory O(C).</p>`,
@@ -8002,7 +9500,7 @@ class AbsPartitioner {
         System.out.println("polygenelubricants".hashCode());               // -2147483648
         System.out.println(partitionFor("polygenelubricants", 3));         // negative -> invalid partition!
     }
-}`, alt: [{ lang: 'python', code: "import math\n\nclass AbsPartitioner:\n    @staticmethod\n    def string_hash(s):                                       # Java's String.hashCode(): signed 32-bit\n        h = 0\n        for ch in s: h = (31 * h + ord(ch)) & 0xFFFFFFFF\n        return h - (1 << 32) if h >= (1 << 31) else h\n\n    @staticmethod\n    def partition_for(key, n):\n        a = abs(AbsPartitioner.string_hash(key))\n        if a >= (1 << 31): a -= 1 << 32                       # a 32-bit abs() overflows for the minimum int\n        return int(math.fmod(a, n))                           # fmod keeps the sign, like % in Java/C++/JS\n\nif __name__ == \"__main__\":\n    print(AbsPartitioner.string_hash(\"polygenelubricants\"))   # -2147483648\n    print(AbsPartitioner.partition_for(\"polygenelubricants\", 3))   # negative -> invalid partition!\n" }, { lang: 'ts', code: "class AbsPartitioner {\n  static stringHash(s: string): number {                      // Java's String.hashCode(): signed 32-bit\n    let h = 0;\n    for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;\n    return h;\n  }\n  static partitionFor(key: string, n: number): number { return (Math.abs(AbsPartitioner.stringHash(key)) | 0) % n; }\n}\nconsole.log(AbsPartitioner.stringHash(\"polygenelubricants\"));          // -2147483648\nconsole.log(AbsPartitioner.partitionFor(\"polygenelubricants\", 3));     // negative -> invalid partition!\n" }, { lang: 'cpp', code: "struct AbsPartitioner {\n    static int stringHash(const string& s) {                  // Java's String.hashCode(): signed 32-bit\n        uint32_t h = 0;\n        for (char ch : s) h = 31 * h + (unsigned char)ch;\n        return (int)h;\n    }\n    static int partitionFor(const string& key, int n) { return abs(stringHash(key)) % n; }\n};\n\nint main() {\n    cout << AbsPartitioner::stringHash(\"polygenelubricants\") << endl;          // -2147483648\n    cout << AbsPartitioner::partitionFor(\"polygenelubricants\", 3) << endl;     // abs(INT_MIN) overflows: negative -> invalid partition!\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "import math\n\nclass AbsPartitioner:\n    @staticmethod\n    def string_hash(s):                                       # Java's String.hashCode(): signed 32-bit\n        h = 0\n        for ch in s: h = (31 * h + ord(ch)) & 0xFFFFFFFF\n        return h - (1 << 32) if h >= (1 << 31) else h\n\n    @staticmethod\n    def partition_for(key, n):\n        a = abs(AbsPartitioner.string_hash(key))\n        if a >= (1 << 31): a -= 1 << 32                       # a 32-bit abs() overflows for the minimum int\n        return int(math.fmod(a, n))                           # fmod keeps the sign, like % in Java/C++/JS\n\nif __name__ == \"__main__\":\n    print(AbsPartitioner.string_hash(\"polygenelubricants\"))   # -2147483648\n    print(AbsPartitioner.partition_for(\"polygenelubricants\", 3))   # negative -> invalid partition!\n" }, { lang: 'ts', code: "class AbsPartitioner {\n  static stringHash(s: string): number {                      // Java's String.hashCode(): signed 32-bit\n    let h = 0;\n    for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;\n    return h;\n  }\n  static partitionFor(key: string, n: number): number { return (Math.abs(AbsPartitioner.stringHash(key)) | 0) % n; }\n}\nconsole.log(AbsPartitioner.stringHash(\"polygenelubricants\"));          // -2147483648\nconsole.log(AbsPartitioner.partitionFor(\"polygenelubricants\", 3));     // negative -> invalid partition!\n" }, { lang: 'cpp', code: "struct AbsPartitioner {\n    static int stringHash(const string& s) {                  // Java's String.hashCode(): signed 32-bit\n        uint32_t h = 0;\n        for (char ch : s) h = 31 * h + (unsigned char)ch;\n        return (int)h;\n    }\n    static int partitionFor(const string& key, int n) { return abs(stringHash(key)) % n; }\n};\n\nint main() {\n    cout << AbsPartitioner::stringHash(\"polygenelubricants\") << endl;          // -2147483648\n    cout << AbsPartitioner::partitionFor(\"polygenelubricants\", 3) << endl;     // abs(INT_MIN) overflows: negative -> invalid partition!\n}\n" }, { lang: 'csharp', code: "using System;\nstatic class AbsPartitioner {\n    // Java's String.hashCode, so the overflow example is the same in every language\n    public static int JavaHash(string s) { int h = 0; foreach (char c in s) h = unchecked(31 * h + c); return h; }\n    public static int PartitionFor(string key, int n) {\n        int h = JavaHash(key);\n        return (h == int.MinValue ? h : Math.Abs(h)) % n;          // Math.Abs(int.MinValue) overflows: Java returns MIN_VALUE, C# throws\n    }\n    static void Main() {\n        Console.WriteLine(JavaHash(\"polygenelubricants\"));              // -2147483648\n        Console.WriteLine(PartitionFor(\"polygenelubricants\", 3));       // negative -> invalid partition!\n    }\n}\n" }] }
     },
     mcq: { q: 'Why does every message with key "order-42" land in the same partition?', options: ['The partition is a pure function of the key hash and the partition count', 'The broker remembers which partition each key used', 'Round-robin is applied per key', 'Consumers request it'], answer: 0, explain: 'hash(key) mod n is deterministic — as long as n does not change. That is why adding partitions reshuffles keys.' },
     hints: [
@@ -8123,6 +9621,30 @@ int main() {
     cout << line << "\n";                                          // u1 twice the same; nulls 0 1 2
     try { p.partitionFor("x", 0); }
     catch (const invalid_argument& e) { cout << "rejected: " << e.what() << "\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Text;
+using System.Threading;
+
+class SafePartitioner {
+    private int rr = -1;
+    static int JavaHash(string s) { int h = 0; foreach (char c in s) h = unchecked(31 * h + c); return h; }   // stable across runs
+    static int FloorMod(long a, int n) { long r = a % n; return (int)(r < 0 ? r + n : r); }
+    public int PartitionFor(string key, int n) {
+        if (n <= 0) throw new ArgumentException("n must be positive");
+        if (key == null) return FloorMod(Interlocked.Increment(ref rr), n);
+        return FloorMod(JavaHash(key), n);
+    }
+    static void Main() {
+        SafePartitioner p = new SafePartitioner();
+        Console.WriteLine(p.PartitionFor("polygenelubricants", 3));      // 1, never negative
+        StringBuilder sb = new StringBuilder();
+        foreach (string k in new string[] { "u1", null, "u1", null, null }) sb.Append(p.PartitionFor(k, 3)).Append(' ');
+        Console.WriteLine(sb.ToString().Trim());                         // u1 twice the same; nulls 0 1 2
+        try { p.PartitionFor("x", 0); }
+        catch (ArgumentException e) { Console.WriteLine("rejected: " + e.Message); }
+    }
 }` }
       ],
       complexity: `<p>O(length of key) to hash, O(1) otherwise.</p>`,
@@ -8149,7 +9671,7 @@ class KnightScan {
         return out;
     }
     public static void main(String[] args) { System.out.println(moves("b1")); }
-}`, alt: [{ lang: 'python', code: "class KnightScan:\n    @staticmethod\n    def moves(s):\n        r, c = int(s[1]) - 1, ord(s[0]) - ord(\"a\")\n        out = []\n        for rr in range(8):\n            for cc in range(8):                                    # scan all 64\n                if abs(rr - r) * abs(cc - c) == 2: out.append(chr(ord(\"a\") + cc) + str(rr + 1))\n        return sorted(out)\n\nif __name__ == \"__main__\":\n    print(KnightScan.moves(\"b1\"))\n" }, { lang: 'ts', code: "class KnightScan {\n  static moves(s: string): string[] {\n    const r = s.charCodeAt(1) - 49, c = s.charCodeAt(0) - 97;\n    const out: string[] = [];\n    for (let rr = 0; rr < 8; rr++) for (let cc = 0; cc < 8; cc++)       // scan all 64\n      if (Math.abs(rr - r) * Math.abs(cc - c) === 2) out.push(String.fromCharCode(97 + cc) + (rr + 1));\n    return out.sort();\n  }\n}\nconsole.log(KnightScan.moves(\"b1\"));\n" }, { lang: 'cpp', code: "struct KnightScan {\n    static vector<string> moves(const string& s) {\n        int r = s[1] - '1', c = s[0] - 'a';\n        vector<string> out;\n        for (int rr = 0; rr < 8; rr++) for (int cc = 0; cc < 8; cc++)       // scan all 64\n            if (abs(rr - r) * abs(cc - c) == 2) out.push_back(string(1, 'a' + cc) + to_string(rr + 1));\n        sort(out.begin(), out.end());\n        return out;\n    }\n};\n\nint main() { for (auto& m : KnightScan::moves(\"b1\")) cout << m << \" \"; cout << endl; }\n" }] }
+}`, alt: [{ lang: 'python', code: "class KnightScan:\n    @staticmethod\n    def moves(s):\n        r, c = int(s[1]) - 1, ord(s[0]) - ord(\"a\")\n        out = []\n        for rr in range(8):\n            for cc in range(8):                                    # scan all 64\n                if abs(rr - r) * abs(cc - c) == 2: out.append(chr(ord(\"a\") + cc) + str(rr + 1))\n        return sorted(out)\n\nif __name__ == \"__main__\":\n    print(KnightScan.moves(\"b1\"))\n" }, { lang: 'ts', code: "class KnightScan {\n  static moves(s: string): string[] {\n    const r = s.charCodeAt(1) - 49, c = s.charCodeAt(0) - 97;\n    const out: string[] = [];\n    for (let rr = 0; rr < 8; rr++) for (let cc = 0; cc < 8; cc++)       // scan all 64\n      if (Math.abs(rr - r) * Math.abs(cc - c) === 2) out.push(String.fromCharCode(97 + cc) + (rr + 1));\n    return out.sort();\n  }\n}\nconsole.log(KnightScan.moves(\"b1\"));\n" }, { lang: 'cpp', code: "struct KnightScan {\n    static vector<string> moves(const string& s) {\n        int r = s[1] - '1', c = s[0] - 'a';\n        vector<string> out;\n        for (int rr = 0; rr < 8; rr++) for (int cc = 0; cc < 8; cc++)       // scan all 64\n            if (abs(rr - r) * abs(cc - c) == 2) out.push_back(string(1, 'a' + cc) + to_string(rr + 1));\n        sort(out.begin(), out.end());\n        return out;\n    }\n};\n\nint main() { for (auto& m : KnightScan::moves(\"b1\")) cout << m << \" \"; cout << endl; }\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nstatic class KnightScan {\n    public static List<string> Moves(string s) {\n        int r = s[1] - '1', c = s[0] - 'a';\n        List<string> result = new List<string>();\n        for (int rr = 0; rr < 8; rr++) for (int cc = 0; cc < 8; cc++)       // scan all 64\n            if (Math.Abs(rr - r) * Math.Abs(cc - c) == 2) result.Add(\"\" + (char)('a' + cc) + (rr + 1));\n        result.Sort(StringComparer.Ordinal);\n        return result;\n    }\n    static void Main() { Console.WriteLine(\"[\" + string.Join(\", \", Moves(\"b1\")) + \"]\"); }\n}\n" }] }
     },
     mcq: { q: 'Why is <code>|dr| × |dc| == 2</code> exactly the knight\'s move?', options: ['The only positive integer factorisations of 2 are 1×2 and 2×1', 'It also allows 2×2', 'It counts diagonal moves', 'It requires the path to be empty'], answer: 0, explain: '|dr|·|dc| = 2 forces one delta to be 1 and the other 2 — the L shape. Knights jump, so no path check.' },
     hints: [
@@ -8308,6 +9830,38 @@ int main() {
     cout << show(KnightMoves::moves("b1")) << " " << KnightMoves::moves("a1").size() << " " << KnightMoves::moves("d4").size() << "\n";   // [a3, c3, d2] 2 8
     cout << "a1->h8 = " << KnightMoves::minMoves("a1", "h8") << "\n";                                                                       // 6
     cout << KnightMoves::minMoves("a1", "a1") << " " << show(KnightMoves::moves("h8")) << "\n";                                              // 0 [f7, g6]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class KnightMoves {
+    static readonly int[][] D = { new[] { 2, 1 }, new[] { 2, -1 }, new[] { -2, 1 }, new[] { -2, -1 }, new[] { 1, 2 }, new[] { 1, -2 }, new[] { -1, 2 }, new[] { -1, -2 } };
+    static string Sq(int r, int c) { return "" + (char)('a' + c) + (r + 1); }
+
+    public static List<string> Moves(string s) {
+        int r = s[1] - '1', c = s[0] - 'a';
+        List<string> result = new List<string>();
+        foreach (int[] d in D) { int rr = r + d[0], cc = c + d[1]; if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) result.Add(Sq(rr, cc)); }
+        result.Sort(StringComparer.Ordinal);
+        return result;
+    }
+    public static int MinMoves(string s, string t) {
+        Dictionary<string, int> dist = new Dictionary<string, int> { { s, 0 } };
+        Queue<string> q = new Queue<string>(); q.Enqueue(s);
+        while (q.Count > 0) {
+            string cur = q.Dequeue();
+            if (cur == t) return dist[cur];
+            foreach (string nx in Moves(cur)) if (!dist.ContainsKey(nx)) { dist[nx] = dist[cur] + 1; q.Enqueue(nx); }
+        }
+        return -1;
+    }
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        Console.WriteLine(Show(Moves("b1")) + " " + Moves("a1").Count + " " + Moves("d4").Count);  // [a3, c3, d2] 2 8
+        Console.WriteLine("a1->h8 = " + MinMoves("a1", "h8"));                                    // 6
+        Console.WriteLine(MinMoves("a1", "a1") + " " + Show(Moves("h8")));                         // 0 [f7, g6]
+    }
 }` }
       ],
       complexity: `<p>One-move list O(8). BFS O(64 · 8).</p>`,
@@ -8338,7 +9892,7 @@ class ScanCache {
         c.put("a", "1", 1000);
         System.out.println(c.get("a"));                               // to test expiry we would have to sleep 1 s
     }
-}`, alt: [{ lang: 'python', code: "import time\n\nclass ScanCache:\n    def __init__(self):\n        self.exp = {}                                              # key -> expire_at\n        self.vals = {}\n\n    def _purge(self):                                              # O(n) on EVERY call\n        now = time.time() * 1000\n        for k in [k for k, e in self.exp.items() if now >= e]:\n            del self.exp[k]; del self.vals[k]\n\n    def put(self, k, v, ttl):\n        self._purge(); self.vals[k] = v; self.exp[k] = time.time() * 1000 + ttl\n\n    def get(self, k):\n        self._purge(); return self.vals.get(k)\n\nif __name__ == \"__main__\":\n    c = ScanCache()\n    c.put(\"a\", \"1\", 1000)\n    print(c.get(\"a\"))                                              # to test expiry we would have to sleep 1 s\n" }, { lang: 'ts', code: "class ScanCache {\n  private exp = new Map<string, number>();                         // key -> expireAt\n  private vals = new Map<string, string>();\n  private purge(): void {                                          // O(n) on EVERY call\n    const now = Date.now();\n    for (const [k, e] of [...this.exp]) if (now >= e) { this.exp.delete(k); this.vals.delete(k); }\n  }\n  put(k: string, v: string, ttl: number): void { this.purge(); this.vals.set(k, v); this.exp.set(k, Date.now() + ttl); }\n  get(k: string): string | undefined { this.purge(); return this.vals.get(k); }\n}\nconst c = new ScanCache();\nc.put(\"a\", \"1\", 1000);\nconsole.log(c.get(\"a\"));                                           // to test expiry we would have to sleep 1 s\n" }, { lang: 'cpp', code: "class ScanCache {\n    unordered_map<string, long long> exp;                          // key -> expireAt\n    unordered_map<string, string> vals;\n    static long long nowMs() { return chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count(); }\n    void purge() {                                                 // O(n) on EVERY call\n        long long now = nowMs();\n        for (auto it = exp.begin(); it != exp.end();) {\n            if (now >= it->second) { vals.erase(it->first); it = exp.erase(it); } else ++it;\n        }\n    }\npublic:\n    void put(const string& k, const string& v, long long ttl) { purge(); vals[k] = v; exp[k] = nowMs() + ttl; }\n    string get(const string& k) { purge(); auto it = vals.find(k); return it == vals.end() ? \"null\" : it->second; }\n};\n\nint main() {\n    ScanCache c;\n    c.put(\"a\", \"1\", 1000);\n    cout << c.get(\"a\") << endl;                                    // to test expiry we would have to sleep 1 s\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "import time\n\nclass ScanCache:\n    def __init__(self):\n        self.exp = {}                                              # key -> expire_at\n        self.vals = {}\n\n    def _purge(self):                                              # O(n) on EVERY call\n        now = time.time() * 1000\n        for k in [k for k, e in self.exp.items() if now >= e]:\n            del self.exp[k]; del self.vals[k]\n\n    def put(self, k, v, ttl):\n        self._purge(); self.vals[k] = v; self.exp[k] = time.time() * 1000 + ttl\n\n    def get(self, k):\n        self._purge(); return self.vals.get(k)\n\nif __name__ == \"__main__\":\n    c = ScanCache()\n    c.put(\"a\", \"1\", 1000)\n    print(c.get(\"a\"))                                              # to test expiry we would have to sleep 1 s\n" }, { lang: 'ts', code: "class ScanCache {\n  private exp = new Map<string, number>();                         // key -> expireAt\n  private vals = new Map<string, string>();\n  private purge(): void {                                          // O(n) on EVERY call\n    const now = Date.now();\n    for (const [k, e] of [...this.exp]) if (now >= e) { this.exp.delete(k); this.vals.delete(k); }\n  }\n  put(k: string, v: string, ttl: number): void { this.purge(); this.vals.set(k, v); this.exp.set(k, Date.now() + ttl); }\n  get(k: string): string | undefined { this.purge(); return this.vals.get(k); }\n}\nconst c = new ScanCache();\nc.put(\"a\", \"1\", 1000);\nconsole.log(c.get(\"a\"));                                           // to test expiry we would have to sleep 1 s\n" }, { lang: 'cpp', code: "class ScanCache {\n    unordered_map<string, long long> exp;                          // key -> expireAt\n    unordered_map<string, string> vals;\n    static long long nowMs() { return chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count(); }\n    void purge() {                                                 // O(n) on EVERY call\n        long long now = nowMs();\n        for (auto it = exp.begin(); it != exp.end();) {\n            if (now >= it->second) { vals.erase(it->first); it = exp.erase(it); } else ++it;\n        }\n    }\npublic:\n    void put(const string& k, const string& v, long long ttl) { purge(); vals[k] = v; exp[k] = nowMs() + ttl; }\n    string get(const string& k) { purge(); auto it = vals.find(k); return it == vals.end() ? \"null\" : it->second; }\n};\n\nint main() {\n    ScanCache c;\n    c.put(\"a\", \"1\", 1000);\n    cout << c.get(\"a\") << endl;                                    // to test expiry we would have to sleep 1 s\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nclass ScanCache {\n    private readonly Dictionary<string, long> exp = new Dictionary<string, long>();        // key -> expireAt\n    private readonly Dictionary<string, string> vals = new Dictionary<string, string>();\n    static long Now() { return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); }\n    private void Purge() {                                            // O(n) on EVERY call\n        long now = Now();\n        foreach (string k in exp.Where(e => now >= e.Value).Select(e => e.Key).ToList()) { exp.Remove(k); vals.Remove(k); }\n    }\n    public void Put(string k, string v, long ttl) { Purge(); vals[k] = v; exp[k] = Now() + ttl; }\n    public string Get(string k) { Purge(); string v; return vals.TryGetValue(k, out v) ? v : null; }\n    static void Main() {\n        ScanCache c = new ScanCache();\n        c.Put(\"a\", \"1\", 1000);\n        Console.WriteLine(c.Get(\"a\"));                               // to test expiry we would have to sleep 1 s\n    }\n}\n" }] }
     },
     mcq: { q: 'Why store <code>expireAt = now + ttl</code> instead of <code>ttl</code>?', options: ['Checking becomes one comparison and does not drift as time passes', 'It uses less memory', 'The language requires it', 'It makes keys never expire'], answer: 0, explain: 'An absolute deadline is compared directly with the current time; a relative TTL would need its start time stored anyway.' },
     hints: [
@@ -8622,6 +10176,54 @@ int main() {
     c.put("d", "4", 50); c.put("d", "5", 500);                         // overwrite: the first heap item is now stale
     clock.advance(100);
     cout << c.get("d").value_or("null") << " " << c.size() << "\n";    // 5 2
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IClock { long Now(); }
+class FakeClock : IClock { long t; public long Now() { return t; } public void Advance(long ms) { t += ms; } }
+
+sealed class Item { public readonly string Value; public readonly long ExpireAt; public Item(string v, long at) { Value = v; ExpireAt = at; } }
+
+class TtlCache {
+    private readonly Dictionary<string, Item> map = new Dictionary<string, Item>();
+    private readonly SortedSet<Tuple<long, long, string>> heap = new SortedSet<Tuple<long, long, string>>();   // (due, seq, key): a min-heap
+    private long seq = 0;
+    private readonly IClock clock;
+    public TtlCache(IClock clock) { this.clock = clock; }
+
+    public void Put(string k, string v, long ttl) {
+        long at = ttl > 0 ? clock.Now() + ttl : long.MaxValue;
+        map[k] = new Item(v, at);
+        if (ttl > 0) heap.Add(Tuple.Create(at, seq++, k));
+    }
+    public string Get(string k) {
+        Item it;
+        if (!map.TryGetValue(k, out it)) return null;
+        if (clock.Now() >= it.ExpireAt) { map.Remove(k); return null; }   // lazy expiry
+        return it.Value;
+    }
+    public int Size() {
+        while (heap.Count > 0 && heap.Min.Item1 <= clock.Now()) {
+            var d = heap.Min; heap.Remove(d);
+            Item it;
+            if (map.TryGetValue(d.Item3, out it) && it.ExpireAt == d.Item1) map.Remove(d.Item3);  // skip stale heap items
+        }
+        return map.Count;
+    }
+    static void Main() {
+        FakeClock clock = new FakeClock();
+        TtlCache c = new TtlCache(clock);
+        c.Put("a", "1", 1000);
+        clock.Advance(500);  Console.WriteLine(c.Get("a") ?? "null");   // 1
+        clock.Advance(500);  Console.WriteLine(c.Get("a") ?? "null");   // null
+        c.Put("b", "2", 100); c.Put("c", "3", 0);
+        clock.Advance(200);  Console.WriteLine(c.Size());               // 1 (only c)
+        c.Put("d", "4", 50); c.Put("d", "5", 500);                      // overwrite: the first heap item is now stale
+        clock.Advance(100);
+        Console.WriteLine(c.Get("d") + " " + c.Size());                 // 5 2
+    }
 }` }
       ],
       complexity: `<p>put O(log n) with TTL (heap), get O(1), size amortised O(k log n) for k expired items.</p>`,
@@ -8649,7 +10251,7 @@ class RegexFormat {
         try { System.out.println(format("user {} paid {}", "asha", "$5")); }
         catch (RuntimeException e) { System.out.println("crash: " + e); }   // "No group 5"
     }
-}`, alt: [{ lang: 'python', code: "import re\n\nclass RegexFormat:\n    @staticmethod\n    def format(p, *args):\n        for a in args:\n            p = re.sub(r\"\\{\\}\", str(a), p, count=1)          # regex replacement!\n        return p\n\nif __name__ == \"__main__\":\n    print(RegexFormat.format(\"user {} paid {}\", \"asha\", \"5\"))\n    try: print(RegexFormat.format(\"user {} paid {}\", \"asha\", r\"\\5\"))\n    except Exception as e: print(\"crash:\", e)                 # \"invalid group reference 5\"\n" }, { lang: 'ts', code: "class RegexFormat {\n  static format(p: string, ...args: unknown[]): string {\n    for (const a of args) p = p.replace(/\\{\\}/, String(a));    // regex replacement!\n    return p;\n  }\n}\nconsole.log(RegexFormat.format(\"user {} paid {}\", \"asha\", \"5\"));\nconsole.log(RegexFormat.format(\"user {} paid {}\", \"asha\", \"$&\"));   // \"$&\" is a template: inserts the matched \"{}\" again\n" }, { lang: 'cpp', code: "struct RegexFormat {\n    static string format(string p, const vector<string>& args) {\n        for (const string& a : args)\n            p = regex_replace(p, regex(\"\\\\{\\\\}\"), a, regex_constants::format_first_only);   // regex replacement!\n        return p;\n    }\n};\n\nint main() {\n    cout << RegexFormat::format(\"user {} paid {}\", {\"asha\", \"5\"}) << endl;\n    cout << RegexFormat::format(\"user {} paid {}\", {\"asha\", \"$&\"}) << endl;   // \"$&\" is a template: inserts the matched \"{}\" again\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "import re\n\nclass RegexFormat:\n    @staticmethod\n    def format(p, *args):\n        for a in args:\n            p = re.sub(r\"\\{\\}\", str(a), p, count=1)          # regex replacement!\n        return p\n\nif __name__ == \"__main__\":\n    print(RegexFormat.format(\"user {} paid {}\", \"asha\", \"5\"))\n    try: print(RegexFormat.format(\"user {} paid {}\", \"asha\", r\"\\5\"))\n    except Exception as e: print(\"crash:\", e)                 # \"invalid group reference 5\"\n" }, { lang: 'ts', code: "class RegexFormat {\n  static format(p: string, ...args: unknown[]): string {\n    for (const a of args) p = p.replace(/\\{\\}/, String(a));    // regex replacement!\n    return p;\n  }\n}\nconsole.log(RegexFormat.format(\"user {} paid {}\", \"asha\", \"5\"));\nconsole.log(RegexFormat.format(\"user {} paid {}\", \"asha\", \"$&\"));   // \"$&\" is a template: inserts the matched \"{}\" again\n" }, { lang: 'cpp', code: "struct RegexFormat {\n    static string format(string p, const vector<string>& args) {\n        for (const string& a : args)\n            p = regex_replace(p, regex(\"\\\\{\\\\}\"), a, regex_constants::format_first_only);   // regex replacement!\n        return p;\n    }\n};\n\nint main() {\n    cout << RegexFormat::format(\"user {} paid {}\", {\"asha\", \"5\"}) << endl;\n    cout << RegexFormat::format(\"user {} paid {}\", {\"asha\", \"$&\"}) << endl;   // \"$&\" is a template: inserts the matched \"{}\" again\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Text.RegularExpressions;\nstatic class RegexFormat {\n    public static string Format(string p, params object[] args) {\n        foreach (object a in args) p = new Regex(\"\\\\{\\\\}\").Replace(p, a.ToString(), 1);   // regex replacement: \"$1\"-style tokens are interpreted!\n        return p;\n    }\n    static void Main() {\n        Console.WriteLine(Format(\"user {} paid {}\", \"asha\", \"5\"));\n        Console.WriteLine(Format(\"user {} paid {}\", \"asha\", \"$0\"));   // \"$0\" is replaced by the matched text: prints \"{}\" instead of \"$0\"\n    }\n}\n" }] }
     },
     mcq: { q: 'Why do logging APIs prefer <code>log.debug("x={}", x)</code> over <code>log.debug("x=" + x)</code>?', options: ['Formatting happens only if DEBUG is enabled', 'It is shorter to type', 'The language requires it', 'It makes logs JSON'], answer: 0, explain: 'With concatenation the string is built before the call even if the line is then dropped; with placeholders the work happens after the level check.' },
     hints: [
@@ -8809,6 +10411,38 @@ int main() {
     cout << MessageFormatter::format("failed {}", {42, shared_ptr<const Throwable>(make_shared<IOException>("disk"))}) << "\n";
     cout << MessageFormatter::format("ids {}", {vector<int>{1, 2}}) << "\n";
     cout << MessageFormatter::format("empty {} and {}") << "\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.IO;
+using System.Text;
+
+static class MessageFormatter {
+    public static string Format(string pattern, params object[] args) {
+        StringBuilder sb = new StringBuilder(pattern.Length + 16);
+        int used = 0, i = 0;
+        while (i < pattern.Length) {
+            if (string.CompareOrdinal(pattern, i, "\\\\{}", 0, 3) == 0) { sb.Append("{}"); i += 3; }                 // escaped literal
+            else if (string.CompareOrdinal(pattern, i, "{}", 0, 2) == 0 && used < args.Length) { sb.Append(Str(args[used++])); i += 2; }
+            else sb.Append(pattern[i++]);
+        }
+        Exception t = args.Length > used ? args[args.Length - 1] as Exception : null;
+        if (t != null) sb.Append(" | exception: ").Append(t.GetType().Name).Append(": ").Append(t.Message);
+        return sb.ToString();
+    }
+    private static string Str(object o) {
+        object[] arr = o as object[];
+        return arr != null ? "[" + string.Join(", ", arr) + "]" : (o == null ? "null" : o.ToString());
+    }
+
+    static void Main() {
+        Console.WriteLine(Format("user {} paid {}", "asha", "$5"));
+        Console.WriteLine(Format("set \\\\{} to {}", "x"));
+        Console.WriteLine(Format("a {} b {}", 1));
+        Console.WriteLine(Format("failed {}", 42, new IOException("disk")));
+        Console.WriteLine(Format("ids {}", (object)new object[] { 1, 2 }));
+        Console.WriteLine(Format("empty {} and {}"));
+    }
 }` }
       ],
       complexity: `<p>O(L + total argument length). No regex, no re-scanning.</p>`,
@@ -8838,7 +10472,7 @@ class TruncatingAppender {
         for (int i = 1; i <= 7; i++) a.append("L" + i);
         System.out.println(a.file);                           // [L7] — L1..L6 gone forever
     }
-}`, alt: [{ lang: 'python', code: "class TruncatingAppender:\n    def __init__(self, max_lines):\n        self.file = []\n        self.max_lines = max_lines\n\n    def append(self, line):\n        if len(self.file) >= self.max_lines: self.file.clear()   # \"rotation\" = lose everything\n        self.file.append(line)\n\nif __name__ == \"__main__\":\n    a = TruncatingAppender(2)\n    for i in range(1, 8): a.append(f\"L{i}\")\n    print(a.file)                                               # ['L7'] - L1..L6 gone forever\n" }, { lang: 'ts', code: "class TruncatingAppender {\n  file: string[] = [];\n  constructor(private maxLines: number) {}\n  append(line: string): void {\n    if (this.file.length >= this.maxLines) this.file = [];     // \"rotation\" = lose everything\n    this.file.push(line);\n  }\n}\nconst a = new TruncatingAppender(2);\nfor (let i = 1; i <= 7; i++) a.append(\"L\" + i);\nconsole.log(a.file);                                            // [ 'L7' ] - L1..L6 gone forever\n" }, { lang: 'cpp', code: "class TruncatingAppender {\n    int maxLines;\npublic:\n    vector<string> file;\n    TruncatingAppender(int maxLines) : maxLines(maxLines) {}\n    void append(const string& line) {\n        if ((int)file.size() >= maxLines) file.clear();         // \"rotation\" = lose everything\n        file.push_back(line);\n    }\n};\n\nint main() {\n    TruncatingAppender a(2);\n    for (int i = 1; i <= 7; i++) a.append(\"L\" + to_string(i));\n    for (auto& l : a.file) cout << l << \" \";                    // L7 - L1..L6 gone forever\n    cout << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "class TruncatingAppender:\n    def __init__(self, max_lines):\n        self.file = []\n        self.max_lines = max_lines\n\n    def append(self, line):\n        if len(self.file) >= self.max_lines: self.file.clear()   # \"rotation\" = lose everything\n        self.file.append(line)\n\nif __name__ == \"__main__\":\n    a = TruncatingAppender(2)\n    for i in range(1, 8): a.append(f\"L{i}\")\n    print(a.file)                                               # ['L7'] - L1..L6 gone forever\n" }, { lang: 'ts', code: "class TruncatingAppender {\n  file: string[] = [];\n  constructor(private maxLines: number) {}\n  append(line: string): void {\n    if (this.file.length >= this.maxLines) this.file = [];     // \"rotation\" = lose everything\n    this.file.push(line);\n  }\n}\nconst a = new TruncatingAppender(2);\nfor (let i = 1; i <= 7; i++) a.append(\"L\" + i);\nconsole.log(a.file);                                            // [ 'L7' ] - L1..L6 gone forever\n" }, { lang: 'cpp', code: "class TruncatingAppender {\n    int maxLines;\npublic:\n    vector<string> file;\n    TruncatingAppender(int maxLines) : maxLines(maxLines) {}\n    void append(const string& line) {\n        if ((int)file.size() >= maxLines) file.clear();         // \"rotation\" = lose everything\n        file.push_back(line);\n    }\n};\n\nint main() {\n    TruncatingAppender a(2);\n    for (int i = 1; i <= 7; i++) a.append(\"L\" + to_string(i));\n    for (auto& l : a.file) cout << l << \" \";                    // L7 - L1..L6 gone forever\n    cout << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass TruncatingAppender {\n    public readonly List<string> File = new List<string>();\n    readonly int maxLines;\n    public TruncatingAppender(int maxLines) { this.maxLines = maxLines; }\n    public void Append(string line) {\n        if (File.Count >= maxLines) File.Clear();          // \"rotation\" = lose everything\n        File.Add(line);\n    }\n    static void Main() {\n        TruncatingAppender a = new TruncatingAppender(2);\n        for (int i = 1; i <= 7; i++) a.Append(\"L\" + i);\n        Console.WriteLine(\"[\" + string.Join(\", \", a.File) + \"]\");   // [L7] - L1..L6 gone forever\n    }\n}\n" }] }
     },
     mcq: { q: 'Which structure makes "shift .1→.2→.3 and drop the oldest" O(1)?', options: ['A Deque of backups: addFirst the current file, pollLast when too many', 'An array copied on every rotation', 'A hash map keyed by file name rebuilt each time', 'A TreeMap sorted by size'], answer: 0, explain: 'The rotated files are a sliding window of the most recent K; a Deque gives O(1) push-front and pop-back. Names are derived from position when listing.' },
     hints: [
@@ -9017,6 +10651,49 @@ int main() {
     RollingAppender noBackups(2, 0);                      // maxBackups = 0: rotation just starts fresh
     for (int i = 1; i <= 5; i++) noBackups.append("L" + to_string(i));
     cout << showFiles(noBackups.files()) << " " << showFiles(RollingAppender(2, 1).files()) << "\n";   // {app.log=[L5]} {app.log=[]}
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class RollingAppender {
+    private readonly int maxLines, maxBackups;
+    private List<string> current = new List<string>();
+    private readonly LinkedList<List<string>> backups = new LinkedList<List<string>>();   // newest first
+    private readonly object gate = new object();
+
+    public RollingAppender(int maxLines, int maxBackups) { this.maxLines = maxLines; this.maxBackups = maxBackups; }
+
+    public void Append(string line) {
+        lock (gate) {
+            if (current.Count >= maxLines) Rotate();
+            current.Add(line);
+        }
+    }
+    private void Rotate() {
+        if (maxBackups > 0) backups.AddFirst(current);
+        while (backups.Count > maxBackups) backups.RemoveLast();        // delete the oldest
+        current = new List<string>();
+    }
+    public List<KeyValuePair<string, List<string>>> Files() {
+        lock (gate) {
+            var result = new List<KeyValuePair<string, List<string>>>();
+            result.Add(new KeyValuePair<string, List<string>>("app.log", new List<string>(current)));
+            int i = 1;
+            foreach (List<string> b in backups) result.Add(new KeyValuePair<string, List<string>>("app.log." + i++, new List<string>(b)));
+            return result;
+        }
+    }
+    static string Show(List<KeyValuePair<string, List<string>>> f) { return "{" + string.Join(", ", f.Select(kv => kv.Key + "=[" + string.Join(", ", kv.Value) + "]")) + "}"; }
+    static void Main() {
+        RollingAppender a = new RollingAppender(2, 2);
+        for (int i = 1; i <= 7; i++) a.Append("L" + i);
+        Console.WriteLine(Show(a.Files()));   // {app.log=[L7], app.log.1=[L5, L6], app.log.2=[L3, L4]}
+        RollingAppender noBackups = new RollingAppender(2, 0);   // maxBackups = 0: rotation just starts fresh
+        for (int i = 1; i <= 5; i++) noBackups.Append("L" + i);
+        Console.WriteLine(Show(noBackups.Files()) + " " + Show(new RollingAppender(2, 1).Files()));   // {app.log=[L5]} {app.log=[]}
+    }
 }` }
       ],
       complexity: `<p>append O(1) amortised; rotation O(1); listing O(total lines kept).</p>`,
@@ -9040,7 +10717,7 @@ class EveryoneReadsAll {
         for (String c : consumers) for (int p = 0; p < partitions; p++) processed++;   // each reads all
         System.out.println("each message processed " + processed / partitions + " times");  // 3
     }
-}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    consumers = [\"c1\", \"c2\", \"c3\"]\n    partitions, processed = 7, 0\n    for c in consumers:\n        for p in range(partitions): processed += 1             # each reads all\n    print(f\"each message processed {processed // partitions} times\")   # 3\n" }, { lang: 'ts', code: "const consumers = [\"c1\", \"c2\", \"c3\"];\nconst partitions = 7;\nlet processed = 0;\nfor (const c of consumers) for (let p = 0; p < partitions; p++) processed++;   // each reads all\nconsole.log(\"each message processed \" + Math.floor(processed / partitions) + \" times\");   // 3\n" }, { lang: 'cpp', code: "int main() {\n    vector<string> consumers = {\"c1\", \"c2\", \"c3\"};\n    int partitions = 7, processed = 0;\n    for (auto& c : consumers) for (int p = 0; p < partitions; p++) processed++;   // each reads all\n    cout << \"each message processed \" << processed / partitions << \" times\" << endl;   // 3\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    consumers = [\"c1\", \"c2\", \"c3\"]\n    partitions, processed = 7, 0\n    for c in consumers:\n        for p in range(partitions): processed += 1             # each reads all\n    print(f\"each message processed {processed // partitions} times\")   # 3\n" }, { lang: 'ts', code: "const consumers = [\"c1\", \"c2\", \"c3\"];\nconst partitions = 7;\nlet processed = 0;\nfor (const c of consumers) for (let p = 0; p < partitions; p++) processed++;   // each reads all\nconsole.log(\"each message processed \" + Math.floor(processed / partitions) + \" times\");   // 3\n" }, { lang: 'cpp', code: "int main() {\n    vector<string> consumers = {\"c1\", \"c2\", \"c3\"};\n    int partitions = 7, processed = 0;\n    for (auto& c : consumers) for (int p = 0; p < partitions; p++) processed++;   // each reads all\n    cout << \"each message processed \" << processed / partitions << \" times\" << endl;   // 3\n}\n" }, { lang: 'csharp', code: "using System;\nclass EveryoneReadsAll {\n    static void Main() {\n        string[] consumers = { \"c1\", \"c2\", \"c3\" };\n        int partitions = 7, processed = 0;\n        foreach (string c in consumers) for (int p = 0; p < partitions; p++) processed++;   // each reads all\n        Console.WriteLine(\"each message processed \" + processed / partitions + \" times\");    // 3\n    }\n}\n" }] }
     },
     mcq: { q: 'Group has 3 consumers and the topic has 2 partitions. What happens?', options: ['One consumer is idle', 'Partitions are split into halves', 'Two consumers share a partition and both get every message', 'The group refuses to start'], answer: 0, explain: 'Inside a group a partition has exactly one owner, so partitions cap the parallelism.' },
     hints: [
@@ -9196,6 +10873,39 @@ int main() {
     cout << show(Assignors::roundRobin(cs, 7)) << "\\n";                // {c1=[0, 3, 6], c2=[1, 4], c3=[2, 5]}
     cout << show(Assignors::range({"a", "b", "c"}, 2)) << "\\n";        // c idle
     cout << show(Assignors::roundRobin({"a", "b"}, 0)) << "\\n";        // no partitions: nobody gets anything
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+static class Assignors {
+    public static List<KeyValuePair<string, List<int>>> Range(IEnumerable<string> consumers, int partitions) {
+        List<string> cs = consumers.OrderBy(c => c, StringComparer.Ordinal).ToList();
+        var result = new List<KeyValuePair<string, List<int>>>();
+        int b = partitions / cs.Count, extra = partitions % cs.Count, p = 0;
+        for (int i = 0; i < cs.Count; i++) {
+            List<int> mine = new List<int>();
+            int n = b + (i < extra ? 1 : 0);
+            for (int k = 0; k < n; k++) mine.Add(p++);
+            result.Add(new KeyValuePair<string, List<int>>(cs[i], mine));
+        }
+        return result;
+    }
+    public static List<KeyValuePair<string, List<int>>> RoundRobin(IEnumerable<string> consumers, int partitions) {
+        List<string> cs = consumers.OrderBy(c => c, StringComparer.Ordinal).ToList();
+        var result = cs.Select(c => new KeyValuePair<string, List<int>>(c, new List<int>())).ToList();
+        for (int p = 0; p < partitions; p++) result[p % cs.Count].Value.Add(p);
+        return result;
+    }
+    static string Show(List<KeyValuePair<string, List<int>>> m) { return "{" + string.Join(", ", m.Select(kv => kv.Key + "=[" + string.Join(", ", kv.Value) + "]")) + "}"; }
+    static void Main() {
+        string[] cs = { "c3", "c1", "c2" };
+        Console.WriteLine(Show(Range(cs, 7)));        // {c1=[0, 1, 2], c2=[3, 4], c3=[5, 6]}
+        Console.WriteLine(Show(RoundRobin(cs, 7)));   // {c1=[0, 3, 6], c2=[1, 4], c3=[2, 5]}
+        Console.WriteLine(Show(Range(new[] { "a", "b", "c" }, 2)));   // c idle
+        Console.WriteLine(Show(RoundRobin(new[] { "a", "b" }, 0)));   // no partitions: nobody gets anything
+    }
 }` }
       ],
       complexity: `<p>O(C log C + P) time, O(P) output.</p>`,
@@ -9220,7 +10930,7 @@ class LagSimulate {
             for (long off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)
         System.out.println("total lag " + lag);
     }
-}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    end, committed = [120, 50, 80], [100, 50, 30]\n    lag = 0\n    for p in range(len(end)):\n        for off in range(committed[p], end[p]): lag += 1      # O(messages), not O(partitions)\n    print(\"total lag\", lag)\n" }, { lang: 'ts', code: "const end = [120, 50, 80], committed = [100, 50, 30];\nlet lag = 0;\nfor (let p = 0; p < end.length; p++)\n  for (let off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)\nconsole.log(\"total lag \" + lag);\n" }, { lang: 'cpp', code: "int main() {\n    long long end[] = {120, 50, 80}, committed[] = {100, 50, 30};\n    long long lag = 0;\n    for (int p = 0; p < 3; p++)\n        for (long long off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)\n    cout << \"total lag \" << lag << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    end, committed = [120, 50, 80], [100, 50, 30]\n    lag = 0\n    for p in range(len(end)):\n        for off in range(committed[p], end[p]): lag += 1      # O(messages), not O(partitions)\n    print(\"total lag\", lag)\n" }, { lang: 'ts', code: "const end = [120, 50, 80], committed = [100, 50, 30];\nlet lag = 0;\nfor (let p = 0; p < end.length; p++)\n  for (let off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)\nconsole.log(\"total lag \" + lag);\n" }, { lang: 'cpp', code: "int main() {\n    long long end[] = {120, 50, 80}, committed[] = {100, 50, 30};\n    long long lag = 0;\n    for (int p = 0; p < 3; p++)\n        for (long long off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)\n    cout << \"total lag \" << lag << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nclass LagSimulate {\n    static void Main() {\n        long[] end = { 120, 50, 80 }, committed = { 100, 50, 30 };\n        long lag = 0;\n        for (int p = 0; p < end.Length; p++)\n            for (long off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)\n        Console.WriteLine(\"total lag \" + lag);\n    }\n}\n" }] }
     },
     mcq: { q: 'Lag on one partition keeps growing while the others stay near 0. Most likely cause?', options: ['A hot key or a slow/poison message on that partition', 'The broker is down', 'Too many partitions overall', 'Auto-commit is disabled everywhere'], answer: 0, explain: 'Per-partition skew points to that partition: a hot key sending most traffic there, or one message that keeps failing and blocking progress.' },
     hints: [
@@ -9358,6 +11068,32 @@ int main() {
     cout << "total lag " << lag << ", re-delivered " << redelivered << "\n";   // 70, 55
     try { LagCalculator::report({{3, 10, 8, 5}}); }                            // committed > position
     catch (const invalid_argument& e) { cout << e.what() << "\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class PartitionState { public readonly int Id; public readonly long End, Committed, Position; public PartitionState(int id, long end, long committed, long position) { Id = id; End = end; Committed = committed; Position = position; } }
+sealed class LagReport { public readonly int Id; public readonly long Lag, Redelivered; public LagReport(int id, long lag, long redelivered) { Id = id; Lag = lag; Redelivered = redelivered; } }
+
+static class LagCalculator {
+    public static List<LagReport> Report(List<PartitionState> parts) {
+        List<LagReport> result = new List<LagReport>();
+        foreach (PartitionState p in parts) {
+            if (p.Committed > p.Position || p.Position > p.End)
+                throw new ArgumentException("bad offsets on P" + p.Id);
+            result.Add(new LagReport(p.Id, p.End - p.Committed, p.Position - p.Committed));
+        }
+        return result;
+    }
+    static void Main() {
+        List<LagReport> r = Report(new List<PartitionState> { new PartitionState(0, 120, 100, 110), new PartitionState(1, 50, 50, 50), new PartitionState(2, 80, 30, 75) });
+        foreach (LagReport x in r) Console.WriteLine("P" + x.Id + " lag=" + x.Lag + " redelivered=" + x.Redelivered);
+        Console.WriteLine("total lag " + r.Sum(x => x.Lag) + ", re-delivered " + r.Sum(x => x.Redelivered));   // 70, 55
+        try { Report(new List<PartitionState> { new PartitionState(3, 10, 8, 5) }); }                          // committed > position
+        catch (ArgumentException e) { Console.WriteLine(e.Message); }
+    }
 }` }
       ],
       complexity: `<p>O(P) time, O(P) output.</p>`,
@@ -9391,7 +11127,7 @@ class CheckByAllMoves {
             if (b[r][c] == 'r' && rookAttacks(b, r, c, 0, 4)) found++;
         System.out.println("rook attackers: " + found);
     }
-}`, alt: [{ lang: 'python', code: "class CheckByAllMoves:\n    # simplified brute: test every enemy rook/queen in a straight line with a path walk\n    @staticmethod\n    def rook_attacks(b, r, c, kr, kc):\n        if r != kr and c != kc: return False\n        sr = (kr > r) - (kr < r)\n        sc = (kc > c) - (kc < c)\n        i, j = r + sr, c + sc\n        while i != kr or j != kc:\n            if b[i][j] != \".\": return False\n            i += sr; j += sc\n        return True\n\nif __name__ == \"__main__\":\n    b = [[\".\"] * 8 for _ in range(8)]\n    b[0][4] = \"K\"; b[7][4] = \"r\"\n    found = 0\n    for r in range(8):\n        for c in range(8):                                     # scans all 64 squares\n            if b[r][c] == \"r\" and CheckByAllMoves.rook_attacks(b, r, c, 0, 4): found += 1\n    print(\"rook attackers:\", found)\n" }, { lang: 'ts', code: "class CheckByAllMoves {\n  // simplified brute: test every enemy rook/queen in a straight line with a path walk\n  static rookAttacks(b: string[][], r: number, c: number, kr: number, kc: number): boolean {\n    if (r !== kr && c !== kc) return false;\n    const sr = Math.sign(kr - r), sc = Math.sign(kc - c);\n    for (let i = r + sr, j = c + sc; i !== kr || j !== kc; i += sr, j += sc) if (b[i][j] !== \".\") return false;\n    return true;\n  }\n}\nconst b: string[][] = Array.from({ length: 8 }, () => new Array<string>(8).fill(\".\"));\nb[0][4] = \"K\"; b[7][4] = \"r\";\nlet found = 0;\nfor (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++)          // scans all 64 squares\n  if (b[r][c] === \"r\" && CheckByAllMoves.rookAttacks(b, r, c, 0, 4)) found++;\nconsole.log(\"rook attackers: \" + found);\n" }, { lang: 'cpp', code: "struct CheckByAllMoves {\n    // simplified brute: test every enemy rook/queen in a straight line with a path walk\n    static bool rookAttacks(const vector<vector<char>>& b, int r, int c, int kr, int kc) {\n        if (r != kr && c != kc) return false;\n        int sr = (kr > r) - (kr < r), sc = (kc > c) - (kc < c);\n        for (int i = r + sr, j = c + sc; i != kr || j != kc; i += sr, j += sc) if (b[i][j] != '.') return false;\n        return true;\n    }\n};\n\nint main() {\n    vector<vector<char>> b(8, vector<char>(8, '.'));\n    b[0][4] = 'K'; b[7][4] = 'r';\n    int found = 0;\n    for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++)         // scans all 64 squares\n        if (b[r][c] == 'r' && CheckByAllMoves::rookAttacks(b, r, c, 0, 4)) found++;\n    cout << \"rook attackers: \" << found << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "class CheckByAllMoves:\n    # simplified brute: test every enemy rook/queen in a straight line with a path walk\n    @staticmethod\n    def rook_attacks(b, r, c, kr, kc):\n        if r != kr and c != kc: return False\n        sr = (kr > r) - (kr < r)\n        sc = (kc > c) - (kc < c)\n        i, j = r + sr, c + sc\n        while i != kr or j != kc:\n            if b[i][j] != \".\": return False\n            i += sr; j += sc\n        return True\n\nif __name__ == \"__main__\":\n    b = [[\".\"] * 8 for _ in range(8)]\n    b[0][4] = \"K\"; b[7][4] = \"r\"\n    found = 0\n    for r in range(8):\n        for c in range(8):                                     # scans all 64 squares\n            if b[r][c] == \"r\" and CheckByAllMoves.rook_attacks(b, r, c, 0, 4): found += 1\n    print(\"rook attackers:\", found)\n" }, { lang: 'ts', code: "class CheckByAllMoves {\n  // simplified brute: test every enemy rook/queen in a straight line with a path walk\n  static rookAttacks(b: string[][], r: number, c: number, kr: number, kc: number): boolean {\n    if (r !== kr && c !== kc) return false;\n    const sr = Math.sign(kr - r), sc = Math.sign(kc - c);\n    for (let i = r + sr, j = c + sc; i !== kr || j !== kc; i += sr, j += sc) if (b[i][j] !== \".\") return false;\n    return true;\n  }\n}\nconst b: string[][] = Array.from({ length: 8 }, () => new Array<string>(8).fill(\".\"));\nb[0][4] = \"K\"; b[7][4] = \"r\";\nlet found = 0;\nfor (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++)          // scans all 64 squares\n  if (b[r][c] === \"r\" && CheckByAllMoves.rookAttacks(b, r, c, 0, 4)) found++;\nconsole.log(\"rook attackers: \" + found);\n" }, { lang: 'cpp', code: "struct CheckByAllMoves {\n    // simplified brute: test every enemy rook/queen in a straight line with a path walk\n    static bool rookAttacks(const vector<vector<char>>& b, int r, int c, int kr, int kc) {\n        if (r != kr && c != kc) return false;\n        int sr = (kr > r) - (kr < r), sc = (kc > c) - (kc < c);\n        for (int i = r + sr, j = c + sc; i != kr || j != kc; i += sr, j += sc) if (b[i][j] != '.') return false;\n        return true;\n    }\n};\n\nint main() {\n    vector<vector<char>> b(8, vector<char>(8, '.'));\n    b[0][4] = 'K'; b[7][4] = 'r';\n    int found = 0;\n    for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++)         // scans all 64 squares\n        if (b[r][c] == 'r' && CheckByAllMoves::rookAttacks(b, r, c, 0, 4)) found++;\n    cout << \"rook attackers: \" << found << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nstatic class CheckByAllMoves {\n    // simplified brute: test every enemy rook/queen in a straight line with a path walk\n    static bool RookAttacks(char[][] b, int r, int c, int kr, int kc) {\n        if (r != kr && c != kc) return false;\n        int sr = Math.Sign(kr - r), sc = Math.Sign(kc - c);\n        for (int i = r + sr, j = c + sc; i != kr || j != kc; i += sr, j += sc) if (b[i][j] != '.') return false;\n        return true;\n    }\n    static void Main() {\n        char[][] b = new char[8][];\n        for (int r = 0; r < 8; r++) b[r] = \"........\".ToCharArray();\n        b[0][4] = 'K'; b[7][4] = 'r';\n        int found = 0;\n        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++)                // scans all 64 squares\n            if (b[r][c] == 'r' && RookAttacks(b, r, c, 0, 4)) found++;\n        Console.WriteLine(\"rook attackers: \" + found);\n    }\n}\n" }] }
     },
     mcq: { q: 'Why look outward FROM the king instead of from every enemy piece?', options: ['Only 8 rays + 8 knight squares + 2 pawn squares can contain an attacker', 'Enemy pieces cannot be iterated', 'It handles castling', 'It is required for en passant'], answer: 0, explain: 'A "super-piece" placed on the king square reveals all attackers: slide like a queen and see who is at the end of each ray, jump like a knight, and check the two pawn-capture squares.' },
     hints: [
@@ -9636,6 +11372,56 @@ int main() {
     cout << show(CheckDetector::attackers(pawnCheck, false)) << "\n";    // [d7] a white pawn attacks the black king
     vector<string> safe = {"........", "........", "........", "........", "........", "........", "r.......", "....K..k"};
     cout << show(CheckDetector::attackers(safe, true)) << "\n";          // [] not in check
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class CheckDetector {
+    static readonly int[][] STRAIGHT = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } }, DIAG = { new[] { 1, 1 }, new[] { 1, -1 }, new[] { -1, 1 }, new[] { -1, -1 } };
+    static readonly int[][] KNIGHT = { new[] { 2, 1 }, new[] { 2, -1 }, new[] { -2, 1 }, new[] { -2, -1 }, new[] { 1, 2 }, new[] { 1, -2 }, new[] { -1, 2 }, new[] { -1, -2 } };
+
+    public static List<string> Attackers(string[] ranks8to1, bool white) {
+        char[][] b = new char[8][];
+        for (int i = 0; i < 8; i++) b[7 - i] = ranks8to1[i].ToCharArray();
+        int kr = -1, kc = -1;
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) if (b[r][c] == (white ? 'K' : 'k')) { kr = r; kc = c; }
+        List<string> result = new List<string>();
+        Ray(b, kr, kc, STRAIGHT, white, "RQ", result);
+        Ray(b, kr, kc, DIAG, white, "BQ", result);
+        Jump(b, kr, kc, KNIGHT, white, 'N', result);
+        Jump(b, kr, kc, new[] { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 }, new[] { 1, 1 }, new[] { 1, -1 }, new[] { -1, 1 }, new[] { -1, -1 } }, white, 'K', result);
+        int pr = white ? kr + 1 : kr - 1;                         // enemy pawns capture toward us
+        Jump(b, kr, kc, new[] { new[] { pr - kr, 1 }, new[] { pr - kr, -1 } }, white, 'P', result);
+        return result;
+    }
+    private static bool Enemy(char p, bool white) { return p != '.' && char.IsUpper(p) != white; }
+    private static string Sq(int r, int c) { return "" + (char)('a' + c) + (r + 1); }
+    private static void Ray(char[][] b, int kr, int kc, int[][] dirs, bool white, string kinds, List<string> result) {
+        foreach (int[] d in dirs)
+            for (int r = kr + d[0], c = kc + d[1]; r >= 0 && r < 8 && c >= 0 && c < 8; r += d[0], c += d[1]) {
+                if (b[r][c] == '.') continue;
+                if (Enemy(b[r][c], white) && kinds.IndexOf(char.ToUpper(b[r][c])) >= 0) result.Add(Sq(r, c));
+                break;                                            // first piece blocks the ray
+            }
+    }
+    private static void Jump(char[][] b, int kr, int kc, int[][] ds, bool white, char kind, List<string> result) {
+        foreach (int[] d in ds) {
+            int r = kr + d[0], c = kc + d[1];
+            if (r >= 0 && r < 8 && c >= 0 && c < 8 && Enemy(b[r][c], white) && char.ToUpper(b[r][c]) == kind) result.Add(Sq(r, c));
+        }
+    }
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        string[] dbl = { "....r...", "........", "........", "........", "........", "...n....", "........", "....K..." };
+        Console.WriteLine(Show(Attackers(dbl, true)));                   // [e8, d3] double check
+        string[] blocked = { "....r...", "........", "........", "........", "....P...", "...n....", "........", "....K..." };
+        Console.WriteLine(Show(Attackers(blocked, true)));               // [d3]
+        string[] pawnCheck = { "....k...", "...P....", "........", "........", "........", "........", "........", "....K..." };
+        Console.WriteLine(Show(Attackers(pawnCheck, false)));            // [d7] a white pawn attacks the black king
+        string[] safe = { "........", "........", "........", "........", "........", "........", "r.......", "....K..k" };
+        Console.WriteLine(Show(Attackers(safe, true)));                  // [] not in check
+    }
 }` }
       ],
       complexity: `<p>O(1): at most 8 rays × 7 squares + 18 jump squares. Plus O(64) to find the king (or track it incrementally).</p>`,
@@ -9661,7 +11447,7 @@ class ForeverDedupe {
         d.append("disk full"); d.append("ok"); d.append("disk full");   // an hour later: silently dropped!
         System.out.println(d.out);                                         // [disk full, ok]
     }
-}`, alt: [{ lang: 'python', code: "class ForeverDedupe:\n    def __init__(self):\n        self.seen = set()                                      # grows forever\n        self.out = []\n\n    def append(self, m):\n        if m not in self.seen:\n            self.seen.add(m); self.out.append(m)\n\nif __name__ == \"__main__\":\n    d = ForeverDedupe()\n    d.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\")   # an hour later: silently dropped!\n    print(d.out)                                               # ['disk full', 'ok']\n" }, { lang: 'ts', code: "class ForeverDedupe {\n  private seen = new Set<string>();                            // grows forever\n  out: string[] = [];\n  append(m: string): void { if (!this.seen.has(m)) { this.seen.add(m); this.out.push(m); } }\n}\nconst d = new ForeverDedupe();\nd.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\");   // an hour later: silently dropped!\nconsole.log(d.out);                                            // [ 'disk full', 'ok' ]\n" }, { lang: 'cpp', code: "class ForeverDedupe {\n    unordered_set<string> seen;                                // grows forever\npublic:\n    vector<string> out;\n    void append(const string& m) { if (seen.insert(m).second) out.push_back(m); }\n};\n\nint main() {\n    ForeverDedupe d;\n    d.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\");   // an hour later: silently dropped!\n    for (auto& m : d.out) cout << m << \" | \";                  // disk full | ok\n    cout << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "class ForeverDedupe:\n    def __init__(self):\n        self.seen = set()                                      # grows forever\n        self.out = []\n\n    def append(self, m):\n        if m not in self.seen:\n            self.seen.add(m); self.out.append(m)\n\nif __name__ == \"__main__\":\n    d = ForeverDedupe()\n    d.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\")   # an hour later: silently dropped!\n    print(d.out)                                               # ['disk full', 'ok']\n" }, { lang: 'ts', code: "class ForeverDedupe {\n  private seen = new Set<string>();                            // grows forever\n  out: string[] = [];\n  append(m: string): void { if (!this.seen.has(m)) { this.seen.add(m); this.out.push(m); } }\n}\nconst d = new ForeverDedupe();\nd.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\");   // an hour later: silently dropped!\nconsole.log(d.out);                                            // [ 'disk full', 'ok' ]\n" }, { lang: 'cpp', code: "class ForeverDedupe {\n    unordered_set<string> seen;                                // grows forever\npublic:\n    vector<string> out;\n    void append(const string& m) { if (seen.insert(m).second) out.push_back(m); }\n};\n\nint main() {\n    ForeverDedupe d;\n    d.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\");   // an hour later: silently dropped!\n    for (auto& m : d.out) cout << m << \" | \";                  // disk full | ok\n    cout << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass ForeverDedupe {\n    private readonly HashSet<string> seen = new HashSet<string>();      // grows forever\n    public readonly List<string> Out = new List<string>();\n    public void Append(string m) { if (seen.Add(m)) Out.Add(m); }\n    static void Main() {\n        ForeverDedupe d = new ForeverDedupe();\n        d.Append(\"disk full\"); d.Append(\"ok\"); d.Append(\"disk full\");   // an hour later: silently dropped!\n        Console.WriteLine(\"[\" + string.Join(\", \", d.Out) + \"]\");         // [disk full, ok]\n    }\n}\n" }] }
     },
     mcq: { q: 'Which pattern lets you add de-duplication to ANY appender without editing it?', options: ['Decorator', 'Singleton', 'Builder', 'Visitor'], answer: 0, explain: 'The de-duplicator implements the same Appender interface and wraps another Appender, adding behaviour before delegating.' },
     hints: [
@@ -9878,6 +11664,58 @@ int main() {
     for (long long time : {0, 5, 2000}) { t = time; d2.write("x"); }
     d2.close();
     cout << show(out2) << "\n";                          // [x, last message repeated 1 times, x]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface ILineSink { void Write(string line); }
+class ListSink : ILineSink { readonly List<string> l; public ListSink(List<string> l) { this.l = l; } public void Write(string line) { l.Add(line); } }
+
+class DedupeAppender : ILineSink {
+    private readonly ILineSink target;
+    private readonly long windowMs;
+    private readonly Func<long> clock;
+    private string last;
+    private long windowStart;
+    private int suppressed;
+    private readonly object gate = new object();
+
+    public DedupeAppender(ILineSink target, long windowMs, Func<long> clock) { this.target = target; this.windowMs = windowMs; this.clock = clock; }
+
+    public void Write(string line) {
+        lock (gate) {
+            long now = clock();
+            if (line == last && now - windowStart < windowMs) { suppressed++; return; }
+            Flush();
+            target.Write(line);
+            last = line;
+            windowStart = now;
+        }
+    }
+    public void Close() { lock (gate) Flush(); }
+    private void Flush() {
+        if (suppressed > 0) target.Write("last message repeated " + suppressed + " times");
+        suppressed = 0;
+    }
+    static void Main() {
+        long t = 0;
+        List<string> output = new List<string>();
+        DedupeAppender d = new DedupeAppender(new ListSink(output), 1000, () => t);
+        foreach (long time in new long[] { 0, 10, 20 }) { t = time; d.Write("disk full"); }
+        t = 30;   d.Write("ok");
+        t = 5000; d.Write("disk full");                  // after the window: logged again
+        d.Close();
+        Console.WriteLine("[" + string.Join(", ", output) + "]");   // [disk full, last message repeated 2 times, ok, disk full]
+
+        List<string> out2 = new List<string>();                      // a repeat after the window flushes the count first
+        DedupeAppender d2 = new DedupeAppender(new ListSink(out2), 1000, () => t);
+        t = 0;    d2.Write("x");
+        t = 5;    d2.Write("x");
+        t = 2000; d2.Write("x");
+        d2.Close();
+        Console.WriteLine("[" + string.Join(", ", out2) + "]");     // [x, last message repeated 1 times, x]
+    }
 }` }
       ],
       complexity: `<p>O(1) time and memory per message.</p>`,
@@ -9902,7 +11740,7 @@ class KingOnlyMate {
         int kingSafeSquares = 0;
         System.out.println(inCheck && kingSafeSquares == 0 ? "CHECKMATE (wrong: Rd2-d1 blocks)" : "CHECK");
     }
-}`, alt: [{ lang: 'python', code: "# brute: decide using only king moves (wrong whenever another piece can block or capture)\nif __name__ == \"__main__\":\n    in_check = True          # white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\n    king_safe_squares = 0\n    print(\"CHECKMATE (wrong: Rd2-d1 blocks)\" if in_check and king_safe_squares == 0 else \"CHECK\")\n" }, { lang: 'ts', code: "// brute: decide using only king moves (wrong whenever another piece can block or capture)\nconst inCheck = true;          // white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\nconst kingSafeSquares = 0;\nconsole.log(inCheck && kingSafeSquares === 0 ? \"CHECKMATE (wrong: Rd2-d1 blocks)\" : \"CHECK\");\n" }, { lang: 'cpp', code: "// brute: decide using only king moves (wrong whenever another piece can block or capture)\nint main() {\n    bool inCheck = true;          // white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\n    int kingSafeSquares = 0;\n    cout << (inCheck && kingSafeSquares == 0 ? \"CHECKMATE (wrong: Rd2-d1 blocks)\" : \"CHECK\") << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "# brute: decide using only king moves (wrong whenever another piece can block or capture)\nif __name__ == \"__main__\":\n    in_check = True          # white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\n    king_safe_squares = 0\n    print(\"CHECKMATE (wrong: Rd2-d1 blocks)\" if in_check and king_safe_squares == 0 else \"CHECK\")\n" }, { lang: 'ts', code: "// brute: decide using only king moves (wrong whenever another piece can block or capture)\nconst inCheck = true;          // white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\nconst kingSafeSquares = 0;\nconsole.log(inCheck && kingSafeSquares === 0 ? \"CHECKMATE (wrong: Rd2-d1 blocks)\" : \"CHECK\");\n" }, { lang: 'cpp', code: "// brute: decide using only king moves (wrong whenever another piece can block or capture)\nint main() {\n    bool inCheck = true;          // white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\n    int kingSafeSquares = 0;\n    cout << (inCheck && kingSafeSquares == 0 ? \"CHECKMATE (wrong: Rd2-d1 blocks)\" : \"CHECK\") << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nclass KingOnlyMate {\n    // brute: decide using only king moves (wrong whenever another piece can block or capture)\n    static void Main() {\n        bool inCheck = true;          // white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\n        int kingSafeSquares = 0;\n        Console.WriteLine(inCheck && kingSafeSquares == 0 ? \"CHECKMATE (wrong: Rd2-d1 blocks)\" : \"CHECK\");\n    }\n}\n" }] }
     },
     mcq: { q: 'Your king is attacked by two pieces at once (double check). Which replies can be legal?', options: ['Only king moves', 'Blocking either line', 'Capturing one attacker with another piece', 'Any move'], answer: 0, explain: 'One block or capture removes at most one attacker; the other still checks. The simulate-and-test approach finds this automatically.' },
     hints: [
@@ -10296,6 +12134,88 @@ int main() {
     cout << GameStatusChecker::status({"........", "........", "........", "........", "........", "......q.", ".....k..", ".......K"}, true) << "\n";   // STALEMATE
     cout << GameStatusChecker::status({"......k.", "........", "........", "........", "........", "........", "...R..PP", "r......K"}, true) << "\n";   // CHECK
     cout << GameStatusChecker::status({"rnbqkbnr", "pppppppp", "........", "........", "........", "........", "PPPPPPPP", "RNBQKBNR"}, true) << "\n";   // ACTIVE
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class GameStatusChecker {
+    static readonly int[][] ST = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } }, DG = { new[] { 1, 1 }, new[] { 1, -1 }, new[] { -1, 1 }, new[] { -1, -1 } };
+    static readonly int[][] KN = { new[] { 2, 1 }, new[] { 2, -1 }, new[] { -2, 1 }, new[] { -2, -1 }, new[] { 1, 2 }, new[] { 1, -2 }, new[] { -1, 2 }, new[] { -1, -2 } };
+    static readonly int[][] K8 = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 }, new[] { 1, 1 }, new[] { 1, -1 }, new[] { -1, 1 }, new[] { -1, -1 } };
+
+    static bool On(int r, int c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+    static bool Mine(char p, bool w) { return p != '.' && char.IsUpper(p) == w; }
+    static bool Theirs(char p, bool w) { return p != '.' && char.IsUpper(p) != w; }
+
+    static bool Attacked(char[][] b, int r, int c, bool byWhite) {
+        foreach (int[] d in KN) { int i = r + d[0], j = c + d[1]; if (On(i, j) && b[i][j] == (byWhite ? 'N' : 'n')) return true; }
+        foreach (int[] d in K8) { int i = r + d[0], j = c + d[1]; if (On(i, j) && b[i][j] == (byWhite ? 'K' : 'k')) return true; }
+        int pr = byWhite ? r - 1 : r + 1;                          // where an attacking pawn would stand
+        for (int dc = -1; dc <= 1; dc += 2) if (On(pr, c + dc) && b[pr][c + dc] == (byWhite ? 'P' : 'p')) return true;
+        for (int s = 0; s < 2; s++) foreach (int[] d in s == 0 ? ST : DG)
+            for (int i = r + d[0], j = c + d[1]; On(i, j); i += d[0], j += d[1]) {
+                char p = b[i][j];
+                if (p == '.') continue;
+                char u = char.ToUpper(p);
+                if (char.IsUpper(p) == byWhite && (u == 'Q' || u == (s == 0 ? 'R' : 'B'))) return true;
+                break;
+            }
+        return false;
+    }
+    static bool KingSafeAfter(char[][] b, int fr, int fc, int tr, int tc, bool w) {
+        char[][] n = new char[8][];
+        for (int r = 0; r < 8; r++) n[r] = (char[])b[r].Clone();
+        char p = n[fr][fc];
+        n[tr][tc] = (char.ToUpper(p) == 'P' && (tr == 0 || tr == 7)) ? (w ? 'Q' : 'q') : p;   // promotion
+        n[fr][fc] = '.';
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) if (n[r][c] == (w ? 'K' : 'k')) return !Attacked(n, r, c, !w);
+        return false;
+    }
+    static bool HasLegalMove(char[][] b, bool w) {
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) {
+            char p = b[r][c];
+            if (!Mine(p, w)) continue;
+            List<int[]> targets = new List<int[]>();
+            char u = char.ToUpper(p);
+            if (u == 'N') { foreach (int[] d in KN) targets.Add(new[] { r + d[0], c + d[1] }); }
+            else if (u == 'K') { foreach (int[] d in K8) targets.Add(new[] { r + d[0], c + d[1] }); }
+            else if (u == 'P') {
+                int dir = w ? 1 : -1;
+                if (On(r + dir, c) && b[r + dir][c] == '.') {
+                    targets.Add(new[] { r + dir, c });
+                    if (r == (w ? 1 : 6) && b[r + 2 * dir][c] == '.') targets.Add(new[] { r + 2 * dir, c });
+                }
+                for (int dc = -1; dc <= 1; dc += 2) if (On(r + dir, c + dc) && Theirs(b[r + dir][c + dc], w)) targets.Add(new[] { r + dir, c + dc });
+            } else {
+                List<int[]> dirs = new List<int[]>();
+                if (u != 'B') dirs.AddRange(ST);
+                if (u != 'R') dirs.AddRange(DG);
+                foreach (int[] d in dirs)
+                    for (int i = r + d[0], j = c + d[1]; On(i, j); i += d[0], j += d[1]) {
+                        targets.Add(new[] { i, j });
+                        if (b[i][j] != '.') break;
+                    }
+            }
+            foreach (int[] t in targets)
+                if (On(t[0], t[1]) && !Mine(b[t[0]][t[1]], w) && KingSafeAfter(b, r, c, t[0], t[1], w)) return true;   // early exit
+        }
+        return false;
+    }
+    public static string Status(string[] ranks8to1, bool whiteToMove) {
+        char[][] b = new char[8][];
+        for (int i = 0; i < 8; i++) b[7 - i] = ranks8to1[i].ToCharArray();
+        int kr = 0, kc = 0;
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) if (b[r][c] == (whiteToMove ? 'K' : 'k')) { kr = r; kc = c; }
+        bool check = Attacked(b, kr, kc, !whiteToMove), moves = HasLegalMove(b, whiteToMove);
+        return moves ? (check ? "CHECK" : "ACTIVE") : (check ? "CHECKMATE" : "STALEMATE");
+    }
+    static void Main() {
+        Console.WriteLine(Status(new[] { "......k.", "........", "........", "........", "........", "........", "......PP", "r......K" }, true));  // CHECKMATE
+        Console.WriteLine(Status(new[] { "........", "........", "........", "........", "........", "......q.", ".....k..", ".......K" }, true));  // STALEMATE
+        Console.WriteLine(Status(new[] { "......k.", "........", "........", "........", "........", "........", "...R..PP", "r......K" }, true));  // CHECK
+        Console.WriteLine(Status(new[] { "rnbqkbnr", "pppppppp", "........", "........", "........", "........", "PPPPPPPP", "RNBQKBNR" }, true));  // ACTIVE
+    }
 }` }
       ],
       complexity: `<p>At most ~218 pseudo-legal moves (the chess maximum), each simulated in O(64) → a few thousand operations; early exit usually stops much sooner.</p>`,
@@ -10328,7 +12248,7 @@ class QuadraticCompaction {
         System.out.println(compact(List.of(new Rec(0, "u1", "Delhi"), new Rec(1, "u2", "Pune"), new Rec(2, "u3", "Goa"),
                                            new Rec(3, "u1", "Mumbai"), new Rec(4, "u2", null))));
     }
-}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nRec = namedtuple(\"Rec\", \"offset key value\")\n\nclass QuadraticCompaction:\n    @staticmethod\n    def compact(log):\n        out = []\n        for i in range(len(log)):\n            newer = False\n            for j in range(i + 1, len(log)):\n                if log[j].key == log[i].key: newer = True; break      # O(n^2)\n            if not newer and log[i].value is not None: out.append(log[i])\n        return out\n\nif __name__ == \"__main__\":\n    print(QuadraticCompaction.compact([Rec(0, \"u1\", \"Delhi\"), Rec(1, \"u2\", \"Pune\"), Rec(2, \"u3\", \"Goa\"),\n                                       Rec(3, \"u1\", \"Mumbai\"), Rec(4, \"u2\", None)]))\n" }, { lang: 'ts', code: "interface Rec { offset: number; key: string; value: string | null }\n\nclass QuadraticCompaction {\n  static compact(log: Rec[]): Rec[] {\n    const out: Rec[] = [];\n    for (let i = 0; i < log.length; i++) {\n      let newer = false;\n      for (let j = i + 1; j < log.length; j++) if (log[j].key === log[i].key) { newer = true; break; }   // O(n^2)\n      if (!newer && log[i].value !== null) out.push(log[i]);\n    }\n    return out;\n  }\n}\nconsole.log(QuadraticCompaction.compact([\n  { offset: 0, key: \"u1\", value: \"Delhi\" }, { offset: 1, key: \"u2\", value: \"Pune\" }, { offset: 2, key: \"u3\", value: \"Goa\" },\n  { offset: 3, key: \"u1\", value: \"Mumbai\" }, { offset: 4, key: \"u2\", value: null }]));\n" }, { lang: 'cpp', code: "struct Rec { long long offset; string key; optional<string> value; };\n\nstruct QuadraticCompaction {\n    static vector<Rec> compact(const vector<Rec>& log) {\n        vector<Rec> out;\n        for (size_t i = 0; i < log.size(); i++) {\n            bool newer = false;\n            for (size_t j = i + 1; j < log.size(); j++) if (log[j].key == log[i].key) { newer = true; break; }   // O(n^2)\n            if (!newer && log[i].value.has_value()) out.push_back(log[i]);\n        }\n        return out;\n    }\n};\n\nint main() {\n    vector<Rec> log = {{0, \"u1\", \"Delhi\"}, {1, \"u2\", \"Pune\"}, {2, \"u3\", \"Goa\"}, {3, \"u1\", \"Mumbai\"}, {4, \"u2\", nullopt}};\n    for (auto& r : QuadraticCompaction::compact(log)) cout << r.offset << \" \" << r.key << \" \" << *r.value << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nRec = namedtuple(\"Rec\", \"offset key value\")\n\nclass QuadraticCompaction:\n    @staticmethod\n    def compact(log):\n        out = []\n        for i in range(len(log)):\n            newer = False\n            for j in range(i + 1, len(log)):\n                if log[j].key == log[i].key: newer = True; break      # O(n^2)\n            if not newer and log[i].value is not None: out.append(log[i])\n        return out\n\nif __name__ == \"__main__\":\n    print(QuadraticCompaction.compact([Rec(0, \"u1\", \"Delhi\"), Rec(1, \"u2\", \"Pune\"), Rec(2, \"u3\", \"Goa\"),\n                                       Rec(3, \"u1\", \"Mumbai\"), Rec(4, \"u2\", None)]))\n" }, { lang: 'ts', code: "interface Rec { offset: number; key: string; value: string | null }\n\nclass QuadraticCompaction {\n  static compact(log: Rec[]): Rec[] {\n    const out: Rec[] = [];\n    for (let i = 0; i < log.length; i++) {\n      let newer = false;\n      for (let j = i + 1; j < log.length; j++) if (log[j].key === log[i].key) { newer = true; break; }   // O(n^2)\n      if (!newer && log[i].value !== null) out.push(log[i]);\n    }\n    return out;\n  }\n}\nconsole.log(QuadraticCompaction.compact([\n  { offset: 0, key: \"u1\", value: \"Delhi\" }, { offset: 1, key: \"u2\", value: \"Pune\" }, { offset: 2, key: \"u3\", value: \"Goa\" },\n  { offset: 3, key: \"u1\", value: \"Mumbai\" }, { offset: 4, key: \"u2\", value: null }]));\n" }, { lang: 'cpp', code: "struct Rec { long long offset; string key; optional<string> value; };\n\nstruct QuadraticCompaction {\n    static vector<Rec> compact(const vector<Rec>& log) {\n        vector<Rec> out;\n        for (size_t i = 0; i < log.size(); i++) {\n            bool newer = false;\n            for (size_t j = i + 1; j < log.size(); j++) if (log[j].key == log[i].key) { newer = true; break; }   // O(n^2)\n            if (!newer && log[i].value.has_value()) out.push_back(log[i]);\n        }\n        return out;\n    }\n};\n\nint main() {\n    vector<Rec> log = {{0, \"u1\", \"Delhi\"}, {1, \"u2\", \"Pune\"}, {2, \"u3\", \"Goa\"}, {3, \"u1\", \"Mumbai\"}, {4, \"u2\", nullopt}};\n    for (auto& r : QuadraticCompaction::compact(log)) cout << r.offset << \" \" << r.key << \" \" << *r.value << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\nsealed class Rec {\n    public readonly long Offset; public readonly string Key, Value;\n    public Rec(long o, string k, string v) { Offset = o; Key = k; Value = v; }\n    public override string ToString() { return \"Rec[offset=\" + Offset + \", key=\" + Key + \", value=\" + (Value ?? \"null\") + \"]\"; }\n}\n\nstatic class QuadraticCompaction {\n    public static List<Rec> Compact(List<Rec> log) {\n        List<Rec> result = new List<Rec>();\n        for (int i = 0; i < log.Count; i++) {\n            bool newer = false;\n            for (int j = i + 1; j < log.Count; j++) if (log[j].Key == log[i].Key) { newer = true; break; }  // O(n^2)\n            if (!newer && log[i].Value != null) result.Add(log[i]);\n        }\n        return result;\n    }\n    static void Main() {\n        Console.WriteLine(\"[\" + string.Join(\", \", Compact(new List<Rec> { new Rec(0, \"u1\", \"Delhi\"), new Rec(1, \"u2\", \"Pune\"), new Rec(2, \"u3\", \"Goa\"),\n                                           new Rec(3, \"u1\", \"Mumbai\"), new Rec(4, \"u2\", null) })) + \"]\");\n    }\n}\n" }] }
     },
     mcq: { q: 'Why does Kafka keep tombstones for a while (delete.retention.ms) instead of removing them at once?', options: ['So slow consumers still see that the key was deleted', 'To save disk space', 'Because offsets must be contiguous', 'Tombstones are never removed'], answer: 0, explain: 'A consumer rebuilding state from the topic must observe the delete; if the tombstone vanished before it read it, the consumer would keep the old value forever.' },
     hints: [
@@ -10465,6 +12385,34 @@ int main() {
     cout << "new head offset = " << head(out) << "\n";                 // 2
     vector<LogRec> gone = Compactor::compact({{0, "k", "v"}, {1, "k", nullopt}});   // deleted by a tombstone
     cout << show(gone) << " new head offset = " << head(gone) << "\n"; // [] -1
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class LogRec { public readonly long Offset; public readonly string Key, Value; public LogRec(long o, string k, string v) { Offset = o; Key = k; Value = v; } }
+
+static class Compactor {
+    public static List<LogRec> Compact(List<LogRec> log) {
+        Dictionary<string, long> latest = new Dictionary<string, long>();
+        foreach (LogRec r in log) latest[r.Key] = r.Offset;                      // pass 1
+        List<LogRec> result = new List<LogRec>();
+        foreach (LogRec r in log)                                                // pass 2, original order
+            if (latest[r.Key] == r.Offset && r.Value != null) result.Add(r);
+        return result;
+    }
+    static string Show(List<LogRec> log) { return "[" + string.Join(", ", log.Select(r => r.Offset + ":" + r.Key + "=" + r.Value)) + "]"; }
+    static long Head(List<LogRec> log) { return log.Count == 0 ? -1 : log[0].Offset; }
+
+    static void Main() {
+        List<LogRec> res = Compact(new List<LogRec> { new LogRec(0, "u1", "Delhi"), new LogRec(1, "u2", "Pune"),
+            new LogRec(2, "u3", "Goa"), new LogRec(3, "u1", "Mumbai"), new LogRec(4, "u2", null) });
+        Console.WriteLine(Show(res));                          // [2:u3=Goa, 3:u1=Mumbai]
+        Console.WriteLine("new head offset = " + Head(res));    // 2
+        List<LogRec> gone = Compact(new List<LogRec> { new LogRec(0, "k", "v"), new LogRec(1, "k", null) });   // deleted by a tombstone
+        Console.WriteLine(Show(gone) + " new head offset = " + Head(gone));                                     // [] -1
+    }
 }` }
       ],
       complexity: `<p>O(n) time, O(distinct keys) extra memory.</p>`,
@@ -10493,7 +12441,7 @@ class RetryInPlace {
         }
         System.out.println(done);
     }
-}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    msgs = [\"m1\", \"poison\", \"m3\"]\n    done = []\n    for m in msgs:\n        attempts = 0\n        while m == \"poison\" and attempts < 1000: attempts += 1   # in real code: forever, blocking m3\n        if m != \"poison\": done.append(m)\n        else: print(f\"stuck on poison for {attempts} attempts; m3 waited the whole time\")\n    print(done)\n" }, { lang: 'ts', code: "const msgs = [\"m1\", \"poison\", \"m3\"];\nconst done: string[] = [];\nfor (const m of msgs) {\n  let attempts = 0;\n  while (m === \"poison\" && attempts < 1000) attempts++;         // in real code: forever, blocking m3\n  if (m !== \"poison\") done.push(m);\n  else console.log(\"stuck on poison for \" + attempts + \" attempts; m3 waited the whole time\");\n}\nconsole.log(done);\n" }, { lang: 'cpp', code: "int main() {\n    vector<string> msgs = {\"m1\", \"poison\", \"m3\"};\n    vector<string> done;\n    for (const string& m : msgs) {\n        int attempts = 0;\n        while (m == \"poison\" && attempts < 1000) attempts++;    // in real code: forever, blocking m3\n        if (m != \"poison\") done.push_back(m);\n        else cout << \"stuck on poison for \" << attempts << \" attempts; m3 waited the whole time\" << endl;\n    }\n    for (auto& m : done) cout << m << \" \";\n    cout << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    msgs = [\"m1\", \"poison\", \"m3\"]\n    done = []\n    for m in msgs:\n        attempts = 0\n        while m == \"poison\" and attempts < 1000: attempts += 1   # in real code: forever, blocking m3\n        if m != \"poison\": done.append(m)\n        else: print(f\"stuck on poison for {attempts} attempts; m3 waited the whole time\")\n    print(done)\n" }, { lang: 'ts', code: "const msgs = [\"m1\", \"poison\", \"m3\"];\nconst done: string[] = [];\nfor (const m of msgs) {\n  let attempts = 0;\n  while (m === \"poison\" && attempts < 1000) attempts++;         // in real code: forever, blocking m3\n  if (m !== \"poison\") done.push(m);\n  else console.log(\"stuck on poison for \" + attempts + \" attempts; m3 waited the whole time\");\n}\nconsole.log(done);\n" }, { lang: 'cpp', code: "int main() {\n    vector<string> msgs = {\"m1\", \"poison\", \"m3\"};\n    vector<string> done;\n    for (const string& m : msgs) {\n        int attempts = 0;\n        while (m == \"poison\" && attempts < 1000) attempts++;    // in real code: forever, blocking m3\n        if (m != \"poison\") done.push_back(m);\n        else cout << \"stuck on poison for \" << attempts << \" attempts; m3 waited the whole time\" << endl;\n    }\n    for (auto& m : done) cout << m << \" \";\n    cout << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass RetryInPlace {\n    static void Main() {\n        string[] msgs = { \"m1\", \"poison\", \"m3\" };\n        List<string> done = new List<string>();\n        foreach (string m in msgs) {\n            int attempts = 0;\n            while (m == \"poison\" && attempts < 1000) attempts++;   // in real code: forever, blocking m3\n            if (m != \"poison\") done.Add(m);\n            else Console.WriteLine(\"stuck on poison for \" + attempts + \" attempts; m3 waited the whole time\");\n        }\n        Console.WriteLine(\"[\" + string.Join(\", \", done) + \"]\");\n    }\n}\n" }] }
     },
     mcq: { q: 'Why add random jitter to the backoff delay in production?', options: ['To stop many consumers retrying at the same instant and overloading the dependency', 'To make retries faster', 'Because exponential backoff overflows', 'To guarantee ordering'], answer: 0, explain: 'Without jitter, failures that happened together retry together ("thundering herd"). Jitter spreads the retries out.' },
     hints: [
@@ -10705,6 +12653,43 @@ int main() {
     cout << "DLQ = [";
     for (size_t i = 0; i < dlq.size(); i++) cout << (i ? ", " : "") << dlq[i];
     cout << "]\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Attempt : IComparable<Attempt> {
+    public readonly long At, Seq; public readonly string Msg; public readonly int Number;
+    public Attempt(long at, long seq, string msg, int number) { At = at; Seq = seq; Msg = msg; Number = number; }
+    public int CompareTo(Attempt o) { int c = At.CompareTo(o.At); return c != 0 ? c : Seq.CompareTo(o.Seq); }   // time, then arrival order
+}
+
+static class RetryingConsumer {
+    public static List<string> Run(List<string> msgs, Func<string, bool> handlerFails, long b, int maxAttempts, List<string> dlq) {
+        List<string> timeline = new List<string>();
+        SortedSet<Attempt> retries = new SortedSet<Attempt>();               // min-heap by (at, seq)
+        Queue<Attempt> fresh = new Queue<Attempt>();
+        long seq = 0, now = 0;
+        foreach (string m in msgs) fresh.Enqueue(new Attempt(0, seq++, m, 1));
+        while (fresh.Count > 0 || retries.Count > 0) {
+            Attempt a;
+            if (fresh.Count > 0) a = fresh.Dequeue();
+            else { a = retries.Min; retries.Remove(a); now = Math.Max(now, a.At); }   // jump the virtual clock
+            if (!handlerFails(a.Msg + "#" + a.Number)) { timeline.Add(now + " " + a.Msg + " ok"); continue; }
+            if (a.Number >= maxAttempts) { dlq.Add(a.Msg); timeline.Add(now + " " + a.Msg + " fail #" + a.Number + " -> DLQ"); continue; }
+            long next = now + b * (1L << (a.Number - 1));
+            retries.Add(new Attempt(next, seq++, a.Msg, a.Number + 1));
+            timeline.Add(now + " " + a.Msg + " fail #" + a.Number + " -> retry at " + next);
+        }
+        return timeline;
+    }
+    static void Main() {
+        List<string> dlq = new List<string>();
+        // m2 always fails; m3 fails only on its first attempt
+        Func<string, bool> fails = s => s.StartsWith("m2#") || s == "m3#1";
+        foreach (string line in Run(new List<string> { "m1", "m2", "m3" }, fails, 100, 3, dlq)) Console.WriteLine(line);
+        Console.WriteLine("DLQ = [" + string.Join(", ", dlq) + "]");
+    }
 }` }
       ],
       complexity: `<p>Each attempt is one heap push/pop: O(A log A) for A total attempts (≤ n · maxAttempts).</p>`,
@@ -10731,7 +12716,7 @@ class SyncLogger {
         for (int i = 0; i < 2000; i++) slowSink("line " + i);      // caller waits for every write
         System.out.println("caller spent " + (System.nanoTime() - t) / 1_000_000 + " ms just logging");
     }
-}`, alt: [{ lang: 'python', code: "import time\n\nclass SyncLogger:\n    @staticmethod\n    def slow_sink(line):\n        end = time.perf_counter_ns() + 20_000                    # ~20 microseconds of \"disk\" work\n        while time.perf_counter_ns() < end: pass\n\nif __name__ == \"__main__\":\n    t = time.perf_counter_ns()\n    for i in range(2000): SyncLogger.slow_sink(f\"line {i}\")      # caller waits for every write\n    print(f\"caller spent {(time.perf_counter_ns() - t) // 1_000_000} ms just logging\")\n" }, { lang: 'ts', code: "class SyncLogger {\n  static slowSink(line: string): void {\n    const end = process.hrtime.bigint() + 20_000n;               // ~20 microseconds of \"disk\" work\n    while (process.hrtime.bigint() < end) { }\n  }\n}\nconst t = process.hrtime.bigint();\nfor (let i = 0; i < 2000; i++) SyncLogger.slowSink(\"line \" + i);   // caller waits for every write\nconsole.log(\"caller spent \" + Number((process.hrtime.bigint() - t) / 1_000_000n) + \" ms just logging\");\n" }, { lang: 'cpp', code: "struct SyncLogger {\n    static void slowSink(const string& line) {\n        auto end = chrono::steady_clock::now() + chrono::microseconds(20);   // ~20 microseconds of \"disk\" work\n        while (chrono::steady_clock::now() < end) { this_thread::yield(); }\n    }\n};\n\nint main() {\n    auto t = chrono::steady_clock::now();\n    for (int i = 0; i < 2000; i++) SyncLogger::slowSink(\"line \" + to_string(i));      // caller waits for every write\n    cout << \"caller spent \" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t).count() << \" ms just logging\" << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "import time\n\nclass SyncLogger:\n    @staticmethod\n    def slow_sink(line):\n        end = time.perf_counter_ns() + 20_000                    # ~20 microseconds of \"disk\" work\n        while time.perf_counter_ns() < end: pass\n\nif __name__ == \"__main__\":\n    t = time.perf_counter_ns()\n    for i in range(2000): SyncLogger.slow_sink(f\"line {i}\")      # caller waits for every write\n    print(f\"caller spent {(time.perf_counter_ns() - t) // 1_000_000} ms just logging\")\n" }, { lang: 'ts', code: "class SyncLogger {\n  static slowSink(line: string): void {\n    const end = process.hrtime.bigint() + 20_000n;               // ~20 microseconds of \"disk\" work\n    while (process.hrtime.bigint() < end) { }\n  }\n}\nconst t = process.hrtime.bigint();\nfor (let i = 0; i < 2000; i++) SyncLogger.slowSink(\"line \" + i);   // caller waits for every write\nconsole.log(\"caller spent \" + Number((process.hrtime.bigint() - t) / 1_000_000n) + \" ms just logging\");\n" }, { lang: 'cpp', code: "struct SyncLogger {\n    static void slowSink(const string& line) {\n        auto end = chrono::steady_clock::now() + chrono::microseconds(20);   // ~20 microseconds of \"disk\" work\n        while (chrono::steady_clock::now() < end) { this_thread::yield(); }\n    }\n};\n\nint main() {\n    auto t = chrono::steady_clock::now();\n    for (int i = 0; i < 2000; i++) SyncLogger::slowSink(\"line \" + to_string(i));      // caller waits for every write\n    cout << \"caller spent \" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t).count() << \" ms just logging\" << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Diagnostics;\nusing System.Threading;\nstatic class SyncLogger {\n    static void SlowSink(string line) {\n        Stopwatch sw = Stopwatch.StartNew();                  // ~20 microseconds of \"disk\" work\n        while (sw.ElapsedTicks * 1000000L / Stopwatch.Frequency < 20) Thread.SpinWait(1);\n    }\n    static void Main() {\n        Stopwatch t = Stopwatch.StartNew();\n        for (int i = 0; i < 2000; i++) SlowSink(\"line \" + i);      // caller waits for every write\n        Console.WriteLine(\"caller spent \" + t.ElapsedMilliseconds + \" ms just logging\");\n    }\n}\n" }] }
     },
     mcq: { q: 'Why must the async writer thread be stopped with a "poison pill" placed in the queue rather than just interrupting it?', options: ['Messages queued before the pill are still written first, so nothing accepted is lost', 'Threads can never be interrupted', 'The pill is faster', 'It prevents dropping'], answer: 0, explain: 'The pill travels through the FIFO behind every accepted line, so the writer flushes them and then exits. A join with timeout guards against a stuck sink.' },
     hints: [
@@ -11060,6 +13045,68 @@ int main() {
     flaky.log("ok1"); flaky.log("bad line"); flaky.log("ok2");
     bool clean = flaky.shutdown(2000);
     cout << "flaky shutdown: " << yn(clean) << ", written=" << flaky.written() << ", dropped=" << flaky.dropped() << "\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class AsyncLogger {
+    private static readonly string POISON = new string("POISON".ToCharArray());   // unique identity
+    private readonly BlockingCollection<string> queue;
+    private readonly Action<string> sink;
+    public long Dropped, Written, Logged;                     // updated only with Interlocked
+    private volatile bool closed;
+    private readonly Thread writer;
+
+    public AsyncLogger(int capacity, Action<string> sink) {
+        queue = new BlockingCollection<string>(capacity);
+        this.sink = sink;
+        writer = new Thread(Drain) { Name = "async-log-writer", IsBackground = true };
+        writer.Start();
+    }
+    public void Log(string line) {
+        Interlocked.Increment(ref Logged);
+        if (closed || !queue.TryAdd(line)) Interlocked.Increment(ref Dropped);   // never blocks the caller
+    }
+    private void Drain() {
+        while (true) {
+            string line = queue.Take();
+            if (ReferenceEquals(line, POISON)) return;
+            try { sink(line); Interlocked.Increment(ref Written); }
+            catch (Exception) { Interlocked.Increment(ref Dropped); }        // a bad line must not kill the writer
+        }
+    }
+    public bool Shutdown(int timeoutMs) {
+        closed = true;
+        bool queued = queue.TryAdd(POISON, timeoutMs);
+        writer.Join(timeoutMs);
+        return queued && !writer.IsAlive;
+    }
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        // 1) A stuck sink never blocks the producers: lines are dropped (and counted) instead.
+        ManualResetEventSlim gate = new ManualResetEventSlim(false);
+        AsyncLogger log = new AsyncLogger(1024, line => gate.Wait());
+        List<Thread> producers = new List<Thread>();
+        for (int p = 0; p < 8; p++) { Thread t = new Thread(() => { for (int i = 0; i < 10000; i++) log.Log("line " + i); }); producers.Add(t); t.Start(); }
+        bool finished = true;
+        foreach (Thread t in producers) finished &= t.Join(5000);
+        Console.WriteLine("producers finished with a stuck sink: " + B(finished));
+        Console.WriteLine("logged = " + Interlocked.Read(ref log.Logged) + ", dropped at least 78975: " + B(Interlocked.Read(ref log.Dropped) >= 80000 - 1024 - 1));
+        gate.Set();                                                        // the disk recovers
+        Console.WriteLine("clean shutdown: " + B(log.Shutdown(2000)));
+        long w = Interlocked.Read(ref log.Written), d = Interlocked.Read(ref log.Dropped);
+        Console.WriteLine("written + dropped = logged: " + B(w + d == Interlocked.Read(ref log.Logged)) + ", written <= 1025: " + B(w <= 1025));
+        log.Log("late");                                                   // after shutdown: dropped, never blocks
+        Console.WriteLine("late line dropped: " + B(Interlocked.Read(ref log.Dropped) == d + 1));
+
+        // 2) A sink that throws must not kill the writer thread: the bad line is counted as dropped.
+        AsyncLogger flaky = new AsyncLogger(16, line => { if (line.Contains("bad")) throw new InvalidOperationException("disk error"); });
+        flaky.Log("ok1"); flaky.Log("bad line"); flaky.Log("ok2");
+        Console.WriteLine("flaky shutdown: " + B(flaky.Shutdown(2000)) + ", written=" + flaky.Written + ", dropped=" + flaky.Dropped);
+    }
 }` }
       ],
       complexity: `<p><code>log()</code> O(1) and lock-light; the writer does O(1) per line. Memory bounded by capacity.</p>`,
@@ -11085,7 +13132,7 @@ class LostUpdate {
         store.put("counter", b + 1);         // B writes 6 -> A's increment lost
         System.out.println("counter = " + store.get("counter") + " (expected 7)");
     }
-}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    store = {\"counter\": 5}\n    a = store[\"counter\"]        # session A reads 5\n    b = store[\"counter\"]        # session B reads 5\n    store[\"counter\"] = a + 1    # A writes 6\n    store[\"counter\"] = b + 1    # B writes 6 -> A's increment lost\n    print(f\"counter = {store['counter']} (expected 7)\")\n" }, { lang: 'ts', code: "const store = new Map<string, number>([[\"counter\", 5]]);\nconst a = store.get(\"counter\")!;        // session A reads 5\nconst b = store.get(\"counter\")!;        // session B reads 5\nstore.set(\"counter\", a + 1);            // A writes 6\nstore.set(\"counter\", b + 1);            // B writes 6 -> A's increment lost\nconsole.log(\"counter = \" + store.get(\"counter\") + \" (expected 7)\");\n" }, { lang: 'cpp', code: "int main() {\n    unordered_map<string, int> store = {{\"counter\", 5}};\n    int a = store[\"counter\"];        // session A reads 5\n    int b = store[\"counter\"];        // session B reads 5\n    store[\"counter\"] = a + 1;        // A writes 6\n    store[\"counter\"] = b + 1;        // B writes 6 -> A's increment lost\n    cout << \"counter = \" << store[\"counter\"] << \" (expected 7)\" << endl;\n}\n" }] }
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    store = {\"counter\": 5}\n    a = store[\"counter\"]        # session A reads 5\n    b = store[\"counter\"]        # session B reads 5\n    store[\"counter\"] = a + 1    # A writes 6\n    store[\"counter\"] = b + 1    # B writes 6 -> A's increment lost\n    print(f\"counter = {store['counter']} (expected 7)\")\n" }, { lang: 'ts', code: "const store = new Map<string, number>([[\"counter\", 5]]);\nconst a = store.get(\"counter\")!;        // session A reads 5\nconst b = store.get(\"counter\")!;        // session B reads 5\nstore.set(\"counter\", a + 1);            // A writes 6\nstore.set(\"counter\", b + 1);            // B writes 6 -> A's increment lost\nconsole.log(\"counter = \" + store.get(\"counter\") + \" (expected 7)\");\n" }, { lang: 'cpp', code: "int main() {\n    unordered_map<string, int> store = {{\"counter\", 5}};\n    int a = store[\"counter\"];        // session A reads 5\n    int b = store[\"counter\"];        // session B reads 5\n    store[\"counter\"] = a + 1;        // A writes 6\n    store[\"counter\"] = b + 1;        // B writes 6 -> A's increment lost\n    cout << \"counter = \" << store[\"counter\"] << \" (expected 7)\" << endl;\n}\n" }, { lang: 'csharp', code: "using System;\nusing System.Collections.Generic;\nclass LostUpdate {\n    static void Main() {\n        Dictionary<string, int> store = new Dictionary<string, int> { { \"counter\", 5 } };\n        int a = store[\"counter\"];        // session A reads 5\n        int b = store[\"counter\"];        // session B reads 5\n        store[\"counter\"] = a + 1;        // A writes 6\n        store[\"counter\"] = b + 1;        // B writes 6 -> A's increment lost\n        Console.WriteLine(\"counter = \" + store[\"counter\"] + \" (expected 7)\");\n    }\n}\n" }] }
     },
     mcq: { q: 'Session A only WRITES key x (never reads it); B commits a change to x before A commits. Under the rule "fail if a key you READ changed", what happens to A?', options: ['A commits; its write simply overwrites (last writer wins on blind writes)', 'A always fails', 'A deadlocks', 'A sees B\'s value'], answer: 0, explain: 'Validation covers the read set. Blind writes do not depend on the old value, so overwriting is serializable. If you want write-write conflicts detected too, add written keys to the validation set (as snapshot isolation does).' },
     hints: [
@@ -11496,6 +13543,106 @@ int main() {
             });
     }                                                              // jthreads join when the vector is destroyed
     cout << "stress counter = " << s2.read("counter")->value << "\n";   // 1000
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+
+class VersionedStore {
+    public sealed class Versioned { public readonly string Value; public readonly long Version; public Versioned(string v, long ver) { Value = v; Version = ver; } }
+    public readonly ConcurrentDictionary<string, Versioned> Data = new ConcurrentDictionary<string, Versioned>();
+    private readonly object commitLock = new object();
+
+    public Session Begin() { return new Session(this); }
+
+    public bool TryCommit(Dictionary<string, long> readSet, Dictionary<string, string> writeSet) {
+        lock (commitLock) {                                      // short critical section: validate + apply
+            foreach (var e in readSet) {
+                Versioned cur; long now = Data.TryGetValue(e.Key, out cur) ? cur.Version : 0;
+                if (now != e.Value) return false;                // someone changed what we read
+            }
+            foreach (var kv in writeSet) {
+                Versioned cur; long v = Data.TryGetValue(kv.Key, out cur) ? cur.Version : 0;
+                Data[kv.Key] = new Versioned(kv.Value, v + 1);
+            }
+            return true;
+        }
+    }
+}
+
+class Session {
+    private readonly VersionedStore store;
+    private readonly Dictionary<string, long> readSet = new Dictionary<string, long>();
+    private readonly Dictionary<string, string> writeSet = new Dictionary<string, string>();
+    public Session(VersionedStore store) { this.store = store; }
+
+    public string Get(string k) {
+        string mine;
+        if (writeSet.TryGetValue(k, out mine)) return mine;      // read your own writes
+        VersionedStore.Versioned v;
+        bool found = store.Data.TryGetValue(k, out v);
+        if (!readSet.ContainsKey(k)) readSet[k] = found ? v.Version : 0;
+        return found ? v.Value : null;
+    }
+    public void Set(string k, string v) { writeSet[k] = v; }       // invisible to others until commit
+    public string Commit() { return store.TryCommit(readSet, writeSet) ? "OK" : "CONFLICT"; }
+}
+
+class OccDemo {
+    static void Increment(VersionedStore s, string who) {
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            Session t = s.Begin();
+            int v = int.Parse(t.Get("counter"));
+            t.Set("counter", (v + 1).ToString());
+            string r = t.Commit();
+            Console.WriteLine(who + " attempt " + attempt + ": " + r);
+            if (r == "OK") return;
+        }
+    }
+    static void Main() {
+        VersionedStore s = new VersionedStore();
+        s.Data["counter"] = new VersionedStore.Versioned("5", 1);
+        Session a = s.Begin(), b = s.Begin();
+        int va = int.Parse(a.Get("counter")), vb = int.Parse(b.Get("counter"));
+        a.Set("counter", (va + 1).ToString());
+        b.Set("counter", (vb + 1).ToString());
+        Console.WriteLine("A: " + a.Commit() + ", B: " + b.Commit());     // OK, CONFLICT
+        Increment(s, "B-retry");                                           // OK on first try now
+        Console.WriteLine("counter = " + s.Data["counter"].Value);         // 7
+
+        Session reader = s.Begin(), writer = s.Begin();
+        reader.Get("counter");                                             // read-only session
+        writer.Set("other", "x");
+        writer.Commit();                                                   // a different key: no conflict
+        Console.WriteLine("disjoint keys: " + reader.Commit());            // OK
+        Session stale = s.Begin(), bump = s.Begin();
+        stale.Get("counter");
+        bump.Set("counter", "100");
+        bump.Commit();
+        stale.Set("flag", "1");                                            // writes another key, but READ a stale counter
+        Console.WriteLine("read set invalidated: " + stale.Commit());      // CONFLICT
+
+        // stress: 4 threads x 250 increments, each retrying on conflict -> exactly 1000 added
+        VersionedStore s2 = new VersionedStore();
+        s2.Data["counter"] = new VersionedStore.Versioned("0", 1);
+        Thread[] ts = new Thread[4];
+        for (int th = 0; th < 4; th++) {
+            ts[th] = new Thread(() => {
+                for (int i = 0; i < 250; i++) {
+                    while (true) {
+                        Session t = s2.Begin();
+                        t.Set("counter", (int.Parse(t.Get("counter")) + 1).ToString());
+                        if (t.Commit() == "OK") break;
+                    }
+                }
+            });
+            ts[th].Start();
+        }
+        foreach (Thread t in ts) t.Join(10000);
+        Console.WriteLine("stress counter = " + s2.Data["counter"].Value);   // 1000
+    }
 }` }
       ],
       complexity: `<p>get O(1), set O(1), commit O(|readSet| + |writeSet|) under a short lock. Under high contention on one key, retries grow — then switch that key to pessimistic locking or an atomic increment command.</p>`,

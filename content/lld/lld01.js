@@ -420,6 +420,39 @@ int main() {
     alias.birthday();   // changes object #1
     cout << rex.getAge() << "\\n";  // 4, because rex and alias refer to the same object
     cout << bo.bark() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class Dog {
+    // STATE: private fields, nobody outside can touch them directly
+    private readonly string name;   // readonly: a dog's name never changes after birth
+    private int age;
+
+    // CONSTRUCTOR: the only way to create a Dog, so every Dog starts valid
+    public Dog(string name, int age) {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("name required");
+        if (age < 0) throw new ArgumentException("age must be >= 0");
+        this.name = name;
+        this.age = age;
+    }
+
+    // BEHAVIOUR: methods that use and protect the state
+    public void Birthday() { age++; }                 // the only way age can change
+    public string Bark() { return name + " says Woof!"; }
+    public int Age { get { return age; } }           // read-only property, no setter
+    public string Name { get { return name; } }
+}
+
+class Program {
+    static void Main() {
+        Dog rex = new Dog("Rex", 3);   // object #1
+        Dog bo = new Dog("Bo", 5);     // object #2
+        Dog alias = rex;               // NOT a new dog: a second reference to object #1
+        alias.Birthday();              // changes object #1
+        Console.WriteLine(rex.Age);    // 4, because rex and alias point to the same object
+        Console.WriteLine(bo.Bark());
+    }
 }` }
 ] }, { lang: 'java', code: `
 // Encapsulation in action: the rule "balance >= 0" lives in ONE place.
@@ -526,7 +559,35 @@ public:
 
     long long getBalancePaise() const { return balancePaise_; }
     const string& getAccountNumber() const { return accountNumber_; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+// Encapsulation in action: the rule "balance >= 0" lives in ONE place.
+class BankAccount {
+    private readonly string accountNumber;
+    private long balancePaise;                 // money in the smallest unit: no floating-point errors
+
+    public BankAccount(string accountNumber, long openingPaise) {
+        if (openingPaise < 0) throw new ArgumentException("opening balance cannot be negative");
+        this.accountNumber = accountNumber;
+        this.balancePaise = openingPaise;
+    }
+
+    public void Deposit(long paise) {
+        if (paise <= 0) throw new ArgumentException("deposit must be positive");
+        balancePaise += paise;
+    }
+
+    public bool Withdraw(long paise) {         // Tell, Don't Ask: callers just say "withdraw"
+        if (paise <= 0 || paise > balancePaise) return false;   // invariant protected here
+        balancePaise -= paise;
+        return true;
+    }
+
+    public long BalancePaise { get { return balancePaise; } }
+    public string AccountNumber { get { return accountNumber; } }
+}` }
 ] }],
     codeTitle: ['Class, objects, references (Dog)', 'Encapsulation protects an invariant (BankAccount)'],
     viz: [{
@@ -652,6 +713,22 @@ int main() {
     LightSwitch kitchen, bedroom;
     kitchen.toggle();
     cout << boolalpha << kitchen.isOn() << " " << bedroom.isOn() << "\\n";  // true false: separate objects
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class LightSwitch {
+    private bool on;                           // state, starts false
+    public void Toggle() { on = !on; }         // behaviour mirrors the real action
+    public bool IsOn { get { return on; } }
+}
+
+class Program {
+    static void Main() {
+        LightSwitch kitchen = new LightSwitch(), bedroom = new LightSwitch();
+        kitchen.Toggle();
+        Console.WriteLine(kitchen.IsOn.ToString().ToLower() + " " + bedroom.IsOn.ToString().ToLower()); // true false: separate objects
+    }
 }` }
 ] } },
       { title: 'Identity vs equality: same object or same value?', html: `<p>Two <code>Point(2, 3)</code> objects are <b>equal</b> (same values) but not <b>identical</b> (different objects). In Java, <code>==</code> compares remotes (identity) and <code>equals()</code> compares contents (Python: <code>is</code> vs <code>==</code>; C++: addresses vs <code>operator==</code>; TypeScript: <code>===</code> is always identity for objects, so write an <code>equals</code> method). A Java <code>record</code>, a Python frozen <code>@dataclass</code> or a C++ defaulted <code>operator==</code> writes correct equality for you, which makes it perfect for <b>value objects</b> such as Money, Point, Address.</p>
@@ -699,6 +776,23 @@ int main() {
     cout << boolalpha;
     cout << (&p1 == &p2) << "\\n";  // false: different identity (different addresses)
     cout << (p1 == p2) << "\\n";    // true: equal values
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// A value type: == and Equals compare the fields, not the identity.
+struct Point {
+    public readonly int X, Y;
+    public Point(int x, int y) { X = x; Y = y; }
+}
+
+class Program {
+    static void Main() {
+        Point p1 = new Point(2, 3), p2 = new Point(2, 3);
+        object o1 = p1, o2 = p2;                                   // boxed: two separate objects
+        Console.WriteLine(ReferenceEquals(o1, o2).ToString().ToLower());  // false: different identity
+        Console.WriteLine(p1.Equals(p2).ToString().ToLower());            // true: equal values
+    }
 }` }
 ] } },
       { title: 'Anemic object vs rich object (Order)', html: `<p><b>Anemic</b>: <code>Order</code> has only getters/setters; a service does <code>order.getItems().add(item); order.setTotal(order.getTotal() + item.price())</code>. Any caller can forget the total update or add items to a <i>shipped</i> order. <b>Rich</b>: <code>order.addItem(item)</code> checks the status and updates the total itself. Same data, but the rules now live with the data.</p>`, code: { lang: 'java', code: `
@@ -778,7 +872,27 @@ public:
     void ship() { status_ = Status::Shipped; }
     const vector<string>& items() const { return items_; }  // const reference: no back door
     long long totalPaise() const { return totalPaise_; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+
+class Order {
+    public enum Status { Open, Shipped }
+    private readonly List<string> items = new List<string>();
+    private long totalPaise;
+    private Status status = Status.Open;
+
+    public void AddItem(string sku, long pricePaise) {
+        if (status != Status.Open) throw new InvalidOperationException("cannot change a shipped order");
+        items.Add(sku);
+        totalPaise += pricePaise;              // total can never drift out of sync
+    }
+    public void Ship() { status = Status.Shipped; }
+    public ReadOnlyCollection<string> Items { get { return items.AsReadOnly(); } } // no back door
+    public long TotalPaise { get { return totalPaise; } }
+}` }
 ] } }
     ],
     deepDive: `<p><b>Invariants are the real reason for encapsulation.</b> An invariant is a fact that must always be true about an object (<code>0 ≤ balance</code>, <code>total == sum(items)</code>, <code>status</code> follows legal transitions). If every path that changes state goes through a method that checks the invariant, the object can never be observed in a broken state. That is also why constructors should validate and why returning a mutable internal list (<code>return items;</code>) is a leak: the caller can bypass every rule. Return a read-only view or a copy instead (Java <code>List.copyOf</code>, Python <code>tuple(items)</code>, TypeScript a <code>readonly</code> array plus a copy, C++ a <code>const</code> reference).</p>
@@ -848,7 +962,22 @@ struct BankUtils {
         a.balance -= amt;      // forgot the check: balance goes negative
         a.history.push_back("W " + to_string(amt));
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Account {
+    public string AccountNumber;      // anyone can change it
+    public double Balance;            // double for money: rounding bugs
+    public List<string> History = new List<string>();   // anyone can clear it
+}
+static class BankUtils {
+    public static void Withdraw(Account a, double amt) {
+        a.Balance -= amt;             // forgot the check: balance goes negative
+        a.History.Add("W " + amt);
+    }
+}` }
               ] }
       },
       mcq: { q: 'Where should the rule "balance can never go negative" live?', options: ['In every controller that calls withdraw', 'Inside BankAccount.withdraw(), with balance private', 'In a database trigger only', 'In a static utility class'], answer: 1, explain: 'The object that owns the data owns its rules. Making balance private and checking inside withdraw() means no caller can bypass it.' },
@@ -1067,6 +1196,61 @@ int main() {
     cout << boolalpha << acc.withdraw(200) << "\\n";  // true
     cout << acc.withdraw(400) << "\\n";               // false, balance stays 300
     cout << acc.balancePaise() << " " << acc.history().size() << "\\n";  // 300 2
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+
+enum TxType { Deposit, Withdrawal }
+
+// Immutable value: readonly fields set once in the constructor.
+sealed class Transaction {
+    public readonly TxType Type;
+    public readonly long AmountPaise, BalanceAfterPaise;
+    public Transaction(TxType type, long amountPaise, long balanceAfterPaise) { Type = type; AmountPaise = amountPaise; BalanceAfterPaise = balanceAfterPaise; }
+}
+
+class BankAccount {
+    private readonly string accountNumber;
+    private readonly string owner;
+    private long balancePaise;
+    private readonly List<Transaction> history = new List<Transaction>();
+
+    public BankAccount(string accountNumber, string owner) {
+        if (string.IsNullOrWhiteSpace(accountNumber)) throw new ArgumentException("account number required");
+        if (owner == null) throw new ArgumentNullException("owner");
+        this.accountNumber = accountNumber;
+        this.owner = owner;
+    }
+
+    public void Deposit(long paise) {
+        if (paise <= 0) throw new ArgumentException("deposit must be positive");
+        balancePaise += paise;
+        history.Add(new Transaction(TxType.Deposit, paise, balancePaise));
+    }
+
+    public bool Withdraw(long paise) {
+        if (paise <= 0 || paise > balancePaise) return false;   // invariant: never negative
+        balancePaise -= paise;
+        history.Add(new Transaction(TxType.Withdrawal, paise, balancePaise));
+        return true;
+    }
+
+    public long BalancePaise { get { return balancePaise; } }
+    public string AccountNumber { get { return accountNumber; } }
+    public string Owner { get { return owner; } }
+    public ReadOnlyCollection<Transaction> History { get { return history.AsReadOnly(); } } // read-only view
+}
+
+class Program {
+    static void Main() {
+        BankAccount acc = new BankAccount("ACC-1", "Asha");
+        acc.Deposit(500);
+        Console.WriteLine(acc.Withdraw(200).ToString().ToLower());   // true
+        Console.WriteLine(acc.Withdraw(400).ToString().ToLower());   // false, balance stays 300
+        Console.WriteLine(acc.BalancePaise + " " + acc.History.Count); // 300 2
+    }
 }` }
         ],
         complexity: `<p>deposit/withdraw are O(1) (amortised list append). History uses O(T) memory for T transactions. The real "complexity" win is design-level: the invariant is enforced in exactly one place.</p>`,
@@ -1379,7 +1563,72 @@ public:
         member.addLoan(loan.get());
         return loan;  // ownership moves to the caller
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+
+// Requirement: "Members borrow copies of books for 14 days. A member may hold at most 3 loans.
+//  Each book has a title and ISBN; the library owns several copies of each book."
+enum CopyStatus { Available, Loaned, Lost }            // fixed set of options -> enum
+
+struct Isbn {                                          // value object: rules but no identity
+    public readonly string Value;
+    public Isbn(string value) {
+        if (!Regex.IsMatch(value, "^[0-9X-]{10,17}$")) throw new ArgumentException("bad ISBN");
+        Value = value;
+    }
+}
+
+class Book {                                           // the TITLE (type): one per ISBN
+    private readonly Isbn isbn;
+    private readonly string title;
+    public Book(Isbn isbn, string title) { this.isbn = isbn; this.title = title; }
+    public string Title { get { return title; } }
+}
+
+class BookCopy {                                       // the PHYSICAL item (instance) on the shelf
+    private readonly string barcode;
+    private readonly Book book;                        // which title this copy is
+    private CopyStatus status = CopyStatus.Available;
+    public BookCopy(string barcode, Book book) { this.barcode = barcode; this.book = book; }
+    public bool IsAvailable { get { return status == CopyStatus.Available; } }
+    public void MarkLoaned() { status = CopyStatus.Loaned; }
+    public void MarkReturned() { status = CopyStatus.Available; }
+    public Book Book { get { return book; } }
+}
+
+class Member {
+    public const int MaxLoans = 3;
+    private readonly string id;
+    private readonly List<Loan> activeLoans = new List<Loan>();
+    public Member(string id) { this.id = id; }
+    public bool CanBorrow() { return activeLoans.Count < MaxLoans; }   // Member knows its own limit
+    public void AddLoan(Loan loan) { activeLoans.Add(loan); }
+    public void RemoveLoan(Loan loan) { activeLoans.Remove(loan); }
+}
+
+class Loan {                                           // links Member + BookCopy AND has its own data
+    private readonly Member member;
+    private readonly BookCopy copy;
+    private readonly DateTime dueDate;
+    public Loan(Member member, BookCopy copy, DateTime today) {
+        this.member = member; this.copy = copy; this.dueDate = today.AddDays(14);
+    }
+    public bool IsOverdue(DateTime today) { return today > dueDate; }  // derived, not stored
+}
+
+class Library {                                        // coordinates the use case
+    public Loan Checkout(Member member, BookCopy copy, DateTime today) {
+        if (!member.CanBorrow()) throw new InvalidOperationException("loan limit reached");
+        if (!copy.IsAvailable) throw new InvalidOperationException("copy not available");
+        Loan loan = new Loan(member, copy, today);
+        copy.MarkLoaned();
+        member.AddLoan(loan);
+        return loan;
+    }
+}` }
 ] },
     codeTitle: 'Nouns filtered into classes, enum, value object (Library)',
     viz: [{
@@ -1529,7 +1778,30 @@ public:
     long long totalPaise() const {
         return accumulate(items_.begin(), items_.end(), 0LL, [](long long sum, const OrderItem& i) { return sum + i.pricePaise(); });
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Size { S, M, L }
+static class SizeExt {                                 // data attached to each enum value
+    public static int Percent(this Size s) { return s == Size.S ? 100 : s == Size.M ? 125 : 150; }
+}
+sealed class Drink {
+    public readonly string Name; public readonly long BasePaise;
+    public Drink(string name, long basePaise) { Name = name; BasePaise = basePaise; }
+}
+sealed class OrderItem {
+    public readonly Drink Drink; public readonly Size Size; public readonly int ExtraShots;
+    public OrderItem(Drink drink, Size size, int extraShots) { Drink = drink; Size = size; ExtraShots = extraShots; }
+    public long PricePaise() { return Drink.BasePaise * Size.Percent() / 100 + ExtraShots * 3000L; }
+}
+class CoffeeOrder {
+    private readonly List<OrderItem> items = new List<OrderItem>();
+    public void AddItem(Drink d, Size s, int shots) { items.Add(new OrderItem(d, s, shots)); }
+    public long TotalPaise() { return items.Sum(i => i.PricePaise()); }
+}` }
 ] } },
       { title: 'Type vs instance: Book vs BookCopy, Movie vs Show, Product vs StockItem', html: `<p>Many requirements hide two different things behind one word. "The library has 3 copies of <i>Clean Code</i>" means <b>one</b> Book (title, author, ISBN) and <b>three</b> BookCopy objects (barcode, status). If you merge them, the title is duplicated three times and "how many copies are available?" becomes messy. Same shape: Movie (the film) vs Show (a screening), Product (catalogue entry) vs InventoryItem (one physical unit with a serial number). This is called the <b>type-object</b> or <b>item-description</b> pattern.</p>
 ${H.table(['Type (shared description)', 'Instance (individual)', 'Link'], [['Book', 'BookCopy', '1 → 0..*'], ['Movie', 'Show', '1 → 0..*'], ['Product', 'StockItem', '1 → 0..*']])}` },
@@ -1645,7 +1917,35 @@ public:
         copyStatus[copy] = "AVAILABLE";
         return late * 10;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class LibrarySystem {
+    Dictionary<string, string> copyStatus = new Dictionary<string, string>();   // "AVAILABLE" / "LOANED" as strings
+    Dictionary<string, int> memberLoans = new Dictionary<string, int>();
+    Dictionary<string, int> dueDay = new Dictionary<string, int>();
+    Dictionary<string, string> copyHolder = new Dictionary<string, string>();
+
+    public string Checkout(string member, string copy, int today) {
+        int loans; memberLoans.TryGetValue(member, out loans);
+        if (loans >= 3) return "LIMIT";
+        string st; copyStatus.TryGetValue(copy, out st);
+        if (st != "AVAILABLE") return "UNAVAILABLE";
+        copyStatus[copy] = "LOANED";
+        memberLoans[member] = loans + 1;
+        dueDay[copy] = today + 14;
+        copyHolder[copy] = member;
+        return "OK";
+    }
+    public int GiveBack(string copy, int today) {                   // every rule tangled in one place
+        int late = Math.Max(0, today - dueDay[copy]);
+        memberLoans[copyHolder[copy]]--;
+        copyStatus[copy] = "AVAILABLE";
+        return late * 10;
+    }
+}` }
               ] }
       },
       mcq: { q: 'The requirement says "the library may own several copies of a book". What is the best model?', options: ['One Book class with a copies counter', 'Book (title, ISBN) and BookCopy (barcode, status), Book 1 → 0..* BookCopy', 'A subclass per copy: BookCopy1, BookCopy2', 'Only BookCopy, with the title repeated in each'], answer: 1, explain: 'Type vs instance. The title data is shared (Book) while each physical copy has its own identity and status (BookCopy). A counter cannot track which copy is lost or who holds it.' },
@@ -2103,6 +2403,110 @@ int main() {
     cout << boolalpha << loan.renew(d0 + days(10)) << "\\n";  // true, due day 24 from start+10
     cout << loan.renew(d0 + days(12)) << "\\n";               // false: one renewal only
     cout << lib.giveBack("C1", d0 + days(27)) << "\\n";       // 3 days late -> 3000 paise
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum CopyStatus { Available, Loaned, Lost }
+
+class Book {
+    private readonly string isbn, title;
+    private readonly List<string> authors;
+    private bool reserved;
+    public Book(string isbn, string title, List<string> authors) {
+        this.isbn = isbn; this.title = title; this.authors = new List<string>(authors);
+    }
+    public bool IsReserved { get { return reserved; } set { reserved = value; } }
+    public string Title { get { return title; } }
+}
+
+class BookCopy {
+    private readonly string barcode;
+    private readonly Book book;
+    private CopyStatus status = CopyStatus.Available;
+    public BookCopy(string barcode, Book book) { this.barcode = barcode; this.book = book; }
+    public bool IsAvailable { get { return status == CopyStatus.Available; } }
+    public void MarkLoaned() { status = CopyStatus.Loaned; }
+    public void MarkAvailable() { status = CopyStatus.Available; }
+    public Book Book { get { return book; } }
+    public string Barcode { get { return barcode; } }
+}
+
+class Member {
+    private const int MaxLoans = 3;
+    private readonly string id;
+    private readonly List<Loan> loans = new List<Loan>();
+    public Member(string id) { this.id = id; }
+    public bool CanBorrow() { return loans.Count < MaxLoans; }
+    public void Add(Loan l) { loans.Add(l); }
+    public void Remove(Loan l) { loans.Remove(l); }
+}
+
+class Loan {
+    private const int PeriodDays = 14, MaxRenewals = 1;
+    private const long FinePerDayPaise = 1000;
+    private readonly Member member;
+    private readonly BookCopy copy;
+    private DateTime dueDate;
+    private int renewals;
+    public Loan(Member member, BookCopy copy, DateTime start) {
+        this.member = member; this.copy = copy; this.dueDate = start.AddDays(PeriodDays);
+    }
+    public bool Renew(DateTime today) {
+        if (renewals >= MaxRenewals || copy.Book.IsReserved) return false;
+        dueDate = today.AddDays(PeriodDays);
+        renewals++;
+        return true;
+    }
+    public long FineFor(DateTime returned) {               // derived from data Loan owns
+        long late = (long)(returned.Date - dueDate.Date).TotalDays;
+        return Math.Max(0, late) * FinePerDayPaise;
+    }
+    public Member Member { get { return member; } }
+    public BookCopy Copy { get { return copy; } }
+    public DateTime DueDate { get { return dueDate; } }
+}
+
+class Library {
+    private readonly Dictionary<string, BookCopy> copies = new Dictionary<string, BookCopy>();
+    private readonly Dictionary<string, Loan> activeLoans = new Dictionary<string, Loan>();   // barcode -> loan
+
+    public void AddCopy(BookCopy c) { copies[c.Barcode] = c; }
+
+    public Loan Checkout(Member m, string barcode, DateTime today) {
+        BookCopy c;
+        if (!copies.TryGetValue(barcode, out c) || !c.IsAvailable) throw new InvalidOperationException("copy not available");
+        if (!m.CanBorrow()) throw new InvalidOperationException("loan limit reached");
+        Loan loan = new Loan(m, c, today);
+        c.MarkLoaned();
+        m.Add(loan);
+        activeLoans[barcode] = loan;
+        return loan;
+    }
+
+    public long GiveBack(string barcode, DateTime today) {
+        Loan loan;
+        if (!activeLoans.TryGetValue(barcode, out loan)) throw new InvalidOperationException("no active loan");
+        activeLoans.Remove(barcode);
+        loan.Copy.MarkAvailable();
+        loan.Member.Remove(loan);
+        return loan.FineFor(today);
+    }
+}
+
+class Program {
+    static void Main() {
+        Library lib = new Library();
+        Book cc = new Book("978-0132350884", "Clean Code", new List<string> { "Robert C. Martin" });
+        lib.AddCopy(new BookCopy("C1", cc));
+        Member asha = new Member("M1");
+        DateTime d0 = new DateTime(2026, 1, 1);
+        Loan loan = lib.Checkout(asha, "C1", d0);
+        Console.WriteLine(loan.Renew(d0.AddDays(10)).ToString().ToLower());   // true, due day 24 from start+10
+        Console.WriteLine(loan.Renew(d0.AddDays(12)).ToString().ToLower());   // false: one renewal only
+        Console.WriteLine(lib.GiveBack("C1", d0.AddDays(27)));                // 3 days late -> 3000 paise
+    }
 }` }
         ],
         complexity: `<p>checkout/renew/return are O(1) with hash-map lookups by barcode. Memory O(B + C + L) for books, copies, loans. Design complexity: 5 small classes, each testable alone, versus one god class.</p>`,
@@ -2344,6 +2748,52 @@ int main() {
     rcb.disband();
     cout << virat.name << " still exists; house has " << h.roomCount() << " rooms\\n";
     cout << ReportPrinter().print("Q3", Formatter()) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Engine { public void Start() { Console.WriteLine("vroom"); } }
+class Room { public readonly string Name; public Room(string name) { Name = name; } }
+class Player { public readonly string Name; public Player(string name) { Name = name; } }
+class Patient { public readonly string Name; public Patient(string name) { Name = name; } }
+class Formatter { public string Bold(string s) { return "**" + s + "**"; } }
+
+// COMPOSITION: House creates its rooms; they are never shared or handed out raw.
+class House {
+    private readonly List<Room> rooms = new List<Room>();
+    public House(params string[] roomNames) { foreach (string n in roomNames) rooms.Add(new Room(n)); } // born inside
+    public int RoomCount { get { return rooms.Count; } }
+}
+
+// AGGREGATION: Team groups players that were created elsewhere and outlive the team.
+class Team {
+    private readonly List<Player> players = new List<Player>();
+    public void Add(Player p) { players.Add(p); }       // passed in from outside
+    public void Disband() { players.Clear(); }          // players still exist afterwards
+}
+
+// ASSOCIATION: Doctor keeps references to patients; neither owns the other.
+class Doctor {
+    private readonly HashSet<Patient> patients = new HashSet<Patient>();
+    public void Treat(Patient p) { patients.Add(p); }
+}
+
+// DEPENDENCY: ReportPrinter only uses Formatter inside one call; no field.
+class ReportPrinter {
+    public string Print(string title, Formatter f) { return f.Bold(title); }
+}
+
+class Program {
+    static void Main() {
+        House h = new House("kitchen", "bedroom");
+        Player virat = new Player("Virat");
+        Team rcb = new Team(); rcb.Add(virat);
+        Team india = new Team(); india.Add(virat);   // aggregation allows sharing
+        rcb.Disband();
+        Console.WriteLine(virat.Name + " still exists; house has " + h.RoomCount + " rooms");
+        Console.WriteLine(new ReportPrinter().Print("Q3", new Formatter()));
+    }
 }` }
 ] },
     codeTitle: 'The four relationships as code',
@@ -2455,7 +2905,27 @@ public:
 private:
     // composition: lines are created inside and exposed only as a const reference
     vector<Line> lines_;
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Product {
+    public readonly string Sku, Name; public readonly long PricePaise;
+    public Product(string sku, string name, long pricePaise) { Sku = sku; Name = name; PricePaise = pricePaise; }
+}
+class PurchaseOrder {
+    // composition: lines are created inside and never exposed for modification
+    private readonly List<Line> lines = new List<Line>();
+    public sealed class Line {                          // association to Product
+        public readonly Product Product; public readonly int Qty; public readonly long UnitPricePaise;
+        public Line(Product product, int qty, long unitPricePaise) { Product = product; Qty = qty; UnitPricePaise = unitPricePaise; }
+    }
+    public void Add(Product p, int qty) { lines.Add(new Line(p, qty, p.PricePaise)); } // price frozen
+    public long TotalPaise() { return lines.Sum(l => l.Qty * l.UnitPricePaise); }
+    public IReadOnlyList<Line> Lines { get { return lines.ToList(); } }
+}` }
 ] } },
       { title: 'Two-way association must stay in sync (Student ↔ Course)', html: `<p>If both sides hold references, one method must update <b>both</b> sides, otherwise you get a student who thinks she is enrolled in a course whose roster does not list her. Put the logic in one place and keep the other side hidden (package-private in Java, an underscore-prefixed method in Python, a <code>friend</code> or private method in C++).</p>`, code: { lang: 'java', code: `
 class Course {
@@ -2555,6 +3025,30 @@ int main() {
     s.enroll(c);
     s.enroll(c);  // second call is a no-op
     cout << c.size() << "\\n";  // 1
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Course {
+    private readonly string code;
+    private readonly HashSet<Student> roster = new HashSet<Student>();
+    public Course(string code) { this.code = code; }
+    internal void AddInternal(Student s) { roster.Add(s); }   // only Student calls this
+    public int Size { get { return roster.Count; } }
+}
+class Student {
+    private readonly HashSet<Course> courses = new HashSet<Course>();
+    public void Enroll(Course c) {                            // single entry point keeps both sides consistent
+        if (courses.Add(c)) c.AddInternal(this);
+    }
+}
+class Program {
+    static void Main() {
+        Student s = new Student(); Course c = new Course("CS101");
+        s.Enroll(c); s.Enroll(c);                             // second call is a no-op
+        Console.WriteLine(c.Size);                            // 1
+    }
 }` }
 ] } }
     ],
@@ -2625,7 +3119,22 @@ public:
         deptToProfs[to].push_back(prof);
     }
     void grade(const string& student, const string& course, const string& g) { grades[student + "|" + course] = g; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class University {
+    Dictionary<string, List<string>> deptToProfs = new Dictionary<string, List<string>>();
+    Dictionary<string, List<string>> courseToStudents = new Dictionary<string, List<string>>();
+    Dictionary<string, string> grades = new Dictionary<string, string>();   // key "student|course" -> grade
+    public void MoveProf(string prof, string from, string to) {
+        deptToProfs[from].Remove(prof);              // forget this line once and the prof is in two depts
+        if (!deptToProfs.ContainsKey(to)) deptToProfs[to] = new List<string>();
+        deptToProfs[to].Add(prof);
+    }
+    public void Grade(string student, string course, string g) { grades[student + "|" + course] = g; }
+}` }
               ] }
       },
       mcq: { q: 'Students and courses are many-to-many, and each pair needs a grade. How should you model it?', options: ['Student has List&lt;Course&gt;, Course has List&lt;Student&gt;, grade in Student as Map&lt;String,String&gt;', 'An Enrollment class holding student, course and grade', 'Make Student extend Course', 'Composition: Course owns its Students'], answer: 1, explain: 'When the link itself carries data, promote the link to an association class (Enrollment). It also maps cleanly to a join table.' },
@@ -3003,6 +3512,84 @@ int main() {
     Enrollment& e = asha.enroll(dsa);
     e.assign(Grade::A);
     cout << gradeName(e.grade()) << "\\n";  // A
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum Grade { A, B, C, D, F, IN_PROGRESS }
+
+class Professor {
+    private readonly string name;
+    private Department department;                     // 0..1, kept in sync by Department
+    private readonly HashSet<Course> teaches = new HashSet<Course>();
+    public Professor(string name) { this.name = name; }
+    internal void SetDepartmentInternal(Department d) { department = d; }
+    public Department Department { get { return department; } }
+    public void Teach(Course c) { teaches.Add(c); c.AddTeacherInternal(this); }
+    public string Name { get { return name; } }
+}
+
+class Department {
+    private readonly string name;
+    private readonly HashSet<Professor> professors = new HashSet<Professor>();   // aggregation
+    internal Department(string name) { this.name = name; }    // created only by University
+    public void Hire(Professor p) {
+        Department old = p.Department;
+        if (old == this) return;
+        if (old != null) old.professors.Remove(p);             // keep both sides consistent
+        professors.Add(p);
+        p.SetDepartmentInternal(this);
+    }
+    public int Headcount { get { return professors.Count; } }
+    public string Name { get { return name; } }
+}
+
+class University {
+    private readonly Dictionary<string, Department> departments = new Dictionary<string, Department>();   // composition
+    public Department OpenDepartment(string name) {
+        Department d;
+        if (!departments.TryGetValue(name, out d)) { d = new Department(name); departments[name] = d; }  // created only here
+        return d;
+    }
+    public int DepartmentCount { get { return departments.Count; } }
+}
+
+class Course {
+    private readonly string code;
+    private readonly HashSet<Professor> teachers = new HashSet<Professor>();
+    public Course(string code) { this.code = code; }
+    internal void AddTeacherInternal(Professor p) { teachers.Add(p); }
+    public string Code { get { return code; } }
+}
+
+class Student {
+    private readonly string name;
+    private readonly List<Enrollment> enrollments = new List<Enrollment>();
+    public Student(string name) { this.name = name; }
+    public Enrollment Enroll(Course c) { Enrollment e = new Enrollment(this, c); enrollments.Add(e); return e; }
+}
+
+class Enrollment {                                     // association class: the link has data
+    private readonly Student student;
+    private readonly Course course;
+    private Grade grade = Grade.IN_PROGRESS;
+    public Enrollment(Student s, Course c) { student = s; course = c; }
+    public void Assign(Grade g) { grade = g; }
+    public Grade Grade { get { return grade; } }
+}
+
+class Program {
+    static void Main() {
+        University iit = new University();
+        Department cs = iit.OpenDepartment("CS"), ee = iit.OpenDepartment("EE");
+        Professor rao = new Professor("Rao");
+        cs.Hire(rao); ee.Hire(rao);                    // moves, never in two departments
+        Console.WriteLine(cs.Headcount + " " + ee.Headcount);   // 0 1
+        Course dsa = new Course("CS201"); rao.Teach(dsa);
+        Enrollment e = new Student("Asha").Enroll(dsa); e.Assign(Grade.A);
+        Console.WriteLine(e.Grade);                    // A
+    }
 }` }
         ],
         complexity: `<p>All operations are O(1) average with hash sets/maps. The design keeps every two-way link updated from a single method, so consistency bugs cannot creep in from other callers.</p>`,
@@ -3208,6 +3795,43 @@ int main() {
     int best = 0;
     for (const auto& f : fliers) best = max(best, f->maxAltitudeMeters());
     cout << best << "\\n";  // 300
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// Abstract class: shared state + shared code, one step left to children.
+abstract class Shape {
+    private readonly string name;
+    protected Shape(string name) { this.name = name; }
+    public abstract double Area();                     // each child must say how
+    public string Describe() { return name + " with area " + Area().ToString("F2"); } // shared
+}
+class Circle : Shape {
+    private readonly double r;
+    public Circle(double r) : base("Circle") { this.r = r; }
+    public override double Area() { return Math.PI * r * r; }
+}
+class Square : Shape {
+    private readonly double side;
+    public Square(double side) : base("Square") { this.side = side; }
+    public override double Area() { return side * side; }
+}
+
+// Interface: a capability unrelated classes can share.
+interface IFlyable { int MaxAltitudeMeters(); }
+class Sparrow : IFlyable { public int MaxAltitudeMeters() { return 300; } }
+class Drone : IFlyable { public int MaxAltitudeMeters() { return 120; } }
+
+class Program {
+    static void Main() {
+        List<Shape> shapes = new List<Shape> { new Circle(1), new Square(2) };
+        foreach (Shape s in shapes) Console.WriteLine(s.Describe()); // right Area() picked at runtime
+        List<IFlyable> fliers = new List<IFlyable> { new Sparrow(), new Drone() };
+        int max = 0;
+        foreach (IFlyable f in fliers) max = Math.Max(max, f.MaxAltitudeMeters());
+        Console.WriteLine(max);                                      // 300
+    }
 }` }
 ] }, { lang: 'java', code: `
 // Java 21: a CLOSED set of variants with sealed + records + pattern matching.
@@ -3299,6 +3923,32 @@ string describe(const Payment& p) {
 
 int main() {
     cout << describe(Upi{"asha@bank"}) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// A CLOSED set of variants: an abstract base with a private constructor, so only the nested
+// classes can derive from it; the type switch then covers every variant.
+abstract class Payment {
+    private Payment() { }
+    public sealed class Card : Payment { public readonly string Last4; public Card(string last4) { Last4 = last4; } }
+    public sealed class Upi : Payment { public readonly string Vpa; public Upi(string vpa) { Vpa = vpa; } }
+    public sealed class Cash : Payment { }
+}
+
+class Receipt {
+    public static string Describe(Payment p) {
+        if (p is Payment.Card c) return "Card ending " + c.Last4;   // pattern matching on the variant
+        if (p is Payment.Upi u) return "UPI " + u.Vpa;
+        if (p is Payment.Cash) return "Cash";
+        throw new ArgumentException("unknown payment");
+    }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(Receipt.Describe(new Payment.Upi("asha@bank")));
+    }
 }` }
 ] }],
     codeTitle: ['Abstract class, interface, polymorphism', 'Closed set of variants (sealed / union / variant)'],
@@ -3455,6 +4105,28 @@ int main() {
         cout << b->sound() << "\\n";
         if (auto* f = dynamic_cast<const Flyable*>(b.get())) f->fly();  // only real fliers fly
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+abstract class Bird { public abstract string Sound(); }
+interface IFlyable { void Fly(); }
+class Sparrow : Bird, IFlyable {
+    public override string Sound() { return "chirp"; }
+    public void Fly() { Console.WriteLine("sparrow flies"); }
+}
+class Penguin : Bird {                       // no Fly() at all: no lie to tell
+    public override string Sound() { return "squawk"; }
+}
+class Program {
+    static void Main() {
+        List<Bird> birds = new List<Bird> { new Sparrow(), new Penguin() };
+        foreach (Bird b in birds) {
+            Console.WriteLine(b.Sound());
+            if (b is IFlyable f) f.Fly();    // only real fliers fly
+        }
+    }
 }` }
 ] } },
       { title: 'Roles that change: Employee has-a Role, not Manager extends Employee', html: `<p>Asha joins as an Engineer and gets promoted to Manager next year. With inheritance you would need to create a <i>new</i> <code>Manager</code> object and copy her data, losing identity (her id, history, references from other objects). With composition the same Employee object just swaps its <code>Role</code> field.</p>
@@ -3573,6 +4245,30 @@ int main() {
     Employee asha("E7", make_unique<EngineerRole>());
     asha.promote(make_unique<ManagerRole>(5));
     cout << asha.badge() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IRole { long BonusPercent(); string Title(); }
+sealed class EngineerRole : IRole { public long BonusPercent() { return 10; } public string Title() { return "Engineer"; } }
+sealed class ManagerRole : IRole {
+    public readonly int Reports;
+    public ManagerRole(int reports) { Reports = reports; }
+    public long BonusPercent() { return 20; } public string Title() { return "Manager"; }
+}
+class Employee {
+    private readonly string id;
+    private IRole role;
+    public Employee(string id, IRole role) { this.id = id; this.role = role; }
+    public void Promote(IRole newRole) { role = newRole; }     // same object, new behaviour
+    public string Badge() { return id + " - " + role.Title() + " (" + role.BonusPercent() + "% bonus)"; }
+}
+class Program {
+    static void Main() {
+        Employee asha = new Employee("E7", new EngineerRole());
+        asha.Promote(new ManagerRole(5));
+        Console.WriteLine(asha.Badge());
+    }
 }` }
 ] } },
       { title: 'Abstract class for shared steps: monthly interest', html: `<p>All accounts share the bookkeeping "compute interest, add it, log it", but each type computes the rate differently. An abstract class holds the shared steps and leaves one <code>abstract</code> method to the children. This is a sneak peek at the <b>Template Method</b> pattern.</p>
@@ -3664,7 +4360,28 @@ public:
     explicit SalaryAccount(long long b) : InterestAccount(b) {}
 protected:
     long long annualRatePercent() const override { return 3; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class InterestAccount {
+    protected long balance;
+    protected InterestAccount(long balance) { this.balance = balance; }
+    public long ApplyMonthlyInterest() {               // shared algorithm, non-virtual so children cannot break it
+        long interest = balance * AnnualRatePercent() / 100 / 12;
+        balance += interest;
+        return interest;
+    }
+    protected abstract long AnnualRatePercent();       // the one step children decide
+}
+class SavingsAccount : InterestAccount {
+    public SavingsAccount(long b) : base(b) { }
+    protected override long AnnualRatePercent() { return 4; }
+}
+class SalaryAccount : InterestAccount {
+    public SalaryAccount(long b) : base(b) { }
+    protected override long AnnualRatePercent() { return 3; }
+}` }
 ] } }
     ],
     deepDive: `<p><b>How dispatch works.</b> Each class has a method table (vtable). A call <code>s.area()</code> compiles to <code>invokevirtual Shape.area</code>; at runtime the JVM looks up the slot in the <i>actual</i> object's table (C++ virtual calls go through a vtable pointer in the same way; Python and JavaScript look the method up by name at run time). The JIT often inlines it when only one or two receiver types are seen (monomorphic/bimorphic inline caches), so polymorphism is nearly free in hot loops. Interface calls use <code>invokeinterface</code>, similarly optimised.</p>
@@ -3750,7 +4467,25 @@ public:
         if (type == "UPI") return vpa.find('@') != string::npos;
         return cardNumber.size() == 16;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Payment {
+    public string Type;            // "CREDIT", "DEBIT", "UPI" ... typo = silent bug
+    public string CardNumber, Expiry, Vpa;   // half of these are always null
+    public long Fee(long amount) {
+        switch (Type) {
+            case "CREDIT": return amount * 2 / 100;
+            case "DEBIT": return amount / 200;
+            default: return 0;           // new WALLET type silently free
+        }
+    }
+    public bool Validate() {
+        if (Type == "UPI") return Vpa != null && Vpa.Contains("@");
+        return CardNumber != null && CardNumber.Length == 16;
+    }
+}` }
               ] }
       },
       mcq: { q: 'Credit and debit cards share validation code and fields; UPI shares nothing but the "can pay" ability. What structure fits best?', options: ['One Payment class with a type field', 'interface PaymentMethod; abstract class CardPayment implements it; CreditCard/DebitCard extend CardPayment; Upi implements PaymentMethod directly', 'Upi extends CreditCard', 'Three unrelated classes and instanceof checks in Checkout'], answer: 1, explain: 'Interface for the capability every method shares (validate, fee, pay); abstract class only where real shared code and state exist (cards). Checkout depends on the interface only.' },
@@ -4050,6 +4785,67 @@ int main() {
     cout << c.process(100000, DebitCard("5500000000000004", exp)) << "\\n";
     cout << c.process(100000, Upi("asha@okbank")) << "\\n";
     cout << c.process(100000, Upi("asha")) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Text.RegularExpressions;
+
+interface IPaymentMethod {
+    bool IsValid();
+    long Fee(long amountPaise);
+    string Pay(long totalPaise);
+}
+
+abstract class CardPayment : IPaymentMethod {
+    private readonly string number;
+    private readonly DateTime expiry;                  // first day of the expiry month
+    protected CardPayment(string number, DateTime expiry) { this.number = number; this.expiry = expiry; }
+    public bool IsValid() {                            // shared by all cards
+        return number != null && Regex.IsMatch(number, "^[0-9]{16}$") && expiry >= new DateTime(2026, 1, 1);
+    }
+    public long Fee(long amountPaise) { return amountPaise * FeePerMille() / 1000; }
+    protected abstract long FeePerMille();             // the only thing that differs
+    public abstract string Pay(long totalPaise);
+    protected string Last4() { return number.Substring(12); }
+}
+
+class CreditCard : CardPayment {
+    public CreditCard(string n, DateTime e) : base(n, e) { }
+    protected override long FeePerMille() { return 20; }                  // 2%
+    public override string Pay(long total) { return "Charged " + total + " to credit card ****" + Last4(); }
+}
+
+class DebitCard : CardPayment {
+    public DebitCard(string n, DateTime e) : base(n, e) { }
+    protected override long FeePerMille() { return 5; }                   // 0.5%
+    public override string Pay(long total) { return "Debited " + total + " from card ****" + Last4(); }
+}
+
+class Upi : IPaymentMethod {
+    private readonly string vpa;
+    public Upi(string vpa) { this.vpa = vpa; }
+    public bool IsValid() { return vpa != null && Regex.IsMatch(vpa, "^[a-zA-Z0-9.]+@[a-zA-Z]+$"); }
+    public long Fee(long amountPaise) { return 0; }
+    public string Pay(long total) { return "UPI collect request of " + total + " sent to " + vpa; }
+}
+
+class Checkout {
+    public string Process(long amountPaise, IPaymentMethod method) {    // knows only IPaymentMethod
+        if (!method.IsValid()) return "Rejected: invalid payment details";
+        long total = amountPaise + method.Fee(amountPaise);
+        return method.Pay(total);
+    }
+}
+
+class Program {
+    static void Main() {
+        Checkout c = new Checkout();
+        DateTime exp = new DateTime(2028, 5, 1);
+        Console.WriteLine(c.Process(100000, new CreditCard("4111111111111111", exp)));
+        Console.WriteLine(c.Process(100000, new DebitCard("5500000000000004", exp)));
+        Console.WriteLine(c.Process(100000, new Upi("asha@okbank")));
+        Console.WriteLine(c.Process(100000, new Upi("asha")));
+    }
 }` }
         ],
         complexity: `<p>Each payment is O(1). Adding a method = 1 new class, 0 edits (vs N edited switches in the god class). Dispatch cost is a virtual call, negligible.</p>`,
@@ -4191,7 +4987,29 @@ public:
 class Current : public Account {  // solid line + hollow triangle to Account
 public:
     long long monthlyFee() const override { return 5000; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+// C# that a class box translates into (and back):
+//   «abstract» Account
+//   - id : string
+//   # balance : long
+//   - nextId : int   (underlined = static)
+//   + Deposit(amount : long) : void
+//   + MonthlyFee() : long   (italic = abstract)
+abstract class Account {
+    private static int nextId = 1;                // underlined in UML
+    private readonly string id;                   // -
+    protected long balance;                       // #
+    protected Account() { id = "AC" + (nextId++); }
+    public void Deposit(long amount) { balance += amount; }   // +
+    public abstract long MonthlyFee();            // italic
+    internal string Id { get { return id; } }     // ~ assembly-private
+}
+class Current : Account {                         // solid line + hollow triangle to Account
+    public override long MonthlyFee() { return 5000; }
+}` }
 ] }, { lang: 'text', title: 'Same diagram as PlantUML text (paste into any PlantUML renderer)', code: `@startuml
 abstract class Account {
   - id : String
@@ -4416,7 +5234,34 @@ public:
         }
         return false;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum OrderStatus { Placed, Paid }
+interface IPaymentMethod { bool Pay(long amountPaise); }
+sealed class Customer { public readonly string Id; public Customer(string id) { Id = id; } }
+sealed class OrderLine {
+    public readonly string Sku; public readonly int Qty; public readonly long UnitPaise;
+    public OrderLine(string sku, int qty, long unitPaise) { Sku = sku; Qty = qty; UnitPaise = unitPaise; }
+}
+class Order {
+    private readonly Customer customer;                 // association, navigable one way
+    private readonly List<OrderLine> lines;             // composition 1..*
+    private OrderStatus status = OrderStatus.Placed;
+    public Order(Customer customer, List<OrderLine> lines) {
+        if (lines.Count == 0) throw new ArgumentException("1..* means at least one line");
+        this.customer = customer;
+        this.lines = new List<OrderLine>(lines);        // defensive copy: nobody else holds our parts
+    }
+    public bool Pay(IPaymentMethod pm) {                // dependency: used, not stored
+        long total = lines.Sum(l => l.Qty * l.UnitPaise);
+        if (pm.Pay(total)) { status = OrderStatus.Paid; return true; }
+        return false;
+    }
+}` }
 ] } },
       { title: 'Five notation mistakes interviewers notice', html: `${H.table(['Mistake', 'Fix'], [['Diamond drawn at the <b>part</b> end', 'The diamond always sits at the <b>whole</b> (Car ◆— Engine)'], ['Inheritance triangle pointing at the child', 'Triangle points at the <b>parent</b>/interface'], ['Same link drawn twice: a line to Engine <i>and</i> an attribute <code>engine: Engine</code>', 'Show it once, as a line (attributes are for simple values)'], ['No multiplicities', 'Always write them: they encode business rules (max 3 loans)'], ['30 boxes with every getter', 'Key classes, key fields, use-case methods only']])}` }
     ],
@@ -4501,7 +5346,25 @@ public:
         return t;                         // may go negative
     }
     void checkout() { orders.push_back(cart); cart.clear(); }   // prices not frozen
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class ShopService {
+    public Dictionary<string, int> Cart = new Dictionary<string, int>();
+    public Dictionary<string, long> Prices = new Dictionary<string, long>();
+    public string CouponType; public long CouponValue;
+    public List<Dictionary<string, int>> Orders = new List<Dictionary<string, int>>();
+    public long Total() {
+        long t = 0;
+        foreach (var e in Cart) t += Prices[e.Key] * e.Value;
+        if ("FLAT" == CouponType) t -= CouponValue;
+        else if ("PERCENT" == CouponType) t -= t * CouponValue / 100;
+        return t;                         // may go negative
+    }
+    public void Checkout() { Orders.Add(new Dictionary<string, int>(Cart)); Cart.Clear(); }  // prices not frozen
+}` }
               ] }
       },
       mcq: { q: 'Why does OrderLine store unitPricePaise instead of just referencing Product?', options: ['To save memory', 'Because the order must remember the price actually paid even if the product price changes later', 'Because Product is immutable', 'UML requires it'], answer: 1, explain: 'An order is a historical record. Referencing the live product price would rewrite history. Copy the price (a snapshot) into the line; keep the reference to Product for everything else.' },
@@ -5038,6 +5901,122 @@ int main() {
     } catch (const runtime_error& e) {
         cout << e.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface ICoupon { long Apply(long totalPaise); }
+sealed class FlatCoupon : ICoupon {
+    private readonly long offPaise;
+    public FlatCoupon(long offPaise) { this.offPaise = offPaise; }
+    public long Apply(long total) { return Math.Max(0, total - offPaise); }
+}
+sealed class PercentCoupon : ICoupon {
+    private readonly int percent;
+    public PercentCoupon(int percent) {
+        if (percent < 0 || percent > 100) throw new ArgumentException("0..100");
+        this.percent = percent;
+    }
+    public long Apply(long total) { return total - total * percent / 100; }
+}
+interface IPaymentMethod { bool Pay(long amountPaise); }
+sealed class LambdaPayment : IPaymentMethod {           // adapts a delegate to the interface
+    private readonly Func<long, bool> f;
+    public LambdaPayment(Func<long, bool> f) { this.f = f; }
+    public bool Pay(long amountPaise) { return f(amountPaise); }
+}
+
+class Product {
+    private readonly string sku, name;
+    private long pricePaise;
+    private int stock;
+    public Product(string sku, string name, long pricePaise, int stock) { this.sku = sku; this.name = name; this.pricePaise = pricePaise; this.stock = stock; }
+    public long Price { get { return pricePaise; } }
+    public void ChangePrice(long p) { pricePaise = p; }
+    public bool HasStock(int qty) { return qty <= stock; }
+    public string Sku { get { return sku; } }
+}
+
+class CartItem {
+    private readonly Product product;
+    private int quantity;
+    public CartItem(Product p, int q) { product = p; quantity = q; }
+    public long Subtotal() { return product.Price * quantity; }
+    public Product Product { get { return product; } }
+    public int Quantity { get { return quantity; } }
+    public void Increase(int q) { quantity += q; }
+}
+
+class Cart {
+    private readonly List<CartItem> items = new List<CartItem>();    // composition, insertion order kept
+    private ICoupon coupon;                                           // 0..1
+    public void Add(Product p, int qty) {
+        if (qty < 1) throw new ArgumentException("qty >= 1");
+        CartItem existing = items.FirstOrDefault(i => i.Product.Sku == p.Sku);
+        int already = existing == null ? 0 : existing.Quantity;
+        if (!p.HasStock(already + qty)) throw new InvalidOperationException("not enough stock");
+        if (existing == null) { existing = new CartItem(p, 0); items.Add(existing); }
+        existing.Increase(qty);
+    }
+    public void ApplyCoupon(ICoupon c) { coupon = c; }
+    public long Total() {
+        long raw = items.Sum(i => i.Subtotal());
+        return coupon == null ? raw : coupon.Apply(raw);
+    }
+    public List<CartItem> Items() { return new List<CartItem>(items); }
+    public void Clear() { items.Clear(); coupon = null; }
+}
+
+sealed class OrderLine {                                              // price frozen
+    public readonly Product Product; public readonly int Quantity; public readonly long UnitPricePaise;
+    public OrderLine(Product product, int quantity, long unitPricePaise) { Product = product; Quantity = quantity; UnitPricePaise = unitPricePaise; }
+}
+
+class Order {
+    public enum OrderStatus { PLACED, PAID }
+    private readonly List<OrderLine> lines;
+    private readonly long totalPaise;
+    private OrderStatus status = OrderStatus.PLACED;
+    public Order(List<OrderLine> lines, long totalPaise) {
+        if (lines.Count == 0) throw new ArgumentException("order needs 1..* lines");
+        this.lines = new List<OrderLine>(lines); this.totalPaise = totalPaise;
+    }
+    public void MarkPaid() { status = OrderStatus.PAID; }
+    public long Total { get { return totalPaise; } }
+    public OrderStatus Status { get { return status; } }
+}
+
+class Customer {
+    private readonly string id;
+    private readonly Cart cart = new Cart();                   // composition: born with the customer
+    private readonly List<Order> orders = new List<Order>();   // association 0..*
+    public Customer(string id) { this.id = id; }
+    public Cart Cart { get { return cart; } }
+    public Order Checkout(IPaymentMethod pm) {                 // dependency on IPaymentMethod
+        List<OrderLine> lines = new List<OrderLine>();
+        foreach (CartItem ci in cart.Items()) lines.Add(new OrderLine(ci.Product, ci.Quantity, ci.Product.Price));
+        Order order = new Order(lines, cart.Total());
+        if (!pm.Pay(order.Total)) throw new InvalidOperationException("payment failed");
+        order.MarkPaid();
+        orders.Add(order);
+        cart.Clear();
+        return order;
+    }
+}
+
+class Program {
+    static void Main() {
+        Product pen = new Product("P1", "Pen", 5000, 10), book = new Product("N1", "Notebook", 12000, 5);
+        Customer asha = new Customer("C1");
+        asha.Cart.Add(pen, 2); asha.Cart.Add(book, 1);
+        asha.Cart.ApplyCoupon(new PercentCoupon(10));
+        Order o = asha.Checkout(new LambdaPayment(amount => true));   // lambda as a fake payment method
+        pen.ChangePrice(6000);
+        Console.WriteLine(o.Total + " " + o.Status);   // 19800 PAID, unaffected by the price change
+        try { asha.Cart.Add(pen, 11); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }  // only 10 in stock
+    }
 }` }
         ],
         complexity: `<p>add/remove O(1) (an insertion-ordered map by sku); total O(items); checkout O(items). Memory O(items + orders). Extending with a new coupon type = one new class, no edits.</p>`,
@@ -5209,6 +6188,42 @@ int main() {
     Atm atm(bank);
     cout << atm.withdraw("CARD-1", 500) << "\\n";
     cout << atm.withdraw("CARD-1", 800) << "\\n";  // only 500 left in the account
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// The code behind an "ATM withdraw" sequence diagram.
+// Customer -> ATM: withdraw(500) ; ATM -> Bank: debit(card, 500) ; alt approved: ATM -> ATM: dispense ; else: show error
+class Bank {
+    private readonly Dictionary<string, long> balances = new Dictionary<string, long>();
+    public Bank() { balances["CARD-1"] = 1000L; }
+    public bool Debit(string card, long amount) {              // message 2 arrives here
+        long bal; balances.TryGetValue(card, out bal);
+        if (amount > bal) return false;                        // return message: false
+        balances[card] = bal - amount;
+        return true;                                           // return message: true
+    }
+}
+class Atm {
+    private readonly Bank bank;                                // association: ATM knows its bank
+    private long cash = 10000;
+    public Atm(Bank bank) { this.bank = bank; }
+    public string Withdraw(string card, long amount) {         // message 1 (from Customer)
+        if (amount > cash) return "ATM out of cash";           // alt branch 1
+        bool ok = bank.Debit(card, amount);                    // message 2: synchronous call
+        if (!ok) return "Insufficient funds";                  // alt branch 2
+        Dispense(amount);                                      // message 3: self-call
+        return "Please take " + amount;                        // return to Customer
+    }
+    private void Dispense(long amount) { cash -= amount; }
+}
+class Program {
+    static void Main() {
+        Atm atm = new Atm(new Bank());
+        Console.WriteLine(atm.Withdraw("CARD-1", 500));
+        Console.WriteLine(atm.Withdraw("CARD-1", 800));        // only 500 left in the account
+    }
 }` }
 ] },
     codeTitle: 'Sequence diagram → code (ATM withdraw)',
@@ -5321,7 +6336,29 @@ public:
         audit_.push_back("failed login " + email);  // alt [else] AuditLog: recordFailure
         return "error";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class User {
+    public readonly string Email, PasswordHash;
+    public User(string email, string passwordHash) { Email = email; PasswordHash = passwordHash; }
+}
+class AuthService {
+    private readonly Dictionary<string, User> users = new Dictionary<string, User>();
+    private readonly List<string> audit = new List<string>();
+    public AuthService() { users["a@x.com"] = new User("a@x.com", "h:secret"); }
+    public string Login(string email, string pw) {
+        User u; users.TryGetValue(email, out u);                // AuthService -> UserRepo: findByEmail
+        if (u != null && u.PasswordHash == "h:" + pw) {         // alt [password matches]
+            return "token-" + Guid.NewGuid();                   // SessionStore: create
+        } else {                                                // alt [else]
+            audit.Add("failed login " + email);                 // AuditLog: recordFailure
+            return "error";
+        }
+    }
+}` }
 ] } },
       { title: 'loop fragment = a for loop (cart total)', html: `<p><code>Cart → CartItem: subtotal()</code> inside a <b>loop [for each item]</b> frame, and inside that, <code>CartItem → Product: price()</code>. The diagram makes it obvious that Cart talks to items, items talk to products, and Cart never reaches into Product directly. That is the <b>Law of Demeter</b> ("talk only to your immediate friends") made visible.</p>
 ${H.table(['#', 'from', 'to', 'message', 'fragment'], [['1', 'Client', 'Cart', 'total()', ''], ['2', 'Cart', 'CartItem', 'subtotal()', 'loop [each item]'], ['3', 'CartItem', 'Product', 'price()', 'loop [each item]'], ['4', 'Cart', 'Client', 'return sum', '']])}` },
@@ -5406,7 +6443,24 @@ class Order2 {
 public:
     Order2(Customer2& c, long long total) : customer_(c), total_(total) {}
     bool payWithWallet() { return customer_.charge(total_); }  // controller calls only this
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Wallet {
+    private long balance = 1000;
+    public bool Debit(long x) { if (x > balance) return false; balance -= x; return true; }
+}
+class Customer2 {
+    private readonly Wallet wallet = new Wallet();
+    public bool Charge(long x) { return wallet.Debit(x); }      // talks only to its own wallet
+}
+class Order2 {
+    private readonly Customer2 customer;
+    private readonly long total;
+    public Order2(Customer2 c, long total) { customer = c; this.total = total; }
+    public bool PayWithWallet() { return customer.Charge(total); }   // controller calls only this
+}` }
 ] } }
     ],
     deepDive: `<p><b>Sequence diagrams assign responsibilities.</b> The GRASP patterns become visible: the <i>Controller</i> is the first object receiving the system event; the <i>Creator</i> of an object (who sends «create») should be the one that contains or closely uses it (Order creates OrderLines); the <i>Information Expert</i> receives the message that needs its data. If you cannot decide where an arrow should land, your class diagram is missing a class.</p>
@@ -5497,7 +6551,27 @@ public:
         cout << "SMS sent\\n";           // synchronous: user waits for this
         return "assigned " + best->id + " fare " + to_string(fare);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class RideController {
+    public List<Dictionary<string, object>> Drivers = new List<Dictionary<string, object>>();
+    public string Request(int px, int py, int dx, int dy) {
+        long fare = 50 + 12L * (Math.Abs(px - dx) + Math.Abs(py - dy));    // formula buried here
+        Dictionary<string, object> best = null; int bestD = int.MaxValue;
+        foreach (var d in Drivers) {
+            if ("busy".Equals(d["status"])) continue;
+            int dist = Math.Abs((int)d["x"] - px) + Math.Abs((int)d["y"] - py);
+            if (dist < bestD) { bestD = dist; best = d; }
+        }
+        if (best == null) return "no drivers nearby";
+        best["status"] = "busy";
+        Console.WriteLine("SMS sent");           // synchronous: user waits for this
+        return "assigned " + best["id"] + " fare " + fare;
+    }
+}` }
               ] }
       },
       mcq: { q: 'In the diagram, which class should own "find the nearest available driver"?', options: ['RideService, by looping over all drivers itself', 'DriverPool, because it holds the drivers and their availability', 'Rider', 'Notifier'], answer: 1, explain: 'Information Expert: DriverPool has the data (drivers, positions, availability). RideService just asks it, which is exactly the arrow RideService → DriverPool: nearestAvailable(pickup).' },
@@ -5911,6 +6985,100 @@ int main() {
     cout << svc.requestRide("Mia", a, b) << "\\n";   // no drivers nearby
     cout << notifier.sent()[0] << "\\n";             // SMS to Asha: Asha with D1 fare 134 ASSIGNED
     cout << notifier.sent().size() << "\\n";         // 2: no SMS when nobody was assigned
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+struct Location {
+    public readonly int X, Y;
+    public Location(int x, int y) { X = x; Y = y; }
+    public int DistanceTo(Location o) { return Math.Abs(X - o.X) + Math.Abs(Y - o.Y); }
+}
+
+enum RideStatus { ASSIGNED, STARTED, COMPLETED }
+
+class Driver {
+    private readonly string id;
+    private readonly Location location;
+    private Ride current;
+    public Driver(string id, Location location) { this.id = id; this.location = location; }
+    public bool IsAvailable { get { return current == null; } }
+    public void Assign(Ride ride) {                              // arrow: RideService -> Driver: assign(ride)
+        if (!IsAvailable) throw new InvalidOperationException("driver busy");
+        current = ride;
+    }
+    public Location Location { get { return location; } }
+    public string Id { get { return id; } }
+}
+
+class Ride {
+    private readonly string rider;
+    private readonly Driver driver;
+    private readonly long farePaise;
+    private RideStatus status = RideStatus.ASSIGNED;
+    public Ride(string rider, Driver driver, long farePaise) { this.rider = rider; this.driver = driver; this.farePaise = farePaise; }
+    public string Summary() { return rider + " with " + driver.Id + " fare " + farePaise / 100 + " " + status; }
+}
+
+class FareCalculator {
+    public long Estimate(Location from, Location to) { return 5000 + 1200L * from.DistanceTo(to); }  // paise
+}
+
+class DriverPool {
+    private readonly List<Driver> drivers = new List<Driver>();
+    public void Add(Driver d) { drivers.Add(d); }
+    public Driver NearestAvailable(Location p) {                 // the information expert; null when none
+        return drivers.Where(d => d.IsAvailable).OrderBy(d => d.Location.DistanceTo(p)).FirstOrDefault();
+    }
+}
+
+class Notifier {
+    private readonly Action<Action> executor;                    // how to run a task: inline, thread pool, ...
+    private readonly object gate = new object();
+    public readonly List<string> Sent = new List<string>();
+    public Notifier(Action<Action> executor) { this.executor = executor; }
+    public void NotifyAsync(string rider, Ride ride) {           // async: returns immediately
+        executor(() => { lock (gate) Sent.Add("SMS to " + rider + ": " + ride.Summary()); });
+    }
+}
+
+class RideService {
+    private readonly FareCalculator fares;
+    private readonly DriverPool pool;
+    private readonly Notifier notifier;
+    public RideService(FareCalculator f, DriverPool p, Notifier n) { fares = f; pool = p; notifier = n; }
+
+    public string RequestRide(string rider, Location pickup, Location drop) {
+        long fare = fares.Estimate(pickup, drop);                       // message 2
+        Driver driver = pool.NearestAvailable(pickup);                  // message 3
+        if (driver != null) {                                           // alt [driver found]
+            Ride ride = new Ride(rider, driver, fare);                   // «create»
+            driver.Assign(ride);                                        // message 4
+            notifier.NotifyAsync(rider, ride);                          // async message
+            return ride.Summary();
+        } else {                                                        // alt [else]
+            return "no drivers nearby";
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        DriverPool pool = new DriverPool();
+        pool.Add(new Driver("D1", new Location(0, 0)));
+        pool.Add(new Driver("D2", new Location(5, 5)));
+        Action<Action> direct = task => task();                         // run inline for the demo
+        Notifier notifier = new Notifier(direct);
+        RideService svc = new RideService(new FareCalculator(), pool, notifier);
+        Location a = new Location(1, 1), b = new Location(4, 5);
+        Console.WriteLine(svc.RequestRide("Asha", a, b));   // Asha with D1 fare 134 ASSIGNED
+        Console.WriteLine(svc.RequestRide("Ravi", a, b));   // Ravi with D2 fare 134 ASSIGNED
+        Console.WriteLine(svc.RequestRide("Mia", a, b));    // no drivers nearby
+        Console.WriteLine(notifier.Sent[0]);                // SMS to Asha: Asha with D1 fare 134 ASSIGNED
+        Console.WriteLine(notifier.Sent.Count);             // 2: no SMS when nobody was assigned
+    }
 }` }
         ],
         complexity: `<p>estimate O(1); nearestAvailable O(D) over D drivers (a spatial index like a geohash grid or k-d tree makes it ~O(log D) at scale); assign O(1). The design keeps each arrow a single, testable method.</p>`,
@@ -6234,6 +7402,79 @@ int main() {
     auto first = h.book("Asha", RoomType::Double, may);
     cout << (first ? first->totalPaise() : -1) << "\\n";  // 1200000
     cout << boolalpha << h.book("Ravi", RoomType::Double, may).has_value() << "\\n";  // false
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// A compact, runnable skeleton for "book a hotel room for a date range".
+enum RoomType { SINGLE, DOUBLE, SUITE }
+enum BookingStatus { CONFIRMED, CANCELLED }
+
+struct DateRange {                                                   // value object
+    public readonly DateTime CheckIn, CheckOut;
+    public DateRange(DateTime checkIn, DateTime checkOut) {
+        if (checkOut <= checkIn) throw new ArgumentException("checkOut must be after checkIn");
+        CheckIn = checkIn; CheckOut = checkOut;
+    }
+    public bool Overlaps(DateRange o) { return CheckIn < o.CheckOut && o.CheckIn < CheckOut; }
+    public long Nights() { return (long)(CheckOut - CheckIn).TotalDays; }
+}
+
+class Room {                                                         // entity
+    private readonly string number;
+    private readonly RoomType type;
+    private readonly long nightlyPaise;
+    public Room(string number, RoomType type, long nightlyPaise) { this.number = number; this.type = type; this.nightlyPaise = nightlyPaise; }
+    public string Number { get { return number; } }
+    public RoomType Type { get { return type; } }
+    public long NightlyPaise { get { return nightlyPaise; } }
+}
+
+class Booking {                                                      // entity linking Guest + Room
+    private readonly string id, guest;
+    private readonly Room room;
+    private readonly DateRange stay;
+    private BookingStatus status = BookingStatus.CONFIRMED;
+    public Booking(string id, string guest, Room room, DateRange stay) { this.id = id; this.guest = guest; this.room = room; this.stay = stay; }
+    public bool Blocks(Room r, DateRange d) { return status == BookingStatus.CONFIRMED && room == r && stay.Overlaps(d); }
+    public void Cancel() { status = BookingStatus.CANCELLED; }
+    public long TotalPaise() { return stay.Nights() * room.NightlyPaise; }
+    public string Id { get { return id; } }
+}
+
+class Hotel {                                                        // coordinator + in-memory repository
+    private readonly List<Room> rooms = new List<Room>();
+    private readonly List<Booking> bookings = new List<Booking>();
+    private readonly object gate = new object();
+    private int seq = 1;
+    public void AddRoom(Room r) { rooms.Add(r); }
+    public Booking Book(string guest, RoomType type, DateRange stay) {   // atomic check-then-book; null when full
+        lock (gate) {
+            foreach (Room r in rooms) {
+                if (r.Type != type) continue;
+                bool free = !bookings.Any(b => b.Blocks(r, stay));
+                if (free) {
+                    Booking b = new Booking("B" + (seq++), guest, r, stay);
+                    bookings.Add(b);
+                    return b;
+                }
+            }
+            return null;
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        Hotel h = new Hotel();
+        h.AddRoom(new Room("101", RoomType.DOUBLE, 400000));
+        DateRange may = new DateRange(new DateTime(2026, 5, 1), new DateTime(2026, 5, 4));
+        Booking first = h.Book("Asha", RoomType.DOUBLE, may);
+        Console.WriteLine(first == null ? -1L : first.TotalPaise());                     // 1200000
+        Console.WriteLine((h.Book("Ravi", RoomType.DOUBLE, may) != null).ToString().ToLower()); // false
+    }
 }` }
 ] },
     codeTitle: 'End-to-end skeleton: hotel booking (runs)',
@@ -6316,7 +7557,20 @@ constexpr RoomKindInfo info(RoomKind k) {
     }
 }
 
-constexpr bool fits(RoomKind k, int guests) { return guests <= info(k).capacity; }  // behaviour beside the data` }
+constexpr bool fits(RoomKind k, int guests) { return guests <= info(k).capacity; }  // behaviour beside the data` },
+  { lang: 'csharp', code: `
+using System;
+
+// An enum with data and behaviour: a sealed class with a fixed set of static instances.
+sealed class RoomKind {
+    public static readonly RoomKind SINGLE = new RoomKind(1, 250000);
+    public static readonly RoomKind DOUBLE = new RoomKind(2, 400000);
+    public static readonly RoomKind SUITE = new RoomKind(4, 900000);
+    public readonly int Capacity;
+    public readonly long BaseRatePaise;
+    private RoomKind(int capacity, long baseRatePaise) { Capacity = capacity; BaseRatePaise = baseRatePaise; }
+    public bool Fits(int guests) { return guests <= Capacity; }      // behaviour on the enum is fine too
+}` }
 ] } },
       { title: 'Making the late twist cheap: pricing as an interface', html: `<p>The interviewer adds: "weekends cost 25% more". With <code>PricingPolicy</code> already in the diagram, you add one class and pass it to the Hotel constructor. Nothing else changes, and the old flat pricing still works for tests.</p>
 ${H.table(['Stay', 'Flat', 'Weekend +25%'], [['Fri→Sun (2 nights)', '8000', '10000'], ['Mon→Wed (2 nights)', '8000', '8000']])}`, code: { lang: 'java', code: `
@@ -6411,7 +7665,28 @@ public:
         }
         return total;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IPricingPolicy { long Price(long nightlyPaise, DateTime checkIn, DateTime checkOut); }
+
+class FlatPricing : IPricingPolicy {
+    public long Price(long nightly, DateTime inDate, DateTime outDate) {
+        return nightly * (long)(outDate - inDate).TotalDays;
+    }
+}
+
+class WeekendPricing : IPricingPolicy {
+    public long Price(long nightly, DateTime inDate, DateTime outDate) {
+        long total = 0;
+        for (DateTime d = inDate; d < outDate; d = d.AddDays(1)) {
+            bool weekend = d.DayOfWeek == DayOfWeek.Friday || d.DayOfWeek == DayOfWeek.Saturday;
+            total += weekend ? nightly * 125 / 100 : nightly;
+        }
+        return total;
+    }
+}` }
 ] } },
       { title: 'What interviewers actually grade', html: `${H.table(['Signal', 'Weak', 'Strong'], [['Requirements', 'starts coding immediately', 'asks 3–5 scoping questions, writes them down'], ['Entities', 'one class per noun, or one god class', 'filters nouns with reasons; enums and values'], ['Relationships', 'fields everywhere, no reasoning', 'explains ownership and multiplicity'], ['Code', 'does not compile / no demo', 'compiles, small methods, a main() that runs'], ['Extensibility', '"we can add an if"', 'points to the interface where change lands'], ['Communication', 'silent typing', 'narrates trade-offs and time budget']])}` }
     ],
@@ -6511,7 +7786,29 @@ public:
         }
         return "";                                           // who booked it? unknown, so no safe cancel
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class OfficeManager {
+    public Dictionary<string, int> Capacity = new Dictionary<string, int>();
+    public Dictionary<string, string> Equipment = new Dictionary<string, string>();       // "projector,whiteboard"
+    public Dictionary<string, List<int[]>> Slots = new Dictionary<string, List<int[]>>(); // room -> [start, end] minutes
+    public string Book(int start, int end, int people, string needs) {
+        List<string> rooms = Capacity.Keys.OrderBy(r => Capacity[r]).ToList();           // strategy hard-coded
+        foreach (string r in rooms) {
+            if (Capacity[r] < people) continue;
+            if (needs.Length > 0 && !Equipment[r].Contains(needs)) continue;
+            bool free = true;
+            List<int[]> taken; if (!Slots.TryGetValue(r, out taken)) taken = new List<int[]>();
+            foreach (int[] s in taken) if (start < s[1] && s[0] < end) free = false;
+            if (free) { if (!Slots.ContainsKey(r)) Slots[r] = new List<int[]>(); Slots[r].Add(new[] { start, end }); return r; }
+        }
+        return null;                                         // who booked it? unknown, so no safe cancel
+    }
+}` }
               ] }
       },
       mcq: { q: 'The company will later want "closest floor" or "least used" room selection. What should the design include now?', options: ['A big if/else on a strategy name inside book()', 'A RoomSelectionStrategy interface injected into the booking service, with SmallestFitStrategy as the first implementation', 'A subclass of the service for each strategy', 'Nothing; YAGNI'], answer: 1, explain: 'The change was announced, so add a seam exactly there. An interface with one implementation today costs almost nothing and turns the future change into one new class.' },
@@ -6954,6 +8251,101 @@ int main() {
     cout << svc.cancel(a->id(), "asha") << "\\n";                                             // true
     cout << svc.book("kiran", t1, 3, none)->room().name() << "\\n";                           // Ganga is free again
     cout << (svc.book("zed", t1, 13, none) != nullptr) << "\\n";                              // false: no room holds 13
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Equipment { PROJECTOR, WHITEBOARD, VIDEO_CONF }
+
+struct TimeSlot {
+    public readonly TimeSpan Start, End;
+    public TimeSlot(TimeSpan start, TimeSpan end) {
+        if (end <= start) throw new ArgumentException("end must be after start");
+        Start = start; End = end;
+    }
+    public bool Overlaps(TimeSlot o) { return Start < o.End && o.Start < End; }   // [start, end)
+}
+
+class Room {
+    private readonly string name;
+    private readonly int capacity, floor;
+    private readonly HashSet<Equipment> equipment;
+    public Room(string name, int capacity, int floor, IEnumerable<Equipment> equipment) {
+        this.name = name; this.capacity = capacity; this.floor = floor; this.equipment = new HashSet<Equipment>(equipment);
+    }
+    public bool Fits(int people, ISet<Equipment> needs) { return capacity >= people && equipment.IsSupersetOf(needs); }
+    public int Capacity { get { return capacity; } }
+    public string Name { get { return name; } }
+}
+
+class Booking {
+    private readonly string id, organiser;
+    private readonly Room room;
+    private readonly TimeSlot slot;
+    private bool cancelled;
+    public Booking(string id, string organiser, Room room, TimeSlot slot) { this.id = id; this.organiser = organiser; this.room = room; this.slot = slot; }
+    public bool Conflicts(Room r, TimeSlot s) { return !cancelled && room == r && slot.Overlaps(s); }
+    public bool CancelBy(string who) { if (organiser != who) return false; cancelled = true; return true; }
+    public Room Room { get { return room; } }
+    public string Id { get { return id; } }
+}
+
+interface IRoomSelectionStrategy { Room Choose(List<Room> candidates); }   // null when nothing fits
+
+class SmallestFitStrategy : IRoomSelectionStrategy {
+    public Room Choose(List<Room> c) { return c.OrderBy(r => r.Capacity).FirstOrDefault(); }
+}
+
+class BookingService {
+    private readonly List<Room> rooms;                                 // aggregation: rooms passed in
+    private readonly Dictionary<string, Booking> bookings = new Dictionary<string, Booking>();   // composition
+    private readonly IRoomSelectionStrategy strategy;                  // the variation point
+    private readonly object gate = new object();
+    private int seq = 1;
+    public BookingService(List<Room> rooms, IRoomSelectionStrategy strategy) { this.rooms = new List<Room>(rooms); this.strategy = strategy; }
+
+    private bool IsFree(Room r, TimeSlot s) { return !bookings.Values.Any(b => b.Conflicts(r, s)); }
+
+    public Booking Book(string organiser, TimeSlot slot, int people, ISet<Equipment> needs) {
+        lock (gate) {
+            List<Room> candidates = new List<Room>();
+            foreach (Room r in rooms) if (r.Fits(people, needs) && IsFree(r, slot)) candidates.Add(r);
+            Room chosen = strategy.Choose(candidates);
+            if (chosen == null) return null;                               // alt: no room
+            Booking b = new Booking("MB" + (seq++), organiser, chosen, slot);
+            bookings[b.Id] = b;
+            return b;
+        }
+    }
+
+    public bool Cancel(string bookingId, string requester) {
+        Booking b;
+        return bookings.TryGetValue(bookingId, out b) && b.CancelBy(requester);
+    }
+}
+
+class Program {
+    static ISet<Equipment> Needs(params Equipment[] e) { return new HashSet<Equipment>(e); }
+    static void Main() {
+        List<Room> rooms = new List<Room> {
+            new Room("Ganga", 4, 1, Needs(Equipment.WHITEBOARD)),
+            new Room("Yamuna", 8, 2, Needs(Equipment.PROJECTOR, Equipment.WHITEBOARD)),
+            new Room("Kaveri", 12, 3, (Equipment[])Enum.GetValues(typeof(Equipment))) };
+        BookingService svc = new BookingService(rooms, new SmallestFitStrategy());
+        TimeSlot t1 = new TimeSlot(new TimeSpan(10, 0, 0), new TimeSpan(11, 0, 0));
+        TimeSlot t2 = new TimeSlot(new TimeSpan(10, 30, 0), new TimeSpan(11, 30, 0));
+        TimeSlot t3 = new TimeSlot(new TimeSpan(11, 0, 0), new TimeSpan(12, 0, 0));
+        Booking a = svc.Book("asha", t1, 3, Needs());
+        Console.WriteLine(a.Room.Name);                                              // Ganga
+        Console.WriteLine(svc.Book("ravi", t2, 3, Needs()).Room.Name);               // Yamuna
+        Console.WriteLine(svc.Book("mia", t3, 3, Needs(Equipment.PROJECTOR)).Room.Name); // Kaveri
+        Console.WriteLine(svc.Cancel(a.Id, "ravi").ToString().ToLower());            // false: not the organiser
+        Console.WriteLine(svc.Cancel(a.Id, "asha").ToString().ToLower());            // true
+        Console.WriteLine(svc.Book("kiran", t1, 3, Needs()).Room.Name);              // Ganga is free again
+        Console.WriteLine((svc.Book("zed", t1, 13, Needs()) != null).ToString().ToLower()); // false: no room holds 13
+    }
 }` }
         ],
         complexity: `<p>book() is O(R × B) for R rooms and B bookings (fine for an office). At scale, index bookings per room in a <code>TreeMap&lt;LocalTime, Booking&gt;</code> and check only the floor/ceiling neighbours: O(R log B). Cancel is O(1) by id.</p>`,
@@ -7000,7 +8392,17 @@ struct Car {
     Engine* engine = nullptr;             // set from outside: may be shared or null
     vector<string> wheels;
     string driverName;                    // and Driver has its own carPlate: drift
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Engine { public bool On; }
+class Car {
+    public Engine Engine;                 // set from outside: may be shared or null
+    public List<string> Wheels = new List<string>();
+    public string DriverName;             // and Driver has its own CarPlate: drift
+}` }
             ] }
     },
     mcq: { q: 'Two cars must never share an engine, and the engine is scrapped with the car. Which shape fits?', options: ['Engine passed into the Car constructor from outside', 'private final Engine engine = new Engine(); created inside Car', 'public Engine engine; set later', 'static Engine shared by all cars'], answer: 1, explain: 'Composition: the whole creates and exclusively owns the part. Creating it inside and keeping it private guarantees no sharing.' },
@@ -7268,6 +8670,64 @@ int main() {
     swift.start();
     ravi.leave();
     cout << mia.drive(swift) << "\\n";                // true
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+class Engine {
+    private bool running;
+    public void Start() { running = true; }
+    public bool IsRunning { get { return running; } }
+}
+
+class Wheel {
+    private readonly int position;
+    private int wearPercent;
+    public Wheel(int position) { this.position = position; }
+    public int Position { get { return position; } }
+}
+
+class Car {
+    private readonly string plate;
+    private readonly Engine engine = new Engine();              // composition 1
+    private readonly Wheel[] wheels = new Wheel[4];             // composition 4
+    private Driver driver;                                      // association 0..1
+    public Car(string plate) {
+        this.plate = plate;
+        for (int i = 0; i < 4; i++) wheels[i] = new Wheel(i);
+    }
+    public void Start() { engine.Start(); Console.WriteLine(plate + ": engine on"); }
+    public void ReplaceWheel(int pos) {
+        if (pos < 0 || pos > 3) throw new ArgumentException("position 0..3");
+        wheels[pos] = new Wheel(pos);                           // old wheel is discarded with no other owner
+    }
+    public bool HasDriver { get { return driver != null; } }
+    internal void SetDriverInternal(Driver d) { driver = d; }   // only Driver calls this
+}
+
+class Driver {
+    private readonly string name;
+    private Car car;                                            // association 0..1
+    public Driver(string name) { this.name = name; }
+    public bool Drive(Car c) {
+        if (c.HasDriver || car != null) return false;
+        car = c;
+        c.SetDriverInternal(this);                              // both sides in one place
+        return true;
+    }
+    public void Leave() { if (car != null) { car.SetDriverInternal(null); car = null; } }
+}
+
+class Program {
+    static void Main() {
+        Car swift = new Car("KA-01-1234");
+        Driver ravi = new Driver("Ravi"), mia = new Driver("Mia");
+        Console.WriteLine(ravi.Drive(swift).ToString().ToLower());   // true
+        Console.WriteLine(mia.Drive(swift).ToString().ToLower());    // false: car taken
+        swift.Start();
+        ravi.Leave();
+        Console.WriteLine(mia.Drive(swift).ToString().ToLower());    // true
+    }
 }` }
       ],
       complexity: `<p>All operations O(1). Memory: 1 engine + 4 wheels per car. The design guarantees no shared engines and no inconsistent driver links.</p>`,
@@ -7323,7 +8783,20 @@ struct Playlist {
 struct MusicApp {
     vector<Playlist> playlists;
     unordered_map<string, int> library;   // title -> seconds
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Playlist {
+    public string Name;
+    public List<string> SongTitles = new List<string>();   // copies, not references
+    public int TotalSeconds;                                // stored, drifts when songs change
+}
+class MusicApp {
+    public List<Playlist> Playlists = new List<Playlist>();
+    public Dictionary<string, int> Library = new Dictionary<string, int>(); // title -> seconds
+}` }
             ] }
     },
     mcq: { q: 'Library → Song and Playlist → Song: which pair of relationships fits?', options: ['Both composition', 'Library ◆ Song (owns them), Playlist ◇ Song (shared references)', 'Both inheritance', 'Playlist ◆ Song, Library ◇ Song'], answer: 1, explain: 'Songs live in the library (deleting from the library deletes the song). Playlists only group references to songs that are shared with other playlists.' },
@@ -7580,6 +9053,66 @@ int main() {
     cout << gym.durationSeconds() << "\\n";  // 688
     lib.deleteSong("S2");
     cout << gym.durationSeconds() << "\\n";  // 268
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Song {
+    public readonly string Id, Title; public readonly int Seconds;
+    public Song(string id, string title, int seconds) { Id = id; Title = title; Seconds = seconds; }
+}
+
+class Playlist {
+    private readonly string name;
+    private readonly List<Song> songs = new List<Song>();       // aggregation: references only
+    public Playlist(string name) { this.name = name; }
+    public void Add(Song s) { songs.Add(s); }
+    public void RemoveAll(Song s) { songs.RemoveAll(x => x == s); }
+    public int DurationSeconds() { return songs.Sum(s => s.Seconds); }   // derived
+    public List<Song> Songs() { return new List<Song>(songs); }
+    public string Name { get { return name; } }
+}
+
+class MusicLibrary {
+    private readonly Dictionary<string, Song> songs = new Dictionary<string, Song>();          // composition
+    private readonly Dictionary<string, Playlist> playlists = new Dictionary<string, Playlist>();
+    public Song Save(string id, string title, int seconds) {
+        Song s = new Song(id, title, seconds);
+        songs[id] = s;
+        return s;
+    }
+    public Playlist CreatePlaylist(string name) {
+        Playlist p;
+        if (!playlists.TryGetValue(name, out p)) { p = new Playlist(name); playlists[name] = p; }
+        return p;
+    }
+    public void AddToPlaylist(string playlist, string songId) {
+        Song s;
+        if (!songs.TryGetValue(songId, out s)) throw new ArgumentException("save the song first");
+        playlists[playlist].Add(s);
+    }
+    public void DeletePlaylist(string name) { playlists.Remove(name); }   // songs untouched
+    public void DeleteSong(string id) {
+        Song s;
+        if (songs.TryGetValue(id, out s)) {
+            songs.Remove(id);
+            foreach (Playlist p in playlists.Values) p.RemoveAll(s);      // keep playlists consistent
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        MusicLibrary lib = new MusicLibrary();
+        lib.Save("S1", "Kesariya", 268); lib.Save("S2", "Naatu Naatu", 210);
+        Playlist gym = lib.CreatePlaylist("Gym");
+        lib.AddToPlaylist("Gym", "S2"); lib.AddToPlaylist("Gym", "S1"); lib.AddToPlaylist("Gym", "S2");
+        Console.WriteLine(gym.DurationSeconds());   // 688
+        lib.DeleteSong("S2");
+        Console.WriteLine(gym.DurationSeconds());   // 268
+    }
 }` }
       ],
       complexity: `<p>save/add O(1); deleteSong O(P × L) over playlists and their lengths (fine for one user; at scale keep a reverse index song → playlists). Duration O(L).</p>`,
@@ -7632,7 +9165,18 @@ public:
 class Fish : public Animal {
 public:
     void fly() override { throw runtime_error("fish can't fly"); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Animal {
+    public string Name;
+    public virtual void Fly() { Console.WriteLine(Name + " flies"); }
+    public virtual void Swim() { Console.WriteLine(Name + " swims"); }
+}
+class Fish : Animal {
+    public override void Fly() { throw new NotSupportedException("fish can't fly"); }
+}` }
             ] }
     },
     mcq: { q: 'Where should "can fly" live?', options: ['As fly() on the Animal base class', 'In a Flyable interface implemented only by animals that fly', 'As a boolean canFly field checked everywhere', 'In a FlyingAnimal superclass that Duck and Eagle extend, while Penguin extends SwimmingAnimal'], answer: 1, explain: 'Abilities that cut across the family tree are capabilities: small interfaces. A Duck both swims and flies, which single-inheritance superclasses cannot express.' },
@@ -7916,6 +9460,60 @@ int main() {
     for (const auto& a : zoo) cout << a->name() << ": " << a->sound() << "\\n";
     cout << join(ZooShows::poolShow(zoo), ", ") << "\\n";  // Duck, Penguin, Fish
     cout << join(ZooShows::birdShow(zoo), ", ") << "\\n";  // Duck, Eagle
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+abstract class Animal {
+    private readonly string name;
+    protected Animal(string name) { this.name = name; }
+    public abstract string Sound();
+    public string Name { get { return name; } }
+}
+interface ISwimmer { }
+static class SwimmerExt { public static string Swim(this ISwimmer s) { return "splash"; } }   // shared default behaviour
+interface IFlyer { int MaxAltitude(); }
+
+class Duck : Animal, ISwimmer, IFlyer {
+    public Duck() : base("Duck") { }
+    public override string Sound() { return "quack"; }
+    public int MaxAltitude() { return 1000; }
+}
+class Penguin : Animal, ISwimmer {
+    public Penguin() : base("Penguin") { }
+    public override string Sound() { return "squawk"; }
+}
+class Eagle : Animal, IFlyer {
+    public Eagle() : base("Eagle") { }
+    public override string Sound() { return "screech"; }
+    public int MaxAltitude() { return 3000; }
+}
+class Fish : Animal, ISwimmer {
+    public Fish() : base("Fish") { }
+    public override string Sound() { return "blub"; }
+}
+
+class ZooShows {
+    public static List<string> PoolShow(List<Animal> zoo) {
+        List<string> result = new List<string>();
+        foreach (Animal a in zoo) if (a is ISwimmer s) result.Add(a.Name + " " + s.Swim());
+        return result;
+    }
+    public static List<string> BirdShow(List<Animal> zoo) {
+        List<string> result = new List<string>();
+        foreach (Animal a in zoo) if (a is IFlyer f) result.Add(a.Name + " up to " + f.MaxAltitude() + "m");
+        return result;
+    }
+}
+
+class Program {
+    static void Main() {
+        List<Animal> zoo = new List<Animal> { new Duck(), new Penguin(), new Eagle(), new Fish() };
+        foreach (Animal a in zoo) Console.WriteLine(a.Name + ": " + a.Sound());
+        Console.WriteLine(string.Join(", ", ZooShows.PoolShow(zoo)));   // Duck, Penguin, Fish
+        Console.WriteLine(string.Join(", ", ZooShows.BirdShow(zoo)));   // Duck, Eagle
+    }
 }` }
       ],
       complexity: `<p>Each show is O(N) over animals. Adding an animal = one class, no edits to shows.</p>`,
@@ -7954,7 +9552,15 @@ struct Thermostat {
     double target = 0;     // anyone can set 45.0
     double current = 0;    // anyone can fake the sensor
     string mode;           // "heat", "HEAT", "Heat"?
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class Thermostat {
+    public double Target;      // anyone can set 45.0
+    public double Current;     // anyone can fake the sensor
+    public string Mode;        // "heat", "HEAT", "Heat"?
+}` }
             ] }
     },
     mcq: { q: 'Which is the best API for changing the target?', options: ['setTarget(double) with no checks', 'nudgeUp() / nudgeDown() that clamp to [16, 30], plus a validated setTarget', 'A public target field', 'A static method in ThermostatUtils'], answer: 1, explain: 'Methods named after real user actions, each guarding the invariant inside the object. The field stays private.' },
@@ -8182,6 +9788,51 @@ int main() {
     t.setTarget(290);
     for (int i = 0; i < 30; i++) t.nudgeUp();
     cout << t.target() << "\\n";  // 30.0
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+enum Mode { OFF, HEAT, COOL, AUTO }
+enum Action { IDLE, HEATING, COOLING }
+
+class Thermostat {
+    private const int Min = 160, Max = 300, Step = 5, Band = 10;   // tenths of a degree
+    private Mode mode = Mode.OFF;
+    private int targetTenths = 220;
+    private int currentTenths = 220;
+
+    public void SetMode(Mode m) { mode = m; }
+    public void SetTarget(int tenths) {
+        if (tenths < Min || tenths > Max) throw new ArgumentException("target must be 16.0..30.0");
+        targetTenths = tenths;
+    }
+    public void NudgeUp() { targetTenths = Math.Min(Max, targetTenths + Step); }
+    public void NudgeDown() { targetTenths = Math.Max(Min, targetTenths - Step); }
+    public void OnSensorReading(int tenths) { currentTenths = tenths; }   // the only writer
+
+    public Action CurrentAction() {                                       // derived each time
+        switch (mode) {
+            case Mode.HEAT: return currentTenths < targetTenths ? Action.HEATING : Action.IDLE;
+            case Mode.COOL: return currentTenths > targetTenths ? Action.COOLING : Action.IDLE;
+            case Mode.AUTO:
+                if (currentTenths < targetTenths - Band) return Action.HEATING;
+                if (currentTenths > targetTenths + Band) return Action.COOLING;
+                return Action.IDLE;
+            default: return Action.IDLE;
+        }
+    }
+    public string Target() { return targetTenths / 10 + "." + targetTenths % 10; }
+}
+
+class Program {
+    static void Main() {
+        Thermostat t = new Thermostat();
+        t.SetMode(Mode.AUTO); t.OnSensorReading(235);
+        Console.WriteLine(t.CurrentAction());    // COOLING
+        t.SetTarget(290);
+        for (int i = 0; i < 30; i++) t.NudgeUp();
+        Console.WriteLine(t.Target());           // 30.0
+    }
 }` }
       ],
       complexity: `<p>Every operation O(1). The invariant (16–30) and the decision rule each live in exactly one place.</p>`,
@@ -8240,7 +9891,20 @@ struct Student {
 struct Course {
     string code; int credits = 0;
     vector<string> students;                // separately maintained: drifts
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Student {
+    public string Name;
+    public Dictionary<string, string> Grades = new Dictionary<string, string>();   // course -> "A": which semester? overwritten on retake
+    public double Gpa;                                                              // stored, goes stale
+}
+class Course {
+    public string Code; public int Credits;
+    public List<string> Students = new List<string>();       // separately maintained: drifts
+}` }
             ] }
     },
     mcq: { q: 'Where should the grade live?', options: ['In Student as a map', 'In Course as a map', 'In an Enrollment object linking student, course and semester', 'In a global static map'], answer: 2, explain: 'The grade belongs to the (student, course, semester) link, not to either side alone. That makes Enrollment an association class.' },
@@ -8552,6 +10216,80 @@ int main() {
     } catch (const runtime_error& ex) {
         cout << ex.what() << "\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum Grade { A, B, C, D, F }
+static class GradeExt {
+    public static int Points(this Grade g) {
+        switch (g) { case Grade.A: return 10; case Grade.B: return 8; case Grade.C: return 6; case Grade.D: return 4; default: return 0; }
+    }
+}
+
+sealed class Course {                                    // value object: equal by its fields
+    public readonly string Code, Title; public readonly int Credits;
+    public Course(string code, string title, int credits) {
+        if (credits < 1 || credits > 5) throw new ArgumentException("credits 1..5");
+        Code = code; Title = title; Credits = credits;
+    }
+    public override bool Equals(object o) { Course c = o as Course; return c != null && c.Code == Code && c.Title == Title && c.Credits == Credits; }
+    public override int GetHashCode() { return Code.GetHashCode() ^ Title.GetHashCode() ^ Credits; }
+}
+
+class Enrollment {                                       // association class
+    private readonly Course course;
+    private readonly int semester;
+    private Grade? grade;                                // null until graded
+    public Enrollment(Course course, int semester) { this.course = course; this.semester = semester; }
+    public void SetGrade(Grade g) { grade = g; }
+    public Grade? Grade { get { return grade; } }
+    public Course Course { get { return course; } }
+    public int Semester { get { return semester; } }
+}
+
+class Student {
+    private const int MaxCredits = 24;
+    private readonly string name;
+    private readonly List<Enrollment> enrollments = new List<Enrollment>();
+    public Student(string name) { this.name = name; }
+
+    public Enrollment Enroll(Course c, int semester) {
+        int credits = 0;
+        foreach (Enrollment e in enrollments) {
+            if (e.Semester != semester) continue;
+            if (e.Course.Equals(c)) throw new InvalidOperationException("already enrolled in " + c.Code);
+            credits += e.Course.Credits;
+        }
+        if (credits + c.Credits > MaxCredits) throw new InvalidOperationException("credit cap exceeded");
+        Enrollment en = new Enrollment(c, semester);
+        enrollments.Add(en);
+        return en;
+    }
+
+    public double Gpa(int semester) {
+        int weighted = 0, credits = 0;
+        foreach (Enrollment e in enrollments) {
+            if (e.Semester != semester || e.Grade == null) continue;
+            weighted += e.Course.Credits * e.Grade.Value.Points();
+            credits += e.Course.Credits;
+        }
+        return credits == 0 ? 0.0 : Math.Round(100.0 * weighted / credits, MidpointRounding.AwayFromZero) / 100.0;
+    }
+}
+
+class Program {
+    static void Main() {
+        Course dsa = new Course("CS201", "DSA", 4), db = new Course("CS202", "DBMS", 3), eth = new Course("HS101", "Ethics", 1);
+        Student asha = new Student("Asha");
+        asha.Enroll(dsa, 1).SetGrade(Grade.A);
+        asha.Enroll(db, 1).SetGrade(Grade.B);
+        asha.Enroll(eth, 1).SetGrade(Grade.C);
+        Console.WriteLine(asha.Gpa(1).ToString("F2"));   // 8.75
+        Console.WriteLine(asha.Gpa(2).ToString("F2"));   // 0.00: nothing graded in semester 2
+        try { asha.Enroll(dsa, 1); } catch (InvalidOperationException ex) { Console.WriteLine(ex.Message); }
+    }
 }` }
       ],
       complexity: `<p>enroll and gpa are O(E) over the student's enrollments (tiny). A per-semester map would make them O(courses in that semester).</p>`,
@@ -8612,7 +10350,21 @@ public:
         for (auto& item : tableItems[table]) sum += menuPrices[item];   // live prices: wrong
         return sum + sum * 5 / 100;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class RestaurantSystem {
+    public Dictionary<string, int> MenuPrices = new Dictionary<string, int>();
+    public Dictionary<int, List<string>> TableItems = new Dictionary<int, List<string>>();
+    public Dictionary<int, string> TableStatus = new Dictionary<int, string>();   // free-form strings
+    public int Bill(int table) {
+        int sum = 0;
+        foreach (string item in TableItems[table]) sum += MenuPrices[item];  // live prices: wrong
+        return sum + sum * 5 / 100;
+    }
+}` }
             ] }
     },
     mcq: { q: 'Order → OrderItem → MenuItem. Which statement is right?', options: ['Order ◆ OrderItem; OrderItem → MenuItem (association) plus a copied unit price', 'Order ◇ MenuItem directly, no OrderItem needed', 'MenuItem ◆ OrderItem', 'OrderItem extends MenuItem'], answer: 0, explain: 'Order lines live and die with the order (composition) and snapshot the price; they only reference the menu item, which belongs to the menu.' },
@@ -8982,6 +10734,78 @@ int main() {
         cout << e.what() << "\\n";
     }
     cout << t4.settle() << "\\n";  // 61950, table free again
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum Category { VEG, NON_VEG }
+enum OrderStatus { OPEN, SERVED, PAID }
+
+class MenuItem {
+    private readonly string name;
+    private readonly Category category;
+    private long pricePaise;
+    private bool available = true;
+    public MenuItem(string name, Category c, long price) { this.name = name; category = c; pricePaise = price; }
+    public void ChangePrice(long p) { pricePaise = p; }
+    public void SetAvailable(bool a) { available = a; }
+    public bool IsAvailable { get { return available; } }
+    public long Price { get { return pricePaise; } }
+    public string Name { get { return name; } }
+}
+
+sealed class OrderItem {
+    public readonly MenuItem Item; public readonly int Qty; public readonly long UnitPricePaise;
+    public OrderItem(MenuItem item, int qty, long unitPricePaise) { Item = item; Qty = qty; UnitPricePaise = unitPricePaise; }
+    public long Subtotal() { return Qty * UnitPricePaise; }
+}
+
+class Order {
+    private readonly int tableNo;
+    private readonly string waiter;
+    private readonly List<OrderItem> items = new List<OrderItem>();
+    private OrderStatus status = OrderStatus.OPEN;
+    public Order(int tableNo, string waiter) { this.tableNo = tableNo; this.waiter = waiter; }
+    public void Add(MenuItem m, int qty) {
+        if (status != OrderStatus.OPEN) throw new InvalidOperationException("order not open");
+        if (!m.IsAvailable) throw new InvalidOperationException(m.Name + " unavailable");
+        items.Add(new OrderItem(m, qty, m.Price));                 // price snapshot
+    }
+    public void Serve() { Require(OrderStatus.OPEN); status = OrderStatus.SERVED; }
+    public long Bill() {
+        long sub = items.Sum(i => i.Subtotal());
+        return sub + sub * 5 / 100;                                // 5% GST, rounded down
+    }
+    public void Pay() { Require(OrderStatus.SERVED); status = OrderStatus.PAID; }
+    private void Require(OrderStatus s) { if (status != s) throw new InvalidOperationException("expected " + s + " but was " + status); }
+}
+
+class Table {
+    private readonly int number;
+    private Order current;                                         // 0..1
+    public Table(int number) { this.number = number; }
+    public Order Open(string waiter) {
+        if (current != null) throw new InvalidOperationException("table " + number + " busy");
+        current = new Order(number, waiter);
+        return current;
+    }
+    public long Settle() { current.Pay(); long amt = current.Bill(); current = null; return amt; }
+}
+
+class Program {
+    static void Main() {
+        MenuItem paneer = new MenuItem("Paneer Tikka", Category.VEG, 25000), roti = new MenuItem("Roti", Category.VEG, 3000);
+        Table t4 = new Table(4);
+        Order o = t4.Open("Ravi");
+        o.Add(paneer, 2); o.Add(roti, 3);
+        roti.ChangePrice(3500);                      // does not affect the open order
+        o.Serve();
+        Console.WriteLine(o.Bill());                 // 61950
+        try { t4.Open("Mia"); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        Console.WriteLine(t4.Settle());              // 61950, table free again
+    }
 }` }
       ],
       complexity: `<p>add/serve/pay O(1); bill O(items). Each rule (availability, transitions, one order per table, GST) lives in one class.</p>`,
@@ -9029,7 +10853,18 @@ public:
         if (prefs.count("SMS")) { if (msg.size() > 160) throw runtime_error("too long"); cout << "SMS: " << msg << "\\n"; }
         if (prefs.count("PUSH")) cout << "FCM: " << msg << "\\n";   // never reached if SMS threw
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NotificationService {
+    public void NotifyUser(ISet<string> prefs, string msg) {
+        if (prefs.Contains("EMAIL")) Console.WriteLine("SMTP: " + msg);
+        if (prefs.Contains("SMS")) { if (msg.Length > 160) throw new Exception("too long"); Console.WriteLine("SMS: " + msg); }
+        if (prefs.Contains("PUSH")) Console.WriteLine("FCM: " + msg);   // never reached if SMS threw
+    }
+}` }
             ] }
     },
     mcq: { q: 'The service holds a Map&lt;ChannelType, NotificationChannel&gt; passed in at construction. What relationship is that?', options: ['Composition, because the service created them', 'Aggregation/association via dependency injection: channels are created outside and may be shared', 'Inheritance', 'No relationship'], answer: 1, explain: 'The channels live independently (often singletons shared by many services) and are handed in, which is what makes them swappable in tests.' },
@@ -9365,6 +11200,78 @@ int main() {
     cout << show(smsDown.notifyUser(asha, "Order 42 shipped")) << "\\n";  // {EMAIL=true, SMS=false}
     User ravi{"Ravi", "ravi@x.com", "+91-80000", {ChannelType::Push}};
     cout << show(smsDown.notifyUser(ravi, "Order 42 shipped")) << "\\n";  // {PUSH=false}: no push channel registered
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum ChannelType { EMAIL, SMS, PUSH }
+
+sealed class User {
+    public readonly string Name, Email, Phone; public readonly ISet<ChannelType> Prefs;
+    public User(string name, string email, string phone, ISet<ChannelType> prefs) { Name = name; Email = email; Phone = phone; Prefs = prefs; }
+}
+
+interface INotificationChannel {
+    ChannelType Type { get; }
+    void Send(User u, string message);
+}
+
+class EmailChannel : INotificationChannel {
+    public ChannelType Type { get { return ChannelType.EMAIL; } }
+    public void Send(User u, string m) { Console.WriteLine("EMAIL to " + u.Email + ": " + m); }
+}
+
+class SmsChannel : INotificationChannel {
+    private readonly bool gatewayUp;
+    public SmsChannel(bool gatewayUp) { this.gatewayUp = gatewayUp; }
+    public ChannelType Type { get { return ChannelType.SMS; } }
+    public void Send(User u, string m) {
+        if (!gatewayUp) throw new InvalidOperationException("SMS gateway down");
+        string body = m.Length > 160 ? m.Substring(0, 159) + "…" : m;   // channel-specific rule
+        Console.WriteLine("SMS to " + u.Phone + ": " + body);
+    }
+}
+
+class PushChannel : INotificationChannel {
+    public ChannelType Type { get { return ChannelType.PUSH; } }
+    public void Send(User u, string m) { Console.WriteLine("PUSH to " + u.Name + ": " + m); }
+}
+
+class NotificationService {
+    private readonly Dictionary<ChannelType, INotificationChannel> channels = new Dictionary<ChannelType, INotificationChannel>();
+    public NotificationService(IEnumerable<INotificationChannel> list) { foreach (INotificationChannel c in list) channels[c.Type] = c; }
+
+    public SortedDictionary<ChannelType, bool> NotifyUser(User u, string message) {
+        SortedDictionary<ChannelType, bool> result = new SortedDictionary<ChannelType, bool>();   // ordered by enum, like an EnumMap
+        foreach (ChannelType t in u.Prefs.OrderBy(x => x)) {           // loop fragment
+            INotificationChannel c; channels.TryGetValue(t, out c);
+            try {
+                if (c == null) throw new InvalidOperationException("no channel for " + t);
+                c.Send(u, message);
+                result[t] = true;
+            } catch (Exception) {                                      // alt [failure]: keep going
+                result[t] = false;
+            }
+        }
+        return result;
+    }
+}
+
+class Program {
+    static string Show(SortedDictionary<ChannelType, bool> m) {
+        return "{" + string.Join(", ", m.Select(kv => kv.Key + "=" + kv.Value.ToString().ToLower())) + "}";
+    }
+    static void Main() {
+        User asha = new User("Asha", "asha@x.com", "+91-90000", new HashSet<ChannelType> { ChannelType.EMAIL, ChannelType.SMS });
+        NotificationService ok = new NotificationService(new INotificationChannel[] { new EmailChannel(), new SmsChannel(true), new PushChannel() });
+        Console.WriteLine(Show(ok.NotifyUser(asha, "Order 42 shipped")));
+        NotificationService smsDown = new NotificationService(new INotificationChannel[] { new EmailChannel(), new SmsChannel(false) });
+        Console.WriteLine(Show(smsDown.NotifyUser(asha, "Order 42 shipped")));   // {EMAIL=true, SMS=false}
+        User ravi = new User("Ravi", "ravi@x.com", "+91-80000", new HashSet<ChannelType> { ChannelType.PUSH });
+        Console.WriteLine(Show(smsDown.NotifyUser(ravi, "Order 42 shipped")));   // {PUSH=false}: no push channel registered
+    }
 }` }
       ],
       complexity: `<p>O(P) channel sends per notification for P preferences. Adding a channel: one class + one enum constant, zero service edits.</p>`,
@@ -9419,6 +11326,15 @@ struct SalariedEmployee : Employee { long long monthly = 0; long long pay() over
 struct HourlyEmployee : Employee { long long rate = 0; int hours = 0; long long pay() override { return rate * hours; } };
 struct SalariedManager : SalariedEmployee { long long pay() override { return SalariedEmployee::pay() + 1000000; } };
 struct HourlyManager : HourlyEmployee { long long pay() override { return HourlyEmployee::pay() + 1000000; } };
+// CommissionedManager, InternManager, ... the explosion continues` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class Employee { public string Id; public abstract long Pay(); }
+class SalariedEmployee : Employee { public long Monthly; public override long Pay() { return Monthly; } }
+class HourlyEmployee : Employee { public long Rate; public int Hours; public override long Pay() { return Rate * Hours; } }
+class SalariedManager : SalariedEmployee { public override long Pay() { return base.Pay() + 1000000; } }
+class HourlyManager : HourlyEmployee { public override long Pay() { return base.Pay() + 1000000; } }
 // CommissionedManager, InternManager, ... the explosion continues` }
             ] }
     },
@@ -9676,6 +11592,68 @@ int main() {
     Employee intern("E9", "Kiran", make_unique<Hourly>(20000));
     intern.changePolicy(make_unique<Salaried>(6000000));  // promotion: same id E9
     cout << intern.id() << " " << intern.pay({0, 0}) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+sealed class WorkLog {
+    public readonly int Hours; public readonly long SalesPaise;
+    public WorkLog(int hours, long salesPaise) { Hours = hours; SalesPaise = salesPaise; }
+}
+
+interface IPayPolicy { long MonthlyPay(WorkLog log); }
+
+sealed class Salaried : IPayPolicy {
+    private readonly long monthlyPaise;
+    public Salaried(long monthlyPaise) { this.monthlyPaise = monthlyPaise; }
+    public long MonthlyPay(WorkLog log) { return monthlyPaise; }
+}
+sealed class Hourly : IPayPolicy {
+    private readonly long ratePaise;
+    public Hourly(long ratePaise) { this.ratePaise = ratePaise; }
+    public long MonthlyPay(WorkLog log) {
+        int normal = Math.Min(160, log.Hours), extra = Math.Max(0, log.Hours - 160);
+        return normal * ratePaise + extra * ratePaise * 3 / 2;
+    }
+}
+sealed class Commission : IPayPolicy {
+    private readonly long basePaise; private readonly int percent;
+    public Commission(long basePaise, int percent) { this.basePaise = basePaise; this.percent = percent; }
+    public long MonthlyPay(WorkLog log) { return basePaise + log.SalesPaise * percent / 100; }
+}
+
+sealed class ManagerRole {
+    public readonly long AllowancePaise;
+    public ManagerRole(long allowancePaise) { AllowancePaise = allowancePaise; }
+}
+
+class Employee {
+    private readonly string id, name;
+    private IPayPolicy policy;
+    private ManagerRole managerRole;                  // 0..1
+    public Employee(string id, string name, IPayPolicy policy) {
+        if (policy == null) throw new ArgumentNullException("policy");
+        this.id = id; this.name = name; this.policy = policy;
+    }
+    public void ChangePolicy(IPayPolicy p) { if (p == null) throw new ArgumentNullException("p"); policy = p; }   // same object, new behaviour
+    public void MakeManager(long allowance) { managerRole = new ManagerRole(allowance); }
+    public long Pay(WorkLog log) {
+        return policy.MonthlyPay(log) + (managerRole == null ? 0 : managerRole.AllowancePaise);
+    }
+    public string Id { get { return id; } }
+}
+
+class Program {
+    static void Main() {
+        Employee ravi = new Employee("E2", "Ravi", new Hourly(50000));
+        Console.WriteLine(ravi.Pay(new WorkLog(170, 0)));          // 8750000
+        Employee mia = new Employee("E3", "Mia", new Commission(2000000, 5));
+        mia.MakeManager(1000000);
+        Console.WriteLine(mia.Pay(new WorkLog(0, 40000000)));      // 5000000
+        Employee intern = new Employee("E9", "Kiran", new Hourly(20000));
+        intern.ChangePolicy(new Salaried(6000000));                 // promotion: same id E9
+        Console.WriteLine(intern.Id + " " + intern.Pay(new WorkLog(0, 0)));
+    }
 }` }
       ],
       complexity: `<p>pay is O(1). Classes grow as P + R (policies + roles) instead of P × R. Policy objects are immutable value objects and can be shared between employees.</p>`,
@@ -9718,7 +11696,17 @@ struct SocialApp {
     vector<array<string, 3>> posts;      // [id, author, text]
     vector<array<string, 2>> likes;      // duplicates possible
     vector<array<string, 3>> comments;   // orphaned after post deletion
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class SocialApp {
+    public List<string[]> Follows = new List<string[]>();    // [follower, followee]
+    public List<string[]> Posts = new List<string[]>();      // [id, author, text]
+    public List<string[]> Likes = new List<string[]>();      // duplicates possible
+    public List<string[]> Comments = new List<string[]>();   // orphaned after post deletion
+}` }
             ] }
     },
     mcq: { q: 'How do you guarantee a user likes a post at most once?', options: ['Check a List&lt;String&gt; of likers with contains() and hope callers use it', 'Post holds a Set&lt;User&gt; likedBy and like() returns set.add(user)', 'A static counter', 'Store likes in User only'], answer: 1, explain: 'A Set gives uniqueness by construction, and keeping it inside Post (which owns its likes) means one place enforces the rule.' },
@@ -10055,6 +12043,78 @@ int main() {
     }
     net.deletePost(p1, ravi);
     cout << ids(net.feed(asha)) << "\\n";  // [2]
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class User {
+    private readonly string handle;
+    private readonly HashSet<User> following = new HashSet<User>();    // self-association
+    public User(string handle) { this.handle = handle; }
+    public void Follow(User other) {
+        if (other == this) throw new ArgumentException("cannot follow yourself");
+        following.Add(other);
+    }
+    public bool Follows(User u) { return following.Contains(u); }
+    public string Handle { get { return handle; } }
+}
+
+sealed class Comment {
+    public readonly User Author; public readonly string Text;
+    public Comment(User author, string text) { Author = author; Text = text; }
+}
+
+class Post {
+    private readonly long id, createdAt;
+    private readonly User author;
+    private readonly string text;
+    private readonly List<Comment> comments = new List<Comment>();     // composition
+    private readonly HashSet<User> likedBy = new HashSet<User>();      // association, unique
+    public Post(long id, User author, string text, long createdAt) { this.id = id; this.author = author; this.text = text; this.createdAt = createdAt; }
+    public bool Like(User u) { return likedBy.Add(u); }                 // idempotent
+    public void AddComment(User u, string t) { comments.Add(new Comment(u, t)); }
+    public int Likes { get { return likedBy.Count; } }
+    public User Author { get { return author; } }
+    public long CreatedAt { get { return createdAt; } }
+    public long Id { get { return id; } }
+}
+
+class SocialNetwork {
+    private readonly Dictionary<long, Post> posts = new Dictionary<long, Post>();
+    private long clock = 0;
+    public Post CreatePost(User author, string text) {
+        long t = ++clock;                                               // logical clock doubles as id
+        Post p = new Post(t, author, text, t);
+        posts[p.Id] = p;
+        return p;
+    }
+    public void Delete(Post p, User requester) {
+        if (p.Author != requester) throw new InvalidOperationException("only the author can delete");
+        posts.Remove(p.Id);                                             // comments and likes go with it
+    }
+    public List<Post> Feed(User viewer) {
+        return posts.Values.Where(p => viewer.Follows(p.Author)).OrderByDescending(p => p.CreatedAt).ToList();
+    }
+}
+
+class Program {
+    static string Ids(List<Post> ps) { return "[" + string.Join(", ", ps.Select(p => p.Id)) + "]"; }
+    static void Main() {
+        User asha = new User("asha"), ravi = new User("ravi"), mia = new User("mia"), kiran = new User("kiran");
+        asha.Follow(ravi); asha.Follow(mia);
+        SocialNetwork net = new SocialNetwork();
+        Post p1 = net.CreatePost(ravi, "hello"), p2 = net.CreatePost(mia, "chai?");
+        net.CreatePost(kiran, "not followed");
+        Console.WriteLine(Ids(net.Feed(asha)));                                   // [2, 1]
+        p1.Like(asha); p1.Like(asha);
+        Console.WriteLine(p1.Likes);                                              // 1
+        p2.AddComment(asha, "yes!");
+        try { net.Delete(p1, asha); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // not her post
+        net.Delete(p1, ravi);
+        Console.WriteLine(Ids(net.Feed(asha)));                                   // [2]
+    }
 }` }
       ],
       complexity: `<p>follow/like/comment O(1). Feed is O(P log P) over all posts here; production systems precompute feeds (fan-out on write) or merge per-followee timelines with a heap (fan-out on read).</p>`,
@@ -10122,7 +12182,23 @@ public:
         if (rest / 100 > notes100) return "cannot dispense";   // ...money already gone
         return "ok";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class AtmGod {
+    public Dictionary<string, int> Pins = new Dictionary<string, int>(), Balances = new Dictionary<string, int>();
+    public int Notes500 = 2, Notes100 = 10;
+    public string Run(string card, int pin, int amount) {
+        if (Pins[card] != pin) return "wrong pin";              // no retry count, no retention
+        Balances[card] -= amount;                               // debited first...
+        int n5 = Math.Min(amount / 500, Notes500);
+        int rest = amount - n5 * 500;
+        if (rest / 100 > Notes100) return "cannot dispense";    // ...money already gone
+        return "ok";
+    }
+}` }
             ] }
     },
     mcq: { q: 'Which order avoids taking money without giving cash?', options: ['debit → check notes → dispense', 'check notes can make the amount → debit → dispense', 'dispense → debit', 'Order does not matter'], answer: 1, explain: 'Ask the CashDispenser whether it can make the amount before the bank debit. The sequence diagram is the place to get this order right.' },
@@ -10554,6 +12630,92 @@ int main() {
     cout << atm2.enterPin(1111) << "\\n"; // Wrong PIN, 2 left
     cout << atm2.enterPin(2222) << "\\n"; // Wrong PIN, 1 left
     cout << atm2.enterPin(3333) << "\\n"; // Card retained
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class CardReader {
+    private string inserted;
+    private readonly List<string> retained = new List<string>();
+    public void Insert(string card) { inserted = card; }
+    public string Read() { return inserted; }
+    public void Retain() { retained.Add(inserted); inserted = null; }
+    public void Eject() { inserted = null; }
+}
+
+class Bank {
+    private readonly Dictionary<string, int> pins = new Dictionary<string, int>();
+    private readonly Dictionary<string, long> balances = new Dictionary<string, long>();
+    public void Open(string card, int pin, long balance) { pins[card] = pin; balances[card] = balance; }
+    public bool VerifyPin(string card, int pin) { int p; return card != null && pins.TryGetValue(card, out p) && p == pin; }
+    public bool Debit(string card, long amount) {
+        long b; balances.TryGetValue(card, out b);
+        if (amount > b) return false;
+        balances[card] = b - amount;
+        return true;
+    }
+    public long Balance(string card) { return balances[card]; }
+}
+
+class CashDispenser {
+    private int n500, n100;
+    public CashDispenser(int n500, int n100) { this.n500 = n500; this.n100 = n100; }
+    private int[] Plan(long amount) {
+        int use500 = (int)Math.Min(amount / 500, n500);
+        long rest = amount - use500 * 500L;
+        if (rest % 100 != 0 || rest / 100 > n100) return null;
+        return new[] { use500, (int)(rest / 100) };
+    }
+    public bool CanDispense(long amount) { return Plan(amount) != null; }
+    public string Dispense(long amount) {
+        int[] p = Plan(amount);
+        n500 -= p[0]; n100 -= p[1];
+        return p[0] + "x500 + " + p[1] + "x100";
+    }
+}
+
+class Atm {
+    private const int MaxAttempts = 3;
+    private readonly CardReader reader;
+    private readonly Bank bank;
+    private readonly CashDispenser dispenser;
+    private int failed;
+    private bool authenticated;
+    public Atm(CardReader r, Bank b, CashDispenser d) { reader = r; bank = b; dispenser = d; }
+
+    public string EnterPin(int pin) {
+        if (bank.VerifyPin(reader.Read(), pin)) { authenticated = true; failed = 0; return "PIN ok"; }
+        if (++failed >= MaxAttempts) { reader.Retain(); return "Card retained"; }   // alt: 3 failures
+        return "Wrong PIN, " + (MaxAttempts - failed) + " left";
+    }
+
+    public string Withdraw(long amount) {
+        if (!authenticated) return "Enter PIN first";
+        if (amount <= 0 || amount % 100 != 0) return "Amount must be a multiple of 100";
+        if (!dispenser.CanDispense(amount)) return "ATM cannot dispense this amount";   // before debit!
+        if (!bank.Debit(reader.Read(), amount)) return "Insufficient funds";            // alt else
+        return "Dispensed " + dispenser.Dispense(amount) + ", balance " + bank.Balance(reader.Read());
+    }
+}
+
+class Program {
+    static void Main() {
+        Bank bank = new Bank(); bank.Open("C1", 1234, 2000);
+        CardReader reader = new CardReader(); reader.Insert("C1");
+        Atm atm = new Atm(reader, bank, new CashDispenser(2, 10));
+        Console.WriteLine(atm.EnterPin(1234));
+        Console.WriteLine(atm.Withdraw(1300));   // 2x500 + 3x100, balance 700
+        Console.WriteLine(atm.Withdraw(250));    // multiple of 100
+        Console.WriteLine(atm.Withdraw(1300));   // the 500-rupee notes are gone and only 7 x 100 remain
+        Console.WriteLine(atm.Withdraw(700));    // 0x500 + 7x100, balance 0
+        CardReader reader2 = new CardReader(); reader2.Insert("C1");
+        Atm atm2 = new Atm(reader2, bank, new CashDispenser(2, 10));
+        Console.WriteLine(atm2.Withdraw(100));   // Enter PIN first
+        Console.WriteLine(atm2.EnterPin(1111));  // Wrong PIN, 2 left
+        Console.WriteLine(atm2.EnterPin(2222));  // Wrong PIN, 1 left
+        Console.WriteLine(atm2.EnterPin(3333));  // Card retained
+    }
 }` }
       ],
       complexity: `<p>Each step O(1). The design mirrors the sequence diagram, so reviewing the diagram reviews the code.</p>`,
@@ -10602,7 +12764,17 @@ struct Seat {
     string status = "AVAILABLE";      // one status for ALL shows: wrong
 };
 struct Screen { vector<Seat> seats; };
-struct Show { string movie; Screen* screen = nullptr; string time; };   // no per-show seat state` }
+struct Show { string movie; Screen* screen = nullptr; string time; };   // no per-show seat state` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Seat {
+    public string Row; public int Number; public string Type;
+    public string Status = "AVAILABLE";      // one status for ALL shows: wrong
+}
+class Screen { public List<Seat> Seats = new List<Seat>(); }
+class Show { public string Movie; public Screen Screen; public string Time; }   // no per-show seat state` }
             ] }
     },
     mcq: { q: 'Seat A1 on Screen 2 is booked for the 18:00 show but free at 15:00. Where does its status live?', options: ['Seat.status', 'In a ShowSeat object (show + seat + status), one per seat per show', 'Screen.status', 'Movie.status'], answer: 1, explain: 'Type vs instance again: Seat is the physical, shared description; ShowSeat is the per-show instance carrying status, lock owner and lock time.' },
@@ -11096,6 +13268,120 @@ int main() {
     auto c = late.confirm("asha", {"A1"}, 5);
     cout << (c ? c->id : "failed") << "\\n";                 // failed: the 5-minute hold expired
     cout << late.lock("ravi", {"A1"}, 5) << "\\n";           // true: an expired lock is free again
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum SeatType { REGULAR, PREMIUM }
+enum SeatStatus { AVAILABLE, LOCKED, BOOKED }
+
+sealed class Seat {
+    public readonly string Row; public readonly int Number; public readonly SeatType Type;
+    public Seat(string row, int number, SeatType type) { Row = row; Number = number; Type = type; }
+    public string Label() { return Row + Number; }
+}
+
+class Screen {
+    private readonly string name;
+    private readonly List<Seat> seats = new List<Seat>();            // composition
+    public Screen(string name) { this.name = name; }
+    public void AddSeat(string row, int n, SeatType t) { seats.Add(new Seat(row, n, t)); }
+    public List<Seat> Seats() { return new List<Seat>(seats); }
+}
+
+class Theatre {
+    private readonly string name;
+    private readonly List<Screen> screens = new List<Screen>();      // composition
+    public Theatre(string name) { this.name = name; }
+    public Screen AddScreen(string n) { Screen s = new Screen(n); screens.Add(s); return s; }
+}
+
+sealed class Movie {
+    public readonly string Title; public readonly int Minutes;
+    public Movie(string title, int minutes) { Title = title; Minutes = minutes; }
+}
+
+class ShowSeat {
+    public const int LockMinutes = 5;
+    private readonly Seat seat;
+    private SeatStatus status = SeatStatus.AVAILABLE;
+    private string lockedBy;
+    private long lockedAt;
+    public ShowSeat(Seat seat) { this.seat = seat; }
+    public bool IsFreeAt(long now) {
+        return status == SeatStatus.AVAILABLE || (status == SeatStatus.LOCKED && now - lockedAt >= LockMinutes);
+    }
+    public void Lock(string customer, long now) { status = SeatStatus.LOCKED; lockedBy = customer; lockedAt = now; }
+    public bool HeldBy(string customer, long now) {
+        return status == SeatStatus.LOCKED && customer == lockedBy && now - lockedAt < LockMinutes;
+    }
+    public void Book() { status = SeatStatus.BOOKED; }
+    public Seat Seat { get { return seat; } }
+}
+
+sealed class Booking {
+    public readonly string Id, Customer; public readonly List<string> Seats; public readonly long TotalPaise;
+    public Booking(string id, string customer, List<string> seats, long totalPaise) { Id = id; Customer = customer; Seats = seats; TotalPaise = totalPaise; }
+}
+
+class Show {
+    private readonly Movie movie;
+    private readonly Screen screen;
+    private readonly DateTime start;
+    private readonly Dictionary<SeatType, long> prices;
+    private readonly Dictionary<string, ShowSeat> showSeats = new Dictionary<string, ShowSeat>();   // composition
+    private readonly object gate = new object();
+    private int seq = 1;
+    public Show(Movie movie, Screen screen, DateTime start, Dictionary<SeatType, long> prices) {
+        this.movie = movie; this.screen = screen; this.start = start; this.prices = new Dictionary<SeatType, long>(prices);
+        foreach (Seat s in screen.Seats()) showSeats[s.Label()] = new ShowSeat(s);  // one per physical seat
+    }
+
+    public bool Lock(string customer, List<string> labels, long now) {
+        lock (gate) {
+            foreach (string l in labels) {                             // check all first: all-or-nothing
+                ShowSeat ss; showSeats.TryGetValue(l, out ss);
+                if (ss == null || !ss.IsFreeAt(now)) return false;
+            }
+            foreach (string l in labels) showSeats[l].Lock(customer, now);
+            return true;
+        }
+    }
+
+    public Booking Confirm(string customer, List<string> labels, long now) {   // null when the hold is gone
+        lock (gate) {
+            long total = 0;
+            foreach (string l in labels) {
+                ShowSeat ss; showSeats.TryGetValue(l, out ss);
+                if (ss == null || !ss.HeldBy(customer, now)) return null;
+                total += prices[ss.Seat.Type];
+            }
+            foreach (string l in labels) showSeats[l].Book();
+            return new Booking("BK" + (seq++), customer, new List<string>(labels), total);
+        }
+    }
+}
+
+class Program {
+    static List<string> L(params string[] s) { return new List<string>(s); }
+    static void Main() {
+        Theatre pvr = new Theatre("PVR Forum");
+        Screen s2 = pvr.AddScreen("Screen 2");
+        s2.AddSeat("A", 1, SeatType.PREMIUM); s2.AddSeat("A", 2, SeatType.REGULAR);
+        var prices = new Dictionary<SeatType, long> { { SeatType.PREMIUM, 40000L }, { SeatType.REGULAR, 25000L } };
+        Show evening = new Show(new Movie("Dune", 166), s2, new DateTime(2026, 3, 6, 18, 0, 0), prices);
+        Console.WriteLine(evening.Lock("asha", L("A1", "A2"), 0).ToString().ToLower());   // true
+        Console.WriteLine(evening.Lock("ravi", L("A2"), 2).ToString().ToLower());         // false: locked
+        Booking b = evening.Confirm("asha", L("A1", "A2"), 3);
+        Console.WriteLine(b == null ? "failed" : b.Id + " " + b.TotalPaise);              // BK1 65000
+        Show late = new Show(new Movie("Dune", 166), s2, new DateTime(2026, 3, 6, 21, 0, 0), prices);
+        Console.WriteLine(late.Lock("asha", L("A1"), 0).ToString().ToLower());            // true
+        Booking b2 = late.Confirm("asha", L("A1"), 5);
+        Console.WriteLine(b2 == null ? "failed" : b2.Id);                                 // failed: the 5-minute hold expired
+        Console.WriteLine(late.Lock("ravi", L("A1"), 5).ToString().ToLower());            // true: an expired lock is free again
+    }
 }` }
       ],
       complexity: `<p>lock/confirm are O(k) for k seats requested. Creating a show is O(seats on the screen). Synchronising per Show keeps different shows independent (a finer-grained design locks per seat or uses DB row locks; see the Concurrency module).</p>`,
@@ -11140,7 +13426,17 @@ class DeliveryApp {
 public:
     void setStatus(int orderId, const string& status) { orderStatus[orderId] = status; }   // any jump allowed
     void cancel(int orderId) { orderStatus[orderId] = "CANCELLED"; }                        // agent never freed
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class DeliveryApp {
+    public Dictionary<int, string> OrderStatus = new Dictionary<int, string>();
+    public Dictionary<string, bool> AgentBusy = new Dictionary<string, bool>();
+    public void SetStatus(int orderId, string status) { OrderStatus[orderId] = status; }   // any jump allowed
+    public void Cancel(int orderId) { OrderStatus[orderId] = "CANCELLED"; }                 // agent never freed
+}` }
             ] }
     },
     mcq: { q: 'Where should the rule "cancel only before PREPARING" be written?', options: ['In every client app', 'Inside Order (or its status enum) as the only way to change status', 'In the database only', 'In the DeliveryAgent class'], answer: 1, explain: 'The order owns its lifecycle. Putting legal transitions in one place (enum or Order methods) makes illegal jumps impossible from any caller.' },
@@ -11664,6 +13960,120 @@ int main() {
     o2.add("Biryani", 1);
     d.accept(o2);
     cout << (o2.agent() ? o2.agent()->id() : "none") << "\\n";  // A1: freed when the first order was delivered
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+enum OrderStatus { PLACED, ACCEPTED, PREPARING, PICKED_UP, DELIVERED, CANCELLED }
+static class OrderStatusExt {
+    public static bool CanMoveTo(this OrderStatus s, OrderStatus next) {
+        switch (s) {
+            case OrderStatus.PLACED: return next == OrderStatus.ACCEPTED || next == OrderStatus.CANCELLED;
+            case OrderStatus.ACCEPTED: return next == OrderStatus.PREPARING || next == OrderStatus.CANCELLED;
+            case OrderStatus.PREPARING: return next == OrderStatus.PICKED_UP;
+            case OrderStatus.PICKED_UP: return next == OrderStatus.DELIVERED;
+            default: return false;                                   // DELIVERED, CANCELLED are final
+        }
+    }
+}
+
+struct Location {
+    public readonly int X, Y;
+    public Location(int x, int y) { X = x; Y = y; }
+    public int Dist(Location o) { return Math.Abs(X - o.X) + Math.Abs(Y - o.Y); }
+}
+sealed class MenuItem {
+    public readonly string Name; public readonly long PricePaise;
+    public MenuItem(string name, long pricePaise) { Name = name; PricePaise = pricePaise; }
+}
+sealed class OrderLine {
+    public readonly MenuItem Item; public readonly int Qty; public readonly long UnitPaise;
+    public OrderLine(MenuItem item, int qty, long unitPaise) { Item = item; Qty = qty; UnitPaise = unitPaise; }
+}
+
+class Restaurant {
+    private readonly string name;
+    private readonly Location location;
+    private readonly Dictionary<string, MenuItem> menu = new Dictionary<string, MenuItem>();   // composition
+    public Restaurant(string name, Location loc) { this.name = name; location = loc; }
+    public void AddItem(string n, long p) { menu[n] = new MenuItem(n, p); }
+    public MenuItem Item(string n) {
+        MenuItem m;
+        if (!menu.TryGetValue(n, out m)) throw new ArgumentException("not on menu: " + n);   // bad input, not a NullReferenceException
+        return m;
+    }
+    public Location Location { get { return location; } }
+}
+
+class DeliveryAgent {
+    private readonly string id;
+    private readonly Location location;
+    private Order current;                                         // 0..1
+    public DeliveryAgent(string id, Location loc) { this.id = id; location = loc; }
+    public bool IsFree { get { return current == null; } }
+    public void Assign(Order o) { current = o; }
+    public void Release() { current = null; }
+    public Location Location { get { return location; } }
+    public string Id { get { return id; } }
+}
+
+class Order {
+    private readonly Restaurant restaurant;
+    private readonly List<OrderLine> lines = new List<OrderLine>();   // composition
+    private OrderStatus status = OrderStatus.PLACED;
+    private DeliveryAgent agent;                                   // 0..1
+    public Order(Restaurant r) { restaurant = r; }
+    public void Add(string itemName, int qty) {
+        if (status != OrderStatus.PLACED) throw new InvalidOperationException("order already accepted");
+        MenuItem m = restaurant.Item(itemName);                    // same restaurant by construction
+        lines.Add(new OrderLine(m, qty, m.PricePaise));
+    }
+    public void MoveTo(OrderStatus next) {                         // the ONLY door for status changes
+        if (!status.CanMoveTo(next)) throw new InvalidOperationException(status + " -> " + next + " not allowed");
+        status = next;
+        if ((next == OrderStatus.CANCELLED || next == OrderStatus.DELIVERED) && agent != null) { agent.Release(); agent = null; }
+    }
+    public void SetAgent(DeliveryAgent a) { agent = a; a.Assign(this); }
+    public DeliveryAgent Agent { get { return agent; } }           // null when unassigned
+    public OrderStatus Status { get { return status; } }
+    public Restaurant Restaurant { get { return restaurant; } }
+    public long Total() { return lines.Sum(l => l.Qty * l.UnitPaise); }
+}
+
+class DispatchService {
+    private readonly List<DeliveryAgent> agents;
+    public DispatchService(List<DeliveryAgent> agents) { this.agents = new List<DeliveryAgent>(agents); }
+    public void Accept(Order o) {
+        o.MoveTo(OrderStatus.ACCEPTED);
+        Location r = o.Restaurant.Location;
+        DeliveryAgent best = agents.Where(a => a.IsFree)
+            .OrderBy(a => a.Location.Dist(r)).ThenBy(a => a.Id, StringComparer.Ordinal).FirstOrDefault();
+        if (best != null) o.SetAgent(best);
+    }
+}
+
+class Program {
+    static string AgentId(Order o) { return o.Agent == null ? "none" : o.Agent.Id; }
+    static void Main() {
+        Restaurant meghana = new Restaurant("Meghana", new Location(0, 0));
+        meghana.AddItem("Biryani", 30000);
+        DispatchService d = new DispatchService(new List<DeliveryAgent> { new DeliveryAgent("A1", new Location(1, 1)), new DeliveryAgent("A2", new Location(5, 5)) });
+        Order o = new Order(meghana);
+        o.Add("Biryani", 2);
+        d.Accept(o);
+        Console.WriteLine(o.Status + " " + AgentId(o));   // ACCEPTED A1
+        o.MoveTo(OrderStatus.PREPARING);
+        try { o.MoveTo(OrderStatus.CANCELLED); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        o.MoveTo(OrderStatus.PICKED_UP); o.MoveTo(OrderStatus.DELIVERED);
+        Console.WriteLine(o.Status + " total=" + o.Total());   // DELIVERED total=60000
+        Order o2 = new Order(meghana);
+        try { o2.Add("Pizza", 1); } catch (ArgumentException e) { Console.WriteLine(e.Message); }   // not on menu: Pizza
+        o2.Add("Biryani", 1);
+        d.Accept(o2);
+        Console.WriteLine(AgentId(o2));   // A1: freed when the first order was delivered
+    }
 }` }
       ],
       complexity: `<p>Transitions O(1); assignment O(A) over agents (a geo-index makes it sublinear at scale). All lifecycle rules live in one enum method, so adding a state (e.g. READY_FOR_PICKUP) is a local change.</p>`,
@@ -11760,7 +14170,34 @@ public:
             certificates[learner + "|" + course] = "CERT-" + to_string(certSeq++);   // re-issued every time!
         return "ok";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class LearningPlatform {
+    public Dictionary<string, List<string>> CourseLessons = new Dictionary<string, List<string>>();
+    public Dictionary<string, bool> Paid = new Dictionary<string, bool>();               // course -> paid?
+    public HashSet<string> Enrolled = new HashSet<string>();                             // "learner|course"
+    public Dictionary<string, int> Watched = new Dictionary<string, int>();              // "learner|course|lesson" -> percent
+    public Dictionary<string, string> Certificates = new Dictionary<string, string>();   // "learner|course" -> id
+    int certSeq = 1;
+
+    public string Watch(string learner, string course, string lesson, int percent) {
+        if (!Enrolled.Contains(learner + "|" + course)) return "not enrolled";
+        string k = learner + "|" + course + "|" + lesson;
+        int old; Watched.TryGetValue(k, out old);
+        Watched[k] = Math.Max(old, percent);
+        int done = 0;
+        foreach (string l in CourseLessons[course]) {
+            int p; Watched.TryGetValue(learner + "|" + course + "|" + l, out p);
+            if (p >= 90) done++;
+        }
+        if (done == CourseLessons[course].Count)
+            Certificates[learner + "|" + course] = "CERT-" + (certSeq++);   // re-issued every time!
+        return "ok";
+    }
+}` }
             ] }
     },
     mcq: { q: 'Which hidden entity owns "is this lesson complete for this learner"?', options: ['Course', 'Lesson', 'Enrollment (learner + course), holding per-lesson progress', 'Certificate'], answer: 2, explain: 'Progress belongs to the learner-in-a-course relationship. Enrollment is the association class that should hold per-lesson watch percentages and decide completion.' },
@@ -12232,6 +14669,115 @@ int main() {
     } catch (const runtime_error& ex) {
         cout << ex.what() << "\\n";  // payment failed
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Lesson {
+    public readonly string Id, Title;
+    public Lesson(string id, string title) { Id = id; Title = title; }
+}
+sealed class Certificate {
+    public readonly string Id, Learner, CourseId;
+    public Certificate(string id, string learner, string courseId) { Id = id; Learner = learner; CourseId = courseId; }
+}
+
+class Course {
+    private readonly string id, title;
+    private readonly long pricePaise;
+    private readonly List<Lesson> lessons = new List<Lesson>();      // composition, ordered
+    public Course(string id, string title, long pricePaise) { this.id = id; this.title = title; this.pricePaise = pricePaise; }
+    public Lesson AddLesson(string lid, string t) { Lesson l = new Lesson(lid, t); lessons.Add(l); return l; }
+    public List<Lesson> Lessons() { return new List<Lesson>(lessons); }
+    public bool IsPaid { get { return pricePaise > 0; } }
+    public long Price { get { return pricePaise; } }
+    public string Id { get { return id; } }
+}
+
+interface IPaymentGateway { bool Charge(string learner, long amountPaise); }
+sealed class DelegateGateway : IPaymentGateway {                   // adapts a lambda to the interface
+    private readonly Func<string, long, bool> f;
+    public DelegateGateway(Func<string, long, bool> f) { this.f = f; }
+    public bool Charge(string learner, long amountPaise) { return f(learner, amountPaise); }
+}
+
+class CertificateIssuer {
+    private int seq = 1;
+    public Certificate Issue(string learner, string courseId) { return new Certificate("CERT-" + (seq++), learner, courseId); }
+}
+
+class Enrollment {                                              // association class Learner - Course
+    private const int CompleteAt = 90;                          // the ONE place for the threshold
+    private readonly string learner;
+    private readonly Course course;
+    private readonly Dictionary<string, int> watchedPercent = new Dictionary<string, int>();
+    private Certificate certificate;                            // 0..1
+    public Enrollment(string learner, Course course) { this.learner = learner; this.course = course; }
+
+    public void Watch(Lesson lesson, int percent, CertificateIssuer issuer) {
+        if (!course.Lessons().Contains(lesson)) throw new ArgumentException("lesson not in course");
+        int old; watchedPercent.TryGetValue(lesson.Id, out old);
+        watchedPercent[lesson.Id] = Math.Max(old, Math.Min(100, percent));
+        if (certificate == null && ProgressPercent() == 100) certificate = issuer.Issue(learner, course.Id); // once
+    }
+    public int ProgressPercent() {
+        List<Lesson> ls = course.Lessons();
+        long done = ls.Count(l => { int p; return watchedPercent.TryGetValue(l.Id, out p) && p >= CompleteAt; });
+        return ls.Count == 0 ? 0 : (int)(100 * done / ls.Count);   // an empty course is never "complete"
+    }
+    public Certificate Certificate { get { return certificate; } }   // null until earned
+}
+
+class Platform {
+    private readonly Dictionary<string, Course> courses = new Dictionary<string, Course>();
+    private readonly Dictionary<string, Enrollment> enrollments = new Dictionary<string, Enrollment>();   // key learner|course kept internal
+    private readonly IPaymentGateway payments;
+    private readonly CertificateIssuer issuer = new CertificateIssuer();
+    public Platform(IPaymentGateway payments) { this.payments = payments; }
+
+    public void AddCourse(Course c) { courses[c.Id] = c; }
+    public Enrollment Enroll(string learner, string courseId) {
+        Course c;
+        if (!courses.TryGetValue(courseId, out c)) throw new ArgumentException("unknown course");
+        Enrollment existing;
+        if (enrollments.TryGetValue(learner + "|" + courseId, out existing)) return existing;   // enrolling twice must not charge twice
+        if (c.IsPaid && !payments.Charge(learner, c.Price)) throw new InvalidOperationException("payment failed");
+        Enrollment e = new Enrollment(learner, c);
+        enrollments[learner + "|" + courseId] = e;
+        return e;
+    }
+    public void Watch(string learner, string courseId, Lesson lesson, int percent) {
+        Enrollment e;
+        if (!enrollments.TryGetValue(learner + "|" + courseId, out e)) throw new InvalidOperationException("not enrolled");
+        e.Watch(lesson, percent, issuer);
+    }
+}
+
+class Program {
+    static void Main() {
+        Platform p = new Platform(new DelegateGateway((who, amt) => true));
+        Course intro = new Course("J101", "Intro 101", 0);
+        Lesson l1 = intro.AddLesson("L1", "Basics"), l2 = intro.AddLesson("L2", "OOP");
+        p.AddCourse(intro);
+        Enrollment e = p.Enroll("asha", "J101");
+        p.Watch("asha", "J101", l1, 95);
+        p.Watch("asha", "J101", l2, 50);
+        Console.WriteLine(e.ProgressPercent());                       // 50
+        p.Watch("asha", "J101", l2, 92);
+        p.Watch("asha", "J101", l2, 100);
+        Console.WriteLine(e.ProgressPercent() + " " + (e.Certificate == null ? "-" : e.Certificate.Id));  // 100 CERT-1
+        int charges = 0;
+        Platform paid = new Platform(new DelegateGateway((who, amt) => { charges++; return true; }));
+        paid.AddCourse(new Course("A1", "Advanced", 49900));
+        paid.Enroll("ravi", "A1");
+        paid.Enroll("ravi", "A1");
+        Console.WriteLine(charges);                                    // 1: the second enroll is a no-op
+        Platform broke = new Platform(new DelegateGateway((who, amt) => false));
+        broke.AddCourse(new Course("A1", "Advanced", 49900));
+        try { broke.Enroll("mia", "A1"); } catch (InvalidOperationException ex) { Console.WriteLine(ex.Message); }   // payment failed
+    }
 }` }
       ],
       complexity: `<p>watch is O(lessons in the course) for the progress check (cache a completed-count to make it O(1)). Same behaviour as before, but each rule has one home and each class can be unit tested alone.</p>`,
@@ -12289,7 +14835,20 @@ public:
         for (auto& [k, v] : files) if (k.rfind(path, 0) == 0) s += v.size();   // "/doc" matches "/docs"!
         return s;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class FlatFs {
+    public Dictionary<string, string> Files = new Dictionary<string, string>();      // "/docs/java/notes.txt" -> content
+    public HashSet<string> Dirs = new HashSet<string>();
+    public long Size(string path) {
+        long s = 0;
+        foreach (var e in Files) if (e.Key.StartsWith(path)) s += e.Value.Length;  // "/doc" matches "/docs"!
+        return s;
+    }
+}` }
             ] }
     },
     mcq: { q: 'Directory contains Files and Directories. What structure models "any depth" cleanly?', options: ['Directory has List&lt;File&gt; and List&lt;List&lt;File&gt;&gt;', 'abstract Entry; File extends Entry; Directory extends Entry and ◆ 0..* Entry children', 'One class Node with a boolean isFile and a String content for everything', 'A Map from path to content only'], answer: 1, explain: 'A recursive composition: Directory owns children of the common supertype Entry, which can themselves be directories. Polymorphic size() then recurses naturally (the Composite pattern you will meet later).' },
@@ -12753,6 +15312,104 @@ int main() {
         fs.ls("/docs/java");
     } catch (const runtime_error& e) {
         cout << e.what() << "\\n";  // /docs/java
+    }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+abstract class Entry {
+    private readonly string name;
+    protected Entry(string name) { this.name = name; }
+    public string Name { get { return name; } }
+    public abstract long Size();
+}
+
+class FileEntry : Entry {
+    private string content = "";
+    public FileEntry(string name) : base(name) { }
+    public void Write(string c) { content = c; }
+    public override long Size() { return content.Length; }
+}
+
+class Directory : Entry {
+    private readonly SortedDictionary<string, Entry> children = new SortedDictionary<string, Entry>(StringComparer.Ordinal);   // recursive composition
+    public Directory(string name) : base(name) { }
+    public override long Size() {
+        long s = 0;
+        foreach (Entry e in children.Values) s += e.Size();              // polymorphic recursion
+        return s;
+    }
+    public Entry Child(string n) { Entry e; children.TryGetValue(n, out e); return e; }
+    public Directory Dir(string n) {
+        Entry e;
+        if (!children.TryGetValue(n, out e)) { e = new Directory(n); children[n] = e; }
+        Directory d = e as Directory;
+        if (d == null) throw new InvalidOperationException(n + " is a file");
+        return d;
+    }
+    public FileEntry File(string n) {
+        Entry e;
+        if (!children.TryGetValue(n, out e)) { e = new FileEntry(n); children[n] = e; }
+        FileEntry f = e as FileEntry;
+        if (f == null) throw new InvalidOperationException(n + " is a directory");
+        return f;
+    }
+    public bool Remove(string n) { return children.Remove(n); }           // subtree goes with it
+    public List<string> Names() { return children.Keys.ToList(); }
+}
+
+class FileSystem {
+    private readonly Directory root = new Directory("");
+
+    private static string[] Parts(string path) {
+        if (!path.StartsWith("/")) throw new ArgumentException("absolute path required");
+        return path.Split('/').Where(s => s.Length > 0).ToArray();
+    }
+    private Entry Resolve(string path) {
+        Entry cur = root;
+        foreach (string p in Parts(path)) {
+            Directory d = cur as Directory;
+            if (d == null || (cur = d.Child(p)) == null) throw new KeyNotFoundException(path);
+        }
+        return cur;
+    }
+
+    public void Mkdirs(string path) { Directory cur = root; foreach (string p in Parts(path)) cur = cur.Dir(p); }
+    public void Write(string path, string content) {
+        string[] ps = Parts(path);
+        Directory cur = root;
+        for (int i = 0; i < ps.Length - 1; i++) cur = cur.Dir(ps[i]);
+        cur.File(ps[ps.Length - 1]).Write(content);
+    }
+    public List<string> Ls(string path) {
+        Entry e = Resolve(path);
+        Directory d = e as Directory;
+        return d != null ? d.Names() : new List<string> { e.Name };
+    }
+    public long Size(string path) { return Resolve(path).Size(); }
+    public void Rm(string path) {
+        string[] ps = Parts(path);
+        if (ps.Length == 0) throw new ArgumentException("cannot remove root");
+        Entry parent = Resolve("/" + string.Join("/", ps.Take(ps.Length - 1)));
+        Directory d = parent as Directory;
+        if (d == null || !d.Remove(ps[ps.Length - 1])) throw new KeyNotFoundException(path);
+    }
+}
+
+class Program {
+    static void Main() {
+        FileSystem fs = new FileSystem();
+        fs.Mkdirs("/docs/java");
+        fs.Write("/docs/java/notes.txt", "OOP!");
+        fs.Write("/docs/plan.txt", "buy milk");
+        Console.WriteLine(string.Join(" ", fs.Ls("/docs")));   // java plan.txt
+        Console.WriteLine(fs.Size("/docs"));   // 12
+        try { fs.Write("/docs/java", "x"); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }   // java is a directory
+        fs.Rm("/docs/java");
+        Console.WriteLine(fs.Size("/docs"));   // 8
+        try { fs.Ls("/docs/java"); } catch (KeyNotFoundException e) { Console.WriteLine(e.Message); }   // /docs/java
     }
 }` }
       ],

@@ -259,7 +259,42 @@ private:
         for (int w : radj[v]) if (comp[w] == -1) dfs2(w, radj, comp, c);
     }
 };
-` }] }, {
+` }, { lang: 'csharp', code: `class Kosaraju {
+    // Returns comp[v] = id of v's strongly connected component (0, 1, 2, ...).
+    // Component ids come out in TOPOLOGICAL order of the condensation DAG.
+    static int[] Scc(int n, List<int>[] adj) {
+        // ---- Pass 1: plain DFS on the original graph, remember finish order ----
+        bool[] seen = new bool[n];
+        var order = new Stack<int>();                   // node finished LAST is on top
+        for (int v = 0; v < n; v++) if (!seen[v]) Dfs1(v, adj, seen, order);
+
+        // ---- Build the transpose: every edge u->v becomes v->u ----
+        var radj = new List<int>[n];
+        for (int v = 0; v < n; v++) radj[v] = new List<int>();
+        for (int u = 0; u < n; u++) foreach (int v in adj[u]) radj[v].Add(u);
+
+        // ---- Pass 2: pop by decreasing finish time, DFS on the transpose ----
+        int[] comp = new int[n];
+        for (int v = 0; v < n; v++) comp[v] = -1;
+        int c = 0;
+        while (order.Count > 0) {
+            int v = order.Pop();
+            if (comp[v] == -1) Dfs2(v, radj, comp, c++);   // one DFS tree = one SCC
+        }
+        return comp;
+    }
+
+    static void Dfs1(int v, List<int>[] adj, bool[] seen, Stack<int> order) {
+        seen[v] = true;
+        foreach (int w in adj[v]) if (!seen[w]) Dfs1(w, adj, seen, order);
+        order.Push(v);                                  // v finished: all it can reach is done
+    }
+
+    static void Dfs2(int v, List<int>[] radj, int[] comp, int c) {
+        comp[v] = c;
+        foreach (int w in radj[v]) if (comp[w] == -1) Dfs2(w, radj, comp, c);
+    }
+}` }] }, {
       lang: 'python', run: true, title: 'Iterative Kosaraju in Python (no recursion limit problems) — runnable',
       code: `def kosaraju(n, edges):
     adj = [[] for _ in range(n)]
@@ -498,7 +533,31 @@ public:
         }
         return c;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int CountSCC(int V, int[][] edges) {
+        var adj = new List<int>[V];
+        for (int i = 0; i < V; i++) adj[i] = new List<int>();
+        foreach (var e in edges) adj[e[0]].Add(e[1]);
+        bool[,] reach = new bool[V, V];
+        for (int s = 0; s < V; s++) {                 // BFS from every node
+            var q = new Queue<int>();
+            q.Enqueue(s); reach[s, s] = true;
+            while (q.Count > 0) {
+                int u = q.Dequeue();
+                foreach (int w in adj[u]) if (!reach[s, w]) { reach[s, w] = true; q.Enqueue(w); }
+            }
+        }
+        int[] comp = new int[V];
+        for (int i = 0; i < V; i++) comp[i] = -1;
+        int c = 0;
+        for (int u = 0; u < V; u++) {
+            if (comp[u] != -1) continue;
+            for (int v = 0; v < V; v++) if (reach[u, v] && reach[v, u]) comp[v] = c;
+            c++;
+        }
+        return c;
+    }
+}` }] }
       },
       mcq: { q: 'After pass 1 of Kosaraju, which node do you start pass 2 from?', options: ['The node that finished <b>last</b> (top of the stack)', 'The node that finished first', 'Node 0 always', 'The node with the highest out-degree'], answer: 0, explain: 'The last finisher lies in a source component of the condensation; on the flipped graph that component is a sink, so the DFS cannot leak out.' },
       hints: [
@@ -591,6 +650,23 @@ function scc(kind, V, edges) { return countSCC(V, kind === '' ? edges : _gen(kin
 int scc(string kind, int V, vector<vector<int>> edges) {
   if (!kind.empty()) edges = _gen(kind, V);
   return Solution().countSCC(V, edges);
+}`, csharp: `public class Check {
+    static int[][] Gen(string kind, int n) {
+        var e = new List<int[]>();
+        if (kind == "chain") { for (int i = 0; i + 1 < n; i++) e.Add(new[] { i, i + 1 }); }
+        else if (kind == "outStar") { for (int i = 1; i < n; i++) e.Add(new[] { 0, i }); }
+        else if (kind == "twoCycles") {
+            int h = n / 2;
+            for (int i = 0; i < n; i++) { int b = i < h ? 0 : h, len = i < h ? h : n - h; e.Add(new[] { i, b + (i - b + 1) % len }); }
+            e.Add(new[] { 0, h });
+        } else {
+            for (int i = 0; i < n; i++) { e.Add(new[] { i, (i + 1) % n }); if (kind == "chords") e.Add(new[] { i, (i + 2) % n }); }
+        }
+        return e.ToArray();
+    }
+    public static int Scc(string kind, int V, int[][] edges) {
+        return new Solution().CountSCC(V, kind == "" ? edges : Gen(kind, V));
+    }
 }` } },
       solution: {
         approach: `<p>Kosaraju with iterative DFS so a 10<sup>5</sup>-long chain cannot overflow the call stack. Each node and edge is touched a constant number of times in each pass.</p>`,
@@ -764,7 +840,53 @@ public:
         return count;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public int CountSCC(int V, int[][] edges) {
+        var adj = new List<int>[V];
+        var radj = new List<int>[V];
+        for (int i = 0; i < V; i++) { adj[i] = new List<int>(); radj[i] = new List<int>(); }
+        foreach (var e in edges) { adj[e[0]].Add(e[1]); radj[e[1]].Add(e[0]); }
+
+        // Pass 1: iterative DFS, record finish order
+        bool[] seen = new bool[V];
+        int[] nextIdx = new int[V];                 // which neighbour each node tries next
+        int[] order = new int[V];
+        int finished = 0;
+        var st = new Stack<int>();
+        for (int s = 0; s < V; s++) {
+            if (seen[s]) continue;
+            seen[s] = true;
+            st.Push(s);
+            while (st.Count > 0) {
+                int v = st.Peek();
+                if (nextIdx[v] < adj[v].Count) {
+                    int w = adj[v][nextIdx[v]++];
+                    if (!seen[w]) { seen[w] = true; st.Push(w); }
+                } else {
+                    st.Pop();
+                    order[finished++] = v;          // v finished
+                }
+            }
+        }
+
+        // Pass 2: decreasing finish time, DFS on the transpose
+        int[] comp = new int[V];
+        for (int i = 0; i < V; i++) comp[i] = -1;
+        int count = 0;
+        for (int k = V - 1; k >= 0; k--) {
+            int s = order[k];
+            if (comp[s] != -1) continue;
+            comp[s] = count;
+            st.Push(s);
+            while (st.Count > 0) {
+                int v = st.Pop();
+                foreach (int w in radj[v]) if (comp[w] == -1) { comp[w] = count; st.Push(w); }
+            }
+            count++;
+        }
+        return count;
+    }
+}` }],
         dry: {
           head: ['step', 'action', 'stack / order', 'result'],
           rows: [
@@ -985,7 +1107,49 @@ public:
 
     const vector<vector<int>>& components() const { return sccs; }
 };
-` }] }, {
+` }, { lang: 'csharp', code: `class TarjanSCC {
+    private readonly List<int>[] adj;
+    private readonly int[] disc, low;
+    private readonly bool[] onStack;
+    private readonly Stack<int> stack = new Stack<int>();
+    private readonly List<List<int>> sccs = new List<List<int>>();
+    private int timer = 0;
+
+    public TarjanSCC(int n, List<int>[] adj) {
+        this.adj = adj;
+        disc = new int[n];
+        low = new int[n];
+        onStack = new bool[n];
+        for (int v = 0; v < n; v++) disc[v] = -1;        // -1 = not visited yet
+        for (int v = 0; v < n; v++) if (disc[v] == -1) Dfs(v);
+    }
+
+    private void Dfs(int v) {
+        disc[v] = low[v] = timer++;                    // arrival time; low starts as itself
+        stack.Push(v);
+        onStack[v] = true;
+        foreach (int w in adj[v]) {
+            if (disc[w] == -1) {                       // tree edge: explore the child first
+                Dfs(w);
+                low[v] = Math.Min(low[v], low[w]);     // if my child can climb up, so can I
+            } else if (onStack[w]) {                   // edge into a still-OPEN component
+                low[v] = Math.Min(low[v], disc[w]);
+            }                                          // else: w's SCC is closed -> ignore
+        }
+        if (low[v] == disc[v]) {                       // v is the root of its SCC
+            var comp = new List<int>();
+            int x;
+            do {
+                x = stack.Pop();
+                onStack[x] = false;
+                comp.Add(x);
+            } while (x != v);
+            sccs.Add(comp);                            // reverse topological order
+        }
+    }
+
+    public List<List<int>> Components() { return sccs; }
+}` }] }, {
       lang: 'python', run: true, title: 'Iterative Tarjan in Python — runnable',
       code: `def tarjan(n, adj):
     disc = [-1] * n
@@ -1279,7 +1443,47 @@ public:
         }
         return cnt == V;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    int V;
+    List<int>[] adj;
+
+    public int MinEdges(int V, int[][] edges) {
+        this.V = V;
+        adj = new List<int>[V];
+        for (int i = 0; i < V; i++) adj[i] = new List<int>();
+        foreach (var e in edges) adj[e[0]].Add(e[1]);
+        for (int k = 0; ; k++) if (TryAdd(k, 0)) return k;   // k = V always works (a big cycle)
+    }
+
+    bool TryAdd(int left, int from) {                     // add 'left' more edges, pairs >= from
+        if (left == 0) return ReachAll(false) && ReachAll(true);
+        for (int p = from; p < V * V; p++) {
+            int u = p / V, v = p % V;
+            if (u == v) continue;
+            adj[u].Add(v);
+            bool ok = TryAdd(left - 1, p + 1);
+            adj[u].RemoveAt(adj[u].Count - 1);
+            if (ok) return true;
+        }
+        return false;
+    }
+
+    bool ReachAll(bool reversed) {                        // node 0 reaches all (or all reach 0)
+        bool[] seen = new bool[V];
+        var q = new Queue<int>();
+        q.Enqueue(0);
+        seen[0] = true;
+        int cnt = 1;
+        while (q.Count > 0) {
+            int u = q.Dequeue();
+            for (int x = 0; x < V; x++) {
+                bool edge = reversed ? adj[x].Contains(u) : adj[u].Contains(x);
+                if (edge && !seen[x]) { seen[x] = true; cnt++; q.Enqueue(x); }
+            }
+        }
+        return cnt == V;
+    }
+}` }] }
       },
       mcq: { q: 'The condensation has 4 sources and 2 sinks (and more than one SCC). How many edges are needed?', options: ['4', '2', '6', '3'], answer: 0, explain: 'Every source needs at least one new incoming edge and every sink at least one new outgoing edge; one new edge fixes at most one of each, so we need ≥ max(4, 2) = 4, and a careful pairing achieves it.' },
       hints: [
@@ -1378,6 +1582,23 @@ function minE(kind, V, edges) { return minEdgesToStronglyConnect(V, kind === '' 
 int minE(string kind, int V, vector<vector<int>> edges) {
   if (!kind.empty()) edges = _gen(kind, V);
   return Solution().minEdgesToStronglyConnect(V, edges);
+}`, csharp: `public class Check {
+    static int[][] Gen(string kind, int n) {
+        var e = new List<int[]>();
+        if (kind == "chain") { for (int i = 0; i + 1 < n; i++) e.Add(new[] { i, i + 1 }); }
+        else if (kind == "outStar") { for (int i = 1; i < n; i++) e.Add(new[] { 0, i }); }
+        else if (kind == "twoCycles") {
+            int h = n / 2;
+            for (int i = 0; i < n; i++) { int b = i < h ? 0 : h, len = i < h ? h : n - h; e.Add(new[] { i, b + (i - b + 1) % len }); }
+            e.Add(new[] { 0, h });
+        } else {
+            for (int i = 0; i < n; i++) { e.Add(new[] { i, (i + 1) % n }); if (kind == "chords") e.Add(new[] { i, (i + 2) % n }); }
+        }
+        return e.ToArray();
+    }
+    public static int MinE(string kind, int V, int[][] edges) {
+        return new Solution().MinEdgesToStronglyConnect(V, kind == "" ? edges : Gen(kind, V));
+    }
 }` } },
       solution: {
         approach: `<p>Iterative Tarjan labels each node with its component. One pass over edges marks hasIn / hasOut for components (ignoring edges inside a component). The lower bound max(S, T) is achievable — the classic Eswaran–Tarjan result (1976) — by linking sinks to sources in a ring-like pattern.</p>`,
@@ -1600,7 +1821,58 @@ public:
         return max(sources, sinks);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public int MinEdgesToStronglyConnect(int V, int[][] edges) {
+        var adj = new List<int>[V];
+        for (int i = 0; i < V; i++) adj[i] = new List<int>();
+        foreach (var e in edges) adj[e[0]].Add(e[1]);
+
+        int[] disc = new int[V], low = new int[V], comp = new int[V], it = new int[V];
+        for (int i = 0; i < V; i++) disc[i] = -1;
+        bool[] onStack = new bool[V];
+        int[] stack = new int[V], work = new int[V];      // Tarjan stack + simulated call stack
+        int sp = 0, wp = 0, timer = 0, comps = 0;
+
+        for (int r = 0; r < V; r++) {
+            if (disc[r] != -1) continue;
+            disc[r] = low[r] = timer++;
+            stack[sp++] = r; onStack[r] = true; work[wp++] = r;
+            while (wp > 0) {
+                int v = work[wp - 1];
+                if (it[v] < adj[v].Count) {
+                    int w = adj[v][it[v]++];
+                    if (disc[w] == -1) {                    // "recursive call"
+                        disc[w] = low[w] = timer++;
+                        stack[sp++] = w; onStack[w] = true; work[wp++] = w;
+                    } else if (onStack[w]) {
+                        low[v] = Math.Min(low[v], disc[w]);
+                    }
+                } else {                                    // "return" from v
+                    wp--;
+                    if (wp > 0) { int p = work[wp - 1]; low[p] = Math.Min(low[p], low[v]); }
+                    if (low[v] == disc[v]) {
+                        int x;
+                        do { x = stack[--sp]; onStack[x] = false; comp[x] = comps; } while (x != v);
+                        comps++;
+                    }
+                }
+            }
+        }
+        if (comps == 1) return 0;
+
+        bool[] hasIn = new bool[comps], hasOut = new bool[comps];
+        foreach (var e in edges) {
+            int a = comp[e[0]], b = comp[e[1]];
+            if (a != b) { hasOut[a] = true; hasIn[b] = true; }
+        }
+        int sources = 0, sinks = 0;
+        for (int c = 0; c < comps; c++) {
+            if (!hasIn[c]) sources++;
+            if (!hasOut[c]) sinks++;
+        }
+        return Math.Max(sources, sinks);
+    }
+}` }],
         dry: {
           head: ['step', 'event', 'disc/low', 'stack', 'SCC'],
           rows: [
@@ -1802,7 +2074,46 @@ private:
         if (parentEdge == -1 && children >= 2) isCut[v] = 1;                     // special root rule
     }
 };
-` }] },
+` }, { lang: 'csharp', code: `class BridgesAndCutVertices {
+    readonly List<(int w, int id)>[] adj;                // adj[u] holds (neighbour, edgeId)
+    readonly int[] disc, low;
+    readonly bool[] isCut;
+    readonly List<int[]> bridges = new List<int[]>();
+    int timer = 0;
+
+    public BridgesAndCutVertices(int n, int[][] edges) {
+        adj = new List<(int w, int id)>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<(int w, int id)>();
+        for (int id = 0; id < edges.Length; id++) {
+            adj[edges[id][0]].Add((edges[id][1], id));
+            adj[edges[id][1]].Add((edges[id][0], id));
+        }
+        disc = new int[n];
+        low = new int[n];
+        isCut = new bool[n];
+        for (int v = 0; v < n; v++) disc[v] = -1;
+        for (int v = 0; v < n; v++) if (disc[v] == -1) Dfs(v, -1);
+    }
+
+    private void Dfs(int v, int parentEdge) {
+        disc[v] = low[v] = timer++;
+        int children = 0;
+        foreach (var e in adj[v]) {
+            int w = e.w, id = e.id;
+            if (id == parentEdge) continue;             // skip ONLY the edge we came in on
+            if (disc[w] == -1) {                        // tree edge
+                children++;
+                Dfs(w, id);
+                low[v] = Math.Min(low[v], low[w]);
+                if (low[w] > disc[v]) bridges.Add(new[] { v, w });               // subtree cannot reach v
+                if (parentEdge != -1 && low[w] >= disc[v]) isCut[v] = true;  // subtree cannot pass v
+            } else {                                    // back edge to an ancestor (or a done descendant)
+                low[v] = Math.Min(low[v], disc[w]);
+            }
+        }
+        if (parentEdge == -1 && children >= 2) isCut[v] = true;              // special root rule
+    }
+}` }] },
     codeTitle: 'Bridges + articulation points in one DFS',
     viz: {
       title: 'Low-link DFS: disc/low tags, bridges turn red, cut vertices turn purple',
@@ -1982,7 +2293,32 @@ public:
         }
         return ans;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public IList<IList<int>> CriticalConnections(int n, IList<IList<int>> connections) {
+        var ans = new List<IList<int>>();
+        for (int skip = 0; skip < connections.Count; skip++) {
+            var adj = new List<int>[n];
+            for (int i = 0; i < n; i++) adj[i] = new List<int>();
+            for (int id = 0; id < connections.Count; id++) {
+                if (id == skip) continue;                     // pretend this cable is cut
+                int a = connections[id][0], b = connections[id][1];
+                adj[a].Add(b);
+                adj[b].Add(a);
+            }
+            int s = connections[skip][0], t = connections[skip][1];
+            bool[] seen = new bool[n];
+            var q = new Queue<int>();
+            q.Enqueue(s);
+            seen[s] = true;
+            while (q.Count > 0) {
+                int u = q.Dequeue();
+                foreach (int w in adj[u]) if (!seen[w]) { seen[w] = true; q.Enqueue(w); }
+            }
+            if (!seen[t]) ans.Add(connections[skip]);         // endpoints separated -> critical
+        }
+        return ans;
+    }
+}` }] }
       },
       mcq: { q: 'For tree edge v—w, which condition means it is a bridge?', options: ['low[w] &gt; disc[v]', 'low[w] ≥ disc[v]', 'low[v] &gt; disc[w]', 'disc[w] &gt; low[v]'], answer: 0, explain: 'w\'s subtree cannot reach v or anything discovered before v without this edge. With ≥ you would also flag edges on cycles that return exactly to v.' },
       hints: [
@@ -2077,6 +2413,22 @@ public:
     }
   }
   return Solution().criticalConnections(n, conns);
+}`, csharp: `public class Check {
+    public static IList<IList<int>> Bridges(string kind, int n, IList<IList<int>> conns) {
+        if (kind != "") {
+            var list = new List<IList<int>>();
+            int h = n / 2;
+            if (kind == "path") { for (int i = 0; i + 1 < n; i++) list.Add(new List<int> { i, i + 1 }); }
+            else if (kind == "star") { for (int i = 1; i < n; i++) list.Add(new List<int> { 0, i }); }
+            else {
+                int c = kind == "cycle" ? n : h;
+                for (int i = 0; i < c; i++) list.Add(new List<int> { i, (i + 1) % c });
+                if (kind == "cycleTail") for (int i = h - 1; i + 1 < n; i++) list.Add(new List<int> { i, i + 1 });
+            }
+            conns = list;
+        }
+        return new Solution().CriticalConnections(n, conns);
+    }
 }` } },
       solution: {
         approach: `<p>One DFS with disc/low (Tarjan's bridge-finding algorithm). Each edge is examined twice (once from each side), so the whole thing is linear.</p>`,
@@ -2243,7 +2595,52 @@ public:
         return result;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public IList<IList<int>> CriticalConnections(int n, IList<IList<int>> connections) {
+        var adj = new List<(int w, int id)>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<(int w, int id)>();
+        for (int id = 0; id < connections.Count; id++) {
+            int a = connections[id][0], b = connections[id][1];
+            adj[a].Add((b, id));
+            adj[b].Add((a, id));
+        }
+        int[] disc = new int[n], low = new int[n], next = new int[n], parentEdge = new int[n];
+        for (int i = 0; i < n; i++) disc[i] = -1;
+        int[] stack = new int[n];                              // our own DFS stack: no deep recursion
+        int timer = 0;
+        var result = new List<IList<int>>();
+        for (int root = 0; root < n; root++) {
+            if (disc[root] != -1) continue;
+            int sp = 0;
+            stack[sp++] = root;
+            parentEdge[root] = -1;
+            disc[root] = low[root] = timer++;
+            while (sp > 0) {
+                int v = stack[sp - 1];
+                if (next[v] < adj[v].Count) {
+                    var e = adj[v][next[v]++];
+                    int w = e.w, id = e.id;
+                    if (id == parentEdge[v]) continue;         // do not reuse the edge we came in on
+                    if (disc[w] == -1) {                       // "recursive call" into w
+                        parentEdge[w] = id;
+                        disc[w] = low[w] = timer++;
+                        stack[sp++] = w;
+                    } else {
+                        low[v] = Math.Min(low[v], disc[w]);    // back edge closes a cycle
+                    }
+                } else {                                       // "return" from v
+                    sp--;
+                    if (sp > 0) {
+                        int p = stack[sp - 1];
+                        low[p] = Math.Min(low[p], low[v]);
+                        if (low[v] > disc[p]) result.Add(new List<int> { p, v });   // no way back above p
+                    }
+                }
+            }
+        }
+        return result;
+    }
+}` }],
         dry: {
           head: ['step', 'event', 'disc/low after', 'bridge?'],
           rows: [
@@ -2448,7 +2845,46 @@ vector<int> eulerPath(int n, const vector<vector<int>>& edges) {
     // 3) Connectivity check: a real Euler path uses ALL edges
     return path.size() == edges.size() + 1 ? path : vector<int>{};
 }
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `class Hierholzer {
+    // Directed graph with n nodes. Returns an Euler path/circuit as a vertex list, or an empty list.
+    static List<int> EulerPath(int n, int[][] edges) {
+        var adj = new List<int>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<int>();
+        int[] outDeg = new int[n], inDeg = new int[n];
+        foreach (var e in edges) { adj[e[0]].Add(e[1]); outDeg[e[0]]++; inDeg[e[1]]++; }
+
+        // 1) Degree check + choose the start vertex
+        int start = -1, plus = 0, minus = 0;
+        for (int v = 0; v < n; v++) {
+            int d = outDeg[v] - inDeg[v];
+            if (d == 1) { plus++; start = v; }
+            else if (d == -1) minus++;
+            else if (d != 0) return new List<int>();     // |out - in| >= 2: impossible
+        }
+        if (!((plus == 0 && minus == 0) || (plus == 1 && minus == 1))) return new List<int>();
+        if (start == -1) {                               // circuit: any vertex with an edge
+            for (int v = 0; v < n; v++) if (outDeg[v] > 0) { start = v; break; }
+            if (start == -1) return new List<int>();     // no edges at all
+        }
+
+        // 2) Hierholzer with an explicit stack; ptr[v] = index of v's next unused edge
+        int[] ptr = new int[n];
+        var stack = new Stack<int>();
+        var path = new LinkedList<int>();
+        stack.Push(start);
+        while (stack.Count > 0) {
+            int v = stack.Peek();
+            if (ptr[v] < adj[v].Count) {
+                stack.Push(adj[v][ptr[v]++]);            // walk along an unused edge
+            } else {
+                path.AddFirst(stack.Pop());              // stuck: v is final at this position
+            }
+        }
+
+        // 3) Connectivity check: a real Euler path uses ALL edges
+        return path.Count == edges.Length + 1 ? new List<int>(path) : new List<int>();
+    }
+}` }] }, { lang: 'java', code: `
       class EulerUndirected {
           // Undirected version: each edge appears in both lists, so mark edges used by id.
           static List<Integer> euler(int n, int[][] edges) {
@@ -2590,7 +3026,45 @@ vector<int> eulerUndirected(int n, const vector<vector<int>>& edges) {
     reverse(path.begin(), path.end());
     return path.size() == edges.size() + 1 ? path : vector<int>{};
 }
-` }] }],
+` }, { lang: 'csharp', code: `class EulerUndirected {
+    // Undirected version: each edge appears in both lists, so mark edges used by id.
+    static List<int> Euler(int n, int[][] edges) {
+        var adj = new List<(int w, int id)>[n];                 // (neighbour, edgeId)
+        for (int i = 0; i < n; i++) adj[i] = new List<(int w, int id)>();
+        int[] deg = new int[n];
+        for (int id = 0; id < edges.Length; id++) {
+            int u = edges[id][0], v = edges[id][1];
+            adj[u].Add((v, id));
+            adj[v].Add((u, id));
+            deg[u]++;
+            deg[v]++;
+        }
+        int odd = 0, start = -1;
+        for (int v = 0; v < n; v++) if (deg[v] % 2 == 1) { odd++; if (start == -1) start = v; }
+        if (odd != 0 && odd != 2) return new List<int>();
+        if (start == -1) for (int v = 0; v < n; v++) if (deg[v] > 0) { start = v; break; }
+        if (start == -1) return new List<int>();
+
+        bool[] used = new bool[edges.Length];
+        int[] ptr = new int[n];
+        var stack = new Stack<int>();
+        var path = new LinkedList<int>();
+        stack.Push(start);
+        while (stack.Count > 0) {
+            int v = stack.Peek();
+            // skip edges that were already walked from the other end
+            while (ptr[v] < adj[v].Count && used[adj[v][ptr[v]].id]) ptr[v]++;
+            if (ptr[v] == adj[v].Count) {
+                path.AddFirst(stack.Pop());
+            } else {
+                var e = adj[v][ptr[v]++];
+                used[e.id] = true;
+                stack.Push(e.w);
+            }
+        }
+        return path.Count == edges.Length + 1 ? new List<int>(path) : new List<int>();
+    }
+}` }] }],
     codeTitle: ['Directed Euler path/circuit', 'Undirected Euler path/circuit'],
     viz: {
       title: 'Hierholzer live: walk until stuck, pop into the answer, detours splice themselves in',
@@ -2658,7 +3132,8 @@ vector<int> eulerUndirected(int n, const vector<vector<int>>& edges) {
 // eulerPath(3, edges) returns [0, 2, 0, 1]  i.e.  A C A B
 ` }, { lang: 'cpp', code: `vector<vector<int>> edges = {{0, 1}, {0, 2}, {2, 0}};   // A=0, B=1, C=2
 // eulerPath(3, edges) returns {0, 2, 0, 1}  i.e.  A C A B
-` }] } },
+` }, { lang: 'csharp', code: `int[][] edges = { new[] {0, 1}, new[] {0, 2}, new[] {2, 0} };   // A=0, B=1, C=2
+// Hierholzer.EulerPath(3, edges) returns [0, 2, 0, 1]  i.e.  A C A B` }] } },
       { title: 'Degrees fine but still impossible', html: `<p>Two separate triangles <code>A→B→C→A</code> and <code>D→E→F→D</code>: every vertex is balanced, yet no single walk covers both. That is why the code checks <code>path.size() == E + 1</code> at the end — it is the cheapest connectivity test.</p>` }
     ],
     deepDive: `<p><b>Why "pop into the front of the answer" is correct.</b> A vertex is popped only when all its edges are used. In the directed case with balanced degrees, the first time the walk gets stuck it must be at the start vertex (every other vertex we enter still has an unused out-edge, because in = out). So the first walk is a closed loop. Backing up, we find a vertex with unused edges, walk another closed loop from it (same argument), and so on. The reverse pop order exactly splices each loop into the place where it branches off. This is just <b>reverse post-order of a DFS over edges</b>.</p>
@@ -2768,7 +3243,29 @@ private:
         }
         return false;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public IList<string> FindItinerary(IList<IList<string>> tickets) {
+        var t = new List<IList<string>>(tickets);
+        t.Sort((a, b) => string.CompareOrdinal(a[1], b[1]));   // try smaller destinations first
+        bool[] used = new bool[t.Count];
+        var path = new List<string> { "JFK" };
+        Dfs("JFK", t, used, path);
+        return path;
+    }
+
+    private bool Dfs(string at, List<IList<string>> t, bool[] used, List<string> path) {
+        if (path.Count == t.Count + 1) return true;             // every ticket used
+        for (int i = 0; i < t.Count; i++) {
+            if (used[i] || t[i][0] != at) continue;
+            used[i] = true;
+            path.Add(t[i][1]);
+            if (Dfs(t[i][1], t, used, path)) return true;
+            path.RemoveAt(path.Count - 1);                      // undo and try the next ticket
+            used[i] = false;
+        }
+        return false;
+    }
+}` }] }
       },
       mcq: { q: 'Why does Hierholzer prepend a vertex to the answer when it gets stuck?', options: ['A stuck vertex must be the end of the remaining route, so it belongs after everything still on the stack', 'Because the stack is reversed by mistake', 'To sort the answer lexicographically', 'It does not matter where it is inserted'], answer: 0, explain: 'All edges of that vertex are used, so nothing can follow it; everything still on the stack comes before it.' },
       hints: [
@@ -2869,7 +3366,31 @@ public:
         return route;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public IList<string> FindItinerary(IList<IList<string>> tickets) {
+        var g = new Dictionary<string, List<string>>();
+        foreach (var t in tickets) {
+            List<string> dests;
+            if (!g.TryGetValue(t[0], out dests)) g[t[0]] = dests = new List<string>();
+            dests.Add(t[1]);
+        }
+        // sort each list in DESCENDING order so the smallest ticket is at the end: O(1) to take
+        foreach (var dests in g.Values) dests.Sort((a, b) => string.CompareOrdinal(b, a));
+        var route = new LinkedList<string>();
+        var stack = new Stack<string>();
+        stack.Push("JFK");
+        while (stack.Count > 0) {
+            List<string> dests;
+            if (g.TryGetValue(stack.Peek(), out dests) && dests.Count > 0) {
+                stack.Push(dests[dests.Count - 1]);   // use the smallest unused ticket
+                dests.RemoveAt(dests.Count - 1);
+            } else {
+                route.AddFirst(stack.Pop());          // stuck: this airport is final here
+            }
+        }
+        return new List<string>(route);
+    }
+}` }],
         dry: {
           head: ['stack (bottom → top)', 'action', 'route'],
           rows: [
@@ -3084,7 +3605,47 @@ public:
 
     int distance(int u, int v) const { return depth[u] + depth[v] - 2 * depth[lca(u, v)]; }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `class BinaryLifting {
+    readonly int LOG;
+    readonly int[][] up;        // up[k][v] = 2^k-th ancestor of v (the root's ancestor is the root itself)
+    readonly int[] depth;
+
+    public BinaryLifting(int n, List<int>[] children, int root) {
+        int lg = 1;
+        while ((1 << lg) < n) lg++;              // 2^LOG >= n: any depth difference fits in LOG bits
+        LOG = lg;
+        up = new int[LOG][];
+        for (int k = 0; k < LOG; k++) up[k] = new int[n];
+        depth = new int[n];
+        var q = new Queue<int>();                // BFS: parents are processed before children
+        q.Enqueue(root);
+        up[0][root] = root;
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            foreach (int c in children[v]) { depth[c] = depth[v] + 1; up[0][c] = v; q.Enqueue(c); }
+        }
+        for (int k = 1; k < LOG; k++)
+            for (int v = 0; v < n; v++)
+                up[k][v] = up[k - 1][up[k - 1][v]];   // 2^k steps = 2^(k-1) steps twice
+    }
+
+    public int KthAncestor(int v, int k) {        // -1 if the tree is not that tall
+        if (k > depth[v]) return -1;
+        for (int b = 0; b < LOG; b++) if ((k >> b & 1) == 1) v = up[b][v];
+        return v;
+    }
+
+    public int Lca(int u, int v) {
+        if (depth[u] < depth[v]) { int t = u; u = v; v = t; }
+        u = KthAncestor(u, depth[u] - depth[v]);   // 1) same depth
+        if (u == v) return u;                      // 2) v was an ancestor of u
+        for (int k = LOG - 1; k >= 0; k--)         // 3) biggest jumps that keep them apart
+            if (up[k][u] != up[k][v]) { u = up[k][u]; v = up[k][v]; }
+        return up[0][u];                           // they are now children of the LCA
+    }
+
+    public int Distance(int u, int v) { return depth[u] + depth[v] - 2 * depth[Lca(u, v)]; }
+}` }] }, { lang: 'java', code: `
       class LcaEulerTour {
           // O(N log N) build, O(1) query: LCA = shallowest node between the first visits of u and v.
           final int[] first, euler, depthAt, lg;
@@ -3270,7 +3831,55 @@ public:
         return euler[depthAt[a] <= depthAt[b] ? a : b];
     }
 };
-` }] }],
+` }, { lang: 'csharp', code: `class LcaEulerTour {
+    // O(N log N) build, O(1) query: LCA = shallowest node between the first visits of u and v.
+    readonly int[] first, euler, depthAt, lg;
+    readonly int[][] sparse;      // sparse[k][i] = position of the min depth in tour[i .. i + 2^k)
+
+    public LcaEulerTour(int n, List<int>[] children, int root) {
+        first = new int[n];
+        euler = new int[2 * n - 1];
+        depthAt = new int[2 * n - 1];
+        int[] depth = new int[n], it = new int[n];
+        int len = 0;
+        var st = new Stack<int>();
+        st.Push(root);
+        first[root] = 0;
+        euler[len] = root;
+        depthAt[len++] = 0;
+        while (st.Count > 0) {                       // write v on entry and after each child
+            int v = st.Peek();
+            if (it[v] < children[v].Count) {
+                int c = children[v][it[v]++];
+                depth[c] = depth[v] + 1;
+                first[c] = len;
+                euler[len] = c;
+                depthAt[len++] = depth[c];
+                st.Push(c);
+            } else {
+                st.Pop();
+                if (st.Count > 0) { int p = st.Peek(); euler[len] = p; depthAt[len++] = depth[p]; }
+            }
+        }
+        lg = new int[len + 1];
+        for (int i = 2; i <= len; i++) lg[i] = lg[i / 2] + 1;
+        sparse = new int[lg[len] + 1][];
+        for (int k = 0; k <= lg[len]; k++) sparse[k] = new int[len];
+        for (int i = 0; i < len; i++) sparse[0][i] = i;
+        for (int k = 1; k <= lg[len]; k++)
+            for (int i = 0; i + (1 << k) <= len; i++) {
+                int a = sparse[k - 1][i], b = sparse[k - 1][i + (1 << (k - 1))];
+                sparse[k][i] = depthAt[a] <= depthAt[b] ? a : b;
+            }
+    }
+
+    public int Lca(int u, int v) {
+        int l = Math.Min(first[u], first[v]), r = Math.Max(first[u], first[v]);
+        int k = lg[r - l + 1];
+        int a = sparse[k][l], b = sparse[k][r - (1 << k) + 1];   // two overlapping blocks
+        return euler[depthAt[a] <= depthAt[b] ? a : b];
+    }
+}` }] }],
     codeTitle: ['Binary lifting: k-th ancestor, LCA, distance', 'Alternative: Euler tour + sparse table, O(1) per query'],
     viz: {
       title: 'Binary lifting: build the 2^k jump table, then answer LCA(u, v) with big jumps',
@@ -3383,7 +3992,11 @@ public:
     for (int b = 0; b < (int)up.size(); b++) if (k >> b & 1) v = up[b][v];
     return v;
 }
-` }] } }
+` }, { lang: 'csharp', code: `int Kth(int[][] up, int[] depth, int v, int k) {
+    if (k > depth[v]) return -1;
+    for (int b = 0; b < up.Length; b++) if ((k >> b & 1) == 1) v = up[b][v];
+    return v;
+}` }] } }
     ],
     deepDive: `<p><b>Why the "jump while different" loop is correct.</b> Let L = LCA. For every k, <code>up[k][u] == up[k][v]</code> exactly when 2<sup>k</sup> ≥ depth[u] − depth[L] (the jump reaches L or above). Going from large k to small k greedily builds the binary representation of <code>depth[u] − depth[L] − 1</code> — the largest climb that keeps them apart. After the loop both are exactly one step below L.</p>
       <p><b>Choosing an LCA method:</b></p>
@@ -3523,7 +4136,35 @@ public:
         }
         return ans;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public long[] TreeDistances(int n, int[][] edges, int[][] queries) {
+        var adj = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<(int v, int w)>();
+        foreach (var e in edges) { adj[e[0]].Add((e[1], e[2])); adj[e[1]].Add((e[0], e[2])); }
+        int[] parent = new int[n], depth = new int[n];
+        long[] w = new long[n];                          // weight of the edge to the parent
+        bool[] seen = new bool[n];
+        var q = new Queue<int>();
+        q.Enqueue(0);
+        seen[0] = true;
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            foreach (var e in adj[v]) if (!seen[e.v]) {
+                seen[e.v] = true; parent[e.v] = v; depth[e.v] = depth[v] + 1; w[e.v] = e.w; q.Enqueue(e.v);
+            }
+        }
+        long[] ans = new long[queries.Length];
+        for (int i = 0; i < queries.Length; i++) {
+            int u = queries[i][0], v = queries[i][1];
+            long d = 0;
+            while (depth[u] > depth[v]) { d += w[u]; u = parent[u]; }
+            while (depth[v] > depth[u]) { d += w[v]; v = parent[v]; }
+            while (u != v) { d += w[u] + w[v]; u = parent[u]; v = parent[v]; }
+            ans[i] = d;
+        }
+        return ans;
+    }
+}` }] }
       },
       mcq: { q: 'distRoot = [0, 3, 2, 7, 4, 9] and LCA(3, 5) = 0. What is the path weight between 3 and 5?', options: ['16', '9', '7', '2'], answer: 0, explain: 'dist[3] + dist[5] − 2·dist[LCA] = 7 + 9 − 0 = 16.' },
       hints: [
@@ -3572,6 +4213,14 @@ public:
     for (int i = 1; i < n; i++) edges.push_back({kind == "chain" ? i - 1 : (i - 1) / 2, i, 1000000000});
   }
   return Solution().treeDistances(n, edges, queries);
+}`, csharp: `public class Check {
+    public static long[] Dist(string kind, int n, int[][] edges, int[][] queries) {
+        if (kind != "") {
+            edges = new int[n - 1][];
+            for (int i = 1; i < n; i++) edges[i - 1] = kind == "chain" ? new[] { i - 1, i, 1000000000 } : new[] { (i - 1) / 2, i, 1000000000 };
+        }
+        return new Solution().TreeDistances(n, edges, queries);
+    }
 }` } },
       solution: {
         approach: `<p>Binary lifting for LCA plus root distances. Building is O(n log n); every query O(log n).</p>`,
@@ -3753,7 +4402,54 @@ public:
         return ans;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public long[] TreeDistances(int n, int[][] edges, int[][] queries) {
+        var adj = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<(int v, int w)>();
+        foreach (var e in edges) { adj[e[0]].Add((e[1], e[2])); adj[e[1]].Add((e[0], e[2])); }
+        int LOG = 1;
+        while ((1 << LOG) < n) LOG++;
+        int[][] up = new int[LOG][];
+        for (int k = 0; k < LOG; k++) up[k] = new int[n];
+        int[] depth = new int[n];
+        long[] dist = new long[n];
+        bool[] seen = new bool[n];
+        var q = new Queue<int>();
+        q.Enqueue(0);
+        seen[0] = true;                                  // up[0][0] = 0: the root points to itself
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            foreach (var e in adj[v]) {
+                int w = e.v;
+                if (seen[w]) continue;
+                seen[w] = true;
+                up[0][w] = v;
+                depth[w] = depth[v] + 1;
+                dist[w] = dist[v] + e.w;
+                q.Enqueue(w);
+            }
+        }
+        for (int k = 1; k < LOG; k++)
+            for (int v = 0; v < n; v++) up[k][v] = up[k - 1][up[k - 1][v]];
+        long[] ans = new long[queries.Length];
+        for (int i = 0; i < queries.Length; i++) {
+            int a = queries[i][0], b = queries[i][1];
+            int l = Lca(a, b, up, depth, LOG);
+            ans[i] = dist[a] + dist[b] - 2 * dist[l];
+        }
+        return ans;
+    }
+
+    private int Lca(int u, int v, int[][] up, int[] depth, int LOG) {
+        if (depth[u] < depth[v]) { int t = u; u = v; v = t; }
+        int diff = depth[u] - depth[v];
+        for (int k = 0; k < LOG; k++) if ((diff >> k & 1) == 1) u = up[k][u];
+        if (u == v) return u;
+        for (int k = LOG - 1; k >= 0; k--)
+            if (up[k][u] != up[k][v]) { u = up[k][u]; v = up[k][v]; }
+        return up[0][u];
+    }
+}` }],
         dry: {
           head: ['query', 'equalise', 'jumps (k = 2, 1, 0)', 'LCA', 'answer'],
           rows: [
@@ -4036,7 +4732,51 @@ public:
         }
     }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `class EdmondsKarp {
+    private readonly int n;
+    private readonly List<int>[] g;                        // g[v] = ids of edges leaving v
+    private readonly List<int> to = new List<int>();
+    private readonly List<long> cap = new List<long>();    // RESIDUAL capacity of each edge
+
+    public EdmondsKarp(int n) {
+        this.n = n;
+        g = new List<int>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<int>();
+    }
+
+    public void AddEdge(int u, int v, long c) {
+        g[u].Add(to.Count); to.Add(v); cap.Add(c);    // forward edge: even id
+        g[v].Add(to.Count); to.Add(u); cap.Add(0L);   // reverse edge: id ^ 1, starts at 0
+    }
+
+    public long MaxFlow(int s, int t) {
+        long flow = 0;
+        while (true) {
+            int[] via = new int[n];                         // edge used to reach each node
+            for (int i = 0; i < n; i++) via[i] = -1;
+            bool[] seen = new bool[n];
+            var q = new Queue<int>();
+            q.Enqueue(s);
+            seen[s] = true;
+            while (q.Count > 0 && !seen[t]) {               // BFS = shortest augmenting path
+                int v = q.Dequeue();
+                foreach (int id in g[v]) {
+                    int w = to[id];
+                    if (!seen[w] && cap[id] > 0) { seen[w] = true; via[w] = id; q.Enqueue(w); }
+                }
+            }
+            if (!seen[t]) return flow;                      // no path left: flow is maximum
+            long push = long.MaxValue;                      // bottleneck along the path
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = Math.Min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) {
+                int id = via[v];
+                cap[id] -= push;                            // use forward room
+                cap[id ^ 1] += push;                        // create "undo" room
+            }
+            flow += push;
+        }
+    }
+}` }] }, { lang: 'java', code: `
       class FordFulkersonMatrix {
           // Plain Ford-Fulkerson with DFS on a capacity matrix: O(E * maxFlow). Small integer capacities only.
           static int maxFlow(int[][] cap, int s, int t) {
@@ -4132,7 +4872,32 @@ int maxFlow(vector<vector<int>> cap, int s, int t) {   // cap is copied: residua
         flow += pushed;
     }
 }
-` }] }],
+` }, { lang: 'csharp', code: `class FordFulkersonMatrix {
+    // Plain Ford-Fulkerson with DFS on a capacity matrix: O(E * maxFlow). Small integer capacities only.
+    static int MaxFlow(int[][] cap, int s, int t) {
+        int n = cap.Length;
+        int[][] r = new int[n][];
+        for (int i = 0; i < n; i++) r[i] = (int[])cap[i].Clone();   // residual = capacity at the start
+        int flow = 0;
+        while (true) {
+            int pushed = Dfs(r, s, t, int.MaxValue, new bool[n]);
+            if (pushed == 0) return flow;
+            flow += pushed;
+        }
+    }
+
+    static int Dfs(int[][] r, int v, int t, int f, bool[] seen) {
+        if (v == t) return f;
+        seen[v] = true;
+        for (int w = 0; w < r.Length; w++) {
+            if (!seen[w] && r[v][w] > 0) {
+                int d = Dfs(r, w, t, Math.Min(f, r[v][w]), seen);
+                if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }   // r[w][v] is the undo room
+            }
+        }
+        return 0;
+    }
+}` }] }],
     codeTitle: ['Edmonds-Karp (BFS augmenting paths)', 'Ford-Fulkerson with DFS on a matrix (simplest, small inputs)'],
     viz: {
       title: 'Augmenting paths live: bottleneck, push, and the reverse-edge "undo"',
@@ -4254,7 +5019,27 @@ public:
         }
         return 0;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public long MaxFlow(int n, int[][] edges) {
+        long[,] r = new long[n, n];
+        foreach (var e in edges) r[e[0], e[1]] += e[2];       // parallel edges add up
+        long flow = 0, pushed;
+        while ((pushed = Dfs(r, 0, n - 1, long.MaxValue, new bool[n])) > 0) flow += pushed;
+        return flow;
+    }
+
+    long Dfs(long[,] r, int v, int t, long f, bool[] seen) {
+        if (v == t) return f;
+        seen[v] = true;
+        for (int w = 0; w < r.GetLength(0); w++) {
+            if (!seen[w] && r[v, w] > 0) {
+                long d = Dfs(r, w, t, Math.Min(f, r[v, w]), seen);
+                if (d > 0) { r[v, w] -= d; r[w, v] += d; return d; }
+            }
+        }
+        return 0;
+    }
+}` }] }
       },
       mcq: { q: 'You pushed 4 units on edge A→B (capacity 6). What are the residual capacities of A→B and B→A?', options: ['A→B: 2, B→A: 4', 'A→B: 4, B→A: 2', 'A→B: 2, B→A: 0', 'A→B: 6, B→A: 4'], answer: 0, explain: 'Forward room = 6 − 4 = 2. Backward residual = the flow we could undo = 4.' },
       hints: [
@@ -4335,6 +5120,21 @@ public:
     }
   }
   return Solution().maxFlow(n, edges);
+}`, csharp: `public class Check {
+    public static long Flow(string kind, int n, int[][] edges) {
+        if (kind != "") {
+            var e = new List<int[]>();
+            int B = 1000000000;
+            if (kind == "fan") { for (int i = 1; i < n - 1; i++) { e.Add(new[] { 0, i, B }); e.Add(new[] { i, n - 1, B }); } }
+            else if (kind == "chain") { for (int i = 0; i + 1 < n; i++) e.Add(new[] { i, i + 1, B }); }
+            else {
+                int k = (n - 2) / 2;
+                for (int a = 1; a <= k; a++) { e.Add(new[] { 0, a, B }); e.Add(new[] { k + a, n - 1, B }); for (int b = 1; b <= k; b++) e.Add(new[] { a, k + b, B }); }
+            }
+            edges = e.ToArray();
+        }
+        return new Solution().MaxFlow(n, edges);
+    }
 }` } },
       solution: {
         approach: `<p>Edmonds-Karp on an array-based edge list (forward-star): <code>head[v]</code> points to v's latest edge and <code>next[e]</code> to the one before. Arrays avoid boxing and are several times faster than lists of objects.</p>`,
@@ -4464,7 +5264,39 @@ public:
         }
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public long MaxFlow(int n, int[][] edges) {
+        int m = edges.Length;
+        int[] to = new int[2 * m], next = new int[2 * m], head = new int[n];
+        long[] cap = new long[2 * m];
+        for (int i = 0; i < n; i++) head[i] = -1;
+        for (int i = 0; i < m; i++) {
+            int u = edges[i][0], v = edges[i][1];
+            to[2 * i] = v;     cap[2 * i] = edges[i][2]; next[2 * i] = head[u];     head[u] = 2 * i;
+            to[2 * i + 1] = u; cap[2 * i + 1] = 0;       next[2 * i + 1] = head[v]; head[v] = 2 * i + 1;
+        }
+        int s = 0, t = n - 1;
+        long flow = 0;
+        int[] via = new int[n], q = new int[n];
+        while (true) {
+            for (int i = 0; i < n; i++) via[i] = -1;
+            via[s] = -2;                                    // mark the source as visited
+            int qh = 0, qt = 0;
+            q[qt++] = s;
+            while (qh < qt && via[t] == -1) {               // BFS for the shortest augmenting path
+                int v = q[qh++];
+                for (int e = head[v]; e != -1; e = next[e]) {
+                    if (cap[e] > 0 && via[to[e]] == -1) { via[to[e]] = e; q[qt++] = to[e]; }
+                }
+            }
+            if (via[t] == -1) return flow;                  // sink unreachable: done
+            long push = long.MaxValue;
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = Math.Min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+            flow += push;
+        }
+    }
+}` }],
         dry: {
           head: ['round', 'BFS path (head order = latest edge first)', 'bottleneck', 'total'],
           rows: [
@@ -4717,7 +5549,65 @@ public:
         return flow;
     }
 };
-` }] }, {
+` }, { lang: 'csharp', code: `class Dinic {
+    private readonly int n;
+    private readonly int[] head, level, it;
+    private readonly int[] next, to;      // forward-star edge storage; edge e's partner is e ^ 1
+    private readonly long[] cap;          // residual capacities
+    private int cnt = 0;
+
+    public Dinic(int n, int maxEdges) {
+        this.n = n;
+        head = new int[n];
+        for (int i = 0; i < n; i++) head[i] = -1;
+        level = new int[n];
+        it = new int[n];
+        next = new int[2 * maxEdges];
+        to = new int[2 * maxEdges];
+        cap = new long[2 * maxEdges];
+    }
+
+    public void AddEdge(int u, int v, long c) {
+        to[cnt] = v; cap[cnt] = c; next[cnt] = head[u]; head[u] = cnt++;
+        to[cnt] = u; cap[cnt] = 0; next[cnt] = head[v]; head[v] = cnt++;
+    }
+
+    private bool Bfs(int s, int t) {                      // build levels; true if t reachable
+        for (int i = 0; i < n; i++) level[i] = -1;
+        int[] q = new int[n];
+        int qh = 0, qt = 0;
+        level[s] = 0;
+        q[qt++] = s;
+        while (qh < qt) {
+            int v = q[qh++];
+            for (int e = head[v]; e != -1; e = next[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q[qt++] = to[e]; }
+        }
+        return level[t] >= 0;
+    }
+
+    private long Dfs(int v, int t, long f) {              // one augmenting path in the level graph
+        if (v == t) return f;
+        for (; it[v] != -1; it[v] = next[it[v]]) {        // it[v]: never retry a useless edge this phase
+            int e = it[v], w = to[e];
+            if (cap[e] > 0 && level[w] == level[v] + 1) {
+                long d = Dfs(w, t, Math.Min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;                                         // v is a dead end for this phase
+    }
+
+    public long MaxFlow(int s, int t) {
+        long flow = 0;
+        while (Bfs(s, t)) {                               // at most V - 1 phases
+            Array.Copy(head, it, n);                      // reset current-edge pointers
+            long f;
+            while ((f = Dfs(s, t, long.MaxValue)) > 0) flow += f;   // blocking flow
+        }
+        return flow;
+    }
+}` }] }, {
       lang: 'python', run: true, title: 'Dinic in Python on the CLRS network (answer 23) — runnable',
       code: `from collections import deque
 
@@ -4971,7 +5861,30 @@ public:
             count++;
         }
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int EdgeDisjointPaths(int n, int[][] edges, int s, int t) {
+        bool[] removed = new bool[edges.Length];
+        int count = 0;
+        while (true) {
+            int[] via = new int[n];
+            for (int i = 0; i < n; i++) via[i] = -1;
+            bool[] seen = new bool[n];
+            var q = new Queue<int>();
+            q.Enqueue(s);
+            seen[s] = true;
+            while (q.Count > 0) {
+                int u = q.Dequeue();
+                for (int i = 0; i < edges.Length; i++)
+                    if (!removed[i] && edges[i][0] == u && !seen[edges[i][1]]) {
+                        seen[edges[i][1]] = true; via[edges[i][1]] = i; q.Enqueue(edges[i][1]);
+                    }
+            }
+            if (!seen[t]) return count;
+            for (int v = t; v != s; v = edges[via[v]][0]) removed[via[v]] = true;   // delete the path
+            count++;
+        }
+    }
+}` }] }
       },
       mcq: { q: 'What capacity should each road get in the flow model?', options: ['1', 'infinity', 'its length', 'the number of nodes'], answer: 0, explain: 'Each road may be used by at most one path, so capacity 1. By integrality, a max flow of value k splits into k edge-disjoint paths (Menger\'s theorem).' },
       hints: [
@@ -5089,6 +6002,29 @@ public:
     }
   }
   return Solution().edgeDisjointPaths(n, edges, s, t);
+}`, csharp: `public class Check {
+    public static int Paths(string kind, int n, int[][] edges, int s, int t) {
+        if (kind != "") {
+            var e = new List<int[]>();
+            if (kind == "chain" || kind == "chainTwice") {
+                for (int i = 0; i + 1 < n; i++) { e.Add(new[] { i, i + 1 }); if (kind == "chainTwice") e.Add(new[] { i, i + 1 }); }
+            } else if (kind == "multi") {
+                for (int j = 0; j < 10; j++) {
+                    int first = 2 + j * 999, last = first + 998;
+                    e.Add(new[] { 0, first });
+                    for (int v = first; v < last; v++) e.Add(new[] { v, v + 1 });
+                    e.Add(new[] { last, 1 });
+                }
+            } else if (kind == "fan") {
+                for (int i = 1; i < n - 1; i++) { e.Add(new[] { 0, i }); e.Add(new[] { i, n - 1 }); }
+            } else {
+                int k = (n - 2) / 2;
+                for (int a = 1; a <= k; a++) { e.Add(new[] { 0, a }); e.Add(new[] { k + a, n - 1 }); for (int b = 1; b <= k; b++) e.Add(new[] { a, k + b }); }
+            }
+            edges = e.ToArray();
+        }
+        return new Solution().EdgeDisjointPaths(n, edges, s, t);
+    }
 }` } },
       solution: {
         approach: `<p>Unit-capacity network + Dinic. Adjacency lists keep edges in input order so the dry run matches. Phase 2 of the example shows the reverse edge 4→1 rerouting the first path.</p>`,
@@ -5285,7 +6221,59 @@ public:
         return paths;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public int EdgeDisjointPaths(int n, int[][] edges, int s, int t) {
+        int m = edges.Length;
+        int[] to = new int[2 * m], cap = new int[2 * m];
+        var g = new List<int>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<int>();
+        for (int i = 0; i < m; i++) {
+            int u = edges[i][0], v = edges[i][1];
+            to[2 * i] = v;     cap[2 * i] = 1;     g[u].Add(2 * i);       // each road usable once
+            to[2 * i + 1] = u; cap[2 * i + 1] = 0; g[v].Add(2 * i + 1);   // undo edge
+        }
+        int[] level = new int[n], it = new int[n], path = new int[n];
+        int paths = 0;
+        while (Bfs(g, to, cap, level, s, t)) {
+            for (int i = 0; i < n; i++) it[i] = 0;
+            int len = 0, v = s;                    // path[0 .. len) = roads on the walk from s to v
+            while (true) {
+                if (v == t) {                      // found a path: use every road on it, start again
+                    for (int i = 0; i < len; i++) { cap[path[i]]--; cap[path[i] ^ 1]++; }
+                    paths++;
+                    len = 0;
+                    v = s;
+                    continue;
+                }
+                bool moved = false;
+                List<int> outE = g[v];
+                while (it[v] < outE.Count) {
+                    int e = outE[it[v]];
+                    if (cap[e] > 0 && level[to[e]] == level[v] + 1) { path[len++] = e; v = to[e]; moved = true; break; }
+                    it[v]++;
+                }
+                if (!moved) {
+                    if (v == s) break;             // nothing left in this level graph
+                    v = to[path[--len] ^ 1];       // dead end: step back and skip that road
+                    it[v]++;
+                }
+            }
+        }
+        return paths;
+    }
+
+    private bool Bfs(List<int>[] g, int[] to, int[] cap, int[] level, int s, int t) {
+        for (int i = 0; i < level.Length; i++) level[i] = -1;
+        level[s] = 0;
+        var q = new Queue<int>();
+        q.Enqueue(s);
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            foreach (int e in g[v]) if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.Enqueue(to[e]); }
+        }
+        return level[t] >= 0;
+    }
+}` }],
         dry: {
           head: ['phase', 'levels', 'DFS result', 'paths'],
           rows: [
@@ -5471,7 +6459,40 @@ vector<pair<int, int>> minCut(const vector<vector<int>>& capacity, int s, int t)
             if (parent[u] != -1 && parent[v] == -1 && capacity[u][v] > 0) cut.push_back({u, v});
     return cut;
 }
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `class MinCut {
+    // Capacity-matrix version (n up to a few hundred). Returns the cut edges {u, v}.
+    static List<int[]> FindMinCut(int[][] capacity, int s, int t) {
+        int n = capacity.Length;
+        int[][] r = new int[n][];
+        for (int i = 0; i < n; i++) r[i] = (int[])capacity[i].Clone();   // residual capacities
+        int[] parent = new int[n];
+        while (Bfs(r, s, t, parent)) {                                // Edmonds-Karp
+            int push = int.MaxValue;
+            for (int v = t; v != s; v = parent[v]) push = Math.Min(push, r[parent[v]][v]);
+            for (int v = t; v != s; v = parent[v]) { r[parent[v]][v] -= push; r[v][parent[v]] += push; }
+        }
+        Bfs(r, s, -1, parent);                                        // who is still reachable?
+        var cut = new List<int[]>();
+        for (int u = 0; u < n; u++)
+            for (int v = 0; v < n; v++)
+                if (parent[u] != -1 && parent[v] == -1 && capacity[u][v] > 0) cut.Add(new[] { u, v });
+        return cut;
+    }
+
+    // BFS over residual edges. parent[v] == -1 means "not reached" (parent[s] = s).
+    static bool Bfs(int[][] r, int s, int t, int[] parent) {
+        for (int i = 0; i < parent.Length; i++) parent[i] = -1;
+        parent[s] = s;
+        var q = new Queue<int>();
+        q.Enqueue(s);
+        while (q.Count > 0) {
+            int u = q.Dequeue();
+            for (int v = 0; v < r.Length; v++)
+                if (parent[v] == -1 && r[u][v] > 0) { parent[v] = u; q.Enqueue(v); }
+        }
+        return t >= 0 && parent[t] != -1;
+    }
+}` }] }, { lang: 'java', code: `
       class ProjectSelection {
           // profit[i] > 0: project earns money; profit[i] < 0: it is a cost (e.g. buying a tool).
           // need[i] = list of items that must also be chosen if i is chosen.
@@ -5612,7 +6633,39 @@ long long maxProfit(const vector<long long>& profit, const vector<vector<int>>& 
     }
     return positive - flow;
 }
-` }] }],
+` }, { lang: 'csharp', code: `class ProjectSelection {
+    // profit[i] > 0: project earns money; profit[i] < 0: it is a cost (e.g. buying a tool).
+    // need[i] = list of items that must also be chosen if i is chosen.
+    // Answer = sum of positive profits - min cut.  (Uses the MinCut-style Edmonds-Karp on a matrix.)
+    static long MaxProfit(long[] profit, int[][] need) {
+        int n = profit.Length, s = n, t = n + 1;
+        long INF = long.MaxValue / 4, positive = 0;
+        long[,] r = new long[n + 2, n + 2];
+        for (int i = 0; i < n; i++) {
+            if (profit[i] > 0) { r[s, i] = profit[i]; positive += profit[i]; }   // lose it if NOT chosen
+            else r[i, t] = -profit[i];                                          // pay it if chosen
+            foreach (int j in need[i]) r[i, j] = INF;                           // cannot cut a dependency
+        }
+        long flow = 0;
+        int[] parent = new int[n + 2];
+        while (true) {
+            for (int i = 0; i < n + 2; i++) parent[i] = -1;
+            parent[s] = s;
+            var q = new Queue<int>();
+            q.Enqueue(s);
+            while (q.Count > 0 && parent[t] == -1) {
+                int u = q.Dequeue();
+                for (int v = 0; v < n + 2; v++) if (parent[v] == -1 && r[u, v] > 0) { parent[v] = u; q.Enqueue(v); }
+            }
+            if (parent[t] == -1) break;
+            long push = INF;
+            for (int v = t; v != s; v = parent[v]) push = Math.Min(push, r[parent[v], v]);
+            for (int v = t; v != s; v = parent[v]) { r[parent[v], v] -= push; r[v, parent[v]] += push; }
+            flow += push;
+        }
+        return positive - flow;
+    }
+}` }] }],
     codeTitle: ['Max flow, then residual BFS → the cut edges', 'Min cut as a modelling tool: project selection / max-weight closure'],
     viz: {
       title: 'From max flow to min cut: run the flow, BFS the residual graph, read off the full edges',
@@ -5677,7 +6730,9 @@ const need = [[2], [2, 3], [], []];      // P1 needs T1; P2 needs T1 and T2
 ` }, { lang: 'cpp', code: `vector<long long> profit = {10, 7, -6, -9};          // P1, P2, T1, T2
 vector<vector<int>> need = {{2}, {2, 3}, {}, {}};    // P1 needs T1; P2 needs T1 and T2
 // maxProfit(profit, need) == 4
-` }] } },
+` }, { lang: 'csharp', code: `long[] profit = { 10, 7, -6, -9 };                                        // P1, P2, T1, T2
+int[][] need = { new[] { 2 }, new[] { 2, 3 }, new int[0], new int[0] };   // P1 needs T1; P2 needs T1 and T2
+// ProjectSelection.MaxProfit(profit, need) == 4` }] } },
       { title: 'Several minimum cuts can exist', html: `<p>With S→A:3, S→B:2, A→B:2, A→T:2, B→T:3, both {S} and {S, A, B} have capacity 5. The residual BFS from S always returns the <b>smallest</b> S-side (the min cut closest to S). BFS backwards from T in the residual graph gives the min cut closest to T. Edges that appear in <b>every</b> min cut are the truly critical ones.</p>` },
       { title: 'Global min cut (no fixed S and T)', html: `<p>"Fewest edges to disconnect the graph at all" has no S and T. Options: fix S and try all T (V − 1 max flows), <b>Stoer–Wagner</b> O(V·E + V² log V) deterministic, or <b>Karger</b>'s random edge contraction (repeat O(V² log V) times for high success probability). Interviews mostly ask about S-T cuts; know the names for the global version.</p>` }
     ],
@@ -5785,7 +6840,31 @@ public:
         for (int i = 0; i < m; i++) if (bestMask >> i & 1) ans.push_back(i);
         return ans;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public IList<int> CheapestBlock(int n, int[][] roads, int s, int t) {
+        int m = roads.Length;
+        long best = long.MaxValue;
+        int bestMask = 0;
+        for (int mask = 0; mask < (1 << m); mask++) {        // mask bit i = road i blocked
+            long cost = 0;
+            for (int i = 0; i < m; i++) if ((mask >> i & 1) == 1) cost += roads[i][2];
+            if (cost >= best) continue;
+            bool[] seen = new bool[n];
+            var q = new Queue<int>();
+            q.Enqueue(s);
+            seen[s] = true;
+            while (q.Count > 0) {
+                int u = q.Dequeue();
+                for (int i = 0; i < m; i++)
+                    if ((mask >> i & 1) == 0 && roads[i][0] == u && !seen[roads[i][1]]) { seen[roads[i][1]] = true; q.Enqueue(roads[i][1]); }
+            }
+            if (!seen[t]) { best = cost; bestMask = mask; }
+        }
+        var ans = new List<int>();
+        for (int i = 0; i < m; i++) if ((bestMask >> i & 1) == 1) ans.Add(i);
+        return ans;
+    }
+}` }] }
       },
       mcq: { q: 'After max flow, which roads form the cut?', options: ['Roads from a node reachable from s in the RESIDUAL graph to a node that is not', 'All roads with flow &gt; 0', 'All saturated roads', 'Roads on the last augmenting path'], answer: 0, explain: 'Saturated roads can be inside one side; only those crossing from the residual-reachable set to the rest form the min cut.' },
       hints: [
@@ -5971,7 +7050,43 @@ public:
         return ans;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public IList<int> CheapestBlock(int n, int[][] roads, int s, int t) {
+        int m = roads.Length;
+        int[] to = new int[2 * m];
+        long[] cap = new long[2 * m];
+        var g = new List<int>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<int>();
+        for (int i = 0; i < m; i++) {
+            to[2 * i] = roads[i][1];     cap[2 * i] = roads[i][2]; g[roads[i][0]].Add(2 * i);
+            to[2 * i + 1] = roads[i][0]; cap[2 * i + 1] = 0;       g[roads[i][1]].Add(2 * i + 1);
+        }
+        int[] via = new int[n];
+        while (Bfs(g, to, cap, s, via) && via[t] != -1) {      // Edmonds-Karp rounds
+            long push = long.MaxValue;
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = Math.Min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+        }
+        Bfs(g, to, cap, s, via);                              // final residual reachability
+        var ans = new List<int>();
+        for (int i = 0; i < m; i++)
+            if (via[roads[i][0]] != -1 && via[roads[i][1]] == -1) ans.Add(i);
+        return ans;
+    }
+
+    // BFS over residual edges; via[v] = edge used to reach v, -1 = unreached, -2 = the source.
+    private bool Bfs(List<int>[] g, int[] to, long[] cap, int s, int[] via) {
+        for (int i = 0; i < via.Length; i++) via[i] = -1;
+        via[s] = -2;
+        var q = new Queue<int>();
+        q.Enqueue(s);
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            foreach (int e in g[v]) if (cap[e] > 0 && via[to[e]] == -1) { via[to[e]] = e; q.Enqueue(to[e]); }
+        }
+        return true;
+    }
+}` }],
         dry: {
           head: ['step', 'what happens', 'flow / reach'],
           rows: [
@@ -6133,7 +7248,39 @@ public:
         return result;
     }
 };
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `class Kuhn {
+    private readonly List<int>[] adj;       // adj[left] = right vertices it may pair with
+    private readonly int[] matchR;          // matchR[right] = left partner, or -1
+    private bool[] visited;                 // right vertices tried in the CURRENT attempt
+
+    public Kuhn(int nRight, List<int>[] adj) {
+        this.adj = adj;
+        matchR = new int[nRight];
+        for (int i = 0; i < nRight; i++) matchR[i] = -1;
+    }
+
+    // Find a partner for left vertex u, possibly by asking current owners to move.
+    private bool TryKuhn(int u) {
+        foreach (int r in adj[u]) {
+            if (visited[r]) continue;
+            visited[r] = true;
+            if (matchR[r] == -1 || TryKuhn(matchR[r])) {   // free, or its owner found another
+                matchR[r] = u;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public int MaxMatching() {
+        int result = 0;
+        for (int u = 0; u < adj.Length; u++) {
+            visited = new bool[matchR.Length];             // fresh for every left vertex
+            if (TryKuhn(u)) result++;
+        }
+        return result;
+    }
+}` }] }, { lang: 'java', code: `
       class HopcroftKarp {
           private final int nL;
           private final List<List<Integer>> adj;
@@ -6341,7 +7488,62 @@ public:
         return result;
     }
 };
-` }] }],
+` }, { lang: 'csharp', code: `class HopcroftKarp {
+    private readonly int nL;
+    private readonly List<int>[] adj;
+    private readonly int[] matchL, matchR, dist;
+    private const int INF = int.MaxValue;
+
+    public HopcroftKarp(int nL, int nR, List<int>[] adj) {
+        this.nL = nL;
+        this.adj = adj;
+        matchL = new int[nL];
+        matchR = new int[nR];
+        dist = new int[nL];
+        for (int i = 0; i < nL; i++) matchL[i] = -1;
+        for (int i = 0; i < nR; i++) matchR[i] = -1;
+    }
+
+    // BFS from ALL free left vertices at once: layers of the shortest augmenting paths.
+    private bool Bfs() {
+        var q = new Queue<int>();
+        for (int u = 0; u < nL; u++) {
+            if (matchL[u] == -1) { dist[u] = 0; q.Enqueue(u); } else dist[u] = INF;
+        }
+        bool foundFree = false;
+        while (q.Count > 0) {
+            int u = q.Dequeue();
+            foreach (int r in adj[u]) {
+                int w = matchR[r];
+                if (w == -1) foundFree = true;                       // a path can end here
+                else if (dist[w] == INF) { dist[w] = dist[u] + 1; q.Enqueue(w); }
+            }
+        }
+        return foundFree;
+    }
+
+    // DFS only along the BFS layers; many vertex-disjoint paths per phase.
+    private bool Dfs(int u) {
+        foreach (int r in adj[u]) {
+            int w = matchR[r];
+            if (w == -1 || (dist[w] == dist[u] + 1 && Dfs(w))) {
+                matchL[u] = r;
+                matchR[r] = u;
+                return true;
+            }
+        }
+        dist[u] = INF;                                               // dead end this phase
+        return false;
+    }
+
+    public int MaxMatching() {
+        int result = 0;
+        while (Bfs())                                                // O(sqrt V) phases
+            for (int u = 0; u < nL; u++)
+                if (matchL[u] == -1 && Dfs(u)) result++;
+        return result;
+    }
+}` }] }],
     codeTitle: ['Kuhn\'s algorithm, O(V·E) — short and interview-friendly', 'Hopcroft-Karp, O(E·√V) — for 10^5 edges'],
     viz: {
       title: 'Kuhn live: chains of "can you move?" requests become augmenting paths',
@@ -6426,7 +7628,11 @@ int nL = 4, nR = 3;
 int nodes = nL + nR + 2;                 // + source + sink
 int source = nL + nR, sink = nL + nR + 1;
 cout << nodes << " nodes, source " << source << ", sink " << sink << "\\n";
-` }] } }
+` }, { lang: 'csharp', code: `// Flow model sizes for nL left and nR right vertices:
+int nL = 4, nR = 3;
+int nodes = nL + nR + 2;          // + source + sink
+int source = nL + nR, sink = nL + nR + 1;
+Console.WriteLine(nodes + " nodes, source " + source + ", sink " + sink);` }] } }
     ],
     deepDive: `<p><b>Why Kuhn is correct.</b> If a left vertex u finds no augmenting path in its round, then it never will later: later augmentations only change the matching along alternating paths, and one can show the set of vertices reachable from u by alternating paths does not gain a free right vertex. So processing each left vertex once suffices (Berge + this lemma). Complexity: each round is one DFS O(V + E) → <b>O(V·E)</b>. Heuristic speed-ups: start with a greedy matching, and randomise the order of left vertices.</p>
       <p><b>Hopcroft-Karp</b> runs in phases like Dinic: BFS from all free left vertices builds layers, then DFS finds a maximal set of vertex-disjoint <b>shortest</b> augmenting paths. After √V phases the shortest augmenting path is longer than √V, which leaves at most √V more augmentations → <b>O(E·√V)</b>. For E = 10<sup>5</sup>, V = 10<sup>5</sup> that is about 3·10<sup>7</sup> steps.</p>
@@ -6524,7 +7730,26 @@ public:
         go(G, 0, taken, 0);
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    private int best = 0;
+
+    public int MaximumMatch(int[][] G) {
+        int n = G.Length > 0 ? G[0].Length : 0;
+        Go(G, 0, new bool[n], 0);
+        return best;
+    }
+
+    private void Go(int[][] G, int i, bool[] taken, int count) {
+        if (i == G.Length) { best = Math.Max(best, count); return; }
+        Go(G, i + 1, taken, count);                      // applicant i gets nothing
+        for (int j = 0; j < taken.Length; j++)
+            if (G[i][j] == 1 && !taken[j]) {
+                taken[j] = true;
+                Go(G, i + 1, taken, count + 1);
+                taken[j] = false;
+            }
+    }
+}` }] }
       },
       mcq: { q: 'Applicant C wants job 1, which applicant A holds. What does Kuhn do?', options: ['Recursively asks A to find another job it likes; if A succeeds, C takes job 1', 'Skips job 1 forever', 'Gives job 1 to C and leaves A unmatched', 'Restarts the whole matching'], answer: 0, explain: 'That recursive "can you move?" request is the search for an augmenting path. The matching never shrinks.' },
       hints: [
@@ -6584,6 +7809,18 @@ public:
       G[i][j] = kind == "identity" ? (i == j) : kind == "upper" ? (j >= i) : (j < 50);
   }
   return Solution().maximumMatch(G);
+}`, csharp: `public class Check {
+    public static int Match(string kind, int[][] G) {
+        if (kind != "") {
+            G = new int[100][];
+            for (int i = 0; i < 100; i++) {
+                G[i] = new int[100];
+                for (int j = 0; j < 100; j++)
+                    G[i][j] = kind == "identity" ? (i == j ? 1 : 0) : kind == "upper" ? (j >= i ? 1 : 0) : (j < 50 ? 1 : 0);
+            }
+        }
+        return new Solution().MaximumMatch(G);
+    }
 }` } },
       solution: {
         approach: `<p>Kuhn's augmenting-path algorithm on the adjacency matrix. Each successful call flips one alternating chain and grows the matching by one.</p>`,
@@ -6669,7 +7906,29 @@ public:
         return result;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public int MaximumMatch(int[][] G) {
+        int m = G.Length, n = m > 0 ? G[0].Length : 0;
+        int[] owner = new int[n];                 // owner[j] = applicant holding job j, or -1
+        for (int j = 0; j < n; j++) owner[j] = -1;
+        int result = 0;
+        for (int a = 0; a < m; a++)
+            if (TryAssign(G, a, new bool[n], owner)) result++;
+        return result;
+    }
+
+    private bool TryAssign(int[][] G, int a, bool[] seen, int[] owner) {
+        for (int j = 0; j < owner.Length; j++) {
+            if (G[a][j] == 0 || seen[j]) continue;
+            seen[j] = true;
+            if (owner[j] == -1 || TryAssign(G, owner[j], seen, owner)) {
+                owner[j] = a;                     // a takes j (the old owner already moved)
+                return true;
+            }
+        }
+        return false;
+    }
+}` }],
         dry: {
           head: ['applicant', 'search', 'owner[] after (jobs 0, 1, 2)', 'count'],
           rows: [
@@ -6759,7 +8018,23 @@ public:
         }
         return -1;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int FindMotherVertex(int V, IList<IList<int>> adj) {
+        for (int s = 0; s < V; s++) {
+            bool[] seen = new bool[V];
+            var st = new Stack<int>();
+            st.Push(s);
+            seen[s] = true;
+            int count = 1;
+            while (st.Count > 0) {
+                int u = st.Pop();
+                foreach (int w in adj[u]) if (!seen[w]) { seen[w] = true; count++; st.Push(w); }
+            }
+            if (count == V) return s;            // first (smallest) success
+        }
+        return -1;
+    }
+}` }] }
     },
     mcq: { q: 'You run DFS from 0, 1, 2, … skipping visited vertices. Which vertex is the only possible candidate?', options: ['The start of the LAST DFS tree (it finishes last)', 'Vertex 0', 'The vertex with the largest out-degree', 'Any leaf'], answer: 0, explain: 'The last-finishing vertex lies in a source SCC of the condensation. If any mother vertex exists, it must be in that SCC.' },
     hints: [
@@ -6851,6 +8126,23 @@ public:
     }
   }
   return Solution().findMotherVertex(V, adj);
+}`, csharp: `public class Check {
+    public static int Mother(string kind, int V, IList<IList<int>> adj) {
+        if (kind != "") {
+            var a = new List<IList<int>>();
+            for (int i = 0; i < V; i++) a.Add(new List<int>());
+            int h = V / 2;
+            for (int i = 0; i < V; i++) {
+                if (kind == "chain" && i + 1 < V) a[i].Add(i + 1);
+                if (kind == "revChain" && i + 1 < V) a[i + 1].Add(i);
+                if (kind == "twoChains" && i + 1 < V && i + 1 != h) a[i].Add(i + 1);
+                if (kind == "cycle" || kind == "chords") a[i].Add((i + 1) % V);
+                if (kind == "chords") a[i].Add((i + 2) % V);
+            }
+            adj = a;
+        }
+        return new Solution().FindMotherVertex(V, adj);
+    }
 }` } },
     solution: {
       approach: `<p>Three linear passes: (1) DFS sweep, remember the root of the last DFS tree; (2) verify it reaches all vertices; (3) reverse DFS from it to collect its SCC-mates and return the smallest. Iterative DFS avoids stack overflow.</p>`,
@@ -6959,7 +8251,34 @@ public:
         return int(find(reachesLast.begin(), reachesLast.end(), 1) - reachesLast.begin());
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public int FindMotherVertex(int V, IList<IList<int>> adj) {
+        bool[] seen = new bool[V];
+        int last = -1;
+        for (int v = 0; v < V; v++)
+            if (!seen[v]) { Dfs(v, adj, seen); last = v; }   // root of the last DFS tree finishes last
+        for (int v = 0; v < V; v++) seen[v] = false;
+        Dfs(last, adj, seen);
+        foreach (bool b in seen) if (!b) return -1;         // candidate fails -> nobody succeeds
+        var radj = new List<IList<int>>();
+        for (int i = 0; i < V; i++) radj.Add(new List<int>());
+        for (int u = 0; u < V; u++) foreach (int w in adj[u]) radj[w].Add(u);
+        bool[] reachesLast = new bool[V];
+        Dfs(last, radj, reachesLast);                        // all mother vertices = can reach 'last'
+        for (int v = 0; v < V; v++) if (reachesLast[v]) return v;
+        return last;
+    }
+
+    private void Dfs(int s, IList<IList<int>> adj, bool[] seen) {
+        var st = new Stack<int>();
+        st.Push(s);
+        seen[s] = true;
+        while (st.Count > 0) {
+            int u = st.Pop();
+            foreach (int w in adj[u]) if (!seen[w]) { seen[w] = true; st.Push(w); }
+        }
+    }
+}` }],
       complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V + E)</b> (reverse graph).</p>`,
       followUps: ['Return ALL mother vertices.', 'How many edges must be added so a mother vertex exists? (Number of source SCCs − 1.)']
     }
@@ -7096,7 +8415,36 @@ public:
         }
         return path ? 1 : 0;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int IsEulerian(int V, IList<IList<int>> adj) {
+        var edges = new List<int[]>();
+        for (int u = 0; u < V; u++) foreach (int w in adj[u]) if (u < w) edges.Add(new[] { u, w });
+        if (edges.Count == 0) return 2;
+        bool path = false;
+        for (int s = 0; s < V; s++) {
+            int r = Walk(s, s, edges, new bool[edges.Count], 0);
+            if (r == 2) return 2;
+            if (r == 1) path = true;
+        }
+        return path ? 1 : 0;
+    }
+
+    // 2 = used all edges and came back to start, 1 = used all edges elsewhere, 0 = stuck
+    private int Walk(int start, int at, List<int[]> edges, bool[] used, int count) {
+        if (count == edges.Count) return at == start ? 2 : 1;
+        int best = 0;
+        for (int i = 0; i < edges.Count && best < 2; i++) {
+            if (used[i]) continue;
+            int[] e = edges[i];
+            int next = e[0] == at ? e[1] : (e[1] == at ? e[0] : -1);
+            if (next < 0) continue;
+            used[i] = true;
+            best = Math.Max(best, Walk(start, next, edges, used, count + 1));
+            used[i] = false;
+        }
+        return best;
+    }
+}` }] }
     },
     mcq: { q: 'Degrees are 2, 4, 3, 3, 2, 1, 1 and the graph is connected. Answer?', options: ['0 — four odd vertices', '1', '2', 'Cannot tell without searching'], answer: 0, explain: 'Odd-degree vertices: 3, 3, 1, 1 → four of them. A trail can have at most two "unpaired" endpoints.' },
     hints: [
@@ -7201,6 +8549,25 @@ public:
     }
   }
   return Solution().isEulerian(V, adj);
+}`, csharp: `public class Check {
+    public static int Euler(string kind, int V, IList<IList<int>> adj) {
+        if (kind != "") {
+            var a = new List<IList<int>>();
+            for (int i = 0; i < V; i++) a.Add(new List<int>());
+            int h = V / 2;
+            for (int i = 0; i < V; i++) {
+                int[] to = new int[0];
+                if (kind == "cycle") to = new[] { (i + 1) % V };
+                else if (kind == "path") to = i + 1 < V ? new[] { i + 1 } : new int[0];
+                else if (kind == "chords") to = new[] { (i + 1) % V, (i + 2) % V };
+                else if (kind == "star") to = i == 0 ? new int[0] : new[] { 0 };
+                else if (kind == "twoCycles") to = new[] { i < h ? (i + 1) % h : h + (i - h + 1) % (V - h) };
+                foreach (int w in to) { a[i].Add(w); a[w].Add(i); }
+            }
+            adj = a;
+        }
+        return new Solution().IsEulerian(V, adj);
+    }
 }` } },
     solution: {
       approach: `<p>Degree parity + one DFS for connectivity among non-isolated vertices.</p>`,
@@ -7285,7 +8652,28 @@ public:
         return odd == 2 ? 1 : 0;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public int IsEulerian(int V, IList<IList<int>> adj) {
+        int odd = 0, start = -1;
+        for (int v = 0; v < V; v++) {
+            if (adj[v].Count % 2 == 1) odd++;
+            if (start == -1 && adj[v].Count > 0) start = v;
+        }
+        if (start == -1) return 2;                          // no edges at all
+        bool[] seen = new bool[V];
+        var st = new Stack<int>();
+        st.Push(start);
+        seen[start] = true;
+        while (st.Count > 0) {
+            int u = st.Pop();
+            foreach (int w in adj[u]) if (!seen[w]) { seen[w] = true; st.Push(w); }
+        }
+        for (int v = 0; v < V; v++)
+            if (adj[v].Count > 0 && !seen[v]) return 0;     // edges live in two separate pieces
+        if (odd == 0) return 2;
+        return odd == 2 ? 1 : 0;
+    }
+}` }],
       complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V)</b>.</p>`,
       followUps: ['Directed version (in/out degrees).', 'Actually print the path with Hierholzer.']
     }
@@ -7380,7 +8768,27 @@ public:
         }
         return true;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public bool IsBiconnected(int n, int[][] edges) {
+        for (int removed = -1; removed < n; removed++) {      // -1 = remove nothing (plain connectivity)
+            var adj = new List<int>[n];
+            for (int i = 0; i < n; i++) adj[i] = new List<int>();
+            foreach (var e in edges) if (e[0] != removed && e[1] != removed) { adj[e[0]].Add(e[1]); adj[e[1]].Add(e[0]); }
+            int start = removed == 0 ? 1 : 0;
+            bool[] seen = new bool[n];
+            var q = new Queue<int>();
+            q.Enqueue(start);
+            seen[start] = true;
+            int count = 1;
+            while (q.Count > 0) {
+                int u = q.Dequeue();
+                foreach (int w in adj[u]) if (!seen[w]) { seen[w] = true; count++; q.Enqueue(w); }
+            }
+            if (count != (removed == -1 ? n : n - 1)) return false;
+        }
+        return true;
+    }
+}` }] }
     },
     mcq: { q: 'For articulation points, is it safe to skip the parent VERTEX (not edge id) in the DFS?', options: ['Yes — parallel edges never change whether removing a vertex disconnects the graph', 'No, it breaks on parallel edges', 'Only for trees', 'Only if the graph is directed'], answer: 0, explain: 'Removing vertex v deletes all its parallel edges at once, so they do not matter for cut vertices. For BRIDGES you must skip by edge id.' },
     hints: [
@@ -7507,6 +8915,33 @@ function biconn(kind, n, edges) { return isBiconnected(n, kind === '' ? edges : 
 bool biconn(string kind, int n, vector<vector<int>> edges) {
   if (!kind.empty()) edges = _ugen(kind, n);
   return Solution().isBiconnected(n, edges);
+}`, csharp: `public class Check {
+    static int[][] Ugen(string kind, int n) {
+        var e = new List<int[]>();
+        int h = n / 2;
+        if (kind == "path") { for (int i = 0; i + 1 < n; i++) e.Add(new[] { i, i + 1 }); }
+        else if (kind == "star") { for (int i = 1; i < n; i++) e.Add(new[] { 0, i }); }
+        else if (kind == "cycleTail") {
+            for (int i = 0; i < h; i++) e.Add(new[] { i, (i + 1) % h });
+            for (int i = h - 1; i + 1 < n; i++) e.Add(new[] { i, i + 1 });
+        } else if (kind == "bowtie") {
+            for (int i = 0; i < h; i++) e.Add(new[] { i, (i + 1) % h });
+            int k = n - h + 1;                                  // second cycle: 0, h, h+1, ..., n-1
+            for (int j = 0; j < k; j++) {
+                int a = j == 0 ? 0 : h + j - 1, jn = (j + 1) % k, b = jn == 0 ? 0 : h + jn - 1;
+                e.Add(new[] { a, b });
+            }
+        } else if (kind == "twoCycles") {
+            for (int i = 0; i < h; i++) e.Add(new[] { i, (i + 1) % h });
+            for (int i = 0; i < n - h; i++) e.Add(new[] { h + i, h + (i + 1) % (n - h) });
+        } else {
+            for (int i = 0; i < n; i++) { e.Add(new[] { i, (i + 1) % n }); if (kind == "chords") e.Add(new[] { i, (i + 2) % n }); }
+        }
+        return e.ToArray();
+    }
+    public static bool Biconn(string kind, int n, int[][] edges) {
+        return new Solution().IsBiconnected(n, kind == "" ? edges : Ugen(kind, n));
+    }
 }` } },
     solution: {
       approach: `<p>Low-link DFS from vertex 0 with the two articulation-point rules, plus a visited check for connectivity.</p>`,
@@ -7669,7 +9104,47 @@ public:
         return !hasCut;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsBiconnected(int n, int[][] edges) {
+        var adj = new List<int>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<int>();
+        foreach (var e in edges) { adj[e[0]].Add(e[1]); adj[e[1]].Add(e[0]); }
+        int[] disc = new int[n], low = new int[n], next = new int[n], parent = new int[n], children = new int[n];
+        for (int i = 0; i < n; i++) disc[i] = -1;
+        int[] stack = new int[n];                              // our own DFS stack: no deep recursion
+        int sp = 0, timer = 0;
+        bool hasCut = false;
+        stack[sp++] = 0;
+        parent[0] = -1;
+        disc[0] = low[0] = timer++;
+        while (sp > 0) {
+            int v = stack[sp - 1];
+            if (next[v] < adj[v].Count) {
+                int w = adj[v][next[v]++];
+                if (w == parent[v]) continue;
+                if (disc[w] == -1) {                           // "recursive call" into w
+                    children[v]++;
+                    parent[w] = v;
+                    disc[w] = low[w] = timer++;
+                    stack[sp++] = w;
+                } else {
+                    low[v] = Math.Min(low[v], disc[w]);
+                }
+            } else {                                           // "return" from v
+                sp--;
+                int p = parent[v];
+                if (p != -1) {
+                    low[p] = Math.Min(low[p], low[v]);
+                    if (parent[p] != -1 && low[v] >= disc[p]) hasCut = true;   // p is not the root
+                } else if (children[v] > 1) {
+                    hasCut = true;                             // the root with two or more children
+                }
+            }
+        }
+        for (int v = 0; v < n; v++) if (disc[v] == -1) return false;   // not even connected
+        return !hasCut;
+    }
+}` }],
       complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V + E)</b>.</p>`,
       followUps: ['Is the graph 2-edge-connected (no bridges)?', 'List the biconnected components (edge stack).']
     }
@@ -7788,7 +9263,32 @@ public:
         if (ans.empty()) ans.push_back(-1);
         return ans;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public IList<int> ArticulationPoints(int V, int[][] edges) {
+        int baseCount = Components(V, edges, -1);
+        var ans = new List<int>();
+        for (int v = 0; v < V; v++) if (Components(V, edges, v) > baseCount) ans.Add(v);
+        if (ans.Count == 0) ans.Add(-1);
+        return ans;
+    }
+
+    private int Components(int V, int[][] edges, int removed) {
+        var adj = new List<int>[V];
+        for (int i = 0; i < V; i++) adj[i] = new List<int>();
+        foreach (var e in edges) if (e[0] != removed && e[1] != removed) { adj[e[0]].Add(e[1]); adj[e[1]].Add(e[0]); }
+        bool[] seen = new bool[V];
+        int count = 0;
+        for (int s = 0; s < V; s++) {
+            if (s == removed || seen[s]) continue;
+            count++;
+            var q = new Queue<int>();
+            q.Enqueue(s);
+            seen[s] = true;
+            while (q.Count > 0) { int u = q.Dequeue(); foreach (int w in adj[u]) if (!seen[w]) { seen[w] = true; q.Enqueue(w); } }
+        }
+        return count;
+    }
+}` }] }
     },
     mcq: { q: 'A DFS root has exactly 3 DFS children. Is it an articulation point?', options: ['Yes — its subtrees are connected only through it', 'No — roots never are', 'Only if it has degree ≥ 4', 'Need low values to decide'], answer: 0, explain: 'If any path linked two subtrees without the root, DFS would have reached the second subtree from the first. Two or more children ⇒ cut vertex.' },
     hints: [
@@ -7917,6 +9417,33 @@ function cuts(kind, n, edges) { return articulationPoints(n, kind === '' ? edges
 vector<int> cuts(string kind, int n, vector<vector<int>> edges) {
   if (!kind.empty()) edges = _ugen(kind, n);
   return Solution().articulationPoints(n, edges);
+}`, csharp: `public class Check {
+    static int[][] Ugen(string kind, int n) {
+        var e = new List<int[]>();
+        int h = n / 2;
+        if (kind == "path") { for (int i = 0; i + 1 < n; i++) e.Add(new[] { i, i + 1 }); }
+        else if (kind == "star") { for (int i = 1; i < n; i++) e.Add(new[] { 0, i }); }
+        else if (kind == "cycleTail") {
+            for (int i = 0; i < h; i++) e.Add(new[] { i, (i + 1) % h });
+            for (int i = h - 1; i + 1 < n; i++) e.Add(new[] { i, i + 1 });
+        } else if (kind == "bowtie") {
+            for (int i = 0; i < h; i++) e.Add(new[] { i, (i + 1) % h });
+            int k = n - h + 1;                                  // second cycle: 0, h, h+1, ..., n-1
+            for (int j = 0; j < k; j++) {
+                int a = j == 0 ? 0 : h + j - 1, jn = (j + 1) % k, b = jn == 0 ? 0 : h + jn - 1;
+                e.Add(new[] { a, b });
+            }
+        } else if (kind == "twoCycles") {
+            for (int i = 0; i < h; i++) e.Add(new[] { i, (i + 1) % h });
+            for (int i = 0; i < n - h; i++) e.Add(new[] { h + i, h + (i + 1) % (n - h) });
+        } else {
+            for (int i = 0; i < n; i++) { e.Add(new[] { i, (i + 1) % n }); if (kind == "chords") e.Add(new[] { i, (i + 2) % n }); }
+        }
+        return e.ToArray();
+    }
+    public static IList<int> Cuts(string kind, int n, int[][] edges) {
+        return new Solution().ArticulationPoints(n, kind == "" ? edges : Ugen(kind, n));
+    }
 }` } },
     solution: {
       approach: `<p>Standard low-link DFS (Tarjan/Hopcroft 1973) over every component, marking cut vertices in a boolean array.</p>`,
@@ -8096,7 +9623,53 @@ public:
         return ans;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public IList<int> ArticulationPoints(int V, int[][] edges) {
+        var adj = new List<int>[V];
+        for (int i = 0; i < V; i++) adj[i] = new List<int>();
+        foreach (var e in edges) { adj[e[0]].Add(e[1]); adj[e[1]].Add(e[0]); }
+        int[] disc = new int[V], low = new int[V], next = new int[V], parent = new int[V], children = new int[V];
+        bool[] cut = new bool[V];
+        for (int i = 0; i < V; i++) disc[i] = -1;
+        int[] stack = new int[V];                              // our own DFS stack: no deep recursion
+        int timer = 0;
+        for (int root = 0; root < V; root++) {
+            if (disc[root] != -1) continue;
+            int sp = 0;
+            stack[sp++] = root;
+            parent[root] = -1;
+            disc[root] = low[root] = timer++;
+            while (sp > 0) {
+                int v = stack[sp - 1];
+                if (next[v] < adj[v].Count) {
+                    int w = adj[v][next[v]++];
+                    if (w == parent[v]) continue;
+                    if (disc[w] == -1) {                       // "recursive call" into w
+                        children[v]++;
+                        parent[w] = v;
+                        disc[w] = low[w] = timer++;
+                        stack[sp++] = w;
+                    } else {
+                        low[v] = Math.Min(low[v], disc[w]);    // must be disc[w], not low[w]
+                    }
+                } else {                                       // "return" from v
+                    sp--;
+                    int p = parent[v];
+                    if (p != -1) {
+                        low[p] = Math.Min(low[p], low[v]);
+                        if (parent[p] != -1 && low[v] >= disc[p]) cut[p] = true;   // p is not the root
+                    } else if (children[v] > 1) {
+                        cut[v] = true;                         // the root with two or more children
+                    }
+                }
+            }
+        }
+        var ans = new List<int>();
+        for (int v = 0; v < V; v++) if (cut[v]) ans.Add(v);
+        if (ans.Count == 0) ans.Add(-1);
+        return ans;
+    }
+}` }],
       dry: {
         head: ['vertex', 'disc', 'low', 'decision'],
         rows: [
@@ -8157,7 +9730,16 @@ public:
         while (k-- > 0 && node != -1) node = parent[node];
         return node;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class TreeAncestorBrute {
+    private readonly int[] parent;
+
+    public TreeAncestorBrute(int n, int[] parent) { this.parent = (int[])parent.Clone(); }
+
+    public int GetKthAncestor(int node, int k) {
+        while (k-- > 0 && node != -1) node = parent[node];
+        return node;
+    }
+}` }] }
     },
     mcq: { q: 'k = 11. Which jumps does binary lifting make?', options: ['8, 2 and 1', '11 single steps', '4, 4, 2, 1', '16 then down 5'], answer: 0, explain: '11 = 1011 in binary → jumps of 2^3, 2^1, 2^0.' },
     hints: [
@@ -8263,7 +9845,28 @@ public:
         return node;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class TreeAncestor {
+    private const int LOG = 16;                  // 2^16 = 65536 > 5 * 10^4
+    private readonly int[][] up;
+
+    public TreeAncestor(int n, int[] parent) {
+        up = new int[LOG][];
+        up[0] = (int[])parent.Clone();
+        for (int j = 1; j < LOG; j++) {
+            up[j] = new int[n];
+            for (int v = 0; v < n; v++) {
+                int mid = up[j - 1][v];
+                up[j][v] = mid == -1 ? -1 : up[j - 1][mid];
+            }
+        }
+    }
+
+    public int GetKthAncestor(int node, int k) {
+        for (int j = 0; j < LOG && node != -1; j++)
+            if ((k >> j & 1) == 1) node = up[j][node];
+        return node;
+    }
+}` }],
       complexity: `<p>Build <b>O(n log n)</b>, query <b>O(log k)</b>, memory <b>O(n log n)</b> ≈ 3.2 MB here.</p>`,
       followUps: ['Answer each query in O(1) after O(n) preprocessing (ladder decomposition / long-path).', 'Support adding a new leaf online (its up-row is computable from its parent\'s rows).']
     }
@@ -8383,7 +9986,34 @@ public:
         go(board, used, 0, 0);
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    private int best = 0;
+
+    public int MaxDominoes(string[] board) {
+        int R = board.Length, C = board[0].Length;
+        bool[,] used = new bool[R, C];
+        Go(board, used, 0, 0);
+        return best;
+    }
+
+    private void Go(string[] b, bool[,] used, int idx, int placed) {
+        int R = b.Length, C = b[0].Length;
+        if (idx == R * C) { best = Math.Max(best, placed); return; }
+        int r = idx / C, c = idx % C;
+        Go(b, used, idx + 1, placed);                                   // leave this cell
+        if (b[r][c] == '#' || used[r, c]) return;
+        if (c + 1 < C && b[r][c + 1] == '.' && !used[r, c + 1]) {       // horizontal
+            used[r, c] = used[r, c + 1] = true;
+            Go(b, used, idx + 1, placed + 1);
+            used[r, c] = used[r, c + 1] = false;
+        }
+        if (r + 1 < R && b[r + 1][c] == '.' && !used[r + 1, c]) {       // vertical
+            used[r, c] = used[r + 1, c] = true;
+            Go(b, used, idx + 1, placed + 1);
+            used[r, c] = used[r + 1, c] = false;
+        }
+    }
+}` }] }
     },
     mcq: { q: 'Why is the cell graph bipartite?', options: ['Colour cells like a chessboard: every domino covers one black and one white cell', 'Because grids have no cycles', 'Because dominoes are rectangles', 'It is not bipartite'], answer: 0, explain: 'Neighbouring cells always have different (r + c) parity, so all edges go black–white.' },
     hints: [
@@ -8550,7 +10180,44 @@ public:
         return count;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    private int R, C;
+    private string[] b;
+    private int[] owner;            // owner[oddCell] = even cell matched to it, or -1
+    private bool[] seen;
+    private readonly int[] dr = { 1, -1, 0, 0 }, dc = { 0, 0, 1, -1 };
+
+    public int MaxDominoes(string[] board) {
+        b = board;
+        R = board.Length;
+        C = board[0].Length;
+        owner = new int[R * C];
+        for (int i = 0; i < R * C; i++) owner[i] = -1;
+        int count = 0;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+                if ((r + c) % 2 == 0 && b[r][c] == '.') {
+                    seen = new bool[R * C];
+                    if (TryCell(r, c)) count++;
+                }
+        return count;
+    }
+
+    private bool TryCell(int r, int c) {
+        for (int d = 0; d < 4; d++) {
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nc < 0 || nr >= R || nc >= C || b[nr][nc] != '.') continue;
+            int id = nr * C + nc;
+            if (seen[id]) continue;
+            seen[id] = true;
+            if (owner[id] == -1 || TryCell(owner[id] / C, owner[id] % C)) {
+                owner[id] = r * C + c;
+                return true;
+            }
+        }
+        return false;
+    }
+}` }],
       complexity: `<p>Kuhn: O(V·E) = 1600 × 6400 ≈ 10<sup>7</sup> in the worst case. Space O(R·C).</p>`,
       followUps: ['Count the number of ways to tile the full board (that is a DP over profiles / FKT algorithm, not matching).', 'Large boards (10<sup>3</sup> × 10<sup>3</sup>) → Hopcroft-Karp.']
     }
@@ -8620,7 +10287,22 @@ public:
         }
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int MinLines(int[][] grid) {
+        int R = grid.Length, C = grid[0].Length, best = int.MaxValue;
+        for (int mask = 0; mask < (1 << R); mask++) {
+            int lines = 0;
+            for (int x = mask; x != 0; x &= x - 1) lines++;   // rows chosen = set bits
+            for (int c = 0; c < C; c++) {
+                bool need = false;
+                for (int r = 0; r < R; r++) if (grid[r][c] == 1 && (mask >> r & 1) == 0) need = true;
+                if (need) lines++;                       // this column must be a line
+            }
+            best = Math.Min(best, lines);
+        }
+        return best;
+    }
+}` }] }
     },
     mcq: { q: 'Rows are left vertices, columns right vertices, each marked cell an edge. "Fewest lines" is then…', options: ['A minimum vertex cover — equal to the maximum matching (König)', 'A maximum independent set', 'A shortest path', 'A spanning tree'], answer: 0, explain: 'Choosing a row/column = choosing a vertex; covering every marked cell = covering every edge.' },
     hints: [
@@ -8677,6 +10359,17 @@ public:
     for (int i = 0; i < 300; i++) for (int j = 0; j < 300; j++) grid[i][j] = kind == "identity" ? (i == j) : (j >= i);
   }
   return Solution().minLines(grid);
+}`, csharp: `public class Check {
+    public static int Lines(string kind, int[][] grid) {
+        if (kind != "") {
+            grid = new int[300][];
+            for (int i = 0; i < 300; i++) {
+                grid[i] = new int[300];
+                for (int j = 0; j < 300; j++) grid[i][j] = kind == "identity" ? (i == j ? 1 : 0) : (j >= i ? 1 : 0);
+            }
+        }
+        return new Solution().MinLines(grid);
+    }
 }` } },
     solution: {
       approach: `<p>König's theorem: min vertex cover = max matching. Kuhn on rows → columns.</p>`,
@@ -8764,7 +10457,32 @@ public:
         return matching;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    private int[][] g;
+    private int[] owner;            // owner[col] = row matched to it, or -1
+    private bool[] seen;
+
+    public int MinLines(int[][] grid) {
+        g = grid;
+        int R = grid.Length, C = grid[0].Length, matching = 0;
+        owner = new int[C];
+        for (int c = 0; c < C; c++) owner[c] = -1;
+        for (int r = 0; r < R; r++) {
+            seen = new bool[C];
+            if (TryRow(r)) matching++;
+        }
+        return matching;            // = minimum vertex cover = fewest lines
+    }
+
+    private bool TryRow(int r) {
+        for (int c = 0; c < g[r].Length; c++) {
+            if (g[r][c] == 0 || seen[c]) continue;
+            seen[c] = true;
+            if (owner[c] == -1 || TryRow(owner[c])) { owner[c] = r; return true; }
+        }
+        return false;
+    }
+}` }],
       complexity: `<p>O(R · R · C) = 2.7·10<sup>7</sup> worst case; space O(C).</p>`,
       followUps: ['Output which rows and columns to choose.', 'Each row and column has a different cost (weighted vertex cover → min cut).']
     }
@@ -8877,7 +10595,31 @@ public:
         dfs(sb, seen, n, k, total);
         return sb;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public string CrackSafe(int n, int k) {
+        int total = (int)Math.Pow(k, n);
+        var sb = new StringBuilder();
+        for (int i = 0; i < n; i++) sb.Append('0');
+        var seen = new HashSet<string> { sb.ToString() };
+        Dfs(sb, seen, n, k, total);
+        return sb.ToString();
+    }
+
+    private bool Dfs(StringBuilder sb, HashSet<string> seen, int n, int k, int total) {
+        if (seen.Count == total) return true;
+        string tail = sb.ToString(sb.Length - n + 1, n - 1);
+        for (int d = 0; d < k; d++) {
+            string w = tail + d;
+            if (seen.Contains(w)) continue;
+            seen.Add(w);
+            sb.Append(d);
+            if (Dfs(sb, seen, n, k, total)) return true;
+            sb.Length--;                                 // backtrack
+            seen.Remove(w);
+        }
+        return false;
+    }
+}` }] }
     },
     mcq: { q: 'In the de Bruijn graph for this problem, what are the vertices and edges?', options: ['Vertices = (n−1)-digit strings, edges = n-digit passwords', 'Vertices = passwords, edges = keystrokes', 'Vertices = digits, edges = pairs of digits', 'Vertices = n-digit strings, edges = (n+1)-digit strings'], answer: 0, explain: 'Edge "abc" goes from "ab" to "bc". Each password is an edge, so an Euler circuit uses every password once.' },
     hints: [
@@ -9007,7 +10749,35 @@ public:
         return string(n - 1, '0') + digits;            // the start vertex, then the digits
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public string CrackSafe(int n, int k) {
+        int nodes = 1;
+        for (int i = 0; i < n - 1; i++) nodes *= k;          // k^(n-1) vertices
+        int[] ptr = new int[nodes];                            // next digit to try from each vertex
+        var nodeStack = new Stack<int>();
+        var digitStack = new Stack<int>();
+        var digits = new StringBuilder();
+        nodeStack.Push(0);
+        digitStack.Push(-1);                                   // nothing led into the start vertex
+        while (nodeStack.Count > 0) {
+            int v = nodeStack.Peek();
+            if (ptr[v] < k) {
+                int d = ptr[v]++;
+                nodeStack.Push((v * k + d) % nodes);           // drop the oldest digit, append d
+                digitStack.Push(d);
+            } else {
+                nodeStack.Pop();
+                int d = digitStack.Pop();
+                if (d >= 0) digits.Append(d);                  // post-order edge label
+            }
+        }
+        char[] rev = digits.ToString().ToCharArray();
+        Array.Reverse(rev);
+        var ans = new StringBuilder();
+        for (int i = 0; i < n - 1; i++) ans.Append('0');       // the start vertex
+        return ans.Append(rev).ToString();
+    }
+}` }],
       complexity: `<p>Time and space <b>O(k<sup>n</sup>)</b> — one push and pop per password.</p>`,
       followUps: ['Prove the length k<sup>n</sup> + n − 1 is optimal.', 'Genome assembly uses the same graph on k-mers — what breaks with sequencing errors?']
     }
@@ -9123,7 +10893,32 @@ public:
         }
         return ans;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int[][] ValidArrangement(int[][] pairs) {
+        int n = pairs.Length;
+        int[][] ans = new int[n][];
+        bool[] used = new bool[n];
+        for (int i = 0; i < n; i++) {                    // try every pair as the first one
+            used[i] = true;
+            ans[0] = pairs[i];
+            if (Go(pairs, used, ans, 1)) return ans;
+            used[i] = false;
+        }
+        return ans;
+    }
+
+    private bool Go(int[][] pairs, bool[] used, int[][] ans, int pos) {
+        if (pos == pairs.Length) return true;
+        for (int i = 0; i < pairs.Length; i++) {
+            if (used[i] || pairs[i][0] != ans[pos - 1][1]) continue;
+            used[i] = true;
+            ans[pos] = pairs[i];
+            if (Go(pairs, used, ans, pos + 1)) return true;
+            used[i] = false;
+        }
+        return false;
+    }
+}` }] }
     },
     mcq: { q: 'All values are balanced (out = in). Where can the arrangement start?', options: ['At any start value that has an outgoing pair — it is an Euler circuit', 'Only at the smallest value', 'Nowhere — no arrangement exists', 'Only at pairs[0][1]'], answer: 0, explain: 'Balanced degrees + connectivity → Euler circuit, which can start anywhere on it.' },
     hints: [
@@ -9216,6 +11011,20 @@ public:
     }
   }
   return Solution().validArrangement(pairs);
+}`, csharp: `public class Check {
+    public static int[][] Arrange(string kind, int[][] pairs) {
+        if (kind != "") {
+            int N = 100000;
+            pairs = new int[N][];
+            for (int i = 0; i < N; i++) {
+                long j = (long)i * 7919 % N;
+                if (kind == "chain") pairs[i] = new[] { (int)j * 10000, (int)(j + 1) * 10000 };
+                else if (kind == "cycle") pairs[i] = new[] { (int)j * 10000, (int)((j + 1) % N) * 10000 };
+                else { int a = (int)(((long)(i / 2) * 7919 % (N / 2)) + 1) * 1000; pairs[i] = i % 2 == 0 ? new[] { 0, a } : new[] { a, 0 }; }
+            }
+        }
+        return new Solution().ValidArrangement(pairs);
+    }
 }` } },
     solution: {
       approach: `<p>Directed Euler path with Hierholzer on a hash-map graph.</p>`,
@@ -9325,7 +11134,35 @@ public:
         return ans;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public int[][] ValidArrangement(int[][] pairs) {
+        var g = new Dictionary<int, Stack<int>>();
+        var balance = new Dictionary<int, int>();                // out - in
+        foreach (var p in pairs) {
+            Stack<int> outs;
+            if (!g.TryGetValue(p[0], out outs)) g[p[0]] = outs = new Stack<int>();
+            outs.Push(p[1]);
+            int b;
+            balance.TryGetValue(p[0], out b); balance[p[0]] = b + 1;
+            balance.TryGetValue(p[1], out b); balance[p[1]] = b - 1;
+        }
+        int start = pairs[0][0];
+        foreach (var e in balance)
+            if (e.Value == 1) { start = e.Key; break; }
+        var stack = new Stack<int>();
+        var order = new List<int>();                             // vertices in reverse Euler order
+        stack.Push(start);
+        while (stack.Count > 0) {
+            Stack<int> outs;
+            if (g.TryGetValue(stack.Peek(), out outs) && outs.Count > 0) stack.Push(outs.Pop());
+            else order.Add(stack.Pop());
+        }
+        order.Reverse();
+        int[][] ans = new int[pairs.Length][];
+        for (int i = 0; i + 1 < order.Count; i++) ans[i] = new[] { order[i], order[i + 1] };
+        return ans;
+    }
+}` }],
       complexity: `<p>Time <b>O(n)</b> expected (hashing), space <b>O(n)</b>.</p>`,
       followUps: ['What if no arrangement is guaranteed? Add the degree and E + 1 length checks.', 'Lexicographically smallest arrangement.']
     }
@@ -9411,7 +11248,27 @@ public:
         }
         return {};                                    // no assignment satisfies every clause
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public bool[] Solve2SAT(int n, int[][] clauses) {
+        for (int mask = 0; mask < (1 << n); mask++) {
+            bool ok = true;
+            foreach (var c in clauses) {
+                if (!(Lit(mask, c[0]) || Lit(mask, c[1]))) { ok = false; break; }
+            }
+            if (ok) {
+                bool[] value = new bool[n + 1];
+                for (int i = 1; i <= n; i++) value[i] = (mask >> (i - 1) & 1) == 1;
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private bool Lit(int mask, int l) {
+        bool v = (mask >> (Math.Abs(l) - 1) & 1) == 1;
+        return l > 0 ? v : !v;
+    }
+}` }] }
     },
     mcq: { q: 'Clause (a ∨ b) becomes which implication edges?', options: ['¬a → b and ¬b → a', 'a → b and b → a', 'a → ¬b only', '¬a → ¬b'], answer: 0, explain: 'If a is false, b must be true; if b is false, a must be true. Both directions are needed for the graph to be symmetric.' },
     hints: [
@@ -9505,6 +11362,26 @@ public:
   auto val = [&](int l) { return l > 0 ? (bool)v[l] : !v[-l]; };
   for (auto& c : cl) if (!val(c[0]) && !val(c[1])) return false;
   return true;
+}`, csharp: `public class Check {
+    public static bool Sat(string kind, int n, int[][] cl) {
+        if (kind != "") {
+            n = 100000;
+            var list = new List<int[]>();
+            for (int i = 1; i < n; i++) {
+                if (kind == "alternate") { list.Add(new[] { i, i + 1 }); list.Add(new[] { -i, -(i + 1) }); }
+                else list.Add(new[] { -i, i + 1 });
+            }
+            if (kind == "chainunsat") { list.Add(new[] { 1, 1 }); list.Add(new[] { -n, -n }); }
+            cl = list.ToArray();
+        }
+        bool[] v = new Solution().Solve2SAT(n, cl);
+        if (v == null || v.Length != n + 1) return false;
+        foreach (var c in cl) {
+            bool a = c[0] > 0 ? v[c[0]] : !v[-c[0]], b = c[1] > 0 ? v[c[1]] : !v[-c[1]];
+            if (!a && !b) return false;
+        }
+        return true;
+    }
 }` } },
     solution: {
       approach: `<p>Implication graph + iterative Kosaraju. Node 2(i−1) is x<sub>i</sub>, node 2(i−1)+1 is ¬x<sub>i</sub>, so negation is <code>^ 1</code>.</p>`,
@@ -9715,7 +11592,61 @@ public:
         return value;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public bool[] Solve2SAT(int n, int[][] clauses) {
+        int N = 2 * n;
+        var g = new List<int>[N];
+        var rg = new List<int>[N];
+        for (int i = 0; i < N; i++) { g[i] = new List<int>(); rg[i] = new List<int>(); }
+        foreach (var c in clauses) {
+            int a = Node(c[0]), b = Node(c[1]);
+            g[a ^ 1].Add(b); rg[b].Add(a ^ 1);          // NOT a -> b
+            g[b ^ 1].Add(a); rg[a].Add(b ^ 1);          // NOT b -> a
+        }
+        int[] order = new int[N], it = new int[N];
+        bool[] seen = new bool[N];
+        int cnt = 0;
+        var st = new Stack<int>();
+        for (int s = 0; s < N; s++) {                           // pass 1: finish order
+            if (seen[s]) continue;
+            seen[s] = true;
+            st.Push(s);
+            while (st.Count > 0) {
+                int v = st.Peek();
+                if (it[v] < g[v].Count) {
+                    int w = g[v][it[v]++];
+                    if (!seen[w]) { seen[w] = true; st.Push(w); }
+                } else {
+                    st.Pop();
+                    order[cnt++] = v;
+                }
+            }
+        }
+        int[] comp = new int[N];
+        for (int i = 0; i < N; i++) comp[i] = -1;
+        int c2 = 0;
+        for (int k = N - 1; k >= 0; k--) {                      // pass 2: topological component ids
+            int s = order[k];
+            if (comp[s] != -1) continue;
+            comp[s] = c2;
+            st.Push(s);
+            while (st.Count > 0) {
+                int v = st.Pop();
+                foreach (int w in rg[v]) if (comp[w] == -1) { comp[w] = c2; st.Push(w); }
+            }
+            c2++;
+        }
+        bool[] value = new bool[n + 1];
+        for (int i = 1; i <= n; i++) {
+            int x = 2 * (i - 1);
+            if (comp[x] == comp[x ^ 1]) return null;             // x <=> NOT x
+            value[i] = comp[x] > comp[x ^ 1];                    // later in topological order wins
+        }
+        return value;
+    }
+
+    private int Node(int lit) { return lit > 0 ? 2 * (lit - 1) : 2 * (-lit - 1) + 1; }
+}` }],
       complexity: `<p>Time <b>O(n + m)</b>, space <b>O(n + m)</b>.</p>`,
       followUps: ['Why does 3-SAT not have such an algorithm? (NP-complete.)', 'Model "exactly one of a, b" and "a implies b" as 2-SAT clauses.']
     }
@@ -9827,7 +11758,28 @@ public:
         }
         return flow;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public long MaxThroughput(int n, int[][] links, long[] limit, int s, int t) {
+        int N = 2 * n;                                       // v_in = v, v_out = v + n
+        long[,] r = new long[N, N];
+        for (int v = 0; v < n; v++) r[v, v + n] = (v == s || v == t) ? long.MaxValue / 4 : limit[v];
+        foreach (var l in links) r[l[0] + n, l[1]] += l[2];
+        long flow = 0, pushed;
+        while ((pushed = Dfs(r, s, t + n, long.MaxValue, new bool[N])) > 0) flow += pushed;
+        return flow;
+    }
+
+    long Dfs(long[,] r, int v, int t, long f, bool[] seen) {
+        if (v == t) return f;
+        seen[v] = true;
+        for (int w = 0; w < r.GetLength(0); w++)
+            if (!seen[w] && r[v, w] > 0) {
+                long d = Dfs(r, w, t, Math.Min(f, r[v, w]), seen);
+                if (d > 0) { r[v, w] -= d; r[w, v] += d; return d; }
+            }
+        return 0;
+    }
+}` }] }
     },
     mcq: { q: 'How do you put a capacity on a NODE?', options: ['Split it into v_in → v_out with that capacity; in-links go to v_in, out-links leave v_out', 'Divide each incident edge by its degree', 'Add a self-loop with that capacity', 'Cap the source edges only'], answer: 0, explain: 'All flow through v must cross the single edge v_in → v_out, so its capacity limits the node.' },
     hints: [
@@ -9907,6 +11859,26 @@ public:
     }
   }
   return Solution().maxThroughput(n, links, limit, s, t);
+}`, csharp: `public class Check {
+    public static long Flow(string kind, int n, int[][] links, long[] limit, int s, int t) {
+        if (kind != "") {
+            n = 2000; s = 0; t = n - 1;
+            limit = new long[n];
+            if (kind == "star") {
+                links = new int[2 * (n - 2)][];
+                for (int v = 1; v <= n - 2; v++) {
+                    limit[v] = 700000000L + v;
+                    links[2 * (v - 1)] = new[] { 0, v, 1000000000 };
+                    links[2 * (v - 1) + 1] = new[] { v, t, 1000000000 };
+                }
+            } else {
+                links = new int[n - 1][];
+                for (int v = 0; v < n - 1; v++) links[v] = new[] { v, v + 1, 1000000000 };
+                for (int v = 1; v < n - 1; v++) limit[v] = 1000000000L - v;
+            }
+        }
+        return new Solution().MaxThroughput(n, links, limit, s, t);
+    }
 }` } },
     solution: {
       approach: `<p>Node splitting + Dinic (forward-star arrays).</p>`,
@@ -10129,7 +12101,63 @@ public:
         return flow;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    private int[] head, nxt, to, level, it;
+    private long[] cap;
+    private int cnt = 0;
+
+    public long MaxThroughput(int n, int[][] links, long[] limit, int s, int t) {
+        int N = 2 * n, M = n + links.Length;
+        head = new int[N];
+        for (int i = 0; i < N; i++) head[i] = -1;
+        nxt = new int[2 * M];
+        to = new int[2 * M];
+        cap = new long[2 * M];
+        level = new int[N];
+        it = new int[N];
+        long INF = long.MaxValue / 4;
+        for (int v = 0; v < n; v++) Add(v, v + n, (v == s || v == t) ? INF : limit[v]);   // v_in -> v_out
+        foreach (var l in links) Add(l[0] + n, l[1], l[2]);                              // u_out -> v_in
+        long flow = 0;
+        while (Bfs(s, t + n, N)) {
+            Array.Copy(head, it, N);
+            long f;
+            while ((f = Dfs(s, t + n, INF)) > 0) flow += f;
+        }
+        return flow;
+    }
+
+    private void Add(int u, int v, long c) {
+        to[cnt] = v; cap[cnt] = c; nxt[cnt] = head[u]; head[u] = cnt++;
+        to[cnt] = u; cap[cnt] = 0; nxt[cnt] = head[v]; head[v] = cnt++;
+    }
+
+    private bool Bfs(int s, int t, int N) {
+        for (int i = 0; i < N; i++) level[i] = -1;
+        int[] q = new int[N];
+        int qh = 0, qt = 0;
+        level[s] = 0;
+        q[qt++] = s;
+        while (qh < qt) {
+            int v = q[qh++];
+            for (int e = head[v]; e != -1; e = nxt[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q[qt++] = to[e]; }
+        }
+        return level[t] >= 0;
+    }
+
+    private long Dfs(int v, int t, long f) {
+        if (v == t) return f;
+        for (; it[v] != -1; it[v] = nxt[it[v]]) {
+            int e = it[v];
+            if (cap[e] > 0 && level[to[e]] == level[v] + 1) {
+                long d = Dfs(to[e], t, Math.Min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;
+    }
+}` }],
       complexity: `<p>Dinic O(V²·E) on 2n nodes and n + E edges; in practice very fast. Space O(n + E).</p>`,
       followUps: ['Minimum number of routers to remove to disconnect s and t (all limits = 1, then min cut).', 'Undirected links.']
     }
@@ -10198,7 +12226,22 @@ public:
         }
         return best;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public long MaxProfit(long[] val, int[][] req) {
+        int n = val.Length;
+        long best = 0;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            bool closed = true;
+            foreach (var r in req)
+                if ((mask >> r[0] & 1) == 1 && (mask >> r[1] & 1) == 0) { closed = false; break; }
+            if (!closed) continue;
+            long sum = 0;
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) sum += val[i];
+            best = Math.Max(best, sum);
+        }
+        return best;
+    }
+}` }] }
     },
     mcq: { q: 'In the project-selection network, what does an ∞ edge a → b enforce?', options: ['If a is on the S-side (chosen), b must be too — otherwise the cut is infinite', 'a and b are never chosen together', 'b is cheaper than a', 'Nothing; ∞ edges are ignored'], answer: 0, explain: 'A finite cut can never cut an ∞ edge, so "a chosen, b not chosen" is impossible.' },
     hints: [
@@ -10475,7 +12518,66 @@ public:
         return positive - flow;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    private int[] head, nxt, to, level, it;
+    private long[] cap;
+    private int cnt = 0;
+
+    public long MaxProfit(long[] val, int[][] req) {
+        int n = val.Length, S = n, T = n + 1, N = n + 2, M = n + req.Length;
+        head = new int[N];
+        for (int i = 0; i < N; i++) head[i] = -1;
+        nxt = new int[2 * M];
+        to = new int[2 * M];
+        cap = new long[2 * M];
+        level = new int[N];
+        it = new int[N];
+        long INF = long.MaxValue / 4, positive = 0;
+        for (int i = 0; i < n; i++) {
+            if (val[i] > 0) { Add(S, i, val[i]); positive += val[i]; }   // cut = give up this profit
+            else Add(i, T, -val[i]);                                     // cut = pay this cost
+        }
+        foreach (var r in req) Add(r[0], r[1], INF);                      // a chosen => b chosen
+        long flow = 0;
+        while (Bfs(S, T, N)) {
+            Array.Copy(head, it, N);
+            long f;
+            while ((f = Dfs(S, T, INF)) > 0) flow += f;
+        }
+        return positive - flow;
+    }
+
+    private void Add(int u, int v, long c) {
+        to[cnt] = v; cap[cnt] = c; nxt[cnt] = head[u]; head[u] = cnt++;
+        to[cnt] = u; cap[cnt] = 0; nxt[cnt] = head[v]; head[v] = cnt++;
+    }
+
+    private bool Bfs(int s, int t, int N) {
+        for (int i = 0; i < N; i++) level[i] = -1;
+        int[] q = new int[N];
+        int qh = 0, qt = 0;
+        level[s] = 0;
+        q[qt++] = s;
+        while (qh < qt) {
+            int v = q[qh++];
+            for (int e = head[v]; e != -1; e = nxt[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q[qt++] = to[e]; }
+        }
+        return level[t] >= 0;
+    }
+
+    private long Dfs(int v, int t, long f) {
+        if (v == t) return f;
+        for (; it[v] != -1; it[v] = nxt[it[v]]) {
+            int e = it[v];
+            if (cap[e] > 0 && level[to[e]] == level[v] + 1) {
+                long d = Dfs(to[e], t, Math.Min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;
+    }
+}` }],
       complexity: `<p>Dinic on n + 2 nodes and n + req edges: O(V²·E) worst case, fast in practice.</p>`,
       followUps: ['Return the chosen items (residual reachability from S).', 'Image segmentation is the same pattern with pixel-neighbour penalty edges.']
     }
@@ -10574,7 +12676,28 @@ public:
         go(adj, 0, takenAsNext, 0);
         return n - best;                              // every link merges two chains
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    private int best = 0;
+
+    public int MinWorkers(int n, int[][] edges) {
+        var adj = new List<int>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<int>();
+        foreach (var e in edges) adj[e[0]].Add(e[1]);
+        Go(adj, 0, new bool[n], 0);
+        return n - best;                                   // every link merges two chains
+    }
+
+    private void Go(List<int>[] adj, int u, bool[] takenAsNext, int links) {
+        if (u == adj.Length) { best = Math.Max(best, links); return; }
+        Go(adj, u + 1, takenAsNext, links);                // u is the end of its chain
+        foreach (int v in adj[u])
+            if (!takenAsNext[v]) {
+                takenAsNext[v] = true;
+                Go(adj, u + 1, takenAsNext, links + 1);
+                takenAsNext[v] = false;
+            }
+    }
+}` }] }
     },
     mcq: { q: 'n = 6 tasks and the maximum matching in the split graph is 4. How many workers?', options: ['2', '4', '6', '10'], answer: 0, explain: 'Start with 6 one-task chains; each matched edge glues two chains together: 6 − 4 = 2.' },
     hints: [
@@ -10648,6 +12771,20 @@ public:
     }
   }
   return Solution().minWorkers(n, edges);
+}`, csharp: `public class Check {
+    public static int Cover(string kind, int n, int[][] edges) {
+        if (kind != "") {
+            n = 500;
+            var e = new List<int[]>();
+            for (int i = 0; i < n; i++) {
+                if (kind == "chain" && i + 1 < n) e.Add(new[] { i, i + 1 });
+                if (kind == "band") for (int d = 1; d <= 20 && i + d < n; d++) e.Add(new[] { i, i + d });
+                if (kind == "bip" && i < 250) for (int k = 0; k < 40; k++) e.Add(new[] { i, 250 + (i + k) % 250 });
+            }
+            edges = e.ToArray();
+        }
+        return new Solution().MinWorkers(n, edges);
+    }
 }` } },
     solution: {
       approach: `<p>Reduce to maximum bipartite matching (Fulkerson's/Dilworth-style reduction) and use Kuhn.</p>`,
@@ -10744,7 +12881,34 @@ public:
         return n - links;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    private List<int>[] adj;
+    private int[] pred;              // pred[v] = task linked right before v, or -1
+    private bool[] seen;
+
+    public int MinWorkers(int n, int[][] edges) {
+        adj = new List<int>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<int>();
+        foreach (var e in edges) adj[e[0]].Add(e[1]);
+        pred = new int[n];
+        for (int i = 0; i < n; i++) pred[i] = -1;
+        int links = 0;
+        for (int u = 0; u < n; u++) {
+            seen = new bool[n];
+            if (Link(u)) links++;
+        }
+        return n - links;
+    }
+
+    private bool Link(int u) {                       // give u a successor
+        foreach (int v in adj[u]) {
+            if (seen[v]) continue;
+            seen[v] = true;
+            if (pred[v] == -1 || Link(pred[v])) { pred[v] = u; return true; }
+        }
+        return false;
+    }
+}` }],
       complexity: `<p>Kuhn O(V·E) = 5·10<sup>6</sup>; space O(V + E).</p>`,
       followUps: ['Paths may share vertices (Dilworth: minimum chain cover of a partial order).', 'Print the chains.']
     }
@@ -10866,7 +13030,33 @@ public:
         }
         return ans;
     }
-};` }] }
+};` }, { lang: 'csharp', code: `public class Brute {
+    public long[] MaxEdge(int n, int[][] edges, int[][] queries) {
+        var adj = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<(int v, int w)>();
+        foreach (var e in edges) { adj[e[0]].Add((e[1], e[2])); adj[e[1]].Add((e[0], e[2])); }
+        int[] par = new int[n], depth = new int[n];
+        long[] w = new long[n];
+        bool[] seen = new bool[n];
+        var q = new Queue<int>();
+        q.Enqueue(0);
+        seen[0] = true;
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            foreach (var e in adj[v]) if (!seen[e.v]) { seen[e.v] = true; par[e.v] = v; depth[e.v] = depth[v] + 1; w[e.v] = e.w; q.Enqueue(e.v); }
+        }
+        long[] ans = new long[queries.Length];
+        for (int i = 0; i < queries.Length; i++) {
+            int a = queries[i][0], b = queries[i][1];
+            long best = 0;
+            while (depth[a] > depth[b]) { best = Math.Max(best, w[a]); a = par[a]; }
+            while (depth[b] > depth[a]) { best = Math.Max(best, w[b]); b = par[b]; }
+            while (a != b) { best = Math.Max(best, Math.Max(w[a], w[b])); a = par[a]; b = par[b]; }
+            ans[i] = best;
+        }
+        return ans;
+    }
+}` }] }
     },
     mcq: { q: 'How is mx[k][v] (max edge over the 2^k edges above v) built?', options: ['max(mx[k−1][v], mx[k−1][up[k−1][v]])', 'mx[k−1][v] + mx[k−1][v]', 'max over all children', 'mx[k−1][up[k][v]]'], answer: 0, explain: 'The 2^k segment is the first 2^(k−1) edges plus the next 2^(k−1) edges starting at the midpoint ancestor.' },
     hints: [
@@ -10956,6 +13146,25 @@ public:
     }
   }
   return Solution().maxEdge(n, edges, queries);
+}`, csharp: `public class Check {
+    public static long[] Heavy(string kind, int n, int[][] edges, int[][] queries) {
+        if (kind != "") {
+            n = 100000;
+            edges = new int[n - 1][];
+            for (int i = 1; i < n; i++) {
+                int w = (int)((long)i * 7919 % 999983) + 1;
+                edges[i - 1] = new[] { kind == "chain" ? i - 1 : (i - 1) / 2, i, w };
+            }
+            if (kind == "chain") {
+                queries = new[] { new[] { 0, n - 1 }, new[] { n - 1, 0 }, new[] { 5, 10 }, new[] { n - 1, n - 1 }, new[] { 50000, 50001 }, new[] { 99990, 3 } };
+            } else {
+                queries = new int[100000][];
+                for (int i = 0; i < queries.Length; i++)
+                    queries[i] = new[] { (int)((long)i * 7919 % n), (int)(((long)i * 104729 + 13) % n) };
+            }
+        }
+        return new Solution().MaxEdge(n, edges, queries);
+    }
 }` } },
     solution: {
       approach: `<p>Binary lifting with an aggregate table alongside the ancestor table. O(log n) per query.</p>`,
@@ -11146,7 +13355,55 @@ public:
         return ans;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution {
+    public long[] MaxEdge(int n, int[][] edges, int[][] queries) {
+        var adj = new List<(int v, int w)>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<(int v, int w)>();
+        foreach (var e in edges) { adj[e[0]].Add((e[1], e[2])); adj[e[1]].Add((e[0], e[2])); }
+        int LOG = 1;
+        while ((1 << LOG) < n) LOG++;
+        int[][] up = new int[LOG][];
+        long[][] mx = new long[LOG][];
+        for (int k = 0; k < LOG; k++) { up[k] = new int[n]; mx[k] = new long[n]; }
+        int[] depth = new int[n];
+        bool[] seen = new bool[n];
+        var q = new Queue<int>();
+        q.Enqueue(0);
+        seen[0] = true;                                    // root: up = itself, mx = 0
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            foreach (var e in adj[v]) if (!seen[e.v]) {
+                seen[e.v] = true; up[0][e.v] = v; mx[0][e.v] = e.w; depth[e.v] = depth[v] + 1; q.Enqueue(e.v);
+            }
+        }
+        for (int k = 1; k < LOG; k++)
+            for (int v = 0; v < n; v++) {
+                int mid = up[k - 1][v];
+                up[k][v] = up[k - 1][mid];
+                mx[k][v] = Math.Max(mx[k - 1][v], mx[k - 1][mid]);
+            }
+        long[] ans = new long[queries.Length];
+        for (int i = 0; i < queries.Length; i++) {
+            int a = queries[i][0], b = queries[i][1];
+            long best = 0;
+            if (depth[a] < depth[b]) { int t = a; a = b; b = t; }
+            int diff = depth[a] - depth[b];
+            for (int k = 0; k < LOG; k++)
+                if ((diff >> k & 1) == 1) { best = Math.Max(best, mx[k][a]); a = up[k][a]; }
+            if (a != b) {
+                for (int k = LOG - 1; k >= 0; k--)
+                    if (up[k][a] != up[k][b]) {
+                        best = Math.Max(best, Math.Max(mx[k][a], mx[k][b]));
+                        a = up[k][a];
+                        b = up[k][b];
+                    }
+                best = Math.Max(best, Math.Max(mx[0][a], mx[0][b]));   // the two edges into the LCA
+            }
+            ans[i] = best;
+        }
+        return ans;
+    }
+}` }],
       complexity: `<p>Build <b>O(n log n)</b>, each query <b>O(log n)</b>, memory O(n log n).</p>`,
       followUps: ['Minimum spanning tree "second best" problems use exactly this query.', 'Edges change weight → Heavy-Light Decomposition + segment tree.']
     }

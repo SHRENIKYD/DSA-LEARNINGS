@@ -304,6 +304,63 @@ int main() {
     }
     c.setStrategy(make_shared<LambdaStrategy>("Lambda", [](double amount) { return amount - 50; }));  // a lambda is a strategy too
     cout << "Lambda -> " << c.total(1000) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// 1) The "socket": every discount rule must provide this one method.
+interface IDiscountStrategy {
+    double Apply(double amount);           // returns the amount AFTER discount
+}
+static class DiscountStrategyExt {
+    public static string Name(this IDiscountStrategy s) { return s.GetType().Name; }
+}
+
+// 2) One small class per rule. Adding a rule never edits an old one.
+class NoDiscount : IDiscountStrategy {
+    public double Apply(double amount) { return amount; }
+}
+class FlatOff : IDiscountStrategy {
+    private readonly double off, minOrder;
+    public FlatOff(double off, double minOrder) { this.off = off; this.minOrder = minOrder; }
+    public double Apply(double amount) { return amount >= minOrder ? amount - off : amount; }
+}
+class PercentOff : IDiscountStrategy {
+    private readonly double pct;
+    public PercentOff(double pct) { this.pct = pct; }
+    public double Apply(double amount) { return amount * (1 - pct / 100.0); }
+}
+class FestiveCap : IDiscountStrategy {            // 20% off, but at most 300
+    public double Apply(double amount) { return amount - Math.Min(amount * 0.20, 300); }
+}
+sealed class LambdaDiscount : IDiscountStrategy {  // a delegate is a strategy too
+    private readonly Func<double, double> f; public LambdaDiscount(Func<double, double> f) { this.f = f; }
+    public double Apply(double amount) { return f(amount); }
+}
+
+// 3) The context: uses a strategy, never asks "which one are you?"
+class Checkout {
+    private IDiscountStrategy strategy = new NoDiscount();
+    public void SetStrategy(IDiscountStrategy s) { if (s == null) throw new ArgumentNullException("s"); strategy = s; }
+    public double Total(double cartAmount) {
+        double after = strategy.Apply(cartAmount);
+        return Math.Round(after * 100, MidpointRounding.AwayFromZero) / 100.0;   // money rounding lives in ONE place
+    }
+}
+
+class Program {
+    static void Main() {
+        Checkout c = new Checkout();
+        List<IDiscountStrategy> rules = new List<IDiscountStrategy> { new NoDiscount(), new FlatOff(100, 500),
+                                               new PercentOff(10), new FestiveCap() };
+        foreach (IDiscountStrategy r in rules) {
+            c.SetStrategy(r);                              // swap at runtime
+            Console.WriteLine(r.Name() + " -> " + c.Total(1000).ToString("F2"));
+        }
+        c.SetStrategy(new LambdaDiscount(amount => amount - 50));
+        Console.WriteLine("Lambda -> " + c.Total(1000).ToString("F2"));
+    }
 }` }
         ] }, { lang: 'java', title: 'Strategy registry: pick by key without if/else', code: `// When the strategy is chosen by a string (config, request param), use a Map, not a switch.
 enum ShippingSpeed { STANDARD, EXPRESS, SAME_DAY }
@@ -417,6 +474,36 @@ int main() {
     cout << fixed << setprecision(2);
     for (ShippingSpeed s : {ShippingSpeed::STANDARD, ShippingSpeed::EXPRESS, ShippingSpeed::SAME_DAY})
         cout << name(s) << " 2kg = " << calc.cost(s, 2) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// When the strategy is chosen by a key (config, request param), use a Dictionary, not a switch.
+enum ShippingSpeed { STANDARD, EXPRESS, SAME_DAY }
+
+class ShippingCalculator {
+    private readonly Dictionary<ShippingSpeed, Func<double, double>> rules = new Dictionary<ShippingSpeed, Func<double, double>>();
+
+    public ShippingCalculator() {
+        rules[ShippingSpeed.STANDARD] = kg => 40 + 10 * kg;
+        rules[ShippingSpeed.EXPRESS] = kg => 90 + 15 * kg;
+        rules[ShippingSpeed.SAME_DAY] = kg => 150 + 25 * kg;
+    }
+
+    // New speed? Add one enum constant + one entry. No method body grows.
+    public double Cost(ShippingSpeed speed, double kg) {
+        Func<double, double> rule;
+        if (!rules.TryGetValue(speed, out rule)) throw new ArgumentException("No rule for " + speed);
+        return rule(kg);
+    }
+}
+
+class Program {
+    static void Main() {
+        ShippingCalculator calc = new ShippingCalculator();
+        foreach (ShippingSpeed s in Enum.GetValues(typeof(ShippingSpeed))) Console.WriteLine(s + " 2kg = " + calc.Cost(s, 2).ToString("F2"));
+    }
 }` }
         ] }],
     codeTitle: ['Strategy with classes', 'Strategy registry with lambdas'],
@@ -526,7 +613,26 @@ for (auto& e : emps) cout << e.name << ":" << e.salary << " ";
 cout << "\\n";
 ranges::sort(emps, greater<>(), &Emp::name);          // strategy 2
 for (auto& e : emps) cout << e.name << ":" << e.salary << " ";
-cout << "\\n";` }
+cout << "\\n";` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Emp {
+    public readonly string Name; public readonly int Salary;
+    public Emp(string name, int salary) { Name = name; Salary = salary; }
+    public override string ToString() { return "Emp[name=" + Name + ", salary=" + Salary + "]"; }
+}
+class Program {
+    static void Main() {
+        List<Emp> emps = new List<Emp> { new Emp("Asha", 90), new Emp("Ben", 70), new Emp("Cy", 80) };
+        emps.Sort((a, b) => a.Salary.CompareTo(b.Salary));                        // strategy 1
+        Console.WriteLine("[" + string.Join(", ", emps) + "]");
+        emps.Sort((a, b) => string.CompareOrdinal(b.Name, a.Name));               // strategy 2
+        Console.WriteLine("[" + string.Join(", ", emps) + "]");
+    }
+}` }
         ] } },
       { title: 'Payment methods at checkout', html: `<p>Card, UPI, Wallet, Net-banking all "pay an amount" but each talks to a different gateway with different fees and retries. A <code>PaymentStrategy</code> interface with <code>pay(Order)</code> lets the order service stay identical while finance adds "Buy Now Pay Later" next quarter as a brand-new class. Combine with a <b>factory/registry</b> that maps <code>"UPI"</code> → <code>UpiPayment</code> so the controller never writes if/else.</p>` },
       { title: 'Splitwise split types', html: `<p>An expense can be split <b>EQUAL</b>, <b>EXACT</b> amounts or by <b>PERCENT</b>. Each is a <code>SplitStrategy.split(total, participants)</code> returning a map of user → share, plus its own validation (percent must add to 100, exact must add to total). Interviewers love this because the validation rules are different per strategy — exactly the code that would otherwise turn into a tangle of if/else.</p>`, code: { lang: 'java', code: `interface SplitStrategy { Map<String, Double> split(double total, List<String> users); }
@@ -559,7 +665,27 @@ SplitStrategy equal = [](double total, const vector<string>& users) {
     return m;
 };
 for (auto& [user, share] : equal(300, {"A", "B", "C"})) cout << user << "=" << share << " ";  // A=100 B=100 C=100
-cout << "\\n";` }
+cout << "\\n";` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface ISplitStrategy { Dictionary<string, double> Split(double total, List<string> users); }
+sealed class EqualSplit : ISplitStrategy {
+    public Dictionary<string, double> Split(double total, List<string> users) {
+        Dictionary<string, double> m = new Dictionary<string, double>();
+        foreach (string u in users) m[u] = total / users.Count;
+        return m;
+    }
+}
+class Program {
+    static void Main() {
+        ISplitStrategy equal = new EqualSplit();
+        var shares = equal.Split(300, new List<string> { "A", "B", "C" });
+        Console.WriteLine("{" + string.Join(", ", shares.Select(kv => kv.Key + "=" + kv.Value.ToString("0.0"))) + "}");   // {A=100.0, B=100.0, C=100.0}
+    }
+}` }
         ] } },
       { title: 'When NOT to use Strategy', html: `<p>If there are only <b>two</b> options that will never grow (e.g. ascending vs descending), a boolean or a simple <code>Comparator.reversed()</code> is clearer. Strategy pays off when variants <b>grow over time</b>, are <b>tested separately</b>, or are <b>chosen at runtime</b>. Do not create five classes for a one-line difference — that is over-engineering (YAGNI).</p>` }
     ],
@@ -618,7 +744,20 @@ public:
         // NIGHT, AIRPORT, RENTAL... every month we edit this method again
         throw invalid_argument("Unknown fare type " + type);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveFareCalculator {
+    public double Fare(string type, double km, double min, double surge) {
+        double normal = 50 + 12 * km + 1 * min;
+        if (type == "NORMAL") return normal;
+        else if (type == "SURGE") return normal * surge;   // surge param unused by others
+        else if (type == "POOL") return normal * 0.7;
+        // NIGHT, AIRPORT, RENTAL... every month we edit this method again
+        throw new ArgumentException("Unknown fare type " + type);
+    }
+}` }
               ] } },
       mcq: { q: 'Product says "a new fare type AIRPORT (flat 200 + 15/km) launches next week". With Strategy, what changes?', options: ['Add one class AirportFare implements FareStrategy; FareCalculator untouched', 'Add another else-if in FareCalculator', 'Subclass FareCalculator', 'Change the Ride class'], answer: 0, explain: 'Strategy makes new behaviour an addition, not a modification. The context only knows the interface.' },
       hints: [`<p>Hint 1: What varies is the <b>formula</b>; what stays the same is "take a ride, return a fare, round it". Put the varying part behind an interface.</p>`, `<p>Hint 2: <code>interface FareStrategy { double fare(Ride r); }</code>. SURGE can <b>wrap</b> another strategy (NORMAL) and multiply, so its multiplier lives in its own constructor — no unused parameters.</p>`, `<p>Hint 3: Validate negative distance once in the context. Recipe: Ride record → strategy classes → <code>FareCalculator(FareStrategy)</code> with <code>setStrategy</code> → round in one place.</p>`],
@@ -870,6 +1009,65 @@ int main() {
     catch (const invalid_argument& e) { cout << "rejected: " << e.what() << "\\n"; }
     try { SurgeFare bad(normal, 6.0); }
     catch (const invalid_argument& e) { cout << "rejected: " << e.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+sealed class Ride {
+    public readonly double Km, Minutes;
+    public Ride(double km, double minutes) { Km = km; Minutes = minutes; }
+}
+
+interface IFareStrategy { double Fare(Ride r); }
+
+class NormalFare : IFareStrategy {
+    public double Fare(Ride r) { return 50 + 12 * r.Km + 1 * r.Minutes; }
+}
+class SurgeFare : IFareStrategy {
+    private readonly IFareStrategy baseFare; private readonly double multiplier;
+    public SurgeFare(IFareStrategy baseFare, double multiplier) {
+        if (multiplier < 1.0 || multiplier > 5.0) throw new ArgumentException("surge 1.0-5.0");
+        this.baseFare = baseFare; this.multiplier = multiplier;
+    }
+    public double Fare(Ride r) { return baseFare.Fare(r) * multiplier; }
+}
+class PoolFare : IFareStrategy {
+    private readonly IFareStrategy baseFare;
+    public PoolFare(IFareStrategy baseFare) { this.baseFare = baseFare; }
+    public double Fare(Ride r) { return baseFare.Fare(r) * 0.7; }
+}
+class AirportFare : IFareStrategy {          // added later: zero edits elsewhere
+    public double Fare(Ride r) { return 200 + 15 * r.Km; }
+}
+
+class FareCalculator {
+    private IFareStrategy strategy;
+    public FareCalculator(IFareStrategy s) { strategy = s; }
+    public void SetStrategy(IFareStrategy s) { strategy = s; }
+    public double Calculate(Ride r) {
+        if (r.Km < 0 || r.Minutes < 0) throw new ArgumentException("negative ride");
+        return Math.Round(strategy.Fare(r) * 100, MidpointRounding.AwayFromZero) / 100.0;
+    }
+}
+
+class Program {
+    static void Main() {
+        Ride ride = new Ride(10, 20);
+        IFareStrategy normal = new NormalFare();
+        FareCalculator calc = new FareCalculator(normal);
+        Console.WriteLine("NORMAL  " + calc.Calculate(ride).ToString("F2"));
+        calc.SetStrategy(new SurgeFare(normal, 1.5));
+        Console.WriteLine("SURGE   " + calc.Calculate(ride).ToString("F2"));
+        calc.SetStrategy(new PoolFare(normal));
+        Console.WriteLine("POOL    " + calc.Calculate(ride).ToString("F2"));
+        Console.WriteLine("POOL    " + calc.Calculate(new Ride(3.3, 7)).ToString("F2"));
+        calc.SetStrategy(new AirportFare());
+        Console.WriteLine("AIRPORT " + calc.Calculate(ride).ToString("F2"));
+        try { calc.Calculate(new Ride(-1, 5)); }
+        catch (ArgumentException e) { Console.WriteLine("rejected: " + e.Message); }
+        try { new SurgeFare(normal, 6.0); }
+        catch (ArgumentException e) { Console.WriteLine("rejected: " + e.Message); }
+    }
 }` }
         ],
         complexity: `<p>O(1) per fare. Adding a fare type: one new class, zero modified classes. Strategies are immutable → safe to share across threads.</p>`,
@@ -1147,6 +1345,73 @@ int main() {
     t.setPrice("TCS", 104);  // app, email (4%), dashboard
     email();                 // unsubscribe
     t.setPrice("TCS", 97);   // app, dashboard only
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// The observer contract: one callback. A delegate implements it.
+delegate void PriceObserver(string symbol, double oldPrice, double newPrice);
+
+class StockTicker {
+    // Copy-on-iterate: safe if observers (un)subscribe while we are notifying.
+    private readonly List<PriceObserver> observers = new List<PriceObserver>();
+    private readonly object gate = new object();
+    private readonly Dictionary<string, double> prices = new Dictionary<string, double>();
+
+    // Returning an IDisposable "subscription" makes unsubscribing easy and leak-proof.
+    public IDisposable Subscribe(PriceObserver o) {
+        lock (gate) observers.Add(o);
+        return new Subscription(() => { lock (gate) observers.Remove(o); });
+    }
+
+    public void SetPrice(string symbol, double newPrice) {
+        double old; bool had = prices.TryGetValue(symbol, out old);
+        prices[symbol] = newPrice;
+        if (had && old == newPrice) return;                   // no change, no noise
+        NotifyAllObservers(symbol, had ? old : newPrice, newPrice);
+    }
+
+    private void NotifyAllObservers(string s, double oldP, double newP) {
+        PriceObserver[] snapshot; lock (gate) snapshot = observers.ToArray();
+        foreach (PriceObserver o in snapshot) {
+            try {
+                o(s, oldP, newP);                              // push model: data travels with the call
+            } catch (Exception e) {                            // one broken observer must not stop the others
+                Console.WriteLine("observer failed: " + e.Message);
+            }
+        }
+    }
+
+    private sealed class Subscription : IDisposable {
+        private readonly Action dispose; public Subscription(Action dispose) { this.dispose = dispose; }
+        public void Dispose() { dispose(); }
+    }
+}
+
+class MobileApp {
+    public void OnPrice(string s, double o, double n) { Console.WriteLine("[app] " + s + " now " + n.ToString("F2")); }
+}
+class EmailAlert {
+    private readonly double thresholdPct;
+    public EmailAlert(double thresholdPct) { this.thresholdPct = thresholdPct; }
+    public void OnPrice(string s, double o, double n) {
+        double change = Math.Abs(n - o) / o * 100;
+        if (change >= thresholdPct) Console.WriteLine("[email] " + s + " moved " + change.ToString("F1") + "%");
+    }
+}
+
+class Program {
+    static void Main() {
+        StockTicker t = new StockTicker();
+        t.Subscribe(new MobileApp().OnPrice);
+        IDisposable email = t.Subscribe(new EmailAlert(3).OnPrice);
+        t.Subscribe((s, o, n) => Console.WriteLine("[dashboard] plot " + s + "=" + n.ToString("F2")));
+        t.SetPrice("TCS", 100);
+        t.SetPrice("TCS", 104);      // app, email (4%), dashboard
+        email.Dispose();             // unsubscribe
+        t.SetPrice("TCS", 97);       // app, dashboard only
+    }
 }` }
         ] }],
     codeTitle: ['Observer with unsubscribe handles'],
@@ -1235,7 +1500,20 @@ for (const l of listeners) l("A42", "SHIPPED");` },
 vector<OrderListener> listeners;
 listeners.push_back([](const string& id, const string& st) { cout << "SMS: order " << id << " is " << st << "\\n"; });
 listeners.push_back([](const string& id, const string&) { cout << "Loyalty: +10 points for " << id << "\\n"; });
-for (auto& l : listeners) l("A42", "SHIPPED");` }
+for (auto& l : listeners) l("A42", "SHIPPED");` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+delegate void OrderListener(string orderId, string status);
+class Program {
+    static void Main() {
+        List<OrderListener> listeners = new List<OrderListener>();
+        listeners.Add((id, st) => Console.WriteLine("SMS: order " + id + " is " + st));
+        listeners.Add((id, st) => Console.WriteLine("Loyalty: +10 points for " + id));
+        foreach (OrderListener l in listeners) l("A42", "SHIPPED");
+    }
+}` }
         ] } },
       { title: 'Auction: notify all other bidders', html: `<p>Each bidder subscribes to an <code>Auction</code>. When Asha bids ₹500, the auction notifies everyone <i>except</i> Asha that the highest bid changed. Note the design decision: the subject can filter (skip the sender) — or each observer can ignore its own event. Discuss which is cleaner (subject-side filtering keeps observers dumb).</p>` },
       { title: 'Observer vs Pub/Sub broker', html: `<p>In-process Observer: subject holds direct references; delivery is a method call; if the process dies, events are lost. <b>Pub/Sub</b> (Kafka, Redis Pub/Sub, SNS): publisher and subscribers do not know each other at all — a <b>broker</b> sits between them, events can be persisted, replayed, delivered across machines. Same idea, different scale. Say this in interviews to show you know the boundary.</p>` }
@@ -1324,7 +1602,29 @@ public:
             else cout << "PUSH to " << s.user << "\\n";            // new channel = edit here
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NaiveMarket {
+    public sealed class Sub {
+        public readonly string User, Symbol, Channel; public readonly double Above, Below;
+        public Sub(string user, string symbol, double above, double below, string channel) { User = user; Symbol = symbol; Above = above; Below = below; Channel = channel; }
+    }
+    private readonly List<Sub> subs = new List<Sub>();
+    public void Add(Sub s) { subs.Add(s); }
+    public void UpdatePrice(string symbol, double price) {
+        foreach (Sub s in subs) {                                   // scans every symbol's subs
+            if (s.Symbol != symbol) continue;
+            bool hit = price > s.Above || price < s.Below;          // fires on EVERY tick
+            if (!hit) continue;
+            if (s.Channel == "SMS") Console.WriteLine("SMS to " + s.User);
+            else if (s.Channel == "EMAIL") Console.WriteLine("EMAIL to " + s.User);
+            else Console.WriteLine("PUSH to " + s.User);           // new channel = edit here
+        }
+    }
+}` }
               ] } },
       mcq: { q: 'How do you make sure an update to INFY never scans TCS subscribers?', options: ['Map&lt;String symbol, List&lt;Observer&gt;&gt; — one subject list per symbol', 'Sort the global list', 'Use a Set instead of a List', 'Notify everyone and let them filter'], answer: 0, explain: 'Partition observers by topic (symbol). Each update only walks its own list — like per-topic subscriptions in a pub/sub system.' },
       hints: [`<p>Hint 1: Each subscription is an <b>observer</b> with its own rule and its own memory of "was I already triggered?" (edge detection = notify on crossing only).</p>`, `<p>Hint 2: <code>Map&lt;String, List&lt;PriceAlert&gt;&gt;</code> keyed by symbol, values in <code>CopyOnWriteArrayList</code>. Channel is a separate <code>Notifier</code> interface (a strategy) injected into the alert.</p>`, `<p>Hint 3: Rule "above X": fire when <code>prev ≤ X &lt; now</code>. Store <code>lastPrice</code> per symbol. Return a handle from subscribe so the user can unsubscribe. Recipe: subscribe → map.computeIfAbsent(symbol) → add; update → get list → for each: alert.onPrice(prev, now).</p>`],
@@ -1596,6 +1896,73 @@ int main() {
     mkt.subscribe("INFY", make_shared<PriceAlert>("cy", PriceAlert::Dir::ABOVE, 1500, push));
     mkt.updatePrice("INFY", 1400);
     mkt.updatePrice("INFY", 1600);
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+
+delegate void Notifier(string user, string msg);
+
+interface IPriceListener { void OnPrice(string symbol, double prev, double now); }
+sealed class LambdaListener : IPriceListener {
+    private readonly Action<string, double, double> f; public LambdaListener(Action<string, double, double> f) { this.f = f; }
+    public void OnPrice(string symbol, double prev, double now) { f(symbol, prev, now); }
+}
+
+class PriceAlert : IPriceListener {
+    public enum Dir { ABOVE, BELOW }
+    private readonly string user; private readonly Dir dir; private readonly double level; private readonly Notifier notifier;
+    public PriceAlert(string user, Dir dir, double level, Notifier notifier) {
+        this.user = user; this.dir = dir; this.level = level; this.notifier = notifier;
+    }
+    public void OnPrice(string symbol, double prev, double now) {
+        bool crossed = dir == Dir.ABOVE ? (prev <= level && now > level) : (prev >= level && now < level);
+        if (crossed) notifier(user, symbol + " is " + dir + " " + level.ToString("F2") + " (now " + now.ToString("F2") + ")");
+    }
+}
+
+class StockMarket {
+    private readonly ConcurrentDictionary<string, List<IPriceListener>> bySymbol = new ConcurrentDictionary<string, List<IPriceListener>>();
+    private readonly ConcurrentDictionary<string, double> lastPrice = new ConcurrentDictionary<string, double>();
+    private readonly object gate = new object();
+
+    public Action Subscribe(string symbol, IPriceListener l) {
+        lock (gate) bySymbol.GetOrAdd(symbol, k => new List<IPriceListener>()).Add(l);
+        return () => { List<IPriceListener> ls; if (bySymbol.TryGetValue(symbol, out ls)) lock (gate) ls.Remove(l); };   // unsubscribe handle
+    }
+
+    public void UpdatePrice(string symbol, double now) {
+        double prevVal; bool had = lastPrice.TryGetValue(symbol, out prevVal);
+        lastPrice[symbol] = now;
+        double prev = had ? prevVal : now;
+        List<IPriceListener> ls; IPriceListener[] snapshot;
+        if (!bySymbol.TryGetValue(symbol, out ls)) return;
+        lock (gate) snapshot = ls.ToArray();                        // copy-on-iterate
+        foreach (IPriceListener l in snapshot) {                    // only THIS symbol
+            try { l.OnPrice(symbol, prev, now); }
+            catch (Exception e) { Console.WriteLine("listener failed: " + e.Message); }
+        }
+    }
+}
+
+class Program {
+    static void Main() {
+        Notifier push = (u, m) => Console.WriteLine("PUSH " + u + ": " + m);
+        Notifier sms = (u, m) => Console.WriteLine("SMS  " + u + ": " + m);
+        StockMarket mkt = new StockMarket();
+        mkt.Subscribe("TCS", new PriceAlert("asha", PriceAlert.Dir.ABOVE, 4000, push));
+        Action ben = mkt.Subscribe("TCS", new PriceAlert("ben", PriceAlert.Dir.BELOW, 3500, sms));
+        foreach (double p in new double[] { 3900, 4050, 4100, 3400 }) mkt.UpdatePrice("TCS", p);
+        ben();                           // ben unsubscribes
+        mkt.UpdatePrice("TCS", 3600);
+        mkt.UpdatePrice("TCS", 3300);    // nobody: asha's rule is ABOVE, ben left
+        // a broken listener must not stop the others
+        mkt.Subscribe("INFY", new LambdaListener((s, prev, now) => { throw new InvalidOperationException("boom"); }));
+        mkt.Subscribe("INFY", new PriceAlert("cy", PriceAlert.Dir.ABOVE, 1500, push));
+        mkt.UpdatePrice("INFY", 1400);
+        mkt.UpdatePrice("INFY", 1600);
+    }
 }` }
         ],
         complexity: `<p>Update: O(k) where k = subscribers of that symbol (not all subscribers). Subscribe/unsubscribe: O(k) due to copy-on-write — fine because they are rare. Memory O(total subscriptions).</p>`,
@@ -1963,6 +2330,83 @@ int main() {
     cm.undo(); cout << doc.str() << "\\n";  // Hello World
     cm.undo(); cout << doc.str() << "\\n";  // Hello
     cm.redo(); cout << doc.str() << "\\n";  // Hello World
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+// Receiver: knows HOW to edit text. Knows nothing about undo.
+class Document {
+    private readonly StringBuilder text = new StringBuilder();
+    public void Insert(int pos, string s) { text.Insert(pos, s); }
+    public string Delete(int pos, int len) {                  // returns what was removed
+        string gone = text.ToString(pos, len);
+        text.Remove(pos, len);
+        return gone;
+    }
+    public int Length { get { return text.Length; } }
+    public override string ToString() { return text.ToString(); }
+}
+
+interface IEditCommand {
+    void Execute();
+    void Undo();
+}
+
+// Each command stores exactly what it needs to reverse itself (not the whole document).
+class InsertText : IEditCommand {
+    private readonly Document doc; private readonly string s; private int pos;
+    public InsertText(Document doc, string s) { this.doc = doc; this.s = s; }
+    public void Execute() { pos = doc.Length; doc.Insert(pos, s); }
+    public void Undo() { doc.Delete(pos, s.Length); }
+}
+class DeleteLast : IEditCommand {
+    private readonly Document doc; private readonly int n; private string removed = ""; private int pos;
+    public DeleteLast(Document doc, int n) { this.doc = doc; this.n = n; }
+    public void Execute() {
+        int k = Math.Min(n, doc.Length);
+        pos = doc.Length - k;
+        removed = doc.Delete(pos, k);                  // remember the deleted text for undo
+    }
+    public void Undo() { doc.Insert(pos, removed); }
+}
+
+// Invoker: runs commands and keeps history. It never looks inside a command.
+class CommandManager {
+    private readonly LinkedList<IEditCommand> undo = new LinkedList<IEditCommand>();   // front = newest
+    private readonly Stack<IEditCommand> redo = new Stack<IEditCommand>();
+    private readonly int limit;
+    public CommandManager(int limit) { this.limit = limit; }
+
+    public void Run(IEditCommand c) {
+        c.Execute();
+        undo.AddFirst(c);
+        if (undo.Count > limit) undo.RemoveLast();     // bounded history: drop the oldest
+        redo.Clear();                                  // a new action kills the old "future"
+    }
+    public bool Undo() {
+        if (undo.Count == 0) return false;
+        IEditCommand c = undo.First.Value; undo.RemoveFirst(); c.Undo(); redo.Push(c); return true;
+    }
+    public bool Redo() {
+        if (redo.Count == 0) return false;
+        IEditCommand c = redo.Pop(); c.Execute(); undo.AddFirst(c); return true;
+    }
+}
+
+class Program {
+    static void Main() {
+        Document doc = new Document();
+        CommandManager cm = new CommandManager(100);
+        cm.Run(new InsertText(doc, "Hello"));
+        cm.Run(new InsertText(doc, " World"));
+        cm.Run(new DeleteLast(doc, 3));
+        Console.WriteLine(doc);   // Hello Wo
+        cm.Undo(); Console.WriteLine(doc);   // Hello World
+        cm.Undo(); Console.WriteLine(doc);   // Hello
+        cm.Redo(); Console.WriteLine(doc);   // Hello World
+    }
 }` }
         ] }, { lang: 'java', title: 'Commands as jobs: queue, macro and log', code: `// Runnable IS the Command pattern without undo. An executor is an invoker with a queue.
 class JobsDemo {
@@ -2059,6 +2503,32 @@ int main() {
     cout << auditLog.size() << " actions ran: [";
     for (size_t i = 0; i < auditLog.size(); i++) cout << (i ? ", " : "") << auditLog[i];
     cout << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+// An Action IS the Command pattern without undo. A task queue drained by one worker is an invoker.
+class Program {
+    static void Main() {
+        List<string> auditLog = new List<string>();
+        Queue<Action> queue = new Queue<Action>();
+
+        queue.Enqueue(() => auditLog.Add("resize image 42"));
+        queue.Enqueue(() => auditLog.Add("send welcome email to asha"));
+
+        // Macro = a command made of commands (Composite + Command)
+        List<Action> steps = new List<Action> { () => auditLog.Add("lights off"), () => auditLog.Add("lock door") };
+        Action goodNight = () => steps.ForEach(s => s());
+        queue.Enqueue(goodNight);
+
+        Task worker = Task.Run(() => {                        // one worker: jobs run in queue order
+            while (queue.Count > 0) queue.Dequeue()();        // the invoker does not know what jobs do
+        });
+        worker.Wait();
+        Console.WriteLine(auditLog.Count + " actions ran: [" + string.Join(", ", auditLog) + "]");
+    }
 }` }
         ] }],
     codeTitle: ['Undo/redo editor', 'Command as queued jobs + macro'],
@@ -2148,7 +2618,20 @@ auto later = async(launch::async, [reminder] {
     this_thread::sleep_for(chrono::milliseconds(10));  // run once after 10 ms
     reminder();
 });
-later.get();` }
+later.get();` },
+  { lang: 'csharp', code: `
+using System;
+using System.Threading;
+
+class Program {
+    static void Main() {
+        ManualResetEventSlim done = new ManualResetEventSlim(false);
+        TimerCallback reminder = _ => { Console.WriteLine("Drink water!"); done.Set(); };   // command object
+        using (Timer timer = new Timer(reminder, null, 10, Timeout.Infinite)) {
+            done.Wait(1000);
+        }
+    }
+}` }
         ] } },
       { title: 'Database-style write-ahead log', html: `<p>A key-value store writes each command (<code>SET k v</code>, <code>DEL k</code>) to an append-only log <b>before</b> applying it. After a crash, it replays the log to rebuild memory. Redis AOF works this way. Commands that are data = durability, replication (send the log to replicas) and auditing for free.</p>` },
       { title: 'Undo for irreversible actions', html: `<p>Some actions cannot be undone by "doing the opposite": sending an email, charging a card, applying a lossy image filter. Options: a <b>compensating command</b> (refund instead of un-charge, send a "please ignore" email), or a <b>Memento snapshot</b> taken before execute (the image filter). Mention this nuance — interviewers love it.</p>` }
@@ -2242,7 +2725,29 @@ public:
         else if (t == "WD") bal[a] += amt;
         else if (t == "TR") { bal[a] += amt; bal[b] -= amt; }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NaiveBank {
+    public readonly Dictionary<string, long> Bal = new Dictionary<string, long>();
+    public readonly Stack<string> Log = new Stack<string>();
+    void Add(string k, long d) { long v; Bal.TryGetValue(k, out v); Bal[k] = v + d; }
+    public void Op(string type, string a, string b, long amt) {
+        Log.Push(type + " " + a + " " + b + " " + amt);          // logged even if it fails!
+        if (type == "DEP") Add(a, amt);
+        else if (type == "WD") Add(a, -amt);                     // no funds check
+        else if (type == "TR") { Add(a, -amt); Add(b, amt); }
+    }
+    public void UndoLast() {
+        string[] p = Log.Pop().Split(' ');
+        long amt = long.Parse(p[3]);
+        if (p[0] == "DEP") Add(p[1], -amt);                      // second switch to maintain
+        else if (p[0] == "WD") Add(p[1], amt);
+        else if (p[0] == "TR") { Add(p[1], amt); Add(p[2], -amt); }
+    }
+}` }
               ] } },
       mcq: { q: 'withdraw(A, 50) fails because A has only 30. What should the invoker do?', options: ['Not push it onto the undo stack — execute() reports failure first', 'Push it and let undo add 50 back', 'Push it and mark it failed', 'Throw away the entire history'], answer: 0, explain: 'Only successful commands belong in history; undoing a failed withdraw would create money. Have execute() return a boolean (or throw) and push only on success.' },
       hints: [`<p>Hint 1: Each operation becomes an object that knows how to <code>execute()</code> and <code>undo()</code> itself. The bank (invoker) just keeps a stack.</p>`, `<p>Hint 2: <code>interface BankCommand { boolean execute(); void undo(); String describe(); }</code>. Transfer can <b>reuse</b> withdraw + deposit internally, and undo them in reverse order.</p>`, `<p>Hint 3: Push to history only when <code>execute()</code> returns true. Undo on an empty stack returns false. Recipe: Account receiver with deposit/withdraw(returns boolean) → three command classes → Bank.run(cmd) / undoLast().</p>`],
@@ -2612,6 +3117,81 @@ int main() {
     bank.run(make_unique<TransferCommand>(a, b, 500));  // fails, nothing moves
     cout << bank.history() << " A=" << a.balance() << " B=" << b.balance() << "\\n";
     cout << "undo on empty: " << boolalpha << bank.undoLast() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Account {
+    public readonly string Id; private long balance;
+    public Account(string id, long balance) { Id = id; this.balance = balance; }
+    public void Deposit(long amt) { balance += amt; }
+    public bool Withdraw(long amt) {
+        if (amt > balance) return false;          // receiver guards its own invariant
+        balance -= amt; return true;
+    }
+    public long Balance { get { return balance; } }
+}
+
+interface IBankCommand { bool Execute(); void Undo(); string Describe(); }
+
+class DepositCommand : IBankCommand {
+    private readonly Account acc; private readonly long amt;
+    public DepositCommand(Account acc, long amt) { this.acc = acc; this.amt = amt; }
+    public bool Execute() { acc.Deposit(amt); return true; }
+    public void Undo() { acc.Withdraw(amt); }
+    public string Describe() { return "deposit " + amt + " to " + acc.Id; }
+}
+class WithdrawCommand : IBankCommand {
+    private readonly Account acc; private readonly long amt;
+    public WithdrawCommand(Account acc, long amt) { this.acc = acc; this.amt = amt; }
+    public bool Execute() { return acc.Withdraw(amt); }
+    public void Undo() { acc.Deposit(amt); }
+    public string Describe() { return "withdraw " + amt + " from " + acc.Id; }
+}
+class TransferCommand : IBankCommand {
+    private readonly IBankCommand outCmd, inCmd; private readonly string text;
+    public TransferCommand(Account from, Account to, long amt) {
+        outCmd = new WithdrawCommand(from, amt); inCmd = new DepositCommand(to, amt);
+        text = "transfer " + amt + " " + from.Id + "->" + to.Id;
+    }
+    public bool Execute() { if (!outCmd.Execute()) return false; inCmd.Execute(); return true; }
+    public void Undo() { inCmd.Undo(); outCmd.Undo(); }               // reverse order
+    public string Describe() { return text; }
+}
+
+class Bank {
+    private readonly Stack<IBankCommand> history = new Stack<IBankCommand>();
+    public bool Run(IBankCommand c) {
+        if (!c.Execute()) { Console.WriteLine("FAILED: " + c.Describe()); return false; }
+        history.Push(c);
+        return true;
+    }
+    public bool UndoLast() {
+        if (history.Count == 0) return false;
+        history.Pop().Undo();
+        return true;
+    }
+    public List<string> History() {
+        return history.Reverse().Select(c => c.Describe()).ToList();   // oldest first
+    }
+}
+
+class Program {
+    static void Main() {
+        Account a = new Account("A", 100), b = new Account("B", 0);
+        Bank bank = new Bank();
+        bank.Run(new TransferCommand(a, b, 70));
+        bank.Run(new WithdrawCommand(a, 50));            // fails, not recorded
+        bank.Run(new DepositCommand(b, 5));
+        Console.WriteLine("[" + string.Join(", ", bank.History()) + "] A=" + a.Balance + " B=" + b.Balance);
+        bank.UndoLast(); bank.UndoLast();
+        Console.WriteLine("after undo A=" + a.Balance + " B=" + b.Balance);   // A=100 B=0
+        bank.Run(new TransferCommand(a, b, 500));        // fails, nothing moves
+        Console.WriteLine("[" + string.Join(", ", bank.History()) + "] A=" + a.Balance + " B=" + b.Balance);
+        Console.WriteLine("undo on empty: " + bank.UndoLast().ToString().ToLower());
+    }
 }` }
         ],
         complexity: `<p>run and undoLast are O(1). History memory O(number of successful operations) — bound it with a capped deque in production.</p>`,
@@ -2940,6 +3520,72 @@ int main() {
     string trail;
     for (const auto& line : o.audit()) trail += (trail.empty() ? "" : ", ") + line;
     cout << o.status() << " [" << trail << "]\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// Base class: every action is illegal by default. Each state overrides only what it allows.
+abstract class OrderState {
+    public virtual void Pay(Order o)     { Illegal("pay"); }
+    public virtual void Ship(Order o)    { Illegal("ship"); }
+    public virtual void Deliver(Order o) { Illegal("deliver"); }
+    public virtual void Cancel(Order o)  { Illegal("cancel"); }
+    public abstract string Name { get; }
+    private void Illegal(string action) {
+        throw new InvalidOperationException("Cannot " + action + " when order is " + Name);
+    }
+}
+
+// States hold no per-order data, so ONE instance of each can be shared by all orders.
+sealed class NewState : OrderState {
+    public static readonly NewState I = new NewState();
+    public override void Pay(Order o)    { Console.WriteLine("charging card"); o.SetState(PaidState.I); }
+    public override void Cancel(Order o) { o.SetState(CancelledState.I); }
+    public override string Name { get { return "NEW"; } }
+}
+sealed class PaidState : OrderState {
+    public static readonly PaidState I = new PaidState();
+    public override void Ship(Order o)   { Console.WriteLine("handing to courier"); o.SetState(ShippedState.I); }
+    public override void Cancel(Order o) { Console.WriteLine("refunding"); o.SetState(CancelledState.I); }
+    public override string Name { get { return "PAID"; } }
+}
+sealed class ShippedState : OrderState {
+    public static readonly ShippedState I = new ShippedState();
+    public override void Deliver(Order o) { o.SetState(DeliveredState.I); }
+    public override string Name { get { return "SHIPPED"; } }        // cancel not allowed: default throws
+}
+sealed class DeliveredState : OrderState {
+    public static readonly DeliveredState I = new DeliveredState();
+    public override string Name { get { return "DELIVERED"; } }      // terminal state
+}
+sealed class CancelledState : OrderState {
+    public static readonly CancelledState I = new CancelledState();
+    public override string Name { get { return "CANCELLED"; } }      // terminal state
+}
+
+class Order {
+    private OrderState state = NewState.I;
+    private readonly List<string> audit = new List<string>();
+    private readonly object gate = new object();
+    public void SetState(OrderState next) { audit.Add(state.Name + " -> " + next.Name); state = next; }
+    // Every public action is a one-line delegation. lock = one transition at a time.
+    public void Pay()     { lock (gate) state.Pay(this); }
+    public void Ship()    { lock (gate) state.Ship(this); }
+    public void Deliver() { lock (gate) state.Deliver(this); }
+    public void Cancel()  { lock (gate) state.Cancel(this); }
+    public string Status { get { return state.Name; } }
+    public List<string> Audit { get { return audit; } }
+}
+
+class Program {
+    static void Main() {
+        Order o = new Order();
+        o.Pay(); o.Ship();
+        try { o.Cancel(); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        o.Deliver();
+        Console.WriteLine(o.Status + " [" + string.Join(", ", o.Audit) + "]");
+    }
 }` }
         ] }, { lang: 'java', title: 'Table-driven alternative: enum + transition map', code: `// When states have little behaviour (just "which event leads where"), a table is simpler than classes.
 enum Light { RED, GREEN, YELLOW }
@@ -3065,6 +3711,36 @@ int main() {
     string line;
     for (int i = 0; i < 4; i++) line += name(tl.fire(Event::TIMER)) + " ";
     cout << line << name(tl.fire(Event::EMERGENCY)) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// When states have little behaviour (just "which event leads where"), a table is simpler than classes.
+enum Light { RED, GREEN, YELLOW }
+enum Event { TIMER, EMERGENCY }
+
+class TrafficLight {
+    private static readonly Dictionary<Light, Dictionary<Event, Light>> T = new Dictionary<Light, Dictionary<Event, Light>> {
+        { Light.RED,    new Dictionary<Event, Light> { { Event.TIMER, Light.GREEN },  { Event.EMERGENCY, Light.RED } } },
+        { Light.GREEN,  new Dictionary<Event, Light> { { Event.TIMER, Light.YELLOW }, { Event.EMERGENCY, Light.RED } } },
+        { Light.YELLOW, new Dictionary<Event, Light> { { Event.TIMER, Light.RED },    { Event.EMERGENCY, Light.RED } } } };
+    private Light current = Light.RED;
+
+    public Light Fire(Event e) {
+        Light next;
+        if (!T[current].TryGetValue(e, out next)) throw new InvalidOperationException(e + " not allowed in " + current);
+        current = next;
+        return current;
+    }
+}
+
+class Program {
+    static void Main() {
+        TrafficLight tl = new TrafficLight();
+        for (int i = 0; i < 4; i++) Console.Write(tl.Fire(Event.TIMER) + " ");
+        Console.WriteLine(tl.Fire(Event.EMERGENCY));
+    }
 }` }
         ] }],
     codeTitle: ['State classes', 'Enum transition table'],
@@ -3199,7 +3875,26 @@ static struct Playing : PlayerState {
 holder[0] = &playing;
 PlayerState* s = holder[0];
 s = s->pause();
-s = s->play();` }
+s = s->play();` },
+  { lang: 'csharp', code: `
+using System;
+
+interface IPlayerState { IPlayerState Play(); IPlayerState Pause(); }
+sealed class Paused : IPlayerState {
+    public IPlayerState Play() { Console.WriteLine("resume"); return new Playing(); }
+    public IPlayerState Pause() { return this; }
+}
+sealed class Playing : IPlayerState {
+    public IPlayerState Play() { return this; }
+    public IPlayerState Pause() { Console.WriteLine("pause at 1:23"); return new Paused(); }
+}
+class Program {
+    static void Main() {
+        IPlayerState s = new Playing();
+        s = s.Pause();
+        s = s.Play();
+    }
+}` }
         ] } },
       { title: 'Vending machine (classic interview)', html: `<p>States: <b>Idle</b> → (insert coin) → <b>HasMoney</b> → (select item) → <b>Dispensing</b> → <b>Idle</b>, plus <b>SoldOut</b>. "Select item" in Idle says "insert money first"; in HasMoney it checks price and stock; in SoldOut it refunds. The machine (context) also holds data (inventory, balance) that states read and update. Full design comes in LLD 9.</p>` },
       { title: 'TCP connection', html: `<p>The TCP specification (RFC 793, replaced by RFC 9293 in 2022) literally defines TCP as a state machine: CLOSED, LISTEN, SYN_SENT, SYN_RECEIVED, ESTABLISHED, FIN_WAIT, TIME_WAIT… The same segment (e.g. a FIN) means different things in different states. The original GoF book used <code>TCPConnection</code> as its State example.</p>` },
@@ -3288,7 +3983,25 @@ public:
     void expire() { if (s == PUBLISHED) s = DRAFT; else throw runtime_error(""); }
     void edit(const string& t) { if (s == DRAFT) text = t; else throw runtime_error(""); }
     // adding ARCHIVED = touch every method above
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveDocument {
+    public enum S { DRAFT, MODERATION, PUBLISHED }
+    public S State = S.DRAFT; public string Text = "";
+    public void Publish(bool admin) {
+        switch (State) {
+            case S.DRAFT: State = admin ? S.PUBLISHED : S.MODERATION; break;
+            case S.MODERATION: if (admin) State = S.PUBLISHED; else throw new InvalidOperationException("admin only"); break;
+            case S.PUBLISHED: break;
+        }
+    }
+    public void Reject() { if (State == S.MODERATION) State = S.DRAFT; else throw new InvalidOperationException(); }
+    public void Expire() { if (State == S.PUBLISHED) State = S.DRAFT; else throw new InvalidOperationException(); }
+    public void Edit(string t) { if (State == S.DRAFT) Text = t; else throw new InvalidOperationException(); }
+    // adding ARCHIVED = touch every method above
+}` }
               ] } },
       mcq: { q: 'In the State pattern, where does the rule "only admins may publish from Moderation" live?', options: ['Inside ModerationState.publish()', 'Inside Document.publish() with an if', 'In the User class', 'In a global validator'], answer: 0, explain: 'All rules of a state live in that state class. Document.publish() just delegates.' },
       hints: [`<p>Hint 1: List the states and, for each, what every method does. That table <i>is</i> your class list.</p>`, `<p>Hint 2: <code>interface DocState</code> with default methods that throw; each state overrides only legal actions. States return or set the next state.</p>`, `<p>Hint 3: <code>edit()</code> is allowed only in Draft → <code>DraftState</code> overrides edit; others inherit the throwing default. Mark Document methods <code>synchronized</code>. Recipe: record User(name, admin) → DocState interface → 3 singletons → Document delegates.</p>`],
@@ -3610,6 +4323,71 @@ int main() {
     attempt([&] { d.edit("x"); });
     d.expire(); cout << d.state() << "\\n";  // Draft
     attempt([&] { d.reject(); });
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+sealed class User {
+    public readonly string Name; public readonly bool Admin;
+    public User(string name, bool admin) { Name = name; Admin = admin; }
+}
+
+abstract class DocState {
+    public abstract string Name { get; }
+    public virtual DocState Publish(Document d, User u) { throw No("publish"); }
+    public virtual DocState Reject(Document d)          { throw No("reject"); }
+    public virtual DocState Expire(Document d)          { throw No("expire"); }
+    public virtual void Edit(Document d, string text)   { throw No("edit"); }
+    private InvalidOperationException No(string what) { return new InvalidOperationException("Cannot " + what + " in " + Name); }
+}
+
+sealed class Draft : DocState {
+    public static readonly Draft I = new Draft();
+    public override string Name { get { return "Draft"; } }
+    public override DocState Publish(Document d, User u) { return u.Admin ? (DocState)Published.I : Moderation.I; }
+    public override void Edit(Document d, string text) { d.SetText(text); }
+}
+sealed class Moderation : DocState {
+    public static readonly Moderation I = new Moderation();
+    public override string Name { get { return "Moderation"; } }
+    public override DocState Publish(Document d, User u) {
+        if (!u.Admin) throw new InvalidOperationException("Only an admin can publish from Moderation");
+        return Published.I;
+    }
+    public override DocState Reject(Document d) { return Draft.I; }
+}
+sealed class Published : DocState {
+    public static readonly Published I = new Published();
+    public override string Name { get { return "Published"; } }
+    public override DocState Publish(Document d, User u) { return this; }     // no-op
+    public override DocState Expire(Document d) { return Draft.I; }
+}
+
+class Document {
+    private DocState state = Draft.I;
+    private string text = "";
+    private readonly object gate = new object();
+    public void SetText(string t) { text = t; }
+    public void Publish(User u) { lock (gate) state = state.Publish(this, u); }
+    public void Reject()        { lock (gate) state = state.Reject(this); }
+    public void Expire()        { lock (gate) state = state.Expire(this); }
+    public void Edit(string t)  { lock (gate) state.Edit(this, t); }
+    public string State { get { return state.Name; } }
+}
+
+class Program {
+    static void Main() {
+        User author = new User("ria", false), admin = new User("root", true);
+        Document d = new Document();
+        d.Edit("hello");
+        d.Publish(author);                       Console.WriteLine(d.State);   // Moderation
+        try { d.Publish(author); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        d.Reject();                              Console.WriteLine(d.State);   // Draft
+        d.Publish(admin);                        Console.WriteLine(d.State);   // Published
+        try { d.Edit("x"); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        d.Expire();                              Console.WriteLine(d.State);   // Draft
+        try { d.Reject(); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+    }
 }` }
         ],
         complexity: `<p>Every action O(1). Adding a state: 1 new class + small overrides in states that transition into it; Document unchanged.</p>`,
@@ -3884,6 +4662,71 @@ protected:
 int main() {
     cout << CsvImporter().importFile("users.csv", "asha, 31\\nben, -4\\ncy, 22") << "\\n";
     cout << TrustedFeedImporter().importFile("feed.txt", "dee=40;eli=29") << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Row {
+    public readonly string Name; public readonly int Age;
+    public Row(string name, int age) { Name = name; Age = age; }
+}
+
+abstract class DataImporter {
+    // The TEMPLATE METHOD: not virtual, so subclasses cannot change the order of steps.
+    public int ImportFile(string fileName, string content) {
+        Console.WriteLine("open " + fileName);               // fixed step
+        List<Row> rows = Parse(content);                     // abstract step: must override
+        if (ShouldValidate()) rows = Validate(rows);         // hook decides whether to validate
+        Save(rows);                                          // fixed step
+        AfterImport(rows.Count);                             // hook: empty by default
+        return rows.Count;
+    }
+
+    protected abstract List<Row> Parse(string content);      // every format is different
+
+    protected virtual bool ShouldValidate() { return true; } // hook with a sensible default
+    protected virtual void AfterImport(int count) { }        // hook: do nothing by default
+
+    private List<Row> Validate(List<Row> rows) {             // shared rule, written once
+        List<Row> ok = new List<Row>();
+        foreach (Row r in rows) if (r.Age >= 0 && r.Age < 150 && !string.IsNullOrWhiteSpace(r.Name)) ok.Add(r);
+        return ok;
+    }
+    private void Save(List<Row> rows) {                      // shared, e.g. batched DB insert
+        Console.WriteLine("saving " + rows.Count + " rows in one batch");
+    }
+}
+
+class CsvImporter : DataImporter {
+    protected override List<Row> Parse(string content) {
+        List<Row> result = new List<Row>();
+        foreach (string line in content.Split('\\n')) {
+            string[] p = line.Split(',');
+            result.Add(new Row(p[0].Trim(), int.Parse(p[1].Trim())));
+        }
+        return result;
+    }
+}
+
+class TrustedFeedImporter : DataImporter {                   // already-clean partner feed
+    protected override List<Row> Parse(string content) {
+        List<Row> result = new List<Row>();
+        foreach (string part in content.Split(';')) {
+            string[] kv = part.Split('=');
+            result.Add(new Row(kv[0], int.Parse(kv[1])));
+        }
+        return result;
+    }
+    protected override bool ShouldValidate() { return false; }               // override hook
+    protected override void AfterImport(int n) { Console.WriteLine("ping partner: got " + n); }
+}
+
+class Program {
+    static void Main() {
+        Console.WriteLine(new CsvImporter().ImportFile("users.csv", "asha, 31\\nben, -4\\ncy, 22"));
+        Console.WriteLine(new TrustedFeedImporter().ImportFile("feed.txt", "dee=40;eli=29"));
+    }
 }` }
         ] }],
     codeTitle: ['Template Method with hooks'],
@@ -4060,7 +4903,27 @@ protected:
     void brew() override { cout << "drip coffee\\n"; }
     void addExtras() override { cout << "add milk\\n"; }
     bool wantsExtras() const override { return false; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class Beverage {
+    public void Prepare() { Boil(); Brew(); Pour(); if (WantsExtras()) AddExtras(); }
+    private void Boil() { Console.WriteLine("boil water"); }
+    private void Pour() { Console.WriteLine("pour into cup"); }
+    protected abstract void Brew();
+    protected abstract void AddExtras();
+    protected virtual bool WantsExtras() { return true; }      // hook
+}
+class Tea : Beverage {
+    protected override void Brew() { Console.WriteLine("steep tea bag"); }
+    protected override void AddExtras() { Console.WriteLine("add lemon"); }
+}
+class BlackCoffee : Beverage {
+    protected override void Brew() { Console.WriteLine("drip coffee"); }
+    protected override void AddExtras() { Console.WriteLine("add milk"); }
+    protected override bool WantsExtras() { return false; }
+}` }
         ] } },
       { title: 'AbstractList: write 2 methods, get 30', html: `<p>Extend <code>AbstractList&lt;E&gt;</code> and implement only <code>get(int)</code> and <code>size()</code>. You instantly get <code>iterator()</code>, <code>contains()</code>, <code>indexOf()</code>, <code>equals()</code>, <code>hashCode()</code>, <code>subList()</code>, streams… all template methods in the base calling your two primitives.</p>`, code: { lang: 'java', code: `List<Integer> squares = new AbstractList<Integer>() {
     public Integer get(int i) { return i * i; }
@@ -4100,7 +4963,20 @@ console.log(\`\${squares} contains 9? \${squares.contains(9)}\`);` },
 auto squares = views::iota(0, 5) | views::transform([](int i) { return i * i; });
 cout << "[";
 for (int v : squares) cout << (v ? ", " : "") << v;
-cout << "] contains 9? " << boolalpha << (ranges::find(squares, 9) != squares.end()) << "\\n";` }
+cout << "] contains 9? " << boolalpha << (ranges::find(squares, 9) != squares.end()) << "\\n";` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Program {
+    static void Main() {
+        // Enumerable.Range + Select is a lazy, read-only list: the framework supplies iteration and
+        // search, you supply only "what is element i".
+        IEnumerable<int> squares = Enumerable.Range(0, 5).Select(i => i * i);
+        Console.WriteLine("[" + string.Join(", ", squares) + "] contains 9? " + squares.Contains(9).ToString().ToLower());
+    }
+}` }
         ] } },
       { title: 'HttpServlet.service()', html: `<p>The servlet container calls <code>service(req, res)</code> (template method). It reads the HTTP method and calls <code>doGet</code>, <code>doPost</code>, <code>doPut</code>… which you override. Default implementations return 405 Method Not Allowed — they are hooks with a safe default.</p>` },
       { title: 'Template Method vs Strategy for the same problem', html: `<p>The importer could instead be <code>Importer(Parser parser)</code> with a <code>Parser</code> strategy. Pick <b>Template Method</b> when the steps share lots of protected state with the skeleton and the variation is fixed per class. Pick <b>Strategy</b> when you need to mix and match at runtime (CSV parser + no validation + S3 saver), when steps are reusable elsewhere, or when you want to avoid deep inheritance. Many teams start with Template Method and refactor to strategies as combinations multiply.</p>` }
@@ -4165,6 +5041,23 @@ public:
         return sb + "TOTAL," + to_string(total);
     }
 };
+// NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+class NaiveCsvExport {
+    public string Export(List<long[]> rows, List<string> regions) {
+        StringBuilder sb = new StringBuilder("region,amount\\n");
+        long total = 0;
+        for (int i = 0; i < rows.Count; i++) {        // forgot to sort!
+            sb.Append(regions[i]).Append(',').Append(rows[i][0]).Append('\\n');
+            total += rows[i][0];
+        }
+        return sb.Append("TOTAL,").Append(total).ToString();
+    }
+}
 // NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.` }
               ] } },
       mcq: { q: 'Which method of the base exporter should be declared final?', options: ['export() — the template method that fixes the order of steps', 'row() — the formatting of a line', 'escape() — every format escapes differently', 'None; final is bad practice'], answer: 0, explain: 'The template method must be final so subclasses cannot reorder or skip sorting, totals or escaping. Format-specific pieces are the overridable steps.' },
@@ -4428,6 +5321,64 @@ int main() {
     for (const auto& e : exporters) cout << e->exportReport(sales);
     cout << CsvExporter().exportReport({{"say \\"hi\\"", 7}});  // quote doubling
     cout << CsvExporter().exportReport({});                  // empty input
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+sealed class Sale {
+    public readonly string Region; public readonly long Amount;
+    public Sale(string region, long amount) { Region = region; Amount = amount; }
+}
+
+abstract class ReportExporter {
+    public string Export(List<Sale> sales) {                                    // the template method
+        List<Sale> sorted = sales.OrderByDescending(s => s.Amount).ToList();   // never mutate input; shared rule
+        StringBuilder sb = new StringBuilder(Header());
+        long total = 0;
+        foreach (Sale s in sorted) {
+            sb.Append(Row(Escape(s.Region), s.Amount));
+            total += s.Amount;
+        }
+        return sb.Append(Footer(total)).ToString();
+    }
+    protected abstract string Header();
+    protected abstract string Row(string region, long amount);
+    protected abstract string Footer(long total);
+    protected virtual string Escape(string s) { return s; }                   // hook
+}
+
+class CsvExporter : ReportExporter {
+    protected override string Header() { return "region,amount\\n"; }
+    protected override string Row(string r, long a) { return r + "," + a + "\\n"; }
+    protected override string Footer(long t) { return "TOTAL," + t + "\\n"; }
+    protected override string Escape(string s) {
+        return s.Contains(",") || s.Contains("\\"") ? "\\"" + s.Replace("\\"", "\\"\\"") + "\\"" : s;
+    }
+}
+class HtmlExporter : ReportExporter {
+    protected override string Header() { return "<table><tr><th>region</th><th>amount</th></tr>\\n"; }
+    protected override string Row(string r, long a) { return "<tr><td>" + r + "</td><td>" + a + "</td></tr>\\n"; }
+    protected override string Footer(long t) { return "<tr><td>TOTAL</td><td>" + t + "</td></tr></table>\\n"; }
+    protected override string Escape(string s) { return s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;"); }
+}
+class MarkdownExporter : ReportExporter {
+    protected override string Header() { return "| region | amount |\\n|---|---|\\n"; }
+    protected override string Row(string r, long a) { return "| " + r + " | " + a + " |\\n"; }
+    protected override string Footer(long t) { return "| **TOTAL** | " + t + " |\\n"; }
+    protected override string Escape(string s) { return s.Replace("|", "\\\\|"); }
+}
+
+class Program {
+    static void Main() {
+        List<Sale> sales = new List<Sale> { new Sale("North", 300), new Sale("South, East", 500), new Sale("A<B|C", 50) };
+        foreach (ReportExporter e in new ReportExporter[] { new CsvExporter(), new HtmlExporter(), new MarkdownExporter() })
+            Console.Write(e.Export(sales));
+        Console.Write(new CsvExporter().Export(new List<Sale> { new Sale("say \\"hi\\"", 7) }));   // quote doubling
+        Console.Write(new CsvExporter().Export(new List<Sale>()));                              // empty input
+    }
 }` }
         ],
         complexity: `<p>O(N log N) for the sort, O(N) for writing. The skeleton exists once; each format is ~4 short methods.</p>`,
@@ -4692,6 +5643,59 @@ int main() {
     head.linkTo(make_unique<Manager>()).linkTo(make_unique<Director>()).linkTo(make_unique<Cfo>());  // assembled once
     for (long long amt : {500LL, 7'500LL, 70'000LL, 999'999LL})
         cout << head.handle({"asha", amt, amt == 70'000 ? "TRAINING" : "TRAVEL"}) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+sealed class Expense {
+    public readonly string Employee, Category; public readonly long Amount;
+    public Expense(string employee, long amount, string category) { Employee = employee; Amount = amount; Category = category; }
+}
+
+abstract class Approver {
+    private Approver next;
+    private readonly string title;
+    protected Approver(string title) { this.title = title; }
+
+    // Returns 'next' so chains can be built fluently: a.LinkTo(b).LinkTo(c)
+    public Approver LinkTo(Approver next) { this.next = next; return next; }
+
+    // The walking logic lives ONCE in the base class.
+    public string Handle(Expense e) {
+        if (CanApprove(e)) return title + " approved " + e.Amount + " for " + e.Employee;
+        if (next == null) return "REJECTED: nobody can approve " + e.Amount;
+        return next.Handle(e);
+    }
+    protected abstract bool CanApprove(Expense e);
+}
+
+class TeamLead : Approver {
+    public TeamLead() : base("TeamLead") { }
+    protected override bool CanApprove(Expense e) { return e.Amount <= 1000; }
+}
+class Manager : Approver {
+    public Manager() : base("Manager") { }
+    protected override bool CanApprove(Expense e) { return e.Amount <= 10000; }
+}
+class Director : Approver {
+    public Director() : base("Director") { }
+    // Special rule lives with the handler that owns it, not in a central if/else.
+    protected override bool CanApprove(Expense e) {
+        return e.Amount <= 50000 || (e.Category == "TRAINING" && e.Amount <= 80000);
+    }
+}
+class Cfo : Approver {
+    public Cfo() : base("CFO") { }
+    protected override bool CanApprove(Expense e) { return e.Amount <= 200000; }
+}
+
+class Program {
+    static void Main() {
+        Approver head = new TeamLead();
+        head.LinkTo(new Manager()).LinkTo(new Director()).LinkTo(new Cfo());   // assembled once
+        foreach (long amt in new long[] { 500, 7500, 70000, 999999 })
+            Console.WriteLine(head.Handle(new Expense("asha", amt, amt == 70000 ? "TRAINING" : "TRAVEL")));
+    }
 }` }
         ] }, { lang: 'java', title: 'Middleware pipeline (every handler may act, any may stop)', code: `record Request(String path, String token, String ip) {}
 record Response(int status, String body) {}
@@ -4866,6 +5870,49 @@ int main() {
      });
     for (int i = 0; i < 4; i++)
         cout << p.handle({"/orders", i == 0 ? nullopt : optional<string>("asha"), "1.2.3.4"}).body << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+sealed class Request {
+    public readonly string Path, Token, Ip;
+    public Request(string path, string token, string ip) { Path = path; Token = token; Ip = ip; }
+}
+sealed class Response {
+    public readonly int Status; public readonly string Body;
+    public Response(int status, string body) { Status = status; Body = body; }
+}
+
+// A middleware receives the request and a "next" function it MAY call.
+delegate Response Middleware(Request r, Func<Request, Response> next);
+
+class Pipeline {
+    private readonly List<Middleware> chain = new List<Middleware>();
+    private readonly Func<Request, Response> endpoint;
+    public Pipeline(Func<Request, Response> endpoint) { this.endpoint = endpoint; }
+    public Pipeline Use(Middleware m) { chain.Add(m); return this; }
+
+    public Response Handle(Request r) { return Call(0, r); }
+    private Response Call(int i, Request r) {
+        if (i == chain.Count) return endpoint(r);                       // end of chain: real handler
+        return chain[i](r, req => Call(i + 1, req));                    // give it a 'next'
+    }
+}
+
+class Program {
+    static void Main() {
+        Dictionary<string, int> hits = new Dictionary<string, int>();
+        Pipeline p = new Pipeline(r => new Response(200, "orders for " + r.Token))
+            .Use((r, next) => {                                          // logging: before AND after
+                Response res = next(r);
+                Console.WriteLine(r.Path + " -> " + res.Status);
+                return res;
+            })
+            .Use((r, next) => r.Token == null ? new Response(401, "login first") : next(r))   // auth
+            .Use((r, next) => { int n; hits.TryGetValue(r.Ip, out n); hits[r.Ip] = ++n; return n > 2 ? new Response(429, "slow down") : next(r); });
+        for (int i = 0; i < 4; i++) Console.WriteLine(p.Handle(new Request("/orders", i == 0 ? null : "asha", "1.2.3.4")).Body);
+    }
 }` }
         ] }],
     codeTitle: ['Pure chain: approvals', 'Filter chain: middleware'],
@@ -4937,7 +5984,19 @@ console.log(price.toFixed(2)); // 850.00` },
     [](double p) { return p * 0.9; }, [](double p) { return p - 50; }, [](double p) { return max(p, 100.0); }};
 double price = 1000;
 for (auto& rule : rules) price = rule(price);  // stacking pipeline
-cout << fixed << setprecision(2) << price << "\\n";  // 850.00` }
+cout << fixed << setprecision(2) << price << "\\n";  // 850.00` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        List<Func<double, double>> rules = new List<Func<double, double>> { p => p * 0.9, p => p - 50, p => Math.Max(p, 100) };
+        double price = 1000;
+        foreach (Func<double, double> r in rules) price = r(price);   // stacking pipeline
+        Console.WriteLine(price.ToString("F2"));   // 850.00
+    }
+}` }
         ] } },
       { title: 'Event bubbling in UIs', html: `<p>Click a button inside a card inside a page: the click goes to the button first; if it does not handle it (no listener or does not stop propagation) it bubbles to the card, then the page, then the document. The DOM event model is a chain of responsibility along the parent links.</p>` }
     ],
@@ -4998,7 +6057,21 @@ public:
         if (amt != 0) return "FAIL (and stock is already wrong!)";
         return to_string(n2000) + "x2000 " + to_string(n500) + "x500 " + to_string(n200) + "x200 " + to_string(n100) + "x100";
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveAtm {
+    int c2000 = 1, c500 = 3, c200 = 5, c100 = 2;
+    public string Withdraw(int amt) {
+        int n2000 = Math.Min(amt / 2000, c2000); amt -= n2000 * 2000; c2000 -= n2000;   // mutates early!
+        int n500 = Math.Min(amt / 500, c500);    amt -= n500 * 500;   c500 -= n500;
+        int n200 = Math.Min(amt / 200, c200);    amt -= n200 * 200;   c200 -= n200;
+        int n100 = Math.Min(amt / 100, c100);    amt -= n100 * 100;   c100 -= n100;
+        if (amt != 0) return "FAIL (and stock is already wrong!)";
+        return n2000 + "x2000 " + n500 + "x500 " + n200 + "x200 " + n100 + "x100";
+    }
+}` }
               ] } },
       mcq: { q: 'withdraw(50) cannot be made from 100+ notes. When should stock be decremented?', options: ['Only after the whole chain confirms the remainder reached 0 (plan first, commit after)', 'Each handler decrements immediately as it goes', 'Before the chain starts', 'Never; the ATM recounts nightly'], answer: 0, explain: 'Two-phase: handlers build a plan (how many notes each), and only if the remainder is 0 do we commit. Otherwise a failed withdrawal would leak notes.' },
       hints: [`<p>Hint 1: Each denomination is a handler: "take as many of my notes as I can, pass the remainder to the next".</p>`, `<p>Hint 2: Pass a mutable <b>plan</b> (Map denomination → count) along the chain instead of touching stock directly. The last handler (or the ATM) checks remainder == 0.</p>`, `<p>Hint 3: Commit = each handler subtracts its planned count. Keep denominations sorted descending when building the chain. Synchronize withdraw (two customers, one ATM is rare but stock must stay consistent).</p>`],
@@ -5244,6 +6317,67 @@ int main() {
     cout << describe(atm, 1000) << "\\n";  // 2000s and 500s are gone: {200=4, 100=2}
     cout << describe(atm, 0) << "\\n";
     cout << describe(atm, 100) << "\\n";   // out of 100s
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class NoteDispenser {
+    public readonly int Value; private int stock; private NoteDispenser next;
+    public NoteDispenser(int value, int stock) { Value = value; this.stock = stock; }
+    public NoteDispenser LinkTo(NoteDispenser n) { next = n; return n; }
+
+    // Phase 1: plan only, no side effects. Returns the remainder nobody could serve.
+    public int Plan(int remaining, List<KeyValuePair<int, int>> plan) {
+        int take = Math.Min(remaining / Value, stock);
+        if (take > 0) plan.Add(new KeyValuePair<int, int>(Value, take));
+        int left = remaining - take * Value;
+        return (next == null || left == 0) ? left : next.Plan(left, plan);
+    }
+    // Phase 2: apply the plan along the chain.
+    public void Commit(List<KeyValuePair<int, int>> plan) {
+        foreach (var e in plan) if (e.Key == Value) stock -= e.Value;
+        if (next != null) next.Commit(plan);
+    }
+    public int Stock { get { return stock; } }
+}
+
+class Atm {
+    private readonly NoteDispenser head;
+    private readonly object gate = new object();
+    public Atm(NoteDispenser head) { this.head = head; }
+
+    public List<KeyValuePair<int, int>> Withdraw(int amount) {        // null = refused, nothing dispensed
+        lock (gate) {
+            if (amount <= 0) return null;
+            List<KeyValuePair<int, int>> plan = new List<KeyValuePair<int, int>>();
+            int left = head.Plan(amount, plan);
+            if (left != 0) return null;                   // cannot make exact amount: nothing dispensed
+            head.Commit(plan);
+            return plan;
+        }
+    }
+
+    public static string Describe(Atm atm, int amount) {
+        List<KeyValuePair<int, int>> r = atm.Withdraw(amount);
+        if (r == null) return amount + " -> refused";
+        return amount + " -> " + string.Join(" ", r.Select(e => e.Key + "x" + e.Value));
+    }
+}
+
+class Program {
+    static void Main() {
+        NoteDispenser d2000 = new NoteDispenser(2000, 1);
+        d2000.LinkTo(new NoteDispenser(500, 3)).LinkTo(new NoteDispenser(200, 5)).LinkTo(new NoteDispenser(100, 2));
+        Atm atm = new Atm(d2000);
+        Console.WriteLine(Atm.Describe(atm, 3700));
+        Console.WriteLine(Atm.Describe(atm, 50));      // no note combination: refused
+        Console.WriteLine(Atm.Describe(atm, 9999));    // plans a lot, then fails: stock must be untouched
+        Console.WriteLine(Atm.Describe(atm, 1000));    // 2000s and 500s are gone: {200=4, 100=2}
+        Console.WriteLine(Atm.Describe(atm, 0));
+        Console.WriteLine(Atm.Describe(atm, 100));     // out of 100s
+    }
 }` }
         ],
         complexity: `<p>O(D) per withdrawal, D = number of denominations. No stock changes on failure.</p>`,
@@ -5462,6 +6596,58 @@ int main() {
     } catch (const ConcurrentModification&) {
         cout << "fail-fast: CME\\n";
     }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections;
+using System.Collections.Generic;
+
+sealed class Song { public readonly string Title; public Song(string title) { Title = title; } }
+
+class Playlist : IEnumerable<Song> {
+    private Song[] songs = new Song[2];       // internal storage: hidden from callers
+    private int size, modCount;               // modCount detects changes during iteration
+
+    public void Add(Song s) {
+        if (size == songs.Length) Array.Resize(ref songs, size * 2);
+        songs[size++] = s;
+        modCount++;
+    }
+
+    public IEnumerator<Song> GetEnumerator() { return new InOrder(this); }
+    IEnumerator IEnumerable.GetEnumerator() { return GetEnumerator(); }
+
+    // A second traversal order is just another enumerator: callers do not change.
+    public IEnumerable<Song> Reversed() {
+        for (int cursor = size - 1; cursor >= 0; cursor--) yield return songs[cursor];
+    }
+
+    private sealed class InOrder : IEnumerator<Song> {
+        private readonly Playlist p; private int cursor = -1;         // the "where am I" lives HERE
+        private readonly int expectedMod;
+        public InOrder(Playlist p) { this.p = p; expectedMod = p.modCount; }
+        public bool MoveNext() {
+            if (p.modCount != expectedMod) throw new InvalidOperationException("collection was modified");
+            return ++cursor < p.size;
+        }
+        public Song Current { get { return p.songs[cursor]; } }
+        object IEnumerator.Current { get { return Current; } }
+        public void Reset() { cursor = -1; }
+        public void Dispose() { }
+    }
+}
+
+class Program {
+    static void Main() {
+        Playlist p = new Playlist();
+        foreach (string t in new[] { "Intro", "Blue", "Rain" }) p.Add(new Song(t));
+        foreach (Song s in p) Console.Write(s.Title + " ");           // foreach uses GetEnumerator()
+        Console.WriteLine();
+        foreach (Song s in p.Reversed()) Console.Write(s.Title + " ");
+        Console.WriteLine();
+        try { foreach (Song s in p) p.Add(new Song("Oops")); }        // modify while iterating
+        catch (InvalidOperationException) { Console.WriteLine("fail-fast: collection was modified"); }
+    }
 }` }
         ] }],
     codeTitle: ['Iterable playlist'],
@@ -5562,7 +6748,20 @@ for (int x : nums) cout << x << " ";  // 1 3 5
 cout << "\\n";
 erase_if(nums, [](int x) { return x > 3; });  // C++20: the removeIf equivalent
 for (int x : nums) cout << x << " ";  // 1 3
-cout << "\\n";` }
+cout << "\\n";` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        List<int> nums = new List<int> { 1, 2, 3, 4, 5, 6 };
+        for (int i = nums.Count - 1; i >= 0; i--) if (nums[i] % 2 == 0) nums.RemoveAt(i);   // safe removal: walk backwards
+        Console.WriteLine("[" + string.Join(", ", nums) + "]");                             // [1, 3, 5]
+        nums.RemoveAll(x => x > 3);                                                          // even simpler
+        Console.WriteLine("[" + string.Join(", ", nums) + "]");                             // [1, 3]
+    }
+}` }
         ] } },
       { title: 'Paginated API iterator', html: `<p>A REST API returns 100 orders per page with a <code>nextPageToken</code>. Wrap it in an <code>Iterator&lt;Order&gt;</code>: <code>hasNext()</code> checks the local buffer; when it is empty and a token exists, fetch the next page. Callers just loop over orders; they never see tokens, and pages are fetched lazily — stop early and you never download the rest. AWS and Google SDKs ship exactly these "paginators".</p>` },
       { title: 'Internal vs external iteration', html: `<p><b>External</b> (Iterator): the caller drives — call <code>next()</code> when it wants, can stop, can interleave two iterators (merge two sorted lists). <b>Internal</b> (<code>forEach</code>, Streams): the collection drives and calls your lambda for each element — less control, but the library can parallelise (<code>parallelStream</code>) and optimise. <code>Spliterator</code> is Java's iterator designed for splitting work across threads.</p>` }
@@ -5626,7 +6825,24 @@ public:
     FlatBSTIterator(TreeNode* root) { inorder(root); }        // O(N) time and memory up front
     int next() { return vals[i++]; }
     bool hasNext() { return i < (int)vals.size(); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class TreeNode { public int val; public TreeNode left, right; public TreeNode(int v) { val = v; } }
+
+class FlatBSTIterator {
+    private readonly List<int> vals = new List<int>();
+    private int i = 0;
+    public FlatBSTIterator(TreeNode root) { Inorder(root); }        // O(N) time and memory up front
+    private void Inorder(TreeNode n) {
+        if (n == null) return;
+        Inorder(n.left); vals.Add(n.val); Inorder(n.right);
+    }
+    public int Next() { return vals[i++]; }
+    public bool HasNext() { return i < vals.Count; }
+}` }
               ] } },
       mcq: { q: 'Why is next() O(1) amortised even though it may push several nodes?', options: ['Every node is pushed once and popped once over the whole iteration, so N calls do O(N) total work', 'Because the stack is small', 'Because the tree is balanced', 'It is actually O(log N) worst case per call, and that is the same'], answer: 0, explain: 'Total pushes = N, total pops = N across all calls. A single call may push h nodes, but averaged over N calls the cost is constant.' },
       hints: [`<p>Hint 1: Simulate the recursive in-order traversal yourself; what the recursion keeps on the call stack, keep on an explicit stack.</p>`, `<p>Hint 2: The smallest unreturned value is always on top of a stack containing the "left spine" of what remains. Helper <code>pushLeft(node)</code>: push node and go left until null.</p>`, `<p>Hint 3: Constructor: pushLeft(root). next(): pop n; pushLeft(n.right); return n.val. hasNext(): !stack.isEmpty(). Use ArrayDeque, not the legacy Stack class.</p>`],
@@ -5809,6 +7025,50 @@ int main() {
     bool h1 = chain.hasNext(), h2 = chain.hasNext();
     int second = chain.next(), third = chain.next();
     cout << first << " " << h1 << " " << h2 << " " << second << " " << third << " " << chain.hasNext() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+class TreeNode {
+    public int val; public TreeNode left, right;
+    public TreeNode(int val) { this.val = val; }
+    public TreeNode(int val, TreeNode left, TreeNode right) { this.val = val; this.left = left; this.right = right; }
+}
+
+class BSTIterator {
+    private readonly Stack<TreeNode> stack = new Stack<TreeNode>();
+
+    public BSTIterator(TreeNode root) { PushLeft(root); }
+
+    private void PushLeft(TreeNode n) {
+        while (n != null) { stack.Push(n); n = n.left; }
+    }
+
+    public bool HasNext() { return stack.Count > 0; }   // idempotent: no side effects
+
+    public int Next() {
+        if (stack.Count == 0) throw new InvalidOperationException("exhausted");
+        TreeNode n = stack.Pop();
+        PushLeft(n.right);                  // the right subtree's smallest comes next
+        return n.val;
+    }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        TreeNode root = new TreeNode(7, new TreeNode(3), new TreeNode(15, new TreeNode(9), new TreeNode(20)));
+        BSTIterator it = new BSTIterator(root);
+        StringBuilder sb = new StringBuilder();
+        while (it.HasNext()) sb.Append(it.Next()).Append(' ');
+        Console.WriteLine(sb.ToString().Trim());   // 3 7 9 15 20
+        try { it.Next(); } catch (InvalidOperationException e) { Console.WriteLine("error: " + e.Message); }
+        Console.WriteLine("empty tree hasNext: " + B(new BSTIterator(null).HasNext()));
+        BSTIterator chain = new BSTIterator(new TreeNode(3, new TreeNode(2, new TreeNode(1), null), null));   // left chain
+        Console.WriteLine(chain.Next() + " " + B(chain.HasNext()) + " " + B(chain.HasNext()) + " " + chain.Next() + " " + chain.Next() + " " + B(chain.HasNext()));
+    }
 }` }
         ],
         complexity: `<p>Time: O(1) amortised per <code>next()</code> (O(h) worst case for a single call); <code>hasNext()</code> O(1). Memory: O(h) — O(log N) balanced, O(N) for a skewed tree.</p>`,
@@ -6122,6 +7382,74 @@ int main() {
     cout << "bob:   " << show(b.inbox()) << "\\n";
     cout << "carol: " << show(c.inbox()) << "\\n";
     cout << "alice: " << show(a.inbox()) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface IChatMediator {
+    void Join(User u);
+    void Leave(User u);
+    void Send(User from, string text);
+}
+
+class User {
+    public readonly string Name;
+    private readonly IChatMediator room;        // the ONLY reference a user holds
+    public readonly List<string> Inbox = new List<string>();
+    public User(string name, IChatMediator room) { Name = name; this.room = room; }
+    public void Say(string text) { room.Send(this, text); }
+    public void Receive(string from, string text) { Inbox.Add(from + ": " + text); }
+}
+
+class ChatRoom : IChatMediator {
+    private readonly List<User> members = new List<User>();            // insertion order kept
+    private readonly HashSet<string> muted = new HashSet<string>();
+    private readonly List<string> history = new List<string>();
+
+    private User Find(string name) { return members.Find(u => u.Name == name); }
+
+    public void Join(User u)  { members.Add(u); Broadcast("system", u.Name + " joined", null); }
+    public void Leave(User u) { members.Remove(u); Broadcast("system", u.Name + " left", null); }
+    public void Mute(string name) { muted.Add(name); }
+
+    // All coordination rules live here, in ONE place.
+    public void Send(User from, string text) {
+        if (!members.Contains(from)) return;                           // not in the room
+        if (muted.Contains(from.Name)) { from.Receive("system", "you are muted"); return; }
+        history.Add(from.Name + ": " + text);
+        if (text.StartsWith("@")) {                                    // direct message rule
+            int sp = text.IndexOf(' ');
+            string to = text.Substring(1, (sp > 0 ? sp : text.Length) - 1);
+            User target = Find(to);
+            if (target != null) target.Receive(from.Name + " (private)", text);
+            else from.Receive("system", "no user " + to);
+            return;
+        }
+        Broadcast(from.Name, text, from);
+    }
+    private void Broadcast(string from, string text, User except) {
+        foreach (User u in members) if (u != except) u.Receive(from, text);
+    }
+}
+
+class Program {
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        ChatRoom room = new ChatRoom();
+        User a = new User("alice", room), b = new User("bob", room), c = new User("carol", room);
+        room.Join(a); room.Join(b); room.Join(c);
+        a.Say("hi all");
+        b.Say("@carol lunch?");
+        room.Mute("alice");
+        a.Say("spam spam");
+        b.Say("@dave hey");                                  // unknown recipient
+        room.Leave(c);
+        c.Say("anyone?");                                    // left the room: ignored
+        Console.WriteLine("bob:   " + Show(b.Inbox));
+        Console.WriteLine("carol: " + Show(c.Inbox));
+        Console.WriteLine("alice: " + Show(a.Inbox));
+    }
 }` }
         ] }],
     codeTitle: ['Chat room mediator'],
@@ -6255,7 +7583,25 @@ SignupDialog d;
 d.email = "a@b.com"; d.changed();
 d.password = "secret123"; d.changed();
 d.accepted = true; d.changed();
-cout << "submit enabled? " << boolalpha << d.submitEnabled << "\\n";` }
+cout << "submit enabled? " << boolalpha << d.submitEnabled << "\\n";` },
+  { lang: 'csharp', code: `
+using System;
+
+class SignupDialog {
+    public string Email = ""; public string Password = ""; public bool Accepted; public bool SubmitEnabled;
+    public void Changed() {   // every widget calls this; the rule lives in one place
+        SubmitEnabled = Email.Contains("@") && Password.Length >= 8 && Accepted;
+    }
+}
+class Program {
+    static void Main() {
+        SignupDialog d = new SignupDialog();
+        d.Email = "a@b.com"; d.Changed();
+        d.Password = "secret123"; d.Changed();
+        d.Accepted = true; d.Changed();
+        Console.WriteLine("submit enabled? " + d.SubmitEnabled.ToString().ToLower());
+    }
+}` }
         ] } },
       { title: 'Ride matching dispatcher', html: `<p>Riders and drivers never contact each other directly at first. The <b>dispatcher</b> receives "need a ride" and "I am available" events, applies matching rules (nearest driver, rating, surge) and introduces a pair. Swapping the matching algorithm touches only the dispatcher (which might hold a Strategy for it — patterns combine).</p>` },
       { title: 'Observer vs Mediator side by side', html: `<p><b>Observer:</b> a stock ticker broadcasts "price changed"; it does not decide anything about who should react or how. <b>Mediator:</b> the control tower receives "plane 7 wants to land", <i>checks</i> runway state, <i>tells</i> plane 7 to land and plane 9 to circle. A mediator is often <i>implemented with</i> observer-style notifications, but its point is the coordination logic in the middle.</p>` },
@@ -6314,7 +7660,20 @@ public:
         for (NaivePlane* p : others) if (p->waiting) { waiting = true; return false; }    // fairness? priority?
         onRunway = true; waiting = false; return true;     // two planes can do this at once
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NaivePlane {
+    public readonly string Id; public bool OnRunway, Waiting; public readonly List<NaivePlane> Others = new List<NaivePlane>();
+    public NaivePlane(string id) { Id = id; }
+    public bool TryLand() {
+        foreach (NaivePlane p in Others) if (p.OnRunway) { Waiting = true; return false; }   // asks everyone
+        foreach (NaivePlane p in Others) if (p.Waiting) { Waiting = true; return false; }    // fairness? priority?
+        OnRunway = true; Waiting = false; return true;     // two planes can do this at once
+    }
+}` }
               ] } },
       mcq: { q: 'Which object should decide that an emergency plane jumps the queue?', options: ['The tower (mediator) — it owns the queue and runway rules', 'Each plane, by checking the others', 'The runway object', 'The emergency plane itself, by landing anyway'], answer: 0, explain: 'Coordination rules belong to the mediator. Planes only report events (request, landed) and obey instructions.' },
       hints: [`<p>Hint 1: Planes know only the tower. The tower knows runways (free/occupied) and a waiting queue.</p>`, `<p>Hint 2: Two deques (emergency, normal) or a PriorityQueue keyed by (priority, arrival sequence). An array of runway owners, null = free.</p>`, `<p>Hint 3: <code>landed()</code> frees the runway then calls a private <code>dispatchNext()</code>. Make tower methods <code>synchronized</code> so two planes cannot grab the same runway. Recipe: request → free runway? assign : enqueue; landed → free → dispatch.</p>`],
@@ -6555,6 +7914,70 @@ int main() {
     t.landed(e);  // then B
     t.landed(b);  // nobody waiting: runway stays free
     try { t.landed(a); } catch (const runtime_error& ex) { cout << "error: " << ex.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Plane {
+    public readonly string Id; public readonly bool Emergency;
+    public Plane(string id, bool emergency) { Id = id; Emergency = emergency; }
+    public void ClearToLand(int runway) { Console.WriteLine(Id + ": landing on runway " + runway); }
+    public void Hold() { Console.WriteLine(Id + ": holding pattern"); }
+}
+
+class Tower {
+    private readonly Plane[] runways;                     // null = free
+    private readonly Queue<Plane> emergencyQ = new Queue<Plane>(), normalQ = new Queue<Plane>();
+    private readonly object gate = new object();
+    public Tower(int r) { runways = new Plane[r]; }
+
+    public void RequestLanding(Plane p) {
+        lock (gate) {
+            int free = FreeRunway();
+            if (free >= 0) { Assign(free, p); return; }
+            (p.Emergency ? emergencyQ : normalQ).Enqueue(p);
+            p.Hold();
+        }
+    }
+
+    public void Landed(Plane p) {
+        lock (gate) {
+            for (int i = 0; i < runways.Length; i++) {
+                if (runways[i] == p) {
+                    runways[i] = null;
+                    Console.WriteLine("tower: runway " + i + " free");
+                    DispatchNext(i);
+                    return;
+                }
+            }
+            throw new InvalidOperationException(p.Id + " was not on a runway");
+        }
+    }
+
+    private void DispatchNext(int runway) {
+        Plane next = emergencyQ.Count > 0 ? emergencyQ.Dequeue() : normalQ.Count > 0 ? normalQ.Dequeue() : null;
+        if (next != null) Assign(runway, next);
+    }
+    private int FreeRunway() {
+        for (int i = 0; i < runways.Length; i++) if (runways[i] == null) return i;
+        return -1;
+    }
+    private void Assign(int i, Plane p) { runways[i] = p; p.ClearToLand(i); }
+}
+
+class Program {
+    static void Main() {
+        Tower t = new Tower(1);
+        Plane a = new Plane("A", false), b = new Plane("B", false), e = new Plane("E", true);
+        t.RequestLanding(a);
+        t.RequestLanding(b);
+        t.RequestLanding(e);
+        t.Landed(a);      // E lands before B
+        t.Landed(e);      // then B
+        t.Landed(b);      // nobody waiting: runway stays free
+        try { t.Landed(a); } catch (InvalidOperationException ex) { Console.WriteLine("error: " + ex.Message); }
+    }
 }` }
         ],
         complexity: `<p>request/landed: O(R) to scan runways (R ≤ 10) + O(1) queue ops. Memory O(R + waiting planes).</p>`,
@@ -6851,6 +8274,69 @@ int main() {
     cout << "reloaded: " << g.str() << "\\n";
     if (auto s = slots.pop()) g.restore(*s);
     cout << "reloaded: " << g.str() << " remaining saves " << slots.labels() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Game {
+    private int hp = 100, gold = 0, level = 1;
+    private readonly List<string> inventory = new List<string>();
+
+    public void Play(int damage, int loot, string item) {
+        hp = Math.Max(0, hp - damage); gold += loot;
+        if (item != null) inventory.Add(item);
+        if (gold >= 100) { level++; gold -= 100; }
+    }
+
+    // MEMENTO: nested, immutable, fields private. Outside code can hold it but not read it.
+    public sealed class Snapshot {
+        private readonly int hp, gold, level;
+        private readonly List<string> inventory;        // deep copy, see Save()
+        private readonly string label;
+        internal Snapshot(int hp, int gold, int level, List<string> inv, string label) {
+            this.hp = hp; this.gold = gold; this.level = level; inventory = inv; this.label = label;
+        }
+        public string Label { get { return label; } }   // only harmless metadata is visible
+        internal void RestoreInto(Game g) {             // only Game can read the private fields, through this door
+            g.hp = hp; g.gold = gold; g.level = level;
+            g.inventory.Clear(); g.inventory.AddRange(inventory);
+        }
+    }
+
+    public Snapshot Save(string label) {
+        return new Snapshot(hp, gold, level, new List<string>(inventory), label);   // copy, not reference!
+    }
+    public void Restore(Snapshot s) { s.RestoreInto(this); }
+    public override string ToString() { return "hp=" + hp + " gold=" + gold + " lvl=" + level + " inv=[" + string.Join(", ", inventory) + "]"; }
+}
+
+// CARETAKER: stores snapshots, never inspects or edits them.
+class SaveSlots {
+    private readonly LinkedList<Game.Snapshot> history = new LinkedList<Game.Snapshot>();   // front = newest
+    private readonly int max;
+    public SaveSlots(int max) { this.max = max; }
+    public void Push(Game.Snapshot s) { history.AddFirst(s); if (history.Count > max) history.RemoveLast(); }
+    public Game.Snapshot Pop() { if (history.Count == 0) return null; Game.Snapshot s = history.First.Value; history.RemoveFirst(); return s; }
+    public List<string> Labels() { return history.Select(s => s.Label).ToList(); }
+}
+
+class Program {
+    static void Main() {
+        Game g = new Game();
+        SaveSlots slots = new SaveSlots(3);
+        g.Play(10, 60, "sword");
+        slots.Push(g.Save("before cave"));
+        g.Play(70, 50, "shield");
+        slots.Push(g.Save("before boss"));
+        g.Play(90, 0, null);                       // boss fight goes badly
+        Console.WriteLine("now:      " + g);
+        Game.Snapshot s1 = slots.Pop(); if (s1 != null) g.Restore(s1);
+        Console.WriteLine("reloaded: " + g);
+        Game.Snapshot s2 = slots.Pop(); if (s2 != null) g.Restore(s2);
+        Console.WriteLine("reloaded: " + g + " remaining saves [" + string.Join(", ", slots.Labels()) + "]");
+    }
 }` }
         ] }],
     codeTitle: ['Memento with caretaker'],
@@ -6925,7 +8411,20 @@ auto show = [](const vector<string>& v) {
     for (size_t i = 0; i < v.size(); i++) s += (i ? ", " : "") + v[i];
     return s + "]";
 };
-cout << "bad: " << show(badSnapshot) << "  good: " << show(goodSnapshot) << "\\n";  // bad: [sword, shield]  good: [sword]` }
+cout << "bad: " << show(badSnapshot) << "  good: " << show(goodSnapshot) << "\\n";  // bad: [sword, shield]  good: [sword]` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        List<string> live = new List<string> { "sword" };
+        List<string> badSnapshot = live;                        // same object!
+        List<string> goodSnapshot = new List<string>(live);     // independent copy
+        live.Add("shield");
+        Console.WriteLine("bad: [" + string.Join(", ", badSnapshot) + "]  good: [" + string.Join(", ", goodSnapshot) + "]");   // bad: [sword, shield]  good: [sword]
+    }
+}` }
         ] } },
       { title: 'Form draft autosave', html: `<p>A long job-application form saves a memento every 30 s to local storage. If the browser crashes, the form restores the last memento. The autosave timer (caretaker) does not understand the form's fields; it stores whatever opaque blob <code>form.snapshot()</code> returns (often serialized JSON).</p>` },
       { title: 'Immutable state makes Memento free', html: `<p>If the originator's state is an immutable record (<code>record Board(List&lt;String&gt; cells, int turn)</code> built with copies), then "saving" is just keeping a reference to the current state object — it can never change. Redux in frontend apps, persistent data structures in functional languages and Git commits all work this way: <b>history = list of immutable states</b>, with structural sharing to save memory.</p>` },
@@ -7000,7 +8499,24 @@ public:
         auto v = nums.at(name);                 // throws if missing
         p.hp = v[0]; p.x = v[1]; p.y = v[2]; p.inv = invs.at(name);
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class OpenPlayer { public int Hp = 100, X, Y; public List<string> Inv = new List<string>(); }
+class NaiveCheckpoints {
+    readonly Dictionary<string, int[]> nums = new Dictionary<string, int[]>();
+    readonly Dictionary<string, List<string>> invs = new Dictionary<string, List<string>>();
+    public void Save(string name, OpenPlayer p) {
+        nums[name] = new[] { p.Hp, p.X, p.Y };
+        invs[name] = p.Inv;                        // BUG: same list object, not a copy
+    }
+    public void Load(string name, OpenPlayer p) {
+        int[] v = nums[name];                      // throws if missing
+        p.Hp = v[0]; p.X = v[1]; p.Y = v[2]; p.Inv = invs[name];
+    }
+}` }
               ] } },
       mcq: { q: 'Where should the code that copies the inventory list live?', options: ['In Player.save() — the originator decides how to snapshot itself', 'In CheckpointManager.save()', 'In the inventory item class', 'Nowhere; references are fine'], answer: 0, explain: 'Only the originator knows its internals and which parts are mutable; it builds a self-contained memento. The caretaker just stores it.' },
       hints: [`<p>Hint 1: Player creates a <code>Player.Memento</code> (nested, private fields) and has <code>restore(Memento)</code>.</p>`, `<p>Hint 2: Caretaker = <code>LinkedHashMap&lt;String, Player.Memento&gt;</code>. Re-inserting a name: remove then put so it becomes newest. Evict the first entry when size &gt; 3.</p>`, `<p>Hint 3: Copy the inventory with <code>List.copyOf</code> on save and copy again on restore (so the player cannot mutate the memento's list). <code>load</code> returns boolean for missing slots.</p>`],
@@ -7300,6 +8816,70 @@ int main() {
     cm.save("door", p);  // overwrite => newest
     string names = show(cm.list());
     cout << names << " " << cm.load("start", p) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Player {
+    private int hp = 100, x, y;
+    private readonly List<string> inventory = new List<string>();
+
+    public void Move(int dx, int dy) { x += dx; y += dy; }
+    public void Damage(int d) { hp = Math.Max(0, hp - d); }
+    public void Pick(string item) { inventory.Add(item); }
+    public override string ToString() { return "hp=" + hp + " at (" + x + "," + y + ") inv=[" + string.Join(",", inventory) + "]"; }
+
+    public sealed class Memento {
+        private readonly int hp, x, y; private readonly List<string> inventory;
+        internal Memento(int hp, int x, int y, List<string> inv) { this.hp = hp; this.x = x; this.y = y; inventory = inv; }
+        internal void RestoreInto(Player p) {
+            p.hp = hp; p.x = x; p.y = y;
+            p.inventory.Clear(); p.inventory.AddRange(inventory);
+        }
+    }
+    public Memento CreateMemento() { return new Memento(hp, x, y, new List<string>(inventory)); }
+    public void Restore(Memento m) { m.RestoreInto(this); }
+}
+
+class CheckpointManager {
+    private const int Max = 3;
+    private readonly List<KeyValuePair<string, Player.Memento>> slots = new List<KeyValuePair<string, Player.Memento>>();   // oldest first
+
+    public void Save(string name, Player p) {
+        slots.RemoveAll(s => s.Key == name);           // overwrite => becomes newest
+        slots.Add(new KeyValuePair<string, Player.Memento>(name, p.CreateMemento()));
+        if (slots.Count > Max) slots.RemoveAt(0);      // evict the oldest
+    }
+    public bool Load(string name, Player p) {
+        int i = slots.FindIndex(s => s.Key == name);
+        if (i < 0) return false;
+        p.Restore(slots[i].Value);
+        return true;
+    }
+    public List<string> List() { return slots.Select(s => s.Key).ToList(); }
+}
+
+class Program {
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        Player p = new Player(); p.Pick("map");
+        CheckpointManager cm = new CheckpointManager();
+        cm.Save("start", p);
+        p.Move(5, 2); p.Pick("key"); p.Damage(40);
+        cm.Save("door", p);
+        p.Damage(100);
+        cm.Load("door", p);  Console.WriteLine(p);    // hp=60 at (5,2) inv=[map,key]
+        cm.Load("start", p); Console.WriteLine(p);    // hp=100 at (0,0) inv=[map]
+        Console.WriteLine(cm.Load("boss", p).ToString().ToLower() + " " + Show(cm.List()));
+        cm.Save("c1", p); cm.Save("c2", p);           // 4th slot evicts the oldest ("start")
+        Console.WriteLine(Show(cm.List()));
+        p.Pick("gem"); cm.Load("c1", p);              // the save was a copy: no gem
+        Console.WriteLine(p);
+        cm.Save("door", p);                           // overwrite => newest
+        Console.WriteLine(Show(cm.List()) + " " + cm.Load("start", p).ToString().ToLower());
+    }
 }` }
         ],
         complexity: `<p>save: O(inventory size) for the copy; load: O(inventory size); list: O(slots). Memory O(slots × state size).</p>`,
@@ -7609,6 +9189,60 @@ int main() {
     string out = "{";
     for (auto it = c.counts.begin(); it != c.counts.end(); ++it) out += (it == c.counts.begin() ? "" : ", ") + it->first + "=" + to_string(it->second);
     cout << out << "}\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+interface IExprVisitor<R> {
+    R VisitNum(Num n);
+    R VisitAdd(Add a);
+    R VisitSub(Sub s);
+    R VisitMul(Mul m);
+}
+
+interface IExpr { R Accept<R>(IExprVisitor<R> v); }
+
+// Each Accept() is one line: "visitor, here is me, with my exact type".
+sealed class Num : IExpr { public readonly int Value; public Num(int value) { Value = value; } public R Accept<R>(IExprVisitor<R> v) { return v.VisitNum(this); } }
+sealed class Add : IExpr { public readonly IExpr L, R; public Add(IExpr l, IExpr r) { L = l; R = r; } public TR Accept<TR>(IExprVisitor<TR> v) { return v.VisitAdd(this); } }
+sealed class Sub : IExpr { public readonly IExpr L, R; public Sub(IExpr l, IExpr r) { L = l; R = r; } public TR Accept<TR>(IExprVisitor<TR> v) { return v.VisitSub(this); } }
+sealed class Mul : IExpr { public readonly IExpr L, R; public Mul(IExpr l, IExpr r) { L = l; R = r; } public TR Accept<TR>(IExprVisitor<TR> v) { return v.VisitMul(this); } }
+
+// Operation 1: evaluate
+class EvalVisitor : IExprVisitor<int> {
+    public int VisitNum(Num n) { return n.Value; }
+    public int VisitAdd(Add a) { return a.L.Accept(this) + a.R.Accept(this); }
+    public int VisitSub(Sub s) { return s.L.Accept(this) - s.R.Accept(this); }
+    public int VisitMul(Mul m) { return m.L.Accept(this) * m.R.Accept(this); }
+}
+// Operation 2: pretty-print. Added later, ZERO changes to Num/Add/Sub/Mul.
+class PrintVisitor : IExprVisitor<string> {
+    public string VisitNum(Num n) { return n.Value.ToString(); }
+    public string VisitAdd(Add a) { return "(" + a.L.Accept(this) + " + " + a.R.Accept(this) + ")"; }
+    public string VisitSub(Sub s) { return "(" + s.L.Accept(this) + " - " + s.R.Accept(this) + ")"; }
+    public string VisitMul(Mul m) { return A(m.L) + " * " + A(m.R); }
+    private string A(IExpr e) { return e.Accept(this); }
+}
+// Operation 3: count nodes by type (a visitor can also accumulate state)
+class CountVisitor : IExprVisitor<bool> {
+    public readonly SortedDictionary<string, int> Counts = new SortedDictionary<string, int>(StringComparer.Ordinal);
+    private bool Bump(string k) { int n; Counts.TryGetValue(k, out n); Counts[k] = n + 1; return true; }
+    public bool VisitNum(Num n) { return Bump("Num"); }
+    public bool VisitAdd(Add a) { a.L.Accept(this); a.R.Accept(this); return Bump("Add"); }
+    public bool VisitSub(Sub s) { s.L.Accept(this); s.R.Accept(this); return Bump("Sub"); }
+    public bool VisitMul(Mul m) { m.L.Accept(this); m.R.Accept(this); return Bump("Mul"); }
+}
+
+class Program {
+    static void Main() {
+        IExpr e = new Mul(new Add(new Num(2), new Num(3)), new Sub(new Num(7), new Num(4)));   // (2+3)*(7-4)
+        Console.WriteLine(e.Accept(new PrintVisitor()) + " = " + e.Accept(new EvalVisitor()));
+        CountVisitor c = new CountVisitor();
+        e.Accept(c);
+        Console.WriteLine("{" + string.Join(", ", c.Counts.Select(kv => kv.Key + "=" + kv.Value)) + "}");
+    }
 }` }
         ] }, { lang: 'java', title: 'Java 21 alternative: sealed types + pattern-matching switch', code: `// The compiler knows ALL subtypes of a sealed interface, so the switch must be exhaustive.
 sealed interface Shape permits Circle, Rect, Triangle {}
@@ -7749,6 +9383,40 @@ int main() {
     vector<Shape> shapes = {Circle{1}, Rect{2, 3}, Triangle{4, 5}};
     cout << fixed << setprecision(2);
     for (const Shape& s : shapes) cout << area(s) << " " << svg(s) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// A closed set of variants: the base constructor is private, so only the nested classes can derive.
+abstract class Shape {
+    private Shape() { }
+    public sealed class Circle : Shape { public readonly double R; public Circle(double r) { R = r; } }
+    public sealed class Rect : Shape { public readonly double W, H; public Rect(double w, double h) { W = w; H = h; } }
+    public sealed class Triangle : Shape { public readonly double B, H; public Triangle(double b, double h) { B = b; H = h; } }
+}
+
+static class ShapeOps {
+    // Each "visitor" is just a function with a type test per variant. No Accept() boilerplate.
+    public static double Area(Shape s) {
+        if (s is Shape.Circle c) return Math.PI * c.R * c.R;
+        if (s is Shape.Rect r) return r.W * r.H;
+        if (s is Shape.Triangle t) return 0.5 * t.B * t.H;
+        throw new ArgumentException("unknown shape");   // unreachable: the set of variants is closed
+    }
+    public static string Svg(Shape s) {
+        if (s is Shape.Circle c) return "<circle r='" + c.R.ToString("F1") + "'/>";
+        if (s is Shape.Rect r) return "<rect width='" + r.W.ToString("F1") + "' height='" + r.H.ToString("F1") + "'/>";
+        if (s is Shape.Triangle t) return "<polygon base='" + t.B.ToString("F1") + "'/>";
+        throw new ArgumentException("unknown shape");
+    }
+}
+
+class Program {
+    static void Main() {
+        List<Shape> shapes = new List<Shape> { new Shape.Circle(1), new Shape.Rect(2, 3), new Shape.Triangle(4, 5) };
+        foreach (Shape s in shapes) Console.WriteLine(ShapeOps.Area(s).ToString("F2") + " " + ShapeOps.Svg(s));
+    }
 }` }
         ] }],
     codeTitle: ['Classic Visitor', 'Sealed + switch (modern alternative)'],
@@ -7848,7 +9516,23 @@ uintmax_t total = 0;
 for (const auto& entry : fs::recursive_directory_iterator(dir))  // the library walks the tree for us
     if (entry.is_regular_file()) total += entry.file_size();
 cout << "bytes = " << total << "\\n";  // 11
-fs::remove_all(dir);` }
+fs::remove_all(dir);` },
+  { lang: 'csharp', code: `
+using System;
+using System.IO;
+
+class Program {
+    static void Main() {
+        string dir = Path.Combine(Path.GetTempPath(), "demo-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "a.txt"), "hello");
+        File.WriteAllText(Path.Combine(dir, "b.log"), "world!");
+        long total = 0;
+        foreach (FileInfo f in new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories)) total += f.Length;   // the framework walks, we visit
+        Console.WriteLine("bytes = " + total);   // 11
+        Directory.Delete(dir, true);
+    }
+}` }
         ] } },
       { title: 'Insurance / tax over product types', html: `<p>A cart contains <code>Book</code>, <code>Electronics</code> and <code>Food</code>. Finance asks for tax, logistics for shipping weight, marketing for loyalty points — three visitors. Each visitor keeps its rules together (all tax rules in <code>TaxVisitor</code>) instead of spreading <code>tax()</code>, <code>shippingWeight()</code>, <code>points()</code> across every product class.</p>` },
       { title: 'Choosing: polymorphism vs Visitor vs sealed switch', html: `<p><b>Methods on elements</b> (plain polymorphism): best when <i>types</i> are added often and operations are few and core to the type. <b>Visitor</b>: best when types are stable and operations are many and owned by different teams. <b>Sealed type + switch</b> (Java 21 sealed interfaces, TypeScript unions, C++ <code>std::variant</code>, Python <code>match</code>): same benefits as Visitor with far less code and compiler-checked exhaustiveness, but the operation logic sits in functions rather than objects (harder to pass around state or swap at runtime). This is the "expression problem" — no option makes both directions free.</p>` }
@@ -7935,7 +9619,24 @@ struct NaiveFs {
         if (auto* f = dynamic_cast<FileN*>(n)) { if (f->name.ends_with(ext)) out.push_back(f->name); }
         else if (auto* d = dynamic_cast<DirN*>(n)) for (Node* k : d->kids) find(k, ext, out);   // traversal copy #2
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class NaiveFs {
+    public sealed class FileN { public readonly string Name; public readonly long Size; public FileN(string name, long size) { Name = name; Size = size; } }
+    public sealed class DirN { public readonly string Name; public readonly List<object> Kids; public DirN(string name, List<object> kids) { Name = name; Kids = kids; } }
+    public static long Size(object n) {
+        if (n is FileN f) return f.Size;
+        else if (n is DirN d) { long s = 0; foreach (object k in d.Kids) s += Size(k); return s; }
+        return 0;                                   // silently ignores unknown types
+    }
+    public static void Find(object n, string ext, List<string> result) {
+        if (n is FileN f) { if (f.Name.EndsWith(ext)) result.Add(f.Name); }
+        else if (n is DirN d) foreach (object k in d.Kids) Find(k, ext, result);   // traversal copy #2
+    }
+}` }
               ] } },
       mcq: { q: 'Next quarter a new node type SymlinkNode is added. What is the cost with the Visitor design?', options: ['Add visitSymlink to the visitor interface; every existing visitor must implement it (the compiler lists them)', 'Nothing changes', 'Only the SymlinkNode class is added', 'All file and dir classes must change'], answer: 0, explain: 'Visitor makes new operations cheap and new element types expensive — but the compiler points to every visitor that must be updated, unlike instanceof chains that fail silently.' },
       hints: [`<p>Hint 1: Nodes are stable, operations grow → Visitor. Nodes get <code>accept(FsVisitor v)</code>; the visitor has <code>visitFile</code> and <code>visitDir</code>.</p>`, `<p>Hint 2: Let the visitor control traversal in <code>visitDir</code> (loop over children calling <code>child.accept(this)</code>), so each visitor can track depth or path, or stop early.</p>`, `<p>Hint 3: Track the current path with a <code>Deque&lt;String&gt;</code> (push on enter dir, pop on exit). Size visitor accumulates a long; find visitor collects paths; print visitor uses depth for indentation.</p>`],
@@ -8287,6 +9988,77 @@ int main() {
     SizeVisitor s2; FindVisitor f2(".txt"), f3(".txt");
     empty->accept(s2); empty->accept(f2); solo.accept(f3);
     cout << s2.total << " " << show(f2.found) << " " << show(f3.found) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+interface IFsVisitor { void VisitFile(FileNode f); void VisitDir(DirNode d); }
+interface IFsNode { string Name { get; } void Accept(IFsVisitor v); }
+
+sealed class FileNode : IFsNode {
+    private readonly string name; public readonly long Size;
+    public FileNode(string name, long size) { this.name = name; Size = size; }
+    public string Name { get { return name; } }
+    public void Accept(IFsVisitor v) { v.VisitFile(this); }
+}
+sealed class DirNode : IFsNode {
+    private readonly string name; public readonly List<IFsNode> Children;
+    public DirNode(string name, List<IFsNode> children) { this.name = name; Children = children; }
+    public string Name { get { return name; } }
+    public void Accept(IFsVisitor v) { v.VisitDir(this); }
+}
+
+class SizeVisitor : IFsVisitor {
+    public long Total;
+    public void VisitFile(FileNode f) { Total += f.Size; }
+    public void VisitDir(DirNode d) { foreach (IFsNode c in d.Children) c.Accept(this); }
+}
+
+class FindVisitor : IFsVisitor {
+    private readonly string ext; private readonly List<string> path = new List<string>();
+    public readonly List<string> Found = new List<string>();
+    public FindVisitor(string ext) { this.ext = ext; }
+    public void VisitFile(FileNode f) {
+        if (f.Name.EndsWith(ext)) Found.Add(path.Count == 0 ? f.Name : string.Join("/", path) + "/" + f.Name);
+    }
+    public void VisitDir(DirNode d) {
+        path.Add(d.Name);
+        foreach (IFsNode c in d.Children) c.Accept(this);
+        path.RemoveAt(path.Count - 1);
+    }
+}
+
+class TreePrinter : IFsVisitor {
+    private int depth; public readonly StringBuilder Out = new StringBuilder();
+    public void VisitFile(FileNode f) { Out.Append(new string(' ', 2 * depth)).Append(f.Name).Append(" (").Append(f.Size).Append(")\\n"); }
+    public void VisitDir(DirNode d) {
+        Out.Append(new string(' ', 2 * depth)).Append(d.Name).Append("/\\n");
+        depth++;
+        foreach (IFsNode c in d.Children) c.Accept(this);
+        depth--;
+    }
+}
+
+class Program {
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        IFsNode root = new DirNode("root", new List<IFsNode> {
+            new FileNode("a.txt", 100),
+            new DirNode("docs", new List<IFsNode> { new FileNode("b.md", 50), new FileNode("c.txt", 25) }),
+            new DirNode("empty", new List<IFsNode>()) });
+        SizeVisitor size = new SizeVisitor(); root.Accept(size);
+        FindVisitor find = new FindVisitor(".txt"); root.Accept(find);
+        TreePrinter tp = new TreePrinter(); root.Accept(tp);
+        Console.WriteLine(size.Total + " " + Show(find.Found));
+        Console.Write(tp.Out);
+        IFsNode empty = new DirNode("void", new List<IFsNode>()), solo = new FileNode("solo.txt", 7);
+        SizeVisitor s2 = new SizeVisitor(); empty.Accept(s2);
+        FindVisitor f2 = new FindVisitor(".txt"); empty.Accept(f2);
+        FindVisitor f3 = new FindVisitor(".txt"); solo.Accept(f3);
+        Console.WriteLine(s2.Total + " " + Show(f2.Found) + " " + Show(f3.Found));
+    }
 }` }
         ],
         complexity: `<p>Each visitor is O(N) time over N nodes; extra space O(depth) for recursion/path. New operation = 1 class; node classes unchanged.</p>`,
@@ -8588,6 +10360,64 @@ int main() {
     try { o.act("cancel"); } catch (const logic_error& e) { cout << e.what() << "\\n"; }
     o.undo();
     cout << name(o.status()) << ", shipping quote " << o.quote(2500) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+// Strategy: how shipping cost is computed
+delegate long ShippingPolicy(long weightGrams);
+
+// Observer: who hears about status changes
+delegate void OrderEvents(string orderId, string from, string to);
+
+// State: what each action means in each status (table-driven to stay short)
+enum Status { NEW, PAID, SHIPPED, CANCELLED }
+static class StatusExt {
+    public static Status? On(this Status s, string action) {
+        switch (s) {
+            case Status.NEW: return action == "pay" ? Status.PAID : action == "cancel" ? Status.CANCELLED : (Status?)null;
+            case Status.PAID: return action == "ship" ? Status.SHIPPED : action == "cancel" ? Status.CANCELLED : (Status?)null;
+            default: return null;                                  // SHIPPED, CANCELLED: terminal here
+        }
+    }
+}
+
+class OrderWorkflow {
+    private readonly string id; private Status status = Status.NEW;
+    private readonly ShippingPolicy shipping;
+    private readonly List<OrderEvents> listeners = new List<OrderEvents>();
+    private readonly Stack<Action> undoLog = new Stack<Action>();          // Command: reversible steps
+    private readonly object gate = new object();
+
+    public OrderWorkflow(string id, ShippingPolicy shipping) { this.id = id; this.shipping = shipping; }
+    public void Subscribe(OrderEvents l) { lock (gate) listeners.Add(l); }
+
+    public void Act(string action) {
+        lock (gate) {
+            Status? next = status.On(action);
+            if (next == null) throw new InvalidOperationException("cannot " + action + " in " + status);
+            Status prev = status;
+            status = next.Value;
+            undoLog.Push(() => status = prev);                                 // command to revert
+            foreach (OrderEvents l in listeners.ToArray()) l(id, prev.ToString(), next.Value.ToString());
+        }
+    }
+    public void Undo() { lock (gate) { if (undoLog.Count > 0) undoLog.Pop()(); } }
+    public long Quote(long grams) { return shipping(grams); }
+    public Status CurrentStatus { get { return status; } }
+}
+
+class Program {
+    static void Main() {
+        OrderWorkflow o = new OrderWorkflow("A1", g => 40 + g / 100);         // strategy as lambda
+        o.Subscribe((id, f, t) => Console.WriteLine("email: " + id + " " + f + " -> " + t));
+        o.Subscribe((id, f, t) => Console.WriteLine("analytics: " + t));
+        o.Act("pay"); o.Act("ship");
+        try { o.Act("cancel"); } catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+        o.Undo();
+        Console.WriteLine(o.CurrentStatus + ", shipping quote " + o.Quote(2500));
+    }
 }` }
         ] }],
     codeTitle: ['Combining patterns'],
@@ -8711,7 +10541,29 @@ struct NaiveSorter {
                 if (swp) swap(a[j], a[j + 1]);
             }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+static class NaiveSorter {
+    public sealed class Emp {
+        public readonly string Name, Dept; public readonly int Salary, Joined;
+        public Emp(string name, string dept, int salary, int joined) { Name = name; Dept = dept; Salary = salary; Joined = joined; }
+    }
+    public static void Sort(List<Emp> a, string key) {
+        for (int i = 0; i < a.Count; i++)
+            for (int j = 0; j + 1 < a.Count - i; j++) {
+                bool swap;
+                switch (key) {                                  // rule mixed into the algorithm
+                    case "salary": swap = a[j].Salary < a[j + 1].Salary; break;
+                    case "name": swap = string.CompareOrdinal(a[j].Name, a[j + 1].Name) > 0; break;
+                    default: swap = false; break;               // unknown keys silently ignored
+                }
+                if (swap) { Emp t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
+            }
+    }
+}` }
             ] } },
     mcq: { q: 'In a sort that takes a comparison rule (Collections.sort(list, comparator), sorted(list, key=...), array.sort(compareFn)), which part is the Strategy?', options: ['The Comparator', 'The List', 'The sort algorithm (TimSort)', 'The Employee class'], answer: 0, explain: 'The sorting algorithm is the fixed context; the comparator is the interchangeable rule plugged into it.' },
     hints: [`<p>Hint 1: Separate "how to sort" (library TimSort, stable, O(N log N)) from "what order" (a Comparator).</p>`, `<p>Hint 2: A <code>Map&lt;String, Comparator&lt;Employee&gt;&gt;</code> registry; other teams call <code>register(key, comparator)</code>.</p>`, `<p>Hint 3: Build comparators with <code>Comparator.comparing(...).thenComparing(...)</code> and <code>.reversed()</code>; copy the list before sorting; throw on unknown keys.</p>`],
@@ -8919,6 +10771,57 @@ int main() {
     cout << "input untouched: " << names(es) << "\\n";
     try { s.sort(es, "age"); }
     catch (const invalid_argument& e) { cout << "error: " << e.what() << "\\n"; }
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+sealed class Employee {
+    public readonly string Name, Dept; public readonly int Salary; public readonly DateTime Joined;
+    public Employee(string name, string dept, int salary, DateTime joined) { Name = name; Dept = dept; Salary = salary; Joined = joined; }
+}
+
+class EmployeeSorter {
+    private readonly Dictionary<string, Comparison<Employee>> strategies = new Dictionary<string, Comparison<Employee>>();
+
+    public EmployeeSorter() {
+        Register("salary", (a, b) => b.Salary.CompareTo(a.Salary));
+        Register("name", (a, b) => string.CompareOrdinal(a.Name, b.Name));
+        Register("joined", (a, b) => a.Joined.CompareTo(b.Joined));
+        Register("dept-then-salary", (a, b) => { int c = string.CompareOrdinal(a.Dept, b.Dept); return c != 0 ? c : b.Salary.CompareTo(a.Salary); });
+    }
+
+    public void Register(string key, Comparison<Employee> c) { if (c == null) throw new ArgumentNullException("c"); strategies[key] = c; }
+
+    public List<Employee> Sort(List<Employee> input, string key) {
+        Comparison<Employee> c;
+        if (!strategies.TryGetValue(key, out c)) throw new ArgumentException("unknown sort key " + key);
+        Comparer<Employee> cmp = Comparer<Employee>.Create(c);
+        return input.OrderBy(e => e, cmp).ToList();     // OrderBy is a stable O(N log N) sort; input untouched
+    }
+
+    public static string Names(List<Employee> list) {
+        return string.Join(" ", list.Select(e => e.Name));
+    }
+}
+
+class Program {
+    static void Main() {
+        List<Employee> es = new List<Employee> { new Employee("Asha", "ENG", 90, new DateTime(2019, 1, 1)),
+                new Employee("Ben", "OPS", 70, new DateTime(2017, 5, 1)),
+                new Employee("Cy", "ENG", 95, new DateTime(2021, 3, 1)) };
+        EmployeeSorter s = new EmployeeSorter();
+        Console.WriteLine("dept-then-salary: " + EmployeeSorter.Names(s.Sort(es, "dept-then-salary")));
+        Console.WriteLine("joined: " + EmployeeSorter.Names(s.Sort(es, "joined")));
+        s.Register("name-desc", (a, b) => string.CompareOrdinal(b.Name, a.Name));   // added by another team
+        Console.WriteLine("name-desc: " + EmployeeSorter.Names(s.Sort(es, "name-desc")));
+        List<Employee> tied = new List<Employee> { es[0], new Employee("Dee", "OPS", 90, new DateTime(2020, 2, 2)) };
+        Console.WriteLine("salary tie: " + EmployeeSorter.Names(s.Sort(tied, "salary")));          // stable: input order kept
+        Console.WriteLine("input untouched: " + EmployeeSorter.Names(es));
+        try { s.Sort(es, "age"); }
+        catch (ArgumentException e) { Console.WriteLine("error: " + e.Message); }
+    }
 }` }
         ],
       complexity: `<p>O(N log N) time, O(N) extra space for the copy. Registering a strategy: O(1).</p>`,
@@ -8989,7 +10892,25 @@ public:
     void emergency() { color = "FLASHING_RED"; }
     void resume() { if (color == "FLASHING_RED") color = "RED"; }
     // duration()? another switch...
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveLight {
+    public string Color = "RED";
+    public void TimerExpired() {
+        switch (Color) {
+            case "RED": Color = "GREEN"; break;
+            case "GREEN": Color = "YELLOW"; break;
+            case "YELLOW": Color = "RED"; break;
+            default: break;
+        }
+    }
+    public void PedestrianButton() { if (Color == "GREEN") Color = "YELLOW"; }
+    public void Emergency() { Color = "FLASHING_RED"; }
+    public void Resume() { if (Color == "FLASHING_RED") Color = "RED"; }
+    // Duration()? another switch...
+}` }
             ] } },
     mcq: { q: 'Which state class should handle pedestrianButton() by changing to YELLOW?', options: ['GREEN only; other states inherit a "do nothing" default', 'Every state, with an if inside', 'The controller, with a switch', 'YELLOW'], answer: 0, explain: 'Only the state where the event matters overrides it. Defaults make other states ignore it safely.' },
     hints: [`<p>Hint 1: Each colour is a state with its own duration and its own reaction to each event.</p>`, `<p>Hint 2: An <code>enum Light</code> with constant-specific bodies is a compact State pattern: each constant overrides <code>onTimer()</code> etc. and returns the next state.</p>`, `<p>Hint 3: Default methods return <code>this</code> (ignore). <code>emergency()</code> is the same for all → implement once in the enum, not per constant.</p>`],
@@ -9208,6 +11129,61 @@ int main() {
     t.timerExpired(); cout << t.show() << "\\n";  // stays
     t.resume(); cout << t.show() << "\\n";  // RED 30s
     t.resume(); cout << t.show() << "\\n";  // ignored
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+// A type-safe enum: one subclass per state, a fixed set of shared instances.
+abstract class Light {
+    public static readonly Light RED = new RedLight(), GREEN = new GreenLight(), YELLOW = new YellowLight(), FLASHING_RED = new FlashingRedLight();
+
+    public readonly int Seconds;
+    private readonly string name;
+    private Light(string name, int seconds) { this.name = name; Seconds = seconds; }
+    public string Name { get { return name; } }
+    public abstract Light OnTimer();
+    public virtual Light OnPedestrian() { return this; }        // default: ignore
+    public virtual Light OnResume() { return this; }            // default: ignore
+    public Light OnEmergency() { return FLASHING_RED; }         // same for every state
+
+    private sealed class RedLight : Light { public RedLight() : base("RED", 30) { } public override Light OnTimer() { return GREEN; } }
+    private sealed class GreenLight : Light {
+        public GreenLight() : base("GREEN", 25) { }
+        public override Light OnTimer() { return YELLOW; } public override Light OnPedestrian() { return YELLOW; }
+    }
+    private sealed class YellowLight : Light { public YellowLight() : base("YELLOW", 5) { } public override Light OnTimer() { return RED; } }
+    private sealed class FlashingRedLight : Light {
+        public FlashingRedLight() : base("FLASHING_RED", 0) { }
+        public override Light OnTimer() { return this; } public override Light OnResume() { return RED; }
+    }
+}
+
+class TrafficController {
+    private Light state = Light.RED;
+    public void TimerExpired()     { state = state.OnTimer(); }
+    public void PedestrianButton() { state = state.OnPedestrian(); }
+    public void Emergency()        { state = state.OnEmergency(); }
+    public void Resume()           { state = state.OnResume(); }
+    public string Color() { return state.Name; }
+    public int Duration() { return state.Seconds; }
+
+    public string Show() { return Color() + " " + Duration() + "s"; }
+}
+
+class Program {
+    static void Main() {
+        TrafficController t = new TrafficController();
+        Console.WriteLine(t.Show());                                           // RED 30s
+        t.TimerExpired();       Console.WriteLine(t.Show());                   // GREEN 25s
+        t.PedestrianButton();   Console.WriteLine(t.Show());                   // YELLOW 5s
+        t.PedestrianButton();   Console.WriteLine(t.Show());                   // ignored
+        t.TimerExpired();       Console.WriteLine(t.Show());                   // RED 30s
+        t.PedestrianButton();   Console.WriteLine(t.Show());                   // ignored
+        t.Emergency();          Console.WriteLine(t.Show());                   // FLASHING_RED 0s
+        t.TimerExpired();       Console.WriteLine(t.Show());                   // stays
+        t.Resume();             Console.WriteLine(t.Show());                   // RED 30s
+        t.Resume();             Console.WriteLine(t.Show());                   // ignored
+    }
 }` }
         ],
       complexity: `<p>O(1) per event, O(1) memory. New state = new enum constant + overrides in states that lead to it.</p>`,
@@ -9260,7 +11236,19 @@ public:
     int peek() { return all[i]; }
     int next() { return all[i++]; }
     bool hasNext() { return i < all.size(); }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class CopyingPeekingIterator {
+    private readonly List<int> all = new List<int>();
+    private int i;
+    public CopyingPeekingIterator(IEnumerator<int> it) { while (it.MoveNext()) all.Add(it.Current); }   // O(N), hangs if infinite
+    public int Peek() { return all[i]; }
+    public int Next() { return all[i++]; }
+    public bool HasNext() { return i < all.Count; }
+}` }
             ] } },
     mcq: { q: 'What extra state does a lazy PeekingIterator need?', options: ['One cached "next" element plus a flag saying whether it is valid', 'A copy of all remaining elements', 'A stack', 'Nothing; call next() twice'], answer: 0, explain: 'Look ahead by exactly one element and remember it; next() returns the cached value and refills the cache.' },
     hints: [`<p>Hint 1: To peek you must take the element from the underlying iterator early — so remember it.</p>`, `<p>Hint 2: Fields: <code>Integer nextVal</code> and <code>boolean hasPeeked</code> (null can be a valid element, so do not use null as "empty").</p>`, `<p>Hint 3: peek(): if not cached, cache it. next(): if cached, return and clear; else delegate. hasNext(): cached || underlying.hasNext().</p>`],
@@ -9438,6 +11426,48 @@ int main() {
     string x1 = one.peek(), x2 = one.peek(), x3 = one.next();
     cout << x1 << " " << x2 << " " << x3 << " " << one.hasNext() << "\\n";  // peek does not consume
     cout << over<int>({}).hasNext() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class PeekingIterator<T> {
+    private readonly IEnumerator<T> it;
+    private T buffered;
+    private bool hasBuffered, exhausted;
+
+    public PeekingIterator(IEnumerator<T> it) { this.it = it; }
+
+    private bool Advance() {                       // pull one element into the buffer
+        if (exhausted) return false;
+        if (it.MoveNext()) { buffered = it.Current; hasBuffered = true; return true; }
+        exhausted = true; return false;
+    }
+
+    public T Peek() {
+        if (!hasBuffered && !Advance()) throw new InvalidOperationException("exhausted");
+        return buffered;
+    }
+
+    public T Next() {
+        if (!hasBuffered && !Advance()) throw new InvalidOperationException("exhausted");
+        hasBuffered = false; T v = buffered; buffered = default(T); return v;
+    }
+
+    public bool HasNext() { return hasBuffered || Advance(); }
+}
+
+class Program {
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        PeekingIterator<int> p = new PeekingIterator<int>(new List<int> { 1, 2, 3 }.GetEnumerator());
+        Console.WriteLine(p.Next() + " " + p.Peek() + " " + p.Next() + " " + p.Next() + " " + B(p.HasNext()));
+        try { p.Peek(); } catch (InvalidOperationException e) { Console.WriteLine("peek: " + e.Message); }
+        try { p.Next(); } catch (InvalidOperationException e) { Console.WriteLine("next: " + e.Message); }
+        PeekingIterator<string> one = new PeekingIterator<string>(new List<string> { "x" }.GetEnumerator());
+        Console.WriteLine(one.Peek() + " " + one.Peek() + " " + one.Next() + " " + B(one.HasNext()));   // peek does not consume
+        Console.WriteLine(B(new PeekingIterator<int>(new List<int>().GetEnumerator()).HasNext()));
+    }
 }` }
         ],
       complexity: `<p>O(1) time per call, O(1) extra memory.</p>`,
@@ -9500,7 +11530,21 @@ public:
         switch (lastButton) { case 0: brightness = 0; break; case 1: brightness = 100; break; case 2: brightness = 100; break; }
         lastButton = -1;
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveRemote {
+    public int Brightness, LastButton = -1;
+    public void Press(int button) {
+        LastButton = button;
+        switch (button) { case 0: Brightness = 100; break; case 1: Brightness = 30; break; case 2: Brightness = 0; break; default: break; }
+    }
+    public void Undo() {                          // guesses: wrong after two dims, only one level
+        switch (LastButton) { case 0: Brightness = 0; break; case 1: Brightness = 100; break; case 2: Brightness = 100; break; default: break; }
+        LastButton = -1;
+    }
+}` }
             ] } },
     mcq: { q: 'Dim(30) is pressed twice in a row, then undo twice. What must each command store to undo correctly?', options: ['The brightness just before it executed', 'The brightness it sets (30)', 'Nothing; Dim undoes to 100', 'The slot number'], answer: 0, explain: 'Undo restores the previous value. Each command instance must capture it at execute time, so every press needs its own command record.' },
     hints: [`<p>Hint 1: Make <code>interface Command { void execute(); void undo(); }</code>. The remote holds <code>Command[] slots</code>.</p>`, `<p>Hint 2: A slot holds a command <i>template</i>; each press must record its own "previous brightness". Either create a fresh command per press (a Supplier in the slot) or let the history store (command, previous value) pairs.</p>`, `<p>Hint 3: A <code>SetBrightness(light, target)</code> command covers On/Off/Dim. Bounded <code>ArrayDeque</code> for history.</p>`],
@@ -9784,6 +11828,72 @@ int main() {
     int undone = 0;
     while (r.undo()) undone++;
     cout << "history kept " << undone << "\\n";  // oldest 5 dropped
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+class Light {
+    private int brightness;
+    public void Set(int b) { brightness = Math.Max(0, Math.Min(100, b)); }
+    public int Get() { return brightness; }
+}
+
+interface ICommand { void Execute(); void Undo(); }
+
+class SetBrightness : ICommand {
+    private readonly Light light; private readonly int target; private int previous;
+    public SetBrightness(Light light, int target) { this.light = light; this.target = target; }
+    public void Execute() { previous = light.Get(); light.Set(target); }
+    public void Undo() { light.Set(previous); }
+}
+
+class Remote {
+    private readonly Func<ICommand>[] slots = new Func<ICommand>[10];
+    private readonly LinkedList<ICommand> history = new LinkedList<ICommand>();   // front = newest
+
+    public void Program(int slot, Func<ICommand> factory) { slots[slot] = factory; }
+
+    public void Press(int slot) {
+        Func<ICommand> f = slots[slot];
+        if (f == null) return;                       // empty slot: no-op, not recorded
+        ICommand c = f();                            // fresh command per press
+        c.Execute();
+        history.AddFirst(c);
+        if (history.Count > 100) history.RemoveLast();
+    }
+    public bool Undo() {
+        if (history.Count == 0) return false;
+        ICommand c = history.First.Value; history.RemoveFirst();
+        c.Undo();
+        return true;
+    }
+}
+
+class Program {
+    static void Main() {
+        Light l = new Light();
+        Remote r = new Remote();
+        r.Program(0, () => new SetBrightness(l, 100));
+        r.Program(1, () => new SetBrightness(l, 30));
+        r.Program(2, () => new SetBrightness(l, 0));
+        r.Press(0); r.Press(1); r.Press(2);
+        StringBuilder sb = new StringBuilder();
+        while (r.Undo()) sb.Append(l.Get()).Append(' ');
+        Console.WriteLine(sb.ToString().Trim());     // 30 100 0
+        r.Press(5);                                  // empty slot: no-op, not recorded
+        Console.WriteLine("empty slot recorded: " + r.Undo().ToString().ToLower());
+        r.Program(3, () => new SetBrightness(l, 150));
+        r.Press(3);
+        Console.WriteLine("clamped " + l.Get());     // Light clamps to 100
+        r.Undo();
+        Console.WriteLine("restored " + l.Get());    // exact previous value: 0
+        for (int i = 0; i < 105; i++) r.Press(i % 2);
+        int undone = 0;
+        while (r.Undo()) undone++;
+        Console.WriteLine("history kept " + undone); // oldest 5 dropped
+    }
 }` }
         ],
       complexity: `<p>press/undo O(1); memory O(history size) — bounded at 100.</p>`,
@@ -9830,7 +11940,19 @@ public:
         if (level >= 1) file.push_back(msg);
         if (level >= 3) throw runtime_error("pager down");   // breaks everything after it
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NaiveLogger {
+    public readonly List<string> File = new List<string>();
+    public void Log(int level, string msg) {         // 0=DEBUG 1=INFO 2=WARN 3=ERROR
+        Console.WriteLine(msg);
+        if (level >= 1) File.Add(msg);
+        if (level >= 3) throw new Exception("pager down");   // breaks everything after it
+    }
+}` }
             ] } },
     mcq: { q: 'In this logger, why does every handler call next even after handling?', options: ['Pipeline semantics: several handlers may each act on the same message', 'Because the first handler cannot write', 'To save memory', 'It is a bug; CoR must stop at the first handler'], answer: 0, explain: 'Chain of Responsibility has two flavours. Approvals stop at the first handler; logging is a filter pipeline where many handlers act.' },
     hints: [`<p>Hint 1: <code>enum Level</code> with ordinal comparison. Abstract <code>LogHandler</code> with <code>minLevel</code>, <code>next</code>, and a final <code>handle()</code>.</p>`, `<p>Hint 2: <code>handle()</code>: if level ≥ min, try { write } catch (RuntimeException) { record failure }; then if next != null, next.handle().</p>`, `<p>Hint 3: Cheap filtering: the Logger can store the lowest min level of the chain and return early. Use a thread-safe list for the file handler.</p>`],
@@ -10189,6 +12311,77 @@ int main() {
     // nobody wants DEBUG here: dropped before any handler runs
     Logger(file2).log(Level::DEBUG, "ignored");
     cout << "file2 has " << show(file2.lines) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+enum Level { DEBUG, INFO, WARN, ERROR }
+
+abstract class LogHandler {
+    private readonly Level min; private LogHandler next;
+    protected LogHandler(Level min) { this.min = min; }
+    public LogHandler Then(LogHandler n) { next = n; return n; }
+    public Level Min() { return next == null ? min : (min < next.Min() ? min : next.Min()); }
+
+    public void Handle(Level level, string msg) {
+        if (level >= min) {
+            try { Write(level, msg); }
+            catch (Exception e) { Console.WriteLine(GetType().Name + " failed: " + e.Message); }
+        }
+        if (next != null) next.Handle(level, msg);           // pipeline: always forward
+    }
+    protected abstract void Write(Level level, string msg);
+}
+
+class ConsoleHandler : LogHandler {
+    public ConsoleHandler() : base(Level.DEBUG) { }
+    protected override void Write(Level l, string m) { Console.WriteLine("[console] " + l + " " + m); }
+}
+class FileHandler : LogHandler {
+    public readonly List<string> Lines = new List<string>();
+    public FileHandler() : base(Level.INFO) { }
+    protected override void Write(Level l, string m) { lock (Lines) Lines.Add(l + " " + m); }
+}
+class PagerHandler : LogHandler {
+    public PagerHandler() : base(Level.ERROR) { }
+    protected override void Write(Level l, string m) { Console.WriteLine("[pager] waking on-call: " + m); }
+}
+
+class BrokenHandler : LogHandler {
+    public BrokenHandler() : base(Level.INFO) { }
+    protected override void Write(Level l, string m) { throw new InvalidOperationException("disk full"); }
+}
+
+class Logger {
+    private readonly LogHandler head; private readonly Level min;
+    public Logger(LogHandler head) { this.head = head; min = head.Min(); }   // build the chain first, then the Logger
+    public void Log(Level level, string msg) {
+        if (level < min) return;                             // nobody wants it: O(1) drop
+        head.Handle(level, msg);
+    }
+}
+
+class Program {
+    static string Show(List<string> l) { return "[" + string.Join(", ", l) + "]"; }
+    static void Main() {
+        ConsoleHandler console = new ConsoleHandler();
+        FileHandler file = new FileHandler();
+        console.Then(file).Then(new PagerHandler());
+        Logger log = new Logger(console);
+        log.Log(Level.DEBUG, "cache miss");
+        log.Log(Level.WARN, "slow query");
+        log.Log(Level.ERROR, "db down");
+        Console.WriteLine("file has " + Show(file.Lines));
+        // a failing handler must not stop the rest of the pipeline
+        FileHandler file2 = new FileHandler();
+        file2.Then(new BrokenHandler()).Then(new PagerHandler());
+        new Logger(file2).Log(Level.ERROR, "x");
+        Console.WriteLine("file2 has " + Show(file2.Lines));
+        // nobody wants DEBUG here: dropped before any handler runs
+        new Logger(file2).Log(Level.DEBUG, "ignored");
+        Console.WriteLine("file2 has " + Show(file2.Lines));
+    }
 }` }
         ],
       complexity: `<p>O(H) per message for H handlers; O(1) for messages below the global minimum.</p>`,
@@ -10235,7 +12428,19 @@ public:
         else if (type == "USER_SIGNED_UP") cout << "welcome " << payload << "\\n";
         else cout << "unknown " << type << "\\n";   // every new event edits this
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveBus {
+    public void Publish(string type, object payload) {
+        switch (type) {
+            case "ORDER_SHIPPED": Console.WriteLine("audit " + payload); Console.WriteLine("sms " + payload); break;
+            case "USER_SIGNED_UP": Console.WriteLine("welcome " + payload); break;
+            default: Console.WriteLine("unknown " + type); break;   // every new event edits this
+        }
+    }
+}` }
             ] } },
     mcq: { q: 'How do you find every handler that should receive an OrderShipped event?', options: ['Walk its class, superclasses and interfaces, and collect the handlers registered for each', 'Only look up OrderShipped.class', 'Call every handler and let it check instanceof', 'Use the event name string'], answer: 0, explain: 'Subscriptions keyed by type; delivery resolves the event type hierarchy (cache it per class for speed).' },
     hints: [`<p>Hint 1: <code>Map&lt;Class&lt;?&gt;, List&lt;Consumer&lt;Object&gt;&gt;&gt;</code> — store handlers wrapped so the bus can call them with an Object after a safe cast.</p>`, `<p>Hint 2: Collect all supertypes with a BFS over <code>getSuperclass()</code> and <code>getInterfaces()</code>; cache the result in a <code>ConcurrentHashMap&lt;Class, List&lt;Class&gt;&gt;</code>.</p>`, `<p>Hint 3: Use <code>CopyOnWriteArrayList</code> for handler lists; wrap each call in try/catch; unsubscribe handle removes the exact wrapper.</p>`],
@@ -10489,6 +12694,75 @@ int main() {
     bus2.subscribe<UserSignedUp>([](const UserSignedUp& e) { cout << "welcome " << e.userId << "\\n"; });
     bus2.subscribe<Event>([](const Event& e) { cout << "debug " << e.kind() << "\\n"; });
     cout << bus2.publish(UserSignedUp("u8")) << " handlers\\n";  // the broken handler is not counted
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+
+interface IOrderEvent { string OrderId { get; } }
+sealed class OrderShipped : IOrderEvent { private readonly string id; public OrderShipped(string orderId) { id = orderId; } public string OrderId { get { return id; } } }
+sealed class UserSignedUp { public readonly string UserId; public UserSignedUp(string userId) { UserId = userId; } }
+
+class EventBus {
+    private readonly ConcurrentDictionary<Type, List<Action<object>>> handlers = new ConcurrentDictionary<Type, List<Action<object>>>();
+    private readonly ConcurrentDictionary<Type, List<Type>> hierarchyCache = new ConcurrentDictionary<Type, List<Type>>();
+    private readonly object gate = new object();
+
+    public Action Subscribe<T>(Action<T> handler) {
+        Type type = typeof(T);
+        Action<object> wrapper = o => handler((T)o);
+        lock (gate) handlers.GetOrAdd(type, k => new List<Action<object>>()).Add(wrapper);
+        return () => { List<Action<object>> hs; if (handlers.TryGetValue(type, out hs)) lock (gate) hs.Remove(wrapper); };
+    }
+
+    public int Publish(object evt) {
+        int ok = 0;
+        foreach (Type t in Hierarchy(evt.GetType())) {
+            List<Action<object>> hs; Action<object>[] snapshot;
+            if (!handlers.TryGetValue(t, out hs)) continue;
+            lock (gate) snapshot = hs.ToArray();
+            foreach (Action<object> h in snapshot) {
+                try { h(evt); ok++; }
+                catch (Exception e) { Console.WriteLine("handler failed: " + e.Message); }
+            }
+        }
+        return ok;
+    }
+
+    private List<Type> Hierarchy(Type c) {
+        return hierarchyCache.GetOrAdd(c, k => {
+            List<Type> result = new List<Type>();
+            Queue<Type> q = new Queue<Type>(); q.Enqueue(k);
+            HashSet<Type> seen = new HashSet<Type>();
+            while (q.Count > 0) {
+                Type x = q.Dequeue();
+                if (x == null || !seen.Add(x)) continue;
+                result.Add(x);
+                foreach (Type i in x.GetInterfaces()) q.Enqueue(i);      // interfaces first, then the base type: most specific handlers run first
+                if (x.BaseType != null) q.Enqueue(x.BaseType);
+            }
+            return result;
+        });
+    }
+}
+
+class Program {
+    static void Main() {
+        EventBus bus = new EventBus();
+        Action sms = bus.Subscribe<OrderShipped>(e => Console.WriteLine("sms: " + e.OrderId + " shipped"));
+        bus.Subscribe<IOrderEvent>(e => Console.WriteLine("audit " + e.OrderId));
+        bus.Subscribe<object>(e => Console.WriteLine("debug " + e.GetType().Name));
+        Console.WriteLine(bus.Publish(new OrderShipped("A1")) + " handlers");
+        sms();
+        Console.WriteLine(bus.Publish(new OrderShipped("A2")) + " handlers");
+        Console.WriteLine(bus.Publish(new UserSignedUp("u7")) + " handlers");
+        EventBus bus2 = new EventBus();
+        bus2.Subscribe<UserSignedUp>(e => { throw new InvalidOperationException("mail down"); });
+        bus2.Subscribe<UserSignedUp>(e => Console.WriteLine("welcome " + e.UserId));
+        bus2.Subscribe<object>(e => Console.WriteLine("debug " + e.GetType().Name));
+        Console.WriteLine(bus2.Publish(new UserSignedUp("u8")) + " handlers");   // the broken handler is not counted
+    }
 }` }
         ],
       complexity: `<p>publish: O(T + H) where T = types in the hierarchy (cached) and H = matching handlers. subscribe/unsubscribe: O(H) copy-on-write.</p>`,
@@ -10546,7 +12820,19 @@ public:
     FlattenAll(const vector<NI*>& list) { add(list); }
     bool hasNext() { return i < (int)out.size(); }
     int next() { return out[i++]; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface INI { bool IsInteger(); int GetInteger(); List<INI> GetList(); }
+class FlattenAll {
+    private readonly List<int> all = new List<int>(); private int i;
+    public FlattenAll(List<INI> list) { Add(list); }
+    private void Add(List<INI> l) { foreach (INI x in l) if (x.IsInteger()) all.Add(x.GetInteger()); else Add(x.GetList()); }  // deep recursion
+    public bool HasNext() { return i < all.Count; }
+    public int Next() { return all[i++]; }
+}` }
             ] } },
     mcq: { q: 'Why must hasNext() do work (not just check a stack is non-empty)?', options: ['Because the stack may hold only empty lists, so we must unpack until an integer is on top', 'Because next() is slow', 'Because the language requires it', 'It must not do work'], answer: 0, explain: 'hasNext() advances past empty lists and unpacks nested lists until an integer is ready (or nothing remains). It must be idempotent, so it only prepares and never consumes the integer.' },
     hints: [`<p>Hint 1: Keep a stack of iterators (one per open list), like a paused DFS.</p>`, `<p>Hint 2: In hasNext(): look at the top iterator; if exhausted pop it; if its next element is a list, push that list's iterator; if it is an integer, cache it and return true.</p>`, `<p>Hint 3: Use a cached <code>Integer nextVal</code> to make hasNext idempotent; next() calls hasNext(), returns and clears the cache.</p>`],
@@ -10822,6 +13108,68 @@ int main() {
     Nested deep = ofInt(42);
     for (int i = 0; i < 5000; i++) deep = ofList({deep});  // 5000 levels, no recursion
     cout << "deep " << NestedIterator({deep}).next() << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+interface INestedInteger {
+    bool IsInteger();
+    int GetInteger();
+    List<INestedInteger> GetList();
+}
+static class Nested {
+    public static INestedInteger Of(int v) { return new NestedImpl(v, null); }
+    public static INestedInteger Of(params INestedInteger[] xs) { return new NestedImpl(null, new List<INestedInteger>(xs)); }
+}
+sealed class NestedImpl : INestedInteger {
+    private readonly int? value; private readonly List<INestedInteger> list;
+    public NestedImpl(int? value, List<INestedInteger> list) { this.value = value; this.list = list; }
+    public bool IsInteger() { return value != null; }
+    public int GetInteger() { return value.Value; }
+    public List<INestedInteger> GetList() { return list; }
+}
+
+class NestedIterator {
+    private readonly Stack<IEnumerator<INestedInteger>> stack = new Stack<IEnumerator<INestedInteger>>();
+    private int? nextVal;                           // cached look-ahead
+
+    public NestedIterator(List<INestedInteger> list) { stack.Push(list.GetEnumerator()); }
+
+    public bool HasNext() {
+        while (nextVal == null && stack.Count > 0) {
+            IEnumerator<INestedInteger> top = stack.Peek();
+            if (!top.MoveNext()) { stack.Pop(); continue; }
+            INestedInteger x = top.Current;
+            if (x.IsInteger()) nextVal = x.GetInteger();
+            else stack.Push(x.GetList().GetEnumerator());      // descend lazily
+        }
+        return nextVal != null;
+    }
+
+    public int Next() {
+        if (!HasNext()) throw new InvalidOperationException("exhausted");
+        int v = nextVal.Value; nextVal = null; return v;
+    }
+}
+
+class Program {
+    static void Main() {
+        List<INestedInteger> input = new List<INestedInteger> { Nested.Of(Nested.Of(1), Nested.Of(1)), Nested.Of(2),
+                Nested.Of(Nested.Of(1), Nested.Of(Nested.Of(4), Nested.Of(Nested.Of(6)))) };
+        NestedIterator it = new NestedIterator(input);
+        StringBuilder sb = new StringBuilder();
+        while (it.HasNext()) sb.Append(it.Next()).Append(' ');
+        Console.WriteLine(sb.ToString().Trim());   // 1 1 2 1 4 6
+        Console.WriteLine(new NestedIterator(new List<INestedInteger> { Nested.Of(), Nested.Of(Nested.Of()), Nested.Of(3) }).Next());   // 3
+        NestedIterator empty = new NestedIterator(new List<INestedInteger> { Nested.Of(), Nested.Of(Nested.Of()) });
+        Console.WriteLine(empty.HasNext().ToString().ToLower() + " " + empty.HasNext().ToString().ToLower());   // false false: repeated calls are safe
+        try { empty.Next(); } catch (InvalidOperationException e) { Console.WriteLine("error: " + e.Message); }
+        INestedInteger deep = Nested.Of(42);
+        for (int i = 0; i < 5000; i++) deep = Nested.Of(deep);   // 5000 levels, no recursion
+        Console.WriteLine("deep " + new NestedIterator(new List<INestedInteger> { deep }).Next());
+    }
 }` }
         ],
       complexity: `<p>O(1) amortised per call (each element and list is visited once); O(depth) memory.</p>`,
@@ -10876,7 +13224,18 @@ public:
     void pause() { if (playing) { playing = false; paused = true; } }
     void stop() { playing = false; paused = false; pos = 0; }
     void tick(int s) { if (playing && !paused) { pos += s; if (pos >= len) stop(); } }   // flags can drift
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaivePlayer {
+    public bool Playing, Paused; public int Pos; public readonly int Len;
+    public NaivePlayer(int len) { Len = len; }
+    public void Play() { if (Paused) { Paused = false; Playing = true; } else if (!Playing) { Pos = 0; Playing = true; } }
+    public void Pause() { if (Playing) { Playing = false; Paused = true; } }
+    public void Stop() { Playing = false; Paused = false; Pos = 0; }
+    public void Tick(int s) { if (Playing && !Paused) { Pos += s; if (Pos >= Len) Stop(); } }   // flags can drift
+}` }
             ] } },
     mcq: { q: 'Where does "time does not advance while paused" live in the State design?', options: ['PausedState.tick() is a no-op (inherited default)', 'In MediaPlayer.tick() with an if', 'In the UI', 'In the track object'], answer: 0, explain: 'Each state defines its own reaction; Paused simply does not override tick, so the default does nothing.' },
     hints: [`<p>Hint 1: Context = player (position, length, callback). States = Stopped, Playing, Paused.</p>`, `<p>Hint 2: <code>interface PlayerState</code> with default no-op methods returning <code>this</code>; each state overrides only its meaningful events and returns the next state.</p>`, `<p>Hint 3: Playing.tick: pos += s; if pos ≥ len → pos = 0, fire callback, return Stopped. Keep the state singletons stateless; data stays in the context.</p>`],
@@ -11170,6 +13529,65 @@ int main() {
     cout << m.play() << "\\n";   // Playing@0
     cout << m.tick(2) << "\\n";  // Playing@2
     cout << m.stop() << "\\n";   // Stopped@0
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+abstract class PlayerState {
+    public abstract string Name { get; }
+    public virtual PlayerState Play(MediaPlayer p)  { return this; }
+    public virtual PlayerState Pause(MediaPlayer p) { return this; }
+    public virtual PlayerState Tick(MediaPlayer p, int s) { return this; }
+    public virtual PlayerState Stop(MediaPlayer p)  { p.Position = 0; return Stopped.I; }
+}
+sealed class Stopped : PlayerState {
+    public static readonly Stopped I = new Stopped();
+    public override string Name { get { return "Stopped"; } }
+    public override PlayerState Play(MediaPlayer p) { p.Position = 0; return Playing.I; }
+}
+sealed class Playing : PlayerState {
+    public static readonly Playing I = new Playing();
+    public override string Name { get { return "Playing"; } }
+    public override PlayerState Pause(MediaPlayer p) { return Paused.I; }
+    public override PlayerState Tick(MediaPlayer p, int s) {
+        p.Position += s;
+        if (p.Position >= p.Length) { p.Position = 0; p.OnFinished(); return Stopped.I; }
+        return this;
+    }
+}
+sealed class Paused : PlayerState {
+    public static readonly Paused I = new Paused();
+    public override string Name { get { return "Paused"; } }
+    public override PlayerState Play(MediaPlayer p) { return Playing.I; }     // resume from saved position
+}
+
+class MediaPlayer {
+    public int Position; public readonly int Length; public readonly Action OnFinished;
+    private PlayerState state = Stopped.I;
+    public MediaPlayer(int length, Action onFinished) { Length = length; OnFinished = onFinished; }
+    public string Play()       { state = state.Play(this); return Status(); }
+    public string Pause()      { state = state.Pause(this); return Status(); }
+    public string Stop()       { state = state.Stop(this); return Status(); }
+    public string Tick(int s)  { state = state.Tick(this, s); return Status(); }
+    public string Status() { return state.Name + "@" + Position; }
+}
+
+class Program {
+    static void Main() {
+        MediaPlayer m = new MediaPlayer(10, () => Console.WriteLine("finished!"));
+        Console.WriteLine(m.Play());       // Playing@0
+        Console.WriteLine(m.Tick(4));      // Playing@4
+        Console.WriteLine(m.Pause());      // Paused@4
+        Console.WriteLine(m.Tick(3));      // Paused@4: time is frozen
+        Console.WriteLine(m.Play());       // Playing@4: resumes
+        Console.WriteLine(m.Play());       // Playing@4: no-op
+        Console.WriteLine(m.Tick(7));      // finished! then Stopped@0
+        Console.WriteLine(m.Pause());      // Stopped@0: ignored
+        Console.WriteLine(m.Tick(1));      // Stopped@0: ignored
+        Console.WriteLine(m.Play());       // Playing@0
+        Console.WriteLine(m.Tick(2));      // Playing@2
+        Console.WriteLine(m.Stop());       // Stopped@0
+    }
 }` }
         ],
       complexity: `<p>O(1) per action, O(1) memory. A Buffering state = one class + overrides in Playing (to enter it) — Stopped and Paused are untouched.</p>`,
@@ -11239,7 +13657,23 @@ public:
         }
         return t;   // shipping(), points(), duty() repeat this ladder...
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NaiveCart {
+    public sealed class Item { public readonly string Kind; public readonly long Price; public readonly int Grams; public Item(string kind, long price, int grams) { Kind = kind; Price = price; Grams = grams; } }
+    public long Tax(List<Item> items) {
+        long t = 0;
+        foreach (Item i in items) {
+            if (i.Kind == "BOOK") t += 0;
+            else if (i.Kind == "ELEC") t += i.Price * 18 / 100;
+            else if (i.Kind == "GROCERY") t += i.Price * 5 / 100;
+        }
+        return t;   // Shipping(), Points(), Duty() repeat this ladder...
+    }
+}` }
             ] } },
     mcq: { q: 'Finance adds "loyalty points" next sprint. With Visitor, what do you write?', options: ['One new class LoyaltyVisitor; item classes untouched', 'A points() method in each item class', 'A new instanceof ladder', 'A new item type'], answer: 0, explain: 'New operations over stable types are exactly what Visitor makes cheap.' },
     hints: [`<p>Hint 1: <code>interface CartItem { &lt;R&gt; R accept(CartVisitor&lt;R&gt; v); }</code> and a visitor with <code>visitBook</code>, <code>visitElectronics</code>, <code>visitGrocery</code>.</p>`, `<p>Hint 2: Each visitor returns the amount for one item; the cart sums <code>item.accept(visitor)</code> over all items.</p>`, `<p>Hint 3: Blocks of 500 g "or part thereof" = <code>(grams + 499) / 500</code>. Keep all money in long paise.</p>`],
@@ -11509,6 +13943,71 @@ int main() {
     edge.add(Grocery{199, 1, false});  // 5% of 199 = 9 (integer paise)
     cout << report(edge) << "\\n";  // 9 4000
     cout << report(Cart{}) << "\\n";  // 0 0
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+interface ICartVisitor<R> {
+    R VisitBook(Book b);
+    R VisitElectronics(Electronics e);
+    R VisitGrocery(Grocery g);
+}
+interface ICartItem { R Accept<R>(ICartVisitor<R> v); }
+
+sealed class Book : ICartItem {
+    public readonly long Price; public readonly int Grams;
+    public Book(long price, int grams) { Price = price; Grams = grams; }
+    public R Accept<R>(ICartVisitor<R> v) { return v.VisitBook(this); }
+}
+sealed class Electronics : ICartItem {
+    public readonly long Price; public readonly int Grams; public readonly bool Fragile;
+    public Electronics(long price, int grams, bool fragile) { Price = price; Grams = grams; Fragile = fragile; }
+    public R Accept<R>(ICartVisitor<R> v) { return v.VisitElectronics(this); }
+}
+sealed class Grocery : ICartItem {
+    public readonly long Price; public readonly int Grams; public readonly bool Perishable;
+    public Grocery(long price, int grams, bool perishable) { Price = price; Grams = grams; Perishable = perishable; }
+    public R Accept<R>(ICartVisitor<R> v) { return v.VisitGrocery(this); }
+}
+
+class TaxVisitor : ICartVisitor<long> {
+    public long VisitBook(Book b) { return 0L; }
+    public long VisitElectronics(Electronics e) { return e.Price * 18 / 100; }
+    public long VisitGrocery(Grocery g) { return g.Price * 5 / 100; }
+}
+class ShippingVisitor : ICartVisitor<long> {
+    private static long Base(int grams) { return 1000L * ((grams + 499) / 500); }   // ₹10 per 500 g block
+    public long VisitBook(Book b) { return Base(b.Grams); }
+    public long VisitElectronics(Electronics e) { return Base(e.Grams) + (e.Fragile ? 5000 : 0); }
+    public long VisitGrocery(Grocery g) { return Base(g.Grams) + (g.Perishable ? 3000 : 0); }
+}
+
+class Cart {
+    private readonly List<ICartItem> items = new List<ICartItem>();
+    public void Add(ICartItem i) { items.Add(i); }
+    public long Total(ICartVisitor<long> v) {
+        long sum = 0;
+        foreach (ICartItem i in items) sum += i.Accept(v);
+        return sum;
+    }
+}
+
+class Program {
+    static void Main() {
+        Cart c = new Cart();
+        c.Add(new Book(50000, 400));
+        c.Add(new Electronics(200000, 1200, true));
+        c.Add(new Grocery(10000, 900, true));
+        Console.WriteLine("tax=" + c.Total(new TaxVisitor()) + " shipping=" + c.Total(new ShippingVisitor()));   // 36500 14000
+        Cart edge = new Cart();
+        edge.Add(new Book(1000, 500));          // exactly one 500 g block
+        edge.Add(new Book(1000, 501));          // 1 g over: two blocks
+        edge.Add(new Grocery(199, 1, false));   // 5% of 199 = 9 (integer paise)
+        Console.WriteLine("tax=" + edge.Total(new TaxVisitor()) + " shipping=" + edge.Total(new ShippingVisitor()));   // 9 4000
+        Cart empty = new Cart();
+        Console.WriteLine("tax=" + empty.Total(new TaxVisitor()) + " shipping=" + empty.Total(new ShippingVisitor()));   // 0 0
+    }
 }` }
         ],
       complexity: `<p>O(N) per visitor run. New operation: one class. New item type: one method in every visitor (compiler-enforced).</p>`,
@@ -11558,6 +14057,18 @@ public:
         return receipt + " fee " + to_string(amt * 2 / 100);       // forgot to validate amt > 0
     }
 };
+// NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.` },
+  { lang: 'csharp', code: `
+using System;
+
+class NaiveCardPayment {
+    public string Pay(long amt) {
+        string receipt = "receipt " + amt;              // written BEFORE debit: wrong order
+        if (amt > 10000000) return "FRAUD_REJECTED";
+        Console.WriteLine("debit card " + amt);
+        return receipt + " fee " + amt * 2 / 100;       // forgot to validate amt > 0
+    }
+}
 // NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.` }
             ] } },
     mcq: { q: 'UPI wants to skip fraud checks for small amounts. How should it express that?', options: ['Override a hook like needsFraudCheck(amount) that the template calls', 'Override the whole pay() method', 'Add an if in the base class for UPI', 'Catch the fraud exception'], answer: 0, explain: 'Hooks let subclasses switch optional steps on/off while the base keeps the order and the mandatory steps.' },
@@ -11881,6 +14392,76 @@ int main() {
     show("wallet", 50'000, wallet.pay(50'000));                  // only 30,000 left
     show("card", 0, CardPayment().pay(0));
     show("flaky", 1'000, FlakyPayment().pay(1'000));
+}` },
+  { lang: 'csharp', code: `
+using System;
+
+enum PayStatus { OK, INVALID_AMOUNT, FRAUD_REJECTED, DEBIT_FAILED }
+sealed class PaymentResult {
+    public readonly PayStatus Status; public readonly long Fee;
+    public PaymentResult(PayStatus status, long fee) { Status = status; Fee = fee; }
+}
+
+abstract class PaymentProcessor {
+    public PaymentResult Pay(long amount) {                                 // the template method: fixed order
+        if (amount <= 0) return new PaymentResult(PayStatus.INVALID_AMOUNT, 0);
+        if (NeedsFraudCheck(amount) && !FraudCheck(amount)) return new PaymentResult(PayStatus.FRAUD_REJECTED, 0);
+        bool debited;
+        try { debited = Debit(amount); }
+        catch (Exception) { debited = false; }                             // a crashing gateway is a failed debit, never an exception to the caller
+        if (!debited) return new PaymentResult(PayStatus.DEBIT_FAILED, 0);
+        long fee = Fee(amount);
+        WriteReceipt(amount, fee);
+        return new PaymentResult(PayStatus.OK, fee);
+    }
+    protected abstract bool Debit(long amount);
+    protected virtual bool NeedsFraudCheck(long amount) { return true; }   // hook
+    protected virtual long Fee(long amount) { return 0; }                  // hook
+    private bool FraudCheck(long amount) { return amount <= 10000000; }    // ₹1,00,000 in paise
+    private void WriteReceipt(long amount, long fee) {
+        Console.WriteLine("receipt: " + amount + " fee " + fee);
+    }
+}
+
+class CardPayment : PaymentProcessor {
+    protected override bool Debit(long amount) { return true; }            // call card network
+    protected override long Fee(long amount) { return amount * 2 / 100; }
+}
+class UpiPayment : PaymentProcessor {
+    protected override bool Debit(long amount) { return true; }
+    protected override bool NeedsFraudCheck(long amount) { return amount > 200000; }
+}
+class WalletPayment : PaymentProcessor {
+    private long balance;
+    public WalletPayment(long balance) { this.balance = balance; }
+    protected override bool Debit(long amount) {
+        if (amount > balance) return false;
+        balance -= amount; return true;
+    }
+    protected override bool NeedsFraudCheck(long amount) { return false; }
+}
+
+class FlakyPayment : PaymentProcessor {
+    protected override bool Debit(long amount) { throw new InvalidOperationException("gateway down"); }
+}
+
+class Program {
+    static void Show(string label, long amount, PaymentResult r) {
+        Console.WriteLine(label + " " + amount + ": " + r.Status + " fee " + r.Fee);
+    }
+
+    static void Main() {
+        Show("card", 50000, new CardPayment().Pay(50000));
+        Show("upi", 150000, new UpiPayment().Pay(150000));              // below the UPI fraud threshold: check skipped
+        Show("upi", 20000000, new UpiPayment().Pay(20000000));          // above it: fraud check applies and fails
+        Show("card", 20000000, new CardPayment().Pay(20000000));
+        WalletPayment wallet = new WalletPayment(80000);
+        Show("wallet", 90000, wallet.Pay(90000));
+        Show("wallet", 50000, wallet.Pay(50000));
+        Show("wallet", 50000, wallet.Pay(50000));                        // only 30,000 left
+        Show("card", 0, new CardPayment().Pay(0));
+        Show("flaky", 1000, new FlakyPayment().Pay(1000));
+    }
 }` }
         ],
       complexity: `<p>O(1) per payment. New method = one subclass with 1–3 small overrides.</p>`,
@@ -11937,7 +14518,20 @@ public:
     void begin() { snapshots.push_back(data); }          // O(N) every time
     bool rollback() { if (snapshots.empty()) return false; data = snapshots.back(); snapshots.pop_back(); return true; }
     bool commit() { if (snapshots.empty()) return false; snapshots.pop_back(); return true; }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class CopyingStore {
+    private Dictionary<string, string> data = new Dictionary<string, string>();
+    private readonly Stack<Dictionary<string, string>> snapshots = new Stack<Dictionary<string, string>>();
+    public void Set(string k, string v) { data[k] = v; }
+    public string Get(string k) { string v; return data.TryGetValue(k, out v) ? v : null; }
+    public void Begin() { snapshots.Push(new Dictionary<string, string>(data)); }   // O(N) every time
+    public bool Rollback() { if (snapshots.Count == 0) return false; data = snapshots.Pop(); return true; }
+    public bool Commit() { if (snapshots.Count == 0) return false; snapshots.Pop(); return true; }
+}` }
             ] } },
     mcq: { q: 'Inside one transaction, key a is set three times. What should the undo log keep for a?', options: ['Only its value before the FIRST change in this transaction', 'All three old values', 'Only the latest value', 'Nothing; rollback re-reads the database'], answer: 0, explain: 'Rollback must restore the state at begin(); the first old value is all that is needed. Recording it once per key per transaction keeps the log O(keys touched).' },
     hints: [`<p>Hint 1: A <b>delta memento</b>: each transaction keeps a <code>Map&lt;key, oldValue&gt;</code> recorded the first time it touches a key. A sentinel marks "key did not exist".</p>`, `<p>Hint 2: rollback: for each entry, restore the old value (or remove the key if the sentinel). commit: merge the child log into the parent with <code>putIfAbsent</code> (the parent's older value wins); if outermost, just drop it.</p>`, `<p>Hint 3: Use <code>Optional</code> or a private static final Object ABSENT as the sentinel. Stack of logs = <code>Deque&lt;Map&lt;String,Object&gt;&gt;</code>.</p>`],
@@ -12185,6 +14779,71 @@ int main() {
     cout << show(s.get("zzz")) << " " << show(s.get("c")) << "\\n";  // null null
     s.begin(); s.set("a", "5"); s.begin(); s.set("a", "6"); s.rollback(); s.commit();
     cout << show(s.get("a")) << "\\n";  // 5: inner rollback keeps the outer change
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class TxStore {
+    private static readonly object Absent = new object();
+    private readonly Dictionary<string, string> data = new Dictionary<string, string>();
+    private readonly Stack<Dictionary<string, object>> logs = new Stack<Dictionary<string, object>>();
+
+    public string Get(string k) { string v; return data.TryGetValue(k, out v) ? v : null; }
+
+    public void Set(string k, string v) { Remember(k); data[k] = v; }
+    public void Delete(string k) { Remember(k); data.Remove(k); }
+
+    private void Remember(string k) {
+        if (logs.Count == 0) return;
+        Dictionary<string, object> log = logs.Peek();
+        if (!log.ContainsKey(k)) log[k] = data.ContainsKey(k) ? (object)data[k] : Absent;
+    }
+
+    public void Begin() { logs.Push(new Dictionary<string, object>()); }           // O(1)
+
+    public bool Rollback() {
+        if (logs.Count == 0) return false;
+        Dictionary<string, object> log = logs.Pop();
+        foreach (var e in log) {
+            if (e.Value == Absent) data.Remove(e.Key);
+            else data[e.Key] = (string)e.Value;
+        }
+        return true;
+    }
+
+    public bool Commit() {
+        if (logs.Count == 0) return false;
+        Dictionary<string, object> log = logs.Pop();
+        if (logs.Count > 0) {
+            Dictionary<string, object> parent = logs.Peek();
+            foreach (var e in log) if (!parent.ContainsKey(e.Key)) parent[e.Key] = e.Value;   // parent keeps its OLDER value
+        }
+        return true;
+    }
+}
+
+class Program {
+    static string S(string v) { return v ?? "null"; }
+    static string B(bool b) { return b.ToString().ToLower(); }
+    static void Main() {
+        TxStore s = new TxStore();
+        s.Set("a", "10");
+        s.Begin(); s.Set("a", "20");
+        s.Begin(); s.Delete("a"); s.Set("b", "1");
+        Console.WriteLine(S(s.Get("a")) + " " + S(s.Get("b")));   // null 1
+        s.Rollback();
+        Console.WriteLine(S(s.Get("a")) + " " + S(s.Get("b")));   // 20 null
+        s.Commit();
+        Console.WriteLine(S(s.Get("a")) + " " + B(s.Rollback())); // 20 false
+        s.Begin(); s.Set("a", "30"); s.Begin(); s.Set("a", "40"); s.Commit(); s.Rollback();
+        Console.WriteLine(S(s.Get("a")));                         // 20 (outer rollback undoes both)
+        Console.WriteLine(B(s.Commit()));                         // false: no open transaction
+        s.Begin(); s.Delete("zzz"); s.Set("c", "7"); s.Rollback();
+        Console.WriteLine(S(s.Get("zzz")) + " " + S(s.Get("c"))); // null null
+        s.Begin(); s.Set("a", "5"); s.Begin(); s.Set("a", "6"); s.Rollback(); s.Commit();
+        Console.WriteLine(S(s.Get("a")));                         // 5: inner rollback keeps the outer change
+    }
 }` }
         ],
       complexity: `<p>get/set/delete O(1) average; begin O(1); rollback/commit O(keys touched in that transaction). Memory O(total keys touched across open transactions).</p>`,
@@ -12256,7 +14915,26 @@ public:
             return body + " X-Time-Us=" + to_string(chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - t0).count());
         } catch (const runtime_error&) { return "500"; }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+
+class NaiveServer {
+    readonly Dictionary<string, int> hits = new Dictionary<string, int>();
+    public string Handle(string token, string client, string path) {
+        try {
+            if (token == null) return "401";
+            int n; hits.TryGetValue(client, out n); hits[client] = ++n;
+            if (n > 2) return "429";                                       // not thread-safe either
+            Stopwatch sw = Stopwatch.StartNew();
+            if (path == "/boom") throw new InvalidOperationException("bug");
+            string body = "200 " + path;
+            return body + " X-Time-Us=" + sw.Elapsed.Ticks / 10;
+        } catch (Exception) { return "500"; }
+    }
+}` }
             ] } },
     mcq: { q: 'Why must ErrorBoundary be the OUTERMOST middleware?', options: ['So exceptions thrown by any inner middleware or the endpoint propagate up into its try/catch', 'Because it is the fastest', 'So it runs after the response is sent', 'Order does not matter'], answer: 0, explain: 'In the onion model, a middleware can only catch exceptions from what runs inside its next() call. Outermost = wraps everything.' },
     hints: [`<p>Hint 1: <code>interface Middleware { Response handle(Request r, Function&lt;Request, Response&gt; next); }</code>. Store (order, seq, middleware) and sort once.</p>`, `<p>Hint 2: Pre-compose the chain into a single <code>Function&lt;Request, Response&gt;</code> by folding from the innermost: <code>f = r -&gt; m.handle(r, inner)</code>.</p>`, `<p>Hint 3: Responses with headers: an immutable record with a <code>withHeader</code> method. RateLimit uses <code>ConcurrentHashMap.merge</code>. Mark the chain "built" and rebuild if a middleware is added later.</p>`],
@@ -12592,6 +15270,87 @@ int main() {
     Server t([](const Req& r) { return Resp{200, r.path, {}}; });
     t.use(5, append('A')).use(5, append('B')).use(1, append('C'));
     cout << show(t.handle({"/", nullopt, "c"})) << "\\n";  // /CAB
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+
+sealed class Req {
+    public readonly string Path, Token, Client;
+    public Req(string path, string token, string client) { Path = path; Token = token; Client = client; }
+}
+sealed class Resp {
+    public readonly int Status; public readonly string Body; public readonly IReadOnlyList<KeyValuePair<string, string>> Headers;
+    public Resp(int status, string body) : this(status, body, new List<KeyValuePair<string, string>>()) { }
+    private Resp(int status, string body, List<KeyValuePair<string, string>> headers) { Status = status; Body = body; Headers = headers; }
+    public Resp WithHeader(string k, string v) {
+        List<KeyValuePair<string, string>> h = new List<KeyValuePair<string, string>>(Headers); h.Add(new KeyValuePair<string, string>(k, v));
+        return new Resp(Status, Body, h);
+    }
+}
+delegate Resp Mw(Req r, Func<Req, Resp> next);
+
+sealed class Entry {
+    public readonly int Order, Seq; public readonly Mw Mw;
+    public Entry(int order, int seq, Mw mw) { Order = order; Seq = seq; Mw = mw; }
+}
+
+class Server {
+    private readonly List<Entry> entries = new List<Entry>();
+    private readonly Func<Req, Resp> endpoint;
+    private volatile Func<Req, Resp> chain;
+    private readonly object gate = new object();
+
+    public Server(Func<Req, Resp> endpoint) { this.endpoint = endpoint; }
+
+    public Server Use(int order, Mw mw) { lock (gate) { entries.Add(new Entry(order, entries.Count, mw)); chain = null; } return this; }
+
+    private Func<Req, Resp> Build() {
+        lock (gate) {
+            if (chain != null) return chain;
+            List<Entry> sorted = entries.OrderBy(e => e.Order).ThenBy(e => e.Seq).ToList();
+            Func<Req, Resp> f = endpoint;
+            for (int i = sorted.Count - 1; i >= 0; i--) {          // fold innermost -> outermost
+                Mw m = sorted[i].Mw; Func<Req, Resp> inner = f;
+                f = r => m(r, inner);
+            }
+            return chain = f;
+        }
+    }
+
+    public Resp Handle(Req r) { Func<Req, Resp> c = chain; return (c ?? Build())(r); }
+
+    public static string Show(Resp r) {
+        return r.Status + " " + r.Body + " headers=[" + string.Join(",", r.Headers.Select(h => h.Key)) + "]";
+    }
+}
+
+class Program {
+    static void Main() {
+        ConcurrentDictionary<string, int> hits = new ConcurrentDictionary<string, int>();
+        Server s = new Server(r => {
+            if (r.Path == "/boom") throw new InvalidOperationException("endpoint bug");
+            return new Resp(200, "ok " + r.Path);
+        });
+        s.Use(30, (r, next) => hits.AddOrUpdate(r.Client, 1, (k, n) => n + 1) > 2 ? new Resp(429, "slow down") : next(r))
+         .Use(20, (r, next) => r.Token == null ? new Resp(401, "login") : next(r))
+         .Use(0, (r, next) => { try { return next(r); } catch (Exception e) { return new Resp(500, "error: " + e.Message); } })
+         .Use(10, (r, next) => { Stopwatch sw = Stopwatch.StartNew(); Resp res = next(r); return res.WithHeader("X-Time-Us", (sw.Elapsed.Ticks / 10).ToString()); });
+        Console.WriteLine(Server.Show(s.Handle(new Req("/a", null, "c1"))));   // 401: Auth stops it, Timing still wraps it
+        Console.WriteLine(Server.Show(s.Handle(new Req("/a", "t", "c1"))));    // 200
+        Console.WriteLine(Server.Show(s.Handle(new Req("/boom", "t", "c2")))); // 500 from the error boundary
+        Console.WriteLine(Server.Show(s.Handle(new Req("/a", "t", "c1"))));    // 200 (2nd counted request)
+        Console.WriteLine(Server.Show(s.Handle(new Req("/a", "t", "c1"))));    // 429 (3rd)
+        // equal order numbers keep registration order; lower numbers run first
+        Server t = new Server(r => new Resp(200, r.Path));
+        t.Use(5, (r, next) => next(new Req(r.Path + "A", r.Token, r.Client)))
+         .Use(5, (r, next) => next(new Req(r.Path + "B", r.Token, r.Client)))
+         .Use(1, (r, next) => next(new Req(r.Path + "C", r.Token, r.Client)));
+        Console.WriteLine(Server.Show(t.Handle(new Req("/", null, "c"))));     // /CAB
+    }
 }` }
         ],
       complexity: `<p>Build: O(M log M) once. Per request: O(M) middleware calls, zero chain allocation. Rate limiter O(1) per request.</p>`,
@@ -12662,7 +15421,24 @@ public:
             // fallback depth fixed at 2, WhatsApp = more branches
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NaiveDispatcher {
+    public sealed class U { public readonly string Name, Type, First, Second; public U(string name, string type, string first, string second) { Name = name; Type = type; First = first; Second = second; } }
+    public readonly List<U> Users = new List<U>();
+    bool Send(string channel, U u) { return channel != "SMS"; }                      // pretend SMS is down
+    public void Publish(string type) {
+        foreach (U u in Users) {                                                     // scans everyone
+            if (u.Type != type) continue;
+            if (u.First == "PUSH") { if (!Send("PUSH", u) && u.Second == "EMAIL") Send("EMAIL", u); }
+            else if (u.First == "SMS") { if (!Send("SMS", u) && u.Second == "EMAIL") Send("EMAIL", u); }
+            // fallback depth fixed at 2, WhatsApp = more branches
+        }
+    }
+}` }
             ] } },
     mcq: { q: 'Which pattern decides "try PUSH, then SMS, then EMAIL until one works"?', options: ['Chain of Responsibility built per user from their preference list', 'Observer', 'Visitor', 'Memento'], answer: 0, explain: 'Each channel handler either succeeds (stops) or passes to the next. Observer decides WHO hears the event; Strategy encapsulates HOW each channel sends; the chain decides WHICH channel ends up delivering.' },
     hints: [`<p>Hint 1: Three questions, three patterns: who receives (Observer, keyed by event type), how a channel sends (Strategy: <code>Channel.send(user, msg)</code>), which channel wins (Chain: try in order until success).</p>`, `<p>Hint 2: Registry <code>Map&lt;String, Channel&gt;</code> lets new channels plug in by name. Subscriptions: <code>Map&lt;EventType, List&lt;Subscription&gt;&gt;</code> where a subscription holds the user and their ordered channel names.</p>`, `<p>Hint 3: The fallback loop catches exceptions per channel; log the winning channel or FAILED. Use concurrent collections; deliver asynchronously in production (mention it).</p>`],
@@ -12927,6 +15703,76 @@ int main() {
     d.subscribe("dan", "PAYMENT_FAILED", {"FAX", "EMAIL"});   // FAX is not registered: skipped
     d.publish({"PAYMENT_FAILED", "card declined"});
     for (const auto& x : d.log) cout << x.user << " " << x.eventType << " " << x.channel << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+
+sealed class Event { public readonly string Type, Payload; public Event(string type, string payload) { Type = type; Payload = payload; } }
+sealed class Delivery {
+    public readonly string User, EventType, Channel;
+    public Delivery(string user, string eventType, string channel) { User = user; EventType = eventType; Channel = channel; }
+}
+
+delegate bool Channel(string user, string message);
+
+sealed class Subscription {
+    public readonly string User; public readonly IReadOnlyList<string> ChannelOrder;
+    public Subscription(string user, List<string> channelOrder) { User = user; ChannelOrder = new List<string>(channelOrder).AsReadOnly(); }
+}
+
+class NotificationDispatcher {
+    private readonly ConcurrentDictionary<string, Channel> channels = new ConcurrentDictionary<string, Channel>();
+    private readonly ConcurrentDictionary<string, List<Subscription>> subs = new ConcurrentDictionary<string, List<Subscription>>();
+    private readonly object gate = new object();
+    public readonly List<Delivery> Log = new List<Delivery>();
+
+    public void RegisterChannel(string name, Channel c) { channels[name] = c; }           // Strategy registry
+
+    public void Subscribe(string user, string eventType, List<string> channelOrder) {     // Observer
+        lock (gate) subs.GetOrAdd(eventType, k => new List<Subscription>()).Add(new Subscription(user, channelOrder));
+    }
+
+    public void Publish(Event e) {
+        List<Subscription> list; Subscription[] snapshot;
+        if (!subs.TryGetValue(e.Type, out list)) return;
+        lock (gate) snapshot = list.ToArray();
+        foreach (Subscription s in snapshot) {
+            string winner = Deliver(s, "[" + e.Type + "] " + e.Payload);
+            lock (gate) Log.Add(new Delivery(s.User, e.Type, winner));
+        }
+    }
+
+    // Chain of Responsibility: first channel that succeeds handles it.
+    private string Deliver(Subscription s, string msg) {
+        foreach (string name in s.ChannelOrder) {
+            Channel c;
+            if (!channels.TryGetValue(name, out c)) continue;              // unknown channel: skip
+            try { if (c(s.User, msg)) return name; }
+            catch (Exception ex) { Console.WriteLine(name + " threw for " + s.User + ": " + ex.Message); }
+        }
+        return "FAILED";
+    }
+}
+
+class Program {
+    static List<string> L(params string[] s) { return new List<string>(s); }
+    static void Main() {
+        NotificationDispatcher d = new NotificationDispatcher();
+        d.RegisterChannel("PUSH", (u, m) => { if (u == "ben") return false; Console.WriteLine("push  -> " + u + " " + m); return true; });
+        d.RegisterChannel("SMS", (u, m) => { throw new InvalidOperationException("gateway down"); });
+        d.RegisterChannel("EMAIL", (u, m) => { Console.WriteLine("email -> " + u + " " + m); return true; });
+        d.Subscribe("asha", "ORDER_SHIPPED", L("PUSH", "SMS"));
+        d.Subscribe("ben", "ORDER_SHIPPED", L("SMS", "EMAIL"));
+        d.Subscribe("cy", "ORDER_SHIPPED", L("SMS"));
+        d.Publish(new Event("ORDER_SHIPPED", "A1 is on the way"));
+        d.Publish(new Event("PAYMENT_FAILED", "nobody subscribed"));      // no subscribers: nothing happens
+        d.Subscribe("ben", "PAYMENT_FAILED", L("PUSH", "EMAIL"));          // PUSH returns false for ben
+        d.Subscribe("dan", "PAYMENT_FAILED", L("FAX", "EMAIL"));           // FAX is not registered: skipped
+        d.Publish(new Event("PAYMENT_FAILED", "card declined"));
+        foreach (Delivery x in d.Log) Console.WriteLine(x.User + " " + x.EventType + " " + x.Channel);
+    }
 }` }
         ],
       complexity: `<p>publish: O(S × C) where S = subscribers of that event type and C = channels tried per user (small). Subscribe O(S) copy-on-write. Memory O(subscriptions + log).</p>`,
@@ -13001,7 +15847,28 @@ public:
             }
         }
     }
-};` }
+};` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+
+class NaiveSheet {
+    public readonly Dictionary<string, double> Val = new Dictionary<string, double>();
+    public readonly Dictionary<string, List<string>> Formula = new Dictionary<string, List<string>>();
+    public void RecalcAll() {
+        bool changed = true;
+        while (changed) {                                   // infinite loop if there is a cycle
+            changed = false;
+            foreach (var e in Formula) {                    // touches every formula, every pass
+                double s = 0;
+                foreach (string r in e.Value) { double v; Val.TryGetValue(r, out v); s += v; }
+                double old; bool had = Val.TryGetValue(e.Key, out old);
+                Val[e.Key] = s;
+                if (!had || old != s) changed = true;
+            }
+        }
+    }
+}` }
             ] } },
     mcq: { q: 'C1 depends on B1 and A1; B1 depends on A1. A1 changes. Why recompute in topological order?', options: ['So C1 is computed once, after B1 has its new value (no glitch, no double work)', 'Because alphabetical order is required', 'To detect cycles', 'It does not matter'], answer: 0, explain: 'Naive observer push would update C1 when A1 changes (with stale B1) and again when B1 changes. Topological order over the affected subgraph computes each cell once with fresh inputs.' },
     hints: [`<p>Hint 1: Each cell keeps its <b>inputs</b> (refs) and its <b>observers</b> (dependents). Changing a cell notifies its dependents — Observer — but do it in a batch.</p>`, `<p>Hint 2: On change: collect all affected cells by DFS/BFS over dependents; then Kahn's topological sort restricted to that set (in-degree = number of affected inputs); recompute in that order.</p>`, `<p>Hint 3: Cycle check before installing a formula: DFS from each ref along <i>inputs</i>; if you reach the target cell, reject. When replacing a formula, remove the cell from its old inputs' dependent sets.</p>`],
@@ -13430,6 +16297,108 @@ int main() {
     cout << "E1=" << f2(s.get("E1")) << "\\n";
     s.setValue("Z9", 4);
     cout << "E1=" << f2(s.get("E1")) << "\\n";
+}` },
+  { lang: 'csharp', code: `
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class Sheet {
+    private readonly Dictionary<string, double> value = new Dictionary<string, double>();
+    private readonly Dictionary<string, List<string>> inputs = new Dictionary<string, List<string>>();         // formula refs
+    private readonly Dictionary<string, HashSet<string>> dependents = new Dictionary<string, HashSet<string>>();   // observers
+
+    public double Get(string c) { double v; return value.TryGetValue(c, out v) ? v : 0.0; }
+
+    private HashSet<string> DependentsOf(string c) { HashSet<string> s; return dependents.TryGetValue(c, out s) ? s : new HashSet<string>(); }
+
+    public void SetValue(string cell, double v) {
+        Detach(cell);
+        value[cell] = v;
+        Propagate(cell);
+    }
+
+    public bool SetSum(string cell, params string[] refs) {
+        foreach (string r in refs) if (Reaches(r, cell)) return false;          // would create a cycle
+        Detach(cell);
+        inputs[cell] = new List<string>(refs);
+        foreach (string r in refs) { HashSet<string> d; if (!dependents.TryGetValue(r, out d)) { d = new HashSet<string>(); dependents[r] = d; } d.Add(cell); }
+        value[cell] = Compute(cell);
+        Propagate(cell);
+        return true;
+    }
+
+    private void Detach(string cell) {
+        List<string> old;
+        if (inputs.TryGetValue(cell, out old)) { inputs.Remove(cell); foreach (string r in old) DependentsOf(r).Remove(cell); }
+    }
+
+    // DFS along inputs: does 'from' (transitively) read 'target'?
+    private bool Reaches(string from, string target) {
+        Stack<string> st = new Stack<string>(); st.Push(from); HashSet<string> seen = new HashSet<string>();
+        while (st.Count > 0) {
+            string c = st.Pop();
+            if (c == target) return true;
+            List<string> ins;
+            if (seen.Add(c) && inputs.TryGetValue(c, out ins)) foreach (string i in ins) st.Push(i);
+        }
+        return false;
+    }
+
+    private double Compute(string cell) {
+        double s = 0;
+        foreach (string r in inputs[cell]) s += Get(r);
+        return s;
+    }
+
+    // Batched observer notification: each affected cell recomputed once, inputs first.
+    private void Propagate(string changed) {
+        List<string> affected = new List<string>(); HashSet<string> affectedSet = new HashSet<string>();
+        Queue<string> q = new Queue<string>(DependentsOf(changed));
+        while (q.Count > 0) { string c = q.Dequeue(); if (affectedSet.Add(c)) { affected.Add(c); foreach (string d in DependentsOf(c)) q.Enqueue(d); } }
+        Dictionary<string, int> indeg = new Dictionary<string, int>();
+        foreach (string c in affected) {
+            int d = 0;
+            foreach (string r in inputs[c]) if (affectedSet.Contains(r)) d++;
+            indeg[c] = d;
+        }
+        SortedSet<string> ready = new SortedSet<string>(StringComparer.Ordinal);      // alphabetical: same order on every run
+        foreach (var kv in indeg) if (kv.Value == 0) ready.Add(kv.Key);
+        while (ready.Count > 0) {
+            string c = ready.Min; ready.Remove(c);
+            value[c] = Compute(c);
+            Console.WriteLine("  recompute " + c + " = " + Get(c).ToString("F2"));
+            foreach (string dep in DependentsOf(c))
+                if (affectedSet.Contains(dep) && --indeg[dep] == 0) ready.Add(dep);
+        }
+    }
+}
+
+class Program {
+    static string F(double v) { return v.ToString("F2"); }
+    static string B(bool b) { return b.ToString().ToLower(); }
+
+    static void Main() {
+        Sheet s = new Sheet();
+        s.SetValue("A1", 2); s.SetValue("A2", 3);
+        s.SetSum("B1", "A1", "A2");
+        s.SetSum("C1", "B1", "A1");
+        Console.WriteLine("set A1 = 10:");
+        s.SetValue("A1", 10);
+        Console.WriteLine("B1=" + F(s.Get("B1")) + " C1=" + F(s.Get("C1")));        // 13.00 23.00
+        Console.WriteLine("cycle accepted? " + B(s.SetSum("A1", "C1")));            // false
+        Console.WriteLine("A1 still " + F(s.Get("A1")));
+        s.SetSum("B2", "A1");
+        s.SetSum("D1", "B1", "B2");                                                  // diamond: A1 -> B1/B2 -> D1
+        Console.WriteLine("set A1 = 1:");
+        s.SetValue("A1", 1);                                                         // D1 recomputed once, after B1 and B2
+        Console.WriteLine("self-reference accepted? " + B(s.SetSum("B2", "B2")));   // false
+        Console.WriteLine("B2 still " + F(s.Get("B2")));
+        s.SetSum("E1", "Z9");                                                        // missing cell counts as 0
+        Console.WriteLine("E1=" + F(s.Get("E1")));
+        s.SetValue("Z9", 4);
+        Console.WriteLine("E1=" + F(s.Get("E1")));
+    }
 }` }
         ],
       complexity: `<p>Change: O(V<sub>a</sub> + E<sub>a</sub>) over the affected subgraph only. Cycle check: O(V + E) worst case over the inputs reachable from the new refs. Memory O(cells + references).</p>`,

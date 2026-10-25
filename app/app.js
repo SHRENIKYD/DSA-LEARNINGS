@@ -25,7 +25,16 @@
     var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F6F1E4' : '#12263A');
   }
   function done() { return lsGet('imastery.done', {}) || {}; }
-  function save() { lsSet('imastery.play', play); }
+  function save() { lsSet('imastery.play', play); if (window.Auth && Auth.changed) Auth.changed('play'); }
+  // After a pull merged play data from the account, take the stored copy over the one in memory (device settings are kept by the merge).
+  function reload() {
+    var p = lsGet('imastery.play', null);
+    if (!p || typeof p !== 'object') return;
+    play = p;
+    play.settings = play.settings || { haptics: true, bit: true, motion: true };
+    if (play.settings.sound === undefined) play.settings.sound = true;
+    play.settings.tts = play.settings.tts || { rate: 1, voice: null, cont: true };
+  }
   function now() { return new Date(); }
   function trackById(id) { return TRACKS.filter(function (t) { return t.id === id; })[0]; }
   function pmById(mid) { var r = null; TRACKS.forEach(function (t) { t.modules.forEach(function (pm) { if (pm.id === mid) r = { t: t, pm: pm }; }); }); return r; }
@@ -701,7 +710,7 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { setTheme(theme()); refresh(); var p = (location.hash || '#home').slice(1).split('/')[0]; if (p !== 'game') route(); } });
   if (Auth.enabled) {
     Auth.on(function (k) {
-      if (k === 'progress') { refresh(); if ((location.hash || '#home').indexOf('#game') !== 0) route(); }
+      if (k === 'progress') { reload(); refresh(); if ((location.hash || '#home').indexOf('#game') !== 0) route(); }
       else if ((k === 'user' || k === 'status') && /^#(me|home)?$/.test(location.hash || '#home')) route();
     });
     Auth.init();

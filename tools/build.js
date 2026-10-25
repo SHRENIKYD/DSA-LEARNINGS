@@ -124,7 +124,7 @@ function moduleStub(m, file) {
 }
 const MODS = {};
 const PMETA = {}, CHECKS = {}, QUIZFILES = {};
-const LBIT = { java: 1, python: 2, py: 2, js: 4, ts: 4, javascript: 4, typescript: 4, cpp: 8, 'c++': 8 };
+const LBIT = { java: 1, python: 2, py: 2, js: 4, ts: 4, javascript: 4, typescript: 4, cpp: 8, 'c++': 8, csharp: 16, 'c#': 16, cs: 16 };
 
 for (const t of TRACKS) {
   const dir = path.join(root, 'content', t.id);

@@ -155,6 +155,32 @@ vector<int> lisQuadratic(const vector<int>& a) {
     for (int k = bestEnd; k != -1; k = parent[k]) seq.push_back(a[k]);   // walk back
     reverse(seq.begin(), seq.end());
     return seq;
+}` }, { lang: 'csharp', code: `// O(N^2) LIS that also rebuilds one actual longest subsequence.
+static List<int> LisQuadratic(int[] a)
+{
+    int n = a.Length;
+    if (n == 0) return new List<int>();
+    int[] dp = new int[n];       // dp[i] = LIS length ending exactly at i
+    int[] parent = new int[n];   // parent[i] = previous index in that best run (-1 = none)
+    int bestEnd = 0;
+    for (int i = 0; i < n; i++)
+    {
+        dp[i] = 1;               // the element alone
+        parent[i] = -1;
+        for (int j = 0; j < i; j++)
+        {
+            // extend a run that ends at j, only if it stays strictly increasing
+            if (a[j] < a[i] && dp[j] + 1 > dp[i])
+            {
+                dp[i] = dp[j] + 1;
+                parent[i] = j;
+            }
+        }
+        if (dp[i] > dp[bestEnd]) bestEnd = i;   // the best run may end anywhere
+    }
+    var seq = new LinkedList<int>();
+    for (int k = bestEnd; k != -1; k = parent[k]) seq.AddFirst(a[k]);  // walk back
+    return new List<int>(seq);
 }` }] }, { lang: 'java', code: `
       // O(N log N) LIS with reconstruction: tailIdx[k] = index of smallest tail for length k+1.
       static List<Integer> lisFast(int[] a) {
@@ -225,6 +251,29 @@ vector<int> lisFast(const vector<int>& a) {
     for (int k = tailIdx.empty() ? -1 : tailIdx.back(); k != -1; k = parent[k]) seq.push_back(a[k]);
     reverse(seq.begin(), seq.end());
     return seq;
+}` }, { lang: 'csharp', code: `// O(N log N) LIS with reconstruction: tailIdx[k] = index of smallest tail for length k+1.
+static List<int> LisFast(int[] a)
+{
+    int n = a.Length;
+    int[] tailIdx = new int[n];
+    int[] parent = new int[n];
+    int len = 0;
+    for (int i = 0; i < n; i++)
+    {
+        // lower bound: first position whose tail value is >= a[i]
+        int lo = 0, hi = len;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >> 1;
+            if (a[tailIdx[mid]] < a[i]) lo = mid + 1; else hi = mid;
+        }
+        parent[i] = lo > 0 ? tailIdx[lo - 1] : -1;   // we extend the run of length lo
+        tailIdx[lo] = i;                             // replace or append
+        if (lo == len) len++;
+    }
+    var seq = new LinkedList<int>();
+    for (int k = len == 0 ? -1 : tailIdx[len - 1]; k != -1; k = parent[k]) seq.AddFirst(a[k]);
+    return new List<int>(seq);
 }` }] }, { lang: 'python', run: true, title: 'Both versions in Python (runnable)', code: `from bisect import bisect_left
 
 def lis_quadratic(a):
@@ -384,6 +433,19 @@ int longestNonDecreasing(const vector<int>& a) {
         if (it == tails.end()) tails.push_back(x); else *it = x;
     }
     return (int)tails.size();   // [1, 3, 3, 2, 3] -> 4
+}` }, { lang: 'csharp', code: `// non-decreasing LIS: the only change is "<=" (upper bound: first tail STRICTLY greater than x)
+static int LongestNonDecreasing(int[] a)
+{
+    int[] tails = new int[a.Length];
+    int len = 0;
+    foreach (int x in a)
+    {
+        int lo = 0, hi = len;
+        while (lo < hi) { int mid = (lo + hi) >> 1; if (tails[mid] <= x) lo = mid + 1; else hi = mid; }
+        tails[lo] = x;
+        if (lo == len) len++;
+    }
+    return len;   // [1, 3, 3, 2, 3] -> 4
 }` }] }
       },
       {
@@ -466,7 +528,20 @@ int longestNonDecreasing(const vector<int>& a) {
     }
 public:
     int lengthOfLIS(vector<int>& nums) { return best(nums, 0, -1); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    // pick / skip recursion: prev = index of last picked element (-1 = none yet)
+    int Best(int[] a, int i, int prev)
+    {
+        if (i == a.Length) return 0;
+        int skip = Best(a, i + 1, prev);
+        int take = 0;
+        if (prev == -1 || a[prev] < a[i]) take = 1 + Best(a, i + 1, i);
+        return Math.Max(skip, take);
+    }
+    public int LengthOfLIS(int[] nums) { return Best(nums, 0, -1); }
+}` }
         ] }
       },
       mcq: { q: 'tails = [2, 5, 9] and the next number is 6. What happens?', options: ['6 replaces 9 (first tail ≥ 6)', '6 is appended → [2, 5, 9, 6]', '6 replaces 5', 'Nothing — 6 is ignored'], answer: 0, explain: 'Lower bound of 6 in [2,5,9] is index 2 (value 9). A run of length 3 can now end at 6 instead of 9 — cheaper, so we replace.' },
@@ -526,7 +601,27 @@ public:
         }
         return (int)tails.size();
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int LengthOfLIS(int[] nums)
+    {
+        int[] tails = new int[nums.Length]; // tails[k] = smallest tail of an increasing run of length k+1
+        int len = 0;
+        foreach (int x in nums)
+        {
+            int lo = 0, hi = len;           // search in tails[0..len)
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (tails[mid] < x) lo = mid + 1;   // strictly increasing -> lower bound
+                else hi = mid;
+            }
+            tails[lo] = x;                  // replace, or append when lo == len
+            if (lo == len) len++;
+        }
+        return len;
+    }
+}` }],
         dry: { head: ['x', 'lower bound pos', 'action', 'tails', 'len'], rows: [
           ['0', '0', 'append', '[0]', '1'], ['1', '1', 'append', '[0, 1]', '2'], ['0', '0', 'replace 0 with 0', '[0, 1]', '2'],
           ['3', '2', 'append', '[0, 1, 3]', '3'], ['2', '2', 'replace 3', '[0, 1, 2]', '3'], ['3', '3', '<span class="c-g">append</span>', '[0, 1, 2, 3]', '<span class="c-g">4</span>']
@@ -634,6 +729,24 @@ bool wordBreak(const string& s, const vector<string>& wordDict) {
         for (int j = i - 1; j >= max(0, i - maxLen); j--)
             if (dp[j] && dict.count(s.substr(j, i - j))) { dp[i] = true; break; }
     return dp[n];
+}` }, { lang: 'csharp', code: `// Word Break: dp[i] = can the first i characters be split into dictionary words?
+static bool WordBreak(string s, IList<string> wordDict)
+{
+    var dict = new HashSet<string>(wordDict);
+    int maxLen = 0;
+    foreach (string w in wordDict) maxLen = Math.Max(maxLen, w.Length);
+    int n = s.Length;
+    bool[] dp = new bool[n + 1];
+    dp[0] = true;                                   // empty prefix is always fine
+    for (int i = 1; i <= n; i++)
+    {
+        // last piece is s[j..i); only lengths up to maxLen can be words
+        for (int j = i - 1; j >= Math.Max(0, i - maxLen); j--)
+        {
+            if (dp[j] && dict.Contains(s.Substring(j, i - j))) { dp[i] = true; break; }
+        }
+    }
+    return dp[n];
 }` }] }, { lang: 'java', code: `
       // Palindrome Partitioning II: minimum cuts so every piece is a palindrome.
       static int minCut(String s) {
@@ -690,6 +803,26 @@ int minCut(const string& s) {
             if (s[j] == s[i] && (i - j < 3 || pal[j + 1][i - 1])) {
                 pal[j][i] = true;
                 cuts[i] = j == 0 ? 0 : min(cuts[i], cuts[j - 1] + 1);
+            }
+        }
+    }
+    return cuts[n - 1];
+}` }, { lang: 'csharp', code: `// Palindrome Partitioning II: minimum cuts so every piece is a palindrome.
+static int MinCut(string s)
+{
+    int n = s.Length;
+    bool[,] pal = new bool[n, n];                   // pal[j, i]: s[j..i] is a palindrome
+    int[] cuts = new int[n];                        // cuts[i]: min cuts for s[0..i]
+    for (int i = 0; i < n; i++)
+    {
+        cuts[i] = i;                                // worst case: cut after every char
+        for (int j = 0; j <= i; j++)
+        {
+            // ends match AND (piece length <= 3 OR the inside is a palindrome)
+            if (s[j] == s[i] && (i - j < 3 || pal[j + 1, i - 1]))
+            {
+                pal[j, i] = true;
+                cuts[i] = (j == 0) ? 0 : Math.Min(cuts[i], cuts[j - 1] + 1);
             }
         }
     }
@@ -880,6 +1013,20 @@ print(all_palindrome_partitions("aab"))                                         
         }
     }
     return dp[n];
+}` }, { lang: 'csharp', code: `static int MaxSumAfterPartitioning(int[] arr, int k)
+{
+    int n = arr.Length;
+    int[] dp = new int[n + 1];               // dp[i] = best total for first i elements
+    for (int i = 1; i <= n; i++)
+    {
+        int mx = 0;
+        for (int len = 1; len <= k && len <= i; len++)
+        {
+            mx = Math.Max(mx, arr[i - len]);  // max of the last group arr[i-len..i-1]
+            dp[i] = Math.Max(dp[i], dp[i - len] + mx * len);
+        }
+    }
+    return dp[n];
 }` }] }
       }
     ],
@@ -947,7 +1094,23 @@ public:
         unordered_set<string> dict(wordDict.begin(), wordDict.end());
         return canBreak(s, 0, dict);
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    bool CanBreak(string s, int start, HashSet<string> dict)
+    {
+        if (start == s.Length) return true;
+        for (int end = start + 1; end <= s.Length; end++)
+        {
+            if (dict.Contains(s.Substring(start, end - start)) && CanBreak(s, end, dict)) return true;
+        }
+        return false;   // the same 'start' gets re-solved many times -> exponential
+    }
+    public bool WordBreak(string s, IList<string> wordDict)
+    {
+        return CanBreak(s, 0, new HashSet<string>(wordDict));
+    }
+}` }
         ] }
       },
       mcq: { q: 'dp[i] means “s[0..i) can be segmented”. Which condition makes dp[i] true?', options: ['Some j &lt; i with dp[j] true AND s[j..i) in the dictionary', 'dp[i−1] true AND s[i−1] is a word', 'Any dictionary word is a substring of s[0..i)', 'All dp[j] for j &lt; i are true'], answer: 0, explain: 'The last word must be s[j..i) for some start j, and everything before it — s[0..j) — must already be splittable (dp[j]).' },
@@ -1017,7 +1180,33 @@ public:
         }
         return dp[n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public bool WordBreak(string s, IList<string> wordDict)
+    {
+        var dict = new HashSet<string>(wordDict);
+        int maxLen = 0;
+        foreach (string w in wordDict) maxLen = Math.Max(maxLen, w.Length);
+        int n = s.Length;
+        bool[] dp = new bool[n + 1];
+        dp[0] = true;                                  // empty prefix
+        for (int i = 1; i <= n; i++)
+        {
+            for (int j = i - 1; j >= 0 && i - j <= maxLen; j--)
+            {
+                if (dp[j] && dict.Contains(s.Substring(j, i - j)))
+                {
+                    dp[i] = true;                      // found a valid last word
+                    break;
+                }
+            }
+        }
+        return dp[n];
+    }
+}` }],
         dry: { head: ['i', 'prefix', 'last word tried', 'dp[i]'], rows: [
           ['0', '""', '—', 'T'], ['5', 'apple', '"apple" from j=0 (dp[0]=T)', '<span class="c-g">T</span>'],
           ['6..7', 'applep, applepe', 'no word ends here', 'F'], ['8', 'applepen', '"pen" from j=5 (dp[5]=T)', '<span class="c-g">T</span>'],
@@ -1110,7 +1299,26 @@ function minCut(s) { return minCutFrom(s, 0); }` },
     }
 public:
     int minCut(string s) { return minCutFrom(s, 0); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    bool IsPal(string s, int l, int r)
+    {
+        while (l < r) if (s[l++] != s[r--]) return false;
+        return true;
+    }
+    int MinCutFrom(string s, int start)
+    {
+        if (start == s.Length || IsPal(s, start, s.Length - 1)) return 0;
+        int best = int.MaxValue;
+        for (int end = start; end < s.Length - 1; end++)
+        {
+            if (IsPal(s, start, end)) best = Math.Min(best, 1 + MinCutFrom(s, end + 1));
+        }
+        return best;   // exponential: same 'start' recomputed many times
+    }
+    public int MinCut(string s) { return MinCutFrom(s, 0); }
+}` }
         ] }
       },
       mcq: { q: 'Why precompute pal[j][i] instead of checking each piece with two pointers?', options: ['It turns each palindrome check into O(1), so the whole dp is O(N²) instead of O(N³)', 'Two pointers give wrong answers for even lengths', 'It saves memory', 'Strings cannot be scanned with two pointers'], answer: 0, explain: 'There are O(N²) (j, i) pairs. A two-pointer check is O(N) each → O(N³). The table answers each check in O(1) using pal[j+1][i−1].' },
@@ -1179,7 +1387,30 @@ public:
         }
         return cuts[n - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MinCut(string s)
+    {
+        int n = s.Length;
+        bool[,] pal = new bool[n, n];
+        int[] cuts = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            cuts[i] = i;                                  // upper bound: every char alone
+            for (int j = 0; j <= i; j++)
+            {
+                if (s[j] == s[i] && (i - j < 3 || pal[j + 1, i - 1]))
+                {
+                    pal[j, i] = true;                     // s[j..i] is a palindrome
+                    cuts[i] = (j == 0) ? 0 : Math.Min(cuts[i], cuts[j - 1] + 1);
+                }
+            }
+        }
+        return cuts[n - 1];
+    }
+}` }],
         dry: { head: ['i', 'char', 'palindromes ending at i', 'cuts[i]'], rows: [
           ['0', 'a', '"a" (j=0)', '0'], ['1', 'b', '"b"', 'cuts[0]+1 = 1'], ['2', 'c', '"c"', '2'], ['3', 'c', '"c", "cc"', 'min(3, cuts[1]+1 = 2) = 2'],
           ['4', 'b', '"b", "bccb" (j=1)', 'cuts[0]+1 = <span class="c-g">1</span>'], ['5', 'c', '"c", "cbc" (j=3)', 'min(cuts[4]+1, cuts[2]+1) = <span class="c-g">2</span>']
@@ -1311,6 +1542,34 @@ long long matrixChain(const vector<int>& p) {
     }
     cout << brackets(split, 1, n) << endl;
     return dp[1][n];
+}` }, { lang: 'csharp', code: `// Matrix Chain Multiplication: matrix i (1-based) has size p[i-1] x p[i].
+static long MatrixChain(int[] p)
+{
+    int n = p.Length - 1;                      // number of matrices
+    long[,] dp = new long[n + 1, n + 1];       // dp[i, j] = min cost for A_i..A_j
+    int[,] split = new int[n + 1, n + 1];      // best k, to print the brackets
+    for (int len = 2; len <= n; len++)         // shorter ranges first!
+    {
+        for (int i = 1; i + len - 1 <= n; i++)
+        {
+            int j = i + len - 1;
+            dp[i, j] = long.MaxValue;
+            for (int k = i; k < j; k++)        // last multiplication: (A_i..A_k)(A_k+1..A_j)
+            {
+                long cost = dp[i, k] + dp[k + 1, j] + (long)p[i - 1] * p[k] * p[j];
+                if (cost < dp[i, j]) { dp[i, j] = cost; split[i, j] = k; }
+            }
+        }
+    }
+    Console.WriteLine(Brackets(split, 1, n));
+    return dp[1, n];
+}
+
+static string Brackets(int[,] split, int i, int j)
+{
+    if (i == j) return "A" + i;
+    int k = split[i, j];
+    return "(" + Brackets(split, i, k) + " x " + Brackets(split, k + 1, j) + ")";
 }` }] }, { lang: 'java', code: `
       // Burst Balloons with the "last balloon in the range" idea.
       static int maxCoins(int[] nums) {
@@ -1366,6 +1625,27 @@ int maxCoins(const vector<int>& nums) {
                 dp[i][j] = max(dp[i][j], dp[i][k - 1] + b[i - 1] * b[k] * b[j + 1] + dp[k + 1][j]);
         }
     return dp[1][n];
+}` }, { lang: 'csharp', code: `// Burst Balloons with the "last balloon in the range" idea.
+static int MaxCoins(int[] nums)
+{
+    int n = nums.Length;
+    int[] b = new int[n + 2];                  // pad with 1 on both sides
+    b[0] = b[n + 1] = 1;
+    for (int i = 0; i < n; i++) b[i + 1] = nums[i];
+    int[,] dp = new int[n + 2, n + 2];         // dp[i, j] for 1 <= i <= j <= n, 0 when i > j
+    for (int len = 1; len <= n; len++)
+    {
+        for (int i = 1; i + len - 1 <= n; i++)
+        {
+            int j = i + len - 1;
+            for (int k = i; k <= j; k++)       // k bursts LAST inside [i..j]
+            {
+                int coins = dp[i, k - 1] + b[i - 1] * b[k] * b[j + 1] + dp[k + 1, j];
+                dp[i, j] = Math.Max(dp[i, j], coins);
+            }
+        }
+    }
+    return dp[1, n];
 }` }] }, { lang: 'python', run: true, title: 'Top-down (memoised) versions in Python (runnable)', code: `from functools import lru_cache
 
 def matrix_chain(p):
@@ -1535,6 +1815,25 @@ print(max_coins([1, 5]))                 # 10
                 dp[i][j] = min(dp[i][j], dp[i][k] + dp[k][j] + c[j] - c[i]);
         }
     return dp[0][m - 1];
+}` }, { lang: 'csharp', code: `static int MinCostCut(int n, int[] cuts)
+{
+    int m = cuts.Length;
+    int[] c = new int[m + 2];
+    c[0] = 0; c[m + 1] = n;
+    int[] sorted = (int[])cuts.Clone(); Array.Sort(sorted);
+    for (int i = 0; i < m; i++) c[i + 1] = sorted[i];
+    int[,] dp = new int[m + 2, m + 2];           // dp[i, j]: cuts strictly between c[i] and c[j]
+    for (int len = 2; len <= m + 1; len++)
+    {
+        for (int i = 0; i + len <= m + 1; i++)
+        {
+            int j = i + len;
+            dp[i, j] = int.MaxValue;
+            for (int k = i + 1; k < j; k++)        // first cut made at c[k]
+                dp[i, j] = Math.Min(dp[i, j], dp[i, k] + dp[k, j] + c[j] - c[i]);
+        }
+    }
+    return dp[0, m + 1];
 }` }] }
       },
       {
@@ -1622,7 +1921,28 @@ function maxCoins(nums) { return best([...nums]); }` },
     }
 public:
     int maxCoins(vector<int>& nums) { return best(nums); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Best(List<int> list)
+    {
+        if (list.Count == 0) return 0;
+        int ans = 0;
+        for (int i = 0; i < list.Count; i++)
+        {
+            int left = i > 0 ? list[i - 1] : 1;
+            int right = i + 1 < list.Count ? list[i + 1] : 1;
+            var rest = new List<int>(list);
+            int mid = rest[i]; rest.RemoveAt(i);          // burst balloon i now
+            ans = Math.Max(ans, left * mid * right + Best(rest));
+        }
+        return ans;
+    }
+    public int MaxCoins(int[] nums)
+    {
+        return Best(new List<int>(nums));
+    }
+}` }
         ] }
       },
       mcq: { q: 'In range [i..j], balloon k bursts LAST. Who are its neighbours at that moment?', options: ['nums[i−1] and nums[j+1] (just outside the range)', 'nums[k−1] and nums[k+1]', 'The largest balloons in the range', 'Always 1 and 1'], answer: 0, explain: 'All other balloons in [i..j] are gone, so k touches the first balloons outside the range, which are still standing by definition of the sub-problem.' },
@@ -1696,7 +2016,34 @@ public:
         }
         return dp[1][n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MaxCoins(int[] nums)
+    {
+        int n = nums.Length;
+        int[] b = new int[n + 2];
+        b[0] = 1; b[n + 1] = 1;
+        for (int i = 0; i < n; i++) b[i + 1] = nums[i];
+        int[,] dp = new int[n + 2, n + 2];
+        for (int len = 1; len <= n; len++)
+        {
+            for (int i = 1; i + len - 1 <= n; i++)
+            {
+                int j = i + len - 1;
+                int best = 0;
+                for (int k = i; k <= j; k++)
+                {
+                    // k is the last balloon in [i..j]; its neighbours are b[i-1] and b[j+1]
+                    best = Math.Max(best, dp[i, k - 1] + b[i - 1] * b[k] * b[j + 1] + dp[k + 1, j]);
+                }
+                dp[i, j] = best;
+            }
+        }
+        return dp[1, n];
+    }
+}` }],
         dry: { head: ['range (values)', 'walls', 'best last k', 'dp'], rows: [
           ['[3]', '1, 1', '3', '3'], ['[1]', '3, 5', '1', '15'], ['[5]', '1, 8', '5', '40'], ['[8]', '5, 1', '8', '40'],
           ['[3,1]', '1, 5', '3 last: 15 + 15 = 30', '30'], ['[1,5]', '3, 8', '5 last: 15 + 120 = 135', '135'], ['[5,8]', '1, 1', '8 last: 40 + 8 = 48', '48'],
@@ -1802,6 +2149,20 @@ pair<int, int> dfs(TreeNode* node) {
 int rob(TreeNode* root) {
     auto [r, s] = dfs(root);
     return max(r, s);
+}` }, { lang: 'csharp', code: `// House Robber III: each call returns {robThisNode, skipThisNode}.
+static int Rob(TreeNode root)
+{
+    int[] r = Dfs(root);
+    return Math.Max(r[0], r[1]);
+}
+
+static int[] Dfs(TreeNode node)
+{
+    if (node == null) return new[] { 0, 0 };         // empty subtree gives nothing
+    int[] L = Dfs(node.left), R = Dfs(node.right);   // children first (post-order)
+    int robIt = node.val + L[1] + R[1];              // rob me -> children must be skipped
+    int skipIt = Math.Max(L[0], L[1]) + Math.Max(R[0], R[1]);  // skip me -> children free
+    return new[] { robIt, skipIt };
 }` }] }, { lang: 'java', code: `
       // Binary Tree Maximum Path Sum: return one-sided gain, record the bent path globally.
       class MaxPath {
@@ -1867,7 +2228,26 @@ public:
         gain(root);
         return best;
     }
-};` }] }, { lang: 'python', run: true, title: 'Both, on trees built from heap-layout arrays (runnable)', code: `class Node:
+};` }, { lang: 'csharp', code: `// Binary Tree Maximum Path Sum: return one-sided gain, record the bent path globally.
+class MaxPath
+{
+    private int best = int.MinValue;
+
+    public int MaxPathSum(TreeNode root)
+    {
+        Gain(root);
+        return best;
+    }
+
+    private int Gain(TreeNode node)
+    {
+        if (node == null) return 0;
+        int left = Math.Max(0, Gain(node.left));     // drop negative branches
+        int right = Math.Max(0, Gain(node.right));
+        best = Math.Max(best, node.val + left + right); // path that bends here (complete)
+        return node.val + Math.Max(left, right);        // path the parent can extend (one side)
+    }
+}` }] }, { lang: 'python', run: true, title: 'Both, on trees built from heap-layout arrays (runnable)', code: `class Node:
     def __init__(self, val, left=None, right=None):
         self.val, self.left, self.right = val, left, right
 
@@ -2048,6 +2428,17 @@ print(max_path_sum(build([-3])))                      # -3
     };
     height(root);
     return best;
+}` }, { lang: 'csharp', code: `class Diameter
+{
+    int best = 0;
+    int Height(TreeNode n)
+    {
+        if (n == null) return 0;
+        int l = Height(n.left), r = Height(n.right);
+        best = Math.Max(best, l + r);      // edges on the path bending at n
+        return 1 + Math.Max(l, r);         // one side, for the parent
+    }
+    public int DiameterOfBinaryTree(TreeNode root) { Height(root); return best; }
 }` }] }
       }
     ],
@@ -2103,6 +2494,18 @@ print(max_path_sum(build([-3])))                      # -3
     if (root->right != nullptr) take += rob(root->right->left) + rob(root->right->right);
     int skip = rob(root->left) + rob(root->right);   // children recomputed again later
     return max(take, skip);
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public int Rob(TreeNode root)
+    {
+        if (root == null) return 0;
+        int take = root.val;
+        if (root.left != null) take += Rob(root.left.left) + Rob(root.left.right);
+        if (root.right != null) take += Rob(root.right.left) + Rob(root.right.right);
+        int skip = Rob(root.left) + Rob(root.right);   // children recomputed again later
+        return Math.Max(take, skip);
+    }
 }` }
         ] }
       },
@@ -2185,7 +2588,40 @@ private:
         auto [rr, rs] = dfs(node->right);
         return {node->val + ls + rs, max(lr, ls) + max(rr, rs)};
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int Rob(TreeNode root)
+    {
+        if (root == null) return 0;
+        // Iterative post-order: recursion 10^4 levels deep can overflow the call stack.
+        var order = new List<TreeNode>();                 // every parent appears before its children
+        var stack = new Stack<TreeNode>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            TreeNode node = stack.Pop();
+            order.Add(node);
+            if (node.left != null) stack.Push(node.left);
+            if (node.right != null) stack.Push(node.right);
+        }
+        var pair = new Dictionary<TreeNode, int[]>();     // node -> {rob, skip}
+        int[] none = { 0, 0 };                            // a missing child gives nothing
+        for (int i = order.Count - 1; i >= 0; i--)        // backwards: children before parents
+        {
+            TreeNode node = order[i];
+            int[] l = node.left == null ? none : pair[node.left];
+            int[] r = node.right == null ? none : pair[node.right];
+            int rob = node.val + l[1] + r[1];                          // children skipped
+            int skip = Math.Max(l[0], l[1]) + Math.Max(r[0], r[1]);    // children choose freely
+            pair[node] = new[] { rob, skip };
+        }
+        int[] res = pair[root];
+        return Math.Max(res[0], res[1]);
+    }
+}` }],
         dry: { head: ['node (post-order)', 'left pair', 'right pair', 'rob', 'skip'], rows: [
           ['3 (leaf)', '[0,0]', '[0,0]', '3', '0'], ['2', '[0,0]', '[3,0]', '2', '3'], ['1 (leaf)', '[0,0]', '[0,0]', '1', '0'],
           ['3 (right child)', '[0,0]', '[1,0]', '3', '1'], ['3 (root)', '[2,3]', '[3,1]', '<span class="c-g">7</span>', '6']
@@ -2198,7 +2634,7 @@ private:
         java: 'class Check { static int robTree(TreeNode root, int[] chain) { if (chain.length > 0) { root = null; for (int i = chain.length - 1; i >= 0; i--) root = new TreeNode(chain[i], root, null); } return new Solution().rob(root); } }',
         python: 'def rob_tree(root, chain):\n    if chain:\n        root = None\n        for v in reversed(chain):\n            root = TreeNode(v, root, None)\n    return Solution().rob(root)',
         js: 'function robTree(root, chain) { if (chain.length) { root = null; for (let i = chain.length - 1; i >= 0; i--) root = new TreeNode(chain[i], root, null); } return rob(root); }',
-        cpp: 'int robTree(TreeNode* root, vector<int> chain) { if (!chain.empty()) { root = nullptr; for (int i = (int)chain.size() - 1; i >= 0; i--) root = new TreeNode(chain[i], root, nullptr); } return Solution().rob(root); }' },
+        cpp: 'int robTree(TreeNode* root, vector<int> chain) { if (!chain.empty()) { root = nullptr; for (int i = (int)chain.size() - 1; i >= 0; i--) root = new TreeNode(chain[i], root, nullptr); } return Solution().rob(root); }', csharp: "class Check { public static int RobTree(TreeNode root, int[] chain) { if (chain.Length > 0) { root = null; for (int i = chain.Length - 1; i >= 0; i--) root = new TreeNode(chain[i], root, null); } return new Solution().Rob(root); } }" },
         cases: [
           [[[3, 2, 3, null, 3, null, 1], []], 7],
           [[[3, 4, 5, 1, 3, null, 1], []], 9],
@@ -2277,7 +2713,24 @@ private:
     }
 public:
     int maxPathSum(TreeNode* root) { visit(root); return best; }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Down(TreeNode n)                       // best downward chain starting at n (recomputed a lot)
+    {
+        if (n == null) return 0;
+        return n.val + Math.Max(0, Math.Max(Down(n.left), Down(n.right)));
+    }
+    int best = int.MinValue;
+    void Visit(TreeNode n)
+    {
+        if (n == null) return;
+        best = Math.Max(best, n.val + Math.Max(0, Down(n.left)) + Math.Max(0, Down(n.right)));
+        Visit(n.left);
+        Visit(n.right);
+    }
+    public int MaxPathSum(TreeNode root) { Visit(root); return best; }
+}` }
         ] }
       },
       mcq: { q: 'Why does gain() return node.val + max(left, right) instead of node.val + left + right?', options: ['A parent extending the path can continue down only ONE side; using both would make the path branch', 'Because left + right might overflow', 'Because the right child is always smaller', 'To make the code shorter'], answer: 0, explain: 'If the parent attached itself to a path that already uses both children of this node, the node would have three path neighbours — not a path anymore.' },
@@ -2362,7 +2815,37 @@ private:
         best = max(best, node->val + left + right); // path bending here
         return node->val + max(left, right);        // extendable by the parent
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int MaxPathSum(TreeNode root)
+    {
+        // Iterative post-order: recursion 3*10^4 levels deep can overflow the call stack.
+        var order = new List<TreeNode>();                 // every parent appears before its children
+        var stack = new Stack<TreeNode>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            TreeNode node = stack.Pop();
+            order.Add(node);
+            if (node.left != null) stack.Push(node.left);
+            if (node.right != null) stack.Push(node.right);
+        }
+        var gain = new Dictionary<TreeNode, int>();       // best downward chain starting at a node
+        int best = int.MinValue;
+        for (int i = order.Count - 1; i >= 0; i--)        // backwards: children before parents
+        {
+            TreeNode node = order[i];
+            int left = node.left == null ? 0 : Math.Max(0, gain[node.left]);     // ignore negative branches
+            int right = node.right == null ? 0 : Math.Max(0, gain[node.right]);
+            best = Math.Max(best, node.val + left + right);  // path bending here
+            gain[node] = node.val + Math.Max(left, right);   // extendable by the parent
+        }
+        return best;
+    }
+}` }],
         dry: { head: ['node', 'left gain', 'right gain', 'bend sum', 'best', 'returns'], rows: [
           ['9', '0', '0', '9', '9', '9'], ['15', '0', '0', '15', '15', '15'], ['7', '0', '0', '7', '15', '7'],
           ['20', '15', '7', '42', '<span class="c-g">42</span>', '35'], ['−10', '9', '35', '34', '42', '25']
@@ -2375,7 +2858,7 @@ private:
         java: 'class Check { static int pathTree(TreeNode root, int[] chain) { if (chain.length > 0) { root = null; for (int i = chain.length - 1; i >= 0; i--) root = new TreeNode(chain[i], null, root); } return new Solution().maxPathSum(root); } }',
         python: 'def path_tree(root, chain):\n    if chain:\n        root = None\n        for v in reversed(chain):\n            root = TreeNode(v, None, root)\n    return Solution().max_path_sum(root)',
         js: 'function pathTree(root, chain) { if (chain.length) { root = null; for (let i = chain.length - 1; i >= 0; i--) root = new TreeNode(chain[i], null, root); } return maxPathSum(root); }',
-        cpp: 'int pathTree(TreeNode* root, vector<int> chain) { if (!chain.empty()) { root = nullptr; for (int i = (int)chain.size() - 1; i >= 0; i--) root = new TreeNode(chain[i], nullptr, root); } return Solution().maxPathSum(root); }' },
+        cpp: 'int pathTree(TreeNode* root, vector<int> chain) { if (!chain.empty()) { root = nullptr; for (int i = (int)chain.size() - 1; i >= 0; i--) root = new TreeNode(chain[i], nullptr, root); } return Solution().maxPathSum(root); }', csharp: "class Check { public static int PathTree(TreeNode root, int[] chain) { if (chain.Length > 0) { root = null; for (int i = chain.Length - 1; i >= 0; i--) root = new TreeNode(chain[i], null, root); } return new Solution().MaxPathSum(root); } }" },
         cases: [
           [[[-10, 9, 20, null, null, 15, 7], []], 42],
           [[[1, 2, 3], []], 6],
@@ -2467,6 +2950,20 @@ int maxProfitCooldown(const vector<int>& prices) {
         rest = max(rest, prevSold);          // stay idle, or yesterday's sale cools down
     }
     return (int)max(sold, rest);         // ending with a share is never optimal
+}` }, { lang: 'csharp', code: `// Stock with cooldown: three modes, O(1) memory.
+static int MaxProfitCooldown(int[] prices)
+{
+    int hold = int.MinValue;        // own a share (impossible before day 0)
+    int sold = 0;                   // sold today (on day 0 nothing could be sold, but 0 is harmless)
+    int rest = 0;                   // no share, free to buy
+    foreach (int p in prices)
+    {
+        int prevSold = sold;
+        sold = hold + p;                      // sell the share we were holding (wraps harmlessly on day 0)
+        hold = Math.Max(hold, rest - p);      // keep holding, or buy (only from rest!)
+        rest = Math.Max(rest, prevSold);      // stay idle, or yesterday's sale cools down
+    }
+    return Math.Max(sold, rest);              // ending with a share is never optimal
 }` }] }, { lang: 'java', code: `
       // Stock with transaction fee: two modes.
       static int maxProfitFee(int[] prices, int fee) {
@@ -2503,6 +3000,19 @@ int maxProfitFee(const vector<int>& prices, int fee) {
         int p = prices[i];
         int newCash = max(cash, hold + p - fee);     // sell (pay the fee once per round trip)
         int newHold = max(hold, cash - p);           // buy using yesterday's cash
+        cash = newCash;
+        hold = newHold;
+    }
+    return cash;
+}` }, { lang: 'csharp', code: `// Stock with transaction fee: two modes.
+static int MaxProfitFee(int[] prices, int fee)
+{
+    int cash = 0, hold = -prices[0];
+    for (int i = 1; i < prices.Length; i++)
+    {
+        int p = prices[i];
+        int newCash = Math.Max(cash, hold + p - fee);  // sell (pay the fee once per round trip)
+        int newHold = Math.Max(hold, cash - p);        // buy using yesterday's cash
         cash = newCash;
         hold = newHold;
     }
@@ -2570,6 +3080,28 @@ int maxProfitK(int k, const vector<int>& prices) {
             buy[j] = max(buy[j], sell[j - 1] - p);   // j-th buy uses profit of (j-1) sells
             sell[j] = max(sell[j], buy[j] + p);      // j-th sell
         }
+    return sell[k];
+}` }, { lang: 'csharp', code: `// At most k transactions (Stock IV). buy[j]/sell[j] = best cash in the j-th buy/sell mode.
+static int MaxProfitK(int k, int[] prices)
+{
+    int n = prices.Length;
+    if (n < 2 || k == 0) return 0;
+    if (k >= n / 2)                         // enough transactions to take every rise
+    {
+        int sum = 0;
+        for (int i = 1; i < n; i++) sum += Math.Max(0, prices[i] - prices[i - 1]);
+        return sum;
+    }
+    int[] buy = new int[k + 1], sell = new int[k + 1];
+    for (int j = 0; j <= k; j++) buy[j] = int.MinValue;
+    foreach (int p in prices)
+    {
+        for (int j = 1; j <= k; j++)
+        {
+            buy[j] = Math.Max(buy[j], sell[j - 1] - p);   // j-th buy uses profit of (j-1) sells
+            sell[j] = Math.Max(sell[j], buy[j] + p);      // j-th sell
+        }
+    }
     return sell[k];
 }` }] }, { lang: 'python', run: true, title: 'The whole family in Python (runnable)', code: `def one_transaction(prices):
     best, low = 0, float('inf')
@@ -2738,6 +3270,22 @@ console.log(sell2);                   // 6` }, { lang: 'cpp', code: `int main() 
         sell2 = max(sell2, buy2 + p);   // second sell
     }
     cout << sell2 << endl;              // 6
+}` }, { lang: 'csharp', run: true, code: `using System;
+
+class TwoTransactions
+{
+    static void Main()
+    {
+        int buy1 = int.MinValue, sell1 = 0, buy2 = int.MinValue, sell2 = 0;
+        foreach (int p in new[] { 3, 3, 5, 0, 0, 3, 1, 4 })
+        {
+            buy1 = Math.Max(buy1, -p);          // first buy
+            sell1 = Math.Max(sell1, buy1 + p);  // first sell
+            buy2 = Math.Max(buy2, sell1 - p);   // second buy, paid from first profit
+            sell2 = Math.Max(sell2, buy2 + p);  // second sell
+        }
+        Console.WriteLine(sell2);               // 6
+    }
 }` }] }
       },
       {
@@ -2805,7 +3353,19 @@ console.log(sell2);                   // 6` }, { lang: 'cpp', code: `int main() 
     }
 public:
     int maxProfit(vector<int>& prices) { return go(prices, 0, false); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Go(int[] p, int day, bool holding)
+    {
+        if (day >= p.Length) return 0;
+        int best = Go(p, day + 1, holding);                                  // do nothing
+        if (holding) best = Math.Max(best, p[day] + Go(p, day + 2, false));  // sell, skip next day
+        else best = Math.Max(best, -p[day] + Go(p, day + 1, true));          // buy
+        return best;
+    }
+    public int MaxProfit(int[] prices) { return Go(prices, 0, false); }
+}` }
         ] }
       },
       mcq: { q: 'In the cooldown machine, from which mode is “buy today” allowed?', options: ['rest only', 'sold or rest', 'hold', 'any mode'], answer: 0, explain: 'If you sold yesterday you are in cooldown today. Only the rest mode (no share, not cooling down) can buy.' },
@@ -2852,7 +3412,23 @@ public:
         }
         return (int)max(sold, rest);
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MaxProfit(int[] prices)
+    {
+        long hold = long.MinValue / 2, sold = 0, rest = 0;   // long: hold + p must not overflow
+        foreach (int p in prices)
+        {
+            long prevSold = sold;
+            sold = hold + p;                    // sell what we held yesterday
+            hold = Math.Max(hold, rest - p);    // keep, or buy from rest (not from sold!)
+            rest = Math.Max(rest, prevSold);    // idle, or yesterday's sale finishes cooldown
+        }
+        return (int)Math.Max(sold, rest);
+    }
+}` }],
         dry: { head: ['day', 'price', 'hold', 'sold', 'rest'], rows: [
           ['0', '1', '−1 (buy)', '−∞', '0'], ['1', '2', '−1', '1', '0'], ['2', '3', '−1', '2', '1'],
           ['3', '0', '1 (buy from rest 1)', '−1', '2'], ['4', '2', '1', '<span class="c-g">3</span>', '2']
@@ -2957,6 +3533,23 @@ int numDistinct(const string& s, const string& t) {
             if (c == t[j - 1]) dp[j] += dp[j - 1];
     }
     return (int)dp[n];                       // the final answer fits in int
+}` }, { lang: 'csharp', code: `// Distinct Subsequences with ONE row. j goes right-to-left so dp[j-1] is still "last row".
+static int NumDistinct(string s, string t)
+{
+    int m = s.Length, n = t.Length;
+    int[] dp = new int[n + 1];
+    dp[0] = 1;                              // empty t: one way (choose nothing)
+    for (int i = 1; i <= m; i++)
+    {
+        char c = s[i - 1];
+        for (int j = Math.Min(i, n); j >= 1; j--)
+        {
+            // skip s[i-1] -> dp[j] unchanged; use it if it matches t[j-1] -> add dp[j-1]
+            if (c == t[j - 1]) dp[j] += dp[j - 1];
+            // unchecked int wrap-around is safe here: only additions, and the final answer fits in int
+        }
+    }
+    return dp[n];
 }` }] }, { lang: 'java', code: `
       // Longest Palindromic Subsequence (interval DP on one string).
       static int longestPalindromeSubseq(String s) {
@@ -3005,6 +3598,21 @@ int longestPalindromeSubseq(const string& s) {
         }
     }
     return dp[0][n - 1];
+}` }, { lang: 'csharp', code: `// Longest Palindromic Subsequence (interval DP on one string).
+static int LongestPalindromeSubseq(string s)
+{
+    int n = s.Length;
+    int[,] dp = new int[n, n];
+    for (int i = n - 1; i >= 0; i--)         // i from the end so dp[i+1, *] is ready
+    {
+        dp[i, i] = 1;
+        for (int j = i + 1; j < n; j++)
+        {
+            if (s[i] == s[j]) dp[i, j] = dp[i + 1, j - 1] + 2;         // both ends join
+            else dp[i, j] = Math.Max(dp[i + 1, j], dp[i, j - 1]);      // drop one end
+        }
+    }
+    return dp[0, n - 1];
 }` }] }, { lang: 'java', code: `
       // Shortest Common Supersequence: build the LCS grid, then walk back from the corner.
       static String shortestCommonSupersequence(String a, String b) {
@@ -3075,6 +3683,27 @@ string shortestCommonSupersequence(const string& a, const string& b) {
     while (j > 0) out += b[--j];
     reverse(out.begin(), out.end());
     return out;
+}` }, { lang: 'csharp', code: `// Shortest Common Supersequence: build the LCS grid, then walk back from the corner.
+static string ShortestCommonSupersequence(string a, string b)
+{
+    int m = a.Length, n = b.Length;
+    int[,] L = new int[m + 1, n + 1];
+    for (int i = 1; i <= m; i++)
+        for (int j = 1; j <= n; j++)
+            L[i, j] = a[i - 1] == b[j - 1] ? L[i - 1, j - 1] + 1 : Math.Max(L[i - 1, j], L[i, j - 1]);
+    var sb = new StringBuilder();
+    int p = m, q = n;
+    while (p > 0 && q > 0)
+    {
+        if (a[p - 1] == b[q - 1]) { sb.Append(a[p - 1]); p--; q--; }   // shared char once
+        else if (L[p - 1, q] >= L[p, q - 1]) sb.Append(a[--p]);        // keep a's char
+        else sb.Append(b[--q]);                                        // keep b's char
+    }
+    while (p > 0) sb.Append(a[--p]);
+    while (q > 0) sb.Append(b[--q]);
+    char[] arr = sb.ToString().ToCharArray();
+    Array.Reverse(arr);                                                // built back to front
+    return new string(arr);
 }` }] }, { lang: 'python', run: true, title: 'The family in Python (runnable)', code: `def lcs(a, b):
     m, n = len(a), len(b)
     dp = [[0] * (n + 1) for _ in range(m + 1)]
@@ -3257,6 +3886,22 @@ print(wildcard("adceb", "*a*b"), wildcard("acdcb", "a*c?b"))                # Tr
         }
     }
     return dp[n];
+}` }, { lang: 'csharp', code: `static bool IsInterleave(string s1, string s2, string s3)
+{
+    int m = s1.Length, n = s2.Length;
+    if (m + n != s3.Length) return false;
+    bool[] dp = new bool[n + 1];              // one row: dp[j] for the current i
+    for (int i = 0; i <= m; i++)
+    {
+        for (int j = 0; j <= n; j++)
+        {
+            if (i == 0 && j == 0) { dp[0] = true; continue; }
+            bool fromS1 = i > 0 && dp[j] && s1[i - 1] == s3[i + j - 1];       // dp[j] = old row (i-1)
+            bool fromS2 = j > 0 && dp[j - 1] && s2[j - 1] == s3[i + j - 1];   // dp[j-1] = this row
+            dp[j] = fromS1 || fromS2;
+        }
+    }
+    return dp[n];
 }` }] }
       }
     ],
@@ -3318,7 +3963,19 @@ print(wildcard("adceb", "*a*b"), wildcard("acdcb", "a*c?b"))                # Tr
     }
 public:
     int numDistinct(string s, string t) { return count(s, t, 0, 0); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Count(string s, string t, int i, int j)
+    {
+        if (j == t.Length) return 1;            // matched all of t
+        if (i == s.Length) return 0;            // ran out of s
+        int ways = Count(s, t, i + 1, j);       // skip s[i]
+        if (s[i] == t[j]) ways += Count(s, t, i + 1, j + 1);  // use s[i]
+        return ways;                            // exponential without memo
+    }
+    public int NumDistinct(string s, string t) { return Count(s, t, 0, 0); }
+}` }
         ] }
       },
       mcq: { q: 's[i−1] equals t[j−1]. What is dp[i][j]?', options: ['dp[i−1][j] + dp[i−1][j−1]', 'dp[i−1][j−1] + 1', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i−1][j−1]'], answer: 0, explain: 'We may skip s[i−1] (dp[i−1][j] ways) or use it to match t[j−1] (dp[i−1][j−1] ways). The two groups are disjoint, so we add.' },
@@ -3372,7 +4029,24 @@ public:
                 if (c == t[j - 1]) dp[j] += dp[j - 1];
         return (int)dp[n];                             // the final answer fits in int
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int NumDistinct(string s, string t)
+    {
+        int n = t.Length;
+        int[] dp = new int[n + 1];
+        dp[0] = 1;                                   // one way to build the empty string
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            for (int j = n; j >= 1; j--)             // right to left: dp[j-1] is the old row
+            {
+                if (c == t[j - 1]) dp[j] += dp[j - 1];
+            }
+        }
+        return dp[n];
+    }
+}` }],
         dry: { head: ['letter of s', 'dp[""]', 'dp[b]', 'dp[ba]', 'dp[bag]'], rows: [
           ['(start)', '1', '0', '0', '0'], ['b', '1', '1', '0', '0'], ['a', '1', '1', '1', '0'], ['b', '1', '2', '1', '0'],
           ['g', '1', '2', '1', '1'], ['b', '1', '3', '1', '1'], ['a', '1', '3', '4', '1'], ['g', '1', '3', '4', '<span class="c-g">5</span>']
@@ -3555,6 +4229,20 @@ public:
         best = max(best, j - i + 1);
     }
     return best;
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public int FindLengthOfLCIS(int[] nums)
+    {
+        int best = 0;
+        for (int i = 0; i < nums.Length; i++)
+        {
+            int j = i;
+            while (j + 1 < nums.Length && nums[j] < nums[j + 1]) j++;   // extend from i
+            best = Math.Max(best, j - i + 1);
+        }
+        return best;
+    }
 }` }
         ] }
     },
@@ -3599,7 +4287,21 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int FindLengthOfLCIS(int[] nums)
+    {
+        int best = 1, cur = 1;
+        for (int i = 1; i < nums.Length; i++)
+        {
+            cur = nums[i] > nums[i - 1] ? cur + 1 : 1;   // extend or restart
+            best = Math.Max(best, cur);
+        }
+        return best;
+    }
+}` }],
       dry: { head: ['i', 'nums[i]', 'cur', 'best'], rows: [['0', '1', '1', '1'], ['1', '3', '2', '2'], ['2', '5', '3', '3'], ['3', '4', '1 (5 ≥ 4)', '3'], ['4', '7', '2', '<span class="c-g">3</span>']] },
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['Return the subarray itself.', 'Longest increasing subarray if you may delete at most one element.']
@@ -3653,6 +4355,17 @@ public:
         for (int j = i + 1; j < (int)prices.size(); j++)
             best = max(best, prices[j] - prices[i]);
     return best;
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public int MaxProfit(int[] prices)
+    {
+        int best = 0;
+        for (int i = 0; i < prices.Length; i++)
+            for (int j = i + 1; j < prices.Length; j++)
+                best = Math.Max(best, prices[j] - prices[i]);
+        return best;
+    }
 }` }
         ] }
     },
@@ -3697,7 +4410,21 @@ public:
         }
         return cash;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MaxProfit(int[] prices)
+    {
+        int hold = int.MinValue, cash = 0;
+        foreach (int p in prices)
+        {
+            hold = Math.Max(hold, -p);         // best "bought once" state: cheapest buy so far
+            cash = Math.Max(cash, hold + p);   // sell today
+        }
+        return cash;
+    }
+}` }],
       dry: { head: ['day', 'price', 'hold (= −min)', 'cash'], rows: [['0', '7', '−7', '0'], ['1', '1', '−1', '0'], ['2', '5', '−1', '4'], ['3', '3', '−1', '4'], ['4', '6', '−1', '<span class="c-g">5</span>'], ['5', '4', '−1', '5']] },
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['Unlimited transactions (Stock II).', 'Also return the buy and sell days.']
@@ -3757,6 +4484,18 @@ public:
         for (int j = 1; j <= n; j++)
             dp[i][j] = s[i - 1] == t[j - 1] ? dp[i - 1][j - 1] + 1 : max(dp[i - 1][j], dp[i][j - 1]);
     return dp[m][n] == m;
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public bool IsSubsequence(string s, string t)
+    {
+        int m = s.Length, n = t.Length;
+        int[,] dp = new int[m + 1, n + 1];           // LCS grid
+        for (int i = 1; i <= m; i++)
+            for (int j = 1; j <= n; j++)
+                dp[i, j] = s[i - 1] == t[j - 1] ? dp[i - 1, j - 1] + 1 : Math.Max(dp[i - 1, j], dp[i, j - 1]);
+        return dp[m, n] == m;
+    }
 }` }
         ] }
     },
@@ -3806,7 +4545,18 @@ public:
             if (s[i] == t[j]) i++;              // match s[i] as early as possible
         return i == s.size();
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public bool IsSubsequence(string s, string t)
+    {
+        int i = 0;
+        for (int j = 0; j < t.Length && i < s.Length; j++)
+        {
+            if (s[i] == t[j]) i++;   // match s[i] as early as possible
+        }
+        return i == s.Length;
+    }
+}` }],
       dry: { head: ['j', 't[j]', 's[i] wanted', 'match?', 'i after'], rows: [['0', 'a', 'a', 'yes', '1'], ['1', 'h', 'b', 'no', '1'], ['2', 'b', 'b', 'yes', '2'], ['3', 'g', 'c', 'no', '2'], ['4', 'd', 'c', 'no', '2'], ['5', 'c', 'c', 'yes', '<span class="c-g">3 = |s| → true</span>']] },
       complexity: `<p>Time O(|t|), space O(1). Follow-up: O(|t|) preprocessing, O(|s| log |t|) per query.</p>`,
       followUps: ['Count how many words in a list are subsequences of t (LC 792).', 'Number of distinct ways s appears in t (Distinct Subsequences).']
@@ -3887,7 +4637,23 @@ public:
         for (int i = 0; i < (int)nums.size(); i++) dfs(nums, i, 1);
         return count;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int bestLen = 0, count = 0;
+    void Dfs(int[] a, int last, int len)                 // last = index of last picked element
+    {
+        if (len > bestLen) { bestLen = len; count = 1; }
+        else if (len == bestLen) count++;
+        for (int j = last + 1; j < a.Length; j++)
+            if (a[j] > a[last]) Dfs(a, j, len + 1);
+    }
+    public int FindNumberOfLIS(int[] nums)
+    {
+        for (int i = 0; i < nums.Length; i++) Dfs(nums, i, 1);
+        return count;
+    }
+}` }
         ] }
     },
     mcq: { q: 'While computing index i, you find j with a[j] &lt; a[i] and len[j] + 1 == len[i]. What do you do with cnt[i]?', options: ['cnt[i] += cnt[j]', 'cnt[i] = cnt[j]', 'cnt[i]++', 'nothing'], answer: 0, explain: 'Another group of runs reaches the same best length at i, so their counts add. When len[j] + 1 is strictly larger, you reset: cnt[i] = cnt[j].' },
@@ -3958,7 +4724,29 @@ public:
         }
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int FindNumberOfLIS(int[] nums)
+    {
+        int n = nums.Length, maxLen = 0, total = 0;
+        int[] len = new int[n], cnt = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            len[i] = 1; cnt[i] = 1;
+            for (int j = 0; j < i; j++)
+            {
+                if (nums[j] < nums[i])
+                {
+                    if (len[j] + 1 > len[i]) { len[i] = len[j] + 1; cnt[i] = cnt[j]; }   // better length
+                    else if (len[j] + 1 == len[i]) cnt[i] += cnt[j];                    // same length, more ways
+                }
+            }
+            if (len[i] > maxLen) { maxLen = len[i]; total = cnt[i]; }
+            else if (len[i] == maxLen) total += cnt[i];
+        }
+        return total;
+    }
+}` }],
       dry: { head: ['i', 'val', 'len', 'cnt'], rows: [['0', '1', '1', '1'], ['1', '3', '2', '1'], ['2', '5', '3', '1'], ['3', '4', '3', '1'], ['4', '7', '4', '1 (via 5) + 1 (via 4) = <span class="c-g">2</span>']] },
       complexity: `<p>Time O(N²), space O(N). O(N log N) with a Fenwick/segment tree over compressed values.</p>`,
       followUps: ['Solve in O(N log N).', 'Count longest non-decreasing subsequences instead.']
@@ -4042,6 +4830,25 @@ public:
         if (ok && pick.size() > best.size()) best = pick;
     }
     return best;
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public List<int> LargestDivisibleSubset(int[] nums)
+    {
+        int n = nums.Length;
+        var best = new List<int>();
+        for (int mask = 1; mask < (1 << Math.Min(n, 20)); mask++)
+        {
+            var pick = new List<int>();
+            for (int i = 0; i < n && i < 20; i++) if ((mask >> i & 1) == 1) pick.Add(nums[i]);
+            bool ok = true;
+            for (int a = 0; a < pick.Count && ok; a++)
+                for (int b = a + 1; b < pick.Count && ok; b++)
+                    if (pick[a] % pick[b] != 0 && pick[b] % pick[a] != 0) ok = false;
+            if (ok && pick.Count > best.Count) best = pick;
+        }
+        return best;
+    }
 }` }
         ] }
     },
@@ -4112,7 +4919,30 @@ public:
         reverse(res.begin(), res.end());
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<int> LargestDivisibleSubset(int[] nums)
+    {
+        Array.Sort(nums);
+        int n = nums.Length, best = 0;
+        int[] dp = new int[n], parent = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            dp[i] = 1; parent[i] = -1;
+            for (int j = 0; j < i; j++)
+            {
+                if (nums[i] % nums[j] == 0 && dp[j] + 1 > dp[i]) { dp[i] = dp[j] + 1; parent[i] = j; }
+            }
+            if (dp[i] > dp[best]) best = i;
+        }
+        var res = new LinkedList<int>();
+        for (int k = best; k != -1; k = parent[k]) res.AddFirst(nums[k]);
+        return new List<int>(res);
+    }
+}` }],
       dry: { head: ['sorted value', 'dp', 'parent'], rows: [['1', '1', '—'], ['2', '2', '1'], ['3', '2', '1'], ['4', '3', '2'], ['8', '<span class="c-g">4</span>', '4 → chain 1, 2, 4, 8']] },
       complexity: `<p>Time O(N²) after O(N log N) sorting; space O(N).</p>`,
       followUps: ['Count the number of largest divisible subsets.', 'What if numbers are not distinct?']
@@ -4184,7 +5014,19 @@ public:
     }
 public:
     int maxProfit(vector<int>& prices, int fee) { return go(prices, fee, 0, false); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Go(int[] p, int fee, int day, bool holding)
+    {
+        if (day == p.Length) return 0;
+        int wait = Go(p, fee, day + 1, holding);
+        int act = holding ? p[day] - fee + Go(p, fee, day + 1, false)
+                          : -p[day] + Go(p, fee, day + 1, true);
+        return Math.Max(wait, act);
+    }
+    public int MaxProfit(int[] prices, int fee) { return Go(prices, fee, 0, false); }
+}` }
         ] }
     },
     mcq: { q: 'Where should the fee be subtracted in the 2-mode machine?', options: ['On exactly one arrow per round trip (e.g. the sell arrow)', 'On both the buy and the sell arrow', 'Every day you hold a share', 'Only at the very end'], answer: 0, explain: 'The fee is per transaction. Charging it on both arrows would double-charge each round trip.' },
@@ -4229,7 +5071,22 @@ public:
         }
         return cash;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MaxProfit(int[] prices, int fee)
+    {
+        int cash = 0, hold = -prices[0];
+        for (int i = 1; i < prices.Length; i++)
+        {
+            int newCash = Math.Max(cash, hold + prices[i] - fee);   // sell today
+            int newHold = Math.Max(hold, cash - prices[i]);         // buy today
+            cash = newCash; hold = newHold;
+        }
+        return cash;
+    }
+}` }],
       dry: { head: ['day', 'price', 'cash', 'hold'], rows: [['0', '1', '0', '−1'], ['1', '3', '0', '−1'], ['2', '2', '0', '−1'], ['3', '8', '5', '−1'], ['4', '4', '5', '1'], ['5', '9', '<span class="c-g">8</span>', '1']] },
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['Fee charged only on buying — what changes?', 'Combine fee with a cooldown.']
@@ -4335,6 +5192,33 @@ public:
         if (ok) res.push_back(parts);
     }
     return res;
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    bool Pal(string s) { char[] r = s.ToCharArray(); Array.Reverse(r); return new string(r) == s; }
+    public List<List<string>> Partition(string s)
+    {
+        var res = new List<List<string>>();
+        int n = s.Length;
+        for (int mask = 0; mask < (1 << (n - 1)); mask++)       // bit i set = cut after char i
+        {
+            var parts = new List<string>();
+            int start = 0;
+            bool ok = true;
+            for (int i = 0; i < n && ok; i++)
+            {
+                if (i == n - 1 || (mask >> i & 1) == 1)
+                {
+                    string piece = s.Substring(start, i + 1 - start);
+                    if (!Pal(piece)) ok = false;
+                    parts.Add(piece);
+                    start = i + 1;
+                }
+            }
+            if (ok) res.Add(parts);
+        }
+        return res;
+    }
 }` }
         ] }
     },
@@ -4423,7 +5307,33 @@ private:
             cur.pop_back();                                    // unchoose
         }
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<IList<string>> Partition(string s)
+    {
+        int n = s.Length;
+        bool[,] pal = new bool[n, n];
+        for (int i = n - 1; i >= 0; i--)
+            for (int j = i; j < n; j++)
+                pal[i, j] = s[i] == s[j] && (j - i < 2 || pal[i + 1, j - 1]);
+        var res = new List<IList<string>>();
+        Backtrack(s, 0, pal, new List<string>(), res);
+        return res;
+    }
+    private void Backtrack(string s, int start, bool[,] pal, List<string> cur, List<IList<string>> res)
+    {
+        if (start == s.Length) { res.Add(new List<string>(cur)); return; }
+        for (int end = start; end < s.Length; end++)
+        {
+            if (!pal[start, end]) continue;
+            cur.Add(s.Substring(start, end + 1 - start));  // choose
+            Backtrack(s, end + 1, pal, cur, res);          // explore
+            cur.RemoveAt(cur.Count - 1);                   // unchoose
+        }
+    }
+}` }],
       dry: { head: ['call', 'start', 'pieces so far', 'action'], rows: [['1', '0', '[]', 'try "a" (pal), "aa" (pal), "aab" (no)'], ['2', '1', '[a]', 'try "a" → recurse; "ab" no'], ['3', '2', '[a, a]', '"b" → start 3 = n → <span class="c-g">add [a,a,b]</span>'], ['4', '2', '[aa]', '"b" → <span class="c-g">add [aa,b]</span>']] },
       complexity: `<p>Time O(N · 2<sup>N</sup>) in the worst case (output size), plus O(N²) preprocessing. Space O(N²) for the table, O(N) recursion.</p>`,
       followUps: ['Return only the count of partitions (dp, no listing).', 'Minimum cuts (Palindrome Partitioning II).']
@@ -4489,7 +5399,18 @@ private:
     }
 public:
     int longestPalindromeSubseq(string s) { return lps(s, 0, s.size() - 1); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Lps(string s, int i, int j)
+    {
+        if (i > j) return 0;
+        if (i == j) return 1;
+        if (s[i] == s[j]) return 2 + Lps(s, i + 1, j - 1);
+        return Math.Max(Lps(s, i + 1, j), Lps(s, i, j - 1));   // overlapping subproblems
+    }
+    public int LongestPalindromeSubseq(string s) { return Lps(s, 0, s.Length - 1); }
+}` }
         ] }
     },
     mcq: { q: 'Which identity gives an alternative solution?', options: ['LPS(s) = LCS(s, reverse(s))', 'LPS(s) = n − LCS(s, s)', 'LPS(s) = longest palindromic substring', 'LPS(s) = LIS of character codes'], answer: 0, explain: 'A palindromic subsequence reads the same in s and reversed s, so it is a common subsequence of both; the longest common one is a palindrome of maximal length.' },
@@ -4554,7 +5475,29 @@ public:
         }
         return dp[n - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int LongestPalindromeSubseq(string s)
+    {
+        int n = s.Length;
+        int[] dp = new int[n];                     // dp[j] = LPS of s[i..j] for the current i
+        for (int i = n - 1; i >= 0; i--)
+        {
+            dp[i] = 1;
+            int diag = 0;                          // dp[i+1][j-1] from the previous row
+            for (int j = i + 1; j < n; j++)
+            {
+                int saved = dp[j];                 // dp[i+1][j] before overwrite
+                if (s[i] == s[j]) dp[j] = diag + 2;
+                else dp[j] = Math.Max(dp[j], dp[j - 1]);
+                diag = saved;
+            }
+        }
+        return dp[n - 1];
+    }
+}` }],
       dry: { head: ['substring', 'ends equal?', 'dp'], rows: [['"ba"', 'no', '1'], ['"ab"', 'no', '1'], ['"bab"', 'yes', '1 + 2 = 3'], ['"bbab"', 'yes', 'dp("ba") + 2 = 3'], ['"bbbab"', 'yes', 'dp("bba") + 2 = 2 + 2 = <span class="c-g">4</span>']] },
       complexity: `<p>Time O(N²), space O(N) with the rolling row.</p>`,
       followUps: ['Print the palindrome.', 'Minimum insertions to make s a palindrome (n − LPS).', 'Count palindromic subsequences.']
@@ -4619,7 +5562,19 @@ public:
     }
 public:
     int minScoreTriangulation(vector<int>& values) { return best(values, 0, values.size() - 1); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Best(int[] v, int i, int j)
+    {
+        if (j - i < 2) return 0;                      // fewer than 3 vertices: no triangle
+        int res = int.MaxValue;
+        for (int k = i + 1; k < j; k++)
+            res = Math.Min(res, Best(v, i, k) + Best(v, k, j) + v[i] * v[k] * v[j]);
+        return res;
+    }
+    public int MinScoreTriangulation(int[] values) { return Best(values, 0, values.Length - 1); }
+}` }
         ] }
     },
     mcq: { q: 'Why does every triangulation of polygon i..j contain exactly one triangle using edge (i, j)?', options: ['Edge (i, j) is a side of the sub-polygon, and every side belongs to exactly one triangle', 'Because i and j are adjacent in the original array', 'Because the polygon is convex, all triangles use vertex 0', 'It does not; some use two'], answer: 0, explain: 'In a triangulation every polygon side lies in exactly one triangle. Its third vertex k splits the rest into polygons i..k and k..j — the interval split point.' },
@@ -4681,7 +5636,27 @@ public:
         }
         return dp[0][n - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MinScoreTriangulation(int[] v)
+    {
+        int n = v.Length;
+        int[,] dp = new int[n, n];
+        for (int gap = 2; gap < n; gap++)
+        {
+            for (int i = 0; i + gap < n; i++)
+            {
+                int j = i + gap;
+                dp[i, j] = int.MaxValue;
+                for (int k = i + 1; k < j; k++)
+                    dp[i, j] = Math.Min(dp[i, j], dp[i, k] + dp[k, j] + v[i] * v[k] * v[j]);
+            }
+        }
+        return dp[0, n - 1];
+    }
+}` }],
       dry: { head: ['range (i, j)', 'k options', 'dp'], rows: [['(0,2) 3,7,4', 'k=1: 84', '84'], ['(1,3) 7,4,5', 'k=2: 140', '140'], ['(0,3)', 'k=1: 0 + 140 + 3·7·5 = 245; k=2: 84 + 0 + 3·4·5 = 144', '<span class="c-g">144</span>']] },
       complexity: `<p>Time O(n³), space O(n²).</p>`,
       followUps: ['Maximise instead of minimise.', 'Return the triangles chosen.']
@@ -4755,6 +5730,23 @@ public:
         best = max(best, dp[i]);
     }
     return best;
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public int MaxEnvelopes(int[][] env)
+    {
+        Array.Sort(env, (a, b) => a[0].CompareTo(b[0]));
+        int n = env.Length, best = 0;
+        int[] dp = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            dp[i] = 1;
+            for (int j = 0; j < i; j++)
+                if (env[j][0] < env[i][0] && env[j][1] < env[i][1]) dp[i] = Math.Max(dp[i], dp[j] + 1);
+            best = Math.Max(best, dp[i]);
+        }
+        return best;
+    }
 }` }
         ] }
     },
@@ -4820,7 +5812,29 @@ public:
         }
         return (int)tails.size();
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MaxEnvelopes(int[][] envelopes)
+    {
+        Array.Sort(envelopes, (a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : b[1].CompareTo(a[1]));
+        int[] tails = new int[envelopes.Length];
+        int len = 0;
+        foreach (int[] e in envelopes)
+        {
+            int h = e[1], lo = 0, hi = len;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (tails[mid] < h) lo = mid + 1; else hi = mid;
+            }
+            tails[lo] = h;
+            if (lo == len) len++;
+        }
+        return len;
+    }
+}` }],
       dry: { head: ['sorted envelope', 'height', 'tails'], rows: [['[2,3]', '3', '[3]'], ['[5,4]', '4', '[3, 4]'], ['[6,7]', '7', '[3, 4, 7]'], ['[6,4]', '4', '[3, 4, 7] (replace 4 with 4) → <span class="c-g">3</span>']] },
       complexity: `<p>Time O(N log N), space O(N).</p>`,
       followUps: ['3D boxes (stacking boxes) — why does the trick not extend directly?', 'Return the actual nesting order.']
@@ -4887,7 +5901,19 @@ public:
     }
 public:
     int maxProfit(int k, vector<int>& prices) { return go(prices, 0, k, false); }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Go(int[] p, int day, int left, bool holding)
+    {
+        if (day == p.Length || (left == 0 && !holding)) return 0;
+        int best = Go(p, day + 1, left, holding);                                   // wait
+        if (holding) best = Math.Max(best, p[day] + Go(p, day + 1, left - 1, false)); // sell completes one
+        else best = Math.Max(best, -p[day] + Go(p, day + 1, left, true));           // buy
+        return best;
+    }
+    public int MaxProfit(int k, int[] prices) { return Go(prices, 0, k, false); }
+}` }
         ] }
     },
     mcq: { q: 'Why can you switch to the greedy “sum of all rises” when k ≥ n/2?', options: ['There can be at most ⌊n/2⌋ non-overlapping profitable trades, so the limit never binds', 'Because greedy is always optimal for stocks', 'Because k is too large for an array', 'Because the dp becomes incorrect'], answer: 0, explain: 'Each trade needs a distinct buy day and later sell day, so at most n/2 useful trades exist. If k is at least that, the problem is the unlimited version.' },
@@ -4963,7 +5989,33 @@ public:
         }
         return sell[k];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MaxProfit(int k, int[] prices)
+    {
+        int n = prices.Length;
+        if (n < 2 || k == 0) return 0;
+        if (k >= n / 2)                                    // unlimited transactions
+        {
+            int sum = 0;
+            for (int i = 1; i < n; i++) sum += Math.Max(0, prices[i] - prices[i - 1]);
+            return sum;
+        }
+        int[] buy = new int[k + 1], sell = new int[k + 1];
+        for (int j = 0; j <= k; j++) buy[j] = int.MinValue;
+        foreach (int p in prices)
+        {
+            for (int j = 1; j <= k; j++)
+            {
+                buy[j] = Math.Max(buy[j], sell[j - 1] - p);
+                sell[j] = Math.Max(sell[j], buy[j] + p);
+            }
+        }
+        return sell[k];
+    }
+}` }],
       dry: { head: ['day', 'price', 'buy1', 'sell1', 'buy2', 'sell2'], rows: [['0', '3', '−3', '0', '−3', '0'], ['1', '2', '−2', '0', '−2', '0'], ['2', '6', '−2', '4', '−2', '4'], ['3', '5', '−2', '4', '−1', '4'], ['4', '0', '0', '4', '4', '4'], ['5', '3', '0', '4', '4', '<span class="c-g">7</span>']] },
       complexity: `<p>Time O(n·k) (or O(n) when k ≥ n/2), space O(k).</p>`,
       followUps: ['Add a cooldown.', 'Solve in O(n log n) independent of k (valley/peak pairs + heap, or the “Aliens” penalty trick).']
@@ -5046,7 +6098,26 @@ public:
         c[c.size() - 1] = n;
         return best(c, 0, c.size() - 1);
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    int Best(int[] c, int i, int j)                   // cuts strictly between c[i] and c[j]
+    {
+        if (j - i < 2) return 0;
+        int res = int.MaxValue;
+        for (int k = i + 1; k < j; k++)
+            res = Math.Min(res, c[j] - c[i] + Best(c, i, k) + Best(c, k, j));
+        return res;
+    }
+    public int MinCost(int n, int[] cuts)
+    {
+        int[] c = new int[cuts.Length + 2];
+        int[] s = (int[])cuts.Clone(); Array.Sort(s);
+        for (int i = 0; i < s.Length; i++) c[i + 1] = s[i];
+        c[c.Length - 1] = n;
+        return Best(c, 0, c.Length - 1);
+    }
+}` }
         ] }
     },
     mcq: { q: 'Why is the state built on cut INDICES (after sorting and adding 0 and n) rather than on stick positions 0..n?', options: ['n can be 10<sup>6</sup> but there are at most 102 boundaries, so (m+2)² states is tiny', 'Positions are not integers', 'Sorting is required by the language', 'Because cuts must happen left to right'], answer: 0, explain: 'Only boundaries that are cut points (plus the ends) can ever be piece ends, so the state space depends on m, not n.' },
@@ -5117,7 +6188,32 @@ public:
         }
         return dp[0][m - 1];
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public int MinCost(int n, int[] cuts)
+    {
+        int m = cuts.Length;
+        int[] c = new int[m + 2];
+        int[] s = (int[])cuts.Clone();
+        Array.Sort(s);
+        for (int i = 0; i < m; i++) c[i + 1] = s[i];
+        c[m + 1] = n;
+        int[,] dp = new int[m + 2, m + 2];
+        for (int gap = 2; gap <= m + 1; gap++)
+        {
+            for (int i = 0; i + gap <= m + 1; i++)
+            {
+                int j = i + gap;
+                int best = int.MaxValue;
+                for (int k = i + 1; k < j; k++) best = Math.Min(best, dp[i, k] + dp[k, j]);
+                dp[i, j] = best + c[j] - c[i];          // the first cut costs the whole piece
+            }
+        }
+        return dp[0, m + 1];
+    }
+}` }],
       dry: { head: ['piece (boundaries)', 'best first cut', 'dp'], rows: [['0..3 (cut 1)', '1', '3'], ['3..5 (cut 4)', '4', '2'], ['4..7 (cut 5)', '5', '3'], ['3..7 (cuts 4, 5)', '5: 2 + 0 + 4', '6'], ['0..7 (all)', '3: dp(0..3)=3 + dp(3..7)=6 + 7', '<span class="c-g">16</span>']] },
       complexity: `<p>Time O(m³) with m ≤ 100 → ~10<sup>6</sup> steps; space O(m²).</p>`,
       followUps: ['Print the cutting order.', 'Knuth optimisation applies here — why, and what is the new complexity?']
@@ -5251,7 +6347,39 @@ public:
         }
         return best;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    List<TreeNode> nodes = new List<TreeNode>();
+    Dictionary<TreeNode, TreeNode> parent = new Dictionary<TreeNode, TreeNode>();
+    void Collect(TreeNode n, TreeNode p)
+    {
+        if (n == null) return;
+        nodes.Add(n); parent[n] = p;
+        Collect(n.left, n); Collect(n.right, n);
+    }
+    public int MinCameraCover(TreeNode root)
+    {
+        Collect(root, null);
+        int n = Math.Min(nodes.Count, 20), best = int.MaxValue;   // only feasible for tiny trees
+        for (int mask = 0; mask < (1 << n); mask++)
+        {
+            var seen = new HashSet<TreeNode>();
+            int cams = 0;
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1)
+            {
+                cams++;
+                TreeNode c = nodes[i];
+                seen.Add(c);
+                if (parent[c] != null) seen.Add(parent[c]);
+                if (c.left != null) seen.Add(c.left);
+                if (c.right != null) seen.Add(c.right);
+            }
+            if (seen.Count == nodes.Count) best = Math.Min(best, cams);
+        }
+        return best;
+    }
+}` }
         ] }
     },
     mcq: { q: 'A node reports state 0 = “I am NOT covered, my parent must cover me”. What must the parent do?', options: ['Place a camera on itself', 'Report 0 as well', 'Ignore it — the grandparent will handle it', 'Place a camera on the child'], answer: 0, explain: 'Only the node itself, its children or its parent can cover it. Its children already decided, so the parent must hold a camera.' },
@@ -5326,7 +6454,24 @@ private:
         if (l == 1 || r == 1) return 2;                // a child's camera covers me
         return 0;                                      // ask my parent
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    private int cameras = 0;
+    public int MinCameraCover(TreeNode root)
+    {
+        if (State(root) == 0) cameras++;          // root still uncovered
+        return cameras;
+    }
+    // 0 = not covered, 1 = has camera, 2 = covered (no camera)
+    private int State(TreeNode node)
+    {
+        if (node == null) return 2;               // empty child needs nothing
+        int l = State(node.left), r = State(node.right);
+        if (l == 0 || r == 0) { cameras++; return 1; }   // a child needs me
+        if (l == 1 || r == 1) return 2;                  // a child's camera covers me
+        return 0;                                        // ask my parent
+    }
+}` }],
       dry: { head: ['node (post-order)', 'children states', 'returns', 'cameras'], rows: [['leaf A', '2, 2', '0 (needs cover)', '0'], ['leaf B', '2, 2', '0', '0'], ['middle', '0, 0', '1 (camera)', '1'], ['root', '1, 2', '2 (covered)', '<span class="c-g">1</span>']] },
       complexity: `<p>Time O(N), space O(H).</p>`,
       followUps: ['Cameras with different costs per node (needs real 3-state min dp).', 'Cover distance 2 instead of 1.']
@@ -5336,7 +6481,7 @@ private:
       java: 'class Check { static int camTree(TreeNode root, int chain) { if (chain > 0) { root = null; for (int i = 0; i < chain; i++) root = new TreeNode(0, null, root); } return new Solution().minCameraCover(root); } }',
       python: 'def cam_tree(root, chain):\n    if chain > 0:\n        root = None\n        for _ in range(chain):\n            root = TreeNode(0, None, root)\n    return Solution().min_camera_cover(root)',
       js: 'function camTree(root, chain) { if (chain > 0) { root = null; for (let i = 0; i < chain; i++) root = new TreeNode(0, null, root); } return minCameraCover(root); }',
-      cpp: 'int camTree(TreeNode* root, int chain) { if (chain > 0) { root = nullptr; for (int i = 0; i < chain; i++) root = new TreeNode(0, nullptr, root); } return Solution().minCameraCover(root); }' },
+      cpp: 'int camTree(TreeNode* root, int chain) { if (chain > 0) { root = nullptr; for (int i = 0; i < chain; i++) root = new TreeNode(0, nullptr, root); } return Solution().minCameraCover(root); }', csharp: "class Check { public static int CamTree(TreeNode root, int chain) { if (chain > 0) { root = null; for (int i = 0; i < chain; i++) root = new TreeNode(0, null, root); } return new Solution().MinCameraCover(root); } }" },
       cases: [
         [[[0, 0, null, 0, 0], 0], 1],
         [[[0, 0, null, 0, null, 0, null, null, 0], 0], 2],
@@ -5421,7 +6566,25 @@ public:
         go(s, 0, dict, cur, res);
         return res;
     }
-};` }
+};` },
+          { lang: 'csharp', code: `class Brute
+{
+    public List<string> WordBreak(string s, IList<string> wordDict)
+    {
+        var res = new List<string>();
+        Go(s, 0, new HashSet<string>(wordDict), new List<string>(), res);
+        return res;
+    }
+    void Go(string s, int start, HashSet<string> dict, List<string> cur, List<string> res)
+    {
+        if (start == s.Length) { res.Add(string.Join(" ", cur)); return; }
+        for (int end = start + 1; end <= s.Length; end++)
+        {
+            string w = s.Substring(start, end - start);
+            if (dict.Contains(w)) { cur.Add(w); Go(s, end, dict, cur, res); cur.RemoveAt(cur.Count - 1); }
+        }
+    }
+}` }
         ] }
     },
     mcq: { q: 'What does memoising on the start index store?', options: ['The list of all sentences that complete the suffix s[start..]', 'Only whether the suffix can be completed', 'The longest word starting at start', 'The number of words used so far'], answer: 0, explain: 'All sentences for a suffix are the same no matter how we reached that start, so we compute them once and prepend the current word for each caller.' },
@@ -5501,7 +6664,31 @@ private:
         }
         return memo[start] = move(res);
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<string> WordBreak(string s, IList<string> wordDict)
+    {
+        return Solve(s, 0, new HashSet<string>(wordDict), new Dictionary<int, List<string>>());
+    }
+    private List<string> Solve(string s, int start, HashSet<string> dict, Dictionary<int, List<string>> memo)
+    {
+        List<string> cached;
+        if (memo.TryGetValue(start, out cached)) return cached;
+        var res = new List<string>();
+        if (start == s.Length) { res.Add(""); memo[start] = res; return res; }
+        for (int end = start + 1; end <= s.Length && end - start <= 10; end++)
+        {
+            string w = s.Substring(start, end - start);
+            if (!dict.Contains(w)) continue;
+            foreach (string rest in Solve(s, end, dict, memo))
+                res.Add(rest.Length == 0 ? w : w + " " + rest);
+        }
+        memo[start] = res;
+        return res;
+    }
+}` }],
       dry: { head: ['start', 'words found', 'completions'], rows: [['7', 'dog', '["dog"]'], ['4', 'and', '["and dog"]'], ['3', 'sand', '["sand dog"]'], ['0', 'cat (→3), cats (→4)', '<span class="c-g">["cat sand dog", "cats and dog"]</span>']] },
       complexity: `<p>Time O(n · L + output size × average sentence length); memo holds at most n + 1 lists. Worst case is exponential because the output is.</p>`,
       followUps: ['Return only the count (mod 10<sup>9</sup>+7).', 'Use a trie to avoid substring creation.']
@@ -5565,6 +6752,20 @@ private:
             || (first && isMatch(s.substr(1), p));    // x* eats one char, stays
     }
     return first && isMatch(s.substr(1), p.substr(1));
+}` },
+          { lang: 'csharp', code: `class Brute
+{
+    public bool IsMatch(string s, string p)
+    {
+        if (p.Length == 0) return s.Length == 0;
+        bool first = s.Length > 0 && (p[0] == s[0] || p[0] == '.');
+        if (p.Length >= 2 && p[1] == '*')
+        {
+            return IsMatch(s, p.Substring(2))                  // x* matches zero chars
+                || (first && IsMatch(s.Substring(1), p));     // x* eats one char, stays
+        }
+        return first && IsMatch(s.Substring(1), p.Substring(1));
+    }
 }` }
         ] }
     },
@@ -5650,7 +6851,35 @@ public:
         }
         return dp[m][n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public bool IsMatch(string s, string p)
+    {
+        int m = s.Length, n = p.Length;
+        bool[,] dp = new bool[m + 1, n + 1];
+        dp[0, 0] = true;
+        for (int j = 2; j <= n; j++)                       // patterns like a*b* match ""
+            dp[0, j] = p[j - 1] == '*' && dp[0, j - 2];
+        for (int i = 1; i <= m; i++)
+        {
+            for (int j = 1; j <= n; j++)
+            {
+                char pc = p[j - 1];
+                if (pc == '*')
+                {
+                    char prev = p[j - 2];
+                    bool eat = (prev == '.' || prev == s[i - 1]) && dp[i - 1, j];
+                    dp[i, j] = dp[i, j - 2] || eat;         // zero copies, or one more copy
+                }
+                else
+                {
+                    dp[i, j] = (pc == '.' || pc == s[i - 1]) && dp[i - 1, j - 1];
+                }
+            }
+        }
+        return dp[m, n];
+    }
+}` }],
       dry: { head: ['s prefix', 'p = "c*a*b": ""', 'c', 'c*', 'c*a', 'c*a*', 'c*a*b'], rows: [['""', 'T', 'F', 'T', 'F', 'T', 'F'], ['a', 'F', 'F', 'F', 'T', 'T', 'F'], ['aa', 'F', 'F', 'F', 'F', 'T', 'F'], ['aab', 'F', 'F', 'F', 'F', 'F', '<span class="c-g">T</span>']] },
       complexity: `<p>Time O(m·n), space O(m·n) (two rows suffice).</p>`,
       followUps: ['Add + (one or more).', 'Wildcard matching (LC 44) — compare the transitions.', 'Why do real regex engines use automata (Thompson NFA) instead of backtracking?']

@@ -218,6 +218,50 @@ vector<vector<pair<int, int>>> buildWeighted(int n, const vector<vector<int>>& e
     vector<vector<pair<int, int>>> g(n);
     for (auto& e : edges) g[e[0]].push_back({e[1], e[2]});
     return g;
+}` }, { lang: 'csharp', title: 'Adjacency list, matrix and weighted list (C#)', run: true, code: `using System;
+using System.Collections.Generic;
+
+class GraphRepresentations
+{
+    // Build both representations from an edge list (undirected)
+    static List<List<int>> BuildList(int n, int[][] edges)
+    {
+        var g = new List<List<int>>();
+        for (int i = 0; i < n; i++) g.Add(new List<int>());    // one empty contact list per node
+        foreach (int[] e in edges)
+        {
+            g[e[0]].Add(e[1]);   // u -> v
+            g[e[1]].Add(e[0]);   // v -> u (delete this line for a DIRECTED graph)
+        }
+        return g;
+    }
+
+    static bool[,] BuildMatrix(int n, int[][] edges)
+    {
+        var m = new bool[n, n];                                 // n*n cells: only OK for small n
+        foreach (int[] e in edges) { m[e[0], e[1]] = true; m[e[1], e[0]] = true; }
+        return m;
+    }
+
+    // Weighted directed edges: store {to, weight} pairs
+    static List<List<int[]>> BuildWeighted(int n, int[][] edges)   // edges[i] = {u, v, w}
+    {
+        var g = new List<List<int[]>>();
+        for (int i = 0; i < n; i++) g.Add(new List<int[]>());
+        foreach (int[] e in edges) g[e[0]].Add(new[] { e[1], e[2] });
+        return g;
+    }
+
+    static void Main()
+    {
+        int[][] edges = { new[] { 0, 1 }, new[] { 0, 2 }, new[] { 1, 2 }, new[] { 2, 3 } };
+        var g = BuildList(4, edges);
+        for (int u = 0; u < 4; u++) Console.WriteLine(u + ": [" + string.Join(", ", g[u]) + "]");
+        bool[,] m = BuildMatrix(4, edges);
+        Console.WriteLine(m[0, 2] + " " + m[1, 3]);                // True False
+        var w = BuildWeighted(3, new[] { new[] { 0, 1, 5 }, new[] { 1, 2, 7 } });
+        Console.WriteLine(w[0][0][0] + " with weight " + w[0][0][1]);   // 1 with weight 5
+    }
 }` }] }],
     codeTitle: ['Adjacency list, matrix and weighted list (Java)'],
     viz: {
@@ -284,6 +328,21 @@ for (int d = 0; d < 4; d++) {
     int nr = r + dr[d], nc = c + dc[d];
     if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;   // off the map
     cout << "neighbour: " << nr << "," << nc << "\\n";
+}` }, { lang: 'csharp', run: true, code: `using System;
+
+class GridNeighbours
+{
+    static void Main()
+    {
+        int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+        int R = 2, C = 3, r = 0, c = 1;
+        for (int d = 0; d < 4; d++)
+        {
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;   // off the map
+            Console.WriteLine("neighbour: " + nr + "," + nc);
+        }
+    }
 }` }] } },
       { title: '1-indexed input', html: `<p>Many problems number nodes 1..n. Either allocate <code>n + 1</code> lists and ignore index 0, or subtract 1 from every endpoint while reading. Mixing the two is a classic off-by-one crash (<code>IndexOutOfBoundsException</code> on node n).</p>` },
       { title: 'Choosing the representation from constraints', html: `${H.table(['Constraint', 'Choice', 'Why'], [['n ≤ 100, need many "is edge?" checks', 'matrix', 'n² = 10 000 cells, O(1) checks'], ['n ≤ 10<sup>5</sup>, m ≤ 2·10<sup>5</sup>', 'list', 'n² is 10<sup>10</sup>'], ['only need to merge groups', 'edge list + DSU', 'never walk neighbours'], ['grid 1000×1000', 'implicit', 'neighbours computed on the fly']])}` }
@@ -348,6 +407,21 @@ for (int d = 0; d < 4; d++) {
         if (!trustsSomeone && trustedBy == n - 1) return p;
     }
     return -1;
+}` },
+          { lang: 'csharp', code: `int FindJudgeBrute(int n, int[][] trust)
+{
+    for (int p = 1; p <= n; p++)
+    {
+        bool trustsSomeone = false;
+        int trustedBy = 0;
+        foreach (int[] t in trust)
+        {
+            if (t[0] == p) trustsSomeone = true;
+            if (t[1] == p) trustedBy++;
+        }
+        if (!trustsSomeone && trustedBy == n - 1) return p;
+    }
+    return -1;
 }` }
         ] } },
       mcq: { q: 'Which single number per person is enough to decide the judge?', options: ['in-degree − out-degree == n − 1', 'out-degree == 0 only', 'in-degree == 1', 'number of cycles through the person'], answer: 0, explain: 'The judge has in = n−1 and out = 0, so in − out = n−1. Anyone else has in ≤ n−2 or out ≥ 1, so their score is at most n−2.' },
@@ -403,7 +477,21 @@ public:
             if (score[p] == n - 1) return p;
         return -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int FindJudge(int n, int[][] trust)
+    {
+        int[] score = new int[n + 1];          // 1-indexed people
+        foreach (int[] t in trust)
+        {
+            score[t[0]]--;                     // trusting someone disqualifies (out-degree)
+            score[t[1]]++;                     // being trusted counts (in-degree)
+        }
+        for (int p = 1; p <= n; p++)
+            if (score[p] == n - 1) return p;   // in = n-1 and out = 0
+        return -1;
+    }
+}` }],
         dry: { head: ['pair', 'score[1]', 'score[2]', 'score[3]'], rows: [['start', '0', '0', '0'], ['[1,3]', '-1', '0', '1'], ['[2,3]', '-1', '-1', H.c('g', '2 = n−1 → judge 3')]] },
         complexity: `<p>Time O(n + T), space O(n). No adjacency list needed — degrees are a summary of the graph.</p>`,
         followUps: ['Find the celebrity (someone everyone knows who knows nobody) when you may only ask knows(a, b). (LC 277, two-pointer elimination in O(n) calls)', 'Return all people trusted by at least k others']
@@ -610,6 +698,68 @@ int levels(const vector<vector<int>>& g, int src) {
         }
     }
     return level;                              // eccentricity of src
+}` }, { lang: 'csharp', title: 'BFS with distances, parents and path (C#)', run: true, code: `using System;
+using System.Collections.Generic;
+
+class BfsTools
+{
+    // BFS from src: distances + parent pointers + path to dst
+    static List<int> ShortestPath(List<List<int>> g, int src, int dst)
+    {
+        int n = g.Count;
+        int[] dist = new int[n], parent = new int[n];
+        for (int i = 0; i < n; i++) { dist[i] = -1; parent[i] = -1; }   // -1 = not visited yet
+        var q = new Queue<int>();
+        dist[src] = 0;
+        q.Enqueue(src);
+        while (q.Count > 0)
+        {
+            int u = q.Dequeue();
+            if (u == dst) break;                 // optional early exit: dst's distance is final
+            foreach (int v in g[u])
+            {
+                if (dist[v] != -1) continue;     // already discovered by a shorter (or equal) chain
+                dist[v] = dist[u] + 1;           // mark visited ON PUSH
+                parent[v] = u;
+                q.Enqueue(v);
+            }
+        }
+        if (dist[dst] == -1) return new List<int>();   // unreachable
+        var path = new LinkedList<int>();
+        for (int x = dst; x != -1; x = parent[x]) path.AddFirst(x);   // walk back to src
+        return new List<int>(path);
+    }
+
+    // Level-by-level BFS (when you need "rounds")
+    static int Levels(List<List<int>> g, int src)
+    {
+        bool[] seen = new bool[g.Count];
+        var q = new Queue<int>();
+        q.Enqueue(src); seen[src] = true;
+        int level = -1;
+        while (q.Count > 0)
+        {
+            level++;
+            for (int k = q.Count; k > 0; k--)       // pop exactly this level
+            {
+                int u = q.Dequeue();
+                foreach (int v in g[u]) if (!seen[v]) { seen[v] = true; q.Enqueue(v); }
+            }
+        }
+        return level;                               // eccentricity of src
+    }
+
+    static void Main()
+    {
+        var g = new List<List<int>>();
+        for (int i = 0; i < 6; i++) g.Add(new List<int>());
+        foreach (int[] e in new[] { new[] { 0, 1 }, new[] { 0, 2 }, new[] { 1, 3 }, new[] { 2, 3 }, new[] { 3, 4 }, new[] { 4, 5 } })
+        {
+            g[e[0]].Add(e[1]); g[e[1]].Add(e[0]);
+        }
+        Console.WriteLine("path 0 -> 5: [" + string.Join(", ", ShortestPath(g, 0, 5)) + "]");   // [0, 1, 3, 4, 5]
+        Console.WriteLine("levels from 0 = " + Levels(g, 0));                                    // 4
+    }
 }` }] }],
     codeTitle: ['BFS with distances, parents and path (Java)'],
     viz: {
@@ -714,6 +864,33 @@ while (!q.empty()) {
             if (seen.insert(f).second) q.push(f);
     }
     level++;
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class Handshakes
+{
+    static void Main()
+    {
+        var g = new Dictionary<string, string[]>
+        {
+            { "Asha", new[] { "Chen", "Dev" } }, { "Chen", new[] { "Asha", "Eli" } },
+            { "Dev", new[] { "Asha", "Ben" } }, { "Eli", new[] { "Chen" } }, { "Ben", new[] { "Dev" } }
+        };
+        var q = new Queue<string>(); q.Enqueue("Asha");
+        var seen = new HashSet<string> { "Asha" };
+        int level = 0;
+        while (q.Count > 0)
+        {
+            for (int k = q.Count; k > 0; k--)       // one full level
+            {
+                string p = q.Dequeue();
+                if (p == "Ben") Console.WriteLine("Ben is " + level + " handshakes away");
+                foreach (string f in g[p])
+                    if (seen.Add(f)) q.Enqueue(f);
+            }
+            level++;
+        }
+    }
 }` }] } },
       { title: 'Unreachable target', html: `<p>Edges 0–1, 2–3, source 0, target 3. BFS finishes with dist = [0, 1, -1, -1]. Keep the -1 sentinel (not 0 and not Integer.MAX_VALUE) so "unreachable" is obvious and never accidentally added to.</p>` }
     ],
@@ -781,6 +958,19 @@ void dfs(vector<vector<int>>& g, int u, int dst, vector<bool>& onPath, vector<in
         dfs(g, v, dst, onPath, path);                          // explores EVERY simple path
         path.pop_back(); onPath[v] = false;
     }
+}` },
+          { lang: 'csharp', code: `List<int> best = null;
+void Dfs(List<List<int>> g, int u, int dst, bool[] onPath, LinkedList<int> path)
+{
+    if (best != null && path.Count >= best.Count) return;       // prune: already longer
+    if (u == dst) { best = new List<int>(path); return; }
+    foreach (int v in g[u])
+    {
+        if (onPath[v]) continue;
+        onPath[v] = true; path.AddLast(v);
+        Dfs(g, v, dst, onPath, path);                               // explores EVERY simple path
+        path.RemoveLast(); onPath[v] = false;
+    }
 }` }
         ] } },
       mcq: { q: 'You need the fewest flights where every flight "costs" the same. What do you reach for?', options: ['BFS with parent pointers', 'DFS and take the first path found', 'Dijkstra with a priority queue', 'Topological sort'], answer: 0, explain: 'Equal edge costs → BFS gives shortest distance in O(V + E); parents rebuild the route. Dijkstra also works but adds an unnecessary log factor; DFS does not give shortest paths.' },
@@ -789,7 +979,7 @@ void dfs(vector<vector<int>>& g, int u, int dst, vector<bool>& onPath, vector<in
         java: "class Check {\n    static List<Integer> routeCheck(int n, int[][] flights, int src, int dst) {\n        if (flights.length == 1 && flights[0][0] == -1) {\n            flights = new int[n - 1][];\n            for (int i = 0; i + 1 < n; i++) flights[i] = new int[]{i, i + 1};\n        }\n        return new Solution().fewestFlights(n, flights, src, dst);\n    }\n}",
         python: "def route_check(n, flights, src, dst):\n    if len(flights) == 1 and flights[0][0] == -1:\n        flights = [[i, i + 1] for i in range(n - 1)]\n    return fewest_flights(n, flights, src, dst)",
         js: "function routeCheck(n, flights, src, dst) {\n  if (flights.length === 1 && flights[0][0] === -1) {\n    flights = Array.from({ length: n - 1 }, (_, i) => [i, i + 1]);\n  }\n  return fewestFlights(n, flights, src, dst);\n}",
-        cpp: "vector<int> routeCheck(int n, vector<vector<int>> flights, int src, int dst) {\n    if (flights.size() == 1 && flights[0][0] == -1) {\n        flights.clear();\n        for (int i = 0; i + 1 < n; i++) flights.push_back({i, i + 1});\n    }\n    return Solution().fewestFlights(n, flights, src, dst);\n}"
+        cpp: "vector<int> routeCheck(int n, vector<vector<int>> flights, int src, int dst) {\n    if (flights.size() == 1 && flights[0][0] == -1) {\n        flights.clear();\n        for (int i = 0; i + 1 < n; i++) flights.push_back({i, i + 1});\n    }\n    return Solution().fewestFlights(n, flights, src, dst);\n}", csharp: "class Check {\n    public static IList<int> RouteCheck(int n, int[][] flights, int src, int dst) {\n        if (flights.Length == 1 && flights[0][0] == -1) {\n            flights = new int[n - 1][];\n            for (int i = 0; i + 1 < n; i++) flights[i] = new int[] { i, i + 1 };\n        }\n        return new Solution().FewestFlights(n, flights, src, dst);\n    }\n}"
       }, cases: [
         [[6,[[0,1],[0,2],[1,3],[2,3],[3,4],[4,5]],0,5],[0,1,3,4,5]],
         [[1,[],0,0],[0]],
@@ -904,7 +1094,38 @@ public:
         reverse(route.begin(), route.end());
         return route;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<int> FewestFlights(int n, int[][] flights, int src, int dst)
+    {
+        var g = new List<List<int>>();
+        for (int i = 0; i < n; i++) g.Add(new List<int>());
+        foreach (int[] f in flights) { g[f[0]].Add(f[1]); g[f[1]].Add(f[0]); }
+
+        int[] parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = -2;   // -2 = unvisited, -1 = "no parent" (the source)
+        var q = new Queue<int>();
+        parent[src] = -1;
+        q.Enqueue(src);
+        while (q.Count > 0)
+        {
+            int u = q.Dequeue();
+            if (u == dst) break;                 // dst is final once popped
+            foreach (int v in g[u])
+            {
+                if (parent[v] != -2) continue;   // seen already
+                parent[v] = u;                   // mark on push
+                q.Enqueue(v);
+            }
+        }
+        if (parent[dst] == -2) return new List<int>();
+        var route = new LinkedList<int>();
+        for (int x = dst; x != -1; x = parent[x]) route.AddFirst(x);
+        return new List<int>(route);
+    }
+}` }],
         dry: { head: ['pop', 'neighbours', 'newly set parent', 'queue'], rows: [['—', '—', 'parent[0] = -1', '[0]'], ['0', '1, 2', 'p[1]=0, p[2]=0', '[1, 2]'], ['1', '0, 3', 'p[3]=1', '[2, 3]'], ['2', '0, 3', '— (3 seen)', '[3]'], ['3', '1, 2, 4', 'p[4]=3', '[4]'], ['4', '3, 5', 'p[5]=4', '[5]'], ['5', '= dst, stop', 'route 5←4←3←1←0', H.c('g', '[0,1,3,4,5]')]] },
         complexity: `<p>Time O(V + E) — each airport is enqueued once, each flight list scanned once. Space O(V + E) for the graph plus O(V) for parent and queue.</p>`,
         followUps: ['Return ALL shortest routes (store a list of parents per node, then backtrack)', 'Flights have prices and you want the cheapest route → Dijkstra (Graphs II)', 'At most k stops with prices → Bellman-Ford style / BFS by levels (Graphs II)', 'Speed it up for a huge network: bidirectional BFS']
@@ -1039,6 +1260,36 @@ int orangesRotting(vector<vector<int>>& grid) {
         minutes++;
     }
     return fresh == 0 ? minutes : -1;
+}` }, { lang: 'csharp', title: 'Rotting Oranges (C#)', code: `// Rotting Oranges: multi-source BFS, level by level
+public int OrangesRotting(int[][] grid)
+{
+    int R = grid.Length, C = grid[0].Length, fresh = 0;
+    var q = new Queue<int[]>();
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++)
+        {
+            if (grid[r][c] == 2) q.Enqueue(new[] { r, c });     // EVERY source enters at time 0
+            else if (grid[r][c] == 1) fresh++;
+        }
+    int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+    int minutes = 0;
+    while (q.Count > 0 && fresh > 0)                            // stop as soon as nothing is fresh
+    {
+        for (int k = q.Count; k > 0; k--)                       // one minute = one level
+        {
+            int[] cell = q.Dequeue();
+            for (int d = 0; d < 4; d++)
+            {
+                int nr = cell[0] + dr[d], nc = cell[1] + dc[d];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != 1) continue;
+                grid[nr][nc] = 2;                               // rot it now = mark visited on push
+                fresh--;
+                q.Enqueue(new[] { nr, nc });
+            }
+        }
+        minutes++;
+    }
+    return fresh == 0 ? minutes : -1;
 }` }] }, { code: `
       // 01 Matrix: distance from every cell to the nearest 0 (multi-source from all zeros)
       public int[][] updateMatrix(int[][] mat) {
@@ -1110,6 +1361,34 @@ vector<vector<int>> updateMatrix(vector<vector<int>>& mat) {
             if (nr < 0 || nc < 0 || nr >= R || nc >= C || dist[nr][nc] != -1) continue;
             dist[nr][nc] = dist[r][c] + 1;
             q.push(nr * C + nc);
+        }
+    }
+    return dist;
+}` }, { lang: 'csharp', title: '01 Matrix — nearest zero (C#)', code: `// 01 Matrix: distance from every cell to the nearest 0 (multi-source from all zeros)
+public int[][] UpdateMatrix(int[][] mat)
+{
+    int R = mat.Length, C = mat[0].Length;
+    int[][] dist = new int[R][];
+    var q = new Queue<int>();
+    for (int r = 0; r < R; r++)
+    {
+        dist[r] = new int[C];
+        for (int c = 0; c < C; c++)
+        {
+            if (mat[r][c] == 0) q.Enqueue(r * C + c);           // encode (r,c) as one int
+            else dist[r][c] = -1;                               // unknown
+        }
+    }
+    int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+    while (q.Count > 0)
+    {
+        int cur = q.Dequeue(), r = cur / C, c = cur % C;
+        for (int d = 0; d < 4; d++)
+        {
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nc < 0 || nr >= R || nc >= C || dist[nr][nc] != -1) continue;
+            dist[nr][nc] = dist[r][c] + 1;
+            q.Enqueue(nr * C + nc);
         }
     }
     return dist;
@@ -1277,6 +1556,49 @@ void demo() {
     cout << rot({{2, 1, 1}, {1, 1, 0}, {0, 1, 1}}) << "\\n";   // 4
     cout << rot({{2, 1, 1}, {0, 1, 1}, {1, 0, 1}}) << "\\n";   // -1
     cout << rot({{0, 2}}) << "\\n";                            // 0
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class RottingDemo
+{
+    static int Rot(int[][] grid)
+    {
+        int R = grid.Length, C = grid[0].Length, fresh = 0;
+        var q = new Queue<int[]>();
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+            {
+                if (grid[r][c] == 2) q.Enqueue(new[] { r, c });
+                else if (grid[r][c] == 1) fresh++;
+            }
+        int minutes = 0;
+        while (q.Count > 0 && fresh > 0)
+        {
+            for (int k = q.Count; k > 0; k--)
+            {
+                int[] cell = q.Dequeue();
+                foreach (int[] nb in new[] { new[] { cell[0] - 1, cell[1] }, new[] { cell[0] + 1, cell[1] }, new[] { cell[0], cell[1] - 1 }, new[] { cell[0], cell[1] + 1 } })
+                {
+                    int nr = nb[0], nc = nb[1];
+                    if (nr >= 0 && nr < R && nc >= 0 && nc < C && grid[nr][nc] == 1)
+                    {
+                        grid[nr][nc] = 2;
+                        fresh--;
+                        q.Enqueue(new[] { nr, nc });
+                    }
+                }
+            }
+            minutes++;
+        }
+        return fresh == 0 ? minutes : -1;
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(Rot(new[] { new[] { 2, 1, 1 }, new[] { 1, 1, 0 }, new[] { 0, 1, 1 } }));   // 4
+        Console.WriteLine(Rot(new[] { new[] { 2, 1, 1 }, new[] { 0, 1, 1 }, new[] { 1, 0, 1 } }));   // -1
+        Console.WriteLine(Rot(new[] { new[] { 0, 2 } }));                                            // 0
+    }
 }` }] } }
     ],
     deepDive: `<p><b>Correctness:</b> adding a virtual source s* with zero-cost edges to every real source gives an ordinary single-source BFS; the pre-loaded queue is exactly the state after s* is popped. So the BFS invariant holds and every cell gets <code>min over sources of dist(source, cell)</code>.</p>
@@ -1370,6 +1692,28 @@ void demo() {
     }
     for (auto& row : grid) for (int x : row) if (x == 1) return -1;
     return minutes;
+}` },
+          { lang: 'csharp', code: `int RotBrute(int[][] grid)
+{
+    int R = grid.Length, C = grid[0].Length, minutes = 0;
+    while (true)
+    {
+        int[][] next = new int[R][];
+        for (int r = 0; r < R; r++) next[r] = (int[])grid[r].Clone();
+        bool changed = false;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+            {
+                if (grid[r][c] != 1) continue;
+                bool nearRotten = (r > 0 && grid[r - 1][c] == 2) || (r + 1 < R && grid[r + 1][c] == 2)
+                        || (c > 0 && grid[r][c - 1] == 2) || (c + 1 < C && grid[r][c + 1] == 2);
+                if (nearRotten) { next[r][c] = 2; changed = true; }
+            }
+        if (!changed) break;
+        grid = next; minutes++;
+    }
+    foreach (int[] row in grid) foreach (int x in row) if (x == 1) return -1;
+    return minutes;
 }` }
         ] } },
       mcq: { q: 'There are 3 rotten oranges. How should the BFS start?', options: ['Push all 3 into the queue before the loop (distance 0)', 'Run 3 separate BFS and take the max', 'Start from the top-left rotten orange only', 'Use DFS from each rotten orange'], answer: 0, explain: 'All sources spread simultaneously; pre-loading them all is a BFS from a virtual super-source, giving each cell its distance to the nearest rotten orange in one O(R·C) pass.' },
@@ -1378,7 +1722,7 @@ void demo() {
         java: "class Check {\n    static int rotCheck(int[][] grid) {\n        if (grid.length == 1 && grid[0][0] < 0) {\n            int k = -grid[0][0], R = grid[0][1], C = grid[0][2];\n            grid = new int[R][C];\n            for (int[] row : grid) Arrays.fill(row, 1);\n            if (k == 1) grid[0][0] = 2;\n            if (k == 2) grid[R / 2][C / 2] = 2;\n        }\n        return new Solution().orangesRotting(grid);\n    }\n}",
         python: "def rot_check(grid):\n    if len(grid) == 1 and grid[0][0] < 0:\n        k, R, C = -grid[0][0], grid[0][1], grid[0][2]\n        grid = [[1] * C for _ in range(R)]\n        if k == 1:\n            grid[0][0] = 2\n        if k == 2:\n            grid[R // 2][C // 2] = 2\n    return oranges_rotting(grid)",
         js: "function rotCheck(grid) {\n  if (grid.length === 1 && grid[0][0] < 0) {\n    const k = -grid[0][0], R = grid[0][1], C = grid[0][2];\n    grid = Array.from({ length: R }, () => new Array(C).fill(1));\n    if (k === 1) grid[0][0] = 2;\n    if (k === 2) grid[Math.floor(R / 2)][Math.floor(C / 2)] = 2;\n  }\n  return orangesRotting(grid);\n}",
-        cpp: "int rotCheck(vector<vector<int>> grid) {\n    if (grid.size() == 1 && grid[0][0] < 0) {\n        int k = -grid[0][0], R = grid[0][1], C = grid[0][2];\n        grid.assign(R, vector<int>(C, 1));\n        if (k == 1) grid[0][0] = 2;\n        if (k == 2) grid[R / 2][C / 2] = 2;\n    }\n    return Solution().orangesRotting(grid);\n}"
+        cpp: "int rotCheck(vector<vector<int>> grid) {\n    if (grid.size() == 1 && grid[0][0] < 0) {\n        int k = -grid[0][0], R = grid[0][1], C = grid[0][2];\n        grid.assign(R, vector<int>(C, 1));\n        if (k == 1) grid[0][0] = 2;\n        if (k == 2) grid[R / 2][C / 2] = 2;\n    }\n    return Solution().orangesRotting(grid);\n}", csharp: "class Check {\n    public static int RotCheck(int[][] grid) {\n        if (grid.Length == 1 && grid[0][0] < 0) {\n            int k = -grid[0][0], R = grid[0][1], C = grid[0][2];\n            grid = new int[R][];\n            for (int r = 0; r < R; r++) { grid[r] = new int[C]; for (int c = 0; c < C; c++) grid[r][c] = 1; }\n            if (k == 1) grid[0][0] = 2;\n            if (k == 2) grid[R / 2][C / 2] = 2;\n        }\n        return new Solution().OrangesRotting(grid);\n    }\n}"
       }, cases: [
         [[[[2,1,1],[1,1,0],[0,1,1]]],4],
         [[[[0]]],0],
@@ -1503,7 +1847,41 @@ public:
         }
         return fresh == 0 ? minutes : -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int OrangesRotting(int[][] grid)
+    {
+        int R = grid.Length, C = grid[0].Length, fresh = 0;
+        var q = new Queue<int[]>();
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+            {
+                if (grid[r][c] == 2) q.Enqueue(new[] { r, c });
+                else if (grid[r][c] == 1) fresh++;
+            }
+        int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+        int minutes = 0;
+        while (q.Count > 0 && fresh > 0)
+        {
+            for (int k = q.Count; k > 0; k--)
+            {
+                int[] cur = q.Dequeue();
+                for (int d = 0; d < 4; d++)
+                {
+                    int nr = cur[0] + dr[d], nc = cur[1] + dc[d];
+                    if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != 1) continue;
+                    grid[nr][nc] = 2;
+                    fresh--;
+                    q.Enqueue(new[] { nr, nc });
+                }
+            }
+            minutes++;
+        }
+        return fresh == 0 ? minutes : -1;
+    }
+}` }],
         dry: { head: ['minute', 'level popped', 'newly rotten', 'fresh left'], rows: [['0', '—', 'sources: (0,0)', '6'], ['1', '(0,0)', '(1,0), (0,1)', '4'], ['2', '(1,0), (0,1)', '(1,1), (0,2)', '2'], ['3', '(1,1), (0,2)', '(2,1)', '1'], ['4', '(2,1)', '(2,2)', H.c('g', '0 → return 4')]] },
         complexity: `<p>Time O(R·C) — each cell is pushed at most once and checks 4 neighbours. Space O(R·C) for the queue in the worst case.</p>`,
         followUps: ['Return the grid snapshot at minute k', 'Some cells are "slow" and take 2 minutes to rot through (0-1 BFS / Dijkstra)', 'Oranges rot only if at least two neighbours are rotten (BFS with counters, like Kahn)']
@@ -1598,6 +1976,23 @@ int countComponents(int n, const vector<vector<int>>& edges) {
     for (int i = 0; i < n; i++)
         if (!seen[i]) { comps++; dfs(g, i, seen); }   // every fresh start = new component
     return comps;
+}` }, { lang: 'csharp', title: 'Connected components — recursive DFS (C#)', code: `// Connected components with recursive DFS
+static void Dfs(List<List<int>> g, int u, bool[] seen)
+{
+    seen[u] = true;                       // chalk the corridor
+    foreach (int v in g[u])
+        if (!seen[v]) Dfs(g, v, seen);    // go deep before trying the next neighbour
+}
+static int CountComponents(int n, int[][] edges)
+{
+    var g = new List<List<int>>();
+    for (int i = 0; i < n; i++) g.Add(new List<int>());
+    foreach (int[] e in edges) { g[e[0]].Add(e[1]); g[e[1]].Add(e[0]); }
+    bool[] seen = new bool[n];
+    int comps = 0;
+    for (int i = 0; i < n; i++)
+        if (!seen[i]) { comps++; Dfs(g, i, seen); }   // every fresh start = new component
+    return comps;
 }` }] }, { code: `
       // Number of Islands with an explicit stack (no StackOverflowError on huge grids)
       public int numIslands(char[][] grid) {
@@ -1677,6 +2072,32 @@ int numIslands(vector<vector<char>>& grid) {
                     if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != '1') continue;
                     grid[nr][nc] = '0';
                     st.push_back(nr * C + nc);
+                }
+            }
+        }
+    return islands;
+}` }, { lang: 'csharp', title: 'Number of Islands — iterative DFS (C#)', code: `// Number of Islands with an explicit stack (no stack overflow on huge grids)
+public int NumIslands(char[][] grid)
+{
+    int R = grid.Length, C = grid[0].Length, islands = 0;
+    int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+    var st = new Stack<int>();
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++)
+        {
+            if (grid[r][c] != '1') continue;
+            islands++;                                   // fresh land = new island
+            grid[r][c] = '0';                            // sink on push
+            st.Push(r * C + c);
+            while (st.Count > 0)
+            {
+                int cur = st.Pop(), cr = cur / C, cc = cur % C;
+                for (int d = 0; d < 4; d++)
+                {
+                    int nr = cr + dr[d], nc = cc + dc[d];
+                    if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != '1') continue;
+                    grid[nr][nc] = '0';
+                    st.Push(nr * C + nc);
                 }
             }
         }
@@ -1770,6 +2191,11 @@ int numIslands(vector<vector<char>>& grid) {
     if (r < 0 || c < 0 || r >= (int)g.size() || c >= (int)g[0].size() || g[r][c] != 1) return 0;
     g[r][c] = 0;                             // sink so we never count it again
     return 1 + area(g, r + 1, c) + area(g, r - 1, c) + area(g, r, c + 1) + area(g, r, c - 1);
+}` }, { lang: 'csharp', code: `int Area(int[][] g, int r, int c)
+{
+    if (r < 0 || c < 0 || r >= g.Length || c >= g[0].Length || g[r][c] != 1) return 0;
+    g[r][c] = 0;                                     // sink so we never count it again
+    return 1 + Area(g, r + 1, c) + Area(g, r - 1, c) + Area(g, r, c + 1) + Area(g, r, c - 1);
 }` }] } },
       { title: 'Reachability: can we get from A to B?', html: `<p>Yes/no reachability does not need shortest distances, so DFS is the simplest choice: <code>dfs(A)</code>, then check <code>seen[B]</code>. For many queries on a static graph, label components once (O(V + E)) and answer each query in O(1) with <code>comp[A] == comp[B]</code>.</p>` },
       { title: 'Recursion depth disaster', html: `<p>A path graph 0–1–2–…–99 999 and recursive DFS from 0: the call stack grows to 10<sup>5</sup> frames → ${H.c('r', 'StackOverflowError')} with Java's default stack (Node, Python and C++ fail or crash too, at different depths). Fixes: iterative DFS with an explicit stack (<code>ArrayDeque</code> / list / <code>vector</code>), BFS, or run the work in <code>new Thread(null, task, "dfs", 1 &lt;&lt; 26)</code> with a bigger stack (contest trick).</p>`, code: { lang: 'python', run: true, code: `import sys
@@ -1866,6 +2292,42 @@ void demo() {
     vector<vector<int>> chain;                            // a 100 000-node path
     for (int i = 0; i < 99999; i++) chain.push_back({i, i + 1});
     cout << "components: " << components(100000, chain) << "\\n";   // 1
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// A deep recursion can overflow the 1 MB default thread stack, so use an explicit stack
+class ComponentsDemo
+{
+    static int Components(int n, int[][] edges)
+    {
+        var g = new List<int>[n];
+        for (int i = 0; i < n; i++) g[i] = new List<int>();
+        foreach (int[] e in edges) { g[e[0]].Add(e[1]); g[e[1]].Add(e[0]); }
+        bool[] seen = new bool[n];
+        int comps = 0;
+        for (int s = 0; s < n; s++)
+        {
+            if (seen[s]) continue;
+            comps++;
+            seen[s] = true;
+            var stack = new Stack<int>();
+            stack.Push(s);
+            while (stack.Count > 0)
+            {
+                int u = stack.Pop();
+                foreach (int v in g[u])
+                    if (!seen[v]) { seen[v] = true; stack.Push(v); }
+            }
+        }
+        return comps;
+    }
+
+    static void Main()
+    {
+        int[][] chain = new int[99999][];                   // a 100 000-node path
+        for (int i = 0; i < 99999; i++) chain[i] = new[] { i, i + 1 };
+        Console.WriteLine("components: " + Components(100000, chain));   // 1, no stack overflow
+    }
 }` }] } }
     ],
     deepDive: `<p><b>Discovery and finish times:</b> recording <code>tin[u]</code> when DFS enters u and <code>tout[u]</code> when it leaves gives the <i>parenthesis property</i>: intervals of two nodes are either nested (one is an ancestor of the other in the DFS tree) or disjoint. This powers ancestor checks in O(1), Euler tours for subtree queries, and the classification of edges.</p>
@@ -2008,6 +2470,43 @@ int numIslands(vector<vector<char>>& g) {
         count++;
     }
     return count;
+}` },
+          { lang: 'csharp', code: `int IslandsBrute(char[][] g)
+{
+    int R = g.Length, C = g[0].Length;
+    var land = new List<int[]>();
+    for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) if (g[r][c] == '1') land.Add(new[] { r, c });
+    int[] label = new int[land.Count];
+    for (int i = 0; i < label.Length; i++) label[i] = -1;
+    int count = 0;
+    for (int i = 0; i < land.Count; i++)
+    {
+        if (label[i] != -1) continue;
+        label[i] = count;
+        for (int j = i + 1; j < land.Count; j++)                   // pairwise reachability check
+            if (label[j] == -1 && Reach(g, land[i], land[j])) label[j] = count;
+        count++;
+    }
+    return count;
+}
+bool Reach(char[][] g, int[] a, int[] b)                           // fresh BFS for every pair
+{
+    int R = g.Length, C = g[0].Length;
+    bool[,] seen = new bool[R, C];
+    var q = new Queue<int[]>();
+    q.Enqueue(a); seen[a[0], a[1]] = true;
+    int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+    while (q.Count > 0)
+    {
+        int[] p = q.Dequeue();
+        if (p[0] == b[0] && p[1] == b[1]) return true;
+        for (int d = 0; d < 4; d++)
+        {
+            int nr = p[0] + dr[d], nc = p[1] + dc[d];
+            if (nr >= 0 && nc >= 0 && nr < R && nc < C && !seen[nr, nc] && g[nr][nc] == '1') { seen[nr, nc] = true; q.Enqueue(new[] { nr, nc }); }
+        }
+    }
+    return false;
 }` }
         ] } },
       mcq: { q: 'You found an unvisited land cell during the scan. What next?', options: ['islands++ and flood-fill (DFS/BFS) the whole island, marking it', 'islands++ and move on to the next cell', 'Check only its 4 neighbours', 'Sort the land cells by row'], answer: 0, explain: 'Without marking the whole island, its other cells would each be counted as new islands. Flood fill = mark the full component once.' },
@@ -2016,7 +2515,7 @@ int numIslands(vector<vector<char>>& g) {
         java: "class Check {\n    static int islandsCheck(char[][] grid, int R, int C, int kind) {\n        if (grid.length == 0) {\n            grid = new char[R][C];\n            for (int r = 0; r < R; r++)\n                for (int c = 0; c < C; c++) {\n                    boolean land = kind == 1\n                        || (kind == 2 && (r % 2 == 0 || (r % 4 == 1 ? c == C - 1 : c == 0)))\n                        || (kind == 3 && (r + c) % 2 == 0)\n                        || (kind == 4 && r % 2 == 0);\n                    grid[r][c] = land ? '1' : '0';\n                }\n        }\n        return new Solution().numIslands(grid);\n    }\n}",
         python: "def islands_check(grid, R, C, kind):\n    if not grid:\n        def land(r, c):\n            if kind == 1:\n                return True\n            if kind == 2:\n                return r % 2 == 0 or (c == C - 1 if r % 4 == 1 else c == 0)\n            if kind == 3:\n                return (r + c) % 2 == 0\n            return r % 2 == 0\n        grid = [['1' if land(r, c) else '0' for c in range(C)] for r in range(R)]\n    return num_islands(grid)",
         js: "function islandsCheck(grid, R, C, kind) {\n  if (grid.length === 0) {\n    const land = (r, c) => kind === 1 ||\n      (kind === 2 && (r % 2 === 0 || (r % 4 === 1 ? c === C - 1 : c === 0))) ||\n      (kind === 3 && (r + c) % 2 === 0) || (kind === 4 && r % 2 === 0);\n    grid = Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) => (land(r, c) ? '1' : '0')));\n  }\n  return numIslands(grid);\n}",
-        cpp: "int islandsCheck(vector<vector<char>> grid, int R, int C, int kind) {\n    if (grid.empty()) {\n        grid.assign(R, vector<char>(C, '0'));\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                bool land = kind == 1\n                    || (kind == 2 && (r % 2 == 0 || (r % 4 == 1 ? c == C - 1 : c == 0)))\n                    || (kind == 3 && (r + c) % 2 == 0)\n                    || (kind == 4 && r % 2 == 0);\n                if (land) grid[r][c] = '1';\n            }\n    }\n    return Solution().numIslands(grid);\n}"
+        cpp: "int islandsCheck(vector<vector<char>> grid, int R, int C, int kind) {\n    if (grid.empty()) {\n        grid.assign(R, vector<char>(C, '0'));\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                bool land = kind == 1\n                    || (kind == 2 && (r % 2 == 0 || (r % 4 == 1 ? c == C - 1 : c == 0)))\n                    || (kind == 3 && (r + c) % 2 == 0)\n                    || (kind == 4 && r % 2 == 0);\n                if (land) grid[r][c] = '1';\n            }\n    }\n    return Solution().numIslands(grid);\n}", csharp: "class Check {\n    public static int IslandsCheck(char[][] grid, int R, int C, int kind) {\n        if (grid.Length == 0) {\n            grid = new char[R][];\n            for (int r = 0; r < R; r++) {\n                grid[r] = new char[C];\n                for (int c = 0; c < C; c++) {\n                    bool land = kind == 1\n                        || (kind == 2 && (r % 2 == 0 || (r % 4 == 1 ? c == C - 1 : c == 0)))\n                        || (kind == 3 && (r + c) % 2 == 0)\n                        || (kind == 4 && r % 2 == 0);\n                    grid[r][c] = land ? '1' : '0';\n                }\n            }\n        }\n        return new Solution().NumIslands(grid);\n    }\n}"
       }, cases: [
         [[[["1","1","0","0","0"],["1","1","0","0","0"],["0","0","1","0","0"],["0","0","0","1","1"]],0,0,0],3],
         [[[["1","1","1","1","0"],["1","1","0","1","0"],["1","1","0","0","0"],["0","0","0","0","0"]],0,0,0],1],
@@ -2123,7 +2622,37 @@ public:
             }
         return count;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int NumIslands(char[][] grid)
+    {
+        int R = grid.Length, C = grid[0].Length, count = 0;
+        int[] dr = { 1, -1, 0, 0 }, dc = { 0, 0, 1, -1 };
+        var stack = new Stack<int>();                          // explicit stack: no stack overflow on big grids
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+            {
+                if (grid[r][c] != '1') continue;
+                count++;                                       // fresh land = a new island
+                grid[r][c] = '0';                              // mark on push, so a cell is never pushed twice
+                stack.Push(r * C + c);
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop(), cr = cur / C, cc = cur % C;
+                    for (int d = 0; d < 4; d++)
+                    {
+                        int nr = cr + dr[d], nc = cc + dc[d];
+                        if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != '1') continue;
+                        grid[nr][nc] = '0';
+                        stack.Push(nr * C + nc);
+                    }
+                }
+            }
+        return count;
+    }
+}` }],
         dry: { head: ['scan cell', 'value', 'action', 'count'], rows: [['(0,0)', '1', 'new island, sink (0,0),(1,0),(0,1),(1,1)', '1'], ['(0,1)', '0 (sunk)', 'skip', '1'], ['(2,2)', '1', 'new island, sink (2,2)', '2'], ['(3,3)', '1', 'new island, sink (3,3),(3,4)', H.c('g', '3')]] },
         complexity: `<p>Time O(R·C) — each cell is visited by the scan once and sunk at most once. Space O(R·C) worst case for recursion/stack (all land).</p>`,
         followUps: ['Land is added one cell at a time; report islands after each addition (Number of Islands II → DSU)', 'Count distinct island shapes (canonical DFS path strings)', 'Max area of an island', 'Grid is too big for memory; process row by row']
@@ -2222,6 +2751,25 @@ bool hasCycleUndirected(int n, const vector<vector<int>>& g) {
         if (!seen[s] && dfsU(g, s, -1, seen)) return true;   // check every component
     return false;
 }
+// Note: with parallel edges (u-v twice) skip the parent EDGE id, not the parent node.` }, { lang: 'csharp', title: 'Undirected cycle — parent check (C#)', code: `// Undirected: DFS with parent (an iterative version would carry the parent on the stack)
+static bool HasCycleUndirected(int n, List<List<int>> g)
+{
+    bool[] seen = new bool[n];
+    for (int s = 0; s < n; s++)
+        if (!seen[s] && DfsU(g, s, -1, seen)) return true;   // check every component
+    return false;
+}
+static bool DfsU(List<List<int>> g, int u, int parent, bool[] seen)
+{
+    seen[u] = true;
+    foreach (int v in g[u])
+    {
+        if (v == parent) continue;            // the edge we came down - not a loop
+        if (seen[v]) return true;             // another way back -> cycle
+        if (DfsU(g, v, u, seen)) return true;
+    }
+    return false;
+}
 // Note: with parallel edges (u-v twice) skip the parent EDGE id, not the parent node.` }] }, { code: `
       // Directed: white(0) / grey(1) / black(2)
       static boolean hasCycleDirected(int n, List<List<Integer>> g) {
@@ -2286,6 +2834,25 @@ bool hasCycleDirected(int n, const vector<vector<int>>& g) {
     vector<int> color(n, 0);
     for (int s = 0; s < n; s++)
         if (color[s] == 0 && dfsD(g, s, color)) return true;
+    return false;
+}` }, { lang: 'csharp', title: 'Directed cycle — three colours (C#)', code: `// Directed: white(0) / grey(1) / black(2)
+static bool HasCycleDirected(int n, List<List<int>> g)
+{
+    int[] color = new int[n];
+    for (int s = 0; s < n; s++)
+        if (color[s] == 0 && DfsD(g, s, color)) return true;
+    return false;
+}
+static bool DfsD(List<List<int>> g, int u, int[] color)
+{
+    color[u] = 1;                              // grey: on the current path
+    foreach (int v in g[u])
+    {
+        if (color[v] == 1) return true;        // back edge into the current path
+        if (color[v] == 0 && DfsD(g, v, color)) return true;
+        // color[v] == 2: already proven cycle-free, skip
+    }
+    color[u] = 2;                              // black: finished and safe
     return false;
 }` }] }],
     codeTitle: ['Undirected cycle — parent check (Java)', 'Directed cycle — three colours (Java)'],
@@ -2419,6 +2986,18 @@ bool hasCycleDirected(int n, const vector<vector<int>>& g) {
             if (!seen[v]) { seen[v] = true; reached++; st.push_back(v); }
     }
     return reached == n;                               // n-1 edges + connected => no cycle
+}` }, { lang: 'csharp', code: `bool ValidTree(int n, int[][] edges)
+{
+    if (edges.Length != n - 1) return false;            // wrong edge count -> cycle or disconnected
+    var g = new List<List<int>>();
+    for (int i = 0; i < n; i++) g.Add(new List<int>());
+    foreach (int[] e in edges) { g[e[0]].Add(e[1]); g[e[1]].Add(e[0]); }
+    bool[] seen = new bool[n];
+    var st = new Stack<int>();
+    st.Push(0); seen[0] = true;
+    int reached = 1;
+    while (st.Count > 0) foreach (int v in g[st.Pop()]) if (!seen[v]) { seen[v] = true; reached++; st.Push(v); }
+    return reached == n;                                 // n-1 edges + connected => no cycle
 }` }] } },
       { title: 'The diamond false alarm', html: `<p>Directed edges 0→1, 0→2, 1→3, 2→3. DFS: 0 grey → 1 grey → 3 grey → 3 black → 1 black → 2 grey → sees 3 which is ${H.c('g', 'black')} → skip. No cycle. With a single boolean "visited", step "2 sees 3" would wrongly scream cycle.</p>` },
       { title: 'Self-loop and two-node loop', html: `<p>Directed edge 2→2: entering 2 makes it grey, its own out-edge hits grey → cycle of length 1. Directed 0→1, 1→0 → cycle. But <b>undirected</b> 0–1 alone is not a cycle — that is exactly why we skip the parent.</p>` },
@@ -2542,6 +3121,62 @@ vector<int> findCycle(int n, const vector<vector<int>>& edges) {
             if (!res.empty()) return res;
         }
     return {};
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class CycleFinder
+{
+    static List<List<int>> g;
+    static int[] color;
+    static List<int> path;
+
+    // returns the cycle as a list of nodes (first node repeated at the end), or null
+    static List<int> Dfs(int u)
+    {
+        color[u] = 1;
+        path.Add(u);
+        foreach (int v in g[u])
+        {
+            if (color[v] == 1)                            // back edge
+            {
+                var cyc = path.GetRange(path.IndexOf(v), path.Count - path.IndexOf(v));
+                cyc.Add(v);
+                return cyc;
+            }
+            if (color[v] == 0)
+            {
+                var res = Dfs(v);
+                if (res != null) return res;
+            }
+        }
+        color[u] = 2;
+        path.RemoveAt(path.Count - 1);
+        return null;
+    }
+
+    static List<int> FindCycle(int n, int[][] edges)
+    {
+        g = new List<List<int>>();
+        for (int i = 0; i < n; i++) g.Add(new List<int>());
+        foreach (int[] e in edges) g[e[0]].Add(e[1]);
+        color = new int[n];
+        path = new List<int>();
+        for (int s = 0; s < n; s++)
+            if (color[s] == 0)
+            {
+                var res = Dfs(s);
+                if (res != null) return res;
+            }
+        return null;
+    }
+
+    static string Show(List<int> c) => c == null ? "None" : "[" + string.Join(", ", c) + "]";
+
+    static void Main()
+    {
+        Console.WriteLine(Show(FindCycle(6, new[] { new[] { 0, 1 }, new[] { 1, 2 }, new[] { 2, 3 }, new[] { 0, 4 }, new[] { 4, 3 }, new[] { 3, 5 }, new[] { 5, 1 } })));
+        Console.WriteLine(Show(FindCycle(4, new[] { new[] { 0, 1 }, new[] { 0, 2 }, new[] { 1, 3 }, new[] { 2, 3 } })));   // diamond: None
+    }
 }` }] } }
     ],
     deepDive: `<p><b>Why grey = cycle (proof):</b> a grey node v is an ancestor of the current node u in the DFS tree, so there is a tree path v ⇝ u. The edge u→v closes it into a directed cycle. Conversely, if a cycle exists, let v be the first node of the cycle that DFS enters; all other cycle nodes are reachable from v and still white, so DFS will reach the cycle node just before v while v is still grey — guaranteeing a back edge is seen. So "back edge exists ⇔ cycle exists".</p>
@@ -2620,6 +3255,24 @@ vector<int> findCycle(int n, const vector<vector<int>>& edges) {
         }
     }
     return count == n;
+}` },
+          { lang: 'csharp', code: `bool CanFinishBrute(int n, int[][] pre)
+{
+    bool[] taken = new bool[n];
+    int count = 0;
+    bool progress = true;
+    while (progress)
+    {
+        progress = false;
+        for (int c = 0; c < n; c++)
+        {
+            if (taken[c]) continue;
+            bool ready = true;
+            foreach (int[] p in pre) if (p[0] == c && !taken[p[1]]) { ready = false; break; }
+            if (ready) { taken[c] = true; count++; progress = true; }
+        }
+    }
+    return count == n;
 }` }
         ] } },
       mcq: { q: 'During DFS you follow edge u → v and v is currently "grey". What does it mean?', options: ['v is on the current path, so there is a cycle', 'v was finished earlier, so skip', 'v is unvisited, so recurse', 'u and v are in different components'], answer: 0, explain: 'Grey nodes are exactly the nodes on the recursion stack. An edge into one closes a loop back into the current path — a directed cycle.' },
@@ -2628,7 +3281,7 @@ vector<int> findCycle(int n, const vector<vector<int>>& edges) {
         java: "class Check {\n    static boolean courseCheck(int n, int[][] pre) {\n        if (pre.length == 1 && pre[0][0] == -1) {\n            int kind = pre[0][1];\n            List<int[]> list = new ArrayList<>();\n            for (int i = 1; i < n; i++) {\n                list.add(new int[]{i, i - 1});\n                if ((kind == 3 || kind == 4) && i >= 2) list.add(new int[]{i, i - 2});\n            }\n            if (kind == 2 || kind == 4) list.add(new int[]{0, n - 1});\n            pre = list.toArray(new int[0][]);\n        }\n        return new Solution().canFinish(n, pre);\n    }\n}",
         python: "def course_check(n, pre):\n    if len(pre) == 1 and pre[0][0] == -1:\n        kind = pre[0][1]\n        pre = []\n        for i in range(1, n):\n            pre.append([i, i - 1])\n            if kind in (3, 4) and i >= 2:\n                pre.append([i, i - 2])\n        if kind in (2, 4):\n            pre.append([0, n - 1])\n    return can_finish(n, pre)",
         js: "function courseCheck(n, pre) {\n  if (pre.length === 1 && pre[0][0] === -1) {\n    const kind = pre[0][1];\n    pre = [];\n    for (let i = 1; i < n; i++) {\n      pre.push([i, i - 1]);\n      if ((kind === 3 || kind === 4) && i >= 2) pre.push([i, i - 2]);\n    }\n    if (kind === 2 || kind === 4) pre.push([0, n - 1]);\n  }\n  return canFinish(n, pre);\n}",
-        cpp: "bool courseCheck(int n, vector<vector<int>> pre) {\n    if (pre.size() == 1 && pre[0][0] == -1) {\n        int kind = pre[0][1];\n        pre.clear();\n        for (int i = 1; i < n; i++) {\n            pre.push_back({i, i - 1});\n            if ((kind == 3 || kind == 4) && i >= 2) pre.push_back({i, i - 2});\n        }\n        if (kind == 2 || kind == 4) pre.push_back({0, n - 1});\n    }\n    return Solution().canFinish(n, pre);\n}"
+        cpp: "bool courseCheck(int n, vector<vector<int>> pre) {\n    if (pre.size() == 1 && pre[0][0] == -1) {\n        int kind = pre[0][1];\n        pre.clear();\n        for (int i = 1; i < n; i++) {\n            pre.push_back({i, i - 1});\n            if ((kind == 3 || kind == 4) && i >= 2) pre.push_back({i, i - 2});\n        }\n        if (kind == 2 || kind == 4) pre.push_back({0, n - 1});\n    }\n    return Solution().canFinish(n, pre);\n}", csharp: "class Check {\n    public static bool CourseCheck(int n, int[][] pre) {\n        if (pre.Length == 1 && pre[0][0] == -1) {\n            int kind = pre[0][1];\n            var list = new List<int[]>();\n            for (int i = 1; i < n; i++) {\n                list.Add(new int[] { i, i - 1 });\n                if ((kind == 3 || kind == 4) && i >= 2) list.Add(new int[] { i, i - 2 });\n            }\n            if (kind == 2 || kind == 4) list.Add(new int[] { 0, n - 1 });\n            pre = list.ToArray();\n        }\n        return new Solution().CanFinish(n, pre);\n    }\n}"
       }, cases: [
         [[2,[[1,0]]],true],
         [[2,[[1,0],[0,1]]],false],
@@ -2727,7 +3380,32 @@ public:
             if (color[c] == 0 && hasCycle(g, c, color)) return false;
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public bool CanFinish(int numCourses, int[][] prerequisites)
+    {
+        var g = new List<List<int>>();
+        for (int i = 0; i < numCourses; i++) g.Add(new List<int>());
+        foreach (int[] p in prerequisites) g[p[1]].Add(p[0]);   // b -> a
+        int[] color = new int[numCourses];                       // 0 white, 1 grey, 2 black
+        for (int c = 0; c < numCourses; c++)
+            if (color[c] == 0 && HasCycle(g, c, color)) return false;
+        return true;
+    }
+    private bool HasCycle(List<List<int>> g, int u, int[] color)
+    {
+        color[u] = 1;
+        foreach (int v in g[u])
+        {
+            if (color[v] == 1) return true;                      // back edge
+            if (color[v] == 0 && HasCycle(g, v, color)) return true;
+        }
+        color[u] = 2;
+        return false;
+    }
+}` }],
         dry: { head: ['step', 'node', 'action', 'color[0..1]'], rows: [['1', '0', 'grey, edges 0→1', '[1, 0]'], ['2', '1', 'grey, edges 1→0', '[1, 1]'], ['3', '1→0', '0 is grey → back edge', H.c('r', 'cycle → return false')]] },
         complexity: `<p>Time O(V + E), space O(V + E) for the graph plus O(V) recursion depth.</p>`,
         followUps: ['Return a valid order (Course Schedule II — topological sort)', 'Return the cycle itself to show the user which courses conflict', 'Minimum number of semesters if you can take any number of courses per semester (Kahn by levels)']
@@ -2896,6 +3574,48 @@ bool isBipartite(const vector<vector<int>>& graph) {
         }
     }
     return true;
+}` }, { lang: 'csharp', title: 'Is Graph Bipartite — BFS (C#)', run: true, code: `using System;
+using System.Collections.Generic;
+
+class BipartiteBfs
+{
+    // BFS two-colouring; graph[u] = neighbours of u (LeetCode 785 format)
+    public static bool IsBipartite(int[][] graph)
+    {
+        int n = graph.Length;
+        int[] color = new int[n];
+        for (int i = 0; i < n; i++) color[i] = -1;    // -1 = not coloured yet
+        var q = new Queue<int>();
+        for (int s = 0; s < n; s++)
+        {
+            if (color[s] != -1) continue;              // already handled (another component)
+            color[s] = 0;
+            q.Enqueue(s);
+            while (q.Count > 0)
+            {
+                int u = q.Dequeue();
+                foreach (int v in graph[u])
+                {
+                    if (color[v] == -1)                // free -> opposite colour
+                    {
+                        color[v] = 1 - color[u];
+                        q.Enqueue(v);
+                    }
+                    else if (color[v] == color[u])     // enemies in the same room
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(IsBipartite(new[] { new[] { 1, 3 }, new[] { 0, 2 }, new[] { 1, 3 }, new[] { 0, 2 } }));   // True
+        Console.WriteLine(IsBipartite(new[] { new[] { 1, 2, 3 }, new[] { 0, 2 }, new[] { 0, 1, 3 }, new[] { 0, 2 } }));   // False
+    }
 }` }] }],
     codeTitle: ['Is Graph Bipartite — BFS (Java)'],
     viz: {
@@ -3018,6 +3738,28 @@ def possible_bipartition(n, dislikes):
         }
     }
     return true;
+}` }, { lang: 'csharp', code: `bool PossibleBipartition(int n, int[][] dislikes)
+{
+    var g = new List<List<int>>();
+    for (int i = 0; i <= n; i++) g.Add(new List<int>());
+    foreach (int[] d in dislikes) { g[d[0]].Add(d[1]); g[d[1]].Add(d[0]); }
+    int[] color = new int[n + 1];                       // 0 = none, 1 / -1 = the two groups
+    for (int s = 1; s <= n; s++)
+    {
+        if (color[s] != 0) continue;
+        color[s] = 1;
+        var q = new Queue<int>(); q.Enqueue(s);
+        while (q.Count > 0)
+        {
+            int u = q.Dequeue();
+            foreach (int v in g[u])
+            {
+                if (color[v] == 0) { color[v] = -color[u]; q.Enqueue(v); }
+                else if (color[v] == color[u]) return false;
+            }
+        }
+    }
+    return true;
 }` }] } },
       { title: 'DSU view of bipartite', html: `<p>Another method: for each node u, all its neighbours must be in the <b>same</b> group as each other, and in a different group from u. So union all neighbours of u together, and fail if <code>find(u) == find(neighbour)</code>. Same O(V + E·α) cost; handy when edges arrive online.</p>` }
     ],
@@ -3076,6 +3818,19 @@ def possible_bipartition(n, dislikes):
         bool ok = true;
         for (int u = 0; u < n && ok; u++)
             for (int v : graph[u])
+                if (((mask >> u) & 1) == ((mask >> v) & 1)) { ok = false; break; }
+        if (ok) return true;
+    }
+    return false;
+}` },
+          { lang: 'csharp', code: `bool BipartiteBrute(int[][] graph)
+{
+    int n = graph.Length;                               // only feasible for n <= ~20
+    for (long mask = 0; mask < (1L << n); mask++)
+    {
+        bool ok = true;
+        for (int u = 0; u < n && ok; u++)
+            foreach (int v in graph[u])
                 if (((mask >> u) & 1) == ((mask >> v) & 1)) { ok = false; break; }
         if (ok) return true;
     }
@@ -3182,7 +3937,33 @@ public:
         }
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public bool IsBipartite(int[][] graph)
+    {
+        int n = graph.Length;
+        int[] color = new int[n];
+        for (int i = 0; i < n; i++) color[i] = -1;
+        int[] q = new int[n];                              // array queue: each node enters once
+        for (int s = 0; s < n; s++)
+        {
+            if (color[s] != -1) continue;
+            int head = 0, tail = 0;
+            color[s] = 0;
+            q[tail++] = s;
+            while (head < tail)
+            {
+                int u = q[head++];
+                foreach (int v in graph[u])
+                {
+                    if (color[v] == -1) { color[v] = color[u] ^ 1; q[tail++] = v; }
+                    else if (color[v] == color[u]) return false;
+                }
+            }
+        }
+        return true;
+    }
+}` }],
         dry: { head: ['pop', 'colour', 'neighbours', 'result'], rows: [['0', 'A', '1 → B, 2 → B, 3 → B', 'ok'], ['1', 'B', '0 (A ✔), 2 (B!)', H.c('r', 'conflict 1–2 → false')]] },
         complexity: `<p>Time O(V + E), space O(V). The array queue is safe because each node is coloured (and enqueued) exactly once.</p>`,
         followUps: ['Return the two groups', 'Return an odd cycle as proof when not bipartite', 'Constraints of both kinds: "must be same group" and "must be different" → DSU with parity', 'Split into 3 groups instead (NP-complete: backtracking)']
@@ -3277,6 +4058,25 @@ vector<int> topoKahn(int n, const vector<vector<int>>& edges) {   // edges[i] = 
             if (--indeg[v] == 0) q.push(v);                       // last prerequisite just done
     }
     return (int)order.size() == n ? order : vector<int>{};        // leftover nodes sit on/behind a cycle
+}` }, { lang: 'csharp', title: 'Kahn’s algorithm (C#)', code: `// Kahn's algorithm: returns an order, or an empty array if there is a cycle
+static int[] TopoKahn(int n, int[][] edges)            // edges[i] = {u, v} means u -> v
+{
+    var g = new List<List<int>>();
+    for (int i = 0; i < n; i++) g.Add(new List<int>());
+    int[] indeg = new int[n];
+    foreach (int[] e in edges) { g[e[0]].Add(e[1]); indeg[e[1]]++; }
+    var q = new Queue<int>();
+    for (int v = 0; v < n; v++) if (indeg[v] == 0) q.Enqueue(v);   // no prerequisites
+    int[] order = new int[n];
+    int k = 0;
+    while (q.Count > 0)
+    {
+        int u = q.Dequeue();
+        order[k++] = u;
+        foreach (int v in g[u])
+            if (--indeg[v] == 0) q.Enqueue(v);         // last prerequisite just done
+    }
+    return k == n ? order : new int[0];                // leftover nodes sit on/behind a cycle
 }` }] }, { code: `
       // DFS post-order (reverse finishing times) with cycle detection
       static List<Integer> topoDfs(int n, List<List<Integer>> g) {
@@ -3349,6 +4149,26 @@ vector<int> topoDfs(int n, const vector<vector<int>>& g) {
         if (color[s] == 0 && !dfsTopo(g, s, color, finish)) return {};
     reverse(finish.begin(), finish.end());  // reverse finishing order = first in order first
     return finish;
+}` }, { lang: 'csharp', title: 'DFS post-order topological sort (C#)', code: `// DFS post-order (reverse finishing times) with cycle detection
+static List<int> TopoDfs(int n, List<List<int>> g)
+{
+    int[] color = new int[n];                           // 0 white, 1 grey, 2 black
+    var stack = new Stack<int>();
+    for (int s = 0; s < n; s++)
+        if (color[s] == 0 && !Dfs(g, s, color, stack)) return new List<int>();
+    return new List<int>(stack);                        // stack top = first in order
+}
+static bool Dfs(List<List<int>> g, int u, int[] color, Stack<int> stack)
+{
+    color[u] = 1;
+    foreach (int v in g[u])
+    {
+        if (color[v] == 1) return false;                // cycle -> no order
+        if (color[v] == 0 && !Dfs(g, v, color, stack)) return false;
+    }
+    color[u] = 2;
+    stack.Push(u);                                      // push AFTER all descendants finish
+    return true;
 }` }] }],
     codeTitle: ['Kahn’s algorithm (Java)', 'DFS post-order topological sort (Java)'],
     viz: [{
@@ -3517,6 +4337,39 @@ int minSemesters(int n, const vector<vector<int>>& relations) {
 void demo() {
     cout << minSemesters(4, {{1, 3}, {2, 3}, {3, 4}}) << "\\n";   // 3
     cout << minSemesters(2, {{1, 2}, {2, 1}}) << "\\n";           // -1 (cycle)
+}` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class Semesters
+{
+    static int MinSemesters(int n, int[][] relations)   // courses 1..n, relation {a, b}: a before b
+    {
+        var g = new List<int>[n + 1];
+        int[] indeg = new int[n + 1];
+        for (int i = 0; i <= n; i++) g[i] = new List<int>();
+        foreach (int[] r in relations) { g[r[0]].Add(r[1]); indeg[r[1]]++; }
+        var q = new Queue<int>();
+        for (int c = 1; c <= n; c++) if (indeg[c] == 0) q.Enqueue(c);
+        int taken = 0, semesters = 0;
+        while (q.Count > 0)
+        {
+            semesters++;
+            for (int k = q.Count; k > 0; k--)           // one semester = one BFS level
+            {
+                int c = q.Dequeue();
+                taken++;
+                foreach (int nxt in g[c])
+                    if (--indeg[nxt] == 0) q.Enqueue(nxt);
+            }
+        }
+        return taken == n ? semesters : -1;
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(MinSemesters(4, new[] { new[] { 1, 3 }, new[] { 2, 3 }, new[] { 3, 4 } }));  // 3
+        Console.WriteLine(MinSemesters(2, new[] { new[] { 1, 2 }, new[] { 2, 1 } }));                   // -1 (cycle)
+    }
 }` }] } },
       { title: 'Alien dictionary edge building', html: `<p>Sorted alien words ["wrt","wrf","er","ett","rftt"]. Compare neighbours, take the <b>first differing letter</b>: wrt/wrf → t→f, wrf/er → w→e, er/ett → r→t, ett/rftt → e→r. Topo sort gives ${H.c('g', 'w e r t f')}. Trap: "abc" before "ab" is invalid input (a longer word with the same prefix cannot come first) → return "".</p>` },
       { title: 'Longest path in a DAG via topo order', html: `<p>Longest path is NP-hard in general graphs but easy in a DAG: process nodes in topological order and relax <code>best[v] = max(best[v], best[u] + 1)</code> for each edge u → v. The topological order is what makes it work: by the time v is processed every predecessor u is final.</p>`, code: { code: `int longestPath(int n, int[][] edges) {
@@ -3584,6 +4437,26 @@ def longest_path(n, edges):
         for (int v : g[u]) {
             best[v] = max(best[v], best[u] + 1);  // u is final here
             if (--indeg[v] == 0) q.push(v);
+        }
+    }
+    return ans;
+}` }, { lang: 'csharp', code: `int LongestPath(int n, int[][] edges)
+{
+    var g = new List<List<int>>();
+    for (int i = 0; i < n; i++) g.Add(new List<int>());
+    int[] indeg = new int[n], best = new int[n];          // best[v] = edges on the longest path ending at v
+    foreach (int[] e in edges) { g[e[0]].Add(e[1]); indeg[e[1]]++; }
+    var q = new Queue<int>();
+    for (int v = 0; v < n; v++) if (indeg[v] == 0) q.Enqueue(v);
+    int ans = 0;
+    while (q.Count > 0)
+    {
+        int u = q.Dequeue();
+        ans = Math.Max(ans, best[u]);
+        foreach (int v in g[u])
+        {
+            best[v] = Math.Max(best[v], best[u] + 1);     // u is final here
+            if (--indeg[v] == 0) q.Enqueue(v);
         }
     }
     return ans;
@@ -3667,6 +4540,31 @@ function nextPerm(a) {
         if (ok) return perm;
     } while (next_permutation(perm.begin(), perm.end()));
     return {};
+}` },
+          { lang: 'csharp', code: `int[] Brute(int n, int[][] pre)                   // only for tiny n
+{
+    int[] perm = new int[n];
+    for (int i = 0; i < n; i++) perm[i] = i;
+    do
+    {
+        int[] pos = new int[n];
+        for (int i = 0; i < n; i++) pos[perm[i]] = i;
+        bool ok = true;
+        foreach (int[] p in pre) if (pos[p[1]] > pos[p[0]]) { ok = false; break; }
+        if (ok) return (int[])perm.Clone();
+    } while (NextPerm(perm));
+    return new int[0];
+}
+bool NextPerm(int[] a)
+{
+    int i = a.Length - 2;
+    while (i >= 0 && a[i] >= a[i + 1]) i--;
+    if (i < 0) return false;
+    int j = a.Length - 1;
+    while (a[j] <= a[i]) j--;
+    int t = a[i]; a[i] = a[j]; a[j] = t;
+    for (int l = i + 1, r = a.Length - 1; l < r; l++, r--) { t = a[l]; a[l] = a[r]; a[r] = t; }
+    return true;
 }` }
         ] } },
       mcq: { q: 'Kahn’s algorithm finished and produced 5 courses out of 7. What does that mean?', options: ['There is a cycle; return an empty array', 'The remaining 2 can be appended in any order', 'The graph is disconnected', 'You must run it again from another start node'], answer: 0, explain: 'Nodes on a cycle never reach in-degree 0, so they never enter the queue. Fewer than V outputs ⇒ cycle ⇒ impossible.' },
@@ -3675,7 +4573,7 @@ function nextPerm(a) {
         java: "class Check {\n    static int[] orderCheck(int n, int[][] pre) {\n        if (pre.length == 1 && pre[0][0] == -1) {\n            int kind = pre[0][1];\n            int m = n * (n - 1) / 2 + (kind == 2 ? 1 : 0), k = 0;\n            pre = new int[m][];\n            for (int i = 1; i < n; i++)\n                for (int j = 0; j < i; j++) pre[k++] = new int[]{i, j};\n            if (kind == 2) pre[k] = new int[]{0, n - 1};\n        }\n        return new Solution().findOrder(n, pre);\n    }\n}",
         python: "def order_check(n, pre):\n    if len(pre) == 1 and pre[0][0] == -1:\n        kind = pre[0][1]\n        pre = [[i, j] for i in range(1, n) for j in range(i)]\n        if kind == 2:\n            pre.append([0, n - 1])\n    return find_order(n, pre)",
         js: "function orderCheck(n, pre) {\n  if (pre.length === 1 && pre[0][0] === -1) {\n    const kind = pre[0][1];\n    pre = [];\n    for (let i = 1; i < n; i++) for (let j = 0; j < i; j++) pre.push([i, j]);\n    if (kind === 2) pre.push([0, n - 1]);\n  }\n  return findOrder(n, pre);\n}",
-        cpp: "vector<int> orderCheck(int n, vector<vector<int>> pre) {\n    if (pre.size() == 1 && pre[0][0] == -1) {\n        int kind = pre[0][1];\n        pre.clear();\n        for (int i = 1; i < n; i++)\n            for (int j = 0; j < i; j++) pre.push_back({i, j});\n        if (kind == 2) pre.push_back({0, n - 1});\n    }\n    return Solution().findOrder(n, pre);\n}"
+        cpp: "vector<int> orderCheck(int n, vector<vector<int>> pre) {\n    if (pre.size() == 1 && pre[0][0] == -1) {\n        int kind = pre[0][1];\n        pre.clear();\n        for (int i = 1; i < n; i++)\n            for (int j = 0; j < i; j++) pre.push_back({i, j});\n        if (kind == 2) pre.push_back({0, n - 1});\n    }\n    return Solution().findOrder(n, pre);\n}", csharp: "class Check {\n    public static int[] OrderCheck(int n, int[][] pre) {\n        if (pre.Length == 1 && pre[0][0] == -1) {\n            int kind = pre[0][1];\n            int m = n * (n - 1) / 2 + (kind == 2 ? 1 : 0), k = 0;\n            pre = new int[m][];\n            for (int i = 1; i < n; i++)\n                for (int j = 0; j < i; j++) pre[k++] = new int[] { i, j };\n            if (kind == 2) pre[k] = new int[] { 0, n - 1 };\n        }\n        return new Solution().FindOrder(n, pre);\n    }\n}"
       }, cases: [
         [[4,[[1,0],[2,0],[3,1],[3,2]]],[0,1,2,3]],
         [[2,[[1,0]]],[0,1]],
@@ -3758,7 +4656,31 @@ public:
                 if (--indeg[nxt] == 0) order.push_back(nxt);
         return (int)order.size() == numCourses ? order : vector<int>{};   // short order = a cycle
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int[] FindOrder(int numCourses, int[][] prerequisites)
+    {
+        var g = new List<List<int>>();
+        for (int i = 0; i < numCourses; i++) g.Add(new List<int>());
+        int[] indeg = new int[numCourses];
+        foreach (int[] p in prerequisites) { g[p[1]].Add(p[0]); indeg[p[0]]++; }   // b -> a
+
+        var q = new Queue<int>();
+        for (int c = 0; c < numCourses; c++) if (indeg[c] == 0) q.Enqueue(c);
+        int[] order = new int[numCourses];
+        int k = 0;
+        while (q.Count > 0)
+        {
+            int c = q.Dequeue();
+            order[k++] = c;
+            foreach (int nxt in g[c])
+                if (--indeg[nxt] == 0) q.Enqueue(nxt);
+        }
+        return k == numCourses ? order : new int[0];
+    }
+}` }],
         dry: { head: ['pop', 'order', 'indeg[0..3] after', 'queue'], rows: [['init', '[]', '[0,1,1,2]', '[0]'], ['0', '[0]', '[0,0,0,2]', '[1,2]'], ['1', '[0,1]', '[0,0,0,1]', '[2]'], ['2', '[0,1,2]', '[0,0,0,0]', '[3]'], ['3', H.c('g', '[0,1,2,3]'), '—', '[]']] },
         complexity: `<p>Time O(V + E), space O(V + E).</p>`,
         followUps: ['Return the lexicographically smallest order (PriorityQueue)', 'Minimum number of semesters (level-by-level Kahn)', 'Each course has a duration and unlimited parallelism — earliest finish time (DP on the DAG = critical path)', 'Is the order unique? (queue size always 1)']
@@ -3943,7 +4865,57 @@ public:
 
     bool connected(int a, int b) { return find(a) == find(b); }
     int count() const { return components; }
-};` }] }],
+};` }, { lang: 'csharp', title: 'DSU class (C#)', run: true, code: `using System;
+
+// Disjoint Set Union with path compression + union by rank
+class DSU
+{
+    private readonly int[] parent, rank;
+    private int components;
+
+    public DSU(int n)
+    {
+        parent = new int[n];
+        rank = new int[n];
+        components = n;
+        for (int i = 0; i < n; i++) parent[i] = i;      // everyone leads themselves
+    }
+
+    public int Find(int x)                              // iterative: no recursion depth issues
+    {
+        int root = x;
+        while (parent[root] != root) root = parent[root];
+        while (parent[x] != root)                       // path compression: re-point to root
+        {
+            int next = parent[x];
+            parent[x] = root;
+            x = next;
+        }
+        return root;
+    }
+
+    public bool Union(int a, int b)                     // false if already in the same group
+    {
+        int ra = Find(a), rb = Find(b);
+        if (ra == rb) return false;
+        if (rank[ra] < rank[rb]) { int t = ra; ra = rb; rb = t; }
+        parent[rb] = ra;                                // shorter tree goes under taller
+        if (rank[ra] == rank[rb]) rank[ra]++;
+        components--;
+        return true;
+    }
+
+    public bool Connected(int a, int b) { return Find(a) == Find(b); }
+    public int Count() { return components; }
+
+    static void Main()
+    {
+        var d = new DSU(5);
+        d.Union(0, 1); d.Union(3, 4);
+        Console.WriteLine(d.Connected(0, 1) + " " + d.Connected(1, 3) + " " + d.Count());   // True False 3
+        Console.WriteLine(d.Union(1, 0));   // False: already joined
+    }
+}` }] }],
     codeTitle: ['DSU class (Java)'],
     viz: [{
       title: 'Union by rank + path compression on the parent[] array',
@@ -4066,7 +5038,15 @@ bool equationsPossible(const vector<string>& eqs) {
     for (auto& e : eqs) if (e[1] == '=') p[findRoot(p, e[0] - 'a')] = findRoot(p, e[3] - 'a');
     for (auto& e : eqs) if (e[1] == '!' && findRoot(p, e[0] - 'a') == findRoot(p, e[3] - 'a')) return false;
     return true;
-}` }] } },
+}` }, { lang: 'csharp', code: `bool EquationsPossible(string[] eqs)
+{
+    int[] p = new int[26];
+    for (int i = 0; i < 26; i++) p[i] = i;
+    foreach (string e in eqs) if (e[1] == '=') p[Find(p, e[0] - 'a')] = Find(p, e[3] - 'a');
+    foreach (string e in eqs) if (e[1] == '!' && Find(p, e[0] - 'a') == Find(p, e[3] - 'a')) return false;
+    return true;
+}
+int Find(int[] p, int x) { while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; } return x; }` }] } },
       { title: 'DSU on a grid', html: `<p>Number each cell <code>id = r * C + c</code>. For every land cell, union it with its land neighbour to the right and below (enough to cover each edge once). The number of islands = land cells − successful unions. This is the base of Number of Islands II, where land appears one cell at a time.</p>` }
     ],
     deepDive: `<p><b>Why union by rank gives O(log n):</b> a root's rank only increases when two trees of equal rank merge, so a tree of rank r has at least 2<sup>r</sup> nodes ⇒ r ≤ log₂ n, and height ≤ rank.</p>
@@ -4149,6 +5129,23 @@ bool equationsPossible(const vector<string>& eqs) {
         if (cnt == n) return edges[skip];                // n-1 edges + connected = tree
     }
     return {};
+}` },
+          { lang: 'csharp', code: `int[] RedundantBrute(int[][] edges)
+{
+    int n = edges.Length;
+    for (int skip = n - 1; skip >= 0; skip--)
+    {
+        var g = new List<List<int>>();
+        for (int i = 0; i <= n; i++) g.Add(new List<int>());
+        for (int i = 0; i < n; i++) if (i != skip) { g[edges[i][0]].Add(edges[i][1]); g[edges[i][1]].Add(edges[i][0]); }
+        bool[] seen = new bool[n + 1];
+        var st = new Stack<int>();
+        st.Push(1); seen[1] = true;
+        int cnt = 1;
+        while (st.Count > 0) foreach (int v in g[st.Pop()]) if (!seen[v]) { seen[v] = true; cnt++; st.Push(v); }
+        if (cnt == n) return edges[skip];          // n-1 edges + connected = tree
+    }
+    return new int[0];
 }` }
         ] } },
       mcq: { q: 'Processing edges with DSU, when do you know an edge is redundant?', options: ['When find(u) == find(v) before the union', 'When rank[u] == rank[v]', 'When u or v has degree 3', 'When the edge is the last one in the list'], answer: 0, explain: 'If both endpoints already share a leader, a path between them already exists; adding this edge would create a cycle.' },
@@ -4157,7 +5154,7 @@ bool equationsPossible(const vector<string>& eqs) {
         java: "class Check {\n    static int[] redundantCheck(int[][] edges) {\n        if (edges.length == 1 && edges[0][0] == -1) {\n            int kind = edges[0][1], n = edges[0][2], k = 0;\n            edges = new int[n][];\n            if (kind == 1) { for (int i = 1; i < n; i++) edges[k++] = new int[]{i, i + 1}; edges[k] = new int[]{n, 1}; }\n            if (kind == 2) { for (int i = n - 1; i >= 1; i--) edges[k++] = new int[]{i + 1, i}; edges[k] = new int[]{1, n}; }\n            if (kind == 3) { for (int i = 2; i <= n; i++) edges[k++] = new int[]{1, i}; edges[k] = new int[]{2, 3}; }\n        }\n        return new Solution().findRedundantConnection(edges);\n    }\n}",
         python: "def redundant_check(edges):\n    if len(edges) == 1 and edges[0][0] == -1:\n        kind, n = edges[0][1], edges[0][2]\n        if kind == 1:\n            edges = [[i, i + 1] for i in range(1, n)] + [[n, 1]]\n        elif kind == 2:\n            edges = [[i + 1, i] for i in range(n - 1, 0, -1)] + [[1, n]]\n        else:\n            edges = [[1, i] for i in range(2, n + 1)] + [[2, 3]]\n    return find_redundant_connection(edges)",
         js: "function redundantCheck(edges) {\n  if (edges.length === 1 && edges[0][0] === -1) {\n    const kind = edges[0][1], n = edges[0][2];\n    edges = [];\n    if (kind === 1) { for (let i = 1; i < n; i++) edges.push([i, i + 1]); edges.push([n, 1]); }\n    if (kind === 2) { for (let i = n - 1; i >= 1; i--) edges.push([i + 1, i]); edges.push([1, n]); }\n    if (kind === 3) { for (let i = 2; i <= n; i++) edges.push([1, i]); edges.push([2, 3]); }\n  }\n  return findRedundantConnection(edges);\n}",
-        cpp: "vector<int> redundantCheck(vector<vector<int>> edges) {\n    if (edges.size() == 1 && edges[0][0] == -1) {\n        int kind = edges[0][1], n = edges[0][2];\n        edges.clear();\n        if (kind == 1) { for (int i = 1; i < n; i++) edges.push_back({i, i + 1}); edges.push_back({n, 1}); }\n        if (kind == 2) { for (int i = n - 1; i >= 1; i--) edges.push_back({i + 1, i}); edges.push_back({1, n}); }\n        if (kind == 3) { for (int i = 2; i <= n; i++) edges.push_back({1, i}); edges.push_back({2, 3}); }\n    }\n    return Solution().findRedundantConnection(edges);\n}"
+        cpp: "vector<int> redundantCheck(vector<vector<int>> edges) {\n    if (edges.size() == 1 && edges[0][0] == -1) {\n        int kind = edges[0][1], n = edges[0][2];\n        edges.clear();\n        if (kind == 1) { for (int i = 1; i < n; i++) edges.push_back({i, i + 1}); edges.push_back({n, 1}); }\n        if (kind == 2) { for (int i = n - 1; i >= 1; i--) edges.push_back({i + 1, i}); edges.push_back({1, n}); }\n        if (kind == 3) { for (int i = 2; i <= n; i++) edges.push_back({1, i}); edges.push_back({2, 3}); }\n    }\n    return Solution().findRedundantConnection(edges);\n}", csharp: "class Check {\n    public static int[] RedundantCheck(int[][] edges) {\n        if (edges.Length == 1 && edges[0][0] == -1) {\n            int kind = edges[0][1], n = edges[0][2], k = 0;\n            edges = new int[n][];\n            if (kind == 1) { for (int i = 1; i < n; i++) edges[k++] = new int[] { i, i + 1 }; edges[k] = new int[] { n, 1 }; }\n            if (kind == 2) { for (int i = n - 1; i >= 1; i--) edges[k++] = new int[] { i + 1, i }; edges[k] = new int[] { 1, n }; }\n            if (kind == 3) { for (int i = 2; i <= n; i++) edges[k++] = new int[] { 1, i }; edges[k] = new int[] { 2, 3 }; }\n        }\n        return new Solution().FindRedundantConnection(edges);\n    }\n}"
       }, cases: [
         [[[[1,2],[1,3],[2,3]]],[2,3]],
         [[[[1,2],[2,3],[3,4],[1,4],[1,5]]],[1,4]],
@@ -4266,7 +5263,35 @@ public:
         }
         return {};
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    private int[] parent, rank;
+
+    public int[] FindRedundantConnection(int[][] edges)
+    {
+        int n = edges.Length;
+        parent = new int[n + 1];
+        rank = new int[n + 1];
+        for (int i = 1; i <= n; i++) parent[i] = i;
+        foreach (int[] e in edges)
+            if (!Union(e[0], e[1])) return e;     // ends already connected -> this edge closes the cycle
+        return new int[0];
+    }
+    private int Find(int x)
+    {
+        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }   // path halving
+        return x;
+    }
+    private bool Union(int a, int b)
+    {
+        int ra = Find(a), rb = Find(b);
+        if (ra == rb) return false;
+        if (rank[ra] < rank[rb]) { int t = ra; ra = rb; rb = t; }
+        parent[rb] = ra;
+        if (rank[ra] == rank[rb]) rank[ra]++;
+        return true;
+    }
+}` }],
         dry: { head: ['edge', 'find(u)', 'find(v)', 'action'], rows: [['[1,2]', '1', '2', 'union → parent[2]=1'], ['[1,3]', '1', '3', 'union → parent[3]=1'], ['[2,3]', '1', '1', H.c('r', 'same leader → return [2,3]')]] },
         complexity: `<p>Time O(n · α(n)) ≈ O(n), space O(n).</p>`,
         followUps: ['Directed version (Redundant Connection II): a node may get two parents — handle the "two parents" and "cycle" cases separately', 'Return all edges that lie on the cycle', 'Edges arrive as a stream and you must report the first cycle-closing edge in real time']
@@ -4326,6 +5351,21 @@ public:
         }
     }
     return reach[destination];
+}` },
+          { lang: 'csharp', code: `bool ValidPathBrute(int n, int[][] edges, int source, int destination)
+{
+    bool[] reach = new bool[n];
+    reach[source] = true;
+    bool changed = true;
+    while (changed)                                    // up to n sweeps
+    {
+        changed = false;
+        foreach (int[] e in edges)
+        {
+            if (reach[e[0]] != reach[e[1]]) { reach[e[0]] = reach[e[1]] = true; changed = true; }
+        }
+    }
+    return reach[destination];
 }` }
         ] } },
     mcq: { q: 'Only a yes/no answer is needed (not the shortest path). Which approaches are fine?', options: ['BFS, DFS or DSU — any of them in ~O(V + E)', 'Only Dijkstra', 'Only Floyd-Warshall', 'Topological sort'], answer: 0, explain: 'Reachability in an undirected graph is just "same component?". Any traversal or a DSU answers it in linear time.' },
@@ -4334,7 +5374,7 @@ public:
       java: "class Check {\n    static boolean pathCheck(int n, int[][] edges, int source, int destination) {\n        if (edges.length == 1 && edges[0][0] == -1) {\n            int kind = edges[0][1], half = n / 2;\n            List<int[]> list = new ArrayList<>();\n            for (int i = 0; i + 1 < n; i++)\n                if (kind == 1 || i + 1 != half) list.add(new int[]{i, i + 1});\n            edges = list.toArray(new int[0][]);\n        }\n        return new Solution().validPath(n, edges, source, destination);\n    }\n}",
       python: "def path_check(n, edges, source, destination):\n    if len(edges) == 1 and edges[0][0] == -1:\n        kind, half = edges[0][1], n // 2\n        edges = [[i, i + 1] for i in range(n - 1) if kind == 1 or i + 1 != half]\n    return valid_path(n, edges, source, destination)",
       js: "function pathCheck(n, edges, source, destination) {\n  if (edges.length === 1 && edges[0][0] === -1) {\n    const kind = edges[0][1], half = Math.floor(n / 2);\n    edges = [];\n    for (let i = 0; i + 1 < n; i++) if (kind === 1 || i + 1 !== half) edges.push([i, i + 1]);\n  }\n  return validPath(n, edges, source, destination);\n}",
-      cpp: "bool pathCheck(int n, vector<vector<int>> edges, int source, int destination) {\n    if (edges.size() == 1 && edges[0][0] == -1) {\n        int kind = edges[0][1], half = n / 2;\n        edges.clear();\n        for (int i = 0; i + 1 < n; i++)\n            if (kind == 1 || i + 1 != half) edges.push_back({i, i + 1});\n    }\n    return Solution().validPath(n, edges, source, destination);\n}"
+      cpp: "bool pathCheck(int n, vector<vector<int>> edges, int source, int destination) {\n    if (edges.size() == 1 && edges[0][0] == -1) {\n        int kind = edges[0][1], half = n / 2;\n        edges.clear();\n        for (int i = 0; i + 1 < n; i++)\n            if (kind == 1 || i + 1 != half) edges.push_back({i, i + 1});\n    }\n    return Solution().validPath(n, edges, source, destination);\n}", csharp: "class Check {\n    public static bool PathCheck(int n, int[][] edges, int source, int destination) {\n        if (edges.Length == 1 && edges[0][0] == -1) {\n            int kind = edges[0][1], half = n / 2;\n            var list = new List<int[]>();\n            for (int i = 0; i + 1 < n; i++)\n                if (kind == 1 || i + 1 != half) list.Add(new int[] { i, i + 1 });\n            edges = list.ToArray();\n        }\n        return new Solution().ValidPath(n, edges, source, destination);\n    }\n}"
     }, cases: [
       [[6,[[0,1],[0,2],[3,5],[5,4],[4,3]],0,5],false],
       [[3,[[0,1],[1,2],[2,0]],0,2],true],
@@ -4424,7 +5464,32 @@ public:
         }
         return false;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public bool ValidPath(int n, int[][] edges, int source, int destination)
+    {
+        if (source == destination) return true;
+        var g = new List<List<int>>();
+        for (int i = 0; i < n; i++) g.Add(new List<int>());
+        foreach (int[] e in edges) { g[e[0]].Add(e[1]); g[e[1]].Add(e[0]); }
+        bool[] seen = new bool[n];
+        var st = new Stack<int>();
+        st.Push(source);
+        seen[source] = true;
+        while (st.Count > 0)
+        {
+            int u = st.Pop();
+            foreach (int v in g[u])
+            {
+                if (v == destination) return true;
+                if (!seen[v]) { seen[v] = true; st.Push(v); }
+            }
+        }
+        return false;
+    }
+}` }],
       complexity: `<p>Time O(V + E), space O(V + E). DSU version: O((V + E)·α(V)) with only O(V) extra memory.</p>`,
       followUps: ['Answer 10<sup>5</sup> queries (s, d) on the same graph → label components once, O(1) per query', 'Directed graph: is d reachable from s? (DFS on directed edges; DSU no longer works)']
     }
@@ -4513,6 +5578,29 @@ public:
     }
     for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) if (painted[r][c]) img[r][c] = color;
     return img;
+}` },
+          { lang: 'csharp', code: `int[][] FloodBrute(int[][] img, int sr, int sc, int color)
+{
+    int old = img[sr][sc], R = img.Length, C = img[0].Length;
+    if (old == color) return img;
+    bool[,] painted = new bool[R, C];
+    painted[sr, sc] = true;
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+            {
+                if (painted[r, c] || img[r][c] != old) continue;
+                if ((r > 0 && painted[r - 1, c]) || (r + 1 < R && painted[r + 1, c]) || (c > 0 && painted[r, c - 1]) || (c + 1 < C && painted[r, c + 1]))
+                {
+                    painted[r, c] = true; changed = true;
+                }
+            }
+    }
+    for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) if (painted[r, c]) img[r][c] = color;
+    return img;
 }` }
         ] } },
     mcq: { q: 'The new colour equals the old colour. What happens to a naive DFS that uses "pixel has old colour" as the visited test?', options: ['It recurses forever (stack overflow), because painting does not change anything', 'It works fine', 'It paints the whole image', 'It returns an empty image'], answer: 0, explain: 'Painted pixels still have the old colour, so they look unvisited and get re-entered forever. Return early when old == color.' },
@@ -4591,7 +5679,24 @@ public:
         if (old != color) paint(image, sr, sc, old, color);   // same colour: nothing to do (and no endless loop)
         return image;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int[][] FloodFill(int[][] image, int sr, int sc, int color)
+    {
+        int old = image[sr][sc];
+        if (old != color) Paint(image, sr, sc, old, color);
+        return image;
+    }
+    private void Paint(int[][] img, int r, int c, int old, int color)
+    {
+        if (r < 0 || c < 0 || r >= img.Length || c >= img[0].Length || img[r][c] != old) return;
+        img[r][c] = color;                       // doubles as "visited"
+        Paint(img, r + 1, c, old, color);
+        Paint(img, r - 1, c, old, color);
+        Paint(img, r, c + 1, old, color);
+        Paint(img, r, c - 1, old, color);
+    }
+}` }],
       complexity: `<p>Time O(R·C), space O(R·C) recursion depth in the worst case (for 50×50 that is 2500 frames — fine; use an explicit stack for big images).</p>`,
       followUps: ['8-directional fill', 'Return only the size of the painted region', 'Huge images: scan-line flood fill (paint whole horizontal runs at once)']
     }
@@ -4632,6 +5737,14 @@ public:
     for (auto& e : edges) { deg[e[0]]++; deg[e[1]]++; }
     for (int v = 1; v <= n; v++) if (deg[v] == n - 1) return v;
     return -1;
+}` },
+          { lang: 'csharp', code: `int CenterBrute(int[][] edges)
+{
+    int n = edges.Length + 1;
+    int[] deg = new int[n + 1];
+    foreach (int[] e in edges) { deg[e[0]]++; deg[e[1]]++; }
+    for (int v = 1; v <= n; v++) if (deg[v] == n - 1) return v;
+    return -1;
 }` }
         ] } },
     mcq: { q: 'What is the minimum number of edges you must read to find the center?', options: ['2', '1', 'n / 2', 'n − 1'], answer: 0, explain: 'The center is the only node shared by any two edges. One edge leaves two candidates; a second edge breaks the tie.' },
@@ -4667,7 +5780,14 @@ public:
         int a = edges[0][0], b = edges[0][1];
         return (a == edges[1][0] || a == edges[1][1]) ? a : b;   // the center is shared by any two edges
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int FindCenter(int[][] edges)
+    {
+        int a = edges[0][0], b = edges[0][1];
+        return (a == edges[1][0] || a == edges[1][1]) ? a : b;
+    }
+}` }],
       complexity: `<p>Time O(1), space O(1).</p>`,
       followUps: ['Validate that the input really is a star (check all degrees)', 'Find the center(s) of a general tree (the 1 or 2 nodes minimising the max distance — peel leaves level by level, Kahn-style)']
     }
@@ -4729,6 +5849,20 @@ int islandPerimeter(vector<vector<int>>& g) {
         for (int c = 0; c < (int)g[0].size(); c++)
             if (g[r][c] == 1) return dfs(g, r, c);
     return 0;
+}` },
+          { lang: 'csharp', code: `int PerimeterDfs(int[][] g)
+{
+    for (int r = 0; r < g.Length; r++)
+        for (int c = 0; c < g[0].Length; c++)
+            if (g[r][c] == 1) return Dfs(g, r, c);
+    return 0;
+}
+int Dfs(int[][] g, int r, int c)
+{
+    if (r < 0 || c < 0 || r >= g.Length || c >= g[0].Length || g[r][c] == 0) return 1;   // crossed a border side
+    if (g[r][c] == 2) return 0;                                                          // already visited
+    g[r][c] = 2;
+    return Dfs(g, r + 1, c) + Dfs(g, r - 1, c) + Dfs(g, r, c + 1) + Dfs(g, r, c - 1);
 }` }
         ] } },
     mcq: { q: 'Land cells L = 5 and shared edges between land cells S = 4. Perimeter?', options: ['4L − 2S = 12', '4L − S = 16', '4L = 20', 'L + S = 9'], answer: 0, explain: 'Each shared edge hides one side of each of its two cells, so subtract 2 per shared edge.' },
@@ -4797,7 +5931,22 @@ public:
             }
         return 4 * land - 2 * shared;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int IslandPerimeter(int[][] grid)
+    {
+        int land = 0, shared = 0;
+        for (int r = 0; r < grid.Length; r++)
+            for (int c = 0; c < grid[0].Length; c++)
+            {
+                if (grid[r][c] != 1) continue;
+                land++;
+                if (r > 0 && grid[r - 1][c] == 1) shared++;   // edge with the cell above
+                if (c > 0 && grid[r][c - 1] == 1) shared++;   // edge with the cell to the left
+            }
+        return 4 * land - 2 * shared;
+    }
+}` }],
       dry: { head: ['cell', 'land', 'shared (up/left)'], rows: [['(0,1)', '1', '0'], ['(1,0),(1,1),(1,2)', '4', '0+2+1 → 3'], ['(2,1)', '5', '4'], ['(3,0),(3,1)', '7', '4+0+2 → 6 → 28 − 12 = 16']] },
       complexity: `<p>Time O(R·C), space O(1).</p>`,
       followUps: ['Several islands: return the perimeter of each (component labelling + counting)', 'Lakes inside the island count as perimeter too — what changes? (nothing: the formula already counts them)']
@@ -4877,6 +6026,25 @@ public:
         for (int j = 0; j < n; j++) if (reach[i][j]) done[j] = true;
     }
     return count;
+}` },
+          { lang: 'csharp', code: `int ProvincesBrute(int[][] m)
+{
+    int n = m.Length;
+    bool[,] reach = new bool[n, n];
+    for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) reach[i, j] = m[i][j] == 1;
+    for (int k = 0; k < n; k++)
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                if (reach[i, k] && reach[k, j]) reach[i, j] = true;
+    int count = 0;
+    bool[] done = new bool[n];
+    for (int i = 0; i < n; i++)
+    {
+        if (done[i]) continue;
+        count++;
+        for (int j = 0; j < n; j++) if (reach[i, j]) done[j] = true;
+    }
+    return count;
 }` }
         ] } },
     mcq: { q: 'The graph is given as an n×n matrix. What is the cost of a DFS over it?', options: ['O(n²) — scanning a row to find neighbours costs n', 'O(n + E)', 'O(n log n)', 'O(n³)'], answer: 0, explain: 'With a matrix, listing the neighbours of one node is a full row scan, so a full traversal is O(V²), which here equals the input size.' },
@@ -4885,7 +6053,7 @@ public:
       java: "class Check {\n    static int provincesCheck(int[][] m) {\n        if (m.length == 1 && m[0][0] == -1) {\n            int n = m[0][1], kind = m[0][2];\n            m = new int[n][n];\n            for (int i = 0; i < n; i++)\n                for (int j = 0; j < n; j++)\n                    m[i][j] = (i == j || kind == 2 || (kind == 3 && Math.abs(i - j) == 1) || (kind == 4 && i / 2 == j / 2)) ? 1 : 0;\n        }\n        return new Solution().findCircleNum(m);\n    }\n}",
       python: "def provinces_check(m):\n    if len(m) == 1 and m[0][0] == -1:\n        n, kind = m[0][1], m[0][2]\n        m = [[1 if (i == j or kind == 2 or (kind == 3 and abs(i - j) == 1) or (kind == 4 and i // 2 == j // 2)) else 0\n              for j in range(n)] for i in range(n)]\n    return find_circle_num(m)",
       js: "function provincesCheck(m) {\n  if (m.length === 1 && m[0][0] === -1) {\n    const n = m[0][1], kind = m[0][2];\n    m = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) =>\n      (i === j || kind === 2 || (kind === 3 && Math.abs(i - j) === 1) || (kind === 4 && Math.floor(i / 2) === Math.floor(j / 2))) ? 1 : 0));\n  }\n  return findCircleNum(m);\n}",
-      cpp: "int provincesCheck(vector<vector<int>> m) {\n    if (m.size() == 1 && m[0][0] == -1) {\n        int n = m[0][1], kind = m[0][2];\n        m.assign(n, vector<int>(n, 0));\n        for (int i = 0; i < n; i++)\n            for (int j = 0; j < n; j++)\n                m[i][j] = (i == j || kind == 2 || (kind == 3 && abs(i - j) == 1) || (kind == 4 && i / 2 == j / 2)) ? 1 : 0;\n    }\n    return Solution().findCircleNum(m);\n}"
+      cpp: "int provincesCheck(vector<vector<int>> m) {\n    if (m.size() == 1 && m[0][0] == -1) {\n        int n = m[0][1], kind = m[0][2];\n        m.assign(n, vector<int>(n, 0));\n        for (int i = 0; i < n; i++)\n            for (int j = 0; j < n; j++)\n                m[i][j] = (i == j || kind == 2 || (kind == 3 && abs(i - j) == 1) || (kind == 4 && i / 2 == j / 2)) ? 1 : 0;\n    }\n    return Solution().findCircleNum(m);\n}", csharp: "class Check {\n    public static int ProvincesCheck(int[][] m) {\n        if (m.Length == 1 && m[0][0] == -1) {\n            int n = m[0][1], kind = m[0][2];\n            m = new int[n][];\n            for (int i = 0; i < n; i++) {\n                m[i] = new int[n];\n                for (int j = 0; j < n; j++)\n                    m[i][j] = (i == j || kind == 2 || (kind == 3 && Math.Abs(i - j) == 1) || (kind == 4 && i / 2 == j / 2)) ? 1 : 0;\n            }\n        }\n        return new Solution().FindCircleNum(m);\n    }\n}"
     }, cases: [
       [[[[1,1,0],[1,1,0],[0,0,1]]],2],
       [[[[1,0,0],[0,1,0],[0,0,1]]],3],
@@ -4973,7 +6141,31 @@ public:
         }
         return provinces;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int FindCircleNum(int[][] isConnected)
+    {
+        int n = isConnected.Length, provinces = 0;
+        bool[] seen = new bool[n];
+        var st = new Stack<int>();
+        for (int s = 0; s < n; s++)
+        {
+            if (seen[s]) continue;
+            provinces++;
+            seen[s] = true;
+            st.Push(s);
+            while (st.Count > 0)
+            {
+                int u = st.Pop();
+                for (int v = 0; v < n; v++)
+                    if (isConnected[u][v] == 1 && !seen[v]) { seen[v] = true; st.Push(v); }
+            }
+        }
+        return provinces;
+    }
+}` }],
       complexity: `<p>Time O(n²) (the size of the matrix), space O(n).</p>`,
       followUps: ['Input as an edge list with n = 10<sup>5</sup> → adjacency list or DSU', 'Report the size of each province']
     }
@@ -5069,6 +6261,32 @@ def update_matrix(mat):
             }
         }
     return out;
+}` },
+          { lang: 'csharp', code: `int[][] NearestBrute(int[][] mat)
+{
+    int R = mat.Length, C = mat[0].Length;
+    int[][] result = new int[R][];
+    for (int r = 0; r < R; r++) result[r] = new int[C];
+    int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++)
+        {
+            if (mat[r][c] == 0) continue;
+            bool[,] seen = new bool[R, C];                // a fresh BFS for every single cell
+            var q = new Queue<int[]>();
+            q.Enqueue(new[] { r, c, 0 }); seen[r, c] = true;
+            while (q.Count > 0)
+            {
+                int[] p = q.Dequeue();
+                if (mat[p[0]][p[1]] == 0) { result[r][c] = p[2]; break; }
+                for (int d = 0; d < 4; d++)
+                {
+                    int nr = p[0] + dr[d], nc = p[1] + dc[d];
+                    if (nr >= 0 && nc >= 0 && nr < R && nc < C && !seen[nr, nc]) { seen[nr, nc] = true; q.Enqueue(new[] { nr, nc, p[2] + 1 }); }
+                }
+            }
+        }
+    return result;
 }` }
         ] } },
     mcq: { q: 'Which cells go into the queue first?', options: ['All 0 cells (the targets), at distance 0', 'All 1 cells', 'Only the top-left cell', 'One random 0 cell'], answer: 0, explain: 'Reverse the question: spread outward from every 0 at once. Each 1 is reached first by its nearest 0 — multi-source BFS.' },
@@ -5077,7 +6295,7 @@ def update_matrix(mat):
       java: "class Check {\n    static int[][] matrixCheck(int[][] mat) {\n        if (mat.length != 1 || mat[0][0] != -1) return new Solution().updateMatrix(mat);\n        int R = mat[0][1], C = mat[0][2], kind = mat[0][3];\n        int[][] m = new int[R][C];\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                boolean zero = (kind == 1 && r == 0 && c == 0) || (kind == 2 && r == R / 2 && c == C / 2)\n                    || (kind == 3 && r % 2 == 0) || kind == 4;\n                m[r][c] = zero ? 0 : 1;\n            }\n        int[][] d = new Solution().updateMatrix(m);\n        long sum = 0;\n        int max = 0;\n        for (int[] row : d) for (int v : row) { sum += v; max = Math.max(max, v); }\n        return new int[][]{{(int) sum, max}};\n    }\n}",
       python: "def matrix_check(mat):\n    if not (len(mat) == 1 and mat[0][0] == -1):\n        return update_matrix(mat)\n    R, C, kind = mat[0][1], mat[0][2], mat[0][3]\n    m = [[0 if ((kind == 1 and r == 0 and c == 0) or (kind == 2 and r == R // 2 and c == C // 2)\n                or (kind == 3 and r % 2 == 0) or kind == 4) else 1 for c in range(C)] for r in range(R)]\n    d = update_matrix(m)\n    return [[sum(map(sum, d)), max(map(max, d))]]",
       js: "function matrixCheck(mat) {\n  if (!(mat.length === 1 && mat[0][0] === -1)) return updateMatrix(mat);\n  const R = mat[0][1], C = mat[0][2], kind = mat[0][3];\n  const m = Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) =>\n    ((kind === 1 && r === 0 && c === 0) || (kind === 2 && r === Math.floor(R / 2) && c === Math.floor(C / 2)) ||\n     (kind === 3 && r % 2 === 0) || kind === 4) ? 0 : 1));\n  const d = updateMatrix(m);\n  let sum = 0, max = 0;\n  for (const row of d) for (const v of row) { sum += v; max = Math.max(max, v); }\n  return [[sum, max]];\n}",
-      cpp: "vector<vector<int>> matrixCheck(vector<vector<int>> mat) {\n    if (!(mat.size() == 1 && mat[0][0] == -1)) return Solution().updateMatrix(mat);\n    int R = mat[0][1], C = mat[0][2], kind = mat[0][3];\n    vector<vector<int>> m(R, vector<int>(C, 1));\n    for (int r = 0; r < R; r++)\n        for (int c = 0; c < C; c++)\n            if ((kind == 1 && r == 0 && c == 0) || (kind == 2 && r == R / 2 && c == C / 2) || (kind == 3 && r % 2 == 0) || kind == 4)\n                m[r][c] = 0;\n    auto d = Solution().updateMatrix(m);\n    long long sum = 0;\n    int mx = 0;\n    for (auto& row : d) for (int v : row) { sum += v; mx = max(mx, v); }\n    return {{(int)sum, mx}};\n}"
+      cpp: "vector<vector<int>> matrixCheck(vector<vector<int>> mat) {\n    if (!(mat.size() == 1 && mat[0][0] == -1)) return Solution().updateMatrix(mat);\n    int R = mat[0][1], C = mat[0][2], kind = mat[0][3];\n    vector<vector<int>> m(R, vector<int>(C, 1));\n    for (int r = 0; r < R; r++)\n        for (int c = 0; c < C; c++)\n            if ((kind == 1 && r == 0 && c == 0) || (kind == 2 && r == R / 2 && c == C / 2) || (kind == 3 && r % 2 == 0) || kind == 4)\n                m[r][c] = 0;\n    auto d = Solution().updateMatrix(m);\n    long long sum = 0;\n    int mx = 0;\n    for (auto& row : d) for (int v : row) { sum += v; mx = max(mx, v); }\n    return {{(int)sum, mx}};\n}", csharp: "class Check {\n    public static int[][] MatrixCheck(int[][] mat) {\n        if (mat.Length != 1 || mat[0][0] != -1) return new Solution().UpdateMatrix(mat);\n        int R = mat[0][1], C = mat[0][2], kind = mat[0][3];\n        int[][] m = new int[R][];\n        for (int r = 0; r < R; r++) {\n            m[r] = new int[C];\n            for (int c = 0; c < C; c++) {\n                bool zero = (kind == 1 && r == 0 && c == 0) || (kind == 2 && r == R / 2 && c == C / 2)\n                    || (kind == 3 && r % 2 == 0) || kind == 4;\n                m[r][c] = zero ? 0 : 1;\n            }\n        }\n        int[][] d = new Solution().UpdateMatrix(m);\n        long sum = 0;\n        int max = 0;\n        foreach (int[] row in d) foreach (int v in row) { sum += v; max = Math.Max(max, v); }\n        return new int[][] { new int[] { (int)sum, max } };\n    }\n}"
     }, cases: [
       [[[[0,0,0],[0,1,0],[1,1,1]]],[[0,0,0],[0,1,0],[1,2,1]]],
       [[[[0,0,0],[0,1,0],[0,0,0]]],[[0,0,0],[0,1,0],[0,0,0]]],
@@ -5172,7 +6390,38 @@ public:
         }
         return dist;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    public int[][] UpdateMatrix(int[][] mat)
+    {
+        int R = mat.Length, C = mat[0].Length;
+        int[][] dist = new int[R][];
+        int[] q = new int[R * C];
+        int head = 0, tail = 0;
+        for (int r = 0; r < R; r++)
+        {
+            dist[r] = new int[C];
+            for (int c = 0; c < C; c++)
+            {
+                if (mat[r][c] == 0) q[tail++] = r * C + c;
+                else dist[r][c] = -1;
+            }
+        }
+        int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+        while (head < tail)
+        {
+            int cur = q[head++], r = cur / C, c = cur % C;
+            for (int d = 0; d < 4; d++)
+            {
+                int nr = r + dr[d], nc = c + dc[d];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || dist[nr][nc] != -1) continue;
+                dist[nr][nc] = dist[r][c] + 1;
+                q[tail++] = nr * C + nc;
+            }
+        }
+        return dist;
+    }
+}` }],
       complexity: `<p>Time O(R·C), space O(R·C) for the queue (array-based: each cell enters once).</p>`,
       followUps: ['Distance to the nearest 1 using 8 directions', 'Walls and Gates (-1 walls, 0 gates, INF rooms)', 'As Far from Land as Possible — the maximum of this distance matrix']
     }
@@ -5277,6 +6526,33 @@ def solve(b):
             if (!escapes) flip.push_back({r, c});
         }
     for (auto& p : flip) b[p.first][p.second] = 'X';
+}` },
+          { lang: 'csharp', code: `void SolveBrute(char[][] b)
+{
+    int R = b.Length, C = b[0].Length;
+    int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+    var flip = new List<int[]>();
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++)
+        {
+            if (b[r][c] != 'O') continue;
+            bool[,] seen = new bool[R, C];                  // fresh search per O cell
+            var q = new Queue<int[]>();
+            q.Enqueue(new[] { r, c }); seen[r, c] = true;
+            bool escapes = false;
+            while (q.Count > 0 && !escapes)
+            {
+                int[] p = q.Dequeue();
+                if (p[0] == 0 || p[1] == 0 || p[0] == R - 1 || p[1] == C - 1) escapes = true;
+                for (int d = 0; d < 4; d++)
+                {
+                    int nr = p[0] + dr[d], nc = p[1] + dc[d];
+                    if (nr >= 0 && nc >= 0 && nr < R && nc < C && !seen[nr, nc] && b[nr][nc] == 'O') { seen[nr, nc] = true; q.Enqueue(new[] { nr, nc }); }
+                }
+            }
+            if (!escapes) flip.Add(new[] { r, c });
+        }
+    foreach (int[] p in flip) b[p[0]][p[1]] = 'X';
 }` }
         ] } },
     mcq: { q: 'What is the cleanest way to find the O cells that must NOT be flipped?', options: ['Flood fill from every O on the border and mark what you reach as safe', 'Flood fill from the center of the board', 'Flip every O, then undo', 'Sort the O cells by distance to the center'], answer: 0, explain: 'Reverse thinking: an O survives iff it is connected to a border O. Mark those from the border inward, then flip everything else.' },
@@ -5285,7 +6561,7 @@ def solve(b):
       java: "class Check {\n    static char[][] solveCheck(char[][] board, int R, int C, int kind) {\n        if (board.length == 0) {\n            board = new char[R][C];\n            for (int r = 0; r < R; r++)\n                for (int c = 0; c < C; c++) {\n                    boolean border = r == 0 || c == 0 || r == R - 1 || c == C - 1;\n                    boolean o = kind == 1 || !border || (kind == 3 && r == 0 && c == C / 2);\n                    board[r][c] = o ? 'O' : 'X';\n                }\n        }\n        new Solution().solve(board);\n        return board;\n    }\n}",
       python: "def solve_check(board, R, C, kind):\n    if not board:\n        def is_o(r, c):\n            border = r == 0 or c == 0 or r == R - 1 or c == C - 1\n            return kind == 1 or not border or (kind == 3 and r == 0 and c == C // 2)\n        board = [['O' if is_o(r, c) else 'X' for c in range(C)] for r in range(R)]\n    solve(board)\n    return board",
       js: "function solveCheck(board, R, C, kind) {\n  if (board.length === 0) {\n    board = Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) => {\n      const border = r === 0 || c === 0 || r === R - 1 || c === C - 1;\n      return (kind === 1 || !border || (kind === 3 && r === 0 && c === Math.floor(C / 2))) ? 'O' : 'X';\n    }));\n  }\n  solve(board);\n  return board;\n}",
-      cpp: "vector<vector<char>> solveCheck(vector<vector<char>> board, int R, int C, int kind) {\n    if (board.empty()) {\n        board.assign(R, vector<char>(C, 'X'));\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                bool border = r == 0 || c == 0 || r == R - 1 || c == C - 1;\n                if (kind == 1 || !border || (kind == 3 && r == 0 && c == C / 2)) board[r][c] = 'O';\n            }\n    }\n    Solution().solve(board);\n    return board;\n}"
+      cpp: "vector<vector<char>> solveCheck(vector<vector<char>> board, int R, int C, int kind) {\n    if (board.empty()) {\n        board.assign(R, vector<char>(C, 'X'));\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                bool border = r == 0 || c == 0 || r == R - 1 || c == C - 1;\n                if (kind == 1 || !border || (kind == 3 && r == 0 && c == C / 2)) board[r][c] = 'O';\n            }\n    }\n    Solution().solve(board);\n    return board;\n}", csharp: "class Check {\n    public static char[][] SolveCheck(char[][] board, int R, int C, int kind) {\n        if (board.Length == 0) {\n            board = new char[R][];\n            for (int r = 0; r < R; r++) {\n                board[r] = new char[C];\n                for (int c = 0; c < C; c++) {\n                    bool border = r == 0 || c == 0 || r == R - 1 || c == C - 1;\n                    bool o = kind == 1 || !border || (kind == 3 && r == 0 && c == C / 2);\n                    board[r][c] = o ? 'O' : 'X';\n                }\n            }\n        }\n        new Solution().Solve(board);\n        return board;\n    }\n}"
     }, cases: [
       [[[["X","X","X","X"],["X","O","O","X"],["X","X","O","X"],["X","O","X","X"]],0,0,0],[["X","X","X","X"],["X","X","X","X"],["X","X","X","X"],["X","O","X","X"]]],
       [[[["X"]],0,0,0],[["X"]]],
@@ -5384,7 +6660,32 @@ public:
         for (auto& row : board)
             for (char& ch : row) ch = ch == '#' ? 'O' : 'X';   // captured O becomes X, safe # goes back to O
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public void Solve(char[][] board)
+    {
+        int R = board.Length, C = board[0].Length;
+        var st = new Stack<int[]>();
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++)
+            if ((r == 0 || c == 0 || r == R - 1 || c == C - 1) && board[r][c] == 'O') { board[r][c] = '#'; st.Push(new[] { r, c }); }
+        int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+        while (st.Count > 0)
+        {
+            int[] p = st.Pop();
+            for (int d = 0; d < 4; d++)
+            {
+                int nr = p[0] + dr[d], nc = p[1] + dc[d];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || board[nr][nc] != 'O') continue;
+                board[nr][nc] = '#';                       // safe: connected to the border
+                st.Push(new[] { nr, nc });
+            }
+        }
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++)
+            board[r][c] = board[r][c] == '#' ? 'O' : 'X';  // captured O -> X, safe # -> O
+    }
+}` }],
       complexity: `<p>Time O(R·C), space O(R·C) for the stack in the worst case.</p>`,
       followUps: ['Number of Enclaves: count land cells that cannot walk off the grid (same trick)', 'Number of Closed Islands', 'Do it with DSU and a virtual "border" node']
     }
@@ -5431,6 +6732,17 @@ public:
         if (ok) return true;
     }
     return false;
+}` },
+          { lang: 'csharp', code: `bool BipartitionBrute(int n, int[][] dislikes)     // n <= ~20 only
+{
+    for (int mask = 0; mask < (1 << n); mask++)
+    {
+        bool ok = true;
+        foreach (int[] d in dislikes)
+            if (((mask >> (d[0] - 1)) & 1) == ((mask >> (d[1] - 1)) & 1)) { ok = false; break; }
+        if (ok) return true;
+    }
+    return false;
 }` }
         ] } },
     mcq: { q: 'Dislikes form a cycle of length 4: 1-2, 2-3, 3-4, 4-1. Possible?', options: ['Yes: {1,3} and {2,4}', 'No, any cycle is impossible', 'Only if n is even', 'Cannot tell without more info'], answer: 0, explain: 'Only odd cycles break bipartiteness. An even cycle alternates groups perfectly.' },
@@ -5439,7 +6751,7 @@ public:
       java: "class Check {\n    static boolean bipartitionCheck(int n, int[][] dislikes) {\n        if (dislikes.length == 1 && dislikes[0][0] == -1) {\n            int kind = dislikes[0][1];\n            List<int[]> list = new ArrayList<>();\n            if (kind == 1 || kind == 2) {\n                for (int i = 1; i < n; i++) list.add(new int[]{i, i + 1});\n                if (kind == 2) list.add(new int[]{n, 1});\n            } else {\n                for (int a = 1; a <= n / 2; a++)\n                    for (int b = n / 2 + 1; b <= n; b++) list.add(new int[]{a, b});\n                if (kind == 4) list.add(new int[]{1, 2});\n            }\n            dislikes = list.toArray(new int[0][]);\n        }\n        return new Solution().possibleBipartition(n, dislikes);\n    }\n}",
       python: "def bipartition_check(n, dislikes):\n    if len(dislikes) == 1 and dislikes[0][0] == -1:\n        kind = dislikes[0][1]\n        if kind in (1, 2):\n            dislikes = [[i, i + 1] for i in range(1, n)] + ([[n, 1]] if kind == 2 else [])\n        else:\n            dislikes = [[a, b] for a in range(1, n // 2 + 1) for b in range(n // 2 + 1, n + 1)]\n            if kind == 4:\n                dislikes.append([1, 2])\n    return possible_bipartition(n, dislikes)",
       js: "function bipartitionCheck(n, dislikes) {\n  if (dislikes.length === 1 && dislikes[0][0] === -1) {\n    const kind = dislikes[0][1];\n    dislikes = [];\n    if (kind === 1 || kind === 2) {\n      for (let i = 1; i < n; i++) dislikes.push([i, i + 1]);\n      if (kind === 2) dislikes.push([n, 1]);\n    } else {\n      for (let a = 1; a <= Math.floor(n / 2); a++)\n        for (let b = Math.floor(n / 2) + 1; b <= n; b++) dislikes.push([a, b]);\n      if (kind === 4) dislikes.push([1, 2]);\n    }\n  }\n  return possibleBipartition(n, dislikes);\n}",
-      cpp: "bool bipartitionCheck(int n, vector<vector<int>> dislikes) {\n    if (dislikes.size() == 1 && dislikes[0][0] == -1) {\n        int kind = dislikes[0][1];\n        dislikes.clear();\n        if (kind == 1 || kind == 2) {\n            for (int i = 1; i < n; i++) dislikes.push_back({i, i + 1});\n            if (kind == 2) dislikes.push_back({n, 1});\n        } else {\n            for (int a = 1; a <= n / 2; a++)\n                for (int b = n / 2 + 1; b <= n; b++) dislikes.push_back({a, b});\n            if (kind == 4) dislikes.push_back({1, 2});\n        }\n    }\n    return Solution().possibleBipartition(n, dislikes);\n}"
+      cpp: "bool bipartitionCheck(int n, vector<vector<int>> dislikes) {\n    if (dislikes.size() == 1 && dislikes[0][0] == -1) {\n        int kind = dislikes[0][1];\n        dislikes.clear();\n        if (kind == 1 || kind == 2) {\n            for (int i = 1; i < n; i++) dislikes.push_back({i, i + 1});\n            if (kind == 2) dislikes.push_back({n, 1});\n        } else {\n            for (int a = 1; a <= n / 2; a++)\n                for (int b = n / 2 + 1; b <= n; b++) dislikes.push_back({a, b});\n            if (kind == 4) dislikes.push_back({1, 2});\n        }\n    }\n    return Solution().possibleBipartition(n, dislikes);\n}", csharp: "class Check {\n    public static bool BipartitionCheck(int n, int[][] dislikes) {\n        if (dislikes.Length == 1 && dislikes[0][0] == -1) {\n            int kind = dislikes[0][1];\n            var list = new List<int[]>();\n            if (kind == 1 || kind == 2) {\n                for (int i = 1; i < n; i++) list.Add(new int[] { i, i + 1 });\n                if (kind == 2) list.Add(new int[] { n, 1 });\n            } else {\n                for (int a = 1; a <= n / 2; a++)\n                    for (int b = n / 2 + 1; b <= n; b++) list.Add(new int[] { a, b });\n                if (kind == 4) list.Add(new int[] { 1, 2 });\n            }\n            dislikes = list.ToArray();\n        }\n        return new Solution().PossibleBipartition(n, dislikes);\n    }\n}"
     }, cases: [
       [[4,[[1,2],[1,3],[2,4]]],true],
       [[3,[[1,2],[1,3],[2,3]]],false],
@@ -5543,7 +6855,35 @@ public:
         }
         return true;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public bool PossibleBipartition(int n, int[][] dislikes)
+    {
+        var g = new List<List<int>>();
+        for (int i = 0; i <= n; i++) g.Add(new List<int>());
+        foreach (int[] d in dislikes) { g[d[0]].Add(d[1]); g[d[1]].Add(d[0]); }
+        int[] color = new int[n + 1];                   // 0 none, 1 / 2 groups
+        var q = new Queue<int>();
+        for (int s = 1; s <= n; s++)
+        {
+            if (color[s] != 0) continue;
+            color[s] = 1;
+            q.Enqueue(s);
+            while (q.Count > 0)
+            {
+                int u = q.Dequeue();
+                foreach (int v in g[u])
+                {
+                    if (color[v] == 0) { color[v] = 3 - color[u]; q.Enqueue(v); }
+                    else if (color[v] == color[u]) return false;
+                }
+            }
+        }
+        return true;
+    }
+}` }],
       complexity: `<p>Time O(n + m), space O(n + m).</p>`,
       followUps: ['Return the two groups', 'Some pairs must be in the SAME group too → DSU with parity', 'Minimise the size difference between groups (each component can flip → subset-sum DP)']
     }
@@ -5703,6 +7043,49 @@ int makeConnected(int n, vector<vector<int>>& connections) {
         }
     }
     return redundant >= comps - 1 ? comps - 1 : -1;
+}` },
+          { lang: 'csharp', code: `int MakeConnectedBrute(int n, int[][] connections)
+{
+    int redundant = 0;
+    for (int skip = 0; skip < connections.Length; skip++)             // is cable 'skip' redundant?
+        if (ConnectedWithout(n, connections, skip, connections[skip][0], connections[skip][1])) redundant++;
+    int comps = 0;
+    bool[] seen = new bool[n];
+    for (int s = 0; s < n; s++)                                        // count components (slow BFS over the edge list)
+    {
+        if (seen[s]) continue;
+        comps++;
+        var q = new Queue<int>(); q.Enqueue(s);
+        seen[s] = true;
+        while (q.Count > 0)
+        {
+            int u = q.Dequeue();
+            foreach (int[] c in connections)
+            {
+                int v = c[0] == u ? c[1] : c[1] == u ? c[0] : -1;
+                if (v >= 0 && !seen[v]) { seen[v] = true; q.Enqueue(v); }
+            }
+        }
+    }
+    return redundant >= comps - 1 ? comps - 1 : -1;
+}
+bool ConnectedWithout(int n, int[][] cs, int skip, int a, int b)      // one full BFS per cable: O(E * (V + E))
+{
+    bool[] seen = new bool[n];
+    var q = new Queue<int>(); q.Enqueue(a);
+    seen[a] = true;
+    while (q.Count > 0)
+    {
+        int u = q.Dequeue();
+        if (u == b) return true;
+        for (int i = 0; i < cs.Length; i++)
+        {
+            if (i == skip) continue;
+            int v = cs[i][0] == u ? cs[i][1] : cs[i][1] == u ? cs[i][0] : -1;
+            if (v >= 0 && !seen[v]) { seen[v] = true; q.Enqueue(v); }
+        }
+    }
+    return false;
 }` }
         ] } },
     mcq: { q: 'There are k components and enough cables. How many moves are needed?', options: ['k − 1', 'k', 'number of redundant cables', 'n − 1'], answer: 0, explain: 'Each move can join two components, so k − 1 moves suffice and are necessary. Feasibility only needs E ≥ n − 1 (a spanning tree needs n − 1 cables).' },
@@ -5711,7 +7094,7 @@ int makeConnected(int n, vector<vector<int>>& connections) {
       java: "class Check {\n    static int networkCheck(int n, int[][] c) {\n        if (c.length == 1 && c[0][0] == -1) {\n            int kind = c[0][1];\n            List<int[]> list = new ArrayList<>();\n            if (kind <= 3) {\n                for (int i = 0; i + 1 < n; i++) if (kind != 3 || i != n / 2) list.add(new int[]{i, i + 1});\n                if (kind == 2) list.add(new int[]{n - 1, 0});\n            } else if (kind == 4) {\n                int k = n * 11 / 20;\n                for (int i = 1; i < k; i++) {\n                    list.add(new int[]{i, i - 1});\n                    if (i >= 2) list.add(new int[]{i, i - 2});\n                    if (i >= 3) list.add(new int[]{i, i - 3});\n                }\n            } else {\n                for (int i = 0; i + 2 < n; i++) list.add(new int[]{i, i + 1});\n                list.add(new int[]{n - 2, 0});\n            }\n            c = list.toArray(new int[0][]);\n        }\n        return new Solution().makeConnected(n, c);\n    }\n}",
       python: "def network_check(n, c):\n    if len(c) == 1 and c[0][0] == -1:\n        kind = c[0][1]\n        if kind <= 3:\n            c = [[i, i + 1] for i in range(n - 1) if kind != 3 or i != n // 2]\n            if kind == 2:\n                c.append([n - 1, 0])\n        elif kind == 4:\n            k = n * 11 // 20\n            c = []\n            for i in range(1, k):\n                c.append([i, i - 1])\n                if i >= 2:\n                    c.append([i, i - 2])\n                if i >= 3:\n                    c.append([i, i - 3])\n        else:\n            c = [[i, i + 1] for i in range(n - 2)] + [[n - 2, 0]]\n    return make_connected(n, c)",
       js: "function networkCheck(n, c) {\n  if (c.length === 1 && c[0][0] === -1) {\n    const kind = c[0][1];\n    c = [];\n    if (kind <= 3) {\n      for (let i = 0; i + 1 < n; i++) if (kind !== 3 || i !== Math.floor(n / 2)) c.push([i, i + 1]);\n      if (kind === 2) c.push([n - 1, 0]);\n    } else if (kind === 4) {\n      const k = Math.floor(n * 11 / 20);\n      for (let i = 1; i < k; i++) {\n        c.push([i, i - 1]);\n        if (i >= 2) c.push([i, i - 2]);\n        if (i >= 3) c.push([i, i - 3]);\n      }\n    } else {\n      for (let i = 0; i + 2 < n; i++) c.push([i, i + 1]);\n      c.push([n - 2, 0]);\n    }\n  }\n  return makeConnected(n, c);\n}",
-      cpp: "int networkCheck(int n, vector<vector<int>> c) {\n    if (c.size() == 1 && c[0][0] == -1) {\n        int kind = c[0][1];\n        c.clear();\n        if (kind <= 3) {\n            for (int i = 0; i + 1 < n; i++) if (kind != 3 || i != n / 2) c.push_back({i, i + 1});\n            if (kind == 2) c.push_back({n - 1, 0});\n        } else if (kind == 4) {\n            int k = n * 11 / 20;\n            for (int i = 1; i < k; i++) {\n                c.push_back({i, i - 1});\n                if (i >= 2) c.push_back({i, i - 2});\n                if (i >= 3) c.push_back({i, i - 3});\n            }\n        } else {\n            for (int i = 0; i + 2 < n; i++) c.push_back({i, i + 1});\n            c.push_back({n - 2, 0});\n        }\n    }\n    return Solution().makeConnected(n, c);\n}"
+      cpp: "int networkCheck(int n, vector<vector<int>> c) {\n    if (c.size() == 1 && c[0][0] == -1) {\n        int kind = c[0][1];\n        c.clear();\n        if (kind <= 3) {\n            for (int i = 0; i + 1 < n; i++) if (kind != 3 || i != n / 2) c.push_back({i, i + 1});\n            if (kind == 2) c.push_back({n - 1, 0});\n        } else if (kind == 4) {\n            int k = n * 11 / 20;\n            for (int i = 1; i < k; i++) {\n                c.push_back({i, i - 1});\n                if (i >= 2) c.push_back({i, i - 2});\n                if (i >= 3) c.push_back({i, i - 3});\n            }\n        } else {\n            for (int i = 0; i + 2 < n; i++) c.push_back({i, i + 1});\n            c.push_back({n - 2, 0});\n        }\n    }\n    return Solution().makeConnected(n, c);\n}", csharp: "class Check {\n    public static int NetworkCheck(int n, int[][] c) {\n        if (c.Length == 1 && c[0][0] == -1) {\n            int kind = c[0][1];\n            var list = new List<int[]>();\n            if (kind <= 3) {\n                for (int i = 0; i + 1 < n; i++) if (kind != 3 || i != n / 2) list.Add(new int[] { i, i + 1 });\n                if (kind == 2) list.Add(new int[] { n - 1, 0 });\n            } else if (kind == 4) {\n                int k = n * 11 / 20;\n                for (int i = 1; i < k; i++) {\n                    list.Add(new int[] { i, i - 1 });\n                    if (i >= 2) list.Add(new int[] { i, i - 2 });\n                    if (i >= 3) list.Add(new int[] { i, i - 3 });\n                }\n            } else {\n                for (int i = 0; i + 2 < n; i++) list.Add(new int[] { i, i + 1 });\n                list.Add(new int[] { n - 2, 0 });\n            }\n            c = list.ToArray();\n        }\n        return new Solution().MakeConnected(n, c);\n    }\n}"
     }, cases: [
       [[4,[[0,1],[0,2],[1,2]]],1],
       [[6,[[0,1],[0,2],[0,3],[1,2],[1,3]]],2],
@@ -5803,7 +7186,25 @@ public:
         }
         return comps - 1;                        // one cable per extra component
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution
+{
+    int[] parent;
+    int Find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+
+    public int MakeConnected(int n, int[][] connections)
+    {
+        if (connections.Length < n - 1) return -1;       // not enough cables in total
+        parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+        int comps = n;
+        foreach (int[] c in connections)
+        {
+            int a = Find(c[0]), b = Find(c[1]);
+            if (a != b) { parent[a] = b; comps--; }
+        }
+        return comps - 1;
+    }
+}` }],
       complexity: `<p>Time O((n + E)·α(n)), space O(n).</p>`,
       followUps: ['Return which cables to move and where', 'Cables have costs and you want the cheapest network → Kruskal MST (Graphs II)']
     }
@@ -5891,6 +7292,27 @@ public:
         res.push_back(row);
     }
     return res;
+}` },
+          { lang: 'csharp', code: `List<List<string>> MergeBrute(IList<IList<string>> accounts)
+{
+    var sets = new List<SortedSet<string>>();
+    var names = new List<string>();
+    foreach (var a in accounts) { names.Add(a[0]); sets.Add(new SortedSet<string>(a.Skip(1), StringComparer.Ordinal)); }
+    bool merged = true;
+    while (merged)                                         // keep merging pairs until stable
+    {
+        merged = false;
+        for (int i = 0; i < sets.Count && !merged; i++)
+            for (int j = i + 1; j < sets.Count && !merged; j++)
+                if (sets[i].Overlaps(sets[j]))
+                {
+                    sets[i].UnionWith(sets[j]); sets.RemoveAt(j); names.RemoveAt(j);
+                    merged = true;
+                }
+    }
+    var res = new List<List<string>>();
+    for (int i = 0; i < sets.Count; i++) { var row = new List<string> { names[i] }; row.AddRange(sets[i]); res.Add(row); }
+    return res;
 }` }
         ] } },
     mcq: { q: 'What should be the DSU elements?', options: ['Account indices (union accounts that share an email, via an email → first-account map)', 'Names', 'Characters of emails', 'Pairs of names'], answer: 0, explain: 'Names are not unique identifiers. Map each email to the first account index that owned it; when another account has the same email, union the two indices.' },
@@ -5899,7 +7321,7 @@ public:
       java: "class Check {\n    static List<List<String>> mergeCheck(List<List<String>> accounts) {\n        boolean big = accounts.size() == 1 && accounts.get(0).get(0).equals(\"#\");\n        if (big) {\n            int kind = Integer.parseInt(accounts.get(0).get(1));\n            accounts = new ArrayList<>();\n            for (int i = 0; i < 1000; i++) {\n                List<String> a = new ArrayList<>();\n                a.add(\"N\" + i);\n                for (int j = 0; j < 9; j++) {\n                    int id = kind == 1 ? 8 * i + j : 9 * i + j;\n                    a.add(kind == 3 && j == 0 ? \"common\" : \"u\" + id + \"@m.com\");\n                }\n                accounts.add(a);\n            }\n        }\n        List<List<String>> res = new Solution().accountsMerge(accounts);\n        if (!big) return res;\n        int most = 0;\n        for (List<String> r : res) most = Math.max(most, r.size() - 1);\n        return List.of(List.of(String.valueOf(res.size()), String.valueOf(most)));\n    }\n}",
       python: "def merge_check(accounts):\n    big = len(accounts) == 1 and accounts[0][0] == \"#\"\n    if big:\n        kind = int(accounts[0][1])\n        accounts = []\n        for i in range(1000):\n            row = [\"N\" + str(i)]\n            for j in range(9):\n                uid = 8 * i + j if kind == 1 else 9 * i + j\n                row.append(\"common\" if kind == 3 and j == 0 else \"u\" + str(uid) + \"@m.com\")\n            accounts.append(row)\n    res = accounts_merge(accounts)\n    if not big:\n        return res\n    return [[str(len(res)), str(max(len(r) - 1 for r in res))]]",
       js: "function mergeCheck(accounts) {\n  const big = accounts.length === 1 && accounts[0][0] === '#';\n  if (big) {\n    const kind = Number(accounts[0][1]);\n    accounts = [];\n    for (let i = 0; i < 1000; i++) {\n      const row = ['N' + i];\n      for (let j = 0; j < 9; j++) {\n        const id = kind === 1 ? 8 * i + j : 9 * i + j;\n        row.push(kind === 3 && j === 0 ? 'common' : 'u' + id + '@m.com');\n      }\n      accounts.push(row);\n    }\n  }\n  const res = accountsMerge(accounts);\n  if (!big) return res;\n  return [[String(res.length), String(Math.max(...res.map((r) => r.length - 1)))]];\n}",
-      cpp: "vector<vector<string>> mergeCheck(vector<vector<string>> accounts) {\n    bool big = accounts.size() == 1 && accounts[0][0] == \"#\";\n    if (big) {\n        int kind = stoi(accounts[0][1]);\n        accounts.clear();\n        for (int i = 0; i < 1000; i++) {\n            vector<string> row{\"N\" + to_string(i)};\n            for (int j = 0; j < 9; j++) {\n                int id = kind == 1 ? 8 * i + j : 9 * i + j;\n                row.push_back(kind == 3 && j == 0 ? string(\"common\") : \"u\" + to_string(id) + \"@m.com\");\n            }\n            accounts.push_back(row);\n        }\n    }\n    auto res = Solution().accountsMerge(accounts);\n    if (!big) return res;\n    size_t most = 0;\n    for (auto& r : res) most = max(most, r.size() - 1);\n    return {{to_string(res.size()), to_string(most)}};\n}"
+      cpp: "vector<vector<string>> mergeCheck(vector<vector<string>> accounts) {\n    bool big = accounts.size() == 1 && accounts[0][0] == \"#\";\n    if (big) {\n        int kind = stoi(accounts[0][1]);\n        accounts.clear();\n        for (int i = 0; i < 1000; i++) {\n            vector<string> row{\"N\" + to_string(i)};\n            for (int j = 0; j < 9; j++) {\n                int id = kind == 1 ? 8 * i + j : 9 * i + j;\n                row.push_back(kind == 3 && j == 0 ? string(\"common\") : \"u\" + to_string(id) + \"@m.com\");\n            }\n            accounts.push_back(row);\n        }\n    }\n    auto res = Solution().accountsMerge(accounts);\n    if (!big) return res;\n    size_t most = 0;\n    for (auto& r : res) most = max(most, r.size() - 1);\n    return {{to_string(res.size()), to_string(most)}};\n}", csharp: "class Check {\n    public static IList<IList<string>> MergeCheck(IList<IList<string>> accounts) {\n        bool big = accounts.Count == 1 && accounts[0][0] == \"#\";\n        if (big) {\n            int kind = int.Parse(accounts[0][1]);\n            var list = new List<IList<string>>();\n            for (int i = 0; i < 1000; i++) {\n                var a = new List<string>();\n                a.Add(\"N\" + i);\n                for (int j = 0; j < 9; j++) {\n                    int id = kind == 1 ? 8 * i + j : 9 * i + j;\n                    a.Add(kind == 3 && j == 0 ? \"common\" : \"u\" + id + \"@m.com\");\n                }\n                list.Add(a);\n            }\n            accounts = list;\n        }\n        IList<IList<string>> res = new Solution().AccountsMerge(accounts);\n        if (!big) return res;\n        int most = 0;\n        foreach (var r in res) most = Math.Max(most, r.Count - 1);\n        return new List<IList<string>> { new List<string> { res.Count.ToString(), most.ToString() } };\n    }\n}"
     }, cases: [
       [[[["John","a@m","b@m"],["John","b@m","c@m"],["Mary","m@m"],["John","x@m"]]],[["John","a@m","b@m","c@m"],["Mary","m@m"],["John","x@m"]]],
       [[[["John","johnsmith@mail.com","john_newyork@mail.com"],["John","johnsmith@mail.com","john00@mail.com"],["Mary","mary@mail.com"],["John","johnnybravo@mail.com"]]],[["John","john00@mail.com","john_newyork@mail.com","johnsmith@mail.com"],["Mary","mary@mail.com"],["John","johnnybravo@mail.com"]]],
@@ -6027,7 +7449,46 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    int[] parent;
+    int Find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+
+    public IList<IList<string>> AccountsMerge(IList<IList<string>> accounts)
+    {
+        int n = accounts.Count;
+        parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+        var owner = new Dictionary<string, int>();
+        for (int i = 0; i < n; i++)
+            for (int k = 1; k < accounts[i].Count; k++)
+            {
+                string email = accounts[i][k];
+                int j;
+                if (owner.TryGetValue(email, out j)) parent[Find(i)] = Find(j);    // same email -> same person
+                else owner[email] = i;
+            }
+        var groups = new Dictionary<int, SortedSet<string>>();     // ordinal order, like Java's TreeSet
+        foreach (var e in owner)
+        {
+            int root = Find(e.Value);
+            if (!groups.ContainsKey(root)) groups[root] = new SortedSet<string>(StringComparer.Ordinal);
+            groups[root].Add(e.Key);
+        }
+        var res = new List<IList<string>>();
+        foreach (var g in groups)
+        {
+            var row = new List<string>();
+            row.Add(accounts[g.Key][0]);
+            row.AddRange(g.Value);
+            res.Add(row);
+        }
+        return res;
+    }
+}` }],
       complexity: `<p>Time O(S log S) where S = total number of emails (sorting dominates; DSU work is O(S·α)). Space O(S).</p>`,
       followUps: ['Billions of records across machines (entity resolution with distributed union-find / connected components)', 'Use DFS on an email graph instead of DSU — compare memory', 'What if one bad shared email (like "noreply@") merges millions of accounts? (block high-degree keys)']
     }
@@ -6105,6 +7566,23 @@ vector<int> eventualSafeNodes(vector<vector<int>>& graph) {
         if (!reachesCycle(graph, s, onPath, done)) res.push_back(s);
     }
     return res;
+}` },
+          { lang: 'csharp', code: `List<int> SafeBrute(int[][] graph)
+{
+    var res = new List<int>();
+    for (int s = 0; s < graph.Length; s++)
+        if (!ReachesCycle(graph, s, new bool[graph.Length], new bool[graph.Length])) res.Add(s);
+    return res;
+}
+bool ReachesCycle(int[][] g, int u, bool[] onPath, bool[] done)       // fresh arrays per start node
+{
+    if (onPath[u]) return true;
+    if (done[u]) return false;
+    onPath[u] = true;
+    foreach (int v in g[u]) if (ReachesCycle(g, v, onPath, done)) return true;
+    onPath[u] = false;
+    done[u] = true;
+    return false;
 }` }
         ] } },
     mcq: { q: 'In the three-colour DFS, which nodes are safe?', options: ['Nodes that finish black without ever reaching a grey node', 'All grey nodes', 'Nodes with in-degree 0', 'Nodes visited first'], answer: 0, explain: 'A node is unsafe iff it can reach a cycle. If its DFS ever hits a grey node, it (and everything on the current path) is unsafe; otherwise it finishes black and is safe. Memoising the colours makes the whole thing O(V + E).' },
@@ -6113,7 +7591,7 @@ vector<int> eventualSafeNodes(vector<vector<int>>& graph) {
       java: "class Check {\n    static List<Integer> safeCheck(int[][] graph) {\n        if (graph.length == 1 && graph[0].length > 0 && graph[0][0] == -1) {\n            int kind = graph[0][1], n = graph[0][2];\n            graph = new int[n][];\n            for (int i = 0; i < n; i++) {\n                if (i + 1 < n) graph[i] = (kind == 4 && i == 0) ? new int[]{1, 0} : new int[]{i + 1};\n                else graph[i] = kind == 1 || kind == 4 ? new int[0] : new int[]{kind == 2 ? n - 1 : 0};\n            }\n        }\n        return new Solution().eventualSafeNodes(graph);\n    }\n}",
       python: "def safe_check(graph):\n    if len(graph) == 1 and graph[0] and graph[0][0] == -1:\n        kind, n = graph[0][1], graph[0][2]\n        graph = [[i + 1] for i in range(n - 1)]\n        graph.append([] if kind in (1, 4) else [n - 1 if kind == 2 else 0])\n        if kind == 4:\n            graph[0] = [1, 0]\n    return eventual_safe_nodes(graph)",
       js: "function safeCheck(graph) {\n  if (graph.length === 1 && graph[0].length > 0 && graph[0][0] === -1) {\n    const kind = graph[0][1], n = graph[0][2];\n    graph = [];\n    for (let i = 0; i + 1 < n; i++) graph.push([i + 1]);\n    graph.push(kind === 1 || kind === 4 ? [] : [kind === 2 ? n - 1 : 0]);\n    if (kind === 4) graph[0] = [1, 0];\n  }\n  return eventualSafeNodes(graph);\n}",
-      cpp: "vector<int> safeCheck(vector<vector<int>> graph) {\n    if (graph.size() == 1 && !graph[0].empty() && graph[0][0] == -1) {\n        int kind = graph[0][1], n = graph[0][2];\n        graph.assign(n, {});\n        for (int i = 0; i + 1 < n; i++) graph[i] = {i + 1};\n        if (kind == 2) graph[n - 1] = {n - 1};\n        if (kind == 3) graph[n - 1] = {0};\n        if (kind == 4) graph[0] = {1, 0};\n    }\n    return Solution().eventualSafeNodes(graph);\n}"
+      cpp: "vector<int> safeCheck(vector<vector<int>> graph) {\n    if (graph.size() == 1 && !graph[0].empty() && graph[0][0] == -1) {\n        int kind = graph[0][1], n = graph[0][2];\n        graph.assign(n, {});\n        for (int i = 0; i + 1 < n; i++) graph[i] = {i + 1};\n        if (kind == 2) graph[n - 1] = {n - 1};\n        if (kind == 3) graph[n - 1] = {0};\n        if (kind == 4) graph[0] = {1, 0};\n    }\n    return Solution().eventualSafeNodes(graph);\n}", csharp: "class Check {\n    public static IList<int> SafeCheck(int[][] graph) {\n        if (graph.Length == 1 && graph[0].Length > 0 && graph[0][0] == -1) {\n            int kind = graph[0][1], n = graph[0][2];\n            graph = new int[n][];\n            for (int i = 0; i < n; i++) {\n                if (i + 1 < n) graph[i] = (kind == 4 && i == 0) ? new int[] { 1, 0 } : new int[] { i + 1 };\n                else graph[i] = kind == 1 || kind == 4 ? new int[0] : new int[] { kind == 2 ? n - 1 : 0 };\n            }\n        }\n        return new Solution().EventualSafeNodes(graph);\n    }\n}"
     }, cases: [
       [[[[1,2],[2,3],[5],[0],[5],[],[]]],[2,4,5,6]],
       [[[[1,2,3,4],[1,2],[3,4],[0,4],[]]],[4]],
@@ -6223,7 +7701,36 @@ public:
             if (safe(graph, i, color)) res.push_back(i);
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<int> EventualSafeNodes(int[][] graph)
+    {
+        int n = graph.Length;
+        int[] color = new int[n];                    // 0 unvisited, 1 grey/unsafe, 2 safe
+        int[] next = new int[n];                     // next[u] = index of the next successor of u to try
+        int[] stack = new int[n];                    // explicit stack: a 10000-long chain would overflow recursion
+        for (int s = 0; s < n; s++)
+        {
+            if (color[s] != 0) continue;
+            int top = 0;
+            stack[top++] = s;
+            color[s] = 1;
+            while (top > 0)
+            {
+                int u = stack[top - 1];
+                if (next[u] == graph[u].Length) { color[u] = 2; top--; continue; }   // every successor was safe
+                int v = graph[u][next[u]++];
+                if (color[v] == 0) { color[v] = 1; stack[top++] = v; }
+                else if (color[v] == 1) break;       // reached a cycle: the whole path stays grey = unsafe
+            }
+        }
+        var res = new List<int>();
+        for (int i = 0; i < n; i++) if (color[i] == 2) res.Add(i);
+        return res;
+    }
+}` }],
       complexity: `<p>Time O(V + E), space O(V): the colour array plus an explicit stack, so a long chain cannot overflow the call stack.</p>`,
       followUps: ['Return the nodes that are ON a cycle (not just able to reach one) → SCCs (Tarjan/Kosaraju)', 'Deadlock detection in a wait-for graph']
     }
@@ -6332,6 +7839,33 @@ def ladder_length(begin, end, word_list):
         for (int v : g[u]) if (dist[v] == -1) { dist[v] = dist[u] + 1; q.push(v); }
     }
     return 0;
+}` },
+          { lang: 'csharp', code: `int LadderBrute(string begin, string end, IList<string> list)
+{
+    var words = new List<string>(list);
+    if (!words.Contains(end)) return 0;
+    words.Add(begin);
+    int n = words.Count;
+    var g = new List<List<int>>();
+    for (int i = 0; i < n; i++) g.Add(new List<int>());
+    for (int i = 0; i < n; i++)                         // O(N^2 * L) edge building
+        for (int j = i + 1; j < n; j++)
+        {
+            int diff = 0;
+            for (int k = 0; k < begin.Length && diff < 2; k++) if (words[i][k] != words[j][k]) diff++;
+            if (diff == 1) { g[i].Add(j); g[j].Add(i); }
+        }
+    int[] dist = new int[n];
+    for (int i = 0; i < n; i++) dist[i] = -1;
+    var q = new Queue<int>();
+    q.Enqueue(n - 1); dist[n - 1] = 1;
+    while (q.Count > 0)
+    {
+        int u = q.Dequeue();
+        if (words[u] == end) return dist[u];
+        foreach (int v in g[u]) if (dist[v] == -1) { dist[v] = dist[u] + 1; q.Enqueue(v); }
+    }
+    return 0;
 }` }
         ] } },
     mcq: { q: 'Why BFS and not DFS?', options: ['Each transformation costs 1 and we want the fewest steps', 'DFS cannot handle strings', 'BFS uses less memory', 'The graph is directed'], answer: 0, explain: 'Unweighted shortest path → BFS. DFS finds some ladder, not the shortest one.' },
@@ -6340,7 +7874,7 @@ def ladder_length(begin, end, word_list):
       java: "class Check {\n    static int ladderCheck(String beginWord, String endWord, List<String> wordList) {\n        if (wordList.size() == 4 && wordList.get(0).equals(\"#\")) {\n            String alpha = wordList.get(1);\n            int len = Integer.parseInt(wordList.get(2)), kind = Integer.parseInt(wordList.get(3));\n            wordList = new ArrayList<>();\n            int total = 1;\n            for (int i = 0; i < len; i++) total *= alpha.length();\n            for (int code = 0; code < total; code++) {\n                char[] w = new char[len];\n                int x = code;\n                for (int i = len - 1; i >= 0; i--) { w[i] = alpha.charAt(x % alpha.length()); x /= alpha.length(); }\n                String s = new String(w);\n                if ((kind == 2 && s.equals(beginWord)) || (kind == 3 && s.equals(endWord))) continue;\n                wordList.add(s);\n            }\n        }\n        return new Solution().ladderLength(beginWord, endWord, wordList);\n    }\n}",
       python: "def ladder_check(begin_word, end_word, word_list):\n    import itertools\n    if len(word_list) == 4 and word_list[0] == \"#\":\n        alpha, length, kind = word_list[1], int(word_list[2]), int(word_list[3])\n        words = [\"\".join(p) for p in itertools.product(alpha, repeat=length)]\n        banned = begin_word if kind == 2 else end_word if kind == 3 else None\n        word_list = [w for w in words if w != banned]\n    return ladder_length(begin_word, end_word, word_list)",
       js: "function ladderCheck(beginWord, endWord, wordList) {\n  if (wordList.length === 4 && wordList[0] === '#') {\n    const alpha = wordList[1], len = Number(wordList[2]), kind = Number(wordList[3]);\n    let words = [''];\n    for (let i = 0; i < len; i++) words = words.flatMap((w) => [...alpha].map((ch) => w + ch));\n    const banned = kind === 2 ? beginWord : kind === 3 ? endWord : null;\n    wordList = words.filter((w) => w !== banned);\n  }\n  return ladderLength(beginWord, endWord, wordList);\n}",
-      cpp: "int ladderCheck(string beginWord, string endWord, vector<string> wordList) {\n    if (wordList.size() == 4 && wordList[0] == \"#\") {\n        string alpha = wordList[1];\n        int len = stoi(wordList[2]), kind = stoi(wordList[3]);\n        vector<string> words{\"\"};\n        for (int i = 0; i < len; i++) {\n            vector<string> next;\n            for (auto& w : words) for (char ch : alpha) next.push_back(w + ch);\n            words = next;\n        }\n        wordList.clear();\n        for (auto& w : words) {\n            if ((kind == 2 && w == beginWord) || (kind == 3 && w == endWord)) continue;\n            wordList.push_back(w);\n        }\n    }\n    return Solution().ladderLength(beginWord, endWord, wordList);\n}"
+      cpp: "int ladderCheck(string beginWord, string endWord, vector<string> wordList) {\n    if (wordList.size() == 4 && wordList[0] == \"#\") {\n        string alpha = wordList[1];\n        int len = stoi(wordList[2]), kind = stoi(wordList[3]);\n        vector<string> words{\"\"};\n        for (int i = 0; i < len; i++) {\n            vector<string> next;\n            for (auto& w : words) for (char ch : alpha) next.push_back(w + ch);\n            words = next;\n        }\n        wordList.clear();\n        for (auto& w : words) {\n            if ((kind == 2 && w == beginWord) || (kind == 3 && w == endWord)) continue;\n            wordList.push_back(w);\n        }\n    }\n    return Solution().ladderLength(beginWord, endWord, wordList);\n}", csharp: "class Check {\n    public static int LadderCheck(string beginWord, string endWord, IList<string> wordList) {\n        if (wordList.Count == 4 && wordList[0] == \"#\") {\n            string alpha = wordList[1];\n            int len = int.Parse(wordList[2]), kind = int.Parse(wordList[3]);\n            var list = new List<string>();\n            int total = 1;\n            for (int i = 0; i < len; i++) total *= alpha.Length;\n            for (int code = 0; code < total; code++) {\n                char[] w = new char[len];\n                int x = code;\n                for (int i = len - 1; i >= 0; i--) { w[i] = alpha[x % alpha.Length]; x /= alpha.Length; }\n                string s = new string(w);\n                if ((kind == 2 && s == beginWord) || (kind == 3 && s == endWord)) continue;\n                list.Add(s);\n            }\n            wordList = list;\n        }\n        return new Solution().LadderLength(beginWord, endWord, wordList);\n    }\n}"
     }, cases: [
       [["hit","cog",["hot","dot","dog","lot","log","cog"]],5],
       [["hit","cog",["hot","dot","dog","lot","log"]],0],
@@ -6473,7 +8007,44 @@ public:
         }
         return 0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int LadderLength(string beginWord, string endWord, IList<string> wordList)
+    {
+        var dict = new HashSet<string>(wordList);
+        if (!dict.Contains(endWord)) return 0;
+        var q = new Queue<string>();
+        q.Enqueue(beginWord);
+        dict.Remove(beginWord);
+        int level = 1;                                     // number of words in the ladder so far
+        while (q.Count > 0)
+        {
+            for (int k = q.Count; k > 0; k--)
+            {
+                char[] w = q.Dequeue().ToCharArray();
+                for (int i = 0; i < w.Length; i++)
+                {
+                    char orig = w[i];
+                    for (char ch = 'a'; ch <= 'z'; ch++)
+                    {
+                        if (ch == orig) continue;
+                        w[i] = ch;
+                        string next = new string(w);
+                        if (!dict.Contains(next)) continue;
+                        if (next == endWord) return level + 1;
+                        dict.Remove(next);                 // visited on push
+                        q.Enqueue(next);
+                    }
+                    w[i] = orig;
+                }
+            }
+            level++;
+        }
+        return 0;
+    }
+}` }],
       complexity: `<p>Time O(N · L · 26 · L) — N words, L positions, 26 letters, O(L) to build/hash each candidate. Space O(N · L).</p>`,
       followUps: ['Return all shortest ladders (Word Ladder II: BFS to build a parent DAG, then backtrack)', 'Bidirectional BFS', 'Wildcard buckets ("h*t" → [hot, hit]) as an alternative neighbour index']
     }
@@ -6581,6 +8152,36 @@ string alienOrder(vector<string>& words) {                // only for a handful 
         if (sortedUnder(letters, words)) return letters;
     } while (next_permutation(letters.begin(), letters.end()));
     return "";
+}` },
+          { lang: 'csharp', code: `string AlienBrute(string[] words)                           // only for a handful of letters
+{
+    var letters = new List<char>();
+    foreach (string w in words) foreach (char c in w) if (!letters.Contains(c)) letters.Add(c);
+    return Permute(letters, 0, words);
+}
+string Permute(List<char> a, int k, string[] words)
+{
+    if (k == a.Count) return SortedUnder(a, words) ? new string(a.ToArray()) : null;
+    for (int i = k; i < a.Count; i++)
+    {
+        char t = a[k]; a[k] = a[i]; a[i] = t;
+        string r = Permute(a, k + 1, words);
+        t = a[k]; a[k] = a[i]; a[i] = t;
+        if (r != null) return r;
+    }
+    return k == 0 ? "" : null;
+}
+bool SortedUnder(List<char> order, string[] words)
+{
+    for (int i = 0; i + 1 < words.Length; i++)
+    {
+        string x = words[i], y = words[i + 1];
+        int j = 0;
+        while (j < x.Length && j < y.Length && x[j] == y[j]) j++;
+        if (j == y.Length && j < x.Length) return false;          // prefix violation
+        if (j < x.Length && j < y.Length && order.IndexOf(x[j]) > order.IndexOf(y[j])) return false;
+    }
+    return true;
 }` }
         ] } },
     mcq: { q: 'Comparing "wrf" and "er", what edge do you add?', options: ['w → e (first differing letters)', 'f → r (last letters)', 'r → e and f → r', 'No edge: the words have different lengths'], answer: 0, explain: 'Only the FIRST differing position tells you anything; letters after it are unconstrained.' },
@@ -6716,7 +8317,41 @@ public:
         }
         return out.size() == g.size() ? out : "";      // short order = a cycle = inconsistent
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Solution
+{
+    public string AlienOrder(string[] words)
+    {
+        var g = new Dictionary<char, HashSet<char>>();
+        var indeg = new Dictionary<char, int>();
+        foreach (string w in words) foreach (char c in w) { if (!g.ContainsKey(c)) { g[c] = new HashSet<char>(); indeg[c] = 0; } }
+        for (int i = 0; i + 1 < words.Length; i++)
+        {
+            string x = words[i], y = words[i + 1];
+            int j = 0;
+            while (j < x.Length && j < y.Length && x[j] == y[j]) j++;
+            if (j == x.Length || j == y.Length)
+            {
+                if (x.Length > y.Length) return "";                  // "abc" before "ab" is invalid
+                continue;                                            // x is a prefix of y: no info
+            }
+            char a = x[j], b = y[j];
+            if (g[a].Add(b)) indeg[b]++;                             // add edge a -> b once
+        }
+        var q = new Queue<char>();
+        foreach (var e in indeg) if (e.Value == 0) q.Enqueue(e.Key);
+        var sb = new StringBuilder();
+        while (q.Count > 0)
+        {
+            char c = q.Dequeue();
+            sb.Append(c);
+            foreach (char nx in g[c]) if (--indeg[nx] == 0) q.Enqueue(nx);
+        }
+        return sb.Length == indeg.Count ? sb.ToString() : "";       // cycle -> inconsistent
+    }
+}` }],
       complexity: `<p>Time O(C) where C = total characters across words (edge building) + O(26 + E) for Kahn. Space O(26 + E) ≤ O(26²).</p>`,
       followUps: ['Return "" if the order is not UNIQUE (queue size must always be 1)', 'Verifying an Alien Dictionary (given the order, check sortedness) — Easy cousin', 'Return the lexicographically smallest valid order (PriorityQueue)']
     }
@@ -6825,6 +8460,30 @@ int shortestPathLength(vector<vector<int>>& graph) {
     vector<bool> used(n, false);
     for (int s = 0; s < n; s++) { used[s] = true; perm(d, s, 1, 0, used); used[s] = false; }
     return bestBrute;
+}` },
+          { lang: 'csharp', code: `int bestBrute = int.MaxValue;
+int ShortestBrute(int[][] graph)
+{
+    int n = graph.Length;
+    int[][] d = new int[n][];
+    for (int s = 0; s < n; s++)                            // all-pairs BFS distances
+    {
+        d[s] = new int[n];
+        for (int i = 0; i < n; i++) d[s][i] = -1;
+        var q = new Queue<int>(); q.Enqueue(s);
+        d[s][s] = 0;
+        while (q.Count > 0) { int u = q.Dequeue(); foreach (int v in graph[u]) if (d[s][v] < 0) { d[s][v] = d[s][u] + 1; q.Enqueue(v); } }
+    }
+    bool[] used = new bool[n];
+    for (int s = 0; s < n; s++) { used[s] = true; Perm(d, s, 1, 0, used); used[s] = false; }
+    return bestBrute;
+}
+void Perm(int[][] d, int last, int cnt, int cost, bool[] used)       // n! orders
+{
+    if (cost >= bestBrute) return;
+    if (cnt == used.Length) { bestBrute = cost; return; }
+    for (int v = 0; v < used.Length; v++)
+        if (!used[v]) { used[v] = true; Perm(d, v, cnt + 1, cost + d[last][v], used); used[v] = false; }
 }` }
         ] } },
     mcq: { q: 'What is a node of the BFS graph in this problem?', options: ['(current node, bitmask of visited nodes)', 'Just the current node', 'Just the bitmask', 'An edge of the original graph'], answer: 0, explain: 'Revisiting is allowed, so "current node" alone loses information; the bitmask records progress. BFS over these states finds the fewest moves to reach any state with a full mask.' },
@@ -6944,7 +8603,37 @@ public:
         }
         return -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int ShortestPathLength(int[][] graph)
+    {
+        int n = graph.Length, full = (1 << n) - 1;
+        if (n == 1) return 0;
+        bool[,] seen = new bool[n, 1 << n];
+        var q = new Queue<int[]>();
+        for (int i = 0; i < n; i++) { q.Enqueue(new[] { i, 1 << i }); seen[i, 1 << i] = true; }   // start anywhere
+        int steps = 0;
+        while (q.Count > 0)
+        {
+            steps++;
+            for (int k = q.Count; k > 0; k--)
+            {
+                int[] s = q.Dequeue();
+                foreach (int v in graph[s[0]])
+                {
+                    int mask = s[1] | (1 << v);
+                    if (mask == full) return steps;
+                    if (seen[v, mask]) continue;
+                    seen[v, mask] = true;
+                    q.Enqueue(new[] { v, mask });
+                }
+            }
+        }
+        return -1;
+    }
+}` }],
       complexity: `<p>States n · 2<sup>n</sup>; each state scans its node's neighbours → O(2<sup>n</sup> · n²) time worst case ≈ 590 000 for n = 12. Space O(n · 2<sup>n</sup>).</p>`,
       followUps: ['Weighted edges → Dijkstra over states, or bitmask DP (TSP-style) on all-pairs distances', 'Must start at node 0 and return to it (classic TSP)', 'Grid version: collect all keys (Shortest Path to Get All Keys)']
     }
@@ -7048,6 +8737,34 @@ public:
         res.push_back(count);
     }
     return res;
+}` },
+          { lang: 'csharp', code: `List<int> Islands2Brute(int m, int n, int[][] positions)
+{
+    int[,] g = new int[m, n];
+    var res = new List<int>();
+    foreach (int[] p in positions)
+    {
+        g[p[0], p[1]] = 1;
+        bool[,] seen = new bool[m, n];
+        int count = 0;
+        for (int r = 0; r < m; r++)
+            for (int c = 0; c < n; c++)
+            {
+                if (g[r, c] != 1 || seen[r, c]) continue;
+                count++;
+                var st = new Stack<int[]>();
+                st.Push(new[] { r, c }); seen[r, c] = true;
+                while (st.Count > 0)
+                {
+                    int[] x = st.Pop();
+                    int[][] nb = { new[] { x[0] + 1, x[1] }, new[] { x[0] - 1, x[1] }, new[] { x[0], x[1] + 1 }, new[] { x[0], x[1] - 1 } };
+                    foreach (int[] y in nb)
+                        if (y[0] >= 0 && y[1] >= 0 && y[0] < m && y[1] < n && g[y[0], y[1]] == 1 && !seen[y[0], y[1]]) { seen[y[0], y[1]] = true; st.Push(y); }
+                }
+            }
+        res.Add(count);
+    }
+    return res;
 }` }
         ] } },
     mcq: { q: 'A new land cell touches 3 existing land cells. Two of them are already in the same island. How does the count change?', options: ['+1 − 2 (new island, then two successful merges)', '+1 − 3', '−3', 'unchanged'], answer: 0, explain: 'Count +1 for the new cell, then −1 for each union that actually merges two different sets. The two neighbours in the same island share a root, so only 2 unions succeed.' },
@@ -7056,7 +8773,7 @@ public:
       java: "class Check {\n    static List<Integer> islands2Check(int m, int n, int[][] positions) {\n        if (positions.length == 1 && positions[0][0] == -1) {\n            int kind = positions[0][1];\n            List<int[]> list = new ArrayList<>();\n            if (kind == 5) {\n                for (int k = 0; k < 10000; k++) list.add(new int[]{10 * (k / 100), 10 * (k % 100)});\n            } else {\n                for (int pass = 0; pass < (kind == 3 ? 2 : 1); pass++)\n                    for (int r = 0; r < m; r++)\n                        for (int c = 0; c < n; c++) {\n                            boolean take = kind == 1 || kind == 4 || (r + c) % 2 == pass;\n                            if (!take) continue;\n                            list.add(new int[]{r, c});\n                            if (kind == 4) list.add(new int[]{r, c});\n                        }\n            }\n            positions = list.toArray(new int[0][]);\n        }\n        return new Solution().numIslands2(m, n, positions);\n    }\n}",
       python: "def islands2_check(m, n, positions):\n    if len(positions) == 1 and positions[0][0] == -1:\n        kind = positions[0][1]\n        if kind == 5:\n            positions = [[10 * (k // 100), 10 * (k % 100)] for k in range(10000)]\n        else:\n            positions = []\n            for pas in range(2 if kind == 3 else 1):\n                for r in range(m):\n                    for c in range(n):\n                        if kind in (1, 4) or (r + c) % 2 == pas:\n                            positions.append([r, c])\n                            if kind == 4:\n                                positions.append([r, c])\n    return num_islands2(m, n, positions)",
       js: "function islands2Check(m, n, positions) {\n  if (positions.length === 1 && positions[0][0] === -1) {\n    const kind = positions[0][1];\n    positions = [];\n    if (kind === 5) {\n      for (let k = 0; k < 10000; k++) positions.push([10 * Math.floor(k / 100), 10 * (k % 100)]);\n    } else {\n      for (let pass = 0; pass < (kind === 3 ? 2 : 1); pass++)\n        for (let r = 0; r < m; r++)\n          for (let c = 0; c < n; c++) {\n            if (kind === 1 || kind === 4 || (r + c) % 2 === pass) {\n              positions.push([r, c]);\n              if (kind === 4) positions.push([r, c]);\n            }\n          }\n    }\n  }\n  return numIslands2(m, n, positions);\n}",
-      cpp: "vector<int> islands2Check(int m, int n, vector<vector<int>> positions) {\n    if (positions.size() == 1 && positions[0][0] == -1) {\n        int kind = positions[0][1];\n        positions.clear();\n        if (kind == 5) {\n            for (int k = 0; k < 10000; k++) positions.push_back({10 * (k / 100), 10 * (k % 100)});\n        } else {\n            for (int pass = 0; pass < (kind == 3 ? 2 : 1); pass++)\n                for (int r = 0; r < m; r++)\n                    for (int c = 0; c < n; c++)\n                        if (kind == 1 || kind == 4 || (r + c) % 2 == pass) {\n                            positions.push_back({r, c});\n                            if (kind == 4) positions.push_back({r, c});\n                        }\n        }\n    }\n    return Solution().numIslands2(m, n, positions);\n}"
+      cpp: "vector<int> islands2Check(int m, int n, vector<vector<int>> positions) {\n    if (positions.size() == 1 && positions[0][0] == -1) {\n        int kind = positions[0][1];\n        positions.clear();\n        if (kind == 5) {\n            for (int k = 0; k < 10000; k++) positions.push_back({10 * (k / 100), 10 * (k % 100)});\n        } else {\n            for (int pass = 0; pass < (kind == 3 ? 2 : 1); pass++)\n                for (int r = 0; r < m; r++)\n                    for (int c = 0; c < n; c++)\n                        if (kind == 1 || kind == 4 || (r + c) % 2 == pass) {\n                            positions.push_back({r, c});\n                            if (kind == 4) positions.push_back({r, c});\n                        }\n        }\n    }\n    return Solution().numIslands2(m, n, positions);\n}", csharp: "class Check {\n    public static IList<int> Islands2Check(int m, int n, int[][] positions) {\n        if (positions.Length == 1 && positions[0][0] == -1) {\n            int kind = positions[0][1];\n            var list = new List<int[]>();\n            if (kind == 5) {\n                for (int k = 0; k < 10000; k++) list.Add(new int[] { 10 * (k / 100), 10 * (k % 100) });\n            } else {\n                for (int pass = 0; pass < (kind == 3 ? 2 : 1); pass++)\n                    for (int r = 0; r < m; r++)\n                        for (int c = 0; c < n; c++) {\n                            bool take = kind == 1 || kind == 4 || (r + c) % 2 == pass;\n                            if (!take) continue;\n                            list.Add(new int[] { r, c });\n                            if (kind == 4) list.Add(new int[] { r, c });\n                        }\n            }\n            positions = list.ToArray();\n        }\n        return new Solution().NumIslands2(m, n, positions);\n    }\n}"
     }, cases: [
       [[3,3,[[0,0],[0,1],[1,2],[2,1],[1,1]]],[1,1,2,3,1]],
       [[1,1,[[0,0]]],[1]],
@@ -7221,7 +8938,47 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    int[] parent, rank;
+    int Find(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    bool Union(int a, int b)
+    {
+        int ra = Find(a), rb = Find(b);
+        if (ra == rb) return false;
+        if (rank[ra] < rank[rb]) { int t = ra; ra = rb; rb = t; }
+        parent[rb] = ra;
+        if (rank[ra] == rank[rb]) rank[ra]++;
+        return true;
+    }
+
+    public IList<int> NumIslands2(int m, int n, int[][] positions)
+    {
+        parent = new int[m * n];
+        rank = new int[m * n];
+        for (int i = 0; i < m * n; i++) parent[i] = -1;    // -1 = water
+        int[] dr = { -1, 1, 0, 0 }, dc = { 0, 0, -1, 1 };
+        var res = new List<int>();
+        int count = 0;
+        foreach (int[] p in positions)
+        {
+            int id = p[0] * n + p[1];
+            if (parent[id] != -1) { res.Add(count); continue; }   // already land
+            parent[id] = id;
+            count++;
+            for (int d = 0; d < 4; d++)
+            {
+                int r = p[0] + dr[d], c = p[1] + dc[d], nid = r * n + c;
+                if (r < 0 || c < 0 || r >= m || c >= n || parent[nid] == -1) continue;
+                if (Union(id, nid)) count--;               // merged two islands
+            }
+            res.Add(count);
+        }
+        return res;
+    }
+}` }],
       complexity: `<p>Time O(m·n + k·α(m·n)), space O(m·n).</p>`,
       followUps: ['Cells can also turn back into water (deletions) → offline: reverse the timeline so deletions become additions', 'Report the size of the largest island after each step (union by size)', 'Grid is 10<sup>9</sup>×10<sup>9</sup> → store DSU parents in a HashMap keyed by cell']
     }

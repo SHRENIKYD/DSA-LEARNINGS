@@ -119,6 +119,7 @@ var Play = (function () {
     var g = state.games[gid] || (state.games[gid] = { wins: 0 });
     var first = g.wins === 0;
     g.wins++;
+    g.at = now.getTime(); // latest win, so two devices' records can be merged (src/auth.js)
     var k = dayKey(now), day = state.days[k] || (state.days[k] = {});
     day.g = (day.g || 0) + 1;
     var xp = first ? XP.game : ((day.r || 0) < XP.replaysPerDay ? XP.replay : 0);

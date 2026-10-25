@@ -20,8 +20,8 @@ const E = (m) => errors.push(m), W = (m) => warns.push(m);
 
 const META = {};
 TRACKS.forEach((t) => t.modules.forEach((pm) => { META[pm.id] = { track: t, pm }; }));
-const LANG_OF = { java: 'java', python: 'python', py: 'python', js: 'js', javascript: 'js', ts: 'js', typescript: 'js', cpp: 'cpp', 'c++': 'cpp', c: 'cpp' };
-const GENERAL = ['java', 'python', 'js', 'cpp'];
+const LANG_OF = { java: 'java', python: 'python', py: 'python', js: 'js', javascript: 'js', ts: 'js', typescript: 'js', cpp: 'cpp', 'c++': 'cpp', c: 'cpp', csharp: 'csharp', 'c#': 'csharp', cs: 'csharp' };
+const GENERAL = ['java', 'python', 'js', 'cpp', 'csharp'];
 
 /* ---------- load modules ---------- */
 const MOD = {};

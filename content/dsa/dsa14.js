@@ -310,7 +310,72 @@ int main() {
     TreeNode* root = build({1, 2, 3, 4, 5, nullopt, 6});
     cout << count(root) << " nodes, " << leaves(root) << " leaves\\n";   // 6 nodes, 3 leaves
 }
-` }] }],
+` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+// The standard node used in almost every tree problem.
+public class TreeNode
+{
+    public int val;             // the data stored in this box
+    public TreeNode left;       // link to the left child (null if none)
+    public TreeNode right;      // link to the right child (null if none)
+    public TreeNode(int val = 0, TreeNode left = null, TreeNode right = null)
+    {
+        this.val = val; this.left = left; this.right = right;
+    }
+}
+
+class BuildTree
+{
+    // Build a tree from LeetCode-style level order, e.g. {1, null, 2, 3}.
+    // null means "no child here". Children of null slots are NOT listed.
+    static TreeNode Build(int?[] a)
+    {
+        if (a.Length == 0 || a[0] == null) return null;
+        var root = new TreeNode(a[0].Value);
+        var q = new Queue<TreeNode>();              // parents waiting for children
+        q.Enqueue(root);
+        int i = 1;                                  // next value to hand out
+        while (q.Count > 0 && i < a.Length)
+        {
+            TreeNode parent = q.Dequeue();
+            if (i < a.Length && a[i] != null)       // give a left child
+            {
+                parent.left = new TreeNode(a[i].Value);
+                q.Enqueue(parent.left);
+            }
+            i++;
+            if (i < a.Length && a[i] != null)       // give a right child
+            {
+                parent.right = new TreeNode(a[i].Value);
+                q.Enqueue(parent.right);
+            }
+            i++;
+        }
+        return root;
+    }
+
+    // Count nodes: me (1) + everyone on the left + everyone on the right.
+    static int Count(TreeNode n)
+    {
+        if (n == null) return 0;
+        return 1 + Count(n.left) + Count(n.right);
+    }
+
+    // Count leaves: a node with no children counts as 1.
+    static int Leaves(TreeNode n)
+    {
+        if (n == null) return 0;
+        if (n.left == null && n.right == null) return 1;
+        return Leaves(n.left) + Leaves(n.right);
+    }
+
+    static void Main()
+    {
+        TreeNode root = Build(new int?[] { 1, 2, 3, 4, 5, null, 6 });
+        Console.WriteLine(Count(root) + " nodes, " + Leaves(root) + " leaves"); // 6 nodes, 3 leaves
+    }
+}` }] }],
     codeTitle: ['TreeNode + build from level order + counting'],
     viz: {
       title: 'Tour of tree words',
@@ -492,7 +557,36 @@ int main() {
     printDepths(root, 0);
     cout << "height of tree = " << height(root) << '\\n';   // 3
 }
-` }] }
+` }, { lang: 'csharp', run: true, code: `using System;
+
+// TreeNode as defined in the first lesson (provided by the judge)
+class DepthHeight
+{
+    // DEPTH: top-down. The caller tells me my depth.
+    static void PrintDepths(TreeNode n, int depth)
+    {
+        if (n == null) return;
+        Console.WriteLine(n.val + " is at depth " + depth);
+        PrintDepths(n.left, depth + 1);   // my children are one level deeper
+        PrintDepths(n.right, depth + 1);
+    }
+
+    // HEIGHT: bottom-up. My children tell me their heights.
+    static int Height(TreeNode n)
+    {
+        if (n == null) return 0;                 // empty spot has height 0
+        return 1 + Math.Max(Height(n.left), Height(n.right));
+    }
+
+    static void Main()
+    {
+        var root = new TreeNode(1,
+                new TreeNode(2, new TreeNode(4), new TreeNode(5)),
+                new TreeNode(3, null, new TreeNode(6)));
+        PrintDepths(root, 0);
+        Console.WriteLine("height of tree = " + Height(root));   // 3
+    }
+}` }] }
       },
       {
         title: 'Complete trees fit in an array (no pointers needed)',
@@ -698,7 +792,55 @@ int main() {
     }
     cout << '\\n';                    // 1 2 4 5 3 6 | 4 2 5 1 3 6 | 4 5 2 6 3 1 |
 }
-` }] },
+` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+
+class Traversals
+{
+    // PREORDER: Me, Left, Right
+    static void Preorder(TreeNode node, List<int> result)
+    {
+        if (node == null) return;      // empty spot: nothing to do
+        result.Add(node.val);          // 1) write me down FIRST
+        Preorder(node.left, result);   // 2) then my whole left side
+        Preorder(node.right, result);  // 3) then my whole right side
+    }
+
+    // INORDER: Left, Me, Right   (BST -> sorted order)
+    static void Inorder(TreeNode node, List<int> result)
+    {
+        if (node == null) return;
+        Inorder(node.left, result);    // 1) everything smaller / to my left
+        result.Add(node.val);          // 2) me IN the middle
+        Inorder(node.right, result);   // 3) everything to my right
+    }
+
+    // POSTORDER: Left, Right, Me   (children report before the parent)
+    static void Postorder(TreeNode node, List<int> result)
+    {
+        if (node == null) return;
+        Postorder(node.left, result);
+        Postorder(node.right, result);
+        result.Add(node.val);          // write me down LAST
+    }
+
+    static string Show(List<int> a) => "[" + string.Join(",", a) + "]";
+
+    static void Main()
+    {
+        // Tree:      1
+        //          /   \\
+        //         2     3
+        //        / \\     \\
+        //       4   5     6
+        var root = new TreeNode(1,
+                new TreeNode(2, new TreeNode(4), new TreeNode(5)),
+                new TreeNode(3, null, new TreeNode(6)));
+        var a = new List<int>(); var b = new List<int>(); var c = new List<int>();
+        Preorder(root, a); Inorder(root, b); Postorder(root, c);
+        Console.WriteLine(Show(a) + " " + Show(b) + " " + Show(c)); // [1,2,4,5,3,6] [4,2,5,1,3,6] [4,5,2,6,3,1]
+    }
+}` }] },
     codeTitle: 'All three recursive traversals',
     viz: {
       title: 'Recursive traversal with the call stack',
@@ -813,7 +955,11 @@ long long sum(TreeNode* n) {
     if (!n) return 0;                                // empty subtree adds nothing
     return n->val + sum(n->left) + sum(n->right);    // me + whole left + whole right
 }
-` }] }
+` }, { lang: 'csharp', code: `int Sum(TreeNode n)
+{
+    if (n == null) return 0;                    // empty subtree adds nothing
+    return n.val + Sum(n.left) + Sum(n.right);  // me + whole left + whole right
+}` }] }
       },
       {
         title: 'All root-to-leaf paths — preorder with "undo"',
@@ -870,7 +1016,24 @@ void paths(TreeNode* n, vector<int>& path, vector<vector<int>>& out) {
     }
     path.pop_back();                                 // un-choose: step back up
 }
-` }] }
+` }, { lang: 'csharp', code: `class Paths
+{
+    static void Collect(TreeNode n, List<int> path, List<List<int>> result)
+    {
+        if (n == null) return;
+        path.Add(n.val);                                   // choose: step onto this node
+        if (n.left == null && n.right == null)
+        {
+            result.Add(new List<int>(path));               // a leaf ends a path -> save a COPY
+        }
+        else
+        {
+            Collect(n.left, path, result);                 // explore
+            Collect(n.right, path, result);
+        }
+        path.RemoveAt(path.Count - 1);                     // un-choose: step back up
+    }
+}` }] }
       }
     ],
     deepDive: `<p><b>Why O(N):</b> every node is entered exactly once, plus one quick call for each of the N + 1 null links, so 2N + 1 calls of O(1) work each.</p>
@@ -1082,7 +1245,63 @@ vector<int> postorder(TreeNode* root) {
     while (!s2.empty()) { out.push_back(s2.top()->val); s2.pop(); }   // reversed -> Left, Right, Me
     return out;
 }
-` }] }],
+` }, { lang: 'csharp', code: `class IterativeTraversals
+{
+    // PREORDER (Me, Left, Right)
+    static List<int> Preorder(TreeNode root)
+    {
+        var result = new List<int>();
+        if (root == null) return result;
+        var st = new Stack<TreeNode>();
+        st.Push(root);
+        while (st.Count > 0)
+        {
+            TreeNode n = st.Pop();
+            result.Add(n.val);                      // Me
+            if (n.right != null) st.Push(n.right);  // pushed first -> comes out later
+            if (n.left != null) st.Push(n.left);    // pushed last  -> comes out next
+        }
+        return result;
+    }
+
+    // INORDER (Left, Me, Right)
+    static List<int> Inorder(TreeNode root)
+    {
+        var result = new List<int>();
+        var st = new Stack<TreeNode>();
+        TreeNode cur = root;
+        while (cur != null || st.Count > 0)
+        {
+            while (cur != null)         // slide all the way left
+            {
+                st.Push(cur);
+                cur = cur.left;
+            }
+            cur = st.Pop();             // leftmost unfinished node
+            result.Add(cur.val);        // Me
+            cur = cur.right;            // now handle its right subtree
+        }
+        return result;
+    }
+
+    // POSTORDER (Left, Right, Me) with two stacks
+    static List<int> Postorder(TreeNode root)
+    {
+        var result = new List<int>();
+        if (root == null) return result;
+        var s1 = new Stack<TreeNode>(); var s2 = new Stack<TreeNode>();
+        s1.Push(root);
+        while (s1.Count > 0)
+        {
+            TreeNode n = s1.Pop();
+            s2.Push(n);                              // collect in Me, Right, Left order
+            if (n.left != null) s1.Push(n.left);
+            if (n.right != null) s1.Push(n.right);
+        }
+        while (s2.Count > 0) result.Add(s2.Pop().val); // reversed -> Left, Right, Me
+        return result;
+    }
+}` }] }],
     codeTitle: ['Iterative preorder, inorder, postorder'],
     viz: [{
       title: 'Iterative inorder: slide left, pop, turn right',
@@ -1238,6 +1457,19 @@ vector<int> inorderTraversal(TreeNode* root) {
     vector<int> out;
     walk(root, out);
     return out;
+}` },
+            { lang: 'csharp', code: `List<int> InorderRecursive(TreeNode root)
+{
+    var result = new List<int>();
+    Walk(root, result);
+    return result;
+}
+void Walk(TreeNode n, List<int> result)
+{
+    if (n == null) return;
+    Walk(n.left, result);   // can go 100000 calls deep on a skewed tree
+    result.Add(n.val);
+    Walk(n.right, result);
 }` }
           ]
         }
@@ -1257,7 +1489,7 @@ vector<int> inorderTraversal(TreeNode* root) {
         java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static List<Integer> judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i % 201) - 100);\n        return new Solution().inorderTraversal(root);\n    }\n}",
         python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i % 201) - 100)\n    return Solution().inorder_traversal(root)",
         js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i % 201) - 100);\n  return inorderTraversal(root);\n}",
-        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nvector<int> judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i % 201) - 100; });\n    return Solution().inorderTraversal(root);\n}"
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nvector<int> judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i % 201) - 100; });\n    return Solution().inorderTraversal(root);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static IList<int> Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => (i % 201) - 100);\n        return new Solution().InorderTraversal(root);\n    }\n}"
       }, cases: [
         [[[1,2,3,4,5],0],[4,2,5,1,3]],
         [[[],0],[]],
@@ -1347,7 +1579,33 @@ public:
         return out;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<int> InorderTraversal(TreeNode root)
+    {
+        var result = new List<int>();
+        var st = new Stack<TreeNode>();           // nodes waiting for their left side
+        TreeNode cur = root;
+        // keep going while there is a node to explore OR someone still waiting
+        while (cur != null || st.Count > 0)
+        {
+            // 1) slide as far left as possible, remembering every node we pass
+            while (cur != null)
+            {
+                st.Push(cur);
+                cur = cur.left;
+            }
+            // 2) the top node has no unfinished left side -> it is next in order
+            cur = st.Pop();
+            result.Add(cur.val);
+            // 3) its right subtree comes after it; explore that next
+            cur = cur.right;
+        }
+        return result;
+    }
+}` }],
         dry: {
           head: ['step', 'action', 'stack (bottom→top)', 'cur after', 'output'],
           rows: [
@@ -1449,7 +1707,27 @@ vector<int> postorderOneStack(TreeNode* root) {
     }
     return out;
 }
-` }] }
+` }, { lang: 'csharp', code: `List<int> PostorderOneStack(TreeNode root)
+{
+    var result = new List<int>();
+    var st = new Stack<TreeNode>();
+    TreeNode cur = root, last = null;                 // last = node written most recently
+    while (cur != null || st.Count > 0)
+    {
+        while (cur != null) { st.Push(cur); cur = cur.left; }   // slide left
+        TreeNode top = st.Peek();
+        if (top.right != null && top.right != last)
+        {
+            cur = top.right;                          // right side not done yet -> go there
+        }
+        else
+        {
+            result.Add(top.val);                      // both sides done -> write me
+            last = st.Pop();
+        }
+    }
+    return result;
+}` }] }
       },
       {
         title: 'Morris inorder: O(1) extra space',
@@ -1545,7 +1823,36 @@ vector<int> morrisInorder(TreeNode* root) {
     }
     return out;
 }
-` }] }
+` }, { lang: 'csharp', code: `List<int> MorrisInorder(TreeNode root)
+{
+    var result = new List<int>();
+    TreeNode cur = root;
+    while (cur != null)
+    {
+        if (cur.left == null)                   // nothing on the left: write and go right
+        {
+            result.Add(cur.val);
+            cur = cur.right;
+        }
+        else
+        {
+            TreeNode pred = cur.left;           // find rightmost node of the left subtree
+            while (pred.right != null && pred.right != cur) pred = pred.right;
+            if (pred.right == null)             // first visit: leave a rope back to cur
+            {
+                pred.right = cur;
+                cur = cur.left;
+            }
+            else                                // second visit: left side done
+            {
+                pred.right = null;              // remove the rope (restore the tree)
+                result.Add(cur.val);
+                cur = cur.right;
+            }
+        }
+    }
+    return result;
+}` }] }
       }
     ],
     deepDive: `<p><b>Pick a fast stack.</b> Python: a plain list (<code>append</code> / <code>pop</code>). JavaScript: an array (<code>push</code> / <code>pop</code>). C++: <code>std::stack</code> or a <code>vector</code>. Java: use <code>ArrayDeque</code>, not <code>Stack</code>: <code>java.util.Stack</code> extends the old synchronized <code>Vector</code>: every push/pop takes a lock. <code>ArrayDeque</code> is a resizable circular array, faster and the officially recommended stack. Remember it <b>refuses null</b>, so never push a null child — check first.</p>
@@ -1723,6 +2030,26 @@ vector<vector<int>> levelOrder(TreeNode* root) {
         res.push_back(row);
     }
     return res;
+}` },
+            { lang: 'csharp', code: `List<List<int>> LevelOrderBrute(TreeNode root)
+{
+    var res = new List<List<int>>();
+    int h = Height(root);
+    for (int d = 0; d < h; d++)            // one full DFS per level
+    {
+        var row = new List<int>();
+        Collect(root, 0, d, row);
+        res.Add(row);
+    }
+    return res;
+}
+int Height(TreeNode n) { return n == null ? 0 : 1 + Math.Max(Height(n.left), Height(n.right)); }
+void Collect(TreeNode n, int depth, int target, List<int> row)
+{
+    if (n == null) return;
+    if (depth == target) { row.Add(n.val); return; }
+    Collect(n.left, depth + 1, target, row);
+    Collect(n.right, depth + 1, target, row);
 }` }
           ]
         }
@@ -1833,7 +2160,32 @@ public:
         return res;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<IList<int>> LevelOrder(TreeNode root)
+    {
+        var res = new List<IList<int>>();
+        if (root == null) return res;
+        var q = new Queue<TreeNode>();
+        q.Enqueue(root);
+        while (q.Count > 0)
+        {
+            int size = q.Count;                  // nodes on THIS level only
+            var row = new List<int>();
+            for (int i = 0; i < size; i++)
+            {
+                TreeNode n = q.Dequeue();        // front of the line
+                row.Add(n.val);
+                if (n.left != null) q.Enqueue(n.left);   // next level waits at the back
+                if (n.right != null) q.Enqueue(n.right);
+            }
+            res.Add(row);                        // one level finished
+        }
+        return res;
+    }
+}` }],
         dry: {
           head: ['level', 'size', 'polled (in order)', 'offered', 'queue after level', 'row'],
           rows: [
@@ -1937,7 +2289,29 @@ vector<vector<int>> zigzag(TreeNode* root) {
     }
     return res;
 }
-` }] }
+` }, { lang: 'csharp', code: `List<List<int>> Zigzag(TreeNode root)
+{
+    var res = new List<List<int>>();
+    if (root == null) return res;
+    var q = new Queue<TreeNode>();
+    q.Enqueue(root);
+    bool leftToRight = true;
+    while (q.Count > 0)
+    {
+        int size = q.Count;
+        var row = new LinkedList<int>();
+        for (int i = 0; i < size; i++)
+        {
+            TreeNode n = q.Dequeue();
+            if (leftToRight) row.AddLast(n.val); else row.AddFirst(n.val);  // flip cheaply
+            if (n.left != null) q.Enqueue(n.left);
+            if (n.right != null) q.Enqueue(n.right);
+        }
+        res.Add(new List<int>(row));
+        leftToRight = !leftToRight;
+    }
+    return res;
+}` }] }
       },
       {
         title: 'Minimum depth — BFS stops at the first leaf',
@@ -2015,7 +2389,26 @@ int minDepth(TreeNode* root) {
     }
     return depth;
 }
-` }] }
+` }, { lang: 'csharp', code: `int MinDepth(TreeNode root)
+{
+    if (root == null) return 0;
+    var q = new Queue<TreeNode>();
+    q.Enqueue(root);
+    int depth = 1;
+    while (q.Count > 0)
+    {
+        int size = q.Count;
+        for (int i = 0; i < size; i++)
+        {
+            TreeNode n = q.Dequeue();
+            if (n.left == null && n.right == null) return depth;  // first leaf = nearest leaf
+            if (n.left != null) q.Enqueue(n.left);
+            if (n.right != null) q.Enqueue(n.right);
+        }
+        depth++;
+    }
+    return depth;
+}` }] }
       },
       {
         title: 'Per-level statistics: average and maximum',
@@ -2077,7 +2470,26 @@ vector<double> averageOfLevels(TreeNode* root) {
     }
     return res;
 }
-` }] }
+` }, { lang: 'csharp', code: `List<double> AverageOfLevels(TreeNode root)
+{
+    var res = new List<double>();
+    var q = new Queue<TreeNode>();
+    if (root != null) q.Enqueue(root);
+    while (q.Count > 0)
+    {
+        int size = q.Count;
+        long sum = 0;                                  // long: avoid int overflow
+        for (int i = 0; i < size; i++)
+        {
+            TreeNode n = q.Dequeue();
+            sum += n.val;
+            if (n.left != null) q.Enqueue(n.left);
+            if (n.right != null) q.Enqueue(n.right);
+        }
+        res.Add((double)sum / size);
+    }
+    return res;
+}` }] }
       }
     ],
     deepDive: `<p><b>Memory: BFS vs DFS.</b> BFS keeps one whole level in the queue: for a perfect tree the last level holds (N + 1) / 2 nodes, so BFS space is O(N) on wide trees. DFS keeps one path: O(h) — tiny on a bushy tree but O(N) on a skewed one. So: wide and shallow → DFS is lighter; deep and thin → BFS is lighter.</p>
@@ -2252,6 +2664,25 @@ vector<int> rightSideView(TreeNode* root) {
         res.push_back(row.back());
     }
     return res;
+}` },
+            { lang: 'csharp', code: `List<int> RightViewBrute(TreeNode root)
+{
+    var res = new List<int>();
+    for (int d = 0; ; d++)
+    {
+        var row = new List<int>();
+        Collect(root, 0, d, row);       // full DFS for every depth
+        if (row.Count == 0) break;
+        res.Add(row[row.Count - 1]);
+    }
+    return res;
+}
+void Collect(TreeNode n, int depth, int target, List<int> row)
+{
+    if (n == null) return;
+    if (depth == target) { row.Add(n.val); return; }
+    Collect(n.left, depth + 1, target, row);
+    Collect(n.right, depth + 1, target, row);
 }` }
           ]
         }
@@ -2271,7 +2702,7 @@ vector<int> rightSideView(TreeNode* root) {
         java: "class Check {\n    static List<List<Integer>> judge(TreeNode root) {\n        Solution s = new Solution();\n        return List.of(s.rightSideView(root), s.leftSideView(root));\n    }\n}",
         python: "def judge(root):\n    s = Solution()\n    return [s.right_side_view(root), s.left_side_view(root)]",
         js: "function judge(root) {\n  const s = new Solution();\n  return [s.rightSideView(root), s.leftSideView(root)];\n}",
-        cpp: "vector<vector<int>> judge(TreeNode* root) {\n    Solution s;\n            return {s.rightSideView(root), s.leftSideView(root)};\n}"
+        cpp: "vector<vector<int>> judge(TreeNode* root) {\n    Solution s;\n            return {s.rightSideView(root), s.leftSideView(root)};\n}", csharp: "class Check {\n    public static IList<IList<int>> Judge(TreeNode root) {\n        var s = new Solution();\n        return new List<IList<int>> { s.RightSideView(root), s.LeftSideView(root) };\n    }\n}"
       }, cases: [
         [[[1,2,3,null,5,null,4]],[[1,3,4],[1,2,5]]],
         [[[]],[[],[]]],
@@ -2407,7 +2838,46 @@ private:
         dfs(n->right, depth + 1, ans);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    // RIGHT VIEW with BFS: last node of each level
+    public IList<int> RightSideView(TreeNode root)
+    {
+        var ans = new List<int>();
+        if (root == null) return ans;
+        var q = new Queue<TreeNode>();
+        q.Enqueue(root);
+        while (q.Count > 0)
+        {
+            int size = q.Count;
+            for (int i = 0; i < size; i++)
+            {
+                TreeNode n = q.Dequeue();
+                if (i == size - 1) ans.Add(n.val);   // last on this level -> visible
+                if (n.left != null) q.Enqueue(n.left);
+                if (n.right != null) q.Enqueue(n.right);
+            }
+        }
+        return ans;
+    }
+
+    // LEFT VIEW with DFS: first node reached at each new depth
+    public IList<int> LeftSideView(TreeNode root)
+    {
+        var ans = new List<int>();
+        Dfs(root, 0, ans);
+        return ans;
+    }
+    private void Dfs(TreeNode n, int depth, List<int> ans)
+    {
+        if (n == null) return;
+        if (depth == ans.Count) ans.Add(n.val);  // first time at this depth
+        Dfs(n.left, depth + 1, ans);             // left first -> leftmost wins
+        Dfs(n.right, depth + 1, ans);            // (swap these two for right view)
+    }
+}` }],
         dry: {
           head: ['level', 'size', 'nodes in order', 'i == 0 (left)', 'i == size−1 (right)'],
           rows: [
@@ -2500,7 +2970,22 @@ private:
         dfs(n->left, depth + 1, ans);
     }
 };
-` }] }
+` }, { lang: 'csharp', code: `class RightView
+{
+    List<int> RightSideView(TreeNode root)
+    {
+        var ans = new List<int>();
+        Dfs(root, 0, ans);
+        return ans;
+    }
+    void Dfs(TreeNode n, int depth, List<int> ans)
+    {
+        if (n == null) return;
+        if (depth == ans.Count) ans.Add(n.val);    // first visitor of this depth
+        Dfs(n.right, depth + 1, ans);              // right first -> rightmost arrives first
+        Dfs(n.left, depth + 1, ans);
+    }
+}` }] }
       }
     ],
     deepDive: `<p><b>Why does <code>depth == ans.size()</code> work?</b> <code>ans</code> holds exactly one value for each depth 0 … ans.size() − 1 already seen. DFS goes deeper one level at a time, so the first time it reaches a new depth d, ans.size() is exactly d. Any later node at depth d sees ans.size() &gt; d and is ignored. Because we visit the preferred side first, the first arrival is the leftmost (or rightmost) node at that depth — a short induction on the visiting order.</p>
@@ -2700,6 +3185,28 @@ vector<int> topView(TreeNode* root) {
         res.push_back(val);
     }
     return res;
+}` },
+            { lang: 'csharp', code: `List<int> TopViewBrute(TreeNode root)
+{
+    var all = new List<int[]>();            // {hd, depth, value}
+    Collect(root, 0, 0, all);
+    int lo = int.MaxValue, hi = int.MinValue;
+    foreach (int[] e in all) { lo = Math.Min(lo, e[0]); hi = Math.Max(hi, e[0]); }
+    var res = new List<int>();
+    for (int hd = lo; hd <= hi; hd++)       // one full scan per column
+    {
+        int bestDepth = int.MaxValue, val = 0;
+        foreach (int[] e in all) if (e[0] == hd && e[1] < bestDepth) { bestDepth = e[1]; val = e[2]; }
+        res.Add(val);
+    }
+    return res;
+}
+void Collect(TreeNode n, int hd, int depth, List<int[]> all)
+{
+    if (n == null) return;
+    all.Add(new[] { hd, depth, n.val });
+    Collect(n.left, hd - 1, depth + 1, all);
+    Collect(n.right, hd + 1, depth + 1, all);
 }` }
           ]
         }
@@ -2719,7 +3226,7 @@ vector<int> topView(TreeNode* root) {
         java: "class Check {\n    static List<List<Integer>> judge(TreeNode root) {\n        Solution s = new Solution();\n        return List.of(s.topView(root), s.bottomView(root));\n    }\n}",
         python: "def judge(root):\n    s = Solution()\n    return [s.top_view(root), s.bottom_view(root)]",
         js: "function judge(root) {\n  const s = new Solution();\n  return [s.topView(root), s.bottomView(root)];\n}",
-        cpp: "vector<vector<int>> judge(TreeNode* root) {\n    Solution s;\n            return {s.topView(root), s.bottomView(root)};\n}"
+        cpp: "vector<vector<int>> judge(TreeNode* root) {\n    Solution s;\n            return {s.topView(root), s.bottomView(root)};\n}", csharp: "class Check {\n    public static IList<IList<int>> Judge(TreeNode root) {\n        var s = new Solution();\n        return new List<IList<int>> { s.TopView(root), s.BottomView(root) };\n    }\n}"
       }, cases: [
         [[[20,8,22,5,3,null,25,null,null,10,14]],[[5,8,20,22,25],[5,10,3,14,25]]],
         [[[1]],[[1],[1]]],
@@ -2827,7 +3334,34 @@ private:
         return res;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<int> TopView(TreeNode root) { return View(root, true); }
+    public IList<int> BottomView(TreeNode root) { return View(root, false); }
+
+    private IList<int> View(TreeNode root, bool top)
+    {
+        var res = new List<int>();
+        if (root == null) return res;
+        var col = new SortedDictionary<int, int>();        // hd -> visible value, sorted by hd
+        var nodes = new Queue<TreeNode>();
+        var hds = new Queue<int>();                        // hd of the node at the same position
+        nodes.Enqueue(root); hds.Enqueue(0);
+        while (nodes.Count > 0)
+        {
+            TreeNode n = nodes.Dequeue();
+            int hd = hds.Dequeue();
+            if (top) { if (!col.ContainsKey(hd)) col[hd] = n.val; }  // first (highest) one stays
+            else col[hd] = n.val;                                     // last (lowest) one wins
+            if (n.left != null) { nodes.Enqueue(n.left); hds.Enqueue(hd - 1); }
+            if (n.right != null) { nodes.Enqueue(n.right); hds.Enqueue(hd + 1); }
+        }
+        res.AddRange(col.Values);                 // leftmost column first
+        return res;
+    }
+}` }],
         dry: {
           head: ['BFS node', 'hd', 'top map (first one stays)', 'bottom map (put)'],
           rows: [
@@ -2954,7 +3488,29 @@ vector<vector<int>> verticalOrder(TreeNode* root) {
     for (int hd = minHd; hd <= maxHd; hd++) res.push_back(move(cols[hd]));   // every hd in range exists
     return res;
 }
-` }] }
+` }, { lang: 'csharp', code: `List<List<int>> VerticalOrder(TreeNode root)
+{
+    var res = new List<List<int>>();
+    if (root == null) return res;
+    var cols = new Dictionary<int, List<int>>();
+    var nodes = new Queue<TreeNode>();
+    var hds = new Queue<int>();
+    nodes.Enqueue(root); hds.Enqueue(0);
+    int minHd = 0, maxHd = 0;                      // track range -> no sorted map needed
+    while (nodes.Count > 0)
+    {
+        TreeNode n = nodes.Dequeue();
+        int hd = hds.Dequeue();
+        if (!cols.ContainsKey(hd)) cols[hd] = new List<int>();
+        cols[hd].Add(n.val);
+        minHd = Math.Min(minHd, hd);
+        maxHd = Math.Max(maxHd, hd);
+        if (n.left != null) { nodes.Enqueue(n.left); hds.Enqueue(hd - 1); }
+        if (n.right != null) { nodes.Enqueue(n.right); hds.Enqueue(hd + 1); }
+    }
+    for (int hd = minHd; hd <= maxHd; hd++) res.Add(cols[hd]);   // every hd in range exists
+    return res;
+}` }] }
       }
     ],
     deepDive: `<p><b>Every column between min and max is non-empty.</b> Moving from a parent to a child changes hd by exactly 1, so the set of columns used is a contiguous range [minHd, maxHd]. That is why the code above can loop from minHd to maxHd without null checks, and why you can replace the map by an array of size 2N + 1 with offset N (hd + N is always in [0, 2N]). Result: O(N) instead of O(N log N).</p>
@@ -3090,6 +3646,17 @@ int diameterOfBinaryTree(TreeNode* n) {
     if (n == nullptr) return 0;
     int through = height(n->left) + height(n->right);  // recomputed for every node
     return max(through, max(diameterOfBinaryTree(n->left), diameterOfBinaryTree(n->right)));
+}` },
+            { lang: 'csharp', code: `int Height(TreeNode n)
+{
+    if (n == null) return 0;
+    return 1 + Math.Max(Height(n.left), Height(n.right));
+}
+int DiameterBrute(TreeNode n)
+{
+    if (n == null) return 0;
+    int through = Height(n.left) + Height(n.right);  // recomputed for every node
+    return Math.Max(through, Math.Max(DiameterBrute(n.left), DiameterBrute(n.right)));
 }` }
           ]
         }
@@ -3109,7 +3676,7 @@ int diameterOfBinaryTree(TreeNode* n) {
         java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int[] judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> 1);\n        Solution s = new Solution();\n        return new int[]{s.maxDepth(root), s.diameterOfBinaryTree(root)};\n    }\n}",
         python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: 1)\n    s = Solution()\n    return [s.max_depth(root), s.diameter_of_binary_tree(root)]",
         js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => 1);\n  const s = new Solution();\n  return [s.maxDepth(root), s.diameterOfBinaryTree(root)];\n}",
-        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nvector<int> judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return 1; });\n    Solution s;\n            return {s.maxDepth(root), s.diameterOfBinaryTree(root)};\n}"
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nvector<int> judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return 1; });\n    Solution s;\n            return {s.maxDepth(root), s.diameterOfBinaryTree(root)};\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static int[] Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => 1);\n        var s = new Solution();\n        return new int[] { s.MaxDepth(root), s.DiameterOfBinaryTree(root) };\n    }\n}"
       }, cases: [
         [[[1,2,3,4,5],0],[3,3]],
         [[[1],0],[1,0]],
@@ -3246,7 +3813,55 @@ private:
         return 1 + max(lh, rh);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int MaxDepth(TreeNode root)
+    {
+        if (root == null) return 0;
+        var q = new Queue<TreeNode>();
+        q.Enqueue(root);
+        int depth = 0;
+        while (q.Count > 0)                          // one loop turn per level
+        {
+            depth++;
+            for (int i = q.Count; i > 0; i--)
+            {
+                TreeNode n = q.Dequeue();
+                if (n.left != null) q.Enqueue(n.left);
+                if (n.right != null) q.Enqueue(n.right);
+            }
+        }
+        return depth;
+    }
+
+    public int DiameterOfBinaryTree(TreeNode root)
+    {
+        var order = new List<TreeNode>();            // parents before children
+        var st = new Stack<TreeNode>();
+        st.Push(root);
+        while (st.Count > 0)
+        {
+            TreeNode n = st.Pop();
+            order.Add(n);
+            if (n.left != null) st.Push(n.left);
+            if (n.right != null) st.Push(n.right);
+        }
+        var height = new Dictionary<TreeNode, int>();   // height in nodes
+        int best = 0;                                // longest path (in edges) found so far
+        for (int i = order.Count - 1; i >= 0; i--)   // backwards: children first (postorder)
+        {
+            TreeNode n = order[i];
+            int lh = n.left == null ? 0 : height[n.left];
+            int rh = n.right == null ? 0 : height[n.right];
+            best = Math.Max(best, lh + rh);          // longest path that bends at n
+            height[n] = 1 + Math.Max(lh, rh);        // what my parent needs
+        }
+        return best;
+    }
+}` }],
         dry: {
           head: ['node (postorder)', 'lh', 'rh', 'lh + rh', 'best', 'returns'],
           rows: [
@@ -3348,7 +3963,20 @@ class MaxPathSum {
 public:
     int maxPathSum(TreeNode* root) { gain(root); return best; }
 };
-` }] }
+` }, { lang: 'csharp', code: `class MaxPathSum
+{
+    int best = int.MinValue;
+    int Solve(TreeNode root) { Gain(root); return best; }
+    // best sum of a path that starts at n and goes DOWN (what the parent can use)
+    int Gain(TreeNode n)
+    {
+        if (n == null) return 0;
+        int l = Math.Max(0, Gain(n.left));     // ignore a branch that would lower the sum
+        int r = Math.Max(0, Gain(n.right));
+        best = Math.Max(best, n.val + l + r);  // path that bends at n
+        return n.val + Math.Max(l, r);         // parent may continue only one side
+    }
+}` }] }
       }
     ],
     deepDive: `<p><b>Why the one-pass version is O(N):</b> each node is visited once and does O(1) work after its children return. The brute version calls <code>height()</code> (O(size of subtree)) at every node; the sum of subtree sizes equals the sum of depths, which is Θ(N log N) for a balanced tree and Θ(N<sup>2</sup>) for a chain.</p>
@@ -3491,6 +4119,16 @@ bool isBalanced(TreeNode* n) {
     if (n == nullptr) return true;
     if (abs(height(n->left) - height(n->right)) > 1) return false;
     return isBalanced(n->left) && isBalanced(n->right);  // heights recomputed below
+}` },
+            { lang: 'csharp', code: `int Height(TreeNode n)
+{
+    return n == null ? 0 : 1 + Math.Max(Height(n.left), Height(n.right));
+}
+bool IsBalancedBrute(TreeNode n)
+{
+    if (n == null) return true;
+    if (Math.Abs(Height(n.left) - Height(n.right)) > 1) return false;
+    return IsBalancedBrute(n.left) && IsBalancedBrute(n.right);  // heights recomputed below
 }` }
           ]
         }
@@ -3510,7 +4148,7 @@ bool isBalanced(TreeNode* n) {
         java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static boolean judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> 0);\n        return new Solution().isBalanced(root);\n    }\n}",
         python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: 0)\n    return Solution().is_balanced(root)",
         js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => 0);\n  return isBalanced(root);\n}",
-        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return 0; });\n    return Solution().isBalanced(root);\n}"
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return 0; });\n    return Solution().isBalanced(root);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static bool Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => 0);\n        return new Solution().IsBalanced(root);\n    }\n}"
       }, cases: [
         [[[1,2,2,3,3,null,null,4,4],0],false],
         [[[3,9,20,null,null,15,7],0],true],
@@ -3593,7 +4231,27 @@ private:
         return 1 + max(lh, rh);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System;
+
+public class Solution
+{
+    public bool IsBalanced(TreeNode root)
+    {
+        return Check(root) != -1;
+    }
+
+    // Returns height if balanced, otherwise -1.
+    private int Check(TreeNode n)
+    {
+        if (n == null) return 0;             // empty tree: height 0, balanced
+        int lh = Check(n.left);
+        if (lh == -1) return -1;             // left side broken -> stop early
+        int rh = Check(n.right);
+        if (rh == -1) return -1;             // right side broken
+        if (Math.Abs(lh - rh) > 1) return -1; // I am the broken one
+        return 1 + Math.Max(lh, rh);         // balanced: report my height
+    }
+}` }],
         dry: {
           head: ['call (postorder)', 'lh', 'rh', '|lh − rh|', 'returns'],
           rows: [
@@ -3786,7 +4444,31 @@ TreeNode* lcaBST(TreeNode* root, TreeNode* p, TreeNode* q) {
     }
     return nullptr;
 }
-` }] }],
+` }, { lang: 'csharp', code: `class LCA
+{
+    // Plain binary tree: O(N) time, O(h) stack
+    static TreeNode LcaBinaryTree(TreeNode node, TreeNode p, TreeNode q)
+    {
+        if (node == null || node == p || node == q) return node; // nothing, or found one
+        TreeNode left = LcaBinaryTree(node.left, p, q);
+        TreeNode right = LcaBinaryTree(node.right, p, q);
+        if (left != null && right != null) return node;  // p and q on different sides
+        return left ?? right;                             // pass up whatever was found
+    }
+
+    // BST: O(h) time, O(1) space
+    static TreeNode LcaBST(TreeNode root, TreeNode p, TreeNode q)
+    {
+        TreeNode cur = root;
+        while (cur != null)
+        {
+            if (p.val < cur.val && q.val < cur.val) cur = cur.left;        // both smaller
+            else if (p.val > cur.val && q.val > cur.val) cur = cur.right;  // both bigger
+            else return cur;                                               // split point
+        }
+        return null;
+    }
+}` }] }],
     codeTitle: ['LCA: binary tree (recursive) and BST (iterative)'],
     viz: [{
       title: 'LCA in a binary tree: what each subtree reports',
@@ -3966,6 +4648,23 @@ TreeNode* lowestCommonAncestor(TreeNode* root, TreeNode* p, TreeNode* q) {
     TreeNode* ans = nullptr;
     for (size_t i = 0; i < a.size() && i < b.size() && a[i] == b[i]; i++) ans = a[i];
     return ans;
+}` },
+            { lang: 'csharp', code: `TreeNode LcaBrute(TreeNode root, TreeNode p, TreeNode q)
+{
+    var a = new List<TreeNode>(); var b = new List<TreeNode>();
+    Path(root, p, a);
+    Path(root, q, b);
+    TreeNode ans = null;
+    for (int i = 0; i < a.Count && i < b.Count && a[i] == b[i]; i++) ans = a[i];
+    return ans;
+}
+bool Path(TreeNode n, TreeNode target, List<TreeNode> result)
+{
+    if (n == null) return false;
+    result.Add(n);
+    if (n == target || Path(n.left, target, result) || Path(n.right, target, result)) return true;
+    result.RemoveAt(result.Count - 1);   // dead end: undo
+    return false;
 }` }
           ]
         }
@@ -3985,7 +4684,7 @@ TreeNode* lowestCommonAncestor(TreeNode* root, TreeNode* p, TreeNode* q) {
         java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode find(TreeNode root, int v) {\n        Deque<TreeNode> st = new ArrayDeque<>();\n        st.push(root);\n        while (!st.isEmpty()) {\n            TreeNode t = st.pop();\n            if (t.val == v) return t;\n            if (t.left != null) st.push(t.left);\n            if (t.right != null) st.push(t.right);\n        }\n        return null;\n    }\n\n    static int judge(TreeNode root, int p, int q, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        // the judge passes the real nodes of this tree, so find them first\n        return new Solution().lowestCommonAncestor(root, find(root, p), find(root, q)).val;\n    }\n}",
         python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef _find(root, v):\n    st = [root]\n    while st:\n        t = st.pop()\n        if t.val == v:\n            return t\n        st.extend(c for c in (t.left, t.right) if c)\n\ndef judge(root, p, q, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().lowest_common_ancestor(root, _find(root, p), _find(root, q)).val",
         js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction find__(root, v) {\n  const st = [root];\n  while (st.length) {\n    const t = st.pop();\n    if (t.val === v) return t;\n    if (t.left) st.push(t.left);\n    if (t.right) st.push(t.right);\n  }\n  return null;\n}\n\nfunction judge(root, p, q, n) {\n  if (n) root = chain__(n, (i) => i);\n  return lowestCommonAncestor(root, find__(root, p), find__(root, q)).val;\n}",
-        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* find__(TreeNode* root, int v) {\n    vector<TreeNode*> st{root};\n    while (!st.empty()) {\n        TreeNode* t = st.back(); st.pop_back();\n        if (t->val == v) return t;\n        if (t->left) st.push_back(t->left);\n        if (t->right) st.push_back(t->right);\n    }\n    return nullptr;\n}\n\nint judge(TreeNode* root, int p, int q, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().lowestCommonAncestor(root, find__(root, p), find__(root, q))->val;\n}"
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* find__(TreeNode* root, int v) {\n    vector<TreeNode*> st{root};\n    while (!st.empty()) {\n        TreeNode* t = st.back(); st.pop_back();\n        if (t->val == v) return t;\n        if (t->left) st.push_back(t->left);\n        if (t->right) st.push_back(t->right);\n    }\n    return nullptr;\n}\n\nint judge(TreeNode* root, int p, int q, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().lowestCommonAncestor(root, find__(root, p), find__(root, q))->val;\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode Find(TreeNode root, int v) {\n        var st = new Stack<TreeNode>();\n        st.Push(root);\n        while (st.Count > 0) {\n            TreeNode t = st.Pop();\n            if (t.val == v) return t;\n            if (t.left != null) st.Push(t.left);\n            if (t.right != null) st.Push(t.right);\n        }\n        return null;\n    }\n\n    public static int Judge(TreeNode root, int p, int q, int n) {\n        if (n != 0) root = Chain(n, i => i);\n        // the judge passes the real nodes of this tree, so find them first\n        return new Solution().LowestCommonAncestor(root, Find(root, p), Find(root, q)).val;\n    }\n}"
       }, cases: [
         [[[3,5,1,6,2,0,8,null,null,7,4],6,4,0],5],
         [[[3,5,1,6,2,0,8,null,null,7,4],5,1,0],3],
@@ -4076,7 +4775,36 @@ public:
         return left ? left : right;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public TreeNode LowestCommonAncestor(TreeNode root, TreeNode p, TreeNode q)
+    {
+        var order = new List<TreeNode>();                  // parents before children
+        var st = new Stack<TreeNode>();
+        st.Push(root);
+        while (st.Count > 0)
+        {
+            TreeNode n = st.Pop();
+            order.Add(n);
+            if (n.left != null) st.Push(n.left);
+            if (n.right != null) st.Push(n.right);
+        }
+        var report = new Dictionary<TreeNode, TreeNode>(); // what each subtree found (absent = nothing)
+        for (int i = order.Count - 1; i >= 0; i--)         // backwards: children report first
+        {
+            TreeNode n = order[i];
+            if (n == p || n == q) { report[n] = n; continue; }   // found a target
+            TreeNode left, right;
+            if (n.left == null || !report.TryGetValue(n.left, out left)) left = null;     // what is on my left?
+            if (n.right == null || !report.TryGetValue(n.right, out right)) right = null; // what is on my right?
+            if (left != null && right != null) report[n] = n;      // one on each side -> I am the LCA
+            else report[n] = left ?? right;                        // pass up the one found (or null)
+        }
+        return report[root];
+    }
+}` }],
         dry: {
           head: ['node', 'left reports', 'right reports', 'returns', 'reason'],
           rows: [
@@ -4182,7 +4910,28 @@ private:
         return l != -1 ? l : depth(n->right, target, d + 1);
     }
 };
-` }] }
+` }, { lang: 'csharp', code: `class Distance
+{
+    int Dist(TreeNode root, TreeNode p, TreeNode q)
+    {
+        TreeNode lca = Lca(root, p, q);
+        return Depth(lca, p, 0) + Depth(lca, q, 0);   // walk down from the LCA
+    }
+    TreeNode Lca(TreeNode n, TreeNode p, TreeNode q)
+    {
+        if (n == null || n == p || n == q) return n;
+        TreeNode l = Lca(n.left, p, q), r = Lca(n.right, p, q);
+        return (l != null && r != null) ? n : (l ?? r);
+    }
+    // edges from n down to target, or -1 if target is not below n
+    int Depth(TreeNode n, TreeNode target, int d)
+    {
+        if (n == null) return -1;
+        if (n == target) return d;
+        int l = Depth(n.left, target, d + 1);
+        return l != -1 ? l : Depth(n.right, target, d + 1);
+    }
+}` }] }
       },
       {
         title: 'With parent pointers it becomes "intersection of two lists"',
@@ -4232,7 +4981,21 @@ Node* lca(Node* p, Node* q) {
     }
     return a;
 }
-` }] }
+` }, { lang: 'csharp', code: `class Node { public int val; public Node left, right, parent; }
+
+class ParentLCA
+{
+    Node Lca(Node p, Node q)
+    {
+        Node a = p, b = q;
+        while (a != b)                      // each pointer walks depth(p) + depth(q) steps max
+        {
+            a = (a == null) ? q : a.parent;
+            b = (b == null) ? p : b.parent;
+        }
+        return a;
+    }
+}` }] }
       },
       {
         title: 'BST shortcut on numbers',
@@ -4539,7 +5302,88 @@ int main() {
     cout << *t.floor(65) << ' ' << *t.ceil(65) << '\\n';         // 60 70
     cout << t.minVal() << ' ' << t.maxVal() << '\\n';            // 20 80
 }
-` }] }, { lang: 'python', run: true, title: 'Same BST in Python (runnable)', code: `class Node:
+` }, { lang: 'csharp', run: true, code: `using System;
+
+class BST
+{
+    TreeNode root;
+
+    // SEARCH (iterative): O(h) time, O(1) space
+    TreeNode Search(int key)
+    {
+        TreeNode cur = root;
+        while (cur != null && cur.val != key)
+        {
+            cur = (key < cur.val) ? cur.left : cur.right;   // throw away half each step
+        }
+        return cur;   // null if not found
+    }
+
+    // INSERT (recursive): returns the (possibly new) root of this subtree
+    TreeNode Insert(TreeNode node, int key)
+    {
+        if (node == null) return new TreeNode(key);         // fell off -> new leaf here
+        if (key < node.val) node.left = Insert(node.left, key);
+        else if (key > node.val) node.right = Insert(node.right, key);
+        // key == node.val: duplicate, ignore (a BST "set")
+        return node;
+    }
+
+    // INSERT (iterative): walk down remembering the parent
+    void InsertIter(int key)
+    {
+        var fresh = new TreeNode(key);
+        if (root == null) { root = fresh; return; }
+        TreeNode cur = root, parent = null;
+        while (cur != null)
+        {
+            parent = cur;
+            if (key == cur.val) return;                      // duplicate
+            cur = (key < cur.val) ? cur.left : cur.right;
+        }
+        if (key < parent.val) parent.left = fresh; else parent.right = fresh;
+    }
+
+    int Min() { TreeNode c = root; while (c.left != null) c = c.left; return c.val; }
+    int Max() { TreeNode c = root; while (c.right != null) c = c.right; return c.val; }
+
+    // FLOOR: largest value <= x, or null if none
+    int? Floor(int x)
+    {
+        int? best = null;
+        TreeNode cur = root;
+        while (cur != null)
+        {
+            if (cur.val == x) return x;
+            if (cur.val < x) { best = cur.val; cur = cur.right; }  // candidate, try bigger
+            else cur = cur.left;                                  // too big, go smaller
+        }
+        return best;
+    }
+
+    // CEIL: smallest value >= x, or null if none
+    int? Ceil(int x)
+    {
+        int? best = null;
+        TreeNode cur = root;
+        while (cur != null)
+        {
+            if (cur.val == x) return x;
+            if (cur.val > x) { best = cur.val; cur = cur.left; }   // candidate, try smaller
+            else cur = cur.right;
+        }
+        return best;
+    }
+
+    static void Main()
+    {
+        var t = new BST();
+        foreach (int v in new[] { 50, 30, 70, 20, 40, 60, 80 }) t.root = t.Insert(t.root, v);
+        Console.WriteLine(t.Search(60) != null);           // True
+        Console.WriteLine(t.Floor(65) + " " + t.Ceil(65)); // 60 70
+        Console.WriteLine(t.Min() + " " + t.Max());        // 20 80
+    }
+}` }] }, { lang: 'python', run: true, title: 'Same BST in Python (runnable)', code: `class Node:
     def __init__(self, val):
         self.val, self.left, self.right = val, None, None
 
@@ -4711,7 +5555,24 @@ cout << *prev(s.lower_bound(60)) << '\\n';   // 50  lower: strictly smaller
 cout << *s.upper_bound(60) << '\\n';         // 70  higher: strictly bigger
 cout << *s.begin() << ' ' << *s.rbegin() << '\\n';   // 20 80
 for (auto it = s.lower_bound(30); it != s.upper_bound(60); ++it) cout << *it << ' ';   // 30 40 50 60
-` }] }
+` }, { lang: 'csharp', run: true, code: `using System;
+using System.Collections.Generic;
+using System.Linq;
+
+class SortedSetDemo
+{
+    static void Main()
+    {
+        // SortedSet<T> is a red-black tree: every query below is O(log n).
+        var set = new SortedSet<int> { 50, 30, 70, 20, 40, 60, 80 };
+        Console.WriteLine(set.GetViewBetween(int.MinValue, 65).Max);   // 60  floor: largest <= 65
+        Console.WriteLine(set.GetViewBetween(65, int.MaxValue).Min);   // 70  ceiling: smallest >= 65
+        Console.WriteLine(set.GetViewBetween(int.MinValue, 59).Max);   // 50  strictly smaller than 60
+        Console.WriteLine(set.GetViewBetween(61, int.MaxValue).Min);   // 70  strictly bigger than 60
+        Console.WriteLine(set.Min + " " + set.Max);                    // 20 80
+        Console.WriteLine("[" + string.Join(", ", set.GetViewBetween(30, 60)) + "]");   // [30, 40, 50, 60] range query
+    }
+}` }] }
       }
     ],
     deepDive: `<p><b>Expected vs worst height:</b> for N keys inserted in random order, the expected depth of a node is about 2 ln N ≈ 1.39 log₂N and the expected height about 4.311 ln N ≈ 2.99 log₂N. Sorted or nearly sorted input gives height N, so every operation becomes O(N) — the same as a linked list.</p>
@@ -4816,6 +5677,25 @@ TreeNode* insertIntoBST(TreeNode* root, int val) {
     all.push_back(val);
     sort(all.begin(), all.end());           // O(N log N)
     return build(all, 0, (int)all.size() - 1);
+}` },
+            { lang: 'csharp', code: `TreeNode InsertBrute(TreeNode root, int val)
+{
+    var all = new List<int>();
+    Collect(root, all);                 // O(N)
+    all.Add(val);
+    all.Sort();                         // O(N log N)
+    return Build(all, 0, all.Count - 1);
+}
+void Collect(TreeNode n, List<int> result)
+{
+    if (n == null) return;
+    Collect(n.left, result); result.Add(n.val); Collect(n.right, result);
+}
+TreeNode Build(List<int> a, int lo, int hi)
+{
+    if (lo > hi) return null;
+    int mid = (lo + hi) >> 1;           // middle element becomes the root
+    return new TreeNode(a[mid], Build(a, lo, mid - 1), Build(a, mid + 1, hi));
 }` }
           ]
         }
@@ -4835,7 +5715,7 @@ TreeNode* insertIntoBST(TreeNode* root, int val) {
         java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode judge(TreeNode root, int val, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        return new Solution().insertIntoBST(root, val);\n    }\n}",
         python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, val, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().insert_into_bst(root, val)",
         js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, val, n) {\n  if (n) root = chain__(n, (i) => i);\n  return insertIntoBST(root, val);\n}",
-        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int val, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().insertIntoBST(root, val);\n}"
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int val, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().insertIntoBST(root, val);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static TreeNode Judge(TreeNode root, int val, int n) {\n        if (n != 0) root = Chain(n, i => i);\n        return new Solution().InsertIntoBST(root, val);\n    }\n}"
       }, cases: [
         [[[4,2,7,1,3],5,0],[1,2,3,4,5,7]],
         [[[],5,0],[5]],
@@ -4914,7 +5794,28 @@ public:
         return root;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    public TreeNode InsertIntoBST(TreeNode root, int val)
+    {
+        var fresh = new TreeNode(val);
+        if (root == null) return fresh;               // empty tree: the new node is the root
+        TreeNode cur = root;
+        while (true)
+        {
+            if (val < cur.val)                        // belongs on the smaller side
+            {
+                if (cur.left == null) { cur.left = fresh; return root; }    // empty spot: new leaf
+                cur = cur.left;
+            }
+            else                                      // belongs on the bigger side
+            {
+                if (cur.right == null) { cur.right = fresh; return root; }
+                cur = cur.right;
+            }
+        }
+    }
+}` }],
         dry: {
           head: ['cur', 'compare', 'next link', 'action'],
           rows: [
@@ -5140,7 +6041,60 @@ int main() {
     inorder(root, cout);
     cout << '\\n';                                         // root=60 inorder=20 30 40 60 65 70 80
 }
-` }] },
+` }, { lang: 'csharp', run: true, code: `using System;
+using System.Text;
+
+class BSTDelete
+{
+    // Returns the root of this subtree after deleting key (if present).
+    static TreeNode DeleteNode(TreeNode node, int key)
+    {
+        if (node == null) return null;                       // key not found: nothing changes
+        if (key < node.val)
+        {
+            node.left = DeleteNode(node.left, key);          // it lives on the left
+        }
+        else if (key > node.val)
+        {
+            node.right = DeleteNode(node.right, key);        // it lives on the right
+        }
+        else
+        {
+            // found it
+            if (node.left == null) return node.right;        // case 1 (both null) or case 2 (only right)
+            if (node.right == null) return node.left;        // case 2 (only left)
+            // case 3: two children -> inorder successor = min of right subtree
+            TreeNode succ = node.right;
+            while (succ.left != null) succ = succ.left;
+            node.val = succ.val;                             // copy successor into this chair
+            node.right = DeleteNode(node.right, succ.val);   // remove the successor's old copy
+        }
+        return node;
+    }
+
+    static void Inorder(TreeNode n, StringBuilder sb)
+    {
+        if (n == null) return;
+        Inorder(n.left, sb); sb.Append(n.val).Append(' '); Inorder(n.right, sb);
+    }
+
+    static void Main()
+    {
+        TreeNode root = null;
+        foreach (int v in new[] { 50, 30, 70, 20, 40, 60, 80, 65 }) root = Insert(root, v);
+        root = DeleteNode(root, 50);                       // two children
+        var sb = new StringBuilder();
+        Inorder(root, sb);
+        Console.WriteLine("root=" + root.val + " inorder=" + sb);  // root=60 inorder=20 30 40 60 65 70 80
+    }
+
+    static TreeNode Insert(TreeNode n, int v)
+    {
+        if (n == null) return new TreeNode(v);
+        if (v < n.val) n.left = Insert(n.left, v); else n.right = Insert(n.right, v);
+        return n;
+    }
+}` }] },
     codeTitle: 'Recursive BST delete with the inorder successor',
     viz: {
       title: 'Delete step by step (with the call stack)',
@@ -5318,7 +6272,22 @@ TreeNode* deleteWithPredecessor(TreeNode* node, int key) {
     }
     return node;
 }
-` }] }
+` }, { lang: 'csharp', code: `TreeNode DeleteWithPredecessor(TreeNode node, int key)
+{
+    if (node == null) return null;
+    if (key < node.val) node.left = DeleteWithPredecessor(node.left, key);
+    else if (key > node.val) node.right = DeleteWithPredecessor(node.right, key);
+    else
+    {
+        if (node.left == null) return node.right;
+        if (node.right == null) return node.left;
+        TreeNode pred = node.left;                       // max of the left subtree
+        while (pred.right != null) pred = pred.right;
+        node.val = pred.val;
+        node.left = DeleteWithPredecessor(node.left, pred.val);
+    }
+    return node;
+}` }] }
       }
     ],
     deepDive: `<p><b>Copy value vs move node:</b> the code above copies the successor's value into the node. That is fine in interviews, but in real systems a node may carry a big payload or be referenced from elsewhere (an iterator, a handle). Then you <b>splice</b> the successor node itself into place by re-linking pointers instead of copying data. Java's <code>TreeMap</code> copies key/value into the entry; most C++ implementations relink nodes so iterators stay valid.</p>
@@ -5422,6 +6391,25 @@ TreeNode* deleteNode(TreeNode* root, int key) {
     vector<int> keep;
     collect(root, key, keep);               // sorted, without the key
     return build(keep, 0, (int)keep.size() - 1);
+}` },
+            { lang: 'csharp', code: `TreeNode DeleteBrute(TreeNode root, int key)
+{
+    var keep = new List<int>();
+    Collect(root, key, keep);                       // sorted, without the key
+    return Build(keep, 0, keep.Count - 1);
+}
+void Collect(TreeNode n, int key, List<int> result)
+{
+    if (n == null) return;
+    Collect(n.left, key, result);
+    if (n.val != key) result.Add(n.val);
+    Collect(n.right, key, result);
+}
+TreeNode Build(List<int> a, int lo, int hi)
+{
+    if (lo > hi) return null;
+    int mid = (lo + hi) >> 1;
+    return new TreeNode(a[mid], Build(a, lo, mid - 1), Build(a, mid + 1, hi));
 }` }
           ]
         }
@@ -5441,7 +6429,7 @@ TreeNode* deleteNode(TreeNode* root, int key) {
         java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode judge(TreeNode root, int key, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        return new Solution().deleteNode(root, key);\n    }\n}",
         python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, key, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().delete_node(root, key)",
         js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, key, n) {\n  if (n) root = chain__(n, (i) => i);\n  return deleteNode(root, key);\n}",
-        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int key, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().deleteNode(root, key);\n}"
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int key, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().deleteNode(root, key);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static TreeNode Judge(TreeNode root, int key, int n) {\n        if (n != 0) root = Chain(n, i => i);\n        return new Solution().DeleteNode(root, key);\n    }\n}"
       }, cases: [
         [[[5,3,6,2,4,null,7],3,0],[2,4,5,6,7]],
         [[[5,3,6,2,4,null,7],0,0],[2,3,4,5,6,7]],
@@ -5543,7 +6531,30 @@ public:
         return root;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    public TreeNode DeleteNode(TreeNode root, int key)
+    {
+        TreeNode parent = null, cur = root;
+        while (cur != null && cur.val != key)           // search, remembering the parent
+        {
+            parent = cur;
+            cur = key < cur.val ? cur.left : cur.right;
+        }
+        if (cur == null) return root;                   // not found
+        if (cur.left != null && cur.right != null)      // two children:
+        {
+            TreeNode sp = cur, succ = cur.right;        //   min of the right subtree
+            while (succ.left != null) { sp = succ; succ = succ.left; }
+            cur.val = succ.val;                         //   take its value
+            parent = sp; cur = succ;                    //   now remove the successor (no left child)
+        }
+        TreeNode child = cur.left ?? cur.right;         // leaf or one child
+        if (parent == null) return child;               // we removed the root
+        if (parent.left == cur) parent.left = child; else parent.right = child;
+        return root;
+    }
+}` }],
         dry: {
           head: ['step', 'situation', 'action', 'parent / cur'],
           rows: [
@@ -5737,7 +6748,48 @@ int kthSmallest(TreeNode* root, int k) {
     }
     throw invalid_argument("k is larger than the number of nodes");
 }
-` }] }, { lang: 'java', code: `
+` }, { lang: 'csharp', code: `class InorderPowers
+{
+    // VALIDATE with ranges. long bounds so int.MinValue / int.MaxValue nodes are fine.
+    static bool IsValidBST(TreeNode root)
+    {
+        return Valid(root, long.MinValue, long.MaxValue);
+    }
+    static bool Valid(TreeNode n, long lo, long hi)
+    {
+        if (n == null) return true;                          // empty tree is a valid BST
+        if (n.val <= lo || n.val >= hi) return false;       // breaks a rule from some ancestor
+        return Valid(n.left, lo, n.val)                      // left side: must be < n.val
+            && Valid(n.right, n.val, hi);                    // right side: must be > n.val
+    }
+
+    // VALIDATE with inorder: values must be strictly increasing.
+    static int? prev;                                        // null = nothing seen yet
+    static bool IsValidInorder(TreeNode root) { prev = null; return Inorder(root); }
+    static bool Inorder(TreeNode n)
+    {
+        if (n == null) return true;
+        if (!Inorder(n.left)) return false;
+        if (prev != null && n.val <= prev) return false;     // not strictly increasing
+        prev = n.val;
+        return Inorder(n.right);
+    }
+
+    // K-TH SMALLEST: iterative inorder, stop at the k-th pop.
+    static int KthSmallest(TreeNode root, int k)
+    {
+        var st = new Stack<TreeNode>();
+        TreeNode cur = root;
+        while (cur != null || st.Count > 0)
+        {
+            while (cur != null) { st.Push(cur); cur = cur.left; }
+            cur = st.Pop();
+            if (--k == 0) return cur.val;                    // this is the k-th in sorted order
+            cur = cur.right;
+        }
+        throw new ArgumentException("k is larger than the number of nodes");
+    }
+}` }] }, { lang: 'java', code: `
 // FOLLOW-UP: k-th smallest in O(h) when the tree changes often.
 // Every node stores the size of its subtree ("order-statistic tree").
 class SizedNode {
@@ -5873,7 +6925,50 @@ int main() {
     cout << kth(root, 3) << '\\n';   // 3
     cout << kth(root, 6) << '\\n';   // 6
 }
-` }] }],
+` }, { lang: 'csharp', run: true, code: `using System;
+
+// FOLLOW-UP: k-th smallest in O(h) when the tree changes often.
+// Every node stores the size of its subtree ("order-statistic tree").
+class SizedNode
+{
+    public int val, size = 1;             // size = nodes in this subtree, including me
+    public SizedNode left, right;
+    public SizedNode(int v) { val = v; }
+}
+
+class OrderStatisticBST
+{
+    static int Size(SizedNode n) { return n == null ? 0 : n.size; }
+
+    static SizedNode Insert(SizedNode n, int v)
+    {
+        if (n == null) return new SizedNode(v);
+        if (v < n.val) n.left = Insert(n.left, v); else n.right = Insert(n.right, v);
+        n.size = 1 + Size(n.left) + Size(n.right);        // keep sizes up to date on the way up
+        return n;
+    }
+
+    // k is 1-based
+    static int Kth(SizedNode n, int k)
+    {
+        while (n != null)
+        {
+            int leftCount = Size(n.left);
+            if (k == leftCount + 1) return n.val;          // exactly leftCount smaller values -> me
+            if (k <= leftCount) n = n.left;                 // answer is among the smaller values
+            else { k -= leftCount + 1; n = n.right; }       // skip left side and me
+        }
+        throw new ArgumentException("k out of range");
+    }
+
+    static void Main()
+    {
+        SizedNode root = null;
+        foreach (int v in new[] { 5, 3, 6, 2, 4, 1 }) root = Insert(root, v);
+        Console.WriteLine(Kth(root, 3));   // 3
+        Console.WriteLine(Kth(root, 6));   // 6
+    }
+}` }] }],
     codeTitle: ['Validate BST (two ways) + k-th smallest', 'Follow-up: subtree sizes for O(h) k-th queries'],
     viz: [{
       title: 'Validate with ranges passed down',
@@ -6030,7 +7125,19 @@ int kthLargest(TreeNode* root, int k) {
     }
     return -1;                                           // k larger than the tree
 }
-` }] }
+` }, { lang: 'csharp', code: `int KthLargest(TreeNode root, int k)
+{
+    var st = new Stack<TreeNode>();
+    TreeNode cur = root;
+    while (cur != null || st.Count > 0)
+    {
+        while (cur != null) { st.Push(cur); cur = cur.right; }   // slide RIGHT
+        cur = st.Pop();
+        if (--k == 0) return cur.val;
+        cur = cur.left;                                            // then go LEFT
+    }
+    return -1;   // k larger than the tree
+}` }] }
       },
       {
         title: 'Recover a BST where two nodes were swapped',
@@ -6145,6 +7252,27 @@ bool isValidBST(TreeNode* n) {
     if (n->left != nullptr && maxOf(n->left) >= n->val) return false;
     if (n->right != nullptr && minOf(n->right) <= n->val) return false;
     return isValidBST(n->left) && isValidBST(n->right);
+}` },
+            { lang: 'csharp', code: `bool IsValidBrute(TreeNode n)
+{
+    if (n == null) return true;
+    if (n.left != null && MaxOf(n.left) >= n.val) return false;
+    if (n.right != null && MinOf(n.right) <= n.val) return false;
+    return IsValidBrute(n.left) && IsValidBrute(n.right);
+}
+int MaxOf(TreeNode n)     // full scan of the subtree
+{
+    int m = n.val;
+    if (n.left != null) m = Math.Max(m, MaxOf(n.left));
+    if (n.right != null) m = Math.Max(m, MaxOf(n.right));
+    return m;
+}
+int MinOf(TreeNode n)
+{
+    int m = n.val;
+    if (n.left != null) m = Math.Min(m, MinOf(n.left));
+    if (n.right != null) m = Math.Min(m, MinOf(n.right));
+    return m;
 }` }
           ]
         }
@@ -6164,7 +7292,7 @@ bool isValidBST(TreeNode* n) {
         java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static boolean judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        return new Solution().isValidBST(root);\n    }\n}",
         python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().is_valid_bst(root)",
         js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => i);\n  return isValidBST(root);\n}",
-        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().isValidBST(root);\n}"
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().isValidBST(root);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static bool Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => i);\n        return new Solution().IsValidBST(root);\n    }\n}"
       }, cases: [
         [[[5,1,4,null,null,3,6],0],false],
         [[[5,1,6,null,null,3,7],0],false],
@@ -6243,7 +7371,33 @@ private:
         return valid(n->left, lo, n->val) && valid(n->right, n->val, hi);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    // one pending check: this node must fit strictly inside (lo, hi)
+    private struct Frame
+    {
+        public TreeNode Node; public long Lo, Hi;
+        public Frame(TreeNode node, long lo, long hi) { Node = node; Lo = lo; Hi = hi; }
+    }
+
+    public bool IsValidBST(TreeNode root)
+    {
+        if (root == null) return true;
+        var st = new Stack<Frame>();
+        st.Push(new Frame(root, long.MinValue, long.MaxValue));   // long: int extremes still fit
+        while (st.Count > 0)
+        {
+            Frame f = st.Pop();
+            TreeNode n = f.Node;
+            if (n.val <= f.Lo || n.val >= f.Hi) return false;     // outside the allowed window
+            if (n.left != null) st.Push(new Frame(n.left, f.Lo, n.val));    // left: below me
+            if (n.right != null) st.Push(new Frame(n.right, n.val, f.Hi));  // right: above me
+        }
+        return true;
+    }
+}` }],
         dry: {
           head: ['step', 'lo', 'hi', 'check', 'result'],
           rows: [
@@ -6329,6 +7483,20 @@ int kthSmallest(TreeNode* root, int k) {
     collect(root, all);
     sort(all.begin(), all.end());           // ignores the BST order completely
     return all[k - 1];
+}` },
+            { lang: 'csharp', code: `int KthSmallestBrute(TreeNode root, int k)
+{
+    var all = new List<int>();
+    Collect(root, all);
+    all.Sort();                       // ignores the BST order completely
+    return all[k - 1];
+}
+void Collect(TreeNode n, List<int> result)
+{
+    if (n == null) return;
+    result.Add(n.val);
+    Collect(n.left, result);
+    Collect(n.right, result);
 }` }
           ]
         }
@@ -6417,7 +7585,28 @@ public:
         return -1;                                          // unreachable when 1 <= k <= n
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public int KthSmallest(TreeNode root, int k)
+    {
+        var st = new Stack<TreeNode>();
+        TreeNode cur = root;
+        while (cur != null || st.Count > 0)
+        {
+            while (cur != null)            // smallest unvisited values are down-left
+            {
+                st.Push(cur);
+                cur = cur.left;
+            }
+            cur = st.Pop();
+            if (--k == 0) return cur.val;  // k-th value in sorted order
+            cur = cur.right;
+        }
+        return -1;                         // unreachable when 1 <= k <= n
+    }
+}` }],
         dry: {
           head: ['step', 'stack (bottom→top)', 'pop', 'k after', 'next cur'],
           rows: [
@@ -6659,7 +7848,66 @@ public:
         return buildB(pre, INT_MAX);
     }
 };
-` }] }],
+` }, { lang: 'csharp', code: `class BuildTrees
+{
+    // ---------- preorder + inorder ----------
+    private int preIdx;                          // next preorder value to use as a root
+    private Dictionary<int, int> inPos;          // value -> index in inorder
+
+    public TreeNode BuildPreIn(int[] preorder, int[] inorder)
+    {
+        inPos = new Dictionary<int, int>();
+        for (int i = 0; i < inorder.Length; i++) inPos[inorder[i]] = i;
+        preIdx = 0;
+        return BuildPI(preorder, 0, inorder.Length - 1);
+    }
+    // builds the subtree whose inorder values are inorder[lo..hi]
+    private TreeNode BuildPI(int[] pre, int lo, int hi)
+    {
+        if (lo > hi) return null;                // empty window -> no subtree
+        var root = new TreeNode(pre[preIdx++]);
+        int m = inPos[root.val];                 // split point in inorder
+        root.left = BuildPI(pre, lo, m - 1);     // left FIRST: preorder lists it next
+        root.right = BuildPI(pre, m + 1, hi);
+        return root;
+    }
+
+    // ---------- inorder + postorder ----------
+    private int postIdx;
+    public TreeNode BuildInPost(int[] inorder, int[] postorder)
+    {
+        inPos = new Dictionary<int, int>();
+        for (int i = 0; i < inorder.Length; i++) inPos[inorder[i]] = i;
+        postIdx = postorder.Length - 1;          // root is the LAST postorder value
+        return BuildIP(postorder, 0, inorder.Length - 1);
+    }
+    private TreeNode BuildIP(int[] post, int lo, int hi)
+    {
+        if (lo > hi) return null;
+        var root = new TreeNode(post[postIdx--]);
+        int m = inPos[root.val];
+        root.right = BuildIP(post, m + 1, hi);   // RIGHT first: backwards postorder = Me, Right, Left
+        root.left = BuildIP(post, lo, m - 1);
+        return root;
+    }
+
+    // ---------- BST from preorder only, O(N) ----------
+    private int bi;
+    public TreeNode BstFromPreorder(int[] pre)
+    {
+        bi = 0;
+        return BuildB(pre, int.MaxValue);
+    }
+    // builds a subtree using values while they are < bound
+    private TreeNode BuildB(int[] pre, int bound)
+    {
+        if (bi == pre.Length || pre[bi] > bound) return null;
+        var root = new TreeNode(pre[bi++]);
+        root.left = BuildB(pre, root.val);       // left values must be < root
+        root.right = BuildB(pre, bound);         // right values only need to be < my bound
+        return root;
+    }
+}` }] }],
     codeTitle: ['Build from preorder+inorder, inorder+postorder, and a BST from preorder'],
     viz: {
       title: 'Rebuild the tree from preorder + inorder',
@@ -6824,7 +8072,25 @@ int main() {
     TreeNode* root = build({8, 5, 1, 7, 10, 12}, INT_MAX);
     cout << root->val << ' ' << root->left->val << ' ' << root->right->val << '\\n';   // 8 5 10
 }
-` }] }
+` }, { lang: 'csharp', run: true, code: `using System;
+
+class BstFromPre
+{
+    static int i = 0;
+    static TreeNode Build(int[] pre, int bound)
+    {
+        if (i == pre.Length || pre[i] > bound) return null;   // value belongs to an ancestor's right side
+        var root = new TreeNode(pre[i++]);
+        root.left = Build(pre, root.val);                     // children on the left must be < root
+        root.right = Build(pre, bound);
+        return root;
+    }
+    static void Main()
+    {
+        TreeNode root = Build(new[] { 8, 5, 1, 7, 10, 12 }, int.MaxValue);
+        Console.WriteLine(root.val + " " + root.left.val + " " + root.right.val);  // 8 5 10
+    }
+}` }] }
       }
     ],
     deepDive: `<p><b>Why it is O(N):</b> each preorder value creates exactly one node, the map lookup is O(1), and empty windows return immediately (N + 1 of them). The naive version that scans inorder for the root (O(N) per node) and copies sub-arrays (<code>Arrays.copyOfRange</code>) is O(N<sup>2</sup>) for skewed trees — 9·10<sup>6</sup> operations for N = 3000, and far worse memory churn.</p>
@@ -6888,6 +8154,16 @@ int main() {
     root->left = buildTree(vector<int>(pre.begin() + 1, pre.begin() + m + 1), vector<int>(inorder.begin(), inorder.begin() + m));
     root->right = buildTree(vector<int>(pre.begin() + m + 1, pre.end()), vector<int>(inorder.begin() + m + 1, inorder.end()));
     return root;                                          // copies: O(N) per level
+}` },
+            { lang: 'csharp', code: `TreeNode BuildBrute(int[] pre, int[] ino)
+{
+    if (pre.Length == 0) return null;
+    var root = new TreeNode(pre[0]);
+    int m = 0;
+    while (ino[m] != pre[0]) m++;                     // linear search: O(N)
+    root.left = BuildBrute(pre.Skip(1).Take(m).ToArray(), ino.Take(m).ToArray());
+    root.right = BuildBrute(pre.Skip(m + 1).ToArray(), ino.Skip(m + 1).ToArray());
+    return root;                                       // copies: O(N) per level
 }` }
           ]
         }
@@ -6994,7 +8270,32 @@ public:
         return build(build, 0, (int)inorder.size() - 1);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    private int preIdx;
+    private Dictionary<int, int> inPos;
+
+    public TreeNode BuildTree(int[] preorder, int[] inorder)
+    {
+        inPos = new Dictionary<int, int>();
+        for (int i = 0; i < inorder.Length; i++) inPos[inorder[i]] = i;
+        preIdx = 0;
+        return Build(preorder, 0, inorder.Length - 1);
+    }
+
+    private TreeNode Build(int[] pre, int lo, int hi)
+    {
+        if (lo > hi) return null;                    // empty window
+        int val = pre[preIdx++];                     // next root in preorder
+        var root = new TreeNode(val);
+        int m = inPos[val];                          // where it splits the window
+        root.left = Build(pre, lo, m - 1);           // left subtree comes next in preorder
+        root.right = Build(pre, m + 1, hi);
+        return root;
+    }
+}` }],
         dry: {
           head: ['call build(lo, hi)', 'preIdx → root', 'm', 'left window', 'right window'],
           rows: [
@@ -7071,6 +8372,18 @@ bool isSameTree(TreeNode* p, TreeNode* q) {
     string a, b;
     ser(p, a); ser(q, b);
     return a == b;
+}` },
+            { lang: 'csharp', code: `bool IsSameBrute(TreeNode p, TreeNode q)
+{
+    var a = new StringBuilder(); var b = new StringBuilder();
+    Ser(p, a); Ser(q, b);
+    return a.ToString() == b.ToString();
+}
+void Ser(TreeNode n, StringBuilder sb)
+{
+    if (n == null) { sb.Append("#,"); return; }   // null marker keeps the shape
+    sb.Append(n.val).Append(',');
+    Ser(n.left, sb); Ser(n.right, sb);
 }` }
           ]
         }
@@ -7128,7 +8441,16 @@ public:
         return p->val == q->val && isSameTree(p->left, q->left) && isSameTree(p->right, q->right);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    public bool IsSameTree(TreeNode p, TreeNode q)
+    {
+        if (p == null && q == null) return true;     // both empty here
+        if (p == null || q == null) return false;    // shape differs
+        if (p.val != q.val) return false;            // value differs
+        return IsSameTree(p.left, q.left) && IsSameTree(p.right, q.right);
+    }
+}` }],
       dry: { head: ['pair', 'check', 'result'], rows: [['(1, 1)', 'values equal', 'recurse'], ['(2, null)', 'one side null', H.c('r', 'false')], ['back at (1, 1)', 'left failed', H.c('r', 'false (short-circuit)')]] },
       complexity: `<p><b>Time O(min(N, M))</b> — stops at the first difference. <b>Space O(h)</b> recursion.</p>`,
       followUps: ['Is q a subtree of p? (Subtree of Another Tree)', 'Are the trees equal up to swapping children at any node? (Flip Equivalent)']
@@ -7205,6 +8527,20 @@ bool same(TreeNode* a, TreeNode* b) {
 
 bool isSymmetric(TreeNode* root) {
     return same(root, mirror(root));
+}` },
+            { lang: 'csharp', code: `bool IsSymmetricBrute(TreeNode root)
+{
+    return Same(root, Mirror(root));
+}
+TreeNode Mirror(TreeNode n)
+{
+    if (n == null) return null;
+    return new TreeNode(n.val, Mirror(n.right), Mirror(n.left));   // new nodes!
+}
+bool Same(TreeNode a, TreeNode b)
+{
+    if (a == null || b == null) return a == b;
+    return a.val == b.val && Same(a.left, b.left) && Same(a.right, b.right);
 }` }
           ]
         }
@@ -7282,7 +8618,21 @@ private:
             && mirror(a->right, b->left);    // inner pair
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    public bool IsSymmetric(TreeNode root)
+    {
+        return root == null || IsMirror(root.left, root.right);
+    }
+    private bool IsMirror(TreeNode a, TreeNode b)
+    {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.val == b.val
+            && IsMirror(a.left, b.right)     // outer pair
+            && IsMirror(a.right, b.left);    // inner pair
+    }
+}` }],
       dry: { head: ['pair (a, b)', 'values', 'next pairs'], rows: [['(2, 2)', 'equal', '(3,3) outer, (4,4) inner'], ['(3, 3)', 'equal', '(null,null) ×2'], ['(4, 4)', 'equal', H.c('g', 'all matched → true')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b> recursive or O(W) with the queue.</p>`,
       followUps: ['Make the tree symmetric by inverting one half', 'Check symmetry of an N-ary tree']
@@ -7339,6 +8689,15 @@ private:
     TreeNode* copy = new TreeNode(n->val);
     copy->left = invertTree(n->right);
     copy->right = invertTree(n->left);
+    return copy;
+}` },
+            { lang: 'csharp', code: `TreeNode InvertCopy(TreeNode n)
+{
+    // builds a brand-new mirrored tree: O(N) extra nodes
+    if (n == null) return null;
+    var copy = new TreeNode(n.val);
+    copy.left = InvertCopy(n.right);
+    copy.right = InvertCopy(n.left);
     return copy;
 }` }
           ]
@@ -7406,7 +8765,19 @@ public:
         return root;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    public TreeNode InvertTree(TreeNode root)
+    {
+        if (root == null) return null;
+        TreeNode tmp = root.left;     // swap my two children
+        root.left = root.right;
+        root.right = tmp;
+        InvertTree(root.left);        // then mirror each side
+        InvertTree(root.right);
+        return root;
+    }
+}` }],
       dry: { head: ['node', 'before (L, R)', 'after (L, R)'], rows: [['4', '(2, 7)', '(7, 2)'], ['7', '(6, 9)', '(9, 6)'], ['2', '(1, 3)', H.c('g', '(3, 1)')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b> (O(W) with BFS).</p>`,
       followUps: ['Do it iteratively with a queue', 'Invert only the nodes at odd levels (LeetCode 2415)']
@@ -7504,6 +8875,27 @@ bool hasPathSum(TreeNode* root, int target) {
         if (s == target) return true;
     }
     return false;
+}` },
+            { lang: 'csharp', code: `bool HasPathSumBrute(TreeNode root, int target)
+{
+    var paths = new List<List<int>>();
+    Collect(root, new List<int>(), paths);
+    foreach (var p in paths)
+    {
+        int s = 0;
+        foreach (int v in p) s += v;
+        if (s == target) return true;
+    }
+    return false;
+}
+void Collect(TreeNode n, List<int> path, List<List<int>> result)
+{
+    if (n == null) return;
+    path.Add(n.val);
+    if (n.left == null && n.right == null) result.Add(new List<int>(path));
+    Collect(n.left, path, result);
+    Collect(n.right, path, result);
+    path.RemoveAt(path.Count - 1);
 }` }
           ]
         }
@@ -7518,7 +8910,7 @@ bool hasPathSum(TreeNode* root, int target) {
       java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static boolean judge(TreeNode root, int target, int n) {\n        if (n != 0) root = chain(n, i -> i % 2 == 0 ? 1 : -1);\n        return new Solution().hasPathSum(root, target);\n    }\n}",
       python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, target, n):\n    if n:\n        root = _chain(n, lambda i: 1 if i % 2 == 0 else -1)\n    return Solution().has_path_sum(root, target)",
       js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, target, n) {\n  if (n) root = chain__(n, (i) => i % 2 == 0 ? 1 : -1);\n  return hasPathSum(root, target);\n}",
-      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int target, int n) {\n    if (n) root = chain__(n, [](int i) { return i % 2 == 0 ? 1 : -1; });\n    return Solution().hasPathSum(root, target);\n}"
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int target, int n) {\n    if (n) root = chain__(n, [](int i) { return i % 2 == 0 ? 1 : -1; });\n    return Solution().hasPathSum(root, target);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static bool Judge(TreeNode root, int target, int n) {\n        if (n != 0) root = Chain(n, i => i % 2 == 0 ? 1 : -1);\n        return new Solution().HasPathSum(root, target);\n    }\n}"
     }, cases: [
       [[[5,4,8,11,null,13,4,7,2,null,null,null,1],22,0],true],
       [[[5,4,8,11,null,13,4,7,2,null,null,null,1],26,0],true],
@@ -7577,7 +8969,16 @@ public:
         return hasPathSum(root->left, rem) || hasPathSum(root->right, rem);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    public bool HasPathSum(TreeNode root, int targetSum)
+    {
+        if (root == null) return false;
+        int rem = targetSum - root.val;                  // what the rest of the path must add
+        if (root.left == null && root.right == null) return rem == 0;   // leaf: path ends here
+        return HasPathSum(root.left, rem) || HasPathSum(root.right, rem);
+    }
+}` }],
       dry: { head: ['node', 'remaining after node', 'leaf?', 'result'], rows: [['5', '17', 'no', 'recurse'], ['4', '13', 'no', 'recurse'], ['11', '2', 'no', 'recurse'], ['7', '−5', 'yes', H.c('r', 'false')], ['2', '0', 'yes', H.c('g', 'true')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b>.</p>`,
       followUps: ['Return all such paths (Path Sum II, backtracking)', 'Count paths that start anywhere and go down (Path Sum III, prefix sums + hash map)']
@@ -7644,6 +9045,18 @@ TreeNode* sortedArrayToBST(const vector<int>& nums) {
     TreeNode* root = nullptr;
     for (int x : nums) root = insert(root, x);   // sorted input -> a chain!
     return root;
+}` },
+            { lang: 'csharp', code: `TreeNode SortedToBSTBrute(int[] nums)
+{
+    TreeNode root = null;
+    foreach (int x in nums) root = Insert(root, x);   // sorted input -> a chain!
+    return root;
+}
+TreeNode Insert(TreeNode n, int v)
+{
+    if (n == null) return new TreeNode(v);
+    if (v < n.val) n.left = Insert(n.left, v); else n.right = Insert(n.right, v);
+    return n;
 }` }
           ]
         }
@@ -7716,7 +9129,22 @@ private:
         return new TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi));
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    public TreeNode SortedArrayToBST(int[] nums)
+    {
+        return Build(nums, 0, nums.Length - 1);
+    }
+    private TreeNode Build(int[] a, int lo, int hi)
+    {
+        if (lo > hi) return null;
+        int mid = (lo + hi) >> 1;                  // middle -> balanced halves
+        var node = new TreeNode(a[mid]);
+        node.left = Build(a, lo, mid - 1);         // smaller half
+        node.right = Build(a, mid + 1, hi);        // bigger half
+        return node;
+    }
+}` }],
       dry: { head: ['range', 'mid', 'root'], rows: [['[0..4]', '2', '0'], ['[0..1]', '0', '−10 (right child −3)'], ['[3..4]', '3', H.c('g', '5 (right child 9)')]] },
       complexity: `<p><b>Time O(n)</b>, <b>space O(log n)</b> recursion (the result tree is balanced).</p>`,
       followUps: ['Same from a sorted linked list (slow/fast pointer or inorder simulation)', 'Balance an existing BST (inorder → this)']
@@ -7810,6 +9238,28 @@ def zigzag_level_order(root):
         }
         if (res.size() % 2 == 1) reverse(row.begin(), row.end());   // extra pass
         res.push_back(row);
+    }
+    return res;
+}` },
+            { lang: 'csharp', code: `List<List<int>> ZigzagBrute(TreeNode root)
+{
+    var res = new List<List<int>>();
+    if (root == null) return res;
+    var q = new Queue<TreeNode>();
+    q.Enqueue(root);
+    while (q.Count > 0)
+    {
+        int size = q.Count;
+        var row = new List<int>();
+        for (int i = 0; i < size; i++)
+        {
+            TreeNode n = q.Dequeue();
+            row.Add(n.val);
+            if (n.left != null) q.Enqueue(n.left);
+            if (n.right != null) q.Enqueue(n.right);
+        }
+        if (res.Count % 2 == 1) row.Reverse();   // extra pass
+        res.Add(row);
     }
     return res;
 }` }
@@ -7906,7 +9356,34 @@ public:
         return res;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<IList<int>> ZigzagLevelOrder(TreeNode root)
+    {
+        var res = new List<IList<int>>();
+        if (root == null) return res;
+        var q = new Queue<TreeNode>();
+        q.Enqueue(root);
+        bool leftToRight = true;
+        while (q.Count > 0)
+        {
+            int size = q.Count;
+            var row = new LinkedList<int>();
+            for (int i = 0; i < size; i++)
+            {
+                TreeNode n = q.Dequeue();
+                if (leftToRight) row.AddLast(n.val); else row.AddFirst(n.val);
+                if (n.left != null) q.Enqueue(n.left);      // queue order never changes
+                if (n.right != null) q.Enqueue(n.right);
+            }
+            res.Add(new List<int>(row));
+            leftToRight = !leftToRight;
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['level', 'BFS order', 'flag', 'row'], rows: [['0', '3', '→', '[3]'], ['1', '9, 20', '←', H.c('g', '[20, 9]')], ['2', '15, 7', '→', '[15, 7]']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(W)</b> for the queue.</p>`,
       followUps: ['Two-stack version without a queue', 'Spiral order of a matrix — the same alternating idea']
@@ -7990,6 +9467,26 @@ public:
         for (TreeNode* n : level) {              // placeholders double each level
             next.push_back(n == nullptr ? nullptr : n->left);
             next.push_back(n == nullptr ? nullptr : n->right);
+        }
+        level = next;
+    }
+    return best;
+}` },
+            { lang: 'csharp', code: `int WidthBrute(TreeNode root)
+{
+    var level = new List<TreeNode> { root };
+    int best = 0;
+    while (level.Any(n => n != null))
+    {
+        int l = 0, r = level.Count - 1;
+        while (level[l] == null) l++;
+        while (level[r] == null) r--;
+        best = Math.Max(best, r - l + 1);
+        var next = new List<TreeNode>();
+        foreach (TreeNode n in level)                  // placeholders double each level
+        {
+            next.Add(n == null ? null : n.left);
+            next.Add(n == null ? null : n.right);
         }
         level = next;
     }
@@ -8094,7 +9591,34 @@ public:
         return (int)best;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int WidthOfBinaryTree(TreeNode root)
+    {
+        var q = new Queue<TreeNode>();
+        var pos = new Queue<long>();
+        q.Enqueue(root); pos.Enqueue(0L);
+        long best = 0;
+        while (q.Count > 0)
+        {
+            int size = q.Count;
+            long first = pos.Peek(), last = 0;
+            for (int i = 0; i < size; i++)
+            {
+                TreeNode n = q.Dequeue();
+                long p = pos.Dequeue() - first;          // re-base: level starts at 0
+                last = p;
+                if (n.left != null) { q.Enqueue(n.left); pos.Enqueue(2 * p + 1); }
+                if (n.right != null) { q.Enqueue(n.right); pos.Enqueue(2 * p + 2); }
+            }
+            best = Math.Max(best, last + 1);
+        }
+        return (int)best;
+    }
+}` }],
       dry: { head: ['level', 'positions (re-based)', 'width'], rows: [['0', '1@0', '1'], ['1', '3@0, 2@1', '2'], ['2', '5@0, 3@1, 9@3', H.c('g', '4')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(W)</b>.</p>`,
       followUps: ['Do it with DFS by storing the first position seen at each depth', 'Why must positions be 64-bit even after re-basing?']
@@ -8192,6 +9716,23 @@ int goodNodes(TreeNode* root) {
     int count = 0;
     for (TreeNode* x : all) if (maxOnPath(root, x) <= x->val) count++;   // re-walk per node
     return count;
+}` },
+            { lang: 'csharp', code: `int GoodBrute(TreeNode root)
+{
+    var all = new List<TreeNode>();
+    Gather(root, all);
+    int count = 0;
+    foreach (TreeNode x in all) if (MaxOnPath(root, x) <= x.val) count++;   // re-walk per node
+    return count;
+}
+void Gather(TreeNode n, List<TreeNode> result) { if (n == null) return; result.Add(n); Gather(n.left, result); Gather(n.right, result); }
+// max value on the path root -> target (int.MinValue if target not below n)
+int MaxOnPath(TreeNode n, TreeNode target)
+{
+    if (n == null) return int.MinValue;
+    if (n == target) return n.val;
+    int below = Math.Max(MaxOnPath(n.left, target), MaxOnPath(n.right, target));
+    return below == int.MinValue ? below : Math.Max(below, n.val);
 }` }
           ]
         }
@@ -8206,7 +9747,7 @@ int goodNodes(TreeNode* root) {
       java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i * 7919) % 20001 - 10000);\n        return new Solution().goodNodes(root);\n    }\n}",
       python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i * 7919) % 20001 - 10000)\n    return Solution().good_nodes(root)",
       js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i * 7919) % 20001 - 10000);\n  return goodNodes(root);\n}",
-      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i * 7919) % 20001 - 10000; });\n    return Solution().goodNodes(root);\n}"
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i * 7919) % 20001 - 10000; });\n    return Solution().goodNodes(root);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static int Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => (i * 7919) % 20001 - 10000);\n        return new Solution().GoodNodes(root);\n    }\n}"
     }, cases: [
       [[[3,1,4,3,null,1,5],0],4],
       [[[3,3,null,4,2],0],3],
@@ -8284,7 +9825,30 @@ public:
         return count;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int GoodNodes(TreeNode root)
+    {
+        // explicit stacks instead of recursion: the tree can be a 10^5-deep chain
+        var nodes = new Stack<TreeNode>();
+        var maxAbove = new Stack<int>();                // largest value on the path above each node
+        nodes.Push(root); maxAbove.Push(int.MinValue);
+        int good = 0;
+        while (nodes.Count > 0)
+        {
+            TreeNode n = nodes.Pop();
+            int maxSoFar = maxAbove.Pop();
+            if (n.val >= maxSoFar) good++;               // nobody above me is bigger
+            int mx = Math.Max(maxSoFar, n.val);          // new max for my children
+            if (n.left != null) { nodes.Push(n.left); maxAbove.Push(mx); }
+            if (n.right != null) { nodes.Push(n.right); maxAbove.Push(mx); }
+        }
+        return good;
+    }
+}` }],
       dry: { head: ['node', 'maxSoFar', 'good?', 'max passed down'], rows: [['3 (root)', '−∞', H.c('g', 'yes'), '3'], ['1', '3', H.c('r', 'no'), '3'], ['3 (under 1)', '3', H.c('g', 'yes'), '3'], ['4', '3', H.c('g', 'yes'), '4'], ['1 (under 4)', '4', H.c('r', 'no'), '4'], ['5', '4', H.c('g', 'yes → total 4'), '5']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> worst case for the stacks. A recursive version is shorter but needs O(h) call stack, which overflows on a 10<sup>5</sup>-deep chain.</p>`,
       followUps: ['Return the good nodes themselves', 'Count nodes equal to the average of their subtree (bottom-up instead of top-down)']
@@ -8352,7 +9916,16 @@ public:
     BSTIteratorBrute(TreeNode* root) { fill(root); }       // O(N) memory up front
     int next() { return vals[i++]; }
     bool hasNext() { return i < vals.size(); }
-};` }
+};` },
+            { lang: 'csharp', code: `class BSTIteratorBrute
+{
+    private readonly List<int> vals = new List<int>();
+    private int i = 0;
+    public BSTIteratorBrute(TreeNode root) { Fill(root); }          // O(N) memory up front
+    private void Fill(TreeNode n) { if (n == null) return; Fill(n.left); vals.Add(n.val); Fill(n.right); }
+    public int Next() { return vals[i++]; }
+    public bool HasNext() { return i < vals.Count; }
+}` }
           ]
         }
     },
@@ -8453,7 +10026,28 @@ public:
 
     bool hasNext() { return !st.empty(); }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class BSTIterator
+{
+    private readonly Stack<TreeNode> st = new Stack<TreeNode>();
+
+    public BSTIterator(TreeNode root) { PushLeft(root); }
+
+    private void PushLeft(TreeNode n)
+    {
+        while (n != null) { st.Push(n); n = n.left; }   // smallest values end up on top
+    }
+
+    public int Next()
+    {
+        TreeNode n = st.Pop();          // smallest unvisited value
+        PushLeft(n.right);              // its successor candidates
+        return n.val;
+    }
+
+    public bool HasNext() { return st.Count > 0; }
+}` }],
       dry: { head: ['call', 'stack before (top last)', 'returns', 'stack after'], rows: [['init', '—', '—', '[7, 3]'], ['next', '[7, 3]', '3', '[7]'], ['next', '[7]', '7', '[15, 9]'], ['next', '[15, 9]', '9', '[15]'], ['next', '[15]', '15', '[20]'], ['next', '[20]', '20', H.c('g', '[ ] → hasNext false')]] },
       complexity: `<p><b>next(): O(1) amortised</b>, O(h) worst for one call. <b>hasNext(): O(1)</b>. <b>Space O(h)</b>.</p>`,
       followUps: ['Add a prev() method (two stacks or store visited values)', 'Two Sum IV on a BST in O(h) space with a forward and a backward iterator']
@@ -8513,6 +10107,17 @@ public:
     while (inorder[m] != root->val) m++;                    // O(n) search
     root->left = buildTree(vector<int>(inorder.begin(), inorder.begin() + m), vector<int>(postorder.begin(), postorder.begin() + m));
     root->right = buildTree(vector<int>(inorder.begin() + m + 1, inorder.end()), vector<int>(postorder.begin() + m, postorder.begin() + n - 1));
+    return root;
+}` },
+            { lang: 'csharp', code: `TreeNode BuildBrute(int[] ino, int[] post)
+{
+    int n = ino.Length;
+    if (n == 0) return null;
+    var root = new TreeNode(post[n - 1]);
+    int m = 0;
+    while (ino[m] != root.val) m++;                     // O(n) search
+    root.left = BuildBrute(ino.Take(m).ToArray(), post.Take(m).ToArray());
+    root.right = BuildBrute(ino.Skip(m + 1).ToArray(), post.Skip(m).Take(n - 1 - m).ToArray());
     return root;
 }` }
           ]
@@ -8612,7 +10217,30 @@ public:
         return build(build, 0, (int)inorder.size() - 1);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    private int postIdx;
+    private Dictionary<int, int> pos;
+
+    public TreeNode BuildTree(int[] inorder, int[] postorder)
+    {
+        pos = new Dictionary<int, int>();
+        for (int i = 0; i < inorder.Length; i++) pos[inorder[i]] = i;
+        postIdx = postorder.Length - 1;
+        return Build(postorder, 0, inorder.Length - 1);
+    }
+    private TreeNode Build(int[] post, int lo, int hi)
+    {
+        if (lo > hi) return null;
+        var root = new TreeNode(post[postIdx--]);        // last unused postorder value
+        int m = pos[root.val];
+        root.right = Build(post, m + 1, hi);              // right first!
+        root.left = Build(post, lo, m - 1);
+        return root;
+    }
+}` }],
       dry: { head: ['build(lo, hi)', 'root (postIdx)', 'm', 'then'], rows: [['(0, 4)', '3 (4)', '1', 'right (2, 4)'], ['(2, 4)', '20 (3)', '3', 'right (4, 4)'], ['(4, 4)', '7 (2)', '4', 'leaf'], ['(2, 2)', '15 (1)', '2', 'leaf'], ['(0, 0)', '9 (0)', '0', H.c('g', 'leaf → done')]] },
       complexity: `<p><b>Time O(n)</b>, <b>space O(n)</b> for the map + O(h) recursion.</p>`,
       followUps: ['Construct from preorder + postorder of a FULL binary tree', 'Why is the pair (preorder, postorder) not enough in general?']
@@ -8746,6 +10374,33 @@ vector<int> distanceK(TreeNode* root, TreeNode* target, int k) {
         if (depth(l, x) + depth(l, target) == k) res.push_back(x->val);   // O(N) per node
     }
     return res;
+}` },
+            { lang: 'csharp', code: `List<int> DistanceKBrute(TreeNode root, TreeNode target, int k)
+{
+    var all = new List<TreeNode>();
+    Gather(root, all);
+    var res = new List<int>();
+    foreach (TreeNode x in all)
+    {
+        TreeNode l = Lca(root, x, target);
+        if (Depth(l, x) + Depth(l, target) == k) res.Add(x.val);   // O(N) per node
+    }
+    return res;
+}
+void Gather(TreeNode n, List<TreeNode> result) { if (n == null) return; result.Add(n); Gather(n.left, result); Gather(n.right, result); }
+TreeNode Lca(TreeNode n, TreeNode p, TreeNode q)
+{
+    if (n == null || n == p || n == q) return n;
+    TreeNode a = Lca(n.left, p, q), b = Lca(n.right, p, q);
+    return a != null && b != null ? n : (a ?? b);
+}
+int Depth(TreeNode from, TreeNode to)                 // edges from 'from' down to 'to', -1 if absent
+{
+    if (from == null) return -1;
+    if (from == to) return 0;
+    int d = Depth(from.left, to);
+    if (d < 0) d = Depth(from.right, to);
+    return d < 0 ? -1 : d + 1;
 }` }
           ]
         }
@@ -8760,7 +10415,7 @@ vector<int> distanceK(TreeNode* root, TreeNode* target, int k) {
       java: "class Check {\n    static TreeNode find(TreeNode root, int v) {\n        Deque<TreeNode> st = new ArrayDeque<>();\n        st.push(root);\n        while (!st.isEmpty()) {\n            TreeNode t = st.pop();\n            if (t.val == v) return t;\n            if (t.left != null) st.push(t.left);\n            if (t.right != null) st.push(t.right);\n        }\n        return null;\n    }\n\n    static List<Integer> judge(TreeNode root, int target, int k) {\n        // the judge passes the real target node of this tree, so find it first\n        return new Solution().distanceK(root, find(root, target), k);\n    }\n}",
       python: "def _find(root, v):\n    st = [root]\n    while st:\n        t = st.pop()\n        if t.val == v:\n            return t\n        st.extend(c for c in (t.left, t.right) if c)\n\ndef judge(root, target, k):\n    return Solution().distance_k(root, _find(root, target), k)",
       js: "function find__(root, v) {\n  const st = [root];\n  while (st.length) {\n    const t = st.pop();\n    if (t.val === v) return t;\n    if (t.left) st.push(t.left);\n    if (t.right) st.push(t.right);\n  }\n  return null;\n}\n\nfunction judge(root, target, k) {\n  return distanceK(root, find__(root, target), k);\n}",
-      cpp: "TreeNode* find__(TreeNode* root, int v) {\n    vector<TreeNode*> st{root};\n    while (!st.empty()) {\n        TreeNode* t = st.back(); st.pop_back();\n        if (t->val == v) return t;\n        if (t->left) st.push_back(t->left);\n        if (t->right) st.push_back(t->right);\n    }\n    return nullptr;\n}\n\nvector<int> judge(TreeNode* root, int target, int k) {\n    return Solution().distanceK(root, find__(root, target), k);\n}"
+      cpp: "TreeNode* find__(TreeNode* root, int v) {\n    vector<TreeNode*> st{root};\n    while (!st.empty()) {\n        TreeNode* t = st.back(); st.pop_back();\n        if (t->val == v) return t;\n        if (t->left) st.push_back(t->left);\n        if (t->right) st.push_back(t->right);\n    }\n    return nullptr;\n}\n\nvector<int> judge(TreeNode* root, int target, int k) {\n    return Solution().distanceK(root, find__(root, target), k);\n}", csharp: "class Check {\n    static TreeNode Find(TreeNode root, int v) {\n        var st = new Stack<TreeNode>();\n        st.Push(root);\n        while (st.Count > 0) {\n            TreeNode t = st.Pop();\n            if (t.val == v) return t;\n            if (t.left != null) st.Push(t.left);\n            if (t.right != null) st.Push(t.right);\n        }\n        return null;\n    }\n\n    public static IList<int> Judge(TreeNode root, int target, int k) {\n        // the judge passes the real target node of this tree, so find it first\n        return new Solution().DistanceK(root, Find(root, target), k);\n    }\n}"
     }, cases: [
       [[[3,5,1,6,2,0,8,null,null,7,4],5,2],[1,4,7]],
       [[[3,5,1,6,2,0,8,null,null,7,4],5,0],[5]],
@@ -8878,7 +10533,41 @@ public:
         return res;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<int> DistanceK(TreeNode root, TreeNode target, int k)
+    {
+        var parent = new Dictionary<TreeNode, TreeNode>();
+        LinkParents(root, null, parent);
+        var q = new Queue<TreeNode>();
+        var seen = new HashSet<TreeNode>();
+        q.Enqueue(target); seen.Add(target);
+        for (int d = 0; d < k && q.Count > 0; d++)             // expand k whole levels
+        {
+            int size = q.Count;
+            for (int i = 0; i < size; i++)
+            {
+                TreeNode n = q.Dequeue();
+                foreach (TreeNode nb in new[] { n.left, n.right, parent[n] })
+                {
+                    if (nb != null && seen.Add(nb)) q.Enqueue(nb);   // neighbours: down, down, up
+                }
+            }
+        }
+        var res = new List<int>();
+        foreach (TreeNode n in q) res.Add(n.val);                // exactly distance k
+        return res;
+    }
+    private void LinkParents(TreeNode n, TreeNode p, Dictionary<TreeNode, TreeNode> parent)
+    {
+        if (n == null) return;
+        parent[n] = p;
+        LinkParents(n.left, n, parent);
+        LinkParents(n.right, n, parent);
+    }
+}` }],
       dry: { head: ['round', 'queue after round', 'distance'], rows: [['start', '[5]', '0'], ['1', '[6, 2, 3]', '1'], ['2', H.c('g', '[7, 4, 1]'), '2 → answer']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the parent map, visited set and queue.</p>`,
       followUps: ['Solve without a parent map (DFS returning distance to target)', 'Amount of time for a fire/infection to spread from a node to the whole tree']
@@ -8970,6 +10659,22 @@ void recoverTree(TreeNode* root) {
     sort(vals.begin(), vals.end());
     int i = 0;
     rewrite(root, vals, i);
+}` },
+            { lang: 'csharp', code: `void RecoverBrute(TreeNode root)
+{
+    var vals = new List<int>();
+    Collect(root, vals);
+    vals.Sort();
+    int[] i = { 0 };
+    Rewrite(root, vals, i);
+}
+void Collect(TreeNode n, List<int> result) { if (n == null) return; Collect(n.left, result); result.Add(n.val); Collect(n.right, result); }
+void Rewrite(TreeNode n, List<int> vals, int[] i)
+{
+    if (n == null) return;
+    Rewrite(n.left, vals, i);
+    n.val = vals[i[0]++];                             // overwrite in sorted order
+    Rewrite(n.right, vals, i);
 }` }
           ]
         }
@@ -9072,7 +10777,29 @@ public:
         swap(first->val, second->val);       // swap back
     }
 };
-` }],
+` }, { lang: 'csharp', code: `public class Solution
+{
+    private TreeNode first, second, prev;
+
+    public void RecoverTree(TreeNode root)
+    {
+        first = second = prev = null;
+        Inorder(root);
+        int t = first.val; first.val = second.val; second.val = t;   // swap back
+    }
+    private void Inorder(TreeNode n)
+    {
+        if (n == null) return;
+        Inorder(n.left);
+        if (prev != null && prev.val > n.val)       // a drop in the sorted order
+        {
+            if (first == null) first = prev;        // first drop: the bigger one is wrong
+            second = n;                             // last drop: the smaller one is wrong
+        }
+        prev = n;
+        Inorder(n.right);
+    }
+}` }],
       dry: { head: ['inorder pair (prev, cur)', 'drop?', 'first', 'second'], rows: [['(3, 2)', H.c('r', 'yes'), '3', '2'], ['(2, 1)', H.c('r', 'yes'), '3', '1'], ['end', '—', '3', H.c('g', '1 → swap values')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b> (O(1) with Morris inorder).</p>`,
       followUps: ['Do it in O(1) space with Morris traversal', 'What if more than two nodes might be misplaced? (sort-and-rewrite becomes necessary)']
@@ -9132,6 +10859,17 @@ int maxPathSum(TreeNode* root) {
     if (root == nullptr) return INT_MIN;
     int through = root->val + max(0, down(root->left)) + max(0, down(root->right));
     return max(through, max(maxPathSum(root->left), maxPathSum(root->right)));
+}` },
+            { lang: 'csharp', code: `int MaxPathBrute(TreeNode root)
+{
+    if (root == null) return int.MinValue;
+    int through = root.val + Math.Max(0, Down(root.left)) + Math.Max(0, Down(root.right));
+    return Math.Max(through, Math.Max(MaxPathBrute(root.left), MaxPathBrute(root.right)));
+}
+int Down(TreeNode n)            // best path starting at n going down (recomputed every time)
+{
+    if (n == null) return 0;
+    return n.val + Math.Max(0, Math.Max(Down(n.left), Down(n.right)));
 }` }
           ]
         }
@@ -9146,7 +10884,7 @@ int maxPathSum(TreeNode* root) {
       java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i * 37) % 2001 - 1000);\n        return new Solution().maxPathSum(root);\n    }\n}",
       python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i * 37) % 2001 - 1000)\n    return Solution().max_path_sum(root)",
       js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i * 37) % 2001 - 1000);\n  return maxPathSum(root);\n}",
-      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i * 37) % 2001 - 1000; });\n    return Solution().maxPathSum(root);\n}"
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i * 37) % 2001 - 1000; });\n    return Solution().maxPathSum(root);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static int Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => (i * 37) % 2001 - 1000);\n        return new Solution().MaxPathSum(root);\n    }\n}"
     }, cases: [
       [[[1,2,3],0],6],
       [[[-10,9,20,null,null,15,7],0],42],
@@ -9247,7 +10985,38 @@ public:
         return best;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int MaxPathSum(TreeNode root)
+    {
+        // postorder without recursion (3 * 10^4 nested calls would overflow the stack):
+        // list nodes parents-first, then walk the list backwards so children come first
+        var order = new List<TreeNode>();
+        var st = new Stack<TreeNode>();
+        st.Push(root);
+        while (st.Count > 0)
+        {
+            TreeNode n = st.Pop();
+            order.Add(n);
+            if (n.left != null) st.Push(n.left);
+            if (n.right != null) st.Push(n.right);
+        }
+        var gain = new Dictionary<TreeNode, int>();     // best downward path starting at a node
+        int best = int.MinValue;                        // answer may be negative
+        for (int i = order.Count - 1; i >= 0; i--)
+        {
+            TreeNode n = order[i];
+            int l = Math.Max(0, n.left == null ? 0 : gain[n.left]);    // drop a branch that hurts
+            int r = Math.Max(0, n.right == null ? 0 : gain[n.right]);
+            best = Math.Max(best, n.val + l + r);       // path bending at n
+            gain[n] = n.val + Math.Max(l, r);           // parent can use only one side
+        }
+        return best;
+    }
+}` }],
       dry: { head: ['node', 'l', 'r', 'val+l+r', 'best', 'returns'], rows: [['9', '0', '0', '9', '9', '9'], ['15', '0', '0', '15', '15', '15'], ['7', '0', '0', '7', '15', '7'], ['20', '15', '7', '42', H.c('g', '42'), '35'], ['−10', '9', '35', '34', H.c('g', '42'), '25']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the node list and the gain map. The recursive form needs only O(h), but h can be 3·10<sup>4</sup> here, which overflows a default call stack.</p>`,
       followUps: ['Return the path itself, not just the sum', 'Longest path with the same value (Longest Univalue Path)', 'Max path sum between two LEAVES only']
@@ -9330,7 +11099,23 @@ string serialize(TreeNode* root) {
     string out;
     for (size_t i = 0; i < slots.size(); i++) out += (i ? "," : "") + slots[i];
     return out;
-}` }
+}` },
+            { lang: 'csharp', code: `string SerializeBrute(TreeNode root)
+{
+    int h = Height(root);
+    string[] slots = new string[(1 << Math.Min(h, 20)) - 1];   // explodes for deep trees
+    for (int i = 0; i < slots.Length; i++) slots[i] = "#";
+    Fill(root, 0, slots);
+    return string.Join(",", slots);
+}
+void Fill(TreeNode n, int i, string[] slots)
+{
+    if (n == null || i >= slots.Length) return;
+    slots[i] = n.val.ToString();
+    Fill(n.left, 2 * i + 1, slots);
+    Fill(n.right, 2 * i + 2, slots);
+}
+int Height(TreeNode n) { return n == null ? 0 : 1 + Math.Max(Height(n.left), Height(n.right)); }` }
           ]
         }
     },
@@ -9344,7 +11129,7 @@ string serialize(TreeNode* root) {
       java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i % 2001) - 1000);\n        Codec ser = new Codec(), deser = new Codec();   // the judge round-trips through two instances\n        return deser.deserialize(ser.serialize(root));\n    }\n}",
       python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i % 2001) - 1000)\n    return Codec().deserialize(Codec().serialize(root))",
       js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i % 2001) - 1000);\n  return new Codec().deserialize(new Codec().serialize(root));\n}",
-      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i % 2001) - 1000; });\n    Codec ser, deser;\n        return deser.deserialize(ser.serialize(root));\n}"
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i % 2001) - 1000; });\n    Codec ser, deser;\n        return deser.deserialize(ser.serialize(root));\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static TreeNode Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => (i % 2001) - 1000);\n        Codec ser = new Codec(), deser = new Codec();   // the judge round-trips through two instances\n        return deser.Deserialize(ser.Serialize(root));\n    }\n}"
     }, cases: [
       [[[1,2,3,null,null,4,5],0],[1,2,3,null,null,4,5]],
       [[[],0],[]],
@@ -9482,7 +11267,56 @@ private:
         return n;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+using System.Text;
+
+public class Codec
+{
+    // Same preorder-with-# format as the recursive version, but with explicit stacks:
+    // a 10^4-deep tree would overflow the call stack.
+    public string Serialize(TreeNode root)
+    {
+        var sb = new StringBuilder();
+        var st = new Stack<TreeNode>();             // Stack<T> may hold null
+        st.Push(root);
+        while (st.Count > 0)
+        {
+            TreeNode n = st.Pop();
+            if (n == null) { sb.Append("#,"); continue; }   // marker keeps the shape
+            sb.Append(n.val).Append(',');
+            st.Push(n.right);                       // pushed first -> written after the left side
+            st.Push(n.left);
+        }
+        return sb.ToString();
+    }
+
+    // an empty link waiting for its subtree: parent's left or right slot
+    private struct Slot
+    {
+        public TreeNode Parent; public bool Left;
+        public Slot(TreeNode parent, bool left) { Parent = parent; Left = left; }
+    }
+
+    public TreeNode Deserialize(string data)
+    {
+        var holder = new TreeNode(0);               // the real root hangs at holder.left
+        var slots = new Stack<Slot>();
+        slots.Push(new Slot(holder, true));
+        foreach (string s in data.Split(','))
+        {
+            if (s.Length == 0) continue;            // trailing separator
+            Slot slot = slots.Pop();                // preorder: the next token fills the newest slot
+            TreeNode n = s == "#" ? null : new TreeNode(int.Parse(s));
+            if (slot.Left) slot.Parent.left = n; else slot.Parent.right = n;
+            if (n != null)                          // its two children come next: left first
+            {
+                slots.Push(new Slot(n, false));
+                slots.Push(new Slot(n, true));
+            }
+        }
+        return holder.left;
+    }
+}` }],
       dry: { head: ['token read', 'action', 'building'], rows: [['1', 'new node 1, read its left', '1'], ['2', 'node 2 = 1.left', '1 → 2'], ['#, #', '2 has no children', 'back to 1'], ['3', 'node 3 = 1.right', '1 → 3'], ['4 #, #', '4 = 3.left (leaf)', '…'], ['5 #, #', '5 = 3.right (leaf)', H.c('g', 'done')]] },
       complexity: `<p><b>Time O(N)</b> both ways, <b>space O(N)</b> for the string, the tokens and the explicit stacks. The recursive form is shorter but needs O(h) call stack, which overflows on a 10<sup>4</sup>-deep tree.</p>`,
       followUps: ['Use a compact binary format (e.g. varints) for huge trees', 'Serialize a BST without null markers (preorder alone suffices)', 'Serialize an N-ary tree (store child counts)']
@@ -9589,6 +11423,31 @@ vector<vector<int>> verticalTraversal(TreeNode* root) {
         res.push_back(vals);
     }
     return res;
+}` },
+            { lang: 'csharp', code: `List<List<int>> VerticalBrute(TreeNode root)
+{
+    var all = new List<int[]>();                // {col, row, val}
+    Collect(root, 0, 0, all);
+    int lo = int.MaxValue, hi = int.MinValue;
+    foreach (int[] e in all) { lo = Math.Min(lo, e[0]); hi = Math.Max(hi, e[0]); }
+    var res = new List<List<int>>();
+    for (int c = lo; c <= hi; c++)              // full scan per column
+    {
+        var col = new List<int[]>();
+        foreach (int[] e in all) if (e[0] == c) col.Add(e);
+        col.Sort((a, b) => a[1] != b[1] ? a[1] - b[1] : a[2] - b[2]);
+        var vals = new List<int>();
+        foreach (int[] e in col) vals.Add(e[2]);
+        res.Add(vals);
+    }
+    return res;
+}
+void Collect(TreeNode n, int row, int col, List<int[]> result)
+{
+    if (n == null) return;
+    result.Add(new[] { col, row, n.val });
+    Collect(n.left, row + 1, col - 1, result);
+    Collect(n.right, row + 1, col + 1, result);
 }` }
           ]
         }
@@ -9697,7 +11556,34 @@ private:
         dfs(n->right, row + 1, col + 1, out);
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System.Collections.Generic;
+
+public class Solution
+{
+    public IList<IList<int>> VerticalTraversal(TreeNode root)
+    {
+        var nodes = new List<int[]>();                        // {col, row, val}
+        Dfs(root, 0, 0, nodes);
+        nodes.Sort((a, b) => a[0] != b[0] ? a[0].CompareTo(b[0])
+                           : a[1] != b[1] ? a[1].CompareTo(b[1])
+                           : a[2].CompareTo(b[2]));
+        var res = new List<IList<int>>();
+        int prevCol = int.MinValue;
+        foreach (int[] e in nodes)
+        {
+            if (e[0] != prevCol) { res.Add(new List<int>()); prevCol = e[0]; }  // new column
+            res[res.Count - 1].Add(e[2]);
+        }
+        return res;
+    }
+    private void Dfs(TreeNode n, int row, int col, List<int[]> result)
+    {
+        if (n == null) return;
+        result.Add(new[] { col, row, n.val });
+        Dfs(n.left, row + 1, col - 1, result);
+        Dfs(n.right, row + 1, col + 1, result);
+    }
+}` }],
       dry: { head: ['sorted triple (col, row, val)', 'group'], rows: [['(−2, 2, 4)', '[4]'], ['(−1, 1, 2)', '[2]'], ['(0, 0, 1), (0, 2, 5), (0, 2, 6)', H.c('g', '[1, 5, 6]')], ['(1, 1, 3)', '[3]'], ['(2, 2, 7)', '[7]']] },
       complexity: `<p><b>Time O(N log N)</b> for the sort, <b>space O(N)</b>.</p>`,
       followUps: ['The simpler LeetCode 314 version (ties by left-to-right order) in O(N) with BFS', 'Top and bottom views from the same coordinates']
@@ -9788,7 +11674,23 @@ int maxSumBST(TreeNode* root) {
     maxSumBST(root->left);
     maxSumBST(root->right);
     return bestBrute;
-}` }
+}` },
+            { lang: 'csharp', code: `int bestBrute = 0;
+int MaxSumBSTBrute(TreeNode root)
+{
+    if (root == null) return 0;
+    if (Valid(root, long.MinValue, long.MaxValue)) bestBrute = Math.Max(bestBrute, Sum(root));
+    MaxSumBSTBrute(root.left);
+    MaxSumBSTBrute(root.right);
+    return bestBrute;
+}
+bool Valid(TreeNode n, long lo, long hi)
+{
+    if (n == null) return true;
+    if (n.val <= lo || n.val >= hi) return false;
+    return Valid(n.left, lo, n.val) && Valid(n.right, n.val, hi);
+}
+int Sum(TreeNode n) { return n == null ? 0 : n.val + Sum(n.left) + Sum(n.right); }` }
           ]
         }
     },
@@ -9802,7 +11704,7 @@ int maxSumBST(TreeNode* root) {
       java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> i - 20000);\n        return new Solution().maxSumBST(root);\n    }\n}",
       python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: i - 20000)\n    return Solution().max_sum_bst(root)",
       js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => i - 20000);\n  return maxSumBST(root);\n}",
-      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return i - 20000; });\n    return Solution().maxSumBST(root);\n}"
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return i - 20000; });\n    return Solution().maxSumBST(root);\n}", csharp: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode Chain(int n, Func<int, int> val) {\n        TreeNode root = null;\n        for (int i = Math.Abs(n) - 1; i >= 0; i--) {\n            var t = new TreeNode(val(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    public static int Judge(TreeNode root, int n) {\n        if (n != 0) root = Chain(n, i => i - 20000);\n        return new Solution().MaxSumBST(root);\n    }\n}"
     }, cases: [
       [[[1,4,3,2,4,2,5,null,null,null,null,null,null,4,6],0],20],
       [[[4,3,null,1,2],0],2],
@@ -9922,7 +11824,47 @@ public:
         return best;
     }
 };
-` }],
+` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+public class Solution
+{
+    public int MaxSumBST(TreeNode root)
+    {
+        // postorder without recursion (the tree can be 4 * 10^4 deep):
+        // list nodes parents-first, then walk backwards so children come first
+        var order = new List<TreeNode>();
+        var st = new Stack<TreeNode>();
+        st.Push(root);
+        while (st.Count > 0)
+        {
+            TreeNode n = st.Pop();
+            order.Add(n);
+            if (n.left != null) st.Push(n.left);
+            if (n.right != null) st.Push(n.right);
+        }
+        int[] empty = { 1, int.MaxValue, int.MinValue, 0 };   // {isBST, min, max, sum}
+        var info = new Dictionary<TreeNode, int[]>();
+        int best = 0;                                // empty BST has sum 0
+        for (int i = order.Count - 1; i >= 0; i--)
+        {
+            TreeNode n = order[i];
+            int[] L = n.left == null ? empty : info[n.left];
+            int[] R = n.right == null ? empty : info[n.right];
+            if (L[0] == 1 && R[0] == 1 && L[2] < n.val && n.val < R[1])
+            {
+                int sum = L[3] + R[3] + n.val;
+                best = Math.Max(best, sum);
+                info[n] = new[] { 1, Math.Min(L[1], n.val), Math.Max(R[2], n.val), sum };
+            }
+            else
+            {
+                info[n] = new[] { 0, 0, 0, 0 };      // not a BST: values no longer matter
+            }
+        }
+        return best;
+    }
+}` }],
       dry: { head: ['subtree root', 'children BST?', 'leftMax &lt; val &lt; rightMin', 'sum', 'best'], rows: [['4 (under 5)', 'yes (leaves)', 'yes', '4', '4'], ['6', 'yes', 'yes', '6', '6'], ['5', 'yes', '4 &lt; 5 &lt; 6', '15', '15'], ['2 (under 3)', 'yes', 'yes', '2', '15'], ['3', 'yes', '2 &lt; 3 &lt; 4', H.c('g', '20'), H.c('g', '20')], ['4 (under 1)', 'yes', H.c('r', '4 &lt; 4 fails'), '—', '20'], ['1', H.c('r', 'no'), '—', '—', H.c('g', '20')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the node list and the info map. The recursive form needs O(h) call stack instead, and h can reach 4·10<sup>4</sup> here.</p>`,
       followUps: ['Return the SIZE of the largest BST subtree instead of the sum', 'Largest BST when duplicates are allowed on one side']

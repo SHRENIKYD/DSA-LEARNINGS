@@ -275,7 +275,54 @@ int main() {
     cout << Manacher::countPalindromes("aaa") << "\\n";         // 6
     vector<int> p = Manacher::radii("abba");
     cout << boolalpha << Manacher::isPal(p, 0, 3) << " " << Manacher::isPal(p, 0, 2) << "\\n";   // true false
-}` }] }, { lang: 'python', run: true, title: 'Manacher in Python (runnable)', code: `
+}` }, { lang: 'csharp', code: `using System;
+
+class Manacher {
+    // Returns P over t = "#s0#s1#...#s(n-1)#" (length 2n+1).
+    // P[i] = radius of the palindrome centered at t[i]
+    //      = LENGTH of the matching palindrome in the original s.
+    static int[] Radii(string s) {
+        int n = s.Length;
+        char[] t = new char[2 * n + 1];
+        for (int i = 0; i < t.Length; i++) t[i] = (i % 2 == 0) ? '#' : s[i / 2];
+        int m = t.Length;
+        int[] p = new int[m];
+        int c = 0, r = -1;                       // box = [c - p[c], r], r = furthest right end
+        for (int i = 0; i < m; i++) {
+            // free start from the mirror (2c - i) if we are inside the box
+            int k = (i > r) ? 0 : Math.Min(p[2 * c - i], r - i);
+            // try to grow beyond what we already know
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }  // box moved right
+        }
+        return p;
+    }
+
+    static string LongestPalindrome(string s) {
+        int[] p = Radii(s);
+        int best = 0, center = 0;
+        for (int i = 0; i < p.Length; i++) if (p[i] > best) { best = p[i]; center = i; }
+        int start = (center - best) / 2;          // map back to s
+        return s.Substring(start, best);
+    }
+
+    static long CountPalindromes(string s) {
+        long total = 0;
+        foreach (int v in Radii(s)) total += (v + 1) / 2;  // palindromes sharing this center
+        return total;
+    }
+
+    // O(1) palindrome query after O(n) preprocessing
+    static bool IsPal(int[] p, int l, int r) { return p[l + r + 1] >= r - l + 1; }
+
+    static void Main() {
+        Console.WriteLine(LongestPalindrome("abacabad"));   // abacaba
+        Console.WriteLine(CountPalindromes("aaa"));         // 6
+        int[] p = Radii("abba");
+        Console.WriteLine(IsPal(p, 0, 3) + " " + IsPal(p, 0, 2)); // True False
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Manacher in Python (runnable)', code: `
 def manacher(s):
     t = '#' + '#'.join(s) + '#'          # "abba" -> "#a#b#b#a#"
     m = len(t)
@@ -424,7 +471,18 @@ public:
             }
         return count;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int CountSubstrings(string s) {
+        int n = s.Length, count = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = i; j < n; j++) {
+                int l = i, r = j;
+                while (l < r && s[l] == s[r]) { l++; r--; }
+                if (l >= r) count++;          // s[i..j] is a palindrome
+            }
+        return count;
+    }
+}` }] } },
       mcq: { q: 'P over the padded string at some center is 5. How many palindromic substrings share this center?', options: ['5', '3 (lengths 5, 3, 1)', '2', '1'], answer: 1, explain: 'Peeling one character off each end keeps a palindrome: lengths 5, 3, 1 → (5 + 1)/2 = 3.' },
       hints: [`<p>Every palindrome has exactly one center in the <code>#</code>-padded string, and all palindromes with the same center are nested: if the longest has length P, the others have lengths P−2, P−4, …</p>`, `<p>So the answer is Σ ⌈P[i]/2⌉ = Σ (P[i] + 1) / 2 over all centers. You just need every P[i] — Manacher gives all of them in O(N).</p>`, `<p>Use a 64-bit integer (<code>long</code>, <code>long long</code>; Python ints are unbounded) for the total (N = 10<sup>6</sup> all-same letters gives ~5·10<sup>11</sup>). Recipe: build t, run Manacher, sum (p+1)/2.</p>`],
       tests: { sig: 'string -> long', fn: 'countSubstrings', names: { python: 'countSubstrings' }, cases: [
@@ -510,7 +568,24 @@ public:
         }
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long CountSubstrings(string s) {
+        int n = s.Length, m = 2 * n + 1;
+        char[] t = new char[m];
+        for (int i = 0; i < m; i++) t[i] = (i % 2 == 0) ? '#' : s[i / 2];
+        int[] p = new int[m];
+        int c = 0, r = -1;
+        long total = 0;
+        for (int i = 0; i < m; i++) {
+            int k = (i > r) ? 0 : Math.Min(p[2 * c - i], r - i);   // mirror gift
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }
+            total += (k + 1) / 2;                                   // nested palindromes at this center
+        }
+        return total;
+    }
+}` }],
         dry: { head: ['i', 't[i]', 'inside box?', 'start k', 'P[i]', '(P+1)/2', 'total'], rows: [
           ['0', '#', 'no', '0', '0', '0', '0'],
           ['1', 'a', 'no', '0', '1', '1', '1'],
@@ -857,7 +932,79 @@ int main() {
     cout << "\\n";
     auto [lo, hi] = SuffixArray::occurrenceRange(s, sa, "ana");
     cout << "ana occurs " << hi - lo << " times\\n";     // 2
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `using System;
+
+class SuffixArray {
+    // O(N log N) prefix doubling with counting sort on CYCLIC shifts.
+    // We append a sentinel smaller than every real char so cyclic order == suffix order.
+    static int[] Build(string str) {
+        int n = str.Length + 1;
+        int[] a = new int[n];
+        for (int i = 0; i < n - 1; i++) a[i] = str[i] + 1;   // shift: sentinel 0 is smallest
+        a[n - 1] = 0;
+        int alphabet = 0;
+        foreach (int x in a) alphabet = Math.Max(alphabet, x + 1);
+        int[] p = new int[n], c = new int[n], cnt = new int[Math.Max(alphabet, n)];
+        // round 0: counting sort by the first character
+        foreach (int x in a) cnt[x]++;
+        for (int i = 1; i < alphabet; i++) cnt[i] += cnt[i - 1];
+        for (int i = n - 1; i >= 0; i--) p[--cnt[a[i]]] = i;
+        int classes = 1;
+        c[p[0]] = 0;
+        for (int i = 1; i < n; i++) { if (a[p[i]] != a[p[i - 1]]) classes++; c[p[i]] = classes - 1; }
+        int[] pn = new int[n], cn = new int[n];
+        for (int len = 1; len < n && classes < n; len <<= 1) {
+            // shifting by -len makes the list already sorted by the SECOND half
+            for (int i = 0; i < n; i++) { pn[i] = p[i] - len; if (pn[i] < 0) pn[i] += n; }
+            // stable counting sort by the FIRST half (class of pn[i])
+            Array.Clear(cnt, 0, classes);
+            for (int i = 0; i < n; i++) cnt[c[pn[i]]]++;
+            for (int i = 1; i < classes; i++) cnt[i] += cnt[i - 1];
+            for (int i = n - 1; i >= 0; i--) p[--cnt[c[pn[i]]]] = pn[i];
+            // re-rank: new class when either half differs
+            cn[p[0]] = 0;
+            classes = 1;
+            for (int i = 1; i < n; i++) {
+                int curA = c[p[i]], prevA = c[p[i - 1]];
+                int curB = c[(p[i] + len) % n], prevB = c[(p[i - 1] + len) % n];
+                if (curA != prevA || curB != prevB) classes++;
+                cn[p[i]] = classes - 1;
+            }
+            int[] tmp = c; c = cn; cn = tmp;
+        }
+        int[] res = new int[n - 1];
+        Array.Copy(p, 1, res, 0, n - 1);        // drop the sentinel suffix (always first)
+        return res;
+    }
+
+    // -1: suffix < p, 0: p is a prefix of the suffix, +1: suffix > p
+    static int Cmp(string s, int start, string p) {
+        for (int k = 0; k < p.Length; k++) {
+            if (start + k >= s.Length) return -1;          // suffix ran out first → smaller
+            char x = s[start + k], y = p[k];
+            if (x != y) return x < y ? -1 : 1;
+        }
+        return 0;
+    }
+
+    // occurrences of p are SA[lo .. hi-1]
+    static int[] OccurrenceRange(string s, int[] sa, string p) {
+        int lo = 0, hi = sa.Length;
+        while (lo < hi) { int mid = (lo + hi) >> 1; if (Cmp(s, sa[mid], p) < 0) lo = mid + 1; else hi = mid; }
+        int left = lo;
+        hi = sa.Length;
+        while (lo < hi) { int mid = (lo + hi) >> 1; if (Cmp(s, sa[mid], p) <= 0) lo = mid + 1; else hi = mid; }
+        return new[] { left, lo };
+    }
+
+    static void Main() {
+        string s = "banana";
+        int[] sa = Build(s);
+        Console.WriteLine("[" + string.Join(", ", sa) + "]");       // [5, 3, 1, 0, 4, 2]
+        int[] r = OccurrenceRange(s, sa, "ana");
+        Console.WriteLine("ana occurs " + (r[1] - r[0]) + " times");   // 2
+    }
+}`, run: true }] }, { lang: 'java', code: `
       class SuffixArraySimple {
           // O(N log^2 N): easiest to write under interview pressure.
           static int[] build(String s) {
@@ -958,7 +1105,35 @@ public:
 int main() {
     for (int x : SuffixArraySimple::build("mississippi")) cout << x << " ";   // 10 7 4 1 0 9 8 6 3 5 2
     cout << "\\n";
-}` }] }, { lang: 'python', run: true, title: 'Prefix doubling in Python (runnable)', code: `
+}` }, { lang: 'csharp', code: `using System;
+
+class SuffixArraySimple {
+    // O(N log^2 N): easiest to write under interview pressure.
+    static int[] Build(string s) {
+        int n = s.Length;
+        if (n == 0) return new int[0];
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; ; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => {
+                if (r[x] != r[y]) return r[x].CompareTo(r[y]);                // first half
+                int rx = x + K < n ? r[x + K] : -1, ry = y + K < n ? r[y + K] : -1;
+                return rx.CompareTo(ry);                                      // second half
+            };
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;     // all ranks distinct → fully sorted
+        }
+        return sa;
+    }
+    static void Main() {
+        Console.WriteLine("[" + string.Join(", ", Build("mississippi")) + "]"); // [10, 7, 4, 1, 0, 9, 8, 6, 3, 5, 2]
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Prefix doubling in Python (runnable)', code: `
 def suffix_array(s):
     n = len(s)
     sa = list(range(n))
@@ -1111,7 +1286,17 @@ public:
         }
         return ans;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int[] Count(string t, string[] qs) {
+        int[] ans = new int[qs.Length];
+        for (int q = 0; q < qs.Length; q++) {
+            int from = 0, c = 0;
+            while ((from = t.IndexOf(qs[q], from, StringComparison.Ordinal)) != -1) { c++; from++; }  // overlapping
+            ans[q] = c;
+        }
+        return ans;
+    }
+}` }] } },
       mcq: { q: 'In a suffix array, the suffixes that start with pattern P…', options: ['are scattered randomly', 'form one contiguous block', 'are always the first |P| entries', 'cannot be found without LCP'], answer: 1, explain: 'Sorted order groups all strings that share a prefix, exactly like a dictionary groups words starting with the same letters.' },
       hints: [`<p>An occurrence of P at index i means P is a <b>prefix</b> of suffix i. In sorted order, all suffixes with prefix P are neighbours.</p>`, `<p>Build the suffix array once (O(N log N)). For each query do a lower bound (first suffix ≥ P) and an upper bound (first suffix whose first |P| chars are &gt; P).</p>`, `<p>Compare a suffix and P only on the first |P| characters; if the suffix ends early it is <i>smaller</i>. Answer = upper − lower. Edge cases: P longer than T, P equal to T.</p>`],
       tests: { sig: 'string string[] -> int[]', fn: 'countAll', cases: [
@@ -1300,7 +1485,61 @@ public:
         for (const string& p : queries) ans.push_back(bound(p, true) - bound(p, false));
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private string t;
+    private int[] sa;
+
+    public int[] CountAll(string text, string[] queries) {
+        t = text;
+        sa = BuildSA(text);
+        int[] ans = new int[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            string p = queries[q];
+            int lo = Bound(p, false), hi = Bound(p, true);
+            ans[q] = hi - lo;
+        }
+        return ans;
+    }
+
+    // strict == false: first index with suffix >= p (prefix-wise)
+    // strict == true : first index with suffix  > p (prefix-wise)
+    private int Bound(string p, bool strict) {
+        int lo = 0, hi = sa.Length;
+        while (lo < hi) {
+            int mid = (lo + hi) >> 1, c = Cmp(sa[mid], p);
+            if (c < 0 || (strict && c == 0)) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+    private int Cmp(int start, string p) {
+        for (int k = 0; k < p.Length; k++) {
+            if (start + k >= t.Length) return -1;
+            char x = t[start + k], y = p[k];
+            if (x != y) return x < y ? -1 : 1;
+        }
+        return 0;
+    }
+
+    // O(N log^2 N) prefix doubling (short and safe)
+    private static int[] BuildSA(string s) {
+        int n = s.Length;
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; n > 1; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => r[x] != r[y] ? r[x].CompareTo(r[y])
+                    : (x + K < n ? r[x + K] : -1).CompareTo(y + K < n ? r[y + K] : -1);
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+}` }],
         dry: { head: ['search', 'lo', 'hi', 'mid', 'suffix at SA[mid]', 'cmp with "ana"', 'move'], rows: [
           ['lower', '0', '6', '3', 'banana', '+1 (b &gt; a)', 'hi = 3'],
           ['lower', '0', '3', '1', 'ana', '0 (prefix)', 'hi = 1'],
@@ -1609,7 +1848,70 @@ int main() {
     for (int x : LcpToolkit::kasai(s, sa)) cout << x << " ";        // 0 1 3 0 0 2
     cout << "\\n" << LcpToolkit::longestRepeated("banana") << "\\n";   // ana
     cout << LcpToolkit::longestCommon("xabcdey", "zzbcdq") << "\\n";  // bcd
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `using System;
+
+class LcpToolkit {
+    // O(N log^2 N) prefix doubling
+    static int[] BuildSA(string s) {
+        int n = s.Length;
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; n > 1; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => r[x] != r[y] ? r[x].CompareTo(r[y])
+                    : (x + K < n ? r[x + K] : -1).CompareTo(y + K < n ? r[y + K] : -1);
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+
+    // Kasai: lcp[r] = LCP(suffix SA[r-1], suffix SA[r]); lcp[0] = 0. O(N).
+    static int[] Kasai(string s, int[] sa) {
+        int n = s.Length;
+        int[] rank = new int[n], lcp = new int[n];
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        int h = 0;
+        for (int i = 0; i < n; i++) {                      // TEXT order, not sorted order
+            if (rank[i] == 0) { h = 0; continue; }         // no neighbour above
+            int j = sa[rank[i] - 1];                       // sorted neighbour above suffix i
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;                                // the "bookmark slips back one" step
+        }
+        return lcp;
+    }
+
+    static string LongestRepeated(string s) {
+        int[] sa = BuildSA(s), lcp = Kasai(s, sa);
+        int best = 0, at = 0;
+        for (int r = 1; r < s.Length; r++) if (lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+        return s.Substring(at, best);
+    }
+
+    static string LongestCommon(string a, string b) {
+        string s = a + "#" + b;                            // '#' must not appear in a or b
+        int[] sa = BuildSA(s), lcp = Kasai(s, sa);
+        int n1 = a.Length, best = 0, at = 0;
+        for (int r = 1; r < s.Length; r++) {
+            bool fromA = sa[r] < n1, prevFromA = sa[r - 1] < n1;
+            if (fromA != prevFromA && lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+        }
+        return s.Substring(at, best);
+    }
+
+    static void Main() {
+        string s = "banana";
+        int[] sa = BuildSA(s);
+        Console.WriteLine("[" + string.Join(", ", Kasai(s, sa)) + "]");   // [0, 1, 3, 0, 0, 2]
+        Console.WriteLine(LongestRepeated("banana"));                      // ana
+        Console.WriteLine(LongestCommon("xabcdey", "zzbcdq"));             // bcd
+    }
+}`, run: true }] }, { lang: 'java', code: `
       class LcpRmq {
           // O(1) LCP of any two suffixes with a sparse table over lcp[].
           final int[][] sp;
@@ -1722,7 +2024,39 @@ int main() {
     cout << q.lcp(1, 3) << "\\n";   // anana vs ana -> 3
     cout << q.lcp(5, 1) << "\\n";   // a vs anana   -> 1
     cout << q.lcp(0, 2) << "\\n";   // banana vs nana -> 0
-}` }] }],
+}` }, { lang: 'csharp', code: `using System;
+
+class LcpRmq {
+    // O(1) LCP of any two suffixes with a sparse table over lcp[].
+    readonly int[][] sp;
+    readonly int[] rank, log;
+    public LcpRmq(int[] sa, int[] lcp) {
+        int n = sa.Length;
+        rank = new int[n];
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        log = new int[n + 1];
+        for (int i = 2; i <= n; i++) log[i] = log[i / 2] + 1;
+        sp = new int[log[Math.Max(n, 1)] + 1][];
+        sp[0] = (int[])lcp.Clone();
+        for (int k = 1; k < sp.Length; k++) {
+            sp[k] = new int[n];
+            for (int i = 0; i + (1 << k) <= n; i++) sp[k][i] = Math.Min(sp[k - 1][i], sp[k - 1][i + (1 << (k - 1))]);
+        }
+    }
+    // LCP of suffixes starting at positions i and j (i != j)
+    public int Lcp(int i, int j) {
+        int a = Math.Min(rank[i], rank[j]) + 1, b = Math.Max(rank[i], rank[j]);
+        int k = log[b - a + 1];
+        return Math.Min(sp[k][a], sp[k][b - (1 << k) + 1]);
+    }
+    static void Main() {
+        // banana: SA = [5,3,1,0,4,2], lcp = [0,1,3,0,0,2]
+        var q = new LcpRmq(new[] { 5, 3, 1, 0, 4, 2 }, new[] { 0, 1, 3, 0, 0, 2 });
+        Console.WriteLine(q.Lcp(1, 3));   // anana vs ana -> 3
+        Console.WriteLine(q.Lcp(5, 1));   // a vs anana   -> 1
+        Console.WriteLine(q.Lcp(0, 2));   // banana vs nana -> 0
+    }
+}`, run: true }] }],
     codeTitle: ['Kasai + longest repeated + longest common substring (Java)', 'O(1) LCP of any two suffixes with a sparse table (Java)'],
     viz: {
       title: 'Kasai: the bookmark that only slips back one step',
@@ -1839,7 +2173,19 @@ public:
         }
         return "";
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public string LongestDupSubstring(string s) {
+        int n = s.Length;
+        for (int len = n - 1; len >= 1; len--) {
+            var seen = new HashSet<string>();
+            for (int i = 0; i + len <= n; i++) {
+                string sub = s.Substring(i, len);          // O(len) copy each time
+                if (!seen.Add(sub)) return sub;
+            }
+        }
+        return "";
+    }
+}` }] } },
       mcq: { q: 'After building SA and the LCP array, the longest duplicated substring has length…', options: ['the minimum LCP', 'the maximum LCP', 'Σ LCP', 'N − max LCP'], answer: 1, explain: 'A repeated substring is a common prefix of two suffixes; the longest such common prefix is attained by some sorted neighbours, i.e. max lcp.' },
       hints: [`<p>A substring occurs twice ⇔ it is a common prefix of two different suffixes. The longest common prefix of any two suffixes is achieved by two suffixes that are <b>neighbours</b> in sorted order.</p>`, `<p>Build the suffix array, then the LCP array with Kasai. Answer = max lcp[r], starting at SA[r]. (Alternative: binary search on length + Rabin–Karp with a strong hash.)</p>`, `<p>Edge cases: all lcp = 0 → return "". Use the O(N log<sup>2</sup> N) builder — N = 3·10<sup>4</sup> is small. Recipe: SA → rank → Kasai with carried h → track argmax → substring.</p>`],
       tests: { sig: 'string -> string', fn: 'longestDupSubstring', names: { python: 'longestDupSubstring' }, check: "(args, out, exp) => { const s = args[0]; if (typeof out !== 'string' || out.length !== exp.length) return false; return out === '' || s.indexOf(out) !== s.lastIndexOf(out); }", cases: [
@@ -1997,7 +2343,42 @@ public:
         }
         return s.substr(at, best);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string LongestDupSubstring(string s) {
+        int n = s.Length;
+        int[] sa = BuildSA(s);
+        int[] rank = new int[n];
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        int h = 0, best = 0, at = 0;
+        for (int i = 0; i < n; i++) {
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            if (h > best) { best = h; at = i; }        // lcp[rank[i]] = h
+            if (h > 0) h--;
+        }
+        return s.Substring(at, best);
+    }
+
+    // O(N log^2 N) prefix doubling (short and safe)
+    private static int[] BuildSA(string s) {
+        int n = s.Length;
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; n > 1; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => r[x] != r[y] ? r[x].CompareTo(r[y])
+                    : (x + K < n ? r[x + K] : -1).CompareTo(y + K < n ? r[y + K] : -1);
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+}` }],
         dry: { head: ['i (text order)', 'suffix i', 'neighbour above j', 'h carried', 'h after extend', 'best'], rows: [
           ['0', 'banana', '1 (anana)', '0', '0', '0'],
           ['1', 'anana', '3 (ana)', '0', '<b>3</b>', H.c('g', '3 at 1')],
@@ -2337,7 +2718,77 @@ int main() {
     AhoCorasick ac(pats);
     for (auto [k, start] : ac.findAll("ahishers"))
         cout << pats[k] << " at " << start << "\\n";   // his at 1, she at 3, he at 4, hers at 4
-}` }] }, { lang: 'python', run: true, title: 'Aho–Corasick in Python (runnable)', code: `
+}` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+class AhoCorasick {
+    private readonly int[][] go;        // complete transition table (after build)
+    private readonly int[] fail;        // failure link of each node
+    private readonly int[] dictLink;    // nearest node on the fail chain that ends a pattern (-1 if none)
+    private readonly int[] patAt;       // pattern index ending at node, or -1 (assumes distinct patterns)
+    private readonly int[] patLen;
+    private int nodes = 1;
+
+    public AhoCorasick(string[] patterns) {
+        int cap = 1;
+        foreach (string p in patterns) cap += p.Length;
+        go = new int[cap][];
+        for (int i = 0; i < cap; i++) { go[i] = new int[26]; for (int c = 0; c < 26; c++) go[i][c] = -1; }
+        fail = new int[cap];
+        dictLink = new int[cap];
+        patAt = new int[cap];
+        for (int i = 0; i < cap; i++) patAt[i] = -1;
+        patLen = new int[patterns.Length];
+        // 1) trie
+        for (int k = 0; k < patterns.Length; k++) {
+            int v = 0;
+            foreach (char ch in patterns[k]) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) go[v][c] = nodes++;
+                v = go[v][c];
+            }
+            patAt[v] = k;
+            patLen[k] = patterns[k].Length;
+        }
+        // 2) BFS: failure links, dictionary links, complete transitions
+        var q = new Queue<int>();
+        dictLink[0] = -1;
+        for (int c = 0; c < 26; c++) {
+            int u = go[0][c];
+            if (u == -1) go[0][c] = 0;                       // stay at root
+            else { fail[u] = 0; dictLink[u] = -1; q.Enqueue(u); }
+        }
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) { go[v][c] = go[fail[v]][c]; continue; }   // borrow plan B's edge
+                fail[u] = go[fail[v]][c];
+                dictLink[u] = patAt[fail[u]] != -1 ? fail[u] : dictLink[fail[u]];
+                q.Enqueue(u);
+            }
+        }
+    }
+
+    // every match as (patternIndex, startPosition)
+    public List<int[]> FindAll(string text) {
+        var res = new List<int[]>();
+        int v = 0;
+        for (int i = 0; i < text.Length; i++) {
+            v = go[v][text[i] - 'a'];                            // ONE lookup per character
+            for (int u = patAt[v] != -1 ? v : dictLink[v]; u != -1; u = dictLink[u])
+                res.Add(new[] { patAt[u], i - patLen[patAt[u]] + 1 });
+        }
+        return res;
+    }
+
+    static void Main() {
+        string[] pats = { "he", "she", "his", "hers" };
+        var ac = new AhoCorasick(pats);
+        foreach (var m in ac.FindAll("ahishers"))
+            Console.WriteLine(pats[m[0]] + " at " + m[1]);   // his at 1, she at 3, he at 4, hers at 4
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Aho–Corasick in Python (runnable)', code: `
 from collections import deque
 
 def aho_corasick(patterns, text):
@@ -2530,7 +2981,16 @@ public:
         }
         return ans;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public long[] Count(string text, string[] words) {
+        long[] ans = new long[words.Length];
+        for (int k = 0; k < words.Length; k++) {
+            int from = 0;
+            while ((from = text.IndexOf(words[k], from, StringComparison.Ordinal)) != -1) { ans[k]++; from++; }
+        }
+        return ans;
+    }
+}` }] } },
       mcq: { q: 'You counted how many text positions ended in each automaton state. How do you get the count for word w?', options: ['Read the count of w’s node only', 'Sum the counts over w’s subtree in the fail tree', 'Sum counts along the path from root to w in the trie', 'Divide by |w|'], answer: 1, explain: 'A position ends an occurrence of w exactly when w is a suffix of the state’s string, i.e. w’s node is on that state’s fail chain — equivalently the state is in w’s fail-subtree.' },
       hints: [`<p>Scan the text through the automaton and just do <code>cnt[state]++</code> at each position. Don’t walk output chains.</p>`, `<p>w occurs ending at a position iff w’s node is an ancestor of that position’s state in the <b>fail tree</b>. So push counts upward: process nodes in <b>reverse BFS order</b> and do <code>cnt[fail[v]] += cnt[v]</code>.</p>`, `<p>Duplicate words share a node — remember each word’s end node and read <code>cnt[end[k]]</code>. Use 64-bit counts. Recipe: trie → BFS (fail + goto) saving BFS order → scan → reverse-BFS accumulation → read answers.</p>`],
       tests: { sig: 'string string[] -> long[]', fn: 'countOccurrences', cases: [
@@ -2690,7 +3150,43 @@ public:
         for (int e : end) ans.push_back(cnt[e]);
         return ans;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long[] CountOccurrences(string text, string[] words) {
+        int cap = 1;
+        foreach (string w in words) cap += w.Length;
+        int[][] go = new int[cap][];
+        for (int i = 0; i < cap; i++) { go[i] = new int[26]; for (int c = 0; c < 26; c++) go[i][c] = -1; }
+        int[] fail = new int[cap], end = new int[words.Length];
+        int nodes = 1;
+        for (int k = 0; k < words.Length; k++) {           // 1) trie
+            int v = 0;
+            foreach (char ch in words[k]) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) go[v][c] = nodes++;
+                v = go[v][c];
+            }
+            end[k] = v;                                     // duplicates share the node
+        }
+        int[] order = new int[nodes];                       // 2) BFS, remember the order
+        int head = 0, tail = 0;
+        order[tail++] = 0;
+        while (head < tail) {
+            int v = order[head++];
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) go[v][c] = (v == 0) ? 0 : go[fail[v]][c];
+                else { fail[u] = (v == 0) ? 0 : go[fail[v]][c]; order[tail++] = u; }
+            }
+        }
+        long[] cnt = new long[nodes];                       // 3) scan: one visit count per position
+        int s = 0;
+        for (int i = 0; i < text.Length; i++) { s = go[s][text[i] - 'a']; cnt[s]++; }
+        for (int i = tail - 1; i > 0; i--) cnt[fail[order[i]]] += cnt[order[i]];   // 4) push up the fail tree
+        long[] ans = new long[words.Length];
+        for (int k = 0; k < words.Length; k++) ans[k] = cnt[end[k]];
+        return ans;
+    }
+}` }],
         dry: { head: ['i', 'char', 'state after', 'how', 'cnt[state]++'], rows: [
           ['0', 'a', 'root', 'no edge from root', 'root = 1'],
           ['1', 'h', 'h', 'trie edge', 'h = 1'],
@@ -2885,7 +3381,44 @@ int main() {
     StringHasher h("abcabcx");
     cout << boolalpha << h.equal(0, 3, 3) << "\\n";   // "abc" vs "abc" -> true
     cout << h.equal(0, 4, 3) << "\\n";                // "abc" vs "bcx" -> false
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `using System;
+
+class StringHasher {
+    // Double polynomial hash with RANDOM bases (anti-hash safe for interview/contest use).
+    const long M1 = 1000000007L, M2 = 998244353L;
+    readonly long[] p1, p2, h1, h2;
+
+    public StringHasher(string s) {
+        var rnd = new Random();                              // seeded by time → bases unknown to an attacker
+        long b1 = 256 + rnd.Next((int)(M1 - 512));
+        long b2 = 256 + rnd.Next((int)(M2 - 512));
+        int n = s.Length;
+        p1 = new long[n + 1]; p2 = new long[n + 1]; h1 = new long[n + 1]; h2 = new long[n + 1];
+        p1[0] = p2[0] = 1;
+        for (int i = 0; i < n; i++) {
+            int v = s[i] + 1;                                // never map a char to 0
+            p1[i + 1] = p1[i] * b1 % M1;
+            p2[i + 1] = p2[i] * b2 % M2;
+            h1[i + 1] = (h1[i] * b1 + v) % M1;
+            h2[i + 1] = (h2[i] * b2 + v) % M2;
+        }
+    }
+
+    // hash of s[l, r) packed into one long: (h1 << 32) | h2
+    public long Get(int l, int r) {
+        long x = (h1[r] - h1[l] * p1[r - l] % M1 + M1) % M1;
+        long y = (h2[r] - h2[l] * p2[r - l] % M2 + M2) % M2;
+        return (x << 32) | y;
+    }
+
+    public bool Equal(int a, int b, int len) { return Get(a, a + len) == Get(b, b + len); }
+
+    static void Main() {
+        var h = new StringHasher("abcabcx");
+        Console.WriteLine(h.Equal(0, 3, 3));   // "abc" vs "abc" -> True
+        Console.WriteLine(h.Equal(0, 4, 3));   // "abc" vs "bcx" -> False
+    }
+}`, run: true }] }, { lang: 'java', code: `
       class Mersenne61 {
           // Single hash modulo 2^61 - 1 using a 128-bit product. ~2.3e18 possible values.
           static final long MOD = (1L << 61) - 1;
@@ -2948,7 +3481,30 @@ int main() {
     unsigned long long h = 0;
     for (char c : s) h = (Mersenne61::mulMod(h, base) + (unsigned char)c + 1) % Mersenne61::MOD;
     cout << "hash computed: " << boolalpha << (h < Mersenne61::MOD) << "\\n";
-}` }] }, { lang: 'java', code: `
+}` }, { lang: 'csharp', code: `using System;
+using System.Numerics;
+
+class Mersenne61 {
+    // Single hash modulo 2^61 - 1 using a 128-bit product. ~2.3e18 possible values.
+    const long MOD = (1L << 61) - 1;
+
+    static long MulMod(long a, long b) {                     // a, b < 2^61
+        BigInteger prod = (BigInteger)a * b;                 // exact 128-bit product
+        long low61 = (long)(prod & MOD);
+        long rest = (long)(prod >> 61);                      // product >> 61
+        long r = low61 + rest;                               // because 2^61 ≡ 1 (mod MOD)
+        r = (r & MOD) + (r >> 61);
+        return r >= MOD ? r - MOD : r;
+    }
+
+    static void Main() {
+        long b = 1000003L + new Random().Next(1 << 30);      // random base at runtime
+        string s = "hashing";
+        long h = 0;
+        foreach (char c in s) h = (MulMod(h, b) + c + 1) % MOD;
+        Console.WriteLine("hash computed: " + (h >= 0 && h < MOD));
+    }
+}`, run: true }] }, { lang: 'java', code: `
       class ThueMorseAttack {
           // Shows why "let long overflow" (mod 2^64) is NOT a hash: Thue–Morse strings collide for ANY odd base.
           public static void main(String[] args) {
@@ -3008,7 +3564,30 @@ for (const base of [31n, 131n, 1000003n, 0x9E3779B97F4A7C15n | 1n]) {
         cout << "base " << base << ": equal hash = " << boolalpha << (hs == ht)
              << ", equal strings = " << (s == t) << "\\n";
     }
-}` }] }, { lang: 'python', run: true, title: 'Anti-hash demo in Python (runnable)', code: `
+}` }, { lang: 'csharp', code: `using System;
+using System.Text;
+
+class ThueMorseAttack {
+    // Shows why "let long overflow" (mod 2^64) is NOT a hash: Thue–Morse strings collide for ANY odd base.
+    static int BitCount(int x) { int c = 0; for (; x != 0; x &= x - 1) c++; return c; }
+
+    static void Main() {
+        int n = 1 << 11;                                      // 2048 characters
+        var s = new StringBuilder();
+        var t = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            bool bit = BitCount(i) % 2 == 1;                  // Thue–Morse sequence
+            s.Append(bit ? 'b' : 'a');
+            t.Append(bit ? 'a' : 'b');                        // its complement
+        }
+        string ss = s.ToString(), tt = t.ToString();
+        foreach (long b in new[] { 31L, 131L, 1000003L, unchecked((long)0x9E3779B97F4A7C15UL) | 1 }) {
+            long hs = 0, ht = 0;
+            unchecked { for (int i = 0; i < n; i++) { hs = hs * b + ss[i]; ht = ht * b + tt[i]; } }
+            Console.WriteLine("base " + b + ": equal hash = " + (hs == ht) + ", equal strings = " + (ss == tt));
+        }
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Anti-hash demo in Python (runnable)', code: `
 # Thue-Morse attack on "natural overflow" hashing (mod 2**64)
 n = 1 << 11
 S = ''.join('b' if bin(i).count('1') % 2 else 'a' for i in range(n))
@@ -3162,7 +3741,17 @@ public:
                     seen.insert(text.substr(i, 2 * len));
         return seen.size();
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int DistinctEchoSubstrings(string text) {
+        int n = text.Length;
+        var seen = new HashSet<string>();
+        for (int i = 0; i < n; i++)
+            for (int len = 1; i + 2 * len <= n; len++)
+                if (text.Substring(i, len) == text.Substring(i + len, len))
+                    seen.Add(text.Substring(i, 2 * len));
+        return seen.Count;
+    }
+}` }] } },
       mcq: { q: 'There are about N<sup>2</sup>/4 = 10<sup>6</sup> candidate (start, half) pairs. You store echo hashes in a set with ONE modulus ≈ 10<sup>9</sup>. What is the main risk?', options: ['Overflow', 'Birthday collisions merge different substrings and undercount', 'TLE', 'None'], answer: 1, explain: 'Up to 10<sup>6</sup> hashes in one set with M ≈ 10<sup>9</sup> gives ≈ 500 expected colliding pairs — the answer becomes wrong. Use a double hash (≈ 10<sup>18</sup>).' },
       hints: [`<p>An echo is fixed by (start i, half-length L). Check “left half == right half” in O(1) with prefix hashes instead of comparing letters.</p>`, `<p>To count <b>distinct</b> echoes, insert the hash of the whole substring text[i, i + 2L) into a hash set of 64-bit values. Only substrings of equal length can be equal, so you can also keep one set per length.</p>`, `<p>Use two moduli with random bases and pack them into one 64-bit integer. Recipe: prefix hashes → loop i, L → if get(i, i+L) == get(i+L, i+2L) add get(i, i+2L) → return set size.</p>`],
       tests: { sig: 'string -> int', fn: 'distinctEchoSubstrings', names: { python: 'distinctEchoSubstrings' }, cases: [
@@ -3272,7 +3861,35 @@ public:
                 if (get(i, i + len) == get(i + len, i + 2 * len)) seen.insert(get(i, i + 2 * len));
         return seen.size();
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    const long M1 = 1000000007L, M2 = 998244353L;
+    long[] h1, h2, p1, p2;
+
+    public int DistinctEchoSubstrings(string text) {
+        int n = text.Length;
+        var rnd = new Random();
+        long b1 = 256 + rnd.Next(1000000), b2 = 256 + rnd.Next(1000000);   // random bases
+        h1 = new long[n + 1]; h2 = new long[n + 1]; p1 = new long[n + 1]; p2 = new long[n + 1];
+        p1[0] = p2[0] = 1;
+        for (int i = 0; i < n; i++) {
+            int v = text[i] - 'a' + 1;
+            h1[i + 1] = (h1[i] * b1 + v) % M1;  p1[i + 1] = p1[i] * b1 % M1;
+            h2[i + 1] = (h2[i] * b2 + v) % M2;  p2[i + 1] = p2[i] * b2 % M2;
+        }
+        var seen = new HashSet<long>();
+        for (int len = 1; 2 * len <= n; len++)
+            for (int i = 0; i + 2 * len <= n; i++)
+                if (Get(i, i + len) == Get(i + len, i + 2 * len))
+                    seen.Add(Get(i, i + 2 * len));            // hash of the whole echo
+        return seen.Count;
+    }
+
+    private long Get(int l, int r) {
+        long x = ((h1[r] - h1[l] * p1[r - l]) % M1 + M1) % M1;
+        long y = ((h2[r] - h2[l] * p2[r - l]) % M2 + M2) % M2;
+        return (x << 32) | y;
+    }
+}` }],
         dry: { head: ['half L', 'start i', 'left half', 'right half', 'equal?', 'set size'], rows: [
           ['1', '0..7', 'a,b,c,…', 'b,c,a,…', 'never', '0'],
           ['2', '0..5', 'ab, bc, …', 'ca, ab, …', 'never', '0'],
@@ -3619,7 +4236,84 @@ int main() {
     cout << sam.distinctSubstrings() << "\\n";                               // 12
     cout << boolalpha << sam.contains("cbc") << " " << sam.contains("ca") << "\\n";   // true false
     cout << sam.occurrences("bc") << "\\n";                                  // 2
-}` }] }, { lang: 'python', run: true, title: 'Suffix automaton in Python (runnable)', code: `
+}` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+class SuffixAutomaton {
+    readonly int[] len, link, firstPos;
+    readonly int[][] next;
+    readonly bool[] isClone;
+    public int size, last;
+
+    public SuffixAutomaton(string s) {
+        int cap = 2 * Math.Max(1, s.Length);              // at most 2N - 1 states
+        len = new int[cap]; link = new int[cap]; firstPos = new int[cap];
+        isClone = new bool[cap];
+        next = new int[cap][];
+        for (int i = 0; i < cap; i++) { next[i] = new int[26]; for (int c = 0; c < 26; c++) next[i][c] = -1; }
+        link[0] = -1; size = 1; last = 0;
+        for (int i = 0; i < s.Length; i++) Extend(s[i] - 'a', i);
+    }
+
+    private void Extend(int c, int pos) {
+        int cur = size++;
+        len[cur] = len[last] + 1;
+        firstPos[cur] = pos;
+        int p = last;
+        while (p != -1 && next[p][c] == -1) { next[p][c] = cur; p = link[p]; }   // new edges into cur
+        if (p == -1) link[cur] = 0;                                              // case 1: fell off root
+        else {
+            int q = next[p][c];
+            if (len[p] + 1 == len[q]) link[cur] = q;                             // case 2: perfect fit
+            else {                                                               // case 3: clone q
+                int clone = size++;
+                len[clone] = len[p] + 1;
+                next[clone] = (int[])next[q].Clone();
+                link[clone] = link[q];
+                firstPos[clone] = firstPos[q];
+                isClone[clone] = true;
+                while (p != -1 && next[p][c] == q) { next[p][c] = clone; p = link[p]; }
+                link[q] = clone;
+                link[cur] = clone;
+            }
+        }
+        last = cur;
+    }
+
+    public bool Contains(string w) {
+        int v = 0;
+        foreach (char ch in w) { v = next[v][ch - 'a']; if (v == -1) return false; }
+        return true;
+    }
+
+    public long DistinctSubstrings() {
+        long total = 0;
+        for (int v = 1; v < size; v++) total += len[v] - len[link[v]];
+        return total;
+    }
+
+    // occurrences of w = |endpos| of its state
+    public long Occurrences(string w) {
+        int n = size;
+        long[] cnt = new long[n];
+        for (int v = 1; v < n; v++) if (!isClone[v]) cnt[v] = 1;          // each prefix end is one position
+        int[] order = new int[n];
+        for (int v = 0; v < n; v++) order[v] = v;
+        Array.Sort(order, (a, b) => len[b] - len[a]);                     // longest first
+        foreach (int v in order) if (link[v] >= 0) cnt[link[v]] += cnt[v];
+        int x = 0;
+        foreach (char ch in w) { x = next[x][ch - 'a']; if (x == -1) return 0; }
+        return cnt[x];
+    }
+
+    static void Main() {
+        var sam = new SuffixAutomaton("abcbc");
+        Console.WriteLine("states = " + sam.size);                        // 8
+        Console.WriteLine(sam.DistinctSubstrings());                      // 12
+        Console.WriteLine(sam.Contains("cbc") + " " + sam.Contains("ca")); // True False
+        Console.WriteLine(sam.Occurrences("bc"));                         // 2
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Suffix automaton in Python (runnable)', code: `
 class SAM:
     def __init__(self, s):
         self.len, self.link, self.next = [0], [-1], [{}]
@@ -3811,7 +4505,20 @@ public:
         }
         return best;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int Lcs(string s, string t) {
+        int n = s.Length, m = t.Length, best = 0;
+        int[] prev = new int[m + 1], cur = new int[m + 1];
+        for (int i = 1; i <= n; i++) {
+            for (int j = 1; j <= m; j++) {
+                cur[j] = s[i - 1] == t[j - 1] ? prev[j - 1] + 1 : 0;
+                best = Math.Max(best, cur[j]);
+            }
+            int[] tmp = prev; prev = cur; cur = tmp;
+        }
+        return best;
+    }
+}` }] } },
       mcq: { q: 'While walking t through the SAM of s, the next char has no edge from state v. What do you do?', options: ['Restart from the root with length 0', 'Follow suffix links (setting l = len(v)) until an edge exists or you reach the root', 'Skip the character and keep l', 'Rebuild the automaton'], answer: 1, explain: 'Like Aho–Corasick fail links: the suffix link is the longest shorter suffix with more occurrences; keep as much of the current match as possible.' },
       hints: [`<p>Keep (v, l): the SAM state and length of the longest suffix of t[0..j] that is a substring of s. Answer = max l over j.</p>`, `<p>On character c: while v ≠ root and v has no c-edge, set v = link(v), l = len(v). If an edge exists, take it and l++; otherwise stay at the root with l = 0.</p>`, `<p>Build the SAM of the shorter string to save memory. Each step increases l by ≤ 1 and each fallback decreases it, so the walk is O(|t|). Return best.</p>`],
       tests: { sig: 'string string -> int', fn: 'longestCommonSubstring', cases: [
@@ -3975,7 +4682,44 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int LongestCommonSubstring(string s, string t) {
+        int cap = 2 * Math.Max(1, s.Length);
+        int[] len = new int[cap], link = new int[cap];
+        int[][] next = new int[cap][];
+        for (int i = 0; i < cap; i++) { next[i] = new int[26]; for (int c = 0; c < 26; c++) next[i][c] = -1; }
+        link[0] = -1;
+        int size = 1, last = 0;
+        for (int i = 0; i < s.Length; i++) {                    // build SAM of s
+            int c = s[i] - 'a', cur = size++;
+            len[cur] = len[last] + 1;
+            int p = last;
+            while (p != -1 && next[p][c] == -1) { next[p][c] = cur; p = link[p]; }
+            if (p == -1) link[cur] = 0;
+            else {
+                int q = next[p][c];
+                if (len[p] + 1 == len[q]) link[cur] = q;
+                else {
+                    int clone = size++;
+                    len[clone] = len[p] + 1;
+                    next[clone] = (int[])next[q].Clone();
+                    link[clone] = link[q];
+                    while (p != -1 && next[p][c] == q) { next[p][c] = clone; p = link[p]; }
+                    link[q] = clone; link[cur] = clone;
+                }
+            }
+            last = cur;
+        }
+        int v = 0, l = 0, best = 0;                                // walk t
+        for (int j = 0; j < t.Length; j++) {
+            int c = t[j] - 'a';
+            while (v != 0 && next[v][c] == -1) { v = link[v]; l = len[v]; }
+            if (next[v][c] != -1) { v = next[v][c]; l++; }
+            best = Math.Max(best, l);
+        }
+        return best;
+    }
+}` }],
         dry: { head: ['t[j]', 'fallbacks (state:len)', 'edge taken', 'state v', 'l', 'best'], rows: [
           ['b', '—', '0 → 5', '5 (b)', '1', '1'],
           ['c', '—', '5 → 7', '7 (bc, c)', '2', '2'],
@@ -4366,7 +5110,88 @@ int main() {
     for (long long x : SubstringStats::distinctByLength(s)) cout << x << " ";        // 0 3 3 3 3 2 1
     cout << "\\n" << SubstringStats::longestNonOverlappingRepeat("banana") << "\\n";   // 2 ("an" or "na")
     cout << SubstringStats::longestNonOverlappingRepeat("aaaa") << "\\n";             // 2 ("aa" at 0 and 2)
-}` }] }, { lang: 'python', run: true, title: 'Three ways to count distinct substrings (Python, runnable)', code: `
+}` }, { lang: 'csharp', code: `using System;
+
+class SubstringStats {
+    static int[] BuildSA(string s) {
+        int n = s.Length;
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; n > 1; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => r[x] != r[y] ? r[x].CompareTo(r[y])
+                    : (x + K < n ? r[x + K] : -1).CompareTo(y + K < n ? r[y + K] : -1);
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+
+    static int[] Kasai(string s, int[] sa) {
+        int n = s.Length, h = 0;
+        int[] rank = new int[n], lcp = new int[n];
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        for (int i = 0; i < n; i++) {
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;
+        }
+        return lcp;
+    }
+
+    // distinct substrings of EVERY length L = 1..n in O(n) after SA + LCP
+    static long[] DistinctByLength(string s) {
+        int n = s.Length;
+        int[] sa = BuildSA(s), lcp = Kasai(s, sa);
+        long[] diff = new long[n + 2];
+        for (int r = 0; r < n; r++) {          // rank r adds lengths lcp[r]+1 .. n-sa[r]
+            int from = lcp[r] + 1, to = n - sa[r];
+            if (from <= to) { diff[from]++; diff[to + 1]--; }
+        }
+        long[] res = new long[n + 1];
+        long run = 0;
+        for (int L = 1; L <= n; L++) { run += diff[L]; res[L] = run; }
+        return res;
+    }
+
+    // longest substring that occurs at least twice WITHOUT overlapping (binary search on length)
+    static int LongestNonOverlappingRepeat(string s) {
+        int n = s.Length;
+        int[] sa = BuildSA(s), lcp = Kasai(s, sa);
+        int lo = 0, hi = n / 2;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            if (Ok(sa, lcp, mid)) lo = mid; else hi = mid - 1;
+        }
+        return lo;
+    }
+
+    private static bool Ok(int[] sa, int[] lcp, int L) {
+        int mn = sa[0], mx = sa[0];
+        for (int r = 1; r < sa.Length; r++) {
+            if (lcp[r] >= L) { mn = Math.Min(mn, sa[r]); mx = Math.Max(mx, sa[r]); if (mx - mn >= L) return true; }
+            else { mn = mx = sa[r]; }                       // start a new block
+        }
+        return false;
+    }
+
+    static void Main() {
+        string s = "banana";
+        int[] sa = BuildSA(s), lcp = Kasai(s, sa);
+        long n = s.Length, sum = 0;
+        foreach (int v in lcp) sum += v;
+        Console.WriteLine("distinct = " + (n * (n + 1) / 2 - sum));                  // 15
+        Console.WriteLine("[" + string.Join(", ", DistinctByLength(s)) + "]");       // [0, 3, 3, 3, 3, 2, 1]
+        Console.WriteLine(LongestNonOverlappingRepeat("banana"));                    // 2 ("an" or "na")
+        Console.WriteLine(LongestNonOverlappingRepeat("aaaa"));                      // 2 ("aa" at 0 and 2)
+    }
+}`, run: true }] }, { lang: 'python', run: true, title: 'Three ways to count distinct substrings (Python, runnable)', code: `
 import random
 
 def by_set(s):
@@ -4511,7 +5336,15 @@ public:
                 set.insert(s.substr(i, j - i));
         return set.size();
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int CountDistinct(string s) {
+        var set = new HashSet<string>();
+        for (int i = 0; i < s.Length; i++)
+            for (int j = i + 1; j <= s.Length; j++)
+                set.Add(s.Substring(i, j - i));
+        return set.Count;
+    }
+}` }] } },
       mcq: { q: 'With SA + LCP, how many NEW distinct substrings does the suffix at rank r contribute?', options: ['n − SA[r]', 'lcp[r]', '(n − SA[r]) − lcp[r]', '1'], answer: 2, explain: 'Its first lcp[r] prefixes were already counted by the suffix right above it; the remaining prefixes are new.' },
       hints: [`<p>Every substring is a prefix of a suffix. If suffixes are sorted, a prefix that repeats must be shared with the <b>neighbour above</b>.</p>`, `<p>Build SA, then LCP with Kasai. Answer = Σ over ranks of (suffix length − lcp[r]) = N(N+1)/2 − Σ lcp.</p>`, `<p>Use a 64-bit integer (N = 10<sup>5</sup> gives ≈ 5·10<sup>9</sup>). Alternative O(N): suffix automaton, Σ len(v) − len(link(v)). Check: <code>aaaa</code> → 4.</p>`],
       tests: { sig: 'string -> long', fn: 'countDistinct', names: { python: 'countDistinct' }, cases: [
@@ -4660,7 +5493,43 @@ public:
         for (int v = 1; v < size; v++) total += len[v] - len[link[v]];
         return total;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public long CountDistinct(string s) {
+        int n = s.Length;
+        int[] sa = BuildSA(s);
+        int[] rank = new int[n];
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        long total = (long)n * (n + 1) / 2;
+        int h = 0;
+        for (int i = 0; i < n; i++) {                 // Kasai, subtracting lcp on the fly
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            total -= h;
+            if (h > 0) h--;
+        }
+        return total;
+    }
+
+    // O(N log^2 N) prefix doubling (short and safe)
+    private static int[] BuildSA(string s) {
+        int n = s.Length;
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; n > 1; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => r[x] != r[y] ? r[x].CompareTo(r[y])
+                    : (x + K < n ? r[x + K] : -1).CompareTo(y + K < n ? r[y + K] : -1);
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+}` }],
         dry: { head: ['i (text order)', 'suffix', 'neighbour above', 'h (lcp)', 'total after subtracting'], rows: [
           ['start', '', '', '', '21 = 6·7/2'],
           ['0', 'banana', 'anana', '0', '21'],
@@ -4722,7 +5591,16 @@ public:
         }
         return -1;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int StrStr(string h, string nd) {
+        for (int i = 0; i + nd.Length <= h.Length; i++) {
+            int k = 0;
+            while (k < nd.Length && h[i + k] == nd[k]) k++;
+            if (k == nd.Length) return i;
+        }
+        return -1;
+    }
+}` }] } },
     mcq: { q: 'Both window hashes equal the needle’s hashes. What should a robust solution do before returning i?', options: ['Return immediately — two hashes never collide', 'Verify with a direct substring comparison', 'Recompute with a third modulus', 'Nothing; collisions only happen with mod 2^64'], answer: 1, explain: 'A direct comparison costs O(M) and runs only when the hashes agree, so the expected total stays O(N + M) while the answer becomes always correct.' },
     hints: [`<p>Hash the needle once. Hash the first window, then roll: remove the left char’s contribution (·B<sup>M−1</sup>), multiply by B, add the new right char.</p>`, `<p>Use two prime moduli with <b>random</b> bases so nobody can craft collisions, and add M before taking mod after subtraction.</p>`, `<p>On a hash match, confirm with a direct comparison of the two substrings (<code>regionMatches</code>, slice equality, <code>compare</code>). Edge: needle longer than haystack → −1. Recipe: precompute B<sup>M−1</sup>, loop i from 0, check, then roll if i + M &lt; N.</p>`],
     tests: { sig: 'string string -> int', fn: 'strStr', names: { python: 'strStr' }, cases: [
@@ -4834,7 +5712,29 @@ public:
             hw = (mul((hw + M - mul(haystack[i], top)) % M, B) + haystack[i + m]) % M;
         }
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int StrStr(string haystack, string needle) {
+        int n = haystack.Length, m = needle.Length;
+        if (m == 0) return 0;
+        if (m > n) return -1;
+        const long M1 = 1000000007L, M2 = 998244353L;
+        var rnd = new Random();
+        long b1 = 256 + rnd.Next(1000000), b2 = 256 + rnd.Next(1000000);
+        long p1 = 1, p2 = 1;                                     // B^(m-1)
+        for (int i = 1; i < m; i++) { p1 = p1 * b1 % M1; p2 = p2 * b2 % M2; }
+        long n1 = 0, n2 = 0, w1 = 0, w2 = 0;
+        for (int i = 0; i < m; i++) {
+            n1 = (n1 * b1 + needle[i]) % M1;   n2 = (n2 * b2 + needle[i]) % M2;
+            w1 = (w1 * b1 + haystack[i]) % M1; w2 = (w2 * b2 + haystack[i]) % M2;
+        }
+        for (int i = 0; ; i++) {
+            if (w1 == n1 && w2 == n2 && string.CompareOrdinal(haystack, i, needle, 0, m) == 0) return i;   // verify
+            if (i + m >= n) return -1;
+            w1 = ((w1 - haystack[i] * p1 % M1 + M1) * b1 + haystack[i + m]) % M1;
+            w2 = ((w2 - haystack[i] * p2 % M2 + M2) * b2 + haystack[i + m]) % M2;
+        }
+    }
+}` }],
       dry: { head: ['i', 'window', 'hash match?', 'verify', 'result'], rows: [['0', 'sad', 'yes', 'equal', H.c('g', 'return 0')], ['—', '(stop)', '', '', '']] },
       complexity: `<p>O(N + M) expected time, O(1) extra space.</p>`,
       followUps: ['Return <b>all</b> occurrences.', 'Deterministic O(N + M): KMP or Z-function (DSA 9).', 'Search a 2D pattern in a 2D grid with a 2D rolling hash.']
@@ -4877,7 +5777,14 @@ public:
             if (s.substr(k) + s.substr(0, k) == goal) return true;
         return false;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public bool RotateString(string s, string goal) {
+        if (s.Length != goal.Length) return false;
+        for (int k = 0; k < Math.Max(1, s.Length); k++)
+            if (s.Substring(k) + s.Substring(0, k) == goal) return true;
+        return false;
+    }
+}` }] } },
     mcq: { q: 'Every rotation of s appears as a substring of…', options: ['reverse(s)', 's + s', 's + reverse(s)', 'only s itself'], answer: 1, explain: 'Rotation by k = s[k..] + s[..k], which is s+s starting at index k.' },
     hints: [`<p>Lengths must match. Then goal is a rotation of s ⇔ goal occurs in <code>s + s</code>.</p>`, `<p>Use a linear matcher: prefix function (KMP) on <code>goal + "#" + s + s</code>; a value equal to |goal| means a match.</p>`, `<p>The separator must not occur in the strings. Edge: both empty → true.</p>`],
     tests: { sig: 'string string -> bool', fn: 'rotateString', names: { python: 'rotateString' }, cases: [
@@ -4954,7 +5861,22 @@ public:
         }
         return false;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool RotateString(string s, string goal) {
+        if (s.Length != goal.Length) return false;
+        if (s.Length == 0) return true;
+        string t = goal + "#" + s + s;
+        int[] pi = new int[t.Length];
+        for (int i = 1; i < t.Length; i++) {
+            int k = pi[i - 1];
+            while (k > 0 && t[i] != t[k]) k = pi[k - 1];
+            if (t[i] == t[k]) k++;
+            pi[i] = k;
+            if (k == goal.Length) return true;          // goal found inside s + s
+        }
+        return false;
+    }
+}` }],
       dry: { head: ['step', 'value'], rows: [['s + s', 'abcdeabcde'], ['search "cdeab"', 'found at index 2 → <b>true</b>']] },
       complexity: `<p>O(N) time and space.</p>`,
       followUps: ['Return the minimum number of rotations needed.', 'Count how many rotations of s equal goal (all matches in s + s minus the last).']
@@ -5006,7 +5928,16 @@ public:
         }
         return false;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public bool RepeatedSubstringPattern(string s) {
+        int n = s.Length;
+        for (int d = 1; d <= n / 2; d++) {
+            if (n % d != 0) continue;
+            if (string.Concat(Enumerable.Repeat(s.Substring(0, d), n / d)) == s) return true;
+        }
+        return false;
+    }
+}` }] } },
     mcq: { q: 'The longest proper border (prefix = suffix) of s has length b. The smallest period is…', options: ['b', 'n − b', 'n / b', 'n + b'], answer: 1, explain: 'If s[0..b) = s[n−b..n), shifting s by n − b lines it up with itself, so n − b is a period, and the longest border gives the smallest period.' },
     hints: [`<p>s is a repetition ⇔ its smallest period p divides n and p &lt; n.</p>`, `<p>Prefix function: b = π[n−1] is the longest border; smallest period p = n − b.</p>`, `<p>Return b &gt; 0 && n % (n − b) == 0. Check: <code>"abcab"</code> has b = 2, p = 3, 5 % 3 ≠ 0 → false.</p>`],
     tests: { sig: 'string -> bool', fn: 'repeatedSubstringPattern', names: { python: 'repeatedSubstringPattern' }, cases: [
@@ -5077,7 +6008,20 @@ public:
         int border = pi[n - 1], period = n - border;
         return border > 0 && n % period == 0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool RepeatedSubstringPattern(string s) {
+        int n = s.Length;
+        int[] pi = new int[n];
+        for (int i = 1; i < n; i++) {
+            int k = pi[i - 1];
+            while (k > 0 && s[i] != s[k]) k = pi[k - 1];
+            if (s[i] == s[k]) k++;
+            pi[i] = k;
+        }
+        int border = pi[n - 1], period = n - border;
+        return border > 0 && n % period == 0;
+    }
+}` }],
       dry: { head: ['s', 'π[n−1]', 'period', 'n % period', 'answer'], rows: [['abab', '2', '2', '0', H.c('g', 'true')], ['aba', '1', '2', '1', H.c('r', 'false')], ['abcabcabcabc', '9', '3', '0', H.c('g', 'true')]] },
       complexity: `<p>O(N) time and space.</p>`,
       followUps: ['Return the shortest repeating unit.', 'Answer the question for every prefix of s.']
@@ -5136,7 +6080,18 @@ public:
             }
         return best;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public string LongestPalindrome(string s) {
+        string best = "";
+        for (int i = 0; i < s.Length; i++)
+            for (int j = i; j < s.Length; j++) {
+                int l = i, r = j;
+                while (l < r && s[l] == s[r]) { l++; r--; }
+                if (l >= r && j - i + 1 > best.Length) best = s.Substring(i, j - i + 1);
+            }
+        return best;
+    }
+}` }] } },
     mcq: { q: 'In the #-padded string, P[i] = 4 at i = 6. The palindrome in s is…', options: ['s[1..4]', 's[3..6]', 's[1..5]', 's[6..10]'], answer: 0, explain: 'Start = (i − P[i]) / 2 = (6 − 4)/2 = 1, length 4 → s[1..4].' },
     hints: [`<p>Pad with <code>#</code> so every palindrome has a center cell; P[i] then equals the palindrome’s length in s.</p>`, `<p>Manacher: keep the rightmost palindrome [C − P[C], R]; inside it start from min(P[2C − i], R − i), then expand.</p>`, `<p>Track the argmax of P; start = (i − P[i]) / 2, length = P[i]. Single character strings return themselves.</p>`],
     tests: { sig: 'string -> string', fn: 'longestPalindrome', names: { python: 'longestPalindrome' }, check: "(args, out, exp) => { const s = args[0]; if (typeof out !== 'string' || out.length !== exp.length) return false; if (s.indexOf(out) < 0) return false; for (let i = 0, j = out.length - 1; i < j; i++, j--) if (out[i] !== out[j]) return false; return true; }", cases: [
@@ -5225,7 +6180,24 @@ public:
         }
         return s.substr((center - best) / 2, best);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string LongestPalindrome(string s) {
+        int n = s.Length, m = 2 * n + 1;
+        char[] t = new char[m];
+        for (int i = 0; i < m; i++) t[i] = (i % 2 == 0) ? '#' : s[i / 2];
+        int[] p = new int[m];
+        int c = 0, r = -1, best = 0, center = 0;
+        for (int i = 0; i < m; i++) {
+            int k = (i > r) ? 0 : Math.Min(p[2 * c - i], r - i);
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }
+            if (k > best) { best = k; center = i; }
+        }
+        int start = (center - best) / 2;
+        return s.Substring(start, best);
+    }
+}` }],
       dry: { head: ['i', 't[i]', 'P[i]', 'best'], rows: [['1', 'c', '1', '1'], ['3', 'b', '1', '1'], ['4', '#', '2', H.c('g', '2 → "bb"')], ['5', 'b', '1', '2']] },
       complexity: `<p>O(N) time, O(N) space.</p>`,
       followUps: ['Return the longest palindromic substring of every prefix.', 'Longest palindromic <b>subsequence</b> — that is DP, not Manacher (DSA 17).']
@@ -5280,7 +6252,20 @@ public:
         }
         return res;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public IList<string> FindRepeatedDnaSequences(string s) {
+        var cnt = new Dictionary<string, int>();
+        var res = new List<string>();
+        for (int i = 0; i + 10 <= s.Length; i++) {
+            string sub = s.Substring(i, 10);
+            int c;
+            cnt.TryGetValue(sub, out c);
+            cnt[sub] = c + 1;
+            if (c + 1 == 2) res.Add(sub);
+        }
+        return res;
+    }
+}` }] } },
     mcq: { q: 'Why can this rolling hash never collide?', options: ['Because the modulus is prime', 'Because 2 bits per letter × 10 letters = 20 bits encode the window exactly (injective)', 'Because DNA is random', 'It can collide'], answer: 1, explain: 'With base 4 and no modulus overflow (4<sup>10</sup> = 2<sup>20</sup> fits in an int), the hash is just the window written in base 4 — a perfect encoding.' },
     hints: [`<p>Map A, C, G, T to 0..3. A window of 10 letters is a 20-bit number.</p>`, `<p>Roll with <code>mask = ((mask &lt;&lt; 2) | code) &amp; ((1 &lt;&lt; 20) − 1)</code>. Keep a seen-set and an added-set of ints.</p>`, `<p>Report a window when it is seen for the second time only. Strings shorter than 10 → empty list.</p>`],
     tests: { sig: 'string -> list<string>', fn: 'findRepeatedDnaSequences', cmp: 'set', names: { python: 'findRepeatedDnaSequences' }, cases: [
@@ -5364,7 +6349,23 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public IList<string> FindRepeatedDnaSequences(string s) {
+        var res = new List<string>();
+        int n = s.Length;
+        if (n < 10) return res;
+        int[] code = new int[128];
+        code['C'] = 1; code['G'] = 2; code['T'] = 3;           // 'A' stays 0
+        var seen = new HashSet<int>();
+        var added = new HashSet<int>();
+        int mask = 0, full = (1 << 20) - 1;
+        for (int i = 0; i < n; i++) {
+            mask = ((mask << 2) | code[s[i]]) & full;          // slide: drop 2 old bits, add 2 new
+            if (i >= 9 && !seen.Add(mask) && added.Add(mask)) res.Add(s.Substring(i - 9, 10));
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['i', 'window', 'mask seen before?', 'action'], rows: [['9', 'AAAAACCCCC', 'no', 'add to seen'], ['14', 'CCCCCAAAAA', 'no', 'add to seen'], ['19', 'AAAAACCCCC', H.c('g', 'yes'), 'report'], ['25', 'CCCCCAAAAA', H.c('g', 'yes'), 'report']] },
       complexity: `<p>O(N) time, O(N) space (ints).</p>`,
       followUps: ['Window length k = 32 → 64-bit masks; k = 40 → need a real modular hash or two longs.', 'Return each sequence with its count.']
@@ -5406,7 +6407,14 @@ public:
             if (s.compare(0, len, s, n - len, len) == 0) return s.substr(0, len);
         return "";
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public string LongestPrefix(string s) {
+        int n = s.Length;
+        for (int len = n - 1; len > 0; len--)
+            if (string.CompareOrdinal(s, 0, s, n - len, len) == 0) return s.Substring(0, len);
+        return "";
+    }
+}` }] } },
     mcq: { q: 'How do you extend the SUFFIX hash from length L−1 to L (new char z = s[n−L] is added on the LEFT)?', options: ['suf = suf·B + z', 'suf = z·B<sup>L−1</sup> + suf', 'suf = suf + z', 'suf = (suf − z)/B'], answer: 1, explain: 'The new leftmost char is the most significant digit of the length-L suffix, so it is multiplied by B<sup>L−1</sup>.' },
     hints: [`<p>Grow the prefix hash on the right (×B + c) and the suffix hash on the left (c·B<sup>L−1</sup> + old) at the same time.</p>`, `<p>Whenever both hashes agree (two moduli, random bases), remember L. The last such L is the answer.</p>`, `<p>Deterministic alternative: π[n−1] from the prefix function is exactly the answer length.</p>`],
     tests: { sig: 'string -> string', fn: 'longestPrefix', names: { python: 'longestPrefix' }, cases: [
@@ -5485,7 +6493,24 @@ public:
         }
         return s.substr(0, pi[n - 1]);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string LongestPrefix(string s) {
+        int n = s.Length;
+        const long M1 = 1000000007L, M2 = 998244353L;
+        var rnd = new Random();
+        long b1 = 131 + rnd.Next(1000000), b2 = 131 + rnd.Next(1000000);
+        long pre1 = 0, pre2 = 0, suf1 = 0, suf2 = 0, pw1 = 1, pw2 = 1;
+        int best = 0;
+        for (int len = 1; len < n; len++) {
+            int a = s[len - 1], z = s[n - len];
+            pre1 = (pre1 * b1 + a) % M1;      pre2 = (pre2 * b2 + a) % M2;      // append right
+            suf1 = (z * pw1 + suf1) % M1;     suf2 = (z * pw2 + suf2) % M2;     // prepend left
+            pw1 = pw1 * b1 % M1;              pw2 = pw2 * b2 % M2;
+            if (pre1 == suf1 && pre2 == suf2) best = len;
+        }
+        return s.Substring(0, best);
+    }
+}` }],
       dry: { head: ['L', 'prefix', 'suffix', 'equal?', 'best'], rows: [['1', 'a', 'b', 'no', '0'], ['2', 'ab', 'ab', 'yes', '2'], ['3', 'aba', 'bab', 'no', '2'], ['4', 'abab', 'abab', 'yes', H.c('g', '4')], ['5', 'ababa', 'babab', 'no', '4']] },
       complexity: `<p>O(N) time, O(1) extra space.</p>`,
       followUps: ['Count all happy prefixes (all borders) — follow the π chain.', 'Longest prefix that is also a suffix of a <b>different</b> string t.']
@@ -5537,7 +6562,17 @@ public:
         }
         return res;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public bool[] Answer(string s, int[][] qs) {
+        bool[] res = new bool[qs.Length];
+        for (int k = 0; k < qs.Length; k++) {
+            int l = qs[k][0], r = qs[k][1];
+            while (l < r && s[l] == s[r]) { l++; r--; }
+            res[k] = l >= r;
+        }
+        return res;
+    }
+}` }] } },
     mcq: { q: 'Which index of the #-padded P array decides query [l, r]?', options: ['l + r', 'l + r + 1', '2l + 1', '(l + r) / 2'], answer: 1, explain: 's[k] sits at t[2k + 1], so the center of s[l..r] in t is (2l + 1 + 2r + 1)/2 = l + r + 1.' },
     hints: [`<p>Run Manacher once. Every query is about a fixed center in the padded string.</p>`, `<p>s[l..r] is a palindrome ⇔ the maximal palindrome at its center is at least as long: P[l + r + 1] ≥ r − l + 1.</p>`, `<p>Use fast I/O for 10<sup>6</sup> queries. Single-character queries are always true (P ≥ 1 at letter cells).</p>`],
     tests: { sig: 'string int[][] -> bool[]', fn: 'answer', cases: [
@@ -5620,7 +6655,26 @@ public:
         for (const auto& q : queries) res.push_back(p[q[0] + q[1] + 1] >= q[1] - q[0] + 1);   // O(1) per query
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool[] Answer(string s, int[][] queries) {
+        int n = s.Length, m = 2 * n + 1;
+        char[] t = new char[m];
+        for (int i = 0; i < m; i++) t[i] = (i % 2 == 0) ? '#' : s[i / 2];
+        int[] p = new int[m];
+        for (int i = 0, c = 0, r = -1; i < m; i++) {
+            int k = (i > r) ? 0 : Math.Min(p[2 * c - i], r - i);
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }
+        }
+        bool[] res = new bool[queries.Length];
+        for (int q = 0; q < queries.Length; q++) {
+            int l = queries[q][0], r = queries[q][1];
+            res[q] = p[l + r + 1] >= r - l + 1;           // O(1) per query
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['query', 'center l+r+1', 'P[center]', 'needed', 'answer'], rows: [['[0,6]', '7', '7', '7', H.c('g', 'true')], ['[1,5]', '7', '7', '5', H.c('g', 'true')], ['[0,1]', '2', '0', '2', H.c('r', 'false')], ['[2,4]', '7', '7', '3', H.c('g', 'true')]] },
       complexity: `<p>O(N + Q) time, O(N) space.</p>`,
       followUps: ['Count palindromic substrings inside s[l..r] (offline, much harder).', 'Updates to s between queries → segment tree of forward/backward hashes.']
@@ -5669,7 +6723,16 @@ public:
         }
         return best;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public string MinRotation(string s) {
+        string best = s;
+        for (int k = 1; k < s.Length; k++) {
+            string r = s.Substring(k) + s.Substring(0, k);
+            if (string.CompareOrdinal(r, best) < 0) best = r;
+        }
+        return best;
+    }
+}` }] } },
     mcq: { q: 'Candidates i and j agree on k letters and then s[i+k] &gt; s[j+k]. Which starts can you discard?', options: ['only i', 'i, i+1, …, i+k', 'j..j+k', 'none'], answer: 1, explain: 'For any d ≤ k, rotation i+d is beaten by rotation j+d (they share the same next letters until the bigger letter). So i jumps to i + k + 1.' },
     hints: [`<p>SA view: the answer is the smallest suffix of <code>s + s</code> that starts before |s|. But there is a simpler O(N) two-pointer trick.</p>`, `<p>Keep two candidates i &lt; j and a match length k. Compare s[(i+k) mod n] and s[(j+k) mod n]; on a mismatch, the loser jumps past the compared block.</p>`, `<p>If i == j after a jump, move j forward. Stop when any of i, j, k reaches n; answer starts at min(i, j).</p>`],
     tests: { sig: 'string -> string', fn: 'minRotation', names: { python: 'minRotation' }, cases: [
@@ -5758,7 +6821,21 @@ public:
         int start = min(i, j);
         return s.substr(start) + s.substr(0, start);
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string MinRotation(string s) {
+        int n = s.Length, i = 0, j = 1, k = 0;
+        while (i < n && j < n && k < n) {
+            char a = s[(i + k) % n], b = s[(j + k) % n];
+            if (a == b) { k++; continue; }
+            if (a > b) i = i + k + 1;      // starts i..i+k all lose
+            else j = j + k + 1;            // starts j..j+k all lose
+            if (i == j) j++;
+            k = 0;
+        }
+        int start = Math.Min(i, j);
+        return s.Substring(start) + s.Substring(0, start);
+    }
+}` }],
       dry: { head: ['i', 'j', 'k', 'compare', 'action'], rows: [['0', '1', '0', 'b vs c', 'j = 2'], ['0', '2', '0', 'b vs a', 'i = 1'], ['1', '2', '0', 'c vs a', 'i = 2 → i == j → j = 3 = n'], ['stop', '', '', 'start = min(2, 3) = 2', H.c('g', '"abc"')]] },
       complexity: `<p>O(N) time, O(1) extra space (besides the output).</p>`,
       followUps: ['Group strings that are rotations of each other (canonical form as the map key).', 'Minimal rotation of a <b>circular array of ints</b> — same algorithm.']
@@ -5816,7 +6893,17 @@ public:
         }
         return s;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public string ShortestPalindrome(string s) {
+        int n = s.Length;
+        for (int len = n; len >= 0; len--) {
+            int l = 0, r = len - 1;
+            while (l < r && s[l] == s[r]) { l++; r--; }
+            if (l >= r) { char[] tail = s.Substring(len).ToCharArray(); Array.Reverse(tail); return new string(tail) + s; }
+        }
+        return s;
+    }
+}` }] } },
     mcq: { q: 'In the padded Manacher array, a palindrome centered at i is a PREFIX of s when…', options: ['i + P[i] == 2n', 'i − P[i] == 0', 'P[i] == n', 'i is even'], answer: 1, explain: 'The palindrome spans t[i − P[i] .. i + P[i]]; it starts at the very beginning when i − P[i] = 0.' },
     hints: [`<p>The answer is reverse(s[L..]) + s where L is the length of the <b>longest palindromic prefix</b>.</p>`, `<p>Manacher gives every center’s radius. A center i yields a palindromic prefix of length P[i] exactly when i − P[i] == 0.</p>`, `<p>Take the maximum such P[i] (at least 1 when s is non-empty). Alternative: prefix function of s + "#" + reverse(s). Empty s → "".</p>`],
     tests: { sig: 'string -> string', fn: 'shortestPalindrome', names: { python: 'shortestPalindrome' }, cases: [
@@ -5903,7 +6990,27 @@ public:
         reverse(rest.begin(), rest.end());
         return rest + s;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string ShortestPalindrome(string s) {
+        int n = s.Length;
+        if (n == 0) return s;
+        int m = 2 * n + 1;
+        char[] t = new char[m];
+        for (int i = 0; i < m; i++) t[i] = (i % 2 == 0) ? '#' : s[i / 2];
+        int[] p = new int[m];
+        int c = 0, r = -1, bestPrefix = 0;
+        for (int i = 0; i < m; i++) {
+            int k = (i > r) ? 0 : Math.Min(p[2 * c - i], r - i);
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }
+            if (i - k == 0) bestPrefix = Math.Max(bestPrefix, k);   // palindrome touches the start
+        }
+        char[] tail = s.Substring(bestPrefix).ToCharArray();
+        Array.Reverse(tail);
+        return new string(tail) + s;
+    }
+}` }],
       dry: { head: ['center i', 'P[i]', 'i − P[i]', 'prefix palindrome?', 'best'], rows: [['1', '1', '0', 'yes "a"', '1'], ['2', '2', '0', 'yes "aa"', '2'], ['7', '7', '0', 'yes "aacecaa"', H.c('g', '7')], ['others', '…', '&gt; 0', 'no', '7']] },
       complexity: `<p>O(N) time and space.</p>`,
       followUps: ['Characters may be added at the <b>end</b> instead (longest palindromic suffix).', 'Minimum insertions anywhere → DP (DSA 17), not Manacher.']
@@ -5960,7 +7067,17 @@ public:
             if (stream.size() >= w.size() && stream.compare(stream.size() - w.size(), w.size(), w) == 0) return true;
         return false;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class BruteStreamChecker {
+    private readonly string[] words;
+    private readonly StringBuilder stream = new StringBuilder();
+    public BruteStreamChecker(string[] words) { this.words = words; }
+    public bool Query(char letter) {
+        stream.Append(letter);
+        string cur = stream.ToString();
+        foreach (string w in words) if (cur.EndsWith(w, StringComparison.Ordinal)) return true;
+        return false;
+    }
+}` }] } },
     mcq: { q: 'After building the Aho–Corasick automaton, what is the extra work per query?', options: ['O(number of words)', 'O(max word length)', 'O(1): one transition + one boolean lookup', 'O(log N)'], answer: 2, explain: 'With the complete goto table and “ends a word somewhere on my fail chain” precomputed as a boolean, each letter is one table lookup.' },
     hints: [`<p>The question “does a suffix of the stream equal a word?” is exactly what an Aho–Corasick state answers: the state is the longest suffix of the stream that is a trie prefix.</p>`, `<p>Precompute <code>term[v] = isWordEnd[v] || term[fail[v]]</code> in BFS order, so you never walk the fail chain at query time.</p>`, `<p>Alternative (shorter to code): a trie of <b>reversed</b> words and walk the last ≤ 200 letters backwards each query — O(maxLen) per query.</p>`],
     tests: { sig: 'string[] string -> long[]', fn: 'runStream', names: { python: 'runStream' }, harness: {
@@ -6000,6 +7117,18 @@ vector<long long> runStream(vector<string> words, string stream) {
     vector<long long> out = {count, sum};
     out.insert(out.end(), first.begin(), first.end());
     return out;
+}`, csharp: `public class Check {
+    // returns [how many queries were true, sum of their positions, first ten true positions]
+    public static long[] RunStream(string[] words, string stream) {
+        var sc = new StreamChecker(words);
+        long count = 0, sum = 0;
+        var first = new List<long>();
+        for (int i = 0; i < stream.Length; i++)
+            if (sc.Query(stream[i])) { count++; sum += i; if (first.Count < 10) first.Add(i); }
+        var res = new List<long> { count, sum };
+        res.AddRange(first);
+        return res.ToArray();
+    }
 }` }, cases: [
         [[["cd","f","kl"],"abcdefghijkl"],[3,19,3,5,11]],
         [[["a"],"aaaa"],[4,6,0,1,2,3]],
@@ -6169,7 +7298,49 @@ public:
         state = go[state][letter - 'a'];
         return term[state];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class StreamChecker {
+    private readonly int[][] go;
+    private readonly bool[] term;      // some word ends at this state or on its fail chain
+    private int state = 0;
+
+    public StreamChecker(string[] words) {
+        int cap = 1;
+        foreach (string w in words) cap += w.Length;
+        go = new int[cap][];
+        for (int i = 0; i < cap; i++) { go[i] = new int[26]; for (int c = 0; c < 26; c++) go[i][c] = -1; }
+        term = new bool[cap];
+        int[] fail = new int[cap];
+        int nodes = 1;
+        foreach (string w in words) {
+            int v = 0;
+            foreach (char ch in w) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) go[v][c] = nodes++;
+                v = go[v][c];
+            }
+            term[v] = true;
+        }
+        var q = new Queue<int>();
+        for (int c = 0; c < 26; c++) {
+            int u = go[0][c];
+            if (u == -1) go[0][c] = 0; else { fail[u] = 0; q.Enqueue(u); }
+        }
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            term[v] |= term[fail[v]];                      // fail[v] is shallower → already final
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) go[v][c] = go[fail[v]][c];
+                else { fail[u] = go[fail[v]][c]; q.Enqueue(u); }
+            }
+        }
+    }
+
+    public bool Query(char letter) {
+        state = go[state][letter - 'a'];
+        return term[state];
+    }
+}` }],
       dry: { head: ['letter', 'state', 'term?', 'answer'], rows: [['a', 'root', 'no', 'false'], ['c', 'c', 'no', 'false'], ['d', 'cd', 'yes', H.c('g', 'true')], ['f', 'f', 'yes', H.c('g', 'true')], ['k', 'k', 'no', 'false'], ['l', 'kl', 'yes', H.c('g', 'true')]] },
       complexity: `<p>Build O(M·26) time/memory (M = Σ|words| ≤ 4·10<sup>5</sup>); query O(1).</p>`,
       followUps: ['Return <b>which</b> words matched (dictionary links).', 'Words can be added between queries — rebuild lazily or use a reversed trie.']
@@ -6237,7 +7408,22 @@ public:
         }
         return dp[n] >= INF ? -1 : (int)dp[n];
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int MinimumCost(string target, string[] words, int[] costs) {
+        int n = target.Length;
+        long INF = long.MaxValue / 4;
+        long[] dp = new long[n + 1];
+        for (int i = 0; i <= n; i++) dp[i] = INF;
+        dp[0] = 0;
+        for (int i = 0; i < n; i++) {
+            if (dp[i] == INF) continue;
+            for (int k = 0; k < words.Length; k++)
+                if (string.CompareOrdinal(target, i, words[k], 0, words[k].Length) == 0 && i + words[k].Length <= n)
+                    dp[i + words[k].Length] = Math.Min(dp[i + words[k].Length], dp[i] + costs[k]);
+        }
+        return dp[n] >= INF ? -1 : (int)dp[n];
+    }
+}` }] } },
     mcq: { q: 'At one target position, how many different words can END there (following dictionary links)?', options: ['Up to the number of words (5·10<sup>4</sup>)', 'At most the number of DISTINCT word lengths, which is O(√Σ|words|) ≈ 316', 'Always 1', 'O(log n)'], answer: 1, explain: 'Words ending at the same position are suffixes of each other, so they have distinct lengths; distinct lengths ℓ<sub>1</sub> &lt; ℓ<sub>2</sub> &lt; … need Σ ≥ 1 + 2 + … ⇒ at most ~√(2·5·10<sup>4</sup>).' },
     hints: [`<p>dp[i] = min over words w that END at position i of dp[i − |w|] + cost(w). Aho–Corasick lists exactly the words ending at each position.</p>`, `<p>Duplicate words: keep the minimum cost at the trie node. Use dictionary links (nearest word-ending node on the fail chain) to enumerate matches without walking empty nodes.</p>`, `<p>Each enumerated node has a distinct depth, so ≤ ~316 per position → ~1.6·10<sup>7</sup> steps. Use 64-bit integers for dp, return −1 if dp[n] is infinite.</p>`],
     tests: { sig: 'string string[] int[] -> int', fn: 'minimumCost', cases: [
@@ -6459,7 +7645,56 @@ public:
         }
         return dp[n] >= INF ? -1 : (int)dp[n];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinimumCost(string target, string[] words, int[] costs) {
+        int cap = 1;
+        foreach (string w in words) cap += w.Length;
+        int[][] go = new int[cap][];
+        for (int i = 0; i < cap; i++) { go[i] = new int[26]; for (int c = 0; c < 26; c++) go[i][c] = -1; }
+        int[] fail = new int[cap], best = new int[cap], depth = new int[cap], dict = new int[cap];
+        for (int i = 0; i < cap; i++) best[i] = int.MaxValue;
+        int nodes = 1;
+        for (int k = 0; k < words.Length; k++) {                  // trie, min cost per word
+            int v = 0;
+            foreach (char ch in words[k]) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) { go[v][c] = nodes; depth[nodes] = depth[v] + 1; nodes++; }
+                v = go[v][c];
+            }
+            best[v] = Math.Min(best[v], costs[k]);
+        }
+        var q = new Queue<int>();
+        dict[0] = -1;
+        for (int c = 0; c < 26; c++) {
+            int u = go[0][c];
+            if (u == -1) go[0][c] = 0; else { fail[u] = 0; dict[u] = -1; q.Enqueue(u); }
+        }
+        while (q.Count > 0) {
+            int v = q.Dequeue();
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) { go[v][c] = go[fail[v]][c]; continue; }
+                fail[u] = go[fail[v]][c];
+                dict[u] = best[fail[u]] != int.MaxValue ? fail[u] : dict[fail[u]];
+                q.Enqueue(u);
+            }
+        }
+        int n = target.Length;
+        long INF = long.MaxValue / 4;
+        long[] dp = new long[n + 1];
+        for (int i = 0; i <= n; i++) dp[i] = INF;
+        dp[0] = 0;
+        int s = 0;
+        for (int i = 1; i <= n; i++) {
+            s = go[s][target[i - 1] - 'a'];
+            for (int u = best[s] != int.MaxValue ? s : dict[s]; u != -1; u = dict[u]) {
+                long prev = dp[i - depth[u]];                       // word u ends at i
+                if (prev != INF) dp[i] = Math.Min(dp[i], prev + best[u]);
+            }
+        }
+        return dp[n] >= INF ? -1 : (int)dp[n];
+    }
+}` }],
       dry: { head: ['i', 'char', 'words ending here', 'dp[i]'], rows: [['0', '', '', '0'], ['3', 'c', 'abc (1)', '0 + 1 = 1'], ['4', 'd', 'd (1)', '1 + 1 = 2'], ['5', 'e', 'none (state “de”)', '∞'], ['6', 'f', 'def (10), ef (5)', 'min(1 + 10, 2 + 5) = <b>7</b>']] },
       complexity: `<p>Build O(M·26), scan O(|target|·√M) ≈ 1.6·10<sup>7</sup>, space O(M·26 + |target|).</p>`,
       followUps: ['Return the actual sequence of words (store argmin).', 'Words may be used at most once each — becomes much harder (set cover flavour).']
@@ -6517,7 +7752,22 @@ public:
         }
         return 0;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public int LongestKRepeat(string s, int k) {
+        int n = s.Length;
+        for (int len = n; len >= 1; len--) {
+            var cnt = new Dictionary<string, int>();
+            for (int i = 0; i + len <= n; i++) {
+                string sub = s.Substring(i, len);
+                int c;
+                cnt.TryGetValue(sub, out c);
+                cnt[sub] = c + 1;
+                if (c + 1 >= k) return len;
+            }
+        }
+        return 0;
+    }
+}` }] } },
     mcq: { q: 'A substring w occurs ≥ k times ⇔ in SA order there are k consecutive suffixes that…', options: ['all have length ≥ |w|', 'pairwise share a prefix of length ≥ |w| (min of the k−1 lcp values ≥ |w|)', 'have increasing SA values', 'are all distinct'], answer: 1, explain: 'All suffixes starting with w form one contiguous SA block; the common prefix of a block equals the minimum lcp inside it.' },
     hints: [`<p>Suffixes sharing a prefix w sit together in SA. A block of k consecutive ranks shares exactly min(lcp[r+1..r+k−1]) letters.</p>`, `<p>Slide a window of k − 1 consecutive lcp values; answer = max over windows of the window minimum. A monotonic deque gives each minimum in amortised O(1) (DSA 13).</p>`, `<p>k = 1 → whole string (length N). k &gt; N → 0. Recipe: SA → Kasai → sliding-window minimum over lcp[1..N−1] with width k − 1 → max.</p>`],
     tests: { sig: 'string int -> int', fn: 'longestKRepeat', cases: [
@@ -6760,7 +8010,56 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int LongestKRepeat(string s, int k) {
+        int n = s.Length;
+        if (k <= 1) return n;
+        if (k > n) return 0;
+        int[] sa = BuildSA(s), lcp = Kasai(s, sa);
+        int w = k - 1, best = 0;                        // window of k-1 lcp values
+        var dq = new LinkedList<int>();                 // indices with increasing lcp
+        for (int i = 1; i < n; i++) {
+            while (dq.Count > 0 && lcp[dq.Last.Value] >= lcp[i]) dq.RemoveLast();
+            dq.AddLast(i);
+            if (dq.First.Value <= i - w) dq.RemoveFirst();
+            if (i >= w) best = Math.Max(best, lcp[dq.First.Value]);
+        }
+        return best;
+    }
+
+    private static int[] Kasai(string s, int[] sa) {
+        int n = s.Length, h = 0;
+        int[] rank = new int[n], lcp = new int[n];
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        for (int i = 0; i < n; i++) {
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;
+        }
+        return lcp;
+    }
+
+    // O(N log^2 N) prefix doubling (short and safe)
+    private static int[] BuildSA(string s) {
+        int n = s.Length;
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; n > 1; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => r[x] != r[y] ? r[x].CompareTo(r[y])
+                    : (x + K < n ? r[x + K] : -1).CompareTo(y + K < n ? r[y + K] : -1);
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+}` }],
       dry: { head: ['window (ranks)', 'suffixes', 'lcp values inside', 'min', 'best'], rows: [['0–1', 'a, ana', '1', '1', '1'], ['1–2', 'ana, anana', '3', '3', '3'], ['2–3', 'anana, banana', '0', '0', '3'], ['3–4', 'banana, na', '0', '0', '3'], ['4–5', 'na, nana', '2', '2', H.c('g', '<b>3</b> (k = 2)')]] },
       complexity: `<p>O(N log<sup>2</sup> N) for the SA, O(N) for Kasai and the deque.</p>`,
       followUps: ['Return the substring (remember SA[r] of the best window).', 'Require the k occurrences to be pairwise non-overlapping.', 'Maximise length × occurrences (largest rectangle in the LCP histogram).']
@@ -6808,7 +8107,15 @@ public:
         for (auto& t : subs) if (--k == 0) return t;
         return "";
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class Brute {
+    public string Kth(string s, long k) {
+        var set = new SortedSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < s.Length; i++)
+            for (int j = i + 1; j <= s.Length; j++) set.Add(s.Substring(i, j - i));
+        foreach (string t in set) if (--k == 0) return t;
+        return "";
+    }
+}` }] } },
     mcq: { q: 'Walking ranks in SA order, the new substrings of rank r are its prefixes of lengths lcp[r]+1 … |suffix|. In which order do they appear in the global sorted list?', options: ['Reverse order', 'Exactly in increasing length, right after everything from earlier ranks', 'Random', 'Interleaved with later ranks'], answer: 1, explain: 'A shorter prefix is smaller than a longer one with the same start, and all of rank r’s new prefixes are larger than earlier ranks’ substrings and smaller than later ranks’ new ones.' },
     hints: [`<p>Group the sorted distinct substrings by the first SA rank that owns them (topic 7): rank r owns (n − SA[r]) − lcp[r] consecutive entries.</p>`, `<p>Skip whole ranks while k is larger than their count (subtract). Inside the right rank, the answer is the prefix of length lcp[r] + k.</p>`, `<p>Use a 64-bit integer for k. If k survives all ranks, return "". Multiple queries: prefix sums over rank counts + binary search.</p>`],
     tests: { sig: 'string long -> string', fn: 'kth', cases: [
@@ -7034,7 +8341,51 @@ public:
         }
         return "";
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public string Kth(string s, long k) {
+        int n = s.Length;
+        int[] sa = BuildSA(s), lcp = Kasai(s, sa);
+        for (int r = 0; r < n; r++) {
+            long fresh = (n - sa[r]) - lcp[r];                 // new substrings owned by rank r
+            if (k <= fresh) return s.Substring(sa[r], lcp[r] + (int)k);
+            k -= fresh;
+        }
+        return "";
+    }
+
+    private static int[] Kasai(string s, int[] sa) {
+        int n = s.Length, h = 0;
+        int[] rank = new int[n], lcp = new int[n];
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        for (int i = 0; i < n; i++) {
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;
+        }
+        return lcp;
+    }
+
+    // O(N log^2 N) prefix doubling (short and safe)
+    private static int[] BuildSA(string s) {
+        int n = s.Length;
+        int[] sa = new int[n], rank = new int[n], tmp = new int[n];
+        for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s[i]; }
+        for (int k = 1; n > 1; k <<= 1) {
+            int K = k;
+            int[] r = rank;
+            Comparison<int> cmp = (x, y) => r[x] != r[y] ? r[x].CompareTo(r[y])
+                    : (x + K < n ? r[x + K] : -1).CompareTo(y + K < n ? r[y + K] : -1);
+            Array.Sort(sa, cmp);
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+            Array.Copy(tmp, rank, n);
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+}` }],
       dry: { head: ['rank', 'suffix', 'lcp', 'owns', 'k before → after'], rows: [['0', 'a', '0', '1 (a)', '4 → 3'], ['1', 'ana', '1', '2 (an, ana)', '3 → 1'], ['2', 'anana', '3', '2 (anan, anana)', H.c('g', 'k = 1 ≤ 2 → prefix of length 3 + 1 = "anan"')]] },
       complexity: `<p>O(N log<sup>2</sup> N) preprocessing, O(N) per query (or O(log N) with prefix sums).</p>`,
       followUps: ['Count <b>all</b> substrings (with repeats) instead of distinct ones — then SAM path counting with occurrence weights is easier.', 'Q queries with different k — prefix sums of “owns” + binary search.']

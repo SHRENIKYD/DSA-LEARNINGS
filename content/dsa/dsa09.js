@@ -220,7 +220,46 @@ int main() {
     cout << (p == buf) << '\\n';              // false: two different addresses
     cout << (strcmp(p, buf) == 0) << '\\n';   // true: compares the letters
     return 0;
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class StringBasics {
+    static void Main() {
+        // ---- 1. Immutability ----
+        string s = "cat";
+        s.ToUpper();                     // result is thrown away, s is still "cat"
+        Console.WriteLine(s);            // cat
+        s = s.ToUpper();                 // now s points to a NEW string "CAT"
+        Console.WriteLine(s);            // CAT
+
+        // ---- 2. char arithmetic ----
+        string word = "banana";
+        int[] cnt = new int[26];         // one slot per lowercase letter
+        foreach (char c in word) {
+            cnt[c - 'a']++;              // 'a'->0, 'b'->1, ..., 'z'->25
+        }
+        Console.WriteLine("a=" + cnt[0] + " b=" + cnt[1] + " n=" + cnt['n' - 'a']); // a=3 b=1 n=2
+        char d = (char)('a' + 3);        // number back to letter
+        Console.WriteLine(d);            // d
+        int digit = '7' - '0';           // char digit -> int value
+        Console.WriteLine(digit + 1);    // 8
+
+        // ---- 3. == compares letters for strings; ReferenceEquals compares objects ----
+        string a = "hi";
+        string b = "hi";                 // same interned literal as a
+        string c2 = new string(new[] { 'h', 'i' });  // forced brand-new object
+        Console.WriteLine(a == b);                      // True  (same letters)
+        Console.WriteLine(a == c2);                     // True  (== is overloaded to compare text)
+        Console.WriteLine(ReferenceEquals(a, c2));      // False (different objects)
+        Console.WriteLine(ReferenceEquals(a, string.Intern(c2)));  // True (Intern returns the pooled copy)
+
+        // ---- 4. Editing safely: convert to char[] ----
+        char[] arr = "hello".ToCharArray();
+        arr[0] = 'j';                    // arrays CAN be changed
+        string edited = new string(arr);
+        Console.WriteLine(edited);       // jello
+    }
+}`, run: true }
       ] }],
     codeTitle: ['Immutability, c - \'a\', String pool, char[] editing'],
     viz: [{
@@ -328,7 +367,18 @@ string trim(const string& s) {
     if (b == string::npos) return "";        // only spaces
     size_t e = s.find_last_not_of(' ');
     return s.substr(b, e - b + 1);           // "  hi  " -> "hi"
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        string s = "  hi  ";
+        s.Trim();                       // result discarded
+        Console.WriteLine("[" + s + "]"); // [  hi  ]
+        s = s.Trim();                   // keep the new string
+        Console.WriteLine("[" + s + "]"); // [hi]
+    }
+}`, run: true }
           ] } },
       { title: 'Caesar cipher with char arithmetic (wrap-around with %)', html: `<p>Shift every lowercase letter forward by k, wrapping z → a. Turn the letter into a slot 0..25, add k, wrap with <code>% 26</code>, turn it back into a letter.</p>
         ${H.table(['c', "c − 'a'", '+ k (k = 3)', '% 26', "+ 'a'"], [['x', '23', '26', '0', '<b>a</b>'], ['y', '24', '27', '1', '<b>b</b>'], ['m', '12', '15', '15', '<b>p</b>']])}
@@ -361,6 +411,16 @@ string trim(const string& s) {
         if (c >= 'a' && c <= 'z') c = char('a' + (c - 'a' + k) % 26);
     }
     return s;                                // "xym", 3 -> "abp"
+}` }, { lang: 'csharp', code: String.raw`
+static string Caesar(string s, int k) {
+    k = ((k % 26) + 26) % 26;                   // handle huge or negative k (C# % keeps the sign)
+    char[] a = s.ToCharArray();                 // mutable copy
+    for (int i = 0; i < a.Length; i++) {
+        if (a[i] >= 'a' && a[i] <= 'z') {
+            a[i] = (char)('a' + (a[i] - 'a' + k) % 26);
+        }
+    }
+    return new string(a);                       // "xym", 3 -> "abp"
 }` }
           ] } },
       { title: 'Compile-time constants vs runtime concatenation (== surprises)', html: `<p>Why does <code>==</code> sometimes "work" on Strings and fool beginners?</p>
@@ -458,6 +518,20 @@ string trim(const string& s) {
         if (!found) return false;
     }
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsAnagram(string s, string t) {
+        if (s.Length != t.Length) return false;
+        bool[] used = new bool[t.Length];
+        for (int i = 0; i < s.Length; i++) {
+            bool found = false;
+            for (int j = 0; j < t.Length; j++) {          // linear search every time
+                if (!used[j] && t[j] == s[i]) { used[j] = true; found = true; break; }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
 }` }
           ]
         }
@@ -535,7 +609,21 @@ public:
         }
         return all_of(cnt.begin(), cnt.end(), [](int c) { return c == 0; });
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsAnagram(string s, string t) {
+        if (s.Length != t.Length) return false;   // different sizes can never match
+        int[] cnt = new int[26];                  // one counter per letter a..z
+        for (int i = 0; i < s.Length; i++) {
+            cnt[s[i] - 'a']++;                    // letter from s: +1
+            cnt[t[i] - 'a']--;                    // letter from t: -1
+        }
+        foreach (int c in cnt) {
+            if (c != 0) return false;             // some letter count differs
+        }
+        return true;
+    }
+}` }
         ],
         dry: {
           head: ['i', 's[i] → slot', 't[i] → slot', 'changed slots after step'],
@@ -643,7 +731,26 @@ int main() {
     cout << isPal("racecar", 0, 6) << '\\n';  // true  (odd length)
     cout << isPal("noon", 0, 3) << '\\n';     // true  (even length)
     cout << isPal("ab", 0, 1) << '\\n';       // false
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class PalinCheck {
+    // Plain palindrome check on s[l..r] (inclusive) with two pointers
+    static bool IsPal(string s, int l, int r) {
+        while (l < r) {
+            if (s[l] != s[r]) return false;      // mismatch -> not a palindrome
+            l++;                                 // step inward from the left
+            r--;                                 // step inward from the right
+        }
+        return true;                             // pointers met/crossed: all pairs matched
+    }
+
+    static void Main() {
+        Console.WriteLine(IsPal("racecar", 0, 6)); // True  (odd length)
+        Console.WriteLine(IsPal("noon", 0, 3));    // True  (even length)
+        Console.WriteLine(IsPal("ab", 0, 1));      // False
+    }
+}`, run: true }
       ] },
     codeTitle: 'Two-pointer palindrome check',
     viz: {
@@ -774,6 +881,23 @@ bool validPalindrome(const string& s) {
         r--;
     }
     return true;                             // already a palindrome, nothing to delete
+}` }, { lang: 'csharp', code: String.raw`
+static bool ValidPalindrome(string s) {
+    int l = 0, r = s.Length - 1;
+    while (l < r) {
+        if (s[l] != s[r]) {
+            // first mismatch: delete s[l] OR delete s[r], then the rest must be a plain palindrome
+            return IsPal(s, l + 1, r) || IsPal(s, l, r - 1);
+        }
+        l++;
+        r--;
+    }
+    return true;                       // already a palindrome, nothing to delete
+}
+
+static bool IsPal(string s, int l, int r) {
+    while (l < r) if (s[l++] != s[r--]) return false;
+    return true;
 }` }
           ] } },
       { title: 'Palindrome permutation — can the letters be rearranged into a palindrome?', html: `<p>In a palindrome every letter has a mirror partner, except possibly <b>one</b> middle letter. So: count letters; at most one letter may have an <b>odd</b> count.</p>
@@ -806,6 +930,13 @@ def can_permute_palindrome(s):
     for (char c : s) cnt[c - 'a']++;
     int odd = count_if(cnt.begin(), cnt.end(), [](int x) { return x % 2 == 1; });
     return odd <= 1;                         // at most one letter may sit alone in the middle
+}` }, { lang: 'csharp', code: String.raw`
+static bool CanPermutePalindrome(string s) {
+    int[] cnt = new int[26];
+    foreach (char c in s) cnt[c - 'a']++;
+    int odd = 0;
+    foreach (int x in cnt) if (x % 2 == 1) odd++;
+    return odd <= 1;                  // at most one letter may sit alone in the middle
 }` }
           ] } },
       { title: 'Palindrome number without converting to a String', html: `<p>Is 1221 a palindrome? Reverse only the <b>second half</b> of the digits using % 10 and / 10, then compare with the first half.</p>
@@ -845,6 +976,15 @@ def can_permute_palindrome(s):
         x /= 10;
     }
     return x == rev || x == rev / 10;        // even length or odd length (drop middle digit)
+}` }, { lang: 'csharp', code: String.raw`
+static bool IsPalindromeNumber(int x) {
+    if (x < 0 || (x % 10 == 0 && x != 0)) return false;
+    int rev = 0;
+    while (x > rev) {                 // stop when we've reversed half the digits
+        rev = rev * 10 + x % 10;
+        x /= 10;
+    }
+    return x == rev || x == rev / 10; // even length || odd length (drop middle digit)
 }` }
           ] } }
     ],
@@ -916,6 +1056,18 @@ def can_permute_palindrome(s):
     string rev = "";
     for (int i = (int)clean.size() - 1; i >= 0; i--) rev = rev + clean[i];   // O(len) copy each time
     return clean == rev;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPalindrome(string s) {
+        string clean = "";
+        for (int i = 0; i < s.Length; i++) {
+            char c = s[i];
+            if (char.IsLetterOrDigit(c)) clean += char.ToLower(c);   // O(len) copy each time
+        }
+        string rev = "";
+        for (int i = clean.Length - 1; i >= 0; i--) rev += clean[i];  // O(len) copy each time
+        return clean == rev;
+    }
 }` }
           ]
         }
@@ -1010,7 +1162,25 @@ public:
         }
         return true;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsPalindrome(string s) {
+        int l = 0, r = s.Length - 1;
+        while (l < r) {
+            // 1) skip junk on the left (spaces, commas, colons...)
+            while (l < r && !char.IsLetterOrDigit(s[l])) l++;
+            // 2) skip junk on the right
+            while (l < r && !char.IsLetterOrDigit(s[r])) r--;
+            // 3) compare ignoring case
+            if (char.ToLower(s[l]) != char.ToLower(s[r])) {
+                return false;                  // mirror broken
+            }
+            l++;                               // 4) both step toward the middle
+            r--;
+        }
+        return true;                           // every real pair matched
+    }
+}` }
         ],
         dry: {
           head: ['l', 'r', 's[l]', 's[r]', 'action'],
@@ -1169,6 +1339,39 @@ int main() {
     auto t2 = clk::now();
     auto ms = [](auto d) { return (long long)chrono::duration_cast<chrono::milliseconds>(d).count(); };
     cout << "fast ms = " << ms(t1 - t0) << ", slow ms = " << ms(t2 - t1) << '\\n';
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Diagnostics;
+using System.Text;
+
+class BuildDemo {
+    // SLOW: every += creates a brand-new string and copies all old chars -> O(N^2)
+    static string Slow(int n) {
+        string s = "";
+        for (int i = 0; i < n; i++) {
+            s += (char)('a' + i % 26);
+        }
+        return s;
+    }
+
+    // FAST: StringBuilder writes into spare capacity -> O(N) total
+    static string Fast(int n) {
+        var sb = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            sb.Append((char)('a' + i % 26));
+        }
+        return sb.ToString();        // one final copy
+    }
+
+    static void Main() {
+        var sw = Stopwatch.StartNew();
+        Fast(100000);
+        long fastMs = sw.ElapsedMilliseconds;
+        sw.Restart();
+        Slow(100000);                // noticeably slower
+        long slowMs = sw.ElapsedMilliseconds;
+        Console.WriteLine("fast ms = " + fastMs + ", slow ms = " + slowMs);
+    }
 }` }
       ] }, { lang: 'java', code: `
       class SbToolbox {
@@ -1207,7 +1410,22 @@ int main() {
     sb.pop_back();                            // Abcd12x  (undo last, used in backtracking)
     reverse(sb.begin(), sb.end());            // x21dcbA
     cout << sb << " length=" << sb.size() << '\\n';
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Text;
+
+class SbToolbox {
+    static void Main() {
+        var sb = new StringBuilder("abc");
+        sb.Append('d').Append(12).Append("xy");     // abcd12xy
+        sb[0] = 'A';                                // Abcd12xy  (indexer is writable)
+        sb.Length--;                                // Abcd12x   (undo last, used in backtracking)
+        char[] rev = sb.ToString().ToCharArray();   // no Reverse on StringBuilder: go through char[]
+        Array.Reverse(rev);
+        sb = new StringBuilder(new string(rev));    // x21dcbA
+        Console.WriteLine(sb.ToString() + " length=" + sb.Length);
+    }
+}`, run: true }
         ] }],
     codeTitle: ['Slow += vs fast StringBuilder', 'StringBuilder toolbox'],
     viz: {
@@ -1273,6 +1491,14 @@ int main() {
         out += to_string(x);
     }
     return out;                              // [3, 1, 4] -> "3,1,4"
+}` }, { lang: 'csharp', code: String.raw`
+static string JoinNums(int[] a) {
+    var sb = new StringBuilder();
+    foreach (int x in a) {
+        if (sb.Length > 0) sb.Append(',');    // separator only between items
+        sb.Append(x);
+    }
+    return sb.ToString();                     // [3, 1, 4] -> "3,1,4"  (or string.Join(",", a))
 }` }
           ] } },
       { title: 'Backtracking with one shared StringBuilder (append / deleteCharAt)', html: `<p>Generate all binary strings of length n. Instead of creating a new String at every step (<code>cur + "0"</code>), keep <b>one</b> builder: append a char, recurse, then <b>undo</b> by deleting the last char.</p>
@@ -1310,6 +1536,14 @@ int main() {
         cur.push_back(c);                    // choose
         gen(n, cur, out);                    // explore
         cur.pop_back();                      // un-choose (O(1) at the end)
+    }
+}` }, { lang: 'csharp', code: String.raw`
+static void Gen(int n, StringBuilder sb, List<string> result) {
+    if (sb.Length == n) { result.Add(sb.ToString()); return; }
+    for (char c = '0'; c <= '1'; c++) {
+        sb.Append(c);                    // choose
+        Gen(n, sb, result);              // explore
+        sb.Length--;                     // un-choose (O(1) at the end)
     }
 }` }
           ] } },
@@ -1350,6 +1584,15 @@ int main() {
     }
     reverse(s.begin(), s.end());             // one reverse instead of many front inserts
     return s;                                // 13 -> "1101"
+}` }, { lang: 'csharp', code: String.raw`
+static string ToBinary(int n) {
+    if (n == 0) return "0";
+    var sb = new StringBuilder();
+    while (n > 0) {
+        sb.Insert(0, n % 2);             // least significant bit first, written in front
+        n /= 2;
+    }
+    return sb.ToString();                // 13 -> "1101"  (or Convert.ToString(13, 2))
 }` }
           ] } }
     ],
@@ -1432,6 +1675,20 @@ int main() {
         res = res + to_string(cnt);     // another full copy
     }
     return res.size() < s.size() ? res : s;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string Compress(string s) {
+        string res = "";
+        int i = 0;
+        while (i < s.Length) {
+            char c = s[i];
+            int cnt = 0;
+            while (i < s.Length && s[i] == c) { i++; cnt++; }
+            res += c;            // full copy of res
+            res += cnt;          // another full copy
+        }
+        return res.Length < s.Length ? res : s;
+    }
 }` }
           ]
         }
@@ -1517,7 +1774,25 @@ public:
         }
         return out.size() < n ? out : s;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public string Compress(string s) {
+        var sb = new StringBuilder();
+        int n = s.Length;
+        int i = 0;                                  // start of the current run
+        while (i < n) {
+            char c = s[i];
+            int j = i;
+            while (j < n && s[j] == c) j++;         // j stops at first different char
+            sb.Append(c).Append(j - i);             // e.g. 'c' then 5  -> "c5"
+            i = j;                                  // next run starts where this ended
+        }
+        // only use the compressed form if it really is shorter
+        return sb.Length < n ? sb.ToString() : s;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'c = s[i]', 'j (end)', 'run length j − i', 'sb after append'],
@@ -1583,6 +1858,19 @@ public:
         if (k > 0) res = res + " ";
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public string ReverseWords(string s) {
+        string[] w = s.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);   // runs of spaces
+        string res = "";
+        for (int k = w.Length - 1; k >= 0; k--) {
+            res += w[k];                          // full copy every time
+            if (k > 0) res += " ";
+        }
+        return res;
+    }
 }` }
           ]
         }
@@ -1653,7 +1941,24 @@ public:
         }
         return out;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public string ReverseWords(string s) {
+        var sb = new StringBuilder();
+        int i = s.Length - 1;
+        while (i >= 0) {
+            while (i >= 0 && s[i] == ' ') i--;          // skip spaces after/between words
+            if (i < 0) break;                           // only spaces were left
+            int end = i;                                // last char of this word
+            while (i >= 0 && s[i] != ' ') i--;          // walk to the space before the word
+            if (sb.Length > 0) sb.Append(' ');          // exactly one space between words
+            sb.Append(s, i + 1, end - i);               // copy the word s[i+1..end]
+        }
+        return sb.ToString();
+    }
+}` }
         ],
         dry: {
           head: ['i (start)', 'after skipping spaces', 'end', 'i after word', 'word s[i+1..end]', 'sb'],
@@ -1755,7 +2060,25 @@ int expand(const string& s, int l, int r) {
 int main() {
     cout << expand("babad", 1, 1) << '\\n';   // 3 ("bab", odd center)
     cout << expand("cbbd", 1, 2) << '\\n';    // 2 ("bb", even center)
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Expand {
+    // grow outward from (l, r) while the ends match; return the palindrome length found
+    static int ExpandFrom(string s, int l, int r) {
+        while (l >= 0 && r < s.Length && s[l] == s[r]) {
+            l--;   // one step left
+            r++;   // one step right
+        }
+        // loop stopped one step too far on both sides -> length is r - l - 1
+        return r - l - 1;
+    }
+
+    static void Main() {
+        Console.WriteLine(ExpandFrom("babad", 1, 1)); // 3 ("bab", odd center)
+        Console.WriteLine(ExpandFrom("cbbd", 1, 2));  // 2 ("bb", even center)
+    }
+}`, run: true }
       ] },
     codeTitle: 'The expand helper',
     viz: {
@@ -1861,6 +2184,20 @@ int main() {
         }
     }
     return total;                                // "aaa" -> 6, "abc" -> 3
+}` }, { lang: 'csharp', code: String.raw`
+static int CountSubstrings(string s) {
+    int total = 0;
+    for (int c = 0; c < s.Length; c++) {
+        for (int r0 = c; r0 <= c + 1; r0++) {          // r0 = c (odd) and c + 1 (even)
+            int l = c, r = r0;
+            while (l >= 0 && r < s.Length && s[l] == s[r]) {
+                total++;                               // s[l..r] is one more palindrome
+                l--;
+                r++;
+            }
+        }
+    }
+    return total;                                      // "aaa" -> 6, "abc" -> 3
 }` }
           ] } },
       { title: 'An even palindrome hiding inside noise', html: `<p><code>"forgeeksskeegfor"</code>: odd centers only find single letters here, but the <b>gap between the two s's</b> (indices 7|8) grows: ss → kssk → eksske → eeksskee → geeksskeeg, then "r ≠ f" stops it.</p>
@@ -1916,6 +2253,18 @@ int main() {
         }
     }
     return s.substr(bestL, bestLen);
+}` }, { lang: 'csharp', code: String.raw`
+static string LongestDp(string s) {
+    int n = s.Length, bestL = 0, bestLen = 1;
+    bool[,] pal = new bool[n, n];
+    for (int len = 1; len <= n; len++) {
+        for (int i = 0; i + len - 1 < n; i++) {
+            int j = i + len - 1;
+            pal[i, j] = s[i] == s[j] && (len <= 2 || pal[i + 1, j - 1]);
+            if (pal[i, j] && len > bestLen) { bestLen = len; bestL = i; }
+        }
+    }
+    return s.Substring(bestL, bestLen);
 }` }
           ] } }
     ],
@@ -2001,6 +2350,20 @@ int main() {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string LongestPalindrome(string s) {
+        string best = s.Substring(0, 1);
+        for (int i = 0; i < s.Length; i++) {
+            for (int j = i + best.Length; j < s.Length; j++) {   // only longer candidates
+                int l = i, r = j;
+                bool ok = true;
+                while (l < r) { if (s[l++] != s[r--]) { ok = false; break; } }
+                if (ok) best = s.Substring(i, j - i + 1);
+            }
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -2107,7 +2470,33 @@ public:
         }
         return s.substr(bestStart, bestLen);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public string LongestPalindrome(string s) {
+        if (s.Length < 2) return s;                 // single char is a palindrome
+        int bestStart = 0, bestLen = 1;
+        for (int c = 0; c < s.Length; c++) {
+            int len1 = Expand(s, c, c);             // odd: center is letter c
+            int len2 = Expand(s, c, c + 1);         // even: center is gap c|c+1
+            int len = Math.Max(len1, len2);
+            if (len > bestLen) {
+                bestLen = len;
+                bestStart = c - (len - 1) / 2;      // works for odd and even
+            }
+        }
+        return s.Substring(bestStart, bestLen);
+    }
+
+    private int Expand(string s, int l, int r) {
+        while (l >= 0 && r < s.Length && s[l] == s[r]) {
+            l--;
+            r++;
+        }
+        return r - l - 1;                           // length of s[l+1 .. r-1]
+    }
+}` }
         ],
         dry: {
           head: ['c', 'odd expand(c,c)', 'even expand(c,c+1)', 'len', 'bestStart, bestLen'],
@@ -2253,7 +2642,36 @@ int main() {
     PrefixHash h("abcabc");
     cout << boolalpha << (h.get(0, 2) == h.get(3, 5)) << '\\n'; // true: "abc" == "abc"
     cout << (h.get(0, 1) == h.get(1, 2)) << '\\n';              // false: "ab" vs "bc"
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class PrefixHash {
+    const long B = 31, M = 1000000007L;
+    long[] pre, pw;
+
+    PrefixHash(string s) {
+        int n = s.Length;
+        pre = new long[n + 1];
+        pw = new long[n + 1];
+        pw[0] = 1;
+        for (int i = 0; i < n; i++) {
+            pre[i + 1] = (pre[i] * B + (s[i] - 'a' + 1)) % M;   // append one "digit"
+            pw[i + 1] = pw[i] * B % M;                          // B^(i+1)
+        }
+    }
+
+    // hash of s[l..r] inclusive, in O(1)
+    long Get(int l, int r) {
+        long x = (pre[r + 1] - pre[l] * pw[r - l + 1]) % M;
+        return (x + M) % M;                                     // fix negative values
+    }
+
+    static void Main() {
+        var h = new PrefixHash("abcabc");
+        Console.WriteLine(h.Get(0, 2) == h.Get(3, 5)); // True: "abc" == "abc"
+        Console.WriteLine(h.Get(0, 1) == h.Get(1, 2)); // False: "ab" vs "bc"
+    }
+}`, run: true }
       ] },
     codeTitle: 'Prefix hashes: O(1) hash of any substring',
     viz: {
@@ -2361,6 +2779,16 @@ int main() {
         h2 = (h2 * B2 + v) % M2;
     }
     return {h1, h2};                         // "abc" -> {1026, 1446}
+}` }, { lang: 'csharp', code: String.raw`
+static long[] TwoHashes(string s) {
+    const long B1 = 31, M1 = 1000000007L, B2 = 37, M2 = 998244353L;
+    long h1 = 0, h2 = 0;
+    for (int i = 0; i < s.Length; i++) {
+        int v = s[i] - 'a' + 1;
+        h1 = (h1 * B1 + v) % M1;
+        h2 = (h2 * B2 + v) % M2;
+    }
+    return new[] { h1, h2 };        // "abc" -> [1026, 1446]
 }` }
           ] } }
     ],
@@ -2438,6 +2866,20 @@ int main() {
         if (k == m) res.push_back(i);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> Search(string txt, string pat) {
+        var res = new List<int>();
+        int n = txt.Length, m = pat.Length;
+        for (int i = 0; i + m <= n; i++) {
+            int k = 0;
+            while (k < m && txt[i + k] == pat[k]) k++;
+            if (k == m) res.Add(i);
+        }
+        return res;
+    }
 }` }
           ]
         }
@@ -2565,7 +3007,40 @@ public:
         }
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    const long B = 31;
+    const long M = 1000000007L;
+
+    public IList<int> Search(string txt, string pat) {
+        var res = new List<int>();
+        int n = txt.Length, m = pat.Length;
+        if (m > n) return res;
+
+        long patHash = 0, winHash = 0, power = 1;      // power = B^(m-1) mod M
+        for (int k = 0; k < m; k++) {
+            patHash = (patHash * B + (pat[k] - 'a' + 1)) % M;
+            winHash = (winHash * B + (txt[k] - 'a' + 1)) % M;
+            if (k < m - 1) power = power * B % M;
+        }
+
+        for (int i = 0; i + m <= n; i++) {
+            // equal hash -> verify letters to rule out a collision
+            if (winHash == patHash && string.CompareOrdinal(txt, i, pat, 0, m) == 0) {
+                res.Add(i);
+            }
+            if (i + m < n) {                           // roll: drop txt[i], add txt[i+m]
+                long dropped = (txt[i] - 'a' + 1) * power % M;
+                winHash = (winHash - dropped + M) % M; // + M keeps it non-negative
+                winHash = (winHash * B + (txt[i + m] - 'a' + 1)) % M;
+            }
+        }
+        return res;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'window', 'winHash', '== 1026?', 'action / roll'],
@@ -2715,7 +3190,35 @@ int main() {
         for (int x : buildLps(p)) cout << x << ' ';
         cout << '\\n';                        // 0 0 1 2 3 0 1  /  0 1 0 1 2 2 3
     }
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class LpsBuilder {
+    static int[] BuildLps(string p) {
+        int m = p.Length;
+        int[] lps = new int[m];       // lps[0] = 0 always
+        int len = 0;                  // length of current prefix-suffix
+        int i = 1;
+        while (i < m) {
+            if (p[i] == p[len]) {
+                len++;                // border grows by one
+                lps[i] = len;
+                i++;
+            } else if (len > 0) {
+                len = lps[len - 1];   // fall back to a shorter border; i stays
+            } else {
+                lps[i] = 0;           // nothing reusable
+                i++;
+            }
+        }
+        return lps;
+    }
+
+    static void Main() {
+        Console.WriteLine("[" + string.Join(", ", BuildLps("ababaca")) + "]"); // [0, 0, 1, 2, 3, 0, 1]
+        Console.WriteLine("[" + string.Join(", ", BuildLps("aabaaab")) + "]"); // [0, 1, 0, 1, 2, 2, 3]
+    }
+}`, run: true }
       ] }],
     codeTitle: ['Building the LPS array'],
     viz: [{
@@ -2881,6 +3384,17 @@ int main() {
     }
     int border = lps[n - 1];
     return border > 0 && n % (n - border) == 0;   // period divides the length
+}` }, { lang: 'csharp', code: String.raw`
+static bool Repeated(string s) {
+    int n = s.Length;
+    int[] lps = new int[n];
+    for (int i = 1, len = 0; i < n; ) {          // standard LPS build
+        if (s[i] == s[len]) lps[i++] = ++len;
+        else if (len > 0) len = lps[len - 1];
+        else lps[i++] = 0;
+    }
+    int border = lps[n - 1];
+    return border > 0 && n % (n - border) == 0;  // period divides the length
 }` }
           ] } },
       { title: 'Shortest palindrome by adding characters in front', html: `<p>s = <code>"aacecaaa"</code>. The longest palindromic <b>prefix</b> of s is what we can keep; everything after it must be mirrored in front. Build <code>t = s + "#" + reverse(s)</code> = "aacecaaa#aaacecaa". lps of t's last position = length of the longest prefix of s that equals a suffix of reverse(s) = the longest palindromic prefix = <b>7</b> ("aacecaa").</p>
@@ -2952,6 +3466,19 @@ int main() {
         if (k == (int)pat.size()) res.push_back(i);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> KmpSearch(string txt, string pat) {
+        var res = new List<int>();
+        for (int i = 0; i + pat.Length <= txt.Length; i++) {
+            int k = 0;
+            while (k < pat.Length && txt[i + k] == pat[k]) k++;
+            if (k == pat.Length) res.Add(i);
+        }
+        return res;
+    }
 }` }
           ]
         }
@@ -3110,7 +3637,48 @@ public:
         }
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> KmpSearch(string txt, string pat) {
+        var res = new List<int>();
+        int n = txt.Length, m = pat.Length;
+        int[] lps = BuildLps(pat);
+        int i = 0, j = 0;                    // i -> text, j -> pattern
+        while (i < n) {
+            if (txt[i] == pat[j]) {
+                i++;
+                j++;
+                if (j == m) {                // whole pattern matched
+                    res.Add(i - m);          // it started m chars back
+                    j = lps[m - 1];          // keep the border -> overlaps work
+                }
+            } else if (j > 0) {
+                j = lps[j - 1];              // slide pattern, i stays
+            } else {
+                i++;                         // nothing matched, move on
+            }
+        }
+        return res;
+    }
+
+    private int[] BuildLps(string p) {
+        int m = p.Length;
+        int[] lps = new int[m];
+        int len = 0, i = 1;
+        while (i < m) {
+            if (p[i] == p[len]) {
+                lps[i++] = ++len;            // border grows
+            } else if (len > 0) {
+                len = lps[len - 1];          // shorter border
+            } else {
+                lps[i++] = 0;                // no border
+            }
+        }
+        return lps;
+    }
+}` }
         ],
         dry: {
           head: ['i', 'j', 'txt[i]', 'pat[j]', 'action'],
@@ -3260,7 +3828,37 @@ int main() {
         for (int x : zArray(s)) cout << x << ' ';
         cout << '\\n';                        // 0 1 0 0 3 1 0  /  0 0 1 0 3 0 3 0 1
     }
-}` }
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class ZAlgo {
+    static int[] ZArray(string s) {
+        int n = s.Length;
+        int[] z = new int[n];          // z[0] stays 0 by convention
+        int L = 0, R = 0;              // box [L, R]: s[L..R] == s[0..R-L]
+        for (int i = 1; i < n; i++) {
+            if (i <= R) {
+                // inside the box: copy the mirrored answer, but never beyond R
+                z[i] = Math.Min(R - i + 1, z[i - L]);
+            }
+            // try to extend by reading new characters
+            while (i + z[i] < n && s[z[i]] == s[i + z[i]]) {
+                z[i]++;
+            }
+            // the match reaches further right than the old box -> move the box
+            if (i + z[i] - 1 > R) {
+                L = i;
+                R = i + z[i] - 1;
+            }
+        }
+        return z;
+    }
+
+    static void Main() {
+        Console.WriteLine("[" + string.Join(", ", ZArray("aabxaab")) + "]");   // [0, 1, 0, 0, 3, 1, 0]
+        Console.WriteLine("[" + string.Join(", ", ZArray("aba$ababa")) + "]"); // [0, 0, 1, 0, 3, 0, 3, 0, 1]
+    }
+}`, run: true }
       ] },
     codeTitle: 'Z-array in O(N)',
     viz: {
@@ -3375,6 +3973,18 @@ int main() {
         total += z[i];
     }
     return total;                            // "babab" -> 9
+}` }, { lang: 'csharp', code: String.raw`
+static long SumScores(string s) {
+    int n = s.Length;
+    int[] z = new int[n];
+    long total = n;                                   // the full string matches itself
+    for (int i = 1, L = 0, R = 0; i < n; i++) {
+        if (i <= R) z[i] = Math.Min(R - i + 1, z[i - L]);
+        while (i + z[i] < n && s[z[i]] == s[i + z[i]]) z[i]++;
+        if (i + z[i] - 1 > R) { L = i; R = i + z[i] - 1; }
+        total += z[i];
+    }
+    return total;                                     // "babab" -> 9
 }` }
           ] } },
       { title: 'Smallest period with the Z-array', html: `<p>p is a period of s if s[i] = s[i + p] for all valid i — equivalently <b>p + Z[p] == n</b> (the suffix starting at p matches the prefix all the way to the end). For s = <code>"abcabcab"</code>: Z = [0, 0, 0, 5, 0, 0, 2, 0]. The smallest p with p + Z[p] = 8 is <b>p = 3</b> ("abc" repeated, last copy cut short).</p>
@@ -3435,6 +4045,15 @@ int main() {
         if (txt.compare(i, pat.size(), pat) == 0) cnt++;   // O(M) compare each time
     }
     return cnt;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int CountOccurrences(string txt, string pat) {
+        int cnt = 0;
+        for (int i = 0; i + pat.Length <= txt.Length; i++) {
+            if (string.CompareOrdinal(txt, i, pat, 0, pat.Length) == 0) cnt++;   // O(M) compare each time
+        }
+        return cnt;
+    }
 }` }
           ]
         }
@@ -3549,7 +4168,36 @@ public:
         vector<int> z = zArray(pat + "$" + txt);    // '$' never appears in pat or txt
         return (int)count(z.begin() + m + 1, z.end(), m);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int CountOccurrences(string txt, string pat) {
+        string s = pat + "$" + txt;          // '$' never appears in pat or txt
+        int m = pat.Length;
+        int[] z = ZArray(s);
+        int count = 0;
+        for (int i = m + 1; i < s.Length; i++) {
+            if (z[i] == m) count++;          // pattern starts at text index i - m - 1
+        }
+        return count;
+    }
+
+    private int[] ZArray(string s) {
+        int n = s.Length;
+        int[] z = new int[n];
+        int L = 0, R = 0;                    // box [L, R], inclusive
+        for (int i = 1; i < n; i++) {
+            if (i <= R) z[i] = Math.Min(R - i + 1, z[i - L]);   // reuse mirrored value
+            while (i + z[i] < n && s[z[i]] == s[i + z[i]]) z[i]++; // extend
+            if (i + z[i] - 1 > R) {          // reached further -> move the box
+                L = i;
+                R = i + z[i] - 1;
+            }
+        }
+        return z;
+    }
+}` }
         ],
         dry: {
           head: ['i', 's[i]', 'inside box? start', 'Z[i] after extend', 'box [L, R]', 'count'],
@@ -3626,6 +4274,18 @@ public:
         if (!repeated) return i;
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FirstUniqChar(string s) {
+        for (int i = 0; i < s.Length; i++) {
+            bool repeated = false;
+            for (int j = 0; j < s.Length; j++) {
+                if (i != j && s[i] == s[j]) { repeated = true; break; }
+            }
+            if (!repeated) return i;
+        }
+        return -1;
+    }
 }` }
           ]
         }
@@ -3698,7 +4358,17 @@ public:
         }
         return -1;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FirstUniqChar(string s) {
+        int[] cnt = new int[26];
+        for (int i = 0; i < s.Length; i++) cnt[s[i] - 'a']++;   // pass 1: count
+        for (int i = 0; i < s.Length; i++) {
+            if (cnt[s[i] - 'a'] == 1) return i;                  // pass 2: first unique
+        }
+        return -1;
+    }
+}` }
       ],
       dry: {
         head: ['pass', 'i', 's[i]', 'cnt[s[i]]', 'action'],
@@ -3767,6 +4437,19 @@ public:
     int k = 0;
     for (char c : s) res = res + (isalpha((unsigned char)c) ? letters[k++] : c);   // O(N) copy each time
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public string ReverseOnlyLetters(string s) {
+        var letters = new List<char>();
+        foreach (char c in s) if (char.IsLetter(c)) letters.Add(c);
+        letters.Reverse();
+        string res = "";
+        int k = 0;
+        foreach (char c in s) res += char.IsLetter(c) ? letters[k++] : c;   // O(N) copy each time
+        return res;
+    }
 }` }
           ]
         }
@@ -3857,7 +4540,23 @@ public:
         }
         return s;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string ReverseOnlyLetters(string s) {
+        char[] a = s.ToCharArray();                 // mutable copy
+        int l = 0, r = a.Length - 1;
+        while (l < r) {
+            if (!char.IsLetter(a[l])) l++;               // non-letter stays: skip
+            else if (!char.IsLetter(a[r])) r--;          // same on the right
+            else {
+                char tmp = a[l]; a[l] = a[r]; a[r] = tmp; // swap two letters
+                l++;
+                r--;
+            }
+        }
+        return new string(a);
+    }
+}` }
       ],
       dry: {
         head: ['l', 'r', 'a[l]', 'a[r]', 'action', 'array'],
@@ -3924,6 +4623,17 @@ public:
         if (ok) return p;
     }
     return "";
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string LongestCommonPrefix(string[] strs) {
+        for (int len = strs[0].Length; len > 0; len--) {
+            string p = strs[0].Substring(0, len);
+            bool ok = true;
+            foreach (string s in strs) if (!s.StartsWith(p, System.StringComparison.Ordinal)) { ok = false; break; }
+            if (ok) return p;
+        }
+        return "";
+    }
 }` }
           ]
         }
@@ -4001,7 +4711,22 @@ public:
         }
         return first;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string LongestCommonPrefix(string[] strs) {
+        string first = strs[0];
+        for (int i = 0; i < first.Length; i++) {
+            char c = first[i];
+            for (int k = 1; k < strs.Length; k++) {
+                // string too short or different char -> the prefix ends before column i
+                if (i == strs[k].Length || strs[k][i] != c) {
+                    return first.Substring(0, i);
+                }
+            }
+        }
+        return first;                                  // every column of strs[0] matched
+    }
+}` }
       ],
       dry: {
         head: ['column i', 'c = strs[0][i]', 'flow[i]', 'flight[i]', 'result'],
@@ -4062,6 +4787,16 @@ public:
         if (k == (int)needle.size()) return i;
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int StrStr(string haystack, string needle) {
+        for (int i = 0; i + needle.Length <= haystack.Length; i++) {
+            int k = 0;
+            while (k < needle.Length && haystack[i + k] == needle[k]) k++;
+            if (k == needle.Length) return i;
+        }
+        return -1;
+    }
 }` }
           ]
         }
@@ -4181,7 +4916,31 @@ public:
         }
         return -1;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int StrStr(string haystack, string needle) {
+        int n = haystack.Length, m = needle.Length;
+        int[] lps = new int[m];
+        for (int i = 1, len = 0; i < m; ) {               // build LPS of the needle
+            if (needle[i] == needle[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        int p = 0, j = 0;                                  // p -> haystack, j -> needle
+        while (p < n) {
+            if (haystack[p] == needle[j]) {
+                p++;
+                j++;
+                if (j == m) return p - m;                  // first full match
+            } else if (j > 0) {
+                j = lps[j - 1];                            // reuse matched border
+            } else {
+                p++;
+            }
+        }
+        return -1;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'j', 'h[i]', 'nd[j]', 'action (needle "aab", lps [0,1,0])'],
@@ -4247,6 +5006,16 @@ public:
         if (rot == goal) return true;
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool RotateString(string s, string goal) {
+        if (s.Length != goal.Length) return false;
+        for (int k = 0; k < s.Length; k++) {
+            string rot = s.Substring(k) + s.Substring(0, k);   // O(n) new string
+            if (rot == goal) return true;
+        }
+        return false;
+    }
 }` }
           ]
         }
@@ -4376,7 +5145,32 @@ public:
         if (s.size() != goal.size()) return false;
         return kmpFind(s + s, goal) >= 0;           // rotation <=> goal occurs in s+s
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool RotateString(string s, string goal) {
+        if (s.Length != goal.Length) return false;
+        return KmpFind(s + s, goal) >= 0;       // rotation <=> goal occurs in s+s
+    }
+
+    private int KmpFind(string t, string p) {
+        int m = p.Length;
+        int[] lps = new int[m];
+        for (int i = 1, len = 0; i < m; ) {
+            if (p[i] == p[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        for (int i = 0, j = 0; i < t.Length; ) {
+            if (t[i] == p[j]) {
+                i++;
+                j++;
+                if (j == m) return i - m;
+            } else if (j > 0) j = lps[j - 1];
+            else i++;
+        }
+        return -1;
+    }
+}` }
       ],
       dry: {
         head: ['step', 'value', 'note'],
@@ -4447,6 +5241,23 @@ public:
         if (w == target) res.push_back(i);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class Solution {
+    public IList<int> FindAnagrams(string s, string p) {
+        var res = new List<int>();
+        char[] target = p.ToCharArray();
+        Array.Sort(target);
+        for (int i = 0; i + p.Length <= s.Length; i++) {
+            char[] w = s.Substring(i, p.Length).ToCharArray();
+            Array.Sort(w);                                   // O(m log m) per window
+            if (w.SequenceEqual(target)) res.Add(i);
+        }
+        return res;
+    }
 }` }
           ]
         }
@@ -4541,7 +5352,27 @@ public:
         }
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+using System.Linq;
+
+public class Solution {
+    public IList<int> FindAnagrams(string s, string p) {
+        var res = new List<int>();
+        int n = s.Length, m = p.Length;
+        if (m > n) return res;
+        int[] need = new int[26], win = new int[26];
+        for (int k = 0; k < m; k++) need[p[k] - 'a']++;
+        for (int i = 0; i < n; i++) {
+            win[s[i] - 'a']++;                           // letter enters on the right
+            if (i >= m) win[s[i - m] - 'a']--;           // letter leaves on the left
+            if (i >= m - 1 && need.SequenceEqual(win)) { // LINQ: compares all 26 slots
+                res.Add(i - m + 1);                      // window start
+            }
+        }
+        return res;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'window', 'counts (a,b,c,…)', 'equal to need?', 'res'],
@@ -4664,6 +5495,32 @@ vector<vector<string>> groupAnagrams(const vector<string>& strs) {
         res.push_back(g);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<string>> GroupAnagrams(string[] strs) {
+        var res = new List<IList<string>>();
+        bool[] used = new bool[strs.Length];
+        for (int i = 0; i < strs.Length; i++) {
+            if (used[i]) continue;
+            var g = new List<string> { strs[i] };
+            used[i] = true;
+            for (int j = i + 1; j < strs.Length; j++) {
+                if (!used[j] && SameLetters(strs[i], strs[j])) { g.Add(strs[j]); used[j] = true; }
+            }
+            res.Add(g);
+        }
+        return res;
+    }
+
+    bool SameLetters(string a, string b) {
+        if (a.Length != b.Length) return false;
+        int[] c = new int[26];
+        for (int k = 0; k < a.Length; k++) { c[a[k] - 'a']++; c[b[k] - 'a']--; }
+        foreach (int x in c) if (x != 0) return false;
+        return true;
+    }
 }` }
           ]
         }
@@ -4746,7 +5603,24 @@ public:
         for (auto& [key, g] : groups) res.push_back(move(g));
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+using System.Text;
+
+public class Solution {
+    public IList<IList<string>> GroupAnagrams(string[] strs) {
+        var groups = new Dictionary<string, IList<string>>();
+        foreach (string w in strs) {
+            int[] cnt = new int[26];
+            for (int i = 0; i < w.Length; i++) cnt[w[i] - 'a']++;
+            var key = new StringBuilder();
+            foreach (int c in cnt) key.Append(c).Append('#');   // e.g. "1#0#0#0#1#...": order-free fingerprint
+            if (!groups.TryGetValue(key.ToString(), out IList<string> g)) groups[key.ToString()] = g = new List<string>();
+            g.Add(w);
+        }
+        return new List<IList<string>>(groups.Values);
+    }
+}` }
       ],
       dry: {
         head: ['word', 'counts', 'key exists?', 'groups'],
@@ -4830,6 +5704,22 @@ public:
     if (j == i) return 0;
     long long v = stoll(sign + s.substr(i, j - i));   // throws for > 19 digits!
     return (int)max((long long)INT_MIN, min((long long)INT_MAX, v));
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MyAtoi(string s) {
+        s = s.Trim(' ');
+        if (s.Length == 0) return 0;
+        int i = 0;
+        string sign = "";
+        if (s[0] == '-' || s[0] == '+') { sign = s.Substring(0, 1); i = 1; }
+        int j = i;
+        while (j < s.Length && char.IsDigit(s[j])) j++;
+        if (j == i) return 0;
+        long v = long.Parse(sign + s.Substring(i, j - i));   // throws for > 19 digits!
+        return (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, v));
+    }
 }` }
           ]
         }
@@ -4954,7 +5844,28 @@ public:
         }
         return (int)(sign * res);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int MyAtoi(string s) {
+        int i = 0, n = s.Length;
+        while (i < n && s[i] == ' ') i++;                     // 1) skip leading spaces
+        int sign = 1;
+        if (i < n && (s[i] == '+' || s[i] == '-')) {
+            sign = s[i] == '-' ? -1 : 1;                      // 2) optional sign
+            i++;
+        }
+        int res = 0;
+        while (i < n && s[i] >= '0' && s[i] <= '9') {         // 3) digits
+            int d = s[i] - '0';                               // char -> digit value
+            if (res > (int.MaxValue - d) / 10) {              // res*10+d would overflow
+                return sign == 1 ? int.MaxValue : int.MinValue;
+            }
+            res = res * 10 + d;
+            i++;
+        }
+        return sign * res;
+    }
+}` }
       ],
       dry: {
         head: ['char', 'state', 'd', 'res', 'note'],
@@ -5002,6 +5913,13 @@ public:
     // only works while the product fits in a long long (about 18 digits) -> wrong for big inputs
     long long x = stoll(num1), y = stoll(num2);
     return to_string(x * y);
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string Multiply(string num1, string num2) {
+        // only works while the product fits in a long (about 18 digits) -> wrong for big inputs
+        long x = long.Parse(num1), y = long.Parse(num2);
+        return (x * y).ToString();
+    }
 }` }
           ]
         }
@@ -5103,7 +6021,29 @@ public:
         }
         return out.empty() ? "0" : out;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public string Multiply(string num1, string num2) {
+        int n = num1.Length, m = num2.Length;
+        int[] pos = new int[n + m];                         // product has at most n+m digits
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = m - 1; j >= 0; j--) {
+                int mul = (num1[i] - '0') * (num2[j] - '0');
+                int sum = mul + pos[i + j + 1];             // add to what is already there
+                pos[i + j + 1] = sum % 10;                  // ones digit stays
+                pos[i + j] += sum / 10;                     // carry moves left
+            }
+        }
+        var sb = new StringBuilder();
+        foreach (int d in pos) {
+            if (sb.Length == 0 && d == 0) continue;         // skip leading zeros
+            sb.Append(d);
+        }
+        return sb.Length == 0 ? "0" : sb.ToString();
+    }
+}` }
       ],
       dry: {
         head: ['i, j', 'digits', 'mul', 'pos after (index 0..4)'],
@@ -5192,6 +6132,23 @@ public:
         cur = next;
     }
     return cur;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string CountAndSay(int n) {
+        string cur = "1";
+        for (int t = 1; t < n; t++) {
+            string next = "";
+            int i = 0;
+            while (i < cur.Length) {
+                int j = i;
+                while (j < cur.Length && cur[j] == cur[i]) j++;
+                next += (j - i) + "" + cur[i];   // full copy each time
+                i = j;
+            }
+            cur = next;
+        }
+        return cur;
+    }
 }` }
           ]
         }
@@ -5286,7 +6243,26 @@ public:
         }
         return cur;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public string CountAndSay(int n) {
+        string cur = "1";
+        for (int t = 1; t < n; t++) {
+            var sb = new StringBuilder();
+            int i = 0;
+            while (i < cur.Length) {
+                int j = i;
+                while (j < cur.Length && cur[j] == cur[i]) j++;   // end of run
+                sb.Append(j - i).Append(cur[i]);                  // count, then digit
+                i = j;
+            }
+            cur = sb.ToString();
+        }
+        return cur;
+    }
+}` }
       ],
       dry: {
         head: ['t', 'cur', 'runs', 'next'],
@@ -5350,6 +6326,19 @@ public:
         if (!seen.insert(w).second) rep.insert(w);
     }
     return vector<string>(rep.begin(), rep.end());
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<string> FindRepeatedDnaSequences(string s) {
+        var seen = new HashSet<string>();
+        var rep = new HashSet<string>();
+        for (int i = 0; i + 10 <= s.Length; i++) {
+            string w = s.Substring(i, 10);           // new 10-char string every step
+            if (!seen.Add(w)) rep.Add(w);
+        }
+        return new List<string>(rep);
+    }
 }` }
           ]
         }
@@ -5451,7 +6440,29 @@ public:
         }
         return res;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<string> FindRepeatedDnaSequences(string s) {
+        var res = new List<string>();
+        if (s.Length < 10) return res;
+        int[] code = new int[128];
+        code['A'] = 0; code['C'] = 1; code['G'] = 2; code['T'] = 3;
+        var seen = new HashSet<int>();
+        var added = new HashSet<int>();
+        int h = 0, mask = (1 << 20) - 1;                    // keep only the last 10 letters
+        for (int i = 0; i < s.Length; i++) {
+            h = ((h << 2) | code[s[i]]) & mask;             // roll in the new letter
+            if (i >= 9) {                                   // window s[i-9..i] is full
+                if (!seen.Add(h) && added.Add(h)) {
+                    res.Add(s.Substring(i - 9, 10));        // second time seen -> report once
+                }
+            }
+        }
+        return res;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'window', 'code (binary groups)', 'seen before?', 'res'],
@@ -5513,6 +6524,18 @@ public:
         sb += a;
     }
     return -1;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public int RepeatedStringMatch(string a, string b) {
+        var sb = new StringBuilder(a);
+        for (int k = 1; k <= b.Length / a.Length + 2; k++) {   // safe upper bound
+            if (sb.ToString().Contains(b)) return k;             // O(n*m) worst each time
+            sb.Append(a);
+        }
+        return -1;
+    }
 }` }
           ]
         }
@@ -5660,7 +6683,39 @@ public:
         int end = pos + b.size();                       // exclusive end of the match
         return (end + a.size() - 1) / a.size();         // copies needed to cover it
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public int RepeatedStringMatch(string a, string b) {
+        int q = (b.Length + a.Length - 1) / a.Length;   // ceil(|b| / |a|)
+        var sb = new StringBuilder();
+        for (int k = 0; k <= q; k++) sb.Append(a);      // q + 1 copies
+        int pos = KmpFind(sb.ToString(), b);
+        if (pos < 0) return -1;
+        int end = pos + b.Length;                        // exclusive end of the match
+        return (end + a.Length - 1) / a.Length;         // copies needed to cover it
+    }
+
+    private int KmpFind(string t, string p) {
+        int m = p.Length;
+        int[] lps = new int[m];
+        for (int i = 1, len = 0; i < m; ) {
+            if (p[i] == p[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        for (int i = 0, j = 0; i < t.Length; ) {
+            if (t[i] == p[j]) {
+                i++;
+                j++;
+                if (j == m) return i - m;
+            } else if (j > 0) j = lps[j - 1];
+            else i++;
+        }
+        return -1;
+    }
+}` }
       ],
       dry: {
         head: ['step', 'value'],
@@ -5721,6 +6776,15 @@ public:
         if (s.compare(0, len, s, n - len, len) == 0) return s.substr(0, len);   // O(len) compare
     }
     return "";
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string LongestPrefix(string s) {
+        int n = s.Length;
+        for (int len = n - 1; len > 0; len--) {
+            if (string.CompareOrdinal(s, 0, s, n - len, len) == 0) return s.Substring(0, len); // O(len) compare
+        }
+        return "";
+    }
 }` }
           ]
         }
@@ -5806,7 +6870,24 @@ public:
         }
         return s.substr(0, lps[n - 1]);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string LongestPrefix(string s) {
+        int n = s.Length;
+        int[] lps = new int[n];
+        int len = 0, i = 1;
+        while (i < n) {
+            if (s[i] == s[len]) {
+                lps[i++] = ++len;           // border grows
+            } else if (len > 0) {
+                len = lps[len - 1];         // try the next shorter border
+            } else {
+                lps[i++] = 0;
+            }
+        }
+        return s.Substring(0, lps[n - 1]);  // longest proper border of the whole string
+    }
+}` }
       ],
       dry: {
         head: ['i', 's[i]', 'len before', 'compare', 'lps[i]'],
@@ -5887,6 +6968,23 @@ public:
     string tail = s.substr(k);
     reverse(tail.begin(), tail.end());
     return tail + s;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public string ShortestPalindrome(string s) {
+        int k = s.Length;
+        while (k > 0) {
+            int l = 0, r = k - 1;
+            bool ok = true;
+            while (l < r) if (s[l++] != s[r--]) { ok = false; break; }
+            if (ok) break;                      // s[0..k) is the longest palindromic prefix
+            k--;
+        }
+        char[] tail = s.Substring(k).ToCharArray();
+        Array.Reverse(tail);
+        return new string(tail) + s;
+    }
 }` }
           ]
         }
@@ -5977,7 +7075,26 @@ public:
         int k = lps.back();                         // longest palindromic prefix length
         return rev.substr(0, s.size() - k) + s;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public string ShortestPalindrome(string s) {
+        int n = s.Length;
+        char[] rc = s.ToCharArray();
+        Array.Reverse(rc);
+        string rev = new string(rc);
+        string t = s + "#" + rev;                       // '#' never appears in s
+        int[] lps = new int[t.Length];
+        for (int i = 1, len = 0; i < t.Length; ) {
+            if (t[i] == t[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        int k = n == 0 ? 0 : lps[t.Length - 1];         // longest palindromic prefix length
+        return rev.Substring(0, n - k) + s;             // mirror the leftover in front
+    }
+}` }
       ],
       dry: {
         head: ['s', 't = s#rev', 'lps[last] = k', 'leftover s[k..]', 'answer'],
@@ -6045,6 +7162,18 @@ public:
         total += k;
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public long SumScores(string s) {
+        int n = s.Length;
+        long total = 0;
+        for (int i = 0; i < n; i++) {
+            int k = 0;
+            while (i + k < n && s[k] == s[i + k]) k++;   // LCP from scratch
+            total += k;
+        }
+        return total;
+    }
 }` }
           ]
         }
@@ -6138,7 +7267,26 @@ public:
         }
         return total;
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public long SumScores(string s) {
+        int n = s.Length;
+        int[] z = new int[n];
+        long total = n;                                   // s_n = s scores n
+        for (int i = 1, L = 0, R = 0; i < n; i++) {
+            if (i <= R) z[i] = Math.Min(R - i + 1, z[i - L]);
+            while (i + z[i] < n && s[z[i]] == s[i + z[i]]) z[i]++;
+            if (i + z[i] - 1 > R) {
+                L = i;
+                R = i + z[i] - 1;
+            }
+            total += z[i];
+        }
+        return total;
+    }
+}` }
       ],
       dry: {
         head: ['i', 'free start', 'Z[i]', 'box', 'total'],
@@ -6208,6 +7356,20 @@ public:
         }
     }
     return "";
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public string LongestDupSubstring(string s) {
+        for (int len = s.Length - 1; len > 0; len--) {
+            var seen = new HashSet<string>();
+            for (int i = 0; i + len <= s.Length; i++) {
+                string w = s.Substring(i, len);
+                if (!seen.Add(w)) return w;
+            }
+        }
+        return "";
+    }
 }` }
           ]
         }
@@ -6376,7 +7538,51 @@ public:
         }
         return bestStart < 0 ? "" : s.substr(bestStart, bestLen);
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    const long B = 131, M = 1000000007L;
+    private long[] pre, pw;
+    private string s;
+
+    public string LongestDupSubstring(string s) {
+        this.s = s;
+        int n = s.Length;
+        pre = new long[n + 1];
+        pw = new long[n + 1];
+        pw[0] = 1;
+        for (int i = 0; i < n; i++) {
+            pre[i + 1] = (pre[i] * B + s[i]) % M;          // char code is never 0
+            pw[i + 1] = pw[i] * B % M;
+        }
+        int lo = 1, hi = n - 1, bestStart = -1, bestLen = 0;
+        while (lo <= hi) {                                  // binary search on the length
+            int mid = lo + (hi - lo) / 2;
+            int st = FindDup(mid);
+            if (st >= 0) { bestStart = st; bestLen = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return bestStart < 0 ? "" : s.Substring(bestStart, bestLen);
+    }
+
+    private long Hash(int l, int len) {                     // hash of s[l .. l+len-1]
+        return ((pre[l + len] - pre[l] * pw[len]) % M + M) % M;
+    }
+
+    private int FindDup(int len) {                          // start of a repeated window, or -1
+        var seen = new Dictionary<long, List<int>>();
+        for (int i = 0; i + len <= s.Length; i++) {
+            long h = Hash(i, len);
+            if (!seen.TryGetValue(h, out List<int> starts)) seen[h] = starts = new List<int>();
+            foreach (int j in starts) {
+                if (string.CompareOrdinal(s, j, s, i, len) == 0) return i;  // verified: not a collision
+            }
+            starts.Add(i);
+        }
+        return -1;
+    }
+}` }
       ],
       dry: {
         head: ['lo', 'hi', 'mid', 'repeated window of length mid?', 'best'],

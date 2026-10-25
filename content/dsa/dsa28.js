@@ -411,7 +411,77 @@ public:
         }
         return dist[R - 1][C - 1];
     }
-};` }] } ],
+};` }, { lang: 'csharp', code: `// The "pattern skeletons" you should be able to type from memory in under 2 minutes each.
+class Skeletons {
+    // 1) Variable sliding window: longest window where a condition stays valid
+    int LongestValidWindow(int[] a, int limit) {
+        int left = 0, best = 0, sum = 0;
+        for (int right = 0; right < a.Length; right++) {
+            sum += a[right];                    // grow: take a[right] in
+            while (sum > limit) sum -= a[left++]; // shrink until valid again
+            best = Math.Max(best, right - left + 1);
+        }
+        return best;
+    }
+
+    // 2) Binary search on the answer: smallest x where feasible(x) is true
+    int SmallestFeasible(int lo, int hi, Func<int, bool> feasible) {
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;       // overflow-safe middle
+            if (feasible(mid)) hi = mid;        // mid works -> answer is mid or smaller
+            else lo = mid + 1;                  // mid fails -> answer is bigger
+        }
+        return lo;
+    }
+
+    // 3) Prefix sum + hash map: count subarrays with sum exactly k (negatives OK)
+    int CountSumK(int[] a, int k) {
+        var seen = new Dictionary<long, int>();
+        seen[0] = 1;                            // the empty prefix
+        long pf = 0; int count = 0;
+        foreach (int x in a) {
+            pf += x;
+            int c;
+            if (seen.TryGetValue(pf - k, out c)) count += c; // earlier prefixes that leave sum k
+            seen.TryGetValue(pf, out c);
+            seen[pf] = c + 1;
+        }
+        return count;
+    }
+
+    // 4) Monotonic stack: next greater element to the right
+    int[] NextGreater(int[] a) {
+        int[] ans = new int[a.Length];
+        for (int i = 0; i < a.Length; i++) ans[i] = -1;
+        var st = new Stack<int>();              // indices whose answer is still unknown
+        for (int i = 0; i < a.Length; i++) {
+            while (st.Count > 0 && a[st.Peek()] < a[i]) ans[st.Pop()] = a[i];
+            st.Push(i);
+        }
+        return ans;
+    }
+
+    // 5) BFS on a grid: minimum steps from (0,0) to bottom-right, 1 = wall
+    int BfsSteps(int[][] g) {
+        int R = g.Length, C = g[0].Length;
+        if (g[0][0] == 1) return -1;
+        int[,] dist = new int[R, C];
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) dist[r, c] = -1;
+        var q = new Queue<int[]>();
+        q.Enqueue(new[] { 0, 0 }); dist[0, 0] = 0;
+        int[] dr = { 1, -1, 0, 0 }, dc = { 0, 0, 1, -1 };
+        while (q.Count > 0) {
+            int[] cur = q.Dequeue();
+            for (int d = 0; d < 4; d++) {
+                int nr = cur[0] + dr[d], nc = cur[1] + dc[d];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || g[nr][nc] == 1 || dist[nr, nc] != -1) continue;
+                dist[nr, nc] = dist[cur[0], cur[1]] + 1;   // first visit = shortest
+                q.Enqueue(new[] { nr, nc });
+            }
+        }
+        return dist[R - 1, C - 1];
+    }
+}` }] } ],
     codeTitle: ['Clue matcher (Python, runnable)', 'Five pattern skeletons to type from memory'],
     viz: {
       title: 'Decision flow: from the words in a question to a technique',
@@ -529,6 +599,14 @@ public:
         best = max({best, noDel, oneDel});
     }
     return best;
+}` }, { lang: 'csharp', code: `int MaximumSum(int[] a) {
+    int noDel = a[0], oneDel = int.MinValue / 2, best = a[0];
+    for (int i = 1; i < a.Length; i++) {
+        oneDel = Math.Max(oneDel + a[i], noDel); // either delete a[i] now, or we deleted earlier
+        noDel = Math.Max(noDel + a[i], a[i]);    // plain Kadane
+        best = Math.Max(best, Math.Max(noDel, oneDel));
+    }
+    return best;
 }` }] } }
     ],
     deepDive: `<p><b>Why pattern maps work (and when they fail).</b> Interview problems are drawn from a small set of reusable <i>invariants</i>: "the window is always valid", "the stack is always decreasing", "everything left of lo fails the check". A clue word is a hint about which invariant the author built the problem around. That is why one table covers hundreds of problems.</p>
@@ -583,6 +661,16 @@ int subarraySum(vector<int>& nums, int k) {
         int sum = 0;
         for (int j = i; j < (int)nums.size(); j++) {
             sum += nums[j];                           // sum of nums[i..j]
+            if (sum == k) count++;
+        }
+    }
+    return count;
+}` }, { lang: 'csharp', code: `int BruteCount(int[] nums, int k) {
+    int count = 0;
+    for (int i = 0; i < nums.Length; i++) {
+        int sum = 0;
+        for (int j = i; j < nums.Length; j++) {
+            sum += nums[j];           // sum of nums[i..j]
             if (sum == k) count++;
         }
     }
@@ -658,7 +746,21 @@ public:
         }
         return count;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int SubarraySum(int[] nums, int k) {
+        var freq = new Dictionary<int, int>();
+        freq[0] = 1;                          // empty prefix: lets subarrays start at index 0
+        int pf = 0, count = 0;
+        foreach (int x in nums) {
+            pf += x;                          // prefix sum up to here
+            int c;
+            if (freq.TryGetValue(pf - k, out c)) count += c; // earlier prefixes that leave exactly k
+            freq.TryGetValue(pf, out c);
+            freq[pf] = c + 1;                 // record this prefix AFTER counting
+        }
+        return count;
+    }
+}` }],
         dry: { head: ['j', 'x', 'pf', 'pf − k', 'freq before', 'count'], rows: [['0', '1', '1', '−1', '{0:1}', '0'], ['1', '−1', '0', '−2', '{0:1, 1:1}', '0'], ['2', '1', '1', '−1', '{0:2, 1:1}', '0'], ['3', '1', '2', '0', '{0:2, 1:2}', H.c('g', '0 + 2 = 2')]] },
         complexity: `<p>Time O(N) average (hash operations), space O(N) for the map.</p>`,
         followUps: ['Return the longest such subarray instead of the count (store first index of each prefix).', 'What if all numbers were positive? (Then a sliding window also works in O(1) space.)', 'Count subarrays whose sum is divisible by k (store pf mod k, fix negative mods).']
@@ -796,7 +898,18 @@ console.log("search range: " + lo + " .. " + hi + ", about " + (hi - lo + 1).toS
           { lang: 'cpp', code: `vector<int> nums = {7, 2, 5, 10, 8};
 long long lo = *max_element(nums.begin(), nums.end());
 long long hi = accumulate(nums.begin(), nums.end(), 0LL);   // answer lies in [max, sum]
-cout << "search range: " << lo << " .. " << hi << ", about " << (64 - __builtin_clzll(hi - lo + 1)) << " checks" << endl;` }] } },
+cout << "search range: " << lo << " .. " << hi << ", about " << (64 - __builtin_clzll(hi - lo + 1)) << " checks" << endl;` }, { lang: 'csharp', code: `using System;
+
+class Program {
+    static void Main() {
+        long lo = 0, hi = 0;
+        int[] nums = { 7, 2, 5, 10, 8 };
+        foreach (int x in nums) { lo = Math.Max(lo, x); hi += x; }   // answer lies in [max, sum]
+        int checks = 0;
+        for (long span = hi - lo + 1; span > 0; span >>= 1) checks++;   // bit length of the range
+        Console.WriteLine("search range: " + lo + " .. " + hi + ", about " + checks + " checks");
+    }
+}`, run: true }] } },
       { title: 'String of lowercase letters, length ≤ 10<sup>5</sup>', html: `<p>"Lowercase only" means 26 counters. Comparing two frequency arrays costs 26 steps, a constant. A window algorithm that compares counts at every step is O(26·N) = 2.6·10<sup>6</sup> → fine. Use a 26-slot count array instead of a hash map: faster and no boxing.</p>` }
     ],
     deepDive: `<p><b>Where "10<sup>8</sup> per second" comes from.</b> A modern CPU runs ~3·10<sup>9</sup> cycles per second, but one "step" of an algorithm (array access, comparison, hash lookup) costs anywhere from 1 to 100+ cycles once you count cache misses and branch mispredictions. 10<sup>8</sup> is a safe, conservative middle. Java and JavaScript add JIT warm-up and object overhead; Python is ~30–100× slower, so a Python O(N log N) at N = 10<sup>6</sup> may still struggle.</p>
@@ -874,6 +987,20 @@ int splitArray(vector<int>& nums, int k) {
         return best;
     };
     return go(0, k);
+}` }, { lang: 'csharp', code: `int BruteSplit(int[] nums, int k) {
+    return Go(nums, 0, k);
+}
+// smallest possible "largest part" for nums[start..] cut into exactly k parts
+int Go(int[] nums, int start, int k) {
+    int n = nums.Length;
+    if (k == 1) { int s = 0; for (int i = start; i < n; i++) s += nums[i]; return s; }
+    int best = int.MaxValue, first = 0;
+    for (int end = start; end <= n - k; end++) {     // first part is nums[start..end]
+        first += nums[end];
+        int rest = Go(nums, end + 1, k - 1);         // recursion explodes: exponential
+        best = Math.Min(best, Math.Max(first, rest));
+    }
+    return best;
 }` }] } },
       mcq: { q: '"Minimize the largest part sum" + values up to 10<sup>6</sup>. What is the cleanest approach?', options: ['Binary search on the answer with a greedy O(N) feasibility check', 'Sort the array and split in the middle', 'Sliding window of size N/k', 'Heap of part sums'], answer: 0, explain: '"Minimize the maximum" is the classic tell. If largest sum X is achievable, any X\' &gt; X is too — monotone → binary search.' },
       hints: [`<p>Hint 1: Flip the question: "Can I split into ≤ k parts so that every part sum ≤ X?" That yes/no answer only flips once as X grows.</p>`, `<p>Hint 2: The check is greedy: walk left to right, start a new part whenever adding the next number would exceed X. Count the parts.</p>`, `<p>Hint 3: Search X in [max(nums), sum(nums)]. Use long for sums. Recipe: lo = max, hi = sum; while lo &lt; hi: mid; if parts(mid) ≤ k: hi = mid else lo = mid + 1.</p>`],
@@ -977,7 +1104,27 @@ public:
         }
         return (int)lo;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int SplitArray(int[] nums, int k) {
+        long lo = 0, hi = 0;
+        foreach (int x in nums) { lo = Math.Max(lo, x); hi += x; } // answer is in [max, sum]
+        while (lo < hi) {
+            long mid = lo + (hi - lo) / 2;
+            if (PartsNeeded(nums, mid) <= k) hi = mid;  // feasible: try smaller
+            else lo = mid + 1;                          // too many parts: need bigger cap
+        }
+        return (int)lo;
+    }
+    // greedy: how many parts if no part may exceed cap?
+    private int PartsNeeded(int[] nums, long cap) {
+        int parts = 1; long cur = 0;
+        foreach (int x in nums) {
+            if (cur + x > cap) { parts++; cur = 0; }   // start a new part
+            cur += x;
+        }
+        return parts;
+    }
+}` }],
         dry: { head: ['lo', 'hi', 'mid', 'greedy parts at cap = mid', 'move'], rows: [['10', '32', '21', '[7,2,5] [10,8] → 2', 'hi = 21'], ['10', '21', '15', '[7,2,5] [10] [8] → 3', 'lo = 16'], ['16', '21', '18', '[7,2,5] [10,8] → 2', 'hi = 18'], ['16', '18', '17', '[7,2,5] [10] [8] → 3', 'lo = 18'], ['18', '18', '—', 'loop ends', H.c('g', 'answer 18')]] },
         complexity: `<p>Time O(N · log(sum)) ≈ 1000 × 30. Space O(1).</p>`,
         followUps: ['Return the actual split points.', 'Same problem but you may reorder the array first — now what? (Becomes a load-balancing / bin-packing flavour, NP-hard in general.)', 'Painter’s partition: identical structure, explain why.']
@@ -1133,7 +1280,24 @@ public:
         }
         return best;
     }
-};` }] }, { lang: 'python', run: true, title: 'Brute force vs optimised: count the work (runnable)', code: `import random
+};` }, { lang: 'csharp', code: `// The shape of a strong interview solution: tiny main method, named helpers, early edge cases.
+class MinMeetingRooms {
+    public int MinRooms(int[][] intervals) {
+        if (intervals == null || intervals.Length == 0) return 0;   // edge case first, out loud
+        int n = intervals.Length;
+        int[] starts = new int[n], ends = new int[n];
+        for (int i = 0; i < n; i++) { starts[i] = intervals[i][0]; ends[i] = intervals[i][1]; }
+        Array.Sort(starts);
+        Array.Sort(ends);
+        int used = 0, best = 0, j = 0;                 // j points at the earliest unfinished end
+        for (int i = 0; i < n; i++) {
+            while (j < n && ends[j] <= starts[i]) { used--; j++; } // free rooms whose meeting ended
+            used++;                                    // this meeting takes a room
+            best = Math.Max(best, used);
+        }
+        return best;
+    }
+}` }] }, { lang: 'python', run: true, title: 'Brute force vs optimised: count the work (runnable)', code: `import random
 
 def brute(iv):
     ops = 0; best = 0
@@ -1228,6 +1392,10 @@ for n in [10, 100, 1000]:
     long long h = 0;
     for (int p : piles) h += (p + s - 1) / s;   // ceil(p / s) without floating point
     return h;
+}` }, { lang: 'csharp', code: `long HoursAt(int[] piles, int s) {
+    long h = 0;
+    foreach (int p in piles) h += (p + s - 1) / s;   // ceil(p / s) without floating point
+    return h;
 }` }] } },
       { title: 'Using "simplify": Trapping rain water', html: `<p>Too hard at once? Simplify to <b>one bar</b>: how much water sits above bar i? It is <code>min(maxLeft, maxRight) − height[i]</code>. Now the full problem is "compute maxLeft and maxRight for every i" → prefix max + suffix max arrays (O(N)), or two pointers for O(1) space.</p>` }
     ],
@@ -1281,6 +1449,15 @@ int minMeetingRooms(vector<vector<int>>& intervals) {
         for (auto& b : intervals)
             if (b[0] <= a[0] && a[0] < b[1]) running++;   // b is in progress at time a[0]
         best = max(best, running);
+    }
+    return best;
+}` }, { lang: 'csharp', code: `int BruteRooms(int[][] iv) {
+    int best = 0;
+    foreach (var a in iv) {
+        int running = 0;
+        foreach (var b in iv)
+            if (b[0] <= a[0] && a[0] < b[1]) running++;   // b is in progress at time a[0]
+        best = Math.Max(best, running);
     }
     return best;
 }` }] } },
@@ -1381,7 +1558,51 @@ public:
         }
         return (int)ends.size();
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinMeetingRooms(int[][] intervals) {
+        Array.Sort(intervals, (a, b) => a[0].CompareTo(b[0]));   // by start time
+        var ends = new MinHeap<int>((a, b) => a.CompareTo(b));   // end times of busy rooms
+        foreach (var m in intervals) {
+            if (ends.Count > 0 && ends.Peek() <= m[0]) ends.Pop(); // reuse the room that freed first
+            ends.Push(m[1]);                                        // this meeting occupies a room
+        }
+        return ends.Count;                                          // rooms ever needed at once
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
         dry: { head: ['meeting', 'heap before', 'earliest end ≤ start?', 'heap after', 'rooms'], rows: [['[0,30]', '{}', '—', '{30}', '1'], ['[5,10]', '{30}', '30 ≤ 5? no', '{10, 30}', '2'], ['[15,20]', '{10, 30}', '10 ≤ 15? yes → poll', '{20, 30}', H.c('g', '2')]] },
         complexity: `<p>Time O(N log N) for the sort and heap operations. Space O(N) for the heap.</p>`,
         followUps: ['Return which room each meeting gets.', 'Rooms have different capacities and meetings have sizes — what changes?', 'Meetings arrive online (stream) — can you still answer the current room count?']
@@ -1599,6 +1820,18 @@ vector<vector<string>> groupAnagrams(vector<string>& strs) {
         if (!placed) groups.push_back({w});
     }
     return groups;
+}` }, { lang: 'csharp', code: `IList<IList<string>> BruteGroups(string[] words) {
+    var groups = new List<IList<string>>();
+    foreach (string w in words) {
+        char[] a = w.ToCharArray(); Array.Sort(a);
+        bool placed = false;
+        foreach (var g in groups) {
+            char[] b = g[0].ToCharArray(); Array.Sort(b);          // recomputed every time: the waste
+            if (a.SequenceEqual(b)) { g.Add(w); placed = true; break; }
+        }
+        if (!placed) groups.Add(new List<string> { w });
+    }
+    return groups;
 }` }] } },
       mcq: { q: 'What is the best "signature" key for a word when letters are only a–z and words can be 100 long?', options: ['A 26-count string like "1#0#0#…" built in O(L)', 'The word sorted, O(L log L)', 'The sum of character codes', 'The first and last letters'], answer: 0, explain: 'Counts are O(L) and unique per anagram class. Sorting also works (O(L log L)). Sums collide: "ad" and "bc" have equal sums.' },
       hints: [`<p>Hint 1: Two words are anagrams exactly when their letter counts are equal. Turn the counts into a key.</p>`, `<p>Hint 2: HashMap&lt;String, List&lt;String&gt;&gt; from key → words. One pass.</p>`, `<p>Hint 3: Build the key from the 26 counts with separators ("#") so counts like 1,11 and 11,1 cannot collide. Empty string gets the all-zero key — still a valid group.</p>`],
@@ -1669,7 +1902,21 @@ public:
         for (auto& [key, words] : groups) res.push_back(move(words));
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public IList<IList<string>> GroupAnagrams(string[] strs) {
+        var groups = new Dictionary<string, IList<string>>();
+        foreach (string w in strs) {
+            int[] cnt = new int[26];
+            for (int i = 0; i < w.Length; i++) cnt[w[i] - 'a']++;
+            var key = new StringBuilder();
+            foreach (int c in cnt) key.Append(c).Append('#');      // '#' separates counts: no collisions
+            IList<string> g;
+            if (!groups.TryGetValue(key.ToString(), out g)) groups[key.ToString()] = g = new List<string>();
+            g.Add(w);
+        }
+        return new List<IList<string>>(groups.Values);
+    }
+}` }],
         dry: { head: ['word', 'non-zero counts', 'key bucket', 'groups so far'], rows: [['eat', 'a1 e1 t1', 'K1 (new)', '1'], ['tea', 'a1 e1 t1', 'K1', '1'], ['tan', 'a1 n1 t1', 'K2 (new)', '2'], ['ate', 'a1 e1 t1', 'K1', '2'], ['nat', 'a1 n1 t1', 'K2', '2'], ['bat', 'a1 b1 t1', 'K3 (new)', H.c('g', '3')]] },
         complexity: `<p>Time O(N · L) (plus O(26) per key). Space O(N · L) for the groups.</p>`,
         followUps: ['Unicode words instead of a–z?', 'Stream of words: return the current group of a new word in O(L).', 'Find the largest anagram group only — can you avoid storing every word?']
@@ -1906,7 +2153,36 @@ public:
         order.emplace_front(key, value);
         pos[key] = order.begin();
     }
-};` }] }],
+};` }, { lang: 'csharp', code: `// Walkthrough 3 code: LRU cache with O(1) get/put — hash map for lookup + doubly linked list for order.
+class LRUCache {
+    private class Node { public int key, val; public Node prev, next; public Node(int k, int v) { key = k; val = v; } }
+    private readonly int capacity;
+    private readonly Dictionary<int, Node> map = new Dictionary<int, Node>();
+    private readonly Node head = new Node(0, 0), tail = new Node(0, 0); // sentinels: no null checks
+
+    public LRUCache(int capacity) {
+        this.capacity = capacity;
+        head.next = tail; tail.prev = head;
+    }
+    public int Get(int key) {
+        Node n;
+        if (!map.TryGetValue(key, out n)) return -1;
+        Unlink(n); AddFront(n);                 // touched -> most recently used
+        return n.val;
+    }
+    public void Put(int key, int value) {
+        Node n;
+        if (map.TryGetValue(key, out n)) { n.val = value; Unlink(n); AddFront(n); return; }
+        if (map.Count == capacity) {            // evict least recently used (just before tail)
+            Node lru = tail.prev;
+            Unlink(lru); map.Remove(lru.key);
+        }
+        n = new Node(key, value);
+        map[key] = n; AddFront(n);
+    }
+    private void Unlink(Node n) { n.prev.next = n.next; n.next.prev = n.prev; }
+    private void AddFront(Node n) { n.next = head.next; n.prev = head; head.next.prev = n; head.next = n; }
+}` }] }],
     codeTitle: ['Rotting oranges (Python, runnable)', 'LRU cache'],
     viz: {
       title: 'Mock round replay: Rotting Oranges with the candidate’s script',
@@ -2000,6 +2276,17 @@ public:
         left = max(left, last[ch] + 1);        // never move left backwards ("abba")
         last[ch] = right;
         best = max(best, right - left + 1);
+    }
+    return best;
+}` }, { lang: 'csharp', code: `int LengthOfLongestSubstring(string s) {
+    int[] last = new int[128];
+    for (int i = 0; i < 128; i++) last[i] = -1;
+    int left = 0, best = 0;
+    for (int right = 0; right < s.Length; right++) {
+        char ch = s[right];
+        left = Math.Max(left, last[ch] + 1);   // never move left backwards ("abba")
+        last[ch] = right;
+        best = Math.Max(best, right - left + 1);
     }
     return best;
 }` }] } },
@@ -2111,6 +2398,26 @@ int orangesRotting(vector<vector<int>> grid) {
         grid = next; minutes++;
     }
     for (auto& row : grid) for (int v : row) if (v == 1) return -1;
+    return minutes;
+}` }, { lang: 'csharp', code: `int BruteRotting(int[][] grid) {
+    int R = grid.Length, C = grid[0].Length, minutes = 0;
+    int[] dr = { 1, -1, 0, 0 }, dc = { 0, 0, 1, -1 };
+    while (true) {
+        int[][] next = new int[R][];
+        for (int r = 0; r < R; r++) next[r] = (int[])grid[r].Clone();
+        bool changed = false;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] != 2) continue;
+                for (int d = 0; d < 4; d++) {
+                    int nr = r + dr[d], nc = c + dc[d];
+                    if (nr >= 0 && nc >= 0 && nr < R && nc < C && grid[nr][nc] == 1) { next[nr][nc] = 2; changed = true; }
+                }
+            }
+        if (!changed) break;
+        grid = next; minutes++;
+    }
+    foreach (var row in grid) foreach (int v in row) if (v == 1) return -1;
     return minutes;
 }` }] } },
       mcq: { q: 'Why must the BFS start with ALL rotten oranges in the queue at once?', options: ['They all spread simultaneously, so level k of a multi-source BFS is exactly minute k', 'To save memory', 'Because DFS would be faster otherwise', 'It does not matter; one source at a time gives the same answer'], answer: 0, explain: 'Running BFS from one source at a time would compute distances from that source only; the true minute is the distance to the NEAREST rotten orange, which a multi-source BFS gives directly.' },
@@ -2238,7 +2545,33 @@ public:
         }
         return fresh == 0 ? minutes : -1;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int OrangesRotting(int[][] grid) {
+        int R = grid.Length, C = grid[0].Length, fresh = 0;
+        var q = new Queue<int[]>();
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] == 2) q.Enqueue(new[] { r, c }); // every rotten orange is a source
+                else if (grid[r][c] == 1) fresh++;
+            }
+        int minutes = 0;
+        int[] dr = { 1, -1, 0, 0 }, dc = { 0, 0, 1, -1 };
+        while (q.Count > 0 && fresh > 0) {
+            for (int size = q.Count; size > 0; size--) {   // one level = one minute
+                int[] cur = q.Dequeue();
+                for (int d = 0; d < 4; d++) {
+                    int nr = cur[0] + dr[d], nc = cur[1] + dc[d];
+                    if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != 1) continue;
+                    grid[nr][nc] = 2;                           // mark at enqueue time
+                    fresh--;
+                    q.Enqueue(new[] { nr, nc });
+                }
+            }
+            minutes++;
+        }
+        return fresh == 0 ? minutes : -1;
+    }
+}` }],
         dry: { head: ['minute', 'level (rotting now)', 'fresh left'], rows: [['0', '(0,0) sources', '6'], ['1', '(1,0) (0,1)', '4'], ['2', '(1,1) (0,2)', '2'], ['3', '(2,1)', '1'], ['4', '(2,2)', H.c('g', '0 → answer 4')]] },
         complexity: `<p>Time O(R·C): each cell is enqueued at most once and checks 4 neighbours. Space O(R·C) for the queue in the worst case.</p>`,
         followUps: ['Return the time each orange rots (store distances).', 'Some cells take 2 minutes to rot — what algorithm now?', 'Do it without modifying the input grid.']
@@ -2453,7 +2786,38 @@ public:
 int main() {
     StressTest::run();
     return 0;
-}` }] }],
+}` }, { lang: 'csharp', code: `// The same stress-test harness in C#: fast solution vs brute force on thousands of tiny random inputs.
+using System;
+
+class StressTest {
+    static int Fast(int[] a, int t) {                 // lower bound: first index with a[i] >= t
+        int lo = 0, hi = a.Length;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (a[mid] < t) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+    static int Brute(int[] a, int t) {
+        for (int i = 0; i < a.Length; i++) if (a[i] >= t) return i;
+        return a.Length;
+    }
+    static void Main() {
+        var rnd = new Random(42);
+        for (int trial = 0; trial < 10000; trial++) {
+            int n = rnd.Next(6);                       // include the empty array!
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) a[i] = rnd.Next(10);
+            Array.Sort(a);
+            int t = rnd.Next(12) - 1;
+            if (Fast(a, t) != Brute(a, t)) {
+                Console.WriteLine("MISMATCH [" + string.Join(", ", a) + "] t=" + t);
+                return;
+            }
+        }
+        Console.WriteLine("all 10000 tiny tests agree");
+    }
+}`, run: true }] }],
     codeTitle: ['Stress test finds the bug (Python, runnable)', 'Stress-test harness'],
     viz: {
       title: 'Trace a buggy binary search, catch the infinite loop, then fix it',
@@ -2532,7 +2896,19 @@ console.log(a[0] === b[0]);                  // true: numbers compare by value
 console.log(JSON.stringify(a) === JSON.stringify(b));   // true: compares contents` },
           { lang: 'cpp', code: `string a = "x", b = "x";
 cout << (a.c_str() == b.c_str()) << endl;    // 0 (false): compares the two pointers
-cout << (a == b) << endl;                    // 1 (true): string == compares the contents` }] } },
+cout << (a == b) << endl;                    // 1 (true): string == compares the contents` }, { lang: 'csharp', code: `using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        var a = new Dictionary<string, object>();
+        var b = new Dictionary<string, object>();
+        a["x"] = 1000; b["x"] = 1000;                            // boxed ints: two different objects
+        Console.WriteLine(ReferenceEquals(a["x"], b["x"]));      // False: different boxes
+        Console.WriteLine(a["x"].Equals(b["x"]));                // True: compares values
+        Console.WriteLine((int)a["x"] == (int)b["x"]);           // True: unboxed comparison
+    }
+}`, run: true }] } },
       { title: 'Comparator overflow', html: `<p><code>(x, y) -&gt; x - y</code> looks fine until x = −2,000,000,000 and y = 2,000,000,000: the 32-bit subtraction overflows to a positive number and the sort order flips. Always compare with <code>Integer.compare(x, y)</code> in Java or <code>x &lt; y</code> in C++, and remember that JavaScript needs a comparator at all, because its default sort compares strings.</p>`, code: { lang: 'java', code: `Integer[] v = {2_000_000_000, -2_000_000_000, 0};
 Arrays.sort(v, (x, y) -> Integer.compare(x, y));   // safe
 System.out.println(Arrays.toString(v));             // [-2000000000, 0, 2000000000]`,
@@ -2545,7 +2921,15 @@ console.log(v);                                // [ -2000000000, 0, 2000000000 ]
           { lang: 'cpp', code: `vector<int> v = {2000000000, -2000000000, 0};
 sort(v.begin(), v.end(), [](int x, int y) { return x < y; });   // safe; x - y could overflow int
 for (int x : v) cout << x << " ";              // -2000000000 0 2000000000
-cout << endl;` }] } },
+cout << endl;` }, { lang: 'csharp', code: `using System;
+
+class Program {
+    static void Main() {
+        int[] v = { 2000000000, -2000000000, 0 };
+        Array.Sort(v, (x, y) => x.CompareTo(y));   // safe: never x - y, which overflows
+        Console.WriteLine("[" + string.Join(", ", v) + "]");   // [-2000000000, 0, 2000000000]
+    }
+}`, run: true }] } },
       { title: 'Aliasing in backtracking results', html: `<p>In subsets/permutations, <code>result.add(path)</code> stores a <b>reference</b> to the list you keep mutating — at the end every stored "answer" is the same, usually empty, list. Fix: <code>result.add(new ArrayList&lt;&gt;(path))</code>. Quick test: print the result for input [1,2]; if you see [[], [], [], []] it is aliasing.</p>` },
       { title: 'BFS marks visited on dequeue', html: `<p>On a 3×3 open grid, marking a cell visited only when it is <i>dequeued</i> lets neighbours enqueue it several times. Distances stay correct, but the queue fills with duplicates (up to 4 per cell; exponentially many if duplicates are expanded again) and can TLE on 1000×1000 grids. Mark when you <b>enqueue</b>. Spotting it: count total pushes — more than R·C means a bug.</p>` }
     ],
@@ -2588,6 +2972,10 @@ int searchInsert(vector<int>& nums, int target) {
     for (int i = 0; i < (int)nums.size(); i++)
         if (nums[i] >= target) return i;              // first position that is not smaller
     return nums.size();                               // larger than everything: insert at the end
+}` }, { lang: 'csharp', code: `int SearchInsertBrute(int[] nums, int target) {
+    for (int i = 0; i < nums.Length; i++)
+        if (nums[i] >= target) return i;   // first position that is not smaller
+    return nums.Length;                     // larger than everything: insert at the end
 }` }] } },
       mcq: { q: 'With nums = [1, 3] and target 2, what happens in the buggy code?', options: ['lo=0, hi=1, mid=0, nums[0] &lt; 2 so lo = 0 again — infinite loop', 'It returns 1 correctly', 'It returns 0', 'It throws ArrayIndexOutOfBounds'], answer: 0, explain: 'lo = mid does not move when mid == lo, which happens whenever only two elements remain.' },
       hints: [`<p>Hint 1: Trace [1,3] with target 2. Does the range [lo, hi] get smaller on every iteration?</p>`, `<p>Hint 2: If nums[mid] &lt; target, mid can never be the answer, so the next range should exclude it: lo = mid + 1.</p>`, `<p>Hint 3: The answer can be N (insert after everything), so the search range must be [0, N]: start hi = nums.length. Recipe: lo=0, hi=N; while lo&lt;hi: mid; if nums[mid] &lt; target: lo=mid+1 else hi=mid; return lo.</p>`],
@@ -2651,7 +3039,17 @@ public:
         }
         return lo;                         // same as lower_bound(...) - nums.begin()
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int SearchInsert(int[] nums, int target) {
+        int lo = 0, hi = nums.Length;           // answer lies in [0, n]
+        while (lo < hi) {                       // invariant: nums[..lo-1] < target <= nums[hi..]
+            int mid = lo + (hi - lo) / 2;       // overflow-safe
+            if (nums[mid] < target) lo = mid + 1; // mid is too small: exclude it
+            else hi = mid;                      // mid might be the answer: keep it
+        }
+        return lo;
+    }
+}` }],
         dry: { head: ['lo', 'hi', 'mid', 'nums[mid] vs 7', 'action'], rows: [['0', '4', '2', '5 &lt; 7', 'lo = 3'], ['3', '4', '3', '6 &lt; 7', 'lo = 4'], ['4', '4', '—', 'loop ends', H.c('g', 'return 4')]] },
         complexity: `<p>Time O(log N), space O(1).</p>`,
         followUps: ['Return the last index with nums[i] ≤ target (upper bound − 1).', 'Duplicates allowed: return the first occurrence of target or −1.', 'Write the invariant as a comment and prove termination.']
@@ -2842,6 +3240,18 @@ for k in (1, 2, 4):
         if (node->right) st.push_back({node->right, d + 1});
     }
     return best;
+}` }, { lang: 'csharp', code: `int MaxDepthIterative(TreeNode root) {
+    if (root == null) return 0;
+    var st = new Stack<(TreeNode node, int depth)>();
+    st.Push((root, 1));
+    int best = 0;
+    while (st.Count > 0) {
+        var top = st.Pop();
+        best = Math.Max(best, top.depth);
+        if (top.node.left != null) st.Push((top.node.left, top.depth + 1));
+        if (top.node.right != null) st.Push((top.node.right, top.depth + 1));
+    }
+    return best;
 }` }] } },
       { title: 'Hash map vs ordered map (TreeMap)', html: `${H.table(['need', 'Hash map / dict / Map / unordered_map', 'TreeMap / std::map / sorted list'], [
         ['get / put', 'O(1) average', 'O(log N) guaranteed'],
@@ -2914,7 +3324,16 @@ public:
                 if ((long long)nums[i] + nums[j] == value) return true;
         return false;
     }
-};` }] } },
+};` }, { lang: 'csharp', code: `public class TwoSumBrute {
+    private readonly List<int> nums = new List<int>();
+    public void Add(int number) { nums.Add(number); }
+    public bool Find(int value) {
+        for (int i = 0; i < nums.Count; i++)
+            for (int j = i + 1; j < nums.Count; j++)
+                if ((long)nums[i] + nums[j] == value) return true;
+        return false;
+    }
+}` }] } },
       mcq: { q: 'The workload is 1 million find calls and only 100 add calls. Which design fits best?', options: ['Precompute all pair sums into a hash set on add: add O(N), find O(1)', 'Count map: add O(1), find O(N)', 'Keep a sorted list and two-pointer on every find', 'Brute force pairs'], answer: 0, explain: 'Read-heavy workload → pay at write time. With only 100 adds, the set holds at most ~5000 sums and every find is O(1).' },
       hints: [`<p>Hint 1: For find, you need "is value − x present?" for some stored x — a hash map lookup.</p>`, `<p>Hint 2: Store counts, not just presence: value 6 with a single 3 stored must return false; with two 3s, true.</p>`, `<p>Hint 3: Opposite design: on add, insert number + every existing number into a "sums" set → O(N) add, O(1) find. Pick by read/write ratio.</p>`],
       tests: { cls: 'TwoSum', sigs: {TwoSum: '',add: 'int -> void',find: 'int -> bool'}, cases: [
@@ -3008,7 +3427,29 @@ public:
         }
         return false;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class TwoSum {
+    private readonly Dictionary<int, int> count = new Dictionary<int, int>();
+
+    public void Add(int number) {
+        int c;
+        count.TryGetValue(number, out c);
+        count[number] = c + 1;                        // O(1): write-cheap
+    }
+
+    public bool Find(int value) {
+        foreach (var e in count) {
+            long need = (long)value - e.Key;          // long: value - key can overflow int
+            if (need < int.MinValue || need > int.MaxValue) continue;
+            int other = (int)need;
+            if (other == e.Key) {
+                if (e.Value >= 2) return true;        // same value needs two entries
+            } else if (count.ContainsKey(other)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}` }],
         dry: { head: ['call', 'count map', 'check', 'result'], rows: [['add 1, 3, 5', '{1:1, 3:1, 5:1}', '—', '—'], ['find(4)', 'same', 'key 1 → need 3, present', H.c('g', 'true')], ['find(7)', 'same', '1→6 no, 3→4 no, 5→2 no', H.c('r', 'false')], ['add 3; find(6)', '{1:1, 3:2, 5:1}', 'key 3 → need 3, count is 2', H.c('g', 'true')]] },
         complexity: `<p>add O(1), find O(U) with U distinct values, space O(U). Alternative: add O(N), find O(1), space O(N<sup>2</sup>).</p>`,
         followUps: ['Support remove(number).', 'Thread-safe version: which operations need locking?', 'Values arrive as a stream and finds must be O(1) but memory is limited — what do you give up?']
@@ -3179,7 +3620,34 @@ public:
 int main() {
     MistakeGallery::run();
     return 0;
-}` }] }],
+}` }, { lang: 'csharp', code: `// A gallery of classic slips and their fixes — each line compiles and shows the difference.
+using System;
+
+class MistakeGallery {
+    static void Main() {
+        // 1) Overflow in the midpoint
+        int lo = 2000000000, hi = 2100000000;
+        int badMid = unchecked((lo + hi) / 2);    // lo + hi overflows -> negative
+        int goodMid = lo + (hi - lo) / 2;         // never exceeds hi
+        Console.WriteLine("bad mid = " + badMid + ", good mid = " + goodMid);
+
+        // 2) Negative modulo
+        int x = -7, m = 3;
+        Console.WriteLine("-7 % 3 = " + (x % m) + ", fixed = " + (((x % m) + m) % m));
+
+        // 3) Product overflow: cast BEFORE multiplying
+        int a = 100000, b = 100000;
+        long wrong = unchecked(a * b);            // multiplied as int, then widened (already wrapped)
+        long right = (long)a * b;
+        Console.WriteLine("wrong = " + wrong + ", right = " + right);
+
+        // 4) Greedy coin change fails for coins {1, 3, 4}, amount 6
+        int[] coins = { 4, 3, 1 };
+        int amount = 6, greedyCount = 0;
+        foreach (int c in coins) while (amount >= c) { amount -= c; greedyCount++; }
+        Console.WriteLine("greedy uses " + greedyCount + " coins, but 3 + 3 uses 2");
+    }
+}`, run: true }] }],
     codeTitle: ['Mistake gallery'],
     viz: {
       title: 'Mistake replay: overflow, negative mod and a greedy that lies',
@@ -3235,7 +3703,16 @@ for (let i = 0; i < 5; i++) parts.push(i + ",");   // amortised O(1) per push
 console.log(parts.join(""));                        // 0,1,2,3,4,` },
           { lang: 'cpp', code: `string sb;
 for (int i = 0; i < 5; i++) sb += to_string(i) + ',';   // amortised O(1) per append
-cout << sb << endl;                                     // 0,1,2,3,4,` }] } },
+cout << sb << endl;                                     // 0,1,2,3,4,` }, { lang: 'csharp', code: `using System;
+using System.Text;
+
+class Program {
+    static void Main() {
+        var sb = new StringBuilder();
+        for (int i = 0; i < 5; i++) sb.Append(i).Append(',');  // amortised O(1) per append
+        Console.WriteLine(sb);  // 0,1,2,3,4,
+    }
+}`, run: true }] } },
       { title: 'DP state missing a dimension: stock with cooldown', html: `<p>Defining <code>dp[i]</code> = best profit up to day i is not enough: whether you may buy on day i depends on whether you <b>hold a stock</b> and whether you <b>sold yesterday</b>. Two different situations share one cell → wrong answers. Fix: states hold / sold / rest (DSA 18). The check: "Does the future depend on anything not stored in my state?" If yes, add it.</p>` }
     ],
     deepDive: `<p><b>Why the same slips repeat.</b> Under stress the brain falls back on the most practised pattern ("windows solve subarray problems") and skips verification. The fix is not more knowledge but <b>cheap checks inserted at fixed points</b>: after choosing a pattern (counter-check table), after writing a loop (sizes 0/1/2), before saying done (edge case trace).</p>
@@ -3289,6 +3766,16 @@ int maxProduct(vector<int>& nums) {
         for (int j = i; j < (int)nums.size(); j++) {
             prod *= nums[j];
             best = (int)max((long long)best, prod);
+        }
+    }
+    return best;
+}` }, { lang: 'csharp', code: `int BruteMaxProduct(int[] nums) {
+    int best = nums[0];                         // not 0: all-negative inputs exist
+    for (int i = 0; i < nums.Length; i++) {
+        long prod = 1;
+        for (int j = i; j < nums.Length; j++) {
+            prod *= nums[j];
+            best = (int)Math.Max(best, prod);
         }
     }
     return best;
@@ -3370,7 +3857,20 @@ public:
         }
         return (int)best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MaxProduct(int[] nums) {
+        // long: the answer fits an int, but curMin can be about 10x larger than that
+        long curMax = nums[0], curMin = nums[0], best = nums[0]; // start from a real element
+        for (int i = 1; i < nums.Length; i++) {
+            long x = nums[i];
+            long a = curMax * x, b = curMin * x;         // both from the OLD values
+            curMax = Math.Max(x, Math.Max(a, b));        // x alone = restart (handles zeros)
+            curMin = Math.Min(x, Math.Min(a, b));
+            best = Math.Max(best, curMax);
+        }
+        return (int)best;
+    }
+}` }],
         dry: { head: ['i', 'x', 'curMax', 'curMin', 'best'], rows: [['0', '−2', '−2', '−2', '−2'], ['1', '3', '3', '−6', '3'], ['2', '−4', H.c('g', '24'), '−12', H.c('g', '24')]] },
         complexity: `<p>Time O(N), space O(1).</p>`,
         followUps: ['Return the subarray boundaries as well.', 'What if values can be up to 10<sup>9</sup>? (Products overflow quickly — use logs or BigInteger and discuss.)', 'Prefix/suffix product trick: explain why the answer is the max over all prefix and suffix products split at zeros.']
@@ -3621,7 +4121,52 @@ public:
 int main() {
     CppToolkit::toolkit();
     return 0;
-}` }] }],
+}` }, { lang: 'csharp', code: `// C# toolkit check: you should be able to write every line below without looking anything up.
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+class CSharpToolkit {
+    static void Main() {
+        var stack = new Stack<int>();                                  // LIFO
+        stack.Push(1); stack.Peek(); stack.Pop();
+        var queue = new Queue<int>();                                  // FIFO
+        queue.Enqueue(1); queue.Peek(); queue.Dequeue();
+
+        // no built-in priority queue in older runtimes: a SortedSet of (key, id) works as a heap with distinct entries
+        var minByFirst = new SortedSet<(int key, int id)>();
+        minByFirst.Add((3, 7));                                        // Min is the smallest key
+        var maxHeap = new SortedSet<int>(Comparer<int>.Create((a, b) => b.CompareTo(a)));
+        maxHeap.Add(5);                                                // Min of a reversed set = largest value
+
+        var groups = new Dictionary<string, List<int>>();
+        List<int> g;
+        if (!groups.TryGetValue("a", out g)) groups["a"] = g = new List<int>();   // grouping idiom
+        g.Add(1);
+        var freq = new Dictionary<int, int>();
+        int f; freq.TryGetValue(42, out f); freq[42] = f + 1;        // counting idiom
+
+        var tm = new SortedSet<int> { 10, 20 };
+        int ceil = tm.GetViewBetween(15, int.MaxValue).Min;           // 20: smallest key >= 15
+        int floor = tm.GetViewBetween(int.MinValue, 15).Max;          // 10: largest key <= 15
+
+        int[][] intervals = { new[] { 5, 6 }, new[] { 1, 3 } };
+        Array.Sort(intervals, (a, b) => a[0].CompareTo(b[0]));        // never a[0] - b[0]
+
+        int[][] grid = new int[3][];
+        for (int r = 0; r < 3; r++) { grid[r] = new int[4]; for (int c = 0; c < 4; c++) grid[r][c] = -1; }   // fill each row
+
+        var sb = new StringBuilder("abc");
+        char[] rev = sb.ToString().ToCharArray(); Array.Reverse(rev);
+        sb = new StringBuilder(new string(rev)); sb.Append('d'); sb[0] = 'z';
+
+        long big = (long)int.MaxValue * 2;                            // cast before multiply
+        int mod = 1000000007;
+        long m = ((-7 % 3) + 3) % 3;                                  // positive modulo
+        Console.WriteLine(ceil + " " + floor + " " + sb + " " + big + " " + m + " " + mod);
+    }
+}`, run: true }] }],
     codeTitle: ['Toolkit you must know cold'],
     viz: {
       title: 'Last-week revision planner: weakest patterns get the most (spaced) slots',
@@ -3744,6 +4289,12 @@ int maxProfit(vector<int>& prices) {
         for (int j = i + 1; j < (int)prices.size(); j++)
             best = max(best, prices[j] - prices[i]);
     return best;
+}` }, { lang: 'csharp', code: `int MaxProfitBrute(int[] p) {
+    int best = 0;
+    for (int i = 0; i < p.Length; i++)
+        for (int j = i + 1; j < p.Length; j++)
+            best = Math.Max(best, p[j] - p[i]);
+    return best;
 }` }] } },
     mcq: { q: 'Which single value do you need to carry forward while scanning left to right?', options: ['The minimum price seen so far', 'The maximum price seen so far', 'The sum of prices so far', 'The previous day price only'], answer: 0, explain: 'Selling today, the best buy is the cheapest earlier day — carry the running minimum (DSA 5, carry forward).' },
     hints: [`<p>Hint 1: If you sell on day j, the best buy day is the cheapest day before j.</p>`, `<p>Hint 2: Keep <code>minSoFar</code> while scanning; profit today = price − minSoFar.</p>`, `<p>Hint 3: Initialise minSoFar = prices[0], best = 0 (never negative). Update best before or after min — both work because selling on the buy day gives 0.</p>`],
@@ -3801,7 +4352,16 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MaxProfit(int[] prices) {
+        int minSoFar = prices[0], best = 0;
+        foreach (int p in prices) {
+            minSoFar = Math.Min(minSoFar, p);     // cheapest buy up to today
+            best = Math.Max(best, p - minSoFar);  // sell today
+        }
+        return best;
+    }
+}` }],
       dry: { head: ['day', 'price', 'minSoFar', 'best'], rows: [['0', '7', '7', '0'], ['1', '1', '1', '0'], ['2', '5', '1', '4'], ['4', '6', '1', H.c('g', '5')]] },
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['Unlimited transactions (sum every rise).', 'At most k transactions (state-machine DP, DSA 18).', 'With a cooldown day after selling.']
@@ -3836,6 +4396,11 @@ function containsNearbyDuplicate(nums, k) {
 bool containsNearbyDuplicate(vector<int>& nums, int k) {
     for (int i = 0; i < (int)nums.size(); i++)
         for (int j = i + 1; j < (int)nums.size() && j - i <= k; j++)
+            if (nums[i] == nums[j]) return true;
+    return false;
+}` }, { lang: 'csharp', code: `bool BruteNearby(int[] nums, int k) {
+    for (int i = 0; i < nums.Length; i++)
+        for (int j = i + 1; j < nums.Length && j - i <= k; j++)
             if (nums[i] == nums[j]) return true;
     return false;
 }` }] } },
@@ -3902,7 +4467,16 @@ public:
         }
         return false;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool ContainsNearbyDuplicate(int[] nums, int k) {
+        var window = new HashSet<int>();
+        for (int i = 0; i < nums.Length; i++) {
+            if (!window.Add(nums[i])) return true;   // already inside the last k values
+            if (window.Count > k) window.Remove(nums[i - k]); // slide: drop the oldest
+        }
+        return false;
+    }
+}` }],
       complexity: `<p>Time O(N) average, space O(min(N, k)).</p>`,
       followUps: ['Values within t of each other (|nums[i] − nums[j]| ≤ t): use TreeSet floor/ceiling or buckets of width t+1.']
     }
@@ -3948,6 +4522,13 @@ bool isValid(string s) {
         s = eraseAll(eraseAll(eraseAll(s, "()"), "[]"), "{}");
     } while (s != prev);
     return s.empty();
+}` }, { lang: 'csharp', code: `bool BruteValid(string s) {
+    string prev;
+    do {
+        prev = s;
+        s = s.Replace("()", "").Replace("[]", "").Replace("{}", "");
+    } while (s != prev);
+    return s.Length == 0;
 }` }] } },
     mcq: { q: '"Each closer must match the most recent unmatched opener" describes which structure?', options: ['Stack (LIFO)', 'Queue (FIFO)', 'Heap', 'Hash set'], answer: 0, explain: '"Most recent" = last in, first out.' },
     hints: [`<p>Hint 1: The closer always matches the latest unclosed opener.</p>`, `<p>Hint 2: Push openers; on a closer, the top must be its partner — pop it.</p>`, `<p>Hint 3: Fail if the stack is empty on a closer, or non-empty at the end. Quick reject: odd length.</p>`],
@@ -4026,7 +4607,19 @@ public:
         }
         return st.empty();
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public bool IsValid(string s) {
+        if (s.Length % 2 == 1) return false;
+        var st = new Stack<char>();
+        foreach (char c in s) {
+            if (c == '(') st.Push(')');          // push the closer we now expect
+            else if (c == '[') st.Push(']');
+            else if (c == '{') st.Push('}');
+            else if (st.Count == 0 || st.Pop() != c) return false;
+        }
+        return st.Count == 0;
+    }
+}` }],
       complexity: `<p>Time O(N), space O(N).</p>`,
       followUps: ['Minimum insertions to make it valid.', 'Longest valid parentheses substring (stack of indices or DP).']
     }
@@ -4067,6 +4660,13 @@ int missingNumber(vector<int>& nums) {
     for (int c = 0; c <= (int)nums.size(); c++) {
         bool found = false;
         for (int x : nums) if (x == c) { found = true; break; }
+        if (!found) return c;
+    }
+    return -1;
+}` }, { lang: 'csharp', code: `int MissingBrute(int[] nums) {
+    for (int c = 0; c <= nums.Length; c++) {
+        bool found = false;
+        foreach (int x in nums) if (x == c) { found = true; break; }
         if (!found) return c;
     }
     return -1;
@@ -4114,7 +4714,13 @@ public:
         for (int i = 0; i < (int)nums.size(); i++) x ^= i ^ nums[i];   // equal pairs cancel out
         return x;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MissingNumber(int[] nums) {
+        int x = nums.Length;                 // start with N (the index loop below stops at N-1)
+        for (int i = 0; i < nums.Length; i++) x ^= i ^ nums[i];
+        return x;
+    }
+}` }],
       dry: { head: ['i', 'nums[i]', 'x after i ^ nums[i]'], rows: [['start', '—', '3'], ['0', '3', '3^0^3 = 0'], ['1', '0', '0^1^0 = 1'], ['2', '1', '1^2^1 = ' + H.c('g', '2')]] },
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['Two numbers missing (split by a set bit of the XOR, like Single Number III).', 'Find the duplicate in 1..N with one repeat (Floyd cycle detection on indices).']
@@ -4155,6 +4761,14 @@ vector<int> topKFrequent(vector<int>& nums, int k) {
     for (auto& [v, c] : cnt) keys.push_back(v);
     sort(keys.begin(), keys.end(), [&](int a, int b) { return cnt[a] > cnt[b]; });   // full sort: O(U log U)
     return vector<int>(keys.begin(), keys.begin() + k);
+}` }, { lang: 'csharp', code: `int[] TopKBrute(int[] nums, int k) {
+    var cnt = new Dictionary<int, int>();
+    foreach (int x in nums) { int c; cnt.TryGetValue(x, out c); cnt[x] = c + 1; }
+    var keys = new List<int>(cnt.Keys);
+    keys.Sort((a, b) => cnt[b].CompareTo(cnt[a]));   // full sort: O(U log U)
+    int[] res = new int[k];
+    for (int i = 0; i < k; i++) res[i] = keys[i];
+    return res;
 }` }] } },
     mcq: { q: 'Frequencies lie in 1..N. Which trick gives O(N) total?', options: ['Bucket sort: bucket[f] = values with frequency f, read from high f down', 'Binary search on k', 'Two pointers on the sorted array', 'Union-Find'], answer: 0, explain: 'A bounded key range (1..N) allows counting/bucket sort in linear time.' },
     hints: [`<p>Hint 1: First count frequencies with a hash map.</p>`, `<p>Hint 2: Either keep a min-heap of size k keyed by frequency (O(U log k)) or bucket by frequency (O(N)).</p>`, `<p>Hint 3: Buckets: array of lists of size N+1. Walk f from N down to 1, collecting until you have k values.</p>`],
@@ -4236,7 +4850,25 @@ public:
             }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] TopKFrequent(int[] nums, int k) {
+        var cnt = new Dictionary<int, int>();
+        foreach (int x in nums) { int c; cnt.TryGetValue(x, out c); cnt[x] = c + 1; }
+        var bucket = new List<int>[nums.Length + 1];   // bucket[f] = values seen f times
+        foreach (var e in cnt) {
+            int f = e.Value;
+            if (bucket[f] == null) bucket[f] = new List<int>();
+            bucket[f].Add(e.Key);
+        }
+        int[] res = new int[k];
+        int idx = 0;
+        for (int f = nums.Length; f >= 1 && idx < k; f--) {
+            if (bucket[f] == null) continue;
+            foreach (int v in bucket[f]) { if (idx == k) break; res[idx++] = v; }
+        }
+        return res;
+    }
+}` }],
       complexity: `<p>Time O(N), space O(N). Heap alternative: O(N + U log k) time, O(U + k) space.</p>`,
       followUps: ['Stream of values: maintain top k as data arrives.', 'Top k frequent words with alphabetical tie-break.']
     }
@@ -4343,6 +4975,32 @@ int numIslands(vector<vector<char>>& g) {
                 int r = c / C, col = c % C;
                 int nb[4][2] = {{r + 1, col}, {r - 1, col}, {r, col + 1}, {r, col - 1}};
                 for (auto& p : nb) {
+                    if (p[0] < 0 || p[1] < 0 || p[0] >= R || p[1] >= C) continue;
+                    int id = p[0] * C + p[1];
+                    if (g[p[0]][p[1]] == '1' && label[id] == -1) { label[id] = islands; changed = true; }
+                }
+            }
+        }
+    }
+    return islands;
+}` }, { lang: 'csharp', code: `int BruteIslands(char[][] g) {
+    int R = g.Length, C = g[0].Length, n = R * C;
+    int[] label = new int[n];
+    for (int i = 0; i < n; i++) label[i] = -1;
+    int islands = 0;
+    for (int s = 0; s < n; s++) {
+        if (g[s / C][s % C] != '1' || label[s] != -1) continue;
+        islands++;
+        // naive: repeatedly sweep the grid, growing the label until nothing changes
+        label[s] = islands;
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (int c = 0; c < n; c++) {
+                if (label[c] != islands) continue;
+                int r = c / C, col = c % C;
+                int[][] nb = { new[] { r + 1, col }, new[] { r - 1, col }, new[] { r, col + 1 }, new[] { r, col - 1 } };
+                foreach (var p in nb) {
                     if (p[0] < 0 || p[1] < 0 || p[0] >= R || p[1] >= C) continue;
                     int id = p[0] * C + p[1];
                     if (g[p[0]][p[1]] == '1' && label[id] == -1) { label[id] = islands; changed = true; }
@@ -4463,7 +5121,30 @@ public:
             }
         return count;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int NumIslands(char[][] grid) {
+        int R = grid.Length, C = grid[0].Length, count = 0;
+        int[] dr = { 1, -1, 0, 0 }, dc = { 0, 0, 1, -1 };
+        var q = new Queue<int[]>();
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] != '1') continue;
+                count++;                              // new island found
+                grid[r][c] = '0';                     // sink it as we enqueue (visited mark)
+                q.Enqueue(new[] { r, c });
+                while (q.Count > 0) {
+                    int[] cur = q.Dequeue();
+                    for (int d = 0; d < 4; d++) {
+                        int nr = cur[0] + dr[d], nc = cur[1] + dc[d];
+                        if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != '1') continue;
+                        grid[nr][nc] = '0';
+                        q.Enqueue(new[] { nr, nc });
+                    }
+                }
+            }
+        return count;
+    }
+}` }],
       complexity: `<p>Time O(R·C), space O(min(R, C)) to O(R·C) for the queue.</p>`,
       followUps: ['Do not modify the input (separate visited array).', 'Land added one cell at a time; report the count after each (Union-Find).', 'Count distinct island shapes.']
     }
@@ -4501,6 +5182,12 @@ int minEatingSpeed(vector<int>& piles, int h) {
     for (int s = 1; ; s++) {
         long long hours = 0;
         for (int p : piles) hours += (p + s - 1) / s;
+        if (hours <= h) return s;
+    }
+}` }, { lang: 'csharp', code: `int BruteSpeed(int[] piles, int h) {
+    for (int s = 1; ; s++) {
+        long hours = 0;
+        foreach (int p in piles) hours += (p + s - 1) / s;
         if (hours <= h) return s;
     }
 }` }] } },
@@ -4584,7 +5271,23 @@ public:
         }
         return lo;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int MinEatingSpeed(int[] piles, int h) {
+        int lo = 1, hi = 0;
+        foreach (int p in piles) hi = Math.Max(hi, p);  // speed max(piles) always works
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (HoursAt(piles, mid) <= h) hi = mid;     // fast enough: try slower
+            else lo = mid + 1;                          // too slow
+        }
+        return lo;
+    }
+    private long HoursAt(int[] piles, int s) {
+        long hours = 0;
+        foreach (int p in piles) hours += (p + (long)s - 1) / s;  // ceil without overflow
+        return hours;
+    }
+}` }],
       dry: { head: ['lo', 'hi', 'mid', 'hours', 'move'], rows: [['1', '11', '6', '1+1+2+2 = 6 ≤ 8', 'hi = 6'], ['1', '6', '3', '1+2+3+4 = 10', 'lo = 4'], ['4', '6', '5', '1+2+2+3 = 8 ≤ 8', 'hi = 5'], ['4', '5', '4', '1+2+2+3 = 8 ≤ 8', 'hi = 4'], ['4', '4', '—', 'stop', H.c('g', '4')]] },
       complexity: `<p>Time O(N log max(piles)) ≈ 10<sup>4</sup> × 30. Space O(1).</p>`,
       followUps: ['Minimum days to make m bouquets (same template).', 'Capacity to ship packages within D days.']
@@ -4623,6 +5326,12 @@ vector<int> dailyTemperatures(vector<int>& t) {
     vector<int> ans(t.size(), 0);
     for (int i = 0; i < (int)t.size(); i++)
         for (int j = i + 1; j < (int)t.size(); j++)
+            if (t[j] > t[i]) { ans[i] = j - i; break; }
+    return ans;
+}` }, { lang: 'csharp', code: `int[] BruteTemps(int[] t) {
+    int[] ans = new int[t.Length];
+    for (int i = 0; i < t.Length; i++)
+        for (int j = i + 1; j < t.Length; j++)
             if (t[j] > t[i]) { ans[i] = j - i; break; }
     return ans;
 }` }] } },
@@ -4696,7 +5405,20 @@ public:
         }
         return ans;                            // remaining indices stay 0
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] DailyTemperatures(int[] t) {
+        int[] ans = new int[t.Length];
+        var st = new Stack<int>();                        // indices with decreasing temps
+        for (int i = 0; i < t.Length; i++) {
+            while (st.Count > 0 && t[st.Peek()] < t[i]) {
+                int j = st.Pop();
+                ans[j] = i - j;                           // i is j's first warmer day
+            }
+            st.Push(i);
+        }
+        return ans;                                       // remaining indices stay 0
+    }
+}` }],
       complexity: `<p>Time O(N) amortised (each index pushed and popped at most once). Space O(N).</p>`,
       followUps: ['Circular array (Next Greater Element II): loop 2N times with i % N.', 'Stock span (previous greater).']
     }
@@ -4772,6 +5494,22 @@ vector<int> findOrder(int n, vector<vector<int>>& prerequisites) {
         }
         if (pick == -1) return {};                    // nothing available: cycle
         taken[pick] = 1; order.push_back(pick);
+    }
+    return order;
+}` }, { lang: 'csharp', code: `int[] BruteOrder(int n, int[][] pre) {
+    // repeatedly scan for a course whose prerequisites are all taken: O(n * (n + E))
+    bool[] taken = new bool[n];
+    int[] order = new int[n];
+    for (int k = 0; k < n; k++) {
+        int pick = -1;
+        for (int c = 0; c < n && pick == -1; c++) {
+            if (taken[c]) continue;
+            bool ok = true;
+            foreach (var p in pre) if (p[0] == c && !taken[p[1]]) { ok = false; break; }
+            if (ok) pick = c;
+        }
+        if (pick == -1) return new int[0];          // nothing available: cycle
+        taken[pick] = true; order[k] = pick;
     }
     return order;
 }` }] } },
@@ -4864,7 +5602,24 @@ public:
         if ((int)order.size() != n) return {};     // leftover nodes = cycle
         return order;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] FindOrder(int n, int[][] prerequisites) {
+        var adj = new List<int>[n];
+        for (int i = 0; i < n; i++) adj[i] = new List<int>();
+        int[] indeg = new int[n];
+        foreach (var p in prerequisites) { adj[p[1]].Add(p[0]); indeg[p[0]]++; } // edge b -> a
+        var q = new Queue<int>();
+        for (int i = 0; i < n; i++) if (indeg[i] == 0) q.Enqueue(i);
+        int[] order = new int[n];
+        int k = 0;
+        while (q.Count > 0) {
+            int c = q.Dequeue();
+            order[k++] = c;
+            foreach (int nxt in adj[c]) if (--indeg[nxt] == 0) q.Enqueue(nxt);
+        }
+        return k == n ? order : new int[0];        // leftover nodes = cycle
+    }
+}` }],
       dry: { head: ['pop', 'order', 'indegree changes', 'queue'], rows: [['—', '[]', 'indeg = [0,1,1,2]', '[0]'], ['0', '[0]', '1→0, 2→0', '[1, 2]'], ['1', '[0,1]', '3→1', '[2]'], ['2', '[0,1,2]', '3→0', '[3]'], ['3', H.c('g', '[0,1,2,3]'), '—', '[]']] },
       complexity: `<p>Time O(n + E), space O(n + E).</p>`,
       followUps: ['Return the minimum number of semesters (BFS levels).', 'Lexicographically smallest order (priority queue instead of queue).', 'Alien Dictionary: build the edges yourself.']
@@ -4920,6 +5675,17 @@ int characterReplacement(string s, int k) {
         for (int j = i; j < (int)s.size(); j++) {
             maxCnt = max(maxCnt, ++cnt[s[j] - 'A']);
             if (j - i + 1 - maxCnt <= k) best = max(best, j - i + 1);
+        }
+    }
+    return best;
+}` }, { lang: 'csharp', code: `int BruteReplace(string s, int k) {
+    int best = 0;
+    for (int i = 0; i < s.Length; i++) {
+        int[] cnt = new int[26];
+        int maxCnt = 0;
+        for (int j = i; j < s.Length; j++) {
+            maxCnt = Math.Max(maxCnt, ++cnt[s[j] - 'A']);
+            if (j - i + 1 - maxCnt <= k) best = Math.Max(best, j - i + 1);
         }
     }
     return best;
@@ -5004,7 +5770,21 @@ public:
         }
         return best;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int CharacterReplacement(string s, int k) {
+        int[] cnt = new int[26];
+        int left = 0, maxCnt = 0, best = 0;
+        for (int right = 0; right < s.Length; right++) {
+            maxCnt = Math.Max(maxCnt, ++cnt[s[right] - 'A']);
+            while (right - left + 1 - maxCnt > k) {   // too many letters to change
+                cnt[s[left] - 'A']--;
+                left++;
+            }
+            best = Math.Max(best, right - left + 1);
+        }
+        return best;
+    }
+}` }],
       complexity: `<p>Time O(N), space O(26).</p>`,
       followUps: ['Binary string version: Max Consecutive Ones III.', 'Why is a stale (too large) maxCount still safe? Prove it.']
     }
@@ -5055,6 +5835,15 @@ int coinChange(vector<int>& coins, int amount) {
         if (sub != -1) best = min(best, sub + 1);
     }
     return best == INT_MAX ? -1 : best;
+}` }, { lang: 'csharp', code: `int BruteCoins(int[] coins, int amount) {
+    if (amount == 0) return 0;
+    int best = int.MaxValue;
+    foreach (int c in coins) {
+        if (c > amount) continue;
+        int sub = BruteCoins(coins, amount - c);   // same sub-amounts solved again and again
+        if (sub != -1) best = Math.Min(best, sub + 1);
+    }
+    return best == int.MaxValue ? -1 : best;
 }` }] } },
     mcq: { q: 'What does dp[a] mean in the standard solution?', options: ['Fewest coins that sum exactly to a', 'Number of ways to make a', 'Largest coin used for a', 'Whether coin a exists'], answer: 0, explain: 'Then dp[a] = 1 + min over coins c ≤ a of dp[a − c] (DSA 17).' },
     hints: [`<p>Hint 1: Greedy fails ({1,3,4}, 6). "Fewest" + choices at each step → DP.</p>`, `<p>Hint 2: dp[a] = min over coins c of dp[a − c] + 1, with dp[0] = 0.</p>`, `<p>Hint 3: Fill a from 1 to amount; use a sentinel "infinity" = amount + 1. Watch out: coins can be up to 2<sup>31</sup>−1, so check c ≤ a before subtracting.</p>`],
@@ -5119,7 +5908,18 @@ public:
                 if (c <= a && dp[a - c] + 1 < dp[a]) dp[a] = dp[a - c] + 1;
         return dp[amount] >= INF ? -1 : dp[amount];
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int CoinChange(int[] coins, int amount) {
+        int INF = amount + 1;                   // more coins than could ever be needed
+        int[] dp = new int[amount + 1];
+        for (int a = 1; a <= amount; a++) dp[a] = INF;
+        dp[0] = 0;                              // zero coins make amount 0
+        for (int a = 1; a <= amount; a++)
+            foreach (int c in coins)
+                if (c <= a && dp[a - c] + 1 < dp[a]) dp[a] = dp[a - c] + 1;
+        return dp[amount] >= INF ? -1 : dp[amount];
+    }
+}` }],
       dry: { head: ['a', '0', '1', '2', '3', '4', '5', '6'], rows: [['dp[a]', '0', '1', '2', '1', '1', '2', H.c('g', '2')], ['via', '—', '1', '1+1', '3', '4', '4+1', '3+3']] },
       complexity: `<p>Time O(amount × coins), space O(amount).</p>`,
       followUps: ['Count the number of ways (Coin Change II) — loop order matters!', 'Reconstruct the coins used.']
@@ -5162,6 +5962,14 @@ vector<int> maxSlidingWindow(vector<int>& nums, int k) {
     for (int i = 0; i + k <= (int)nums.size(); i++) {
         int m = INT_MIN;
         for (int j = i; j < i + k; j++) m = max(m, nums[j]);
+        res[i] = m;
+    }
+    return res;
+}` }, { lang: 'csharp', code: `int[] BruteWindowMax(int[] a, int k) {
+    int[] res = new int[a.Length - k + 1];
+    for (int i = 0; i + k <= a.Length; i++) {
+        int m = int.MinValue;
+        for (int j = i; j < i + k; j++) m = Math.Max(m, a[j]);
         res[i] = m;
     }
     return res;
@@ -5243,7 +6051,20 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int[] MaxSlidingWindow(int[] nums, int k) {
+        int n = nums.Length;
+        int[] res = new int[n - k + 1];
+        var dq = new LinkedList<int>();                      // indices, values decreasing
+        for (int i = 0; i < n; i++) {
+            if (dq.Count > 0 && dq.First.Value <= i - k) dq.RemoveFirst();        // left the window
+            while (dq.Count > 0 && nums[dq.Last.Value] <= nums[i]) dq.RemoveLast(); // dominated
+            dq.AddLast(i);
+            if (i >= k - 1) res[i - k + 1] = nums[dq.First.Value];               // front = max
+        }
+        return res;
+    }
+}` }],
       dry: { head: ['i', 'nums[i]', 'deque (values)', 'output'], rows: [['2', '−1', '[3, −1]', '3'], ['3', '−3', '[3, −1, −3]', '3'], ['4', '5', '[5] (3 expired, rest dominated)', '5'], ['5', '3', '[5, 3]', '5'], ['6', '6', '[6]', '6'], ['7', '7', '[7]', H.c('g', '7')]] },
       complexity: `<p>Time O(N) amortised, space O(k).</p>`,
       followUps: ['Window minimum at the same time.', 'Shortest subarray with sum ≥ K (deque over prefix sums).', 'Constrained subsequence sum (deque-optimised DP).']
@@ -5304,6 +6125,17 @@ ListNode* mergeKLists(vector<ListNode*>& lists) {
         if (best == -1) break;
         tail->next = lists[best]; tail = tail->next;
         lists[best] = lists[best]->next;
+    }
+    return dummy.next;
+}` }, { lang: 'csharp', code: `ListNode BruteMerge(ListNode[] lists) {
+    ListNode dummy = new ListNode(0), tail = dummy;
+    while (true) {
+        int best = -1;
+        for (int i = 0; i < lists.Length; i++)          // O(k) scan for the smallest head
+            if (lists[i] != null && (best == -1 || lists[i].val < lists[best].val)) best = i;
+        if (best == -1) break;
+        tail.next = lists[best]; tail = tail.next;
+        lists[best] = lists[best].next;
     }
     return dummy.next;
 }` }] } },
@@ -5422,7 +6254,54 @@ public:
         }
         return dummy.next;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public ListNode MergeKLists(ListNode[] lists) {
+        var pq = new MinHeap<ListNode>((a, b) => a.val.CompareTo(b.val));
+        foreach (ListNode head in lists) if (head != null) pq.Push(head);
+        ListNode dummy = new ListNode(0), tail = dummy;
+        while (pq.Count > 0) {
+            ListNode node = pq.Pop();               // smallest current head
+            tail.next = node;
+            tail = node;
+            if (node.next != null) pq.Push(node.next); // its successor joins the race
+        }
+        return dummy.next;
+    }
+}
+
+// Small binary min-heap: the base library here has no priority queue.
+public class MinHeap<T> {
+    readonly List<T> a = new List<T>();
+    readonly Comparison<T> cmp;
+    public MinHeap(Comparison<T> cmp) { this.cmp = cmp; }
+    public int Count { get { return a.Count; } }
+    public T Peek() { return a[0]; }
+    public void Push(T x) {
+        a.Add(x);
+        int i = a.Count - 1;
+        while (i > 0) {
+            int p = (i - 1) / 2;
+            if (cmp(a[i], a[p]) >= 0) break;
+            T t = a[i]; a[i] = a[p]; a[p] = t; i = p;
+        }
+    }
+    public T Pop() {
+        T top = a[0], last = a[a.Count - 1];
+        a.RemoveAt(a.Count - 1);
+        if (a.Count > 0) {
+            a[0] = last;
+            int i = 0;
+            while (true) {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < a.Count && cmp(a[l], a[m]) < 0) m = l;
+                if (r < a.Count && cmp(a[r], a[m]) < 0) m = r;
+                if (m == i) break;
+                T t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+            }
+        }
+        return top;
+    }
+}` }],
       complexity: `<p>Time O(N log k), space O(k) for the heap.</p>`,
       followUps: ['Merge k sorted arrays and find the smallest range covering one element of each.', 'External merge sort of files that do not fit in memory.']
     }
@@ -5467,6 +6346,15 @@ int trap(vector<int>& h) {
         for (int j = 0; j <= i; j++) lm = max(lm, h[j]);
         for (int j = i; j < (int)h.size(); j++) rm = max(rm, h[j]);
         water += min(lm, rm) - h[i];
+    }
+    return water;
+}` }, { lang: 'csharp', code: `int BruteTrap(int[] h) {
+    int water = 0;
+    for (int i = 0; i < h.Length; i++) {
+        int lm = 0, rm = 0;
+        for (int j = 0; j <= i; j++) lm = Math.Max(lm, h[j]);
+        for (int j = i; j < h.Length; j++) rm = Math.Max(rm, h[j]);
+        water += Math.Min(lm, rm) - h[i];
     }
     return water;
 }` }] } },
@@ -5541,7 +6429,18 @@ public:
         }
         return (int)water;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int Trap(int[] h) {
+        int l = 0, r = h.Length - 1, leftMax = 0, rightMax = 0, water = 0;
+        while (l < r) {
+            leftMax = Math.Max(leftMax, h[l]);
+            rightMax = Math.Max(rightMax, h[r]);
+            if (leftMax <= rightMax) water += leftMax - h[l++];   // left side is the bottleneck
+            else water += rightMax - h[r--];                       // right side is the bottleneck
+        }
+        return water;
+    }
+}` }],
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['2D version (Trapping Rain Water II): min-heap from the border inward.', 'Monotonic stack version that fills water layer by layer.']
     }
@@ -5620,6 +6519,22 @@ int ladderLength(const string& cur, const string& end, const unordered_set<strin
         if (sub > 0 && (best == 0 || sub + 1 < best)) best = sub + 1;
     }
     return best;
+}` }, { lang: 'csharp', code: `int BruteLadder(string cur, string end, HashSet<string> dict, HashSet<string> onPath) {
+    if (cur == end) return 1;
+    int best = 0;
+    foreach (string w in dict) {
+        if (onPath.Contains(w) || !OneApart(cur, w)) continue;
+        onPath.Add(w);
+        int sub = BruteLadder(w, end, dict, onPath);   // explores every simple path: exponential
+        onPath.Remove(w);
+        if (sub > 0 && (best == 0 || sub + 1 < best)) best = sub + 1;
+    }
+    return best;
+}
+bool OneApart(string a, string b) {
+    int diff = 0;
+    for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) diff++;
+    return diff == 1;
 }` }] } },
     mcq: { q: '"Shortest sequence of one-letter changes" is…', options: ['BFS on an implicit graph whose nodes are words', 'Dijkstra with weights = letter distance', 'DP over the word list order', 'Backtracking for all paths'], answer: 0, explain: 'All moves cost 1 → unweighted shortest path → BFS (DSA 19). The graph is never given; you generate neighbours.' },
     hints: [`<p>Hint 1: Words are nodes, one-letter changes are edges, each costs 1.</p>`, `<p>Hint 2: BFS from beginWord. Generate neighbours by trying all 26 letters at each position (O(26·L) per word) and checking the dictionary set.</p>`, `<p>Hint 3: Remove words from the set when enqueued (visited). If endWord is not in the list, return 0 immediately.</p>`],
@@ -5743,7 +6658,34 @@ public:
         }
         return 0;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    public int LadderLength(string beginWord, string endWord, IList<string> wordList) {
+        var dict = new HashSet<string>(wordList);
+        if (!dict.Contains(endWord)) return 0;
+        var q = new Queue<string>();
+        q.Enqueue(beginWord);
+        dict.Remove(beginWord);
+        int steps = 1;                                   // words in the sequence so far
+        while (q.Count > 0) {
+            for (int size = q.Count; size > 0; size--) {
+                char[] w = q.Dequeue().ToCharArray();
+                for (int i = 0; i < w.Length; i++) {
+                    char orig = w[i];
+                    for (char c = 'a'; c <= 'z'; c++) {
+                        if (c == orig) continue;
+                        w[i] = c;
+                        string next = new string(w);
+                        if (next == endWord) return steps + 1;
+                        if (dict.Remove(next)) q.Enqueue(next);   // Remove = mark visited
+                    }
+                    w[i] = orig;
+                }
+            }
+            steps++;
+        }
+        return 0;
+    }
+}` }],
       complexity: `<p>Time O(M · L · 26 · L) where M = word count, L = word length (building each candidate string costs L). Space O(M · L).</p>`,
       followUps: ['Return all shortest sequences (Word Ladder II: BFS for distances, then DFS backtracking).', 'Bidirectional BFS: why does it cut the explored nodes so much?']
     }
@@ -5787,6 +6729,14 @@ vector<int> countSmaller(vector<int>& nums) {
         int c = 0;
         for (int j = i + 1; j < (int)nums.size(); j++) if (nums[j] < nums[i]) c++;
         res.push_back(c);
+    }
+    return res;
+}` }, { lang: 'csharp', code: `IList<int> BruteSmaller(int[] nums) {
+    var res = new List<int>();
+    for (int i = 0; i < nums.Length; i++) {
+        int c = 0;
+        for (int j = i + 1; j < nums.Length; j++) if (nums[j] < nums[i]) c++;
+        res.Add(c);
     }
     return res;
 }` }] } },
@@ -5879,7 +6829,22 @@ public:
         }
         return res;
     }
-};` }],
+};` }, { lang: 'csharp', code: `public class Solution {
+    private int[] bit;
+    public IList<int> CountSmaller(int[] nums) {
+        int OFFSET = 10001, SIZE = 20002;            // maps -10^4..10^4 to 1..20001
+        bit = new int[SIZE + 1];
+        int[] res = new int[nums.Length];
+        for (int i = nums.Length - 1; i >= 0; i--) {
+            int idx = nums[i] + OFFSET;
+            res[i] = Query(idx - 1);                 // how many seen values are smaller
+            Update(idx);                             // now nums[i] is "seen"
+        }
+        return new List<int>(res);
+    }
+    private void Update(int i) { for (; i < bit.Length; i += i & -i) bit[i]++; }
+    private int Query(int i) { int s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; }
+}` }],
       dry: { head: ['i (right→left)', 'nums[i]', 'seen before', 'smaller seen', 'res'], rows: [['3', '1', '{}', '0', '[_, _, _, 0]'], ['2', '6', '{1}', '1', '[_, _, 1, 0]'], ['1', '2', '{1, 6}', '1', '[_, 1, 1, 0]'], ['0', '5', '{1, 2, 6}', '2', H.c('g', '[2, 1, 1, 0]')]] },
       complexity: `<p>Time O(N log V) with V = 20001 value slots; space O(V). With coordinate compression: O(N log N).</p>`,
       followUps: ['Count of range sum (prefix sums + merge sort / BIT).', 'Reverse pairs: nums[i] &gt; 2·nums[j].', 'Values up to 10<sup>9</sup> — compress coordinates first.']

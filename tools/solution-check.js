@@ -1,5 +1,5 @@
-// Runs every problem's solutions against its test cases in Java, Python, JavaScript/TypeScript and C++.
-// usage: node tools/solution-check.js content/<track>/<id>.js [--lang java,python,js,ts,cpp] [--only <index>] [--report] [--keep]
+// Runs every problem's solutions against its test cases in Java, Python, JavaScript/TypeScript, C++ and C#.
+// usage: node tools/solution-check.js content/<track>/<id>.js [--lang java,python,js,ts,cpp,csharp] [--only <index>] [--report] [--keep]
 //
 // A problem opts in with a language-neutral `tests` field:
 //   function:   tests: { sig: 'int[] int -> int[]', fn: 'twoSum', cases: [[[[2,7,11,15], 9], [0,1]], ...], cmp: 'exact' }
@@ -15,12 +15,13 @@
 // generated values: { $rep: V, n: N }, { $range: [a, b, step] }, { $concat: [...] } for big inputs (see LANGUAGE_AUTHORING.md)
 // Stacks and recursion limits are each language's defaults, as a learner gets them: a solution that overflows at the
 // stated maximum input is a real bug (use iteration, or raise the limit inside the solution itself).
-// harness: { java, python, js, cpp } -> test-only helper code appended to each solution before compiling; with Java,
-//               put helpers in their own class with static methods (e.g. class Check { static int[] cycleInfo(...) }).
+// harness: { java, python, js, cpp, csharp } -> test-only helper code appended to each solution before compiling; with Java
+//               and C#, put helpers in their own class with static methods (e.g. class Check { static int[] cycleInfo(...) }).
 // mutate: k  -> for '-> void' functions, the answer is argument k after the call.
 // both: k     -> for functions that return a value and change argument k (e.g. remove duplicates in place), the answer is
 //               [returned value, argument k after the call]; usually paired with a check function.
-// names: { python: 'two_sum' } overrides the function name per language (default: Python uses snake_case, others the given name).
+// names: { python: 'two_sum', csharp: 'TwoSum' } overrides the function name per language (default: Python uses snake_case,
+//               C# PascalCase, others the given name). C# needs mono (mcs) or the .NET SDK (dotnet); see tools/harness/cs-compile.js.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -31,7 +32,7 @@ const root = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith('--'));
 const opt = (k) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : null; };
-const LANGS = (opt('lang') || 'java,python,js,ts,cpp,sql').split(',');
+const LANGS = (opt('lang') || 'java,python,js,ts,cpp,csharp,sql').split(',');
 const ONLY = opt('only') !== null ? +opt('only') : null;
 const REPORT = args.includes('--report'), KEEP = args.includes('--keep'), QUIET = args.includes('--quiet');
 const REQUIRE = (opt('require') || '').split(',').filter(Boolean);
@@ -46,7 +47,7 @@ vm.runInContext(fs.readFileSync(file, 'utf8'), ctx, { filename: file });
 const mod = ctx.MODULES[0];
 const track = ctx.TRACKS.find((t) => t.modules.some((pm) => pm.id === mod.id));
 const DEF = mod.lang || track.lang;
-const NORM = { javascript: 'js', typescript: 'ts', py: 'python', 'c++': 'cpp', c: 'cpp' };
+const NORM = { javascript: 'js', typescript: 'ts', py: 'python', 'c++': 'cpp', c: 'cpp', 'c#': 'csharp', cs: 'csharp' };
 
 /* ---------- collect problems ---------- */
 const problems = [];
@@ -88,6 +89,7 @@ function parseSig(sig) {
   return { params: a.trim() ? a.trim().split(/\s+/).map(parseType) : [], ret: parseType((r || 'void').trim()) };
 }
 const snake = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z])([A-Z][a-z])/g, '$1_$2').toLowerCase();
+const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* ---------- Java ---------- */
 const J_IMP = 'import java.util.*;\nimport java.util.function.*;\nimport java.util.stream.*;\nimport java.util.concurrent.*;\nimport java.util.concurrent.atomic.*;\nimport java.util.concurrent.locks.*;\nimport java.time.*;\nimport java.math.*;\nimport java.io.*;\n';
@@ -170,11 +172,28 @@ function cGen(t, v) {
   return '[]{ ' + T + ' r; ' + genParts(v).map((p) => '{ auto q = ' + part(p) + '; r.insert(r.end(), q.begin(), q.end()); }').join(' ') + ' return r; }()';
 }
 
+let csGenN = 0;
+function csGen(t, v) {
+  const rep = (p) => 'string.Concat(Enumerable.Repeat(' + JSON.stringify(p.$rep) + ', ' + p.n + '))', iv = '_i' + (csGenN++);
+  if (t.k === 'string') return '(' + genParts(v).map((p) => (typeof p === 'string' ? JSON.stringify(p) : rep(p))).join(' + ') + ')';
+  if (t.k === 'arr' && t.of.k === 'char') return '(' + genParts(v).map((p) => (typeof p === 'string' ? JSON.stringify(p) : Array.isArray(p) ? JSON.stringify(p.join('')) : rep(p))).join(' + ') + ').ToCharArray()';
+  const el = t.of, E = csType(el);
+  const part = (p) => {
+    if (Array.isArray(p)) return 'new ' + E + '[]{' + p.map((x) => csLit(el, x)).join(', ') + '}';
+    if ('$rep' in p) return PRIM.has(el.k) ? 'Enumerable.Repeat<' + E + '>(' + csLit0(el, p.$rep) + ', ' + p.n + ')' : 'Enumerable.Range(0, ' + p.n + ').Select<int, ' + E + '>(' + iv + ' => ' + csLit(el, p.$rep) + ')';
+    const [a, b, s2] = rangeArgs(p.$range), n = Math.max(0, Math.ceil((b - a) / s2));
+    return 'Enumerable.Range(0, ' + n + ').Select<int, ' + E + '>(' + iv + ' => (' + E + ')(' + csLit0(el, a) + ' + (long)' + iv + ' * ' + csLit0(el, s2) + '))';
+  };
+  const ps = genParts(v).map(part), all = ps.length === 1 ? ps[0] : ps.reduce((acc, q) => acc + '.Concat(' + q + ')');
+  return t.k === 'arr' ? all + '.ToArray()' : 'new List<' + E + '>(' + all + ')';
+}
+
 const INTS = { k: 'arr', of: { k: 'int' } };
 function jLit(t, v) { return !isGen(v) ? jLit0(t, v) : t.k === 'ListNode' ? '(ListNode) H.list(' + jGen(INTS, v) + ')' : jGen(t, v); }
 function pyLit(t, v) { return !isGen(v) ? pyLit0(t, v) : t.k === 'ListNode' ? '_h_list(' + pyGen(INTS, v) + ')' : pyGen(t, v); }
 function jsLit(t, v) { return !isGen(v) ? jsLit0(t, v) : t.k === 'ListNode' ? '_h_list(' + jsGen(INTS, v) + ')' : jsGen(t, v); }
 function cLit(t, v) { return !isGen(v) ? cLit0(t, v) : t.k === 'ListNode' ? '_h_list(' + cGen(INTS, v) + ')' : cGen(t, v); }
+function csLit(t, v) { return !isGen(v) ? csLit0(t, v) : t.k === 'ListNode' ? 'H.List(' + csGen(INTS, v) + ')' : csGen(t, v); }
 function jLit0(t, v) {
   if (v === null && !['int', 'long', 'double', 'bool', 'char'].includes(t.k)) return 'null';
   switch (t.k) {
@@ -191,11 +210,11 @@ function jLit0(t, v) {
   }
 }
 function jArrInner(t, v) { return t.k === 'arr' && !isGen(v) && v !== null ? '{' + v.map((x) => jArrInner(t.of, x)).join(',') + '}' : jLit(t, v); }
-function jCallTarget(code, fn) {
+function jCallTarget(code, fn, kw) {
   const at = code.search(new RegExp('\\b' + fn + '\\s*\\('));
   // The owner is the innermost class whose body contains the method (a nested helper class declared earlier is skipped).
   const span = (i) => { const open = code.indexOf('{', i); let d = 0; for (let j = open; j >= 0 && j < code.length; j++) { if (code[j] === '{') d++; else if (code[j] === '}' && --d === 0) return [open, j]; } return [open, code.length]; };
-  const classes = [...code.matchAll(/\b(class|record)\s+(\w+)/g)].filter((m) => m.index < at).map((m) => ({ name: m[2], r: span(m.index) })).filter((c) => c.r[0] < at && at < c.r[1]);
+  const classes = [...code.matchAll(kw || /\b(class|record)\s+(\w+)/g)].filter((m) => m.index < at).map((m) => ({ name: m[2], r: span(m.index) })).filter((c) => c.r[0] < at && at < c.r[1]);
   const owner = classes.length ? classes[classes.length - 1].name : 'Solution';
   const isStatic = new RegExp('static[^;{(]*\\b' + fn + '\\s*\\(').test(code);
   return isStatic ? owner + '.' + fn : 'new ' + owner + '().' + fn;
@@ -378,6 +397,75 @@ function cppSource(pr, code, T) {
     });
   }
   return s + '  return 0;\n}\n';
+}
+
+/* ---------- C# ---------- */
+// Mono (mcs/mono) or the .NET SDK (dotnet), see tools/harness/cs-compile.js. Solutions are C# 7.3: `public class Solution`
+// with PascalCase methods (twoSum -> TwoSum); ListNode/TreeNode come from tools/harness/H.cs unless the code declares them.
+const CS_H = fs.readFileSync(path.join(__dirname, 'harness', 'H.cs'), 'utf8');
+const CS_USING = 'using System;\nusing System.Collections;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Text;\n';
+const csCompile = require('./harness/cs-compile.js');
+function csType(t) {
+  if (t.k === 'arr') return csType(t.of) + '[]';
+  if (t.k === 'list') return 'IList<' + csType(t.of) + '>';
+  return { int: 'int', long: 'long', double: 'double', bool: 'bool', string: 'string', char: 'char', ListNode: 'ListNode', TreeNode: 'TreeNode', void: 'void' }[t.k];
+}
+function csLit0(t, v) {
+  if (v === null) return ['int', 'long', 'double', 'bool', 'char'].includes(t.k) ? 'default(' + csType(t) + ')' : '(' + csType(t) + ')null';
+  switch (t.k) {
+    case 'int': return String(v);
+    case 'long': return String(v) + 'L';
+    case 'double': return Number.isInteger(+v) ? (+v).toFixed(1) : String(v);
+    case 'bool': return v ? 'true' : 'false';
+    case 'string': return JSON.stringify(String(v));
+    case 'char': return "'" + (v === "'" ? "\\'" : v === '\\' ? '\\\\' : v) + "'";
+    case 'ListNode': return 'H.List(new int[]{' + v.join(',') + '})';
+    case 'TreeNode': return 'H.Tree(new int?[]{' + v.map((x) => (x === null ? 'null' : x)).join(',') + '})';
+    case 'arr': return 'new ' + csType(t) + '{' + v.map((x) => csLit(t.of, x)).join(', ') + '}';
+    case 'list': return 'new List<' + csType(t.of) + '>{' + v.map((x) => csLit(t.of, x)).join(', ') + '}';
+  }
+}
+const CS_USING_RE = /^[ \t]*using\s+(static\s+)?[\w.]+(\s*=\s*[\w.<>, ]+)?\s*;[ \t]*$/gm;
+function csSource(pr, code, T) {
+  if (T.io) return code;
+  const uses = (n) => new RegExp('\\b' + n + '\\b').test(code + JSON.stringify(T));
+  const own = (n) => new RegExp('(class|struct)\\s+' + n + '\\b').test(code);
+  // #define lines must open the file, so the solution's own using directives are hoisted after them.
+  const flags = ['ListNode', 'TreeNode'].map((n) => (uses(n) && !own(n) ? '#define H_' + n.toUpperCase() + '\n' : '') + (uses(n) ? '#define H_USES_' + n.toUpperCase() + '\n' : '')).join('');
+  const usings = (code.match(CS_USING_RE) || []).map((u) => u.trim()).join('\n');
+  const body = code.replace(CS_USING_RE, '');
+  const err = (ci) => ' catch (Exception e) { Console.WriteLine("@@' + ci + ' !" + e.GetType().Name + ": " + e.Message.Replace("\\n", " ")); }';
+  let main = '', methods = '';
+  if (T.cls) {
+    methods += '  static ' + T.cls + ' obj; static StringBuilder sb;\n';
+    T.cases.forEach((c, ci) => {
+      const calls = [];
+      for (let k = 0; k * 200 < c.ops.length; k++) {
+        let b = '';
+        c.ops.slice(k * 200, k * 200 + 200).forEach((op, j) => {
+          const oi = k * 200 + j, sig = parseSig(T.sigs[op] || '');
+          const a = c.args[oi].map((v, i) => csLit(sig.params[i], v)).join(', ');
+          if (oi) b += '    sb.Append(",");\n';
+          if (op === T.cls) b += '    obj = new ' + T.cls + '(' + a + '); sb.Append("null");\n';
+          else if (sig.ret.k === 'void') b += '    obj.' + pascal(op) + '(' + a + '); sb.Append("null");\n';
+          else b += '    sb.Append(H.Json(obj.' + pascal(op) + '(' + a + ')));\n';
+        });
+        methods += '  static void C' + ci + '_' + k + '() {\n' + b + '  }\n';
+        calls.push('C' + ci + '_' + k + '();');
+      }
+      main += '    try { sb = new StringBuilder("["); obj = null; ' + calls.join(' ') + ' Console.WriteLine("@@' + ci + ' " + sb.Append("]")); }' + err(ci) + '\n';
+    });
+  } else {
+    const sig = parseSig(T.sig), fn = (T.names && T.names.csharp) || pascal(T.fn), target = jCallTarget(body, fn, /\b(class|struct)\s+(\w+)/g);
+    T.cases.forEach((c, ci) => {
+      const decl = c[0].map((v, i) => 'var a' + i + ' = ' + csLit(sig.params[i], v) + ';').join(' ');
+      const call = target + '(' + c[0].map((_, i) => 'a' + i).join(', ') + ')';
+      const res = sig.ret.k === 'void' ? call + '; Console.WriteLine("@@' + ci + ' " + H.Json(a' + (T.mutate || 0) + '));' : (T.both !== undefined ? '{ var _r = ' + call + '; Console.WriteLine("@@' + ci + ' [" + H.Json(_r) + "," + H.Json(a' + T.both + ') + "]"); }' : 'Console.WriteLine("@@' + ci + ' " + H.Json(' + call + '));');
+      methods += '  static void F' + ci + '() {\n    try { ' + decl + ' ' + res + ' }' + err(ci) + '\n  }\n';
+      main += '    F' + ci + '();\n';
+    });
+  }
+  return flags + CS_USING + usings + '\n' + body + '\n' + CS_H + '\nclass Main__ {\n' + methods + '  static void Main(string[] x) {\n' + main + '  }\n}\n';
 }
 
 /* ---------- comparison ---------- */
@@ -610,6 +698,11 @@ function runLang(lang, pr, code, T, n) {
     const c = exec('g++', ['-std=c++20', '-O1', '-w', '-include', cppPch(), 'main.cpp', '-o', 'main'], '', 180000);
     if (c.status !== 0) return { err: 'compile error:\n' + (c.stderr || '').replace(/\/tmp\/[^\s:]+\//g, '').slice(0, 1500) };
     run = (stdin) => exec('./main', [], stdin);
+  } else if (lang === 'csharp') {
+    const c = csCompile.compile(dir, csSource(pr, code, T), { exe: true, main: T.io ? null : 'Main__', timeout: 180000 });
+    if (!c) return { err: 'no C# compiler: install mono (mcs + mono) or the .NET SDK (dotnet)' };
+    if (!c.ok) return { err: 'compile error:\n' + c.err.slice(0, 1500) };
+    run = (stdin) => c.run(stdin, 20000);
   }
   if (ioCases) {
     const fails = [];
@@ -659,8 +752,9 @@ problems.forEach((pr, idx) => {
     // tests.also: other versions of the method that the solution teaches (e.g. an idiomatic one-liner next to the loop)
     // run the same cases. A list applies to every language; { java: [...], python: [...] } names them per language.
     const also = Array.isArray(T.also) ? T.also : asList(T.also && T.also[lang]);
-    also.forEach((name) => {
+    also.forEach((name0) => {
       checked++;
+      const name = lang === 'csharp' ? pascal(name0) : name0;
       const T2 = Object.assign({}, T, { fn: name, names: Object.assign({}, T.names, { [lang]: name }) });
       // The other version may sit in the main code or in a same-language alternative block.
       const has = (c) => typeof c === 'string' && new RegExp('\\b' + name + '\\s*\\(').test(c);

@@ -260,7 +260,67 @@ int main() {
     sized.reserve(1000);
     sized["ready"] = 1;
     cout << "buckets: " << sized.bucket_count() << "\\n";
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+// Correct and broken keys side by side: run it and watch the broken one "disappear".
+using System;
+using System.Collections.Generic;
+
+public class HashBasics {
+    // BROKEN: Equals() is overridden but GetHashCode() is not (the compiler even warns about it).
+    // Two equal BadPoints get different (identity) hash codes -> different buckets.
+    class BadPoint {
+        public readonly int X, Y;
+        public BadPoint(int x, int y) { X = x; Y = y; }
+        public override bool Equals(object o) {
+            var p = o as BadPoint;
+            return p != null && X == p.X && Y == p.Y;
+        }
+        public override int GetHashCode() { return base.GetHashCode(); }   // identity hash: contract broken
+    }
+
+    // GOOD: Equals and GetHashCode built from the same fields (a struct or C# 9 record does this for you).
+    class Point {
+        public readonly int X, Y;
+        public Point(int x, int y) { X = x; Y = y; }
+        public override bool Equals(object o) {
+            var p = o as Point;
+            return p != null && X == p.X && Y == p.Y;
+        }
+        public override int GetHashCode() { return X * 31 + Y; }           // equal points -> equal hashes
+    }
+
+    static int JavaHash(string s) {                      // h = 31*h + c, 32-bit wrap
+        int h = 0;
+        foreach (char c in s) h = unchecked(31 * h + c);
+        return h;
+    }
+
+    static void Main() {
+        var bad = new HashSet<BadPoint>();
+        bad.Add(new BadPoint(1, 2));
+        // Almost always false: the lookup goes to a different bucket.
+        Console.WriteLine("BadPoint found? " + bad.Contains(new BadPoint(1, 2)));
+
+        var good = new HashSet<Point>();
+        good.Add(new Point(1, 2));
+        Console.WriteLine("Point found?    " + good.Contains(new Point(1, 2))); // True
+
+        // Collisions are legal: different strings, same hash (Java's string hash shown; .NET's differs per run).
+        Console.WriteLine("Aa -> " + JavaHash("Aa") + ", BB -> " + JavaHash("BB")); // 2112, 2112
+
+        // Bucket index the way Java's HashMap computes it (capacity 16).
+        foreach (int key in new[] { 10, 26, 7, 42 }) {
+            int h = key.GetHashCode();                   // an int hashes to itself
+            int spread = h ^ (int)((uint)h >> 16);
+            Console.WriteLine("key " + key + " -> bucket " + (spread & 15));
+        }
+
+        // Pre-size when you know the count: avoids several resizes.
+        var sized = new Dictionary<string, int>(1000);
+        sized["ready"] = 1;
+        Console.WriteLine(sized.Count);
+    }
+}`, run: true }] }],
     codeTitle: 'Key equality/hash contract, collisions and bucket math',
     viz: [{
       title: 'Bucket array: put, get, remove, collisions and resize (mini HashSet, capacity starts at 4)',
@@ -402,7 +462,18 @@ m.put("BB", 2);
 System.out.println(m.get("Aa") + " " + m.get("BB")); // 1 2 — collision handled by equals()`, alt: [{ lang: 'python', code: `m = {"Aa": 1, "BB": 2}
 print(m["Aa"], m["BB"])   # 1 2 — if two keys ever share a bucket, == tells them apart` }, { lang: 'js', code: `const m = new Map([['Aa', 1], ['BB', 2]]);
 console.log(m.get('Aa'), m.get('BB')); // 1 2 — equal hashes are fine, keys are compared too` }, { lang: 'cpp', code: `unordered_map<string, int> m{{"Aa", 1}, {"BB", 2}};
-cout << m["Aa"] << " " << m["BB"] << "\\n"; // 1 2 — same bucket is fine, == tells them apart` }] }
+cout << m["Aa"] << " " << m["BB"] << "\\n"; // 1 2 — same bucket is fine, == tells them apart` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        var m = new Dictionary<string, int>();
+        m["Aa"] = 1;
+        m["BB"] = 2;
+        Console.WriteLine(m["Aa"] + " " + m["BB"]); // 1 2 - a collision is handled by Equals()
+    }
+}`, run: true }] }
     }, {
       title: 'The mutable key trap',
       html: `<p>Put a key in a set, then change a field used by <code>hashCode()</code>. The object is still physically in the <b>old</b> bucket, but lookups now compute a <b>new</b> bucket — the element is "lost" (contains() says false, yet size() says 1).</p>
@@ -430,7 +501,22 @@ set<vector<int>> s;
 s.insert(key);                   // the set stores a COPY of the key
 key.push_back(3);                // changes only our copy
 cout << s.count(key) << "\\n";    // 0 — {1, 2, 3} is not in the set
-cout << s.size() << "\\n";        // 1` }] }
+cout << s.size() << "\\n";        // 1` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        var key = new List<int> { 1, 2 };
+        var set = new HashSet<List<int>>();          // List<T> hashes by reference (identity), not content...
+        set.Add(key);
+        key.Add(3);                                  // ...so mutating it does not lose it here,
+        Console.WriteLine(set.Contains(key));        // True
+        // ...but a content-hashed key (a struct or record with the list's values) WOULD be lost in its old bucket.
+        // Rule stays the same: never mutate anything used as a key.
+        Console.WriteLine(set.Count);                // 1
+    }
+}`, run: true }] }
     }, {
       title: 'Pre-sizing to avoid resizes',
       html: `<p>Inserting 1,000,000 keys into <code>new HashMap&lt;&gt;()</code> triggers resizes at 13, 25, 49, … — about 17 doublings, each re-placing everything already in the map. If you know the count, size it once:</p>
@@ -449,7 +535,19 @@ console.log(a.size);` }, { lang: 'cpp', code: `int n = 1000000;
 unordered_map<int, int> a;
 a.reserve(n);                              // room for n keys: no rehash while filling
 for (int i = 0; i < n; i++) a[i] = i;
-cout << a.size() << "\\n";` }] }
+cout << a.size() << "\\n";` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+class Program {
+    static void Main() {
+        int n = 1000000;
+        var a = new Dictionary<int, int>(n);         // capacity hint: room for n keys, no rehash while filling
+        var b = new Dictionary<int, int>();          // grows by doubling: several rehashes
+        for (int i = 0; i < n; i++) { a[i] = i; b[i] = i; }
+        Console.WriteLine(a.Count + " " + b.Count);
+    }
+}`, run: true }] }
     }, {
       title: 'Choosing the right map',
       html: `${H.table(['need', 'use', 'cost'], [['fast lookup, order does not matter', 'HashMap / HashSet', 'O(1) avg'], ['remember insertion order (or LRU)', 'LinkedHashMap / LinkedHashSet', 'O(1) avg, a bit more memory'], ['sorted keys, floor/ceiling, range queries', 'TreeMap / TreeSet', 'O(log N)'], ['many threads writing', 'ConcurrentHashMap', 'O(1) avg, no null keys/values'], ['keys are small ints 0..K', 'plain int[] / boolean[]', 'O(1) worst case, tiny memory']])}
@@ -570,7 +668,31 @@ public:
             if (pairs[i].first == key) { pairs.erase(pairs.begin() + i); return; }
         }
     }
-};` }
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class MyHashMapBrute {
+    // Every pair lives in one list: [key, value].
+    private readonly List<int[]> pairs = new List<int[]>();
+
+    public void Put(int key, int value) {
+        foreach (int[] p in pairs) {
+            if (p[0] == key) { p[1] = value; return; } // update existing
+        }
+        pairs.Add(new[] { key, value });                // brand-new key
+    }
+
+    public int Get(int key) {
+        foreach (int[] p in pairs) if (p[0] == key) return p[1];
+        return -1;
+    }
+
+    public void Remove(int key) {
+        for (int i = 0; i < pairs.Count; i++) {
+            if (pairs[i][0] == key) { pairs.RemoveAt(i); return; }
+        }
+    }
+}` }
           ]
         }
       },
@@ -779,7 +901,73 @@ public:
             if (it->first == key) { b.erase(it); --sz; return; }
     }
 };`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+public class MyHashMap {
+    // One entry in a bucket chain.
+    private class Node {
+        public readonly int Key;
+        public int Val;
+        public Node Next;
+        public Node(int key, int val, Node next) { Key = key; Val = val; Next = next; }
+    }
+
+    private const double LOAD_FACTOR = 0.75;
+    private Node[] table = new Node[16];   // capacity is always a power of two
+    private int size = 0;
+
+    // Same idea as java.util.HashMap.hash(): mix high bits into low bits, then mask.
+    private static int IndexFor(int key, int capacity) {
+        int h = key;
+        h ^= (int)((uint)h >> 16);
+        return h & (capacity - 1);
+    }
+
+    public void Put(int key, int value) {
+        int i = IndexFor(key, table.Length);
+        for (Node n = table[i]; n != null; n = n.Next) {
+            if (n.Key == key) { n.Val = value; return; }   // key exists: update only
+        }
+        table[i] = new Node(key, value, table[i]);         // new key: add at head of chain
+        if (++size > table.Length * LOAD_FACTOR) Resize();
+    }
+
+    public int Get(int key) {
+        for (Node n = table[IndexFor(key, table.Length)]; n != null; n = n.Next) {
+            if (n.Key == key) return n.Val;
+        }
+        return -1;
+    }
+
+    public void Remove(int key) {
+        int i = IndexFor(key, table.Length);
+        Node prev = null, cur = table[i];
+        while (cur != null) {
+            if (cur.Key == key) {
+                if (prev == null) table[i] = cur.Next;   // removing the head
+                else prev.Next = cur.Next;               // unlink from the middle/tail
+                size--;
+                return;
+            }
+            prev = cur;
+            cur = cur.Next;
+        }
+    }
+
+    // Double the table and re-place every node with the new mask.
+    private void Resize() {
+        Node[] old = table;
+        table = new Node[old.Length * 2];
+        foreach (Node head in old) {
+            for (Node n = head; n != null; ) {
+                Node next = n.Next;
+                int i = IndexFor(n.Key, table.Length);
+                n.Next = table[i];
+                table[i] = n;
+                n = next;
+            }
+        }
+    }
+}` }],
         dry: {
           head: ['call', 'index (key &amp; 15)', 'chain of that bucket after the call', 'size', 'returns'],
           rows: [
@@ -938,7 +1126,35 @@ int main() {
     for (char c : string("mississippi")) byChar[c]++;
     for (auto& [c, n] : byChar) cout << c << "=" << n << " ";   // i=4 m=1 p=2 s=4
     cout << "\\n";
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class TallyIdioms {
+    static void Main() {
+        int[] arr = { 9, 4, 9, 6, 7, 4 };
+
+        // 1) Dictionary tally: TryGetValue gives 0 for a missing key, then write back old + 1
+        var cnt = new Dictionary<int, int>();
+        foreach (int x in arr) { cnt.TryGetValue(x, out int c); cnt[x] = c + 1; }
+        Console.WriteLine("count of 9 = " + cnt[9]);
+
+        // 2) Second pass over the ARRAY (keeps the original order) to find the first count == 1
+        foreach (int x in arr) {
+            if (cnt[x] == 1) { Console.WriteLine("first non-repeating = " + x); break; }
+        }
+
+        // 3) int[26] tally for lowercase letters: index = c - 'a'
+        int[] letters = new int[26];
+        foreach (char c in "banana") letters[c - 'a']++;
+        Console.WriteLine("a=" + letters[0] + " b=" + letters[1] + " n=" + letters['n' - 'a']);
+
+        // 4) LINQ version (nice for one-liners, slower in hot loops); SortedDictionary keeps keys sorted
+        var byChar = new SortedDictionary<char, int>("mississippi".GroupBy(c => c).ToDictionary(g => g.Key, g => g.Count()));
+        Console.WriteLine(string.Join(" ", byChar.Select(kv => kv.Key + "=" + kv.Value))); // i=4 m=1 p=2 s=4
+    }
+}`, run: true }] }],
     codeTitle: 'Tally idioms',
     viz: [{
       title: 'Tally sheet → first non-repeating element',
@@ -1026,7 +1242,16 @@ print(cnt[0], cnt[1], cnt[ord("n") - ord("a")])   # 3 1 2` }, { lang: 'js', code
 for (const c of 'banana') cnt[c.charCodeAt(0) - 97]++;
 console.log(cnt[0], cnt[1], cnt['n'.charCodeAt(0) - 97]); // 3 1 2` }, { lang: 'cpp', code: `array<int, 26> cnt{};
 for (char c : string("banana")) cnt[c - 'a']++;
-cout << cnt[0] << " " << cnt[1] << " " << cnt['n' - 'a'] << "\\n"; // 3 1 2` }] }
+cout << cnt[0] << " " << cnt[1] << " " << cnt['n' - 'a'] << "\\n"; // 3 1 2` }, { lang: 'csharp', code: String.raw`
+using System;
+
+class Program {
+    static void Main() {
+        int[] cnt = new int[26];
+        foreach (char c in "banana") cnt[c - 'a']++;
+        Console.WriteLine(cnt[0] + " " + cnt[1] + " " + cnt['n' - 'a']); // 3 1 2
+    }
+}`, run: true }] }
     }, {
       title: 'First unique character in a string (LeetCode 387)',
       html: `<p>s = "loveleetcode". Tally: l=2, o=2, v=1, e=4, t=1, c=1, d=1. Second pass over s: l(2) o(2) <b>v(1)</b> → return index <b>2</b>.</p>
@@ -1049,6 +1274,12 @@ def first_uniq_char(s):
     array<int, 26> cnt{};
     for (char c : s) cnt[c - 'a']++;
     for (int i = 0; i < (int)s.size(); i++) if (cnt[s[i] - 'a'] == 1) return i;
+    return -1;
+}` }, { lang: 'csharp', code: String.raw`
+int FirstUniqChar(string s) {
+    int[] cnt = new int[26];
+    for (int i = 0; i < s.Length; i++) cnt[s[i] - 'a']++;
+    for (int i = 0; i < s.Length; i++) if (cnt[s[i] - 'a'] == 1) return i;
     return -1;
 }` }] }
     }, {
@@ -1080,6 +1311,15 @@ def majority(a):
     unordered_map<int, int> cnt;
     for (int x : a)
         if (++cnt[x] > (int)a.size() / 2) return x;   // ++ returns the new count
+    return -1; // problem guarantees a majority exists
+}` }, { lang: 'csharp', code: String.raw`
+int Majority(int[] a) {
+    var cnt = new Dictionary<int, int>();
+    foreach (int x in a) {
+        cnt.TryGetValue(x, out int c);
+        cnt[x] = c + 1;
+        if (c + 1 > a.Length / 2) return x;   // the new count
+    }
     return -1; // problem guarantees a majority exists
 }` }] }
     }, {
@@ -1145,6 +1385,18 @@ def majority(a):
         if (count == 1) return arr[i];   // first one in array order
     }
     return 0;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FirstNonRepeating(int[] arr) {
+        for (int i = 0; i < arr.Length; i++) {
+            int count = 0;
+            for (int j = 0; j < arr.Length; j++) {
+                if (arr[j] == arr[i]) count++;
+            }
+            if (count == 1) return arr[i];   // first one in array order
+        }
+        return 0;
+    }
 }` }
           ]
         }
@@ -1206,7 +1458,22 @@ def first_non_repeating(arr):
     for (int x : arr) if (cnt[x] == 1) return x;   // pass 2
     return 0;
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int FirstNonRepeating(int[] arr) {
+        // Pass 1: tally sheet value -> how many times it appears
+        var count = new Dictionary<int, int>();
+        foreach (int x in arr) { count.TryGetValue(x, out int c); count[x] = c + 1; }
+
+        // Pass 2: walk in ORIGINAL order; the first count of 1 wins
+        foreach (int x in arr) {
+            if (count[x] == 1) return x;
+        }
+        return 0; // every element repeats
+    }
+}` }],
         dry: {
           head: ['pass', 'i', 'arr[i]', 'tally / lookup', 'action'],
           rows: [
@@ -1290,6 +1557,20 @@ def first_non_repeating(arr):
         if (!found) return false;     // s has a letter t cannot match
     }
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsAnagram(string s, string t) {
+        if (s.Length != t.Length) return false;
+        bool[] used = new bool[t.Length];
+        for (int i = 0; i < s.Length; i++) {
+            bool found = false;
+            for (int j = 0; j < t.Length; j++) {
+                if (!used[j] && t[j] == s[i]) { used[j] = true; found = true; break; }
+            }
+            if (!found) return false;     // s has a letter t cannot match
+        }
+        return true;
+    }
 }` }
           ]
         }
@@ -1346,6 +1627,18 @@ def first_non_repeating(arr):
     }
     for (int c : cnt) if (c != 0) return false;
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsAnagram(string s, string t) {
+        if (s.Length != t.Length) return false;       // quick reject
+        int[] cnt = new int[26];                      // perfect hash: 'a'->0 ... 'z'->25
+        for (int i = 0; i < s.Length; i++) {
+            cnt[s[i] - 'a']++;                        // s adds
+            cnt[t[i] - 'a']--;                        // t removes
+        }
+        foreach (int c in cnt) if (c != 0) return false;   // some letter unbalanced
+        return true;
+    }
 }` }, {
           lang: 'python', code: `from collections import Counter
 
@@ -1487,6 +1780,32 @@ vector<vector<string>> groupAnagrams(vector<string>& strs) {
         res.push_back(group);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<string>> GroupAnagrams(string[] strs) {
+        var res = new List<IList<string>>();
+        bool[] used = new bool[strs.Length];
+        for (int i = 0; i < strs.Length; i++) {
+            if (used[i]) continue;
+            var group = new List<string> { strs[i] };
+            used[i] = true;
+            for (int j = i + 1; j < strs.Length; j++) {
+                if (!used[j] && SameLetters(strs[i], strs[j])) { group.Add(strs[j]); used[j] = true; }
+            }
+            res.Add(group);
+        }
+        return res;
+    }
+
+    bool SameLetters(string a, string b) {
+        if (a.Length != b.Length) return false;
+        int[] cnt = new int[26];
+        for (int k = 0; k < a.Length; k++) { cnt[a[k] - 'a']++; cnt[b[k] - 'a']--; }
+        foreach (int c in cnt) if (c != 0) return false;
+        return true;
+    }
 }` }
           ]
         }
@@ -1544,6 +1863,22 @@ vector<vector<string>> groupAnagrams(vector<string>& strs) {
     vector<vector<string>> res;
     for (auto& [key, words] : groups) res.push_back(move(words));
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<IList<string>> GroupAnagrams(string[] strs) {
+        var groups = new Dictionary<string, IList<string>>();
+        foreach (string w in strs) {
+            char[] letters = w.ToCharArray();
+            Array.Sort(letters);                       // "tea" -> "aet"
+            string key = new string(letters);
+            if (!groups.TryGetValue(key, out IList<string> g)) groups[key] = g = new List<string>();
+            g.Add(w);
+        }
+        return new List<IList<string>>(groups.Values);
+    }
 }` }, {
           lang: 'java', title: 'O(K) counting signature', code: `class Solution2 {
     public List<List<String>> groupAnagrams(String[] strs) {
@@ -1764,7 +2099,47 @@ int main() {
     cout << "[" << r[0] << ", " << r[1] << "]\\n";                       // [1, 3]
     cout << boolalpha << containsDuplicate({1, 2, 3, 1}) << "\\n";       // true
     cout << countPairs({1, 5, 7, 1, 5}, 6) << "\\n";                     // 4
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class LookupPatterns {
+    // 2-Sum returning indices: value -> index of where we saw it
+    static int[] TwoSum(int[] nums, int target) {
+        var seen = new Dictionary<int, int>();
+        for (int i = 0; i < nums.Length; i++) {
+            int need = target - nums[i];
+            if (seen.TryGetValue(need, out int j)) return new[] { j, i };   // partner seen earlier
+            seen[nums[i]] = i;                       // insert AFTER checking
+        }
+        return new int[0];
+    }
+
+    // Contains Duplicate: Add() returns false if the value was already present
+    static bool ContainsDuplicate(int[] nums) {
+        var seen = new HashSet<int>();
+        foreach (int x in nums) if (!seen.Add(x)) return true;
+        return false;
+    }
+
+    // Count pairs (i < j) with nums[i] + nums[j] == k, duplicates allowed
+    static long CountPairs(int[] nums, int k) {
+        var freq = new Dictionary<int, int>();
+        long pairs = 0;
+        foreach (int x in nums) {
+            if (freq.TryGetValue(k - x, out int c)) pairs += c;   // every earlier partner makes a pair
+            freq.TryGetValue(x, out int f);
+            freq[x] = f + 1;
+        }
+        return pairs;
+    }
+
+    static void Main() {
+        Console.WriteLine("[" + string.Join(", ", TwoSum(new[] { 11, 2, 15, 7 }, 9)) + "]"); // [1, 3]
+        Console.WriteLine(ContainsDuplicate(new[] { 1, 2, 3, 1 }));                          // True
+        Console.WriteLine(CountPairs(new[] { 1, 5, 7, 1, 5 }, 6));                           // 4
+    }
+}`, run: true }] }],
     codeTitle: 'Lookup patterns',
     viz: [{
       title: '2-Sum with a HashMap (value → index), check before insert',
@@ -1865,6 +2240,14 @@ int main() {
         seen.insert(x);
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+bool PairWithDiff(int[] a, int k) {
+    var seen = new HashSet<int>();
+    foreach (int x in a) {
+        if (seen.Contains(x - k) || seen.Contains(x + k)) return true;
+        seen.Add(x);
+    }
+    return false;
 }` }] }
     }, {
       title: 'Sorted input? Then two pointers beat hashing on memory',
@@ -1921,6 +2304,16 @@ ${H.table(['input', 'best approach', 'time', 'space'], [['unsorted, return indic
         }
     }
     return {};
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int[] TwoSum(int[] nums, int target) {
+        for (int i = 0; i < nums.Length; i++) {
+            for (int j = i + 1; j < nums.Length; j++) {
+                if (nums[i] + nums[j] == target) return new[] { i, j };
+            }
+        }
+        return new int[0];
+    }
 }` }
           ]
         }
@@ -1988,7 +2381,20 @@ ${H.table(['input', 'best approach', 'time', 'space'], [['unsorted, return indic
     }
     return {};
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int[] TwoSum(int[] nums, int target) {
+        var seen = new Dictionary<int, int>();           // value -> index (only EARLIER indices)
+        for (int i = 0; i < nums.Length; i++) {
+            int need = target - nums[i];                 // the partner we are looking for
+            if (seen.TryGetValue(need, out int j)) return new[] { j, i };   // partner already walked in
+            seen[nums[i]] = i;                           // now let later numbers find me
+        }
+        return new int[0];                               // problem guarantees we never get here
+    }
+}` }],
         dry: {
           head: ['i', 'nums[i]', 'need = 9 − nums[i]', 'map before', 'action'],
           rows: [
@@ -2172,7 +2578,43 @@ int main() {
     cout << "\\n" << boolalpha;
     cout << containsNearbyDuplicate({1, 2, 3, 1}, 3) << "\\n";         // true
     cout << containsNearbyDuplicate({1, 2, 3, 1, 2, 3}, 2) << "\\n";   // false
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class WindowDistinct {
+    // Distinct count of every window of size k. O(N) average.
+    static List<int> DistinctInWindows(int[] arr, int k) {
+        var cnt = new Dictionary<int, int>();
+        var res = new List<int>();
+        for (int i = 0; i < arr.Length; i++) {
+            cnt.TryGetValue(arr[i], out int c);
+            cnt[arr[i]] = c + 1;                                     // 1) element enters
+            if (i >= k) {
+                int o = arr[i - k];                                  // 2) element leaves
+                if (cnt[o] == 1) cnt.Remove(o); else cnt[o]--;       // delete at 0 so Count == distinct
+            }
+            if (i >= k - 1) res.Add(cnt.Count);                      // 3) window complete: answer
+        }
+        return res;
+    }
+
+    // Contains Duplicate II: is there i != j with a[i] == a[j] and |i - j| <= k ?
+    static bool ContainsNearbyDuplicate(int[] a, int k) {
+        var window = new HashSet<int>();                             // holds at most k latest values
+        for (int i = 0; i < a.Length; i++) {
+            if (!window.Add(a[i])) return true;                      // same value inside the window
+            if (window.Count > k) window.Remove(a[i - k]);           // keep only the last k
+        }
+        return false;
+    }
+
+    static void Main() {
+        Console.WriteLine("[" + string.Join(", ", DistinctInWindows(new[] { 1, 2, 1, 3, 4, 2, 3 }, 4)) + "]"); // [3, 4, 4, 3]
+        Console.WriteLine(ContainsNearbyDuplicate(new[] { 1, 2, 3, 1 }, 3));          // True
+        Console.WriteLine(ContainsNearbyDuplicate(new[] { 1, 2, 3, 1, 2, 3 }, 2));    // False
+    }
+}`, run: true }] }],
     codeTitle: 'Window frequency map',
     viz: [{
       title: 'Slide the window: add (green), remove/erase (red), answer = number of keys',
@@ -2284,6 +2726,17 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
         if (i >= k - 1) res.push_back(distinct);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+List<int> DistinctSmallRange(int[] a, int k, int maxVal) {
+    int[] cnt = new int[maxVal + 1];
+    int distinct = 0;
+    var res = new List<int>();
+    for (int i = 0; i < a.Length; i++) {
+        if (cnt[a[i]]++ == 0) distinct++;              // 0 -> 1: a new distinct value
+        if (i >= k && --cnt[a[i - k]] == 0) distinct--; // 1 -> 0: value fully left
+        if (i >= k - 1) res.Add(distinct);
+    }
+    return res;
 }` }] }
     }],
     deepDive: `<p><b>Invariant.</b> After processing index i (once i ≥ K − 1), the map contains exactly the multiset of arr[i−K+1..i], with no zero-count keys. Therefore <code>size()</code> equals the distinct count. Forgetting to delete zero-count keys breaks the invariant silently — <code>size()</code> keeps growing.</p>
@@ -2340,6 +2793,19 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
         res.push_back((int)seen.size());
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> CountDistinct(int[] arr, int k) {
+        var res = new List<int>();
+        for (int start = 0; start + k <= arr.Length; start++) {
+            var seen = new HashSet<int>();
+            for (int j = start; j < start + k; j++) seen.Add(arr[j]);
+            res.Add(seen.Count);
+        }
+        return res;
+    }
 }` }
           ]
         }
@@ -2421,7 +2887,25 @@ def count_distinct(arr, k):
     }
     return res;
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> CountDistinct(int[] arr, int k) {
+        var cnt = new Dictionary<int, int>();           // value -> copies inside window
+        var res = new List<int>();
+        for (int i = 0; i < arr.Length; i++) {
+            cnt.TryGetValue(arr[i], out int c);
+            cnt[arr[i]] = c + 1;                        // enter
+            if (i >= k) {
+                int o = arr[i - k];                     // leave
+                if (cnt[o] == 1) cnt.Remove(o); else cnt[o]--;   // delete at 0
+            }
+            if (i >= k - 1) res.Add(cnt.Count);         // full window -> answer
+        }
+        return res;
+    }
+}` }],
         dry: {
           head: ['i', 'enters', 'leaves', 'map after', 'answer so far'],
           rows: [
@@ -2602,7 +3086,43 @@ int main() {
     cout << hasZeroSum({1, 2, 3}) << "\\n";                       // false
     auto r = findZeroSum({4, 2, -3, 1, 6});
     if (r) cout << "[" << r->first << ", " << r->second << "]\\n"; // [1, 3]
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class ZeroSum {
+    // true if some non-empty contiguous subarray sums to 0
+    static bool HasZeroSum(int[] a) {
+        var seen = new HashSet<long>();
+        seen.Add(0L);                       // balance before any element (empty prefix)
+        long pf = 0;
+        foreach (int x in a) {
+            pf += x;                        // running balance
+            if (!seen.Add(pf)) return true; // Add() == false -> this balance appeared before
+        }
+        return false;
+    }
+
+    // Variant: return the [l, r] of one zero-sum subarray (or null)
+    static int[] FindZeroSum(int[] a) {
+        var firstAt = new Dictionary<long, int>();
+        firstAt[0L] = -1;                   // pf = 0 "happened" before index 0
+        long pf = 0;
+        for (int i = 0; i < a.Length; i++) {
+            pf += a[i];
+            if (firstAt.TryGetValue(pf, out int prev)) return new[] { prev + 1, i };  // a[prev+1..i] sums to 0
+            firstAt[pf] = i;
+        }
+        return null;
+    }
+
+    static void Main() {
+        Console.WriteLine(HasZeroSum(new[] { 4, 2, -3, 1, 6 }));                        // True
+        Console.WriteLine(HasZeroSum(new[] { 1, 2, 3 }));                               // False
+        Console.WriteLine("[" + string.Join(", ", FindZeroSum(new[] { 4, 2, -3, 1, 6 })) + "]"); // [1, 3]
+        Console.WriteLine("[" + string.Join(", ", FindZeroSum(new[] { 1, -1 })) + "]");         // [0, 1]
+    }
+}`, run: true }] }],
     codeTitle: 'Zero-sum subarray (exists + find)',
     viz: [{
       title: 'Running balance as bars + HashSet: spot the repeated balance',
@@ -2699,6 +3219,17 @@ console.log(hasZeroSum([-3, 2, 1, 6])); // true only because of the seed 0` }, {
 
 void demo() {
     cout << boolalpha << hasZeroSum({-3, 2, 1, 6}) << "\\n"; // true only because of the seed 0
+}` }, { lang: 'csharp', code: String.raw`
+bool HasZeroSum(int[] a) {
+    var seen = new HashSet<long>();
+    seen.Add(0L);                       // remove this line and the answer below becomes false
+    long pf = 0;
+    foreach (int x in a) { pf += x; if (!seen.Add(pf)) return true; }
+    return false;
+}
+
+void Demo() {
+    Console.WriteLine(HasZeroSum(new[] { -3, 2, 1, 6 })); // True only because of seen.Add(0L)
 }` }] }
     }, {
       title: 'Bank statement in real life',
@@ -2764,6 +3295,18 @@ void demo() {
         }
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool Findsum(int[] arr) {
+        for (int l = 0; l < arr.Length; l++) {
+            long sum = 0;
+            for (int r = l; r < arr.Length; r++) {
+                sum += arr[r];
+                if (sum == 0) return true;
+            }
+        }
+        return false;
+    }
 }` }
           ]
         }
@@ -2832,7 +3375,21 @@ void demo() {
     }
     return false;
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public bool Findsum(int[] arr) {
+        var seen = new HashSet<long>();
+        seen.Add(0L);                       // empty prefix: catches subarrays starting at index 0
+        long pf = 0;                        // long: up to 1e5 * 1e9 = 1e14
+        foreach (int x in arr) {
+            pf += x;
+            if (!seen.Add(pf)) return true; // balance repeated -> zero-sum subarray in between
+        }
+        return false;
+    }
+}` }],
         dry: {
           head: ['i', 'arr[i]', 'pf', 'set before', 'action'],
           rows: [
@@ -3017,7 +3574,46 @@ int main() {
     cout << countSubarrays({1, 1, 1}, 2) << "\\n";                   // 2
     cout << countSubarrays({0, 0, 0}, 0) << "\\n";                   // 6
     cout << countXorK({4, 2, 2, 6, 4}, 6) << "\\n";                  // 4
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class CountSumK {
+    static long CountSubarrays(int[] a, int k) {
+        var cnt = new Dictionary<long, int>();
+        cnt[0L] = 1;                                      // the empty prefix, seen once
+        long pf = 0, total = 0;
+        foreach (int x in a) {
+            pf += x;
+            if (cnt.TryGetValue(pf - k, out int c)) total += c;   // every earlier balance pf-k starts a valid subarray
+            cnt.TryGetValue(pf, out int f);
+            cnt[pf] = f + 1;                              // record this balance AFTER querying
+        }
+        return total;
+    }
+
+    // Same pattern, XOR version: number of subarrays whose XOR equals k
+    static long CountXorK(int[] a, int k) {
+        var cnt = new Dictionary<int, int>();
+        cnt[0] = 1;
+        int px = 0;
+        long total = 0;
+        foreach (int x in a) {
+            px ^= x;                                      // prefix XOR
+            if (cnt.TryGetValue(px ^ k, out int c)) total += c;   // px ^ earlier == k  <=>  earlier == px ^ k
+            cnt.TryGetValue(px, out int f);
+            cnt[px] = f + 1;
+        }
+        return total;
+    }
+
+    static void Main() {
+        Console.WriteLine(CountSubarrays(new[] { 3, 4, 7, 2, -3, 1, 4, 2 }, 7)); // 4
+        Console.WriteLine(CountSubarrays(new[] { 1, 1, 1 }, 2));                 // 2
+        Console.WriteLine(CountSubarrays(new[] { 0, 0, 0 }, 0));                 // 6
+        Console.WriteLine(CountXorK(new[] { 4, 2, 2, 6, 4 }, 6));                // 4
+    }
+}`, run: true }] }],
     codeTitle: 'Count subarrays with sum K (and XOR K)',
     viz: [{
       title: 'Count subarrays with sum K: balance → count tally',
@@ -3142,6 +3738,19 @@ int main() {
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SubarraySum(int[] nums, int k) {
+        int count = 0;
+        for (int l = 0; l < nums.Length; l++) {
+            int sum = 0;
+            for (int r = l; r < nums.Length; r++) {
+                sum += nums[r];
+                if (sum == k) count++;   // no early break: negatives may hit k again
+            }
+        }
+        return count;
+    }
 }` }
           ]
         }
@@ -3217,7 +3826,23 @@ def subarray_sum(nums, k):
     }
     return total;
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int SubarraySum(int[] nums, int k) {
+        var cnt = new Dictionary<int, int>();
+        cnt[0] = 1;                                     // empty prefix seen once
+        int pf = 0, total = 0;                          // safe as int under these constraints
+        foreach (int x in nums) {
+            pf += x;
+            if (cnt.TryGetValue(pf - k, out int c)) total += c;   // stretches ending here with sum k
+            cnt.TryGetValue(pf, out int f);
+            cnt[pf] = f + 1;                            // record AFTER querying
+        }
+        return total;
+    }
+}` }],
         dry: {
           head: ['i', 'x', 'pf', 'need pf − 7', 'cnt[need]', 'total', 'cnt after recording pf'],
           rows: [
@@ -3396,7 +4021,44 @@ int main() {
     cout << longestSumK({15, -2, 2, -8, 1, 7, 10, 23}, 0) << "\\n";   // 5
     cout << longestSumK({10, 5, 2, 7, 1, -10}, 15) << "\\n";          // 6
     cout << findMaxLength({0, 1, 1, 0, 1, 1, 1, 0}) << "\\n";         // 4
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class LongestSumK {
+    // Longest subarray with sum exactly k (negatives allowed). Works for k = 0 too.
+    static int LongestSumKFn(int[] a, long k) {
+        var first = new Dictionary<long, int>();
+        first[0L] = -1;                            // empty prefix "ends" at index -1
+        long pf = 0;
+        int best = 0;
+        for (int i = 0; i < a.Length; i++) {
+            pf += a[i];
+            if (first.TryGetValue(pf - k, out int j)) best = Math.Max(best, i - j);   // a[j+1..i] sums to k
+            if (!first.ContainsKey(pf)) first[pf] = i;   // keep the EARLIEST index -> longest answers
+        }
+        return best;
+    }
+
+    // Contiguous Array: longest subarray with equal 0s and 1s
+    static int FindMaxLength(int[] nums) {
+        var first = new Dictionary<int, int>();
+        first[0] = -1;
+        int bal = 0, best = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            bal += nums[i] == 1 ? 1 : -1;          // 1 -> +1, 0 -> -1
+            if (first.TryGetValue(bal, out int j)) best = Math.Max(best, i - j);
+            else first[bal] = i;
+        }
+        return best;
+    }
+
+    static void Main() {
+        Console.WriteLine(LongestSumKFn(new[] { 15, -2, 2, -8, 1, 7, 10, 23 }, 0)); // 5
+        Console.WriteLine(LongestSumKFn(new[] { 10, 5, 2, 7, 1, -10 }, 15));        // 6
+        Console.WriteLine(FindMaxLength(new[] { 0, 1, 1, 0, 1, 1, 1, 0 }));         // 4
+    }
+}`, run: true }] }],
     codeTitle: 'Longest sum K and equal 0s/1s',
     viz: [{
       title: 'Longest subarray with sum K: map balance → FIRST index',
@@ -3498,6 +4160,16 @@ int main() {
         if (sum == k) best = max(best, r - l + 1);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+int LongestSumKPositive(int[] a, long k) {   // only valid if all a[i] > 0
+    int best = 0, l = 0;
+    long sum = 0;
+    for (int r = 0; r < a.Length; r++) {
+        sum += a[r];
+        while (sum > k && l <= r) sum -= a[l++];
+        if (sum == k) best = Math.Max(best, r - l + 1);
+    }
+    return best;
 }` }] }
     }, {
       title: 'Longest Well-Performing Interval (a ±1 cousin)',
@@ -3564,6 +4236,21 @@ int main() {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxLen(int[] arr) {
+        int best = 0;
+        for (int l = 0; l < arr.Length; l++) {
+            int sum = 0;
+            for (int r = l; r < arr.Length; r++) {
+                sum += arr[r];
+                if (sum == 0) best = Math.Max(best, r - l + 1);
+            }
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -3624,6 +4311,22 @@ int main() {
         if (!inserted) best = max(best, i - it->second);  // arr[j+1..i] sums to 0
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int MaxLen(int[] arr) {
+        var first = new Dictionary<int, int>();
+        first[0] = -1;                           // balance 0 before the array starts
+        int pf = 0, best = 0;                    // |pf| <= 1e5 * 1000 = 1e8 fits in int
+        for (int i = 0; i < arr.Length; i++) {
+            pf += arr[i];
+            if (first.TryGetValue(pf, out int j)) best = Math.Max(best, i - j);   // arr[j+1..i] sums to 0
+            else first[pf] = i;                                                  // only the FIRST time
+        }
+        return best;
+    }
 }` }, {
           lang: 'python', code: `def max_len(arr):
     first, pf, best = {0: -1}, 0, 0
@@ -3708,6 +4411,21 @@ int main() {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int LongestSubarray(int[] arr, int k) {
+        int best = 0;
+        for (int l = 0; l < arr.Length; l++) {
+            long sum = 0;
+            for (int r = l; r < arr.Length; r++) {
+                sum += arr[r];
+                if (sum == k) best = Math.Max(best, r - l + 1);
+            }
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -3781,7 +4499,24 @@ int main() {
     }
     return best;
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LongestSubarray(int[] arr, int k) {
+        var first = new Dictionary<long, int>();
+        first[0L] = -1;
+        long pf = 0;
+        int best = 0;
+        for (int i = 0; i < arr.Length; i++) {
+            pf += arr[i];
+            if (first.TryGetValue(pf - k, out int j)) best = Math.Max(best, i - j);   // arr[j+1..i] sums to k
+            if (!first.ContainsKey(pf)) first[pf] = i;                               // keep earliest occurrence
+        }
+        return best;
+    }
+}` }],
         dry: {
           head: ['i', 'arr[i]', 'pf', 'need pf − 15', 'first[need]', 'length', 'best', 'map update'],
           rows: [
@@ -3855,6 +4590,21 @@ int main() {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int FindMaxLength(int[] nums) {
+        int best = 0;
+        for (int l = 0; l < nums.Length; l++) {
+            int zeros = 0, ones = 0;
+            for (int r = l; r < nums.Length; r++) {
+                if (nums[r] == 0) zeros++; else ones++;
+                if (zeros == ones) best = Math.Max(best, r - l + 1);
+            }
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -3919,6 +4669,22 @@ int main() {
         else f = i;
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int FindMaxLength(int[] nums) {
+        var first = new Dictionary<int, int>();
+        first[0] = -1;                             // balance 0 before index 0
+        int bal = 0, best = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            bal += (nums[i] == 1) ? 1 : -1;        // deposit for 1, withdraw for 0
+            if (first.TryGetValue(bal, out int j)) best = Math.Max(best, i - j);
+            else first[bal] = i;                   // first time we see this balance
+        }
+        return best;
+    }
 }` }, {
           lang: 'java', title: 'Array instead of HashMap (balance offset by N)', code: `class SolutionArray {
     public int findMaxLength(int[] nums) {
@@ -4165,7 +4931,48 @@ int main() {
     cout << lengthOfLongestSubstringSet("abcabcbb") << "\\n";   // 3
     cout << lengthOfLongestSubstringSet("pwwkew") << "\\n";     // 3
     cout << longestAtMostKDistinct("eceba", 2) << "\\n";        // 3 ("ece")
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class WindowHashing {
+    // Longest substring without repeating characters: HashSet + shrink
+    static int LengthOfLongestSubstringSet(string s) {
+        var window = new HashSet<char>();
+        int left = 0, best = 0;
+        for (int right = 0; right < s.Length; right++) {
+            char c = s[right];
+            while (window.Contains(c)) {          // duplicate inside: shrink from the left
+                window.Remove(s[left++]);
+            }
+            window.Add(c);
+            best = Math.Max(best, right - left + 1);
+        }
+        return best;
+    }
+
+    // Longest substring with at most k distinct characters: the general template
+    static int LongestAtMostKDistinct(string s, int k) {
+        var cnt = new Dictionary<char, int>();
+        int left = 0, best = 0;
+        for (int right = 0; right < s.Length; right++) {
+            cnt.TryGetValue(s[right], out int c);
+            cnt[s[right]] = c + 1;                                  // expand
+            while (cnt.Count > k) {                                 // invalid: too many distinct
+                char d = s[left++];
+                if (cnt[d] == 1) cnt.Remove(d); else cnt[d]--;
+            }
+            best = Math.Max(best, right - left + 1);                // valid window
+        }
+        return best;
+    }
+
+    static void Main() {
+        Console.WriteLine(LengthOfLongestSubstringSet("abcabcbb")); // 3
+        Console.WriteLine(LengthOfLongestSubstringSet("pwwkew"));   // 3
+        Console.WriteLine(LongestAtMostKDistinct("eceba", 2));      // 3 ("ece")
+    }
+}`, run: true }] }],
     codeTitle: 'Set-based window and the general at-most-K template',
     viz: [{
       title: 'Longest substring without repeats: HashSet window (add = green, removal = red)',
@@ -4306,6 +5113,18 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
         if (i >= m - 1 && win == need) res.push_back(i - m + 1);   // array == compares all 26
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+List<int> FindAnagrams(string s, string p) {
+    var res = new List<int>();
+    if (p.Length > s.Length) return res;
+    int[] need = new int[26], win = new int[26];
+    foreach (char c in p) need[c - 'a']++;
+    for (int i = 0; i < s.Length; i++) {
+        win[s[i] - 'a']++;                                      // enter
+        if (i >= p.Length) win[s[i - p.Length] - 'a']--;        // leave
+        if (i >= p.Length - 1 && win.SequenceEqual(need)) res.Add(i - p.Length + 1);   // LINQ: compare all 26
+    }
+    return res;
 }` }] }
     }],
     deepDive: `<p><b>Amortized proof.</b> In both algorithms each index enters the window once (when <code>right</code> passes it) and leaves at most once (when <code>left</code> passes it). Hash operations are O(1) average, so total time is O(N) (plus O(|t|) to build the need map). Space is O(Σ) — the alphabet size — not O(N).</p>
@@ -4371,6 +5190,22 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LengthOfLongestSubstring(string s) {
+        int best = 0;
+        for (int i = 0; i < s.Length; i++) {
+            var seen = new HashSet<char>();
+            for (int j = i; j < s.Length; j++) {
+                if (!seen.Add(s[j])) break;      // repeat: this start can go no further
+                best = Math.Max(best, j - i + 1);
+            }
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -4459,7 +5294,23 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
     }
     return best;
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LengthOfLongestSubstring(string s) {
+        var last = new Dictionary<char, int>();   // char -> last index seen
+        int left = 0, best = 0;
+        for (int right = 0; right < s.Length; right++) {
+            char c = s[right];
+            if (last.TryGetValue(c, out int prev) && prev >= left) left = prev + 1;   // duplicate inside window: jump
+            last[c] = right;
+            best = Math.Max(best, right - left + 1);
+        }
+        return best;
+    }
+}` }],
         dry: {
           head: ['right', 's[right]', 'last[c] before', 'left after', 'window', 'best'],
           rows: [
@@ -4574,6 +5425,29 @@ string minWindow(string s, string t) {
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public string MinWindow(string s, string t) {
+        int[] need = new int[128];
+        foreach (char c in t) need[c]++;
+        string best = "";
+        for (int l = 0; l < s.Length; l++) {
+            int[] have = new int[128];
+            for (int r = l; r < s.Length; r++) {
+                have[s[r]]++;
+                if (Covers(have, need)) {
+                    if (best.Length == 0 || r - l + 1 < best.Length) best = s.Substring(l, r - l + 1);
+                    break;                         // longer windows from this l cannot be shorter
+                }
+            }
+        }
+        return best;
+    }
+
+    bool Covers(int[] have, int[] need) {
+        for (int c = 0; c < 128; c++) if (have[c] < need[c]) return false;
+        return true;
+    }
 }` }
           ]
         }
@@ -4653,6 +5527,33 @@ string minWindow(string s, string t) {
         }
     }
     return bestLen == INT_MAX ? "" : s.substr(bestLeft, bestLen);
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public string MinWindow(string s, string t) {
+        if (t.Length > s.Length) return "";
+        var need = new Dictionary<char, int>();              // char -> how many more we need (negative = surplus)
+        foreach (char c in t) { need.TryGetValue(c, out int n0); need[c] = n0 + 1; }
+        int missing = t.Length;                              // required chars not yet in the window
+        int left = 0, bestLeft = 0, bestLen = int.MaxValue;
+
+        for (int right = 0; right < s.Length; right++) {
+            char c = s[right];
+            need.TryGetValue(c, out int n);
+            if (n > 0) missing--;                            // this char fills a requirement
+            need[c] = n - 1;                                 // take it into the window
+
+            while (missing == 0) {                           // window covers t: try to shrink
+                if (right - left + 1 < bestLen) { bestLen = right - left + 1; bestLeft = left; }
+                char d = s[left++];
+                int after = need[d] + 1;                     // give d back
+                need[d] = after;
+                if (after > 0) missing++;                    // we just lost a required copy
+            }
+        }
+        return bestLen == int.MaxValue ? "" : s.Substring(bestLeft, bestLen);
+    }
 }` }, {
           lang: 'java', title: 'int[128] version (same logic, faster)', code: `class SolutionArray {
     public String minWindow(String s, String t) {
@@ -4904,7 +5805,51 @@ int main() {
     cout << longestConsecutive({0, 3, 7, 2, 5, 8, 4, 6, 0, 1}) << "\\n";  // 9
     for (int b : streamingLongest({5, 1, 3, 2, 4})) cout << b << " ";    // 1 1 1 3 5
     cout << "\\n";
-}` }] }],
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class LongestConsecutive {
+    static int LongestConsecutiveFn(int[] nums) {
+        var set = new HashSet<int>(nums);               // O(N), duplicates collapse
+        int best = 0;
+        foreach (int x in set) {                        // iterate the SET, not nums
+            if (set.Contains(x - 1)) continue;          // not a chain start: someone before x exists
+            int len = 1;
+            while (set.Contains(x + len)) len++;        // walk the chain forward
+            best = Math.Max(best, len);
+        }
+        return best;
+    }
+
+    // Streaming version: numbers arrive one by one; keep the longest run so far.
+    // The map holds, for the ENDPOINTS of each run, the length of that run.
+    static int[] StreamingLongest(int[] stream) {
+        var runLen = new Dictionary<int, int>();
+        int best = 0;
+        int[] after = new int[stream.Length];
+        for (int i = 0; i < stream.Length; i++) {
+            int x = stream[i];
+            if (!runLen.ContainsKey(x)) {
+                runLen.TryGetValue(x - 1, out int left);    // run ending at x-1 (0 if absent)
+                runLen.TryGetValue(x + 1, out int right);   // run starting at x+1
+                int len = left + 1 + right;
+                runLen[x] = len;                            // mark x as seen
+                runLen[x - left] = len;                     // new left endpoint
+                runLen[x + right] = len;                    // new right endpoint
+                best = Math.Max(best, len);
+            }
+            after[i] = best;
+        }
+        return after;
+    }
+
+    static void Main() {
+        Console.WriteLine(LongestConsecutiveFn(new[] { 100, 4, 200, 1, 3, 2 }));        // 4
+        Console.WriteLine(LongestConsecutiveFn(new[] { 0, 3, 7, 2, 5, 8, 4, 6, 0, 1 })); // 9
+        Console.WriteLine("[" + string.Join(", ", StreamingLongest(new[] { 5, 1, 3, 2, 4 })) + "]"); // [1, 1, 1, 3, 5]
+    }
+}`, run: true }] }],
     codeTitle: 'Chain-start trick and the streaming boundary map',
     viz: [{
       title: 'Build the VIP set, then count only from chain starts',
@@ -5020,6 +5965,19 @@ int main() {
     vector<int> run(best);
     iota(run.begin(), run.end(), bestStart);
     return run;
+}` }, { lang: 'csharp', code: String.raw`
+List<int> LongestRun(int[] nums) {
+    var set = new HashSet<int>(nums);
+    int best = 0, bestStart = 0;
+    foreach (int x in set) {
+        if (set.Contains(x - 1)) continue;
+        int len = 1;
+        while (set.Contains(x + len)) len++;
+        if (len > best) { best = len; bestStart = x; }
+    }
+    var run = new List<int>();
+    for (int i = 0; i < best; i++) run.Add(bestStart + i);
+    return run;
 }` }] }
     }, {
       title: 'Sorting alternative (O(N log N), often fine in practice)',
@@ -5102,6 +6060,24 @@ int longestConsecutive(vector<int>& nums) {
         best = max(best, len);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int LongestConsecutive(int[] nums) {
+        int best = 0;
+        foreach (int x in nums) {
+            int len = 1;
+            while (ContainsLinear(nums, x + len)) len++;   // O(N) search each time
+            best = Math.Max(best, len);
+        }
+        return best;
+    }
+
+    bool ContainsLinear(int[] a, int target) {
+        foreach (int v in a) if (v == target) return true;
+        return false;
+    }
 }` }
           ]
         }
@@ -5176,7 +6152,23 @@ int longestConsecutive(vector<int>& nums) {
     }
     return best;
 }`
-        }],
+        }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LongestConsecutive(int[] nums) {
+        var set = new HashSet<int>(nums);
+        int best = 0;
+        foreach (int x in set) {                   // each distinct value once
+            if (set.Contains(x - 1)) continue;     // not the front of a chain
+            int len = 1;
+            while (set.Contains(x + len)) len++;   // walk this chain once
+            best = Math.Max(best, len);
+        }
+        return best;
+    }
+}` }],
         dry: {
           head: ['x (from set)', 'x − 1 in set?', 'role', 'walk forward', 'length', 'best'],
           rows: [
@@ -5246,6 +6238,19 @@ int longestConsecutive(vector<int>& nums) {
         mag.erase(pos, 1);                          // use it up
     }
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Text;
+
+public class Solution {
+    public bool CanConstruct(string ransomNote, string magazine) {
+        var mag = new StringBuilder(magazine);
+        foreach (char c in ransomNote) {
+            int pos = mag.ToString().IndexOf(c);        // O(m) search
+            if (pos < 0) return false;
+            mag.Remove(pos, 1);                         // use it up
+        }
+        return true;
+    }
 }` }
           ]
         }
@@ -5294,6 +6299,17 @@ int longestConsecutive(vector<int>& nums) {
     for (char c : ransomNote)
         if (--cnt[c - 'a'] < 0) return false;   // ran out of this letter
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool CanConstruct(string ransomNote, string magazine) {
+        if (ransomNote.Length > magazine.Length) return false;
+        int[] cnt = new int[26];
+        for (int i = 0; i < magazine.Length; i++) cnt[magazine[i] - 'a']++;
+        for (int i = 0; i < ransomNote.Length; i++) {
+            if (--cnt[ransomNote[i] - 'a'] < 0) return false;   // ran out of this letter
+        }
+        return true;
+    }
 }` }, { lang: 'python', code: `from collections import Counter
 
 def can_construct(note, magazine):
@@ -5354,6 +6370,20 @@ def can_construct(note, magazine):
         }
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int[] Intersect(int[] nums1, int[] nums2) {
+        bool[] used = new bool[nums2.Length];
+        var res = new List<int>();
+        foreach (int x in nums1) {
+            for (int j = 0; j < nums2.Length; j++) {
+                if (!used[j] && nums2[j] == x) { used[j] = true; res.Add(x); break; }
+            }
+        }
+        return res.ToArray();
+    }
 }` }
           ]
         }
@@ -5410,6 +6440,20 @@ def can_construct(note, magazine):
         if (it != cnt.end() && it->second > 0) { res.push_back(x); it->second--; }   // spend one copy
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int[] Intersect(int[] nums1, int[] nums2) {
+        if (nums1.Length > nums2.Length) return Intersect(nums2, nums1);  // tally the smaller one
+        var cnt = new Dictionary<int, int>();
+        foreach (int x in nums1) { cnt.TryGetValue(x, out int c0); cnt[x] = c0 + 1; }
+        var res = new List<int>();
+        foreach (int x in nums2) {
+            if (cnt.TryGetValue(x, out int c) && c > 0) { res.Add(x); cnt[x] = c - 1; }   // spend one copy
+        }
+        return res.ToArray();
+    }
 }` }, { lang: 'python', code: `from collections import Counter
 
 def intersect(nums1, nums2):
@@ -5467,6 +6511,18 @@ def intersect(nums1, nums2):
         }
     }
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool IsIsomorphic(string s, string t) {
+        for (int i = 0; i < s.Length; i++) {
+            for (int j = i + 1; j < s.Length; j++) {
+                bool sameS = s[i] == s[j];
+                bool sameT = t[i] == t[j];
+                if (sameS != sameT) return false;
+            }
+        }
+        return true;
+    }
 }` }
           ]
         }
@@ -5522,6 +6578,20 @@ def intersect(nums1, nums2):
         else if (st[a] != b || ts[b] != a) return false;            // clashes with a pair
     }
     return true;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public bool IsIsomorphic(string s, string t) {
+        var st = new Dictionary<char, char>();
+        var ts = new Dictionary<char, char>();
+        for (int i = 0; i < s.Length; i++) {
+            char a = s[i], b = t[i];
+            if (st.TryGetValue(a, out char prevB)) { if (prevB != b) return false; } else st[a] = b;   // existing mapping must agree
+            if (ts.TryGetValue(b, out char prevA)) { if (prevA != a) return false; } else ts[b] = a;
+        }
+        return true;
+    }
 }` }, { lang: 'python', code: `def is_isomorphic(s, t):
     st, ts = {}, {}
     for a, b in zip(s, t):
@@ -5601,6 +6671,24 @@ bool isHappy(int n) {
         n = digitSquareSum(n);
     }
     return n == 1;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public bool IsHappy(int n) {
+        var history = new List<int>();
+        while (n != 1 && !history.Contains(n)) {   // Contains() is O(k) on a list
+            history.Add(n);
+            n = DigitSquareSum(n);
+        }
+        return n == 1;
+    }
+
+    int DigitSquareSum(int n) {
+        int s = 0;
+        while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
+        return s;
+    }
 }` }
           ]
         }
@@ -5660,6 +6748,23 @@ bool isHappy(int n) {
     unordered_set<int> seen;
     while (n != 1 && seen.insert(n).second) n = next(n);   // insert fails on a repeat -> cycle
     return n == 1;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public bool IsHappy(int n) {
+        var seen = new HashSet<int>();
+        while (n != 1 && seen.Add(n)) {   // Add() is false when n repeats -> cycle
+            n = Next(n);
+        }
+        return n == 1;
+    }
+
+    private int Next(int n) {
+        int s = 0;
+        while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
+        return s;
+    }
 }` }, { lang: 'python', code: `def is_happy(n):
     seen = set()
     while n != 1 and n not in seen:
@@ -5716,6 +6821,19 @@ bool isHappy(int n) {
     for (auto& kv : cnt) keys.push_back(kv.first);
     sort(keys.begin(), keys.end(), [&](int a, int b) { return cnt[a] > cnt[b]; });   // most frequent first: O(D log D)
     return vector<int>(keys.begin(), keys.begin() + k);
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int[] TopKFrequent(int[] nums, int k) {
+        var cnt = new Dictionary<int, int>();
+        foreach (int x in nums) { cnt.TryGetValue(x, out int c); cnt[x] = c + 1; }
+        var keys = new List<int>(cnt.Keys);
+        keys.Sort((a, b) => cnt[b].CompareTo(cnt[a]));     // most frequent first: O(D log D)
+        int[] res = new int[k];
+        for (int i = 0; i < k; i++) res[i] = keys[i];
+        return res;
+    }
 }` }
           ]
         }
@@ -5787,6 +6905,32 @@ bool isHappy(int n) {
             res.push_back(v);
         }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int[] TopKFrequent(int[] nums, int k) {
+        var cnt = new Dictionary<int, int>();
+        foreach (int x in nums) { cnt.TryGetValue(x, out int c); cnt[x] = c + 1; }
+
+        var bucket = new List<int>[nums.Length + 1];       // bucket[f] = values with frequency f
+        foreach (var e in cnt) {
+            int f = e.Value;
+            if (bucket[f] == null) bucket[f] = new List<int>();
+            bucket[f].Add(e.Key);
+        }
+
+        int[] res = new int[k];
+        int idx = 0;
+        for (int f = nums.Length; f >= 1 && idx < k; f--) {
+            if (bucket[f] == null) continue;
+            foreach (int v in bucket[f]) {
+                if (idx == k) break;
+                res[idx++] = v;
+            }
+        }
+        return res;
+    }
 }` }, { lang: 'python', code: `from collections import Counter
 
 def top_k_frequent(nums, k):
@@ -5848,6 +6992,19 @@ def top_k_frequent(nums, k):
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SubarraysDivByK(int[] nums, int k) {
+        int count = 0;
+        for (int l = 0; l < nums.Length; l++) {
+            int sum = 0;
+            for (int r = l; r < nums.Length; r++) {
+                sum += nums[r];
+                if (sum % k == 0) count++;        // works for negatives too: -5 % 5 == 0
+            }
+        }
+        return count;
+    }
 }` }
           ]
         }
@@ -5902,6 +7059,19 @@ def top_k_frequent(nums, k):
         total += cnt[pf]++;
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int SubarraysDivByK(int[] nums, int k) {
+        int[] cnt = new int[k];          // remainder -> how many prefixes had it
+        cnt[0] = 1;                      // empty prefix
+        int pf = 0, total = 0;
+        foreach (int x in nums) {
+            pf = ((pf + x) % k + k) % k; // keep pf as a normalized remainder (C# % keeps the sign)
+            total += cnt[pf];
+            cnt[pf]++;
+        }
+        return total;
+    }
 }` }, { lang: 'python', code: `def subarrays_div_by_k(nums, k):
     cnt = [0] * k
     cnt[0] = 1
@@ -5965,6 +7135,18 @@ def top_k_frequent(nums, k):
         }
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public bool CheckSubarraySum(int[] nums, int k) {
+        for (int l = 0; l < nums.Length; l++) {
+            long sum = nums[l];
+            for (int r = l + 1; r < nums.Length; r++) {
+                sum += nums[r];
+                if (sum % k == 0) return true;   // length r - l + 1 >= 2
+            }
+        }
+        return false;
+    }
 }` }
           ]
         }
@@ -6028,6 +7210,24 @@ def top_k_frequent(nums, k):
         if (!inserted && i - it->second >= 2) return true;   // length at least 2
     }
     return false;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public bool CheckSubarraySum(int[] nums, int k) {
+        var first = new Dictionary<int, int>();
+        first[0] = -1;                             // empty prefix has remainder 0
+        int rem = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            rem = (int)(((long)rem + nums[i]) % k);   // long avoids overflow before %
+            if (first.TryGetValue(rem, out int j)) {
+                if (i - j >= 2) return true;       // subarray j+1..i has length >= 2
+            } else {
+                first[rem] = i;                    // keep the earliest index only
+            }
+        }
+        return false;
+    }
 }` }, { lang: 'python', code: `def check_subarray_sum(nums, k):
     first, rem = {0: -1}, 0
     for i, x in enumerate(nums):
@@ -6101,6 +7301,20 @@ def top_k_frequent(nums, k):
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int NumberOfSubarrays(int[] nums, int k) {
+        int count = 0;
+        for (int l = 0; l < nums.Length; l++) {
+            int odd = 0;
+            for (int r = l; r < nums.Length; r++) {
+                odd += nums[r] & 1;
+                if (odd == k) count++;
+                else if (odd > k) break;          // more odds can only grow
+            }
+        }
+        return count;
+    }
 }` }
           ]
         }
@@ -6156,6 +7370,19 @@ def top_k_frequent(nums, k):
         cnt[odd]++;
     }
     return total;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int NumberOfSubarrays(int[] nums, int k) {
+        int[] cnt = new int[nums.Length + 1];   // prefix odd count -> how many prefixes
+        cnt[0] = 1;
+        int odd = 0, total = 0;
+        foreach (int x in nums) {
+            odd += x & 1;                        // 1 if odd
+            if (odd >= k) total += cnt[odd - k]; // earlier prefixes with odd - k odds
+            cnt[odd]++;
+        }
+        return total;
+    }
 }` }, { lang: 'python', code: `def number_of_subarrays(nums, k):
     cnt = [0] * (len(nums) + 1)
     cnt[0] = 1
@@ -6227,6 +7454,23 @@ def top_k_frequent(nums, k):
         }
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LengthOfLongestSubstringKDistinct(string s, int k) {
+        int best = 0;
+        for (int i = 0; i < s.Length; i++) {
+            var seen = new HashSet<char>();
+            for (int j = i; j < s.Length; j++) {
+                seen.Add(s[j]);
+                if (seen.Count > k) break;
+                best = Math.Max(best, j - i + 1);
+            }
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -6290,6 +7534,25 @@ def top_k_frequent(nums, k):
         best = max(best, right - left + 1);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LengthOfLongestSubstringKDistinct(string s, int k) {
+        var cnt = new Dictionary<char, int>();   // char -> copies in the window
+        int left = 0, best = 0;
+        for (int right = 0; right < s.Length; right++) {
+            cnt.TryGetValue(s[right], out int c);
+            cnt[s[right]] = c + 1;
+            while (cnt.Count > k) {              // too many distinct: shrink
+                char d = s[left++];
+                if (cnt[d] == 1) cnt.Remove(d); else cnt[d]--;   // delete at 0
+            }
+            best = Math.Max(best, right - left + 1);
+        }
+        return best;
+    }
 }` }, { lang: 'python', code: `from collections import defaultdict
 
 def length_of_longest_substring_k_distinct(s, k):
@@ -6347,6 +7610,14 @@ def length_of_longest_substring_k_distinct(s, k):
     for (int a : A) for (int b : B) for (int c : C) for (int d : D)
         if (a + b + c + d == 0) count++;
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int FourSumCount(int[] A, int[] B, int[] C, int[] D) {
+        int count = 0;
+        foreach (int a in A) foreach (int b in B) foreach (int c in C) foreach (int d in D)
+            if (a + b + c + d == 0) count++;
+        return count;
+    }
 }` }
           ]
         }
@@ -6392,6 +7663,17 @@ def length_of_longest_substring_k_distinct(s, k):
         if (it != ab.end()) count += it->second;
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int FourSumCount(int[] A, int[] B, int[] C, int[] D) {
+        var ab = new Dictionary<int, int>();             // a + b -> how many pairs (|a + b| <= 2^29: no overflow)
+        foreach (int a in A) foreach (int b in B) { ab.TryGetValue(a + b, out int c0); ab[a + b] = c0 + 1; }
+        int count = 0;
+        foreach (int c in C) foreach (int d in D) if (ab.TryGetValue(-(c + d), out int n)) count += n;
+        return count;
+    }
 }` }, { lang: 'python', code: `from collections import Counter
 
 def four_sum_count(A, B, C, D):
@@ -6479,6 +7761,27 @@ def four_sum_count(A, B, C, D):
         best = min(best, crossed);
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LeastBricks(IList<IList<int>> wall) {
+        int width = 0;
+        foreach (int w in wall[0]) width += w;
+        int best = wall.Count;
+        for (int x = 1; x < width; x++) {            // hopeless when width is huge
+            int crossed = 0;
+            foreach (var row in wall) {
+                int pos = 0;
+                bool onEdge = false;
+                foreach (int w in row) { pos += w; if (pos == x) { onEdge = true; break; } if (pos > x) break; }
+                if (!onEdge) crossed++;
+            }
+            best = Math.Min(best, crossed);
+        }
+        return best;
+    }
 }` }
           ]
         }
@@ -6539,6 +7842,25 @@ def four_sum_count(A, B, C, D):
         }
     }
     return (int)wall.size() - most;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int LeastBricks(IList<IList<int>> wall) {
+        var edges = new Dictionary<long, int>();     // position -> rows with an edge there
+        int most = 0;
+        foreach (var row in wall) {
+            long pos = 0;
+            for (int i = 0; i < row.Count - 1; i++) {   // skip the last brick: outer edge
+                pos += row[i];
+                edges.TryGetValue(pos, out int c);
+                edges[pos] = c + 1;
+                most = Math.Max(most, c + 1);
+            }
+        }
+        return wall.Count - most;
+    }
 }` }, { lang: 'python', code: `from collections import Counter
 from itertools import accumulate
 
@@ -6610,6 +7932,22 @@ def least_bricks(wall):
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int SubarraysWithKDistinct(int[] nums, int k) {
+        int count = 0;
+        for (int l = 0; l < nums.Length; l++) {
+            var seen = new HashSet<int>();
+            for (int r = l; r < nums.Length; r++) {
+                seen.Add(nums[r]);
+                if (seen.Count == k) count++;
+                else if (seen.Count > k) break;
+            }
+        }
+        return count;
+    }
 }` }
           ]
         }
@@ -6685,7 +8023,30 @@ public:
     int subarraysWithKDistinct(vector<int>& nums, int k) {
         return atMost(nums, k) - atMost(nums, k - 1);
     }
-};` }, { lang: 'python', code: `from collections import defaultdict
+};` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int SubarraysWithKDistinct(int[] nums, int k) {
+        return AtMost(nums, k) - AtMost(nums, k - 1);
+    }
+
+    // number of subarrays with at most k distinct values
+    private int AtMost(int[] a, int k) {
+        var cnt = new Dictionary<int, int>();
+        int left = 0, res = 0;
+        for (int right = 0; right < a.Length; right++) {
+            cnt.TryGetValue(a[right], out int c);
+            cnt[a[right]] = c + 1;
+            while (cnt.Count > k) {
+                int d = a[left++];
+                if (cnt[d] == 1) cnt.Remove(d); else cnt[d]--;
+            }
+            res += right - left + 1;      // all subarrays ending at right that start in [left..right]
+        }
+        return res;
+    }
+}` }, { lang: 'python', code: `from collections import defaultdict
 
 def subarrays_with_k_distinct(nums, k):
     def at_most(k):
@@ -6777,6 +8138,23 @@ def subarrays_with_k_distinct(nums, k):
                     if (sum == target) count++;
                 }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+public class Solution {
+    public int NumSubmatrixSumTarget(int[][] matrix, int target) {
+        int R = matrix.Length, C = matrix[0].Length, count = 0;
+        int[,] P = new int[R + 1, C + 1];                        // 2D prefix sums
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++)
+                P[i + 1, j + 1] = matrix[i][j] + P[i, j + 1] + P[i + 1, j] - P[i, j];
+        for (int r1 = 0; r1 < R; r1++)
+            for (int r2 = r1; r2 < R; r2++)
+                for (int c1 = 0; c1 < C; c1++)
+                    for (int c2 = c1; c2 < C; c2++) {
+                        int sum = P[r2 + 1, c2 + 1] - P[r1, c2 + 1] - P[r2 + 1, c1] + P[r1, c1];
+                        if (sum == target) count++;
+                    }
+        return count;
+    }
 }` }
           ]
         }
@@ -6854,6 +8232,29 @@ def subarrays_with_k_distinct(nums, k):
         }
     }
     return count;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public int NumSubmatrixSumTarget(int[][] matrix, int target) {
+        int R = matrix.Length, C = matrix[0].Length, count = 0;
+        for (int top = 0; top < R; top++) {
+            int[] col = new int[C];                         // column sums of rows top..bottom
+            for (int bottom = top; bottom < R; bottom++) {
+                for (int c = 0; c < C; c++) col[c] += matrix[bottom][c];
+                var cnt = new Dictionary<int, int>();
+                cnt[0] = 1;
+                int pf = 0;
+                for (int c = 0; c < C; c++) {               // 1D: count subarrays with sum = target
+                    pf += col[c];
+                    if (cnt.TryGetValue(pf - target, out int n)) count += n;
+                    cnt.TryGetValue(pf, out int f);
+                    cnt[pf] = f + 1;
+                }
+            }
+        }
+        return count;
+    }
 }` }, { lang: 'python', code: `from collections import defaultdict
 
 def num_submatrix_sum_target(matrix, target):
@@ -6954,6 +8355,29 @@ def num_submatrix_sum_target(matrix, target):
         if (j == W) res.push_back(i);
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> FindSubstring(string s, string[] words) {
+        var res = new List<int>();
+        int L = words[0].Length, W = words.Length, total = L * W;
+        var need = new Dictionary<string, int>();
+        foreach (string w in words) { need.TryGetValue(w, out int c); need[w] = c + 1; }
+        for (int i = 0; i + total <= s.Length; i++) {
+            var seen = new Dictionary<string, int>();
+            int j = 0;
+            for (; j < W; j++) {
+                string w = s.Substring(i + j * L, L);
+                seen.TryGetValue(w, out int c);
+                seen[w] = c + 1;
+                need.TryGetValue(w, out int allowed);
+                if (c + 1 > allowed) break;                           // too many / unknown word
+            }
+            if (j == W) res.Add(i);
+        }
+        return res;
+    }
 }` }
           ]
         }
@@ -7055,6 +8479,42 @@ def num_submatrix_sum_target(matrix, target):
         }
     }
     return res;
+}` }, { lang: 'csharp', code: String.raw`
+using System.Collections.Generic;
+
+public class Solution {
+    public IList<int> FindSubstring(string s, string[] words) {
+        var res = new List<int>();
+        int L = words[0].Length, W = words.Length;
+        if (s.Length < L * W) return res;
+        var need = new Dictionary<string, int>();
+        foreach (string w in words) { need.TryGetValue(w, out int c); need[w] = c + 1; }
+
+        for (int off = 0; off < L; off++) {
+            var win = new Dictionary<string, int>();
+            int left = off, used = 0;                       // used = words currently in the window
+            for (int right = off; right + L <= s.Length; right += L) {
+                string w = s.Substring(right, L);
+                if (!need.ContainsKey(w)) {                 // not a word: nothing can span this chunk
+                    win.Clear(); used = 0; left = right + L;
+                    continue;
+                }
+                win.TryGetValue(w, out int c);
+                win[w] = c + 1;
+                used++;
+                while (win[w] > need[w]) {                  // too many copies of w: shrink
+                    win[s.Substring(left, L)]--;
+                    used--; left += L;
+                }
+                if (used == W) {                            // exact concatenation found
+                    res.Add(left);
+                    win[s.Substring(left, L)]--;
+                    used--; left += L;                      // slide by one word
+                }
+            }
+        }
+        return res;
+    }
 }` }, { lang: 'python', code: `from collections import Counter, defaultdict
 
 def find_substring(s, words):
@@ -7152,6 +8612,26 @@ def find_substring(s, words):
             best = max(best, cnt);
         }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+
+public class Solution {
+    public int MaxPoints(int[][] points) {
+        int n = points.Length;
+        if (n <= 2) return n;
+        int best = 2;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                int cnt = 0;
+                for (int k = 0; k < n; k++) {
+                    long cross = (long)(points[j][0] - points[i][0]) * (points[k][1] - points[i][1])
+                               - (long)(points[j][1] - points[i][1]) * (points[k][0] - points[i][0]);
+                    if (cross == 0) cnt++;                 // k is on line (i, j)
+                }
+                best = Math.Max(best, cnt);
+            }
+        return best;
+    }
 }` }
           ]
         }
@@ -7236,6 +8716,34 @@ def find_substring(s, words):
         best = max(best, local + 1);        // + the anchor itself
     }
     return best;
+}` }, { lang: 'csharp', code: String.raw`
+using System;
+using System.Collections.Generic;
+
+public class Solution {
+    public int MaxPoints(int[][] points) {
+        int n = points.Length;
+        if (n <= 2) return n;
+        int best = 0;
+        for (int i = 0; i < n; i++) {
+            var slopes = new Dictionary<(int, int), int>();   // normalized direction -> count
+            int local = 0;
+            for (int j = i + 1; j < n; j++) {
+                int dx = points[j][0] - points[i][0];
+                int dy = points[j][1] - points[i][1];
+                int g = Gcd(Math.Abs(dx), Math.Abs(dy));  // points are distinct, so g > 0
+                dx /= g; dy /= g;
+                if (dx < 0 || (dx == 0 && dy < 0)) { dx = -dx; dy = -dy; }  // one sign per direction
+                slopes.TryGetValue((dx, dy), out int c);
+                slopes[(dx, dy)] = c + 1;
+                local = Math.Max(local, c + 1);
+            }
+            best = Math.Max(best, local + 1);              // + the anchor itself
+        }
+        return best;
+    }
+
+    private int Gcd(int a, int b) { return b == 0 ? a : Gcd(b, a % b); }
 }` }, { lang: 'python', code: `from math import gcd
 from collections import defaultdict
 

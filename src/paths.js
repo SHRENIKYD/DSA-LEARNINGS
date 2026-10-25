@@ -86,12 +86,14 @@ var PATHS = (function () {
     java: { name: 'Java', dsa: ['java01', 'java02', 'java05', 'java07'], lld: ['java03', 'java04', 'java05', 'java08'], conc: ['java11', 'java12'] },
     python: { name: 'Python', dsa: ['py01', 'py02', 'py05'], lld: ['py04', 'py08', 'py09'], conc: ['py10'] },
     js: { name: 'JavaScript / TypeScript', dsa: ['js01', 'js02'], lld: ['js06', 'js10', 'js11'], conc: ['js07', 'js08'] },
-    cpp: { name: 'C++', dsa: ['cpp01', 'cpp02', 'cpp03', 'cpp07', 'cpp08'], lld: ['cpp04', 'cpp05', 'cpp06'], conc: ['cpp11'] }
+    cpp: { name: 'C++', dsa: ['cpp01', 'cpp02', 'cpp03', 'cpp07', 'cpp08'], lld: ['cpp04', 'cpp05', 'cpp06'], conc: ['cpp11'] },
+    // C# has no language track yet: its prep lists are empty, so the "Your language" stage has no modules for C# learners.
+    csharp: { name: 'C#', dsa: [], lld: [], conc: [] }
   };
   /* Routes. stages: ordered groups; each module is core unless listed in rec (recommended) or opt (optional).
      langs: languages the route can be followed in. 'prep:*' entries expand to the chosen language's modules. */
   var ROUTES = [
-    { id: 'sde', name: 'Interview / SDE foundations', langs: ['java', 'python', 'js', 'cpp'], blurb: 'The classic product-company loop: your language, core DSA, SQL and CS basics, low-level design, an introduction to system design and mock rounds.',
+    { id: 'sde', name: 'Interview / SDE foundations', langs: ['java', 'python', 'js', 'cpp', 'csharp'], blurb: 'The classic product-company loop: your language, core DSA, SQL and CS basics, low-level design, an introduction to system design and mock rounds.',
       stages: [
         { name: 'Your language', mods: ['prep:dsa'] },
         { name: 'Core DSA', mods: ['dsa01', 'dsa02', 'dsa03', 'dsa04', 'dsa05', 'dsa06', 'dsa07', 'dsa08', 'dsa09', 'dsa10', 'dsa11', 'dsa12', 'dsa13', 'dsa14', 'dsa15', 'dsa16', 'dsa17', 'dsa18', 'dsa19', 'dsa20'], opt: ['dsa03', 'dsa09'], project: 'sde-p1' },
