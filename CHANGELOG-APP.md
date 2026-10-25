@@ -2,6 +2,18 @@
 
 From 1.11.1 each app release, whether it brings fixes or features, raises the last number: 1.11.1, 1.11.2, … up to 1.11.99. The release after 1.11.99 is 1.12.0, and the same pattern repeats. The patch number stops at 99 because the Android `versionCode` is MAJOR×10000 + MINOR×100 + PATCH, and a patch of 100 would give the same code as the next minor version, which Google Play rejects. The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.11.6] — 2026-10-25 · C#, language mode and play sync
+
+### Added
+- C# as a fifth code language: every DSA and LLD module has C# solutions, brute-force code and examples, checked by the solution runner.
+- Language mode: lessons show only your code language; the others are not shown until you pick "Show every language". Videos follow your language where a per-language pick exists, and the Watchtower shows only your language's tracks.
+- Play state syncs through your account: XP, game wins, quests, the review queue and activity days follow you between the app and the website.
+- A persistent lesson header, and a crop preview with zoom and position for your profile photo.
+- A responsive Explorer sign-in screen shared with the website.
+
+### Fixed
+- Samsung tablet layout, lesson pages scrolling sideways, and the path mode switcher not filling its width.
+
 ## [1.11.5] — 2026-10-24 · Personalized navigation and the study planner
 
 ### Added
