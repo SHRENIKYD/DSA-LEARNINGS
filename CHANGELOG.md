@@ -4,7 +4,7 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
-## [Unreleased]
+## [1.10.7] — 2026-10-25 · C# and play sync
 
 ### Added
 - C# as a fifth code language: every DSA (28) and LLD (12) module has C# solutions, brute-force code and examples, all compiled and checked by the solution runner (mcs locally, dotnet in CI). The language pickers, the route page and language mode all offer C#.
