@@ -16,6 +16,10 @@ const TRUSTED = ['freeCodeCamp.org', 'NeetCode', 'NeetCodeIO', 'Abdul Bari', 'ta
 const LANGS = { java: { name: 'Java', re: /\bjava\b/i }, python: { name: 'Python', re: /\bpython\b/i }, js: { name: 'JavaScript', re: /\b(javascript|js|node\.?js|typescript)\b/i }, cpp: { name: 'C++', re: /(c\+\+|\bcpp\b)/i }, csharp: { name: 'C#', re: /(c#|\bc ?sharp\b|\.net\b|\bdotnet\b)/i } };
 const LANG_TRACKS = ['dsa', 'lld'];
 
+// A topic with no good match is retried after this many days (YouTube keeps adding videos); older misses without a date retry now.
+const RETRY_DAYS = 30;
+const today = () => new Date().toISOString().slice(0, 10);
+function due(miss) { return !miss.at || (Date.parse(today()) - Date.parse(miss.at)) / 864e5 >= RETRY_DAYS; }
 function strip(s) { return String(s || '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim(); }
 function seconds(iso) { const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || ''); return m ? (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0) : 0; }
 function words(s) { return strip(s).toLowerCase().split(/[^a-z0-9+#]+/).filter((w) => w.length > 3); }
@@ -75,24 +79,26 @@ async function details(ids) {
   if (!ids.length) return [];
   const d = await api('videos', { part: 'snippet,contentDetails,statistics,status', id: ids.join(','), maxResults: 50 });
   return (d.items || []).map((v) => ({
-    id: v.id, title: v.snippet.title, channel: v.snippet.channelTitle, lang: v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || '',
+    id: v.id, title: v.snippet.title, channel: v.snippet.channelTitle, desc: v.snippet.description || '', lang: v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || '',
     live: v.snippet.liveBroadcastContent !== 'none', secs: seconds(v.contentDetails.duration), views: +v.statistics.viewCount || 0, likes: +v.statistics.likeCount || 0,
     embeddable: !!v.status.embeddable, privacy: v.status.privacyStatus
   }));
 }
 
 async function searchBest(query, title, lang) {
-  const s = await api('search', { part: 'snippet', q: query, type: 'video', maxResults: 8, videoEmbeddable: 'true', videoSyndicated: 'true', safeSearch: 'strict', relevanceLanguage: 'en' });
+  const s = await api('search', { part: 'snippet', q: query, type: 'video', maxResults: lang ? 15 : 8, videoEmbeddable: 'true', videoSyndicated: 'true', safeSearch: 'strict', relevanceLanguage: 'en' });
   const order = (s.items || []).map((x) => x.id.videoId).filter(Boolean), info = {};
   (await details(order)).forEach((v) => { info[v.id] = v; });
   let cands = order.map((id) => info[id]).filter(Boolean);
-  if (lang) cands = cands.filter((c) => LANGS[lang].re.test(c.title + ' ' + c.channel));
+  // The language may be named in the title, the channel or the description ("Code in Java: ...").
+  if (lang) cands = cands.filter((c) => LANGS[lang].re.test(c.title + ' ' + c.channel + ' ' + String(c.desc || '').slice(0, 400)));
   return pick(cands, title);
 }
 
 // Topics in the language-dependent tracks (dsa, lld) that have no byLang[lang] pick yet, in searchOrder.
 function langTodo(all, db, lang) {
-  return searchOrder(all.filter((t) => LANG_TRACKS.indexOf(t.trackId) >= 0 && !(db.videos[t.id] && db.videos[t.id].byLang && db.videos[t.id].byLang[lang])));
+  const pickOf = (t) => db.videos[t.id] && db.videos[t.id].byLang && db.videos[t.id].byLang[lang];
+  return searchOrder(all.filter((t) => LANG_TRACKS.indexOf(t.trackId) >= 0 && (!pickOf(t) || (!pickOf(t).id && due(pickOf(t))))));
 }
 async function searchLang(db, all, lang, max) {
   const todo = langTodo(all, db, lang).slice(0, max);
@@ -104,7 +110,7 @@ async function searchLang(db, all, lang, max) {
       const e = db.videos[t.id] || (db.videos[t.id] = { t: t.title });
       e.byLang = e.byLang || {};
       if (best) { e.byLang[lang] = { id: best.id, title: best.title, channel: best.channel, secs: best.secs }; found++; }
-      else { e.byLang[lang] = { id: null }; none++; }
+      else { e.byLang[lang] = { id: null, at: today() }; none++; }
     } catch (e) {
       if (e.quota) { console.log('quota reached, stopping'); break; }
       console.warn('skip ' + t.id + ': ' + e.message);
@@ -179,7 +185,8 @@ async function main() {
     return;
   }
   // An entry that only holds byLang picks (no "id" key at all) still needs its default search.
-  const needsDefault = (t) => !db.videos[t.id] || (db.videos[t.id].id === undefined && !db.videos[t.id].curated);
+  // A dated miss (id null) is retried after RETRY_DAYS.
+  const needsDefault = (t) => { const e = db.videos[t.id]; return !e || (!e.curated && (e.id === undefined || (e.id === null && due(e)))); };
   const todo = searchOrder(all.filter(needsDefault)).slice(0, max);
   let found = 0, none = 0;
   for (const t of todo) {
@@ -187,7 +194,7 @@ async function main() {
       const best = await searchBest(t.query, t.title, '');
       const keep = db.videos[t.id] && db.videos[t.id].byLang ? { byLang: db.videos[t.id].byLang } : {};
       if (best) { db.videos[t.id] = Object.assign({ t: t.title, id: best.id, title: best.title, channel: best.channel, secs: best.secs }, keep); found++; }
-      else { db.videos[t.id] = Object.assign({ t: t.title, id: null }, keep); none++; }
+      else { db.videos[t.id] = Object.assign({ t: t.title, id: null, at: today() }, keep); none++; }
     } catch (e) {
       if (e.quota) { console.log('quota reached, stopping'); break; }
       console.warn('skip ' + t.id + ': ' + e.message);
@@ -199,4 +206,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { LANGS, LANG_TRACKS, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };
+module.exports = { LANGS, LANG_TRACKS, RETRY_DAYS, due, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };

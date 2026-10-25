@@ -88,6 +88,19 @@ assert.equal(env.window.R.a.id, ID_A);
 delete store['imastery.route'];
 assert.equal(env.window.R.a.id, ID_A, 'no chosen language: default pick');
 
+// A miss is retried once it is RETRY_DAYS old; an undated (older-format) miss retries now.
+{
+  const d = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+  assert.equal(discovery.due({ id: null }), true, 'undated miss is retried');
+  assert.equal(discovery.due({ id: null, at: d(1) }), false, 'fresh miss waits');
+  assert.equal(discovery.due({ id: null, at: d(discovery.RETRY_DAYS) }), true, 'old miss is retried');
+  const all = discovery.topics(), t = all.find((x) => x.trackId === 'dsa');
+  const fresh = { videos: { [t.id]: { t: t.title, byLang: { csharp: { id: null, at: d(1) } } } } };
+  const old = { videos: { [t.id]: { t: t.title, byLang: { csharp: { id: null, at: d(40) } } } } };
+  assert.ok(!discovery.langTodo(all, fresh, 'csharp').some((x) => x.id === t.id), 'fresh language miss is not searched again');
+  assert.ok(discovery.langTodo(all, old, 'csharp').some((x) => x.id === t.id), 'old language miss is searched again');
+}
+
 // find-videos --lang with a mocked YouTube client (no network, no key).
 (async () => {
   const all = discovery.topics(), calls = [];

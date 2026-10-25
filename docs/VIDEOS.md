@@ -38,7 +38,7 @@ The Watchtower shows language-neutral tracks plus the learner's own language tra
 
 ## Quota and schedule
 
-The free quota is 10,000 units a day and one topic search costs about 101 units. The daily workflow runs two passes: the default pass searches up to 50 topics, then one language pass searches up to 40 dsa/lld topics for one language, rotating by day of the year (`day % 4`: python, js, cpp, java; a manual run can pick the language). That is at most 90 searches, about 9,100 units, plus a few units for `--check`. Coverage depends on available relevant results; automated search does not guarantee a suitable video for every topic. After that the daily run only checks existing videos (a few units).
+The free quota is 10,000 units a day and one topic search costs about 101 units. The daily workflow runs two passes: the default pass searches up to 50 topics, then one language pass searches up to 40 dsa/lld topics for one language, rotating by day of the year (`day % 5`: python, js, cpp, java, csharp; a manual run can pick the language). That is at most 90 searches, about 9,100 units, plus a few units for `--check`. Coverage depends on available relevant results; automated search does not guarantee a suitable video for every topic. A topic with no good match is retried after 30 days, since new videos keep appearing. The language pass looks at 15 results per search and accepts a video when the language is named in its title, channel or description.
 
 Each run that changes `data/videos.json` commits it to `main` and redeploys the website. The app picks up new videos with its next version.
 

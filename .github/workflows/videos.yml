@@ -9,7 +9,7 @@ on:
         description: Topics to search in the default pass (each costs 100 of the 10,000 daily quota units; the language pass adds up to 40 more, so keep max at 50 or less on a day both run)
         default: '50'
       lang:
-        description: Language for the extra pass (java, python, js, cpp). Leave empty to rotate by day of the year.
+        description: Language for the extra pass (java, python, js, cpp, csharp). Leave empty to rotate by day of the year.
         default: ''
 
 permissions:
@@ -44,9 +44,9 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           LANG_INPUT: ${{ inputs.lang }}
         run: |
-          langs=(python js cpp java)
+          langs=(python js cpp java csharp)
           lang="$LANG_INPUT"
-          if [ -z "$lang" ]; then lang="${langs[$(( 10#$(date -u +%j) % 4 ))]}"; fi
+          if [ -z "$lang" ]; then lang="${langs[$(( 10#$(date -u +%j) % 5 ))]}"; fi
           echo "Language pass: $lang"
           node tools/find-videos.js --lang "$lang" --max 40
       - name: Check the catalog before saving it
