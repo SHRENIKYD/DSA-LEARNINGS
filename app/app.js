@@ -156,7 +156,7 @@
   }
   function undoToast(msg, fn) {
     var t = $('#toast'); Sound.play('xp');
-    t.innerHTML = esc(msg) + ' <button type="button" class="toast-undo" id="toastUndo">Undo</button>';
+    t.innerHTML = '<span class="toast-msg">' + esc(msg) + '</span><button type="button" class="toast-undo" id="toastUndo">Undo</button>';
     t.hidden = false; t.classList.remove('go'); void t.offsetWidth; t.classList.add('go');
     clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 7000);
     var u = $('#toastUndo'); if (u) u.addEventListener('click', function () { t.hidden = true; clearTimeout(toastT); fn(); });
@@ -233,8 +233,7 @@
     function change(partial, focusId) {
       var p = Learn.pref(), prev = { id: p.id, lang: p.lang, hours: p.hours, mode: Learn.mode(), known: p.known };
       setPrefQuiet(partial); me(); var f = $(focusId); if (f) f.focus();
-      var R = routeOf(Learn.pref().id);
-      undoToast('Switched to ' + (R ? R.name : 'your new path') + '. Progress kept.', function () { setPrefQuiet(prev); me(); var u = $(focusId); if (u) u.focus(); });
+      undoToast('Path switched · Progress kept', function () { setPrefQuiet(prev); me(); var u = $(focusId); if (u) u.focus(); });
     }
     r.addEventListener('change', function () { change({ id: r.value }, '#pwRoute'); });
     $('#pwLang').addEventListener('change', function () { change({ lang: this.value }, '#pwLang'); });
