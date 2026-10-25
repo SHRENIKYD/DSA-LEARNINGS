@@ -149,7 +149,7 @@ PATHS.ROUTES.forEach((r) => r.langs.forEach((lang) => {
     });
     // A language the learner already knows: that language's own track turns optional, nothing else changes.
     store['imastery.route'] = JSON.stringify({ id: r.id, lang, hours: 10, mode: 'path', onboarded: true, known: [lang], updatedAt: 1 });
-    const LT = { java: 'java', python: 'py', js: 'js', cpp: 'cpp' }[lang];
+    const LT = { java: 'java', python: 'py', js: 'js', cpp: 'cpp', csharp: 'csharp' }[lang];
     pl.items.forEach((it) => {
       const g = Learn.relevance(it.id).state, exp = it.kind === 'core' && META[it.id].track.id === LT ? 'opt' : it.kind;
       if (g !== exp) E(tag + ' (known ' + lang + '): relevance(' + it.id + ') = ' + g + ', expected ' + exp);

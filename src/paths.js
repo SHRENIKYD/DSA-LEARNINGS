@@ -16,6 +16,10 @@ var PATHS = (function () {
     java02: ['java01'], java03: ['java02'], java04: ['java03'], java05: ['java04'], java06: ['java04', 'java05'], java07: ['java05'],
     java08: ['java07'], java09: ['java07', 'java08'], java10: ['java07', 'java08'], java11: ['java04', 'java09'], java12: ['java11'],
     java13: ['java10', 'java12'], java14: ['java09', 'java13'],
+    // C#
+    csharp02: ['csharp01'], csharp03: ['csharp02'], csharp04: ['csharp03'], csharp05: ['csharp04'], csharp06: ['csharp05'],
+    csharp07: ['csharp04', 'csharp06'], csharp08: ['csharp03', 'csharp07'], csharp09: ['csharp06', 'csharp07'], csharp10: ['csharp08', 'csharp09'],
+    csharp11: ['csharp05', 'csharp06'], csharp12: ['csharp08', 'csharp11'], csharp13: ['csharp10', 'csharp12'],
     // Python
     py02: ['py01'], py03: ['py02'], py04: ['py02'], py05: ['py02', 'py04'], py06: ['py02', 'py04'], py07: ['py05', 'py06'],
     py08: ['py04', 'py05', 'py06'], py09: ['py06', 'py07', 'py08'], py10: ['py07', 'py09'], py11: ['py05', 'py06', 'py07'],
@@ -87,8 +91,7 @@ var PATHS = (function () {
     python: { name: 'Python', dsa: ['py01', 'py02', 'py05'], lld: ['py04', 'py08', 'py09'], conc: ['py10'] },
     js: { name: 'JavaScript / TypeScript', dsa: ['js01', 'js02'], lld: ['js06', 'js10', 'js11'], conc: ['js07', 'js08'] },
     cpp: { name: 'C++', dsa: ['cpp01', 'cpp02', 'cpp03', 'cpp07', 'cpp08'], lld: ['cpp04', 'cpp05', 'cpp06'], conc: ['cpp11'] },
-    // C# has no language track yet: its prep lists are empty, so the "Your language" stage has no modules for C# learners.
-    csharp: { name: 'C#', dsa: [], lld: [], conc: [] }
+    csharp: { name: 'C#', dsa: ['csharp01', 'csharp02', 'csharp05', 'csharp06'], lld: ['csharp03', 'csharp04', 'csharp07'], conc: ['csharp09', 'csharp10'] }
   };
   /* Routes. stages: ordered groups; each module is core unless listed in rec (recommended) or opt (optional).
      langs: languages the route can be followed in. 'prep:*' entries expand to the chosen language's modules. */

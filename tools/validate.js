@@ -299,8 +299,8 @@ function codeCheck() {
   // C#: mono (mcs/mono) or the .NET SDK via tools/harness/cs-compile.js. A snippet may be a whole program, a class, bare
   // members or statements; `run: true` programs must also exit 0 (their output is not compared, as for Python and JS).
   if (by.csharp) {
-    const cs = require('./harness/cs-compile.js');
-    if (!cs.toolchain()) { W('csharp', 'no C# compiler (mcs or dotnet), ' + by.csharp.length + ' C# snippet(s) not checked'); total += by.csharp.length; ok += by.csharp.length; }
+    const cs = require('./harness/cs-compile.js'), modern = /content[\/\\]csharp[\/\\]/.test(file || ''); // the C# course is C# 12
+    if (!(modern ? cs.hasDotnet() : cs.toolchain())) { W('csharp', 'no C# compiler (mcs or dotnet), ' + by.csharp.length + ' C# snippet(s) not checked'); total += by.csharp.length; ok += by.csharp.length; }
     else {
       const USING = 'using System;\nusing System.Collections;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Text;\n';
       const CS_STUBS = {
@@ -317,7 +317,7 @@ function codeCheck() {
         const tries = s.run ? [head + body] : [head + body, head + 'class Snip__ {\n' + body + '\n}\n', head + 'class Snip__ {\n  void Run__() {\n' + body + '\n  }\n}\n'];
         let msg = '';
         for (let i = 0; i < tries.length; i++) {
-          const r = cs.compile(path.join(tmp, 'cs' + k + '_' + i), tries[i], { exe: !!s.run, timeout: 180000 });
+          const r = cs.compile(path.join(tmp, 'cs' + k + '_' + i), tries[i], { exe: !!s.run, timeout: 180000, modern });
           if (r.ok) {
             if (s.run) { const x = r.run('', 10000); if (x.status !== 0) { msg = 'runtime error: ' + ((x.stderr || (x.error && x.error.message) || x.stdout || '') + '').toString().slice(-800); break; } }
             ok++; return;

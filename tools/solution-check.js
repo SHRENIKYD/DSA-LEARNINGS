@@ -405,6 +405,8 @@ function cppSource(pr, code, T) {
 const CS_H = fs.readFileSync(path.join(__dirname, 'harness', 'H.cs'), 'utf8');
 const CS_USING = 'using System;\nusing System.Collections;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Text;\n';
 const csCompile = require('./harness/cs-compile.js');
+// The C# course (content/csharp) is modern C# 12 on .NET 8; every other module's C# is 7.3 (see cs-compile.js).
+const CS_MODERN = /content[\/\\]csharp[\/\\]/.test(file || '');
 function csType(t) {
   if (t.k === 'arr') return csType(t.of) + '[]';
   if (t.k === 'list') return 'IList<' + csType(t.of) + '>';
@@ -699,8 +701,8 @@ function runLang(lang, pr, code, T, n) {
     if (c.status !== 0) return { err: 'compile error:\n' + (c.stderr || '').replace(/\/tmp\/[^\s:]+\//g, '').slice(0, 1500) };
     run = (stdin) => exec('./main', [], stdin);
   } else if (lang === 'csharp') {
-    const c = csCompile.compile(dir, csSource(pr, code, T), { exe: true, main: T.io ? null : 'Main__', timeout: 180000 });
-    if (!c) return { err: 'no C# compiler: install mono (mcs + mono) or the .NET SDK (dotnet)' };
+    const c = csCompile.compile(dir, csSource(pr, code, T), { exe: true, main: T.io ? null : 'Main__', timeout: 180000, modern: CS_MODERN });
+    if (!c) return { err: CS_MODERN ? 'no .NET SDK: the C# course needs dotnet (C# 12)' : 'no C# compiler: install mono (mcs + mono) or the .NET SDK (dotnet)' };
     if (!c.ok) return { err: 'compile error:\n' + c.err.slice(0, 1500) };
     run = (stdin) => c.run(stdin, 20000);
   }

@@ -90,6 +90,12 @@ Plus in every module:
 🟣 9. Templates, SFINAE, concepts · 10. Modern C++11–20: move semantics, perfect forwarding, lambdas, constexpr, ranges · 11. Concurrency: threads, mutexes, atomics, memory ordering
 🔴 12. Low-level performance: cache behaviour, alignment, undefined behaviour, compiler optimisations, profiling · 13. Expert idioms: CRTP, pimpl, type erasure, coroutines, plus a question bank
 
+## C# — 13 modules *(modern C# 12 on .NET 8)*
+🟢 1. .NET, syntax, types, console I/O · 2. Control flow, methods, arrays, strings · 3. Classes, structs and records · 4. OOP: inheritance, interfaces, polymorphism
+🔵 5. Generics and collections · 6. Delegates, lambdas, events and LINQ · 7. Exceptions, nullability and pattern matching · 8. Memory, GC, boxing and Span<T>
+🟣 9. Async/await and tasks · 10. Concurrency and threading · 11. Reflection, attributes and advanced generics
+🔴 12. CLR internals and performance · 13. Expert idioms and question bank
+
 ## 6. SQL + DBMS — 15 modules *(queries run live in the browser)*
 🟢 1. Databases and the relational model · 2. SELECT/WHERE/ORDER BY/LIMIT, NULLs · 3. Aggregates, GROUP BY, HAVING, CASE · 4. JOINs (all types, self-join, anti-join)
 🔵 5. Subqueries, CTEs, recursive CTEs · 6. Window functions · 7. DDL, constraints, ER modelling · 8. Normalization (1NF → BCNF), denormalization · 9. DML, UPSERT, views, stored procedures, triggers

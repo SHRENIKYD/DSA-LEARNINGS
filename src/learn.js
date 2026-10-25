@@ -61,7 +61,7 @@ var Learn = (function () {
   /* ---------- relevance of a module to the chosen route (cached per pref) ----------
      state: core | rec | opt (from PATHS.plan items), ext (plan.extensions), off. A language the learner already knows ('known')
      turns that language's own track modules into optional. */
-  var relCache = null, LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp' };
+  var relCache = null, LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp', csharp: 'csharp' };
   function relMap(p) {
     p = p || pref();
     var key = p.id + '|' + p.lang + '|' + p.known.join(',');
