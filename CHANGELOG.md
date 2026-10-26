@@ -9,6 +9,9 @@ From 1.7.0 the website and the mobile app have separate versions. This file is t
 ### Added
 - C# course in Language Valley: 13 modules of modern C# 12 on .NET 8, from types and records through LINQ, async/await, memory and the CLR to expert idioms. Every practice problem is tested by the solution runner. C# learners on the Interview / SDE route now get C# modules in the "Your language" stage.
 
+### Fixed
+- Language Valley's "Continue expedition" follows your code language: with C# chosen it opens the C# course instead of resuming a lesson in another language's course.
+
 ### Changed
 - The video bot retries topics it found no match for, replaces removed curated videos, matches topics more reliably and includes C# in its daily rotation.
 

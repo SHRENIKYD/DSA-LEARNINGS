@@ -310,9 +310,16 @@ var Journey = (function () {
   }
   function atlasDetail(r, s, tracks, last) {
     var g = s.region[r.key], p = pct(g.done, g.items), available = r.tracks.filter(function (t) { return tracks[t]; });
-    var resume = last && available.indexOf(last.track) >= 0 && last.hash;
+    // Your code language decides the language track: an explicit pick (imastery.lang), else the chosen route's language.
+    // A last lesson in another language's course is not resumed; the next unfinished module of your language's course is.
+    var LT = { java: 'java', python: 'py', js: 'js', cpp: 'cpp', csharp: 'csharp' }, LTS = ['java', 'py', 'js', 'cpp', 'csharp'];
+    var lang = get('imastery.lang', null), pr = window.Learn && Learn.pref ? Learn.pref() : null;
+    var mine = LT[lang] || (pr && pr.chosen ? LT[pr.lang] : null);
+    if (mine && available.indexOf(mine) < 0) mine = null;
+    var resume = last && available.indexOf(last.track) >= 0 && last.hash && !(mine && LTS.indexOf(last.track) >= 0 && last.track !== mine);
+    var search = mine ? [mine].concat(available.filter(function (t) { return t !== mine; })) : available;
     var next = null;
-    available.some(function (tid) { return tracks[tid].modules.some(function (m) { var ms = s.module[m.id]; if (ms && !ms.full) { next = { track: tid, module: m.id }; return true; } return false; }); });
+    search.some(function (tid) { return tracks[tid].modules.some(function (m) { var ms = s.module[m.id]; if (ms && !ms.full) { next = { track: tid, module: m.id }; return true; } return false; }); });
     var href = resume ? last.track + '.html#' + last.hash : next ? next.track + '.html#' + next.module : available.length ? available[0] + '.html' : '#r-' + r.key;
     return '<span class="atlas-kicker">' + icon(r.icon) + esc(r.area) + '</span><h2>' + esc(r.name) + '</h2><p>' + esc(ATLAS_COPY[r.key]) + '</p>' +
       '<div class="atlas-progress" role="progressbar" aria-label="' + esc(r.name) + ' progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + p + '"><i style="width:' + p + '%"></i></div>' +
