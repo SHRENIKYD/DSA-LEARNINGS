@@ -403,3 +403,12 @@ p{margin:0}
 .jdd-list li[aria-selected="true"]{color:var(--accent-fg);font-weight:700}
 .jdd-list li[aria-disabled="true"]{opacity:.5}
 [tabindex="-1"]:focus{outline:none}
+
+/* game hints */
+.hints{display:flex;flex-direction:column;gap:8px;margin:4px 0 10px}
+.hint-btn{align-self:flex-start}
+.hint-btn:disabled{opacity:.55}
+.hint-list{margin:0;padding:0 0 0 22px;display:flex;flex-direction:column;gap:6px}
+.hint-list:empty{display:none}
+.hint-list li{background:var(--y-bg);border:1px solid var(--y);border-radius:12px;padding:9px 12px;font-size:14px;line-height:1.4}
+.g-choices .muted{font-weight:500;opacity:.7;font-size:.85em;margin-left:4px}

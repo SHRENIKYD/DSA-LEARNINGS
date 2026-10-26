@@ -2,6 +2,15 @@
 
 From 1.11.1 each app release, whether it brings fixes or features, raises the last number: 1.11.1, 1.11.2, … up to 1.11.99. The release after 1.11.99 is 1.12.0, and the same pattern repeats. The patch number stops at 99 because the Android `versionCode` is MAJOR×10000 + MINOR×100 + PATCH, and a patch of 100 would give the same code as the next minor version, which Google Play rejects. The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [Unreleased]
+
+### Added
+- Hints in every game: a Hint button reveals two or three nudges one at a time, starting fresh with every new puzzle.
+- Nine new games (43 in all): Course planner (topological sort), Friend circles (union-find), BST builder, Round-robin (CPU scheduling), C++ output, Value or reference? (C#), Pattern match (design patterns), Git rescue and CAP call. New Play filters for C++, C#, Design and Git & DevOps.
+
+### Fixed
+- The path-switch undo message is a single compact line instead of a three-line block.
+
 ## [1.11.6] — 2026-10-25 · C#, language mode and play sync
 
 ### Added

@@ -444,7 +444,9 @@
     var g = Games.get(gid); if (!g) return playTab();
     play.lastGame = g.id; save();
     var won0 = play.games && play.games[g.id] ? play.games[g.id].wins : 0;
-    var h = head(g.title, '#play/' + (play.gameCat || 'all'), true) + '<div class="row sb"><span class="kick">' + esc(g.kicker) + '</span><span class="mono muted sm" id="gWins">' + (won0 ? 'won ×' + won0 : 'new game') + '</span></div><p class="goal">' + esc(g.goal) + '</p><div class="game" id="game"></div><div id="learned" hidden></div>' +
+    var h = head(g.title, '#play/' + (play.gameCat || 'all'), true) + '<div class="row sb"><span class="kick">' + esc(g.kicker) + '</span><span class="mono muted sm" id="gWins">' + (won0 ? 'won ×' + won0 : 'new game') + '</span></div><p class="goal">' + esc(g.goal) + '</p>' +
+      (g.hints && g.hints.length ? '<div class="hints"><button class="b3 ghost hint-btn" type="button" id="hintBtn" aria-controls="hintList">💡 HINT</button><ol class="hint-list" id="hintList" aria-live="polite"></ol></div>' : '') +
+      '<div class="game" id="game"></div><div id="learned" hidden></div>' +
       '<div class="acts"><button class="b3 ghost" type="button" id="newPuzzle">🎲 NEW PUZZLE</button><a class="b3 ghost" href="#surprise/' + (play.gameCat || 'all') + '">🔀 ANOTHER GAME</a></div>';
     page('play', h, { noTabs: false });
     wireRead(g.title);
@@ -455,6 +457,17 @@
     var won = false, box = $('#game'), l = $('#learned');
     box.classList.remove('game-won');
     box.innerHTML = ''; l.hidden = true; l.innerHTML = '';
+    // Hints: one more per tap, from the start again for every new puzzle.
+    var hints = g.hints || [], hb = hints.length ? $('#hintBtn') : null, hl = hints.length ? $('#hintList') : null, shown = 0;
+    function hintLabel() { var left = hints.length - shown; hb.textContent = left ? '💡 HINT (' + left + ' left)' : '💡 NO MORE HINTS'; hb.disabled = !left; }
+    if (hb && hl) {
+      hl.innerHTML = ''; hintLabel();
+      hb.onclick = function () {
+        if (shown >= hints.length) return;
+        Sound.play('tap');
+        var li = document.createElement('li'); li.textContent = hints[shown++]; hl.appendChild(li); hintLabel();
+      };
+    }
     g.mount(box, {
       tick: function () { buzz(8); Sound.play('tap'); },
       miss: function () { buzz([10, 30, 10]); Sound.play('wrong'); },
