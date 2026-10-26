@@ -1179,10 +1179,195 @@ var Games = (function () {
     ]);
   });
 
-  var CATS = [['all', 'All'], ['algo', 'Algorithms'], ['sql', 'SQL'], ['java', 'Java'], ['js', 'JavaScript'], ['py', 'Python'], ['cs', 'CS & systems'], ['web', 'Web & APIs'], ['ai', 'AI skills']];
 
-  var LIST = [queuecourier, bfsbeacons, windowchef, recursiontrail, cssduel, httprescue, transactionvault, promptdetective, guess, race, pointers, oranges, lockers, brackets, swaps, bits, kadane, prefix, coins, merge, treewalk, heap, dijkstra, sqlwhere, groupby, joins, javaout, javaeq, eventloop, truthy, pyslice, pygotcha, subnet, lru];
-  LIST.forEach(function (g) { g.cat = g.cat || 'algo'; });
+
+  /* ---------- New games: topological order, union-find, BST, CPU scheduling, C++, C#, patterns, git, CAP ---------- */
+  // Topological sort: a random DAG of six courses; tap them in any order that respects every prerequisite.
+  function topoValid(order, needs) { var done = {}; for (var i = 0; i < order.length; i++) { var c = order[i]; if ((needs[c] || []).some(function (p) { return !done[p]; })) return false; done[c] = 1; } return true; }
+  function randomDag(names) {
+    var order = shuffle(names), needs = {};
+    names.forEach(function (n) { needs[n] = []; });
+    for (var i = 1; i < order.length; i++) for (var j = 0; j < i; j++) if (Math.random() < 0.3) needs[order[i]].push(order[j]);
+    for (var k = 1; k < order.length; k++) if (!needs[order[k]].length && Math.random() < 0.6) needs[order[k]].push(order[rnd(0, k - 1)]);
+    names.forEach(function (n) { needs[n].sort(); });
+    return needs;
+  }
+  var courseplan = {
+    id: 'courseplan', cat: 'algo', mid: 'dsa19', track: 'dsa', kicker: 'DSA 19 · Topological Sort', title: 'Course planner',
+    goal: 'Take all six courses. A course unlocks only after every course it needs. Two slips are allowed.',
+    learned: 'You just built a topological order. Repeatedly taking any course whose prerequisites are all done is Kahn\'s algorithm: keep a queue of nodes with in-degree 0. It works only when the graph has no cycle.',
+    mount: function (el, api) {
+      var names = ['Arrays', 'Graphs', 'Heaps', 'Maps', 'Stacks', 'Trees'], needs = randomDag(names), done = {}, order = [], slips = 0, over = false;
+      var list = h('div', 'g-choices col'), msg = h('div', 'g-msg'), path = h('p', 'g-goal');
+      el.appendChild(list); el.appendChild(path); el.appendChild(msg);
+      msg.textContent = 'Tap a course whose prerequisites are all done.';
+      function paint() {
+        path.innerHTML = order.length ? 'Your order: <b>' + order.join(' → ') + '</b>' : 'Your order: (empty)';
+        each(list.children, function (b) { b.disabled = over || !!done[b._c]; });
+      }
+      names.forEach(function (n) {
+        var b = btn(esc(n) + (needs[n].length ? ' <span class="muted">needs ' + needs[n].map(esc).join(', ') + '</span>' : ' <span class="muted">no prerequisites</span>'), 'ghost');
+        b._c = n;
+        b.addEventListener('click', function () {
+          if (over || done[n]) return;
+          var missing = needs[n].filter(function (q) { return !done[q]; });
+          if (missing.length) {
+            slips++; api.miss();
+            if (slips > 2) { over = true; msg.className = 'g-msg'; msg.innerHTML = 'Too many slips. <b>' + esc(n) + '</b> still needed ' + missing.map(esc).join(', ') + '. Take a course only when every prerequisite is done.'; paint(); return; }
+            msg.className = 'g-msg warn'; msg.innerHTML = '<b>' + esc(n) + '</b> is locked: finish ' + missing.map(esc).join(', ') + ' first. Slips left: ' + (2 - slips) + '.'; return;
+          }
+          done[n] = 1; order.push(n); api.tick(); msg.className = 'g-msg'; msg.textContent = 'Good. ' + (names.length - order.length) + ' to go.';
+          if (order.length === names.length) { over = true; msg.className = 'g-msg win'; msg.innerHTML = '<b>Every prerequisite respected!</b>'; api.win(); }
+          paint();
+        });
+        list.appendChild(b);
+      });
+      paint();
+    },
+    puzzles: function () { return []; }
+  };
+
+  // Union-find: count the groups after random unions.
+  function dsuGroups(n, ops) { var p = range(n).map(function (i) { return i - 1; }); function f(x) { while (p[x] !== x) { p[x] = p[p[x]]; x = p[x]; } return x; } ops.forEach(function (o) { p[f(o[0])] = f(o[1]); }); var r = {}; for (var i = 0; i < n; i++) r[f(i)] = 1; return Object.keys(r).length; }
+  var unionfind = quizGame('unionfind', 'algo', 'dsa19', 'dsa', 'Friend circles', 'DSA 19 · Union-Find (DSU)', 'Union-find keeps one leader per group. union(a, b) joins two groups, so every union between different groups lowers the count by one; a union inside one group changes nothing.', function () {
+    return range(5).map(function () {
+      var n = rnd(5, 8), k = rnd(3, 6), ops = [], L = 'ABCDEFGH';
+      for (var i = 0; i < k; i++) { var a = rnd(0, n - 1), b = rnd(0, n - 1); if (a === b) b = (a + 1) % n; ops.push([a, b]); }
+      var g = dsuGroups(n, ops);
+      return item('People: <b>' + L.slice(0, n).split('').join(' ') + '</b><br>' + ops.map(function (o) { return 'union(' + L[o[0]] + ', ' + L[o[1]] + ')'; }).join('<br>') + '<br>How many groups now?', g, [g + 1, g - 1 > 0 ? g - 1 : g + 2, n - k > 0 ? n - k : g + 3, n], 'Each union of two different groups merges them; ' + n + ' people end up in ' + g + ' group' + (g === 1 ? '' : 's') + '.');
+    });
+  });
+
+  // BST: insert keys in order and count the levels.
+  function bstLevels(keys) { var root = null; function ins(t, k) { if (!t) return { k: k, l: null, r: null }; if (k < t.k) t.l = ins(t.l, k); else t.r = ins(t.r, k); return t; } keys.forEach(function (k) { root = ins(root, k); }); function d(t) { return t ? 1 + Math.max(d(t.l), d(t.r)) : 0; } return d(root); }
+  var bstbuild = quizGame('bstbuild', 'algo', 'dsa14', 'dsa', 'BST builder', 'DSA 14 · Binary Search Trees', 'Insertion order shapes a binary search tree: each key walks left (smaller) or right (bigger) from the root. Sorted input makes a tall chain (height N), while a good mix stays close to log₂ N levels. Balanced trees (AVL, red-black) fix the shape automatically.', function () {
+    return range(5).map(function () {
+      var n = rnd(5, 8), keys = shuffle(range(30)).slice(0, n);
+      if (Math.random() < 0.25) keys.sort(function (a, b) { return a - b; });
+      var lv = bstLevels(keys), best = Math.ceil(Math.log2(n + 1));
+      return item('Insert into an empty BST, in this order:<br><b>' + keys.join(', ') + '</b><br>How many levels does the tree have?', lv, [lv + 1, lv - 1 > 0 ? lv - 1 : lv + 2, best !== lv ? best : n, n !== lv ? n : lv + 3], 'Walking each key down from the root gives ' + lv + ' level' + (lv === 1 ? '' : 's') + '; the best possible for ' + n + ' keys is ' + best + '.');
+    });
+  });
+
+  // Round-robin CPU scheduling: which order do the jobs finish in?
+  function rrFinish(bursts, q) { var left = bursts.slice(), queue = range(bursts.length).map(function (i) { return i - 1; }), out = []; while (queue.length) { var j = queue.shift(); left[j] -= Math.min(q, left[j]); if (left[j] > 0) queue.push(j); else out.push(j); } return out; }
+  var roundrobin = quizGame('roundrobin', 'cs', 'cs03', 'cs', 'Round-robin', 'CS 3 · CPU Scheduling', 'Round-robin gives each ready process one time slice (quantum) in turn. Short jobs finish early without waiting for long ones, which keeps response time low; a tiny quantum adds context-switch overhead, a huge one turns it into first-come-first-served.', function () {
+    return range(5).map(function () {
+      var L = 'PQRS', n = rnd(3, 4), b = range(n).map(function () { return rnd(1, 7); }), q = rnd(2, 3);
+      var fin = rrFinish(b, q).map(function (i) { return L[i]; }).join(' → ');
+      var fcfs = range(n).map(function (i) { return L[i - 1]; }).join(' → ');
+      var sjf = range(n).map(function (i) { return i - 1; }).sort(function (x, y) { return b[x] - b[y] || x - y; }).map(function (i) { return L[i]; }).join(' → ');
+      var rev = fin.split(' → ').reverse().join(' → ');
+      return item('Quantum <b>' + q + '</b>. All arrive at time 0 in order ' + L.slice(0, n).split('').join(', ') + '.<br>Bursts: ' + range(n).map(function (i) { return L[i - 1] + ' = ' + b[i - 1]; }).join(', ') + '<br>In what order do they finish?', fin, [fcfs, sjf, rev], 'Running ' + q + ' units each in turn and sending unfinished jobs to the back gives ' + fin + '.');
+    });
+  });
+
+  function some(list, k) { return shuffle(list).slice(0, k); }
+  var cppout = quizGame('cppout', 'cpp', 'cpp03', 'cpp', 'C++ output', 'C++ 3 · Pointers & References', 'A reference is another name for the same variable; a pointer holds an address you dereference with *. Passing by value copies, passing by reference shares, and copying a std::vector copies its elements.', function () {
+    return some([
+      item(code('int a = 5;\nint& r = a;\nr++;\ncout << a;'), '6', ['5', 'error'], 'r is another name for a, so r++ changes a.'),
+      item(code('int a = 5;\nint* p = &a;\n*p = *p * 2;\ncout << a;'), '10', ['5', 'an address'], '*p is a itself, so a becomes 10.'),
+      item(code('void f(int x) { x = 9; }\nint a = 1;\nf(a);\ncout << a;'), '1', ['9', 'error'], 'x is a copy; changing it leaves a alone.'),
+      item(code('void f(int& x) { x = 9; }\nint a = 1;\nf(a);\ncout << a;'), '9', ['1', 'error'], 'x refers to a, so the function changes a.'),
+      item(code('int arr[3] = {1, 2, 3};\nint* p = arr;\np++;\ncout << *p;'), '2', ['1', '3'], 'arr decays to a pointer to arr[0]; p++ moves to arr[1].'),
+      item(code('vector<int> v{1, 2, 3};\nauto w = v;\nw[0] = 9;\ncout << v[0];'), '1', ['9', '0'], 'auto w = v copies the vector; v is unchanged.'),
+      item(code('int x = 7;\nconst int* p = &x;\nx = 8;\ncout << *p;'), '8', ['7', 'error'], 'const int* only stops writing through p; x itself can still change.')
+    ], 5);
+  });
+  var csref = quizGame('csref', 'csharp', 'csharp03', 'csharp', 'Value or reference?', 'C# 3 · Classes, Structs & Records', 'Structs are value types: assignment copies them. Classes are reference types: assignment copies the reference, so both names see one object. Records compare by value, classes by reference unless you override equality.', function () {
+    return some([
+      item(code('struct P { public int X; }\nvar a = new P { X = 1 };\nvar b = a;\nb.X = 5;\nConsole.Write(a.X);'), '1', ['5', '0'], 'A struct is copied on assignment; b is a separate value.'),
+      item(code('class C { public int X; }\nvar a = new C { X = 1 };\nvar b = a;\nb.X = 5;\nConsole.Write(a.X);'), '5', ['1', '0'], 'Both variables point to the same object.'),
+      item(code('record R(int X);\nConsole.Write(new R(1) == new R(1));'), 'True', ['False', 'error'], 'Records generate value-based equality.'),
+      item(code('class K { public int X; }\nConsole.Write(new K { X = 1 } == new K { X = 1 });'), 'False', ['True', 'error'], 'For classes, == compares references by default: two new objects are different.'),
+      item(code('string s = "hi";\nvar t = s;\nt += "!";\nConsole.Write(s);'), 'hi', ['hi!', '!'], 'Strings are immutable; += makes a new string for t.'),
+      item(code('void Bump(ref int x) => x++;\nint a = 1;\nBump(ref a);\nConsole.Write(a);'), '2', ['1', 'error'], 'ref passes the variable itself, so a changes.'),
+      item(code('record R(int X);\nvar r1 = new R(1);\nvar r2 = r1 with { X = 2 };\nConsole.Write(r1.X);'), '1', ['2', '0'], 'with makes a modified copy; r1 is unchanged.')
+    ], 5);
+  });
+  var patternpick = quizGame('patternpick', 'design', 'lld06', 'lld', 'Pattern match', 'LLD 4–6 · Design Patterns', 'Patterns name recurring solutions: creational ones control how objects are made, structural ones how they are composed, behavioural ones how they communicate. Pick a pattern by the force in the problem, not by habit.', function () {
+    return some([
+      item('A pizza order has 12 optional toppings and settings. You want readable, step-by-step construction.', 'Builder', ['Singleton', 'Observer'], 'Builder assembles an object step by step and avoids huge constructors.'),
+      item('Your code expects interface PaymentGateway, but a vendor SDK has a different API.', 'Adapter', ['Decorator', 'Factory Method'], 'Adapter wraps the vendor API in the interface your code expects.'),
+      item('Add logging and caching around a service at runtime without subclassing it.', 'Decorator', ['Adapter', 'Builder'], 'Decorators wrap the same interface and stack extra behaviour.'),
+      item('Many widgets must update whenever the stock price changes.', 'Observer', ['Strategy', 'Singleton'], 'Observer lets subscribers react to a subject\'s change notifications.'),
+      item('Checkout must switch between flat, percentage and buy-one-get-one discounts.', 'Strategy', ['Observer', 'Adapter'], 'Strategy swaps one algorithm for another behind a common interface.'),
+      item('An editor needs undo and redo for every user action.', 'Command', ['Builder', 'Adapter'], 'Command turns each action into an object you can store, undo and replay.'),
+      item('Code should create the right Notification subclass (email, SMS, push) without naming the class.', 'Factory Method', ['Decorator', 'Observer'], 'A factory decides which concrete class to create.')
+    ], 5);
+  });
+  var gitrescue = quizGame('gitrescue', 'tools', 'devops04', 'devops', 'Git rescue', 'DevOps 4 · Git workflows', 'Git keeps every committed snapshot. Rewrite only local history (reset, rebase); undo shared history with new commits (revert). stash parks work in progress, cherry-pick copies one commit, blame shows who last changed a line.', function () {
+    return some([
+      item('Undo your last local commit but keep its changes staged.', 'git reset --soft HEAD~1', ['git revert HEAD', 'git reset --hard HEAD~1'], '--soft moves the branch back and keeps the changes staged; --hard would throw them away.'),
+      item('A bad commit is already pushed to the shared main branch. Undo it safely.', 'git revert <commit>', ['git reset --hard <commit>', 'git push --force'], 'revert adds a new commit that cancels the old one, without rewriting shared history.'),
+      item('Park unfinished work to switch branches quickly.', 'git stash', ['git commit --amend', 'git clean -fd'], 'stash saves uncommitted changes and restores them later with git stash pop.'),
+      item('Copy one bug-fix commit from another branch onto yours.', 'git cherry-pick <commit>', ['git merge <branch>', 'git rebase <branch>'], 'cherry-pick applies just that commit.'),
+      item('Find who last changed line 42 of app.js.', 'git blame app.js', ['git log --oneline', 'git diff app.js'], 'blame annotates every line with the commit and author that last touched it.'),
+      item('Throw away your uncommitted edits to one file.', 'git restore app.js', ['git rm app.js', 'git revert app.js'], 'restore puts the file back to its last committed state.')
+    ], 5);
+  });
+  var capcall = quizGame('capcall', 'design', 'hld10', 'hld', 'CAP call', 'HLD 10 · Distributed Systems Theory', 'During a network partition a system must choose: refuse some requests to stay consistent (CP) or answer from possibly stale replicas (AP). With N replicas, choosing R + W > N makes every read overlap the latest write.', function () {
+    return some([
+      item('A bank ledger must never show two different balances. A partition cuts the cluster in half. Prefer…', 'Consistency (CP): reject writes on the minority side', ['Availability (AP): accept writes everywhere', 'Neither: drop all data'], 'Money needs one truth, so refusing some requests is the safer trade.'),
+      item('A "likes" counter on posts. A partition happens. Prefer…', 'Availability (AP): keep counting, reconcile later', ['Consistency (CP): block all likes', 'Shut the site down'], 'A briefly stale like count is harmless; staying up matters more.'),
+      item('N = 3 replicas. Which R and W guarantee a read sees the latest write?', 'R = 2, W = 2', ['R = 1, W = 1', 'R = 1, W = 2'], 'R + W = 4 > 3, so every read set overlaps every write set.'),
+      item('Shopping carts that merge items added on both sides of a partition are an example of…', 'Availability with eventual consistency', ['Strong consistency', 'Two-phase commit'], 'Both sides accept writes and the conflict is merged later.'),
+      item('PACELC adds: even with no partition, a system trades…', 'latency against consistency', ['cost against storage', 'CPU against memory'], 'Waiting for more replicas makes reads consistent but slower.')
+    ], 5);
+  });
+
+  /* Hints: two or three nudges per game, revealed one at a time by the Hint button. They point at the idea, never at
+     this puzzle's answer (puzzles are random, so a hint must hold for every round). */
+  var HINTS = {
+    courseplan: ['Start with a course that has no prerequisites.', 'After each course, look for one whose every listed need is now done.', 'If no course can be taken, the plan has a cycle; this game never has one.'],
+    unionfind: ['Draw each person as a dot and each union as a line; count the connected blobs.', 'A union between two people already in the same group changes nothing.'],
+    bstbuild: ['The first key is the root. Each later key goes left if smaller, right if bigger, until it finds an empty spot.', 'Count the nodes on the longest root-to-leaf path. Sorted input makes a straight chain.'],
+    roundrobin: ['Each job runs for at most one quantum, then goes to the back of the line if it is not done.', 'A job finishes in the round where its remaining burst is at most the quantum. Track the remaining time in a small table.'],
+    cppout: ['int& is another name for the same variable; int* stores an address and *p reaches the variable.', 'Passing int copies the value; passing int& lets the function change the caller\'s variable.'],
+    csref: ['struct and int are value types (copied); class instances are reference types (shared).', 'record types compare by their values; classes compare by reference unless they override Equals.'],
+    patternpick: ['Ask what is changing: how objects are created, how they are wrapped, or how they react to each other.', 'Wrapping to change the interface is Adapter; wrapping to add behaviour while keeping the interface is Decorator.'],
+    gitrescue: ['Is the commit already shared? Then avoid rewriting history: use revert, not reset.', 'reset --soft keeps changes staged, --mixed keeps them unstaged, --hard throws them away.'],
+    capcall: ['Ask what is worse for this product: a wrong answer, or no answer.', 'For quorums, add R and W: if the sum is bigger than N, a read always meets the latest write.'],
+    queuecourier: ['A queue is first in, first out: the parcel that has waited longest goes next.', 'Look at the arrival order, not the parcel number. The leftmost waiting parcel is the oldest.'],
+    bfsbeacons: ['Breadth-first search works in waves: everything 1 step away, then everything 2 steps away, and so on.', 'Before lighting a beacon, check that a neighbour on the previous wave is already lit.', 'Inside one wave the order does not matter.'],
+    windowchef: ['Every meal is three neighbouring trays, so there are only (number of trays − 2) possible starts.', 'Sliding window: moving the start one step right adds the new tray and drops the old one, so each sum is the previous sum plus one change.'],
+    recursiontrail: ['Find the base case first: when does the function stop calling itself?', 'If print comes before the recursive call, values appear on the way down. If it comes after, they appear while the calls return.'],
+    cssduel: ['Compare in this order: !important, then specificity (ID > class > type), then which rule comes last.', 'Inherited values always lose to any rule that targets the element itself.'],
+    httprescue: ['2xx is success, 3xx is redirect, 4xx is the client\'s mistake, 5xx is the server\'s.', '401 means "who are you?" (log in); 403 means "I know who you are, and no".'],
+    transactionvault: ['ACID: Atomicity (all or nothing), Consistency (rules hold), Isolation (no interference), Durability (survives a crash).', 'Ask which failure the scenario is about: a half-done change, a broken rule, two users at once, or a crash after commit.'],
+    promptdetective: ['Good prompts give context, constraints and the output format you want.', 'Text inside a pasted document is data, not instructions, and confident answers still need checking.'],
+    guess: ['Always guess the middle of the range that is still possible.', 'After each answer, half of the range is gone. Keep updating the low and high ends.'],
+    race: ['Plug N into each runner\'s formula and compare it with about 10⁸ simple steps per second.', 'Exponential and cubic runners blow up fast; even N = 30 is too much for 2ᴺ.'],
+    pointers: ['The array is sorted, so the smallest number is on the left and the biggest on the right.', 'Sum too small? Move the left pointer right. Sum too big? Move the right pointer left.'],
+    oranges: ['All rotten oranges spread at the same time, so treat them as one starting wave (multi-source BFS).', 'Count waves until no fresh orange is left. If a fresh orange can never be reached, the answer is -1.'],
+    lockers: ['Add up the letter codes of the name, then take the remainder after dividing by the number of lockers.', 'A taken locker means a collision: follow the game\'s rule for the next free locker.'],
+    brackets: ['Push every opening bracket. On a closing bracket, the top of the stack must be its matching opener.', 'The string is balanced only if the stack is empty at the end.'],
+    swaps: ['Bubble sort idea: if a left card is bigger than its right neighbour, swap them.', 'The smallest possible number of swaps equals the number of out-of-order pairs (inversions).'],
+    bits: ['Each bit is a power of two: 1, 2, 4, 8, 16, … from the right.', 'Start with the largest power that fits in the target, subtract it, and repeat with what is left.'],
+    kadane: ['Kadane\'s idea: keep a running sum and restart it whenever it drops below zero.', 'The best stretch starts right after the point where the running sum last went negative.'],
+    prefix: ['P[i] is the sum of the first i numbers, so the sum from l to r is P[r + 1] − P[l].', 'Watch the index shift: P has one more entry than the array.'],
+    coins: ['Greedy (biggest coin first) can fail with unusual coin sets.', 'Dynamic programming: best(a) = 1 + the smallest best(a − coin) over every coin that fits.'],
+    merge: ['Only the two heads can be next. Compare them and take the smaller.', 'When one list runs out, the rest of the other list follows in order.'],
+    treewalk: ['Preorder: node, left, right. Inorder: left, node, right. Postorder: left, right, node.', 'Level order reads the tree row by row, left to right, like BFS.', 'Inorder of a binary search tree is always sorted.'],
+    heap: ['In a min-heap every parent is smaller than or equal to its children.', 'A new number starts at the bottom and swaps with its parent while it is smaller (sift up).'],
+    dijkstra: ['Always lock the unlocked node with the smallest current distance.', 'After locking a node, try every edge out of it: if going through it is shorter, update that neighbour.'],
+    sqlwhere: ['Check every row against the WHERE condition one at a time.', 'NULL compared with anything is unknown, so the row is not returned, unless you use IS NULL.'],
+    groupby: ['GROUP BY makes one output row per distinct group value.', 'COUNT(*) counts rows, COUNT(column) skips NULLs, and HAVING filters after grouping.'],
+    joins: ['An INNER JOIN keeps only pairs that match on both sides; one left row can match several right rows.', 'A LEFT JOIN keeps every left row, filling NULLs where nothing matches.'],
+    javaout: ['Java evaluates left to right; once a String appears in a + chain, the rest is joined as text.', 'Integer division drops the fraction, and i++ returns the old value.'],
+    javaeq: ['== compares references for objects; equals() compares contents.', 'Small Integer values (-128 to 127) and string literals are cached, so == can be true for them by accident.'],
+    eventloop: ['Synchronous code runs first, top to bottom.', 'Then all microtasks (promise callbacks), then one macrotask (setTimeout), then microtasks again.'],
+    truthy: ['The falsy values are false, 0, -0, 0n, "", null, undefined and NaN. Everything else is truthy.', '+ with a string joins text; - and * convert to numbers. == converts types, === does not.'],
+    pyslice: ['a[start:stop:step]: start is included, stop is excluded.', 'Negative indexes count from the end, and a negative step walks backwards.'],
+    pygotcha: ['A default argument is created once, when the function is defined, not on every call.', 'Assigning a list copies the reference: both names point to the same list.'],
+    subnet: ['/n leaves 32 − n host bits, so there are 2^(32 − n) addresses and 2^(32 − n) − 2 usable hosts.', 'The network address has all host bits 0; the broadcast address has them all 1.'],
+    lru: ['On a hit, the key becomes the most recently used.', 'On a miss with a full cache, evict the key that was used least recently, not the oldest inserted.']
+  };
+
+  var CATS = [['all', 'All'], ['algo', 'Algorithms'], ['sql', 'SQL'], ['java', 'Java'], ['js', 'JavaScript'], ['py', 'Python'], ['cpp', 'C++'], ['csharp', 'C#'], ['design', 'Design'], ['tools', 'Git & DevOps'], ['cs', 'CS & systems'], ['web', 'Web & APIs'], ['ai', 'AI skills']];
+
+  var LIST = [courseplan, unionfind, bstbuild, roundrobin, cppout, csref, patternpick, gitrescue, capcall, queuecourier, bfsbeacons, windowchef, recursiontrail, cssduel, httprescue, transactionvault, promptdetective, guess, race, pointers, oranges, lockers, brackets, swaps, bits, kadane, prefix, coins, merge, treewalk, heap, dijkstra, sqlwhere, groupby, joins, javaout, javaeq, eventloop, truthy, pyslice, pygotcha, subnet, lru];
+  LIST.forEach(function (g) { g.cat = g.cat || 'algo'; g.hints = g.hints || HINTS[g.id] || []; });
   var BY = {}; LIST.forEach(function (g) { BY[g.id] = g; });
   var BYMOD = {}; LIST.forEach(function (g) { if (!BYMOD[g.mid]) BYMOD[g.mid] = g; });
   function inCat(cat) { return LIST.filter(function (g) { return !cat || cat === 'all' || g.cat === cat; }); }
@@ -1193,7 +1378,7 @@ var Games = (function () {
     get: function (id) { return BY[id]; },
     forModule: function (mid) { return BYMOD[mid]; },
     random: function (avoid, cat) { var c = inCat(cat).filter(function (g) { return g.id !== avoid; }); return pick(c.length ? c : LIST); },
-    bfsLayers: bfsLayers, balanced: balanced, inversions: inversions, pySlice: pySlice, minCoins: minCoins, greedyCoins: greedyCoins
+    bfsLayers: bfsLayers, topoValid: topoValid, dsuGroups: dsuGroups, bstLevels: bstLevels, rrFinish: rrFinish, balanced: balanced, inversions: inversions, pySlice: pySlice, minCoins: minCoins, greedyCoins: greedyCoins
   };
 })();
 if (typeof module !== 'undefined') module.exports = Games;
