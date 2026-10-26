@@ -13,12 +13,13 @@ copy('src/manifest.webmanifest', 'manifest.webmanifest');
 copy('src/sw-register.js', 'assets/sw-register.js');
 copy('store/play-icon-512.png', 'icons/icon-512.png');
 copy('app/icon.png', 'icons/icon-192.png');
+copy('store/favicon-32.png', 'icons/icon-32.png');
 fs.writeFileSync(path.join(out, 'offline.html'), '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offline - Interview Mastery</title>' +
   '<style>body{margin:0;background:#12263A;color:#F4EEDC;font:18px/1.6 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;text-align:center;padding:16px}a{color:#F2C14E}main{max-width:30em}</style></head>' +
   '<body><main><h1>You are offline</h1><p>This page has not been saved on this device yet. Open it once while you are online and it will work offline next time.</p><p><a href="index.html">Back to the home page</a></p></main></body></html>\n');
 
 // Add the manifest link and register script to every page (idempotent).
-const tags = '<link rel="manifest" href="manifest.webmanifest">\n<link rel="apple-touch-icon" href="icons/icon-192.png">\n<script src="assets/sw-register.js" defer></script>\n';
+const tags = '<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">\n<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">\n<link rel="manifest" href="manifest.webmanifest">\n<link rel="apple-touch-icon" href="icons/icon-192.png">\n<script src="assets/sw-register.js" defer></script>\n';
 for (const f of fs.readdirSync(out).filter((x) => x.endsWith('.html') && x !== 'offline.html')) {
   const file = path.join(out, f), html = fs.readFileSync(file, 'utf8');
   if (!html.includes('manifest.webmanifest')) fs.writeFileSync(file, html.replace('</head>', () => tags + '</head>'));
