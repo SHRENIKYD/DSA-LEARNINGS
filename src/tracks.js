@@ -119,6 +119,25 @@ var TRACKS = [
     ]
   },
   {
+    id: 'csharp', title: 'C#', short: 'C#', icon: 'C#', lang: 'csharp', code: 'required', dry: true,
+    desc: 'Modern C# on .NET 8: types and records, LINQ, async/await, memory and the CLR, through expert idioms.',
+    modules: [
+      ['B', '.NET, Syntax, Types & Console I/O', 'The .NET SDK and dotnet CLI, compile to IL and JIT, top-level statements, built-in value types and sizes, var, const/readonly, string interpolation, Console input and fast I/O, checked arithmetic.'],
+      ['B', 'Control Flow, Methods, Arrays & Strings', 'if/switch/loops, methods, ref/out/in parameters, optional and named arguments, params, overloading, arrays and jagged arrays, string immutability, StringBuilder.'],
+      ['B', 'Classes, Structs & Records', 'Classes vs structs (reference vs value semantics), constructors, properties and init accessors, static members, records and with-expressions, equality, readonly structs.'],
+      ['B', 'OOP: Inheritance, Interfaces & Polymorphism', 'Inheritance and base calls, virtual/override/new/sealed, abstract classes, interfaces and default interface methods, explicit implementation, object methods, composition over inheritance.'],
+      ['I', 'Generics & Collections', 'Generic types and methods, constraints, List, Dictionary, HashSet, SortedDictionary, SortedSet, Queue, Stack, LinkedList, PriorityQueue, IEnumerable/IComparer, choosing a collection.'],
+      ['I', 'Delegates, Lambdas, Events & LINQ', 'Delegates, Func/Action/Predicate, lambdas and closures, events, LINQ query and method syntax, deferred execution, grouping/joining, yield return iterators.'],
+      ['I', 'Exceptions, Nullability & Pattern Matching', 'try/catch/finally, custom exceptions, exception filters, using and IDisposable, nullable value and reference types, the null operators, switch expressions and patterns (type, property, relational, list).'],
+      ['I', 'Memory, GC, Boxing & Span<T>', 'Stack vs heap, value vs reference types in memory, boxing/unboxing, the generational GC and LOH, finalizers vs Dispose, Span<T>/Memory<T>, stackalloc, ArrayPool, avoiding allocations.'],
+      ['A', 'Async/Await & Tasks', 'Task and Task<T>, async/await and the state machine, ConfigureAwait, cancellation tokens, Task.WhenAll/WhenAny, ValueTask, async streams (IAsyncEnumerable), deadlocks and sync-over-async.'],
+      ['A', 'Concurrency & Threading', 'Threads and the thread pool, lock/Monitor, Interlocked, SemaphoreSlim, ReaderWriterLockSlim, concurrent collections, Channels, Parallel and PLINQ, volatile and the memory model.'],
+      ['A', 'Reflection, Attributes & Advanced Generics', 'Reflection and Type, custom attributes, generic variance (in/out), static abstract interface members, extension methods, operator overloading, expression trees, source generators overview.'],
+      ['E', 'CLR Internals & Performance', 'IL, JIT tiers and ReadyToRun, method tables and object headers, struct layout, inlining, BenchmarkDotNet, allocation profiling, string interning, common performance traps.'],
+      ['E', 'Expert Idioms + Question Bank', 'Immutability patterns, Result types, dispose patterns, async best practices, equality and hashing pitfalls, tricky output-prediction questions and a C# interview question bank.']
+    ]
+  },
+  {
     id: 'sql', title: 'SQL + DBMS', short: 'SQL', icon: 'SQL', lang: 'sql', code: 'required', dry: false,
     desc: 'SQL from your first SELECT to window functions, index internals, MVCC and distributed databases — with a live SQL playground in the browser.',
     modules: [

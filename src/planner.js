@@ -11,7 +11,7 @@
 var Planner = (function () {
   var DAY = 864e5, PART_MIN = 40, PRACTICE_MIN = 30, REVIEW_MIN = 20, DUE_MIN = 10, MOCK_MIN = 45, MOCK_QS = 12;
   var WEAK = 60, STRONG = 85;
-  var LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp' };
+  var LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp', csharp: 'csharp' };
   function get(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
   function set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
   function done() { return get('imastery.done', {}) || {}; }

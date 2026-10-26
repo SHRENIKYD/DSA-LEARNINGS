@@ -5,7 +5,7 @@ var Journey = (function () {
 
   var REGIONS = [
     { key: 'isle', name: 'Foundation Isle', area: 'Foundations', tracks: ['dsa', 'cs'], color: 'gold', icon: 'lighthouse', x: 130, y: 330, rx: 125, ry: 85, lx: 6, ly: 58 },
-    { key: 'valley', name: 'Language Valley', area: 'Languages', tracks: ['java', 'py', 'js', 'cpp', 'sql'], color: 'green', icon: 'tree', x: 340, y: 140, rx: 115, ry: 70, lx: 38, ly: 20 },
+    { key: 'valley', name: 'Language Valley', area: 'Languages', tracks: ['java', 'py', 'js', 'cpp', 'csharp', 'sql'], color: 'green', icon: 'tree', x: 340, y: 140, rx: 115, ry: 70, lx: 38, ly: 20 },
     { key: 'peaks', name: 'Design Peaks', area: 'System design', tracks: ['lld', 'hld'], color: 'clay', icon: 'mountain', x: 565, y: 110, rx: 110, ry: 65, lx: 68, ly: 12 },
     { key: 'port', name: 'Builder Port', area: 'Engineering', tracks: ['fe', 'be'], color: 'sky', icon: 'anchor', x: 560, y: 330, rx: 120, ry: 80, lx: 70, ly: 62 },
     { key: 'obs', name: 'AI Observatory', area: 'AI', tracks: ['ai'], color: 'violet', icon: 'telescope', x: 350, y: 395, rx: 85, ry: 50, lx: 42, ly: 77 },
