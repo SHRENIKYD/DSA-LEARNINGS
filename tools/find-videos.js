@@ -25,8 +25,10 @@ function seconds(iso) { const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)
 // Topic notes in brackets ("BST search (and min, max)") are dropped from queries and matching; acronyms such as BST,
 // DFS or LRU count as words even though they are short.
 function core(s) { return strip(s).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim() || strip(s); }
+// Filler words carry no topic meaning; leaving them out lets a title match on the words that matter.
+const STOP = new Set(['with', 'from', 'into', 'using', 'your', 'what', 'when', 'that', 'this', 'their', 'than', 'then', 'them', 'they', 'have', 'does', 'each', 'more', 'most', 'also', 'only', 'over', 'very', 'about', 'basics', 'introduction', 'intro']);
 function words(s) {
-  return strip(s).split(/[^A-Za-z0-9+#]+/).filter((w) => w.length > 3 || /^[A-Z][A-Z0-9+#]{1,4}$/.test(w) || /^(c\+\+|c#)$/i.test(w)).map((w) => w.toLowerCase());
+  return strip(s).split(/[^A-Za-z0-9+#]+/).filter((w) => w.length > 3 || /^[A-Z][A-Z0-9+#]{1,4}$/.test(w) || /^(c\+\+|c#)$/i.test(w)).map((w) => w.toLowerCase()).filter((w) => !STOP.has(w));
 }
 
 function topics() {
@@ -61,7 +63,7 @@ function pick(cands, topicTitle) {
     if (!c.embeddable || c.privacy !== 'public' || c.live) return;
     if (c.secs < 180 || c.secs > 5400) return; // 3 to 90 minutes
     const have = new Set(words(c.title)), overlap = want.length ? want.filter((w) => have.has(w)).length / want.length : 0;
-    if (want.length && overlap < 0.35) return;
+    if (want.length && overlap < 0.3) return; // at least ~a third of the topic's meaningful words in the title
     let s = Math.log10((c.views || 0) + 1) + Math.min(1.5, c.views ? (c.likes || 0) / c.views * 40 : 0) + overlap * 2 - rank * 0.25;
     if (TRUSTED.indexOf(c.channel) >= 0) s += 1.5;
     if (c.lang && !/^en/i.test(c.lang)) s -= 1.5;
@@ -71,13 +73,34 @@ function pick(cands, topicTitle) {
 }
 
 let client = null; // tests replace this with a fixture; production uses the YouTube Data API below
+// Quota units this process spent (search = 100, videos = 1), printed with every summary so a key shared with another
+// project shows up as "quota reached" long before ~10,000 units.
+const usage = { units: 0 };
+const COST = { search: 100, videos: 1 };
+// Google's error reason decides what happens: the daily quota stops the run; per-minute limits and server errors are
+// retried with a growing pause (up to 3 tries); anything else is a normal error for that topic.
+function apiError(status, body) {
+  const err = (body && body.error) || {}, reason = (err.errors && err.errors[0] && err.errors[0].reason) || err.status || ('HTTP ' + status);
+  const e = new Error(reason + ': ' + (err.message || 'HTTP ' + status));
+  e.reason = reason;
+  e.quota = /^(quotaExceeded|dailyLimitExceeded)$/.test(reason);
+  e.retry = !e.quota && (/^(rateLimitExceeded|userRateLimitExceeded|backendError|internalError)$/.test(reason) || status >= 500);
+  return e;
+}
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 async function api(endpoint, params) {
+  usage.units += COST[endpoint] || 1;
   if (client) return client(endpoint, params);
   const q = new URLSearchParams(Object.assign({ key: process.env.YOUTUBE_API_KEY }, params));
-  const r = await fetch(API + endpoint + '?' + q);
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) { const e = new Error((body.error && body.error.message) || 'HTTP ' + r.status); e.quota = /quota/i.test(JSON.stringify(body.error || {})); throw e; }
-  return body;
+  for (let attempt = 1; ; attempt++) {
+    const r = await fetch(API + endpoint + '?' + q);
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) return body;
+    const e = apiError(r.status, body);
+    if (!e.retry || attempt >= 3) throw e;
+    console.warn('retrying ' + endpoint + ' after ' + e.message);
+    await pause(2000 * attempt);
+  }
 }
 function setClient(fn) { client = fn; }
 async function details(ids) {
@@ -117,7 +140,7 @@ async function searchLang(db, all, lang, max) {
       if (best) { e.byLang[lang] = { id: best.id, title: best.title, channel: best.channel, secs: best.secs }; found++; }
       else { e.byLang[lang] = { id: null, at: today() }; none++; }
     } catch (e) {
-      if (e.quota) { console.log('quota reached, stopping'); break; }
+      if (e.quota) { console.log('quota reached after ~' + usage.units + ' units this run, stopping (' + e.message + ')'); break; }
       console.warn('skip ' + t.id + ': ' + e.message);
     }
   }
@@ -163,7 +186,7 @@ async function searchDefault(db, all, max) {
       if (best) { db.videos[t.id] = Object.assign({ t: t.title, id: best.id, title: best.title, channel: best.channel, secs: best.secs }, keep); found++; }
       else { db.videos[t.id] = Object.assign({ t: t.title, id: null, at: today() }, keep); none++; }
     } catch (e) {
-      if (e.quota) { console.log('quota reached, stopping'); break; }
+      if (e.quota) { console.log('quota reached after ~' + usage.units + ' units this run, stopping (' + e.message + ')'); break; }
       console.warn('skip ' + t.id + ': ' + e.message);
     }
   }
@@ -218,14 +241,14 @@ async function main() {
   if (lang) {
     const r = await searchLang(db, all, lang, max);
     save(db);
-    console.log('lang ' + lang + ': ' + r.found + ' found, ' + r.none + ' with no good match, ' + r.remaining + ' dsa/lld topics still without a ' + LANGS[lang].name + ' pick');
+    console.log('lang ' + lang + ' (~' + usage.units + ' quota units): ' + r.found + ' found, ' + r.none + ' with no good match, ' + r.remaining + ' dsa/lld topics still without a ' + LANGS[lang].name + ' pick');
     return;
   }
   const { found, none, replaced } = await searchDefault(db, all, max);
   save(db);
   const total = all.length, have = Object.keys(db.videos).filter((k) => db.videos[k].id && db.videos[k].available !== false && !db.videos[k].stale).length;
-  console.log('search: ' + found + ' found (' + replaced + ' replacing removed curated videos), ' + none + ' with no good match, ' + removed + ' stale removed · ' + have + '/' + total + ' topics have a video, ' + all.filter((t) => !db.videos[t.id]).length + ' not searched yet');
+  console.log('search (~' + usage.units + ' quota units): ' + found + ' found (' + replaced + ' replacing removed curated videos), ' + none + ' with no good match, ' + removed + ' stale removed · ' + have + '/' + total + ' topics have a video, ' + all.filter((t) => !db.videos[t.id]).length + ' not searched yet');
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };
+module.exports = { usage, apiError, LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };

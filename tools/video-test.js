@@ -102,8 +102,18 @@ assert.equal(env.window.R.a.id, ID_A, 'no chosen language: default pick');
 }
 
 // Matching: bracketed notes are dropped and short acronyms count as words.
+// API errors: the daily quota stops the run; per-minute limits and server errors are retried; others are per-topic errors.
+{
+  const q = discovery.apiError(403, { error: { message: 'The request cannot be completed because you have exceeded your quota.', errors: [{ reason: 'quotaExceeded' }] } });
+  assert.equal(q.quota, true); assert.equal(q.retry, false); assert.match(q.message, /^quotaExceeded: /);
+  const rl = discovery.apiError(403, { error: { message: 'Rate limit', errors: [{ reason: 'rateLimitExceeded' }] } });
+  assert.equal(rl.quota, false); assert.equal(rl.retry, true);
+  assert.equal(discovery.apiError(503, {}).retry, true);
+  const bad = discovery.apiError(400, { error: { message: 'bad key', errors: [{ reason: 'keyInvalid' }] } });
+  assert.equal(bad.quota, false); assert.equal(bad.retry, false);
+}
 assert.equal(discovery.core('BST Search & Insert (and Min, Max, Floor, Ceil)'), 'BST Search & Insert');
-assert.deepEqual(discovery.words('DFS on a grid with LRU cache'), ['dfs', 'grid', 'with', 'lru', 'cache']);
+assert.deepEqual(discovery.words('DFS on a grid with LRU cache'), ['dfs', 'grid', 'lru', 'cache']);
 assert.ok(discovery.pick([{ id: 'LONGLECTURE', title: 'BST search and insert full lecture', channel: 'X', embeddable: true, privacy: 'public', live: false, secs: 4800, views: 1000, likes: 50 }], 'BST Search & Insert (and Min, Max)'), 'an 80-minute lecture can be picked');
 
 // find-videos --lang with a mocked YouTube client (no network, no key).

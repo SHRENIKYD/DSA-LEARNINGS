@@ -44,9 +44,9 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           LANG_INPUT: ${{ inputs.lang }}
         run: |
-          langs=(python js cpp java csharp)
+          langs=(csharp python csharp js csharp cpp csharp java)
           lang="$LANG_INPUT"
-          if [ -z "$lang" ]; then lang="${langs[$(( 10#$(date -u +%j) % 5 ))]}"; fi
+          if [ -z "$lang" ]; then lang="${langs[$(( 10#$(date -u +%j) % 8 ))]}"; fi
           echo "Language pass: $lang"
           node tools/find-videos.js --lang "$lang" --max 40
       - name: Check the catalog before saving it
