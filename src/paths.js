@@ -16,10 +16,12 @@ var PATHS = (function () {
     java02: ['java01'], java03: ['java02'], java04: ['java03'], java05: ['java04'], java06: ['java04', 'java05'], java07: ['java05'],
     java08: ['java07'], java09: ['java07', 'java08'], java10: ['java07', 'java08'], java11: ['java04', 'java09'], java12: ['java11'],
     java13: ['java10', 'java12'], java14: ['java09', 'java13'],
+    java15: ['java07', 'java08'], java16: ['java15', 'sql05'], java17: ['java16', 'be06'],
     // C#
     csharp02: ['csharp01'], csharp03: ['csharp02'], csharp04: ['csharp03'], csharp05: ['csharp04'], csharp06: ['csharp05'],
     csharp07: ['csharp04', 'csharp06'], csharp08: ['csharp03', 'csharp07'], csharp09: ['csharp06', 'csharp07'], csharp10: ['csharp08', 'csharp09'],
     csharp11: ['csharp05', 'csharp06'], csharp12: ['csharp08', 'csharp11'], csharp13: ['csharp10', 'csharp12'],
+    csharp14: ['csharp06', 'csharp09'], csharp15: ['csharp14', 'sql05'], csharp16: ['csharp14', 'csharp15'],
     // Python
     py02: ['py01'], py03: ['py02'], py04: ['py02'], py05: ['py02', 'py04'], py06: ['py02', 'py04'], py07: ['py05', 'py06'],
     py08: ['py04', 'py05', 'py06'], py09: ['py06', 'py07', 'py08'], py10: ['py07', 'py09'], py11: ['py05', 'py06', 'py07'],
@@ -45,7 +47,7 @@ var PATHS = (function () {
     fe02: ['fe01'], fe03: ['fe02'], fe04: ['fe02', 'fe03', 'js02'], fe05: ['fe03'], fe06: ['fe02', 'fe04'], fe07: ['fe04', 'js08'],
     fe08: ['fe04', 'js06'], fe09: ['fe08', 'js04'], fe10: ['fe07', 'fe09'], fe11: ['fe05', 'fe07'], fe12: ['fe09'], fe13: ['fe07'],
     fe14: ['fe08'], fe15: ['fe10', 'fe14'], fe16: ['fe10', 'fe11', 'fe15'],
-    fe17: ['fe04', 'js06', 'js10'], fe18: ['fe17'], fe19: ['fe18', 'js08'], fe20: ['fe19', 'fe07'],
+    fe17: ['fe04', 'js06', 'js10'], fe18: ['fe17'], fe19: ['fe18', 'js08'], fe20: ['fe19', 'fe07'], fe21: ['fe18', 'fe19'], fe22: ['fe20', 'fe11'], fe23: ['fe20', 'fe15'],
     // Backend (Spring Boot, Node.js, Python)
     be02: ['be01'], be03: ['be02', 'sql04'], be04: ['be01'], be05: ['be04'], be06: ['be03', 'be05', 'java09'], be07: ['be04', 'js08'],
     be08: ['be03', 'sql10'], be09: ['be08'], be10: ['be09'], be11: ['be04'], be12: ['be09'], be13: ['be10'], be14: ['be13'], be15: ['be05'],
@@ -55,9 +57,11 @@ var PATHS = (function () {
     ai02: ['ai01'], ai03: ['ai01'], ai04: ['ai03'], ai05: ['ai04'], ai06: ['ai05'], ai07: ['ai02'], ai08: ['ai06'], ai09: ['ai07', 'ai08'],
     ai10: ['ai07'], ai11: ['ai09', 'ai10'], ai12: ['ai05', 'ai06'], ai13: ['ai09'], ai14: ['ai09', 'ai13'], ai15: ['ai05', 'ai06', 'ai18', 'ai20'],
     ai16: ['ai02'], ai17: ['ai02'], ai18: ['ai03'], ai19: ['ai03'], ai20: ['ai18'],
+    ai21: ['ai04', 'ai19'], ai22: ['ai21', 'devops13'], ai23: ['ai21', 'ai22', 'hld06'],
     // CS Core
     cs02: ['cs01'], cs03: ['cs02'], cs04: ['cs02'], cs05: ['cs04'], cs06: ['cs02'], cs07: ['cs06'], cs08: ['cs02'], cs09: ['cs06', 'cs08'],
     cs11: ['cs10'], cs12: ['cs10'], cs13: ['cs12'], cs14: ['cs12', 'cs13'],
+    cs15: ['cs01'], cs16: ['cs12', 'cs04'], cs17: ['cs15', 'cs06'],
     // Behavioral
     beh02: ['beh01'], beh03: ['beh02'], beh04: ['beh01'], beh05: ['beh03'], beh06: ['beh01'],
     // Cloud & DevOps
@@ -127,7 +131,7 @@ var PATHS = (function () {
         { name: 'Testing, accessibility and performance', mods: ['fe06', 'fe11', 'fe14', 'fe13'], rec: ['fe13'] },
         { name: 'Architecture and interviews', mods: ['fe15', 'fe16', 'dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], rec: ['dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], project: 'fe-p3', behavioral: ['beh04'] }
       ],
-      extensions: ['js12', 'js13', 'js14', 'fe12', 'fe17', 'fe18', 'fe19', 'fe20', 'hld01', 'hld04', 'hld06'] },
+      extensions: ['js12', 'js13', 'js14', 'fe12', 'fe17', 'fe18', 'fe19', 'fe20', 'fe21', 'fe22', 'fe23', 'hld01', 'hld04', 'hld06'] },
     { id: 'javaback', name: 'Java backend', langs: ['java'], blurb: 'Java, core DSA and SQL, Spring Boot backends, concurrency, then low-level and high-level design.',
       stages: [
         { name: 'Java', mods: ['java01', 'java02', 'java03', 'java04', 'java05', 'java06', 'java07', 'java08', 'java09'] },

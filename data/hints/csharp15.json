@@ -1,0 +1,30 @@
+{"quiz": [
+"Think about how ASP.NET Core creates one DI scope for each incoming request, and which lifetime ties an instance to a scope.",
+"A DbContext keeps a simple in-use flag and is not thread-safe. What happens when a second async call starts before the first finishes?",
+"Ask yourself whether the change tracker ever saw this object. SaveChanges only writes entries it is tracking.",
+"A tracking context keeps an identity map keyed by primary key. What does it hand back when the same key shows up again?",
+"The command never opens a database connection. Which file in the Migrations folder records the model as of the last migration?",
+"Prefer something reviewable that runs once, from the pipeline, without giving the app DDL rights or letting instances race.",
+"Count the first query for the orders, then one more each time a navigation that is not loaded yet gets read.",
+"Two sibling collections joined in one statement multiply each other's rows. How can each collection be loaded on its own?",
+"Extension methods are picked by the variable's static type at compile time, not by the object it holds at run time.",
+"Look for the API that takes a FormattableString and turns each interpolation hole into a DbParameter.",
+"The original token value is in the WHERE clause, and EF compares how many rows each command expected with how many it touched.",
+"The cache key is the shape of the expression tree. Which kind of value becomes a SQL parameter instead of part of the shape?",
+"It sends one set-based statement straight away. Think about what the change tracker and the in-memory entities never see."
+],
+"interview": [
+"Cover what the class holds (model, connection, tracker), the unit-of-work idea, thread safety and the DI registration options.",
+"Go through the five states one at a time: the SQL each produces, and what state the entity is in after a successful save.",
+"Compare snapshots and the identity map, the cost on read-only paths, and what happens to rows repeated through a JOIN.",
+"Explain where the extra round trips come from (lazy or explicit loading in loops) and three ways to load related data in bulk.",
+"Compare when the data is loaded, how visible the query is in code, and what each style risks: hidden queries or extra trips.",
+"Explain expression trees vs delegates, which static type picks which LINQ methods, and what EF Core 3 changed about client evaluation.",
+"Go through snapshot diffs, the history table, reviewing generated code, scripts or bundles in CI/CD, and zero-downtime steps.",
+"Describe the token in the WHERE clause, the zero-rows signal and its exception, then the store-wins, client-wins and merge choices.",
+"Say what SaveChanges already makes atomic, when work spans several calls, and why retrying strategies need the whole unit wrapped.",
+"Contrast the interpolated APIs with the Raw ones, how values become parameters, and what to do with identifiers.",
+"Explain cartesian explosion, how one query per collection avoids it, and the consistency and ordering costs that follow.",
+"Lay out a measure-first plan: number of commands, rows and columns, plans and indexes, then EF-level tuning, re-measuring each time.",
+"Think dependency graph: who must be inserted first, temporary keys, store-generated key propagation, batching, and cycles."
+]}

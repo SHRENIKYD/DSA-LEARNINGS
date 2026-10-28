@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "Think about what inject() needs around it to find a provider, and whether a bare constructor call provides that.",
+    "Recall which runner the Angular team announced it would stop developing in 2023, and what the newest builder runs.",
+    "Consider how OnPush decides a view needs checking, and which fixture API mimics a parent template binding.",
+    "Each harness action wraps itself in change detection and waiting; also think about running outside TestBed.",
+    "Where in the page does the CDK put overlays such as dialogs and menus, relative to your component's host?",
+    "Effects do not run the moment a signal changes. Which TestBed helper runs pending work in recent versions?",
+    "Computed signals are pull-based. Ask whether a read needs any change detection to see the new source value.",
+    "Every letter takes one frame, spaces take none, and the time token adds its own milliseconds on top.",
+    "An interval never ends on its own. What stops it the way the real app would, or tells the zone to drop it?",
+    "The testing provider replaces something the real client registers, so think about which one must win.",
+    "HttpClient calls are lazy. What has to happen before any request reaches the testing backend?",
+    "Look for the harness class added in v15.2 that works with the standalone router provider function.",
+    "NgModel builds its control a little later than the first render. What fixture call waits for that?",
+    "Coverage tools record what ran, not what was checked. What does that say about assertions?",
+    "Flaky E2E tests usually wait for time instead of for a condition, and share data between tests."
+  ],
+  "interview": [
+    "Fake the boundaries with providers, get the real service from the test injector, and check every request made.",
+    "Separate what stays (TestBed APIs) from what changes (runner config, spy syntax, timers, browser vs jsdom).",
+    "Set inputs the way a parent would, interact through the DOM, and observe outputs with a spy or a host.",
+    "Think of a remote control for a component: find it, operate it like a user, and own it next to the component.",
+    "Signals and computeds are synchronous; effects are scheduled. Name the flush helper for each Angular version.",
+    "Match the tool to the job: plain awaits, a virtual clock with zone.js, legacy real-time waiting, or RxJS timelines.",
+    "Explain what each symbol costs in frames, then show hot input, cold inner calls and a subscription check.",
+    "Test the function alone with a fake next handler, then test it wired into the client with the testing backend.",
+    "Use the real router with test routes for wiring, and call guard functions directly inside an injection context.",
+    "Most form logic needs no DOM at all; keep a few wiring tests and test the accessor in a host component.",
+    "Compare browser coverage, parallelism and debugging, then list habits that remove waiting and shared state.",
+    "Focus on behaviour that would hurt if broken, and treat coverage numbers as an alarm rather than a goal.",
+    "Measure durations and flake history first, then look at timers, shared state, ordering and what runs per change."
+  ]
+}

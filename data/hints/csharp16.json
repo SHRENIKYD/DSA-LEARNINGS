@@ -1,0 +1,31 @@
+{"quiz": [
+"Think about how xUnit isolates state: does it reuse one object for the whole class, or build a new one each time a case runs?",
+"Ask how many objects NUnit creates per fixture by default, and what that means for fields changed by an earlier test.",
+"Separate the doubles that only answer questions from the one that is checked at the end for what was called on it.",
+"A mocking library intercepts calls by generating a type at runtime. What can a generated subclass change, and what can it not?",
+"The factory boots your real app, but the requests never leave the process. What sits where Kestrel normally would?",
+"Which test database option is not relational at all and therefore ignores indexes and constraints?",
+"An entity that does not exist in the database yet cannot be updated. What does a later property change do to its pending command?",
+"A bare version in a PackageReference is a lower bound, and restore prefers stable, reproducible choices.",
+"Prerelease labels sort before the release; identifiers are compared one by one; build metadata never affects ordering.",
+"Properties passed on the command line are special during evaluation. Can a project file overwrite them?",
+"Look for the file MSBuild imports automatically from parent folders early in evaluation, not the SDK pin or feed config.",
+"In .editorconfig, a setting for one specific rule and a setting for a whole category conflict. Which is more specific?",
+"Coverage counts what executed. Does executing a line say anything about whether its result was checked?",
+"The xUnit template already references coverlet.collector; it plugs in as a data collector of dotnet test with a cross-platform name."
+],
+"interview": [
+"Cover the AAA structure, one behaviour per test, naming that reads as a spec, and the F.I.R.S.T. properties.",
+"Compare instance lifecycle, setup and teardown style, shared fixtures, parallelism defaults and assertion models, then justify a pick.",
+"Define each double by what it does with calls, then argue for state-based tests and mocks only for outbound side effects.",
+"Mention the in-memory TestServer, overriding services for tests, stubbing outbound HTTP and using a real database in a container.",
+"List what the InMemory provider does not do, then compare SQLite in-memory, containers and repository fakes.",
+"Walk through the entity states, snapshot comparison, the special case of removing an Added entity, and what happens after saving.",
+"Explain that a version is a minimum, why the lowest match is chosen, how the nearest declaration wins and what NU1605 means.",
+"Think central version files, lock files, source mapping, vulnerability auditing and automated update bots.",
+"Describe the two phases, assignment-time expansion, global properties, import order and how to debug with a binary log.",
+"Order the steps restore, build, test, format, publish, and explain the flags that stop each step from repeating earlier work.",
+"Start with a measured baseline, tune severities centrally, fix rule by rule, then make the count only go down in CI.",
+"Treat coverage as a way to find untested code, prefer branch and diff coverage, and mention mutation testing for test quality.",
+"Lay out unit, integration, contract and smoke tests per dependency type, data isolation, and how CI runs each layer."
+]}

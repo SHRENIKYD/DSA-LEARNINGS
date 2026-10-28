@@ -1,0 +1,36 @@
+{
+ "quiz": [
+  "Think about every reason the client could see silence and whether it can tell them apart.",
+  "Byzantine tolerance needs more replicas than crash tolerance; recall the formula in terms of f.",
+  "Convert ppm to microseconds per second, then multiply by the seconds in a day.",
+  "You need a clock that never jumps when NTP corrects the time of day.",
+  "Apply the receive rule: take the larger of the two values, then tick once.",
+  "Lamport clocks only promise one direction of the implication; reason by contradiction.",
+  "Compare slot by slot; does either vector dominate in every position?",
+  "Read and write sets must overlap, so their sizes together must exceed the replica count.",
+  "Which model tracks only cause-and-effect ordering and lets independent writes vary?",
+  "One is about single-object operations and wall-clock order, the other about transactions.",
+  "Gilbert and Lynch formalized the C with a specific, very strong model.",
+  "The else branch of PACELC: what is traded when the system waits on every write?",
+  "Compute the majority for four nodes and subtract it from four.",
+  "The storage itself must be able to tell an old leader's write from a new one's.",
+  "Delivery can repeat; think about what makes processing a duplicate harmless.",
+  "The key identifies the logical operation, not one network attempt."
+ ],
+ "interview": [
+  "Group your answer into partial failure, the network, and clocks, then mention the impossibility result.",
+  "List the node failure types from mildest to worst, then the three timing assumptions.",
+  "NTP narrows skew but never to zero; think about what last-write-wins does with close writes.",
+  "Give the increment and receive rules, the one-way guarantee, and the missing converse.",
+  "Explain the merge-on-receive rule, the dominance comparison, and what siblings are.",
+  "Contrast who accepts writes in each model and what conflicts or failover risks follow.",
+  "Overlap arithmetic first, then think about concurrent reads, sloppy quorums and timestamps.",
+  "Walk down the ladder of models and attach a concrete product feature to each one.",
+  "Turn each operation into an interval and search for a legal order respecting real time.",
+  "Define C and A carefully, note partitions are not optional, then add the no-partition case.",
+  "Votes per term and intersecting majorities are key; then consider a paused old leader.",
+  "Separate delivery from effect, and recall why the sender can never be certain about acks.",
+  "Think about atomically storing the key with the effect, concurrent duplicates and payload mismatches.",
+  "Treat each agent step like a client request: stable ids, durable step results, bounded retries."
+ ]
+}

@@ -1,0 +1,33 @@
+{"quiz":[
+"A phase runs everything before it in the same lifecycle, never anything after it. Find the phase that comes later than package.",
+"Think of a library the application server already ships: you need it to compile, but copying it into the archive would clash.",
+"Maven never compares version numbers here. Measure the path length first, then think about which dependency appears first in the POM.",
+"Gradle's default conflict rule looks at the requested version numbers themselves, not at how deep they sit in the graph.",
+"Ask whether the imported POM brings in libraries or only a list of agreed version numbers for libraries you declare yourself.",
+"The java-library plugin separates what consumers may compile against from what they merely need to run.",
+"In the default mode, how many test instances exist before the first test runs? A method on an instance needs an instance.",
+"One of these says the environment is not suitable for this test; the other says the code is wrong. How is each reported?",
+"Three of these ignore element order; one checks both the elements and the exact sequence. Compare with [1, 2, 3].",
+"When you stub a spy with when(...), the expression inside is evaluated first. What does the real get(0) do on an empty list?",
+"Look at the two arguments: one is wrapped in a matcher, the other is a plain literal. Mockito has an all-or-nothing rule.",
+"You want a stand-in that genuinely stores and returns data, just in memory and without the production machinery.",
+"Field lifecycle follows the test instance lifecycle. How many test instances does JUnit create by default?",
+"JaCoCo counts a line as covered if any of its instructions ran. How many of the two possible outcomes of the condition ran?",
+"Coverage tells you which code executed. Mutation score tells you whether tests notice when the code is deliberately broken."
+],
+"interview":[
+"Name the three lifecycles, explain that a phase runs all earlier phases, then say which plugin goals do the work and which phase is left out.",
+"Go through each scope by classpath (compile, test, runtime, packaged), give a real library for each, and mention how scopes propagate.",
+"State the mediation rule and its tie-breaker, the runtime symptom of a wrong pick, the command to diagnose it and three ways to control it.",
+"Explain that it is a pom containing only managed versions, how you import it in Maven and Gradle, and why aligned versions matter.",
+"Contrast fixed lifecycle vs task graph, XML vs DSL, conflict rules and incremental build/caching, then give criteria for choosing.",
+"Cover structure (parent, BOM, module direction, no cycles) and speed (build only what changed, parallelism, remote cache, profiling).",
+"Describe Platform, Jupiter and Vintage, the per-test instance lifecycle in order, and list the main annotation and runner changes from JUnit 4.",
+"Say when rows beat separate tests, list the argument sources with a use for each, and explain how you choose rows at boundaries.",
+"Define all five doubles by what they do and whether they check interactions, then argue when a working in-memory version ages better.",
+"Walk through the extension setup, stubbing, the act step, verification with times/never/inOrder, and capturing an argument to assert on.",
+"Explain that unstubbed methods run real code, the stubbing trap and its doXxx fix, that it copies the instance, and the design smell.",
+"Compare what an in-memory DB or mock proves versus the real engine, then list container lifecycle and data-cleanup speed tricks.",
+"Explain the agent and probes, the counters, which counter catches half-tested conditions, gating on changed code, and what coverage misses.",
+"Layer it: unit with fakes, sliced integration with real DB/HTTP/Kafka stand-ins, contracts, a few end-to-end, then the CI stages and gates."
+]}

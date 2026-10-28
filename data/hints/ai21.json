@@ -1,0 +1,32 @@
+{"quiz": [
+"Logistic weights live on the log-odds scale. Exponentiate the weight to see what happens to the odds.",
+"When two columns carry the same information the split of credit between them is unstable. Which penalty shrinks and stabilises weights?",
+"Use 1 minus the sum of squared class fractions, with fractions 0.9 and 0.1.",
+"Ask which models care about distances or weight sizes, and which only care about the order of values.",
+"Deep single trees change a lot when a few rows change. What does averaging many of them reduce?",
+"For squared error the negative gradient has a very familiar name: what is left after the current prediction.",
+"The training curve keeps improving but the held-out one turns. Keep the model from the best held-out point.",
+"Think about what the encoding equals for a category that appears only once in the training data.",
+"Here the chance of being missing depends on the hidden value itself. Name that mechanism and keep the signal.",
+"Evaluation data must look like production. Where can synthetic or dropped rows be allowed without lying?",
+"A random ranking gives precision equal to the share of positives at every recall level.",
+"Compare the expected loss of flagging against not flagging and solve for p: false-alarm cost over total cost.",
+"One averaging gives every class an equal vote; the other scales each class by how many rows it has.",
+"Rows from the same person are correlated. Keep each person entirely on one side of the split.",
+"The maximum of many noisy estimates tends to pick favourable noise. What estimate avoids that?",
+"Think about whether a monotone mapping of scores can change which of two rows ranks higher."
+], "interview": [
+"Contrast explainability, calibration, speed and data size against raw accuracy on interaction-heavy tabular data.",
+"Describe the search over features and thresholds, the weighted child impurity, and how the two impurity formulas differ.",
+"Frame it as variance versus bias, parallel versus sequential, and robustness versus tuning effort.",
+"Start from early stopping, then group knobs into step size, tree complexity, randomness and regularization.",
+"Begin with why the values are missing, then cover tree-native handling, imputation fitted on train, and indicators.",
+"One-hot is too wide here. Think counts, smoothed out-of-fold target statistics, hashing, native categoricals, embeddings.",
+"Cover evaluation first (splits and metrics), then weights or resampling on train only, thresholds, and calibration.",
+"Explain what each curve plots, what each area's baseline is, and how class ratio affects each one.",
+"Define it as predicted probability matching observed frequency, then cover diagnostics and two post-hoc fixes.",
+"The split should mimic deployment: think independence, entity grouping, time order, and fitted steps inside folds.",
+"A big gap points to variance, but rule out leakage first; then list regularizers and learning curves.",
+"Work in log-odds: start value, gradient and Hessian of log loss, tree fit, leaf values, shrinkage.",
+"Separate predictive reliance from cause and effect, and mention better importance methods and experiments."
+]}
