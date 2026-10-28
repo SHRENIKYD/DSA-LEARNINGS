@@ -30,9 +30,11 @@ var PATHS = (function () {
     // JavaScript / TypeScript
     js02: ['js01'], js03: ['js02'], js04: ['js02', 'js03'], js05: ['js04'], js06: ['js02', 'js05'], js07: ['js04'], js08: ['js07'],
     js09: ['js06', 'js08'], js10: ['js06', 'js09'], js11: ['js10'], js12: ['js04', 'js06', 'js08'], js13: ['js05', 'js08'], js14: ['js08', 'js13'],
+    js15: ['js03', 'js08'], js16: ['js07', 'js09'],
     // C++
     cpp02: ['cpp01'], cpp03: ['cpp02'], cpp04: ['cpp03'], cpp05: ['cpp04'], cpp06: ['cpp03', 'cpp05'], cpp07: ['cpp03'],
     cpp08: ['cpp07'], cpp09: ['cpp05', 'cpp08'], cpp10: ['cpp06', 'cpp09'], cpp11: ['cpp06', 'cpp10'], cpp12: ['cpp06', 'cpp11'], cpp13: ['cpp10', 'cpp11'],
+    cpp14: ['cpp01', 'cpp06'], cpp15: ['cpp06', 'cpp14'],
     // SQL
     sql02: ['sql01'], sql03: ['sql02'], sql04: ['sql03'], sql05: ['sql04'], sql06: ['sql05'], sql07: ['sql01', 'sql04'], sql08: ['sql07'],
     sql09: ['sql06', 'sql07'], sql10: ['sql04', 'sql07'], sql11: ['sql06', 'sql10'], sql12: ['sql09', 'sql10'], sql13: ['sql10', 'sql12'],
@@ -41,15 +43,18 @@ var PATHS = (function () {
     // LLD (prep:lld = your language's classes, interfaces, equality, generics)
     lld01: ['prep:lld'], lld02: ['lld01'], lld03: ['lld02'], lld04: ['lld03'], lld05: ['lld04'], lld06: ['lld05'], lld07: ['lld06'],
     lld08: ['lld07'], lld09: ['lld07'], lld10: ['lld08', 'prep:conc'], lld11: ['lld06', 'lld10'], lld12: ['lld10', 'lld11'],
+    lld13: ['lld07', 'lld10'],
     // HLD
     hld02: ['hld01'], hld03: ['hld02'], hld04: ['hld02'], hld05: ['hld02'], hld06: ['hld05'], hld07: ['hld05', 'hld06'], hld08: ['hld02'],
     hld09: ['hld04'], hld10: ['hld05', 'hld07'], hld11: ['hld10'], hld12: ['hld04', 'hld08'], hld13: ['hld05', 'hld08'],
     hld14: ['hld03', 'hld06', 'hld07', 'hld09'], hld15: ['hld08', 'hld13', 'hld14'], hld16: ['hld10', 'hld11', 'hld14'],
+    hld17: ['hld11', 'hld14'],
     // Frontend
     fe02: ['fe01'], fe03: ['fe02'], fe04: ['fe02', 'fe03', 'js02'], fe05: ['fe03'], fe06: ['fe02', 'fe04'], fe07: ['fe04', 'js08'],
     fe08: ['fe04', 'js06'], fe09: ['fe08', 'js04'], fe10: ['fe07', 'fe09'], fe11: ['fe05', 'fe07'], fe12: ['fe09'], fe13: ['fe07'],
     fe14: ['fe08'], fe15: ['fe10', 'fe14'], fe16: ['fe10', 'fe11', 'fe15'],
     fe17: ['fe04', 'js06', 'js10'], fe18: ['fe17'], fe19: ['fe18', 'js08'], fe20: ['fe19', 'fe07'], fe21: ['fe18', 'fe19'], fe22: ['fe20', 'fe11'], fe23: ['fe20', 'fe15'],
+    fe24: ['fe12', 'fe10'],
     // Backend (Spring Boot, Node.js, Python)
     be02: ['be01'], be03: ['be02', 'sql04'], be04: ['be01'], be05: ['be04'], be06: ['be03', 'be05', 'java09'], be07: ['be04', 'js08'],
     be08: ['be03', 'sql10'], be09: ['be08'], be10: ['be09'], be11: ['be04'], be12: ['be09'], be13: ['be10'], be14: ['be13'], be15: ['be05'],
@@ -72,7 +77,8 @@ var PATHS = (function () {
     devops02: ['devops01'], devops03: ['devops01'], devops05: ['devops01', 'devops03'], devops06: ['devops05'],
     devops07: ['devops02', 'py03'], devops08: ['devops01', 'devops02'], devops09: ['devops04', 'devops06'], devops10: ['devops01', 'devops02'],
     devops11: ['devops04', 'devops08'], devops12: ['devops06'], devops13: ['devops03', 'devops08'], devops14: ['devops13'],
-    devops15: ['devops13'], devops16: ['devops06', 'devops11'], devops17: ['devops12', 'devops14'], devops18: ['devops15', 'devops16', 'devops17']
+    devops15: ['devops13'], devops16: ['devops06', 'devops11'], devops17: ['devops12', 'devops14'], devops18: ['devops15', 'devops16', 'devops17'],
+    devops19: ['devops06', 'devops12'], devops20: ['devops11', 'devops14'], devops21: ['devops13', 'devops16']
   };
   var RECS = {
     dsa03: ['dsa05'], dsa04: ['dsa03'], dsa05: ['dsa04'], dsa08: ['dsa04'], dsa13: ['dsa12'], dsa14: ['dsa08'], dsa15: ['dsa04', 'dsa12'],

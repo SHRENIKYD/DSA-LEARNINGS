@@ -1,0 +1,30 @@
+{"quiz": [
+"You need one structure to find an entry instantly and another that can move or drop an entry in constant time.",
+"Ask yourself whether a get on an LRU cache leaves the internal order untouched.",
+"Think about the access count a key has at the very moment it is first stored.",
+"Inside each frequency group the keys are kept in an order. Which end is the victim taken from?",
+"Which pattern lets you swap the rule for choosing a victim while the cache class stays closed for change?",
+"Picture what happens to a per-window counter just after the window edge, compared with a rolling view.",
+"Compare tokens left in one bucket with water level in the other. How are they related at every moment?",
+"Fractions like 0.003 per millisecond are hard to represent exactly in binary floating point.",
+"Do snakes and ladders differ in data or in behaviour, or only in the direction of the jump?",
+"Randomness inside the game makes the outcome unpredictable. How can a test control what is rolled?",
+"Write the overlap test with start and end values and check what happens when one ends exactly as the next starts.",
+"Consider what the calendar looks like if the first three weeks were written before week four failed.",
+"If two threads each built a bucket for the same key, what would happen to the effective limit?"
+],
+"interview": [
+"Separate who stores the values from who decides what leaves, and name the events that connect them.",
+"Name the two structures, how a touch and an eviction work on them, and the mistakes around updates and removal.",
+"Cover three moments separately: a key is read, a new key arrives, and a key is deleted explicitly.",
+"Contrast recency with frequency on a one-off scan and on stale favourites, then mention how Caffeine blends them.",
+"Start from the single interface callers use, then the algorithms, the factory, the clock and per-key state.",
+"Compare them on burst handling, memory per key, exactness, and whether they reject or delay requests.",
+"Think about where the current time comes from and how a test could set it by hand, plus how threads are awaited.",
+"List the objects in the box: board, jumps, dice, players, game, and where house rules would plug in.",
+"Think about every way a jump list can be wrong, and why catching it once at construction helps the rest of the code.",
+"Use half-open intervals and ask which existing bookings could possibly touch a new start time in a sorted room.",
+"Think about the rule object, checking every occurrence before writing, and how one occurrence differs from the whole series.",
+"For each design, find the invariant and the check-then-act, then choose the smallest unit worth locking.",
+"Point to the interface each new feature would implement, and explain what you do if no such seam exists."
+]}

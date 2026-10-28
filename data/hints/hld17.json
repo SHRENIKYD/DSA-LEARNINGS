@@ -1,0 +1,32 @@
+{"quiz": [
+"Politeness is about how hard you hit one website. What has to be tracked per site so that gaps between hits can be enforced?",
+"Ask whether host case, the default port or the part after # change which resource the server returns.",
+"A Bloom filter never forgets something it was told. So which direction can its answer be wrong in, and what does that cost a crawler?",
+"The paused worker cannot know its lease ended. Something the store compares on every write must change with each new lease holder.",
+"No protocol stops a crash between doing the effect and recording it. So the system retries; what makes a retry harmless?",
+"Think about what happens if two scheduler replicas, or one retried transaction, both try to create the run for the same time slot.",
+"Competition rank counts how many players are strictly above you, then adds one. Count the scores above 50.",
+"Rank means counting elements before you. What extra number could each skip-list link store to make that count cheap?",
+"Two rules in order: first the best price, then who was waiting longest. And trades print at whose price?",
+"Try adding 0.1 and 0.2 in binary floating point and compare with 0.3.",
+"Replicas and replays must produce identical trades. What can make two runs of multithreaded code differ?",
+"If the machine holding the order dies right after the ack, would any surviving machine know the order existed?",
+"Ben deleted a character before Ana's insert position. Does Ana's insert change where Ben's target character sits?",
+"Offline devices reconnect in any order and may resend updates. What must merging tolerate for that to be safe?",
+"Cursor positions change many times per second and are useless after the session. Does that data deserve durable storage?"
+],
+"interview": [
+"Two goals compete: which URL is most important, and which host may be hit right now. Describe one structure for each and how they connect.",
+"Split it into before the fetch (URL level) and after the fetch (content level), and mention cheap re-crawl checks too.",
+"List ways a site can create endless URLs or waste resources, then give a limit or detector for each.",
+"Cover three pieces: idempotent run creation, who may work on a run, and who may still write a result after a pause.",
+"Separate deciding a run is due from running it, then think about spreading load and protecting tenants and downstream services.",
+"Some local times do not exist and some happen twice. Where do you store the zone and how do you compute the next instant?",
+"Think source of truth versus serving index, the two hot queries, the tie rule, and what happens at much larger scale.",
+"Compare splitting players by id with splitting by score range, and ask what top-K and rank cost in each.",
+"Walk the path from gateway to matching to market data, and explain where fairness, durability and speed each come from.",
+"Compare commit latency with the microsecond budget, and ask whether lock timing gives a fair, reproducible order.",
+"Explain how positions are adjusted for concurrent ops, the convergence property, and which cases make transforms painful.",
+"Weigh online-first versus offline-first, server visibility of content, encryption and library maturity before choosing.",
+"For each system name the property that must never break, then the simplest mechanism that enforces it."
+]}

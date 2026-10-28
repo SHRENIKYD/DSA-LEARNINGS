@@ -1,0 +1,31 @@
+{"quiz": [
+"Two separate rules apply: repeated optimisation flags replace each other, and macro flags are applied strictly in the order they appear.",
+"GNU ld reads inputs left to right exactly once. Ask what is still unresolved at the moment the archive is reached.",
+"Count how many object files end up with a strong definition of the same variable after both files include the header.",
+"Inline functions become weak symbols that the linker merges. Does the linker ever compare the function bodies?",
+"Look at the scope on the edge between net and zlib, not the edge between app and net.",
+"Which library kind has no sources to compile and exists only to hand requirements to its consumers?",
+"The per-configuration flag variables are only added when a configuration name is set. What if it is empty?",
+"Think about when a multi-config generator learns which configuration you are building: configure time or build time?",
+"Evaluate the inner CONFIG test for RelWithDebInfo first, then decide which IF argument is picked.",
+"For versions starting with 0, the caret keeps the minor number fixed. Check each option against that upper bound.",
+"Consider when CMake reads a toolchain file and what it caches about the compiler during the first configure.",
+"An importer reads a compiled interface file. Where does that file come from, and what must happen before the importer compiles?",
+"Which technique changes what a translation unit contains, rather than just how or where it is compiled?",
+"The link step succeeded, so the problem appears only when the program starts. Who searches for the library at that moment?"
+],
+"interview": [
+"List the separate programs the driver launches for each source file, then what happens once all object files exist.",
+"Compare when each kind is resolved (link time or load time) and what that means for size, updates, ABI and deployment.",
+"Start from who should define the symbol, then check the link line, the library's symbol table, ABI tags and link order.",
+"Separate the part the linker checks (exactly one definition) from the part it cannot check (identical inline definitions).",
+"Ask whether the dependency appears in the public headers or only in the source files, and who needs its requirements.",
+"Contrast global, directory-wide commands with per-target properties, and list habits that leak settings into every target.",
+"Explain where header dependency lists come from, how timestamps are compared, and what generated files or clocks can break.",
+"Compare how each tool pins versions, provides binaries and plugs into CMake; then pick based on team and platforms.",
+"Measure before changing anything, then go through caching, linking, header fan-in, PCH, unity builds and graph shape.",
+"Cover the toolchain file contents, the sysroot, where find commands may look, target-built dependencies and running tests.",
+"Explain what text inclusion costs, what a compiled interface gives you, and why the build tools had to change first.",
+"Define the binary contract (layouts, mangling, vtables, library types) and the practices that keep it from changing.",
+"Think about pinned toolchains, one dependency manager with caching, clear target layering, build speed and CI checks."
+]}

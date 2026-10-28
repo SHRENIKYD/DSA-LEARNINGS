@@ -1,0 +1,32 @@
+{"quiz": [
+"Think about the direction of delivery: does something outside push into the cluster, or does an agent inside fetch what it needs?",
+"Argo CD reports two separate things: whether live matches Git, and whether the workload actually works. They can disagree.",
+"Separate the three switches: one applies new commits, one deletes removed objects, one reacts to changes made in the cluster.",
+"Hooks are named after the phase they belong to. Which phase comes first in a sync?",
+"Waves order resources inside a phase, lowest number first, and Argo CD checks something before moving on.",
+"Think of a project as the zoning rules for Applications: where they may take manifests from and where they may put them.",
+"Which generator walks a repository looking at paths, giving you path and path.basename for each match?",
+"Flux splits jobs across controllers. One of them only fetches and packages things like Git repos and charts.",
+"dependsOn is strict. What does a dependent do while its dependency is not Ready?",
+"Ask how Argo CD turns a chart into YAML. Does it ever create the release records Helm normally stores?",
+"Strategic merge knows that containers have a merge key. What key identifies a container?",
+"Think about what a merge between long-lived branches brings along besides the change you wanted.",
+"Compare what each tool puts in the repository: ciphertext, or only a pointer to somewhere else.",
+"Compare the number of failed measurements with failureLimit. What does a failed run do to the rollout?",
+"Blue-green keeps one Service for real users. The second Service lets someone reach the new version early."
+],
+"interview": [
+"Contrast who initiates the apply, who holds credentials, and what happens after the apply when someone edits the cluster.",
+"Name the two separate questions Argo CD answers about every app, and give one example where the answers differ.",
+"Cover each switch, what it changes, and a case where another controller or change control argues against it.",
+"Mention phases, the wave annotation, ordering inside a wave, waiting for health, and what happens if a PreSync Job fails.",
+"Start with the bootstrap problem of keeping Applications in Git, then explain templates plus generators and deletion behaviour.",
+"Compare architecture (one product vs a toolkit), Helm handling, UI and multi-cluster model, then give selection criteria.",
+"Think folders versus branches versus repos, who approves what, and how small the per-environment differences should be.",
+"Start from build once, then explain how each environment's pointer changes, what gates a move, and what rollback means.",
+"Explain why base64 is not enough, then compare encrypting in Git with storing only a reference, and how rotation works.",
+"Describe steps, traffic routing and an AnalysisTemplate, then list statistical, data and GitOps interaction pitfalls.",
+"Start with the diff command, then list who else writes fields after apply, and the options to ignore or normalise them.",
+"Think failure domains: control planes, tenancy boundaries, staged rollout across clusters, and repository protections.",
+"Structure the story: detect, stabilise, diagnose with GitOps evidence, communicate, then fix and prevent recurrence."
+]}
