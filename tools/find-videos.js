@@ -2,7 +2,9 @@
 // usage: YOUTUBE_API_KEY=<key> node tools/find-videos.js [--max 95]   search topics that have no video yet
 //        YOUTUBE_API_KEY=<key> node tools/find-videos.js --check      drop videos that were removed or can no longer be embedded (default picks and byLang picks)
 //        YOUTUBE_API_KEY=<key> node tools/find-videos.js --lang python [--max 40]   search dsa/lld topics that lack a byLang.python pick (java|python|js|cpp|csharp)
-// Quota: a search costs 100 units and the free daily quota is 10,000, so --max 95 fits in one day.
+// Quota: a search costs 100 units and the free daily quota is 10,000 per Google Cloud project, so --max 95 fits in one day.
+// Several keys (each from its own project) can be given as YOUTUBE_API_KEYS=k1,k2,k3: the run moves to the next key when one
+// reports its daily quota, and --per-key multiplies --max by the number of keys.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -88,15 +90,19 @@ function apiError(status, body) {
   return e;
 }
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+function apiKeys() { return String(process.env.YOUTUBE_API_KEYS || process.env.YOUTUBE_API_KEY || '').split(',').map((k) => k.trim()).filter(Boolean); }
+const keyState = { at: 0 };
 async function api(endpoint, params) {
   usage.units += COST[endpoint] || 1;
   if (client) return client(endpoint, params);
-  const q = new URLSearchParams(Object.assign({ key: process.env.YOUTUBE_API_KEY }, params));
+  const keys = apiKeys();
   for (let attempt = 1; ; attempt++) {
+    const q = new URLSearchParams(Object.assign({ key: keys[keyState.at] }, params));
     const r = await fetch(API + endpoint + '?' + q);
     const body = await r.json().catch(() => ({}));
     if (r.ok) return body;
     const e = apiError(r.status, body);
+    if (e.quota && keyState.at + 1 < keys.length) { keyState.at++; console.log('key ' + keyState.at + ' of ' + keys.length + ' used up its daily quota; switching to key ' + (keyState.at + 1)); attempt = 0; continue; }
     if (!e.retry || attempt >= 3) throw e;
     console.warn('retrying ' + endpoint + ' after ' + e.message);
     await pause(2000 * attempt);
@@ -194,10 +200,11 @@ async function searchDefault(db, all, max) {
 }
 
 async function main() {
-  if (!process.env.YOUTUBE_API_KEY) { console.log('YOUTUBE_API_KEY is not set: nothing to do.'); return; }
+  if (!apiKeys().length) { console.log('YOUTUBE_API_KEY / YOUTUBE_API_KEYS is not set: nothing to do.'); return; }
   const args = process.argv.slice(2), lang = args.includes('--lang') ? args[args.indexOf('--lang') + 1] : '';
   if (args.includes('--lang') && !LANGS[lang]) { console.error('--lang must be one of: ' + Object.keys(LANGS).join(', ')); process.exit(1); }
-  const max = args.includes('--max') ? +args[args.indexOf('--max') + 1] : (lang ? 40 : 95);
+  const max = (args.includes('--max') ? +args[args.indexOf('--max') + 1] : (lang ? 40 : 95)) * (args.includes('--per-key') ? apiKeys().length : 1);
+  if (apiKeys().length > 1) console.log(apiKeys().length + ' API keys; up to ' + max + ' searches this pass');
   const db = load(), all = topics(), byId = {};
   all.forEach((t) => { byId[t.id] = t; });
   let removed = 0;
@@ -251,4 +258,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { usage, apiError, LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };
+module.exports = { usage, apiError, apiKeys, keyState, LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };

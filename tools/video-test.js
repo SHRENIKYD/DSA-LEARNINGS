@@ -157,6 +157,20 @@ assert.ok(discovery.pick([{ id: 'LONGLECTURE', title: 'BST search and insert ful
   assert.ok(!discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null, at: new Date().toISOString().slice(0, 10) } } }, ct));
   assert.ok(discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null } } }, ct));
   discovery.setClient(null);
+  // Several API keys: a key that reports its daily quota hands over to the next one; the last one's quota stops the run.
+  {
+    const realFetch = global.fetch, seen = [];
+    process.env.YOUTUBE_API_KEYS = 'KEY_A, KEY_B'; discovery.keyState.at = 0;
+    assert.deepEqual(discovery.apiKeys(), ['KEY_A', 'KEY_B']);
+    const quotaBody = { error: { message: 'quota', errors: [{ reason: 'quotaExceeded' }] } };
+    global.fetch = async (url) => { const k = new URL(url).searchParams.get('key'); seen.push(k);
+      return k === 'KEY_A' ? { ok: false, status: 403, json: async () => quotaBody } : { ok: true, status: 200, json: async () => ({ items: [] }) }; };
+    const best = await discovery.searchBest('DSA arrays', 'Arrays', '');
+    assert.equal(best, null); assert.deepEqual(seen.slice(0, 2), ['KEY_A', 'KEY_B'], 'switches to the second key after a quota error');
+    global.fetch = async () => ({ ok: false, status: 403, json: async () => quotaBody });
+    await assert.rejects(discovery.searchBest('DSA arrays', 'Arrays', ''), (e) => e.quota === true, 'the last key\'s quota stops the run');
+    global.fetch = realFetch; delete process.env.YOUTUBE_API_KEYS; discovery.keyState.at = 0;
+  }
   finish();
 })().catch((e) => { console.error(e); process.exit(1); });
 

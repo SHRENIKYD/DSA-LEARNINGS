@@ -36,11 +36,15 @@ The Watchtower shows language-neutral tracks plus the learner's own language tra
 3. GitHub → repo → Settings → Secrets and variables → Actions → **New repository secret** `YOUTUBE_API_KEY` = the key.
 4. Actions → **Lesson videos** → **Run workflow** for the first batch, or wait for the daily run.
 
+### More searches a day (several keys)
+
+Each Google Cloud project has its own 10,000-unit daily quota. To search more topics a day, repeat steps 1–2 in more projects (one key per project; keys from the same project share one quota), then add the repository secret `YOUTUBE_API_KEYS` = all keys separated by commas, e.g. `key1,key2,key3`. When set, it is used instead of `YOUTUBE_API_KEY` (include that key in the list to keep using it). Each pass then searches up to its limit times the number of keys, and moves to the next key when one reports `quotaExceeded`.
+
 ## Quota and schedule
 
 The free quota is 10,000 units a day and one topic search costs about 101 units. The daily workflow runs two passes: the default pass searches up to 50 topics, then one language pass searches up to 40 dsa/lld topics for one language, rotating by day of the year (`day % 8`: C# every other day, since it has the fewest picks, and python, js, cpp and java in between; a manual run can pick the language). That is at most 90 searches, about 9,100 units, plus a few units for `--check`. Coverage depends on available relevant results; automated search does not guarantee a suitable video for every topic. Each summary line reports the quota units the run spent; when Google stops a run, the log shows its reason (`quotaExceeded` is the daily quota; per-minute limits and server errors are retried up to 3 times). A title must share at least 30% of the topic's meaningful words (filler such as "with" or "using" is ignored). A topic with no good match is retried after 30 days, since new videos keep appearing. The language pass looks at 15 results per search and accepts a video when the language is named in its title, channel or description.
 
-Each run that changes `data/videos.json` commits it to `main` and redeploys the website. The app picks up new videos with its next version.
+Each run that changes `data/videos.json` commits it to `main` and redeploys the website; when at least one video became playable it also bumps the app version and uploads a new release to Google Play.
 
 ## Fixing a bad pick
 
