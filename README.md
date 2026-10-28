@@ -1,7 +1,7 @@
 # Interview Mastery
 
-A free, beginner-to-expert study site and Android app for product-company interviews. It covers 15 tracks and 233 modules:
-DSA + Math, Java, Python, JavaScript/TypeScript, C++, C#, SQL + DBMS, Low-Level Design, High-Level System Design, Frontend, Backend, GenAI & Working With AI (including MCP), CS Core (OS + Networks), Cloud & DevOps, and Behavioral & Career.
+A free, beginner-to-expert study site and Android app for product-company interviews. It covers 15 tracks and 237 modules:
+DSA + Math, Java, Python, JavaScript/TypeScript, C++, C#, SQL + DBMS, Low-Level Design, High-Level System Design, Frontend (React and Angular), Backend, GenAI & Working With AI (including MCP), CS Core (OS + Networks), Cloud & DevOps, and Behavioral & Career.
 
 - **Website:** https://shrenikyd.github.io/DSA-LEARNINGS/
 - **Android app:** https://play.google.com/store/apps/details?id=io.github.shrenikyd.interviewmastery

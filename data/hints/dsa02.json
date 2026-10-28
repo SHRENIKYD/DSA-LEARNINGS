@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "For each value of i, count how many times the inner loop runs, then add those counts together.",
+  "The inner loop shrinks each time. Add up its work as a geometric series instead of multiplying the two loop counts.",
+  "Try small cases: 1, 1 + 2, 1 + 2 + 4. Compare each sum with the next power of two and spot the pattern.",
+  "Use the fact that two to the tenth is about one thousand, and count how many halvings that takes.",
+  "Find upper and lower bounds that are both constant multiples of the same function for large n.",
+  "Loops over two different inputs are nested here. Nested loops multiply, and different inputs keep different letters.",
+  "Iterative binary search needs no extra memory. Here, count how many calls can be waiting on the stack at the same time.",
+  "Estimate the step count of each option at this size and compare with about one hundred million steps per second.",
+  "Work out how big 2 to the power 20 and 20 factorial are, and compare each with about one hundred million steps per second.",
+  "A double holds only about 16 decimal digits of precision. Ask what happens when a number just below a power of ten is stored.",
+  "For each i the inner loop runs about n divided by i times. Sum that over all i and recall the harmonic series.",
+  "Multiply the number of cells by 8 bytes each and compare with the limit.",
+  "Most nodes are near the bottom and sift only a short distance. Check whether the series of k over two to the k converges."
+ ],
+ "interview": [
+  "Describe Big-O as an upper bound on how cost grows with input size, ignoring constants and small inputs, with a simple example.",
+  "Define upper, lower and tight bounds, and use one function to show each, explaining that they are not the same as worst or best case.",
+  "Count the inner iterations for each outer value, sum them as a series, and simplify to the dominant term.",
+  "Explain that halving or tree height gives log n, and that changing the base only multiplies by a constant.",
+  "Define auxiliary versus total space, include recursion stack and output, and say which one people usually mean.",
+  "Use a budget of roughly one hundred million steps per second to pick a target complexity and matching algorithms.",
+  "Distinguish worst case, average over inputs, amortised over a sequence of operations, and expected over random choices, with examples.",
+  "Compare bottom-up sift down, where most nodes move little, with inserting each item which can sift up the full height.",
+  "Cover converting to iteration with an explicit stack, tail-call style rewrites, or increasing stack size, and checking depth.",
+  "Explain that polynomial is measured in input size in bits, so root N is exponential in the number of digits.",
+  "Use the recursion tree or the Master Theorem, showing the work per level and the number of levels.",
+  "Mention constant factors, cache behaviour, small input sizes and hidden overheads that can beat asymptotic gains.",
+  "Give examples like estimating query cost, capacity planning, choosing data structures and avoiding quadratic work at scale."
+ ]
+}

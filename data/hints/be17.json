@@ -1,0 +1,31 @@
+{"quiz":[
+"The left side names a Python module and the right side names an object inside it.",
+"FastAPI matches routes in the order they are declared. Which route sees this path first?",
+"Check which parameters have default values and which are required.",
+"Pydantic v2 changed how model settings are written, and its default for unknown keys is to drop them silently. Check both.",
+"Think about what the response_model on the decorator is for, and what it does to the object your function returns.",
+"422 means the client sent bad input. Here the bad data comes from your own code. Whose fault is it?",
+"204 means no body. Think about where you set the status code and what the route should return.",
+"Exception handlers are matched by class hierarchy. Which registered class is the closest parent?",
+"Think about whether FastAPI reruns a shared dependency for each place it appears in one request's tree.",
+"Cleanup must run even when the route raises an error.",
+"An async def route runs directly on the event loop. Is requests.get blocking or awaitable, and who else uses that loop?",
+"Ask whether FastAPI inspects what your function body raises, or only what you declare on the route.",
+"Extras in square brackets pull in optional packages. What do you need beyond the framework to actually serve and run an app?"
+],
+"interview":[
+"Mention ASGI, Starlette and Pydantic, type-hint driven validation and docs, and when Flask or Django fit better.",
+"Compare synchronous call per request versus async, plus support for websockets and long-lived connections.",
+"Explain the rules: names in the path template, Pydantic model types, and simple types as query parameters.",
+"Walk through routing, Pydantic validation, collected errors, and the 422 response with error locations.",
+"Explain different security needs for input and output, mass assignment, and list create, update, out and DB models.",
+"Describe Depends, the dependency tree built per route, per-request caching, and contrast with a container of singletons.",
+"Explain the event loop, when to use async with awaitable libraries, and why blocking code belongs in def routes.",
+"Cover validation errors, domain exceptions mapped by handlers, and a consistent error body format.",
+"Explain how routes and models become the schema, then uses like client generation and contract tests.",
+"Cover no reload, worker processes, process managers or containers, proxies, and health checks.",
+"Explain setup before yield and cleanup after, shared resources, and why one context manager is better than events.",
+"Think about route order: a parameter route declared first may catch the literal path. Explain how to confirm and fix.",
+"Mention a reusable dependency with bounded limit, offset versus cursor, and a wrapper response with paging info.",
+"Cover the test client, dependency overrides for session and user, and a real test database with isolation."
+]}

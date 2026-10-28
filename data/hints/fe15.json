@@ -1,0 +1,31 @@
+{"quiz":[
+"Micro-frontends mirror microservices. Did microservices mainly fix speed, or how people and teams work and ship?",
+"In federation, one side loads modules and the other side builds and exposes them. Which is which?",
+"Hooks and context depend on one shared internal state. Think about what happens with two separate copies.",
+"A theme changes what a meaning like action colour points to, without touching components. Which layer holds those meanings?",
+"Walk the dependency edges backwards from utils. Does a change stop at packages that import utils directly?",
+"A file whose name includes a content hash never changes. How safe is it to serve it from the cache?",
+"Break it into two parts: what is shown at once, and what happens in the background. Which strategy name says both?",
+"The browser must fetch the service worker script fresh to notice a new version. What could stop that?",
+"Think about a request that succeeded on the server but whose reply was lost, then got retried.",
+"Russian plural rules depend on the last digits of the number, not just whether it equals one.",
+"Picture an Arabic page with dir=rtl. Which property flips sides with the text direction, and which always means the same side?",
+"Bucketing should be stable for each user. Ask what a fresh random number on every load does to that.",
+"Imagine three flags all hashing only the user id. Would the same people end up in the first 10% for every flag?",
+"Think about what a monorepo shares: one history, one CI. When would that sharing hurt more than help?"
+],
+"interview":[
+"Define independently built and deployed UI pieces owned by teams, and name costs like bundle duplication, complexity and inconsistent UX.",
+"Explain a host loading remotes at run time, exposed modules, and shared dependencies with version and singleton settings.",
+"Mention errors like invalid hook calls and broken context, and fix by sharing React as a singleton with matching versions.",
+"Explain tokens as named design values, and how primitive, semantic and component layers enable theming and safe changes.",
+"Cover semantic versioning, changelogs, deprecation paths, documentation, visual tests, accessibility and contribution rules.",
+"Talk about affected-only runs, remote caching, parallel jobs, splitting slow tests, and measuring the critical path.",
+"Explain install, waiting and activate stages, then safe updates with a fresh script, versioned caches and prompting users to reload.",
+"Compare each strategy's freshness vs speed, and match them to page HTML, API data and hashed static files.",
+"Cover local storage first, an outbox with ids, sync on reconnect, conflict resolution across devices, and showing sync status.",
+"Mention message formats with plural rules, Intl for dates and numbers, right-to-left layout with logical properties, and text expansion.",
+"Explain hashing a stable user id together with the flag name into a bucket, comparing against the percentage, and server-side evaluation.",
+"Weigh team count, deploy independence, shared code and tooling cost, and justify the simplest option that meets the needs.",
+"Discuss faster code generation, and guard-rails like types, lint rules, architecture boundaries, tests and code review."
+]}

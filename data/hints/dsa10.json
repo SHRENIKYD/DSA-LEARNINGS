@@ -1,0 +1,29 @@
+{"quiz":[
+"Think about two large indices near the int limit. What happens when you add them, versus when you subtract them?",
+"Each look halves the range. Find the power of two just above one million.",
+"Try lo = 3 and hi = 4. With the lower middle, does lo ever change if lo is set to mid?",
+"Lower bound is the first index with value at least the target; upper bound is the first index with value greater than it.",
+"Read what the official documentation promises when there are several equal elements.",
+"Compare a[lo] with a[mid]. If the left end is bigger, where must the drop be?",
+"If the slope goes down to the right, mid might itself be the peak. Should mid stay in the window?",
+"Estimate mid squared when mid is around one billion and compare it with the int limit.",
+"If cows fit at distance d, do they also fit at a smaller distance? Picture true and false along increasing d.",
+"Think about the smallest possible answer, since no worker can split one item, and the largest, if one worker does everything.",
+"Try p = 7 and k = 2 with int operands. What is p / k before ceil is even called?",
+"Koko and Painter's inputs are not sorted, yet binary search works. Ask what property the yes or no check must have.",
+"Think about an input where low, mid and high all hold the same value. How much of the range can you safely discard?"
+],"interview":[
+"Use a simple everyday analogy like a dictionary, explain halving each step, and give the logarithmic time.",
+"Explain how adding two big indices overflows and wraps negative, then give the safe formula or an unsigned shift.",
+"Define an invariant and how it proves correctness, then state what the window holds for classic search and for lower bound.",
+"Compare closed and half-open windows, how mid and the moves differ, and which problems suit each.",
+"Run two binary searches that keep going after a match, saving the answer and moving left or right.",
+"Explain that one half is always sorted, how to decide which side to search, and the worst case with duplicates.",
+"Explain that binary search only needs a rule that guarantees an answer on one side, using the uphill argument.",
+"Give the steps: answer range, monotone feasibility check, and search for the boundary, with examples like Koko or Aggressive Cows.",
+"Use an exchange argument: the greedy cow is never placed later than in any valid placement.",
+"Explain why max and sum bound the answer, and why the running sums can exceed the 32-bit int range.",
+"Explain partitioning both arrays so the left half has a fixed size, binary search on the smaller array, and the cross checks.",
+"Name real uses like database index pages, sorted file indexes, log offsets, and git bisect.",
+"Explain updating lo and hi as doubles, why an epsilon loop can run forever, and using a fixed number of iterations instead."
+]}

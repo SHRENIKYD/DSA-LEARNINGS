@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Think about where the business rules live: inside the objects, or in service classes that just push data around.",
+  "Which style makes every dependency visible and required at the moment the object is created?",
+  "A container builds dependencies of dependencies. What could loop forever, and how would it notice?",
+  "Hexagonal splits ports, which the core defines, from the pieces that plug into them from the outside world.",
+  "Think about which direction the arrows point: does the core know about the database, or the reverse?",
+  "Ask what makes two amounts of money the same: being the same object in memory, or holding the same amount and currency?",
+  "An entity keeps its identity even when its fields change. What should equality compare?",
+  "Recall why Vernon prefers aggregates that fit one transaction and lock little. Which option goes against that goal?",
+  "Think about who guards the invariants of an aggregate. If outside code could load and save a part alone, what could break?",
+  "If the save fails, should anyone hear about something that never happened?",
+  "The outbox may resend an event after a crash. Think about duplicates versus losses.",
+  "Events record facts that already happened. Where do you decide if something is allowed to happen?",
+  "Rebuilding state from thousands of events is slow. Think of a saved shortcut point.",
+  "A strategy swaps behaviour inside your own codebase. What extra need would force you to load code you did not write or ship?"
+ ],
+ "interview": [
+  "Explain logic scattered in services and hard-wired dependencies, then fix in small steps: move behaviour into objects and inject dependencies.",
+  "Describe passing what a class needs in from outside, usually via the constructor, and how this helps testing and swapping parts.",
+  "Cover building a graph from constructor parameters, resolving recursively, and tracking a stack of in-progress types to spot cycles.",
+  "Mention a stable plugin interface, discovery and registration, version checks, isolation of faulty plugins, and a host registry.",
+  "Walk from the incoming adapter to the use case to the domain, then to the repository port and its database adapter.",
+  "Decide by whether identity matters over time. Mention ID-based equality for entities and immutable, value-based equality for value objects.",
+  "Look for rules that must always hold together in one transaction, keep aggregates small, and reference others by ID.",
+  "Explain a version number checked on save, retry on conflict, and choosing pessimistic locks when conflicts are frequent or costly.",
+  "Explain the risk of saving data and publishing an event separately, then how writing both in one transaction plus a relay fixes it.",
+  "Describe storing events instead of current state, and a loop that loads events, applies them, validates a command, and appends new ones.",
+  "Mention simple CRUD domains, small teams, reporting needs, and the extra complexity and learning cost these patterns bring.",
+  "Cover adding optional fields, versioning events, upcasting old events on read, and never editing stored history.",
+  "Discuss AI speeding up boilerplate and refactors, while humans still own boundaries, invariants and review of generated code."
+ ]
+}

@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "Think about lazy parsing: how much work is worth doing for code that may never run, and when full compilation actually happens.",
+  "Recall where every function begins and what signal the engine uses to decide a function is worth compiling with a stronger tier.",
+  "Hidden classes are built step by step as properties are added. Does the order of additions matter to that chain?",
+  "Inline caches have a limit on how many shapes they track at one site. Count the shapes and compare with that limit.",
+  "Optimized code relies on type assumptions protected by checks. Ask what happens when a check sees a type it never expected.",
+  "A Smi with pointer compression is a 31-bit signed integer. Work out the largest value that fits: 2 to the 30 minus 1.",
+  "If a closure outlives its function call, the captured variable cannot stay on the stack. Where must it go instead?",
+  "A scavenge is a copying collector. Think about which objects it touches and which ones it simply ignores.",
+  "Minor GC wants to avoid scanning the whole old generation. What does it need to know about pointers from old objects to young ones?",
+  "V8 uses tracing from roots, not reference counting. Ask whether objects unreachable from roots survive, even if they point at each other.",
+  "Recall the difference: shallow size counts only the object's own bytes, retained size counts something more. What extra does it count?",
+  "A rising floor after GC means something keeps objects alive. Which step finds what grows per action and who is holding it?",
+  "Removing a listener needs the exact same function reference. Look for an option that avoids tracking references and has a sure timing."
+ ],
+ "interview": [
+  "Cover parsing (lazy vs full), bytecode in the interpreter, type feedback collection, tier-up through the compilers, and deoptimization.",
+  "Avoid a yes/no answer: explain that modern engines do both, with an interpreter first and JIT compilation for hot code.",
+  "Explain shapes or maps, how property order and adding or deleting properties create transitions, and how this affects inline caches.",
+  "Define each state by how many shapes a property access site has seen, give a small example, and say why fewer shapes is faster.",
+  "Explain failed type guards that send code back to the interpreter, list common causes, and mention tracing flags or profiling for repeated deopts.",
+  "Challenge the myth: talk about Smis versus heap numbers, closures capturing variables in heap contexts, and what really lives on the stack.",
+  "Describe the young generation scavenger, the old generation mark-sweep-compact, promotion, write barriers, and concurrent or incremental marking.",
+  "Define a leak as memory still reachable but no longer needed, then list causes like listeners, timers, caches, closures and detached DOM nodes.",
+  "Give a repeatable process: reproduce the action, force GC, compare heap snapshots, read retainers, fix, then prove memory stays flat.",
+  "Look beyond the JS heap: native memory, buffers, external memory, RSS growth, and container limits. Mention the tools you would use.",
+  "Explain what each weak API does, typical uses like per-object caches, and why GC timing makes them unreliable for program logic.",
+  "Talk about how elements kinds and holes affect array speed, and why measuring beats guessing for this choice.",
+  "Mention warm-up, dead-code elimination, keeping results used, many runs with statistics, realistic data, and preferring real profiling."
+ ]
+}

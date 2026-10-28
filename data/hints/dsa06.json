@@ -1,0 +1,29 @@
+{"quiz":[
+"Compare the sum with the target. If it is too big, ask which pointer's number can never be part of any valid pair.",
+"Think about what the proof needs to know about the numbers at L and R: which is the smallest and which is the largest still in play.",
+"Count the outer loop over the fixed number, then the cost of the pointer walk inside it. Compare that with the sorting cost.",
+"Use area = min height times width. Pair either wall with any closer wall: can the level rise above 6 while the width shrinks?",
+"Compare the positions of the writer and the reader. Can the writer ever overwrite a value that has not been read yet?",
+"For a difference, you need one move that grows the gap and one that shrinks it. Which starting positions give you both?",
+"Add the new element and subtract the one that leaves the window. Which element left?",
+"Ask what happens when the value that leaves was the important one. Can you know the new answer from one variable?",
+"For a shortest-window question, the window is valid inside the shrink loop. Record before or after you shrink?",
+"Count how many times each element is added and removed over the whole run, not per loop.",
+"Negative numbers break the rule that growing a window raises the sum. Think about prefix sums and a structure that keeps them ordered.",
+"Exactly K is hard to count directly, but at most K is easy. How can two easy counts give the exact one?",
+"Look at what is left behind when you take cards only from the ends. What shape do the untouched cards always form?"
+],"interview":[
+"Define two indices moved by a rule, and explain how each move rules out a whole group of pairs, giving O(N) instead of O(N squared).",
+"State an invariant that the answer pair stays between L and R, then show each move keeps it true using the sorted order.",
+"Compare time and memory of both, and mention unsorted input, needing original indices, and streams.",
+"Mention sorting first, skipping equal fixed values, and moving L and R past copies after finding a triplet.",
+"Use the area formula and show that every other container using the shorter wall is no better, so that wall can be dropped.",
+"Explain the roles of the reader and writer pointers, state what the prefix before slow holds, and why slow never passes fast.",
+"Contrast a known length that just adds and removes one element per step with a window that grows and shrinks to search for a length.",
+"Use amortised counting: each element enters once and leaves at most once, so the total work is about 2N.",
+"Explain that the window needs a monotone condition, give the negative numbers example, and name prefix sums with hashing or a deque.",
+"Explain why exactly K is not monotone, then describe atMost(K) minus atMost(K - 1) and how atMost counts per right end.",
+"Start from the water formula with left and right maximums, then explain why the side with the smaller bar can be settled safely.",
+"Give concrete examples such as database merge joins, in-place removal in standard libraries, and rate limits or moving averages in monitoring.",
+"Describe a checklist: contiguous piece or pairs, monotone condition or not, sorted input, and in-place rewriting."
+]}

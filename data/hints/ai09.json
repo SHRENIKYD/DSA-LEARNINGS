@@ -1,0 +1,27 @@
+{"quiz":[
+"Ask what is missing: facts or behaviour? Then check how often the data changes, how big it is, and whether users need to see sources.",
+"The chunk has a lonely it with no subject. What cheap context could give it one?",
+"Think about what happens to a fact that falls right on the line between two chunks.",
+"Think about what a similarity score means. Is a distance between two vectors meaningful if each was made by a different model?",
+"A reranker sees the question and the chunk at the same time. How does that help?",
+"If the right chunk never reached the prompt, the generator never had a chance. Which stage was responsible?",
+"Subtract the fixed costs from the budget first, then divide the rest by the cost per chunk.",
+"One metric checks the retrieval step, another checks whether the answer sticks to what was retrieved. Which one judges the answer?",
+"Instead of embedding a short question, embed something that looks more like the passages you want.",
+"Top-k retrieval returns a few relevant passages. Which question needs every record counted instead?",
+"Search precision likes small chunks, but the model needs more context to answer.",
+"Unauthorised data must never reach the prompt. Who can be trusted to enforce that?"
+],"interview":[
+"Use an open-book analogy, then name cases where RAG is not needed, like tiny docs or aggregation questions.",
+"Walk through loading, chunking, embedding, indexing, retrieval, reranking, prompting and generation with a failure for each.",
+"Discuss the trade-off between precise small chunks and context-rich large ones, overlap, and testing on real queries.",
+"Explain separate versus joint encoding, speed versus accuracy, and using one for recall and the other for precision.",
+"Check retrieval first: is the right chunk in the candidates? Then chunking, ranking, prompt and abstain rules.",
+"Separate retrieval and generation metrics, and build a labelled question set from real user queries.",
+"Define it as claims backed by retrieved context, then describe splitting claims and checking each with a judge.",
+"Explain each technique and match each one to a kind of query problem it fixes.",
+"Explain searching small chunks but returning their larger parent, and when documents have clear sections.",
+"Weigh multi-step questions against cost and latency, and mention limits on steps, tools and evaluation.",
+"Cover sharding, permission filters in the query, hybrid retrieval, reranking, caching and a latency budget.",
+"Compare freshness, citations, cost, behaviour change and context size, and give a clear decision path."
+]}

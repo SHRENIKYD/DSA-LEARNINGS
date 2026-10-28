@@ -144,8 +144,13 @@ for (const t of TRACKS) {
     // Each module is its own content-hashed file, fetched when the learner opens it (src/engine.js).
     const want = JSON.stringify(m);
     const min = minJs(src, f, (code) => { const c2 = context(); vm.runInContext(code, c2, { filename: f }); return JSON.stringify(c2.MODULES[0]) === want; });
-    const file = 'assets/m/' + pm.id + '.' + shortHash(min) + '.js';
-    fs.writeFileSync(path.join(out, file), min);
+    // Riddle and interview hints (data/hints/<id>.json) ride in front of the module so they exist before it registers.
+    const hf = path.join(root, 'data', 'hints', pm.id + '.json');
+    const hints = fs.existsSync(hf) ? 'window.IM_HINTS=window.IM_HINTS||{};IM_HINTS[' + JSON.stringify(pm.id) + ']=' + JSON.stringify(JSON.parse(fs.readFileSync(hf, 'utf8'))).replace(/</g, '\\u003c') + ';\n' : '';
+    const body = hints + min;
+    hash.update(hints);
+    const file = 'assets/m/' + pm.id + '.' + shortHash(body) + '.js';
+    fs.writeFileSync(path.join(out, file), body);
     scripts.push(moduleStub(m, file));
     quizzes[pm.id] = (m.quiz || []).filter(okQ).map((q) => ({ q: q.q, options: q.options, answer: q.answer, explain: q.explain }));
     const href = t.id + '.html#';

@@ -1,0 +1,31 @@
+{
+ "quiz": [
+  "Separate one-time payments from recurring pay. Which component shows up again every year?",
+  "A cliff is a waiting period. Think about how much of the grant you own before you reach it.",
+  "Add up the percentages for the first two years under each schedule and compare.",
+  "Compare how you get the shares in each case: is there a purchase price you must pay, or not?",
+  "A verbal offer is rarely the full picture. What do you need before you can judge or compare it?",
+  "When one lever is fixed, think about the other parts of total compensation you could negotiate.",
+  "Your past pay is not the same as what this job is worth. Pick the move that stays honest and keeps your leverage.",
+  "Deadlines can often move a little. Pick the reply that is honest and gives the company something concrete to plan with.",
+  "Money is rarely the only reason people leave. Think about what must change for staying to be a good choice.",
+  "Companies set pay ranges per band on their career ladder. Which personal factor decides which band you fall in?",
+  "Ask which option still builds your own skill: blind trust, total avoidance, or something with checking in between.",
+  "Consider whether the module's examples use real companies and data or are only for teaching."
+ ],
+ "interview": [
+  "Cover total compensation (base, bonus, equity, vesting), level, growth, team, manager, work-life balance and risk.",
+  "Explain that RSUs give shares on vesting at no cost, while options give the right to buy at a strike price, plus risk and tax differences.",
+  "Define the cliff as nothing vesting until a date, and show how back-loaded schedules reduce what you earn if you leave early.",
+  "Stay polite, ask for the breakdown, respond with market data and a specific counter, and use multiple levers like equity or level.",
+  "Redirect politely to the role's range and your expectations based on market research, without lying.",
+  "Ask for a short extension with a real date, explain your timeline honestly, and never invent competing offers.",
+  "Check whether the reasons you wanted to leave are actually fixed in writing, not just pay, and consider trust and long-term growth.",
+  "Compare what energises you, people versus technical work, impact and growth on each track, and that you can switch later.",
+  "Cover gathering evidence of scope at the target level, raising it early before numbers, and asking how levels are decided.",
+  "Mention learning fundamentals deeply, using AI tools with verification, focusing on judgment and design, and continuous learning.",
+  "Describe goals, a schedule, projects you build yourself, using AI as a tutor while verifying, and tracking progress.",
+  "Compute yearly totals for each offer using the vesting schedule, include one-time items, and compare by year and if you leave early.",
+  "Be truthful about offers, never invent numbers, share timelines honestly, and only negotiate for offers you would accept."
+ ]
+}

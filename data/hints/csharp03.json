@@ -1,0 +1,32 @@
+{"quiz":[
+"A class variable copies a reference while a struct variable copies the whole value.",
+"A struct's default value has all fields zeroed. Think about what zero means for a date.",
+"List indexing is a method call, not direct access to the element. Ask what a method returns when its result is a struct.",
+"Think about how primary constructor parameters in plain classes differ from records.",
+"Think about what required forces at object creation, and when init lets you set it.",
+"There are three steps here. Field initialisers are set up as part of building the object; the initializer braces are applied to a finished object.",
+"Look at the => after a name with no parentheses. Is that a field, a method or a property, and when does the expression run?",
+"Ask whether static members belong to each object or to the type itself.",
+"Ask what kind of equality a record generates for ==: does it compare references or the property values?",
+"Ask whether with clones the list itself or only copies the reference stored in the Items field.",
+"Recall which record kinds use init accessors and which use plain set for positional properties.",
+"Hash-based collections use the hash code first to find where to look for equal items.",
+"Think about which operator is called when you write == inside its own definition.",
+"The compiler must protect a readonly value from methods that might change it.",
+"DateTime is immutable. Check whether the result of AddDays is kept."
+],"interview":[
+"Compare reference and value semantics, allocation, copying, and guidelines for small immutable structs.",
+"Explain copies being changed instead of the original, with a collection or property example.",
+"Explain constructor parameters captured in classes versus public properties generated in records.",
+"Discuss encapsulation, validation, binary compatibility, and data binding needs.",
+"Compare who can set the value and when: during initialization, inside the class, or only in the constructor.",
+"List equality, hash code, ToString, with support and deconstruct, and cases like entities with identity.",
+"Explain equal objects needing equal hashes, and broken dictionary and set lookups if not.",
+"Compare operator overloads, virtual Equals, and pure reference identity checks.",
+"Explain the guarantee of no mutation and how it removes defensive copies for in and readonly use.",
+"Discuss stateless helpers, shared state risks, testability, and dependency injection lifetimes.",
+"Cover a value type or record with amount and currency, validation, and operations returning new values.",
+"Walk through cloning the object, then setting the changed property, and that the copy is shallow.",
+"Argue that constructors or required members should enforce invariants, and initializers are for optional data.",
+"Separate entities with identity from value objects, and justify choices for each type by size and equality."
+]}

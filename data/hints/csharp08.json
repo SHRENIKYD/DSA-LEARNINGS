@@ -1,0 +1,31 @@
+{"quiz":[
+"A value type lives wherever its container lives. Ask where the containing object is allocated.",
+"Converting a value type to object triggers boxing. Think about what memory that needs and whether the value is copied.",
+"Each assignment creates its own box. Recall what == does for object-typed variables and what Int32 does with Equals.",
+"Recall the documented Large Object Heap size threshold in bytes, which can be changed with a config setting.",
+"Older generations are collected less often. When the GC collects one generation, what about the younger ones?",
+"Think about what the GC must track for a finalizable object and how many collections it takes to free it.",
+"Once cleanup is already done, ask whether the finalizer still needs to run at all.",
+"Span is a ref struct that may point to stack memory. Think about which feature could move it off the stack.",
+"Compare where each type may be stored: only on the stack, or also in fields and across async code.",
+"Recall what array range syntax returns in C#. Is it the same as calling AsSpan with the range?",
+"Pools keep arrays in size buckets and reuse them. Think about the exact length and the contents of what you get back.",
+"Think about how small the thread stack is and whether a stack overflow can be caught.",
+"Without overrides, the default ValueType equality is used. Think about how it compares fields and its cost.",
+"A lambda that reads a local variable needs somewhere to keep it. How can you give it the value without capturing?"
+],"interview":[
+"Explain that value types live with their container: locals in frames or registers, fields inside heap objects, and captured variables.",
+"Define boxing and unboxing, give the allocation and copy cost, and list hidden places like interfaces and non-generic collections.",
+"Cover gen 0, 1 and 2, why most objects die young, promotion, and the separate large and pinned heaps.",
+"Give the size threshold, explain it is collected only with gen 2 and not compacted by default, and mention fragmentation and pooling.",
+"Contrast deterministic Dispose by the owner with the GC's non-deterministic finalizer as a safety net for unmanaged resources.",
+"Explain what is safe to touch when called from Dispose versus from the finalizer thread.",
+"Describe it as a reference plus length over arrays, strings, stack or native memory, with cheap slicing and its ref struct limits.",
+"Explain when a buffer must outlive a synchronous frame: fields, async methods, lambdas, and how to get a Span from it.",
+"Cover unmanaged element types, release on return, escape rules, and a size threshold with a heap or pool fallback.",
+"Explain buckets, Rent and Return, and pitfalls like larger arrays, stale data, double return and using after return.",
+"Describe a workflow: counters first, then comparing heap dumps over time, then following roots to find what keeps objects alive.",
+"Compare object header and method table overhead on the heap with the inline size of a small struct.",
+"Explain that the List indexer returns a copy, why changing a copy is lost, and how arrays differ.",
+"Explain why forcing collections or nulling locals usually hurts, and name the rare valid exceptions."
+]}

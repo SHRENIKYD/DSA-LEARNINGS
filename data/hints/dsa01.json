@@ -1,0 +1,30 @@
+{"quiz":[
+"With int operands, division drops the fractional part. Work out the quotient and the remainder separately, then add them.",
+"In these languages the remainder takes the sign of the left operand. Write the dividend as divisor times quotient plus remainder.",
+"Overflow happens during the int multiplication itself. Ask where the widening cast must be placed to stop it.",
+"With a linear algorithm, reading the input can dominate the run time. Think about how the input is being parsed.",
+"Does b = a create a new array or another name for the same one? Follow where the write goes.",
+"Java passes object references by value. Does assigning a new array to the parameter change the caller's variable?",
+"In Java, == on objects compares references, and equal hash codes do not prove equal text. Which method compares content?",
+"Estimate step counts for each complexity at this size and compare with roughly one hundred million simple steps per second.",
+"A tiny limit is a deliberate clue. Compute how big exponential growth gets at this size.",
+"Count choices of a start index and an end index at or after it, then sum over all starts.",
+"Strings cannot be changed in place. Count how many characters get copied across all the loop iterations.",
+"Autoboxing may reuse cached objects only for small values. Is 1000 small enough, and what does == compare?",
+"Recursion depth equals the path length, and each call frame lives on a limited thread stack."
+],"interview":[
+"Say Java is always pass-by-value, and explain that for objects the value is a copy of the reference, with a reassign versus mutate example.",
+"Explain call frames and local primitives on the stack versus objects on the heap, lifetimes and garbage collection, and how other languages differ.",
+"Explain that Scanner uses regex parsing per token, then name faster buffered readers and tokenizers in each language and fast output.",
+"Estimate the largest intermediate value from the constraints, compare with the int limit, and watch sums, products and casts.",
+"Explain the small-value cache for boxed Integers, why == compares references, and use equals or unboxed ints instead.",
+"Explain immutability and repeated copying giving quadratic time, what the compiler does for a single expression, and using StringBuilder in loops.",
+"Turn the limit into a target complexity using a steps-per-second budget, then list the algorithm families that fit.",
+"Cover that brute force proves understanding, gives a correct baseline for testing, and reveals the pattern to optimize.",
+"Describe random small inputs, comparing the fast solution against a brute force, and shrinking a failing case.",
+"Mention different algorithms for primitives and objects, stability, worst cases, and when it matters such as anti-quicksort tests.",
+"Cover converting recursion to iteration with an explicit stack, raising stack size with a thread, or limits in other languages.",
+"Explain that a shallow copy shares the inner row arrays while a deep copy copies each row, with a mutation example.",
+"Explain UTF-16 code units, characters outside the basic plane needing two units, and using code points for Unicode problems.",
+"Compute the memory from cells times bytes per cell, then reduce with smaller types, rolling rows or a different formulation."
+]}

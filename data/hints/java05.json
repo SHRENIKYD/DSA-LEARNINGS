@@ -1,0 +1,31 @@
+{"quiz":[
+"Strings are immutable. The method returns a new String; is it saved anywhere?",
+"Compile-time constant expressions are folded into a pooled literal. Which expression can the compiler compute ahead of time?",
+"Recall the Java 7 change that let interned Strings be garbage-collected like normal objects, and what Metaspace is for.",
+"Both have the same API. Think about which one synchronizes its methods and what that costs in single-threaded code.",
+"Check whether StringBuilder overrides equals, or uses the identity comparison from Object.",
+"Autoboxing uses Integer.valueOf, which caches a small range of values. Is each number inside that range?",
+"Look for the line that forces unboxing, where the compiler inserts a call on a possibly null reference.",
+"With List of Integer there are two remove methods. Which one matches an int argument without boxing?",
+"HashSet finds a bucket by hashCode first. If two equal objects use identity hashes, where does each one go?",
+"Only one direction of the hash rule is required. Remember that collisions are allowed.",
+"Think about subtracting a large negative number from a large positive one in int arithmetic.",
+"A TreeSet treats any pair that compares as zero as a duplicate. Compare the lengths of the words.",
+"When both branches of a ternary are numeric wrappers, binary numeric promotion picks a common type."
+],
+"interview":[
+"Cover safety for the pool and as map keys, thread safety, security for things like paths, and caching the hash.",
+"Explain reference comparison versus content comparison, and why == sometimes works only because of pooling.",
+"Explain how literals are shared in the pool, where it lives, and how intern returns the pooled copy.",
+"Count the pooled literal and the new heap object, and note the literal may already exist in the pool.",
+"Compare immutability, synchronization and speed, and give when each fits: constants, single-threaded building, legacy shared use.",
+"Explain the internal array, growth to a larger capacity, copying the contents, and presizing to avoid repeated copies.",
+"Explain wrapping primitives as objects for generics and collections, null values, and utility methods.",
+"Explain the automatic conversions the compiler inserts, then pitfalls like null unboxing, == on wrappers and boxing in loops.",
+"Explain that valueOf caches a small range, so values outside it create separate objects, and to use equals instead.",
+"State the rules linking equals and hashCode, and show how breaking them makes hash collections lose objects.",
+"Walk through hashing to a bucket, comparing hashes then equals within the bucket, and replacing or adding entries.",
+"Explain natural ordering inside the class versus external orderings you pass in, and when you need several orders.",
+"Define compare returning zero exactly when equals is true, and show how sorted sets and maps drop or merge items otherwise.",
+"Check immutability, correct equals and hashCode on final fields, and that the key never changes while in the map."
+]}

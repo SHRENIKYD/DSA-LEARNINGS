@@ -1,0 +1,32 @@
+{"quiz": [
+"Aggregates like AVG skip NULL values entirely. Average only the values that are actually present.",
+"Without GROUP BY an aggregate query always returns one row. Think about what SUM gives over an empty set, unlike COUNT.",
+"COUNT(DISTINCT) ignores NULLs and counts each repeated value only once.",
+"Look for a selected column that is neither grouped nor aggregated. Strict engines reject it; a loose one picks any value.",
+"Recall which clause runs per row before any grouping has happened, so aggregates do not exist yet.",
+"GROUP BY treats NULLs as equal to each other, the same way DISTINCT does.",
+"CASE checks branches top to bottom and stops at the first TRUE one.",
+"The simple CASE form compares with =, and anything = NULL is UNKNOWN, never TRUE.",
+"COUNT counts every non-NULL value, and 0 is not NULL.",
+"NULLIF(a, b) gives NULL when the two arguments are equal, otherwise a.",
+"COALESCE scans its arguments left to right and returns the first one that is not NULL.",
+"After COALESCE turns NULLs into 0, every employee is in the average, so divide the total by all rows.",
+"When both sides are integers, SQLite does integer division and drops the fraction.",
+"Think of the steps: produce rows, filter rows, group, filter groups, pick columns, then sort."
+],
+"interview": [
+"Cover what each form counts: all rows, non-NULL values, and distinct non-NULL values, plus a practical use for each.",
+"Explain that one filters rows before grouping and the other filters groups after, and which can use aggregates. Give a small example.",
+"List the logical clause order and use it to explain why aggregates fail in WHERE and aliases work in ORDER BY but not WHERE.",
+"State the rule that selected columns must be grouped or aggregated, which engines enforce it, and the silent wrong results in loose engines.",
+"Explain that aggregates ignore NULLs, that SUM over nothing is NULL while COUNT is 0, and the COALESCE fix.",
+"Describe putting CASE or FILTER inside an aggregate to compute several filtered metrics in one pass, with two examples.",
+"Describe grouping by the row label with one conditional aggregate per column, when to use ELSE 0 vs no ELSE, and dialect PIVOT helpers.",
+"Cover first-TRUE-wins ordering, missing ELSE giving NULL, WHEN NULL never matching, boundary gaps, type mixing, and index impact.",
+"Explain wrapping the denominator with NULLIF, how different engines behave on divide by zero, and choosing NULL vs 0 for display.",
+"Use MAX of salaries below the overall MAX. Explain why it handles ties and returns NULL when no second value exists.",
+"Compare SUM over SUM with averaging per-row ratios, show how small groups get too much weight, and when averaging ratios is valid.",
+"Describe hash aggregation and sort or stream aggregation, their costs, and how an index on grouping columns avoids a sort.",
+"Explain how one-to-many joins repeat parent rows and inflate sums and counts, and fixes like pre-aggregating or COUNT(DISTINCT).",
+"Separate what AI is good at, like boilerplate, from semantics you must check: grain, NULLs, COUNT type, division, and filters."
+]}

@@ -1,0 +1,31 @@
+{
+ "quiz": [
+  "Multiply matching positions and add the results. The answer is a single number, not a list.",
+  "Check whether one vector is just a scaled copy of the other. What angle is between them?",
+  "Multiply the matrix by the vector row by row, then picture where the x-axis point moves.",
+  "Inner sizes must match to multiply, and the result takes the outer sizes. Check both orders.",
+  "Try a small pair of matrices, or think whether doing two transforms in either order always matches.",
+  "For a diagonal matrix, the inverse just undoes each scaling on its own.",
+  "A matrix has no inverse when its determinant is zero, which happens when rows are multiples of each other.",
+  "Read the zero row as an equation: 0x + 0y = 0. Ask whether it can ever be false, and what that says about the two lines.",
+  "Matrices are linear, so scaling the input scales the output by the same factor.",
+  "Add the top two eigenvalues and divide by the sum of all of them.",
+  "A dot product of many random terms grows with dimension. Think about what that does to softmax.",
+  "Picking one row of a matrix can be written as a matrix product with a special vector.",
+  "The projection must take a vector of the original size to a vector of the kept size."
+ ],
+ "interview": [
+  "Explain multiply-and-add as an agreement score, cosine as angle only, and when vector length should or should not matter.",
+  "Describe a linear rule that moves every vector, keeps the origin and straight lines, and give a rotation or scaling example.",
+  "Explain each cell as a row-by-column dot product, the inner-size rule, and the resulting outer shape.",
+  "Define the inverse as undoing A, explain when it fails, and why solving directly is better than computing it.",
+  "Walk through the augmented matrix and row operations, then explain why picking a large pivot avoids error growth.",
+  "Describe directions that only get stretched, the A v equals lambda v idea, and repeated multiply-and-normalise.",
+  "List the steps: centre data, covariance, eigen-decomposition, sort, project; then choose components by variance explained.",
+  "Define U, Sigma, V and their roles, then link singular values to PCA and to the best low-rank approximation.",
+  "Write Q, K and V as products with learned matrices, give each shape, then the score matrix, softmax and output.",
+  "Cover the cost of exact search, then approximate indexes, compression, normalised vectors and hardware choices.",
+  "Explain why covariance, Gram and Hessian matrices are symmetric, and their real eigenvalues and orthogonal eigenvectors.",
+  "Annotate shapes, check every product, watch for elementwise versus matrix multiply, and test against a simple reference."
+ ]
+}

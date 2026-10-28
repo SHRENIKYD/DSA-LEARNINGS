@@ -1,0 +1,32 @@
+{"quiz":[
+"Think about whether Helm ever deletes history entries, or whether every action, including going back, gets its own new number.",
+"Recall the precedence order: chart defaults, then -f files, then command-line flags. The most specific, latest source wins.",
+"Ask of each line: what happens if the new Pods never get Ready, does it cause downtime, and does anything secret end up in shell history or CI logs?",
+"Use the formula desired = ceil(current x currentMetric / targetMetric) and round up.",
+"A CPU percentage needs two inputs: live usage from the Metrics API and a request value to divide by.",
+"maxSurge controls extra Pods above the target and maxUnavailable controls Pods allowed to be missing. Which pair keeps the count from ever dipping?",
+"Compute allowed disruptions as healthy Pods minus minAvailable. What happens to evictions when that is zero?",
+"Block disks live in a single zone. Think about what the PersistentVolume tells the scheduler about where the Pod may run.",
+"The problem is a disk created in one zone before the Pod is placed. Which setting controls when a volume is bound and provisioned?",
+"RBAC rules name resources exactly. Ask whether reading logs is the same resource as reading the Pod object itself.",
+"Kubernetes only stores a NetworkPolicy; some other component in the cluster has to actually enforce it.",
+"Think of the from: list like a list of alternatives, and of fields inside one item like conditions on a single rule. How do they combine?",
+"Kubelets may be older than the API server but never newer. Which part must therefore move first?",
+"Read the error: Kubernetes no longer serves that apiVersion. Which change makes the chart talk to an API the cluster still knows?",
+"exec and attach need a shell already in the image. Which kubectl command can bring its own image into a running Pod?"
+],"interview":[
+"Define Helm as a package manager, then explain chart (templates, values.yaml, Chart.yaml), release (an install with revision history) and values overrides.",
+"Explain that rollback re-applies an old manifest as a new revision, nothing is deleted, and that migrations and hook side effects are not undone.",
+"Give the order from chart defaults to -f files to --set, explain that maps merge key by key while lists are replaced, and that null removes a default.",
+"Say why secrets must stay out of values files, then cover options like external Secrets with External Secrets Operator or SOPS with helm-secrets.",
+"Define maxSurge as extra Pods allowed and maxUnavailable as Pods allowed missing, then explain maxUnavailable 0 with maxSurge 1 plus honest readiness probes.",
+"Give the formula with ceil, the 10% tolerance, min/max clamping and scale-down stabilization, then list reasons like missing metrics or CPU requests.",
+"Explain that a PDB limits voluntary disruptions, how allowed disruptions are computed, and common setups that leave zero so drain waits forever.",
+"Cover stable identity, ordered names, the headless Service for per-Pod DNS, and how volumeClaimTemplates make one PVC per Pod that outlives it.",
+"Explain the zonal PV and node affinity, how to check describe pod and node zone labels, fix by restoring zone capacity, and prevent with WaitForFirstConsumer.",
+"Cover separate identities, namespace-scoped Roles with exact verbs, short-lived tokens for CI, read-only access for developers, and testing with kubectl auth can-i.",
+"Start with whether the CNI enforces policy, then check Pod and namespace selection, policyTypes direction, and whether the test traffic really crosses Pods.",
+"Stress one minor version at a time, pre-checks for removed APIs, backups and PDBs, then control plane, add-ons and nodes in small batches.",
+"Cover finding deprecated APIs early with tools like pluto or kubent and metrics, fixing charts in CI, and repairing stored Helm release metadata after.",
+"Tell a story in order: detect, stabilise with rollback, diagnose with evidence, communicate, fix, and a blameless postmortem with concrete actions."
+]}

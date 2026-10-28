@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "The array is static and queries are many, so you want fast answers after one-time preprocessing.",
+  "The two windows can share elements. Compare min(x, x) with x + x and ask what that does to elements in the shared part.",
+  "Write 12 in binary and keep only its lowest set bit.",
+  "Write 13 in binary and remove the lowest set bit step by step to see which indices are read.",
+  "A node recurses only if the query cuts through it. Ask how many query edges there are, and how many nodes on one level each edge can cut.",
+  "The tree height is about log N, and the last level can be partly empty. Think about a safe bound with gaps.",
+  "A lazy tag means the children are out of date. Ask at what moment any code first reads or changes a child of that node.",
+  "The returned value must not change the answer. Think about the identity value for min.",
+  "Mo's algorithm sorts the queries and slides one window between them. Check each option: does that sliding really need it, or not?",
+  "Balance the cost of scanning a full block with the cost of looping over blocks.",
+  "Only single values are read, never range sums. Think about which array turns a range add into a few point changes.",
+  "Idempotent means applying it twice gives the same result. Which operation does not care about overlap?",
+  "Estimate total moves as roughly (N plus Q) times the square root of N."
+ ],
+ "interview": [
+  "Explain the tree of segments and log time updates and queries. Contrast with prefix sums, which cannot handle updates cheaply.",
+  "Explain storing pending updates at nodes and pushing them down, and the invariant that a node's value is correct after its own tags.",
+  "Compare code size, supported operations, memory and speed. Mention invertible operations for Fenwick.",
+  "Explain two's complement, why negative flips bits after the lowest one, and how indices jump by that bit.",
+  "Argue that at most a few nodes per level are visited because only borders partly overlap.",
+  "Relate tree height to log N rounded up and explain that 4N covers the worst padding.",
+  "Explain overlap-friendly operations, O(N log N) build, and that it does not support updates.",
+  "Explain sorting queries by block and right end, moving two pointers, and how block size balances the cost.",
+  "Describe how assign clears add, how tags compose in order, and how each tag changes the sum.",
+  "Mention a persistent segment tree or merge sort tree, and coordinate compression with query costs.",
+  "Explain that values shrink fast, so update each element directly and skip segments that are already all 0 or 1.",
+  "Explain coordinate compression: collect values, sort and dedupe, then map them to indices.",
+  "Name examples like time-series databases, monitoring dashboards, and games, and explain the precomputed aggregates idea.",
+  "Mention comparing with a brute force array, checking push calls, index borders and the identity values.",
+  "Compare Mo's algorithm or offline Fenwick by right end with an online persistent tree, and their complexities."
+ ]
+}

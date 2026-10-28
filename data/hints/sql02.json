@@ -1,0 +1,33 @@
+{"quiz":[
+"Think of the pipeline: get rows, filter them, pick columns, remove duplicates, sort, then cut.",
+"Any comparison with NULL gives UNKNOWN, and WHERE keeps only rows that are TRUE.",
+"Try both TRUE and FALSE in place of the unknown. If both give the same result, that is the answer.",
+"Substitute each possible truth value for the missing side and compare the two outcomes.",
+"Remember operator precedence: AND binds tighter than OR.",
+"BETWEEN is shorthand for greater-or-equal AND less-or-equal.",
+"The underscore matches exactly one character and the percent sign matches any run of characters.",
+"NOT IN expands into a chain of not-equal tests joined by AND. What does any test against NULL give?",
+"SQLite treats NULL as the smallest value when sorting. Where does that put it in descending order?",
+"DISTINCT compares the whole output row, not just one column.",
+"In the comma form of LIMIT, the offset comes first and the count second.",
+"Aliases are created in the SELECT step. Which clauses run after that step and can see them?",
+"Dividing an integer by an integer truncates in SQLite.",
+"Only one test checks for the missing marker itself. Equal and not-equal against NULL never give TRUE.",
+"Rows have no stored position, so skipping rows means producing them first and throwing them away."
+],"interview":[
+"List the logical order from FROM to LIMIT, then use it to explain aliases in WHERE, HAVING for aggregates, and LIMIT without ORDER BY.",
+"Define NULL as missing, explain that comparisons give UNKNOWN which WHERE drops, and give IS NULL or null-safe comparison.",
+"Give the AND, OR and NOT rules with UNKNOWN, plus the trick of trying both TRUE and FALSE for the unknown.",
+"Expand NOT IN into an AND chain to show a NULL makes it never TRUE, then fix with IS NOT NULL or NOT EXISTS.",
+"Contrast WHERE filtering rows using any source column with SELECT choosing and computing columns for surviving rows.",
+"Show DISTINCT with ORDER BY, LIMIT and OFFSET in a scalar subquery, and cover ties, missing values and NULL salaries.",
+"Compare OFFSET's cost and shifting rows under writes with keyset seeking on the last sort key and an index.",
+"Explain that without ORDER BY no order is promised and plans change, so add ORDER BY with a unique tiebreaker.",
+"Contrast engines that sort NULL as smallest vs largest, NULLS FIRST/LAST support, and sorting by a null indicator.",
+"Explain that DISTINCT compares whole rows with NULLs equal, its cost, and why hiding join fan-out with it is a smell.",
+"Explain the % and _ wildcards and case rules, and that an index helps only for a constant prefix.",
+"Explain that NULL in arithmetic gives NULL, then cover COALESCE and the two-argument variants in different engines.",
+"Use the logical order to explain the missing alias, note SQLite's convenience lookup, and give portable fixes.",
+"Define sargable as a bare indexed column compared to a constant, with examples of each kind, like functions on columns."
+,"Use parameterised pieces, the right predicates per filter, deliberate NULL handling, stable sorting and keyset pagination."
+]}

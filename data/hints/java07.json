@@ -1,0 +1,31 @@
+{"quiz":[
+"Collection's add takes one element. Check each type: does it hold single elements, or something that does not fit that add?",
+"List has remove(int index) and remove(Object o). Which overload does a plain int literal match without boxing?",
+"add is declared on the List interface, so ask whether the compiler can object. What does an unmodifiable list do when add is called?",
+"Compare the order promise of each set: none, sorted, enum declaration order, or the order items were added. Which matches?",
+"A TreeSet decides duplicates using the comparator, not equals; count how many distinct lengths there are.",
+"A heap only keeps the smallest element at the head; its internal array is not fully sorted.",
+"The for-each loop checks hasNext before calling next; trace how the size change affects that check near the end.",
+"Calling map.remove inside a for-each changes the map behind the iterator. Which option removes through the view the loop is using?",
+"When the key is missing, binarySearch returns minus the insertion point minus one; find where the key would go.",
+"An exact-key lookup fails when no price was stored at exactly t. Which structure can find the nearest key at or below t quickly?",
+"Check the javadoc for Deque. The old Stack class extends Vector and is synchronized; which option avoids that and linked nodes?",
+"Ask for each call: does it wrap the original list, or copy its elements into a new list at that moment?",
+"A linked list has no index array, so it must follow node links to reach position i."
+],
+"interview":[
+"Sketch Collection with List, Set and Queue below it, then explain why key-value pairs do not fit the single-element add contract.",
+"Compare memory layout, random access cost, insert and remove cost, and cache friendliness; say which is usually the default.",
+"Compare ordering (none, insertion, sorted), the backing structure of each, and their time complexity.",
+"Explain the modCount check, why it is best effort, and safe alternatives like Iterator.remove, removeIf, or concurrent collections.",
+"Walk through hashCode, bucket index, collisions and treeification, then state the equals and hashCode contract.",
+"Explain each method's behaviour on missing keys, then give uses like counting words, grouping lists, and default values.",
+"Describe the binary heap in an array, sift up and down costs, and using a reversed comparator for a max-heap.",
+"Mention no synchronization overhead, better cache use than linked nodes, and limits like no nulls and no index access.",
+"Compare live view versus copy, mutability, null handling, and whether changes to the backing array show through.",
+"List floor, ceiling, higher, lower and sub-map views, and connect them to problems like time-based lookups or ranges.",
+"Mention access-order mode and removeEldestEntry, then discuss thread safety, and a hash map plus doubly linked list alternative.",
+"Explain that most adds are cheap but occasional resizes copy the array, and how growth by a factor spreads that cost.",
+"Compare synchronized wrappers, concurrent collections, copy-on-write lists and immutable collections, with their trade-offs.",
+"Point out that passing tests can hide this bug, explain fail-fast behaviour and skipped elements, and suggest removeIf or an iterator."
+]}

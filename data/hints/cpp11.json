@@ -1,0 +1,29 @@
+{"quiz":[
+"Recall what the std::thread destructor does when you never chose between waiting for it and letting it go.",
+"std::thread copies its arguments; you need a wrapper that carries a reference through that copy.",
+"Unsynchronized access where one thread writes is a specific rule violation; recall how the standard classifies it.",
+"Separate one combined read-modify-write operation from a separate load followed by a separate store.",
+"Compare what each lock type allows after it is constructed. Can lock_guard ever release the mutex early?",
+"Can wait return when nothing changed, or after another thread already took the item? What must you do after waking?",
+"Opposite lock order can create a circular wait; look for a tool that locks several mutexes safely at once.",
+"You need a synchronizes-with edge between the flag store and the flag load so the payload write is visible.",
+"Recall what acquire and release order: does either stop a store being reordered with a later load of another variable?",
+"Think about what a future returned by async does in its destructor, and when a temporary is destroyed.",
+"Ask where an exception from the task goes, and which call in the caller thread brings it back.",
+"Notice the waiting point is reused for many phases; ask which primitive can be used more than once."
+],"interview":[
+"Define a data race as unsynchronized conflicting access that is undefined behaviour, and a race condition as a timing logic bug.",
+"Explain waiting and visibility with join, independence and dangling risks with detach, and the terminate on doing neither.",
+"Compare the simple scoped lock, the flexible movable lock needed by condition variables, and locking several mutexes at once.",
+"Name the four Coffman conditions, then practical prevention like lock ordering, multi-lock acquire and not calling unknown code.",
+"Describe releasing the mutex and blocking atomically, re-acquiring on wake, and rechecking a predicate for spurious wakeups.",
+"Use one mutex, a deque and two condition variables, then list pitfalls like no predicate, wrong notify and shutdown handling.",
+"Match atomics to single-variable simple updates, and mutexes to invariants across variables or compound operations.",
+"Explain how compare-exchange updates expected on failure, why weak can fail spuriously, and the retry loop pattern.",
+"Define each ordering with what it guarantees, and give a matching example like a counter, a publish flag and Dekker-style code.",
+"Explain happens-before as the visibility order, built from program order plus synchronizes-with edges like locks and joins.",
+"Describe the async and deferred policies and the default, then gotchas like blocking future destructors and single get.",
+"Describe workers, a locked job queue with a condition variable, futures for results, and graceful versus immediate shutdown.",
+"Separate the thread-safe control block from the unprotected pointee and from one shared_ptr variable shared by threads.",
+"Cover prevention by design, detection with ThreadSanitizer and stress tests, and reproducing timing-dependent bugs."
+]}

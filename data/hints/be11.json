@@ -1,0 +1,29 @@
+{"quiz":[
+"Think about which tests are cheapest, fastest and most precise. The pyramid puts those at its wide base.",
+"Ask whether the test checks the returned outcome or checks which calls were made. Canned answers plus outcome checks point to one kind.",
+"Consider whether the test checks behaviour or the exact method calls. Which style survives a refactor of the internals?",
+"Ask whether an in-memory engine behaves exactly like production in SQL dialect, data types and locking.",
+"Container startup is the slow part. Think about how often you really need to start one and how to keep tests isolated.",
+"Contract testing is named after the side that drives it. Which side's tests produce the pact file?",
+"Think about what the Pact Broker stores: pacts and verification results per version. What decision can it make from those before a deploy?",
+"Is the controller part of the domain core, or something that plugs into a port from the outside to drive the app?",
+"Think about which layer should know about which. Frameworks and databases are details; business rules are the centre.",
+"Ask what a bounded context is a boundary of. It is about meaning and language, not deployment or storage units.",
+"Compare the patterns by who adapts to whom. You want to protect your model from a foreign one you cannot change.",
+"Ask which part of the system makes the business different from its competitors and so is worth building with care.",
+"Look for the test that runs in the pipeline without a full shared environment and checks field-level expectations between services."
+],"interview":[
+"Describe the layers (unit, integration, E2E), why the shape is economic (speed, flakiness, cost) and give cases where a different shape fits.",
+"Define each double by what it does: canned answers, built-in expectations, recording real calls, or a working light implementation.",
+"Explain turning hidden inputs into injected dependencies, such as a clock and an id or random source, with fixed versions in tests.",
+"Mention dialect, data type, locking and isolation differences, and that tests should run against the same engine and version as production.",
+"Explain the consumer writing expectations, the contract going through a broker, provider verification, and why this beats slow shared E2E.",
+"Cover the core with inbound and outbound ports, adapters at the edge, and the benefit: testable logic that does not depend on frameworks.",
+"Compare the two framings, note the shared rule that dependencies point inward, and explain why they work together.",
+"Define it as a boundary for one model and language, and mention clues like words with different meanings and team ownership.",
+"Explain it as a translation boundary with a facade and translators, used with legacy systems, vendor APIs or messy upstream models.",
+"List patterns such as partnership, shared kernel, customer/supplier, conformist, ACL and open host service, with when each fits.",
+"Cover per-service unit and integration tests, contract tests at boundaries instead of a shared E2E gate, and a few smoke tests.",
+"Explain that coverage is not verified behaviour, look at escaped bugs, and suggest fakes, real integration tests and better assertions.",
+"Talk about executable checks like architecture tests in the pipeline, plus written decisions and context that reviewers and AI tools can follow."
+]}

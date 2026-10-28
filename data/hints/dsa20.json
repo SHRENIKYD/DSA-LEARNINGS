@@ -1,0 +1,30 @@
+{"quiz":[
+"With nonnegative weights and a sparse graph, think about which algorithm runs in about E log V.",
+"A popped entry with a larger distance than the stored best is out of date. What should you do with it?",
+"Recall the greedy rule: once a node is popped, its distance is never changed. Which edge property does that rule silently rely on?",
+"Compare the new distance with the current node's distance. The deque must stay sorted by distance, so which end fits it?",
+"A shortest path without cycles uses at most V minus 1 edges. Each round fixes at least one more edge.",
+"If distances keep improving after enough rounds, something keeps lowering the cost forever.",
+"d at step k needs every pair finished using middle nodes up to k minus 1. Which index must be fully processed before the next one starts?",
+"A node's distance to itself should be 0 unless there is a way to go round and lower it.",
+"Write down what each algorithm pushes into its heap when it looks at edge u to v with weight w. Compare the two expressions.",
+"Same root means u and v are already joined by edges you chose. What would one more edge between them create in a tree?",
+"Round r should only allow paths with at most r flights. Ask what happens if a value updated this round is read again in the same round.",
+"Dijkstra's greedy proof needs one property of the path cost when you add an edge. Check whether taking the max of jumps keeps it.",
+"With every pair connected, the graph is dense. Compare algorithms that work well on V squared edges."
+],"interview":[
+"Explain the heap, relaxation, and the proof that the smallest popped distance is final when weights are nonnegative.",
+"Give a small counterexample and then name Bellman-Ford or other options and their cost.",
+"Explain using a deque, front for weight 0 and back for weight 1, and the linear time gain.",
+"Explain the extra round check, then walking parent pointers V times to land inside the cycle and print it.",
+"Cover the triple loop with k outside, the meaning of allowing middle nodes up to k, and when cubic time is fine.",
+"Define an MST, state that the lightest edge across any cut is safe, and give the exchange proof.",
+"Compare edge sorting with DSU versus a heap over vertices, and dense versus sparse graphs.",
+"Explain find, union, path compression and union by rank, and the inverse Ackermann bound.",
+"Explain that the stop limit is part of the state, then mention Bellman-Ford with K plus 1 rounds or a state-expanded Dijkstra.",
+"Describe keeping a count array during Dijkstra and adding counts on ties, resetting on improvements, with a modulus.",
+"Mention that the cost function must never decrease when extended and must be monotone, like a max along a path.",
+"Mention preprocessing ideas like contraction hierarchies, A star, bidirectional search, and landmarks.",
+"Compare running a single-source search per query with precomputing all pairs using Floyd-Warshall.",
+"Cover small hand-built graphs, brute force comparison, edge cases like disconnected nodes, and checking overflow."
+]}

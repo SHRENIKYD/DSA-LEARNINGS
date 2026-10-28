@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "The ACK number is the next byte the receiver expects, so add the data length to the starting sequence number.",
+  "Recall the four UDP header fields: source port, destination port, length and checksum, each 16 bits.",
+  "TIME_WAIT exists so the side that sends the very last ACK can resend it if lost. Trace the close: who sends that final ACK?",
+  "In slow start the congestion window grows exponentially, roughly doubling every round trip.",
+  "On a timeout, ssthresh is set to half the current window and the window restarts from its smallest size.",
+  "Think about how many duplicate ACKs the sender waits for before resending without a timer.",
+  "The problem is bind() failing with address in use. Which option is about binding, not about delays, keepalives or close behaviour?",
+  "Throughput is limited to window size divided by round-trip time; do the unit conversion carefully.",
+  "Under a flood the SYN queue fills up. Think about how the server could recognise a valid final ACK without having saved anything.",
+  "Think about two features that each wait for the other: one holds small sends, the other holds ACKs.",
+  "Recall the close state machine: CLOSE_WAIT is entered after the peer FIN arrives. What must the local side do next to leave it?",
+  "Think about attackers guessing sequence numbers and old segments from earlier connections being accepted.",
+  "Break the acronym down: how the window grows when all is well and how it shrinks on loss."
+ ],
+ "interview": [
+  "Cover reliability, ordering, connection setup, overhead and congestion control, plus real use cases for each.",
+  "Describe SYN, SYN-ACK, ACK with random initial sequence numbers and how each side acknowledges the other plus one.",
+  "Explain the FIN and ACK in each direction, which side waits in TIME_WAIT, and the two reasons for 2 MSL.",
+  "Discuss memory cost versus port exhaustion for outgoing connections, and fixes like reuse options and connection pooling.",
+  "Contrast the receive window protecting the receiver with the congestion window protecting the network.",
+  "Walk through exponential growth, linear growth after ssthresh, three duplicate ACKs, and halving the window.",
+  "Mention smoothed RTT, RTT variance, the RTO formula, backoff on timeouts, and Karn's algorithm.",
+  "Explain how Nagle holds small writes until ACK and delayed ACK holds the ACK, causing a stall, and TCP_NODELAY.",
+  "Cover half-open connections filling the backlog, and encoding state in the ISN so no memory is used until the ACK.",
+  "Compute the bandwidth-delay product and explain window scaling and buffer sizes needed to fill the pipe.",
+  "Check listen backlog and accept queue overflows, SYN drops, ephemeral ports, and tools like ss and netstat counters.",
+  "Discuss kernel ossification and middleboxes, head-of-line blocking, faster handshakes, and connection migration.",
+  "Think about what TCP sends when unread data is discarded, and how a reset differs from a normal FIN close."
+ ]
+}

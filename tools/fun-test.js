@@ -12,7 +12,7 @@ function node() {
 global.document = { createElement: node };
 function mounted(id) { const box = node(), result = { wins: 0, misses: 0, ticks: 0 }; G.get(id).mount(box, { win() { result.wins++; }, miss() { result.misses++; }, tick() { result.ticks++; } }); return { box, result }; }
 function click(b) { if (!b.disabled && b.events.click) b.events.click(); }
-assert.equal(G.list.length, 43); assert.equal(new Set(G.list.map(g => g.id)).size, 43);
+assert.equal(G.list.length, 73); assert.equal(new Set(G.list.map(g => g.id)).size, 73);
 // Every game has 2-3 hints; categories in the registry are all offered as filters.
 for (const g of G.list) { assert(Array.isArray(g.hints) && g.hints.length >= 2 && g.hints.length <= 3, g.id + ' needs 2-3 hints'); g.hints.forEach((t) => assert(typeof t === 'string' && t.length > 20, g.id + ' hint too short')); }
 const catIds = new Set(G.cats.map((c) => c[0])); G.list.forEach((g) => assert(catIds.has(g.cat), g.id + ' category ' + g.cat + ' has no filter'));
@@ -68,9 +68,14 @@ for (const id of ['recursiontrail', 'cssduel', 'httprescue', 'transactionvault',
   }
 }
 const c = { window: {}, localStorage: { getItem() { return null; } } }; vm.createContext(c); vm.runInContext(fs.readFileSync(__dirname + '/../src/tracks.js', 'utf8') + fs.readFileSync(__dirname + '/../src/journey.js', 'utf8'), c); c.window.TRACKS = c.TRACKS;
-G.list.slice(0, 8).forEach(g => assert(c.TRACKS.find(t => t.id === g.track).modules.some(m => m.id === g.mid), g.id + ' lesson link'));
+G.list.filter(g => g.track).forEach(g => assert(c.TRACKS.find(t => t.id === g.track).modules.some(m => m.id === g.mid), g.id + ' lesson link'));
+// The 30 newer concept quizzes: two per track, each play gives 5 well-formed rounds.
+const NEW30 = ['bigoloop', 'maskmagic', 'javacollect', 'javastream', 'pydecor', 'pygen', 'jsthis', 'jsscope', 'cppsmart', 'cppstl', 'csasync', 'cslinq', 'sqlwindow', 'sqlindex', 'solidspot', 'umlrel', 'estimator', 'cachepick', 'a11yfix', 'hookhunt', 'authcheck', 'microfix', 'mlmetric', 'ragfix', 'pagewalk', 'deadlockspot', 'chmodcalc', 'k8sfix', 'starstory', 'offertalk'];
+const perTrack = {}; NEW30.forEach((id) => { const g = G.get(id); assert(g, id + ' registered'); perTrack[g.track] = (perTrack[g.track] || 0) + 1; assert(c.TRACKS.find(t => t.id === g.track).modules.some(m => m.id === g.mid), id + ' mid in track');
+  for (let pass = 0; pass < 60; pass++) { const items = g.puzzles(); assert.equal(items.length, 5, id + ' 5 rounds'); items.forEach((it) => { assert(it.opts.length >= 3, id + ' needs 3+ options: ' + it.q); assert(it.ans >= 0 && it.ans < it.opts.length, id + ' answer in options'); assert.equal(new Set(it.opts).size, it.opts.length, id + ' distinct options'); assert(typeof it.why === 'string' && it.why.length > 0, id + ' why'); }); } });
+assert.equal(Object.keys(perTrack).length, 15); Object.values(perTrack).forEach((n) => assert.equal(n, 2));
 const stats = c.Journey.stats({}, {}); const world = E.world(c.Journey, stats, c.TRACKS, 'isle'); assert.equal((world.match(/class="floating-island/g) || []).length, 7); assert.match(world, /href="#map\/dsa"/);
 const entries = [{ t: '<b>Binary</b>', c: 'DSA', s: 'search', h: 'dsa.html#dsa10' }, { t: 'Binary', c: 'bad', h: 'javascript:alert(1)' }]; const results = E.search(entries, 'binary', c.TRACKS); assert.match(results, /1 results/); assert.match(results, /&lt;b&gt;Binary/); assert.doesNotMatch(results, /javascript:/);
 assert.match(E.search(entries, '', c.TRACKS), /Search a topic/); assert.match(E.search(entries, 'nothing', c.TRACKS), /No matches/);
 const P = require('../app/play.js'); const week = E.week(P, { '2026-10-19': { g: 1 }, '2026-10-18': { t: 0 } }, new Date(2026, 9, 19, 12)); assert.equal(week.length, 7); assert.equal(week[6].active, true); assert.equal(week[5].active, false);
-console.log('PASS: 43-game registry with 2-3 hints each; new-game helpers and generated answers; 90 interactive randomized wins; 250 round answers; win deduplication/failure paths; lesson mappings; BFS distances; real-progress world; safe search; streak calendar');
+console.log('PASS: 73-game registry with 2-3 hints each; new-game helpers and generated answers; 90 interactive randomized wins; 250 round answers; win deduplication/failure paths; lesson mappings; BFS distances; real-progress world; safe search; streak calendar');

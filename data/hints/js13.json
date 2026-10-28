@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "A pure function returns the same output for the same input and never changes its arguments or outside state. Check each one for mutation.",
+  "Ask how deep Object.freeze goes. Does freezing the outer object also freeze objects stored inside it?",
+  "Spread copies only the top level. Fields you did not respread keep the same references as before.",
+  "Compose runs functions right to left. Apply the last function to 5 first, then the other.",
+  "Think about what reduce does on an empty array without a starting value, and what an empty pipeline should return.",
+  "Function length counts only parameters before the first one with a default value. Use that count to see when curry fires.",
+  "map passes the value, the index and the array. Think about what parseInt does with its second argument, the radix.",
+  "Memoizing is only safe when the same input always gives the same output. Which function depends on changing outside data?",
+  "If a failed promise stays cached, every later call gets the same failure. What should happen so callers can try again?",
+  "Debounce waits for a quiet gap; throttle fires at most once per interval. Divide the typing time by the interval.",
+  "Layout thrashing happens when writes to styles and reads of layout values are interleaved, forcing repeated reflows.",
+  "Some CSS properties can be handled by the compositor alone, skipping layout and paint. Think of moving things without changing size.",
+  "Imagine the array changing under the loop while it runs. What happens to the indexes of the remaining listeners?",
+  "Think about how many times an ES module body runs and whether importers share the same exported value."
+ ],
+ "interview": [
+  "Define purity, then link it to predictable rendering, cheap change detection by reference, and reducers that must not mutate state.",
+  "Compare copying only the top level vs all levels, and explain how structural sharing reuses unchanged parts for cheap immutable updates.",
+  "Show both with reduce or reduceRight, mention the order difference, and cover the empty-list identity case.",
+  "Explain currying as one argument at a time, partial application as fixing some arguments, then implement curry using function arity.",
+  "Discuss cache keys, cache size and eviction, purity of the function, async rejection handling, and memory leaks.",
+  "Use a timeline to contrast the two, give use cases such as search input vs scroll, and mention leading or trailing options and cancel.",
+  "Mention fake timers that let you advance time manually, and checking call counts and arguments at exact moments.",
+  "Explain how mixing DOM writes and layout reads forces synchronous reflow, and fix it by batching reads then writes or using animation frames.",
+  "Cover on, off, once and emit, iterating over a copy, error handling in listeners, and avoiding leaks from forgotten listeners.",
+  "Show the module-level instance approach, then discuss hidden global state, testing pain, and dependency injection as an alternative.",
+  "Compare closures for privacy and simple composition with classes for shared prototypes, inheritance and familiar tooling.",
+  "Combine debounce, cancelling stale requests or ignoring out-of-order responses, caching, and keeping the UI responsive.",
+  "Discuss immutability and pure functions benefits, then costs like extra allocations, learning curve and readability for the team.",
+  "Talk about giving clear specs, reviewing edge cases yourself, writing tests first, and never trusting generated timing or concurrency code blindly."
+ ]
+}

@@ -1,0 +1,31 @@
+{"quiz":[
+"DP needs answers to small problems that get reused many times, and a big answer built from small optimal answers.",
+"Ask whether the same subproblem is ever solved twice. Different halves of an array do not repeat.",
+"Total work is the number of states times the work done per state.",
+"Think about whether item w could be counted twice. Which loop direction reads only values from before this item was considered?",
+"When the amount is the outer loop, each coin can be placed in any order. Ask whether 1+2 and 2+1 are counted separately.",
+"Try combinations that use the middle coin more than once and count how many coins they need.",
+"At each house choose the better of skipping it or robbing it plus the best value two houses back. Trace the array.",
+"If the last characters match, decide whether both can end the common subsequence, and which smaller prefixes remain.",
+"Moving down one row means one more character of the first string is used up while the second stays the same. Which edit does that match?",
+"A cell after an obstacle in the first row can only be reached from the left. Once blocked, what flows right?",
+"Grid DP needs an order where every cell depends only on cells already computed. Can cycles appear with four moves?",
+"A capacity this large makes a table over weights impossible. Look at which dimension is small instead.",
+"If 0 is both a real answer and the marker for unknown, think about how often already solved states get recomputed."
+],
+"interview":[
+"Explain breaking a problem into overlapping subproblems, saving each answer, and reusing it. A simple example like Fibonacci helps.",
+"Compare top-down recursion with a cache to bottom-up tables. Mention recursion depth, states visited, and space optimisation.",
+"Cover defining the state, the transition, base cases, the order of computation, and the final answer, plus complexity.",
+"Explain that the last step is either 1 or 2, and these two groups never overlap, so the counts add.",
+"Give a coin system where greedy fails and explain that canonical systems like real currency happen to work.",
+"Focus on loop order: one counts combinations, the other counts ordered sequences. Show which loop is outside in each.",
+"Define dp over items and capacity with take or skip choices, then explain the reverse capacity loop for one row.",
+"Explain that unbounded allows reusing an item, so the capacity loop runs forward and the transition reads the same row.",
+"Describe backtracking from the bottom right cell through the table, and why this needs the full table, not one row.",
+"Explain insert, delete and replace as moves to neighbouring cells, then show the two row version.",
+"Mention keeping only the rows you need, compressing states, using Hirschberg for reconstruction, or storing to disk.",
+"Explain that path counts depend only on cells already passed, while minimum health depends on what lies ahead, so it fills from the end.",
+"Explain pseudo-polynomial time based on W, then mention approximation, branch and bound, or solvers used in practice.",
+"Talk about brute force comparison on random small inputs, edge cases, and checking the recurrence logic by hand."
+]}

@@ -1,0 +1,29 @@
+{"quiz":[
+"Look for the role the developer writes once to hold persona, rules and output format.",
+"Think about whether the model keeps any memory between separate API requests.",
+"Ask what the model has to decide on its own when you never say how long the answer should be or how it should be laid out.",
+"No weights change when you add examples to a prompt. Think about in-context learning.",
+"Count the labels in the examples. What does an imbalance push the model toward?",
+"Reliable parsing needs a clear marker you can search for in the output.",
+"Tokens are generated in order. Which field should come first so it can influence the other?",
+"Valid JSON is not the same as valid values. Think about giving the model a specific error to fix.",
+"The model may be fooled anyway, so think in layers: separate data and limit what the model can do.",
+"Think about which sampling setting controls whether repeated runs of the same prompt can come out different.",
+"Count how many of the five votes each value got, then turn that into a percentage.",
+"Splitting a task into steps gives you checkpoints between them.",
+"Tuning repeatedly on the same cases can memorise them. How do you get an honest score?",
+"A label has exactly one correct form, so a strict but fair comparison works best."
+],"interview":[
+"Explain who writes each role, what it holds, and how they combine into the history sent each call.",
+"Cover clarifying the goal, adding context, constraints, output format, examples and a success check.",
+"Explain when examples help with format or edge cases, and choose diverse, balanced, realistic ones.",
+"Explain step-by-step reasoning before the answer, when it helps, and limits like cost and unfaithful reasoning.",
+"Cover structured output features or schemas, validation, retries with specific errors, and safe defaults.",
+"Explain separating instructions from data, then define injection and layered defences beyond tags.",
+"Describe templates with variables, versioning, testing and rollout like any other code.",
+"Explain sampling several answers and majority voting, the extra cost, and which tasks justify it.",
+"Weigh debuggability and checkable steps against latency and cost of extra calls.",
+"Mention a fixed test set, clear scoring, comparing against a baseline, and a hidden holdout.",
+"Cover judge biases like position and length, then mitigations like rubrics, swapping order and human checks.",
+"Rerun your eval set, compare old and new results, find failing cases, and adjust prompts with pinned versions."
+]}

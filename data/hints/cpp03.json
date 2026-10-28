@@ -1,0 +1,33 @@
+{"quiz":[
+"A pointer stores an address, whatever it points to. How big are addresses on a 64-bit platform?",
+"Pointer arithmetic counts in elements, not bytes. Move forward two elements and dereference.",
+"The star binds to the name, not the type. Check what each name in the declaration gets.",
+"Since C++17 the operands of the shift operator are evaluated left to right. Track the post-increment carefully.",
+"Recall how references are created and bound: can they be re-seated, be null, or do arithmetic?",
+"Read the declaration right to left and see which thing the const word applies to.",
+"This pointer is const itself. Ask which operation would try to change where it points.",
+"Array parameters are adjusted to pointers and the size in brackets is ignored.",
+"The address of the whole array has type pointer to array of five ints. How many bytes does adding one skip?",
+"Compare the types: what NULL is defined as versus nullptr, and which overload each can convert to.",
+"A dangling pointer refers to an object whose lifetime has ended. Which case still has a live owner?",
+"Read the message words: heap memory, used, after being freed. Which bug matches that?",
+"Recall which pointer positions the standard lets you form for an array, even if you never read through them.",
+"Local variables without initialisers are not zeroed. What does an uninitialised local pointer hold?",
+"Check each option: does it remove const, or add const one level deep in a way that could open a loophole?"
+],
+"interview":[
+"Use a plain analogy like a house address versus the house, and explain dereferencing as visiting the address.",
+"Cover nullability, re-seating, initialisation and arithmetic, and use references by default with pointers for optional or re-seatable cases.",
+"Read each right to left and explain which part is const: the pointed-to value, the pointer, or both.",
+"Explain that NULL and 0 are integers that can pick an int overload, while nullptr has its own type converting only to pointers.",
+"Explain that adding one moves by the size of the pointed-to type, and compare int pointers with char pointers.",
+"Explain conversion to a pointer to the first element, losing size, and exceptions like sizeof, the address-of operator and references to arrays.",
+"Define it and give cases like returning a local's address, use after delete, vector reallocation and freed scopes, each with a prevention.",
+"Contrast uninitialised, explicitly null and pointing to freed or expired memory, and how each is detected or prevented.",
+"Walk through ownership and cost: copy for small types, const reference for large read-only, reference to modify, pointer for optional.",
+"Show how allowing the double-pointer conversion would let you store a const object's address and then modify it.",
+"Mention reproducing with debug info, sanitizers, warnings, undefined behaviour like uninitialised data, and bisecting changes.",
+"Explain arrow as dereference then member access, and how operator precedence makes the other form parse wrongly.",
+"Explain reallocation moving elements to new memory, and alternatives like reserve, indices, deque, list or stable storage.",
+"Discuss non-owning observers and optional parameters, interop with C, versus smart pointers and references for ownership."
+]}

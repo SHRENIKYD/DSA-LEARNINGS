@@ -1,0 +1,31 @@
+{"quiz": [
+"In a B+tree, internal pages only guide navigation. Think about where full keys must be kept for range scans.",
+"Tree height is about log base fanout of the row count. Work out log base 1000 of one billion.",
+"Order in WHERE does not matter; what matters is a leading run of equality columns with no gap or earlier range.",
+"Think about whether the table itself must be visited when every needed column is in the index.",
+"A clustered index is the table storage itself, ordered physically in one way.",
+"InnoDB secondary lookups descend the primary key tree a second time. Think about what that requires.",
+"Hashing throws away ordering. Ask which query needs values in sorted order.",
+"Compare many random lookups for most rows against reading all pages in sequence.",
+"A predicate is sargable when the bare column is compared, not a function computed from it.",
+"An index that is a left prefix of another index can usually be served by the longer one.",
+"Compare where sequential keys and random keys land in a clustered index tree.",
+"Think of an index that includes only the rows matching a WHERE condition.",
+"Index-only scans still need to confirm row visibility, which depends on the visibility map kept by VACUUM."
+],
+"interview": [
+"Describe a separate sorted structure with row pointers, and compare a full O(N) scan with an O(log N) tree navigation.",
+"Explain separators in internal pages, keys in linked leaves, descending to a leaf for a lookup, then walking leaves for a range.",
+"Explain that clustered indexes hold the rows in order, only one per table, and how secondary indexes point to rows in different engines.",
+"Explain that the index is sorted by columns in order, so only a leading run can be seeked, and how gaps or ranges end it.",
+"Describe equality first, then sort, then range columns, ordering by shared use across queries, and why most-selective-first is a myth.",
+"Define covering as answering from the index alone, how plans show it, and using INCLUDE to add non-key columns.",
+"Compare O(1) equality but no order for hash with ordered B-tree operations, and the narrow cases where hash makes sense.",
+"Define distinct-value count versus matched fraction, and explain why indexes win for small fractions but lose to scans for large ones.",
+"Give a checklist: non-sargable predicates, left-prefix misses, low selectivity, stale statistics, type or collation mismatches.",
+"Cover the write cost of maintaining each index, disk and memory use, and how to find and drop unused or duplicate indexes.",
+"Explain random inserts into the clustered tree, page splits, poor fill and cache misses, the PK copy cost, and ordered alternatives.",
+"Define both index kinds, give a job queue or active-rows use for partial and a lower-case lookup for expression indexes.",
+"Find the real slow queries, read EXPLAIN ANALYZE, form a hypothesis, test the index on realistic data, and measure again.",
+"Explain how sorted leaves let ORDER BY with LIMIT stop early without a sort, and how ordered indexes help stream GROUP BY."
+]}

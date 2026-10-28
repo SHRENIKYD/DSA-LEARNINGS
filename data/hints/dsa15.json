@@ -1,0 +1,29 @@
+{"quiz":[
+"For a 0-indexed heap, the children of i are at 2i plus 1 and 2i plus 2.",
+"Check every parent against both of its children. In a min-heap no parent may be bigger than a child.",
+"Most nodes are near the bottom and only sink a few levels. Add up the work level by level.",
+"The top of the heap should be the item to throw out when a better one arrives. Which of the K kept items is that?",
+"Think about the natural ordering Java's PriorityQueue uses by default: smallest first or largest first?",
+"Try a very negative a and a very positive b. What happens to b minus a in a 32-bit int?",
+"Each node is pushed and popped once, and the heap never holds more than K items.",
+"The median sits at the boundary: you need the biggest of the lower half and the smallest of the upper half quickly.",
+"The path for the letters exists, but did any inserted word end at that node?",
+"You follow one child pointer per letter. Does the number of stored words change that?",
+"Compare the value of one high bit with the sum of all lower bits together.",
+"Think about the cost of building plus N extractions, whether it needs extra arrays, and if equal keys keep their order.",
+"Which operation must first search the whole array to find its element?"
+],"interview":[
+"Define the complete tree shape and heap order, then explain index formulas for parent and children with no pointers needed.",
+"Describe adding at the end and sifting up, then moving the last item to the root and sifting down, with their costs.",
+"Count nodes at each height and how far each can sink, then sum the series to show the total is linear.",
+"Compare sorting, a size K min-heap, heapify plus K polls, and quickselect by time, memory and streaming use.",
+"Show the reverse order or compare-based comparator, and pitfalls like subtraction overflow and iteration not being sorted.",
+"Explain the heap of list heads with O(N log K), and pairwise divide and conquer merging with the same cost.",
+"Use a max-heap for the low half and a min-heap for the high half, state the size and order invariants, and how to rebalance.",
+"Define a trie and its O(L) operations, then explain when prefix queries or sorted prefixes make it better than a hash set.",
+"Start with a trie of queries and counts, explain why a full subtree search is slow, and store top suggestions at each node.",
+"Describe inserting numbers as bit paths and greedily taking the opposite bit from the top, with the time cost.",
+"Explain the min-heap keyed by distance, why library heaps lack decrease-key, and skipping stale entries when popped.",
+"Explain that heaps are not stable, then add an increasing sequence number and order by priority then sequence.",
+"Give real examples like top-k in vector search, token sampling, request scheduling, and tries for autocomplete or tokenizers."
+]}

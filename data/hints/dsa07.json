@@ -1,0 +1,32 @@
+{"quiz":[
+"Think about inversions: which simple sort does less work when only a few pairs are out of order?",
+"Count the pairs that are in the wrong order. Each adjacent swap fixes exactly one such pair.",
+"Look at how small the range of possible values is. Can you use the value itself as an index?",
+"Sort 21, 25, 23 by ones digit, then by tens digit with an unstable pass. What can happen to numbers that share the tens digit?",
+"Count the levels of splitting and the work done on each level. Merging two arrays also needs somewhere to put the result.",
+"When a right item is taken, count how many left items are still waiting and bigger than it.",
+"On sorted input, the last element is always the largest. How many items does each partition remove?",
+"Only one side is explored, and on average it shrinks by half. Add up N plus N/2 plus N/4 and so on.",
+"Check for integer overflow with subtraction, and check that the result can be negative, zero and positive.",
+"An algorithm that swaps items far apart can jump an equal item over another. Check each algorithm for that.",
+"The intervals overlap if the current start is not past the last end. The new end is the larger of the two ends.",
+"The list is already sorted, so you do not need to sort again. How long does it take to build the output list?",
+"Treat meetings as half-open: a meeting ending at 5 frees its room for one starting at 5. Find the maximum overlap.",
+"To keep the most intervals, which choice leaves the most free time for the rest: the one that starts first, is shortest, or ends first?"
+],
+"interview":[
+"Give the time, space and stability of each, then name real uses such as small or nearly sorted inputs and few-swaps cases.",
+"Explain the decision tree lower bound for comparison sorts, then how counting and radix sort use values as indexes, with their costs.",
+"Describe split, recursive sort and two-pointer merge, then solve the recurrence by counting levels and work per level.",
+"Split inversions into left, right and cross pairs, and explain how merging counts cross pairs when a right item is taken.",
+"Describe how each scheme moves its pointers and where the pivot ends up, and compare swaps and behaviour on equal values.",
+"Name the bad pivot cases and the stack depth, then defences like random pivots, median of three and introsort fallback.",
+"Compare time, memory and when each fits: sorting is simplest, a size k heap suits streams, quickselect is fastest on average.",
+"Explain what negative, zero and positive mean, multi-key comparisons, and bugs like subtraction overflow and broken contracts.",
+"Define stability and give cases where it matters, such as multi-pass sorting of records and radix sort.",
+"Cover sorting by start, the sweep that extends with max, why it is correct, and pitfalls like touching ends and in-place sorting.",
+"Describe the three-phase walk for one insert, then a sorted tree structure keyed by start for many inserts.",
+"Explain that rooms equal the maximum overlap, then cover the heap of end times and the sorted start and end sweep.",
+"Contrast what is used for primitive arrays and for objects, and explain why stability matters only for objects.",
+"Talk about reading clues in the problem, such as pairs with a condition, top k, small value range, or start and end ranges."
+]}

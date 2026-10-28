@@ -1,0 +1,33 @@
+{"quiz":[
+"Look closely: a single equals sign assigns. What value is the condition, and what is x afterwards?",
+"Without a break, execution falls through to the next case until it reaches a break.",
+"size_t is unsigned. Ask whether the loop condition can ever become false, and what minus one wraps to.",
+"One function gets a copy and the other gets a reference. Which one changes the caller's variable?",
+"An array parameter decays to a pointer. What is the size of a pointer on a 64-bit machine?",
+"Check each argument: promotions are preferred over conversions, and two conversions of equal rank are ambiguous.",
+"Default arguments must be trailing: after a parameter with a default, all later ones need defaults too.",
+"Size counts the elements that exist; capacity counts the room allocated. Which of these does reserve change?",
+"Think about how capacity grows and add up the total copies over n pushes as a geometric series.",
+"Check operator precedence: the shift operator binds tighter than equality. What gets compared with npos?",
+"The extraction operator leaves the newline in the buffer. What does getline read next?",
+"A string literal is a char array that decays to a pointer. What does adding one to a pointer do?",
+"A const reference binds to each element: think about copying and whether modification is allowed.",
+"Count every call from the first one down to the base case that is still waiting on the stack.",
+"Trace i step by step: note when the if jumps i forward and when continue skips the print."
+],
+"interview":[
+"Explain copying versus aliasing, cost for large objects, when the function needs to modify the argument, and const reference for read-only big types.",
+"Cover nullability, re-seating, required initialisation, syntax, arithmetic, and when to prefer each.",
+"Define size as element count and capacity as allocated room, then explain geometric growth and why total copies stay linear.",
+"Explain that arrays convert to a pointer to the first element, losing their size, and how to pass size or use std span, array or vector.",
+"Describe the ranking of exact match, promotion, conversion and user-defined conversion, and when calls become ambiguous.",
+"Cover trailing defaults only, putting them in the declaration in the header and not repeating them in the definition.",
+"Describe frames holding locals, parameters and return addresses, pushed per call, and overflow from deep or infinite recursion or huge local arrays.",
+"Mention off-by-one errors, unsigned wrap in reverse loops, modifying a container while iterating, and wrong loop conditions.",
+"Compare fixed size versus dynamic size, decay, bounds and copy behaviour, and explain which you default to and why.",
+"Contrast an owning class with a length versus null-terminated char arrays, and explain small string optimisation storing short strings inline.",
+"Explain that each concatenation builds a new string and copies, giving quadratic time, and suggest appending in place or reserving.",
+"Explain how break and continue change loop flow, the fallthrough attribute, and how switch can compile to a jump table.",
+"Think about reallocation on push_back invalidating references, making this undefined behaviour, and how to avoid it.",
+"Compare returning a struct, a pair or tuple with structured bindings, optional, and output parameters, with readability trade-offs."
+]}

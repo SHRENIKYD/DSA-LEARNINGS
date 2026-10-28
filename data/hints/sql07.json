@@ -1,0 +1,29 @@
+{"quiz": [
+"Binary floating point cannot store most decimal fractions exactly. Think about what that does to sums of money.",
+"In SQLite a declared column type is only an affinity, not a hard rule, unless the table is STRICT.",
+"CHECK only rejects rows where the condition is FALSE. Think about what a comparison with NULL gives.",
+"DEFAULT applies only when the column is left out of the INSERT, not when NULL is written explicitly.",
+"For UNIQUE, NULLs are treated as different from each other by default.",
+"SQLite needs a per-connection setting turned on before it enforces foreign keys.",
+"Pick the action that keeps the child row but clears its reference to the deleted parent.",
+"A statement is atomic, so one blocked step anywhere in the cascade chain affects the whole delete.",
+"Ask what the value describes: a student, a course, or the pairing of the two.",
+"A plain foreign key allows many children per parent. Think about what extra rule limits it to one.",
+"SQLite ALTER TABLE handles only simple changes; type or constraint changes need a table rebuild.",
+"The price paid is a historical fact. Think about what happens to old orders if the catalogue price changes."
+],
+"interview": [
+"Define candidate keys, how one becomes the primary key, the rest as unique keys, and compare natural and surrogate keys.",
+"Describe CASCADE, SET NULL, SET DEFAULT, RESTRICT and NO ACTION, with a real example of when each fits.",
+"Explain that SQLite has enforcement off by default and needs a pragma per connection, and how to check settings and find orphans.",
+"Describe the expand, backfill, contract approach: nullable column, code writes it, batched backfill, verify, then tighten.",
+"Argue that invariants belong in the database because it sees every writer, while the app also validates for friendly errors.",
+"Go from requirements to entities, relationships, types, constraints, delete policies and indexes, naming the main store tables.",
+"Describe a junction table with a foreign key to each side, a composite primary key, a reverse index, and attributes of the pair.",
+"Compare how each removes data, rollback, triggers, speed, identity reset, and whether the table itself remains.",
+"Use a partial unique index limited to the default or active rows, and explain why a plain composite UNIQUE is wrong.",
+"Name rules that compare rows or aggregates, and options like exclusion constraints, triggers with care for concurrency, or app checks.",
+"Explain cardinality as the maximum and participation as the minimum, crow's foot symbols, and how each maps to keys and NOT NULL.",
+"Explain why a type-plus-id column cannot have a real foreign key and its problems, then give alternatives like exclusive arcs or supertypes.",
+"Treat the AI draft like a junior's PR: restate cardinalities and review a checklist of types, NOT NULL, UNIQUE, CHECK, and delete rules."
+]}

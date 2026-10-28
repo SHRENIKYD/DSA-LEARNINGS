@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "REST URLs name things (nouns), and the HTTP method says the action. Avoid verbs inside the path.",
+    "Idempotent means sending the same request many times has the same effect as once. Which method creates a new thing each time?",
+    "The key exists to make retries safe. If the first attempt already finished, what should a retry get back?",
+    "Same key but a different body is a client mistake. Silently replaying or processing both would hide the bug.",
+    "In merge patch, null means remove the field and nested objects are merged, not replaced. Apply that rule step by step.",
+    "To hide whether an item exists, the response for someone else's item should look the same as for a missing item.",
+    "The JSON is well-formed, so syntax is fine. Which code is more precise for values that break business rules?",
+    "Think about how the database finds page N with an offset versus jumping straight to a remembered position using an index.",
+    "If many rows share the same sort value, the cursor is ambiguous. What makes each row's position unique?",
+    "A breaking change makes old clients fail. Which change rejects requests that used to work?",
+    "The name is misleading. Ask whether the cache may keep the response, and what it must do before reusing it.",
+    "The cache asks the origin if its copy is still current, sending its tag. What does the origin send when nothing changed?",
+    "If-Match is a precondition on writes. What status means the precondition did not hold?",
+    "Links tell the client what it can do next. Who then decides which actions are valid in the current state?"
+  ],
+  "interview": [
+    "Start from the domain nouns, use plural collections and ids, nest only for real ownership, and let methods carry the verbs.",
+    "Define safe and idempotent separately, then classify each method and explain why POST and some PATCH are not idempotent.",
+    "Explain client-generated idempotency keys, storing the result, replaying it, rejecting key reuse with a different body.",
+    "Contrast full replacement with partial updates, and mention missing fields, idempotency, and patch formats.",
+    "Explain how null deletes and objects merge, then note it cannot set a value to null or edit arrays item by item.",
+    "Give the meaning of each code, using bad syntax, missing login, no permission, not found, conflict, and invalid values.",
+    "Compare simplicity and jump-to-page with speed and stability under inserts, and say which fits which UI.",
+    "Mention allow-listing sort fields, parameter binding for filters, limits on page size, and indexes for common sorts.",
+    "Cover URL or header versioning, additive changes, deprecation, and what changes break existing clients.",
+    "Define links in responses that show allowed actions, then give an honest view of when it is worth it.",
+    "Mention contract-first design, generated docs, client and server code generation, and contract tests in CI.",
+    "Explain caching directives like max-age and no-cache, then how a client revalidates with a tag and gets 304.",
+    "Explain If-Match on writes, rejecting with 412 if the tag changed, and 428 when the precondition is required.",
+    "Describe returning 202 with a job resource, polling or callbacks, status states, and fetching the result when done."
+  ]
+}

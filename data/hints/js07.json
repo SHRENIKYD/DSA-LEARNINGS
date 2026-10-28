@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Ask whether a 0 ms timer can interrupt code that is already running, or whether it must wait in a queue for its turn.",
+  "Ask whether Promise.all starts the requests or just waits on ones already running. Are the waits added up or overlapped?",
+  "In the error-first style, the first callback argument is reserved for an error.",
+  "Separate the executor from the handlers you attach later with then. Ask which of the two the spec makes asynchronous.",
+  "Ask how many times a promise can change state, and whether the first call or the last call decides the outcome.",
+  "Look closely at the arrow function body in the first then. Ask what value that function actually returns.",
+  "finally passes the previous value through unless it throws. What does catch return?",
+  "For each combinator, ask what happens when one input rejects. Is there one that reports every outcome instead?",
+  "Promise.any waits for the first success and ignores rejections unless all reject.",
+  "Promise.race settles with whichever promise settles first, success or failure.",
+  "Ask what would have to happen for race to settle at all, and whether that is possible with an empty array.",
+  "Promise.reject does not throw. Ask when try/catch can see an error, and when a rejection is delivered to its handlers.",
+  "Check whether the error handler in then(f, g) can see errors thrown by f in the same call."
+ ],
+ "interview": [
+  "Explain blocking vs non-blocking work, and how the event loop runs callbacks later.",
+  "Define a callback, then describe deep nesting, error handling issues and fixes like promises.",
+  "Name pending, fulfilled and rejected, and explain that settling happens once.",
+  "Show wrapping an error-first function in a promise, and cover this, multiple values and double calls.",
+  "Explain that then returns a new promise resolved from the handler's return value or thrown error.",
+  "Compare when each settles and what it returns on success or failure, with a use case for each.",
+  "Explain how rejections skip to the next catch, and how catch can recover or rethrow.",
+  "Compare awaiting in a loop with Promise.all, and mention dependencies and rate limits.",
+  "Define a rejection with no handler, how runtimes report it, and how to add global handlers.",
+  "Explain how a resolved value that is a thenable gets adopted, and the extra ticks it adds.",
+  "Mention racing against a timer, clearing the timer, and actually cancelling the underlying work.",
+  "Cover retry limits, exponential backoff with jitter, which errors are retryable, and idempotency.",
+  "Name issues like missing awaits, unhandled rejections, and unbounded parallelism, plus prevention tools.",
+  "Explain AbortController and signals, and why cancellation semantics were hard to agree on."
+ ]
+}

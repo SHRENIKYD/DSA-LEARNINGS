@@ -1,0 +1,31 @@
+{"quiz":[
+"Break the number into a sum of powers of two, then switch on the bit for each power used.",
+"In two's complement, minus x is found by flipping all bits and adding one. Use that link to work out what flipping alone gives.",
+"Compare how the arithmetic and logical right shifts treat the sign bit, and recall that Java takes int shift counts mod 32.",
+"Think about which operator can force one bit to 0 while leaving the others alone, and what mask that operator needs.",
+"Each round removes the lowest ON bit. Count the ON bits in the binary form.",
+"Try the edge cases: what does the expression give for the value that has no ON bits at all?",
+"XOR of a number with itself is zero, so every value that appears twice cancels out.",
+"Take each bit count mod 3, then read the remaining bits as a binary number.",
+"x AND minus x isolates the lowest ON bit of x. Find the lowest ON bit of the binary value.",
+"Write the mask in binary and map each ON bit position to its item.",
+"Each ON bit of m can be either in or out of a submask. Count the ON bits first.",
+"Multiply the number of subsets, two to the power N, by the cost of each check and compare with the per-second budget.",
+"A byte is sign-extended to int before the shift. Work out the 32-bit value first, then shift in zeros.",
+"Split the addition into two parts: the column sums ignoring carries, and the carries. Which bit operators give each part?"
+],
+"interview":[
+"Explain two's complement as invert-and-add-one, show why flipping all bits gives minus x minus one, and give a small example.",
+"Contrast sign-preserving and zero-filling right shifts, and say when it matters, such as negative numbers or unsigned hashing.",
+"Give the one-liners with OR, AND with NOT, XOR and AND to check, then mention shift overflow past 31 and precedence bugs.",
+"Explain how subtracting one flips the lowest ON bit and the zeros below it, then list uses like counting bits and power-of-two checks.",
+"Use XOR properties: self-cancel, zero identity, commutative and associative, so only the single value remains.",
+"Give a per-bit count mod 3 solution and a two-variable state machine solution, with notes on negative numbers.",
+"XOR everything, isolate one differing bit, split numbers into two groups by it, and handle edge cases like the minimum int.",
+"Loop masks from zero to two to the n minus one and read bits, giving n times two to the n work, fine for small n.",
+"Explain how minus one then AND with m steps to the next smaller submask, and why each element has three states across all pairs.",
+"Use XOR for the sum without carry and shifted AND for the carry, and explain that carries move left until they vanish, with care in Python.",
+"Count per bit how many numbers have it ON versus OFF, multiply for pairs, and weight by the bit's value.",
+"Mention flags, bitsets, hashing, compression and permissions, and say to avoid tricks when clarity matters more than speed.",
+"Explain Python's unlimited integers have no 32-bit wrap, so loops with negatives may not end, and fix with masking to 32 bits."
+]}

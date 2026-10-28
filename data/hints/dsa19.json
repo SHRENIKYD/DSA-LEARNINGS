@@ -1,0 +1,31 @@
+{"quiz":[
+"Compare memory: a matrix needs V squared cells, while a list needs space for V plus E. Which fits?",
+"Marking late lets the same node enter the queue many times. Think about when duplicates can be stopped.",
+"BFS explores nodes level by level. Think about what that guarantees about the first time a node is reached.",
+"Running a separate BFS per rotten orange repeats the same work. How can one BFS spread from several starting points at time 0?",
+"Reaching a node twice in a directed graph does not always mean a cycle. Check whether 3 is still on the current path.",
+"In an undirected graph each edge shows up in both directions. Which neighbour would look like a fake cycle?",
+"Two-colouring fails exactly when you find a loop with a certain kind of length.",
+"Kahn's algorithm only outputs nodes whose in-degree reaches zero. What blocks the rest?",
+"A node can come before only after all its descendants are done. Think about when DFS finishes a node.",
+"Path compression flattens trees and union by rank keeps them short. Is the combined amortised bound log n, or something even slower-growing?",
+"DSU only answers whether two items are in the same group. Which task needs more than that, like distances or the route itself?",
+"Suppose a is not a root. What happens to a's old group, and to a's children, when you change only parent[a]?",
+"Each recursive call adds a stack frame, and an all-land grid can chain a million calls. How deep can a default call stack go?"
+],
+"interview":[
+"Compare memory and edge lookup time, and say dense graphs suit a matrix while sparse graphs suit a list.",
+"Describe the queue and level order, then argue that nodes come out in order of distance.",
+"Explain putting all sources in the queue at distance 0, as if linked to one super source.",
+"Mention DFS that ignores the parent, BFS with parent tracking, and DSU finding an edge inside one set.",
+"Explain white, gray and black, and that only an edge to a gray node on the current path is a back edge.",
+"Compare in-degree queue versus finish order, how each detects a cycle, and recursion depth.",
+"Define two sides with edges only between them, describe BFS colouring, and link failure to odd cycles.",
+"Explain find with path compression, union by rank, and the near constant amortised cost.",
+"Mention online edge additions, many connectivity queries, and when you also need paths or deletions.",
+"Cover converting to an iterative stack, raising the stack limit, or switching to BFS.",
+"Explain words as nodes and one-letter changes as edges, and using wildcard patterns to group neighbours.",
+"Describe building the graph, topological sort, detecting cycles, and edge cases like duplicates and self loops.",
+"Name examples like build systems, dependency resolution, network reachability, and social graphs.",
+"Talk about using AI for boilerplate and tests, while you check visited logic, edge cases and complexity yourself."
+]}

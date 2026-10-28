@@ -1,0 +1,29 @@
+{"quiz":[
+"Think about what an agent can access and do inside your project that a plain chat window cannot.",
+"Look for the prompt part that defines what a correct answer looks like, such as test inputs.",
+"Generated code nearly always passes the one example it was shown. Ask what that really tells you.",
+"Think about how the AI tells your instructions apart from text you pasted in.",
+"Once a secret is exposed, assume it is compromised. What makes the leaked value useless?",
+"Good feedback is specific and checkable: a failing input, the expected output, and a narrow request.",
+"An oracle is a slow but obviously correct version. Think about what you compare it against.",
+"PII is information that can identify a real person.",
+"After repeated failures the old context is full of wrong attempts. Think about getting a clean start.",
+"The goal of a tutor prompt is to protect your own thinking time until you choose to see the answer.",
+"AI designs often look polished but skip hard parts like numbers, capacity and what happens on failure.",
+"Models tend to agree with the user. Think about what happens when you just express doubt.",
+"Company code is sensitive data. Think about contracts on retention and training."
+],"interview":[
+"Match tools to jobs (chat, autocomplete, inline chat, agents), and stress verification, tests, and protecting secrets.",
+"List the parts: goal, context, delimited input, constraints, output format, a success check, and an example.",
+"Cover reading every line, edge-case tests, comparing with a brute-force oracle, checking docs, and security review.",
+"Give a concrete example like a wrong starting value or off-by-one, explain why the sample hides it, and how tests catch it.",
+"Name categories like secrets, personal data, unreleased plans and regulated data, then how you redact or use placeholders.",
+"Relate trust to how cheap it is to verify and how costly an error would be, with examples at each level.",
+"Describe solving alone first, asking for hints in levels, reviewing afterwards, and re-solving later from scratch.",
+"List what AI designs often skip: scale numbers, capacity estimates, data model, failure modes, security and cost.",
+"Define instructions hidden in untrusted text, say when it matters (tools, documents), and list mitigations.",
+"Cover checking your prompt, giving a concrete failing example, narrowing scope, and starting a fresh chat.",
+"Mention a green baseline, reviewing in logical batches, checking tests were not weakened, running all checks, and manual testing.",
+"Talk about following the rules of each context, disclosing where required, and whether you can defend the work alone.",
+"Avoid vanity metrics; mention cycle time, defects, rework and satisfaction, plus a fair comparison and learning curve."
+]}

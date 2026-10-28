@@ -1,0 +1,33 @@
+{"quiz": [
+"An inner join only returns matched pairs. Count how many orders actually find a customer.",
+"A left join keeps every matched row plus one NULL-filled row for each left row with no match.",
+"A full outer join keeps matches plus unmatched rows from both sides.",
+"Any comparison with NULL is UNKNOWN, and joins keep only pairs whose condition is TRUE.",
+"Think about what happens to NULL-filled rows when WHERE tests a column from the optional table.",
+"Put the filter where it only limits which rows can match, not where it removes rows after the join.",
+"If the subquery list contains a NULL, x NOT IN that list can never be TRUE.",
+"Pick the form that only checks whether a match exists and never repeats the outer row.",
+"A cross join pairs every row of one table with every row of the other, so multiply.",
+"Two independent one-to-many branches multiply each other for the same order.",
+"DISTINCT removes repeated values, not repeated rows, so real equal payments would be lost.",
+"Someone with no manager has no matching row, and a left join fills the missing side with NULL.",
+"A later inner join compares against the NULL-filled columns from the earlier left join.",
+"It matches on columns automatically, based on the column names the two tables share.",
+"Inner joins keep only TRUE pairs, so ON and WHERE only differ for outer joins."
+],
+"interview": [
+"Use a simple everyday picture for each join type: matches only, all of left, all of right, and all of both with blanks for missing.",
+"Explain that ON applies while matching and WHERE after, why they are the same for inner joins, and how WHERE can turn a left join into an inner one.",
+"Write a self join of employees to their managers and discuss NULL managers, ties, NULL salaries, and why inner join fits.",
+"Explain how NOT IN expands to ANDed comparisons where a NULL makes it never TRUE, and alternatives like NOT EXISTS or a left join anti-join.",
+"Define a semi-join and explain why EXISTS can stop at the first match while JOIN plus DISTINCT multiplies then removes rows.",
+"Name the fan-out or chasm trap, how to check row grain and key uniqueness, and fix it by pre-aggregating payments per order.",
+"Use a full outer join and keep rows where either key is NULL, labelled with CASE, plus a workaround for engines without full joins.",
+"Describe the Cartesian product, its symptoms like huge counts and inflated totals, and how to estimate and check row counts.",
+"Compare nested loop, hash and merge joins: how each works, cost, which conditions they support, and when each is chosen.",
+"Call it relational division and show double NOT EXISTS or a counting approach with GROUP BY and HAVING.",
+"Give deliberate uses: generating combinations, a scaffold for zero-filled reports, and attaching a single-row value to every row.",
+"Look for null-rejecting filters or later inner joins on the optional table, and build the query step by step checking row counts.",
+"Compare ON and USING in conditions and output columns, and explain how NATURAL JOIN silently joins on every shared column name.",
+"Cover foreign keys with matching types, indexing child-side foreign key columns, composite and covering indexes, and checking plans."
+]}

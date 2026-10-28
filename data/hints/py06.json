@@ -1,0 +1,29 @@
+{"quiz":[
+"Assignment binds a name to an object. Ask whether rebinding one name changes what another name already points to.",
+"Any assignment to a name inside a function, including +=, makes it local for the whole function body.",
+"Think of the LEGB acronym: Python starts at the nearest scope and works outward.",
+"Lambdas look up loop variables when they are called, not when they are created. What is i at the end?",
+"Reading or mutating an outer value needs no declaration. Think about what happens when you rebind it.",
+"Keyword-only parameters after *args must be passed by name, and a positional argument cannot follow a keyword one.",
+"Decorators apply from the bottom up: the one nearest the def wraps the function first.",
+"wraps is about copying metadata from the original function to the wrapper. Which option has nothing to do with that?",
+"The expression after @ is evaluated first. A call like retry(times=3) must return something that is itself a decorator.",
+"A cache is only correct when the same arguments always give the same result. Look for a hidden input.",
+"Without an initial value, reduce has to start from the first item. What if there are no items?",
+"partial merges its saved keywords with the ones given at call time. Which side wins on a clash?",
+"Python has no block scope, but comprehensions run in their own scope."
+],"interview":[
+"Show that a function is a value: bind it to names, store it, pass it and return it, and mention its attributes and uses like key functions.",
+"Walk through the Local, Enclosing, Global, Built-in order and explain that any assignment makes a name local at compile time.",
+"Define a closure as an inner function keeping outer variables alive, and explain cell objects and __closure__.",
+"Explain that global and nonlocal are only needed to rebind a name, and that reading or mutating an object needs neither.",
+"Cover how *args and **kwargs collect and unpack arguments, and give the order of parameter kinds including / and *.",
+"Write a wrapper using functools.wraps and separate what runs once at definition time from what runs on each call.",
+"Explain what is lost without wraps (name, docstring, signature) and list the attributes update_wrapper copies plus __wrapped__.",
+"Describe the three levels (factory, decorator, wrapper) and show how a func=None check with partial allows optional parentheses.",
+"Explain the dict of keys plus the recency linked list for eviction, then cover pitfalls like hashable args and impure functions.",
+"Explain how partial freezes arguments and how keywords merge, then compare it to a lambda on late binding and introspection.",
+"Describe reduce as a left fold, give real uses with no built-in, stress the initial value, and say when sum or max is clearer.",
+"Explain storing the function in __init__ and running in __call__, and why instances on methods do not bind self without __get__.",
+"Mention ParamSpec and a return TypeVar so the wrapper keeps the signature, and Concatenate for adding or removing a parameter."
+]}

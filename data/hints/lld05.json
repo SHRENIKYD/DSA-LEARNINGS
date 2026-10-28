@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "The vendor class already does the job. Compare its method shape with the one your checkout calls, and ask what is missing between them.",
+  "Both keep the same interface and delegate. Ask what the client wants from each wrapper: something extra, or a gate in front?",
+  "Each add-on can be present or absent, so subclasses grow with 2 to the power of add-ons. Decorators grow by addition.",
+  "Ask what would go wrong if one context could change a shared object that thousands of others also use.",
+  "The Integer cache has a default range. Is 1000 inside it, and what does == compare for objects?",
+  "A folder can contain files and other folders. Ask which one type can describe both kinds of child.",
+  "Shapes and renderers are two lists that both grow. Ask how to keep them in separate hierarchies so the counts add, not multiply.",
+  "Spring adds behaviour through a proxy around the bean. Does a call on this go through that proxy?",
+  "Ask what a facade is for: making the common path easy, or locking down the subsystems behind it? Check each option against that.",
+  "Look at each wrapper on its own. Does it keep the same interface and add a feature, or turn one interface into a different one?",
+  "The outer decorator wraps everything inside it. Ask what the timeout covers in each order.",
+  "Intrinsic state is shared and the same everywhere; extrinsic state differs per use.",
+  "Ask what \"virtual\" means here: the real object does not exist yet. Which option fits a stand-in for something not created yet?"
+ ],
+ "interview": [
+  "Explain they focus on composing classes and objects, and contrast with object creation and object communication.",
+  "Give a real interface mismatch example, then explain why composition-based object adapters are usually preferred.",
+  "Discuss runtime stacking of features and avoiding subclass explosion, compared with fixed inheritance.",
+  "Distinguish by intent: changing the interface, adding behaviour, or controlling access, with an example each.",
+  "Explain a simplified entry point, compare with interface conversion, and with a coordinator between peer objects.",
+  "Cover virtual, protection, remote and caching proxies, with a real use for each.",
+  "Explain the tree of leaves and composites, then the trade-off of putting child methods in the shared interface or not.",
+  "Explain separating abstraction from implementation, and contrast with swapping algorithms and fixing mismatched interfaces.",
+  "Explain shared intrinsic state vs per-use extrinsic state, and do a memory calculation with and without sharing.",
+  "Map patterns to parts: a facade for the logging API, a bridge between loggers and appenders, a composite for many outputs, decorators for async or filters.",
+  "Discuss safe lazy initialisation, races creating two objects, and failures during creation.",
+  "Mention coalescing concurrent misses into one load, locks or futures per key, and stale-while-revalidate.",
+  "Think of adapters over different model providers, decorators for retries and logging, and proxies for caching or rate limits."
+ ]
+}

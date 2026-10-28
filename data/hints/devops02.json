@@ -1,0 +1,28 @@
+{"quiz":[
+"Without quotes, bash splits a variable's value on spaces into separate words.",
+"The :? form is a guard on the variable. Ask what bash does with the text after the question mark when DIR is empty, before any command runs.",
+"Look up what 127 means as an exit status, then compare cron's PATH with the PATH of your login shell.",
+"Without pipefail, a pipeline's status is the status of the last command only.",
+"Redirections are read left to right, and 2>&1 copies wherever stdout points at that moment. Trace each line step by step.",
+"Ask what value a post-increment yields, what status (( )) returns when its result is zero, and how set -e reacts to that status.",
+"An EXIT trap runs on any exit the shell can handle, but no handler can catch an uncatchable signal.",
+"You need a form that keeps each argument as a separate word, even if it contains spaces.",
+"The cron field order is minute, hour, day of month, month, day of week.",
+"The percent sign has a special meaning in a crontab line and must be escaped.",
+"An idempotent step checks if the change is already there before adding it.",
+"Think about whether there is any moment where the link does not exist during the switch."
+],"interview":[
+"Explain word splitting and globbing, and name the rare cases where splitting is wanted, like arithmetic or arrays.",
+"Explain zero for success and non-zero for failure, checking them with if, and setting your own with exit.",
+"Compare cron's environment with yours: PATH, working directory, user, and capture output to a log.",
+"Explain each flag, how it stops silent failures, and mention its known pitfalls.",
+"Cover environment variables or files with tight permissions, avoiding command-line arguments, and not logging it.",
+"Explain left-to-right redirection order and how the second form leaves stderr on the terminal.",
+"Describe trap on EXIT with a cleanup function, mktemp, and that kill -9 cannot be handled.",
+"Define running many times with the same result, and give examples like checking before adding or creating.",
+"Mention logrotate with size or time rules, compression, retention, and how the app reopens its log.",
+"Explain using flock or a lock file with a trap, and what happens if the job is still running.",
+"Cover building a new release folder, health checks, an atomic symlink switch, and a rollback path.",
+"Explain where set -e does not trigger, like conditions and pipelines, and add explicit checks and traps.",
+"Cover faster drafting and explaining scripts, plus reviewing for quoting, testing safely, and not pasting secrets."
+]}

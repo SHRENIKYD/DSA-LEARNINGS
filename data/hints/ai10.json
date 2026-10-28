@@ -1,0 +1,32 @@
+{"quiz":[
+"Picture many AI apps each needing custom connectors to many tools. What does a shared protocol reduce?",
+"Think about the relationship between a client and a server connection; the host can hold several clients.",
+"Each primitive has an owner: the model, the application, or the user. Which one is picked like a slash command?",
+"In JSON-RPC, messages without an id are a special kind that never gets a reply.",
+"After the initialize exchange, the client sends a signal that it is ready before normal work starts.",
+"In stdio transport, stdout carries the protocol messages. Where should logs go instead?",
+"The newer remote transport uses a single endpoint with optional streaming.",
+"FastMCP reads things from the Python function itself; type hints give the schema. What gives the description?",
+"Protocol errors are for broken messages. Execution failures should be visible to the model so it can adapt.",
+"Hidden instructions in tool metadata aimed at the model are a known attack. What is it called?",
+"Secrets must never be committed, logged or sent in prompts. Where are they usually injected from?",
+"Remote MCP authorization builds on a standard delegated access framework with bearer tokens.",
+"One feature lets the server ask the host to run the model, so the host keeps control and cost.",
+"Think about a server that changes after you approved it. Defend by pinning and re-approving."
+],"interview":[
+"Explain the many-apps times many-tools integration problem and how one open protocol simplifies it.",
+"Contrast a vendor-specific function format with a standard protocol for discovering and calling tools across apps.",
+"Define each role, how they connect, and why one client per server helps isolation and security.",
+"Explain who controls each primitive, and give one concrete example of a tool, a resource and a prompt.",
+"Cover initialize with capability exchange, the initialized notification, normal operation, and shutdown.",
+"Name requests, responses and notifications, and the standard error codes for parse and method errors.",
+"Compare local process versus remote server, deployment, auth and scaling needs.",
+"Describe decorating functions, docstrings and type hints becoming schemas, and running with a transport.",
+"Cover clear names and descriptions, tight input schemas, focused tools, useful errors and safe defaults.",
+"Define hidden instructions in tool metadata and list defences like review, pinning and least privilege.",
+"Explain how untrusted data returned by a tool can carry instructions, and how to limit the damage.",
+"Cover OAuth-based flows, bearer tokens, scopes and how the server validates tokens.",
+"Check logs on stderr, the handshake, capabilities, the tools/list response, config paths and environment.",
+"Define each feature, what control it gives the server or user, and the trust or data risks involved.",
+"Cover an approved server list, least privilege, secrets handling, logging, review of changes and user consent."
+]}

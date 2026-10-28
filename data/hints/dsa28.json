@@ -1,0 +1,33 @@
+{"quiz":[
+"Negative numbers break the shrinking-window idea. Think about storing running sums you have seen.",
+"Count the work: 18! is huge, but 2 to the 18 is only about 260000. What state could combine a visited set with the current city?",
+"Look for a phrase that describes optimising one extreme value, where a yes or no check on a candidate is monotone.",
+"Work out N squared for N = 100000 and compare. Then ask whether one number can fit every language and machine.",
+"Coding first often means rewriting later. Think about what must be settled with the interviewer before the code is worth writing.",
+"Check how lo and hi move: if one of them can stay the same, the loop never ends.",
+"Plain BFS assumes equal edge weights, and Dijkstra is heavier than needed. Which structure can treat 0-cost moves specially?",
+"Rebuilding prefix sums costs O(N) per update. You need both operations in about log N. Which structure gives that?",
+"Greedy needs a reason to be right. Think about a quick way to test it and a way to argue it in a minute or two.",
+"Add two numbers near 2 billion and compare with the largest 32-bit signed int.",
+"In a real interview no chapter title tells you the topic. Which skill does mixed practice train that blocked practice skips?",
+"With a stream, keep only k items and think about which heap lets you drop the farthest one fast.",
+"Interviewers rarely question a line that is correct. Think about the calm, concrete way to check that line.",
+"Listing all valid combinations with choose and undo steps points to a classic search pattern.",
+"Think about what gives the most gain in a few days: new hard topics, or practising what is tested and fixing weak spots?"
+],
+"interview":[
+"Cover restating the problem, asking about constraints and edge cases, working examples, and naming a brute force first.",
+"Explain when the window property is monotonic, and why negative numbers or exact sums need prefix sums with a map.",
+"Look for a monotonic yes or no check on a candidate answer, and phrases like minimize the maximum.",
+"Compare time and space, worst vs expected cases, streaming needs, and how often k or the data changes.",
+"Describe a quick plan: re-read the failing case, trace by hand, check edge cases, and say your reasoning aloud.",
+"Discuss tiny constraints, time pressure, and stating its cost clearly while explaining how you would improve it.",
+"Compare BFS for shortest paths in unweighted graphs with DFS for full exploration, and memory or recursion limits.",
+"Mention overlapping subproblems and optimal substructure, then define state, transitions, base cases and order.",
+"Explain an exchange argument or a greedy-stays-ahead argument, and test against small counterexamples.",
+"Talk about narrating intent at key steps, short check-ins, and staying quiet during simple typing.",
+"Cover weak-pattern review, mixed timed practice, mock interviews, rest, and light final days.",
+"Discuss checking AI output, explaining design choices, testing, and showing your own judgment.",
+"Mention external sorting, streaming, chunking, hashing into partitions, and approximate structures.",
+"Talk about pausing, resetting with a clear plan, communicating openly, and focusing on the next step."
+]}

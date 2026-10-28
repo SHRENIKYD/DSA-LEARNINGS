@@ -1,0 +1,29 @@
+{"quiz":[
+"A generator expression can only be walked once. Think about what the second sum sees.",
+"Iterators return themselves from __iter__, while containers hand out a fresh iterator each time.",
+"A return inside a generator ends it, and its value rides on StopIteration, which list() ignores.",
+"groupby only merges items that sit next to each other with the same key. Count the runs.",
+"Combinations ignore order and permutations care about it. Use C(n,k) and n times (n-1).",
+"A truthy return from __exit__ means the exception was handled. Where does execution go next?",
+"The exception is thrown into the generator at the yield. Without try/finally, does the code after it run?",
+"Several managers in one with act like nested with statements. Think last in, first out.",
+"A fresh generator is not paused at any yield yet, so nothing is there to receive a value.",
+"Both zip arguments are the very same iterator, so each tuple pulls from one shared bookmark.",
+"Only the iterable in the first for clause is evaluated right away when the expression is built.",
+"The two-argument form of iter calls a function again and again until it returns a sentinel.",
+"yield from evaluates to whatever the sub-generator gives back with its return statement."
+],"interview":[
+"Contrast an object you can get an iterator from with the object that walks, naming __iter__ and __next__ and a book vs bookmark idea.",
+"Walk through iter() called once, next() on each pass, StopIteration ending the loop, and the else clause.",
+"Explain yield pausing with saved state and lazy results, then cover memory savings and infinite or streaming data.",
+"Explain send as resuming with a value for the yield, the need to prime first, and how throw and close raise at the yield.",
+"Cover the two-way delegation of send, throw and close to the sub-generator and capturing its return value.",
+"Describe a chain of generators reading line by line, parsing, filtering errors and counting with a Counter.",
+"Explain that only consecutive equal keys group, how sorting first or a defaultdict fixes it, and why stored groups break.",
+"Describe calling __enter__ and binding its result, the implicit try, and how __exit__ gets exception details and can suppress.",
+"Explain how __enter__ runs to the first yield and how exit resumes or throws into the generator, and errors if it yields twice.",
+"Mention a run-time number of resources, enter_context and callback, and LIFO unwinding even when one cleanup fails.",
+"Explain the generator stays suspended inside its with block until close() or garbage collection, and why to close it explicitly.",
+"Cover making iterators, stopping on the first StopIteration without letting it escape, zero inputs and lost pulled items.",
+"Explain that review becomes the job and list checks like exhaustion, when setup runs and try/finally cleanup."
+]}

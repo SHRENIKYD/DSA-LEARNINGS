@@ -1,0 +1,33 @@
+{"quiz":[
+"In strict mode, a plain function call does not get a default this object.",
+"Calling through the object sets this to it. A detached call in sloppy mode uses the global object, where var creates properties.",
+"Arrow functions take this from the surrounding scope. What is top-level this in a module?",
+"Once bind has fixed this, ask whether call or a second bind can still change it. Which binding wins between them?",
+"Recall the precedence of the binding rules. Does new or bind win, and does o get any property as a result?",
+"Check what each constructor returns. Is an array an object or a primitive, and which kind of return replaces the new object?",
+"Parentheses alone keep the reference, but an assignment expression returns just the function value.",
+"Who calls the inner function, and is it an arrow or a normal function? A normal function gets this from its caller.",
+"Strict and sloppy functions treat a primitive this differently. Which one wraps the 7 in a wrapper before typeof runs?",
+"Many array methods accept a second argument used as this for the callback.",
+"For a static method, this is whatever is left of the dot at the call. Which class is that here, and what is its name?",
+"Compare when each option runs save: now, or later when the timer fires. What does setTimeout actually receive in each case?",
+"Arrows have no own this. Find where this arrow was created and what this was at that moment; the later call site does not matter.",
+"The getter lives on the prototype. Ask what this is inside it: the object that owns the getter, or the object you read from?",
+"Think about which rule can override which: can bind beat new? Can a method call beat call?"
+],
+"interview":[
+"Say this is decided by how a function is called, not where it is defined, and note arrows as the exception.",
+"List new, explicit, implicit and default binding, give an example of each, and say which wins.",
+"Compare how arguments are passed and whether the function runs now or returns a new function.",
+"Explain that arrows capture this lexically, then cover cases like object methods and prototype methods.",
+"Explain that passing obj.method detaches it from obj, and fixes like bind, arrows or class fields.",
+"List the steps: create object, link prototype, call with this, and return the object unless another object is returned.",
+"Cover fixing this, partial arguments, handling new, and keeping the prototype.",
+"Explain undefined vs the global object for plain calls, and no boxing of primitives.",
+"Compare per-instance memory vs shared prototype methods, binding safety, and inheritance or testing effects.",
+"Explain that a regular listener gets the element (currentTarget), while an arrow keeps the outer this.",
+"Compare classic scripts, ES modules, and CommonJS files, each with its own top-level this.",
+"Explain that a property access keeps a reference with a base object, while the comma operator returns a plain value.",
+"Explain that neither can be rebound by call, apply or bind, with the one bound-function exception for new.",
+"Mention the this parameter annotation, noImplicitThis, and catching unbound method usage."
+]}

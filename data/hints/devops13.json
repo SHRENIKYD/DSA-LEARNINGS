@@ -1,0 +1,30 @@
+{"quiz":[
+"Think of the control plane piece that is a key-value store; the API server reads and writes all objects there.",
+"Changing the Pod template changes its hash. Think about how a Deployment rolls out a new template.",
+"A Service sends traffic only to Pods that its selector matches and that pass readiness. Compare labels.",
+"The older annotation for choosing a controller was replaced by a field in the Ingress spec.",
+"Ask when a container reads its environment variables. Is there anything that pushes new env values into a running process?",
+"Try decoding a Secret value with base64 -d. Is base64 encryption at all, and what does a cluster have to turn on to protect it?",
+"The crashed container is already gone and replaced. Which commands show its old output, its exit code and the Pod events?",
+"Recall the split of jobs: one probe controls restarts, another controls traffic. What is the mildest action that keeps users safe?",
+"Guaranteed needs requests equal to limits for all resources. Compare CPU request and limit here.",
+"Memory cannot be throttled like CPU. Think about what the kernel does when the limit is passed.",
+"Look for the rollout subcommand that waits for completion, combined with a time limit.",
+"A quota on requests makes every Pod declare that request. Think about what could fill in a default.",
+"kind nodes are containers with their own image store, separate from your host Docker. Also check how a latest tag sets pull policy."
+],
+"interview":[
+"Trace the request through the API server, validation and admission, etcd, the controllers, the scheduler and the kubelet.",
+"Explain the layering: Pods run containers, ReplicaSets keep a count, Deployments manage rollouts and history.",
+"Compare the selector with Pod labels, check readiness, ports and endpoints, then test from inside the cluster.",
+"Explain what each probe controls, then a typical mistake for each, such as liveness checking dependencies.",
+"Explain requests for scheduling and limits for enforcement, then the three QoS classes and eviction order.",
+"Check events, resource requests versus capacity, node selectors, taints, affinity and volume binding.",
+"Cover watching rollout status and metrics, then rollback with rollout undo and preventing it with probes and canaries.",
+"Explain internal-only, node ports and cloud load balancers, then Ingress as HTTP routing in front of Services.",
+"Cover RBAC, encryption at rest, external secret managers, avoiding env vars where possible and auditing access.",
+"Explain values read at startup, then restart rollouts, versioned names or hash annotations to trigger updates.",
+"Cover a namespace per team, RBAC, resource quotas, limit ranges and network policies.",
+"Separate a container exceeding its own limit from node pressure eviction, and set requests and limits to avoid both.",
+"Cover readiness probes, rolling update settings, PodDisruptionBudgets, graceful shutdown and draining nodes safely."
+]}

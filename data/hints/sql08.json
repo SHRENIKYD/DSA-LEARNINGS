@@ -1,0 +1,32 @@
+{"quiz": [
+"Ask whether the problem happens when adding, changing, or removing data, and which fact is blocked.",
+"A dependency is broken when one left-side value maps to more than one right-side value.",
+"Follow the chain of dependencies from A, adding each attribute you can reach.",
+"Partial dependencies need a composite key to exist; transitive ones can still happen with a single key.",
+"Check for a non-key column that determines another non-key column.",
+"The two forms differ only in an exception for dependencies whose right side is part of some candidate key.",
+"The shared columns must determine one of the two pieces so each row finds exactly one partner.",
+"Rejoining projections always keeps the original rows. Think about what a bad split adds.",
+"Recall which algorithm keeps both properties and which one can lose dependencies.",
+"An attribute on the left is extraneous if the rest of the left side already determines the right side.",
+"Ask whether the stored price is the same fact as the current catalogue price or a separate one.",
+"Facts are long and narrow; dimensions are wide and descriptive.",
+"With no functional dependencies, the redundancy comes from two independent multi-valued facts in one table.",
+"Any deliberate copy of data needs a way to stay in sync and a way to detect drift."
+],
+"interview": [
+"Define it as storing each fact once based on functional dependencies, and explain the update, insert and delete anomalies it removes.",
+"Give one sentence each: atomic values, no partial dependency on a composite key, no dependency on non-key columns, with examples.",
+"Define X determines Y as a business rule, and describe finding keys by sorting attributes by side and computing closures.",
+"Explain the superkey rule versus the prime-attribute exception, and give an example with overlapping candidate keys.",
+"Define lossless as rejoining to exactly the original, describe spurious rows, and the test that shared columns form a superkey.",
+"Explain checking every rule inside single tables, and show with a classic example how a BCNF split can lose one.",
+"Go step by step: split list cells, write the dependencies, remove partial then transitive dependencies, and name the final tables.",
+"Say you denormalize only after measuring a real read problem, with a clear source of truth and sync, and give examples.",
+"Compare one fact table with flat dimensions versus normalized dimensions, and define the grain as what one fact row means.",
+"Admit it breaks strict 1NF, then explain when JSON fits and when elements need their own table for integrity or updates.",
+"Describe 4NF as removing independent multi-valued facts in one table and 5NF as removing join dependencies, and how rare they are.",
+"Explain that a surrogate key does not remove dependencies, so natural keys still need UNIQUE and dependent facts still split out.",
+"Write business dependencies with an expert, check them on data, find keys, decompose, and keep snapshot columns as they are.",
+"Describe the normalized system of record, change data capture or ELT into a warehouse, star models for analytics, and eventual consistency."
+]}

@@ -1,0 +1,30 @@
+{"quiz": [
+"The person who made the change is the one not seeing it. Name the guarantee about seeing your own changes.",
+"Replaying SQL text re-evaluates things like time, random values, or unordered results on each follower.",
+"Read and write sets must overlap, which needs R plus W to be greater than N.",
+"Replicas can compare hashes over key ranges and only dig into ranges whose hashes differ.",
+"Ever-increasing keys always fall into the newest range. Think about where all new writes go.",
+"A new node takes about one share of the keyspace, roughly 1 divided by the new node count.",
+"In Cassandra the inner parentheses of the primary key form the part that is hashed to place the row.",
+"Graph databases shine when you follow relationships across several hops.",
+"PACELC asks what a system trades when there is no partition: latency or consistency.",
+"Spanner's clocks have known uncertainty, and the wait makes timestamps follow real-time order.",
+"Raft commits need a majority. With 2f plus 1 replicas you can lose f.",
+"Weigh tiny load, strict correctness, ad-hoc reporting, and a small team that wants little operations work."
+],
+"interview": [
+"Contrast copies of the same data for availability and reads with splitting data for capacity and writes, and why big systems use both.",
+"Compare waiting for followers with zero data loss but slower writes against fast async writes that risk lag and lost writes.",
+"Name the read-your-writes and monotonic reads problems from lagging replicas, and fixes like leader reads or waiting for the write's position.",
+"Explain N, W and R and why overlap usually gives fresh reads, then list cases like sloppy quorums and partial writes that break it.",
+"List criteria like high cardinality, even load, present in queries, keeps transactions together, and give a tenant_id style example.",
+"Explain the hash ring, how adding a node moves only a small share of keys, and how virtual nodes even out load.",
+"Explain why one key stays on one shard, and options like caching, splitting writes into sub-keys, batching, or a dedicated shard.",
+"Choose documents for self-contained aggregates read as a unit and relational for many-to-many links, ad-hoc queries and transactions.",
+"Start from queries, design one table per query with partition and clustering keys, denormalize, and bound partition sizes.",
+"Explain that it is not pick two of three: during a partition each operation chooses consistency or availability.",
+"Describe Paxos groups and TrueTime with commit wait for Spanner, and contrast how CockroachDB handles clocks without that hardware.",
+"Describe intents on each range, a transaction record whose state change is the commit point, and how intents are resolved.",
+"Start with data shape, key queries, consistency, scale math, geography and team, then pick a system of record and supporting stores.",
+"Walk through detecting failure, electing and promoting a replica, repointing clients and fencing, plus risks like lost writes and split brain."
+]}

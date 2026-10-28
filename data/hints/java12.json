@@ -1,0 +1,31 @@
+{"quiz":[
+"The pool only grows past core size when the queue is full; ask whether an unbounded queue ever fills.",
+"submit wraps your task in a FutureTask. Where does that wrapper put a thrown exception, and which call is the only one that rethrows it?",
+"TimeoutException is thrown to the waiting caller. Did anything actually tell the worker thread to stop?",
+"Think about extra features the lock object offers, and remember it must be unlocked manually in finally.",
+"A write lock needs zero readers. Count the readers, including the thread asking, and note that it never lets go of its own read lock.",
+"Compare one-time countdown of events with a reusable meeting point where threads wait for each other.",
+"Ask whether a semaphore remembers which thread took each permit, or just keeps a number that release adds to.",
+"Break the increment into its separate steps and ask whether another thread can slip in between them.",
+"compareAndSet only succeeds when the current value still equals what you read earlier.",
+"With 64 writers, any single shared memory cell bounces between cores. Prefer a design that spreads writes out, since reads are rare.",
+"One method maps to a plain value, another flattens a function that already returns a future.",
+"Without an executor, async tasks share a small JVM-wide default pool; think about blocking calls there.",
+"You are looking for the FALSE claim. Virtual threads make waiting cheap; can they add more CPU cores to your machine?",
+"On Java 21, a virtual thread can unmount only in certain cases. Does holding a synchronized monitor while blocking allow that?"
+],"interview":[
+"Walk the order: start core threads, then queue, then extra threads up to max, then the rejection policy.",
+"Explain the hidden unbounded queue or unbounded thread growth, and prefer explicit pool sizes, bounded queues and rejection policies.",
+"Compare no result versus result plus checked exceptions, the handle for a pending result, and the class that combines both.",
+"Give cases like tryLock with timeout, interruptible waits, fairness, and several conditions, and mention unlocking in finally.",
+"Explain shared readers versus one exclusive writer, no upgrades, and when writer starvation or overhead makes it worse.",
+"Describe each tool's behaviour and reuse, with examples like startup waits, parallel phases, rate limiting and dynamic parties.",
+"Explain compare-and-swap as a hardware instruction, retry loops in atomic classes, and downsides like spinning and ABA.",
+"Show a value changing away and back so CAS wrongly succeeds, then fix it with a version stamp.",
+"Use a bounded blocking queue, explain backpressure or rejection on overload, and graceful shutdown with poison pills or interrupts.",
+"Compare mapping, flattening and combining two futures, and explain which thread runs callbacks with and without the async variants.",
+"Cover exceptionally, handle and whenComplete, plus orTimeout and completeOnTimeout, and how errors flow through stages.",
+"Explain lightweight threads mounted on carrier threads, and avoid them for CPU-bound work or heavy pinning cases.",
+"Look for pinning, overloaded downstream resources without limits, and use thread dumps and JFR events to confirm.",
+"Explain tasks in a pool waiting for other tasks in the same pool that never get a thread, then fixes like separate pools."
+]}

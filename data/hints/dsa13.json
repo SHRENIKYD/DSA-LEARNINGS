@@ -1,0 +1,29 @@
+{"quiz":[
+"Recall LIFO and FIFO. Which item does each structure give back first?",
+"Think about what the old Stack class inherits from and whether its methods are synchronized.",
+"Some deque methods throw on an empty deque and some return a special value. Which group does poll belong to?",
+"A closing bracket must match the most recent opener on the stack. Do these two brackets form a pair?",
+"Each operator pops two values. The first value popped is the right operand.",
+"Every smaller value is popped when a bigger one arrives. Picture what remains, from bottom to top.",
+"Count how many times each index can be pushed and popped over the whole run.",
+"L and i are the nearest smaller bars on each side and are not part of the rectangle. Count indices between them.",
+"Items in the out stack are older than anything in the in stack. When can you move items without breaking FIFO order?",
+"First drop the front if its index has left the window, then drop back items with values not bigger than the new one.",
+"Pop prices not greater than 70, then find the previous greater price. The span is the distance to it.",
+"Think about window problems that must drop old items from one end and weaker items from the other end."
+],"interview":[
+"Explain last in first out versus first in first out, with two real uses of each, like undo and task scheduling.",
+"Name ArrayDeque with its stack and queue methods, and explain the costs of the legacy Stack class and node-based LinkedList.",
+"Describe pushing openers and popping on closers, and the failure cases: wrong match, empty stack, and leftovers at the end.",
+"Store the current minimum with each element or use a second stack, and mention variants like max stack or saving space.",
+"Explain the sorted order kept in the stack, what popping means for each element, and the push-once pop-once argument.",
+"Cover the pop condition and stack order for each variant, and whether the answer comes from popped items or the top.",
+"Explain that each bar sets the height of some best rectangle, find its nearest smaller bars with a stack, and count the width.",
+"Describe the in and out stacks, when to transfer, and count each element's moves to show amortized O(1).",
+"Describe the deque of indices with decreasing values, dropping expired and weaker items, and compare the cost with a heap.",
+"Mention converting to postfix with Shunting-Yard, or two stacks for values and operators, handling precedence and brackets.",
+"Explain why each call uses a stack frame, then give fixes like an explicit stack or a bigger thread stack.",
+"List words that hint at each, like balanced or nested for stacks, next greater for monotonic stacks, and windows for deques.",
+"Name blocking queue classes, compare their locking and bounds, and explain how blocking put and take handle back pressure.",
+"Restate the invariant, check what is stored and the pop condition, then test edge cases like duplicates and empty input against brute force."
+]}

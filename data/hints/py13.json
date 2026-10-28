@@ -1,0 +1,33 @@
+{"quiz":[
+"One column counts only the function's own lines and leaves out time spent in functions it calls.",
+"Use Amdahl's law: the untouched share stays the same and only the improved share shrinks.",
+"Think about whether outside noise like other processes or GC can ever make a run faster.",
+"Default values are created once when def runs, so calls that omit the argument share one list.",
+"Closures look up the loop variable when called. What value does it hold after the loop ends?",
+"+= on a list mutates it in place first, then tries to store the result back into the tuple.",
+"NumPy has a fixed cost per call plus conversion. Does that pay off for only 10 numbers?",
+"Basic slicing in NumPy returns a view that shares memory with the original array.",
+"getsizeof is shallow. Does it follow the references to the objects stored in the list?",
+"Think about what each normal instance carries that slots remove.",
+"When most time is spent waiting on the network, attack the waiting, not the CPU work.",
+"Speed in Cython comes from C type declarations. Without them, what are variables still?",
+"PEP 517 and 518 define this table: what to install for the build and which backend to call.",
+"abi3 means the stable ABI from the tagged version onward, and the platform tag pins OS, libc and CPU.",
+"True, 1 and 1.0 are equal with equal hashes. Dicts keep the first key object and update the value.",
+"An assignment anywhere in a function makes that name local for the whole function body."
+],"interview":[
+"Reproduce and measure first, diff the release for suspects, then profile locally or in production before fixing.",
+"Explain that defaults are evaluated once and shared, the None sentinel fix, and rare intentional uses like caches.",
+"Contrast deterministic cProfile, sampling py-spy for production, per-line line_profiler, and tracemalloc for memory.",
+"Explain whole-array operations running one C loop over unboxed contiguous data, and when small or branchy work does not fit.",
+"Measure first, then stream data, shrink per-record overhead with slots or tuples, and move to columnar storage.",
+"Compare each tool by what it speeds up, the effort needed and its limits, such as Numba for numeric loops.",
+"Explain that threads do not speed up CPU-bound Python, the usual workarounds, and the new free-threaded builds.",
+"Walk through resolving, falling back to the sdist, an isolated build env from [build-system], building a wheel, then installing.",
+"Contrast loose ranges for libraries so they coexist with exact pins in a lock file for applications.",
+"Explain that closures capture variables, not values, show the lambda loop, and fix it with a default arg or partial.",
+"Contrast identity with value, explain small-int and string caching as accidents, and why results vary across runtimes.",
+"Trace the list iterator index as items shift after each remove, give the result, and fix by building a new list.",
+"State the equal-means-equal-hash rule, why __eq__ alone makes objects unhashable, and how mutating keys breaks lookups.",
+"Profile and estimate the gain, fix the algorithm first, push loops into C or NumPy, then reach for compilers like Numba."
+]}

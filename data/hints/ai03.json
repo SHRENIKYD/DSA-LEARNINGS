@@ -1,0 +1,29 @@
+{"quiz":[
+"Multiply matching entries pairwise, then add the three products together.",
+"Cosine similarity is the cosine of the angle between vectors. What is the angle for opposite directions?",
+"For matrix multiplication, the column count of the first must equal the row count of the second.",
+"Inner dimensions must match and disappear; the result keeps the outer dimensions.",
+"Add up all six faces and divide by the number of faces.",
+"Adding the same constant to every logit cancels out in the softmax ratio. Think about what that protects against.",
+"Temperature divides the logits. Think about what a larger divisor does to the gaps between them.",
+"Align shapes from the right; a size-1 axis stretches to match the other size.",
+"Align shapes from the right and compare the last sizes. They must be equal or one of them must be 1.",
+"You want one mean per feature, and features are the columns. Which axis runs down the rows?",
+"Use Bayes: spam and free share over all free mail. Compute 0.2 x 0.6 and 0.8 x 0.05 first.",
+"A plain mean has no idea about departments. Look for the call that first splits rows into groups by a key.",
+"Think about data leakage: the test set must stay unseen while you learn any statistics.",
+"Summing over an axis removes that axis. axis=0 moves down through the rows."
+],"interview":[
+"Use a simple everyday explanation, show how cosine ignores length and only measures angle, and say when direction matters more than size.",
+"Show each cell as a row-times-column dot product, check the dimension rule, and state the cost for the naive algorithm.",
+"Give the formula, explain overflow from large exponents, and show why subtracting the maximum is safe.",
+"Apply Bayes step by step and explain how a low base rate means false positives dominate; natural frequencies help.",
+"State the right-alignment rule with size-1 stretching, give working examples, and describe a silent shape bug.",
+"Explain how scale affects distance models and gradient descent, name common scalers, and stress fitting on training data only.",
+"Show a one-pass dict of sums and counts, then the pandas and SQL equivalents, plus complexity and edge cases.",
+"Explain dividing logits before softmax, what low and high values do, and which settings suit which tasks.",
+"Define expected value, variance and standard deviation, then the law of large numbers and how error shrinks with n.",
+"Track shapes through a linear layer with bias broadcasting, then through query-key scores, scaling and softmax.",
+"Ask why data is missing, list options like dropping, filling and indicator columns, and mention leakage pitfalls.",
+"Describe giving a clear spec with shapes and a small sample, then verifying with tests and a slow reference version."
+]}

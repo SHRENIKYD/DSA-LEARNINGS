@@ -1,0 +1,29 @@
+{"quiz":[
+"Think about the two ways to add capacity: a bigger box or more boxes. Which one is called horizontal?",
+"Picture a load balancer sending a user's next request to a different server. What must be true for that to work?",
+"Round robin alternates between two servers. Where does the login data live, and does the other server know it?",
+"Request times vary wildly. Which algorithm looks at the live state of each server rather than following a fixed pattern?",
+"Each server's share equals its weight divided by the sum of all weights. Apply that to the total.",
+"For parallel parts, the tier fails only if all fail: availability is 1 minus the product of the failure chances.",
+"For parts in series, multiply the availabilities. The weakest link dominates the result.",
+"Replicas copy data from the primary. Ask which kind of work still has to happen on the primary alone.",
+"Only the user who made the edit needs to see it at once. Pick the fix aimed at that user, not one that changes the whole system.",
+"Sticky sessions pin a user to one server. Think about what happens when that server dies or gets many heavy users.",
+"Think about how a server checks a JWT. Is there any central record it consults that you could delete to cancel it?",
+"Think about how least connections chooses a server, and what number a brand-new server starts with.",
+"Usable capacity per server is its max times target utilisation. Divide peak by that, round up, then add one spare."
+],"interview":[
+"Define both, then compare cost, limits, failure handling and complexity. Say when a bigger box is enough and when you must add machines.",
+"Explain that no request depends on memory of one server. Cover moving sessions, files and caches to shared stores.",
+"Compare where session state lives, failure behaviour, load balance, and revocation. Mention JWT expiry and revocation trade-offs.",
+"Describe how each picks a server. Explain that round robin fails when request cost or server capacity varies a lot.",
+"Cover active health checks, passive checks, thresholds and timeouts, and the detection window where requests may still fail and need retries.",
+"Define it as one part whose failure stops the system. Explain walking the request path and adding redundancy and failover.",
+"Compute each parallel tier as 1 minus the product of failure chances, then multiply the tiers in series. Note which tier limits you.",
+"Explain they copy the primary to scale reads. Cover replication lag, stale reads, read-your-writes and failover issues.",
+"Go step by step: single server, split DB, load balancer and stateless app, cache and CDN, replicas, sharding, queues, multi-region.",
+"Short term add app servers or optimise hot code. Long term profile, cache, autoscale. Note the DB has headroom so the app tier is the bottleneck.",
+"Cover running several LBs with failover such as a floating IP or DNS, anycast, and managed load balancers.",
+"Explain all clients disconnect and reconnect at once. Cover jittered reconnect, resumable state outside the server, and capacity for the storm.",
+"Cover connection draining, readiness checks, graceful shutdown, rolling deploys, and client retries with idempotency."
+]}

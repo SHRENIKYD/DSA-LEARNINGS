@@ -1,0 +1,33 @@
+{"quiz":[
+"Ask whether the object on the left already exists or is being created on this line; the = in a declaration is not assignment.",
+"Think about what the compiler-made copy does with a pointer value, and then what both destructors do at scope end.",
+"Recall the rule that declaring certain special members stops the compiler from generating the move operations.",
+"Think about what std::vector must promise if an exception happens while it relocates its elements.",
+"A polymorphic object holds one hidden pointer no matter how many virtual functions exist; then add the int and alignment padding.",
+"Ask whether this call needs a runtime vtable lookup at all. If not, which type can the compiler see for p when it picks the function?",
+"C++ has no special keyword for this; think about what kind of function left unimplemented stops you from creating objects.",
+"Unlike other pure virtuals, ask whether this destructor still gets called by derived destructors, and what the linker then needs.",
+"Ask whether a destructor called through a base pointer is chosen at runtime or compile time when it is not virtual.",
+"While the base part is being built, the derived part does not exist yet; ask which version a virtual call can safely reach.",
+"Slicing happens when a derived object is copied into a base-type object; pointers and references keep the whole object.",
+"A member operator always takes your class as the left operand; check what is on the left in a print statement.",
+"Recall what a defaulted three-way comparison gives you, and whether it also brings equality along with it.",
+"The extra unused int parameter only exists to tell two forms apart; think about which form must return the old value."
+],
+"interview":[
+"Contrast creating a new object versus overwriting an existing one, list when each is called, and note assignment must release old state.",
+"Define copying pointer values versus copying pointed-to data, the bugs shallow copies of owning pointers cause, and when sharing is fine.",
+"State each rule, explain why declaring one special member affects the others, and say why Rule of Zero is the default choice.",
+"Explain that std::move is only a cast to an rvalue, the real move happens in the chosen overload, and the valid but unspecified state.",
+"Link the strong exception guarantee of containers to move_if_noexcept, and say the container copies instead if moves may throw.",
+"Describe one vtable per class, one vptr per object, how a call is looked up, and the cost: indirection and lost inlining.",
+"Define overloading, overriding and hiding with when each is resolved, then explain what override and final check or prevent.",
+"Define abstract via pure virtual functions, say constructors and data members are allowed, and that a pure virtual can still have a body.",
+"Explain deleting through a base pointer, what goes wrong without virtual, and when a protected non-virtual destructor is fine instead.",
+"Give full build order (virtual bases, bases, members, body), reverse destruction, and why virtual calls inside resolve to the current class.",
+"Define slicing, list sources like by-value parameters, vectors of base and catch by value, then fixes like references and smart pointers.",
+"List which operators must be members, which should be, which should be non-members, and show the canonical forms built on compound ones.",
+"Explain ordering categories, how the compiler rewrites comparisons, what defaulting does, and cases where you write it by hand.",
+"Compare allocate-then-release with copy-and-swap, covering the strong guarantee, self-assignment safety and the cost of each.",
+"Explain why the object must copy itself via a virtual clone, then compare with type erasure and variants for value semantics."
+]}

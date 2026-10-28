@@ -1,0 +1,31 @@
+{
+ "quiz": [
+  "Ask whether the knowledge changes often. Training bakes facts in; fetching documents keeps them current.",
+  "Fine-tuning shapes how a model behaves and formats answers more than what fresh facts it knows.",
+  "Think about which tokens the model should learn to produce. Does it need to learn to write the user's prompt?",
+  "LoRA trains two small matrices: one is r by d_in, the other d_out by r. Add their sizes.",
+  "Consider what the model should output at the very first training step, before any learning has happened.",
+  "Think about how the frozen base weights are stored and how few bits each one takes.",
+  "Recall the three classic stages: demonstrations, a learned scorer, then policy optimization. Which option is extra?",
+  "DPO trains directly on preference pairs. Which separate model and training loop does it skip?",
+  "Beta controls how strongly the model is kept near the reference model. Think about what more pull means.",
+  "Quality matters more than raw volume. Look for the habit that removes bad or duplicate examples.",
+  "Compare the base and tuned models on general tasks they were not tuned for.",
+  "Forgetting happens when only narrow data is seen. What could you mix into training to keep old skills?",
+  "When the model gets better on seen data but worse on unseen data, what is it doing?"
+ ],
+ "interview": [
+  "Say you try prompting, then RAG for missing knowledge, and fine-tune for behaviour gaps like style, format or narrow skills.",
+  "Cover JSONL chat data, the chat template, next-token loss only on assistant tokens, and the usual training settings.",
+  "Explain the frozen weight plus a low-rank B times A update, the zero start, and why fewer trainable params saves memory.",
+  "Explain 4-bit frozen base plus 16-bit adapters and the memory win, then trade-offs in speed and slight quality loss.",
+  "Walk the three stages: SFT, a reward model from preference pairs, then PPO with a KL penalty to the reference.",
+  "Explain how DPO skips the reward model and RL loop, describe the loss on chosen versus rejected, and the role of beta.",
+  "Cover cleaning, exact and near-duplicate removal, filtering bad examples, balancing, and a clean held-out split.",
+  "Define losing general skills, detect it by comparing base and tuned models on broad evals, and reduce it with mixing or LoRA.",
+  "Suspect leakage or distribution shift: check how data was split, near-duplicates, and whether eval matches real users.",
+  "Cover sampling several answers from your own model, expert or judge picks with a rubric, and quality checks on labels.",
+  "Separate facts from behaviour: changing policies go in RAG with citations, fine-tuning only for tone and format.",
+  "Explain why tuning on docs gives unreliable recall, no citations and stale facts, and propose RAG instead."
+ ]
+}

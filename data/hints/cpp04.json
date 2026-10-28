@@ -1,0 +1,31 @@
+{"quiz":[
+"Think about what each keyword assumes by default when you write no access label at all, for members and for base classes.",
+"Lay out the members one by one: an int must start at an address divisible by 4, and the total size must also be a multiple of 4.",
+"Later objects may depend on earlier ones, so cleanup must not pull the rug out. Which order keeps that safe?",
+"Ask whether the compiler still writes a no-argument constructor for you once you have written any constructor yourself.",
+"Members are initialized in the order they are declared in the class, not the order you list them after the colon.",
+"Which kind of member can never be assigned after it exists, so it must get its value at the moment it is created?",
+"A const member function promises not to change the object, so think about what the hidden object pointer must point to.",
+"A static member function is not called on any particular object, so ask what hidden object pointer it could possibly have.",
+"Ask whether each object needs its own copy of a static variable, or whether all objects share one copy stored elsewhere.",
+"No access word is written before the base name; recall the default base access for the class keyword.",
+"The constructor body may use the base and every member, so they must already exist. Then decide which of those two comes first.",
+"Friendship is a gift given to one named class; ask whether that gift is passed on to children of the friend.",
+"With a member operator your object is always on the left side; check what sits on the left in a print statement.",
+"Recall the rule that if something can be read as a function declaration, the compiler reads it that way."
+],"interview":[
+"State the single language difference (default access for members and bases), then the usual convention for when to pick each.",
+"Explain bundling data with operations, protecting invariants in few places, and freedom to change the internal representation later.",
+"Cover construction order (bases, members in declaration order, body), destruction as the exact reverse, and local objects in a scope.",
+"Mention avoiding default-construct-then-assign cost, and members that cannot be assigned: const, references, types with no default constructor.",
+"Describe this as a hidden pointer to the called object, its type in normal and const functions, and why static functions have none.",
+"Explain one shared copy per class, calling without an object, no this pointer, and give uses like instance counters or factories.",
+"Separate declaration from definition of a static member, say where the one definition must go, and mention the C++17 inline option.",
+"Explain how each specifier caps inherited member access, which one models is-a, and what private inheritance is used for.",
+"Show calling the base constructor in the initializer list, note bases build first, and what happens without a default base constructor.",
+"Explain that a same-named derived member hides all base overloads, why lookup stops early, and the using-declaration fix.",
+"Define friend access and its rules (granted, not inherited, not transitive), then argue whether it weakens or supports encapsulation.",
+"Explain that the left operand of a member operator must already be the class type, and the non-member or hidden friend fix.",
+"Explain why each object needs a unique address so the size is not zero, then how an empty base can take no space.",
+"Use static counters updated in every constructor and destructor, and handle copy, move, assignment and thread safety pitfalls."
+]}

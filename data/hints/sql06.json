@@ -1,0 +1,31 @@
+{"quiz": [
+"Both compute the same totals. Ask which one collapses rows and which one keeps every row.",
+"Recall where window functions sit in the logical order of clauses relative to WHERE.",
+"RANK gives tied rows the same number and then skips ahead by the number of ties.",
+"Without a frame clause the SQL default uses RANGE, which includes rows tied with the current row.",
+"Think about where the default frame ends when ORDER BY is given but no frame is written.",
+"Count the rows in the frame: the preceding rows plus the current row should total seven.",
+"LAG looks back by position in the ordered rows, not by calendar distance.",
+"Only one ranking function always gives unique numbers, and a tiebreaker column makes it deterministic.",
+"NTILE gives each bucket the floor of rows divided by buckets, and extra rows go to the first buckets.",
+"CUME_DIST is the number of rows at or before the current row divided by the total row count.",
+"Within a run of consecutive dates, the date and the row number both go up by one, so their difference stays fixed.",
+"RANGE uses distance in values, not rows, so a missing date is simply absent from the frame.",
+"Ranking and navigation functions depend only on partition and order; aggregates and value functions use the frame."
+],
+"interview": [
+"Explain that a window computes a value per row over related rows without collapsing them, unlike GROUP BY, and when to use each.",
+"Use a tie example to show unique numbers, shared ranks with gaps, and shared ranks without gaps, and when you would pick each.",
+"Give the clause order and its consequences: no windows in WHERE, windows can wrap aggregates, and they see only filtered rows.",
+"Rank within each department in a CTE and filter outside, and clarify how ties should be treated to choose the ranking function.",
+"Write SUM OVER with an explicit ROWS frame and explain how the default RANGE frame lumps tied timestamps together.",
+"Aggregate to one row per month first, then use LAG, and cover integer division, NULLIF for zero, and partitioning.",
+"Explain that the default frame ends at the current row, so LAST_VALUE is not the partition's last row, and how to fix the frame.",
+"Use a small dataset with a gap and ties to show how ROWS counts rows, RANGE uses value distance, and GROUPS counts peer groups.",
+"Describe the gaps-and-islands trick of date minus row number, grouping by it with HAVING, and why you remove duplicate dates first.",
+"Use LAG to find the gap from the previous click, flag new sessions, and take a running SUM of flags as the session id.",
+"Explain the sort by partition and order keys then a streaming pass, the cost, and speedups like matching indexes and shared specs.",
+"Use ROW_NUMBER and COUNT per group to pick the middle one or two rows and average them, explaining why ROW_NUMBER beats RANK.",
+"Explain that a non-unique window ORDER BY makes tie order unstable, and fix it with a unique tiebreaker and a data test.",
+"Cover partition skew, unpartitioned windows, big frame buffers and repeated sorts, plus mitigations like always partitioning."
+]}

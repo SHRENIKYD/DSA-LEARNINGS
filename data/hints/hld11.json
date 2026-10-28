@@ -1,0 +1,29 @@
+{"quiz":[
+"Raft compares last log term first, then log length if terms match. Which log is more complete?",
+"If all nodes time out at once, votes split. What does randomness change?",
+"Think of two conditions: how many nodes must store the entry, and which term it must belong to. Recall the Figure 8 problem with old-term entries.",
+"Paxos forces the proposer to reuse a value already accepted. Which accepted proposal takes priority?",
+"If everyone watched the same thing, how many clients would wake up when one node leaves?",
+"The storage needs a way to tell that a write comes from an old lock holder. What could it compare?",
+"The participant promised to commit if told to, but the decision might be abort. Is it safe for it to pick either outcome alone?",
+"Its safety depends on timing assumptions. What happens when the network splits?",
+"Compensations undo completed steps in reverse order. Which steps finished before the failure?",
+"Each saga step commits locally and is visible at once. Go through A, C, I and D: which one does that early visibility break?",
+"Think about writing to the database and to a message broker separately. What can go out of sync?",
+"Kafka's transaction coordinator only controls Kafka partitions and offsets. Which options involve systems outside Kafka?"
+],
+"interview":[
+"Explain agreeing on one value or log despite failures. Mention leader election, config stores and replicated logs.",
+"Cover timeouts, becoming candidate, term increase, vote requests, the up-to-date log rule and majority wins.",
+"Cover majority replication, election restriction, and committing only current-term entries.",
+"Explain both reach the same goal. Raft was designed for understandability with a strong leader and clear steps.",
+"Use them for small, critical coordination data like leader election and config. Not for large or high-volume data.",
+"Cover lease with expiry, unique owner, and fencing tokens. Discuss risks of a single Redis lock and pauses.",
+"Explain prepare and commit phases. Main weakness: blocking when the coordinator fails.",
+"Explain local steps with compensating actions. Compare a central coordinator with event-driven steps.",
+"Weigh availability and coupling across services. Explain why sagas fit long-lived cross-service flows.",
+"Explain the risk of DB and broker disagreeing, then writing the event in the same DB transaction and relaying it.",
+"Explain that delivery can repeat, but effects can be exactly-once. Describe what Kafka transactions cover.",
+"Explain majority quorum math: an even node adds cost without more failure tolerance.",
+"Cover idempotency keys for side effects, task leasing, durable state, retries, and dedupe on tool calls."
+]}

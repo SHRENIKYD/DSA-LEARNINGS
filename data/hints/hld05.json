@@ -1,0 +1,29 @@
+{"quiz":[
+"Look for multi-row atomic updates and flexible reporting. Which family of databases is built for that?",
+"With async replication, the leader replies before followers confirm. What if it dies before they copy?",
+"If every follower must confirm, think about the slowest one and about one that is offline.",
+"Every replica still has to apply every write. Do replicas add a place to accept writes?",
+"The user cannot see the change they just made because the read hit a lagging replica. Which consistency guarantee covers that?",
+"Auto-increment ids only grow. Under range sharding, where do the newest values land?",
+"The rule is about location. Which partitioning method lets you assign explicit values to shards?",
+"With mod N, a key stays only if its result is the same under both N values. Estimate how few keep their place.",
+"One key gets too many writes for one machine. How could you spread that one key's writes?",
+"For a correct global top list, each shard must send enough candidates that none are missed.",
+"An average of averages is wrong when groups differ in size. What two values combine correctly?",
+"Compute 1 minus the chance that all shards are fast: 1 minus 0.99 to the power of 100.",
+"Think about what moves when you add a machine if keys map to fixed partitions instead of machines."
+],"interview":[
+"Start from access patterns, consistency needs, schema flexibility and scale. Explain why relational is often the default.",
+"Explain when the leader waits for followers or not. Cover durability, latency and availability trade-offs, and semi-sync.",
+"Define the delay before replicas catch up, its causes, and fixes like read-your-writes, monotonic reads and routing to primary.",
+"Explain that replicas scale reads but every write still goes to the leader and each replica. Mention sharding for writes.",
+"Compare how keys map to shards, range query support, hot spots, and when each fits.",
+"Cover high cardinality, even spread, matching main queries, and avoiding hot keys. Walk through an example.",
+"Cover detection with metrics, then salting, splitting, caching, batching and dedicated shards.",
+"Explain how changing N moves most keys. Mention consistent hashing and fixed logical partitions.",
+"Cover double writes or change capture, backfill, verification, gradual cutover of reads and writes, and rollback.",
+"Cover scatter-gather, secondary indexes (local or global), denormalised lookup tables and their costs.",
+"Mention two-phase commit, sagas with compensation, and designing to keep data on one shard.",
+"Explain that fanning out makes rare slow responses common. Cover hedged requests, timeouts and smaller fan-out.",
+"Cover synchronous cross-region replication or consensus, the latency and cost it adds, and the write availability trade-off."
+]}

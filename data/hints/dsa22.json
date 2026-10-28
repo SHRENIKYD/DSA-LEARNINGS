@@ -1,0 +1,31 @@
+{"quiz":[
+"The first pass gives finish times. The second pass must stop exactly at one component's border, so think about reversing edges.",
+"Assume the condensation had a cycle. What would that say about the components on that cycle, given that SCCs are maximal?",
+"A node that is done and off the stack belongs to a finished component. Should it affect low-link?",
+"Ask whether the child's subtree can climb back above v without going through v.",
+"Count how many odd-degree vertices there are. Zero, two, or more decides what kind of trail exists.",
+"The vertex gets added to the answer only when you are stuck and must back up.",
+"The table has log N levels for each node. Think about build time and query time separately.",
+"Equal ancestors mean the jump went too far, to a common ancestor or above. You want to stay just below the LCA.",
+"Think about a greedy first path that turns out to block better routes. What would the algorithm need to fix that choice later?",
+"BFS gives shortest augmenting paths. Bound the number of augmentations, then multiply by the cost of one BFS.",
+"When no augmenting path is left, look at the residual graph from the source. Which edges separate what it can reach from the rest?",
+"On unit-capacity bipartite graphs, ask how many phases Dinic needs and which classic matching algorithm has the same bound.",
+"In bipartite graphs, minimum vertex cover equals maximum matching, and independent set is the complement of a cover.",
+"Recall what is known for each problem: a simple degree test and linear algorithm, or no efficient algorithm at all."
+],"interview":[
+"Define mutual reachability, then explain that squashing components gives a DAG you can topologically sort or run DP on.",
+"Compare two passes with a reversed graph versus one pass with low-link, and mention code size and memory.",
+"Define discovery time and low-link, then state the strict and non-strict comparisons for bridges and cut vertices, plus the root case.",
+"Explain that skipping the parent vertex hides parallel edges. Skip the parent edge by its id instead.",
+"State the degree conditions for directed and undirected graphs, then describe the stack-based walk that splices cycles.",
+"Compare binary lifting, Euler tour with sparse table, and offline Tarjan, with build and query costs.",
+"Explain that reverse edges let you cancel bad earlier choices, and show a small graph where greedy paths get stuck.",
+"State that max flow equals min cut capacity, explain why no augmenting path means a cut, and how to find it by reachability.",
+"Give each complexity, and mention when graph size, capacities, or structure like bipartite favour one of them.",
+"Describe the layers: source to doctors, doctors to per-period nodes, then to days and the sink, with capacities matching each rule.",
+"Explain trying augmenting paths from each left vertex, and how matching size gives vertex cover and independent set sizes.",
+"Mention memory limits, iterative or distributed algorithms, and external storage instead of recursive DFS.",
+"Explain building the implication graph, finding components, and that a variable and its negation in one component means no solution.",
+"Explain stack depth limits on deep graphs and fix it by using an iterative stack or raising the limit."
+]}

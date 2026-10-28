@@ -1,0 +1,29 @@
+{"quiz":[
+"List API calls return results in pages. Think about what a single call returns and whether the script checks for more.",
+"Some YAML loaders can build any Python object from tags in the file. Ask what an attacker could do with that.",
+"Think about what a shell does with characters like ; or $( ) in a filename, and which form never involves a shell.",
+"Retries help only when the next try could succeed. Which response would be the same no matter how often you send it?",
+"ClientError carries the parsed AWS response as a dictionary. Look for the nested key that holds the error code.",
+"A waiter is a polling helper, not a trigger. Think about how often it checks, how many times, and what ends it.",
+"Stored keys can leak and do not rotate. Which option needs no secret written anywhere?",
+"Python will not compare a timezone-aware datetime with a naive one. Check which side of each option is naive.",
+"Think about the cost of forgetting a flag. What default makes a mistake harmless?",
+"Idempotent means a second run changes nothing more. Which option makes the script look before it writes?",
+"Entries under project scripts create a command on install that points to a function. Think about the exit code.",
+"Think about how a Go tool is shipped: what does copying it to another machine require, compared with Python?",
+"A plain Mock invents any attribute you ask for. What happens if the code calls a misspelled method?"
+],"interview":[
+"Compare simple command glue in bash with Python for data structures, APIs, error handling and tests; give a rule of thumb.",
+"Explain the default credential chain and name roles, instance profiles, SSO profiles and OIDC instead of hardcoded keys.",
+"Explain that APIs return results in pages, show using paginators, and describe the silent partial-result bug.",
+"Cover catching ClientError, reading the error code, handling expected codes, retrying throttling, and failing loudly otherwise.",
+"Explain waiting longer between attempts plus randomness, a cap on retries, and which errors are safe to retry.",
+"Cover listing with pagination, filtering by age and tags, a dry-run default, logging, limits, and tests.",
+"Define running twice gives the same result, then show checking current state before acting and writing only differences.",
+"Mention mocking with stubs or moto, testing dry runs, using autospec mocks, and a sandbox account for integration tests.",
+"Cover safe YAML loading, schema validation, clear errors on bad input and never evaluating data as code.",
+"Think cross-account roles, organisation-wide scanning, reporting first, safe auto-tagging, and tag policies to prevent drift.",
+"Look at overlapping runs and partial failures: add locking, idempotent steps and safe resume or cleanup.",
+"Cover pyproject packaging, entry points, internal indexes or pipx, and Go for single static binaries.",
+"Mention faster drafting of scripts, but stress review, tests, dry runs, least privilege and not trusting invented APIs."
+]}

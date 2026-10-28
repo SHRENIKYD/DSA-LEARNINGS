@@ -1,0 +1,31 @@
+{"quiz":[
+"Reads walk up the prototype chain. Ask whether a plain assignment on b also walks up, or lands somewhere else.",
+"Ask which objects actually have a .prototype property, and how new uses it. Then ask what the internal link on every object is called.",
+"Object.create(null) makes an object with no prototype at all, so inherited methods like toString are missing.",
+"Recall the last step of new: it checks what the constructor returned. Does an object return value change the result?",
+"Where did d.constructor come from before? Ask what the default prototype object held, and what a fresh object literal holds.",
+"Ask what a class really is at runtime: what do you call with new, and what does typeof report for that kind of value?",
+"Compare hoisting of function declarations with let. Which of the two does a class declaration behave like?",
+"In a derived class, the this object is created by the parent constructor via super.",
+"extends links two pairs of objects: the prototypes, and the classes themselves. Which link is used for a lookup on B?",
+"A method remembers the object it was defined on. Ask whether super depends on that, or on whatever this is when called.",
+"Ask how a private field gets onto an object. Is it inherited through the prototype, or added when the constructor runs?",
+"Ignore obj.constructor and shapes. Ask what instanceof compares while it walks up obj's prototype chain.",
+"Each realm, such as an iframe, has its own Array constructor. Look for a realm-safe check.",
+"Order matters: when the parent constructor calls init, has the child's field initialiser run yet?"
+],"interview":[
+"Explain the hidden link between objects and the lookup that walks up the chain until null.",
+"Explain which belongs to functions, which to every object, and how constructor points back.",
+"List the steps: create object linked to the prototype, call with this, and handle object returns.",
+"Mention real differences: TDZ, strict mode, new-only calls, private fields and super handling.",
+"Explain the two prototype links that extends sets up and how super uses the home object.",
+"Show calling the parent constructor and linking prototypes, and mention resetting constructor.",
+"Explain creating an object with a chosen prototype, and using a null prototype for safe dictionaries.",
+"Compare real runtime privacy, convention only, closure privacy, and compile-time-only checks.",
+"Explain static methods on the class itself, static blocks for setup, and inheritance through the class chain.",
+"Explain the prototype chain check, then cross-realm and modified prototypes, and alternatives like Array.isArray.",
+"Explain that subclass fields are not ready yet when the parent constructor calls the override.",
+"Explain how keys like __proto__ can change Object.prototype, then defenses like null prototypes and Maps.",
+"Compare inheritance with composition, then mixins and their problems like name clashes.",
+"Mention hidden classes, inline caches, and patterns like changing prototypes or adding properties in odd order."
+]}

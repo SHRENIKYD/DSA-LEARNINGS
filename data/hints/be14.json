@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about where the subnet's route table sends internet traffic.",
+"Recall whether security groups are stateful and whether they support deny rules.",
+"In IAM, think about which wins when an allow and an explicit deny both match.",
+"A good partition key has high cardinality and spreads load evenly.",
+"Standard queues trade strict ordering and exactly-once for scale. Think about what delivery promise is left.",
+"RPO and RTO are easy to mix up. The P stands for point: think about which point in time you can restore to.",
+"Order DR strategies by how much is kept running ahead of time. Less running means cheaper but slower.",
+"Multi-AZ keeps a standby in another zone. Think about what kind of failure that covers and what it does not.",
+"Think about the extra work needed when there is no warm environment ready to handle a call.",
+"A NAT gateway itself needs a route to the internet gateway.",
+"Avoid sending big files through your own servers, and avoid giving long-lived credentials to the browser.",
+"Recall the six pillars and spot the option that is not one of them.",
+"Compare the visibility timeout to how long the function runs. What happens if the message reappears too early?"
+],"interview":[
+"Cover load balancer in public subnets, app tier in private subnets across AZs, a Multi-AZ database, and spare capacity.",
+"Compare stateful versus stateless, allow-only versus allow and deny, and instance level versus subnet level.",
+"Explain default deny, gathering all policy types, explicit deny wins, then an allow is needed.",
+"Explain federated humans assuming roles and workloads getting roles, so credentials are temporary.",
+"Start from access patterns, then pick a high-cardinality partition key and a sort key for ranges and order.",
+"Explain one key value hitting a capped partition, then fixes like better keys, write sharding or caching.",
+"Compare queue, fan-out, ordered replayable stream and event routing, with a use case for each.",
+"Define a cold start and its causes, then list ways to reduce it like smaller packages and provisioned concurrency.",
+"Compare what failures each covers, the cost, complexity and data loss trade-offs.",
+"Define both, then map backup/restore, pilot light, warm standby and active-active to their RTO/RPO and cost.",
+"Mention tagging, budgets and alerts, right-sizing, commitments for steady load, and removing waste.",
+"Describe the server choosing the key and signing a short URL, and risks like size, type, scanning and expiry.",
+"List all six pillars and give one concrete trade-off, such as reliability versus cost.",
+"Explain good fits like spiky event-driven work and poor fits like steady heavy load or long-running jobs."
+]}

@@ -1,0 +1,36 @@
+{
+ "quiz": [
+  "var declarations are hoisted and set up before code runs, but the assignment stays in place.",
+  "let is hoisted but kept uninitialised until its line runs. What happens if you read it early?",
+  "Only the var name is hoisted, not the function expression assigned to it. What is its value when called?",
+  "Function declarations are hoisted fully, and a later var without a value does not overwrite them at first.",
+  "One var is shared by the whole loop, and the timers run after the loop finishes.",
+  "The inner block declares its own a. Ask which a the log line refers to, and what state that a is in at that moment.",
+  "JavaScript uses lexical scope: a function sees variables from where it was written, not where it was called.",
+  "Look for anything inside f that gets hoisted. Does it create a local name that the assignment hits instead of the global?",
+  "The chained assignment declares only a with var; b gets assigned without any declaration.",
+  "Each call to makeCounter creates a fresh n. Count calls per counter separately.",
+  "Each loop iteration gets its own copy of i, but the body also changes i before the closure reads it.",
+  "Parameter defaults run left to right, like let declarations. What state is b in when the default for a is evaluated?",
+  "Recall which declarations go into the global object record and which go into the separate declarative record in a classic script.",
+  "Think about what happens when the cached value is falsy, like 0 or an empty string.",
+  "typeof is forgiving for some names but not all. Is later truly undeclared, or declared but not yet initialised?"
+ ],
+ "interview": [
+  "Define scope as where a name is visible, then list global, module, function and block scope.",
+  "Compare scope, hoisting and TDZ, redeclaration, and reassignment, and give a default recommendation.",
+  "Explain the creation phase that registers declarations before running code, and how each kind is set up.",
+  "Explain that they are hoisted but uninitialised until their line, and why reading them early throws.",
+  "Define a closure as a function plus its remembered outer variables, and give a real example like a counter.",
+  "Explain the shared var binding and fixes such as let, an IIFE, or passing the value as an argument.",
+  "Explain that scope is fixed by where code is written, while the call stack shows who called whom at runtime.",
+  "Match each error to its cause: undeclared name, TDZ, const reassignment, and calling a non-function.",
+  "Explain closures keeping large objects alive, examples like listeners and timers, and heap snapshots.",
+  "Show a cache keyed by argument, then discuss key choice, unbounded growth, falsy values and this.",
+  "Explain that each iteration gets a fresh binding copied from the previous one before the update step.",
+  "Define an IIFE and the module pattern for privacy, then compare with native module scope today.",
+  "Cover context objects shared by closures from one scope, and how that can retain more memory than expected.",
+  "Think about circular imports and module evaluation order changing in the bundled build.",
+  "Explain how a callback captures old state from a past render, and fixes like dependencies, updaters and refs."
+ ]
+}

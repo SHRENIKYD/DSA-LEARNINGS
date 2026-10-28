@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "count++ is read, add, then write. Imagine both threads reading before either writes.",
+  "Think about visibility versus atomicity. Does making a field visible make a compound action like ++ safe?",
+  "Each single call is synchronized, but look at the gap between the check and the put.",
+  "A write to a copy-on-write list builds a brand new array. Which array is an iterator created earlier still walking?",
+  "Idle time adds tokens, but a bucket has a size. Compare 60 refilled tokens with the capacity and take the limit.",
+  "A log window only counts requests in the last 10 seconds. Which old timestamps fall out by t = 11?",
+  "A read lock lets many threads in at once. Ask whether an LRU get only reads, or also changes the linked list.",
+  "Between being signalled and getting the lock back, other threads may run. Can the condition be false again by then?",
+  "Each thread holds one lock and waits for the other: a circular wait. Which option makes every thread take locks the same way?",
+  "A booking for several seats should be all or nothing. What about the seat that was already grabbed?",
+  "Think about atomicity for a single key and how many times the function runs for a missing key.",
+  "With no capacity limit, nothing ever slows the producers down. Where does all the extra data go?",
+  "The map itself is never changed after it is built. Think about what a reader gets when it reads a single volatile reference once."
+ ],
+ "interview": [
+  "Define correct behaviour under any thread interleaving, then cover immutability, confinement, locks, atomics and safe publication.",
+  "Give a clear definition and one small example for each, and show how a race can exist even without a data race.",
+  "Compare simplicity, features like tryLock and fairness, and lock-free speed for single variables, with when to use each.",
+  "Explain that compound actions like check-then-put are not atomic, and suggest ConcurrentHashMap with its atomic methods.",
+  "Pick an algorithm like token bucket, explain refill on demand with a time source, and how you keep updates atomic per key.",
+  "Compare accuracy, memory use and burst behaviour at window edges for each of the three approaches.",
+  "Cover a bounded buffer with wait and notify in a while loop, and pitfalls like lost wakeups, spurious wakeups, and notify vs notifyAll.",
+  "Mention a hash map plus doubly linked list under one lock, why reads also mutate, and scaling with sharding.",
+  "Describe key-to-node and frequency-to-list maps with a min frequency pointer, then locking or sharding for thread safety.",
+  "Cover per-show or per-seat locks or compare-and-set, all-or-nothing holds with rollback, hold expiry, and the database at scale.",
+  "Mention lock ordering, timeouts with tryLock, fewer nested locks, and detection with thread dumps or a wait-for graph.",
+  "Explain cheap blocking threads, fewer async callbacks, and the pinning risk with synchronized blocks in older versions.",
+  "Mention many threads with a start barrier, repeated runs, stress tools, invariant checks, and deterministic fake clocks."
+ ]
+}

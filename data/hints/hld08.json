@@ -1,0 +1,32 @@
+{"quiz":[
+"Within one group, each record goes to only one member. How do you make each service see every record?",
+"Order is tied to an append-only log. Which unit has a single log?",
+"Each partition is read by at most one member of a group. Count how many can be busy.",
+"The offset was never saved. Where will the consumer restart reading?",
+"You need writes acked by multiple replicas but still allowed when one broker is down.",
+"Lag is a distance between two positions in a partition. Which two offsets would you compare?",
+"Retrying will never fix bad input. Where should it go so the rest keeps flowing?",
+"Think about many clients that failed at the same moment using the same backoff schedule.",
+"Think about updating a database and sending a message: what if only one of them succeeds?",
+"Keys map to partitions by hash mod partition count. What happens to that mapping when the count changes?",
+"Kafka transactions commit outputs and offsets together. Does that reach systems outside Kafka?",
+"Compare total input with total processing capacity, and recall that consumers are capped by partitions.",
+"Ask which style has one place that knows the whole flow and which spreads it across services."
+],
+"interview":[
+"Cover decoupling, smoothing spikes, async work, retries and fan-out. Mention added latency and complexity.",
+"Contrast one consumer per message with every subscriber getting a copy. Explain consumer groups in Kafka.",
+"Cover topics split into partitions, brokers, leaders and followers, replication factor and in-sync replicas.",
+"Base it on target throughput per consumer and per partition, key ordering, and future growth. Mention costs of too many.",
+"Define each by loss or duplicates. For payments, explain at-least-once plus idempotency.",
+"Explain partition reassignment when members join or leave, pauses, and fixes like cooperative or static membership.",
+"Use the order id as the key so its events share a partition. Scale with more partitions and per-key processing.",
+"Cover retry with backoff, retry topics, sending poison messages to a DLQ, alerting and replay.",
+"Define it as slowing producers when consumers lag. Cover bounded queues, pausing consumption and rate limits.",
+"Explain writing the event in the same DB transaction and relaying it. Mention change data capture as an alternative.",
+"Compare central control with event reactions. Explain compensating steps when a saga step fails.",
+"Compare log versus queue model, ordering, replay, routing, operations and managed options.",
+"Cover idempotent producers, transactions, atomic offset commits, and that external side effects are not covered.",
+"Cover event on upload, queue or topics per task, worker scaling, retries, rate limits on AI calls and cost.",
+"Ask what really needs order. Explain that global order limits you to one partition, and suggest per-key ordering."
+]}

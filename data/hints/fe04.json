@@ -1,0 +1,32 @@
+{"quiz":[
+"Normal listeners run in the bubbling phase. Ask which direction bubbling travels: from the target toward the root, or the other way?",
+"target is where the event began; currentTarget is the element whose listener is running.",
+"Think about whether the result updates when the DOM changes later.",
+"Ask which of these properties parse the string as HTML markup, and what an attacker could put inside a comment.",
+"Pressing Enter in a text box never clicks your button listener directly. Ask which event both submit paths fire, and on which element.",
+"Following a link is the browser's default action. The stop methods only affect other listeners. Which method cancels the action itself?",
+"removeEventListener finds the listener by comparing function identity. Ask whether writing the same arrow code twice gives the same object.",
+"Trace the three phases in order: capture moves down from the root, then the target, then bubbling moves up. Place each listener in its phase.",
+"The timer resets on each keystroke. Add the wait to the time of the last key.",
+"focus and blur are special: check whether they bubble. Then ask which related events or listener option let a parent still see them.",
+"closest checks the element itself and then walks up its ancestors.",
+"A once-listener removes itself while emit is still looping over the array. What happens to the indexes of the remaining entries?",
+"You want the bar to move during scrolling, not only after it stops, but without doing work on every single event. Which technique fits?",
+"Calling submit from code skips something that a normal user submit triggers."
+],"interview":[
+"Explain the DOM as a live tree of objects built from parsed HTML that scripts can change.",
+"Compare return types, live vs static collections, and selector flexibility.",
+"Describe capture, target and bubble phases and how to opt into capture.",
+"Explain cancelling the default action vs stopping propagation, and stopping other listeners on the same element.",
+"Explain one listener on a parent using target and closest, plus pitfalls like non-bubbling events.",
+"Cover listening to submit, preventDefault, validation, and why Enter key submissions matter.",
+"Explain XSS risk from untrusted HTML and safer options like textContent or sanitizing.",
+"Show a timer reset on each call, and contrast running once at most per interval with throttle.",
+"Cover on, off, once and emit, copying the listener list, and error handling inside listeners.",
+"Explain the microtask checkpoint between listeners when the stack is empty on a real click, and why click() from script delays micro until both run.",
+"Discuss React's root delegation, synthetic events, and how native stopPropagation interacts.",
+"Explain passive listeners letting scrolling continue, and avoiding mixed reads and writes of layout.",
+"Check the element exists, the listener attaches, overlays or pointer-events, and errors in the console.",
+"Explain that isTrusted marks real user events and some actions need real user activation.",
+"Cover composed events across shadow roots, focus management, keyboard support and cleanup."
+]}

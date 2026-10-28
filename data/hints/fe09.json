@@ -1,0 +1,31 @@
+{"quiz":[
+"State is a snapshot for this render. What value of count does each of the three calls read?",
+"React tracks hooks by the order they are called, not by name. Think about what conditions or loops would do to that order.",
+"Cleanup undoes what the previous run set up. Think about which id each function remembers and the order React uses.",
+"An empty array has nothing that can change between renders. Think about mount and unmount.",
+"The interval callback captured count from the first render. Which setter form does not need to read count at all?",
+"A ref is a mutable box that React does not watch. Ask whether changing it schedules a render.",
+"useMemo remembers only enough to check whether the inputs changed since the last render.",
+"memo compares each prop by reference. Ask whether an arrow function written inline is the same value each render.",
+"useState is great for simple values. Think about when the update rules themselves get complex.",
+"Context consumers re-render when the value changes by reference. What does an inline object literal do each render?",
+"Think about a race: an old slow request finishing after a newer one and replacing the fresh result.",
+"Effects run after commit. Think about what value the render should return compared with what is stored for next time.",
+"A custom hook is just a function that calls hooks. Where do the hook slots live: in the hook or in each component?"
+],"interview":[
+"Define hooks as functions that let function components use state and lifecycle features, and explain the problems with classes they solved.",
+"Explain the per-render snapshot and batching, then show the functional updater fix that builds on the previous value.",
+"Cover when effects run after commit, how the dependency array controls reruns, and that cleanup runs before the next run and on unmount.",
+"State the two rules (top level only, only from React functions) and explain that hooks are matched by call order, which breaks if a call is skipped.",
+"Explain a closure capturing old state, give an interval or timeout example, and fix with the updater form, a ref, or correct dependencies.",
+"Explain that refs persist without causing renders, for DOM nodes, timers or latest values, while state is for things shown on screen.",
+"Explain what each memoizes, how they work together around referential equality, and their cost when the work is cheap.",
+"Compare a reducer with a single setter, mention grouping transitions, and explain purity for predictability, testing and Strict Mode double calls.",
+"Explain provider value and consumer subscription, then pitfalls: new value objects, all consumers re-rendering, and fixes like splitting contexts.",
+"Describe a timer reset on each value change with cleanup clearing it, so only the final value is used and nothing fires after unmount.",
+"Check the dependency array for unstable objects or functions, inspect the network tab, then stabilize deps and add abort on cleanup.",
+"Describe an array of hook slots indexed by call order, a cursor reset each render, and storing effect deps to compare next time.",
+"Explain that Strict Mode mounts, unmounts and remounts to expose missing cleanup, such as leaking subscriptions or duplicate requests.",
+"Give a ladder from local state up to lifting, context for rarely changing values, reducers for complex logic, and stores for frequent global updates.",
+"Mention that renders can be interrupted or repeated so they must be pure, and that the compiler auto-memoizes, reducing manual memo hooks."
+]}

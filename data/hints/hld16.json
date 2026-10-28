@@ -1,0 +1,33 @@
+{"quiz":[
+"Each added geohash character splits the cell into a smaller box. What does sharing more characters mean?",
+"Cell borders are arbitrary lines. Think about a driver standing just over the edge of your cell.",
+"Location pings are tiny, short-lived and get resent every few seconds. Does each one need full disk durability?",
+"Dijkstra spreads out evenly in all directions. Think about what an estimate of the remaining distance changes.",
+"The speed comes from slow work done once before any query. What does that preprocessing add to the graph, and how does it shrink each search?",
+"Reading status and then writing it leaves a gap. What operation lets exactly one request win?",
+"Users close tabs and apps crash. How does the seat come back if no release message is ever sent?",
+"Networks lose responses and clients retry. How does the server recognise the same intent the second time?",
+"A ledger is append-only for audit. How do you cancel a past effect without changing history?",
+"A timeout tells you nothing about whether the other side acted. Guessing either way has a real cost.",
+"Without a cache, a short prefix would need a scan of a huge subtree. What does storing results at each node save?",
+"Clicks arrive late and out of order. Which timestamp gives correct counts, and what decides when to stop waiting?",
+"On replay the same window is written again. Which write gives the same result no matter how often it runs?",
+"Remember that a Bloom filter can wrongly say it has seen an id. What does that cost when every click is money?"
+],"interview":[
+"Start with numbers on drivers and ping rate, then in-memory storage with TTL, a cell-based index, neighbour cell search and distance filtering.",
+"Describe each index briefly and its strengths and weaknesses, such as cell shape, adaptivity and neighbour lookups, then match each to a use case.",
+"Explain candidate search and ranking, sending offers with timeouts, and an atomic compare-and-set on driver state so only one ride wins.",
+"Explain each algorithm, how much of the graph it explores, why plain Dijkstra is too slow at map scale, and the preprocessing trade-off.",
+"Describe the tile pyramid addressed by zoom and coordinates, a batch build to object storage with versioned paths, and long CDN caching.",
+"State the one-owner-per-seat rule, then compare pessimistic locks, conditional updates and TTL holds, and say which you would use.",
+"Cover CDN for static content, caching the seat map, a virtual waiting room that admits users at a safe rate, and protecting inventory.",
+"Explain a client-generated key per intent, storing it with a unique constraint and request hash, and replaying the saved response.",
+"Explain why sender cannot tell a lost message from a lost ack, then combine at-least-once delivery with idempotent processing.",
+"Contrast a stored balance with append-only entries where debits equal credits, and mention audit, recovery and derived balances.",
+"Treat the outcome as unknown, keep the payment pending, resolve with the same idempotency key, a status query, webhooks or reconciliation.",
+"Start with a trie caching top results per node built from query logs, then add caching layers, sharding and replication as scale grows.",
+"Separate the read path from updates: periodic rebuilt snapshots plus a small fast-updating layer for trending queries.",
+"Define event time and processing time, why they differ, and how a watermark decides when a window closes and handles late clicks.",
+"Cover durable raw events, exact dedup, event-time windows, checkpoints and idempotent sinks, plus batch reconciliation for billing.",
+"For each system name its key trade-off, such as consistency vs speed or precompute vs freshness, and say how you would explain it out loud."
+]}

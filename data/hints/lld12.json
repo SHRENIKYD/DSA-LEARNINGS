@@ -1,0 +1,31 @@
+{"quiz":[
+"Most log calls are filtered out. Think about the cost of building a message nobody will see.",
+"Compare the options by intent: changing an interface, treating many as one, simplifying a subsystem, or adding behaviour with the same interface.",
+"Normally an event climbs to parent loggers too. Think about what turning additivity off does to that climb.",
+"MDC data is stored per thread. Which thread actually writes the message in async logging?",
+"Each partition goes to only one member of a group. Compare partitions to members.",
+"The offset was never saved. Where will the next consumer start reading?",
+"Order is kept inside one partition. Is it kept across different partitions?",
+"Lag is a count of messages not yet handled by the group. Which two offsets in the partition give that count?",
+"Think about which object sees the whole board and both kings, not just one piece's movement pattern.",
+"Two facts decide the outcome when no legal move exists. Recall which name goes with being in check.",
+"Think about what ROLLBACK must restore if a key is set twice in one transaction. Which old value is the right one?",
+"Rolling back the outer transaction must still undo the inner work. Where should the inner undo info go?",
+"Lazy expiry only runs when a key is read. Think about what happens to expired keys that are never read again."
+],
+"interview":[
+"Cover Logger, Level, LogMessage, Appender, Formatter, Filter, the logger hierarchy, and how a call flows through them.",
+"Mention cheap level checks, async appenders with a bounded queue, a drop or block policy on overflow, and batching I/O.",
+"Explain that a logger evaluated lookups inside logged text, enabling remote code, and that loggers must never interpret user data.",
+"List topics, partitions, an append-only log, offsets, producers, consumer groups, and how partitions are assigned.",
+"Define each by loss and duplication, tie them to when offsets are committed, and explain idempotent processing.",
+"Use the order ID as the partition key so one order always lands on one partition, and scale with more partitions.",
+"Explain partitions being reassigned, processing paused, possible duplicates from uncommitted work, and ways to reduce the pain.",
+"Cover Board, Piece, Move and Game classes, piece move patterns, and a game-level check that a move does not leave your king in check.",
+"Generate all legal moves for the side to move; then check whether the king is in check to tell the two outcomes apart.",
+"Mention the Command pattern or a move history storing what changed, including captures and special moves, to reverse each step.",
+"Describe a main map plus a stack of undo maps for transactions, with BEGIN, ROLLBACK and COMMIT and nested behaviour.",
+"Cover lazy expiry on reads, a periodic sampled sweep, a min-heap or expiry index, and an injectable clock for tests.",
+"Explain that queued commands run together without rollback on errors, versus our undo-based rollback, and how WATCH fits in.",
+"Split time across clarifying, entity design, core happy path, edge cases and tests, keeping working code early."
+]}

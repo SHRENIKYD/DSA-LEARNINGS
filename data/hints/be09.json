@@ -1,0 +1,33 @@
+{"quiz":[
+"Think about the window where a reader could refill the cache with old data. Which order makes that window smallest?",
+"A leaderboard needs members ordered by score, quick score increments and fast rank lookups. Which Redis type supports all three?",
+"Picture a popular key expiring and every request missing at the same moment. Where do they all go?",
+"A fixed window resets its counter at the boundary. Imagine requests at the end of one window and start of the next.",
+"Imagine your lock expired while you were paused and another worker took it. What would a plain DEL do to their lock?",
+"A longer TTL or a retry does not stop a late writer. Think about what the resource itself could check on every write.",
+"If the worker crashes after processing but before ack, the message is delivered again. What guarantee is that?",
+"Kafka chooses a partition by hashing something on each message. Order is kept only within one partition.",
+"The message is hidden only for the timeout. What happens when the timeout passes before the job is done?",
+"Picture thousands of clients that failed at the same moment and use the same backoff formula. When do they all come back?",
+"Retry only errors that might succeed later. Would sending the same invalid request again ever work?",
+"The id and the balance change must succeed or fail together. Where can you get that guarantee?",
+"Each pod has its own scheduler that knows nothing about the others. How many will fire?",
+"Think about a holder that crashes without releasing. Without an expiry, would the lock ever go away?",
+"Two separate commands are not atomic. What if the process dies right after the first one?"
+],"interview":[
+"Explain reading from cache, falling back to the database, filling the cache, and deleting the key after writes commit.",
+"Name the sorted set and commands to add or increment scores, get top N, and get a user's rank.",
+"Define each problem, then mention null caching or bloom filters, locks or early refresh, and jittered TTLs.",
+"Compare fixed window, sliding window, and token bucket, and stress atomic updates with Lua or INCR plus expiry.",
+"Explain SET NX with TTL and owner token, then risks like pauses, expiry, failover, and fencing tokens.",
+"Compare routing and work queues, replayable logs with ordering, and a managed simple queue, with use cases.",
+"Explain at-most-once and at-least-once, and why exactly-once really means at-least-once plus idempotent processing.",
+"Mention storing the message id with the business change in one transaction and a unique constraint to block repeats.",
+"Cover retrying only transient errors, exponential backoff with jitter, a max attempts limit, and a DLQ with alerts.",
+"Mention a distributed lock, a database lock such as ShedLock, leader election, or a single external scheduler.",
+"Explain losing work on crash or deploy, no retries, no visibility, and no scaling across instances.",
+"Discuss cache keys built from query params, short TTLs, versioned keys for invalidation, and caching only hot pages.",
+"Explain falling back to the database, timeouts, circuit breakers, protecting the database from a flood, and alerts.",
+"Explain the dual-write problem, writing the event to an outbox table in the same transaction, and a relay publishing it.",
+"Check consumer errors, slow dependencies, poison messages, and producer rate, then scale consumers or shed load."
+]}

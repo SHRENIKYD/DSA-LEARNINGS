@@ -1,0 +1,33 @@
+{
+  "quiz": [
+    "Think about when the instance is built and what the bundler does with a class that nobody ever asks for.",
+    "Component-level providers belong to the element injector. How many elements are there?",
+    "The lookup walks two trees. Which one does Angular climb before jumping to the other?",
+    "inject() only works while Angular is constructing something or running a DI-aware function. Which option runs later?",
+    "One recipe builds a new object per token; another just forwards the lookup to a token that already exists.",
+    "Ask yourself what is left of a TypeScript interface once the code is compiled to JavaScript.",
+    "Picture nested function calls: the last interceptor to see the request is the first to see the reply.",
+    "Requests and headers cannot be changed in place. What method gives you a modified copy?",
+    "HttpClient methods return cold Observables. What has to happen before a cold Observable does any work?",
+    "The testing provider overrides the backend of a client that must already be registered. Order matters.",
+    "It is usually called in afterEach and complains about something the test forgot to handle.",
+    "Remember the lookup order: the element injector of the component is checked before the test environment injector.",
+    "Each inject() option has a decorator with almost the same name from the constructor-injection era."
+  ],
+  "interview": [
+    "Cover who creates dependencies, then name the wins: coupling, testing, scoping and configuration.",
+    "Compare where each registers, whether it is tree-shakable, and how many instances each placement creates.",
+    "Mention functional guards and interceptors, inheritance, the options object and the injection context rule.",
+    "Describe two hierarchies, the order of the walk, where the instance is cached and what happens at the very top.",
+    "Give one sentence and one concrete example per recipe, then mention multi and caching per injector.",
+    "Explain why classes work as keys and strings or interfaces do not, then mention typing and default factories.",
+    "Describe the function signature, how it is registered, request immutability and ordering, then contrast with the class style.",
+    "Use catchError in one interceptor, inject dependencies at the top, and think about whether to re-throw.",
+    "Name the two testing providers, the controller, how you answer requests and the final safety check.",
+    "Explain the hidden current injector pointer, list where it is set, and give three different fixes.",
+    "Think about projected content and who can see which providers, then where a host-limited lookup stops.",
+    "The refresh must be a shared single-flight resource; also think about loops and retry limits.",
+    "Split the config into narrow typed tokens and decide how it is loaded before the app renders.",
+    "Compare scoping, laziness, test overrides and SSR safety across the three approaches."
+  ]
+}

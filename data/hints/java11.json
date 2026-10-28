@@ -1,0 +1,32 @@
+{"quiz":[
+"Calling run directly is just a normal method call; ask which thread actually executes it.",
+"Compare states for waiting on a monitor lock versus waiting for a notify or a timeout.",
+"volatile gives visibility, but increment is a read, add and write sequence; ask if that is atomic.",
+"Ask which object each kind of synchronized method locks: static ones versus instance ones.",
+"Ask whether a thread that already owns a monitor must wait to acquire that same monitor again.",
+"A thread can wake without a notify, and the condition may change before it gets the lock back.",
+"wait and notify have a rule about owning the object's monitor when you call them.",
+"Locks, volatile and join each create ordering guarantees; look for an option based only on timing.",
+"Without synchronization, the compiler and CPU may reorder each thread's write and read.",
+"Recall the four conditions for deadlock and which one a fixed lock ordering makes impossible.",
+"Compare the failure modes by CPU use and thread state. Here threads are busy and RUNNABLE, yet nothing completes.",
+"Without a lock on the fast path, the reference can be seen before the constructor's writes are visible.",
+"The memory model gives final fields a special guarantee when the object is safely constructed."
+],
+"interview":[
+"Compare separate memory spaces versus shared heap, and list what threads share and what each has privately like the stack.",
+"Explain that start makes a new thread while run is a plain call, and why implementing Runnable is usually preferred.",
+"List NEW, RUNNABLE, BLOCKED, WAITING, TIMED_WAITING and TERMINATED, and contrast lock waiting with condition waiting.",
+"Cover mutual exclusion plus visibility, and which monitor is used for instance methods, static methods and blocks.",
+"Explain volatile gives visibility and ordering but not atomic compound actions, and give a good use like a stop flag.",
+"Define the relation and list rules like program order, monitor lock, volatile, thread start and join, with a small example.",
+"Explain reordering exposing a half-built object, then fixes like volatile, the holder class idiom, or an enum.",
+"Compare lock release behaviour, the spurious wake-up reason for the loop, and when notifyAll is safer.",
+"Use a synchronized buffer with wait in while loops for full and empty, and notifyAll after put and take.",
+"Define it with the four conditions, then cover lock ordering, tryLock with timeout, thread dumps, and recovery options.",
+"Define each with a real example, then fixes like random backoff for livelock and fair locks for starvation.",
+"Explain that a race is a logic bug in timing, while a data race is unsynchronized access to shared memory; show one without the other.",
+"Mention object header mark word, thin and inflated locks, removal of biased locking, and virtual thread pinning changes.",
+"Explain that ARM has a weaker memory model so missing happens-before shows up there, and fix it with proper synchronization and stress tests.",
+"Explain cooperative interruption, checking the flag, and restoring or propagating the interrupt instead of swallowing it."
+]}

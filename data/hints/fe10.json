@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "Ask who owns the data: your component or a remote system that can change without you knowing.",
+  "If a value can always be computed from other state, storing it separately risks the two going out of sync.",
+  "Recall how React decides that a context value changed: by deep equality or by reference. Is an inline object the same each render?",
+  "React.memo does not block context updates. Ask which value this button really needs, and whether that value ever changes.",
+  "Think about what tools like time travel, replaying actions and memoized selectors need from a reducer.",
+  "Plain reducers must never mutate state. Think about what createSlice wraps your reducer with so the push is safe.",
+  "A selector decides which slice of the store a component watches. What does a component watch with no selector?",
+  "Stale means it is eligible to refetch. Think about whether cached data is hidden or shown while that happens.",
+  "The server decides what each list contains and in what order. Which option keeps cached lists correct without throwing away everything?",
+  "Think about an older refetch that was already running when you wrote your optimistic value into the cache.",
+  "Optimistic updates fit actions that are cheap to undo and almost always succeed. Which action is risky to pretend succeeded?",
+  "Compare the modes by when they first validate (change, blur, submit) and what they do after that first check."
+ ],
+ "interview": [
+  "Classify the state (local UI, shared client, server, URL, form) and explain putting each kind where it fits, starting as local as possible.",
+  "Explain that every consumer re-renders on any value change, with no selectors, while stores let components subscribe to slices.",
+  "Walk through dispatch, middleware, the reducer computing new state, the store notifying subscribers, and selectors deciding re-renders.",
+  "Mention less boilerplate, createSlice, Immer for safe updates, a good default store setup, and RTK Query for data fetching.",
+  "Separate server state (React Query) from client state, then compare Zustand's small API with Redux Toolkit's structure and devtools.",
+  "Explain showing cached data first then revalidating in the background, and mention staleTime, cache time and refetch triggers.",
+  "Talk about invalidating or updating related cache keys after the mutation, consistent query key design, and refetch on focus.",
+  "Describe updating the cache first, saving a snapshot, rolling back on error, cancelling in-flight queries, and handling rapid repeated clicks.",
+  "Define both input styles, then explain that using refs instead of state per keystroke avoids re-rendering the whole form.",
+  "Mention sharing one schema between client and server, and that client checks are for user experience while the server must enforce rules.",
+  "Identify a race between out-of-order responses, then fix with aborting old requests, ignoring stale results, or query keys per text.",
+  "Explain subscribing to a store outside React safely during concurrent rendering, avoiding tearing where parts show different values.",
+  "Split state by kind (server cache, cart, UI, URL, forms), explain tools for each, and cover performance, caching and team boundaries.",
+  "Profile first to find what re-renders, then keep input state local, split context, use selectors, memoize, or defer heavy work."
+ ]
+}

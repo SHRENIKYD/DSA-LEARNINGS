@@ -1,0 +1,31 @@
+{"quiz":[
+"Think about boxing: what happens when a value type is stored as object.",
+"Compare how each platform keeps type information at run time and handles value types.",
+"Pick the constraint that guarantees the type has a CompareTo method, and nothing more.",
+"Ask whether string is a reference type or a value type, and what the default value is for each kind.",
+"Removing from the front shifts every remaining element. Sum those shifts over all calls.",
+"A negative result is the bitwise complement of where the item would be inserted.",
+"Compare the options by how many lookups they do and whether a missing key throws an exception.",
+"Changing every key by hand is error prone. Think about what Dictionary lets you pass in to control key equality and hashing.",
+"In a sorted set, think about what decides whether two items count as the same item.",
+"Recall whether .NET's priority queue is a min-heap or a max-heap.",
+"Ask what the list has to do before it can unlink a node when you give it a value rather than the node itself.",
+"Think about how a stack is used: which item comes off first, and does enumeration follow that order?",
+"Think about what happens when subtracting two large ints of opposite sign.",
+"Accept the weakest type you need. Which type allows a single pass and lets callers pass arrays, lists or queries?"
+],"interview":[
+"Cover type safety, no casting, and avoiding boxing compared with object based collections.",
+"List class, struct, new(), base class, interface, notnull, unmanaged and allows ref struct style constraints.",
+"Explain buckets, hash codes, entries with chains, resizing, and why a good hash gives O(1).",
+"Compare ordering, memory, insertion cost and lookup speed for the three options.",
+"Combine a dictionary with a linked list, and mention capacity, updates and thread safety pitfalls.",
+"Mention min-heap ordering, no update priority, not stable for ties, and enumeration not sorted.",
+"Explain the version check in the enumerator, and safe options like RemoveAll or looping backwards.",
+"Explain natural ordering, external ordering, and equality with hashing, with a use case for each.",
+"Explain shared code for reference types and specialized code per value type.",
+"Explain static abstract interface members and writing one numeric algorithm for many number types.",
+"Compare the struct enumerator on List with interface boxing when going through IEnumerable.",
+"Consider frozen or immutable sets built once, the right string comparer, and memory use.",
+"Check the key's GetHashCode and Equals, mutable keys, collisions, and profile the lookups.",
+"Use sorted collections keyed by price with queues per level, and discuss match and cancel costs."
+]}

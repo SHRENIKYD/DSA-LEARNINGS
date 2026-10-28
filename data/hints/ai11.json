@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Think about what the model actually outputs: text or a structured request. Something else must run it.",
+  "The model can only read the text you give it about each tool. Which field explains when to use the tool?",
+  "ReAct loops think, act, then look at what came back. What new information arrives after an action?",
+  "Step k resends all k earlier chunks. Add up 1 + 2 + ... + n and see how that total grows.",
+  "Small facts that must be exactly right need storage you can look up precisely, not fuzzy similarity.",
+  "MCP splits control three ways: tools, resources and prompts each have a different owner. Recall who picks tools.",
+  "Ask whether text from an outside page should ever be treated as a command or only as data.",
+  "Multiply the step reliability by itself 10 times: 0.95 to the power 10.",
+  "Multi-agent helps when work is wide and independent. Look for the case where the task is small or tightly linked.",
+  "An agent can reach the right end state in a bad way. Think about cost, safety and the path it took.",
+  "Rank actions by impact and how hard they are to undo. Look for one that is risky and irreversible.",
+  "A model can ignore instructions in its prompt. Where can limits be enforced so they cannot be skipped?",
+  "Separate two checks: is the shape of the call valid, and is the value true in the real world?",
+  "Running a task several times and requiring every run to pass tells you about consistency, not just luck."
+ ],
+ "interview": [
+  "Cover the full loop: tool definitions sent, model returns a structured call, your code runs it, the result goes back.",
+  "Explain the thought, action, observation cycle and why fresh real results reduce guessing on multi-step tasks.",
+  "Mention few focused tools, clear verb names, descriptions saying when to use them, enums, and strict input types.",
+  "Contrast step-by-step flexibility with planning up front; say when each fits and mention replanning on failure.",
+  "Describe memory tiers: recent turns, rolling summary, exact profile facts, and searchable past episodes.",
+  "Explain the host, client, server setup and what tools, resources and prompts are, then cover trust and injection risks.",
+  "Say when work is wide or needs independent checking, then cover costs: tokens, latency, coordination and debugging.",
+  "List failure modes like loops, tool misuse, bad arguments and injection, and pair each with a concrete guard.",
+  "Cover a task set from real logs, sandboxed end-state checks, trajectory grading, repeat runs, and cost tracking.",
+  "Score actions by impact and reversibility, tier the approval, and reduce fatigue with batching and clear summaries.",
+  "Start from traces of failed runs, cluster failures by type, fix the biggest cluster, and add evals to stop regressions.",
+  "Treat the run as durable saved state with a tool call ledger and idempotency keys so it can resume safely.",
+  "Spot the missing observation truncation and repeat detection, and suggest limits, summaries and better query planning."
+ ]
+}

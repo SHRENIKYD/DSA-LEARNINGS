@@ -1,0 +1,37 @@
+{
+ "quiz": [
+  "A dot product of many unit-variance terms has variance that grows with dimension. Think about softmax saturation.",
+  "In generation a token should not see the future. Think about which scores are blocked.",
+  "Each query distributes its attention over a set of items that must add up to one.",
+  "Split the model width evenly across heads: divide width by the number of heads.",
+  "Attention has four d by d matrices; the MLP has two d by 4d matrices. Count each in units of d squared and add.",
+  "RoPE rotates vectors so their dot product depends on relative position. Which vectors meet in that dot product?",
+  "Only what later queries look back at needs saving. Old tokens never need their own query again.",
+  "Use 2 times layers times KV heads times d_head times tokens times 2 bytes, then convert to GiB.",
+  "With batch 1, each weight is read from memory and used for about one operation. Compare memory speed to compute speed.",
+  "Symmetric int8 maps the largest absolute value to the largest positive int8 code.",
+  "Rounding to the nearest step can be off by at most part of one step. How much of it?",
+  "The scale is set by the largest value in the group. What happens to the step size for all the small values?",
+  "Chinchilla found model size and data should grow together. Recall the rough tokens-per-parameter rule.",
+  "Recall the rule of thumb tying compute to parameters N and tokens D, with a constant for forward and backward passes.",
+  "Top-k routing means each token only runs through k of the experts, not all of them.",
+  "Only the FFN is split into experts; attention and embeddings are shared. So total is less than 8 times 7B.",
+  "Ask whether it changes the math or only how data moves between fast and slow GPU memory.",
+  "Each layer lets information hop one window further. Multiply the window by the number of layers."
+ ],
+ "interview": [
+  "Walk through Q, K, V projections, the score table, scaling by root dk, the mask, softmax, and the weighted sum of V.",
+  "Explain that one head forces one blend per token, while several smaller heads can track different relations at similar cost.",
+  "Break it into attention projections and MLP weights, give the roughly 12 d squared total, and work a real example.",
+  "Contrast fixed added absolute codes with rotating Q and K so scores depend on relative offset, and why that generalizes.",
+  "Explain why past K and V are cached, give the memory formula, and mention GQA or quantization to shrink it.",
+  "Use arithmetic intensity: decode reads every weight for about one FLOP, while big batches reuse each weight many times.",
+  "Cover absmax scaling, rounding and clamping, the half-step error bound, and why fewer levels and outliers hurt 4-bit.",
+  "Explain power-law loss in params, data and compute, the 6ND FLOP rule, and the Chinchilla tokens-per-param balance.",
+  "Describe the router picking top-k experts, active versus total params, and load balancing as the main training issue.",
+  "Explain exact attention computed in tiles in fast SRAM with online softmax, avoiding writing the full score matrix.",
+  "Cover position scaling for RoPE, fine-tuning on long data, and memory and attention cost limits at long length.",
+  "Start from weight memory, add KV cache per user from the formula, then size GPUs, batching and parallelism.",
+  "Separate memory from compute: memory becomes linear but compute stays quadratic, and KV cache still grows."
+ ]
+}

@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "Ask whether an ES module import copies the value at import time or stays linked to the exporting variable.",
+  "Recent Node versions have improved interop. Think about what changed for require and synchronous modules.",
+  "Count the elements; once all are used, the iterator reports it is finished.",
+  "The first next starts the generator and its argument is ignored. Which next fills in x?",
+  "Spread reads values until done is true. Which object carries the return value, and is it kept?",
+  "Recall the equality rule Map uses for keys, how it treats NaN, and how it compares objects.",
+  "Weak references let keys be garbage collected. Think of objects you do not control.",
+  "Recall which built-in methods include symbol-keyed properties and which skip them.",
+  "Compare Symbol.for, which uses a global registry by key, with plain Symbol, which creates a value each time.",
+  "Think about what a set trap must return and how setters on the prototype get the right this.",
+  "Recall which values trigger the fallback for ?? and for ||, and what ?. returns on null.",
+  "The grammar has a special rule about mixing ?? with || or && without parentheses. Check each line.",
+  "Think about how engines optimise objects with fixed shapes vs collections built for frequent changes."
+ ],
+ "interview": [
+  "Compare syntax, loading timing, static analysis, live bindings, and top-level await.",
+  "Explain that importers see the current value of the exported variable, with a counter example.",
+  "Explain Symbol.iterator returning an object with next, and for...of calling it until done.",
+  "Explain pausing at yield, passing values with next, and how return and throw end or inject errors.",
+  "Compare key types, ordering, size, frequent changes, and fast membership checks.",
+  "Explain that keys are weakly held so they can be collected, which makes size and iteration non-deterministic.",
+  "Describe a cache that keeps objects alive forever, then fixes like WeakMap, limits or cleanup.",
+  "Explain unique keys, the global registry, and well-known symbols like iterator and toPrimitive.",
+  "Explain traps that intercept operations and Reflect methods that run the default behaviour safely.",
+  "Cover get traps that track dependencies, set traps that trigger effects, and nested object handling.",
+  "Explain short-circuiting on null or undefined, and pitfalls like hiding bugs or mixing with ||.",
+  "Mention package.json exports with import and require conditions, type definitions, and avoiding dual state.",
+  "Compare pull-based sync sequences, promise-based async steps, and async streams of values."
+ ]
+}

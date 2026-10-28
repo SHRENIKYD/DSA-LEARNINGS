@@ -1,0 +1,30 @@
+{"quiz":[
+"The resolver already knows which server is in charge of the zone. Does it need to start from the root again?",
+"Resolvers that cached the record earlier keep it for the old TTL they received, not the new one.",
+"Think about which records must live at the zone apex, and the rule about a CNAME sharing a name with others.",
+"A pull CDN only stores what it has been asked for. What happens the very first time?",
+"Origin load equals the miss rate. Compare the miss rate before and after.",
+"A forward proxy acts for clients going out; a reverse proxy acts for servers taking requests in.",
+"Paths, headers and cookies live inside the HTTP request. Which option can be read without parsing HTTP at all?",
+"Think about how HTTP/2 uses connections and what unit a layer 4 balancer spreads.",
+"Detection takes roughly the interval times the number of failed checks needed.",
+"Consider a shared dependency failing: what would every instance's health check report at once?",
+"Think about how many real users can appear from a single IP address.",
+"Three options depend on clients refreshing DNS answers. Which approach keeps the same IP and changes routing behind it instead?",
+"The failed region's traffic is shared among the remaining regions. Add it up per survivor."
+],"interview":[
+"Walk through browser and OS cache, the recursive resolver, root, TLD and authoritative servers, and caching by TTL.",
+"Explain TTL as how long answers are cached. Trade fast changes and failover against query load and latency.",
+"Explain edge caching close to users. Mention cases like private, highly dynamic or local-only content where it adds little.",
+"Compare uploading content ahead of time versus fetching on first miss. Cover control, storage, first-hit latency and fit.",
+"Forward proxy sits in front of clients, reverse proxy in front of servers. Give an example of each and their uses.",
+"Compare what each layer sees, speed, features like path routing and TLS termination, and when you need each.",
+"Cover active and passive checks, interval, timeout and thresholds, shallow versus deep checks, and flapping.",
+"Explain pinning users to a server, why it is used, and the downsides for failures and balance. Prefer stateless design.",
+"Explain routing users to regions by health and location. Compare DNS-based steering and its caching with anycast routing.",
+"Cover headers like X-Forwarded-For, the PROXY protocol at layer 4, and trusting only known proxies.",
+"Think of shallow checks missing broken dependencies or partial failures. Mention user-level metrics and better checks.",
+"Cover CDN caching and tiers, origin shielding, routing users to regions, protocols, cost and failover.",
+"Cover redundant pairs, floating IPs, anycast, DNS with multiple addresses, and managed balancers.",
+"Mention long, costly requests, streaming, GPU capacity, and routing by load or cache affinity rather than simple round robin."
+]}

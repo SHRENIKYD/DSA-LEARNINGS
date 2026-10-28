@@ -1,0 +1,30 @@
+{"quiz":[
+"Compute 62 to the power of each length and pick the smallest one with comfortable room above 6 billion.",
+"Checking first and inserting second leaves a race window. What can the database enforce in one atomic step?",
+"Think about which redirect type the browser remembers. If it is remembered, does the next click reach your server?",
+"Compare cost per GB, durability and scaling for large immutable blobs versus small rows that must be queried.",
+"Imagine a crash between the two writes. Which leftover is harmless and invisible, and which one breaks a user request?",
+"Separate the two numbers of a token bucket: one limits how much can be spent at once, the other how fast it refills.",
+"Picture a client sending its full limit at the end of one window and again at the start of the next.",
+"Two gateways each read the count, then write it back. Think about what can go wrong between those steps, and how a script helps.",
+"A limiter should not cause an outage, yet some endpoints are costly to abuse. Look for the option that treats them differently.",
+"Sorting inside one shared queue still shares the same workers and quota. Think about what would truly stop one class blocking another.",
+"The queue will redeliver the message, so a second send will be tried. What makes repeating that send harmless?",
+"Reads are only guaranteed fresh when the read and write replica sets must overlap, meaning R + W greater than N.",
+"If a delete simply erases data, what stops an old replica from copying the value back?",
+"Think about how load and rebalancing work differ when each machine owns one big range versus many small ones."
+],"interview":[
+"Go through requirements, quick estimates, API, data model, code generation, caching for reads, and the redirect status choice.",
+"Explain encoding a unique number in base62, avoiding a single counter with leased ID blocks, and handling custom aliases atomically.",
+"Point out the much larger payload, estimate storage, then split content into object storage and metadata into the database with a safe write order.",
+"Describe each algorithm, how it treats bursts, memory per key, and accuracy at window edges.",
+"Cover shared state in Redis, atomic check with a script, sharding by key, and local counters as a trade-off between accuracy and latency.",
+"Classify priority on the server, then isolate classes with separate queues, worker pools and reserved provider quota.",
+"Assume at-least-once delivery, give each notification a stable dedup key checked atomically, and pass it to providers as a collapse key.",
+"Cover consistent hashing with virtual nodes, replication to N nodes, quorum reads and writes, and repair methods like hinted handoff and anti-entropy.",
+"Explain that overlap is not linearizability, and list cases that break it, such as sloppy quorums, concurrent writes and partial writes.",
+"Describe the write path (log, memtable, flush to sorted files), compaction, and the read cost, plus why it suits write-heavy stores.",
+"For each use case, weigh what loss or staleness costs, then choose quorum values, and say when a quorum store is the wrong tool.",
+"List each use of Redis and give each its own failure policy, and mention circuit breakers and protecting the database from stampedes.",
+"Give a rough minute split across requirements, estimates, API and data, high-level design, deep dives and wrap-up."
+]}

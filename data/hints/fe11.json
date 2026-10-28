@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Look for the newer metric that measures responsiveness across all interactions, not just the delay of the first one.",
+  "Some properties can be handled by the compositor without layout or paint. Which property moves an element that way?",
+  "Both avoid blocking the parser. Think about execution timing and whether the order of scripts is kept.",
+  "Alternating writes and reads forces the browser to compute layout again each time. What is that pattern called?",
+  "The LCP image is above the fold and matters most. Ask what lazy loading does to its start time, and how to tell the browser it is urgent.",
+  "Layout shift happens when space appears after content loads. Think about how to reserve the space before the image arrives.",
+  "Multiply the CSS width by the device pixel ratio to get the pixels needed, then pick the smallest candidate that covers it.",
+  "Divide the scroll offset by the row height and round down.",
+  "Ask whether you want calls spread evenly while typing, or one call after the user stops. Also think about old responses arriving late.",
+  "Compare hidden-but-still-laid-out with not-generated-at-all. Which option makes the element take up no box at all?",
+  "Think about what the browser must wait for before it can scroll, if a handler might cancel the event.",
+  "A page passes only if all three metrics are good at the 75th percentile. Compare each value against its good threshold.",
+  "Think about how a bundler splits code at import points that are loaded at run time.",
+  "Combine two tools: one that tells you when a placeholder is near the viewport, and one that loads code on demand."
+ ],
+ "interview": [
+  "Cover parsing HTML to DOM and CSS to CSSOM, building the render tree, layout, paint and composite, and what blocks rendering.",
+  "Explain that reflow recomputes geometry and repaint redraws pixels, with examples of properties that trigger each and their cost.",
+  "Describe interleaved DOM reads and writes forcing synchronous layout, and fixes like batching reads before writes or using requestAnimationFrame.",
+  "Name LCP, INP and CLS with their good thresholds at the 75th percentile, and typical causes like slow images, long tasks and missing size reservations.",
+  "Break LCP into server time, resource load delay, load time and render delay, then fix each with preloading, priority and smaller images.",
+  "Mention width and height or aspect-ratio for media, reserved slots for ads, and font loading strategies that avoid size jumps.",
+  "Give formulas for the first visible index, visible count and overscan, plus edge cases like variable heights, fast scrolling and focus.",
+  "Explain that debounce waits for a pause and throttle limits rate, give use cases for each, and outline a timer-based debounce.",
+  "Talk about code splitting, tree shaking, removing heavy dependencies, compression, caching and deferring non-critical scripts.",
+  "Cover modern formats, responsive srcset and sizes, lazy loading below the fold, correct dimensions, compression and a CDN.",
+  "Explain that these properties can run on the compositor without layout or paint, and that will-change promotes a layer but costs memory.",
+  "Explain lab vs field data differences such as devices, networks, real interactions and caches, then use real user monitoring to find causes.",
+  "Mention virtualization, recycling DOM nodes, pagination with cursors, image lazy loading, and limiting memory by dropping far-off items."
+ ]
+}

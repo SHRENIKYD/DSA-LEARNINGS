@@ -1,0 +1,33 @@
+{
+  "quiz": [
+    "Creating something has its own success code. Also think about how the client learns the URL of the new item.",
+    "Routes are checked in the order they are registered. What does a path parameter match, and which route is listed first?",
+    "A controller's job is to translate HTTP in and out. Where should rules and data access live instead?",
+    "Think about the client's experience: is it better to learn about every problem in one reply, or fix them one at a time?",
+    "Ask who must act to fix the problem: the caller changing the request, or the server fixing itself.",
+    "Express decides a middleware is for errors by looking at its function signature. Count the arguments.",
+    "Constraint annotations on a field only run if something triggers validation on the incoming parameter.",
+    "Think about what could leak in raw exception text, and who might read it.",
+    "Validation checks the shape of one request. A business rule needs knowledge of existing data to decide.",
+    "Programming to an interface means the service does not care which storage sits behind it. What does that allow?",
+    "415 is about media type. What does curl send by default, and what header tells Spring the body is JSON?",
+    "Mass assignment happens when every field in the body is copied onto your object. How can you limit which fields are taken?",
+    "PUT replaces the whole resource with what you send. What does sending the same full replacement twice change?"
+  ],
+  "interview": [
+    "Trace the path: server thread, routing or dispatcher, controller, service, repository, then serialising the result to JSON with a status.",
+    "Explain that the path identifies a resource, query params filter or sort, and the body carries data to create or update.",
+    "Describe each layer's single job, then mention testability, reuse, and keeping HTTP details out of business logic.",
+    "Map each operation to a code, such as 201 for create and 204 or 200 for delete, and explain 404 for missing items.",
+    "Mention annotations plus a trigger for validation in Spring, a schema or validator in Express, and a 400 reply listing all errors.",
+    "Cover a central handler that maps exceptions to status codes and one error shape, and how each framework wires it.",
+    "Think about route order and how a path parameter can swallow a literal segment. Explain the fix.",
+    "Define a DTO as a shape made for the API, then explain leaking fields, mass assignment, and tying the API to the schema.",
+    "Explain swapping in a fake or mock repository and testing the service without a database, with a short test outline.",
+    "Mention version numbers or ETags with If-Match, rejecting stale writes with 409 or 412, and letting the client retry.",
+    "Talk about idempotency keys sent by the client, storing the result, and replaying it on retry instead of creating again.",
+    "Think about thread safety: shared maps and counters without locks, plus data living only in memory of one process.",
+    "Propose one consistent error body with fields like code, message, and details, shared docs, and stable machine-readable codes.",
+    "Cover reviewing security, validation, auth checks, error handling, tests, and data rules, and owning design decisions yourself."
+  ]
+}

@@ -1,0 +1,30 @@
+{"quiz":[
+"A list has no index math. Count how many next links you must follow to reach position k.",
+"You already hold X. Count the pointer writes needed to hook a new node after it. Do you need to walk the list?",
+"Think about which node's next must change for each operation. Can a singly list step backwards from the tail?",
+"Most edits change the next of the node before. What is the node before the head?",
+"Fast should stay a fixed gap ahead so slow ends just before the node to remove. Work out that gap from n.",
+"Trace each round, moving slow by 1 and fast by 2, and stop when the loop condition fails.",
+"Different nodes can hold the same value. Think of a list with repeated values but no cycle.",
+"Think about the gap between the two pointers inside the loop and whether it can always shrink to zero.",
+"When the loop ends, the current pointer has walked off the end. Which pointer points at the last node processed?",
+"Split the list into full groups of 3, reverse each, and leave any short leftover alone.",
+"Splicing re-hooks existing nodes. Count what new memory the iterative version needs.",
+"Eviction starts from a node at the tail. How would you know which map entry to delete?",
+"Look at the third constructor argument: it chooses between insertion order and access order."
+],"interview":[
+"Compare by operations: index access, middle inserts and deletes with a known node, memory use and cache behaviour.",
+"List what the prev pointer gives, like walking back and O(1) delete or tail removal, and what it costs in memory and code.",
+"Explain the fake node before the head, why edits on the node before benefit, and returning dummy next as the new head.",
+"Describe phase one with speeds 1 and 2 meeting inside the cycle, then phase two to find the cycle start, with the reason it works.",
+"Give the three-pointer loop and its invariant, the recursive version, and compare space and stack depth.",
+"Describe the dummy plus fast and slow with a fixed gap, and edge cases like removing the head or a one-node list.",
+"Explain slow and fast pointers, how the loop condition picks the first or second middle, and which algorithms need which.",
+"Combine a hash map to nodes with a doubly linked list ordered by recency, using sentinels, and explain get, put and eviction.",
+"Describe the dummy and group pointers, finding the kth node, reversing and reconnecting, and bugs like losing the next group.",
+"Talk about per-node object and boxing overhead, scattered memory and cache misses, and that big-O hides constants.",
+"Compare merging one by one, a min-heap of the k fronts, and pairwise divide and conquer, with their time costs.",
+"Explain the two pointers that switch lists, why they meet, and how to handle cycles with Floyd's detection first.",
+"Explain why even get needs a write, then options like lock striping, approximate recency, or concurrent cache libraries.",
+"Explain that hangs usually mean an accidental cycle, then draw the pointers, test small edge cases and add step limits."
+]}

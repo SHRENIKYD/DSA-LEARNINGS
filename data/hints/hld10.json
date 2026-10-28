@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "In CAP, C is a strict guarantee about reads and the latest write. Recall its formal name.",
+  "In a distributed system you cannot choose whether the network fails. What remains your decision?",
+  "PACELC asks: during partition, availability or consistency; else latency or consistency. Level ONE favours speed.",
+  "Check R + W against N for freshness, then ask what a read needs from every replica.",
+  "Compare element by element. If neither clock is all less or equal to the other, what are they?",
+  "Your clock must end up at least as large as both clocks, and receiving is itself an event. Which update does both?",
+  "Lamport clocks give one number per event. Can a single number show that two events are unrelated?",
+  "Durability and partitions are not the issue here. Which session guarantee covers a user reading right after their own update?",
+  "Linearizable and sequential models need coordination across the partition. Find the strongest model that needs only local writes plus dependency tracking.",
+  "Each round the number of informed nodes multiplies. How many rounds until everyone knows?",
+  "A direct ping failed. Why ask other nodes to try?",
+  "Phi is a log scale: phi of 1 is a 10% chance, phi of 2 is 1%. Continue the pattern.",
+  "Failure detectors can make mistakes, such as during long pauses. What stops an old leader writing?"
+ ],
+ "interview": [
+  "Explain C, A and P simply, that partitions are not optional, and common myths like picking two freely.",
+  "Add the else case: latency versus consistency in normal operation. Give examples of real databases.",
+  "Linearizability is about single objects and real time; serializability is about transactions. Mention strict serializability.",
+  "Explain writes to W nodes and reads from R nodes. Overlap of the sets ensures a read sees the latest write.",
+  "Cover sloppy quorums, concurrent writes, failed partial writes and clock-based conflict resolution.",
+  "Explain per-node counters, comparing clocks to find concurrent versions, and resolving siblings.",
+  "Compare what each captures: order, concurrency, and physical time closeness. Give a use for each.",
+  "Explain preserving cause and effect order, tracking dependencies, and delaying visibility until they arrive.",
+  "Explain random peer exchange, log N spread, and uses like membership, failure detection and metadata.",
+  "Explain the message cost of all-to-all. Cover gossip, SWIM-style probes, indirect pings and suspicion.",
+  "Explain computing suspicion from heartbeat history instead of a fixed cutoff, adapting to network changes.",
+  "Cover fencing tokens checked by storage, leases and making the old leader step down.",
+  "Match each feature to a level based on harm from stale data. Strong for usernames, weaker for likes."
+ ]
+}

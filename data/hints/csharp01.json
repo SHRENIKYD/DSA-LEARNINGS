@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "The C# compiler does not make native code directly; it produces an intermediate form plus metadata.",
+  "Think about the JIT compiler and at what moment a method's code is first needed.",
+  "Check each claim against the rules for top-level statements: how many files, where in a file they may sit, and what they can use.",
+  "C# char holds a UTF-16 code unit. How many bytes is that?",
+  "Binary floating point cannot store 0.1 exactly, while decimal stores base-10 digits exactly.",
+  "Check the type of a * b: the multiplication happens in int before it is assigned to long.",
+  "var infers the type from the value on the right. Look for the line where the compiler has nothing to infer from.",
+  "Constant values are copied into the caller's code at compile time, not read from the library at run time.",
+  "After the comma is the field width, after the colon is the format; D4 pads with zeros.",
+  "Parse uses the current culture by default. Think about which character German uses as the decimal separator.",
+  "Think about what ReadLine signals when there is no more input to read.",
+  "Think about integer operations that have no valid result at all, not just ones that wrap around.",
+  "Each call may flush and lock the console stream. Think about buffering many writes into one.",
+  "When both operands are constants, the compiler evaluates the expression itself and checks overflow."
+ ],
+ "interview": [
+  "Cover the build to IL, host startup, runtime loading, JIT of Main, and then the output.",
+  "Explain the Windows-only original framework, the cross-platform rewrite, and the unified modern versions.",
+  "Explain where data lives, copy versus reference semantics, and which built-in types are in each group.",
+  "Compare exact base-10 money math with faster binary floating point, and decimal's speed and range costs.",
+  "Explain unchecked wrapping by default, the checked keyword and compiler option, and when to use each.",
+  "Cover compile-time values copied into callers, runtime-assigned fields, and versioning concerns.",
+  "Explain that var is still static typing inferred at compile time, and when it hides the type from readers.",
+  "Talk about culture-specific number formats and using invariant culture when parsing.",
+  "Mention avoiding many small reads, reading the whole input or using a buffered stream, and fast manual parsing.",
+  "List Main return types and parameters, including async versions, and the generated Program class.",
+  "Explain interpolated string handlers that avoid boxing and extra allocations compared with older format calls.",
+  "Explain truncation toward zero for casts, and banker's rounding to even for Convert and Math.Round.",
+  "Compare a against int.MaxValue divided by b, handling signs, zero, and the negative edge cases.",
+  "Discuss framework-dependent versus self-contained, single-file, trimming, ReadyToRun and Native AOT trade-offs."
+ ]
+}

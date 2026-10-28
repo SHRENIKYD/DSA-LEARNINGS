@@ -1,0 +1,30 @@
+{"quiz":[
+"One neuron can only draw a single straight line. Look at where the true cases of XOR sit.",
+"Think about what happens if you stack many purely linear layers with nothing in between.",
+"You need outputs that are positive and add up to one across all classes.",
+"ReLU keeps positive inputs and replaces negative inputs with something fixed. Apply max(0, z).",
+"Think about how the loss depends on an early weight through every layer after it. Which calculus rule handles a chain of nested functions?",
+"Look at the largest slope a sigmoid can have and what happens when you multiply it many times.",
+"Momentum remembers something from previous steps to smooth out zig-zags.",
+"Adam combines momentum with a per-parameter step size. Ask what each of those two ideas needs to keep a running average of.",
+"Cosine is 1 for the same direction and minus 1 for the opposite. What angle gives a cosine of zero?",
+"Use the formula: (input size minus kernel size) divided by stride, plus one.",
+"The same small kernel is reused at every position in the image. What does that do to the parameter count?",
+"Pick the option that is not an RNN feature at all; the real problems are gradients, a fixed state and sequential steps.",
+"Self-attention does not wait on the previous time step. Think about how well that suits GPUs.",
+"Every token is compared with every other token. Count the pairs."
+],"interview":[
+"Describe weighted sum, bias and step output, then explain linear separability and why XOR breaks it.",
+"Trace inputs through weights, bias and activation layer by layer to the output and loss, with shapes.",
+"Discuss ReLU-style choices for hidden layers and match the output activation to the task type.",
+"Give the intuition of assigning blame backwards, then show the chain rule multiplying local derivatives.",
+"Explain repeated multiplication shrinking or growing gradients, and fixes like ReLU, good init, normalisation and clipping.",
+"Explain velocity and per-parameter step sizes, and when each optimiser is a good default.",
+"Define an embedding as a learned vector per item, and explain how training places similar items close together.",
+"Cover a sliding kernel, weight sharing, local connectivity, output size and why that fits images.",
+"Mention vanishing gradients through time, a fixed-size state, and step-by-step computation.",
+"Cover parallel processing, direct links between any two tokens through attention, and scaling.",
+"Check data and labels, learning rate, gradients, loss setup and try overfitting a tiny batch first.",
+"Explain how skip paths keep gradient flow and how normalisation keeps activations stable in deep stacks.",
+"Compare weights, gradients, optimiser state and activations in training versus weights only in inference."
+]}

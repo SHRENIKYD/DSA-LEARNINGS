@@ -1,0 +1,33 @@
+{"quiz":[
+"React uses two shortcuts to avoid a full tree comparison: one about element types and one about identifying siblings.",
+"When an element at the same position has a different type, React does not try to reuse the subtree under it.",
+"Ask what an index really identifies: the item itself or just a position that changes when the list changes.",
+"Fiber splits rendering into small units. Think about which phase must stay all-at-once so users never see a half-updated DOM.",
+"Recall what changed about batching between React 17 and React 18 with createRoot, especially for timeouts and promises.",
+"Think about what value count holds inside this handler, and whether setCount(count + 1) uses the latest queued value.",
+"Ask which update the user feels directly while typing, and which one is costly but can wait a moment.",
+"Suspense learns that data is missing when rendering is interrupted in a special way while waiting.",
+"Server Components run only on the server. Think about what server-only access becomes possible in the component body.",
+"Props crossing the boundary must be serializable. Which kind of value cannot be turned into data?",
+"Weigh three things: same content for all, staleness allowed up to 60 seconds, and speed for everyone. Which mode fits all three?",
+"Compare when the HTML is made: ahead of time for SSG, or at request time for SSR. What does the user wait for?",
+"Hydration needs the server HTML and the first client render to match. Which line gives a different result on each machine?",
+"Both involve the server. Think about whether a component's code is still shipped and hydrated in the browser.",
+"React 18 hydrates selectively. Think about what it does with a boundary that the user just interacted with."
+],
+"interview":[
+"Explain the virtual DOM as a lightweight tree of element objects, and how React diffs new and old trees to apply minimal DOM changes.",
+"Describe the two heuristics (different types mean new trees, keys identify siblings) and why they reduce comparison to linear time.",
+"Explain how keys match items across renders, and how index keys attach state and DOM to the wrong item after reorders or filtering.",
+"Cover fibers as units of work, the interruptible render phase, the synchronous commit, and features like priorities and concurrency.",
+"Explain batching of multiple updates into one render everywhere in React 18, and predict the render count for the timeout case.",
+"Explain interruptible rendering with priorities, and what changes for developers: pure renders, transitions and deferred values.",
+"Compare marking an update non-urgent, deferring a value, and delaying with a timer, and when each fits.",
+"Explain throwing a promise to show the nearest fallback, how transitions keep old UI instead, and how error boundaries catch failures.",
+"Explain server-only components whose code never ships, versus SSR which renders HTML but still hydrates every component.",
+"Compare when HTML is produced in each approach, and choose using freshness, personalization, speed and server cost.",
+"Explain attaching event handlers to server HTML, and mismatch causes like dates, random values, and browser-only checks during render.",
+"Mention Server Components, smaller client bundles, selective hydration with Suspense, lazy loading and breaking up long tasks.",
+"Walk through the native event, React's event system, the state update, batching, render, diff, commit and paint.",
+"Measure where time goes, then fix with parallel fetches, caching, streaming with Suspense, or static generation where possible."
+]}

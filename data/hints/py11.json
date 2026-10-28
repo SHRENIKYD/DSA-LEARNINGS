@@ -1,0 +1,32 @@
+{"quiz":[
+"Counter handles missing keys differently from defaultdict(int). Does a read store anything?",
+"Only one kind of access calls __missing__, which runs the factory and stores the result.",
+"subtract keeps zero and negative counts, while unary plus drops anything not positive.",
+"Think about what happens to every other element when you remove the first item of an array.",
+"Track the order after move_to_end, then remember which end popitem takes with last=False.",
+"A heap only promises that each parent is at most its children. What does that guarantee about the root?",
+"When priorities tie, Python compares the next tuple element. Can dicts be compared with less-than?",
+"bisect_left finds the first index with a value at least x, bisect_right the first with a value greater than x.",
+"groupby only merges consecutive equal items. Count the runs in the string.",
+"Use the formula for choosing 3 items from 6 when order does not matter.",
+"Cached arguments become dictionary keys, so they must be hashable.",
+"Negating a numeric key flips just that field. Watch out for reverse=True flipping every field.",
+"Recall CPython's default recursion limit and that Python has no tail-call optimisation.",
+"Python's // floors toward negative infinity instead of truncating toward zero.",
+"Multiplying the outer list repeats a reference to the same inner list object."
+],"interview":[
+"Compare the guard needed with a dict, defaultdict creating keys even on reads, and Counter's no-insert reads and extra methods.",
+"Contrast a list's contiguous array, where front changes shift everything, with deque's linked blocks that only touch the ends.",
+"Show get and put with move_to_end and popitem, then build a dict plus doubly linked list with sentinels if OrderedDict is banned.",
+"Explain negating values for a max-heap and pushing (priority, counter, item) tuples so ties never compare payloads.",
+"Define both functions on a sorted list, how they differ for equal values, then give uses like counting and range queries.",
+"Name brute-force and helper uses like product, combinations, accumulate and groupby, then traps like one-shot iterators.",
+"Explain the hashable key, the dict lookup and the linked list for LRU eviction, then pitfalls like unhashable args and impure functions.",
+"Say that Timsort is stable, show a tuple key with a negated number, and use multiple stable passes for unnegatable fields.",
+"Check the real depth first, then offer an explicit stack, BFS, bottom-up DP, or raising the limit with care.",
+"Describe the heap loop with lazy duplicate entries, and why the check skips stale entries since heapq has no decrease-key.",
+"List classic traps such as shared rows, mutable defaults, appending path without copying, floor division and O(n) list ops.",
+"Start from Counter, then compare the size-k heap, frequency buckets and quickselect on time, space and when each fits.",
+"Describe maps for value, frequency and frequency to ordered keys, plus min_freq, and how touches and evictions update them.",
+"Explain finding the first True of a monotone predicate with a lo and hi loop, and using bisect with key on a range."
+]}

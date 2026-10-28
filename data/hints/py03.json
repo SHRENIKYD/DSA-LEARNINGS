@@ -1,0 +1,31 @@
+{"quiz":[
+"Slices include the start index and stop just before the end index. Count from zero.",
+"Strings are immutable, so strip() cannot edit name in place. Was the value it returned saved back into any variable?",
+"Read each format spec: fill character, width, and type. Which one pads an integer on the left with a digit instead of spaces or stars?",
+"In UTF-8, plain ASCII letters take one byte, but accented letters take more.",
+"bytes is a sequence of integers 0 to 255. Compare indexing one position with slicing a range: which gives bytes back?",
+"Go through each mode: what does it do when the file already exists? Truncate, append, edit in place, or refuse?",
+"A blank line in the middle of a file still contains a newline. What can readline return that no real line could ever be?",
+"with calls __exit__ however the block ends. What does a file's __exit__ do, and does it return a value that swallows the error?",
+"Think about sys.modules. After the first import runs the module body, what do later imports of the same name find there?",
+"Relative imports need Python to know which package the file belongs to. How is a file started so that __package__ gets set?",
+"A venv keeps its own site-packages but reuses the base install's standard library. What do sys.prefix and sys.base_prefix each point to?",
+"The pip on your PATH may belong to a different Python than the one you run. Which command ties pip to the exact interpreter?",
+"__name__ is only set to main when the file is run directly, not when imported."
+],
+"interview":[
+"Explain safety for hashing and sharing, and why building strings with += in a loop is slow compared to join.",
+"Cover start, stop, step, defaults, negative indexes and steps, and that out-of-range slices clamp instead of raising.",
+"Contrast text with raw bytes, and decode at input and encode at output, the so-called Unicode sandwich.",
+"Explain variable length 1 to 4 bytes, ASCII compatibility, and why that made it the common default.",
+"Compare readability and features, f-strings by default, and Template for untrusted or user-supplied format strings.",
+"Explain opening the file, calling the enter method, running the block, and the exit method closing it even on errors.",
+"Mention iterating line by line or reading in fixed chunks, streaming, and not loading everything into memory.",
+"Cover read, write, append, exclusive and binary modes, and that write mode silently truncates an existing file.",
+"Explain checking sys.modules, finding the module, creating it, running its code once, and binding the name.",
+"Explain two modules importing each other at top level, and fixes like moving shared code, lazy imports, or restructuring.",
+"Explain running as a script versus importing, and how running with -m sets up package context for relative imports.",
+"Explain a package as a directory of modules, what __init__.py does, and namespace packages without it.",
+"Explain isolating dependencies per project and how a venv points to a base interpreter with its own site-packages.",
+"Mention pinned lock files with hashes, a pyproject file, vulnerability scanning, and reproducible installs in CI."
+]}

@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "When a multicast delegate returns a value, think about which handler's result survives.",
+  "Recall how Func orders its type arguments: inputs first, and where the result type goes.",
+  "The lambdas capture the same loop variable, which keeps changing until the loop ends.",
+  "Ask whether a foreach loop reuses one variable or makes a new one each pass in modern C#.",
+  "Compare what outside code can do with an event versus a plain public delegate field.",
+  "Removal compares delegates for equality. Are two separately written lambdas the same object?",
+  "Recall whether LINQ operators like Where run when built or wait until someone reads the results.",
+  "A deferred query does not cache results. Count how many times the code enumerates it.",
+  "Think about which operator needs to see every element before it can return the first one.",
+  "Recall that an iterator method's body is turned into a state machine. When does that body start running?",
+  "Compare which join drops outer elements with no match and which pairs each one with a group.",
+  "Ask whether Enumerable.Sum on ints runs in a checked or unchecked context.",
+  "Ask which method can return as soon as it finds one match, without counting or building a list.",
+  "Compare when each one runs: lazily on enumeration or immediately into a stored lookup."
+ ],
+ "interview": [
+  "Explain a type-safe method reference, multicast, and compare with a one-method interface.",
+  "Describe parameters and return for each, and when names or ref parameters justify a custom type.",
+  "Define capturing variables, and explain the for-loop sharing one variable versus foreach.",
+  "Explain that events only allow subscribe and unsubscribe from outside, not invoke or overwrite.",
+  "Explain publishers holding references to subscribers, and unsubscribing or weak events.",
+  "Explain lazy queries, multiple enumeration, captured variables changing, and materializing with ToList.",
+  "Explain the compiler-generated state machine class with MoveNext and Current.",
+  "Explain that query syntax is translated into method calls, and which operators only exist as methods.",
+  "Mention delegate calls, enumerator allocations, and avoiding LINQ in hot paths.",
+  "Compare flat pairs with grouped results, and GroupJoin with SelectMany and DefaultIfEmpty.",
+  "Compare in-memory delegates with expression trees translated by a provider such as a database.",
+  "Cover generic message types, subscribe and publish, unsubscribing, weak references, and thread safety.",
+  "Look for repeated enumeration, queries inside loops, and client-side evaluation, and profile it.",
+  "Remember Select is deferred, so the sum runs after the list changes."
+ ]
+}

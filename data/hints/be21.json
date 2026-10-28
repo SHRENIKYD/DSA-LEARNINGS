@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about where Starlette runs these tasks relative to the HTTP response, and which process owns them.",
+"Late acknowledgement means the broker still holds the message when the worker dies. What does at-least-once delivery imply?",
+"Redis holds reserved but unacked messages only for the visibility timeout (default 3600 s). Compare that to the countdown.",
+"Compute the ceiling as min(cap, base times 2 to the power r), then remember full jitter picks randomly up to that ceiling.",
+"Retry only transient errors. Ask which response will fail the same way every time no matter how often you try.",
+"A retry must be recognised as the same action. Ask what stops two inserts of the same key, and what happens if the key and charge are saved separately.",
+"Consider the gap between deleting the key and the commit: could a reader refill the cache with the old row?",
+"Calling an async function returns a coroutine. Ask what gets stored in the cache and how many times it can be awaited.",
+"Async workers are mostly CPU-bound per process. Which CPU number does the container actually get to use, and does memory allow that many?",
+"Shell form starts /bin/sh first. Ask which process receives the stop signal from Docker and whether it passes it on.",
+"Each Gunicorn worker is a separate process with its own metrics registry. What does one scrape actually reach?",
+"Every distinct label value creates a new time series. Which label could have millions of values?",
+"The worker may start before your transaction finishes. Which Django hook delays the enqueue until the data is really saved?",
+"Think about which C library each base image uses and whether prebuilt manylinux wheels can be installed on it."
+],"interview":[
+"Contrast in-process, non-persistent work with a broker-backed queue: cover persistence, retries, visibility, duration and CPU use, and when loss is acceptable.",
+"Explain when the message is acked by default versus with acks_late, at-most-once versus at-least-once, and why tasks must then be idempotent.",
+"Compare brokers, features (routing, workflows, schedules, monitoring), sync versus async tasks and simplicity, then justify a pick for an async FastAPI service.",
+"Start with evidence matching charges to logs, list likely causes like timeout retries and duplicate delivery, then fix with idempotency keys and prevention.",
+"Cover classifying transient versus permanent errors, exponential backoff with full jitter, caps and deadlines, Retry-After, per-attempt timeouts and idempotency.",
+"Describe client setup in lifespan, the cache-aside flow with TTL and jitter, key naming, invalidation after commit, and failure modes like stampedes and stale data.",
+"Define both patterns, their freshness, write cost and data-loss risk, and give a fitting example use case for each.",
+"Use an ordered dict for O(1) get and put with eviction of the least recently used, then discuss per-process memory, invalidation and shared caches.",
+"Cover multi-stage builds, a slim base, locked dependencies cached as a layer, a non-root user, exec-form start command and health checks.",
+"Size from container limits (CPU, memory, database connections) for sync versus async workers, and explain SIGTERM handling, draining and timeouts.",
+"Explain a request id middleware, context variables, a logging filter with JSON output, and passing the id through task headers to Celery workers.",
+"Name RED metrics for the API, job and queue-age metrics for workers, dependency metrics, label cardinality and multiprocess setup in Python.",
+"Compare what each framework gives (ORM, admin, auth versus async, typing, validation) and tie the choice to the product shape and the team."
+]}

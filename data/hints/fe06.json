@@ -1,0 +1,30 @@
+{"quiz":[
+"POUR is the four WCAG principles. Think about what users need to do with content: sense it, use it, follow it, and have it work everywhere.",
+"WCAG has three levels: A, AA and AAA. Think about which one balances effort and coverage for laws and contracts.",
+"Try using the div with only a keyboard and a screen reader. What does a native button give you that is missing?",
+"Normal body text needs a stronger ratio than large text. Recall the AA number.",
+"Compare tabindex 0, a positive value and minus one. What does a negative value change about Tab order and script focus?",
+"In roving tabindex, think about how many items in the group have tabindex 0 at one time, and what the arrow keys do.",
+"Return focus to something meaningful so the user does not lose their place.",
+"Compare what each aria attribute does: name, controls, hides, or links to extra text. Which one adds a description?",
+"Screen readers watch regions that already exist. Think about adding them too late.",
+"Empty alt tells assistive tech to skip the image. Which image adds no information?",
+"Not everyone can see color differences, and screen readers do not announce borders.",
+"Think about what native HTML elements already give you, and whether ARIA can add behaviour or only meaning.",
+"Think about the order Tab follows by default, and what happens to it when some elements get their own numbers."
+],"interview":[
+"Explain making sites usable for people with disabilities, plus legal, business and quality reasons.",
+"Explain how meaningful elements give roles, names and keyboard support for free.",
+"Prefer a real button; otherwise add role, tabindex and Enter and Space key handlers.",
+"Describe the tree of roles, names and states that assistive tech reads, and DevTools panels.",
+"Cover aria-labelledby, aria-label, native labels or content, then title as last resort.",
+"Cover tablist and tab roles, aria-selected, arrow key navigation and linked panels.",
+"Mention focus trap, Escape to close, labelling, background inert, and returning focus.",
+"Explain the relative luminance formula and thresholds for normal and large text.",
+"Cover labels, required hints, error messages linked to fields, and moving focus to errors.",
+"Explain polite vs assertive regions created before content changes, and toast timing.",
+"Mix automated checks in CI, manual keyboard and screen reader testing, and team habits.",
+"Cover route-change focus and title updates, announcements, and dynamic content issues.",
+"Prefer native elements first, then ARIA patterns carefully, and test with real assistive tech.",
+"Discuss AI helping with audits and alt text, but risks of wrong output without human checks."
+]}

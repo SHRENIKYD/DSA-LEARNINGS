@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Think about which order avoids leaving a stale value in the cache, and why removing is safer than setting.",
+  "Which policy acknowledges the write before the database has it?",
+  "Track the order of use: after each access, the used key becomes most recent. Evict the oldest.",
+  "You need O(1) lookup and O(1) move-to-front and remove. Which two structures give each?",
+  "Recall what Redis does by default when memory is full: does it evict anything at all?",
+  "Missing keys are never cached, so every request goes straight through. Recall the name for that pattern.",
+  "Recall which kind of error a Bloom filter can make and which it never makes. Does maybe present prove anything?",
+  "The trouble is that every key got the same expiry time. Think about a cheap change to TTLs that stops them lining up.",
+  "Redis Cluster hashes only the part inside curly braces when present. Find keys sharing that part.",
+  "A request reaches the DB only if it misses every layer. Turn each hit rate into a miss rate and combine them.",
+  "Think about a soft TTL: past it, the old value can still be served while one caller refreshes. Which named technique does that?",
+  "Compare threading model and feature set. Which is simpler and better for plain key-value blobs?",
+  "The stale set happens after the delete. You need a way to reject a set that is based on an older read."
+ ],
+ "interview": [
+  "Define fast storage for repeated reads. Cover lower latency, reduced DB load, and costs like staleness and memory.",
+  "Walk through read: check cache, on miss read DB and fill. On write: update DB then invalidate. Mention TTL.",
+  "Compare when the DB and cache are written, write speed, data loss risk and read-after-write behaviour.",
+  "Describe a hash map plus doubly linked list, then locking options like one lock, sharded locks or concurrent maps.",
+  "LRU favours recent access, LFU favours frequency. Give workloads where each wins and mention scan pollution.",
+  "Explain many requests missing at once on a hot key. Cover locks or single-flight, early refresh and stale serving.",
+  "Define each: missing keys, a hot key expiring, and many keys expiring together. Give a fix for each.",
+  "Compare data types, persistence, replication, threading and simplicity, then match to use case.",
+  "Cover invalidation after writes, TTLs, race conditions, leases or versions, and change data capture.",
+  "Estimate hot data size from working set and item size, aim for a hit rate, then add headroom and test.",
+  "Explain extra speed for very hot keys. Cover staleness across servers, invalidation and memory per process.",
+  "Cover lock with expiry and unique owner, safe release, lock expiry during long work, and fencing tokens.",
+  "Mention leases, regional pools, replicating invalidations, gutter pools and other ideas, and what applies elsewhere.",
+  "Cover caching prompts, embeddings, results and semantic caches, plus staleness and correctness risks."
+ ]
+}

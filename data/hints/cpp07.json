@@ -1,0 +1,32 @@
+{"quiz":[
+"Recall the growth factor GCC uses when a full vector needs more room, and apply it to the current capacity.",
+"Distinguish allocating room for elements from actually creating elements; check what happens to size.",
+"Ask what state an iterator is in after the element it points to has been erased, and what erase returns.",
+"A deque keeps its element blocks in place but may rebuild its block map; think about what each kind of handle depends on.",
+"Recall the default underlying container shared by stack and queue, which differs from priority_queue.",
+"Compare the two bound functions: one finds the first element not less than the key, the other strictly greater.",
+"The square bracket operator on a map must return a reference to something, even when the key is missing.",
+"The comparator says which element has lower priority; flip it so that larger values sink and the smallest rises.",
+"Compute the new load factor after insertion and compare it with the maximum; recall that hash nodes do not move.",
+"Think about which iterator category the general sort algorithm needs, and which category a list provides.",
+"Check which of these types the standard library ships a ready-made hash for; containers like tuples are missing one.",
+"Ask whether erasing by key value removes one copy or every element equal to that key.",
+"Test each option on two needs: can it read the minimum quickly, and can it remove any element, not just the top one?",
+"Think about how make_heap sifts down from the bottom: most nodes sit near the leaves and only move a short distance. Sum that work.",
+"A valid comparator must say false when comparing any element with itself; test each one with equal inputs."
+],"interview":[
+"Explain spare capacity, geometric growth on reallocation, and summing the copy cost over n pushes to get a constant average.",
+"Define invalidation, then give the rules per container: reallocation for vector, end inserts for deque, node-based containers, rehash.",
+"Name when list wins (held iterators, stable addresses, splice) and why vector usually wins anyway due to cache locality.",
+"Describe fixed-size blocks plus a map of block pointers, how end inserts work, and how an index maps to block and offset.",
+"Link the standard's requirements (log n, sorted, stable iterators) to balanced trees and why few rotations make red-black cheap.",
+"Explain hashing to a bucket, separate chaining, load factor as elements per bucket, and what rehashing does to iterators.",
+"Cover providing an equality and a hash functor, and how to combine field hashes well to avoid collisions.",
+"Explain what the comparator means for priority, how to flip it for a min-heap, and passing a lambda or functor type for structs.",
+"Combine a list for recency order with a hash map to list positions, and explain splice and eviction from the back.",
+"Compare each operation on whether it overwrites, when it constructs the value, what it returns, and when to use it.",
+"Explain how equivalence is derived from the comparator, why a reflexive one breaks it, and the symptoms you would see.",
+"Explain identity hashing and predictable bucket counts enabling collision attacks, then fixes like a randomized well-mixed hash.",
+"Compare tree, hash table and sorted vectors on complexity, ordering, memory overhead, cache behavior and iterator stability.",
+"Pair a vector for random index access with a hash map from value to index, and explain the swap-with-last delete trick."
+]}

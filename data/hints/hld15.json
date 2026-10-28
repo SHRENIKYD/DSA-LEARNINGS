@@ -1,0 +1,32 @@
+{"quiz":[
+"One tick means the server now owns the message. When is that promise actually safe to make?",
+"Chat messages are tiny and most sockets sit idle. Which resource per box runs out first?",
+"Ask whether every phone's clock agrees, and who can hand out one consistent order for a chat.",
+"With only 150 followers, how expensive is it to push the post into each follower's timeline ahead of time?",
+"Count the writes one post would cause if it were pushed into every follower's timeline.",
+"Think about keeping cache entries tiny and keeping edits and deletes in a single place.",
+"Ask who carries the large image bytes when the client writes straight to storage with a signed URL.",
+"A single hot counter creates write contention. Think about splitting it up and preventing the same user liking twice.",
+"Viewers have very different network speeds. What does offering several encodings let the player do?",
+"Most video frames depend on earlier frames. Which frames can be decoded on their own?",
+"The server only hosts static segments that a CDN can cache. Which side knows the viewer's bandwidth and buffer?",
+"Content-addressed chunks let the server say what it already has. What does the client send to find out?",
+"Use the base version to detect the race. Think about what avoids losing either person's edit.",
+"If an upload is skipped because the data already exists, what can an outsider learn from that?"
+],"interview":[
+"Trace the message through gateway, dedup, durable inbox write, sender ack, then push notification and delivery when the receiver reconnects.",
+"Compare the cost and latency of repeated polling at large scale with a persistent two-way connection where the server pushes.",
+"Explain server-assigned sequence numbers per conversation, routing a group to one owner, and why client clocks are not trusted.",
+"Define both approaches, their costs on writes and reads, and the hybrid that treats celebrities differently.",
+"Keep the hot path to a few cache reads, merge celebrity posts, hydrate in a batch, and use staged ranking with timeouts and fallbacks.",
+"Walk through upload slot, direct upload to storage, async processing to several sizes, and CDN delivery, and explain why bytes skip app servers.",
+"Separate the set of likers from the displayed count; use unique records, sharded counters and batched async updates.",
+"Cover resumable upload, splitting at keyframes, parallel encoding, packaging into segments with manifests, and serving through a CDN.",
+"Explain renditions, segments and manifest, how the player picks quality from throughput or buffer, and the trade-offs like quality swings.",
+"Explain the scale of video egress and how edge caching helps, then how Netflix places its own appliances inside ISPs.",
+"Describe chunking and hashing, uploading only missing chunks, committing versions to metadata, and notifying other devices.",
+"Use optimistic concurrency with a base version check, keep a conflicted copy rather than losing data, and mention merging for text.",
+"Explain the existence leak and hash-as-credential risk, then mitigations like proof of possession and limiting dedup scope.",
+"Avoid fanning out the post, serve hot objects from replicated caches with request coalescing, and protect the backend from the spike.",
+"Explain the server as a blind relay and what features move to the device, per-device keys and fan-out, and backup and metadata concerns."
+]}

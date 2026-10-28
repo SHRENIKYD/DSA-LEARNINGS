@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about who starts the conversation on the web and who only answers requests.",
+"DNS turns something humans read into something networks use to route traffic.",
+"Ask which parts the browser needs to connect and build the request line, and which part it keeps for itself.",
+"Origin means scheme, host and port must all match exactly.",
+"Ask whether the problem is who the user is or what they are allowed to do, and match the status code to that.",
+"Safe means read-only. Idempotent means repeating has the same effect. Which method is both?",
+"Think about which resource might change the document while it is being built, so the parser has to wait for it.",
+"Ask what each event waits for. Does the DOM being ready require images and other resources to finish loading?",
+"fetch only rejects on network failure. Think about what a server error status does to the promise.",
+"The download part is slow, not the waiting part. Think about the size of what was sent.",
+"Special characters like ampersand or hash in user text can break the URL. Think about encoding.",
+"Before changing code, look at what the browser reports when the click happens.",
+"HTTP/1.1 handles one request at a time per connection. Think about what HTTP/2 lets share one connection."
+],
+"interview":[
+"Cover DNS lookup, TCP and TLS setup, the HTTP request and response, then parsing, rendering and painting.",
+"Explain who requests and who serves, and why the server must always validate even if the client also does.",
+"Name scheme, host, port, path, query and fragment, and say that scheme plus host plus port form the origin.",
+"List the 1xx to 5xx families and explain that 401 means not logged in while 403 means not allowed.",
+"Describe structure, style and behavior, and that a good page should still work with only HTML.",
+"Explain DOM and CSSOM building, render tree, layout and paint, and how CSS and scripts can block.",
+"Compare when each script downloads and runs, and whether order is kept relative to parsing.",
+"Explain the timing of each event and give typical uses like running scripts after the DOM is ready.",
+"Check response.ok, throw on bad status, parse JSON safely, and handle network errors and timeouts.",
+"Look at the waterfall phases, big files, blocking requests, caching headers and many small requests.",
+"Explain max-age, no-cache, ETag revalidation with 304, and long caching for hashed bundles vs revalidating HTML.",
+"Compare multiplexing, header compression and QUIC over UDP, and note that app code mostly stays the same.",
+"Cover reproducing with throttling, real-user data, CDN and server location, asset size and third-party scripts."
+]}

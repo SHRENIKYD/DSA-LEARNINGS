@@ -4,6 +4,16 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.10] — 2026-10-28 · Hints everywhere and Angular
+
+### Added
+- A hint for every riddle-gate question and every interview-tavern question (6,586 in all). Riddle hints open before you answer; interview questions show the hint first and the model answer one click later.
+- Angular in the Frontend track: four new places — Angular Fundamentals, Services & Dependency Injection, RxJS & Signals, and Routing, Forms & Performance at Scale. They appear as extensions on the Frontend route.
+
+### Changed
+- Video bot: uses several YouTube API keys and moves to the next key when one reaches its daily search limit.
+- README: screenshots of the website and app.
+
 ## [1.10.9] — 2026-10-28 · Visitor statistics
 
 ### Added

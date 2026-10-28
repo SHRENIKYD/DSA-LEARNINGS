@@ -1,0 +1,32 @@
+{"quiz":[
+"Think about which block is meant for cleanup on every way out of a try, and which one only reacts to errors.",
+"Consider what each form does to the stack trace, which is the record of where the error first came from.",
+"Recall the two-pass handler search: is the condition checked while finding a handler or after unwinding?",
+"Later resources may depend on earlier ones, like a writer built on a stream. Which one should be cleaned up first?",
+"x is null, so these are lifted comparisons. What does a lifted relational operator like < or >= return when one side is null?",
+"Nullable reference types are a compile-time analysis feature. Ask whether the runtime type changes at all.",
+"Once one null-conditional step sees null, the rest of the chain short-circuits. Then check what the ?? operator supplies.",
+"Ask whether the bang operator emits any runtime code, or only talks to the compiler's static analysis.",
+"The compiler only warns about missing cases. Think about what the runtime must do with a value no arm handles.",
+"Count the minimum number of elements this list pattern needs, and which position must equal zero.",
+"Patterns use the keywords not, and, or. Operators like && are not valid inside a pattern.",
+"Recall how the runtime boxes a Nullable value: it treats a value with no HasValue specially.",
+"Think about real code where the same object might reach Dispose from more than one owner or block.",
+"Typing abc is an expected, frequent failure, and throwing is costly. Which option reports failure without throwing at all?"
+],"interview":[
+"Describe the two-pass search: walk up frames checking catch clauses and filters, then unwind running finally blocks.",
+"Cover when callers need to react differently or need extra data, which base class to derive from, and the standard constructors.",
+"Compare all three: preserving the stack trace, resetting it, and wrapping with an inner exception for added context.",
+"Explain that filters run before unwinding, so the stack, inner finally blocks and trace stay intact, with no rethrow cost.",
+"Explain the try/finally expansion, the null check before Dispose, and that multiple resources dispose in reverse order.",
+"Separate the simple Dispose for managed fields from the full pattern with a finalizer for raw unmanaged handles, and mention SafeHandle.",
+"Explain annotations, flow analysis and warnings, and stress that there is no runtime guarantee.",
+"Explain how it differs for reference type arguments versus value type arguments, and note the C# 9 change.",
+"Weigh the risk of sentinels, the explicitness of a nullable value, and the bool Try pattern with an out parameter.",
+"Contrast statements that execute sections with expressions that produce a value, and mention exhaustiveness and no fall-through.",
+"List each pattern kind with a tiny example: constant, type, property, positional, relational, logical and list patterns.",
+"Frame it as the expression problem: which choice makes adding new types easy and which makes adding new operations easy.",
+"Explain the harm of broad catches deep in the code, and where a top-level boundary handler belongs.",
+"Separate the near-zero cost of try from the real cost of throw, and suggest Try methods for expected failures.",
+"Explain that the return value is saved before the finally block runs, then contrast a value with a reference to a list."
+]}

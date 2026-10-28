@@ -1,0 +1,30 @@
+{"quiz":[
+"For each method, ask whether sending it twice leaves the server in the same state as sending it once.",
+"Look for a binary, schema-based RPC protocol built for service-to-service calls with streaming.",
+"Think about how many requests a mobile screen needs with fixed REST endpoints and what data comes back.",
+"The data flows one way, from server to browser, over plain HTTP. Which transport fits one-way streaming?",
+"The bucket fills up only to its capacity while idle. How many tokens can it hold at most?",
+"Imagine a burst at the end of one window and another at the start of the next.",
+"Weight the previous window by the part still inside the sliding window, add the current count, compare to the limit.",
+"Smooth output means a constant rate however bursty the input is. Which algorithm queues requests instead of passing bursts on?",
+"Think about what happens to row positions when new rows are added while a user pages.",
+"If several rows share the cursor value, how does the next page know where to resume among them?",
+"The same key with a different body is a client bug, not a retry. Pick a response that neither replays nor charges again.",
+"Each node counts separately, and round robin spreads one key over all nodes. Multiply.",
+"Gateways handle cross-cutting concerns. Which option is business logic?"
+],
+"interview":[
+"Compare use cases: public APIs, internal high-throughput calls and flexible client queries. Mention tooling and caching.",
+"Define same effect when repeated. List which methods are idempotent and why POST needs keys.",
+"Compare two-way versus one-way streams, complexity and support. Give a use case for each.",
+"List auth, rate limiting, routing, TLS and logging. Keep business logic out.",
+"Explain refill rate and capacity, bursts, and choosing them from expected traffic and backend capacity.",
+"Compare accuracy, memory and burst behaviour at window edges for each method.",
+"Cover a shared store like Redis with atomic updates, latency, failure modes, and local approximations.",
+"Compare simplicity and page jumps against stability and speed. Mention unique sort keys and opaque cursors.",
+"Cover storing key with request hash and result, concurrent retries, mismatched bodies and key expiry.",
+"Explain that delivery can't be exactly-once but effects can be with retries plus idempotent processing.",
+"Cover URL or header versions, backward-compatible changes, deprecation and migration time.",
+"Mention 429, Retry-After and rate limit headers showing limit, remaining and reset time.",
+"Mention token-based limits, long streaming calls, cost per request, and agents making many automated calls."
+]}

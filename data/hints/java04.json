@@ -1,0 +1,32 @@
+{"quiz":[
+"Overridden instance methods are chosen at runtime. Does the reference type or the actual object decide?",
+"Method calls use dynamic dispatch, but does the same rule apply to fields? Think about what is known at compile time.",
+"An override may widen access, return a subtype, and throw narrower checked exceptions. Check each option against these rules.",
+"Java resolves overloads in phases: widening, then boxing, then varargs. Find the first phase where a method matches.",
+"Test each option against the rules: can an abstract class have code, can it be created with new, and can it be final?",
+"Class static methods are inherited, but interface static methods follow a different rule. Check which call respects it.",
+"final stops the variable from being reassigned. Does it stop the object it points to from changing?",
+"HashMap picks a bucket using hashCode before it ever calls equals. What if equal objects hash differently?",
+"Check which Object methods are marked final. Think about the methods tied to the JVM's own bookkeeping.",
+"Two unrelated interfaces give the same default method and the class gives none. Recall the class-wins and more-specific rules.",
+"Think about which kind of reuse ties you to another class's internals and which only to its public contract.",
+"protected adds something on top of package-private access. What extra access does it grant?",
+"Think about object creation order: when is the object's runtime type fixed, and when do subclass field initialisers run?"
+],
+"interview":[
+"Name encapsulation, abstraction, inheritance and polymorphism, giving the Java feature that supports each.",
+"Explain encapsulation as hiding data and protecting invariants, and abstraction as hiding complexity behind a simple interface.",
+"Contrast the rules for each, such as same name with different parameters, and compile-time versus runtime selection.",
+"Explain each case: static methods are hidden, private ones are not visible so not overridden, and final ones are blocked.",
+"Compare state, constructors, multiple inheritance and default methods, and give a rule of thumb for choosing.",
+"Explain evolving interfaces without breaking implementers, then the rules: class wins, more specific interface wins, else override.",
+"Describe virtual method tables, the lookup at call time, and how the JIT inlines calls when only one type is seen.",
+"State the rules for equals and the link to hashCode, then show what happens in hash-based collections when broken.",
+"Give a concrete example of a subclass broken by a parent's internal changes, and show the composition fix.",
+"Explain final for variables, methods and classes, and why a final reference to a mutable object is not immutable.",
+"Explain that the subclass override runs before subclass fields are initialised, so it can see default values.",
+"Explain the diamond problem with state and constructors, and how interfaces with default methods give limited multiple inheritance.",
+"State that subtypes must be usable wherever the parent is expected, and give an example like square and rectangle.",
+"Cover the problems with Cloneable and clone, such as shallow copies and no constructor, and alternatives like copy constructors.",
+"Explain how sealed types with records and pattern matching suit closed data models, while polymorphism still fits open hierarchies."
+]}
