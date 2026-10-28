@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "NumPy picks one type that can hold every element; think about which of bool, int and float is the widest.",
+    "An int8 holds only 256 values. What happens to an odometer that rolls past its top number?",
+    "Line the shapes up from the right and pad the shorter one with 1s, then compare each column of sizes.",
+    "Ask which indexing style can be described with just an offset and strides into the same buffer.",
+    "The axis you pass to a reduction is the one that disappears from the shape.",
+    "loc works with labels, and labels have no natural 'one before' - think about whether the stop is included.",
+    "Python's and keyword wants a single True or False; also check operator precedence of & versus >.",
+    "Look at the default value of the dropna parameter on groupby.",
+    "You want one output value per original row, not one per group.",
+    "Each matching row on one side pairs with each matching row on the other side.",
+    "One keyword checks the one-to-one / many-to-one relationship and raises if it does not hold.",
+    "The output has the same length as the input, and min_periods defaults to the window size.",
+    "NumPy integer arrays have no bit pattern for missing; which dtype has one built in?",
+    "Look for the option that runs compiled loops over whole columns instead of a Python call per row.",
+    "Only one of these reshapes without aggregating, so it has no way to combine two values in one cell."
+  ],
+  "interview": [
+    "Compare how a list and an ndarray store their elements in memory, and what a compiled loop avoids per element.",
+    "State the right-aligned comparison rule, then show a column-centering example and a shape that fails.",
+    "Separate basic slicing from fancy and boolean indexing, then describe what happens when you write through each.",
+    "Contrast label-based and position-based selection, and think about what happens to labels after a filter.",
+    "Explain why chained indexing may write into a temporary object, then how lazy copying changes the rules.",
+    "Describe the split, apply and combine phases and what makes built-in aggregations faster than lambdas.",
+    "Compute revenue first, then think about sorting within categories and taking a fixed number per group.",
+    "Think about duplicate keys on the joined side and a merge argument that asserts the relationship.",
+    "Ask whether duplicates must be aggregated, and which function goes in the opposite direction.",
+    "List the options from dropping to imputing, and mention what missing values do to integer dtypes.",
+    "One keeps every row with a sliding window; the other changes frequency into calendar bins.",
+    "Split the answer into memory fixes (dtypes, columns, formats) and speed fixes (vectorization, loops).",
+    "Think about type promotion rules, removed aliases, string dtypes, and the copy semantics default."
+  ]
+}

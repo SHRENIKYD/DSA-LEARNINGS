@@ -1,0 +1,31 @@
+{"quiz": [
+"Think about the smallest unit Kafka stores as a single append-only log.",
+"The default partitioner hashes something deterministic about the record and maps it onto the partition count.",
+"Each partition is owned by at most one consumer in a group; compare the two numbers.",
+"An offset commit is a bookmark: does it point at what you finished or what comes next?",
+"Recall what Kafka 4.0 removed entirely in favour of its built-in Raft-based controller quorum.",
+"Compaction keeps the latest value per key; consider what a null value signals about that key.",
+"Think about what goes wrong when an ack is lost and the client sends the same batch again.",
+"Look for the consumer setting that controls visibility of records inside unfinished or aborted transactions.",
+"Remember * matches exactly one word and # matches zero or more words; count the words between order and created.",
+"Classic mirrored queues are gone in 4.x; which queue type is replicated with Raft?",
+"Without a prefetch limit, how many unacked messages can the broker push to one consumer?",
+"Rejection, expiry, queue length limits and delivery limits all dead-letter; which option is a success path?",
+"The relay may crash after publishing but before marking the row sent; what does that imply downstream?",
+"Retry topics take a record out of its partition's sequence; think about the next event with that key."
+],
+"interview": [
+"Start from where ordering is guaranteed, then explain how choosing the record key controls which events share that scope.",
+"Cover what triggers a rebalance, eager vs cooperative protocols, static membership and the new consumer group protocol.",
+"Relate each guarantee to when you commit offsets relative to processing, and what Kafka transactions add.",
+"Contrast delete and compact cleanup policies and think of topics where only the latest value per key matters.",
+"Walk a message from publisher to exchange to queue, and compare direct, fanout, topic and headers exchanges.",
+"Explain manual acks and redelivery, then reason about prefetch from processing time and worker count.",
+"Kafka blocks a partition on a bad record while RabbitMQ can count deliveries; consider retry topics, delivery limits and DLQs.",
+"Mention classifying errors, exponential backoff with jitter, a retry cap, a dead-letter destination and idempotency.",
+"Think about atomicity between a DB write and a publish on the producer side, and duplicates on the consumer side.",
+"Compare log vs queue semantics: replay, fan-out, throughput, per-message routing, retries and team operating cost.",
+"Consider what happens when processing a poll batch takes longer than max.poll.interval.ms.",
+"Discuss replication factor, acks, min.insync.replicas, unclean leader election and producer idempotence.",
+"Think about publisher confirms, durable replicated queues, persistent messages, mandatory flag and consumer acks."
+]}

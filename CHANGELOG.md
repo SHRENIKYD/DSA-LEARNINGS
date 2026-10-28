@@ -4,6 +4,15 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.12] — 2026-10-28 · SQL, Python, Backend and Behavioral depth
+
+### Added
+- SQL + DBMS: PostgreSQL vs MySQL: Engine Specifics, and NoSQL Data Modeling: MongoDB, Redis, Cassandra & DynamoDB.
+- Python: Packaging, Environments & Tooling; Data Libraries: NumPy & pandas; and Django Essentials & Django REST Framework.
+- Backend Engineering: Messaging Deep Dive: Kafka & RabbitMQ in Practice, and API Styles: GraphQL, gRPC & WebSockets.
+- Behavioral & Career: Company-Specific Prep (Amazon, Google, Meta & more), Project Deep-Dive & Past-Project Presentation, and Engineering Manager & Tech Lead Interviews.
+- Every new place has hints for its riddles and interview questions. These reach the mobile app in its next release.
+
 ## [1.10.11] — 2026-10-28 · Angular complete, plus Java, C#, ML and CS depth
 
 ### Added

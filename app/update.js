@@ -11,7 +11,7 @@ var AppUpdates = (function () {
     return rows.filter(function (r) {
       return r && !r.draft && !r.prerelease && /^app-v/.test(r.tag_name || '') && newer(r.tag_name, current) &&
         r.html_url === 'https://github.com/SHRENIKYD/DSA-LEARNINGS/releases/tag/' + r.tag_name &&
-        Array.isArray(r.assets) && r.assets.some(function (a) { return a && /\.apk$/i.test(a.name || ''); });
+        Array.isArray(r.assets) && r.assets.some(function (a) { return a && /\.(apk|aab)$/i.test(a.name || ''); });
     }).sort(function (a, b) { return newer(a.tag_name, b.tag_name) ? -1 : newer(b.tag_name, a.tag_name) ? 1 : 0; })[0] || null;
   }
   function nativeAndroid() { var c = window.Capacitor; return !!(c && c.isNativePlatform && c.isNativePlatform() && c.getPlatform && c.getPlatform() === 'android'); }

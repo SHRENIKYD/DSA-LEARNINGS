@@ -1,0 +1,30 @@
+{"quiz":[
+"Interviewers will dig into the project for half an hour. Ask which quality lets you answer every why from memory.",
+"Each letter is one part of the walkthrough, in the order you would tell it. Think story of a project, not a release process.",
+"An overview should be readable at a glance, like a subway map. Too few hides the flow, too many hides the decision.",
+"A strong result names a metric, the before and after values, and where the numbers came from.",
+"Neither ego nor surrender helps. Pick the reaction that shows you weighed the option and had reasons.",
+"Interviewers keep digging until you reach an edge. Think about which behaviour there keeps their trust.",
+"It is a four-step pattern for a mistake story: what happened, how bad, what you did right away, what changed for good.",
+"The panel is scoring one person, not the team. Think about which sentences tell them what you did.",
+"Most of the depth signal comes out when panelists ask questions. How much room should you leave for that?",
+"Staff scope is less about code volume and more about direction across several teams.",
+"Think about how you would separate your change from everything else that happened in the same weeks.",
+"Avoid both extremes: no reflection at all, or trashing your own work. Look for specific, tied-to-pain changes.",
+"Panels accept abstraction but judge discretion. Which option protects secrets while still telling the story?"
+],"interview":[
+"Use the seven-part skeleton with a roadmap sentence first, and put a number in both the problem and the result.",
+"Name the real alternatives, what mattered most, why one option won, and the cost you knowingly accepted.",
+"Give team size and the split early, then switch to I for your own decisions and credit others by name.",
+"Cover the metric definition, data source, comparison window, and how you ruled out other causes.",
+"Pick a real mistake you personally made and walk through impact in numbers, the quick fix, and lasting prevention.",
+"Avoid saying nothing or everything. Pick one or two changes linked to real pain and the habit you have now.",
+"Stateless parts scale easily. Do the arithmetic on the stateful or rate-limited parts to find the first to saturate.",
+"Admit the boundary, reason from what you do know, and say exactly how you would confirm it.",
+"Think of a scorecard: ownership, depth, measurable result, recency, level fit and some tension. Prepare a backup too.",
+"Lead with the organisational problem and how you shaped it; show leverage through others while keeping technical depth.",
+"Agree with the general principle first, then give your specific constraint, admit the cost, and say when you would choose differently.",
+"Draw a few boxes left to right while talking, label arrows with sync or async and scale, and mark your own parts.",
+"State the outcome early, show what was strong, find the root cause, and own your part in it with a lasting lesson.",
+"Be precise about what you designed versus what was generated, and show that you can defend and own every line."
+]}

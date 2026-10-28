@@ -1,0 +1,32 @@
+{"quiz":[
+"Think about what the activate script can realistically change in your current shell session, and nothing more.",
+"A venv interpreter remembers two locations: where it lives now and the installation it was created from.",
+"Development builds come very early in the release timeline, even before the first alpha of that release.",
+"Recall pip's default stance on alphas, betas and release candidates when a final release also fits.",
+"Read the three tag fields in order: Python implementation, ABI requirement, and platform requirement.",
+"Look for the table defined by PEP 518 and PEP 517, which is about building rather than describing the project.",
+"Picture a library sharing one environment with many other libraries that each have their own needs.",
+"The --locked flag is an assertion about the lock file. What should CI do when that assertion is false?",
+"Consider what sits on sys.path when tests run from the repository root, and what a src folder hides.",
+"When select and ignore both match the same rule code, Ruff compares how specific each selector is.",
+"Think about what a CI system would otherwise need to store as a secret in order to upload releases.",
+"Docker reuses a layer only until an input changes, and every later layer is rebuilt after that point.",
+"PEP 668 protects the operating system's own Python. Where should project packages go instead?",
+"mypy is a gradual checker. Consider what it assumes about functions that carry no annotations at all."
+],
+"interview":[
+"Cover the pyvenv.cfg file, how sys.prefix differs from sys.base_prefix, and what activation really does.",
+"Suspect that two different interpreters are involved, and list the commands that reveal which is which.",
+"Contrast unpacking a prebuilt archive with running a PEP 517 build in an isolated environment first.",
+"Walk through build-system, project, dependency-groups and tool tables and say what each one is for.",
+"Describe backtracking search over candidate versions, then explain the practical fixes for a conflict.",
+"Separate abstract, loose requirements for code others install from exact pins for code you deploy.",
+"Compare scope, speed, lock files and standards support, then justify one choice for a fresh project.",
+"Explain what shadowing a flat layout allows, then how a .pth file or import hook links the source tree.",
+"Mention one config file, the tools for lint, format and types, and running them in both hooks and CI.",
+"Think about building in CI, testing on TestPyPI, OIDC-based authentication and immutable versions.",
+"List every input that can drift (interpreter, dependencies, build tools, timestamps) and how to pin each.",
+"Name attacks like typosquatting and dependency confusion, then match each to a packaging defence.",
+"Explain the interpreter's ordered list of supported tags and how wheels are ranked against that list.",
+"Start by measuring where the minutes go, then consider lock-based installs, caching and avoiding builds."
+]}
