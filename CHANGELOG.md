@@ -4,10 +4,17 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
-## [Unreleased]
+## [1.10.9] — 2026-10-28 · Visitor statistics
 
-### Fixed
-- Language Valley's "Continue expedition" follows your code language: with C# chosen it opens the C# course instead of resuming a lesson in another language's course.
+### Added
+- Private visitor statistics for the site owner: active visitors, devices, OS, browsers and top pages. Anonymous, no third-party analytics; see the privacy page.
+- Language Valley: Continue expedition follows your chosen code language.
+
+### Changed
+- The daily video bot now also releases the app when it finds new videos.
+- Video bot: clearer quota errors, more matches, C# every other day.
+- Website: the logo is the browser-tab icon.
+- CI: workflows pinned to Ubuntu 24.04; GitHub Actions updated.
 
 ## [1.10.8] — 2026-10-26 · C# course and a smarter video bot
 

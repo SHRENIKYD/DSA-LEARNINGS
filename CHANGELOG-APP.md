@@ -2,6 +2,19 @@
 
 From 1.11.1 each app release, whether it brings fixes or features, raises the last number: 1.11.1, 1.11.2, … up to 1.11.99. The release after 1.11.99 is 1.12.0, and the same pattern repeats. The patch number stops at 99 because the Android `versionCode` is MAJOR×10000 + MINOR×100 + PATCH, and a patch of 100 would give the same code as the next minor version, which Google Play rejects. The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.11.8] — 2026-10-28 · Latest videos and visitor statistics
+
+### Added
+- Private visitor statistics for the site owner: active visitors, devices, OS, browsers and top pages. Anonymous, no third-party analytics; see the privacy page.
+- Every lesson video the daily bot has found so far is included in the app.
+- Language Valley: Continue expedition follows your chosen code language.
+
+### Changed
+- The daily video bot now also releases the app when it finds new videos.
+- Video bot: clearer quota errors, more matches, C# every other day.
+- Website: the logo is the browser-tab icon.
+- CI: workflows pinned to Ubuntu 24.04; GitHub Actions updated.
+
 ## [1.11.7] — 2026-10-26 · C# course, game hints and nine new games
 
 ### Added
