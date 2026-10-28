@@ -1,0 +1,29 @@
+{"quiz":[
+"Read the constraint: what does keyof T produce, and what must K be assignable to?",
+"keyof works on types, not values. How do you first get the type of a value?",
+"Check whether T is naked in the extends check. If so, how does a union get handled?",
+"Distribution only happens when the checked type is a naked type parameter. How could you make it not naked?",
+"Think of never as a union with zero members. What happens when a distributive conditional runs over zero members?",
+"infer introduces a type variable from a pattern match. Which construct does pattern matching on types?",
+"The minus sign removes a modifier. Which modifier does the question mark stand for?",
+"Key remapping with as can change key names. Think about what a key of type never would mean in the result.",
+"A template literal type over unions makes every combination. Multiply the sizes.",
+"Look at the constraint on Omit's second type parameter. Is it tied to the keys of the first type?",
+"Top-level import or export changes how a file's declarations are scoped. How do you add to the global scope from there?",
+"Inference cannot pick between overloads by itself. Recall which single signature it uses.",
+"as const makes a readonly tuple type. Which index type selects every element, and is SIZES a value or a type?"
+],"interview":[
+"Contrast a constraint that limits allowed types with a conditional that picks a branch.",
+"Show a version using Pick and Exclude and one using key remapping, and compare strictness and errors.",
+"Explain distribution over naked type parameters, a bug example, and the tuple wrapping fix.",
+"Explain capturing part of a type in a conditional, then show ReturnType and recursive Awaited.",
+"Explain mapping over keyof T keeps modifiers like optional and readonly, and why that helps.",
+"Show keyof-based get, then a recursive path type, and mention compile time and error message costs.",
+"Explain string patterns built from unions, inference with infer, and limits on combinations and recursion.",
+"Compare checking without widening, declaring a type, and unchecked assertions.",
+"Explain describing types for JavaScript code or globals, and keeping only declarations, no runtime code.",
+"Explain how interfaces and namespaces merge, with examples like augmenting Window or a library module.",
+"Mention type-level assertion tests, expect-error comments, and tools that run in CI.",
+"Use diagnostics and trace tools to find slow types, then simplify deep recursion and large unions.",
+"Mention faster drafting of types, and human judgment on design, readability and correctness checks."
+]}

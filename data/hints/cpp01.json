@@ -1,0 +1,32 @@
+{"quiz":[
+"An undefined reference means a symbol is used but never defined. Which stage sees all object files together?",
+"Macros are plain text substitution with no added parentheses. Expand it literally, then apply operator precedence.",
+"Each translation unit gets its own definition of the variable. Ask what the one-definition rule says when they are combined.",
+"Windows uses the LLP64 data model, unlike Linux and macOS. Which types are 64-bit there?",
+"When signed meets unsigned, the usual arithmetic conversions turn the signed value into unsigned. What does minus one become?",
+"Check each option: unsigned arithmetic wraps and conversions are modulo 2 to the N, but one kind of overflow is not defined.",
+"The type of a times b depends on its operands, not on the variable it is stored in.",
+"The extraction operator leaves the newline in the buffer. What does getline read first?",
+"These two calls remove overhead between C and C++ streams and between cin and cout. Think about syncing and flushing.",
+"Compare what endl does beyond writing a newline, and what that costs for many lines of output.",
+"The using-directive makes a std name with the same name visible at global level. What does lookup find then?",
+"Think about linkage: who outside this source file can see names declared inside it?",
+"C++ integer division truncates toward zero, and the remainder must satisfy (a/b)*b + a%b == a.",
+"Recall the rules: main must return int, cannot be called by you, and argv[argc] is a null pointer.",
+"A template is a recipe. The compiler generates code only where it can see both the body and the use."
+],"interview":[
+"Walk through preprocessing, compiling each file to an object file, assembling, then linking objects and libraries into one executable.",
+"Explain that a declaration introduces a name and type while a definition creates storage or a body; give examples for variables, functions and classes.",
+"Contrast errors per file at compile time with missing or duplicate symbols at link time, and cover tools like nm and checking which files are linked.",
+"Explain they stop a header being processed twice in one translation unit, but do not stop multiple definitions across translation units.",
+"Cover minimum sizes and ordering guarantees, data models like LP64 versus LLP64, and fixed-width types such as int32_t.",
+"Explain negating by inverting bits and adding one, the sign bit, and why one more negative value fits than positive.",
+"Contrast signed overflow as undefined behaviour with unsigned wrap-around, and how the compiler uses that assumption to optimise loops.",
+"Describe integer promotions and signed to unsigned conversion, with a bug like comparing a negative int with a size or unsigned value.",
+"Cover turning off stdio sync, untying cin, avoiding endl, and trade-offs like not mixing printf and cout and manual flushing.",
+"Explain name clashes and ambiguity from pulling in all of std, and when it is fine, like small local scopes or quick programs, never in headers.",
+"Explain lookup of function names in the namespaces of the argument types, and the using std swap then unqualified swap pattern.",
+"Cover static and dynamic initialisation of globals before main, and the undefined order across files, with fixes like function-local statics.",
+"Compare extern declaration with one definition, inline variables, constexpr constants, and a function returning a static, with linkage trade-offs.",
+"Define undefined behaviour, list examples like signed overflow, out-of-bounds access and uninitialised reads, and name sanitizers and warnings."
+]}

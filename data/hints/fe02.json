@@ -1,0 +1,38 @@
+{
+ "quiz": [
+  "Without it, browsers fall back to an old rendering mode. Think about which mode it switches on.",
+  "A p element cannot contain another p. Think about what the parser does when it sees a new one.",
+  "Void elements cannot hold content. Think of elements that only make sense with attributes.",
+  "It is an action on the page, not navigation to a new URL. Pick the element built for actions.",
+  "Think about landmarks and the page outline. How many top-level titles and central content areas can a page sensibly have?",
+  "Two dots means go up one folder from the current page's folder.",
+  "Screen readers should skip a decorative image. Note that a missing alt may make them read the file name instead.",
+  "To reserve space, the browser needs the aspect ratio before any image bytes arrive. Which attributes give it plain numbers?",
+  "Think about what the browser sends for a checkbox that is not checked. Does it invent a default value, or not?",
+  "A button inside a form has a default type. Think about what that default does on click.",
+  "Picture the table as a grid of slots. A cell spanning two rows already fills one slot in the row below it.",
+  "Header cells can declare whether they describe a row or a column with one attribute.",
+  "Compare when each option downloads and runs, and whether order is kept. Your script needs the full DOM and must not block.",
+  "A head tag can point search engines to the one preferred URL for duplicate pages.",
+  "The pattern must match the whole value. Count the digits the user typed.",
+  "A custom message keeps the field invalid. Does the browser ever clear it for you, and what value means no error?",
+  "Ask who controls the browser. Can a user edit the page or send a request without using the form at all?"
+ ],
+ "interview": [
+  "Cover bytes to tokens to DOM, then CSSOM, render tree, layout and paint, and how scripts can pause parsing.",
+  "Mention accessibility, SEO, built-in behavior and readability, with examples like nav, button and main.",
+  "Explain that article stands alone, section groups themed content, aside is related extra, and div has no meaning.",
+  "Explain meaning vs pure style: strong and em add importance or emphasis, while b and i only look different.",
+  "Compare when each script downloads and runs, and whether order is kept, then give a use for each.",
+  "Explain resolving against the current URL, root-relative paths, and protocol-relative URLs.",
+  "Cover choosing image sizes with srcset and sizes, art direction or formats with picture, and lazy loading.",
+  "Explain data in the URL vs in the body, caching and bookmarking, and which suits search, login and upload.",
+  "Mention unchecked boxes being skipped, missing name attributes, disabled inputs, and inputs outside the form.",
+  "Cover labels, grouping with fieldset and legend, error messages linked to inputs, focus and keyboard use.",
+  "Explain that client checks help users but can be bypassed, so the server must always validate.",
+  "Explain how spans take grid slots in the following rows or columns and how extra cells shift the layout.",
+  "Cover charset, viewport, title, description, canonical and social sharing tags like Open Graph.",
+  "Mention content built only by JavaScript, crawling limits, and fixes like server rendering or pre-rendering.",
+  "Explain the error-tolerant parsing rules in the HTML spec and why the web chose recovery over strict errors."
+ ]
+}

@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "fetch only rejects on network problems. Think about how an HTTP error status is reported.",
+  "Older slow responses can arrive after newer ones. Think about wasted work and wrong results.",
+  "Winning the race does not stop the losing fetch. Think about what keeps running.",
+  "Compare each storage by scope and lifetime: shared across tabs or not, and kept after closing or not.",
+  "Any script on the page can read that storage. Think about XSS.",
+  "Check size limits, sync versus async APIs, and which storage supports indexes and binary data.",
+  "Ask whether the observer waits for scrolling or reports each target's current state when observing starts.",
+  "rootMargin works like CSS margin on the root box. What does a positive margin do to the detection area?",
+  "Recall whether mutation records are delivered one by one or batched, and in which queue they run.",
+  "A worker has its own thread and global scope. Ask what is missing there and how it talks to the page.",
+  "The second argument is a transfer list. Think about ownership of the buffer.",
+  "pushState only edits history. Ask whether it fetches anything, and when popstate actually fires.",
+  "Deep links hit the server directly. Think about how the server handles unknown paths.",
+  "Compare the two History API methods: one adds a new entry and one rewrites the current one."
+ ],
+ "interview": [
+  "Explain that HTTP errors are valid responses, so check ok or status and handle network errors separately.",
+  "Compare size, lifetime, server access, async API and security for each option.",
+  "Mention AbortController, request IDs, and debouncing input.",
+  "Cover AbortController timeouts, retrying only safe requests, backoff with jitter, and error types.",
+  "Explain async callbacks on visibility changes with no main-thread scroll work.",
+  "Cover a sentinel element, loading flags, end of data, errors, and memory for long lists.",
+  "Compare watching DOM changes vs watching element size changes, with example uses.",
+  "Explain no DOM access, message passing, structured cloning, and transferable objects.",
+  "Cover pushState, popstate, link click interception, route matching and server fallback.",
+  "Compare localStorage, memory and httpOnly cookies against XSS and CSRF risks.",
+  "Use the Performance panel to find long tasks, then chunk work or move parsing to a worker.",
+  "Explain transaction scope and auto-commit, and mistakes like awaiting unrelated work inside.",
+  "Cover caching with deduping, cancellation, retries, offline storage and sync across tabs."
+ ]
+}

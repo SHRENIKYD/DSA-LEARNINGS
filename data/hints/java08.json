@@ -1,0 +1,30 @@
+{"quiz":[
+"One name is the placeholder declared on the class; the other is the real type filled in when you use it.",
+"Ask whether a list of a subtype is a subtype of a list of the parent type in Java generics.",
+"With an upper-bounded wildcard the compiler cannot know the exact element type, so it blocks writing almost everything.",
+"A lower-bounded wildcard only promises the list accepts integers; it says little about what comes out.",
+"Erasure picks one bound to replace the type variable, and Java requires a class bound to be written first. Which bound is chosen?",
+"Generic type arguments are erased at runtime, so think about how many runtime classes exist here.",
+"Arrays check their element type at runtime. For each line, ask whether erasure removed information the runtime would need.",
+"Type inference flows from the target type, but a method chain hides that target from the inner call.",
+"Erasure turns (T) o into a cast to the bound of T. Ask what that cast checks, and where javac must add the real String check.",
+"Producer extends, consumer super: the source gives values and the destination receives them.",
+"After erasure, check whether the two method signatures would be identical.",
+"The annotation is only safe when the method never stores into or exposes the varargs array itself.",
+"A raw type is a legacy-compatibility mode. Ask whether it turns off generics only for T or for every generic signature in the class."
+],"interview":[
+"Show code with casts on raw collections, then the generic version, and stress compile-time type safety and no casts.",
+"Define each term with a tiny example like Box of T, and show the diamond letting the compiler infer type arguments.",
+"Explain invariance and the unsafe write it prevents, then contrast with covariant arrays and ArrayStoreException.",
+"Explain producer extends and consumer super using a signature like Collections.copy or addAll.",
+"Compare type checking for each: raw opts out, Object accepts any object, and the wildcard is unknown but safe.",
+"Explain that type info is removed at compile time, then list effects like no instanceof, no new T, and overload clashes.",
+"Say a type parameter links several types together, while a wildcard is fine when the type is used only once.",
+"Break the signature down: why the Object bound keeps the old erasure, and why super makes the comparison more flexible.",
+"Explain how erasure breaks overriding in generic subclasses and how the compiler adds a synthetic method to fix it.",
+"Define a variable pointing to the wrong generic type, connect it to varargs and raw types, and mention warnings and checked collections.",
+"Explain why new T fails, then show workarounds like passing a Class object, a Supplier, or Array.newInstance.",
+"Explain super type tokens: capturing generic info in an anonymous subclass so reflection can read it.",
+"Describe a map from Class to value with a typed get and put, and limits like not working for generic types.",
+"Compare erasure versus reified generics and templates, then mention value types and specialised generics."
+]}

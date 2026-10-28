@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "The coefficients returned satisfy Bezout's identity with the gcd.",
+  "A linear equation in integers has solutions only when the gcd of the coefficients divides the right side.",
+  "9 is not prime, so Fermat's trick does not apply directly. Check whether 4 and 9 are coprime and use another method.",
+  "Factor 100 into primes and multiply by one minus one over each prime.",
+  "By Fermat, 3 to the 6 is 1 mod 7. Reduce the exponent mod 6 first.",
+  "When the moduli share a factor, the two remainders must agree modulo their gcd for a solution to exist.",
+  "Matrix power uses repeated squaring, so the number of multiplications grows with log of n.",
+  "Use inclusion-exclusion: add single counts, subtract pairs, add back the triple.",
+  "Recall the classic Catalan examples like balanced brackets, binary trees and triangulations, and spot the odd one.",
+  "Write both numbers in base 3 and multiply the small binomials digit by digit.",
+  "Use linearity of expectation: each element is fixed with chance one over n.",
+  "XOR the heap sizes. Zero means the player to move loses.",
+  "mex is the smallest nonnegative integer missing from the set."
+ ],
+ "interview": [
+  "Explain that division is not defined directly mod a number. Use the modular inverse when it exists.",
+  "Explain the recursion on b and a mod b, then derive how x and y update from the deeper call.",
+  "Fermat needs a prime modulus and a coprime value. Explain what wrong answer you get otherwise and use Extended Euclid.",
+  "Define it as count of coprime numbers up to n, give the product formula, and a sieve for all values.",
+  "Check the remainders agree mod the gcd, then use Extended Euclid to merge into one congruence mod the lcm.",
+  "Mention matrix power or fast doubling and the log n cost.",
+  "Mention very large orders, small n, or special structure where simpler or faster methods exist.",
+  "Explain adding and subtracting overlaps so each element is counted once, linked to binomial sums.",
+  "List classic examples and mention proving through a matching recurrence or a bijection.",
+  "Compare factorial tables for prime m, Lucas for small prime m, Pascal for small n, and CRT for composite m.",
+  "Explain splitting into indicator variables, no independence needed, with a simple example.",
+  "Define states and expected remaining steps, then handle self loops by solving equations or moving terms to one side.",
+  "State that a game sum's Grundy value is the XOR of each pile's value, then show computing pile values with mex.",
+  "Show that from XOR zero every move makes it nonzero, and from nonzero some move makes it zero."
+ ]
+}

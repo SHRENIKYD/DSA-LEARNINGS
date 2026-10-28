@@ -1,0 +1,31 @@
+{"quiz":[
+"Think about what sits directly beneath the hypervisor: the bare hardware, or a full general-purpose host OS.",
+"A VM has two layers of addresses. Think about how hardware can do both translations without the hypervisor faking tables.",
+"Most guest instructions run at native speed. Think about which kinds the hypervisor must step in and handle itself.",
+"Each namespace isolates one kind of thing. Match the one that gives a process its own numbering tree.",
+"The name says what it isolates: user and group ids. Why would a different id inside versus outside matter for safety?",
+"memory.max is a hard limit. When reclaim fails, the kernel must free memory inside that group somehow.",
+"cpu.max is a quota of CPU time per period. Think about what happens once the quota is used up early.",
+"Lower layers are never changed, and a file must be fully present somewhere writable before a write can land. What must happen first?",
+"You cannot delete from a read-only lower layer. The upper layer must hide the file with a special marker.",
+"Ask how much work each call does when only a handful of 100K connections have data. Does it depend on all fds or only active ones?",
+"Edge-triggered mode reports only changes. Think about what happens if you leave unread data behind.",
+"epoll tells you when you may act; io_uring works differently. Think about where requests and results live and how often you enter the kernel.",
+"Count copies between page cache, user buffer and socket buffer, and the user/kernel switches for two syscalls.",
+"Encryption must happen somewhere on the data path. Think about where a user-space TLS library runs and why that matters."
+],"interview":[
+"Compare a hypervisor with separate guest kernels against shared-kernel processes with namespaces, for isolation and overhead.",
+"Walk from the CLI to the daemon, image pull, overlay mount, namespaces and cgroups, then the runtime starting the process.",
+"Explain that namespaces control what a process can see while cgroups control how much it can use, with examples of each.",
+"Confirm with exit code and cgroup events, separate container-level from node-level OOM, then fix leaks or adjust limits.",
+"Explain the CPU quota per period shared by all threads, how bursts hit throttling, and how to see and fix it.",
+"Describe merging read-only lower layers with a writable upper layer, lookup order, copy-up on first write, and whiteouts.",
+"Compare the limits, how interest sets are passed each call, and whether cost grows with all descriptors or only ready ones.",
+"Explain level versus edge triggering, when each fits, and the rule to use non-blocking descriptors and drain until EAGAIN.",
+"Contrast readiness with completion, explain the shared submission and completion rings, and fewer syscalls and file I/O support.",
+"Count CPU copies, DMA copies and context switches for both paths, and explain how sendfile skips the user buffer.",
+"Explain that encryption must touch every byte, so plain zero-copy breaks, and cover options like kernel TLS and NIC offload.",
+"Define both types with examples, then explain how KVM turns Linux into a hypervisor and why it is debated which type it is.",
+"Start from the threat model, then layer defences: micro-VMs or sandboxes, least privilege, network limits and resource limits.",
+"Cover event loops per core with epoll, small per-connection memory, file descriptor limits, kernel buffer and port tuning."
+]}

@@ -1,0 +1,33 @@
+{"quiz":[
+"The pair is down only when both servers are down at once. Multiply the two failure chances, then subtract from 1.",
+"Picture thousands of clients that failed at the same instant. What happens if they all wait exactly the same delay?",
+"A timeout does not tell you whether the server acted. Think about how to retry without doing the side effect twice.",
+"Start from normal operation. Ask which state failures trip it into, and which state lets a few test calls through before full traffic returns.",
+"The breaker opened because the dependency keeps failing. Would sending, queuing or retrying calls help it, or protect your own threads?",
+"Think of the walls in a ship's hull: they keep a leak in one compartment from sinking the whole ship.",
+"Little's Law says in-flight work equals arrival rate times time spent. Convert 150 ms to seconds first.",
+"The error budget is 1 minus the SLO, multiplied by the minutes in 30 days (30 x 24 x 60).",
+"Burn rate is the current error rate divided by the allowed error rate (1 minus the SLO).",
+"Ask which one is a team's own goal and which one is a promise to customers with penalties, and which should be stricter.",
+"Metrics say that something is slow and logs say why. Which signal follows one request through every hop with its timing?",
+"Each unique label value creates a new time series. Look for the label with an unbounded number of values.",
+"Chaos engineering follows the scientific method. What do you write down before injecting a fault, so you can compare the result?",
+"Each layer multiplies the attempts of the layer above it. Raise 3 to the power of the number of layers.",
+"From one node's view, a dead peer and a broken link look the same. Think about what a third voter adds."
+],"interview":[
+"Cover finding single points of failure, redundancy across failure domains, health checks and failover, and testing that failover works.",
+"Define both, then compare failover time, idle cost, write conflicts and data loss. Say which fits databases and which fits stateless tiers.",
+"Explain why waiting longer helps a struggling dependency, then why all clients retrying in sync is still a problem and how randomness fixes it.",
+"Base timeouts on measured tail latency, separate connect and read timeouts, and mention an end-to-end deadline passed downstream.",
+"Describe the three states and the transitions, then the settings: failure threshold, window, minimum calls, cool-down, probes and fallback.",
+"Give one line per pattern on what it protects and from whom: a failing dependency, shared resources, callers, or total overload.",
+"Define each term with an example, show how the budget is 1 minus the SLO, and explain using it to decide between shipping and reliability work.",
+"Say what each signal is good for (that, where, why) and walk through an incident workflow moving from alert to trace to log.",
+"Explain RED for request-driven services and USE for resources, then relate both to the four golden signals.",
+"Page only on user-facing symptoms, use multi-window burn-rate alerts, route cause-based signals to tickets, and give every alert a runbook.",
+"Define the method: steady state, hypothesis, injected fault, observe. Then cover safety: small blast radius, abort switches, start outside production.",
+"Explain the feedback loop of cache misses, retries and refills keeping the database overloaded, then give ways to break that loop.",
+"Cover synchronous replication for no data loss, quorum-based leader election, fencing the old primary, and testing failover.",
+"Do the math for dependencies in series, then explain how fallbacks, caching, async calls and redundancy change the structure.",
+"Talk about making the safe path the easy path: shared libraries with defaults, templates, a mesh, standard tracing, and measuring adoption."
+]}

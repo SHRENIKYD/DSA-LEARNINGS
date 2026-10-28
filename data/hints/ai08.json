@@ -1,0 +1,31 @@
+{"quiz":[
+"Think about what an embedding model outputs and what it means when two items end up close together.",
+"Check whether one vector is just a scaled copy of the other. Cosine ignores length.",
+"For unit vectors, squared distance equals two minus two times the cosine. What does that imply for ranking?",
+"pgvector distance operators return distances, where smaller means more similar.",
+"Recall compares the approximate result with what exact search would return.",
+"Some HNSW settings shape the graph at build time; one only sets the beam width during search.",
+"nprobe is the number of buckets scanned. More scanning has a cost and a benefit.",
+"IVF only scans some buckets. Think about neighbours near cluster borders.",
+"Weigh what the team already runs, the data size, and how much new infrastructure each option would add.",
+"If you filter after picking a global top 10, many candidates may belong to other tenants.",
+"Scores from keyword and vector search live on different scales, but positions in a list do not.",
+"Ask which query depends on matching an exact string that an embedding might blur with similar ones.",
+"Ask whether vectors made by two different models share the same coordinate system.",
+"Exact search is simple and accurate. Think about the scale where it is still fast enough."
+],"interview":[
+"Use a map-of-meaning analogy first, then describe a learned vector where distance reflects similarity.",
+"Explain what each measures, the role of vector length, and that they agree after normalisation.",
+"Cover chunking, embedding documents, indexing, embedding the query, nearest-neighbour search and ranking.",
+"Compare exact recall and simplicity against speed at scale, with the approximate trade-off in recall.",
+"Describe the layered graph and greedy search, then what each parameter controls for recall, memory and speed.",
+"Explain clustering vectors into buckets, then how bucket count and buckets probed trade recall for speed.",
+"Compare recall, memory, build time, update patterns and scale for each index type.",
+"Explain pre-filtering versus post-filtering and why strict filters break approximate graph search.",
+"Weigh existing infrastructure, scale, operations effort, and library versus managed service.",
+"Explain combining keyword and vector results, then how fusion uses rank positions instead of raw scores.",
+"Cover term frequency, rarity weighting and length normalisation, and why exact terms and IDs still matter.",
+"Describe dual-writing or backfilling a new index, comparing quality, then switching traffic with rollback.",
+"Cover sharding, permission filtering at query time, hybrid retrieval, reranking and latency budgets.",
+"Mention a labelled query set, recall and ranking metrics, logging failures, and iterating on chunking and models."
+]}

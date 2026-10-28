@@ -1,0 +1,36 @@
+{
+ "quiz": [
+  "Think about what you need to remove from the hash map when you evict the tail node of the list.",
+  "Track the recency order after each step: a get also counts as a use.",
+  "Think about which events can create a new lowest frequency: inserting a new key, or emptying the current minimum bucket.",
+  "Each level halves the candidates, much like a balanced search tree.",
+  "A Bloom filter can have false positives but never false negatives. Think about what maybe really means.",
+  "Use the rule of thumb of about 9.6 bits per item for a 1 percent false-positive rate, then multiply.",
+  "Changing the modulus remaps almost every key; a ring only moves keys owned by the new server.",
+  "With few points on the ring, servers get uneven arcs. Think about how many points per server smooths this out.",
+  "You want the latest version at or before the requested time. Binary search for it.",
+  "Consider where the work of finding the next integer should happen and whether hasNext may be called many times.",
+  "A stored time different from t means that slot holds stale data from an old window.",
+  "Sort by count first, then decide how ties are broken, usually alphabetically.",
+  "Ask what each policy needs to know. A rule that depends on information a running cache cannot have is perfect but unbuildable.",
+  "Simulate a few rounds: with one more key than capacity, which key does LRU throw out each time?",
+  "Each option answers a different question: membership, frequency, ordering or distinct count. Match the question to the structure."
+ ],
+ "interview": [
+  "Cover the hash map plus doubly linked list, moving nodes on access, evicting the tail, and why both are O(1).",
+  "Compare frequency vs recency workloads, and mention LFU problems like cache pollution by old hot keys and complexity.",
+  "Explain random levels, expected O(log N) search, and simpler code plus easier concurrency compared with red-black trees.",
+  "Show the formulas for bits m and hash count k from N and the error rate, then state no false negatives and no deletes.",
+  "Explain hashing servers and keys onto a ring, minimal key movement on changes, and virtual nodes for balance.",
+  "Compare balance, lookup cost, memory and whether servers can be removed arbitrarily for each approach.",
+  "Describe a map from key to a sorted list of timestamped values with binary search, and how out-of-order inserts change it.",
+  "Explain a stack of iterators that flattens on demand in hasNext, and amortized O(1) per element.",
+  "Start with circular buckets keyed by time mod 300, then cover sharding, local aggregation and merging counts.",
+  "Cover a trie with top-k at each node, then precomputation, caching, ranking updates and serving latency.",
+  "Compare a single lock, striped locks, concurrent maps and approximate policies, and their contention trade-offs.",
+  "Explain when small errors are acceptable and name tools like Bloom filters, HyperLogLog and count-min sketch.",
+  "Check the claimed complexity: a heap gives log N updates. Also check ties, eviction order and stale entries.",
+  "Use concrete examples: dynamic array resize, skip list randomness, and true worst-case guarantees.",
+  "Mention unit tests for edge cases, comparing against a simple reference model with random operations, and stress tests."
+ ]
+}

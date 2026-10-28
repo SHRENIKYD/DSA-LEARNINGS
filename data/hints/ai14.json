@@ -1,0 +1,30 @@
+{"quiz":[
+"Expand the acronym word by word, then ask which part of the response time it isolates.",
+"Total time may not change. Think about what the user sees while waiting.",
+"Look for a simple one-way server push format that sends events over a normal HTTP response.",
+"A low similarity bar lets questions that are not really the same count as matches. What gets returned?",
+"If many clients fail together and wait the same time, they retry together. What breaks that sync?",
+"Retry only errors that might succeed next time. Which one will fail the same way every time?",
+"Not every request needs the biggest model. Think about matching task difficulty to cost.",
+"A trace span should record facts that help debug cost, speed and behaviour of that one call.",
+"Recall what a p-value measures: how likely a gap this big would be if the two prompts were really the same.",
+"Permissions must be enforced before text reaches the model, not by asking the model to behave.",
+"Provider caching reuses a matching beginning of the prompt. Where should the unchanging text go?",
+"Batch jobs are cheaper but slow. Think about work where nobody is waiting for an answer.",
+"If the prompt changes, old cached answers may no longer match what the new prompt would produce."
+],
+"interview":[
+"Describe both paths: offline ingestion into a vector index, and the online flow of retrieve, prompt, generate, cite.",
+"Split TTFT from total time, then cover streaming, shorter prompts, caching, smaller models and parallel steps.",
+"State clear assumptions for users, requests and tokens per request, multiply out, and show where cost can be cut.",
+"Base routing on per-category evals, list router inputs, add fallback or escalation, and monitor quality per route.",
+"Explain matching by embedding similarity and picking the threshold from labelled pairs, weighing wrong hits against hit rate.",
+"Explain growing waits with random jitter, retry only retryable errors, then add timeouts, circuit breakers and limits.",
+"Cover per-request traces, metrics dashboards with alerts, and quality signals like feedback and sampled evals.",
+"Pass an offline eval first, then a random sticky split, one change, a pre-chosen metric, guardrails and enough sample size.",
+"Say what users should still see, then cover failure detection, circuit breaking, a tested fallback provider and recovery.",
+"Clarify requirements and scale, then design ingestion, permission-aware retrieval, generation with citations, and ops.",
+"List traps like using big models everywhere, unbounded history, too many chunks and looping agents, with a fix for each.",
+"Cover permissions in retrieval, cache namespaces, treating retrieved text as untrusted, output checks and audit logs.",
+"Compare quality, privacy, volume, latency and team skills, and explain when each option wins."
+]}

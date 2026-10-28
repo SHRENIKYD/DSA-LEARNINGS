@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "With mod N, a key keeps its server only if its result matches under both N values. Few keys do.",
+  "Picture moving around the ring from the key's position. Which direction do you walk to find an owner?",
+  "A new node takes over part of one arc. Which neighbour owned that arc before?",
+  "Think about what happens to balance and to a failed node's keys when each server has many small arcs.",
+  "More random samples average out. Recall how statistical spread shrinks with sample count.",
+  "One machine owns several tokens. What would happen if you counted each token as a different replica?",
+  "Each server gets a score for the key. Which server wins?",
+  "There is no sorted ring to search. How many servers must you score for every lookup?",
+  "Recall how each system maps keys to nodes: tokens on a ring, or a fixed table that is reassigned. Dynamo-style systems use rings.",
+  "A replica is down but the write must still succeed with enough copies. Who could hold the data meanwhile, and what happens when it recovers?",
+  "Even key ranges do not mean even traffic. What if one key is very popular?",
+  "Round robin loses affinity and more vnodes only smooths ranges, not hot traffic. Which option caps how much any one server may take?",
+  "Routing needs the same answer in every process. Is the built-in string hash stable across runs?"
+ ],
+ "interview": [
+  "Explain mapping keys and servers to a ring so adding or removing a server moves only a small share of keys.",
+  "Hash the key, then find the next token clockwise with binary search on a sorted array. Mention wrap-around.",
+  "Cover better balance, spreading failover load and capacity weights. Cost: more metadata and more complex rebalancing.",
+  "Walk clockwise from the key's owner and pick the next distinct physical nodes, maybe also distinct racks or zones.",
+  "Explain writing to the next healthy nodes when owners are down, storing hints, and sending data back on recovery.",
+  "Compare lookup cost, memory, balance, and simplicity. Mention when each fits.",
+  "Describe them as fast, compact hashing methods with limits like numbered buckets or lookup tables. Give use cases.",
+  "Look for hot keys or heavy requests. Cover splitting keys, caching, replicating hot data and bounded loads.",
+  "Cover token ranges, vnodes, replica placement, coordinator routing, and gossip of ring state.",
+  "Explain sending the same URL to the same cache server to avoid duplicates and raise hit rate.",
+  "Cover gossip or a config service to share membership, versioning, and misrouting or forwarding when views differ.",
+  "Compare balance, rebalancing, metadata size and operations. Mention moving whole slots versus random tokens.",
+  "Test key spread, how many keys move on add or remove, determinism across processes and edge cases like wrap-around.",
+  "Mention routing requests to servers holding cached prompts or model state, and spreading data across GPUs."
+ ]
+}

@@ -1,0 +1,31 @@
+{"quiz":[
+"Check each class's parent: anything under RuntimeException or Error is unchecked, everything else under Exception is checked.",
+"An override may narrow or drop checked exceptions, and add unchecked ones, but it can never widen the checked ones.",
+"Think about when the return value is computed and saved, compared with when finally changes the local variable.",
+"Resources open in declaration order and close in reverse; ask whether closing happens before or after the catch block.",
+"Ask which exception should stay primary, and remember that close failures get attached with addSuppressed.",
+"Test each claim against the ways a try block can end: a return, an exception, or the whole JVM stopping.",
+"You need a method that takes a Path plus a Charset and returns a buffered reader; also check which lines even compile.",
+"flip prepares a buffer for reading what was just written. Where must reading start, and where must it stop?",
+"The stream is lazy and backed by an open file handle; think about what happens if nobody closes it.",
+"Default serialization skips class-level fields and fields explicitly marked to be skipped.",
+"Deserialization runs the no-arg constructor of the first parent class that is not Serializable, not the class's own.",
+"Untrusted bytes can choose which classes get created and which of their hooks run.",
+"Ask what static type e would have if you could assign to it, and what rule Java adds to multi-catch parameters to prevent that."
+],
+"interview":[
+"Define both kinds by where they sit in the hierarchy, then explain when the caller can recover (checked) versus programming bugs (unchecked).",
+"Draw the tree from Throwable down to Error and Exception, and point out where RuntimeException sits and why it matters.",
+"Say it usually runs, then cover the edge cases: System.exit, JVM crash, infinite loop, daemon threads, and return inside finally.",
+"Explain AutoCloseable, reverse close order, and suppressed exceptions, compared with the old manual finally pattern.",
+"Cover choosing checked or unchecked, a small meaningful hierarchy, carrying context fields, and always keeping the cause.",
+"Explain wrapping a low-level exception as the cause of a higher-level one, and how it keeps the full stack trace for debugging.",
+"List things like swallowing exceptions, catching Exception broadly, log-and-rethrow, losing the cause, and using exceptions for flow control.",
+"Mention restoring the interrupt flag or rethrowing it, and why silently swallowing it breaks cancellation.",
+"Compare stream-based blocking IO with buffers, channels, non-blocking IO and the Files and Path API, then give a recommendation.",
+"Talk about streaming line by line instead of loading it all, buffering, closing resources, and options like parallel chunks or memory mapping.",
+"Explain it as a version check for serialized classes, and what goes wrong when the compiler computes it for you.",
+"Explain that transient fields are skipped, then show how readObject or lazy init can rebuild them after loading.",
+"Mention gadget chains leading to remote code execution, then mitigations like avoiding it, deserialization filters, and safer formats like JSON.",
+"Cover uncaught handlers for threads, exceptions wrapped by Future.get, and how CompletableFuture passes failures through its stages."
+]}

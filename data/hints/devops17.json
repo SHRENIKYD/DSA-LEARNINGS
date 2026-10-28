@@ -1,0 +1,32 @@
+{"quiz":[
+"Ask whether the services can really be released and changed independently, or if they share data and release together.",
+"Attempts multiply across layers. Count the attempts per layer and multiply them.",
+"Look for work the user does not need to wait for and that can survive a downstream outage.",
+"One Istio resource defines named subsets by pod label; another routes weighted traffic to them.",
+"STRICT mode accepts only mutual TLS connections. Think about callers that have no sidecar yet.",
+"Ambient mode splits L4 handling on each node from optional L7 processing. Think about pod overhead and restarts.",
+"Match each strategy to typical recovery time and cost, and pick the cheapest one that still meets tens of minutes.",
+"With asynchronous replication, think about which writes had not reached the replica when the primary died.",
+"Think about how conflicts are resolved for a single item written in two Regions at once.",
+"Recall whether a Savings Plan bills for actual usage or for the hourly amount you committed to.",
+"Ask which VPC feature lets private subnets reach S3 without going through the NAT, and what it costs.",
+"Redundant parts: 1 minus the product of failure chances. Parts in series: multiply availabilities.",
+"Which pillar covers deployments, runbooks, game days and learning from failure?",
+"Add the time to detect the failure to how long clients may cache the old DNS answer.",
+"During failover, think about how many writers may exist at the same time and what must happen to the old primary."
+],"interview":[
+"Discuss boundaries around business capabilities and data ownership, then signs of a distributed monolith such as shared databases and lockstep releases.",
+"Explain how retries multiply across layers and overload a struggling service, then cover retry at one layer, backoff with jitter, budgets and breakers.",
+"Give a rule: sync when the user needs the answer now, async otherwise, with an example such as payment versus sending email.",
+"Cover traffic control, mTLS and observability that a mesh adds, and costs like latency, resources and operational complexity.",
+"Describe subsets and weighted routes for the canary, then name the metrics like errors and latency you compare before raising the weight.",
+"Explain starting PERMISSIVE, injecting all callers, then STRICT, and that one controls mTLS while the other controls who may call what.",
+"Define RTO as time to recover and RPO as data loss allowed, then describe backup and restore, pilot light, warm standby and active-active.",
+"Mention untested runbooks, missing replication or config, DNS caching, capacity in the standby, dependencies and permissions.",
+"Compare cost and complexity, then discuss conflict handling, home Regions for writes, and fencing to prevent two primaries.",
+"Cover routing policies like latency or failover with health checks, and limits such as detection time, DNS TTL and client caching.",
+"Use cost tools to break the bill down by service and tag, look for data transfer, NAT, logs and idle resources, then fix and add alerts.",
+"Compare flexibility and discounts of each, use Spot for interruptible work, and commit only to the steady floor of usage.",
+"Walk through all six pillars for a real system and name a trade-off you accepted on purpose, with the reason.",
+"Ask about shared dependencies like the database, correlated failures, failover behaviour and how availability was actually measured."
+]}

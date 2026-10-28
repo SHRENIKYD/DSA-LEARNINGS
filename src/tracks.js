@@ -217,7 +217,11 @@ var TRACKS = [
       ['A', 'Frontend Security & Networking', 'Same-origin policy, CORS, cookies (SameSite, HttpOnly, Secure), XSS (stored/reflected/DOM) and prevention, CSRF, CSP, clickjacking, auth token storage, HTTPS/HTTP2/3 for FE.'],
       ['A', 'Tooling, Build & Testing', 'npm/pnpm, bundlers (webpack, Vite, esbuild), transpiling, tree shaking, TypeScript in FE, linting/formatting, unit tests (Jest/Vitest), React Testing Library, E2E (Playwright), CI.'],
       ['E', 'Frontend Architecture at Scale', 'Micro-frontends, module federation, design systems and component libraries, monorepos, PWAs and service workers, offline-first, internationalization, feature flags.'],
-      ['E', 'Frontend System Design & Machine Coding', 'Framework (requirements, components, state, API, performance, a11y), designs: autocomplete, infinite news feed, image carousel, chat UI, Google Sheets-like grid; machine-coding round strategy.']
+      ['E', 'Frontend System Design & Machine Coding', 'Framework (requirements, components, state, API, performance, a11y), designs: autocomplete, infinite news feed, image carousel, chat UI, Google Sheets-like grid; machine-coding round strategy.'],
+      ['I', 'Angular Fundamentals', 'Angular CLI and workspace, standalone components, templates and the new control flow (@if, @for, @switch), interpolation, property/event/two-way binding, input() and output(), lifecycle hooks, pipes, directives, NgModules vs standalone.'],
+      ['I', 'Angular Services & Dependency Injection', 'Services and @Injectable, providedIn root, inject(), the injector tree (environment vs element injectors), provider types (useClass, useValue, useFactory, useExisting), injection tokens, HttpClient and interceptors, testing with TestBed.'],
+      ['A', 'RxJS & Angular Signals', 'Observables vs promises, subscribe and teardown, operators (map, filter, switchMap, mergeMap, concatMap, exhaustMap, debounceTime, catchError), Subjects, the async pipe, avoiding leaks (takeUntilDestroyed), signals, computed(), effect(), toSignal/toObservable.'],
+      ['A', 'Angular Routing, Forms & Performance at Scale', 'Router (routes, params, guards, resolvers, lazy loading with loadComponent), reactive vs template-driven forms, validators, change detection (Default vs OnPush, zone.js vs zoneless), @defer, SSR and hydration, state with NgRx/signal stores, Angular interview rounds.']
     ]
   },
   {
@@ -244,7 +248,7 @@ var TRACKS = [
       ['I', 'Python Backend II: Databases with SQLAlchemy & Alembic', 'Engine, sessions and the unit of work, ORM models and relationships, queries in SQLAlchemy 2.0 style, N+1 and eager loading, transactions, Alembic migrations, connection pooling, repository pattern, async database access.'],
       ['I', 'Python Backend III: Auth, Security & Configuration', 'Password hashing (argon2/bcrypt), OAuth2 password flow with JWT in FastAPI, scopes and roles, CORS, settings from environment with pydantic-settings, secrets handling, rate limiting, input validation and the OWASP checks for Python APIs.'],
       ['A', 'Python Backend IV: Testing & Quality for APIs', 'pytest fixtures and parametrize, TestClient and httpx AsyncClient, test databases and transactions per test, factories, mocking external services, contract tests, coverage, type checking with mypy, linting and formatting with ruff, CI pipelines.'],
-      ['A', 'Python Backend V: Async Workers, Caching & Deployment', 'Background tasks, task queues (Celery, RQ, arq), Redis caching patterns, idempotent jobs and retries, Docker images for Python apps, Gunicorn/Uvicorn workers, structured logging and metrics, Django overview and when to choose it.'],
+      ['A', 'Python Backend V: Async Workers, Caching & Deployment', 'Background tasks, task queues (Celery, RQ, arq), Redis caching patterns, idempotent jobs and retries, Docker images for Python apps, Gunicorn/Uvicorn workers, structured logging and metrics, Django overview and when to choose it.']
     ]
   },
   {
@@ -270,7 +274,7 @@ var TRACKS = [
       ['E', 'The Future of Software Careers with AI', 'What gets automated vs what gains value, T-shaped skills, system thinking and product sense, ethics and regulation, building a learning habit, career roadmap for the next 5 years.'],
       ['B', 'Linear Algebra for Machine Learning', 'Vectors, dot products and cosine similarity, matrices as transformations, matrix multiplication, transpose and inverse, linear systems, eigenvectors intuition, SVD and PCA, how embeddings and attention use these ideas, all in plain Python.'],
       ['B', 'Probability & Statistics for Machine Learning', 'Random variables, distributions (Bernoulli, binomial, normal), expectation and variance, Bayes rule, conditional probability, sampling, confidence intervals, hypothesis tests and A/B tests, entropy and cross-entropy, softmax probabilities.'],
-      ['I', 'Calculus & Optimization for Machine Learning', 'Derivatives and the chain rule, partial derivatives and gradients, gradient descent and learning rates, loss functions (MSE, cross-entropy), backpropagation by hand, momentum and Adam, overfitting and regularisation, convexity intuition.'],
+      ['I', 'Calculus & Optimization for Machine Learning', 'Derivatives and the chain rule, partial derivatives and gradients, gradient descent and learning rates, loss functions (MSE, cross-entropy), backpropagation by hand, momentum and Adam, overfitting and regularisation, convexity intuition.']
     ]
   },
   {
@@ -314,7 +318,7 @@ var TRACKS = [
       ['A', 'Observability & Monitoring', 'Metrics, logs and traces, Prometheus scraping and PromQL, Grafana dashboards, alerting rules and on-call, the ELK/EFK stack, OpenTelemetry, SLIs and SLOs, commercial tools such as Datadog.'],
       ['A', 'DevSecOps & Cloud Security', 'Secrets management with HashiCorp Vault, static analysis and dependency scanning in pipelines, container image scanning, least-privilege IAM design, security groups and network segmentation, audit logs, compliance basics.'],
       ['E', 'Advanced Cloud Architecture', 'Microservices on the cloud, service meshes (Istio), disaster recovery strategies (backup and restore, pilot light, warm standby, multi-site), RTO and RPO, multi-region deployments, cost optimisation, the Well-Architected Framework.'],
-      ['E', 'SRE Practice & Capstone', 'Error budgets, incident response and postmortems, capacity planning, toil reduction, chaos engineering, a capstone that provisions and runs a three-tier app end to end, DevOps and SRE interview preparation.'],
+      ['E', 'SRE Practice & Capstone', 'Error budgets, incident response and postmortems, capacity planning, toil reduction, chaos engineering, a capstone that provisions and runs a three-tier app end to end, DevOps and SRE interview preparation.']
     ]
   },
   {

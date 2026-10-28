@@ -1,0 +1,31 @@
+{"quiz":[
+"counter++ is load, add, store. Think about how often an update can be lost when two threads interleave those steps.",
+"Recall the three classic properties a critical-section solution must have, and spot the one from a different topic.",
+"Trace both threads writing turn one after the other. Whose write survives, and what does the spin condition then make that thread do?",
+"Modern CPUs may let a later read finish before an earlier write is visible to other cores. What does that break here?",
+"With a value of zero, the very first wait blocks until another thread signals. What is that pattern good for?",
+"If the producer holds the lock while sleeping for free space, can any consumer ever get in to free a slot?",
+"After waking, a thread must re-take the lock, and the condition may have changed or the wake-up may be false.",
+"Ask where a condition variable would store a signal if nobody is waiting. Is there any counter or flag inside it?",
+"If readers can always join while other readers are inside, think about who may wait forever.",
+"Deadlock needs four conditions, one of them a cycle of waits. Which option changes the order forks are taken so no cycle can form?",
+"Spinning burns CPU while waiting. It only pays off when the wait is shorter than going to sleep and waking up.",
+"Think about ownership: must the thread that locked be the one that unlocks? Compare how each tool is meant to be used.",
+"Ask which monitor style guarantees the condition is still true at the moment the woken thread runs.",
+"Livelock means threads are busy and not blocked, yet keep undoing each other so nothing gets done."
+],
+"interview":[
+"Define a race, split counter++ into load, add and store, show an interleaving that loses an update, and mention fixes.",
+"Name mutual exclusion, progress and bounded waiting with one line each, then give a flawed scheme like strict alternation.",
+"Describe the flag array and turn variable, the spin condition, and argue why both threads cannot be inside at once.",
+"Cover the fast path atomic compare-and-swap, the kernel sleep on contention such as futex wait, and waking a waiter on unlock.",
+"Compare burning CPU while waiting with sleeping, and name when each fits: tiny sections, other cores, interrupt context.",
+"Define wait and signal, contrast binary and counting use cases, and explain ownership as the key mutex difference.",
+"Give the three semaphores with initial values, the producer and consumer steps, and the deadlock from swapping the waits.",
+"Explain stolen wake-ups in Mesa monitors, spurious wake-ups, and why rechecking the condition in a loop fixes both.",
+"Describe shared reads and exclusive writes, reader versus writer preference, and fixes such as fair or writer-priority locks.",
+"Explain the circular wait from everyone taking the left fork first, then fixes like resource ordering or limiting seats.",
+"Explain when one indivisible operation on one variable is enough, and when invariants over several variables need a mutex.",
+"Start with a thread dump, then tell apart blocked threads at low CPU, busy threads making no progress, and threads never served.",
+"Start with one lock and measure, then discuss sharding, read-write locks, shorter critical sections and avoiding a global lock."
+]}

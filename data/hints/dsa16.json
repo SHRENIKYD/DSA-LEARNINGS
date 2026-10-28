@@ -1,0 +1,32 @@
+{"quiz":[
+"One property says a locally best first pick can start some optimal answer; the other says the leftover is a smaller copy of the same problem.",
+"An exchange argument transforms the optimal answer gradually. Think about what each swap must preserve about its quality.",
+"Test each key on small cases, like one long meeting that covers two short ones. Only one key survives every counterexample.",
+"Placing X in a slot may block another job. Try both slots for X and see which lets Y still fit.",
+"Fractional lets you take part of an item, so sort by value per weight. For 0/1, try every whole-item combination that fits.",
+"Repeatedly merge the two smallest frequencies; each merge cost adds to the total bits. Sum all the merge costs.",
+"If a platform cannot be reused at the same instant, a tie between an arrival and a departure must count as an overlap. Think about which event to process first on ties.",
+"First check if total gain is negative. Then reset the start just after any point where the running sum drops below zero.",
+"Trace the loop at i = 0: update farthest, then check whether i reached curEnd and what happens to both variables then.",
+"Try small amounts in order and compare the greedy coin count with the best mix of smaller coins, such as two 3s.",
+"Greedy breaks when a locally best pick can block a better combination. Which option has values that change what a good pick is?",
+"Think about the range of int and what happens when you subtract a very negative value from a very large one.",
+"Take two neighbouring jobs and write the cost change from swapping them. Which quantity of each job decides the order?",
+"Recall the Rado-Edmonds theorem about which set systems make weight-sorted greedy optimal, and check knapsack against it."
+],
+"interview":[
+"Define greedy as making one local choice and never revisiting it. Contrast with DP, which explores subproblems and combines them, and mention overlapping subproblems.",
+"Cover the exchange argument or the stays-ahead proof, and mention checking small counterexamples by brute force first.",
+"Explain that ending earliest leaves the most free time. Give counterexamples for earliest start and shortest duration, then mention the exchange proof.",
+"Describe sorting by profit, then putting each job in the latest free slot before its deadline so earlier slots stay open for tighter jobs. Mention DSU for speed.",
+"Explain value per weight ordering and that splitting items makes the exchange argument work. Show a small counterexample for 0/1 and point to DP.",
+"Walk through the min-heap merging steps, then explain why the two rarest symbols can be deepest siblings in some optimal tree.",
+"Cover sorting start and end times with two pointers or a min-heap of end times, and say how ties between start and end are handled.",
+"Explain the total-gain check, the running sum reset rule, and why no start between the old start and the failing point can work.",
+"Describe the BFS-like levels with current end and farthest reach. Name the wrong idea of always jumping to the largest value.",
+"Give a concrete counterexample like coins 1, 3, 4. Mention brute-force comparison on small inputs as a detection method.",
+"Define a matroid with its hereditary and exchange properties, and explain that greedy is optimal on every matroid. Give MST as an example.",
+"Mention subtraction overflow, comparators that are not consistent or transitive, and tie handling. Note how other languages differ.",
+"Say what you would let AI do, such as generating test cases or counterexamples, and what you would verify yourself, like the correctness proof.",
+"Name real uses like scheduling, caching, or routing heuristics, and discuss speed versus optimality and how you would monitor quality."
+]}

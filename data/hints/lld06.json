@@ -1,0 +1,31 @@
+{"quiz":[
+"Ask what varies here and who picks it: several ways to compute a price, chosen while the app runs.",
+"Ask who decides when behaviour switches: the client, or the objects themselves.",
+"After undo, typing creates a new history branch. Ask whether the old redo entries still describe a valid future.",
+"Think about what the other observers should experience when one listener is broken.",
+"The base class defines the fixed order of steps. What would happen if subclasses could override it?",
+"Chain of Responsibility does not promise that someone handles every request. Ask what should happen at the end of the chain.",
+"Count total pushes and pops over the whole traversal, and the most the stack ever holds at once. Separate amortized from worst case.",
+"With ten widgets talking to each other there are many links. Which pattern moves those rules into one place?",
+"Think about encapsulation: the caretaker stores the snapshot, but who needs to know what is inside it?",
+"The right method must be chosen using two runtime types. How does accept help with that?",
+"Visitor puts each operation in its own class. Which kind of change does that make easy, and which hard?",
+"An inverse operation only works if one exists. What can you keep instead when the action cannot be reversed?",
+"Think about how a Java iterator tracks the list's structure and what it does if the list changes behind its back.",
+"Match each JDK type to its role: a comparison rule, a skeleton class, a filter chain, and a task handed to an executor."
+],"interview":[
+"Explain they focus on how objects communicate and share responsibilities, contrasted with creation and composition.",
+"Contrast who triggers changes: the client choosing a strategy vs states moving themselves, with examples.",
+"Cover Command objects or snapshots, two stacks, clearing redo on new edits, and memory limits.",
+"Discuss leaks from unremoved listeners, error isolation, ordering, slow observers, and re-entrant updates.",
+"Show one chain where only one handler acts and another where every handler may act, like middleware.",
+"Contrast inheritance with fixed skeleton steps against composition with swappable algorithms.",
+"Use an explicit stack that holds only the current left path, giving memory proportional to tree height.",
+"Explain direct subscribe, a central coordinator, and a broker that decouples senders and receivers.",
+"Compare storing state snapshots with storing reversible operations, in memory cost and complexity.",
+"Explain choosing a method based on two runtime types, and how accept plus visit achieves that.",
+"Use a State pattern or transition table, reject illegal moves, and handle concurrency with versions or locks.",
+"Ask what varies, who chooses it, and whether a simple map or polymorphism is enough before picking a pattern.",
+"Think of tool calls as commands, chains of processing steps, strategies for models, and observers for streaming events.",
+"Mention listener interfaces, property change support, or reactive streams, and thread safety of the listener list."
+]}

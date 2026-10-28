@@ -1,0 +1,32 @@
+{"quiz":[
+"The console prints the value of every expression you type, and console.log itself returns nothing useful.",
+"var declarations are hoisted and given an initial value before the code runs, but the assignment stays in place.",
+"let is hoisted too, but it sits in a temporal dead zone until its declaration line runs.",
+"const prevents rebinding the variable, but it does not freeze the object or array it points to.",
+"This is a famous bug kept from the first version of the language for backward compatibility.",
+"Plus with a string concatenates, but minus always converts both sides to numbers.",
+"Only a few values are falsy; any non-empty string counts as truthy, whatever it contains.",
+"One operator falls back on any falsy value, the other only on null or a missing value.",
+"Evaluate the not operator first, then follow the loose equality conversion rules to numbers.",
+"Decimal fractions are stored in binary floating point, which cannot represent them exactly.",
+"NaN is the only value not equal to itself, so normal comparisons with it never work.",
+"slice takes a start index and an end index, and the end index is not included.",
+"Without a break, a switch case falls through into the next cases until a break is reached.",
+"One function reads digits until it hits an invalid character, the other requires the whole string to be numeric."
+],
+"interview":[
+"Explain the engine parses and runs code, while the runtime adds APIs like the DOM, timers or file system, using V8 with browser or Node as examples.",
+"Compare scope, hoisting, the temporal dead zone, redeclaration and reassignment for each keyword.",
+"List the primitive types and objects, and mention how typeof reports each one with a quirk or two.",
+"Explain the difference between missing or not yet set and an intentional empty value, with examples of where each appears.",
+"Explain type coercion in loose equality versus strict equality, and mention the null check as a common exception.",
+"List the falsy values, then show surprising truthy ones like empty arrays, objects and the string zero.",
+"Explain binary floating point rounding, then handle money using integer cents or a decimal library.",
+"Define it as an invalid number result, and contrast the global check that coerces with the strict one that does not.",
+"Explain that if either side becomes a string after conversion, it concatenates, otherwise it adds numbers.",
+"Compare falsy fallback versus nullish fallback, and explain the logical assignment shortcuts.",
+"Explain when semicolons are inserted, then show traps like a return on its own line or lines starting with brackets.",
+"Explain UTF-16 code units and surrogate pairs, and how to count real characters with spread or Intl tools.",
+"Explain the type tag history behind it and mention other quirks kept for backward compatibility.",
+"Point to floating point totals and big IDs losing precision as numbers; fix with integer cents, decimal types and IDs as strings."
+]}

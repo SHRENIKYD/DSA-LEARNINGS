@@ -514,7 +514,8 @@ var App = (function () {
     for (var i = ord.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = ord[i]; ord[i] = ord[j]; ord[j] = t; }
     ord.forEach(function (o, k) { pos[o] = k; });
     var ex = String(q.explain || '').replace(/\b([Oo]ptions?\s+)([A-D])\b/g, function (s, w, c) { var k = pos[c.charCodeAt(0) - 65]; return k === undefined ? s : w + letter(k); });
-    return '<div class="box mcq ' + (cls || '') + '" data-ans="' + q.answer + '"><span class="tag">What would you do?</span><div>' + q.q + '</div><div class="opts">' +
+    return '<div class="box mcq ' + (cls || '') + '" data-ans="' + q.answer + '"><span class="tag">What would you do?</span><div>' + q.q + '</div>' +
+      (q.hint ? '<details class="qhint"><summary>💡 Hint</summary><div>' + esc(q.hint) + '</div></details>' : '') + '<div class="opts">' +
       ord.map(function (o, k) { return '<button class="opt" type="button" data-opt="' + o + '">' + letter(k) + '. ' + q.options[o] + '</button>'; }).join('') +
       '</div><div class="mcq-fb" hidden></div><template>' + ex + '</template></div>';
   }
@@ -580,19 +581,22 @@ var App = (function () {
     });
     return h + '<div class="topic-end" aria-hidden="true"></div></section>';
   }
+  // Hints for riddles and interview questions live in data/hints/<module>.json; the build puts them in IM_HINTS.
+  function hintsOf(m) { return (window.IM_HINTS || {})[m.id] || {}; }
   function quizHtml(m) {
-    var q = m.quiz || [];
+    var q = m.quiz || [], qh = hintsOf(m).quiz || [];
     if (!q.length) return '';
     return '<section class="card gate" id="' + m.id + '-quiz"><div class="topic-head"><h2>' + JI('gate') + 'Riddle gate — ' + q.length + ' riddles</h2>' + doneBox(m.id + '-quiz', 'Completed') + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why. Answer every riddle right and the gate opens by itself.</div>' +
-      q.map(function (x, i) { return mcqHtml({ q: '<b>Q' + (i + 1) + '.</b> ' + x.q, options: x.options, answer: x.answer, explain: x.explain }, 'quizq'); }).join('') + '</section>';
+      q.map(function (x, i) { return mcqHtml({ q: '<b>Q' + (i + 1) + '.</b> ' + x.q, options: x.options, answer: x.answer, explain: x.explain, hint: qh[i] }, 'quizq'); }).join('') + '</section>';
   }
   function interviewHtml(m) {
-    var iv = m.interview || [];
+    var iv = m.interview || [], ih = hintsOf(m).interview || [];
     if (!iv.length) return '';
     return '<section class="card tavern" id="' + m.id + '-iv"><div class="topic-head"><h2>' + JI('lantern') + 'Interview tavern — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
       iv.map(function (x, i) {
-        return '<details class="iv"><summary><span class="ivn">Q' + (i + 1) + '</span> ' + x.q + (x.level ? ' ' + lvlBadge(x.level) : '') + '</summary><div class="dbody">' + x.a +
-          (x.followUps && x.followUps.length ? '<h4>Likely follow-ups</h4><ul>' + x.followUps.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + '</div></details>';
+        return '<details class="iv"><summary><span class="ivn">Q' + (i + 1) + '</span> ' + x.q + (x.level ? ' ' + lvlBadge(x.level) : '') + '</summary><div class="dbody">' +
+          (ih[i] ? '<p class="ivhint">💡 <b>Hint:</b> ' + esc(ih[i]) + '</p><details class="ivans"><summary>Show the model answer</summary>' : '') + x.a +
+          (x.followUps && x.followUps.length ? '<h4>Likely follow-ups</h4><ul>' + x.followUps.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + (ih[i] ? '</details>' : '') + '</div></details>';
       }).join('') + '</section>';
   }
 

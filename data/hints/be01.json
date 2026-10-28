@@ -1,0 +1,28 @@
+{"quiz":[
+"Think about what the browser knows at the very start: only a name. What must it learn before it can connect anywhere?",
+"Recall how an HTTP message is laid out as text lines. How does the reader know the header lines are finished?",
+"Check each method twice: does it change server state at all (safe), and does doing it twice end the same as once (idempotent)?",
+"The JSON parsed fine, so the syntax is OK. Whose mistake is a bad value, and which 4xx code means well-formed but invalid?",
+"The user is logged in, so identity is known. The question is permission. Which code means known user but not allowed?",
+"Stateless is about the protocol itself: does the server remember the previous request, or must each request bring everything?",
+"If no instance holds user state in its own memory, does it matter which instance a load balancer sends a request to?",
+"Think about 0.1 + 0.2 in floating point, and about whether a bare number tells you which money it is.",
+"Split the work: what is generic HTTP plumbing that every app needs, and what is your own business code and data?",
+"The proxy connected fine but gave up waiting for a reply. Which 5xx code means the upstream was too slow?",
+"Look for the cookie flag designed to stop scripts in the page (like stolen-cookie XSS) from seeing the cookie value.",
+"The server needs a way to recognise a repeated request and answer with the first result instead of creating a new one."
+],"interview":[
+"Walk the steps in order: DNS lookup, TCP and TLS connect, HTTP request, server processing, response, and browser rendering.",
+"Define who asks and who answers, then list backend jobs: business rules, data storage, auth, and talking to other services.",
+"Give one line per method on what it does, then classify each as safe, idempotent, both, or neither, with a reason.",
+"Cover the 1xx to 5xx families and their meaning, then name common codes like 200, 201, 204, 400, 401, 403, 404, 409, 500, 503.",
+"List the JSON types (string, number, boolean, null, object, array), then explain float rounding and storing money as integer minor units.",
+"Explain that each request stands alone, then cover cookies, sessions, and tokens as ways to carry identity across requests.",
+"Mention that any instance can serve any request, then explain moving state to shared stores like a database, cache, or session store.",
+"Contrast serving static files and HTTP handling with running app code, then list proxy jobs: TLS, buffering, load balancing, limits.",
+"Explain the client sending a unique key, the server storing key plus result, replaying on retry, and handling concurrent duplicates.",
+"Define each code from the proxy's view, then say what to check: app down, overloaded or in maintenance, or too slow versus timeouts.",
+"Explain the ETag version tag, If-None-Match giving 304 for caching, and If-Match giving 412 to stop lost updates on writes.",
+"Discuss short-lived signed access tokens, refresh tokens, and a fast revocation list or version check, plus the trade-offs.",
+"Cover size limits, deep nesting, slow clients, header abuse, and validation with allow-lists, timeouts, and safe parsers."
+]}

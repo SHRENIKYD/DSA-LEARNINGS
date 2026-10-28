@@ -1,0 +1,33 @@
+{
+  "quiz": [
+    "Think about what the router is: an app-wide service. Where does a standalone app collect app-wide services before the first component renders?",
+    "A standalone template only knows about things its own component lists. Which metadata array holds that list?",
+    "The banana-in-a-box combines the two one-way arrows. Which binding goes in, and which event comes out with the Change suffix?",
+    "Some HTML attributes have no matching DOM property. Angular has a special prefix for binding straight to the attribute.",
+    "One part of the @for header cannot be left out, because Angular needs to know which row is which when the list changes.",
+    "Ask what stays the same across two fetches: the object instances, the positions, or the data's own identifier?",
+    "Signal inputs receive their values after the class is constructed. What does reading a required one too early do?",
+    "Angular never knows about timers you start yourself. Which moment in a component's life is the last chance to stop them?",
+    "The class must exist before anything else, and the one-time init hook needs inputs to already be set.",
+    "Pure pipes compare inputs by reference. Did push give the pipe a different array object?",
+    "Think about what you would otherwise do by hand with an Observable in a component: subscribe, store the value, and later...",
+    "Structural directives work on a blueprint of the element rather than the element itself. Which Angular element is a blueprint?",
+    "Remember the error you get when the same pipe appears in the declarations of two different modules.",
+    "Two-way binding needs a value going in and a Change event coming out. Which signal function gives you both at once?"
+  ],
+  "interview": [
+    "Walk from index.html to the first paint: the host tag, main.ts, the config's providers and injector, then the root component's first render.",
+    "Contrast where a template's dependencies are listed in each style, then mention boilerplate, lazy loading, tree-shaking and interop.",
+    "Use the bracket shapes as your outline: curly braces, square brackets, parentheses and the banana-in-a-box, and say which way data flows in each.",
+    "Cover imports, performance, the mandatory tracking expression, the empty block, else branches and the one-directive-per-element limit.",
+    "Organise the answer by direction: down, up, both ways, and between siblings or distant components. Finish with the rule children must follow.",
+    "Compare how you react to an input change in each style, then add type safety, read-only behaviour and fine-grained updates.",
+    "Go in creation order from the class constructor to destruction, and give one realistic job for each hook. Mention the modern replacements.",
+    "Think about the extra verification pass that runs in development mode and what it compares. What kinds of code change a value too late?",
+    "Explain when Angular re-runs each kind, why async is the famous exception, and why list filtering is usually better done elsewhere.",
+    "Start from the fact that all three are directives, then separate them by whether they have a template and whether they create views.",
+    "Take each metadata field in turn and say what it controls. Add a note on which injector lazy-loaded providers land in.",
+    "Describe the classic Zone.js trigger and full-tree check, then what OnPush skips, then how signals and zoneless narrow the work.",
+    "Think in small, safe, automated steps: version upgrades, builder, standalone, control flow, signals, OnPush, and tests guarding each."
+  ]
+}

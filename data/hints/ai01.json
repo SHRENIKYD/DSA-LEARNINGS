@@ -1,0 +1,28 @@
+{"quiz":[
+"Think of the terms as circles inside circles, from the broadest idea down to the most specific kind of model.",
+"Ask whether anything is learned from data here. If the rules are written by hand, which labels still apply?",
+"Look at the kind of output: is it a category or a number on a continuous scale?",
+"Notice there are no predefined labels. Which learning style finds structure on its own?",
+"In this setup nobody tells the agent the correct answer. What signal tells it how well it did?",
+"Inference is just using a trained model to answer. Think about whether learning happens during that step.",
+"Recall what the model is actually trained to do: produce likely text, not check facts.",
+"Temperature reshapes the probability distribution over next tokens. Think about what flattening it does.",
+"Epsilon-greedy balances two behaviours. Epsilon is the small probability of the less obvious one.",
+"Pick the task where the exact logic is already known and fixed, so code can do it perfectly.",
+"Think about what AlexNet combined: known ideas, a huge labelled dataset, and new hardware.",
+"Self-supervised means the label comes from the data itself. What part of a sentence can be hidden and predicted?",
+"Drift is about the world changing while the trained model stays the same."
+],"interview":[
+"Describe them as nested sets, say what each adds (learning from data, many-layer networks), and give an example of each.",
+"Define each by what feedback it gets (labels, none, rewards) and give one concrete example per type.",
+"Contrast how weights change versus stay frozen, plus cost, speed and how often each happens.",
+"Cover tokens, predicting a probability for the next token, sampling, appending and repeating, and what temperature does.",
+"Explain that models predict plausible text with no truth check, then list fixes like grounding with RAG, citing sources and evaluation.",
+"Compare known, exact, auditable logic with fuzzy patterns that need lots of examples, and mention hybrid systems.",
+"Define memorising noise, show the train versus validation gap, and list ways to reduce it.",
+"Explain the trade-off between using the best known option and trying others, then mention epsilon-greedy and smarter methods.",
+"Contrast broad pre-training and adaptation to many tasks with a narrow task-specific model, including costs and risks.",
+"Mention attention, parallel training on GPUs, scaling with data, and next-token pre-training plus tuning.",
+"Use a simple analogy, list key limits like wrong confident answers and bias, and focus on where human review is needed.",
+"Cover the user problem, cost of errors, simpler alternatives, data privacy, latency and cost, evaluation, and fallback."
+]}

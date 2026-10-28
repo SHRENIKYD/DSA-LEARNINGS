@@ -1,0 +1,33 @@
+{"quiz":[
+"JSX is not HTML and not the DOM. Think about what a build tool turns each tag into, and what that call returns.",
+"Look at how JSX decides between a string tag name and a variable you defined, based on the first letter.",
+"Props are read-only. Think about the rule that data flows down and events flow up.",
+"Each call reads the same snapshot of count from this render. What value does each call ask for?",
+"React only notices its own state, context, and renders flowing down the tree. Plain variables and window events are invisible to it.",
+"Rendering is not the same as touching the DOM. React compares the new output with the old one before committing.",
+"A good key must stay attached to the same item when the order changes. Position in the array does not.",
+"The && operator returns its left side when that side is falsy. What does React do with a number?",
+"Setting value makes the input controlled. Without a way to update that value, what can typing actually change?",
+"Two copies of state kept in sync tend to drift apart. Where can one copy live so both siblings can receive it as props?",
+"Think about how a wrapper like a Card or Modal shows content that the caller writes between its opening and closing tags.",
+"React uses the key to decide if this is the same component or a new one. Think about what happens to state when it decides it is new.",
+"memo compares props shallowly with Object.is. Ask whether an object literal written inline is the same value each render.",
+"React compares component types between renders. A function declared inside render is a new function every time.",
+"Notice the parentheses. Ask when that expression is evaluated: during render or during the click."
+],"interview":[
+"Explain that JSX is syntax sugar compiled by a build tool into function calls that return element objects, and that browsers cannot run it directly.",
+"Cover who owns each one: props come from the parent and are read-only, state is owned by the component and changing it triggers a re-render.",
+"Explain how keys help reconciliation match items between renders, and why stable unique ids beat array indexes for lists that change.",
+"Define both (React state drives the value vs the DOM holds it, read with a ref), then give trade-offs and when you would pick each.",
+"Talk about the state snapshot per render, batching, and the functional updater form that fixes it.",
+"List the triggers (state change, parent render, context change) and tools to avoid waste: memo, stable props, moving state down, profiling first.",
+"Explain moving shared state to the closest common parent, and mention the cost: more re-renders and prop drilling, so keep state local when possible.",
+"Mention the children prop, slots via props, and specialized wrapper components, and why these are more flexible than class inheritance.",
+"Explain that React compares references with Object.is, so the same array means no change detected. Show the immutable copy fix.",
+"Walk through scheduling the update, the render phase calling components, diffing the new tree, the commit phase updating the DOM, then the browser painting.",
+"Explain that a count of zero is falsy but still renders as the text 0. Fix it with a boolean check or a ternary.",
+"Discuss compound components or props, controlled vs uncontrolled modes, keyboard and ARIA support, and where the open state lives.",
+"Explain that state is tied to a component's position and type in the tree, and that changing type, position or key resets it.",
+"Use the Profiler to find what re-renders, then consider uncontrolled inputs, splitting state, memoizing field components, or a form library.",
+"Define each: the component is the function or class, the element is the plain object describing UI, the instance is the mounted thing holding state."
+]}

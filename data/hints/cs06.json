@@ -1,0 +1,32 @@
+{"quiz":[
+"Find how many bits the offset needs for the page size, then subtract that from the total address width.",
+"Paging uses fixed-size frames and any free frame fits any page. Which kind of waste can no longer happen, and which kind remains?",
+"One register says where the process starts in RAM, the other says how big it is. Work out how each is used to check and move an address.",
+"Weight hit and miss times by their chances. A miss adds one extra memory access for the page table.",
+"Find the bits left after the offset, then see how many bits one table of that size can index, and divide.",
+"Before the OS can load anything, the hardware must hand control to it. Think about how that happens.",
+"Recall the famous FIFO reference string tried with 3 and then 4 frames. Compare the fault counts and what that shows.",
+"Which policy would need to know future page references to choose the best victim?",
+"The bit means the page was used recently. Think about how the algorithm treats it before evicting anything.",
+"Look at the pattern: the CPU is idle while the disk is swapping nonstop. Ask where the time is going and why new processes make it worse.",
+"Segmentation divides a program into logical parts. Think about what two pieces an address must name.",
+"Recall which algorithms keep the pages held with fewer frames as a subset of those held with more frames.",
+"Count one memory read per page-table level walked, then add the final read of the data itself.",
+"The working set is about recent behavior: which distinct pages were used in the latest window of references."
+],"interview":[
+"Define both kinds of address, then explain the MMU translating every access and enforcing protection between processes.",
+"Define both kinds of waste, then map them to schemes like fixed partitions, paging, variable partitions and segmentation.",
+"Split the address into page number and offset, check the TLB, walk the table on a miss, then build the physical address.",
+"Compute the flat table sizes for both address widths, then explain how multiple levels skip unused parts of the space.",
+"Describe the TLB as a cache of translations, then give the effective access time formula and how levels make misses costlier.",
+"Compare fixed invisible pages with variable logical segments, the address format, and which fragmentation each causes.",
+"Go through the trap, legality check, finding or freeing a frame, loading the page and retrying; then minor versus major.",
+"Compare each on what it evicts, cost, and anomaly risk, then justify a practical choice like a clock-style approximation.",
+"Give the classic FIFO example, then explain the stack property that protects LRU and OPT from the anomaly.",
+"Explain working sets exceeding RAM, the symptoms to watch, and fixes like fewer processes, more memory or working-set control.",
+"Explain copy-on-write sharing of pages after fork, then the costs: page table copying and many copy faults with heavy writes.",
+"Weigh larger pages (smaller tables, more TLB reach) against more internal waste and costlier faults, and mention huge pages.",
+"Explain mapping files into the address space with lazy loading through page faults, then when it beats read and when not.",
+"Use tools to confirm memory pressure, check whether the working set grew after the deploy, and list fixes or a rollback.",
+"Cover per-process page tables, permission bits, ASLR and guard pages, then how Meltdown led to splitting kernel page tables."
+]}

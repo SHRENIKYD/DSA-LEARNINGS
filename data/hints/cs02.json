@@ -1,0 +1,32 @@
+{"quiz":[
+"Locals live only while a function call is active. Think about which region grows and shrinks with each call.",
+"Separate being ready for the CPU from being blocked. A blocked process needs something outside itself to happen.",
+"Both copies continue from the same line, so the return value is how each one learns whether it is the new copy.",
+"Check whether the PID changes after this call, or whether the same process just starts running a new program.",
+"Every existing process runs each following call, so the count multiplies each time. Work it out as a power of two.",
+"Recall what stays in the process table after a process exits, and which call by the parent clears it.",
+"Threads share the address space, but each needs its own place for its own chain of function calls.",
+"In this model all user threads map onto a single kernel thread. What happens if that one kernel thread blocks?",
+"Saving registers is quick. Think about what the new task finds in the caches and translation buffer when it starts.",
+"Compare how many times the data is copied through the kernel in each method when transfers are large.",
+"Ask which mechanism moves a stream of bytes, and which one only delivers a number to the receiver.",
+"An empty buffer just means wait. Think about when the reader can be sure no more data could ever arrive.",
+"Threads in one process share memory. Think about which expensive switching step can therefore be skipped.",
+"Its parent is gone but the child is still running. Think about who becomes its new parent."
+],
+"interview":[
+"Contrast a passive file on disk with a running instance that has a PID, address space, PCB, open files and a lifecycle.",
+"List the five states and give the event that causes each transition, such as dispatch, pre-emption, I/O request and I/O completion.",
+"Group the fields: identity, CPU state, scheduling data, memory info, open files, credentials and signals, and name Linux task_struct.",
+"Explain what each call does and returns, then describe the shell flow: fork, set up redirection in the child, exec, parent waits.",
+"Define both, explain why a zombie cannot be killed, and give fixes like wait in a SIGCHLD handler and re-parenting to init.",
+"Show the doubling when every process keeps forking, contrast it with linear growth when only one forks, and suggest drawing the tree.",
+"Split shared items from per-thread items, then weigh cheap communication against isolation and give cases for each choice.",
+"Define kernel and user threads, then compare the three mapping models on parallelism, blocking calls and switch cost.",
+"Describe saving and loading state through the PCB and page-table switch, then separate direct cost from cache and TLB warm-up.",
+"Go through pipes, named pipes, shared memory, message queues, signals and sockets, giving one fitting use case for each.",
+"Explain the bounded kernel buffer and backpressure, what happens when all readers close, and when a reader sees EOF.",
+"Explain the user-space stdio buffer being copied by fork, line versus full buffering, and fixes like flushing before fork.",
+"Describe sharing pages read-only and copying a page only on write, the Redis snapshot example, and the costs it can cause.",
+"Explain that only the calling thread survives, so locks held by other threads stay stuck, and what is safe before exec."
+]}

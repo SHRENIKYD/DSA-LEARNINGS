@@ -1,0 +1,31 @@
+{"quiz":[
+"Passwords must not be reversible, and a hash that is fast to compute is also fast to brute force. Which option avoids both?",
+"A unique random value per user changes each hash. What attack relies on hashes being the same for everyone?",
+"Look at how a JWT payload is encoded. Is it encrypted, or just encoded and signed?",
+"Claims in a token are attacker-controlled until something proves otherwise. Which step must come before trusting any claim?",
+"Since the server holds the session record, think about what it can do instantly that a self-contained token cannot.",
+"A rotated token should only ever be used once. If an old one comes back, who else might have it?",
+"Mobile apps and SPAs cannot keep a client secret. Which flow is recommended for public clients today?",
+"The state value ties the redirect back to the login the user actually started. Which forged request does that stop?",
+"OAuth2 is about access, not identity. What extra token does OIDC add to say who the user is?",
+"The user is logged in but reached an object they do not own just by changing an id. Name this access-control flaw.",
+"Emails can change or be reused. Look for an identifier pair that is stable and unique per identity provider.",
+"TOTP is HOTP where the counter comes from the clock. Think about what is combined and how the result becomes short.",
+"Passwords are guessable and need slow hashing. What makes a random generated key different?"
+],
+"interview":[
+"Cover slow salted hashes like argon2id or bcrypt, per-user salts, work factors, and never storing plain or encrypted passwords.",
+"Compare server-side state and easy revocation with stateless scaling, and mention hybrid setups with short tokens.",
+"Describe the three base64url parts, then verify: fixed algorithm, signature with the right key, and exp, iss, aud claims.",
+"Mention short expiry, refresh tokens, a denylist or token version, and deleting refresh tokens on logout.",
+"Explain issuing a new refresh token on each use, tracking families, and revoking the whole family on reuse.",
+"Walk through redirect with code challenge, user login, code returned, then exchanging code plus verifier for tokens.",
+"Explain machine-to-machine calls with no user, using client id and secret or keys, with scoped short tokens.",
+"Contrast delegated access (authorization) with login (authentication), and mention the ID token and userinfo.",
+"Explain one identity provider session shared by many apps, and why logging out of all of them is tricky.",
+"Compare roles, attributes, and relationships, with examples of when each fits and how complexity grows.",
+"Define the bug, then cover ownership checks in every query, central policy code, and tests for other users' ids.",
+"Cover random high-entropy keys, showing them once, storing hashes, prefixes, scopes, rotation, and revocation.",
+"Explain the shared secret and time steps, then clock drift windows, rate limiting, replay protection, and secret storage.",
+"Start with revoking and rotating the token, then check logs for misuse, clean history, and add secret scanning."
+]}

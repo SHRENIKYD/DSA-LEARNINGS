@@ -1,0 +1,31 @@
+{"quiz":[
+"Imagine 1,000 people. Count the true positives and the false positives, then find the share that are real.",
+"Read the vertical bar as a condition: we already know one event happened.",
+"Count the ways to choose which flips are heads, then divide by all possible outcomes, 2 to the 4.",
+"Compute the mean, sum the squared deviations, then compare dividing by n with dividing by n minus 1.",
+"Use the rule for the variance of aX + bY with independent X and Y. Here b is minus one, so think about what squaring it gives.",
+"The score is one standard deviation above the mean. Use the 68 percent rule and split the tails.",
+"The theorem is about averages of many independent draws, not about the shape of the raw data.",
+"In frequentist statistics the true value is fixed and the interval is the random part. Which reading respects that?",
+"Every extra look gives chance another opportunity to cross the line. What does that do to errors?",
+"Compute one minus the chance that all 20 tests stay quiet, which is 0.95 to the power 20.",
+"Entropy is the sum of p times log base 2 of one over p. Work out each term.",
+"Cross-entropy for one example is the negative natural log of the probability given to the correct class.",
+"Dividing logits by a small temperature stretches the gaps between them before softmax.",
+"Ask whether users chose the feature themselves. What else could explain the link?"
+],"interview":[
+"Define ignoring how common a condition is, then work a test example with counts to show most positives are false.",
+"Contrast dividing by n and n minus 1, and explain that the sample mean makes deviations look too small.",
+"Define it as the chance of data this extreme if the null is true, then say what it is not, like the chance the null is true.",
+"Cover pre-planning metric, effect size, alpha and power, sample size, checks during the run, then the test and interval.",
+"Explain why repeated looks inflate false positives, and fixes like fixed sample size or sequential testing.",
+"Name confounders and reverse causation, then explain randomised tests or careful observational methods.",
+"Explain that a binomial count is a sum of trials, so for large n it is near normal with matching mean and variance.",
+"Explain bootstrapping: resample evaluation examples, recompute F1 many times, and take percentiles for the interval.",
+"Define entropy as average surprise, cross-entropy as surprise under a wrong model, and KL as the gap between them.",
+"Explain dividing logits by T before softmax, how low and high T change the spread, and practical use cases.",
+"Explain cross-entropy as negative log-likelihood, the simple gradient, and subtracting the max to avoid overflow.",
+"Use the standard error of a proportion, set the 95 percent half-width to two points, and solve for n.",
+"Compute expected profit, then discuss variance, risk of ruin, and how many plays you can afford.",
+"Define false positives and false negatives, link them to alpha and power, and show how sample size helps both."
+]}

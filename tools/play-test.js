@@ -109,7 +109,7 @@ t('games helpers: bracket balance and inversion count', () => {
   assert.strictEqual(G.balanced('(('), false);
   assert.strictEqual(G.inversions([3, 1, 2]), 2);
   assert.strictEqual(G.inversions([1, 2, 3]), 0);
-  assert.strictEqual(G.list.length, 43);
+  assert.strictEqual(G.list.length, 73);
   assert.notStrictEqual(G.random('guess').id, 'guess');
   assert.strictEqual(new Set(G.list.map((g) => g.id)).size, G.list.length);
   ['sql', 'java', 'js', 'py', 'cs', 'web', 'ai'].forEach((c) => { assert.ok(G.inCat(c).length >= 1, c); for (let i = 0; i < 20; i++) assert.strictEqual(G.random(null, c).cat, c); });

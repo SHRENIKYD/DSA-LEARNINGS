@@ -2,6 +2,13 @@
 
 From 1.11.1 each app release, whether it brings fixes or features, raises the last number: 1.11.1, 1.11.2, … up to 1.11.99. The release after 1.11.99 is 1.12.0, and the same pattern repeats. The patch number stops at 99 because the Android `versionCode` is MAJOR×10000 + MINOR×100 + PATCH, and a patch of 100 would give the same code as the next minor version, which Google Play rejects. The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.11.13] — 2026-10-28 · 30 new games, hints and Angular
+
+### Added
+- 30 new concept games, two for every track, each with hints, plus a Behavioral filter in the Play tab (73 games in all).
+- A hint for every riddle and interview question in the lessons.
+- Four Angular lessons in the Frontend track.
+
 ## [1.11.12] — 2026-10-28 · Lesson videos
 
 ### Changed

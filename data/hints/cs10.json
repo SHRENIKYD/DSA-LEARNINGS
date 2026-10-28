@@ -1,0 +1,27 @@
+{"quiz":[
+"Hardware addresses are used for delivery on the local link. Recall which layer handles frames.",
+"Routers forward between networks, so they need an address that is logical and can be grouped by network.",
+"The TCP/IP model merges some OSI layers. Count its layers from top to bottom: application down to the network access.",
+"Each layer has its own name for its data unit. Recall what TCP's unit is called, as opposed to IP's or Ethernet's.",
+"Add the header sizes: TCP 20, IPv4 20, Ethernet header 14 and the frame check sequence, to the payload.",
+"A switch gives each port its own segment, but it reads only MAC addresses. Does it stop a broadcast frame?",
+"A switch builds its table by watching frames arrive on a port. Which address in that frame belongs to the port's host?",
+"Recall the well-known port for HTTP over TLS, which is different from plain HTTP and SSH.",
+"MAC addresses change at every hop. Think about which address is meant for the final end-to-end destination.",
+"A connection is identified by protocol plus both IPs and both ports. Clients differ in at least one of these.",
+"A hub just repeats electrical signals to every port without reading any addresses.",
+"All ones is the broadcast MAC. Think about how a switch treats a frame meant for everyone on the local network."
+],"interview":[
+"List the seven layers with their data units and examples, then explain benefits like modularity and easier debugging.",
+"Compare layer counts and origins, which OSI layers TCP/IP merges, and why TCP/IP is what is actually used.",
+"Explain each layer adding its header on the way down and stripping it on the way up, naming the unit at each layer.",
+"Compare the layer each works at, what address it reads, and how it handles collision and broadcast domains.",
+"Explain MAC for hop-by-hop delivery on a local link and IP for global, hierarchical routing, and how ARP connects them.",
+"Define port, socket and the five fields of the tuple, and explain how it lets one server port handle many clients.",
+"Explain learning source addresses into a table, forwarding known ones, and flooding unknown or broadcast frames.",
+"Go layer by layer: DNS lookup, TCP handshake, TLS, HTTP request, then IP routing and Ethernet framing on each hop.",
+"Map each name to its layer and say what header is added, noting that datagram is used for UDP and IP units.",
+"Add up the TCP, IP and Ethernet header bytes, compute efficiency, then explain why tiny packets waste most bandwidth.",
+"Define both domains, then explain which devices split each one: switches, routers and VLANs.",
+"Give examples like NAT, checksums and load balancers that cross layers, then weigh the gains against the added complexity."
+]}

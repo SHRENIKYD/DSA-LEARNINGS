@@ -1,0 +1,33 @@
+{"quiz":[
+"A 2D array is an array of rows. The first row is itself an array, so its length counts columns.",
+"Write a range as everything up to R minus everything before L, and line that up with the padded indices.",
+"Prefix tricks need an operation you can undo, like subtraction or XOR. Which operation cannot be undone?",
+"Think about the new index of each element after the delete, and what that does to whether the index is even or odd.",
+"Every earlier 'a' forms a pair with the current 'g'. What count should you carry while scanning?",
+"Subarrays must be non-empty. Think about what the best sum is when every element is negative.",
+"Compare the two choices: starting fresh beats extending when the running sum is hurting you.",
+"Count choices for the start index and for the end index separately, then multiply.",
+"Water rises only to the height of the shorter wall, minus the height of the bar itself.",
+"If the left max is not larger than the right max, which side's wall is the limiting one right now?",
+"After finishing one direction the boundaries move. Check whether rows or columns are still left before walking back.",
+"Combine two simple steps: one swaps rows and columns, the other reverses something. Check which order gives clockwise.",
+"From the top-right, a value smaller than the target means everything left of it in this row is smaller too.",
+"Use inclusion-exclusion: big block minus top strip minus left strip plus the corner removed twice.",
+"Multiply queries by array size and compare with the budget. Aim for a one-time build and cheap answers per query.",
+"Sum the maximum values and compare with the 32-bit int limit of about two billion."
+],"interview":[
+"Explain contiguous memory and address arithmetic for direct access, and that inserting at the front shifts every element.",
+"Use a running total analogy, then give the range sum formula with the padded prefix array.",
+"Describe extending versus restarting the running sum, tracking the best, and argue why a negative prefix never helps.",
+"Count how many subarrays include each element by its start and end choices, then sum value times that count.",
+"Explain water as the shorter of left and right max minus height, then the two-pointer version that moves the smaller side.",
+"Define carrying a running value like a count or max while scanning, and choose direction by whether you need info from the left or right.",
+"Explain transpose then reverse each row for square matrices, and that rectangular ones need a new array with swapped sizes.",
+"Use four moving boundaries, walk right, down, left, up, and explain the bug of revisiting a row or column without boundary checks.",
+"Describe the staircase walk from a corner in O of rows plus columns, and contrast with binary search when rows chain into one sorted list.",
+"Derive build and query with inclusion-exclusion, and show how padding with a zero row and column avoids edge cases.",
+"Fix pairs of rows, compress columns into a 1D array, run Kadane on it, and state the cubic cost.",
+"Use a difference array: add at start, subtract after end, then take prefix sums once to apply all updates.",
+"Place each value at its matching index by swapping, ignore out-of-range values, then scan for the first index that is wrong.",
+"Check off-by-one indices, overflow, empty and edge inputs, and test against a brute force on random cases."
+]}

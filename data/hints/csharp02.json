@@ -1,0 +1,32 @@
+{"quiz":[
+"C# was designed to stop a classic C bug where a case runs on into the next one. Is that checked at run time or by the compiler?",
+"Switch expression arms are checked top to bottom and the first matching pattern wins.",
+"Compare where each loop checks its condition: before the body or after it.",
+"A List keeps a version number that changes on every edit. What does its enumerator do when it sees that number has changed?",
+"Ask what is copied when you pass an array without ref: the array, or the reference to it? Then ask what assigning the parameter changes.",
+"Recall who must assign an out parameter and when, and whether the caller must initialize it first.",
+"Overload resolution prefers the better implicit conversion. Compare int to long with int to double.",
+"Think about how the compiler would know where the variable list of arguments ends.",
+"On a multi-dimensional array, ask whether Length gives one dimension or all elements. GetLength(n) exists for single dimensions.",
+"The range starts at index 1 and stops before the last element. Check whether arrays slice into new arrays.",
+"Strings are immutable. Check whether the result of ToUpper is stored anywhere.",
+"Identifiers are not human language text, so culture rules should not apply.",
+"Each concatenation creates a new string and copies all characters so far.",
+"Rule out options that give no separator or print the type name. Which method can add up all lengths first, then build once?"
+],
+"interview":[
+"Cover no fall-through, pattern matching, switch expressions, guards, and the types it can match.",
+"Explain that everything is passed by value by default, what is copied for each kind, and ref, out and in.",
+"Compare Try-pattern with out, tuples or nullable results, and exceptions for truly exceptional failures.",
+"Explain read-only by-reference passing, when it saves copying large structs, and defensive copy pitfalls.",
+"Describe applicable candidates and better conversions, with an example where a widening pick surprises.",
+"Explain default values baked into callers at compile time and versioning problems when they change.",
+"Compare one block of memory with an array of arrays, varying row lengths, and performance.",
+"Mention thread safety, hashing, interning and security, and the cost of creating new strings on change.",
+"Compare ordinal with culture-aware comparison, case options, and when to use each.",
+"Explain a growable buffer of chunks, and that for a few concatenations plain strings are fine.",
+"Mention that the limit depends on stack size, overflow cannot be caught, and converting to iteration.",
+"Explain the Index and Range types, the methods they lower to, and which types support them.",
+"Show the params keyword and explain the hidden array allocation, plus newer params span options.",
+"Discuss StringBuilder reuse, spans, pooling, interpolated handlers and avoiding intermediate strings."
+]}

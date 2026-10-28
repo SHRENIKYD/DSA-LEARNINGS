@@ -1,0 +1,35 @@
+{
+  "quiz": [
+    "Node has a microtask queue that drains before the event loop moves to timers. Which API is processed even before promises?",
+    "Each loop phase owns one kind of callback. Recall the phase that sits right after I/O polling and exists only for this API.",
+    "Inside an I/O callback you are in the poll phase. Which phase comes next before the loop returns to timers?",
+    "libuv has a small default pool for blocking work. Which built-in modules use it?",
+    "JavaScript runs on one main thread. What happens to everything else while that thread is busy?",
+    "A false return is a signal about buffering, not a failure. What event should you wait for before writing more?",
+    "Think about what happens to errors and open streams when one stage in a chain fails.",
+    "The error event is special in EventEmitter. With no listener, is it ignored or does it become an exception?",
+    "Each clustered worker is a separate process. Do separate processes share variables?",
+    "Worker threads run JavaScript in parallel. Which kind of work would block the main thread?",
+    "Express does not look at the name or return value. It inspects the function itself. What can it count on a function?",
+    "Express 4 does not catch rejected promises from handlers. What happens to the request and the process?",
+    "After an uncaught exception the process state is unknown. Is it safe to keep serving?",
+    "nextTick callbacks run before the loop can continue. If they never stop, what never gets a turn?"
+  ],
+  "interview": [
+    "List the phases in order with what runs in each, and explain where microtasks fit between callbacks.",
+    "Explain the order: nextTick queue, then promise microtasks, then check phase, with a small example.",
+    "Explain non-blocking I/O handled by the OS and libuv, with one JS thread handling callbacks when work is ready.",
+    "Explain that one busy thread stops the loop, then mention worker threads, chunking work, or moving it to another service.",
+    "Name the default size and the modules that use it, then show how many parallel crypto or fs calls can queue up.",
+    "Explain the buffer limit, write returning false, waiting for drain, and how pipe and pipeline handle it.",
+    "Talk about streaming in chunks with pipeline, backpressure, ranges, and never loading the whole file into memory.",
+    "Explain on, emit, and synchronous listeners, then pitfalls like unhandled error events and listener leaks.",
+    "Compare separate processes for scaling HTTP, threads for CPU work, and child processes for external programs.",
+    "Explain the chain of functions calling next, ordering, and the four-argument error handler.",
+    "Compare ecosystem and simplicity with performance, schema validation, plugins, and built-in async support.",
+    "Cover try catch with await, wrappers or Express 5, central error middleware, and process-level handlers that log and exit.",
+    "Cover SIGTERM, stopping new traffic, readiness checks, finishing in-flight requests, closing pools, and a timeout.",
+    "Think about event loop lag, GC pauses, sync code, thread pool queuing, and slow dependencies; mention profiling tools.",
+    "Mention server-sent events or streams, backpressure, client disconnects, timeouts, auth, and escaping output."
+  ]
+}

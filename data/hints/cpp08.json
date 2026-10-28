@@ -1,0 +1,30 @@
+{"quiz":[
+"STL ranges are half-open: begin is included and end is excluded, so end marks a stopping position.",
+"Think about which iterator category the general sort algorithm needs and which one a list offers.",
+"A valid comparator must return false when an element is compared with itself; test each option with equal values.",
+"Find the index of the first element not less than 3 and the first element strictly greater than 3, then subtract.",
+"Ask what lower_bound returns when no element is greater than or equal to the value you search for.",
+"Look at the template signature of accumulate. Which argument decides the type of the running total, and what type is the literal 0?",
+"Ask what happens when the sequence is already the last arrangement in sorted order, and what is returned then.",
+"This function skips repeated arrangements; count distinct orderings of a multiset with the factorial formula.",
+"Removal algorithms only see iterators, so ask whether they can change how many elements the container holds.",
+"Check which duplicates unique removes: all equal values, or only equal values standing next to each other.",
+"Ask when a by-value capture takes its copy, and whether later changes to the outer variable reach it.",
+"Think about syncing with C stdio and automatic flushing of output before every read.",
+"A median does not need the whole range sorted. Look for the algorithm that does only partial work around one position.",
+"Compare what iterator category a set gives with what a fast binary search over iterators needs."
+],"interview":[
+"Describe an iterator as a generalised pointer, then explain how iterator pairs decouple algorithms from containers.",
+"List each category from input to contiguous, what operations each adds, and an algorithm or container example for each.",
+"State the properties (irreflexive, asymmetric, transitive, transitive equivalence), common bad comparators and the consequences.",
+"Compare each by stability, cost and what part of the output is sorted, with a typical use case for each.",
+"Keep a lo and hi range, move by comparing the middle, and state the invariant for what lies left of lo and right of hi.",
+"Explain that iterators cannot resize a container, what these algorithms return, and the erase idiom or C++20 erase_if.",
+"Walk the steps: find the pivot from the right, find the swap partner, swap, reverse the suffix, and give the complexity.",
+"Explain that the result type comes from the initial value, then give an overflow example and a truncation example.",
+"Cover capture by copy, by reference, this and init-capture, then bugs like dangling references and stale copies.",
+"Contrast template instantiation with inlined comparisons against a function pointer and void pointers called each time.",
+"Compare static sorted vector with upper_bound, why a set cannot give rank cheaply, and order-statistic structures for updates.",
+"List items like fast I/O, type aliases, per-test solve and debug macros, then say which parts are unsuitable for production.",
+"Mention warnings, sanitizers and debug STL, then stress testing against a brute force with random edge-case inputs."
+]}

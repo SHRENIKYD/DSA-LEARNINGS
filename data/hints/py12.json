@@ -1,0 +1,29 @@
+{"quiz":[
+"Since 3.11 all binary operators share one generic instruction, and its argument says which operator.",
+"Think about what extra reference exists while x is being passed into the function call.",
+"Only objects that can hold references to other objects can form a cycle, so only they are tracked.",
+"CPython keeps shared singletons for a small range of ints that dips a little below zero.",
+"Recall the lookup order: data descriptors on the type come before the instance dict.",
+"Functions define __get__, so reading them through an instance goes through the descriptor protocol.",
+"The namespace must exist before the body runs, and class creation happens before any instance call.",
+"A module goes into sys.modules before its code finishes running. What does the other module see?",
+"Scope is fixed at compile time: an assignment anywhere in the function makes the name local everywhere.",
+"Compare indexing a fixed slot in the frame with looking a name up in the globals and builtins dicts.",
+"del removes a name. The object is only freed when no references to it remain.",
+"PEP 659 is about instructions watching the types they see and rewriting themselves.",
+"Literals are interned automatically, but strings built at runtime are not. When do many copies pile up?"
+],"interview":[
+"Explain that CPython first compiles source to bytecode through parsing and code objects, then runs it in an evaluation loop.",
+"Contrast value equality with identity, and explain caching of small ints, interned strings and merged constants.",
+"Describe the refcount in each object header, increments and decrements, instant freeing at zero, and weaknesses like cycles.",
+"Explain why refcounting cannot free cycles, and how the GC tracks containers and finds unreachable groups by subtracting refs.",
+"Define descriptors by __get__, __set__ and __delete__, data vs non-data, and show property, methods and the method decorators.",
+"Walk through __getattribute__: the MRO search, data descriptors, the instance dict, non-data descriptors, then __getattr__.",
+"Define a metaclass as the class of a class and its hooks, give real uses, and suggest __init_subclass__ or decorators instead.",
+"Walk through the sys.modules cache, finders and loaders, then why a partly-run module breaks circular from-imports.",
+"Describe the object header with refcount and type pointer, and how slots replace the per-instance dict to save space.",
+"Cover the specializing adaptive interpreter, cheaper frames and zero-cost exceptions, and the experimental JIT status.",
+"Explain how the GIL keeps refcounts safe, and how free-threading uses techniques like biased and deferred counting.",
+"First check whether Python objects explain the growth, then compare tracemalloc snapshots and look for caches and references.",
+"Explain what dis reveals, like local vs global vs closure names, constant folding and specialized instructions."
+]}

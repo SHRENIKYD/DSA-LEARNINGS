@@ -1,0 +1,32 @@
+{"quiz":[
+"Containers are not full virtual machines. Think about which part of the operating system they do not bring themselves.",
+"Each Dockerfile instruction adds a read-only layer. Can a later layer make an earlier layer smaller?",
+"Think about layer caching. Which file changes less often, and what expensive step depends on it?",
+"The build stage needs compilers and tools; the runtime needs only what runs the app.",
+"Endpoints come from label selectors and ready pods. Find the option that would not stop pods from being picked.",
+"Readiness asks if the pod can serve traffic now. Think about what happens to traffic, not to the container itself.",
+"137 means the process got a kill signal. The reason tells you which limit was hit.",
+"Use desired = ceil(current replicas times current metric divided by target), then apply the max limit.",
+"A CPU percentage needs something to be a percentage of. Think about what each container must declare.",
+"Rolling and canary both move traffic bit by bit. Which strategy is defined by keeping two whole copies of the system?",
+"A rollback rule should not depend on feelings or long waits. Ask: is it measurable, compared to something, and safe from tiny samples?",
+"Terraform has separate commands to preview, apply and format. Which step lets a reviewer see the effect before anything is touched?",
+"State is shared by the whole team, can hold secrets, and breaks if two people write at once. Which option handles all three?",
+"If you rebuild for each environment, is the thing in production really the thing you tested in staging?"
+],"interview":[
+"Compare kernel sharing versus a full guest OS, and the effects on size, startup time and isolation.",
+"Explain read-only layers, the writable container layer, and why layers matter for caching, size and sharing.",
+"Mention measuring layers, multi-stage builds, smaller base images, ordering for cache, and ignore files.",
+"Cover non-root users, minimal pinned bases, scanning and signing, no secrets in images, and restricted runtime settings.",
+"Describe each object and the chain: Deployment manages ReplicaSets that manage Pods, Services select Pods, Ingress routes to Services.",
+"Mention describe pod for exit code and reason, previous logs, events, and common causes like config, OOM or bad probes.",
+"Explain what each probe asks, what happens when it fails, and why liveness should not check dependencies.",
+"Explain new ReplicaSet, maxSurge and maxUnavailable, readiness gating, and graceful shutdown for zero downtime.",
+"Give the replica formula with min/max clamps and tolerance, then limits like needing requests, lag and non-CPU bottlenecks.",
+"Cover PR checks, building one artifact, scanning, staged deployments, progressive rollout and automatic rollback.",
+"Compare how traffic shifts, cost, rollback speed and risk for rolling, blue-green and canary.",
+"Explain state as the map from config to real resources, and risks like secrets in state, locking, drift and corruption.",
+"State the rule of runtime injection from a secret store, then show how it applies in each tool.",
+"Check sample size and fair comparison first, then decide using SLO thresholds whether to pause, investigate or roll back.",
+"Mention speed on drafts and log reading, then risks like wrong output and leaked secrets, with checks like review, plan and policy."
+]}

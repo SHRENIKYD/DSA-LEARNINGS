@@ -1,0 +1,35 @@
+{
+ "quiz": [
+  "Compute (B-A) times (C-A) as x1*y2 - y1*x2, then read the sign: positive means counter-clockwise.",
+  "Think about what happens when you multiply two numbers that are each near 10 to the 18th in 64-bit integers.",
+  "Collinear alone is not enough. Check whether any endpoint actually lies within the other segment's range.",
+  "A point sitting on a straight edge gives a cross product of exactly zero. Decide whether zero should cause a pop.",
+  "The shoelace sum is twice the signed area. Work out the area from it, then recall what a negative sign says about vertex order.",
+  "Use Pick's theorem: Area = I + B/2 - 1. Solve it for I, the interior points.",
+  "For the i-th item with k = 1, the replacement chance is k divided by how many items you have seen so far.",
+  "Count how many equally likely random runs there are and ask whether that number divides evenly by n factorial.",
+  "A random pivot gives a good split on average, but think about what could happen with very bad luck.",
+  "With fixed-size growth you copy everything about every 100 appends. Add up those copy costs over N appends.",
+  "Separate amortized from average-case and expected bounds. Is amortized a promise about one operation, random input, or a whole run?",
+  "Each level keeps about half the keys of the level below, so height grows like log base 2 of N.",
+  "Union by rank alone gives log N. Recall the very slow-growing function from Tarjan's bound when path compression is added too.",
+  "Ask two things: can the random shuffle ever change the answer, or only how long it takes? Then match the algorithm type."
+ ],
+ "interview": [
+  "Explain the cross product sign test and why it avoids division, vertical lines and precision trouble that slopes have.",
+  "Cover the four orientation tests, the general case, and the collinear special cases with on-segment checks.",
+  "Describe sorting points, building lower and upper hulls with a stack and cross product pops, and the O(N log N) cost.",
+  "Mention the comparison-sort lower bound and output-sensitive algorithms whose cost depends on hull size h.",
+  "Explain summing cross products of consecutive vertices, the sign for orientation, and failure on self-intersecting polygons.",
+  "Describe ray casting or winding number and edge cases: points on edges, vertices on the ray, and precision.",
+  "Explain keeping item i with probability k/i and prove by induction that every item ends with chance k/N.",
+  "Cover sampling per server then merging, and weighted reservoir methods using random keys per item.",
+  "Show Fisher-Yates swapping with a random index from the unshuffled part, and count runs vs n factorial for the bias.",
+  "Explain the expected geometric shrink of the range, then fallbacks like introselect or median of medians.",
+  "Cover aggregate, accounting and potential methods for doubling growth, and why the total copy cost is linear.",
+  "Discuss latency-sensitive or real-time systems where one slow operation hurts, and options like incremental resizing.",
+  "Compare balance method, cache behavior and concurrency; skip lists allow simple lock-free updates.",
+  "Talk about integer coordinates, exact predicates, epsilon comparisons, and avoiding division where possible.",
+  "State the inverse Ackermann bound, that it needs both optimizations, and that it is amortized, not per operation."
+ ]
+}

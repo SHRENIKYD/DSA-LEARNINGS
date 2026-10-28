@@ -1,0 +1,30 @@
+{"quiz":[
+"Convert 30 days to minutes, then take the allowed failure percentage, which is 100% minus the SLO.",
+"Separate the three ideas: one is a measurement, one is a target, and one is a contract.",
+"A budget policy is agreed in advance and turns an argument into a rule. Changing targets afterwards defeats its purpose.",
+"Multiply the burn rate by one hour and divide by the 720 hours in 30 days to get the share of budget used.",
+"The ops lead fixes, the comms lead updates and the scribe records. What is left for the person in charge of the whole response?",
+"Blaming a person teaches others to hide mistakes. Ask what was missing in the system that let one bad change reach production.",
+"Little's law: items in flight equal arrival rate times average time in the system. Convert ms to seconds.",
+"Queueing delay grows roughly with 1 divided by the idle fraction. See what happens as idle time shrinks toward zero.",
+"Toil is manual, repetitive, automatable work with no lasting value.",
+"Work out hours saved per week, then divide the build time by that number.",
+"Breaking things is not the same as an experiment. Look for a prediction made up front, a limit on damage, and a way to stop early.",
+"Two options are not fault-injection tools at all. Of the rest, which one is run by AWS itself rather than inside a Kubernetes cluster?",
+"Before creating any cloud resources, think about protecting yourself from a surprise bill.",
+"Any stored key can leak and needs rotating. Look for an option where the job proves who it is and gets credentials that expire soon."
+],"interview":[
+"Define the budget as 1 minus the SLO over a window, show a number, and explain how a pre-agreed policy uses it to balance features and reliability.",
+"Cover declaring the incident and roles, stabilising first with rollback or failover, communicating updates, then diagnosing and a postmortem.",
+"Describe the structure: impact, timeline, contributing factors, what went well, and owned actions, written without blame.",
+"State L equals arrival rate times time in system, then show a use like sizing connection pools or worker counts.",
+"Cover forecasting peak traffic, load testing, headroom below high utilisation, scaling limits and dependencies, and a fallback plan.",
+"Define toil, then decide using frequency, time cost and build effort to estimate payback, plus risk reduction.",
+"Explain a hypothesis about steady state, small blast radius, stop conditions, observation, and growing scope gradually.",
+"Explain SRE as reliability engineering with SLOs, DevOps as a culture of shared ownership, and platform engineering as building internal products.",
+"Cover sane rotation size, actionable alerts only, runbooks, handoffs, follow-up on noisy pages and respecting rest.",
+"Describe the goal, architecture and key decisions, what you measured, what went wrong, and what you would change with reasons.",
+"Cover redundancy across zones, stateless app tier, data durability, idempotent payments, timeouts and retries, SLOs and monitoring.",
+"Check logs of the previous container, describe the pod for events and exit codes, then config, probes, resources and dependencies.",
+"Explain OIDC federation from CI to a cloud role, trust conditions on repo and branch, short-lived credentials and least privilege."
+]}

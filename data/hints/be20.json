@@ -1,0 +1,30 @@
+{"quiz":[
+"pytest does not simply follow argument order. Which matters more when ordering fixture setup: their scope or their position?",
+"TestClient runs startup and shutdown inside a with block. Does a bare ASGI transport do the same, or do you need extra help?",
+"The app's commit must not end the test's outer transaction. What nested unit inside a transaction can be released and still rolled back?",
+"Think about differences in SQL dialect, types, constraints and locking between the two engines.",
+"Random fake data can repeat and a constant repeats at once. Which declaration changes its value in a way that can never collide?",
+"The bug is the same; only the input got smaller. What does Hypothesis do with a failing input before reporting it?",
+"billing ran its import once and keeps its own reference to the function. Which module's name does the code under test actually call?",
+"A timeout does not mean the request failed on the server. Think about avoiding double charges.",
+"Think about what old clients can safely ignore versus what they depend on.",
+"Line coverage counts lines run; branch coverage counts each if going both ways. What can be missing when every line still ran?",
+"The failure depends on the current time, a hidden input. Reruns and skips hide it. How can the test control what now is?",
+"An unknown id really can return None at runtime. Silencing mypy hides that bug. What should the endpoint do in that case?",
+"Lint and type checks take about a minute; tests take much longer. What do you gain by running the cheap job first?"
+],
+"interview":[
+"Organize by cost and risk: many unit tests, API tests with overrides, some real database tests, a few end-to-end.",
+"Explain the scope levels, setup and teardown order, and a typical split like session engine and per-test session.",
+"Compare a sync test client with an async client, and mention lifespan handling and event loop use.",
+"Describe an outer transaction with savepoints rolled back per test, and limits like code that opens its own connections.",
+"Define each double and match it to a use, preferring fakes and checking outcomes over call details.",
+"Mention injecting the client, sleep and random sources, scripting failures in sequence, and checking retry rules.",
+"Define stating properties for all inputs, generating and shrinking cases, and give backend examples like round trips.",
+"Explain checking promises across boundaries, schema conformance, and catching breaking changes before release.",
+"Explain that coverage is not checking, then mention branch coverage, mutation testing and studying escaped bugs.",
+"Measure and quarantine first, then find causes like shared state, time, randomness, async waits and order.",
+"Explain central config, starting strict on new code, gradual tightening per module, and running it in CI.",
+"Describe a fast static job first, then tests with a real database, then build and deploy steps with caching.",
+"Wrap the model in your own client, use fakes in endpoint tests, and add separate evaluations for real model quality."
+]}

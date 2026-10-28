@@ -1,0 +1,30 @@
+{"quiz":[
+"Only the thread holding the GIL can run Python bytecode. Do CPU-bound threads truly overlap?",
+"Think about what blocking C-level network calls do with the GIL while they wait.",
+"Break the += into its bytecode steps and ask what happens if a switch lands between them.",
+"Work sent to another process must be pickled, and functions are pickled by importable name.",
+"Python 3.14 moved away from fork on Linux because fork is unsafe in processes that have threads.",
+"One tool yields results in input order and another in finish order. Which one do you need?",
+"Calling a coroutine function only builds an object. It runs once awaited or wrapped in a Task.",
+"Overlapping sleeps take about as long as the longest one, and gather keeps results by argument position.",
+"Without return_exceptions, gather raises the first error at once. Does it cancel the other tasks?",
+"requests is synchronous, and the event loop runs on a single thread.",
+"A semaphore caps how many tasks are in flight at once, which is not the same as a rate per second.",
+"Every await is a point where another task may run between the check and the update.",
+"This function reports whether the GIL is actually switched off on a free-threaded build."
+],"interview":[
+"Define the GIL as a lock for running bytecode, tie it to reference counting, and contrast CPU-bound with I/O-bound effects.",
+"Define concurrency as overlapping progress and parallelism as running at the same instant, with asyncio and process pool examples.",
+"Start from the bottleneck: processes for CPU work, asyncio for many async connections, threads for blocking libraries.",
+"Define a race as timing-dependent results, show a lost update on a shared counter, and fix it with a lock or no shared state.",
+"Describe the cycle of waiting threads and the four Coffman conditions, then fixes like lock ordering and timeouts.",
+"Describe the ready queue, timer heap and selector, and how each loop pass picks a timeout, polls I/O and runs callbacks.",
+"Contrast gather's ordered results and no cancelling, TaskGroup's sibling cancelling, and wait or as_completed for finish order.",
+"Explain cancel() throwing CancelledError at the current await so cleanup runs, and mistakes like swallowing it.",
+"Suspect a blocked event loop: measure loop lag, profile with py-spy, find sync calls, then move them to async clients or threads.",
+"List what is pickled (function by name, arguments, results, errors) and ways to cut cost like sending paths or chunking.",
+"First compute the time the rate limit allows, then describe async workers, token buckets, a semaphore, timeouts and retries.",
+"Cover the experimental free-threaded build and queue shutdown in 3.13, then official free-threading and sub-interpreters in 3.14.",
+"Use a bounded queue for back-pressure, task_done in finally, and shut down with sentinels or queue shutdown.",
+"Get stack traces of all threads with py-spy or faulthandler, then look for blocked lock acquires, gets and joins."
+]}

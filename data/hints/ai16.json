@@ -1,0 +1,29 @@
+{"quiz":[
+"An agent starts every session with no memory of your project. What would it need to read first to work well?",
+"Compare the cost of correcting a few lines of written intent with untangling many lines of wrong code.",
+"A test that has never failed might pass no matter what. What does seeing it fail prove?",
+"Ask whether the caller can tell a real empty result from a failed parse. What happens to the exception inside a broad except?",
+"An oracle should be trusted to be right, even if it is slow. It must be independent of the fast version.",
+"Each bisect check halves the range. How many halvings take 1,000 down to one?",
+"Before changing legacy code, you want a record of what it does today, right or wrong.",
+"When rules are vague, think honesty and ownership: could you defend and explain everything you submit?",
+"The point is to check your own understanding, not to trust the AI's explanation of itself.",
+"Rank by how costly and hard to undo a silent mistake would be. Data loss is the worst kind.",
+"Sleeping and retrying can make a test pass without fixing a timing problem. What is really wrong?",
+"Tools work best for rules that are specific and mechanically checkable, not vague advice.",
+"One ordinary input cannot reveal edge cases. Think about empty input, repeats, and order."
+],
+"interview":[
+"Describe a small task card: one-sentence goal, expected behaviour, allowed files, limits, and how success is checked.",
+"Treat it as onboarding for a teammate with no memory: build and test commands, folder map, key rules, and pitfalls.",
+"Explain writing behaviour and edge examples first, turning them into failing tests, then letting AI implement to pass them.",
+"List patterns like hallucinated APIs, off-by-one, missed edge cases and swallowed errors, with a way to catch each.",
+"Cover making the bug a small reproducible automatic check, then using bisect, and reading the test to trust it.",
+"Scale verification to the cost of a silent failure and how hard it is to undo, with examples at each level.",
+"Explain comparing against a simple trusted oracle on many inputs, and testing properties that must always hold.",
+"Build a safety net first by recording current behaviour as golden data, then refactor in small verified steps.",
+"Say it depends on the round, so ask; then contrast what different rounds allow and what they really test.",
+"Describe a concrete workflow with where you use AI, where you do not, and how you verify its output.",
+"Mention explain-before-accept, regular practice without AI, and deliberately working through hard problems yourself.",
+"Split what stays (ownership, review, tests) from what changes (cheap code, review load, verification, guardrails)."
+]}

@@ -1,0 +1,31 @@
+{
+ "quiz": [
+  "The modern wording is about who asks for changes, not about how many things a class does.",
+  "A growing switch means you edit old code for every new case. Which principle is about adding without modifying?",
+  "A subclass broke what callers expected from the parent's behaviour. Which principle is about safe substitution?",
+  "Think about what an implementer is pushed into doing when an interface asks for more methods than it can honestly provide.",
+  "The interface should express what the policy layer needs, so the dependency points toward the high-level code.",
+  "One is a design principle, the other a way of supplying objects. Think about which serves which.",
+  "Recall the contract rule for subtypes: what may happen to preconditions and to postconditions? Then classify a stricter input limit.",
+  "Hidden calls to the system clock make code hard to test. How could the time source be supplied from outside?",
+  "Abstractions have a cost. Ask whether there is any present need for a second implementation.",
+  "Think about which direction of change each style makes cheap: new types or new operations.",
+  "Look at what PrintQueue actually calls. Depending on more than that ties it to changes it does not care about.",
+  "Ask whether a facade that only delegates actually holds more than one reason to change."
+ ],
+ "interview": [
+  "Give one or two sentences per letter with a small concrete example each, not just the acronym expansion.",
+  "Explain the actor-based meaning: a module should have one source of change requests, which is different from doing one thing.",
+  "Show replacing a type switch with an interface plus one class per variant, so new behaviour means new code, not edits.",
+  "Explain preconditions, postconditions and invariants, and what a subclass may weaken or strengthen.",
+  "Offer options such as separate immutable classes, a common shape interface, or removing the setters.",
+  "Contrast who changes the code with who uses the interface, and show examples of following one but not the other.",
+  "Separate the principle, the technique, and the broader idea of a framework calling your code.",
+  "Explain moving creation out, passing dependencies through the constructor, and using simple fakes in tests.",
+  "Discuss YAGNI, abstractions with no real second user, and waiting for real change or testing needs.",
+  "Mention characterization tests, small safe extractions, strangler-style steps, and frequent releases.",
+  "Point to strategies for pricing or spot allocation, small interfaces, and dependencies injected through constructors.",
+  "Explain that patterns are tools that apply SOLID and that ports and adapters are DIP at the architecture level.",
+  "Talk about reviewing for responsibilities and dependency direction, setting clear rules, and writing tests yourself."
+ ]
+}

@@ -1,0 +1,33 @@
+{"quiz":[
+"Separate the data itself from the software that stores, queries and protects it.",
+"Degree counts the columns of a table, while cardinality counts its rows.",
+"A super key only has to be unique. A candidate key must also be minimal, with no extra columns.",
+"Entity integrity says a primary key must identify every row. Can a row have a missing identifier?",
+"Neither side can hold a list of links in one atomic cell, so the pairs need a home of their own.",
+"The foreign key always goes on the many side, so each child row stores one parent key.",
+"Think about which constraint stops a parent from being referenced by more than one child.",
+"Compare the delete actions: one deletes children, one refuses, and one keeps them but unlinks them.",
+"DDL changes the structure of tables, not the rows inside them.",
+"Look for the statement that accepts WHERE and is plain DML, which every engine treats as transactional.",
+"Rolling back to a savepoint undoes only the work done after that savepoint.",
+"A CHECK constraint only rejects FALSE. What does comparing NULL with a number give?",
+"SQLite treats declared column types as affinity hints unless the table is STRICT.",
+"A primary key should be small and stable, because it is copied into every foreign key.",
+"You need an anti-join that keeps child rows that have no matching parent row."
+],"interview":[
+"Separate the data from the managing software, list what a DBMS provides, and explain that an RDBMS uses tables, keys and SQL.",
+"List problems files push onto apps: redundancy, hard queries, lost updates, crash safety, integrity and security.",
+"Use one table to show any unique set, minimal unique sets, the chosen one, and the remaining candidates.",
+"Favour a surrogate primary key plus a UNIQUE natural key, because natural values change and keys are copied everywhere.",
+"Define integrity as no dangling foreign keys, and explain how the DBMS checks child writes and parent deletes or updates.",
+"Use CASCADE when children mean nothing without the parent, and warn about wiping business history and huge delete chains.",
+"Place the FK on the many side, add UNIQUE or a shared key for one-to-one, and use a junction table for many-to-many.",
+"Explain that the junction table links to each side as one-to-many and is an entity with its own key and attributes.",
+"List DDL, DML, DQL, DCL and TCL with examples, and note that some books fold SELECT into DML.",
+"Compare scope, speed, triggers, identity resets and rollback behavior across engines for the three commands.",
+"Define a transaction as an all-or-nothing unit with isolation and durability, then explain commit, rollback and savepoints.",
+"Explain NULL as missing, three-valued logic and IS NULL, and pitfalls with CHECK, UNIQUE, NOT IN and aggregates.",
+"Identify the entities, use FKs for one-to-many, a junction table for tags, and a self-referencing follows table.",
+"Avoid long locks using expand, backfill and contract, adding constraints as NOT VALID and validating them later.",
+"Explain that cross-database FKs are impossible, then cover API checks, events with the outbox pattern, and soft deletes."
+]}

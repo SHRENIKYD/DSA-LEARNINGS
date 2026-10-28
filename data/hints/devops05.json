@@ -1,0 +1,36 @@
+{
+  "quiz": [
+    "EBS volumes live in one AZ and can only attach to instances there. Think about how to copy data across AZs.",
+    "Recall the split: the provider secures the hardware and hypervisor; who owns everything running inside the instance?",
+    "A stopped instance pays no compute hours, but some attached resources keep costing money. Which ones?",
+    "Block Public Access has four settings: some block new policies or ACLs, one makes existing public policies ignored.",
+    "Match the class to the access pattern: rarely read, kept a year, but reads must be fast. Check retrieval times.",
+    "Multiply the hourly rate by the hours in the month, then by the number of instances.",
+    "Spot capacity can be taken back with a short interruption notice. Recall how long that notice is.",
+    "Some requirements are hard rules and others are preferences. Which kind removes regions first?",
+    "A disk has layers: volume, partition, filesystem. Which of them did modify-volume actually grow?",
+    "Check which storage types can be mounted by many instances at once, across different AZs.",
+    "Instance names follow family, generation, extra letters for features, then a size. Decode each part.",
+    "Avoid secrets stored on disk. How can an instance get short-lived credentials without any stored key?",
+    "Ask whether an AMI id is global or regional, and where you could look up the right id at run time.",
+    "Recall default cloud-init behaviour: how many times user data runs and as which user.",
+    "With versioning on, a plain delete does not erase old versions. What becomes the current version?"
+  ],
+  "interview": [
+    "Define regions and AZs, then describe spreading instances across at least two AZs behind a load balancer with a Multi-AZ database.",
+    "Explain the provider secures the cloud and the customer secures what they put in it; give examples for EC2, S3 and managed services.",
+    "Cover picking the AMI, instance type, subnet, security group, key or SSM access, IAM role, tags and checking it afterwards.",
+    "Compare object storage, a block disk for one instance, and a shared file system, with a typical use case for each.",
+    "Explain what happens to billing, the root volume, instance store data and the public IP for each action.",
+    "Mention budgets and alerts, cost anomaly detection, tagging, cleaning idle resources and limits on who can launch what.",
+    "Contain first with Block Public Access, check what was exposed using logs, then find how it happened and prevent it.",
+    "Find what is using space first, free it safely, then grow the volume, partition and filesystem, and add monitoring.",
+    "Match the workload's CPU, memory, storage and network needs to a family, then right-size using metrics and consider arm64.",
+    "Explain classes by access pattern and cost, then a lifecycle that moves logs to cheaper classes over time and expires them.",
+    "Describe each pricing model and its risk, then a mix: commitments for steady base load, Spot for interruptible work, on-demand for peaks.",
+    "Map EC2, EBS, S3, EFS and their Azure equivalents, and mention differences in naming and structure.",
+    "List each tier's resources, use the pricing calculator, include data transfer and storage, and state your assumptions.",
+    "Explain the leak and rotation risk of static keys, then name roles, SSO and short-lived credentials as replacements.",
+    "Mention speedups like drafting commands and reading logs, but stress checking costs, security and destructive commands yourself."
+  ]
+}

@@ -1,0 +1,30 @@
+{"quiz":[
+"Each argument deduces T on its own and deduction never converts types; check whether both agree.",
+"Compare the conversion each candidate needs: a promotion versus an exact match. The non-template rule only breaks ties.",
+"Think about where instantiation happens and what the compiler must be able to see at that point.",
+"A partial specialization still keeps some template parameters while matching a pattern; also recall what function templates cannot do.",
+"Recall what the sizeof... operator measures for a pack, and whether its value is known at compile time or run time.",
+"Only some operators have a defined value for an empty fold; recall which ones those are.",
+"Ask whether a reference itself can be const, or whether the const belongs to the thing it refers to.",
+"Apply the steps: remove the reference, then let the array decay to a pointer to its element type.",
+"Expand the acronym and recall that it only covers failures in a declaration, not errors inside function bodies.",
+"Ask whether default template arguments make two template declarations different in signature.",
+"One concept is defined in terms of the other plus an extra condition; think about which is more constrained.",
+"A compound requirement checks that the expression is valid and then tests its type against the given concept.",
+"Subsumption only compares atomic constraints that are the same expression from the same declaration, like a named concept."
+],"interview":[
+"Define a template as a compile-time recipe, and instantiation as generating concrete code for the used arguments only.",
+"Explain that instantiation needs the full definition in the using file, why linking fails otherwise, and explicit instantiation options.",
+"Cover by-value decay and dropped const, by-reference keeping const and arrays, and forwarding references with lvalues and rvalues.",
+"Explain candidates from deduction, ranking by conversion quality, then tie-breakers: non-template wins, then more specialized.",
+"Contrast exact full specialization with pattern partial specialization, how one is selected, and using overloading for functions.",
+"Explain parameter packs, expansion patterns, sizeof... and fold forms, then give a use like forwarding constructor arguments.",
+"Explain keeping value category with forwarding references and std::forward, expanded across a pack as in emplace.",
+"Describe compile-time type queries and transformations, implemented by a primary template plus specializations.",
+"Explain substitution failure removing a candidate, give an example, and say why errors inside the body are still hard errors.",
+"Compare branching inside one body, constraining interfaces with readable errors, and legacy enable_if for pre-C++20 code.",
+"Define a concept as a named predicate, show the four ways to constrain, and the kinds of requirements in a requires-expression.",
+"Explain normalizing constraints into atoms and checking implication, and why raw repeated expressions do not subsume.",
+"Explain the two phases of lookup for dependent and non-dependent names, and why the parser needs typename and template hints.",
+"Mention measuring build time and size, thin templates, extern template, simpler metaprograms and type erasure where fitting."
+]}

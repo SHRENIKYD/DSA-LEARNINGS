@@ -1,0 +1,31 @@
+{"quiz":[
+"Think about how you would check a prompt change the same way every release. What must stay fixed between runs?",
+"Exact matching only works when there is a single correct short answer to compare against.",
+"A judge should prefer either answer about half the time. Which bias depends on where an answer is placed?",
+"If order affects the verdict, try judging the same pair more than one way and compare.",
+"Common mitigations ground answers in sources or allow saying unknown. Find the option that would not help.",
+"If no evidence is found, a grounded bot should not guess. Think about honesty with the user.",
+"A model can be talked out of prompt instructions. A real guardrail is enforced somewhere else.",
+"The word indirect means the attacker does not type into the chat. Where else could the text come from?",
+"Think about the full path of a data leak: what the agent can see, who can feed it instructions, and how data could leave.",
+"Assume anything placed in a prompt can be extracted by a clever user. Where can a secret live that the model never sees?",
+"Think about where PII would end up if you redacted it too late. Which point stops it before it is ever stored?",
+"An overall average can hide a group that is badly served. What should a responsible team do about it?",
+"Think about who makes or checks the final decision on important actions.",
+"A validator compares output against a declared structure. Ask what kind of mistakes that can and cannot catch."
+],
+"interview":[
+"Cover a golden set of varied cases, the cheapest scorer that works for each, judge calibration, and a release bar.",
+"Name position, verbosity and self-preference bias, and fixes like swapping order, rubrics, and checking against humans.",
+"First locate failure in retrieval or generation, then layer fixes: better retrieval, grounding rules, citations, abstaining.",
+"Contrast the user typing an attack with instructions hidden in content the model reads, and why the second is sneakier.",
+"Break the dangerous combination of private data, untrusted input and outbound send; split roles and require approval.",
+"Define a guardrail as a check enforced outside the model, then list input, output, action and monitoring layers.",
+"Admit it cannot be fully stopped, so keep secrets out of the prompt and enforce permissions in code.",
+"Cover classifying data, sending the minimum, redacting before logs and vendors, and layered detection.",
+"Explain enforcing tenant access in retrieval with metadata filters from the logged-in session, not in the prompt.",
+"Define the harm and groups, compare error and selection rates per group, then mitigate and monitor over time.",
+"Name triggers like high stakes, irreversible actions, rights or money, and low confidence, plus how review is designed.",
+"Explain how averages hide regressions in key categories or unrepresentative evals, then slice metrics and fix the eval.",
+"Layer input checks, approved policy retrieval, strict structured actions validated in code, limits, approvals and logs."
+]}

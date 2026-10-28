@@ -1,0 +1,31 @@
+{"quiz":[
+"One parses and runs the language itself; the other supplies extra APIs and an event loop around it.",
+"Separate built-in language features from APIs supplied by the host environment like browsers or Node.",
+"Recall which engine each runtime embeds: Node and Deno share one, while Bun chose a different browser's engine.",
+"In Node, timers do not return a plain number as they do in browsers. Recall what Node gives back so you can clear the timer.",
+"Separate declarations that become properties of the global object from those that live only in the global lexical scope.",
+"Modules run in strict mode and have their own scope. What is this in strict top-level code?",
+"Module scripts are deferred by default. Think about when they run relative to HTML parsing.",
+"Node decides module type from the file extension and the nearest package.json type field, not file content.",
+"A caret range allows minor and patch updates within the same major version from a minimum.",
+"CI needs reproducible installs. Which command treats the lockfile as the only source of truth and never rewrites it?",
+"A bare name is not a relative path. Think about where Node searches for node_modules folders and in what order.",
+"Look for a breakpoint feature that only pauses when an expression is true.",
+"Node has an inspect flag that lets Chrome DevTools attach to the running process.",
+"Look for a Node-only built-in module, rather than a web standard API both sides share."
+],
+"interview":[
+"Define the engine as the code executor and the runtime as engine plus host APIs and event loop; give examples.",
+"Explain the event loop, non-blocking I/O handled by the OS or libuv thread pool, and callbacks.",
+"Name shared web-standard APIs like fetch, URL and timers, and explain the portability benefit.",
+"Explain each name, why globalThis exists, and which declarations become global properties.",
+"Cover scope, strict mode, defer behaviour, imports, CORS, and running once.",
+"Compare syntax, sync vs async loading, live bindings vs copies, and interop rules between them.",
+"Describe depth-first linking and evaluation, and how a cycle can expose uninitialised bindings.",
+"Explain dependency ranges, how the lockfile pins exact versions, and installing with a clean, locked install.",
+"Cover walking up node_modules folders, package.json exports and main, and conditions like import vs require.",
+"Describe a repeatable process: reproduce, use breakpoints, network and console panels, then confirm the fix.",
+"Mention relying on web-standard APIs, feature detection, export conditions, and testing on every runtime.",
+"Contrast the browser sandbox with Node's full system access, and discuss supply chain risk and install scripts.",
+"Explain that the console shows a live reference that is evaluated when you expand it, not a snapshot."
+]}

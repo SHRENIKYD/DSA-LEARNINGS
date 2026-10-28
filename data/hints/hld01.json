@@ -1,0 +1,35 @@
+{
+  "quiz": [
+    "Functional requirements say what the system does. Others describe how well it does it, like speed or reliability.",
+    "In any hop, the side that sends the request is the client, even if it is a server elsewhere.",
+    "Ask which TTL a resolver obeys for an answer it already holds: the one stored with the answer, or the new one you just set?",
+    "List the handshakes needed before any HTTP bytes can be sent on a fresh connection, and how many round trips each one takes in TLS 1.3.",
+    "Use Little's law: requests in flight equal arrival rate times time spent in the system.",
+    "Picture 99 fast requests and one that takes 10 seconds. What does the average show, and what would a high percentile show?",
+    "For components in series, multiply their availabilities together.",
+    "With redundant parts, the system fails only if all fail. Multiply the failure chances, then subtract from one.",
+    "For each option, imagine one piece dying. Does the rest keep working, or does every request fail?",
+    "Think about what a small team gains from one codebase and one deployment early on.",
+    "Each write has a fixed cost, such as a network round trip. Ask what sharing that cost does to the total rate, and what it does to each item's wait.",
+    "Queueing delay grows sharply as utilisation nears full. Compare one over one minus utilisation at both levels.",
+    "Status codes in the 5xx range describe server-side failures. Which one is meant for a proxy that gave up waiting for the upstream?",
+    "Computers connect using numeric addresses, but people type names. Which job sits between those two?",
+    "Latency is time per request and throughput is requests per second. Adding parallel workers affects one more than the other."
+  ],
+  "interview": [
+    "Walk through DNS lookup, TCP and TLS handshakes, the HTTP request through load balancers to servers, the response, and rendering.",
+    "Define both, then give examples: features users can do versus targets for latency, availability, scale and security.",
+    "Mention clarifying users and core features, scale numbers, read and write patterns, latency and consistency needs, and what is out of scope.",
+    "Define both with units, and explain how queueing and parallelism link them, for example via Little's law.",
+    "Explain how averages hide slow outliers, define p95 and p99, and why fan-out makes tail latency matter more.",
+    "Explain multiplying availabilities for components in series and combining failure chances for redundant ones, with a worked example.",
+    "Define it as a component whose failure stops the whole system, and remove it with redundancy, failover and health checks.",
+    "Compare simplicity and speed for small teams with independent scaling and deployment, and the operational cost of microservices.",
+    "Explain resolution through resolvers and authoritative servers, caching with TTL, and uses like failover and geo routing.",
+    "Explain keeping no session data in the server's memory, so any instance can handle any request and scaling is easy.",
+    "Consider queueing near saturation, lock or connection pool contention, garbage collection, slow dependencies and noisy neighbours.",
+    "Cover autoscaling, caching and CDNs, queues to absorb bursts, rate limiting, load shedding and pre-warming before the event.",
+    "Define the measured metric, the internal target, the contractual promise, and the allowed failure budget that guides release speed.",
+    "Discuss high and variable latency, token costs, rate limits, streaming responses, caching, fallbacks and evaluating output quality."
+  ]
+}

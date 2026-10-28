@@ -1,0 +1,37 @@
+{
+  "quiz": [
+    "A caret allows any newer version that keeps the same major number. Pick the highest that fits.",
+    "Tilde is stricter than caret. Ask which part of the version number it lets change, and where the range must stop.",
+    "CI needs reproducible installs. Think about which command trusts the lockfile strictly and refuses mismatches.",
+    "Tree shaking needs to know at build time which exports are used. Which module system makes that possible?",
+    "A bundler can only drop a module if it knows importing it does nothing else. Which field tells it that?",
+    "One deals with new syntax that can be rewritten ahead of time; the other with built-in features that must exist when the code runs.",
+    "Think about which tool Vite uses for TypeScript and whether that tool checks types or only removes them.",
+    "Linters find code problems. Think about what the other tool focuses on.",
+    "Think about the difference between comparing identity and comparing contents.",
+    "Check what each query family does when nothing matches: throw, return a value, or wait. Which lets the assertion run and pass?",
+    "Testing Library ranks queries by how users and assistive tech find elements. Which is at the top?",
+    "Web-first assertions keep checking for a while. A one-time read can run before navigation finishes.",
+    "Think about how Playwright isolates storage and cookies per test without starting a new browser.",
+    "Parallel jobs take as long as the slowest one. Add install, the longest middle job, and build.",
+    "The cache should change exactly when dependencies change. Which file captures that?"
+  ],
+  "interview": [
+    "Explain major, minor and patch meanings, and that caret allows minor and patch updates while tilde allows only patch.",
+    "Explain reproducible installs across machines and CI, and that one command may update the lockfile while the other installs it exactly.",
+    "Mention disk space and speed from a content-addressed store, strict dependency layout preventing phantom dependencies, and monorepo support.",
+    "Explain resolving imports, transforming code, splitting and minifying, and why many small native imports still cost network requests.",
+    "Compare configurability, dev speed with native modules, and raw build speed, and say which fits legacy, new apps or tooling.",
+    "Analyze the bundle first, then code split routes, remove or replace heavy dependencies, tree shake, and lazy load.",
+    "Explain removing unused exports using static imports, failure causes like CommonJS and side effects, and how the field helps.",
+    "Mention catching type errors early, refactoring safety and editor help, and that it does not check runtime data or logic bugs.",
+    "Talk about generics for item types, typed props and callbacks, extending native element props, and good inference.",
+    "Explain that one finds code problems and the other formats, how to avoid rule conflicts, and running both in editor, hooks and CI.",
+    "Describe arrange, act, assert, testing behavior not internals, small focused tests, and the speed and setup differences of the two runners.",
+    "Explain many fast unit tests, fewer integration tests and few end-to-end tests, and map each layer to React pieces.",
+    "Explain testing like a user, preferring accessible queries by role and label, and avoiding implementation details.",
+    "Cover auto-waiting assertions, stable selectors, isolated test data and contexts, avoiding fixed sleeps, and retries with traces.",
+    "Lay out stages from install and checks through tests, build and deploy, with caching, parallel jobs, previews and rollback.",
+    "Explain that strong types, tests, linting and CI checks become the guard-rails that verify generated code before it ships."
+  ]
+}

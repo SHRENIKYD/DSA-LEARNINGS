@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "A cursor must be moved before you can read data. Where does it start, and what call advances it?",
+    "Break the URL into parts: scheme, host, port, database, and options. The port comes after the colon following the host.",
+    "Evaluate the condition with boolean logic: one side may be false, but what does OR do when the other side is always true?",
+    "The real fix keeps user input as data, never as part of the SQL text. Which JDBC feature sends values separately?",
+    "Placeholders can only bind values, not column names. How can code choose only from known safe column names?",
+    "One is a standard that defines annotations and an API; the other is a library that provides the actual behaviour.",
+    "In a one-to-many relation the foreign key lives on the many side. Which table has many rows per order?",
+    "Think about what gets saved in the column for each option and what happens if someone reorders the enum constants later.",
+    "Spring Data parses method names into parts like By, And, and GreaterThan. What would it build from them?",
+    "In autocommit, each statement commits on its own as soon as it runs. What happened to the first one before the second failed?",
+    "Checking then updating in two steps leaves a gap. Look for a single statement that checks the balance and updates at once.",
+    "Each transfer holds one lock and waits for the other. How can a fixed locking order stop the circular wait?",
+    "Interfaces hide storage details from the service. Think about testing with a fake and changing the storage later."
+  ],
+  "interview": [
+    "Name JDBC as Java's standard database API, then list the steps: get a connection, prepare a statement, bind, execute, read, close.",
+    "Explain how input becomes part of SQL, give a small example, then cover parameterized queries, allow-lists, and least privilege.",
+    "Contrast concatenated SQL with precompiled SQL plus bound parameters; mention safety, performance, and type handling.",
+    "Mention leaks through git history and logs, then point to environment variables or a secret manager with rotation.",
+    "Define mapping objects to tables, then weigh less boilerplate against hidden queries, N+1 risks, and less control over SQL.",
+    "Separate the three layers: a specification, an implementation of it, and a Spring layer that generates repositories.",
+    "Show the mapping on both sides, then explain that the many side holds the foreign key and is the owning side.",
+    "Explain parsing the method name into a query, and when a hand-written query is clearer or more efficient.",
+    "Cover turning off autocommit, ordering updates, checking balances in SQL, commit, rollback in finally, and lock order.",
+    "Explain that each statement commits alone in autocommit, so a multi-step change can be left half done on failure.",
+    "Cover managed entities tracked per session, automatic updates on flush, and accessing lazy data after the session closed.",
+    "Compare a version column check with locking rows up front, and say which fits low versus high contention.",
+    "Compare type safety, migrations, control over SQL, and team skills, and say when raw SQL wins.",
+    "Cover transactions, idempotency keys, unique constraints, safe retries, locking, and what happens on partial failures.",
+    "Mention read-only roles, allow-listed tables, row-level security, query limits, parameter binding, and audit logging."
+  ]
+}

@@ -1,0 +1,30 @@
+{"quiz": [
+"A single statement is atomic: if any part of it fails, think about what happens to the rest.",
+"In SQLite and Postgres every SET expression reads the row values from before the update.",
+"In an upsert, excluded names the row that hit the conflict, not the row already stored.",
+"Think about what REPLACE actually does under the hood to the existing row and its children.",
+"The conflict target must match an existing unique index or primary key.",
+"You need uniqueness only among live rows. Remember NULLs never collide in a plain UNIQUE.",
+"A regular view is inlined into the query each time it is read.",
+"Materialized views store results for fast reads, which raises a freshness question.",
+"SQLite views are read-only unless a trigger defines what a write to the view should do.",
+"Think about which row images exist for each kind of change: inserts, deletes and updates.",
+"A rolled-back transaction undoes database changes, but not things sent outside the database.",
+"Think about network round trips and how long locks stay held while the client and server talk.",
+"A NULL in the NOT IN list makes the condition UNKNOWN for every row."
+],
+"interview": [
+"Compare row removal versus emptying versus removing the table: logging, triggers, rollback, speed, and identity reset.",
+"Define upsert as atomic insert-or-update on a unique key and show the syntax in Postgres and SQLite, MySQL, and MERGE.",
+"Describe the race where two sessions both see missing and both insert, and fix it with a unique index plus an atomic upsert.",
+"Explain marking rows deleted, its uses, and problems like filtering everywhere, unique constraints, cascades and growth, with fixes.",
+"Define a view as a stored SELECT and explain exposing only certain columns and rows, granting on the view and revoking the base table.",
+"Compare always-fresh but full-cost views against fast but possibly stale materialized views, and when each fits.",
+"Explain which simple views accept writes and how WITH CHECK OPTION blocks writes that leave the view, including LOCAL vs CASCADED.",
+"Weigh round trips, shared logic and security against versioning, testing, lock-in and scaling the database CPU.",
+"Prefer single set-based statements, wrap steps in a transaction in app code, and use triggers for event-driven logic.",
+"Use row triggers writing table, key, action, old and new images, time and actor to an audit table in the same transaction.",
+"Cover hidden logic, per-row cost, chains and recursion, unclear firing order, replication and ORM surprises.",
+"Explain that a target row matching several source rows gets updated once from an arbitrary row, and aggregate the source first.",
+"Preview with SELECT, have a backup, run in small idempotent batches, and watch locks and replica lag."
+]}

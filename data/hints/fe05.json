@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Find the free space after the bases, then split it in proportion to the grow factors.",
+  "Shrink is weighted by basis times shrink factor. Find the overflow and share it out.",
+  "First decide which axis is the main axis in a column. Then recall which property works along the main axis and which along the other.",
+  "The shorthand sets grow, shrink and a basis. Think about which basis it uses.",
+  "Subtract fixed columns and gaps first, then split the rest into fr units.",
+  "Both fill the row with as many 220px tracks as fit. Ask what each keyword does with the tracks that have no card in them.",
+  "Ask what box an absolutely positioned element measures its top and right from, and why the card is not that box right now.",
+  "Ask whether z-index values are compared across the whole page or only within a group. Then check what the transform on the card does.",
+  "Recall what creates stacking contexts: opacity below 1, transforms, positioned with z-index.",
+  "Sticky sticks within its nearest scroll container. Ask what overflow: hidden turns the ancestor into, and which value clips without that.",
+  "Compare starting from the smallest layout and adding rules with starting from desktop and undoing them. Which is simpler to maintain?",
+  "Recall the browser steps: style, layout, paint, composite. Which properties can change without re-running layout or paint?",
+  "Ask on which element var(--brand) inside --accent gets resolved, and whether children inherit the reference or the resolved value.",
+  "When leaving hover, the element goes back to its base rule. Ask which rule's transition the browser uses for each direction."
+ ],
+ "interview": [
+  "Explain finding free or overflow space, sharing by grow or weighted shrink, and min size limits.",
+  "Compare one-dimensional content-driven layouts with two-dimensional grid layouts.",
+  "Mention flex, grid place-items, and absolute with transform, with pros and cons of each.",
+  "Explain what creates stacking contexts and why z-index only compares within the same context.",
+  "Describe the layers: backgrounds, negative z-index, blocks, floats, inline, then positioned items.",
+  "Compare flow, containing block and scrolling behavior for each position value.",
+  "Explain base styles for small screens, min-width queries, and choosing breakpoints by content.",
+  "Compare state-change transitions with keyframe animations that can loop or run alone.",
+  "Explain the layout, paint and composite steps and why these two can skip the first two.",
+  "Compare runtime cascading values with compile-time values, plus gotchas like invalid values.",
+  "Explain the default min-width auto on flex items, and fixes like min-width 0 or word wrapping.",
+  "Cover grid with auto-fit and minmax, fluid spacing, and container queries.",
+  "Discuss semantic tokens, a theme attribute, the prefers-color-scheme query, and contrast checks."
+ ]
+}

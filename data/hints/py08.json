@@ -1,0 +1,30 @@
+{"quiz":[
+"Containers show their items using repr, not str. What is used when no __repr__ is defined?",
+"Truthiness tries __bool__ first and then falls back to __len__.",
+"Equal objects must have equal hashes. What does Python do to __hash__ when you define only __eq__?",
+"When both sides give up on ==, Python has a fallback for equality that differs from the one for less-than.",
+"Reflected methods like __rmul__ are only tried when the two operands have different types.",
+"Use C3 linearization: a class is placed only once it no longer appears in the tail of any other list.",
+"super() moves to the next class in the MRO of the actual instance type, not the parent of B.",
+"Compare data descriptors, which define __set__, with plain functions, which only define __get__.",
+"Dataclasses reject unhashable default values like lists and point you to default_factory.",
+"A mutable class with value equality cannot be safely hashed. What does a default dataclass set?",
+"Every abstract method in the ABC must be implemented before you can create an instance.",
+"Each class in the hierarchy must declare __slots__ itself to stay free of a per-instance dict.",
+"Augmented assignment does two steps: mutate the list in place, then store the result back into the tuple.",
+"cached_property stores its result in the instance __dict__. Does a slotted class have one?"
+],"interview":[
+"Contrast the developer-facing, unambiguous repr with the user-facing str, where each is used, and the fallback rule.",
+"Explain the __bool__ then __len__ order, the default of truthy, and the risk of writing if x when you mean is not None.",
+"State that equal objects need equal hashes that never change while stored, and describe duplicates and missed lookups.",
+"Explain that NotImplemented lets Python try the other operand's reflected method, and why False or raising breaks that.",
+"Walk through the subclass-first rule, calling __add__, falling back to __radd__ on NotImplemented, then TypeError.",
+"Define the MRO, describe the C3 merge rule, and work the diamond example step by step.",
+"Explain that super() searches the runtime MRO after the current class, and that cooperative classes all call super with **kwargs.",
+"Cover validation, derived and read-only values, and adding logic later, then pitfalls like recursive setters and slow work.",
+"Lay out data descriptors on the class, then the instance dict, then non-data descriptors and plain class attributes, then __getattr__.",
+"List the generated methods and the __hash__ default, then explain options like order, frozen, slots and kw_only.",
+"Contrast nominal ABCs that fail at instantiation and offer mixin methods with structural Protocols checked by type checkers.",
+"Explain fixed slots replacing __dict__, the memory win for many objects, and gotchas like inheritance and no new attributes.",
+"Explain that implicit operations use C slots on the type, so setting a dunder on an instance has no effect."
+]}

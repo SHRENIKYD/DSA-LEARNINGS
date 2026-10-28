@@ -1,0 +1,30 @@
+{"quiz":[
+"Add the round trips for the TCP handshake, the TLS 1.2 handshake, and the HTTP request itself.",
+"Add the TCP handshake, the shorter TLS 1.3 handshake, and the request; count how many full round trips TLS 1.3 needs.",
+"Think about which version multiplexes streams over a single ordered byte stream, where one lost packet stalls all.",
+"HTTP/2 sends many requests with nearly identical headers. Think about which protocol layer this name belongs to and what it saves.",
+"Forward secrecy means a stolen server key later cannot unlock old traffic. What kind of key exchange makes that true?",
+"A certificate is just data the server sends. Think about how the browser can check it against something it already trusts.",
+"The resolver walks root, then TLD, then the domain's own servers. Which level delegates example.com?",
+"Lowering the TTL only affects copies fetched after the change. Think about the copies resolvers fetched before it.",
+"The handshake starts as HTTP and must tell the client the protocol is changing. Which 1xx status fits, and what proves the key was seen?",
+"Look for a simple one-way HTTP based stream that the browser reconnects to on its own.",
+"Think about who sits between browser and server and could misread attacker-chosen bytes as plain HTTP.",
+"Think about the rule that a CNAME cannot share its name with any other record, and which records every zone apex must have.",
+"Early data is sent before the handshake finishes. Think about what an attacker could do by sending those same bytes again."
+],
+"interview":[
+"Go in order: DNS, TCP, TLS, HTTP request, server work, response, then parsing and rendering.",
+"Compare text versus binary framing, multiplexing, header compression, and TCP versus QUIC transport.",
+"Explain HOL blocking at the HTTP/1.1 request level and the TCP level, and how HTTP/3 removes the TCP part.",
+"Cover the key share in the first message, one round trip, encrypted certificates, and removed old ciphers.",
+"Explain checking signatures up to a trusted root, plus names, dates, and revocation checks.",
+"Define forward secrecy, then explain ephemeral Diffie-Hellman keys that are discarded after the session.",
+"Walk through browser and OS caches, recursive resolver, root, TLD, authoritative servers, and TTL caching.",
+"Name A, AAAA, CNAME, MX, TXT, NS, SOA and a typical use case for each.",
+"Explain TTL caching by resolvers, and lowering the TTL well before a change, then raising it after.",
+"Compare direction of data, browser support, reconnect behavior, proxies, and server cost of each option.",
+"Cover the HTTP Upgrade request, the key and accept headers, then frame fields like opcode, length and mask.",
+"Discuss avoiding TCP head-of-line blocking and kernel ossification versus UDP blocking and CPU cost.",
+"Talk about connection gateways, pub/sub fan-out, presence, reconnect with resume, and scaling sticky connections."
+]}

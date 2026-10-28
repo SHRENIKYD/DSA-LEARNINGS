@@ -1,0 +1,31 @@
+{"quiz":[
+"Turnaround is completion minus arrival. Waiting is turnaround minus the burst length.",
+"The name comes from slow traffic. Think about what a first-come queue does when one CPU-heavy job is at the head.",
+"Use the exchange argument: putting shorter work first always lowers total wait. Which option can also react when a new job arrives?",
+"The OS cannot know the future, so it blends the last actual burst with its previous guess using a weight alpha.",
+"The remedy must guarantee every waiting job eventually wins. What could change about a job the longer it waits?",
+"If every process finishes before its slice ends, nothing is ever preempted. What order is left?",
+"Use overhead = switch time divided by (quantum plus switch time).",
+"Compare whether a process stays in the queue it was first given, or can move up and down based on how it behaves.",
+"CFS keeps tasks sorted by how much weighted CPU time they have used, and favors the one that has had the least.",
+"Use the change in vruntime = run time times 1024 divided by weight, with a weight of 1024 here.",
+"Use run time times 1024 divided by weight, with a weight of 335. A smaller weight makes vruntime grow faster.",
+"Think about what happens to vruntime while a task is asleep and not using the CPU.",
+"EEVDF is a recent change that landed in late 2023. Recall which kernel release came out around then.",
+"A high-priority task ends up waiting on a medium one because a low one holds the lock. Recall the name for this."
+],"interview":[
+"Give the formula for each metric, then argue which one a user actually feels when typing, including its variance.",
+"Describe a long job at the front of a first-come queue, the idle CPU and I/O devices, a small number example, and preemptive fixes.",
+"Use the swap (exchange) argument for optimality, then explain why bursts must be predicted and how long jobs can starve.",
+"Explain the FIFO queue and timer preemption, the worst-case wait bound, and the trade-off of too large or too small a quantum.",
+"Define starvation, then show how aging raises priority with waiting time and bounds the worst-case wait.",
+"Contrast fixed class-based queues with queues where jobs are demoted or promoted based on behaviour, plus the periodic boost.",
+"Cover vruntime scaled by weight from nice, the red-black tree, picking the leftmost task, and how slices are sized.",
+"Look up both weights, divide each by their total to get CPU shares, and connect this to how fast each vruntime grows.",
+"Advise working event by event: list arrivals, completions and quantum ends, then apply the rule at each event to the ready set.",
+"For each case name the metric that matters most, then pick a scheduler style that serves it, such as time slicing or fixed priorities.",
+"Define the H, M, L lock scenario, mention the Mars Pathfinder story, and explain priority inheritance and priority ceiling.",
+"Separate direct register and page-table costs from indirect cache and TLB costs, and say how this shapes quantum length and affinity.",
+"Explain two-level scheduling with vCPUs, steal time, lock-holder preemption, and CPU quotas and throttling in containers.",
+"Map continuous batching to round robin, chunked prefill to avoiding convoys, and mention fairness and preemption of requests."
+]}

@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "In Little's law, L is the count in the system and lambda is the arrival rate. The third term is about time per item.",
+  "I/O-bound threads spend time waiting. Think about how the wait-to-compute ratio changes the pool size beyond the core count.",
+  "Recall the order: core threads first, then the queue, then extra threads up to max, then rejection. Count what is full.",
+  "In a flame graph, width is the share of samples and boxes above are callees. What does having no callees say?",
+  "Think about how a few very slow requests get hidden when you average them with many fast ones.",
+  "Ask what happens to memory and waiting time when work keeps arriving faster than it is processed with no limit.",
+  "Think about a load tester that waits for each reply before sending the next. What does it fail to measure during a stall?",
+  "Virtual threads are cheap to block. Think about which kind of workload spends most of its time waiting.",
+  "Multiply pods by pool size and compare with the database limit.",
+  "If CPU stays low, CPU is not the bottleneck. Pick a signal that reflects waiting work or concurrency.",
+  "Read each code's class: 4xx codes blame the request or client, 5xx codes blame the server side.",
+  "Think about the size of the bucket versus the refill rate. Which one limits how many requests can go at once?",
+  "Shed what matters least to users and the business first, and protect critical traffic.",
+  "Percentiles are not linear. Think about what data you need to compute a true combined percentile."
+ ],
+ "interview": [
+  "Describe a measure-first flow: RED/USE metrics to find the saturated resource, then profiles or thread dumps, then fix and verify.",
+  "State the formula and its meaning, then show an example like sizing concurrency or pools from rate and latency.",
+  "Separate CPU-bound and I/O-bound cases, give the formula with wait and compute time, and mention capping by downstream limits.",
+  "Walk through core threads, the queue, extra threads up to max, and the rejection policy, in that order.",
+  "Compare thread cost, concurrency limits, code complexity and debugging for each model, and when each one fits.",
+  "Define it as a slow consumer slowing a fast producer, and give tools like bounded queues, rejection and reactive demand signals.",
+  "Explain how averages hide the tail, why users feel the tail when pages make many calls, and how to measure percentiles.",
+  "Explain the closed-loop client flaw during stalls, and fixes like open-loop or constant-rate load tools that correct for it.",
+  "Check how long connections are held, slow queries, work inside transactions, leaks, and pool size against database limits.",
+  "Cover rejecting early at the edge, per-client limits, concurrency limits, priorities, and returning clear status codes with retry hints.",
+  "Explain stateless instances behind a load balancer, good scaling signals, and blockers like local state and shared database limits.",
+  "Define each: timeout bounds one call, retry repeats it, breaker stops calling a failing dependency. Mention how they combine.",
+  "Low CPU means the service is waiting. Mention wall-clock profiling, thread dumps, and common waits like pools, locks and remote calls.",
+  "Mention stress testing to find the throughput-latency knee, the first saturated resource, and keeping headroom at forecast peak."
+ ]
+}

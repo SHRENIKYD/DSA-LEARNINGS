@@ -1,0 +1,27 @@
+{"quiz":[
+"A job is a bundle of many tasks, each with different exposure. Analyse at the smallest useful level.",
+"Automation struggles where goals are unclear, checking is hard, and context is rare. Find the messiest task.",
+"Picture the letter T: one long vertical stroke and a wide top bar.",
+"Improving one number can quietly hurt others, like latency or complaints. Which option describes the role of those other numbers?",
+"The risk-based idea gives more duties as harm to people's rights grows. Which use affects lives most?",
+"A model cannot be held responsible. Think about who chose to build and release the feature.",
+"Think about the forgetting curve. When is a review most useful, and what should happen to the gap after you recall it correctly?",
+"Doing the same easy thing again rarely makes you better. Which option adds challenge and a way to learn from mistakes?",
+"Be wary of confident extreme claims. What does honest evidence about the future allow?",
+"Imagine several very different futures. Which kind of action would you be glad you took in all of them?",
+"Recognising an answer feels like knowing it. Test real recall before seeing the answer.",
+"Compare who is affected by a staff engineer's decisions, and how far ahead those decisions reach."
+],"interview":[
+"Think in tasks, not jobs: clear goals and cheap checking get automated most; ambiguity and judgement least.",
+"Give concrete daily uses, where you avoid it, and how you check its output before trusting it.",
+"Define deep expertise plus working breadth, then describe your own stem and bar with real examples.",
+"Start from the user's pain, compare options including non-AI ones, then cover metrics, guardrails, cost and risk.",
+"Explain the risk-based tiers from banned uses down to minimal risk, with examples and the duties for high risk.",
+"Treat the law as unsettled; cover approved tools, licence scanning, rewriting suspicious code, and recording decisions.",
+"Show the approach: gather evidence, raise it early and in writing, offer options, and escalate if needed.",
+"Describe a system: few trusted sources, learning lasting principles, hands-on projects, and regular review.",
+"Explain that juniors still must learn and deliver trusted work, using AI but able to explain every line.",
+"Contrast owning a system or team direction with influence across teams and long-term technical direction.",
+"Plan for several scenarios and favour no-regret moves like deep skills, verification, communication and learning habits.",
+"Apply the normal bar plus extra care: a clear spec or tests, careful review, risk-based checks, and rollback plans."
+]}

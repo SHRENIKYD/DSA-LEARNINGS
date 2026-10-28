@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about what an OS does for many programs at once, and what simpler view of the hardware it gives each program.",
+"Ask which instruction could freeze or harm the whole machine if any ordinary program were allowed to run it.",
+"Count the crossings of the user/kernel boundary: going in to do the work, and coming back out afterward.",
+"User code passes only a number to the kernel, and the kernel must turn it into the right handler. Think about how it looks one up fast.",
+"Asynchronous means it can happen at any moment, caused by a device rather than by the instruction now running.",
+"A fault is fixable. Once the missing page is loaded, think about which instruction still has not finished its work.",
+"Each interrupt or exception has a vector number. Think about what the CPU needs to find next once it knows that number.",
+"Each stage loads the next one. Start from what runs when power first reaches the CPU.",
+"A monolithic kernel keeps drivers and file systems inside the kernel. Recall which listed systems are known microkernels.",
+"Compare a plain jump inside your program with crossing into a more privileged mode and back, plus its side effects.",
+"libc keeps output in a user-space buffer for terminals. Think about what event makes it flush the buffer.",
+"After the kernel finishes booting, it starts exactly one user program that launches every other service.",
+"A program in an endless loop never calls the OS. Think about how the kernel can still take the CPU back."
+],
+"interview":[
+"Cover the two core roles, resource manager and abstraction layer, and give examples like processes, files and virtual memory.",
+"Explain the CPU mode bit, what is forbidden in user mode, and why this protects programs and the OS from each other.",
+"Walk through libc wrapper, syscall instruction, mode switch, syscall table lookup, validation, data fetch or blocking, and return.",
+"Compare a same-level jump with the privilege switch, register saves, validation, KPTI page-table switch and cache or TLB pollution.",
+"Separate asynchronous hardware interrupts from synchronous exceptions, then say where each of trap, fault and abort resumes.",
+"Mention vector numbers, the descriptor table pointed to by a CPU register, saving state on the kernel stack, and jumping to the handler.",
+"Go stage by stage: firmware and POST, bootloader, kernel and initramfs, then PID 1 starting services and the login prompt.",
+"Contrast legacy 16-bit BIOS with MBR limits against UEFI with GPT, the EFI System Partition and modern features like secure boot.",
+"Compare where drivers and services run, the speed of in-kernel calls versus IPC, and fault isolation and trusted code size.",
+"Explain the idea of a hybrid kernel and describe how Windows NT and macOS XNU mix microkernel ideas with in-kernel speed.",
+"Name tools like strace, perf trace and eBPF, the patterns to look for, the fixes like batching or buffering, and measuring again.",
+"Define a page fault from the MMU view, then list normal uses like demand paging and copy-on-write, and when it becomes an error.",
+"Explain how Meltdown leaked kernel memory, how KPTI separates page tables, and why that makes every user/kernel switch cost more."
+]}

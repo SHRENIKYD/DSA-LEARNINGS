@@ -1,0 +1,35 @@
+{
+ "quiz": [
+  "List divisor pairs that multiply to the number. Remember a perfect square has one pair where both numbers are the same.",
+  "Think about which loop conditions can overflow or round wrongly near the largest 64-bit values, and which use division instead.",
+  "Any multiple of p with a smaller factor than p was already crossed out by an earlier prime.",
+  "Each prime p does about N divided by p work. Sum this over primes and recall what that sum grows like.",
+  "Euclid replaces the pair (a, b) with (b, a mod b) until the second number is zero.",
+  "Dividing before multiplying keeps the intermediate value no bigger than the final answer.",
+  "In these languages the remainder takes the sign of the dividend. Compute the difference first, then apply that rule.",
+  "The product of two reduced values can reach about ten to the eighteenth, so it must be computed in a 64-bit type before the mod.",
+  "Binary exponentiation does one round per bit of the exponent. Count the bits needed.",
+  "Use Fermat's little theorem: a to the power p minus one is congruent to one under a prime modulus.",
+  "Combinations ignore order: divide the ordered count by the factorial of the number chosen.",
+  "Fermat inverses need a prime modulus, and 10^9 is not prime. With n only 2000, which method needs no division at all?",
+  "Count the possible values and compare with the number of positions. The pigeonhole principle applies.",
+  "If every team had at most a certain size, how many students could there be in total? Use the ceiling of the division.",
+  "Remainders lose their order after reduction. Think about how to compare the true values before taking the mod."
+ ],
+ "interview": [
+  "Explain that divisors come in pairs whose product is N, so one in each pair is at most the square root.",
+  "Match each method to its input size and number of queries: a single small number, many numbers up to a limit, a range far away, or huge numbers.",
+  "Show that each prime crosses out N divided by p numbers, sum over primes, and state the log log N growth.",
+  "Prove gcd(a, b) equals gcd(b, a mod b) through common divisors, then show the numbers at least halve every two steps.",
+  "Mention that it is prime so inverses exist, fits in 32 bits, and a product of two residues fits in 64 bits.",
+  "List rules for add, subtract, multiply and divide via inverse, and bugs like negative remainders and overflow before the mod.",
+  "Describe binary exponentiation squaring the base and halving the exponent, its log complexity, and edge cases like zero exponent and mod one.",
+  "Precompute factorials and inverse factorials up to n mod p, then answer each query in constant time.",
+  "State the principle simply, then give an application such as finding a duplicate or prefix sums with equal remainders.",
+  "Explain treating values as next pointers so a duplicate forms a cycle, then Floyd's cycle detection to find its entrance.",
+  "Loop over each d and add it to all its multiples, then show the harmonic sum gives N log N.",
+  "Reduce each number using the gcd with k, count numbers by that value, and pair groups whose product is divisible by k.",
+  "Cover 128-bit multiply where available, binary multiplication with doubling, BigInteger or Python big ints, and their costs.",
+  "Describe using AI for ideas or checks while still verifying formulas, overflow, edge cases and complexity yourself with tests."
+ ]
+}

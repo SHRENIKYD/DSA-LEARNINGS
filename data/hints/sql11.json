@@ -1,0 +1,30 @@
+{"quiz": [
+"The grammar is fine here. Think about which stage looks names up in the catalog before any plan is built.",
+"One version only shows the planned estimates; the other really runs the statement and reports what happened.",
+"Row estimates drive the choice of join strategy above that node. Think about a plan built for one row facing thousands.",
+"Ask whether the table itself must be read when every needed column is already in the index.",
+"Compare a random page read for each matching row with one sequential pass over every page.",
+"Hash and merge joins need an equality key. Which algorithm accepts any condition?",
+"Memory is the limit for the hash table, so think about which input should be stored in it.",
+"Pre-sorted inputs can be merged in one linear pass with little memory, and the output stays sorted.",
+"Without frequency stats, the planner assumes values are evenly spread: rows divided by distinct values.",
+"A predicate is sargable when the bare column is compared, not a value computed from it per row.",
+"A NULL in the NOT IN list makes every comparison UNKNOWN.",
+"Think about how many rows OFFSET has to produce and throw away before returning the page.",
+"An automatic index is built at run time because no suitable permanent one exists."
+],
+"interview": [
+"Walk through parse, bind, rewrite, plan with cost estimates, and execute, saying which kind of error appears at each stage.",
+"Find and measure the query, get the real plan with ANALYZE, read it for the costliest node and bad estimates, fix, and verify.",
+"Explain how each join works, its cost, and when it wins: small indexed lookups, big equality joins, or sorted inputs.",
+"Define sargable as turning a predicate into an index seek, and rewrite examples like functions or math on the column.",
+"List reasons like low selectivity, tiny tables, non-sargable predicates, left-prefix misses, bad stats, and type or collation mismatches.",
+"Describe the statistics ANALYZE gathers, like distinct counts, common values and histograms, and how equality and ranges use them.",
+"Define covering as answering from the index alone, its saved lookups and sorts, and the costs of bigger indexes and slower writes.",
+"Explain why OFFSET cost grows with depth and pages shift, and switch to keyset pagination on a unique sort key.",
+"Separate semi-joins from a fan-out JOIN needing DISTINCT, and note modern planners usually plan IN and EXISTS the same.",
+"List causes like changed stats, data crossing a cost point, parameter-based plans, and config changes, plus ways to guard against them.",
+"Put equality columns first then the sort column, so the engine seeks, walks in order, and stops at the limit without sorting.",
+"Say AI speeds up reading plans and suggesting fixes, but you must verify against real data, plans and write costs.",
+"Describe one query for a list plus one per item, how to spot it by counting queries, and fix it with joins or batched loading."
+]}

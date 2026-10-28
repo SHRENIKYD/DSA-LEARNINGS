@@ -27,7 +27,7 @@ assert.match(go('#passport'), /Your stamp passport/); assert.match(nodes['#app']
 go('#search'); nodes['#appSearch'].value = 'binary'; nodes['#appSearch'].events.input.call(nodes['#appSearch']); assert.match(nodes['#appSearchResults'].innerHTML, /dsa.html#dsa10/);
 assert.match(go('#expedition'), /Today’s expedition/);
 assert.match(go('#progress'), /Your journey so far/);
-assert.match(go('#play'), /43 games/);
+assert.match(go('#play'), /73 games/);
 assert.match(go('#badges'), /Open your stamp passport/);
 assert.match(go('#me'), /Check for updates/); assert.match(nodes['#app'].innerHTML, /Your progress/);
 // Route screen: pickers, schedule, study next, stages and project checklists, all drawn from Learn and PATHS.

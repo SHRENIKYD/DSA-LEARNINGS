@@ -1316,6 +1316,337 @@ var Games = (function () {
     ], 5);
   });
 
+
+  /* ---------- 30 newer concept quizzes: two per track ---------- */
+  function others(right, cands) { var seen = {}, out = []; seen[String(right)] = 1; cands.forEach(function (c) { c = String(c); if (!seen[c]) { seen[c] = 1; out.push(c); } }); return shuffle(out).slice(0, 3); }
+  function bin(x) { return x.toString(2); }
+  var BIGO = ['O(1)', 'O(log n)', 'O(√n)', 'O(n)', 'O(n log n)', 'O(n²)', 'O(n³)'];
+  var bigoloop = quizGame('bigoloop', 'algo', 'dsa02', 'dsa', 'Loop counter', 'DSA 2 · Time complexity', 'Count how many times the innermost line runs as n grows. Nested full loops multiply, loops in sequence add, and a counter that multiplies or divides by a constant takes only a logarithmic number of steps.', function () {
+    var k = rnd(2, 3), c = pick([10, 100, 1000]);
+    return some([
+      ['for i in 0..n:\n  for j in 0..n:\n    work()', 'O(n²)', 'Two full loops nested: n × n runs.'],
+      ['i = 1\nwhile i < n:\n  work()\n  i = i * ' + k, 'O(log n)', 'i multiplies by ' + k + ' each step, so it reaches n after about log n steps.'],
+      ['for i in 0..n:\n  for j in 0..i:\n    work()', 'O(n²)', '0 + 1 + … + (n − 1) is about n²/2, which is still quadratic.'],
+      ['for i in 0..n:\n  j = 1\n  while j < n:\n    work()\n    j = j * 2', 'O(n log n)', 'n outer runs, each with a log n inner loop.'],
+      ['for i in 0..' + c + ':\n  work()', 'O(1)', 'The loop runs ' + c + ' times no matter how large n is: constant time.'],
+      ['for i in 0..n:\n  work()\nfor j in 0..n:\n  work()', 'O(n)', 'Loops in sequence add: 2n is still linear.'],
+      ['for i in 0..n:\n  for j in 0..n:\n    for k in 0..n:\n      work()', 'O(n³)', 'Three full nested loops: n × n × n.'],
+      ['i = 0\nwhile i * i < n:\n  work()\n  i = i + 1', 'O(√n)', 'The loop stops once i reaches √n.'],
+      ['while n > 1:\n  work()\n  n = n / ' + k, 'O(log n)', 'Dividing n by a constant each step takes logarithmic steps, like binary search.']
+    ], 5).map(function (p) { return item(code(p[0]), p[1], others(p[1], BIGO), p[2]); });
+  });
+  var maskmagic = quizGame('maskmagic', 'algo', 'dsa04', 'dsa', 'Mask magic', 'DSA 4 · Bit manipulation', 'Bit tricks act on the binary form: x & (x − 1) clears the lowest set bit, x & −x isolates it, | sets a bit, ^ flips a bit and >> k divides by 2ᵏ.', function () {
+    return range(5).map(function () {
+      var x = rnd(5, 60), k = rnd(0, 4), s = rnd(1, 3), kind = rnd(0, 5), pop = bin(x).split('').filter(function (b) { return b === '1'; }).length;
+      var q = [['x & (x - 1)', x & (x - 1), 'x & (x − 1) clears the lowest 1 bit.'], ['x & -x', x & -x, 'x & −x keeps only the lowest 1 bit.'], ['x | (1 << ' + k + ')', x | (1 << k), '| sets bit ' + k + ' to 1 (no change if it was already 1).'],
+        ['x ^ (1 << ' + k + ')', x ^ (1 << k), '^ flips bit ' + k + '.'], ['x >> ' + s, x >> s, '>> ' + s + ' drops the last ' + s + ' bits: integer division by ' + (1 << s) + '.'], ['popcount(x)', pop, 'popcount counts the 1 bits.']][kind];
+      return item(code('x = ' + x + '   (binary ' + bin(x) + ')\n' + q[0]), q[1], others(q[1], [x, x + 1, x - 1, x & (x - 1), x | (1 << k), x ^ (1 << k), x >> s, x << 1, pop, pop + 1].filter(function (v) { return v >= 0; })), q[2]);
+    });
+  });
+  var javacollect = quizGame('javacollect', 'java', 'java07', 'java', 'Collection picker', 'Java 7 · Collections', 'Pick a collection by what you need: fast lookup (HashMap/HashSet), sorted order (TreeMap/TreeSet), insertion order (LinkedHashMap), a stack or queue (ArrayDeque) or always the smallest first (PriorityQueue).', function () {
+    return some([
+      item('Count word frequencies; order does not matter, lookups must be fast.', 'HashMap', ['TreeMap', 'ArrayList'], 'HashMap gives average O(1) get and put.'),
+      item('Keep scores sorted by key and ask for the next higher key.', 'TreeMap', ['HashMap', 'LinkedList'], 'TreeMap is a red-black tree with sorted keys and methods like higherKey.'),
+      item('Remember the order in which keys were first inserted, with fast lookup.', 'LinkedHashMap', ['TreeMap', 'HashSet'], 'LinkedHashMap keeps a linked list of entries in insertion order.'),
+      item('Use a stack or a queue efficiently from both ends.', 'ArrayDeque', ['Stack', 'TreeSet'], 'ArrayDeque is the recommended stack and queue; the old Stack class is synchronized and legacy.'),
+      item('Always remove the task with the smallest deadline next.', 'PriorityQueue', ['ArrayDeque', 'LinkedHashMap'], 'PriorityQueue is a binary heap: O(log n) offer and poll of the minimum.'),
+      item('Drop duplicate emails, order does not matter.', 'HashSet', ['ArrayList', 'TreeMap'], 'A HashSet stores each distinct value once with O(1) average checks.'),
+      item('Read elements by index very often, rarely insert in the middle.', 'ArrayList', ['LinkedList', 'HashSet'], 'ArrayList gives O(1) access by index; LinkedList must walk the nodes.')
+    ], 5);
+  });
+  var javastream = quizGame('javastream', 'java', 'java09', 'java', 'Stream output', 'Java 9 · Lambdas & Streams', 'Streams are lazy pipelines: intermediate steps (filter, map, sorted) run only when a terminal step (collect, count, reduce, findFirst) asks for results, and a stream can be used once.', function () {
+    return some([
+      item(code('List.of(1, 2, 3, 4).stream()\n  .filter(x -> x % 2 == 0)\n  .map(x -> x * 10)\n  .collect(Collectors.toList())'), '[20, 40]', ['[10, 30]', '[2, 4]', '[10, 20, 30, 40]'], 'filter keeps 2 and 4, then map multiplies by 10.'),
+      item(code('Stream.of(3, 1, 2).sorted().findFirst().get()'), '1', ['3', '2'], 'sorted orders 1, 2, 3 and findFirst returns the head.'),
+      item(code('IntStream.rangeClosed(1, 4).sum()'), '10', ['6', '4'], 'rangeClosed includes 4: 1 + 2 + 3 + 4.'),
+      item(code('Stream.of("a", "bb", "cc")\n  .collect(Collectors.groupingBy(String::length))'), '{1=[a], 2=[bb, cc]}', ['{a=1, bb=2, cc=2}', '[1, 2, 2]'], 'groupingBy builds a map from length to the matching strings.'),
+      item(code('Stream.of(1, 2, 3).peek(System.out::print);'), 'prints nothing', ['123', '1'], 'With no terminal operation the lazy pipeline never runs.'),
+      item(code('var s = Stream.of(1, 2);\ns.count();\ns.count();'), 'IllegalStateException', ['2', '4'], 'A stream can be consumed only once.'),
+      item(code('Stream.of(1, 2, 3).reduce(0, (a, b) -> a + b)'), '6', ['0', '3'], 'reduce folds the values starting from the identity 0.')
+    ], 5);
+  });
+  var pydecor = quizGame('pydecor', 'py', 'py06', 'py', 'Closure clinic', 'Python 6 · Closures & decorators', 'A closure remembers variables from its enclosing scope by reference; nonlocal lets it rebind them. A decorator is a function that takes a function and returns a replacement, applied once at definition time.', function () {
+    return some([
+      item(code('def outer():\n    n = 0\n    def inc():\n        nonlocal n\n        n += 1\n        return n\n    return inc\nf = outer(); f(); print(f())'), '2', ['1', 'UnboundLocalError'], 'nonlocal makes inc update the n kept in the closure.'),
+      item(code('def outer():\n    n = 0\n    def inc():\n        n += 1\n    return inc\nouter()()'), 'UnboundLocalError', ['1', 'None'], 'Assigning n makes it local to inc, so reading it first fails without nonlocal.'),
+      item(code('fs = [lambda: i for i in range(3)]\nprint([f() for f in fs])'), '[2, 2, 2]', ['[0, 1, 2]', '[0, 0, 0]'], 'Closures look up i when called, and by then the loop left i at 2.'),
+      item(code('fs = [lambda i=i: i for i in range(3)]\nprint([f() for f in fs])'), '[0, 1, 2]', ['[2, 2, 2]', 'TypeError'], 'A default argument captures the value at definition time.'),
+      item(code('def twice(f):\n    def g(x):\n        return f(f(x))\n    return g\n@twice\ndef add3(x): return x + 3\nprint(add3(1))'), '7', ['4', '10'], 'The decorator replaces add3 with g, which applies it twice: 1 + 3 + 3.'),
+      item(code('def loud(f):\n    print("wrap")\n    return f\n@loud\ndef hi(): pass\n# hi() is never called'), 'wrap is printed once', ['nothing is printed', 'wrap is printed on every call'], 'Decorators run once, when the def statement executes.'),
+      item('Why add functools.wraps inside a decorator?', 'To keep the original __name__ and docstring', ['To make it run faster', 'To cache results'], 'wraps copies metadata so debugging and introspection still show the real function.')
+    ], 5);
+  });
+  var pygen = quizGame('pygen', 'py', 'py07', 'py', 'Generator lane', 'Python 7 · Iterators & generators', 'A generator runs lazily: each next() resumes it until the next yield. It remembers its position, it is exhausted after one full pass, and it uses O(1) memory however long the sequence.', function () {
+    return some([
+      item(code('g = (x * x for x in range(4))\nprint(sum(g), sum(g))'), '14 0', ['14 14', '0 14'], 'The first sum exhausts the generator; the second gets nothing.'),
+      item(code('def gen():\n    yield 1\n    yield 2\ng = gen()\nnext(g); print(next(g))'), '2', ['1', 'StopIteration'], 'Each next resumes after the previous yield.'),
+      item(code('def gen():\n    print("start")\n    yield 1\ng = gen()\n# nothing else'), 'nothing is printed', ['start', '1'], 'Calling a generator function only creates the generator; the body runs on the first next().'),
+      item(code('def gen():\n    yield from [1, 2]\n    yield 3\nprint(list(gen()))'), '[1, 2, 3]', ['[[1, 2], 3]', '[3]'], 'yield from hands out each value of the inner iterable.'),
+      item(code('it = iter([1, 2])\nnext(it); next(it); next(it)'), 'StopIteration', ['None', '2'], 'An exhausted iterator raises StopIteration.'),
+      item('Process a 50 GB log file line by line. Best tool?', 'Iterate the file object (a lazy iterator)', ['f.readlines() into a list', 'Load it with f.read()'], 'Lazy iteration keeps only one line in memory.'),
+      item(code('from itertools import islice, count\nprint(list(islice(count(5), 3)))'), '[5, 6, 7]', ['[0, 1, 2]', 'it never ends'], 'islice takes 3 values from the infinite counter starting at 5.')
+    ], 5);
+  });
+  var jsthis = quizGame('jsthis', 'js', 'js05', 'js', 'Who is this?', 'JavaScript 5 · this & bind', 'this is set by how a function is called: obj.f() gives obj, a plain call gives undefined in strict mode, new gives a new object, bind fixes it, and arrow functions take this from where they were written.', function () {
+    return some([
+      item(code('"use strict";\nconst o = { n: 1, f() { return this.n; } };\nconsole.log(o.f());'), '1', ['undefined', 'TypeError'], 'Called as o.f(), this is o.'),
+      item(code('"use strict";\nconst o = { n: 1, f() { return this; } };\nconst g = o.f;\nconsole.log(g());'), 'undefined', ['o', 'window'], 'Detached from o, a strict-mode plain call has no this.'),
+      item(code('const o = { n: 1, f() { return () => this.n; } };\nconsole.log(o.f()());'), '1', ['undefined', 'TypeError'], 'The arrow uses the this of f, which is o.'),
+      item(code('function F() { this.n = 7; }\nconsole.log(new F().n);'), '7', ['undefined', 'TypeError'], 'new creates a fresh object and binds it to this.'),
+      item(code('function f() { return this.n; }\nconst g = f.bind({ n: 2 });\nconsole.log(g.call({ n: 3 }));'), '2', ['3', 'undefined'], 'A bound function ignores a later call or apply this.'),
+      item(code('function f(a, b) { return this.n + a + b; }\nconsole.log(f.apply({ n: 1 }, [2, 3]));'), '6', ['5', 'NaN'], 'apply sets this and passes the array as arguments.'),
+      item(code('"use strict";\nconst o = { n: 4, f: () => this?.n };\nconsole.log(o.f());'), 'undefined', ['4', 'o'], 'Arrow functions do not get this from the object literal; they take it from outside.')
+    ], 5);
+  });
+  var jsscope = quizGame('jsscope', 'js', 'js04', 'js', 'Hoist or not', 'JavaScript 4 · Scope & hoisting', 'var is function scoped and hoisted as undefined; let and const are block scoped and sit in the temporal dead zone until their line runs; function declarations are hoisted whole.', function () {
+    return some([
+      item(code('console.log(a);\nvar a = 1;'), 'undefined', ['1', 'ReferenceError'], 'The var declaration is hoisted but the assignment stays put.'),
+      item(code('console.log(b);\nlet b = 1;'), 'ReferenceError', ['undefined', '1'], 'let is in the temporal dead zone before its line.'),
+      item(code('console.log(f());\nfunction f() { return 2; }'), '2', ['undefined', 'TypeError'], 'Function declarations are hoisted with their body.'),
+      item(code('console.log(g());\nvar g = () => 3;'), 'TypeError', ['3', 'undefined'], 'g is hoisted as undefined, and calling undefined throws TypeError.'),
+      item(code('for (var i = 0; i < 3; i++) setTimeout(() => console.log(i));'), '3 3 3', ['0 1 2', '2 2 2'], 'One shared var i is 3 by the time the timers run.'),
+      item(code('for (let i = 0; i < 3; i++) setTimeout(() => console.log(i));'), '0 1 2', ['3 3 3', '0 0 0'], 'let creates a fresh i for each iteration.'),
+      item(code('if (true) { var x = 1; let y = 2; }\nconsole.log(typeof x, typeof y);'), 'number undefined', ['number number', 'undefined undefined'], 'var leaks out of the block; let does not, and typeof an undeclared name is "undefined".')
+    ], 5);
+  });
+  var cppsmart = quizGame('cppsmart', 'cpp', 'cpp06', 'cpp', 'Smart pointer lab', 'C++ 6 · RAII & smart pointers', 'unique_ptr has one owner and can only be moved; shared_ptr counts owners and frees the object when the count hits zero; weak_ptr watches without owning, which breaks reference cycles.', function () {
+    return some([
+      item(code('auto a = make_shared<int>(5);\nauto b = a;\ncout << a.use_count();'), '2', ['1', '5'], 'Copying a shared_ptr adds an owner.'),
+      item(code('auto p = make_unique<int>(5);\nauto q = p;'), 'compile error', ['q shares ownership', 'runs fine, prints nothing'], 'unique_ptr cannot be copied; it must be moved.'),
+      item(code('auto p = make_unique<int>(5);\nauto q = std::move(p);\ncout << (p == nullptr);'), '1', ['0', 'compile error'], 'After the move, p is empty and q owns the int.'),
+      item(code('auto a = make_shared<int>(1);\nweak_ptr<int> w = a;\ncout << a.use_count();'), '1', ['2', '0'], 'weak_ptr does not add to the owner count.'),
+      item('Two objects hold shared_ptr to each other. What happens when outside pointers go away?', 'They leak: the counts never reach zero', ['Both are freed', 'The program crashes'], 'A cycle keeps each count at 1; make one side a weak_ptr.'),
+      item(code('{\n  auto p = make_unique<File>("log");\n} // here'), 'The File is destroyed automatically', ['The File leaks', 'You must call delete'], 'RAII: leaving the scope runs the unique_ptr destructor.'),
+      item('Best default for a single owner of a heap object?', 'unique_ptr', ['shared_ptr', 'raw new and delete'], 'unique_ptr has zero overhead and clear ownership; share only when needed.')
+    ], 5);
+  });
+  var cppstl = quizGame('cppstl', 'cpp', 'cpp07', 'cpp', 'STL toolbox', 'C++ 7 · STL containers', 'vector is contiguous and fast for the back; map and set are ordered trees with O(log n) operations; unordered_map and unordered_set hash for O(1) average; deque grows at both ends.', function () {
+    return some([
+      item('Cost of map::find in std::map with n keys?', 'O(log n)', ['O(1)', 'O(n)'], 'std::map is a balanced binary search tree.'),
+      item('Cost of unordered_map lookup on average?', 'O(1)', ['O(log n)', 'O(n log n)'], 'It hashes the key to a bucket.'),
+      item('You need keys kept in sorted order while inserting.', 'std::map', ['std::unordered_map', 'std::vector'], 'map keeps keys sorted at all times.'),
+      item('Push and pop at both the front and the back quickly.', 'std::deque', ['std::vector', 'std::set'], 'deque supports O(1) push and pop at both ends.'),
+      item(code('vector<int> v{1, 2, 3};\nint* p = &v[0];\nv.push_back(4);\n// use *p'), 'Undefined behaviour: p may dangle', ['Always prints 1', 'Compile error'], 'push_back can reallocate and invalidate pointers into the vector.'),
+      item(code('map<string, int> m;\ncout << m["x"];\ncout << m.size();'), '01', ['00', 'throws'], 'operator[] inserts a default 0 for a missing key, so size becomes 1.'),
+      item(code('set<int> s{3, 1, 3, 2};\nfor (int x : s) cout << x;'), '123', ['3132', '312'], 'set removes duplicates and iterates in sorted order.')
+    ], 5);
+  });
+  var csasync = quizGame('csasync', 'csharp', 'csharp09', 'csharp', 'Await it right', 'C# 9 · async/await', 'await frees the thread while a Task runs and resumes after it completes. Task.WhenAll runs work concurrently, blocking with .Result can deadlock, and async void should be only for event handlers.', function () {
+    return some([
+      item('Three independent HTTP calls take 1 s each. Fastest way to wait for all?', 'await Task.WhenAll(a, b, c)', ['await a; await b; await c (started one after another)', 'a.Result + b.Result + c.Result'], 'WhenAll waits for tasks running at the same time: about 1 s.'),
+      item('Calling task.Result inside a UI thread on an async method can…', 'deadlock', ['run faster', 'skip the await'], 'The continuation needs the UI thread that .Result is blocking.'),
+      item('Return type for an async method that returns nothing (not an event handler)?', 'Task', ['void', 'Thread'], 'async void cannot be awaited and its exceptions crash the process.'),
+      item('An async method throws before its first await. When does the caller see it?', 'When it awaits the returned Task', ['Never', 'Immediately as a crash'], 'The exception is stored in the Task and rethrown at await.'),
+      item('Stop a long-running async operation the user cancelled.', 'Pass a CancellationToken', ['Call Thread.Abort', 'Throw in a finally block'], 'Cooperative cancellation checks the token and throws OperationCanceledException.'),
+      item('CPU-heavy image resize in an ASP.NET request handler. Best fit?', 'Run it synchronously or offload; async does not make CPU work faster', ['Mark it async to speed it up', 'Use async void'], 'async helps waiting on I/O, not computing.'),
+      item('Library code that does not need the original context should add…', 'ConfigureAwait(false)', ['Task.Delay(0)', 'lock(this)'], 'It skips resuming on the captured context, avoiding deadlocks and overhead.')
+    ], 5);
+  });
+  var cslinq = quizGame('cslinq', 'csharp', 'csharp06', 'csharp', 'LINQ lens', 'C# 6 · Lambdas & LINQ', 'LINQ chains lambdas: Where filters, Select maps, OrderBy sorts, GroupBy groups and Aggregate folds. Queries run lazily, so they execute when enumerated, every time they are enumerated.', function () {
+    return some([
+      item(code('new[] {1, 2, 3, 4}.Where(x => x > 2).Select(x => x * 2)'), '6, 8', ['2, 4', '3, 4'], 'Where keeps 3 and 4; Select doubles them.'),
+      item(code('new[] {5, 1, 4}.OrderBy(x => x).First()'), '1', ['5', '4'], 'OrderBy sorts ascending, First takes the head.'),
+      item(code('new[] {"a", "bb", "cc"}.GroupBy(s => s.Length).Count()'), '2', ['3', '1'], 'Two groups: length 1 and length 2.'),
+      item(code('new[] {1, 2, 3}.Aggregate((a, b) => a * b)'), '6', ['5', '1'], 'Aggregate multiplies 1 × 2 × 3.'),
+      item(code('var list = new List<int> {1};\nvar q = list.Select(x => x * 10);\nlist.Add(2);\nConsole.Write(q.Count());'), '2', ['1', '0'], 'Deferred execution: the query sees the list when it is enumerated.'),
+      item(code('new int[0].First()'), 'InvalidOperationException', ['0', 'null'], 'First throws on an empty sequence; FirstOrDefault returns default.'),
+      item(code('new[] {1, 2, 2, 3}.Distinct().Sum()'), '6', ['8', '3'], 'Distinct keeps 1, 2, 3.')
+    ], 5);
+  });
+  var sqlwindow = quizGame('sqlwindow', 'sql', 'sql06', 'sql', 'Window ranks', 'SQL 6 · Window functions', 'Window functions compute per row without collapsing rows. RANK gives ties the same number and skips after them, DENSE_RANK does not skip, and SUM() OVER (ORDER BY ...) gives a running total.', function () {
+    return range(5).map(function () {
+      var names = ['Ana', 'Ben', 'Cy', 'Dee', 'Eli'], sc = names.map(function () { return pick([70, 80, 80, 90, 95]); }), who = rnd(0, 4), kind = rnd(0, 2);
+      var rk = 1 + sc.filter(function (v) { return v > sc[who]; }).length, dr = 1 + sc.filter(function (v, i) { return v > sc[who] && sc.indexOf(v) === i; }).length;
+      var run = sc.slice(0, who + 1).reduce(function (a, b) { return a + b; }, 0);
+      var fn = ['RANK() OVER (ORDER BY score DESC)', 'DENSE_RANK() OVER (ORDER BY score DESC)', 'SUM(score) OVER (ORDER BY id)'][kind], right = [rk, dr, run][kind];
+      var table = 'id name score\n' + names.map(function (n, i) { return (i + 1) + '  ' + n + ' '.repeat(5 - n.length) + sc[i]; }).join('\n');
+      var wr = kind === 2 ? [run - sc[who], run + sc[(who + 1) % 5], sc[who], run + 10] : [rk, dr, rk + 1, dr + 1, Math.max(1, rk - 1), who + 1, 5];
+      return item(code(table + '\n\nSELECT name, ' + fn + ' AS v FROM t;') + 'Value of v for <b>' + names[who] + '</b>?', right, others(right, wr),
+        ['RANK counts rows with a strictly higher score, plus one; ties share a rank.', 'DENSE_RANK counts distinct higher scores, plus one; there are no gaps.', 'The running total adds every score up to and including this id.'][kind]);
+    });
+  });
+  var sqlindex = quizGame('sqlindex', 'sql', 'sql10', 'sql', 'Index or not', 'SQL 10 · Index internals', 'A B-tree index helps when the query filters, joins or sorts on its leading columns. A composite index (a, b) works for a, or a and b, but not b alone; wrapping the column in a function or a leading wildcard usually stops it being used.', function () {
+    return some([
+      item('Index on (last_name, first_name). Query: WHERE first_name = \'Ann\'. Uses the index for seeking?', 'No: first_name is not the leading column', ['Yes, fully', 'Yes, but only on Sundays'], 'A composite index is ordered by the leading column first.'),
+      item('Index on email. Query: WHERE LOWER(email) = \'a@x.com\'.', 'Usually not used: the column is wrapped in a function', ['Always used', 'Faster than without'], 'Use an expression index on LOWER(email) instead.'),
+      item('Index on name. Query: WHERE name LIKE \'%son\'.', 'Not usable for seeking: leading wildcard', ['Uses the index perfectly', 'Rejected as a syntax error'], 'The B-tree is sorted by the beginning of the string.'),
+      item('Index on name. Query: WHERE name LIKE \'Jo%\'.', 'Usable: it is a prefix range scan', ['Not usable', 'Only with a hash index'], 'A known prefix maps to a contiguous range of the tree.'),
+      item('Table with 10 rows. Add an index on every column?', 'No: a full scan is already cheap and indexes slow writes', ['Yes, always', 'Yes, it makes inserts faster'], 'Each index must be updated on insert, update and delete.'),
+      item('Index on (user_id, created_at). Query: WHERE user_id = 7 ORDER BY created_at.', 'The index serves both the filter and the sort', ['Index used only for the sort', 'A separate sort is always needed'], 'Rows for user 7 are already ordered by created_at inside the index.'),
+      item('Query selects only columns that are all in the index.', 'Index-only (covering) scan, no table lookup', ['Must read the table anyway', 'The index is ignored'], 'A covering index answers the query on its own.')
+    ], 5);
+  });
+  var solidspot = quizGame('solidspot', 'design', 'lld02', 'lld', 'SOLID spotter', 'LLD 2 · SOLID principles', 'SOLID: Single responsibility (one reason to change), Open/closed (extend without editing), Liskov substitution (subtypes keep promises), Interface segregation (small interfaces), Dependency inversion (depend on abstractions).', function () {
+    return some([
+      item('An Invoice class calculates totals, prints PDFs and saves to the database.', 'Single Responsibility', ['Liskov Substitution', 'Interface Segregation'], 'It has three reasons to change.'),
+      item('Adding a new payment type means editing a big if-else in checkout() every time.', 'Open/Closed', ['Dependency Inversion', 'Single Responsibility'], 'New behaviour should come from new classes, not edits.'),
+      item('Square extends Rectangle, and setWidth on a Square also changes its height, breaking callers.', 'Liskov Substitution', ['Open/Closed', 'Interface Segregation'], 'A subtype must work wherever its parent is expected.'),
+      item('A Printer interface forces a basic printer to implement fax() and scan().', 'Interface Segregation', ['Single Responsibility', 'Liskov Substitution'], 'Clients should not depend on methods they do not use.'),
+      item('OrderService creates new MySqlRepository() inside its constructor.', 'Dependency Inversion', ['Open/Closed', 'Interface Segregation'], 'High-level code should depend on a Repository interface that is injected.'),
+      item('A ReadOnlyList subclass throws on add(), but code using List expects add() to work.', 'Liskov Substitution', ['Single Responsibility', 'Dependency Inversion'], 'The subtype breaks the contract of its parent.'),
+      item('A UserService class handles signup, sends email and formats reports.', 'Single Responsibility', ['Open/Closed', 'Liskov Substitution'], 'Split it so each class has one job.')
+    ], 5);
+  });
+  var umlrel = quizGame('umlrel', 'design', 'lld01', 'lld', 'Relationship check', 'LLD 1 · OOP modelling & UML', 'Inheritance is "is a". Composition is a strong "has a" where the part dies with the whole; aggregation is a weak "has a" where parts live on; association is simply "uses or knows".', function () {
+    return some([
+      item('A House and its Rooms: rooms cannot exist without the house.', 'Composition', ['Aggregation', 'Inheritance'], 'The parts share the lifetime of the whole.'),
+      item('A Team and its Players: players still exist if the team is disbanded.', 'Aggregation', ['Composition', 'Inheritance'], 'A weak has-a: parts outlive the whole.'),
+      item('A Dog and an Animal.', 'Inheritance', ['Composition', 'Association'], 'A dog is an animal.'),
+      item('A Doctor treats Patients; neither owns the other.', 'Association', ['Composition', 'Inheritance'], 'They know each other but have independent lifetimes.'),
+      item('An Order and its OrderLines: deleting the order deletes its lines.', 'Composition', ['Aggregation', 'Association'], 'Lines have no meaning without their order.'),
+      item('A Department and its Professors, who can move to other departments.', 'Aggregation', ['Composition', 'Inheritance'], 'Professors exist independently of a department.'),
+      item('In a UML class diagram, a filled diamond on the whole side means…', 'Composition', ['Aggregation', 'Inheritance'], 'Filled diamond is composition; a hollow diamond is aggregation.')
+    ], 5);
+  });
+  function gbFmt(g) { return g >= 1000 ? (g / 1000) + ' TB' : (g < 1 ? g : Math.round(g)) + ' GB'; }
+  var estimator = quizGame('estimator', 'design', 'hld03', 'hld', 'Napkin math', 'HLD 3 · Estimation', 'Back-of-the-envelope: a day is about 10⁵ seconds (86,400), so requests per second ≈ daily requests ÷ 100,000. Storage per day = items per day × size per item; one million items of 1 KB is about 1 GB.', function () {
+    return range(5).map(function () {
+      if (Math.random() < .5) {
+        var dau = pick([1, 5, 10, 50, 100, 200]), act = pick([2, 5, 10, 20, 50]), qps = dau * act * 10;
+        return item(dau + ' million daily users each make ' + act + ' requests a day. Roughly how many requests per second on average?', 'about ' + qps, others('about ' + qps, ['about ' + qps * 10, 'about ' + qps / 10, 'about ' + qps * 100]), (dau * act) + ' million requests ÷ about 100,000 seconds ≈ ' + qps + ' per second.');
+      }
+      var m = pick([1, 10, 100]), kb = pick([1, 10, 100]), g = m * kb;
+      return item(m + ' million new posts a day, each about ' + kb + ' KB. Storage added per day?', gbFmt(g), others(gbFmt(g), [gbFmt(g * 10), gbFmt(g / 10), gbFmt(g * 1000)]), m + ' million × ' + kb + ' KB = ' + gbFmt(g) + '.');
+    });
+  });
+  var cachepick = quizGame('cachepick', 'design', 'hld06', 'hld', 'Cache strategist', 'HLD 6 · Caching', 'Cache-aside loads on a miss, write-through writes cache and database together, write-back writes the cache first and flushes later. TTLs bound staleness; LRU evicts the least recently used item.', function () {
+    return some([
+      item('Read-heavy product pages; the app checks the cache and on a miss reads the database and fills the cache.', 'Cache-aside', ['Write-back', 'Write-around'], 'The application manages the cache lazily on misses.'),
+      item('Every write must be in both cache and database before returning, so reads are never stale.', 'Write-through', ['Write-back', 'Cache-aside'], 'Writes go to both synchronously.'),
+      item('High write rate of view counters; losing a few seconds of updates is acceptable.', 'Write-back', ['Write-through', 'No cache'], 'Buffering writes in the cache and flushing later absorbs the load.'),
+      item('A popular key expires and thousands of requests hit the database at once.', 'Cache stampede: use a lock or request coalescing', ['Cache penetration', 'Write amplification'], 'Let one request rebuild the value while others wait or serve stale data.'),
+      item('Attackers request ids that do not exist, so every request misses the cache.', 'Cache penetration: cache the "not found" or use a Bloom filter', ['Cache stampede', 'Hot partition'], 'Negative caching stops repeated misses reaching the database.'),
+      item('Cache memory is full. Which item should go first for a typical web workload?', 'The least recently used one (LRU)', ['The newest one', 'A random hot key on purpose'], 'Recently used items are likely to be used again.'),
+      item('Prices change rarely, but stale data for a minute is fine.', 'Set a TTL of about a minute', ['Never cache', 'Cache forever with no invalidation'], 'A TTL caps how stale an entry can get.')
+    ], 5);
+  });
+  var a11yfix = quizGame('a11yfix', 'web', 'fe06', 'fe', 'Accessibility fix', 'Frontend 6 · Accessibility', 'Use native elements first: a button for actions, a label for each input, alt text for meaningful images, visible focus, and enough colour contrast. ARIA only fills gaps native HTML cannot.', function () {
+    return some([
+      item('A clickable div opens a menu but keyboard users cannot reach it.', 'Use a button element', ['Add a hover colour', 'Add a title attribute'], 'A button is focusable and works with Enter and Space for free.'),
+      item('An input has only placeholder text "Email".', 'Add a label tied to the input', ['Make the placeholder bold', 'Add aria-hidden'], 'Placeholders vanish while typing and are not a reliable label.'),
+      item('A decorative divider image.', 'alt="" (empty)', ['alt="image"', 'No alt attribute at all'], 'Empty alt tells screen readers to skip it.'),
+      item('A product photo that conveys which colour you chose.', 'Descriptive alt text', ['alt=""', 'role="presentation"'], 'Meaningful images need a text alternative.'),
+      item('The designer removed the focus outline with outline: none.', 'Restore a visible focus style', ['Leave it; mouse users do not need it', 'Use tabindex="-1" everywhere'], 'Keyboard users must see where focus is.'),
+      item('Light grey text on white fails WCAG AA.', 'Raise contrast to at least 4.5:1 for normal text', ['Make the text smaller', 'Add an animation'], 'AA requires 4.5:1 for body text.'),
+      item('A form error appears in red only.', 'Add text and an icon, and link it with aria-describedby', ['Make it a darker red', 'Show it only on hover'], 'Colour alone does not reach colour-blind or screen-reader users.')
+    ], 5);
+  });
+  var hookhunt = quizGame('hookhunt', 'web', 'fe09', 'fe', 'Hook hunt', 'Frontend 9 · React hooks', 'Hooks run in the same order every render. useEffect runs after paint when its dependencies change, useMemo and useCallback cache values between renders, useRef keeps a mutable box that does not re-render, and state updates are applied on the next render.', function () {
+    return some([
+      item(code('useEffect(() => {\n  fetchUser(id);\n}, []);'), 'It will not refetch when id changes', ['It runs on every render', 'It never runs'], 'An empty dependency list runs once after mount.'),
+      item(code('const [n, setN] = useState(0);\nfunction click() {\n  setN(n + 1);\n  setN(n + 1);\n}'), 'n goes up by 1 per click', ['n goes up by 2 per click', 'React throws'], 'Both updates read the same stale n; use setN(x => x + 1) to add 2.'),
+      item('Store a timer id across renders without causing a re-render.', 'useRef', ['useState', 'useMemo'], 'Changing ref.current does not trigger a render.'),
+      item(code('if (loggedIn) {\n  const [x, setX] = useState(0);\n}'), 'Breaks the rules of hooks', ['Fine', 'Only a style warning'], 'Hooks must be called in the same order on every render, never conditionally.'),
+      item('An expensive sort of a large list re-runs on every keystroke elsewhere in the form.', 'Wrap it in useMemo with the list as a dependency', ['Move it to useRef', 'Call it in useEffect with no dependencies'], 'useMemo recomputes only when the list changes.'),
+      item('A subscription is opened in useEffect. Where do you close it?', 'In the cleanup function the effect returns', ['In a second useState', 'Nowhere, React closes it'], 'React calls the cleanup before re-running and on unmount.'),
+      item('A memoised child still re-renders because a new onClick function is created each render.', 'useCallback', ['useRef', 'useEffect'], 'useCallback keeps the same function identity while its dependencies are unchanged.')
+    ], 5);
+  });
+  var authcheck = quizGame('authcheck', 'web', 'be05', 'be', 'Auth checkpoint', 'Backend 5 · Authentication & authorization', 'Authentication proves who you are; authorization decides what you may do. Store passwords with a slow salted hash, keep tokens short-lived, and never trust a JWT without checking its signature and expiry.', function () {
+    return some([
+      item('How should user passwords be stored?', 'A slow salted hash such as bcrypt or Argon2', ['Encrypted with AES', 'SHA-256 without a salt'], 'Slow salted hashes resist offline cracking; encryption can be reversed.'),
+      item('A JWT payload is…', 'Base64-encoded and readable by anyone', ['Encrypted', 'Hidden from the client'], 'Signing proves integrity, not secrecy; never put secrets in it.'),
+      item('A server must accept a JWT only if…', 'Its signature is valid and it is not expired', ['It decodes as JSON', 'It came over HTTP'], 'Anyone can craft a payload; the signature and exp claim are what count.'),
+      item('A user can log in but tries to open another user\'s invoice by changing the id in the URL.', 'Authorization check is missing (IDOR)', ['Authentication is broken', 'CORS is wrong'], 'Every request must check the resource belongs to the caller.'),
+      item('A third-party app needs access to a user\'s calendar without their password.', 'OAuth 2.0 authorization code flow', ['Share the password', 'Basic auth'], 'OAuth issues scoped tokens through the provider.'),
+      item('Where to keep a session token in the browser to resist XSS theft?', 'HttpOnly, Secure, SameSite cookie', ['localStorage', 'A global JS variable'], 'Scripts cannot read HttpOnly cookies.'),
+      item('Access tokens should be short-lived because…', 'A stolen token stops working soon', ['They are cheaper to sign', 'Browsers require it'], 'Refresh tokens get new access tokens, limiting damage from leaks.')
+    ], 5);
+  });
+  var microfix = quizGame('microfix', 'web', 'be10', 'be', 'Microservice medic', 'Backend 10 · Microservice patterns', 'Distributed services fail in partial ways. Circuit breakers stop calling a failing service, retries need backoff and idempotency, sagas replace distributed transactions, and the outbox pattern publishes events reliably.', function () {
+    return some([
+      item('The payment service is down and every caller hangs waiting on it, exhausting threads.', 'Circuit breaker with a timeout', ['Retry forever', 'Add more logging'], 'An open breaker fails fast until the service recovers.'),
+      item('An order spans inventory, payment and shipping services; a later step can fail.', 'Saga with compensating actions', ['Two-phase commit across all services', 'One shared database lock'], 'Each step has an undo action run on failure.'),
+      item('Save an order and publish OrderCreated without losing the event if the broker is down.', 'Transactional outbox', ['Publish first, then save', 'Hope the broker is up'], 'Write the event in the same database transaction, then relay it.'),
+      item('A client retries a "charge card" request after a timeout. Avoid double charging.', 'Idempotency key on the request', ['Faster timeouts', 'Bigger thread pool'], 'The server recognises the repeated key and returns the first result.'),
+      item('Thousands of clients retry at the same instant after an outage.', 'Exponential backoff with jitter', ['Retry immediately', 'Fixed 1 s retry for all'], 'Spreading retries avoids a thundering herd.'),
+      item('One slow downstream dependency uses up all the connections, starving the others.', 'Bulkhead: separate pools per dependency', ['Single shared pool', 'Remove timeouts'], 'Isolating resources contains the failure.'),
+      item('Mobile clients should call one endpoint that routes, authenticates and rate limits.', 'API gateway', ['Service mesh sidecar only', 'Direct calls to every service'], 'A gateway is the single entry point for external clients.')
+    ], 5);
+  });
+  function pct(a, b) { return b ? Math.round(100 * a / b) + '%' : '0%'; }
+  var mlmetric = quizGame('mlmetric', 'ai', 'ai04', 'ai', 'Metric meter', 'AI 4 · ML foundations', 'Precision = TP ÷ (TP + FP): of the items flagged, how many were right. Recall = TP ÷ (TP + FN): of the real positives, how many were found. F1 is their harmonic mean.', function () {
+    return range(5).map(function () {
+      var tp = rnd(2, 9) * 10, fp = rnd(1, 6) * 10, fn = rnd(1, 6) * 10, kind = rnd(0, 2);
+      var p = tp / (tp + fp), r = tp / (tp + fn), f1 = 2 * p * r / (p + r);
+      var vals = [pct(tp, tp + fp), pct(tp, tp + fn), Math.round(100 * f1) + '%'], right = vals[kind];
+      return item('A spam filter: TP = ' + tp + ', FP = ' + fp + ', FN = ' + fn + '. What is the <b>' + ['precision', 'recall', 'F1 score'][kind] + '</b> (rounded)?', right,
+        others(right, vals.concat([pct(tp, tp + fp + fn), pct(fp, tp + fp), pct(fn, tp + fn), (parseInt(right, 10) + 7) + '%', (parseInt(right, 10) - 9) + '%'])), ['Precision divides TP by everything flagged as spam (TP + FP).', 'Recall divides TP by all real spam (TP + FN).', 'F1 = 2PR ÷ (P + R), between precision and recall.'][kind]);
+    });
+  });
+  var ragfix = quizGame('ragfix', 'ai', 'ai09', 'ai', 'RAG repair', 'AI 9 · RAG end to end', 'RAG retrieves relevant chunks, then asks the model to answer from them. Most failures are retrieval failures: bad chunking, weak embeddings, missing filters, or too few or too many chunks in the prompt.', function () {
+    return some([
+      item('The right document exists, but the retrieved chunks never contain the answer.', 'Fix retrieval: chunking, embeddings or hybrid search', ['Use a bigger LLM', 'Raise the temperature'], 'The model cannot use facts it never sees.'),
+      item('Exact product codes like "SKU-4471" are missed by vector search.', 'Add keyword (BM25) search: hybrid retrieval', ['Lower the temperature', 'Shorter prompts'], 'Embeddings blur exact tokens; keyword search matches them.'),
+      item('Chunks split a table in half, so answers mix up rows.', 'Chunk by document structure with overlap', ['Use smaller embeddings', 'Remove the system prompt'], 'Structure-aware chunks keep related text together.'),
+      item('The answer is fluent but cites facts not in the retrieved text.', 'Instruct it to answer only from context and check citations', ['Add more random chunks', 'Turn off retrieval'], 'Grounding instructions plus citation checks reduce hallucination.'),
+      item('Users see documents from other tenants in answers.', 'Filter by tenant metadata at retrieval time', ['Ask the model to ignore them', 'Shuffle the chunks'], 'Access control must happen before text reaches the prompt.'),
+      item('Top-20 chunks are stuffed in and the key fact in the middle is ignored.', 'Rerank and keep fewer, better chunks', ['Add 20 more chunks', 'Use only the title'], 'Models attend poorly to long middles; reranking puts the best first.'),
+      item('How do you know a retrieval change helped?', 'Measure recall@k on a labelled question set', ['Ask one colleague', 'Check the latency only'], 'An evaluation set turns guesses into numbers.')
+    ], 5);
+  });
+  var pagewalk = quizGame('pagewalk', 'cs', 'cs06', 'cs', 'Page walker', 'CS 6 · Virtual memory', 'With pages of 2ᵏ bytes, a virtual address splits into a page number (address ÷ 2ᵏ, the high bits) and an offset (address mod 2ᵏ, the low k bits). The page table maps the page number to a frame; the offset stays the same.', function () {
+    return range(5).map(function () {
+      var k = pick([8, 10, 12]), size = 1 << k, a = rnd(size, 65535), pg = a >> k, off = a & (size - 1), askPage = Math.random() < .5;
+      var right = askPage ? pg : off;
+      return item('Page size ' + size + ' bytes. Virtual address ' + a + ' (hex 0x' + a.toString(16).toUpperCase() + '). What is the <b>' + (askPage ? 'page number' : 'offset') + '</b>?', right,
+        others(right, [pg, off, pg + 1, Math.max(0, pg - 1), a % 1000, off + 1, a >> (k - 1)]), 'Page = ' + a + ' ÷ ' + size + ' = ' + pg + ', offset = ' + a + ' mod ' + size + ' = ' + off + '.');
+    });
+  });
+  var deadlockspot = quizGame('deadlockspot', 'cs', 'cs05', 'cs', 'Deadlock detective', 'CS 5 · Deadlocks', 'Deadlock needs all four Coffman conditions: mutual exclusion, hold and wait, no preemption, and circular wait. Break any one and deadlock is impossible; a global lock order breaks circular wait.', function () {
+    return some([
+      item('Every thread always locks A before B. Which condition is broken?', 'Circular wait', ['Mutual exclusion', 'No preemption'], 'A global order makes a cycle of waits impossible.'),
+      item('A thread must request all its locks at once or none.', 'Hold and wait', ['Circular wait', 'Mutual exclusion'], 'It never holds one lock while waiting for another.'),
+      item('The OS can take a resource away from a waiting thread.', 'No preemption', ['Hold and wait', 'Circular wait'], 'Allowing preemption breaks that condition.'),
+      item('A read-only file shared by everyone at once can never deadlock because…', 'There is no mutual exclusion', ['There is no circular wait', 'It is preemptible'], 'Shareable resources need no exclusive lock.'),
+      item('T1 holds A and wants B; T2 holds B and wants A. This is…', 'A deadlock', ['A livelock', 'Starvation'], 'Both wait forever in a cycle.'),
+      item('Two threads keep backing off and retrying in step, so neither progresses, though both run.', 'Livelock', ['Deadlock', 'Race condition'], 'They are active but make no progress.'),
+      item('The Banker\'s algorithm grants a request only if…', 'The system stays in a safe state', ['The resource is free right now', 'The thread has highest priority'], 'Avoidance checks that every process can still finish.')
+    ], 5);
+  });
+  function perm(d) { return (d & 4 ? 'r' : '-') + (d & 2 ? 'w' : '-') + (d & 1 ? 'x' : '-'); }
+  var chmodcalc = quizGame('chmodcalc', 'tools', 'devops01', 'devops', 'chmod calculator', 'DevOps 1 · Linux permissions', 'Each octal digit is owner, group, then others; inside a digit, read = 4, write = 2, execute = 1. So rwx = 7, r-x = 5, rw- = 6 and r-- = 4.', function () {
+    return range(5).map(function () {
+      var d = [pick([7, 6, 5, 4]), pick([7, 6, 5, 4, 0]), pick([5, 4, 0, 1])], oct = d.join(''), str = d.map(perm).join('');
+      var alt = [[d[0], d[2], d[1]], [d[1], d[0], d[2]], [d[0], d[1] ^ 2, d[2]], [d[0], d[1], d[2] ^ 1], [d[0] ^ 1, d[1], d[2]]];
+      if (Math.random() < .5) return item('Which octal mode equals <b>' + str + '</b>?', oct, others(oct, alt.map(function (x) { return x.join(''); })), 'Add 4, 2, 1 for r, w, x in each group of three: ' + d.join(', ') + '.');
+      return item(code('chmod ' + oct + ' deploy.sh') + 'Resulting permissions?', str, others(str, alt.map(function (x) { return x.map(perm).join(''); })), d.map(function (x) { return x + ' = ' + perm(x); }).join(', ') + ' for owner, group and others.');
+    });
+  });
+  var k8sfix = quizGame('k8sfix', 'tools', 'devops13', 'devops', 'Pod doctor', 'DevOps 13 · Kubernetes core', 'Read the pod status first: Pending means it cannot be scheduled, ImagePullBackOff means the image cannot be pulled, CrashLoopBackOff means the container keeps exiting, and OOMKilled means it went over its memory limit.', function () {
+    return some([
+      item('Pod status ImagePullBackOff.', 'Check the image name, tag and registry credentials', ['Raise the memory limit', 'Add a readiness probe'], 'The kubelet cannot pull the image.'),
+      item('Pod status CrashLoopBackOff.', 'Read the logs of the previous container: kubectl logs --previous', ['Delete the node', 'Change the Service port'], 'The process starts and exits repeatedly; its logs say why.'),
+      item('Pod stuck in Pending with "0/3 nodes have sufficient cpu".', 'Lower the requests or add capacity', ['Fix the image tag', 'Restart the pod'], 'The scheduler cannot fit the CPU request anywhere.'),
+      item('Container last state: OOMKilled.', 'It exceeded its memory limit: fix the leak or raise the limit', ['Network policy blocks it', 'The image is missing'], 'The kernel killed it for using too much memory.'),
+      item('Pods are Running but the Service gets no traffic to them.', 'Check that the Service selector matches the pod labels', ['Rebuild the image', 'Increase replicas'], 'A selector mismatch leaves the Service with no endpoints.'),
+      item('A pod receives traffic before its app is ready to serve.', 'Add a readiness probe', ['Add a liveness probe only', 'Use hostNetwork'], 'Readiness controls whether the pod is in the Service endpoints.'),
+      item('Roll out a new version with no downtime, and undo quickly if it breaks.', 'Deployment rolling update, then kubectl rollout undo', ['Delete all pods and recreate', 'Edit pods one by one'], 'Deployments replace pods gradually and keep revision history.')
+    ], 5);
+  });
+  var starstory = quizGame('starstory', 'beh', 'beh02', 'beh', 'STAR sorter', 'Behavioral 2 · Story bank', 'Strong answers follow STAR: Situation (brief context), Task (your goal), Action (what you did, the longest part, using "I"), Result (a measurable outcome and what you learned).', function () {
+    return some([
+      item('"Our checkout service was timing out during a holiday sale."', 'Situation', ['Action', 'Result'], 'It sets the scene.'),
+      item('"I was asked to cut the p99 latency below 300 ms within two weeks."', 'Task', ['Situation', 'Result'], 'It states your goal and constraint.'),
+      item('"I profiled the service, found an N+1 query and added batching and a cache."', 'Action', ['Task', 'Situation'], 'It describes what you personally did.'),
+      item('"Latency fell from 900 ms to 220 ms and conversion rose 4%."', 'Result', ['Action', 'Task'], 'It gives a measurable outcome.'),
+      item('A candidate keeps saying "we decided" and "we built". Biggest fix?', 'Say what you did with "I"', ['Add more background', 'Skip the result'], 'Interviewers assess your contribution.'),
+      item('A story spends three minutes on background and 20 seconds on actions. Fix?', 'Shorten the situation and expand the action', ['Add another story', 'Remove the result'], 'Action should be the bulk of the answer.'),
+      item('Asked about a failure, the best ending is…', 'What you learned and changed afterwards', ['Blaming the deadline', 'Saying it was not your fault'], 'Ownership and growth are what the question tests.')
+    ], 5);
+  });
+  var offertalk = quizGame('offertalk', 'beh', 'beh06', 'beh', 'Offer talk', 'Behavioral 6 · Offers & negotiation', 'Negotiate politely with data: let them give a number first when you can, talk about total compensation, use competing offers honestly, and get the final offer in writing.', function () {
+    return some([
+      item('A recruiter asks for your expected salary at the first screen.', 'Ask for their budgeted range first', ['Give your lowest acceptable number', 'Refuse to talk to them'], 'Their range anchors the talk without you underselling.'),
+      item('An offer has a low base but a big signing bonus and stock.', 'Compare total compensation over several years', ['Judge by base alone', 'Accept the bonus immediately'], 'Stock vesting and one-time bonuses change the picture.'),
+      item('You have a higher competing offer.', 'Share it honestly and ask if they can match', ['Invent a bigger number', 'Hide it'], 'Real competing offers are the strongest leverage.'),
+      item('They say the base is fixed.', 'Ask about other levers: sign-on, equity, level, start date', ['Give up at once', 'Threaten to leave'], 'Many parts of an offer are flexible.'),
+      item('You get a verbal offer on a call.', 'Thank them and ask for it in writing before deciding', ['Resign from your job now', 'Accept on the spot without details'], 'Only a written offer is reliable.'),
+      item('An exploding offer gives you 24 hours.', 'Politely ask for a reasonable extension', ['Accept out of panic', 'Ignore it'], 'Most companies will extend for a serious candidate.'),
+      item('Best tone during negotiation?', 'Enthusiastic about the role, firm about the numbers', ['Aggressive and demanding', 'Apologetic about asking'], 'Showing interest and clarity keeps both sides constructive.')
+    ], 5);
+  });
+
   /* Hints: two or three nudges per game, revealed one at a time by the Hint button. They point at the idea, never at
      this puzzle's answer (puzzles are random, so a hint must hold for every round). */
   var HINTS = {
@@ -1361,12 +1692,42 @@ var Games = (function () {
     pyslice: ['a[start:stop:step]: start is included, stop is excluded.', 'Negative indexes count from the end, and a negative step walks backwards.'],
     pygotcha: ['A default argument is created once, when the function is defined, not on every call.', 'Assigning a list copies the reference: both names point to the same list.'],
     subnet: ['/n leaves 32 − n host bits, so there are 2^(32 − n) addresses and 2^(32 − n) − 2 usable hosts.', 'The network address has all host bits 0; the broadcast address has them all 1.'],
-    lru: ['On a hit, the key becomes the most recently used.', 'On a miss with a full cache, evict the key that was used least recently, not the oldest inserted.']
+    lru: ['On a hit, the key becomes the most recently used.', 'On a miss with a full cache, evict the key that was used least recently, not the oldest inserted.'],
+    bigoloop: ['Count how many times the innermost line runs, as a formula in n.', 'Nested loops multiply, loops one after another add, and constant factors are dropped.', 'A counter that is multiplied or divided by a constant each step needs only logarithmic steps.'],
+    maskmagic: ['Write x in binary first, then apply the operator bit by bit.', 'x - 1 flips the lowest 1 bit and every 0 below it; & with x then clears that bit.', 'Shifting right by k drops the last k bits, like dividing by 2 to the k.'],
+    javacollect: ['Ask what the code needs most: fast lookup, sorted order, insertion order or the smallest item first.', 'Hash-based collections are fastest but unordered; Tree-based ones keep keys sorted at O(log n).'],
+    javastream: ['Nothing runs until a terminal operation such as collect, count, sum or findFirst.', 'Follow the pipeline one step at a time, and remember a stream can be consumed only once.'],
+    pydecor: ['A closure sees the variable itself, not a snapshot of its value, unless a default argument captures it.', 'Assigning to a name inside a function makes it local unless you declare it nonlocal.', '@dec above a def means f = dec(f), run once when the def runs.'],
+    pygen: ['A generator body starts only on the first next() and pauses at each yield.', 'Once a generator is exhausted, it stays empty.'],
+    jsthis: ['Look at the call site: what is to the left of the dot when the function is called?', 'Arrow functions never get their own this; bind fixes this permanently.'],
+    jsscope: ['var is hoisted and set to undefined; let and const throw until their line runs.', 'var belongs to the function, let and const to the nearest block (including each loop iteration).'],
+    cppsmart: ['unique_ptr: exactly one owner, moved not copied. shared_ptr: a counter of owners.', 'weak_ptr observes without increasing the count.'],
+    cppstl: ['Ordered containers (map, set) are trees: O(log n). Unordered ones hash: O(1) on average.', 'Anything that can reallocate a vector can invalidate pointers and iterators into it.'],
+    csasync: ['await waits without blocking a thread; .Result and .Wait() block.', 'Start independent tasks first, then await them together.'],
+    cslinq: ['Read the chain left to right: filter, then map, then the final operator.', 'LINQ queries are deferred: they run when enumerated, using the data at that moment.'],
+    sqlwindow: ['Sort the scores from highest to lowest and write the ranks next to them.', 'RANK leaves gaps after ties, DENSE_RANK does not; a running SUM adds rows in id order.'],
+    sqlindex: ['A composite index is sorted by its first column, then the second, like a phone book.', 'Functions on the column or a leading % wildcard hide the sorted order from the index.'],
+    solidspot: ['Name the smell: too many jobs, edits for every new case, a broken subtype, a fat interface, or a hard-coded dependency.', 'Each SOLID letter fixes one kind of smell; match the smell to the letter.'],
+    umlrel: ['Ask "is a" or "has a" first.', 'For "has a", ask whether the part can live on without the whole.'],
+    estimator: ['Use one day ≈ 100,000 seconds to turn daily counts into per-second rates.', '1 million × 1 KB ≈ 1 GB; scale the zeros from there.'],
+    cachepick: ['Ask when the database gets written: at the same time, later, or only on a miss.', 'Name the failure: many misses on one hot key, or misses on keys that do not exist.'],
+    a11yfix: ['Prefer the native HTML element that already does the job.', 'Every control needs a name, keyboard access and visible focus; do not rely on colour alone.'],
+    hookhunt: ['Check the dependency array: empty runs once, missing runs every render.', 'useRef does not re-render; useMemo and useCallback keep values stable between renders.', 'State inside a click handler is the value from that render.'],
+    authcheck: ['Authentication asks who you are; authorization asks what you may do.', 'Signing is not encryption: anyone can read a JWT, but only the key holder can sign one.'],
+    microfix: ['Name the failure: a hanging dependency, a multi-step transaction, a lost event, a duplicate request or a retry storm.', 'Fail fast, isolate, retry safely, and compensate instead of locking across services.'],
+    mlmetric: ['Precision looks at what the model flagged; recall looks at what was really positive.', 'F1 = 2PR / (P + R) always sits between precision and recall.'],
+    ragfix: ['First ask whether the right chunk was retrieved at all.', 'Fix exact-term misses with keyword search, mixed-up text with better chunking, and leaks with metadata filters.'],
+    pagewalk: ['Page number = address divided by the page size (whole part).', 'Offset = the remainder, always smaller than the page size.'],
+    deadlockspot: ['The four conditions: mutual exclusion, hold and wait, no preemption, circular wait.', 'Ask which of the four the described rule makes impossible.'],
+    chmodcalc: ['Three digits: owner, group, others.', 'In each digit read = 4, write = 2, execute = 1; add the ones that are set.'],
+    k8sfix: ['Read the status word first; each one points to a different stage: scheduling, pulling, running or memory.', 'If pods look healthy but get no traffic, compare Service selectors with pod labels.'],
+    starstory: ['Situation sets the scene, Task is the goal, Action is what you did, Result is the outcome.', 'Numbers and "I" statements make a story stronger.'],
+    offertalk: ['Stay positive about the role while being specific about numbers.', 'Look at total compensation and get everything in writing.']
   };
 
-  var CATS = [['all', 'All'], ['algo', 'Algorithms'], ['sql', 'SQL'], ['java', 'Java'], ['js', 'JavaScript'], ['py', 'Python'], ['cpp', 'C++'], ['csharp', 'C#'], ['design', 'Design'], ['tools', 'Git & DevOps'], ['cs', 'CS & systems'], ['web', 'Web & APIs'], ['ai', 'AI skills']];
+  var CATS = [['all', 'All'], ['algo', 'Algorithms'], ['sql', 'SQL'], ['java', 'Java'], ['js', 'JavaScript'], ['py', 'Python'], ['cpp', 'C++'], ['csharp', 'C#'], ['design', 'Design'], ['tools', 'Git & DevOps'], ['cs', 'CS & systems'], ['web', 'Web & APIs'], ['ai', 'AI skills'], ['beh', 'Behavioral']];
 
-  var LIST = [courseplan, unionfind, bstbuild, roundrobin, cppout, csref, patternpick, gitrescue, capcall, queuecourier, bfsbeacons, windowchef, recursiontrail, cssduel, httprescue, transactionvault, promptdetective, guess, race, pointers, oranges, lockers, brackets, swaps, bits, kadane, prefix, coins, merge, treewalk, heap, dijkstra, sqlwhere, groupby, joins, javaout, javaeq, eventloop, truthy, pyslice, pygotcha, subnet, lru];
+  var LIST = [courseplan, unionfind, bstbuild, roundrobin, cppout, csref, patternpick, gitrescue, capcall, queuecourier, bfsbeacons, windowchef, recursiontrail, cssduel, httprescue, transactionvault, promptdetective, guess, race, pointers, oranges, lockers, brackets, swaps, bits, kadane, prefix, coins, merge, treewalk, heap, dijkstra, sqlwhere, groupby, joins, javaout, javaeq, eventloop, truthy, pyslice, pygotcha, subnet, lru, bigoloop, maskmagic, javacollect, javastream, pydecor, pygen, jsthis, jsscope, cppsmart, cppstl, csasync, cslinq, sqlwindow, sqlindex, solidspot, umlrel, estimator, cachepick, a11yfix, hookhunt, authcheck, microfix, mlmetric, ragfix, pagewalk, deadlockspot, chmodcalc, k8sfix, starstory, offertalk];
   LIST.forEach(function (g) { g.cat = g.cat || 'algo'; g.hints = g.hints || HINTS[g.id] || []; });
   var BY = {}; LIST.forEach(function (g) { BY[g.id] = g; });
   var BYMOD = {}; LIST.forEach(function (g) { if (!BYMOD[g.mid]) BYMOD[g.mid] = g; });

@@ -1,0 +1,32 @@
+{
+  "quiz": [
+    "Think about when a cold Observable actually starts its work. Does defining it do anything by itself?",
+    "Does of() wait for a timer or a microtask before it pushes values, or does it push them while subscribe() runs?",
+    "Picture a slow response for a short query arriving after a fast response for a longer one. Which operator keeps both requests alive?",
+    "You want extra clicks dropped while the first request is still running, not queued and not cancelled.",
+    "An error ends the stream it travels through. Here, which stream does the error travel through before it reaches the handler?",
+    "Does a plain Subject keep any memory of values it emitted before you subscribed?",
+    "Remember what this subject needs in its constructor and what it gives a brand-new subscriber.",
+    "With no argument, the operator has to find DestroyRef by itself. What does inject() need in order to work?",
+    "Signals compare values by reference. Did the array reference change when you pushed into it?",
+    "Effects are scheduled to run later instead of running inside set(). What value do they read when they finally run?",
+    "What value can the signal hold before the HTTP response arrives, and what does that mean for its type?",
+    "Total can always be computed from the lines. Which API is made for memoized derived state?",
+    "Each async pipe subscribes on its own. What does subscribing twice to a cold HTTP Observable do?"
+  ],
+  "interview": [
+    "Compare them on how many values they produce, when the work starts, cancellation, and whether delivery is sync or async.",
+    "Ask what each one does when a new outer value arrives while an inner one is still running, then pick a real UI feature for each.",
+    "Think about who owns the subscription. Mention template-based cleanup, destroy-scoped operators, and which streams never complete.",
+    "Ask what a subscriber who arrives late should see: nothing, the current value, or recent history.",
+    "Separate writable state, derived state and side effects, and say when each one runs and what it tracks.",
+    "One models a value right now, the other models events over time. Name the bridge functions and how they behave.",
+    "Walk the pipeline: wait for a pause, clean and dedupe the input, cancel stale requests, handle errors per request, and clean up.",
+    "Cover when it subscribes, what it returns at first, how it works with OnPush, and what happens with several pipes on one stream.",
+    "An error ends the stream it passes through. Think about where to place the handler and which errors are worth retrying.",
+    "Think about version numbers, cheap dirty flags pushed on write, and values pulled in dependency order on read.",
+    "Look for several subscriptions to the same cold Observable: in templates, in getters, or a subscribe plus an async pipe.",
+    "Effects are for syncing with the outside world. List what people wrongly use them for and the timing they wrongly assume.",
+    "Sort the state into local, shared client, server, events and URL, then choose the lightest tool for each category."
+  ]
+}

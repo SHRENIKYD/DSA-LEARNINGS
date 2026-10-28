@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "The user is logged in correctly. Think about which check is missing when they reach another person's object.",
+  "Changing ids to harder-to-guess values is not enough. What check must the server run on each access?",
+  "Think about keeping data values separate from the SQL text so they are never parsed as code.",
+  "Column names cannot be bind parameters. How can you make sure only known names are used?",
+  "Think about whether you can list every bad input, or only the good ones.",
+  "Recall the link-local address that cloud metadata services listen on.",
+  "Removing the key from history does not stop someone who already copied it. What makes the key useless?",
+  "Normal TLS proves the server to the client. Think about the other direction.",
+  "Zero trust is about where trust comes from. Ask whether being on the company network should count as proof of anything.",
+  "Think about what happens at the edge between two windows.",
+  "Think about how one entry could depend on the content of earlier entries, so editing an old entry shows up later.",
+  "AI tools can suggest package names that do not exist yet. What could an attacker do with such a name, and what would you look at?"
+ ],
+ "interview": [
+  "Define authentication as who you are and authorization as what you may do, then explain which one IDOR breaks.",
+  "Mention parameterized queries, allow-lists for things that cannot be parameters, and least-privilege database users.",
+  "Name secret managers and runtime injection, and explain that git history keeps secrets forever and spreads them.",
+  "Define SSRF and the metadata risk, then layer defences: allow-lists, DNS and IP checks, no redirects, network rules.",
+  "Describe hello messages, ephemeral key exchange, forward secrecy and certificate checks, then client certificates in mTLS.",
+  "Explain no trust from network location, workload identity, mTLS, per-request authorization and logging.",
+  "Compare token bucket, sliding window and fixed window, and mention distributed state and keys to limit by.",
+  "Explain slow, salted, memory-hard hashes and why fast hashes like SHA-256 make brute force easy.",
+  "Cover inventory with SBOMs, triage by exposure, quick mitigation, patching, and checking for signs of exploitation.",
+  "Mention a separate append-only audit store, hash chaining, external anchoring, and separation of admin powers.",
+  "Explain public packages with your internal names winning resolution, then fixes like scoped names and pinned registries.",
+  "Describe a data-flow diagram with trust boundaries and applying STRIDE to each element, then ranking mitigations.",
+  "Cover prompt injection, treating model output as untrusted, least-privilege tools, and human approval for risky actions.",
+  "Structure by phases: inventory and quick wins, then fixing the biggest risks, then building paved roads and metrics."
+ ]
+}

@@ -1,0 +1,31 @@
+{"quiz":[
+"Think about one physical chair that is sold again for every show. Status must belong to the thing that changes per show.",
+"Nothing is stuck waiting and nothing leaks. Both threads simply read the old value before either writes. Which bug family is that?",
+"Ask whether a booking for one show should ever need to wait for a booking on a totally different show.",
+"Correctness should not depend on a background job running on time. What does a hold time in the past really mean?",
+"A deadlock needs a cycle of waiting. Ask what simple rule, applied by every thread, makes it impossible for two of them to wait on each other.",
+"Use whole paise, not decimals. The parts must add back to exactly 10000 paise, so the leftover paise must go somewhere.",
+"Only the other two people owe money to the payer. Work out each share and who owes whom.",
+"Each transfer settles at least one person fully. Count how many transfers that allows for n people.",
+"Finding the true minimum number of transfers is a hard search problem. Does a simple greedy rule always find it?",
+"One title can have many physical copies, each with its own status and barcode. Which class holds what?",
+"Think of a fair queue: who gets first claim on a returned copy, and is it held for them or put back on the shelf?",
+"Think Open/Closed: closed for modification, open for extension. Which option adds behaviour without touching existing checkout code?",
+"The seats now belong to someone else. Never take them back; think about what you owe the paying user instead."
+],"interview":[
+"Cover clarifying requirements, listing core entities, the booking flow, and where concurrency and holds fit in, before writing code.",
+"Explain that seat status changes per show, so you need a class for one seat inside one show, and what breaks without it.",
+"Discuss making check and write atomic: locks, compare-and-set, or a conditional database update, and the lock scope you choose.",
+"Mention lazy expiry checked on every read, an optional sweeper for cleanup, and why correctness must not depend on the sweeper.",
+"Cover re-checking under the lock that the hold is still yours and alive, never stealing seats, refunding idempotently, and reducing the case.",
+"Cover users, groups, expenses, splits, and a balance map per pair or net per user, plus why you store money as integers.",
+"Explain floating point rounding errors and suggest integer minor units like paise or a decimal type, with a rounding rule.",
+"Explain netting each person's balance, then greedy matching of debtors and creditors, the transfer bound, and that it is not always optimal.",
+"Mention a split strategy interface so a new split type is a new class, plus validation that parts add up to the total.",
+"Walk the happy path, then failures: no free copy, member limit, unpaid fines, reference-only books, and how each is reported.",
+"Cover a waitlist per title, holding the returned copy for the first person, notification, and a hold expiry that moves to the next.",
+"Suggest a fine policy or strategy object chosen per member or book type, so rules change without editing checkout code.",
+"Name Strategy, Observer, State, Facade, Decorator and rule chains, and point to where each appears in booking, Splitwise and the library.",
+"Mention many threads racing for the same seats, asserting no double booking, repeating runs, and injecting a fake clock.",
+"Explain that in-memory locks stop working across servers, so move the atomic check to the database or a shared store like Redis."
+]}

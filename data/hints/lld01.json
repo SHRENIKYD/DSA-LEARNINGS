@@ -1,0 +1,30 @@
+{"quiz":[
+"Ask whether the parts can exist without the whole and who controls their lifetime.",
+"The triangle marks the more general class. Which end of the line is that?",
+"Check how long the object is held. Is it stored as a field or only used during one method call?",
+"Read multiplicity from the far end: how many of this end can one object at the other end have?",
+"Recall the UML symbols: plus is public, minus is private. Which one is left for protected?",
+"Ask whether the word names a new concept with its own data and behaviour, or is just another name for one you have.",
+"Separate the shared catalogue facts from the facts that differ per physical item.",
+"Inheritance is fixed at creation time. Which approach lets a role change while the object lives on?",
+"Two alternative compartments, only one runs. Which code structure picks one path out of two?",
+"A subclass must be usable wherever the parent is expected. Can every subclass keep the parent's promises?",
+"An invariant is a rule about the object's own data that must always hold. Which choice is domain data the class owns?",
+"Think about history: should a past order change if today's catalogue price changes?",
+"With two references to keep in sync, what happens if only one side is updated?"
+],
+"interview":[
+"Describe a class as a blueprint and an object as a concrete instance with its own state, using an everyday example.",
+"Explain the three by strength of ownership and lifetime, with examples, and say lifetime and sharing decide which to use.",
+"Give one clear sentence each for encapsulation, abstraction, inheritance and polymorphism.",
+"Talk about finding nouns for candidate classes, verbs for methods, merging synonyms, and dropping things that are just attributes.",
+"Compare shared code and state in abstract classes with pure contracts in interfaces, and mention multiple implementation.",
+"Explain the fragility of deep inheritance, then show a has-a design where behaviour can be swapped at runtime.",
+"Cover starting with core classes and relationships, adding only key fields and methods, and refining as requirements grow.",
+"Explain that it shows messages between objects over time, and map arrows to method calls and fragments to loops and ifs.",
+"Mention one method that updates both sides, choosing an owning side, and preferring one-way links when possible.",
+"Define substitutability with contracts, show a subclass breaking a parent promise, and fix it by changing the hierarchy.",
+"Contrast identity-based entities with immutable value objects compared by value, and show how each looks in code.",
+"Show how pricing strategies and new aggregates fit without rewriting existing classes, and point at the extension points.",
+"Check requirements coverage, correct relationships, invariants, missing concepts, and whether it handles likely change."
+]}

@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "tails[k] is about subsequences of length k+1. Think about which end value keeps the most options open for the future.",
+  "Equal values are allowed to extend a non-decreasing run. Think about which binary search places an equal value after existing ones.",
+  "The base case represents a prefix that is trivially fine to break. What does the empty prefix mean?",
+  "Count the table cells and the work done for each end position in the cuts array.",
+  "If a balloon bursts first, its two neighbours become adjacent. Ask which choice keeps the left and right parts from touching.",
+  "dp[i][j] reads only ranges strictly inside i..j. Which fill order guarantees those are already computed?",
+  "A path cannot fork at the parent. Ask what shape of path the parent can extend, and whether a negative branch is worth keeping.",
+  "If this node is not robbed, list what each child is allowed to do, then take the best option for each child.",
+  "Check each mode: one already owns a share, one just sold and is in cooldown. Which one may spend cash today?",
+  "If k is large enough, the limit no longer matters. Think about what that means for trading.",
+  "Like 0/1 knapsack, each cell in the row must read values from the previous row, not updated ones.",
+  "Characters that already pair up need no insertion. Which longest palindromic structure, not necessarily contiguous, holds them?",
+  "A star can match zero copies of the previous character. Check what the pattern reduces to."
+ ],
+ "interview": [
+  "Explain the tails array, binary search for the replace position, and why replacing keeps the smallest possible ends.",
+  "Mention sorting width ascending and height descending for equal widths, then running LIS on heights. Explain why equal widths need that order.",
+  "Describe dp over prefixes and checking dictionary words that end at each index. Mention substring cost and limiting by max word length.",
+  "Cover the palindrome table plus the cuts array, and center expansion as a way to drop the table.",
+  "Explain dp over ranges where the answer combines a split point. Mention signs like merging neighbours or choosing a last operation.",
+  "Explain choosing the last balloon in a range, padding with 1s, and the product of borders plus two sub-ranges.",
+  "Describe returning two values per node, rob and skip, and why plain recursion re-solves grandchildren.",
+  "Mention dropping negative branches, keeping a global answer, and returning only one branch upward.",
+  "List the states such as hold, sold and rest, the transitions between them, and where the fee is charged.",
+  "Explain that buying and selling on the same day changes nothing, so fewer trades pad up to k, and mention the k at least n/2 shortcut.",
+  "Compare match and mismatch moves in each grid and what each problem is counting or minimising.",
+  "Explain how star means something different in each, and how that changes the transitions and base cases.",
+  "Cover brute force first, finding the state, the transition, the order, and then optimising space or time."
+ ]
+}

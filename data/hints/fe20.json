@@ -1,0 +1,32 @@
+{
+  "quiz": [
+    "Think about which guard runs while the router is still deciding which route fits, before any lazy code is fetched.",
+    "Ask whether Angular creates a fresh component when only the parameter in the same route changes.",
+    "Disabled controls are treated specially by one of the two ways of reading a form's data.",
+    "Consider what value a control goes back to when you call reset() without any extra options.",
+    "Angular avoids calling the server when cheap local checks already fail.",
+    "OnPush compares inputs with a simple identity check, not by looking inside the array.",
+    "Without zone.js, Angular only reacts to things that explicitly notify it. Which option notifies nobody?",
+    "The words after prefetch and the words after on control two different moments: downloading and showing.",
+    "Look for the hydration feature that records early user events and plays them back later.",
+    "You want new clicks ignored while one payment request is still running, not cancelled or queued.",
+    "Think about what happens to an observable stream once an error travels all the way to its outer level.",
+    "Recall whether derived signals do work eagerly on every change or only when someone reads them."
+  ],
+  "interview": [
+    "Cover both route-level and template-level lazy loading, plus preloading and how you verify bundle size.",
+    "Explain when each guard runs in the navigation, what a guard can return, and why guards are not security.",
+    "Weigh blocking navigation until data is ready against navigating instantly with a skeleton.",
+    "Both build the same control tree; compare who builds it, timing, typing, testing and dynamic fields.",
+    "Name the interface with four methods and the provider token that registers the component with forms.",
+    "Think about debouncing, cancelling stale checks, completing the observable and the PENDING status.",
+    "Describe when a check starts, which components are skipped, and the events that mark a view dirty.",
+    "Cover what replaces zone.js notifications, the version history, benefits, and a step-by-step migration.",
+    "Pick triggers per page section by how important it is for the first paint and how users reach it.",
+    "Explain server rendering, DOM reuse, early events, partial hydration, and the new failure modes they bring.",
+    "Match the tool to the size of the app and team, and remember URL and local UI state have better homes.",
+    "Follow the action through reducers, selectors and effects, and say where errors must be caught.",
+    "Measure first, then reduce how much is checked, how much DOM exists, and how often work runs.",
+    "Split the time into clarify, plan, core, edge states, polish and explaining trade-offs."
+  ]
+}

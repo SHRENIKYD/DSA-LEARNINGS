@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Terraform compares desired configuration with real state. If nothing changed, what is there to do?",
+  "Commit what pins provider versions for everyone; keep out state, caches and downloaded plugins.",
+  "Some arguments cannot be changed in place. Read what the -/+ symbol says about the existing resource.",
+  "Never put keys in code. Think about how the provider normally finds credentials on its own.",
+  "count tracks items by index. When an item is removed from the middle, the later indexes shift.",
+  "sensitive affects what is displayed, not what is saved. Think about where Terraform stores values.",
+  "Newer Terraform can lock state using S3 itself instead of a separate DynamoDB table. Recall that setting.",
+  "Add the new bits to the prefix length, then use the number as the subnet index in the new block.",
+  "Terraform sees a new address as a new resource. Look for a way to tell it the resource only changed name.",
+  "Terraform must learn that an existing object belongs to a resource in code. Find the way to adopt it.",
+  "With that flag, 0 means no changes, 1 means error, and another code means something else.",
+  "Workspaces share one backend and configuration. Think about isolation of credentials, state and versions.",
+  "Look for a policy-as-code tool that checks rules against the plan in JSON form.",
+  "Recall what happened after HashiCorp changed the Terraform licence in 2023, and which community project came out of it."
+ ],
+ "interview": [
+  "Define managing infrastructure through versioned code, and explain describing the end state instead of steps.",
+  "Explain what each command does, and that saving the plan ensures apply runs exactly what was reviewed.",
+  "Explain state maps code to real resources; it can hold secrets and needs locking, so use a remote backend instead.",
+  "Explain the race without locking, recover with import or a state backup, and add remote state with locking.",
+  "Compare index-based and key-based tracking, and give an example where removing a list item replaces the wrong resources.",
+  "Mention secrets landing in state, using a secrets manager or generated values, sensitive outputs and an encrypted backend.",
+  "Define reusable modules, then cover versioning, pinning versions per environment and testing in staging first.",
+  "Compare shared configuration with switchable state against separate folders and accounts, and justify a choice.",
+  "Cover import blocks, writing matching code, checking the plan shows no changes, and tools to generate config.",
+  "Define drift, detect it with scheduled plans, then decide whether to accept it into code or revert it.",
+  "Give one real use case for each command, stress they are for exceptions, and prefer blocks recorded in code.",
+  "Cover format and validate, plan on pull request, policy checks on the plan, approval, apply of the saved plan and OIDC.",
+  "Compare licence, community and compatibility, then discuss AI help for drafting code with review and plan checks."
+ ]
+}

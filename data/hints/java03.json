@@ -1,0 +1,31 @@
+{"quiz":[
+"Only the new keyword creates an object. Assigning a variable to another just copies the reference.",
+"Fields get default values automatically; only local variables must be assigned before use. What is the default for int?",
+"The compiler adds a default constructor only when a class declares no constructors at all.",
+"Think about where a delegating constructor call is allowed to appear inside a constructor in Java 21.",
+"The parameter has the same name as the field. Inside the constructor, which one does the bare name refer to?",
+"Remember Java has one passing rule for everything. For objects, what exactly gets copied into the parameter?",
+"Static methods are chosen by the compile-time type, not by the object. Is the reference value used at all?",
+"Constants are inlined at compile time, and declaring a variable or making an array does not count as using the class.",
+"Classes initialise parent first. Then for each object, the parent part is fully built before the child part.",
+"Top-level classes can only be public or package-private, and a public class must be in a file with its name.",
+"With no modifier, access is package-private. Unlike protected, it does not reach subclasses in other packages.",
+"A wildcard import covers the types of one package only, not its sub-packages.",
+"Static initialisers run top to bottom. When f runs, has b received its value yet?"
+],"interview":[
+"Explain the class as a blueprint and the object as an instance with its own state, using a simple example.",
+"Walk through class loading if needed, memory allocation on the heap, default values, initialisers, the constructor, and returning the reference.",
+"Say Java is always pass-by-value and show it with a swap or reassign example that has no effect on the caller.",
+"Explain the no-arg constructor the compiler adds, and that it is not generated once you write any constructor.",
+"Explain constructors calling each other with this() and parents with super(), the first-statement rule, and that you cannot use both.",
+"List uses like resolving field shadowing, calling another constructor, passing the current object, and returning it for chaining.",
+"Explain that static belongs to the class not to objects, and cover static fields, methods, and blocks run at class init.",
+"Explain that static methods are hidden, not overridden, since calls are bound at compile time, and that overloading works fine.",
+"Give the order: parent static, child static, then for each object the parent fields and constructor, then the child's.",
+"Describe private, package-private, protected and public, and explain protected includes package access plus subclasses elsewhere.",
+"Define encapsulation as protecting invariants, and explain why exposing setters for every field does not really achieve it.",
+"Explain how package names map to folders, the fully qualified class name, and classpath mistakes behind the error.",
+"Compare options like an enum, holder class idiom and double-checked locking with volatile, and say which you prefer and why.",
+"Explain leaking this before the constructor finishes, how other threads or overrides can see default values, and how to avoid it.",
+"List triggers for initialisation, then cases that do not trigger it, such as constants, arrays and plain declarations."
+]}

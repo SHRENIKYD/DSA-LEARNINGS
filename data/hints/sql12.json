@@ -1,0 +1,32 @@
+{"quiz": [
+"In autocommit mode each statement is its own transaction. Think about what was already committed before the crash.",
+"Ask which property is about committed changes surviving a crash once the log is safely on disk.",
+"The set of rows matching a condition changed between two reads because of a new insert.",
+"Two related rows were read at different moments, so they come from different points in time.",
+"Recall each engine's default: one uses READ COMMITTED and the other uses REPEATABLE READ.",
+"Snapshot isolation only catches two writers on the same row. Think about writes to different rows.",
+"In strict 2PL, exclusive locks are held until the transaction ends.",
+"An intention exclusive lock means someone is writing rows inside the table. Check its compatibility with a table read lock.",
+"The deleting transaction has not committed yet, so think about which version is still visible to readers.",
+"Old open snapshots stop VACUUM from removing dead row versions.",
+"A deadlock needs a cycle in the wait-for graph. A transaction outside the cycle is only waiting.",
+"In wait-die, older transactions may wait, but younger ones do not.",
+"Make the stock check and the decrement a single atomic statement, then check how many rows changed.",
+"In InnoDB REPEATABLE READ, plain reads use a snapshot but updates see the latest committed row."
+],
+"interview": [
+"Use a bank transfer to explain atomicity, consistency, isolation and durability, and what mechanism provides each.",
+"List each level from read uncommitted to serializable and which anomalies each prevents or still allows, including snapshot isolation.",
+"Explain that one is about an existing row's value changing and the other about the set of rows matching a condition changing.",
+"Describe two read-modify-write transactions overwriting each other, and fixes like atomic SQL, FOR UPDATE, or a version column.",
+"Use the on-call doctors example where each writes a different row, why snapshot isolation misses it, and three ways to prevent it.",
+"Explain row versions with creator and deleter transaction ids, snapshots deciding visibility, readers not blocking, and VACUUM.",
+"Describe the growing and shrinking phases and argue via lock points why every conflict goes the same direction.",
+"Describe the wait-for graph, finding cycles, how engines check, choosing a victim, and how apps should retry and order locks.",
+"Use a jobs table with status and leases, claim rows with FOR UPDATE SKIP LOCKED, commit quickly, and handle crashed workers.",
+"Choose optimistic for rare conflicts or long think-time, pessimistic for frequent conflicts with short critical sections.",
+"Explain SSI as snapshot isolation plus tracking read-write dependencies and aborting on a dangerous structure.",
+"Treat it as expected, retry the whole transaction with backoff, keep side effects out, and reduce conflicts.",
+"Cover row, page and table locks, intention locks so table requests can check cheaply, and when engines escalate locks.",
+"Explain how the long snapshot blocks cleanup and causes bloat, and fixes like a replica, timeouts, or shorter queries."
+]}

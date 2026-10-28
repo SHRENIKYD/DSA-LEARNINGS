@@ -297,6 +297,11 @@ textarea.code-edit{width:100%;border:none;border-top:1px solid var(--border);bac
 .nav-mod.soon:hover{background:none}
 details.ex>summary{color:var(--accent-fg)}
 details.iv>summary{font-weight:600}
+details.qhint{margin:8px 0 2px;font-size:15px}
+details.qhint>summary{cursor:pointer;color:var(--accent-fg);font-weight:600}
+details.qhint>div{padding:6px 14px 12px}
+.ivhint{margin:0 0 8px}
+details.ivans>summary{cursor:pointer;color:var(--accent-fg);font-weight:600;margin-bottom:6px}
 .ivn{display:inline-block;min-width:36px;font-family:var(--f-mono);font-weight:600;color:var(--accent-fg)}
 .examples{margin-bottom:10px}
 

@@ -1,0 +1,36 @@
+{
+ "quiz": [
+  "Every node except the root has exactly one edge going up to its parent.",
+  "Postorder visits the left subtree, then the right subtree, then the node itself. Finish each subtree fully first.",
+  "In a BST, smaller values sit to the left and bigger to the right. Ask when each traversal records the node compared with its two subtrees.",
+  "Children of the current level are added to the back of the queue while you work. How do you know where the level ends?",
+  "On a skewed tree, the recursion depth equals the height. How many stack frames would that need?",
+  "Take the last node on each level. Check every level, including the deepest one.",
+  "BFS visits nodes level by level from the top. Which node in a column gets seen first?",
+  "Compare the difference of the heights with 1, and remember the diameter can come from some other node.",
+  "Only one side found something. Should the current node replace that result or pass it up as is?",
+  "Check whether 3 and 9 fall on the same side of 6 or on different sides.",
+  "Each new value is bigger than all earlier ones. Which side does it always go to, and what shape forms?",
+  "The successor is the smallest value bigger than the node. Where in the right subtree is the smallest value?",
+  "Each value must respect all its ancestors, not just its parent. Look for a value deep in a right subtree that is too small.",
+  "The first preorder value is the root. Find it in inorder and count the values to its left.",
+  "Try a tiny tree with a root and one child. Can these two orders tell whether the child is on the left or right?",
+  "You first slide down to the minimum, then pop until the k-th item. Add those two costs."
+ ],
+ "interview": [
+  "Define depth from the root and height from the leaves, and explain top-down versus bottom-up computing.",
+  "Explain when the node is recorded in each order, and give a real use for each, like copying, sorted output and deleting.",
+  "Describe sliding left while pushing, popping and recording, then going right, and explain that the stack holds the path back up.",
+  "Choose by the question and memory: BFS for levels and nearest, DFS for paths and subtree results, and mention width versus height.",
+  "Explain that every path bends at a highest node, then one postorder pass returning height while updating the best sum.",
+  "Check every node, not just the root, with one postorder pass returning height or a failure signal so it stays O(N).",
+  "Describe the postorder recursion for a general tree and the split-point walk for a BST, with their costs.",
+  "Search for the key, then cover the leaf, one-child and two-children cases, using the inorder successor.",
+  "Explain passing an allowed range down, or a strictly increasing inorder walk, and bugs like checking only children.",
+  "Use an iterative inorder with early stop, then storing subtree sizes in nodes for frequent updates and queries.",
+  "Explain splitting with the root found in inorder, using a map of positions and a moving preorder index for O(N).",
+  "Explain that cost depends on height, then how red-black tree rules and rotations keep the height logarithmic.",
+  "Use preorder with explicit null markers and a decoder that mirrors the encoder, and explain why duplicates are then fine.",
+  "Check recursion depth on skewed data, then memory, null handling, overflow and slow repeated work."
+ ]
+}

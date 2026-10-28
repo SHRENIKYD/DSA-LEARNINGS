@@ -1,0 +1,32 @@
+{"quiz": [
+"The slot adds a layer of indirection. Think about what can change inside the page without breaking index entries.",
+"Recall each engine's default page size setting: SQLite page_size, Postgres BLCKSZ, and InnoDB innodb_page_size.",
+"The write-ahead rule says the log describing a change must be on disk before the changed page is.",
+"InnoDB does not put new pages straight at the hot end of its LRU list; they must prove they are reused.",
+"Redo repeats history so the database returns to its exact state at the crash; undo comes after.",
+"With no-force, data pages are written later, so durability at commit comes from the log alone.",
+"SSTables are immutable, so a delete must be written as something new rather than erased in place.",
+"Compare how often each strategy rewrites data against how many sorted runs it leaves to read and store.",
+"Multiply the first level size by the fanout repeatedly until a level holds at least one terabyte.",
+"A Bloom filter can say for certain that a key is absent, so whole files can be skipped in memory.",
+"Rows move inside the clustered tree on page splits, so secondary indexes cannot store physical addresses.",
+"Compare inserts that append at the right edge of the tree with inserts scattered across random leaves.",
+"Think about per-block statistics that let the engine skip blocks whose value range cannot match.",
+"In WAL mode new page versions go to the -wal file. Think about how they get back into the main file."
+],
+"interview": [
+"Trace finding and loading the page, logging the change, editing the page in memory, flushing the log at commit, and writing pages later.",
+"Describe the header, slot array, records growing from the end, addressing by page and slot, and the benefits of that indirection.",
+"Describe frames, a page table, pin counts and dirty bits, the eviction steps with the WAL rule, and scan-resistant replacement.",
+"State the two WAL rules for writing pages and acknowledging commits, and explain what STEAL and NO-FORCE allow and require.",
+"Use a short log example to walk through the analysis, redo and undo passes, showing winners, losers and pageLSN checks.",
+"Compare in-place page updates with log-structured writes and compaction on read cost, write cost and space, and pick per workload.",
+"Derive leveled cost as roughly fanout per level times levels, and tiered as about once per tier, with real-world ranges.",
+"Cover the write path with group commit and memtables, flushing to SSTables with Bloom filters, compaction choice, and reads.",
+"Compare a clustered B+tree with a log-structured engine on space, compression and write amplification, and why Meta moved.",
+"Explain random inserts into the clustered tree, page splits and cache misses, larger secondary indexes, and ordered key alternatives.",
+"Cover reading only needed columns, per-column compression, block min-max skipping, and vectorized execution.",
+"Explain partial writes of large pages, detection with checksums, and how each engine repairs them.",
+"Explain that recovery time depends on how much log must be replayed since checkpoints, and tune checkpoints and log size.",
+"Explain that tombstones stay until compaction reaches the bottom level, slowing range scans, and fixes through compaction and data design."
+]}

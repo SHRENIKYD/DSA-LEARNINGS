@@ -1,0 +1,31 @@
+{"quiz":[
+"List the five RADIO steps in order: Requirements and Architecture come first. What do you decide right after the architecture, before the API?",
+"Debounce waits for a quiet period before acting. How many calls happen during a quick burst of typing?",
+"Responses can arrive in any order. Ask how you would stop wasted work and how you would know whether a response still matches the current input.",
+"Picture new posts arriving at the top while a user is on page 2. What happens to an offset, and what does a cursor refer to instead?",
+"Divide the viewport height by the row height, then add the overscan rows.",
+"If the server rejects an optimistic change, the UI must not keep showing something false.",
+"Moving content must be controllable by users who need more time. Think about what control is required.",
+"Two phones can disagree about the time by seconds. Ask who could give every message one order that all clients accept.",
+"Think about what happens when a server restarts and every client retries on the same schedule.",
+"Unread count is the gap between the latest message number and the last one the user read.",
+"A spreadsheet is a dependency graph. Think about what must change when one input changes.",
+"A cell is processed only when its waiting count reaches zero. What kind of dependency shape would keep some counts above zero forever?",
+"Time is short and an unfinished app cannot be demoed. Which choice gives you something that works if time runs out?",
+"Pure functions take inputs and return outputs with no side effects. Think about testing them."
+],"interview":[
+"Follow a structure like requirements, architecture, data model, interface and optimizations, and state trade-offs as you go.",
+"Cover debouncing, cancelling stale requests, caching results, keyboard navigation and accessibility, and handling slow responses.",
+"Explain how offsets shift when new items arrive, causing duplicates or skips, and how a cursor stays stable and scales.",
+"Explain rendering only visible rows plus overscan with spacers, and downsides like find-in-page, accessibility and variable heights.",
+"Explain updating the UI before the server answers, keeping a snapshot to roll back, and handling errors, races and retries.",
+"Mention keyboard controls, a pause button, labels and live regions, respecting reduced motion, and lazy loading images.",
+"Explain server sequence numbers, deduping by message id, buffering gaps, and fetching missed messages after reconnect.",
+"Describe storing a last read position per conversation on the server, syncing it across devices, and computing the count from it.",
+"Cover detecting drops, exponential back-off with jitter, resuming from the last sequence, and showing connection status.",
+"Explain cells with formulas, a dependency graph, recomputing in topological order, and detecting cycles.",
+"Talk about virtualizing rows and columns, and using canvas when DOM node counts get too high, noting accessibility trade-offs.",
+"Describe clarifying requirements, planning state, building a thin working slice first, then adding features, edge cases and tests.",
+"Cover a clear data model, ordering, optimistic moves with rollback, keyboard drag alternatives and screen reader announcements.",
+"Explain gains in boilerplate and speed, and risks like wrong code you cannot explain, so you must review and understand everything."
+]}

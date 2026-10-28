@@ -1,0 +1,31 @@
+{"quiz":[
+"Look at where the print sits: before or after the recursive call? Code after the call runs on the way back up.",
+"One million nested calls means one million stack frames at once. Does the JVM remove tail calls?",
+"Count the levels of the recursion tree and the total work on each level, or use the Master Theorem.",
+"The number of calls doubles at each level and there are n levels. Add up the calls.",
+"Write the recurrence: move n minus 1 disks, move the largest, move n minus 1 again. Solve it, then use n = 10.",
+"The list is a reference that keeps changing as you backtrack. What do the saved entries point to at the end?",
+"Each element is either in or out of a subset. Do not confuse this with counting orderings.",
+"Only skip equal values at the same level of the loop. Would your condition also block a valid subset with two 2s?",
+"Equal copies should always be used in a fixed left-to-right order. Which check on the previous copy enforces that?",
+"Reuse is allowed, but going back to smaller indices would create reordered duplicates.",
+"Moving down-left increases the row and decreases the column. Which combination stays the same?",
+"Find the band from the row and the stack from the column, then number them so no two boxes share a number.",
+"Estimate N factorial times N for N = 8, and think about what a request for all arrangements suggests.",
+"When a deeper call succeeds, the parent should stop without undoing its choice. How does it learn about success?"
+],"interview":[
+"Name the base case and the recursive case that moves toward it, and what happens when either is missing or wrong.",
+"Describe what a frame holds and that extra space depends on the maximum depth of calls alive at once.",
+"Say whether the JVM removes tail calls, then give fixes like loops, an explicit stack, or a bigger thread stack.",
+"Explain writing a recurrence, then solving it with a recursion tree, unrolling, or the Master Theorem, with an example.",
+"Describe the three-step move, write the recurrence, and argue that the largest disk forces any solution to need that many moves.",
+"Explain choose, explore and un-choose on a decision tree, and how pruning makes it smarter than brute force.",
+"Mention sorting first, the same-level skip rule for loop style, and the used-previous-copy rule for permutations.",
+"Compare state handling, extra memory, output order, and how each handles duplicates.",
+"Explain one queen per row, and three boolean arrays for columns and both diagonals with their index formulas.",
+"Cover per-row, column and box tables or bitmasks, returning a boolean, and picking the cell with fewest options first.",
+"Estimate the search tree size, such as n factorial or 2 to the n, and compare it with about 100 million operations per second.",
+"List bugs like saving references, unbalanced undo, and wrong duplicate skips, then test against brute force on small inputs.",
+"Explain that when the future depends only on a small state, paths overlap and memoization turns it into dynamic programming.",
+"Describe giving the assistant the state, choices and prunes, then checking copies, undo symmetry, duplicates and tests yourself."
+]}

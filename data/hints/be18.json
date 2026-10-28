@@ -1,0 +1,29 @@
+{"quiz":[
+"Ask which of the two ends the transaction, and whether other connections can see the new rows before that happens.",
+"Recall what the identity map stores per session and when get() checks it before going to the database.",
+"In typed mappings, nullability follows the Python type hint.",
+"Lazy loading runs a query each time an unloaded relationship is touched. Count one plus the loop.",
+"Picture the rows a SQL join on a one-to-many relationship returns. How many times does each parent appear?",
+"Only one option writes a new revision file. Which flag makes it diff your model metadata against the live schema?",
+"Existing rows have no value for the new column. Every step must stay valid for those rows and for old app versions.",
+"Worst case is pods times workers times pool size plus overflow.",
+"The bug is read, change in Python, then write. Where could the subtraction happen so both decrements apply?",
+"Async code cannot run hidden lazy I/O. Think about the error for calling await-needing code in the wrong place.",
+"Think about what a repository should hide and who should control transactions.",
+"Transaction pooling breaks features tied to one connection, like prepared statement caches."
+],
+"interview":[
+"Explain the session as a workspace, unit of work flushing changes in order, and the identity map with one object per key.",
+"Cover one engine per process, a session per request through a dependency, and commit or rollback with close.",
+"Explain the extra query per parent, how to spot it, and fixes with eager loading options.",
+"Compare the SQL each strategy emits and match each to many-to-one or collection relationships.",
+"Compare atomic SQL updates, pessimistic row locks and optimistic version columns, with when to use each.",
+"Start from the database default, explain when stronger levels help, and how to set them on engine or connection.",
+"Walk through model change, autogenerate, reviewing the file, testing up and down, and running it in deploys.",
+"Describe expand and contract: add nullable, write in code, backfill in batches, then add the constraint safely.",
+"Show the worst-case formula across instances and processes and compare it with database limits and real load.",
+"Explain hiding queries behind clear methods and testing with fakes, and when a thin layer is simpler.",
+"Mention async engine and session, awaiting all I/O, and pitfalls like lazy loading and sharing sessions across tasks.",
+"Compare session versus EntityManager, unit of work, lazy loading and the differences in style and transactions.",
+"Measure first with tracing and query logs, look for N+1 patterns and slow queries, then check plans and indexes."
+]}

@@ -1,0 +1,30 @@
+{"quiz":[
+"Strings cannot be changed. Is the result of the method call stored anywhere?",
+"Look up the character codes of the two letters and subtract. This is the 0-based slot in a 26-entry count array.",
+"Ask whether new can ever reuse the pooled literal. Then recall what == compares for objects and what equals compares.",
+"Ask how much work one += does when strings cannot change in place. Then add that cost over all N steps.",
+"Odd palindromes center on a letter and even ones on the gap between two letters. Count both kinds.",
+"The loop stops one step too far on each side. Work out the length of the part strictly between l and r.",
+"Many strings share fewer hash values. What does an equal hash really tell you?",
+"Different languages disagree on the sign of a remainder. Ask whether these three follow the dividend or the divisor.",
+"For each prefix, find the longest proper prefix that is also a suffix. Watch what happens at the letter c.",
+"The characters matched so far are known, so ask how much of the pattern you can keep. Can the text pointer ever go back in KMP?",
+"For each index, count how many letters from there match the start of the string.",
+"Think about what stops a match from running past the end of the pattern into the text.",
+"A border is a prefix that is also a suffix. Ask how shifting the string by the gap between them relates to its period, and what must divide n."
+],"interview":[
+"Explain that every change makes a new object, then list benefits like safe sharing, string pooling, hash caching and thread safety.",
+"Contrast reference comparison with content comparison, and name the cases where == is true, such as pooled literals.",
+"Describe a 26-slot count array using the letter offset, and compare speed and memory with a hash map, plus when a map is needed.",
+"Explain spare capacity and doubling when full, then sum the copy costs as a geometric series to show the total is linear.",
+"Explain the odd and even centers and expanding outwards, give the time and space, and mention dynamic programming and Manacher as alternatives.",
+"Describe the string as a number in a base modulo a prime, how to slide the window in O(1), and verifying matches on equal hashes.",
+"Give the collision probability for a prime modulus and random base, mention the birthday effect, and suggest double hashing.",
+"Define the longest proper prefix that is also a suffix, then the two-pointer build that falls back on mismatch.",
+"Use a potential argument: the text pointer only goes forward, and the pattern pointer can only fall back as far as it went forward.",
+"Define Z values, explain the box as the furthest-right prefix match, and how it lets you reuse earlier values.",
+"Compare their guarantees, memory and best uses, such as streams, simple code, or many patterns and substring comparisons.",
+"Check that lengths are equal, then explain why every rotation appears inside the string joined to itself, with a linear search.",
+"Explain why comparing all pairs is impossible, then shingles, rolling hash fingerprints and sketches like MinHash to find candidates.",
+"List known failure points to check, such as concatenation in loops, == on strings, hash overflow and modulo mistakes, then test edge cases."
+]}

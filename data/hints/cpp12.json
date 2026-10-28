@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "C++ arrays are stored row by row; pick the order where the innermost loop walks neighbouring memory addresses.",
+  "Place each member at an offset divisible by its alignment, then round the total up to the largest alignment.",
+  "Think about an array of this struct: where does the second element start, and must it be aligned too?",
+  "Caches keep data in units of whole lines; ask what happens when two cores keep writing to the same line.",
+  "The data and memory access pattern are the same in both cases; think about how well the CPU can guess the if.",
+  "Separate the optimisation of replacing a call with its body from the linkage rule about definitions in many files.",
+  "Recall which integer overflow is defined to wrap and which is not, and when a past-the-end pointer is still fine.",
+  "If a pointer was already dereferenced on this path, ask what the optimiser may now assume about it being null.",
+  "Some sanitizers use incompatible shadow memory layouts; think about which two each need their own special mapping.",
+  "Each shadow byte describes one 8-byte block of memory. Think about what a value between 1 and 7 could be counting.",
+  "Use Amdahl's law: the untouched share of runtime limits the total speed-up, even if the rest takes zero time.",
+  "Few branch misses but very few instructions per cycle suggests the core is waiting on something other than branches.",
+  "Under the as-if rule, ask what the compiler may do with a pure computation whose result is never used."
+ ],
+ "interview": [
+  "Explain cache lines, the cost of a miss versus a hit, prefetching, and examples like row versus column traversal.",
+  "Explain alignment rules, padding between members and at the end, how to walk offsets by hand, and reordering to shrink.",
+  "Define false sharing via per-line coherence, list symptoms and detection tools, and fix it with alignment or padding.",
+  "Explain pipelines and branch prediction, misprediction cost on random versus sorted data, and branchless alternatives.",
+  "Separate the linkage meaning of the keyword from the optimiser's inlining decision based on size and heuristics.",
+  "Define the as-if rule and observable behaviour, then list optimisations like inlining, constant folding and dead code removal.",
+  "Define each of the three kinds with an example, and stress that undefined behaviour affects the whole program.",
+  "For each snippet name the problem (signed overflow, invalidated iterators, writing to a string literal) and a fix.",
+  "State which pointer types may access an object, why the compiler relies on that, and safe punning with memcpy or bit_cast.",
+  "Describe instrumented loads and stores, shadow memory, redzones and quarantine, then list bug types it misses.",
+  "Layer warnings and static analysis, library hardening, and separate CI jobs for compatible sanitizer combinations and fuzzing.",
+  "Define the metric and reproduce load, decide CPU versus waiting, use perf counters and flame graphs, then fix and re-measure.",
+  "List pitfalls like dead code removal, warm-up, unrealistic data and noise, then the tools the library gives to handle them.",
+  "Give the formula with the fraction sped up and the factor, show the limit, and use it with a profile to rank work.",
+  "Mention erroneous behaviour for uninitialised reads, hardened library checks, and modern toolchain safety options."
+ ]
+}

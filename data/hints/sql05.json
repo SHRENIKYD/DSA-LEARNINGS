@@ -1,0 +1,31 @@
+{"quiz": [
+"A scalar subquery must produce one value. Think about what value stands in when there is nothing to return.",
+"Strict engines check that a scalar subquery returns at most one row; SQLite is more forgiving.",
+"A NULL inside the NOT IN list makes the test either FALSE or UNKNOWN, never TRUE.",
+"Ask whether the inner query depends on values from the current outer row.",
+"Each round of recursion works only on what the previous round just produced.",
+"Recursion ends at a fixpoint. Engine round limits are only safety nets.",
+"UNION only removes rows that are exactly identical in every column, including depth.",
+"Recall how PostgreSQL 12+ treats a CTE used once and how SQL Server handles repeated CTE references.",
+"Each recursive round looks up employees by the column used in the join condition.",
+"Pick the form that tests for a match without multiplying the outer rows.",
+"A grouped table only has rows for keys that actually appear, so zero-count keys are missing.",
+"SCAN inside a correlated subquery means the inner table is fully read for every outer row.",
+"Being greater than every value in a set is the same as being greater than its largest value."
+],
+"interview": [
+"Explain that one depends on the outer row and is logically re-run per row while the other runs once, and that optimizers may rewrite both.",
+"Show how NOT IN expands into ANDed not-equal tests where NULL makes it never TRUE, and give fixes like NOT EXISTS.",
+"Say they mean the same for positive checks and modern optimizers plan both as semi-joins, note where the old myth came from, and when to use each.",
+"Define a CTE as a named temporary result for one statement and cover readability, reuse, debugging, recursion, and performance.",
+"Walk through the anchor, the working table, appending each round, and stopping when a round adds no rows, plus UNION vs UNION ALL.",
+"Write a top-down recursive CTE starting from the manager, joining on manager_id, tracking a level, and excluding the manager.",
+"Carry a visited path or array and refuse to revisit nodes, mention the CYCLE clause and NOCYCLE, and always add a depth cap.",
+"Generate the dates with a recursive CTE or series, then LEFT JOIN the sales and use COALESCE to show zero.",
+"Use MAX below the overall MAX, or DISTINCT with OFFSET wrapped as a scalar, and discuss ties and returning NULL when empty.",
+"Prefer window functions for per-row values over a group or neighbors, since they compute in one pass instead of re-running per row.",
+"Explain rewriting correlated subqueries into joins and grouping, and how the COUNT bug drops zero-count rows.",
+"Compare adjacency list, materialized path, nested sets and closure table on read speed, write cost, and moving subtrees.",
+"Start from the query plan, merge repeated per-row subqueries into one grouped CTE with a LEFT JOIN, and add indexes or window functions.",
+"Use double NOT EXISTS: no product in the category that the customer has not bought, or a counting approach with HAVING."
+]}

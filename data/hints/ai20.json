@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "Use the power rule on each term, then plug in x equals 2.",
+  "Expand f around x with a Taylor series and see which error terms cancel in the symmetric version.",
+  "Use the chain rule: derivative of the outer cube times the derivative of the inner part.",
+  "Take the partial derivative with respect to x, then with respect to y, and plug in the point.",
+  "The gradient shows which way the loss climbs fastest. Which way should a training step go?",
+  "For a times x squared, gradient descent diverges when the learning rate passes 1 over a.",
+  "For sigmoid with binary cross-entropy, the gradient on the logit is a simple difference of two values.",
+  "Equal logits give equal softmax probabilities. Take the negative log of the target's probability.",
+  "Each weight touches one input and one output, so the gradient pairs every delta with every activation.",
+  "With a constant gradient, velocity settles where v equals beta v plus g. Solve for v.",
+  "After bias correction, the first moment divided by the root of the second moment cancels the gradient size.",
+  "Validation getting worse while training improves means overfitting. Which saved model is best?",
+  "Differentiate lambda times w squared with respect to w.",
+  "Linear models with these losses are convex. What breaks convexity?"
+ ],
+ "interview": [
+  "Explain slope as change in output per tiny input change, the gradient as all partial slopes, and its use in descent.",
+  "State the chain rule as multiplying local rates, then show how backprop applies it layer by layer backwards.",
+  "Describe symptoms of too low and too high, a stability bound, and practical methods like range tests and schedules.",
+  "Contrast regression with likelihood for classes, and explain stronger gradients when the model is confidently wrong.",
+  "Write softmax and the loss, differentiate both parts, and reach the simple probabilities minus one-hot result.",
+  "Show the forward pass with cached values, then the backward deltas, and the general rules for each layer type.",
+  "Compare backprop gradients to central differences, use relative error, double precision, and few random parameters.",
+  "Explain velocity, per-parameter scaling, and their combination in Adam, then when plain momentum generalises better.",
+  "Explain that L2 in Adam gets scaled by the adaptive denominator, while decoupled decay shrinks weights directly.",
+  "Log loss, gradient norm and learning rate to find the first bad step, then check common causes in order.",
+  "Detect it by the train versus validation gap, then cover more data, early stopping, weight decay, dropout and augmentation.",
+  "Define convexity and why it guarantees a global minimum, then why gradient descent still works on neural nets.",
+  "Explain unstable early gradients and Adam estimates for warm-up, and why decay helps settle into a good minimum.",
+  "Check gradient shapes and math, the training loop steps, and test with gradient checks and tiny overfitting runs."
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "quiz": [
+  "Recall which types a classic switch supports: int-sized integer types, their wrappers, String and enums. What is missing?",
+  "Without a break, execution continues into the next case after a match. Trace where it stops.",
+  "A switch expression must produce a value for every possible input. Does this one cover all int values?",
+  "Step through the values of i, adding 2 each time, and stop when the check fails.",
+  "A do-while checks its condition only after running the body.",
+  "A break leaves the innermost enclosing switch or loop. Which one is innermost here?",
+  "The method gets a copy of the reference. Does reassigning that copy change what the caller's variable points to?",
+  "Overload resolution first tries matches using widening only, before it ever considers boxing.",
+  "Inside the method a varargs parameter is just an array. Think about what the compiler builds when the caller passes no values.",
+  "Creating new int[3][] makes only the outer array. What do the row slots hold until you assign them?",
+  "When a value is not found, binarySearch returns minus the insertion point minus one. Find where 6 would go.",
+  "substring takes a start index that is included and an end index that is excluded.",
+  "With the default limit, split removes trailing empty strings from the result.",
+  "Evaluate left to right: numbers add until a String appears, then everything after is joined as text.",
+  "For each pair, ask two questions: do they point to the same array object, and do they hold the same values?"
+ ],
+ "interview": [
+  "State that Java is always pass-by-value, and explain that for objects the value copied is the reference, with an example.",
+  "Compare when each checks its condition and typical uses: unknown count, run at least once, or a known range.",
+  "Explain falling through without break, a case where grouping is useful, and how arrow-style cases avoid it.",
+  "Cover arrow cases, switch as an expression with yield and exhaustiveness, then type patterns, guards and null handling.",
+  "List the allowed types, and give the reason around jump tables and the risk of exact matching on floating point.",
+  "Explain labels on loops to break or continue an outer loop, then cleaner options like extracting a method and returning.",
+  "Contrast compile-time choice by signature with runtime choice by object type, and explain why return type alone is not enough.",
+  "Describe the three phases: widening only, then boxing, then varargs, and picking the most specific match or reporting ambiguity.",
+  "Explain the syntax and that it becomes an array, the rule that it must be last and only one, and pitfalls like null and overloading.",
+  "Explain arrays of arrays where each row is a separate object, and that rows can have different lengths.",
+  "Compare fixed size and primitives against resizable, generic, object-only lists, plus performance and API trade-offs.",
+  "Compare mutability, size changes, null support, and whether each is backed by an array or is a copy.",
+  "Name the different algorithms for primitives and for objects, and explain which one is stable and why it matters.",
+  "Explain that string methods return a new String, so the result is lost if not assigned, and why immutability helps.",
+  "Contrast == with equals, mention ignoring case and null-safe calls, and explain the sign of compareTo's result."
+ ]
+}

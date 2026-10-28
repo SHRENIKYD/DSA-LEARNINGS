@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Think about whether C# methods can be overridden unless you opt in with a keyword.",
+  "If a derived constructor does not call a base constructor, the compiler tries the parameterless one.",
+  "C# differs from Java here. Recall when field initialisers run relative to the call to the base constructor, then trace each step.",
+  "Ask whether new fills the virtual slot or creates a separate method. Then ask which slot an Animal-typed call uses.",
+  "Split the two keywords: override acts on the method in this class, sealed limits something below it. Is it the class or the method?",
+  "Interfaces cannot hold per-instance data. Think about what state needs.",
+  "Ask whether a default interface method becomes a member of the class. Then check the static type each line calls Warn through.",
+  "Explicit implementations are not public members of the class. Ask what static type a caller needs to reach the method.",
+  "Hash-based collections compare hash codes before calling Equals.",
+  "Without an overload, ask what == on a class type actually compares: the data inside, or something about the objects themselves?",
+  "Look for the object method that is not virtual.",
+  "Ask which option adds behaviour to any IRepository without touching its code or making a new subclass per implementation.",
+  "Single virtual dispatch picks a method by one object's runtime type. Two types need two choices."
+ ],
+ "interview": [
+  "Explain that override replaces through virtual dispatch while new hides based on the static type.",
+  "Compare shared state and code with multiple inheritance of contracts, and versioning concerns.",
+  "Trace initializers and constructors from derived to base, and explain overrides running before fields are set.",
+  "Explain the contract for hash collections, and good hashes being fast, consistent and well spread.",
+  "Explain implementing a member only via the interface, for name clashes or hiding rarely used members.",
+  "Use an example like a logger or strategy injected instead of a subclass, and the flexibility it gives.",
+  "Cover preventing unwanted extension and letting the JIT devirtualize calls.",
+  "Explain method tables, slots, and an indirect call through the object's type pointer.",
+  "Explain adding members to interfaces without breaking implementers, and limits like no instance state.",
+  "Explain that subtypes must keep the base contract, with a classic example like Square and Rectangle.",
+  "Explain the visitor pattern with two virtual calls, and switch pattern matching as an alternative.",
+  "Cover generated value equality, EqualityContract for inheritance, and printing members.",
+  "Discuss an interface for providers, a factory or registry, dependency injection, and adding providers safely.",
+  "Mention fragile base classes, hard to follow behavior, tight coupling, and testing difficulty."
+ ]
+}

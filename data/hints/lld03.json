@@ -1,0 +1,30 @@
+{"quiz":[
+"Hunt and Thomas care about what happens when one rule changes. Would two identical-looking lines with different meanings be a problem?",
+"Two values can be equal today but change for different reasons. Ask whether they represent the same rule.",
+"YAGNI warns against building for imagined future needs. Which choice builds for a guess?",
+"Think about what the parent class's own methods call internally once you override one of them.",
+"Ask what the boolean argument carries: plain data the callee works on, or an instruction about which branch to run inside it?",
+"See whether the methods and fields form separate groups that never touch each other.",
+"Law of Demeter: talk only to your direct friends, not to objects returned by other objects.",
+"Tell, Don't Ask says do not pull data out to decide for an object. Who should own the balance check and the change?",
+"Ask whether a method should both change state and return information at the same time.",
+"Compare the two mirror smells: one class changed for many reasons, versus one change spread over many classes. Which is this?",
+"Before changing behaviour you cannot see, lock in what it does today so you notice changes.",
+"Feature Envy is a method using another class's data more than its own. Which refactoring puts the code next to that data?",
+"Speculative generality means abstraction without a present user. Does the test count as a user?"
+],
+"interview":[
+"Explain DRY as single knowledge, then show how merging code that only looks the same creates wrong coupling.",
+"Define KISS as simplest working design and YAGNI as not building unneeded features, and contrast them.",
+"Mention is-a vs has-a, fragile base class problems, and runtime flexibility of composition.",
+"Define both, give examples, and explain how they make change cheaper and code easier to understand.",
+"Explain talking only to direct collaborators, and why fluent chains on the same type are not real violations.",
+"Describe adding tests first, extracting small well-named methods, removing duplication, and committing in small steps.",
+"Contrast one class changing for many reasons with one change touching many classes, with an example each.",
+"Explain using raw strings or numbers for domain ideas, and how small types with validation fix it.",
+"Inject the client, a clock and the config through the constructor, then use fakes in tests.",
+"Explain connascence types and strength, and that weaker and more local connascence is better.",
+"Discuss a single switch in a factory as fine, and repeated switches across code as a sign to use polymorphism.",
+"Talk about characterization tests, finding seams, extracting modules gradually, and measuring progress.",
+"Say cheap generation makes principles matter more: faster duplication and speculative code, agents doing better on cohesive code, and clear constraints."
+]}

@@ -1,0 +1,38 @@
+{
+ "quiz": [
+  "Picture one user click that touches five services. What would you need on every log line to pull out just that click?",
+  "Searching works best when values have fixed field names a machine can filter on.",
+  "RED is for request-serving services. Think about the three things users notice about requests.",
+  "USE is about resources like CPU or disks. Think about how busy, how backed up, and how broken they are.",
+  "Picture 99 fast requests and one very slow one. What does the mean report, and who does it describe?",
+  "Percentiles cannot be averaged. Think about what data must be combined first.",
+  "Context crosses services inside the request itself. Think about a standard header.",
+  "Think about when the keep-or-drop decision is made and what is known at that moment.",
+  "Burn rate is the current error ratio divided by the error budget ratio (1 minus the SLO).",
+  "Ask what each window protects against: a short blip that pages for nothing, or an alert that stays firing long after the fix.",
+  "A page should be urgent, actionable and tied to user impact.",
+  "In an incident, think about stopping user pain fast before finding the root cause.",
+  "Blameless means people acted sensibly with what they knew. So where should the questions point instead of at a person?",
+  "Recall the SRE definition of toil. Hard or creative work does not count; check which option lists the defining traits.",
+  "An error budget policy decides what to do when reliability is spent. Which choice protects users rather than adding more risk?",
+  "A flag lets code sit on servers while still hidden. Which two moments does that pull apart?",
+  "Errors and latency can look fine while the feature does nothing useful. Which metric shows real outcomes?",
+  "Old and new app versions run together. Think about steps that keep both working at each stage."
+ ],
+ "interview": [
+  "Start from the request or trace id, read the span waterfall, find the critical path, then drill into logs and metrics.",
+  "Define it as machine-readable records with named fields, and explain gains in search, aggregation and correlation.",
+  "Explain each letter of both methods and when to use one for services versus the other for resources.",
+  "Explain the long tail, how means hide it, and how histograms let you compute and combine percentiles.",
+  "Mention trace and span ids, injecting and extracting a standard header, and propagating across async boundaries.",
+  "Compare when the decision is made, cost, and whether errors or slow traces are kept.",
+  "Cover symptom-based alerts tied to SLOs, actionable pages with runbooks, multi-window burn rates and routing the rest.",
+  "Define each term in order and show how burn rate relates to the error budget.",
+  "Walk through detect, triage, roles, mitigate first, communicate, resolve, then postmortem.",
+  "Explain the system-focused mindset, a clear timeline, contributing factors, and owned follow-up actions.",
+  "Describe a pre-agreed policy with budget levels and actions, and how it turns the conflict into data.",
+  "Explain reducing blast radius and fast rollback, then compare canary, blue-green and feature flags.",
+  "Define toil and its traits, then explain choosing what to automate by frequency, time saved and risk.",
+  "Cover tracing each step, quality and cost signals, evaluations, guardrails, and gradual rollout with flags."
+ ]
+}

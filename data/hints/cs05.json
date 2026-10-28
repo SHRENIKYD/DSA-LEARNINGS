@@ -1,0 +1,30 @@
+{"quiz":[
+"Look for the four conditions that must all hold at the same time for processes to be stuck forever.",
+"When each resource has only one copy, ask whether a ring of waits leaves anyone a way out.",
+"With several copies of a resource, a process outside the ring might release a spare copy. What does that mean for the cycle?",
+"If every thread takes locks in the same global order, picture what shape of waiting can no longer form. Match that to a Coffman condition.",
+"Need is what a process might still ask for: its declared maximum compared with what it already holds.",
+"Unsafe means there is no guaranteed order for everyone to finish. Does that mean things are stuck already?",
+"The algorithm pretends to grant the request first, then checks something about the new state.",
+"Max is about possible future demand. Detection asks a different question: what is each process blocked on at this moment?",
+"In DFS, reaching a node still on the recursion stack means you came back to where you started.",
+"The threads are busy at full CPU, not blocked, but nobody makes progress.",
+"A low-priority job can wait forever behind newer high-priority jobs. Which fix uses the time a job has already waited?",
+"Locking each mutex by hand risks two threads using different orders. Look for the C++17 RAII type that accepts many mutexes in one call.",
+"Weigh how often deadlocks really happen for user programs against the cost of guaranteeing they never do."
+],"interview":[
+"Define deadlock as a set of processes waiting on each other forever, and list the four Coffman conditions with a short meaning each.",
+"Pick one Coffman condition to break, and give practical tools like lock ordering, multi-lock helpers, try_lock with timeout.",
+"Describe the node and edge types, then explain single instance versus multiple instances for what a cycle means.",
+"Define a safe sequence, explain that safe means no deadlock is possible, and that unsafe only means it might happen.",
+"Define Available, Max, Allocation and Need, run the safety check step by step, and show how a request is tested.",
+"Mention that maximum demands must be known ahead, that processes and resources change constantly, and the running cost.",
+"For single instances use a wait-for graph and DFS for cycles; for multiple instances use the Allocation and Request matrices.",
+"List options like aborting all, aborting one at a time, preempting resources with rollback, and how to pick a victim.",
+"Contrast blocked with no CPU, busy without progress, and a process that is never served, with an example and fix for each.",
+"Point out the opposite locking order, then fix it with a multi-lock helper or a global order such as by account id.",
+"Confirm symptoms, take thread dumps, map which thread holds and waits for which lock, find the cycle, then fix the order.",
+"Explain tasks waiting on subtasks in the same full pool, then fixes like separate pools, bigger pools or non-blocking composition.",
+"Cover the wait-for graph of transactions, cycle search and victim choice, and that apps must retry the aborted transaction.",
+"Define the low, medium, high scenario, explain why it is not a true deadlock, and mention priority inheritance as the fix."
+]}

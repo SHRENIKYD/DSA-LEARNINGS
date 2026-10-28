@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "Count host bits as 32 minus the prefix, then compute 2 to that power and subtract the network and broadcast addresses.",
+  "Find the block size from the prefix, locate which block contains .77, and set all host bits to 1 in that block.",
+  "Recall the three RFC 1918 ranges exactly, paying close attention to where the 172 range starts and ends.",
+  "Routers first pick the most specific matching route; metrics only compare routes of the same prefix length.",
+  "Find the smallest number of host bits where 2 to that power minus 2 is still at least 60.",
+  "Think about alignment: every block must start on a multiple of its own size.",
+  "Drop leading zeros in each group, then replace only one longest run of zero groups with a double colon.",
+  "Check whether 8.8.8.8 is on the local subnet. If not, the frame must go to a next hop on the LAN.",
+  "Think about the client first searching for any server, servers replying, then the client choosing and the server confirming.",
+  "A NAT router keeps a table of mappings. Think about what event creates an entry, and what happens to a packet with no entry.",
+  "Think about what extra field, besides the IP address, the translation table can use to tell hosts apart.",
+  "Consider what layer ARP works at, which addresses it maps, and whether it can cross a router.",
+  "Look at the 169.254 range: who assigns that kind of address, and which normal source of addresses must have failed?"
+ ],
+ "interview": [
+  "Cover the layer each works at, who assigns it, whether it changes across hops, and what it identifies.",
+  "Explain the slash prefix meaning network bits, and the address waste and routing table growth of fixed classes.",
+  "Show the block size from the prefix, then derive network, broadcast, first and last host, and the 2^h - 2 count.",
+  "Explain that the most specific prefix wins before metrics, with an example of a /8 and a /16 both matching.",
+  "Sort needs largest first, give each the smallest prefix that fits, and place each block on an aligned boundary.",
+  "Cover broadcast request, unicast reply, caching, and that for remote hosts the host ARPs for its default gateway.",
+  "Walk through Discover, Offer, Request, Acknowledge, and what the client receives: IP, mask, gateway, DNS, lease.",
+  "Explain the translation table with ports, why inbound connections fail, and downsides like breaking end-to-end and logging.",
+  "Compare what routers share and with whom, convergence speed, loops, and examples like RIP versus OSPF.",
+  "Cover leading-zero and double-colon rules, then neighbor discovery with multicast and SLAAC or DHCPv6.",
+  "Mention a private subnet routed through a NAT gateway in a public subnet, with no inbound route or public IP.",
+  "Discuss renumbering, NAT between the networks, private link style services, and the trade-offs of each.",
+  "Talk about trie based lookups, compressed tries, TCAM hardware, and the memory versus speed trade-off.",
+  "Explain carrier-grade NAT sharing one IP across many customers, what breaks like hosting and P2P, and IPv6 as the exit.",
+  "Work layer by layer: gateway reachability, DNS, routes, NAT, and tools like traceroute and pinging a raw IP."
+ ]
+}

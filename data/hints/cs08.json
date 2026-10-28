@@ -1,0 +1,32 @@
+{"quiz":[
+"Look for the signal the kernel enforces directly, so the process never gets a chance to run any handler.",
+"Recall the default signal of kill: the one a program may catch to clean up before exiting.",
+"Each group of three is a digit: r is 4, w is 2, x is 1. Add them for owner, group and other.",
+"Files start from 666 (no execute bits). The umask removes the bits it has set.",
+"Think of a shared folder where everyone can write. The bit stops users from removing each other's files.",
+"Redirections are applied left to right. When fd 2 is copied from fd 1, where is fd 1 pointing at that moment?",
+"uniq compares each line only with the line just before it. What must be true for duplicates to be counted together?",
+"Look for a safe pipeline that separates names with a null byte, so spaces in names cannot split them.",
+"Look for the per-process file that lists memory fields, including the resident set size.",
+"systemd caches unit files. After editing one, it must be told to read its configuration again.",
+"The name says on failure. Think about which exits count as failure and whether a manual stop does.",
+"Decode the flags one by one: l for listening, t for TCP, n for numeric, p for process.",
+"A blocked read uses no CPU. Think about what the number in the read call refers to.",
+"Exit codes above 128 mean death by a signal. Subtract 128 and recall which signal has that number."
+],"interview":[
+"Explain that one is a catchable request allowing cleanup and the other is forced by the kernel, then say which to try first.",
+"Decode each digit as owner, group, other with r, w, x values, then explain what read, write and execute mean on a directory.",
+"Name stdin, stdout and stderr, then explain left-to-right redirection and why the order of the two redirects matters.",
+"Build the pipeline stage by stage: extract the field, sort, count duplicates, sort by count, take the top ten.",
+"For bash cover trap on EXIT, INT and TERM; for C++ cover handling the signal, stopping new work, and finishing in-flight work.",
+"Define a zombie as an exited child not yet waited on, why the kernel keeps it, and fixes like reaping or killing the parent.",
+"Explain what each special bit does on files and directories, then mention risks like privilege escalation in setuid programs.",
+"Explain that load average counts tasks in uninterruptible sleep, then check I/O wait, blocked tasks and slow disks or mounts.",
+"Name tools like ss or lsof with the right flags, then pitfalls such as needing root, containers and network namespaces.",
+"Explain that /proc is a virtual filesystem showing live kernel state, and which per-process files tools like ps read.",
+"Explain ptrace stopping the process at each syscall, the high overhead this causes, and lighter tools like perf or eBPF.",
+"Cover unit loading, dependencies and ordering, cgroups, starting the process, logging, and restart policy on exit.",
+"Decode 137 as death by SIGKILL, list who could send it like the OOM killer or cgroup limits, and where to find proof.",
+"Prefer idempotent built-in tools, add strict script rules, dry runs and locking, and list failure modes like wrong paths.",
+"Apply least privilege and containment: sandboxes, unprivileged users, limited secrets, resource limits and review of commands."
+]}

@@ -1,0 +1,36 @@
+{
+ "quiz": [
+  "or returns the first truthy operand. Check each value in order.",
+  "A loop's else runs when the loop finishes without break. The loop variable keeps its last value.",
+  "Start at 10, step by -3, and stop before reaching 0.",
+  "The default list is created once, when the function is defined, and reused on every call.",
+  "b = a does not copy anything. Check whether += on a list builds a new object or changes the existing one.",
+  "Ask what parentheses alone do in an expression like (2 + 3), then what the extra symbol in (5,) adds.",
+  "Negative indexes count from the end, and a step of -2 walks backward skipping one each time.",
+  "1, 1.0 and True are equal and hash the same. The first key is kept but the last value wins.",
+  "A starred target always produces the same container type, whatever is being unpacked. Recall which type that is.",
+  "One of these returns a new list and the other works in place. What does an in-place list method return?",
+  "zip stops when the shortest input runs out.",
+  "Removing items while looping shifts later items left, so the loop skips some.",
+  "Parameters after the star must be passed by keyword. Look for a call that passes c by position.",
+  "Chained comparisons are joined with and.",
+  "Recall what the literal {} meant before sets existed in Python, and why an empty set cannot use a brace literal.",
+  "Targets are assigned left to right, so i changes before nums[i] is assigned."
+ ],
+ "interview": [
+  "Compare mutability, hashability, memory and intent: fixed records versus growing collections.",
+  "List the falsy values and explain that or returns an operand, so a valid 0 or empty value can be replaced by mistake.",
+  "Explain the default being evaluated once at definition time, and the None-default pattern as the fix.",
+  "Explain passing object references by value, often called pass by assignment, and how mutation versus rebinding behaves.",
+  "Explain calling iter on the object, then next repeatedly until StopIteration ends the loop.",
+  "Explain else running only when no break happened, with a search loop as the classic example.",
+  "Explain hashing to find a slot, average versus worst case, and that insertion order is guaranteed in modern Python.",
+  "Explain that keys need a stable hash, and a mutable list could change its hash after being stored.",
+  "Cover start, stop, step, negative values, copying cost, and NumPy slices being views instead of copies.",
+  "Contrast identity with equality and when to use each, with None as the key case for is.",
+  "Explain the right side evaluating first, then left-to-right assignment, and the pitfall when targets depend on each other.",
+  "Contrast adding one item with adding many, and explain why removing from the front shifts every element. Mention deque.",
+  "Explain each parameter kind, their order, and use cases like flexible wrappers and stable APIs.",
+  "Mention dict.fromkeys or a seen set with a loop, and the requirement that items be hashable."
+ ]
+}

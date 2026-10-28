@@ -1,0 +1,32 @@
+{"quiz":[
+"Diagnose before you change anything. Which option is read-only and tells you which mount is full before you dig into folders?",
+"A file's space is freed only when nothing refers to its inode any more. Besides a name, what else can keep an inode alive?",
+"The file bits look fine, so look at the path. What does a user need on each folder to walk through it, and does www-data have it here?",
+"umask removes bits from the defaults: files start from 666 and directories from 777.",
+"Read the man page for -G: does it add to the list of extra groups, or set the whole list? Which flag changes that?",
+"Think least privilege: if the service is hacked, how much should the attacker get? Should it be able to log in or use sudo?",
+"In systemd, starting a unit now and hooking it into boot are separate actions. Which command touches the [Install] section?",
+"Read each CPU field: us is user, sy is system, wa is waiting on I/O, st is stolen time.",
+"Extract the IP column, sort so duplicates are adjacent, count them, then sort by count descending.",
+"Ask the Debian package database which package owns a given file path.",
+"Shared libraries are loaded into memory when a process starts. Has nginx started again since the new library was installed?",
+"sshd refuses keys if the folder or key file can be read or written by other users.",
+"A timeout means no reply at all came back, which is different from an authentication error.",
+"Think about which half of a key pair proves your identity and must never leave your machine."
+],
+"interview":[
+"Cover checking which filesystem is full, finding big folders, deleted-but-open files, inodes, and safe cleanup.",
+"Explain read, write and execute for user, group and other, then check every directory on the path and the nginx user.",
+"Explain users, groups and service accounts with no login, and show adding a group with the append flag safely.",
+"Mention systemctl status, enabling at boot, and reading logs with journalctl and its filters.",
+"Cover generating a key, copying the public key, file permissions, a passphrase, and disabling password login.",
+"Describe a sequence: status, logs, config check, permissions, ports, dependencies, then reproduce by hand.",
+"Mention tools like ss or lsof to find the process, then stop it gently through its service manager.",
+"Give a concrete question like top IPs or error counts and walk through each step of the pipeline.",
+"Cover updating packages, restarting affected services, checking reboot-required signals, and staged rollout.",
+"Check the user, key offered, file permissions and ownership, authorized keys contents, and server logs.",
+"Explain that load counts processes waiting on I/O too, then check iowait and disk tools.",
+"Discuss central identity, short-lived certificates or a bastion, automated key distribution, and fast revocation.",
+"Look at system logs for the OOM killer, systemd records, kernel messages and exit codes to find evidence.",
+"Cover faster command suggestions and log reading, plus verifying commands, safe testing, and not sharing secrets."
+]}

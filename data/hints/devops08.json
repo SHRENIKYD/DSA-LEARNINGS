@@ -1,0 +1,35 @@
+{
+ "quiz": [
+  "Each container has its own writable layer on top of the image. What happens to that layer when the container is removed?",
+  "In shell form, a shell becomes PID 1 and may not pass signals on. Which form runs the program directly?",
+  "Recall which instruction is fixed and which one only gives default arguments. What do extra docker run arguments override?",
+  "Docker caches each layer until something it depends on changes. Think about what COPY of the whole folder depends on.",
+  "Image layers are stacked and only ever added. Does removing a file in a later layer take bytes out of an earlier one?",
+  "Earlier stages are only used during the build. Think about which stage becomes the image.",
+  "exec format error means the binary does not match the server CPU. Think about one tag that can serve more than one CPU type.",
+  "Check each option: is the token saved in image history, the config, or a layer? Look for one that exists only while a step runs.",
+  "Each container has its own network stack. Ask what localhost points to inside the api container, and how compose names services.",
+  "A started process is not always ready to accept connections. Which of these does depends_on check without extra settings?",
+  "Exit code 137 means 128 plus signal 9. Combine that with the OOMKilled flag.",
+  "By default compose down keeps named volumes. Look for the flag that removes them too.",
+  "Alpine uses a different C library from most Linux distros. Think about what that means for prebuilt pip wheels.",
+  "PID 1 has special duties in a container. Think about what a tiny init process handles for you."
+ ],
+ "interview": [
+  "Explain the image as a read-only template and the container as a running instance with its own writable layer.",
+  "Cover how ENTRYPOINT and CMD combine, and why exec form matters for signals versus shell form.",
+  "Check logs, exit code, inspect output and the command it runs; then try running it with a shell to explore.",
+  "Explain layers and cache invalidation, then order the Dockerfile from least to most often changing and copy dependency files first.",
+  "Mention smaller base images, multi-stage builds, removing build tools and caches, dockerignore and inspecting layers.",
+  "Separate build secrets from runtime secrets: secret mounts for builds and injected env or files at runtime, never baked in.",
+  "Cover minimal base, non-root user, pinned versions, scanning, no secrets, signing and regular rebuilds.",
+  "Explain the default bridge, user-defined networks with DNS by name, host networking and publishing ports with -p.",
+  "Compare Docker-managed storage, host folders mounted in, and in-memory storage, with a use case for each.",
+  "Explain that start order is not readiness; use health checks with depends_on conditions and retries in the app.",
+  "Explain PID 1 signal handling and reaping duties, what zombies are, and using an init like tini.",
+  "Cover manifest lists, platform-specific images and building with buildx for several platforms.",
+  "Look at exit codes, logs from the previous run, OOM kills, health checks and recent changes, then fix the root cause.",
+  "Compare daemon versus daemonless, rootless by default, CLI compatibility and compose or pod support.",
+  "Explain tags as movable names and digests as immutable ids, and deploying by digest across environments."
+ ]
+}

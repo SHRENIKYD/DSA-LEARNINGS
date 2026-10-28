@@ -1,0 +1,32 @@
+{"quiz":[
+"Think about how two different names can point to the same file. Where must the name live for that to work?",
+"Find how many pointers fit in one block, then see which level of indirection dominates the total size.",
+"A hard link is another name for the same inode. Data is freed only when the link count reaches zero.",
+"A symlink is a tiny file of its own. Think about why it breaks when the target is moved or deleted.",
+"External fragmentation hurts when a file needs one long unbroken run of free blocks.",
+"After a crash, recovery must tell finished transactions apart from half-written ones. What marks the finished ones?",
+"For first-come order, add up the distance between each pair of positions in the order given, starting from the head.",
+"For each algorithm, ask how it picks the next request. Which rule can keep skipping a distant request if nearby ones keep arriving?",
+"One disk's worth of space in RAID 5 goes to parity. Subtract that from the total raw capacity.",
+"RAID 6 stores two independent parity blocks per stripe. Think about what that buys you in failures.",
+"Parity is computed with XOR, and XOR undoes itself. Think about how to recover one missing block from the rest.",
+"A successful write only means the kernel accepted the data. Think about where it waits and what forces it to disk.",
+"Ask whether epoll does the I/O for you, or just tells you which file descriptors are ready to use.",
+"Think about who moves the data between the device and memory, and what the CPU is then free to do.",
+"Compare what each mode writes to the journal and whether data blocks must reach disk before the metadata commit."
+],"interview":[
+"List the metadata and block pointers an inode holds, then explain that directory entries map names to inode numbers.",
+"Compute pointers per block first, then the size reached by direct, single, double and triple indirect pointers, and add them.",
+"Explain a hard link as another name for the same inode with a link count, and a symlink as a path that can dangle.",
+"Compare access speed, fragmentation and growth for each method, then explain how FAT moves the next-block links into a table.",
+"Describe log first, commit record, then checkpoint, and say what recovery does if a crash happens before or after the commit.",
+"Explain what goes through the journal in each mode, the safety versus speed trade-off, and which mode is the default.",
+"For each algorithm state the rule for the next request, then trace the head path and sum the distances.",
+"Explain that SSDs have no moving head, and that drive firmware with command queuing already reorders requests itself.",
+"For each level give the usable capacity for n disks and how many failures it survives, plus a note on write cost.",
+"Show parity as XOR of the data blocks, then rebuild a missing block by XOR of the rest, with a small bit example.",
+"Explain the page cache and what fsync guarantees, then the write temp file, fsync, rename, fsync directory pattern.",
+"Define each I/O style, then explain that epoll is readiness notification while true async I/O reports completion.",
+"Define DMA, then trace a read through the syscall, page cache miss, block layer, device DMA, interrupt and copy to the user.",
+"Pick a RAID level, file system mode and fsync approach, and justify each by write pattern, safety and rebuild time."
+]}

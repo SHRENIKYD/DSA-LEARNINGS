@@ -1,0 +1,32 @@
+{"quiz":[
+"Value category depends on the expression, not the declared type; ask whether this expression has a name.",
+"Look at what std::move is defined as in the library: think about casts versus actually moving bytes.",
+"Ask whether a const rvalue reference can bind to the move constructor's non-const rvalue reference parameter.",
+"Think about what std::vector must guarantee if an exception happens while it relocates elements during growth.",
+"For a forwarding reference, an lvalue argument changes how T is deduced; then apply reference collapsing.",
+"A forwarding reference needs T to be deduced at that call; check where T was already fixed by the class.",
+"The mutable keyword lets the closure change its own captured copy; ask whether that touches the outer variable.",
+"Members are not local variables; ask what the lambda must hold to reach a member inside a member function.",
+"Plain auto deduces like a by-value template parameter; recall what happens to top-level const there.",
+"decltype treats a bare name differently from a name wrapped in extra parentheses, which is an lvalue expression.",
+"constexpr means the function may run at compile time; ask what happens when its input is only known at runtime.",
+"You want compile-time initialization to avoid init-order problems, without making the variable read-only.",
+"std::get checks which alternative is active; recall how it reports a mismatch, compared with get_if.",
+"Views are lazy; trace each element through filter and take, and watch for the extra step when the counter advances."
+],"interview":[
+"Define each category by identity and movability with examples, then group them into glvalues and rvalues.",
+"State that it is only a cast that changes overload choice, generates no code, does not empty the object, and fails on const.",
+"Show stealing the pointer and nulling the source, then cover noexcept, self-move checks and freeing the old buffer.",
+"Explain each rule, how declaring some special members suppresses implicit moves, and why Rule of 0 is preferred.",
+"Link push_back's strong exception guarantee to reallocation, and explain move_if_noexcept falling back to copies.",
+"Explain preserving value category through a wrapper using forwarding references and std::forward, then write make_unique.",
+"Contrast the unconditional cast with the conditional cast based on T, and where each one belongs.",
+"Describe the closure class with captures as members, then explain each capture form and its lifetime risks.",
+"Describe a callback outliving the object or locals it captured, and fixes like capturing by value or shared_from_this.",
+"Cover auto as by-value deduction, decltype rules for names versus expressions, and when decltype(auto) is useful.",
+"Explain the hidden variable and how the names refer into arrays, tuple-like types or aggregate members.",
+"Compare each keyword on when the value is known, whether calls must be compile-time, and whether the object is mutable.",
+"Describe the use case for each, their storage costs, heap use, and the type safety trade-offs of any.",
+"Explain range algorithms with projections and lazy composable views, then pitfalls like dangling and repeated evaluation.",
+"Explain prvalues initializing in place since C++17 with no constructor needed, versus NRVO being an optional optimization."
+]}

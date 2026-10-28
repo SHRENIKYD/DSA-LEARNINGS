@@ -1,0 +1,31 @@
+{"quiz":[
+"An origin is scheme plus host plus port. Remember default ports and that path and query do not count.",
+"Cross-origin requests can often still be sent. Think about what script is prevented from doing with the result.",
+"Simple requests skip the preflight. Think about which content types count as simple.",
+"Requests that include cookies need the server to name a specific origin, not allow everyone.",
+"Each flag guards against a different threat: script access, plain HTTP, or cross-site sending. Match the threat.",
+"Lax allows cookies on top-level navigations using safe methods. Is a POST from another site safe?",
+"DOM-based XSS happens entirely in browser code, where untrusted URL data reaches a dangerous sink.",
+"Inside an attribute, the attacker could break out by closing the quote. The encoding must handle that character too.",
+"Think in layers: a cookie setting that limits cross-site sending, plus a check the attacker cannot forge.",
+"A nonce lets only scripts carrying the secret value run. Injected inline code does not know it.",
+"Only one option is about who may embed your page. Check what each header actually controls.",
+"Think about which storage script cannot read at all, so the attacker cannot copy it out.",
+"HTTP/2 shares one TCP connection, so a lost packet blocks all streams. Think about what QUIC does differently.",
+"A secure page loading a script over plain HTTP could let an attacker change it. Browsers treat active content strictly."
+],
+"interview":[
+"Define origin as scheme, host and port, and explain that sending is often allowed but reading cross-origin responses from script is blocked.",
+"Explain which requests need an OPTIONS preflight and the response headers the server must send for allowed origin, methods and headers.",
+"Explain that Postman ignores CORS. Check the preflight in devtools and fix the server headers, not the client.",
+"Explain each flag (script access, HTTPS only, cross-site sending) and recommend all three on a session cookie.",
+"Cover stored, reflected and DOM-based XSS, and defenses like output encoding, safe DOM APIs, sanitizing and CSP.",
+"Explain that XSS can steal tokens from localStorage, and compare with HttpOnly cookies plus CSRF protection or short-lived in-memory tokens.",
+"Explain forged requests that ride on automatic cookies, why sending is not blocked, and defenses like SameSite, tokens and Origin checks.",
+"Explain CSP as an allowlist for resources, and a rollout using report-only mode, nonces, fixing violations, then enforcing.",
+"Explain tricking clicks through a hidden iframe, preventing it with frame-ancestors or X-Frame-Options, and how it differs from CSRF.",
+"Mention multiplexing and header compression in HTTP/2, then TCP head-of-line blocking and how QUIC in HTTP/3 fixes it.",
+"Explain forcing HTTPS, blocking insecure subresources, and hash checks on third-party scripts as layers of one defense.",
+"Explain that any site can make credentialed reads of user data. Fix with a strict allowlist of origins and Vary on Origin.",
+"Cover secure cookies, a strict CSP, HSTS, frame protection, CSRF defenses, safe rendering and careful handling of third-party scripts."
+]}

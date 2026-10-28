@@ -1,0 +1,29 @@
+{"quiz":[
+"In one big if/else method, each branch can depend on every state. Multiply states by events to size the review.",
+"Ask who decides when the behaviour object changes: the object itself as things happen, or the client choosing once.",
+"SCAN keeps going in its direction to the end of the floors before turning. Add the distance up to the top, then down to the lowest request.",
+"Think about which policy always picks the nearest request next. What happens to a far request if near calls keep coming?",
+"Hall calls carry a direction. Where would a passenger waiting at 5 want to go, and which way is the car going?",
+"A greedy coin choice may take the big coin first and get stuck. Check whether any combination of coins makes the amount.",
+"Think about what happens if the sale fails or is cancelled. Where should the money be so it can be returned exactly?",
+"The customer must never be charged for cash they did not get. Order cheap checks, money movement and recovery.",
+"The retry carries the same transaction id. What should the bank do when it has already processed that id?",
+"Greedy takes the biggest notes it can and never goes back. Try it with the stock given and see if it reaches the amount.",
+"Both threads checked before either wrote. Name this race, and think of an atomic operation that writes only if unchanged.",
+"Think about what a child state does with an event it does not handle, and how much duplication that saves.",
+"A flag records one fact. Ask what makes something change the object's behaviour and need its own exit."
+],"interview":[
+"Cover clarifying questions, the states and events, a state diagram, then the main classes and how coins and stock are handled.",
+"Mention cases with few states, simple logic, or when a table or enum switch is clearer, and the cost of many small classes.",
+"List states like idle, moving up, moving down, doors open, and maintenance, with the events that move between them.",
+"Compare fairness, total travel, and starvation risk for each policy, then justify a choice like LOOK for real elevators.",
+"Talk about a cost function such as distance, direction and load, picking the cheapest car, and reassigning if things change.",
+"Cover reserve then dispense then confirm, reversing on failure, idempotent transaction IDs, and reconciling after crashes.",
+"Cover a local session counter for retaining the card quickly and the bank's per-card counter across all ATMs, and why each is needed.",
+"Explain how two threads both see the same old state, then give fixes like locks, compare-and-set, and conditional database updates.",
+"Mention saving the current state and needed data after each transition, replaying or reloading on restart, and safe resume.",
+"Cover adding a new state class, which events it allows, how to enter and leave it, and which existing states change.",
+"Explain nested states that share parent transitions, and when flat machines start repeating the same transition everywhere.",
+"Mention testing every state and event pair, invalid transitions, failure paths like dispense errors, and using fakes for hardware.",
+"Check the state machine for missing or illegal transitions, concurrency, money handling, idempotency, and failure paths."
+]}

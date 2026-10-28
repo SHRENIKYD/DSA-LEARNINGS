@@ -1,0 +1,31 @@
+{"quiz":[
+"With TCP, one lost packet holds back data for every stream behind it. Think about how QUIC orders data.",
+"Think about what identifies a QUIC connection, compared with TCP's four-tuple of addresses and ports.",
+"Early data is sent before the handshake can prove it is fresh. Think about what an attacker could do with a recorded copy.",
+"Ask which rule decides forwarding first, and whether AS path length is ever compared between different prefixes.",
+"Recall the BGP decision order; the first common attribute is one that operators set to prefer exits locally.",
+"Compare the announced prefix length with the maxLength in the ROA, not just the origin AS.",
+"Anycast spreads traffic across many sites that share one address. Think about where attack traffic lands.",
+"Work out how many keys still map to the same backend when the modulus changes.",
+"Think about how evenly Maglev spreads load and how little it shuffles when backends change.",
+"In DSR the load balancer only sees the incoming direction. Think about the path the response takes.",
+"Think about what the firewall recorded when your outgoing packet left, and how the reply packet relates to it.",
+"Only TCP 443 is open. Check which options run over TCP at all, and which use separate IP protocols.",
+"Think about how the server avoids storing half-open connection state until the client proves it is real.",
+"Ask which attack depends on packets carrying a forged source address to work."
+],
+"interview":[
+"Contrast TCP's four-tuple identity with QUIC connection IDs and path validation on the new address.",
+"Explain HOL blocking in TCP for multiplexed streams and QUIC's independent per-stream delivery.",
+"Cover resumption with a ticket, sending data in the first flight, replay risk, and limiting it to idempotent requests.",
+"Mention longest prefix first, then the decision order: local preference, AS path length, origin, MED, and so on.",
+"Explain announcing someone else's prefix or a more specific one, and ROAs with origin validation to reject it.",
+"Explain the same IP from many PoPs with BGP choosing the closest, and weaknesses like route changes and TCP state.",
+"Compare speed and simplicity of L4 with routing and TLS features of L7, and layering L4 in front of L7.",
+"Explain the mass remapping with modulo, then consistent hashing or Maglev and connection tracking.",
+"Explain replies going straight from server to client, saving LB bandwidth, and its setup limits.",
+"Cover per-packet rules versus a connection tracking table, and risks like table exhaustion and state sync.",
+"Compare layer, performance, setup complexity, and firewall friendliness, with a use case for each.",
+"Layer it: anycast and CDN, scrubbing, rate limits, WAF, SYN cookies, autoscaling and origin hiding.",
+"Explain spoofed sources, small requests causing big replies, and fixes like BCP38 and closing open services."
+]}

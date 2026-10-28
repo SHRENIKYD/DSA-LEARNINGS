@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about how far the right border of the known palindrome can move in total across the whole run.",
+"In the padded string, the radius counts both letters and separators. Relate it to the original palindrome length.",
+"Drop the first letter of two suffixes that share h letters. How many letters do the shorter suffixes still share for sure?",
+"Every suffix adds its length in prefixes, but those shared with the previous suffix in sorted order are repeats.",
+"Like the KMP prefix function, the link is a plan B that keeps as much of what you already read as possible. Prefix or suffix of v?",
+"Computing fail of a child reads data from the node its parent's link points to. Is that node deeper or shallower than the child?",
+"Thue-Morse pairs make the hash difference divisible by a huge power of 2. Which setup uses a modulus that is not prime?",
+"Use the birthday estimate: number of pairs divided by the modulus.",
+"Think of endpos classes forming a tree with at most N leaves. How many nodes can such a tree have at most?",
+"Binary search over sorted suffixes, comparing the pattern each step. Count comparisons times their length.",
+"Online appends suggest a structure that can be extended one character at a time and tracks new substrings.",
+"Walking through sorted suffixes, shared prefixes can only shrink. So what combines the adjacent lcp values between ranks a and b?",
+"If a maps to 0, extra leading a's add nothing to the hash value."
+],"interview":[
+"Explain padding, mirror positions, and why the right border only moves right, giving linear time.",
+"Define the sorted array of suffix starts and explain prefix doubling with sorting by rank pairs.",
+"Explain moving through suffixes in text order and the lemma that the carried length drops by at most one.",
+"Use the maximum LCP for overlapping; for non-overlapping, mention binary search on length with a position check.",
+"Compare total time with many patterns, building one automaton versus scanning the text once per pattern.",
+"Discuss Aho-Corasick over tokens, streaming state across tokens, normalising text, and updating the phrase list.",
+"Use the birthday bound, compare number of hashes to the modulus size, and explain when two moduli are needed.",
+"Explain inputs crafted to collide for a known base and modulus, and defend with random bases and large or double moduli.",
+"Explain end-position equivalence classes and why clones keep states correct when a new character splits a class.",
+"Compare memory, build simplicity, and the queries each supports well.",
+"Mention brute force sets, hashing, suffix array with LCP, and suffix automaton, with their costs.",
+"Mention suffix automaton or suffix array on the joined strings, or binary search with hashing.",
+"Name examples like deduplication, finding repeated text in training data, and contamination checks.",
+"Compare running KMP per word, hashing by length groups, Aho-Corasick, and suffix structures, with costs."
+]}

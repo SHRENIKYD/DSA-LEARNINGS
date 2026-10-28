@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Multiply 24 hours by 3,600 seconds and round to the nearest power of ten.",
+  "Use the rule that 2 to the 10 is about 10 to the 3, so each step of 10 in the exponent is a factor of a thousand.",
+  "Recall the latency table: RAM is about 100 ns and an SSD random read is about 100 microseconds. Compare them.",
+  "Divide events per day by about 100,000 seconds per day.",
+  "Bandwidth equals responses per second times size. Then multiply bytes by 8 to get bits.",
+  "Ask whether traffic is spread evenly across the day, and what breaks if you only plan for the average.",
+  "Compare the size of a text post or a like with the size of media files.",
+  "The rule says a small share of items gets most of the reads. Apply that share to the daily read volume.",
+  "Compute shards needed for storage and shards needed for writes separately, then take the larger number.",
+  "Leave time at the end for deep dives and wrap-up. Aim to finish the overall design a bit past the middle.",
+  "Functional requirements say what the system does; non-functional ones describe qualities like speed or availability.",
+  "Think about what the database must do to skip N rows, and what happens to positions when new items are added at the top.",
+  "Convert latency to seconds, then multiply by the request rate.",
+  "Light speed sets a floor on distance delay. How can you cut the distance itself?"
+ ],
+ "interview": [
+  "Explain that numbers drive design choices like sharding, caching and bandwidth. Mention order-of-magnitude thinking, not precision.",
+  "Go from DAU to actions per user per day, divide by seconds in a day, then apply a peak factor. Separate reads and writes.",
+  "Mention memory, SSD, disk, same-datacenter and cross-region round trips. Show how they decide caching and call patterns.",
+  "Multiply items per day by size and retention, then add replication, indexes, metadata and media. Mention growth headroom.",
+  "Explain caching the hot share of reads. Cover limits like skewed or flat access patterns and measuring real hit rates.",
+  "Lay out phases with rough times: requirements, estimates, API and data model, high-level design, deep dives, wrap-up.",
+  "Cover users and scale, core features, group chat, media, delivery guarantees, online status, history and latency goals.",
+  "Pick areas that are hardest or riskiest for this system, tied to the requirements, and ask the interviewer what interests them.",
+  "Name the options, state what each gains and costs, tie the choice to requirements, and say when you would switch.",
+  "Discuss not sharding early because of complexity, but plan for growth, replicas and backups. Base the decision on the numbers.",
+  "Explain how throughput times latency gives concurrency, which sizes thread pools, connections and servers.",
+  "Mention tokens per request, GPU throughput, long latency, cost per call and caching of prompts or results.",
+  "Point to skipping requirement clarification. Cover asking about scale first and designing for the stated need with room to grow."
+ ]
+}

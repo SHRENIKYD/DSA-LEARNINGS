@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "A list does not hold the objects themselves inside its array. Think about what each slot points to.",
+  "Appending is usually cheap, but sometimes the array is full. What has to happen then?",
+  "Check whether 1, 1.0 and True compare equal and hash the same. Then ask what a dict does with the key object and the value when a key already exists.",
+  "Separate when CPython first kept insertion order as a side effect of the compact dict from when the language spec promised it.",
+  "A new set has 8 slots and a small int hashes to itself. Work out hash & 7 for each number; sets print in slot order.",
+  "Augmented assignment on a tuple item does two steps: call += on the list, then store the result back into the tuple. Check each step.",
+  "Ask what state a generator is in after sum has read all of its items, and what a second pass over it would see.",
+  "In nested comprehensions, the first for clause is the outer loop.",
+  "A shallow copy makes a new outer list but shares the inner lists. Track which change touches shared objects.",
+  "Deepcopy must not loop forever on a cycle or copy a shared object twice. Ask what bookkeeping lets it notice an object it has seen.",
+  "Look for a membership test on a structure that has to scan every element.",
+  "A BFS adds at the back and removes from the front. Compare the cost of removing the first item in each option.",
+  "Probing follows a chain of slots. Think about what a fully empty slot would tell a later lookup."
+ ],
+ "interview": [
+  "Describe a dynamic array of pointers with spare capacity, and the costs of indexing, append, insert, pop and search.",
+  "Explain occasional resize copies spread over many cheap appends, giving constant average cost per append.",
+  "Cover hashing the key, a compact index table with open addressing and probing, entries in order, and resizing.",
+  "Explain that equal objects must have equal hashes, the hash must not change, and what breaks when this is violated.",
+  "Explain that order depends on hash values and table size, and that small ints hash to themselves.",
+  "Compare fixed versus growing data and hashability, and note a tuple holding mutable items can still change inside.",
+  "Contrast copying the outer container versus copying everything recursively, with examples like slicing, copy and deepcopy.",
+  "Explain that multiplying a list of lists repeats the same inner list, and the comprehension fix.",
+  "Contrast building everything now versus producing items lazily, memory use, and single use for generators.",
+  "Explain closures looking up the variable when called, not when created, and fixes like default arguments or a factory function.",
+  "Give the cost of each and the reason: scanning, hashing, shifting, heap height, sorting cost, and one-pass joins.",
+  "Explain attackers forcing many hash collisions to slow dicts, and Python's defence of randomized string hashing.",
+  "Explain the memo dict for cycles and shared objects, and customizing with the deepcopy or copy special methods.",
+  "Discuss memory for a 50 million item set, alternatives like sorted arrays or Bloom filters, and lookup cost per ID."
+ ]
+}

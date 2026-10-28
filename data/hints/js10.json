@@ -1,0 +1,32 @@
+{"quiz":[
+"Think about what the JavaScript engine actually receives after tsc, esbuild or swc has finished. Does it know about TS types at all?",
+"Compare let and const. If the variable can be reassigned later, would a single literal type be too strict for it?",
+"One option turns checking off completely. Look for the type that accepts anything but blocks use until you narrow it.",
+"Most options work with both. Think about what happens when you declare the same name twice, once for each kind.",
+"pet could be either type at runtime. Which members are guaranteed to exist no matter which one it actually is?",
+"Think of types as sets of values. An intersection keeps values in both sets. What is in both string and number?",
+"Structural typing normally allows extra properties. What is special about an object literal written directly in the call?",
+"Each case removes one member of the union. After every member is removed, what type describes what is left?",
+"The return type p is Fish is a type predicate. Read it as a promise about p that depends on the boolean result.",
+"Numeric enums create a reverse mapping from value back to name.",
+"Type stripping can only remove syntax that has no runtime code. Which option emits JavaScript?",
+"T is inferred from the arguments. Look for a call where the two arguments disagree on type.",
+"keyof T produces a union. Read extends here as must be assignable to. What kind of values does that union hold?",
+"Recall the flags that strict turns on; one listed option is a separate opt-in flag.",
+"esbuild and swc work one file at a time and only remove type syntax. Which tool actually runs the full type checker?"
+],"interview":[
+"Mention catching bugs early, tooling, and refactoring, plus no runtime checks or validation.",
+"Explain any turns checks off, unknown requires narrowing, and never means no value is possible.",
+"Rely on inference for locals and annotate boundaries like exported functions and return types.",
+"Compare declaration merging, extends, unions and mapped types, and give a team default.",
+"Explain compatibility by shape rather than name, and branded types for nominal behaviour.",
+"Define both, then explain why a union of objects gives fewer safe properties and intersection gives more.",
+"Explain literal types and how let or object properties widen to string, with fixes like as const.",
+"List typeof, instanceof, in, equality, discriminants and type predicates, with when to use each.",
+"Describe an exhaustive switch with a never check in the default branch.",
+"Compare runtime output and erasable syntax, and recommend unions or as const objects.",
+"Explain reusable typed code, constraints with extends, and how T is inferred from arguments.",
+"Explain that the caller chooses T, so returning a specific value may not fit, and fixes for it.",
+"Mention strict, module settings, target, noUncheckedIndexedAccess and similar options with reasons.",
+"Mention strict settings, runtime validation at boundaries, and type checks in CI for generated code."
+]}

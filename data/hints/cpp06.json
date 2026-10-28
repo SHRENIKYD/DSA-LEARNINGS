@@ -1,0 +1,30 @@
+{"quiz":[
+"Separate the pointer variable itself, which is a normal local, from the object that new creates for it.",
+"Check that every allocation form is paired with its matching release form; also recall what deleting a null pointer does.",
+"Think of automatic objects like plates on a stack. A later object may depend on an earlier one, so which must go first?",
+"A destructor cleans up a finished object. Did this object ever finish its constructor, and which of its parts did?",
+"The name says the smart pointer lets go of something. Ask what happens to the object and who must free it afterwards.",
+"With the default empty deleter, think about how many raw pointers a unique_ptr needs to store.",
+"Count only the live owners: a moved-from shared_ptr is empty, and weak_ptr does not add to the owner count.",
+"Reference counting only counts owners; ask whether a count can reach zero when two objects own each other.",
+"weak_ptr has no * operator. Also ask what can happen in another thread between checking expired() and using the object.",
+"Think about how many memory allocations each form needs for the object and its control block.",
+"Each shared_ptr built from a raw pointer starts its own fresh control block; think about what happens with two of them.",
+"Ask where each smart pointer keeps the deleter: inside its type, or type-erased somewhere shared.",
+"Separate three things: the reference count, the pointed-to object, and one shared_ptr variable used by many threads."
+],"interview":[
+"Compare lifetime, allocation speed, size limits and cleanup of stack versus heap, and when each one is the right choice.",
+"Define acquire in constructor and release in destructor, explain why destructors always run on scope exit, and give examples.",
+"List leaks, double free, use-after-free, mismatched forms, overflows and uninitialised reads, then prevention and detection tools.",
+"Describe move-only single ownership with no overhead, then how to return it and how to pass it for owning versus borrowing.",
+"Describe the two pointers in a shared_ptr and what the control block holds: strong count, weak count, deleter, allocator.",
+"Explain observing without owning, turning it into an owner with lock, and uses like breaking cycles, caches and observers.",
+"Explain ownership cycles that keep counts above zero, other forever-held references, and fixing them with weak_ptr.",
+"Cover no naked new, exception safety, single allocation, then cases like custom deleters, private constructors, long-lived weak_ptrs.",
+"Explain a callable used instead of delete, then show wrapping a C handle like a file with a stateless functor and unique_ptr.",
+"Explain needing a shared_ptr to the current object, why building one from this double deletes, and how the base class fixes it.",
+"Cover deleted copy, noexcept move, release, reset ordering, self move assignment and the array form as the tricky parts.",
+"Use atomic strong and weak counters, explain which memory orders the increments and the final decrement need, and safe lock.",
+"Separate a true leak from bloat, use allocator stats and heap profilers to diff snapshots, then check sanitizers and caches.",
+"Map each choice to ownership: borrowing, nullable non-owning, sole owner, shared owner, and observer that breaks cycles."
+]}

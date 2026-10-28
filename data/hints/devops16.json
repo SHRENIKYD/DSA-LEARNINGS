@@ -1,0 +1,29 @@
+{"quiz":[
+"Remember that Git keeps every commit in history and bots scan public pushes within minutes. What must happen to the key itself?",
+"Policies match the real API path. Check how KV version 2 lays out its paths compared with the CLI path you typed.",
+"Think about storage durability, TLS, how unsealing works and what token dev mode hands out.",
+"Compare renewing a lease with getting a new one. What does the max TTL limit, and when does that limit start counting?",
+"Think about where the KMS master key is allowed to live, and how large data can be encrypted without sending it all to KMS.",
+"Keyless signing trades a token from the CI provider for a short-lived certificate. Which permission lets a job ask for that token?",
+"An SBOM is a machine-readable list of components. Think about how that helps when a new vulnerability is announced.",
+"Think about how an SCP relates to permissions granted inside the account. Can an allow inside the account beat a deny from above?",
+"A permission boundary does not grant anything by itself. Work out which actions are allowed by both the boundary and the policy.",
+"Look for a rule that exposes an admin protocol to the entire internet, not a public web listener that is meant to be open.",
+"Think about which kind of CloudTrail event records object reads, and whether it is on by default.",
+"Compare what an auditor checks in each report: that controls exist on one day, or something more.",
+"Severity alone does not tell you your real risk. Think about reachability, exposure, and how to record a decision safely."
+],"interview":[
+"Explain moving security checks earlier in the pipeline, then name first gates like secret scanning, dependency scanning and IaC checks, with low noise.",
+"Order matters: deactivate and rotate the key first, check CloudTrail for misuse, then clean history and add prevention like pre-commit scanning.",
+"Explain that KV v2 stores data under a data/ segment so policies must use it, and debug with token capabilities and audit logs.",
+"Describe the problem of the first secret needed to fetch others, then solve it with platform identity such as Kubernetes auth and CI OIDC.",
+"Compare short-lived per-client dynamic credentials with scheduled rotation, and weigh blast radius, auditability and system support.",
+"Explain the data key and master key roles, local encryption, storing the wrapped key, and benefits like speed, size limits and key control.",
+"Cover deduplicating, ranking by severity and real reachability or exposure, fixing in base images, and narrow waivers with owners and expiry.",
+"Explain that SCPs cap an account, boundaries cap a role, identity policies grant, and effective access is their intersection with deny winning.",
+"Use access data such as IAM Access Analyzer or CloudTrail to build a scoped policy, roll it out gradually, and offer a break-glass path.",
+"Describe signing with cosign, keyless or key-based, verifying at admission, and that a signature proves who built it, not that it is safe.",
+"Name services for logging, detection and findings like CloudTrail, GuardDuty and Security Hub, and how you would investigate with them.",
+"Separate technical hardening guides from audit reports, management-system certifications and card-data standards, saying who uses each.",
+"Describe public, app and data subnets with tight security groups and private endpoints, then explain zero trust as identity-based checks on every call."
+]}

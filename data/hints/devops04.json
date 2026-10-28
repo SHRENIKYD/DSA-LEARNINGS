@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about what git add records: a live link to the file, or a copy of its content at that moment?",
+"Check whether main is simply an ancestor of feature. If no new work exists on main, does Git need a new commit at all?",
+"Rebase copies commits onto a new parent. Ask what happens to a commit ID when its parent changes, and whether main moves.",
+"After a rebase the normal push is rejected. Pick the force option that still protects any commits a teammate pushed meanwhile.",
+"Others already pulled the bad commit. Which undo leaves existing history alone so nobody's clone breaks?",
+"The commits are not on any branch now, but Git kept a local record of past HEAD positions. Which command shows it?",
+"Look at the label on the first marker line. Which name refers to the branch you have checked out?",
+"Ask whether .gitignore applies to files Git already tracks, or only to files it has never seen.",
+"Copies of a leaked key may already exist outside your repo. Which action makes every copy useless at once?",
+"Ask which command is always safe because it never touches your own branches or files.",
+"Think about how often this team deploys and how many versions it supports. Long-lived branches suit which kind of release?",
+"Ask which tag type stores author, date and message, and whether git push sends tags by default.",
+"The lease compares against your local copy of the remote branch. Think about what could update that copy without you noticing."
+],"interview":[
+"Separate the version control tool that runs locally from the hosting service that adds pull requests, reviews and CI.",
+"Describe the three places a change lives, how add and commit move it between them, and what git status shows.",
+"Explain how each combines history (merge commit vs replayed commits), the golden rule about shared branches, and when to pick each.",
+"Cover reading the conflict markers, choosing the right content, testing, then adding and continuing; mention tools that help.",
+"List secrets, build outputs, large binaries and local config, then prevention: gitignore, pre-commit secret scanning and push protection.",
+"Order matters: revoke and rotate the key first, check logs for misuse, then clean history and add prevention.",
+"Compare revert for shared history, reset for local history, and reflog for recovering lost commits.",
+"Stay calm: find the lost commits in someone's reflog or local clone, restore them, then protect main against force pushes.",
+"Cover small focused changes, clear description and testing evidence; for infra, check the plan output, blast radius and rollback.",
+"Contrast short-lived branches merged to main with long-lived develop and release branches, then justify your pick for daily deploys.",
+"Mention semantic versioning, annotated tags, release notes and automating the release from a tag in CI.",
+"Think branch protection, required reviews and checks, CODEOWNERS, merge queues and small changes behind feature flags.",
+"Cover rotating the secret first, picking a history rewrite tool, a planned freeze, communicating, and having everyone re-clone.",
+"Discuss more and faster pull requests, the need for human review, tests and checks, limited agent permissions and secret safety."
+]}

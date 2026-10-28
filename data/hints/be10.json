@@ -1,0 +1,33 @@
+{
+  "quiz": [
+    "Think about coupling. If other services read your tables directly, can you ever change your schema freely?",
+    "Client-side means the caller itself looks up instances and picks one. Which option has the caller do the choosing?",
+    "Heartbeats prove an instance is alive. What should the registry do once that proof stops arriving?",
+    "In a sync chain every service must be up at once. Combine the three availabilities the way you combine independent probabilities.",
+    "Each step in a saga commits its own local transaction. Once committed, how can you undo its effect?",
+    "Choreography is like dancers reacting to each other. Is there one central coordinator?",
+    "Saving data and sending an event are two separate systems. What goes wrong if only one succeeds?",
+    "The relay will retry rows not marked as sent. What does that mean for the event already published?",
+    "A read model is built from events after the write. Is it always up to date at the same instant?",
+    "In event sourcing the events are the source of truth. How do you turn a list of events into state?",
+    "A sidecar sits next to each service and handles network concerns. Which concerns can it take off the app?",
+    "Microservices help large teams move independently. Which situation has none of those problems?",
+    "If each of three layers retries three times, how many calls can hit the bottom service? Think about how to keep that number bounded."
+  ],
+  "interview": [
+    "Mention business capabilities and bounded contexts, data ownership, team boundaries, and how often things change together.",
+    "List routing, auth, rate limits, and TLS, then warn against putting business logic in the gateway.",
+    "Compare callers querying a registry and balancing themselves with a load balancer or platform doing it for them.",
+    "Compare typed fast internal calls, simple public HTTP APIs, and async messaging for decoupling and spikes.",
+    "Describe a chain of local transactions with compensating actions, using an order, payment, and stock example.",
+    "Compare a central coordinator with event-driven reactions, and weigh visibility against coupling and complexity.",
+    "Explain writing to the database and a broker separately, then saving the event in an outbox table in one transaction.",
+    "Explain that delivery is at least once, and the effect becomes exactly once only with idempotent consumers.",
+    "Define separate write and read models, then mention when query needs justify the extra sync and eventual consistency.",
+    "Explain storing events as truth and replaying them, then benefits like audit and costs like schema evolution.",
+    "Cover mTLS, retries, routing, and telemetry without app changes, versus extra latency, resources, and operating cost.",
+    "Mention small teams, unclear domains, strong consistency needs, and the operational cost of distributed systems.",
+    "Cover distributed tracing with trace ids, correlation ids in logs, centralized logging, and metrics per hop.",
+    "Discuss additive changes, tolerant readers, versioning, schema registries, contract tests, and deprecation periods."
+  ]
+}

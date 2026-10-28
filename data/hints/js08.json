@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about how many threads run JavaScript on the main page, and how many stacks each thread has.",
+"Sort the three calls into synchronous code, microtasks and timer tasks, then recall which group the event loop runs first.",
+"Sort the options into tasks and microtasks. Timers and user events go through one queue; which API uses the other?",
+"Recall the loop's step order: one task, then what happens with the microtask queue, then rendering.",
+"An async function starts like any other function. Ask which part of its body is deferred, and why.",
+"Ask whether await checks if the value is a promise before deciding to pause, and where the rest of the function resumes.",
+"Ask whether the try block's frame is still on the call stack when the timer callback runs.",
+"Recall what the --unhandled-rejections flag defaults to in Node 15 and later.",
+"Node has a nextTick queue, a promise microtask queue and the timers phase. Recall which one is drained first.",
+"Returning a promise from then costs extra microtask ticks before the next then runs.",
+"Ask when the browser gets a chance to paint: between microtasks, or only between tasks?",
+"Think about when the function leaves the try block: when the promise is returned, or when it settles?",
+"Both timers are overdue when the loop ends. Ask what ordering rule the timer queue uses: creation time or due time."
+],"interview":[
+"Describe the call stack, task queue, microtask queue, and the loop that moves work between them.",
+"Explain what goes in each queue, and that all microtasks run after each task.",
+"Walk through sync logs first, then microtasks in order, then tasks, giving reasons for each line.",
+"Explain async functions as promise-based state machines, and await as resuming in a microtask.",
+"Compare task vs microtask timing, and when you want to let rendering happen first.",
+"Explain that the callback runs on a new stack later, then cover promise catch and global handlers.",
+"Explain how return await keeps the function in try/catch and in stack traces.",
+"List the main phases like timers, poll and check, and where nextTick and promises run between them.",
+"Define it as each task finishing without interruption, then cover long tasks blocking the UI.",
+"Explain that endless microtasks block tasks and rendering, and how to yield with a task instead.",
+"Walk through the request on other threads, the promise resolving in a later task, and await resuming.",
+"Explain that rendering steps and timer timing are separate, so the order is not guaranteed.",
+"Describe a pool with a running count and a queue, and explain why single-threaded code avoids races.",
+"Run it in a real engine, explain differences in microtask tick counts between engine versions or specs."
+]}

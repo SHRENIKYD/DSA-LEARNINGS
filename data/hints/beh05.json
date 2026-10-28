@@ -1,0 +1,31 @@
+{"quiz":[
+"Level is judged by reach and ambiguity, not by story length or detail. Which option shows the widest influence?",
+"Interviewers score individual behaviour. Ask what they can and cannot learn from a story told mostly as a group.",
+"Think about what a single written proposal gives people before a decision is made.",
+"The word suggests preparing connections before switching something on. Apply that to people before a group meeting.",
+"Supporting two systems forever is costly. Think about what makes the last teams finally move and what finds unknown users.",
+"Ask what goes wrong if the person leading the response is also deep in the code. What is left for them to do?",
+"In a serious outage, customers are hurting every minute. Which matters first: users or a full explanation?",
+"Blameless writing avoids naming or judging people. Which sentence points at something you could change and fix?",
+"Ask which fix still works on a tired day when nobody remembers the advice. People forget; tools do not.",
+"Good evidence is about what the person can now do on their own, not about meetings or feelings.",
+"Vague or defensive reflection sounds rehearsed. Which option shows real learning that changed your behaviour?",
+"Ignore surface reasons. Think about strategic value to the company, long-term cost, and what happens if you need to leave.",
+"Winning or avoiding leaves the conflict open. Which option turns the disagreement into a fair, recorded decision?",
+"As code gets cheaper to produce, ask what becomes the scarce skill at a senior level."
+],"interview":[
+"Define scope as breadth, ambiguity and impact across teams, and show it with a story where you defined the problem and aligned many groups.",
+"Use STAR: stakeholders and their concerns, pre-wiring, data or a written proposal, how you built agreement, and the outcome.",
+"Cover a clear template with problem, options and recommendation, who reviews, deadlines, async comments, and recording the decision.",
+"Describe the problem, the strategy and how you got buy-in, milestones over quarters, adjustments made, and measured results.",
+"Weigh whether it is core to your differentiation, three-year total cost of ownership, team capacity, vendor risk and an exit plan.",
+"Cover what was underestimated, the long tail of stragglers, deadlines, help and brown-outs, and lessons you applied later.",
+"Mention tailoring to their goals, giving stretch work, feedback, and evidence of new independent capability as proof.",
+"Give concrete mechanisms like standards, reviews, automation or hiring practice, with measurable improvement across the team.",
+"Use a timeline: detection, your incident commander role, mitigation first, communication cadence, root cause and follow-up fixes.",
+"Explain focusing on system gaps, not people, while keeping accountability through owned action items and follow-through.",
+"Pick a real decision, explain the context and information then, what went wrong, and the concrete habit you changed.",
+"Cover understanding their goal, presenting data and trade-offs, offering alternatives, and how the relationship held up.",
+"Discuss that judgment, problem choice, alignment and review standards matter more, and how you verify AI-produced code.",
+"Mention widening scope beyond your team, defining problems, writing and influence, sponsorship, and evidence of cross-team impact."
+]}

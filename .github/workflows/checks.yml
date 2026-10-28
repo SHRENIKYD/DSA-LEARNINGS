@@ -101,5 +101,7 @@ jobs:
         run: node tools/auth-test.js
       - name: Release tool test
         run: node tools/release-test.js
+      - name: Riddle and interview hints
+        run: node tools/hints-check.js --require
       - name: Visit statistics test
         run: node tools/visits-test.js

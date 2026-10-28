@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "Awaiting a task that has already completed does not suspend. Think about what actually causes the method to yield.",
+  "An async Task method captures errors instead of throwing them directly. Think about when the caller sees them.",
+  "Ask who can await an async void method and where its unhandled errors end up.",
+  "The WhenAll results array follows a fixed rule about input positions, not completion time.",
+  "Think about what await rethrows when a task holds several errors, and where you could still see all of them.",
+  "WhenAny returns the first finished task. Does it do anything to the tasks that have not finished yet?",
+  "Think about what Cancel() actually does to the running code. Can it stop code that never looks at the token?",
+  "Think about which thread is blocked by .Result, and which thread the code after await wants to resume on.",
+  "Think about code that cannot know whether its caller has a UI context, versus code that must touch controls.",
+  "Recall the main rule for ValueTask: how many times may it be awaited or read, and when?",
+  "ValueTask saves an allocation only in one case. Think about when the method finishes without really waiting.",
+  "WithCancellation supplies a token from the consumer side. How does it reach the code inside the iterator?",
+  "Think about whether an async iterator runs ahead on its own or only when the consumer asks for the next item.",
+  "Think about what kind of work belongs on the thread pool, and whether wrapping I/O helps."
+ ],
+ "interview": [
+  "Contrast an OS thread with its own stack against a task as a promise of a future result, and note tasks may not use a thread.",
+  "Describe the state machine: locals become fields, each await is a state, MoveNext resumes, and the builder creates the task.",
+  "Explain how blocking the single context thread stops the continuation, then give fixes like async all the way.",
+  "Recommend it for library code to avoid deadlocks and hops, and explain why UI app code must not use it.",
+  "Explain WhenAll waits for all and keeps every exception, while WhenAny returns the first finished task without throwing.",
+  "Cover the token source, passing tokens down, cooperative checks, and the exception type used to signal cancellation.",
+  "Explain the allocation saving on synchronous paths and the rule to consume it only once, with AsTask as the escape.",
+  "Describe async iterators with await foreach, pull-based flow, cancellation, and use cases like paging or streaming.",
+  "Compare SemaphoreSlim, Parallel.ForEachAsync and channels with worker tasks, and stress releasing in finally.",
+  "Explain manually completed promise tasks and how inline continuations can run on the completing thread and cause trouble.",
+  "Explain how blocked pool threads stop the continuations that would free them, the slow thread injection, and how to spot it.",
+  "Walk through when the method yields: synchronous until the first incomplete await, then the caller continues.",
+  "Explain that early exceptions are stored in the task, then describe splitting into a sync wrapper and an async core.",
+  "Compare the default offload method, the options of StartNew with its pitfalls, and bounded parallel async loops."
+ ]
+}

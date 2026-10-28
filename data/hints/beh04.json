@@ -1,0 +1,28 @@
+{"quiz":[
+"It is a checklist you run before coding. Each letter is something you should pin down about the problem, not a step of writing code.",
+"A simple correct solution proves you understand the problem. Ask what it reveals about where time is wasted.",
+"Long silence hides your thinking from the interviewer. Pick the option that keeps the quiet stretch short.",
+"A hint only earns credit if the interviewer can see you use it. Which reaction makes that visible?",
+"Verification is a strong signal. Ask when it is most useful relative to claiming you are finished.",
+"Two options give up, two buy nothing. What still gets working code on the board within the time left?",
+"The word comes from pausing to confirm you are still on track. Who would you confirm that with during a design round?",
+"Every later choice needs a reason, so think about what must come first and what usually ends the round.",
+"Neither stubborn defence nor instant surrender shows reasoning. What does a reasoned trade-off answer tie back to?",
+"Read the round rules literally. Is any form of AI help, seen or hidden, still within them?",
+"Interviewers measure judgment and ownership of the result, not just whether code appears.",
+"Hiding or silently restarting loses trust and time. Think honesty first, then how to protect testing with little time left."
+],"interview":[
+"Walk through restating the problem, clarifying inputs, constraints, edge cases and output, an example, then a brute-force plan.",
+"Explain that a correct baseline proves understanding, gives a fallback, and shows the wasted work to optimise away.",
+"Describe a stuck ladder: small examples, simpler versions, known patterns, and saying your blocker out loud within minutes.",
+"Cover thanking, restating the hint, testing it on an example, and showing how it changes your approach.",
+"Mention a dry run on a small example, edge cases like empty or single inputs, and fixing bugs you find before declaring done.",
+"Give a rough time plan for clarifying, approach, coding and testing, plus how you cut scope if you fall behind.",
+"Cover saying it out loud, explaining why it fails, picking the smallest fix, and keeping time for testing.",
+"Describe a phase order: requirements, estimates, API, high-level design, deep dive and wrap-up, with checkpoints between phases.",
+"Explain comparing options against requirements, acknowledging valid points, and stating when you would switch, without ego.",
+"Mention signals like clear thinking aloud, clarifying questions, handling hints, explaining trade-offs and verifying work.",
+"Cover planning first, small prompts, reviewing and testing output, explaining choices, and following the round's rules openly.",
+"Suggest more testing and edge cases, discussing complexity and optimisations, and asking about follow-up extensions.",
+"Describe acknowledging the mistake openly, fixing it calmly, and showing you learned, without letting it derail the rest."
+]}

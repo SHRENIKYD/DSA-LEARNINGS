@@ -1,0 +1,31 @@
+{"quiz":[
+"Some modules cannot know if they changed anything, so they always report changed. Look for tasks that behave that way.",
+"Handlers run at the end of the play. Think about what happens to queued handlers when the play fails first.",
+"Host patterns can combine groups. Look for the operator that excludes a group.",
+"Recall the precedence ladder: role defaults, inventory group and host vars, play vars and extra vars. Where does each value sit?",
+"The vault password must stay out of Git, process lists and logs. Think about how the CI secret store can hand it over briefly.",
+"Anyone with an old clone or fork already has the value. Which action protects you even from those copies?",
+"serial values apply to batches in order, and percentages are of the total host count. Work out each batch.",
+"Rescue works like an exception handler. If it finishes without error, is the host still marked failed?",
+"Appending with shell adds a new line every run. Look for a module that compares the file to the wanted state first.",
+"Managed hosts only need Python for modules. Think about where Jinja2 is installed and where the rendering happens.",
+"Terraform creates and destroys infrastructure; Ansible configures what runs on it.",
+"You want the value to be overridable from group_vars or the play. Which role folder holds the weakest precedence?",
+"Think about two things: stopping the task from printing its values, and what to do with a secret that already reached a log."
+],
+"interview":[
+"Describe pushing tasks over SSH using modules, with nothing to install on the managed hosts.",
+"Define running again changes nothing, then cover using proper modules, changed_when and check mode.",
+"Explain inventory files, groups and patterns, then show combining production and web groups while excluding canary.",
+"Explain notify, handlers running at the end of the play, and reasons they do not fire, like failures or no change.",
+"Outline the main precedence levels and use debug, ansible-inventory and verbose runs to trace values.",
+"Cover Ansible Vault or an external secret manager, no_log, and supplying the vault password safely in CI.",
+"Explain the standard role layout, defaults for tunables, and a role that is focused, reusable and tested.",
+"Cover serial batches, canary first, health checks, removing hosts from the load balancer and a failure threshold.",
+"Contrast provisioning infrastructure with configuring hosts, and show how inventory or outputs connect the two.",
+"Mention linting, syntax check, check and diff mode, Molecule tests and a staging run.",
+"Look for non-idempotent tasks like shell commands or state the first run created, and use verbose output.",
+"Define facts gathered from hosts, show using them in tasks, and mention disabling or caching them for speed.",
+"Rotate the password first, then move it into Vault, check logs and access, and consider cleaning history.",
+"Mention speed at large scale, weak state tracking, YAML logic limits, and better tools for some jobs."
+]}

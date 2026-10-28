@@ -1,0 +1,30 @@
+{"quiz":[
+"Features are the inputs. Think about which part of a training row is the known answer.",
+"There are three splits. One is used once at the very end; which one is used over and over to pick settings?",
+"Ask which rows contributed to the mean and std. Did the test rows sneak into training statistics?",
+"Pick the loss designed for probabilities of a two-way label, one that punishes confident mistakes hard.",
+"The gradient points uphill. To reduce the loss you want to move the other way by a small step.",
+"Loss that grows and then blows up means the steps overshoot. Think about the step size.",
+"Compare training and validation scores. A big gap between them is the clue.",
+"One penalty uses absolute values and tends to make weights sparse. Which one?",
+"Early stopping watches a curve on held-out data and waits a set number of epochs for improvement.",
+"Recall asks: of all real positives, how many were found? Use TP divided by TP plus FN.",
+"Think about a lazy model that always predicts the majority class. What accuracy would it get?",
+"AUC is the chance a random positive is ranked above a random negative. What is a coin flip worth?",
+"Compare the costs: which is worse here, a missed cancer or a false alarm?",
+"Leakage means information from the test set or future sneaks into training. Find the option that avoids that."
+],"interview":[
+"Explain what each split is used for, why the test set is touched only once, and what goes wrong without each.",
+"Define leakage as future or test information reaching training, give three concrete cases, and how to detect them.",
+"Match the loss to the output type: continuous numbers versus class probabilities, and why each fits.",
+"Describe stepping against the gradient, then the symptoms of a learning rate that is too high or too low.",
+"Compare training and validation curves; describe high bias versus high variance patterns and fixes for each.",
+"Contrast sparse weights versus small weights, when each helps, and explain stopping on validation loss.",
+"Give the formulas, explain the trade-off between them, and name cases where false positives or false negatives cost more.",
+"Show how the majority class inflates accuracy, then name better metrics like precision, recall and PR-AUC.",
+"Explain what the ROC curve plots and what AUC means, then why PR-AUC is better for rare positives.",
+"Cover the costs of each error type, picking a metric like PR-AUC, and choosing the threshold from business costs.",
+"Look at leakage, train versus production data differences, drift, feature pipeline mismatches and the metric itself.",
+"Map ideas like held-out test sets, leakage, overfitting and metrics onto evaluating prompts and fine-tuned LLMs.",
+"Define bias and variance, then explain how regularisation, more data and bigger models move each one."
+]}

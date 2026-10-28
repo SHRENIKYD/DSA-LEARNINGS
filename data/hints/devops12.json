@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "Multi-AZ exists for availability and fails over on its own. Think about whether applications must change their connection.",
+    "Compare synchronous versus asynchronous replication, and whether the copy can serve reads.",
+    "Avoid touching production directly. Restore a copy to a point before the mistake and take only what you need.",
+    "Point-in-time recovery depends on automated backups and logs. What does a retention of zero turn off?",
+    "A 503 comes from the load balancer itself, not your app. Ask what the load balancer needs before it can forward any request.",
+    "Raising timeouts only hides the problem. Think about long work that should not keep an HTTP request open.",
+    "Target tracking scales capacity in proportion: current instances times current metric divided by target, within min and max.",
+    "EC2 status checks only test the VM, not the app. Which Auto Scaling setting decides whose health verdict counts?",
+    "Use Little's law: concurrency equals request rate multiplied by the duration of each request in seconds.",
+    "Ask which code runs once per cold start and which runs on every request, and what warm invocations could reuse.",
+    "Without a redrive policy, a failed message becomes visible again after its timeout. When does it finally disappear?",
+    "Each consumer needs its own copy, its own retries and its own failure isolation. Which design gives all three?",
+    "Turn engineer hours into dollars and compare that with the saving.",
+    "Lambda gets permissions through its execution role. Grant only the needed action on only the needed secret."
+  ],
+  "interview": [
+    "Compare high availability with synchronous standby versus read scaling with async replicas, and give a use for each.",
+    "Describe point-in-time restore to a new instance, extracting the table, loading it back, verifying and cleaning up.",
+    "Define data loss tolerance and downtime tolerance, then map backups, PITR, Multi-AZ and replicas to each.",
+    "Separate 502 from 504, then check target health, app logs, timeouts and ALB access logs and metrics.",
+    "Compare layer 7 routing features with layer 4 performance, static IPs and non-HTTP protocols, as a simple rule.",
+    "Explain path, interval, thresholds and timeout, and keep checks lightweight but meaningful.",
+    "Explain keeping a metric near a target, and why boot time, warm-up and metric delay make scaling lag behind spikes.",
+    "Explain initialising a new environment, then cover smaller packages, init outside handler, and provisioned concurrency.",
+    "Limit concurrency to protect the database, use connection pooling or a proxy, and buffer with a queue.",
+    "Explain moving repeatedly failing messages aside, and tie receive count and visibility timeout to processing time and retries.",
+    "Compare a queue for work, a topic for fan-out, and an event bus for routing by rules, and choose by need.",
+    "Weigh control, extensions and cost against operations work like backups, failover and patching.",
+    "Cover secrets managers, IAM roles, no keys in code, rotation and keeping secrets out of logs.",
+    "Cover queues to buffer, autoscaling workers, back pressure, DLQs, idempotency and limits on downstream systems."
+  ]
+}

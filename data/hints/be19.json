@@ -1,0 +1,33 @@
+{
+ "quiz": [
+  "Look for a slow, salted, memory-hard password hash that is currently recommended.",
+  "Hashing is CPU-heavy and runs on the event loop here. What does that do to other requests?",
+  "Think about tokens that try to change or remove the algorithm in the header.",
+  "Recall what the OAuth2 password grant spec says clients send, and why FastAPI needs python-multipart to read it.",
+  "The token is valid, so identity is not the problem. Which status is for a caller who is known but not allowed?",
+  "Think about not telling the caller that another user's object exists.",
+  "Think about how the scopes of all dependencies in the chain get collected.",
+  "A wildcard origin with credentials is not allowed by browsers. Think about how the middleware handles that.",
+  "CORS is a browser rule. Think about clients that are not browsers.",
+  "Recall the pydantic-settings source order. Think about which source production sets and why .env is only a laptop fallback.",
+  "Think about what happens when the settings object is printed or logged.",
+  "Each worker process keeps its own counter. Multiply the limit by the number of processes.",
+  "Think about the model config that rejects unknown keys.",
+  "Look for a parser that does not run code or follow dangerous references."
+ ],
+ "interview": [
+  "Cover argon2id with random salt and a self-describing hash, verification off the event loop, and rehashing on upgrade.",
+  "Walk through the form post, password check, signing a token with key claims, and verifying it in a dependency.",
+  "Explain 401 for unknown identity, 403 for known but not allowed, and 404 to hide resources from non-owners.",
+  "Explain roles for people and scopes for tokens, and how routes check scopes plus ownership.",
+  "Explain browser preflight and opt-in headers, then exact origin, credentials, methods and cookie settings.",
+  "Mention a typed settings class, env prefix, secrets as secret types with no defaults, and failing fast on startup.",
+  "Layer edge limits and app limits by user or key, use a shared store across pods, and return proper status and headers.",
+  "Name the list's main items, and say which ones validation and dependencies help with and which still need your own work.",
+  "Cover an allow-list, resolving and checking every IP, blocking private ranges, no redirects, and size and time limits.",
+  "Cover rotating keys right away and revoking sessions, then design with key ids, short lifetimes and a secrets manager.",
+  "Mention Pydantic constraints, enum-like literals, typed formats, length and number bounds, and rejecting extra fields.",
+  "Explain predictable non-crypto random and timing leaks from plain comparison, then the secure alternatives.",
+  "Cover faster work but repeated old mistakes, then reviews, checks and tests to catch unsafe generated code."
+ ]
+}

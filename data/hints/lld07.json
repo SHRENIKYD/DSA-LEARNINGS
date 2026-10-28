@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "Before coding anything, make sure you and the interviewer agree on what to build and what to skip.",
+  "Look for the noun that has its own data and lifecycle in the system.",
+  "If types differ only in data, not behaviour, a simple data-carrying type may be enough.",
+  "Think about global state, testability, and whether there could ever be more than one lot.",
+  "Both gates looked for a free spot, then claimed it. Ask whether those two steps run as one unit.",
+  "Make sure the ticket cannot be used twice and the spot is freed only after billing is done.",
+  "Per started hour means any partial hour counts as a full one. Round 61 minutes up to hours.",
+  "Each counter sums plus and minus ones along its line. When does a line belong entirely to one player?",
+  "Check the centre against each line rule: same row, same column, r equals c, and r plus c equals n minus 1.",
+  "Ask how to add a new kind of player without editing the Game class. Think of the Open/Closed principle.",
+  "Rules must stack on any tariff in any combination. Which pattern adds behaviour by wrapping the same interface?",
+  "Interviews test how well your design handles change, not just correct output.",
+  "Undo must restore exactly what execute changed, so all state must be updated consistently."
+ ],
+ "interview": [
+  "Mention clarifying requirements, core entities, relationships, key APIs, patterns, code, and then handling extensions.",
+  "Ask about vehicle and spot types, floors, entry and exit gates, pricing, payments, concurrency, and what is out of scope.",
+  "Explain how follow-up changes break one big class, and how clear responsibilities and invariants make change safe.",
+  "Name each pattern, such as strategy for pricing or allocation, and tie it to a concrete change it supports.",
+  "Discuss atomic claim of a spot, locks or compare-and-set, and keeping the critical section small.",
+  "Cover ticket states, fee calculation on exit, payment handling, and preventing reuse of a closed ticket.",
+  "Explain row, column and diagonal counters updated per move, and why reaching n means a full line for one player.",
+  "Separate board, players, game rules and win checking, and explain what each class owns.",
+  "Introduce move commands with execute and undo, two stacks, and correct counter rollback.",
+  "Show adding a new spot type and a pricing rule through existing extension points with minimal edits.",
+  "Discuss per-floor or sharded allocation, fast free-spot lookups, concurrency, and persistence.",
+  "Put interfaces where variation is real or expected, and keep simple stable parts concrete.",
+  "Talk about cutting scope to get a working core, communicating with the interviewer, then improving."
+ ]
+}

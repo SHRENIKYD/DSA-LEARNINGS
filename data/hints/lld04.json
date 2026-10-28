@@ -1,0 +1,30 @@
+{"quiz":[
+"Without volatile, writes inside the constructor can be reordered relative to publishing the reference.",
+"Think about when the JVM loads and initialises a nested class, and what guarantees class initialisation gives.",
+"One form is guaranteed by the language to have exactly one instance, even under reflection and serialization.",
+"A superclass method relies on a subclass to decide which object to create. Which pattern has that shape?",
+"Three different products must always come from the same look and feel. Which pattern groups the creation of several related types behind one interface?",
+"Think about what happens to every factory when a brand new product kind is added to the family.",
+"Builder setters can be called in any order. At which single moment are both size and crust guaranteed to be known?",
+"If two objects share the same mutable collection, changes in one show up in the other.",
+"The default clone copies field values. For reference fields, what exactly gets copied?",
+"Cloneable has a broken contract, casts and checked exceptions. Which option makes copying explicit and works with final fields?",
+"Pooling helps only when objects are truly expensive to create or limited in number.",
+"The permit was taken but no object was handed out. Ask what happens to pool capacity if that permit is never returned.",
+"A method returns cached objects for common values instead of always creating new ones. Name the creational idea."
+],"interview":[
+"Explain hiding creation logic, decoupling from concrete classes, and controlling instances, with when new is fine.",
+"Show a correct form like holder idiom, enum or volatile double-checked locking, and explain the memory guarantees.",
+"Cover reflection, serialization, cloning and multiple class loaders, with the defence for each.",
+"Discuss global state, hidden dependencies, hard testing, and using dependency injection with single-scoped objects.",
+"Contrast one creation method with a switch, subclass-decided creation, and families of related products.",
+"Mention registering creators in a map or using service loading, so new types do not edit the factory.",
+"Explain consistent product families, then the trade-off that adding a new product type is costly.",
+"Explain step-by-step construction, readability with many optional fields, validation in build, and immutability.",
+"Mention shared mutable collections, missing validation, reusing builders, and too much boilerplate.",
+"Explain cloning from a prototype, then show how a shallow copy shares nested objects and a deep copy does not.",
+"Explain the broken Cloneable contract and recommend copy constructors or copy factory methods.",
+"Cover a bounded pool, acquire with timeout, release in finally, validation of connections, and leak detection.",
+"Discuss cheap allocation and GC on modern JVMs, and keep pooling for scarce or costly resources.",
+"Explain the container as a big factory managing creation and scope, replacing hand-written singletons and factories."
+]}

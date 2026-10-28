@@ -1,0 +1,30 @@
+{"quiz":[
+"The method is a plain function stored on the class, and its first parameter is self. Ask where that self value comes from in the call.",
+"The object already exists when this method runs. Think about what it sets up versus what creates the object.",
+"Ask where x lives: in each object's own __dict__ or in one place on the class. Does append create a new list or change the existing one?",
+"Split += into a read and a write. Ask where the read finds n, and in which __dict__ the assignment to self.n stores the result.",
+"Ask whether Python ever runs a parent's __init__ by itself when the child defines its own.",
+"Dynamic dispatch: ask whether lookup depends on where the calling code is written or on type(self) of the object.",
+"Ask what cls means in a classmethod: the class that holds the definition, or the class used in the call?",
+"Compare the first argument each decorator passes in: instance methods get self, classmethods get cls. What does a staticmethod get?",
+"The saying is: if it walks and quacks like a duck, treat it as a duck. Does Python check the type, or what the object can do?",
+"Ask what type() returns for a B object, and whether isinstance looks only at that exact class or also at its bases.",
+"The MRO lists a class, then its bases left to right, with a shared base only after all its children.",
+"Think about asking for the attribute with a default instead of checking the type first.",
+"No call happens here. Ask what you get when a function stored on the class is looked up through an instance."
+],"interview":[
+"Explain self as the instance passed as the first argument, and the design choice of explicit over implicit.",
+"Contrast creating the object with initialising it, and when overriding the creation step matters, like immutables or singletons.",
+"Explain shared versus per-object data, with a bug like a mutable class-level list shared by every instance.",
+"Cover data descriptors on the type, the instance dict, non-data descriptors and class attributes, then getattr as a fallback.",
+"Explain that it follows the MRO of the instance's type, so it calls the next class, which may not be the parent.",
+"Explain the method resolution order, C3 linearization, and the rules it keeps like children before parents.",
+"Compare what each receives, and use cases like helper functions, alternate constructors and normal behaviour.",
+"Explain relying on behaviour instead of type, then compare with inheritance and with type hints and Protocols.",
+"Mention has-a relationships, swapping parts at runtime, avoiding fragile deep hierarchies, and easier testing.",
+"Cover the underscore convention, name mangling with double underscores, and properties for controlled access.",
+"Describe storing each value with the current minimum alongside it, so push, pop, top and getMin stay constant time.",
+"Explain that lookup finds the method on the class at call time, so replacing it on the class changes the result.",
+"Explain abstract methods enforced by inheritance and registration, versus Protocols checking shape structurally for type checkers.",
+"Check for needless depth, inheritance where composition fits, broken substitution, unclear responsibilities and tests."
+]}
