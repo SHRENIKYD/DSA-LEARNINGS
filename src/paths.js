@@ -45,7 +45,7 @@ var PATHS = (function () {
     fe02: ['fe01'], fe03: ['fe02'], fe04: ['fe02', 'fe03', 'js02'], fe05: ['fe03'], fe06: ['fe02', 'fe04'], fe07: ['fe04', 'js08'],
     fe08: ['fe04', 'js06'], fe09: ['fe08', 'js04'], fe10: ['fe07', 'fe09'], fe11: ['fe05', 'fe07'], fe12: ['fe09'], fe13: ['fe07'],
     fe14: ['fe08'], fe15: ['fe10', 'fe14'], fe16: ['fe10', 'fe11', 'fe15'],
-    fe17: ['fe04', 'js06', 'js10'], fe18: ['fe17'], fe19: ['fe18', 'js08'], fe20: ['fe19', 'fe07'],
+    fe17: ['fe04', 'js06', 'js10'], fe18: ['fe17'], fe19: ['fe18', 'js08'], fe20: ['fe19', 'fe07'], fe21: ['fe18', 'fe19'], fe22: ['fe20', 'fe11'], fe23: ['fe20', 'fe15'],
     // Backend (Spring Boot, Node.js, Python)
     be02: ['be01'], be03: ['be02', 'sql04'], be04: ['be01'], be05: ['be04'], be06: ['be03', 'be05', 'java09'], be07: ['be04', 'js08'],
     be08: ['be03', 'sql10'], be09: ['be08'], be10: ['be09'], be11: ['be04'], be12: ['be09'], be13: ['be10'], be14: ['be13'], be15: ['be05'],
@@ -127,7 +127,7 @@ var PATHS = (function () {
         { name: 'Testing, accessibility and performance', mods: ['fe06', 'fe11', 'fe14', 'fe13'], rec: ['fe13'] },
         { name: 'Architecture and interviews', mods: ['fe15', 'fe16', 'dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], rec: ['dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], project: 'fe-p3', behavioral: ['beh04'] }
       ],
-      extensions: ['js12', 'js13', 'js14', 'fe12', 'fe17', 'fe18', 'fe19', 'fe20', 'hld01', 'hld04', 'hld06'] },
+      extensions: ['js12', 'js13', 'js14', 'fe12', 'fe17', 'fe18', 'fe19', 'fe20', 'fe21', 'fe22', 'fe23', 'hld01', 'hld04', 'hld06'] },
     { id: 'javaback', name: 'Java backend', langs: ['java'], blurb: 'Java, core DSA and SQL, Spring Boot backends, concurrency, then low-level and high-level design.',
       stages: [
         { name: 'Java', mods: ['java01', 'java02', 'java03', 'java04', 'java05', 'java06', 'java07', 'java08', 'java09'] },

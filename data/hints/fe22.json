@@ -1,0 +1,33 @@
+{
+  "quiz": [
+    "Render flags are bits: one bit means build the DOM once, the other means refresh what is already there.",
+    "Think about what a bundler can drop when generated code imports only the small functions it actually calls.",
+    "The compiler can turn templates into hidden TypeScript and let the TypeScript checker do the work at build time.",
+    "Separate what is identical for every instance of a component from what each instance must own by itself.",
+    "The tree is walked from the top down, and a clean OnPush view cuts off everything below it.",
+    "Signals let Angular flag one consumer view and merely pass through its ancestors instead of re-running them.",
+    "Before notifying anyone, a signal compares the new value with the old one using its equality function.",
+    "Computeds are lazy: marking them stale is cheap, and the real work waits until someone reads the value.",
+    "zone.js works by wrapping the browser's async APIs so it hears about every task that finishes.",
+    "Without zones Angular only re-renders when it is told, so the state must live somewhere that notifies it.",
+    "One NgZone method lets work run without scheduling ticks; the other brings work back in.",
+    "The esbuild-based builder can write out a metafile describing every input and output file.",
+    "Pick the budget that covers all the files the browser must load before the app can start.",
+    "An object survives garbage collection only while something reachable still points to it; look for that chain."
+  ],
+  "interview": [
+    "Mention the static definition fields, the two passes of the template function, and how bindings are compared.",
+    "Contrast a shared per-template blueprint with a per-instance array, and say what each one stores.",
+    "Start from what calls tick, then explain how each view decides to refresh, skip or pass through, and the hook order.",
+    "Talk about active consumers, versions on edges, pushing dirty flags and pulling values with an equality cut-off.",
+    "Cover what patching gives you for free, what it costs, and which explicit notifications replace it.",
+    "Think of noisy async sources such as scroll handlers and third-party timers, and what replaces the escape hatch later.",
+    "Measure before cutting: name the analysis tools, the usual heavy offenders, and how you lock in the gain.",
+    "Compare the bundler and dev server under the hood, speed, outputs, and what happens to custom webpack configs.",
+    "Combine a lab trace of the interaction with the framework profiler, then match the fix to the layer that is slow.",
+    "Describe repeating an action between heap snapshots, reading retainers, and the typical Angular culprits.",
+    "Explain the config types, how to derive numbers from user-facing targets, and where they run.",
+    "Relate the error to one-way data flow within a single check and list fixes better than a timeout.",
+    "Order the steps from cheap to invasive: identity tracking, template cost, OnPush and signals, fewer views."
+  ]
+}

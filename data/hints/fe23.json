@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "Look at which library types a presentational layer is allowed to import, and who is supposed to talk to the server.",
+    "Think about what the rest of the codebase depends on when the state library is hidden behind one small class.",
+    "The project carries two tags, so ask how many rules apply to it and whether a single failing rule is enough.",
+    "Follow the arrows of the project graph backwards: who could break if this low-level library changes?",
+    "Imagine two separate copies of the framework on one page, each with its own injector tree and zone.",
+    "Ask which approach plugs into the default esbuild builder and relies on browser ES modules and import maps.",
+    "Since v19 each Material component has a documented way to set its own design tokens from SCSS.",
+    "One CDK helper moves real DOM focus; another only points an ARIA attribute at the active option.",
+    "Think about how the message ID is produced when the developer did not give one explicitly.",
+    "With compile-time i18n, each language becomes its own output folder with its own base href.",
+    "Interpolation and plain innerHTML bindings both pass through Angular's protections. Which option switches them off?",
+    "The interceptor skips safe methods and never sends the token to another origin.",
+    "Angular creates style elements at runtime for component styles; a strict policy must still allow them somehow.",
+    "Which step must shrink the data first, and which must happen last so that pages are slices of the final order?",
+    "Signals notify when the value reference changes. What do the CDK array helpers do to the existing array?"
+  ],
+  "interview": [
+    "Cut by business domain first, then by library type, and describe which direction imports may go and how you enforce it.",
+    "Contrast who knows where data comes from with who only renders inputs, and connect that to OnPush and reuse.",
+    "Describe what the class exposes to the UI, what it hides, and the situations where it is just extra ceremony.",
+    "Mention tags in two dimensions, the lint rule's constraint options, and the other problems the same rule reports.",
+    "Compare build-time code isolation with runtime composition, and name the costs that come with independent deploys.",
+    "Walk through what happens before Angular boots, how shared packages become one URL, and how a route loads a remote.",
+    "Separate behaviour from look: which layer gives you accessible primitives and how theming works without deep selectors.",
+    "Compare zero-cost inlined builds per locale with keys loaded at runtime, and say when users need live switching.",
+    "List the security contexts Angular sanitizes by default, then the APIs and DOM shortcuts that skip that protection.",
+    "Explain the cookie-to-header pattern, which requests get the header, and what the server must do with it.",
+    "Start with clarifying questions and a component sketch, then describe state as signals with a derived pipeline.",
+    "Keep a single form model in the parent, gate only forward movement, and think about refresh and leaving the page.",
+    "Cover the CDK directives, why mutation is a problem with signals, saving optimistically, ordering and keyboard users."
+  ]
+}
