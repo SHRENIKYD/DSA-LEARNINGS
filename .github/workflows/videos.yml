@@ -60,11 +60,21 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/videos.json
           if git diff --cached --quiet; then echo "No video changes"; exit 0; fi
+          # The app carries its own copy of the catalog: when new videos became playable, also bump the app version so
+          # the Android workflow builds and uploads a new release. Turn off with the repository variable
+          # VIDEO_APP_RELEASE=false; VIDEO_APP_RELEASE_MIN sets the smallest number of new videos worth a release.
+          released=false
+          if [ "${{ vars.VIDEO_APP_RELEASE }}" != "false" ]; then
+            out=$(mktemp); GITHUB_OUTPUT="$out" node tools/video-release.js --min "${{ vars.VIDEO_APP_RELEASE_MIN || 1 }}"
+            if grep -q '^released=true' "$out"; then released=true; version=$(sed -n 's/^version=//p' "$out"); git add package.json CHANGELOG-APP.md ios/App/App.xcodeproj/project.pbxproj; fi
+          fi
           branch="bot/videos-$(date -u +%Y%m%d-%H%M)"
           git switch -c "$branch"
-          git commit -m "Update lesson videos"
+          if [ "$released" = true ]; then git commit -m "Update lesson videos (app $version)"; else git commit -m "Update lesson videos"; fi
           git push origin "$branch"
           url=$(gh pr create --base main --head "$branch" --title "Update lesson videos ($(date -u +%Y-%m-%d))" \
-            --body "Daily lesson-video update from the Lesson videos workflow. The catalog passed tools/video-test.js before this PR was opened.")
+            --body "Daily lesson-video update from the Lesson videos workflow. The catalog passed tools/video-test.js before this PR was opened.$([ "$released" = true ] && echo " Bumps the app to $version so the new videos ship in the app.")")
           gh pr merge "$url" --merge --delete-branch
           gh workflow run pages.yml --ref main
+          # A merge made with the workflow token does not trigger other workflows, so start the app build explicitly.
+          if [ "$released" = true ]; then gh workflow run android.yml --ref main; fi
