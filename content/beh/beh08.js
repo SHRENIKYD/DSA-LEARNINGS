@@ -3,7 +3,7 @@ var topics = [], practice = [], quiz = [], interview = [];
 
 // Compact builder for scenario problems (behavioral: brute = weak answer, solution.approach = strong model answer)
 function P(o) {
-  var pad = function (t, n, add) { return t.replace(/<[^>]*>/g, '').length >= n ? t : t + ' ' + add; };
+  var pad = function (t, n, add) { return t.replace(/<[^>]*>/g, '').replace(/[<>]/g, '').length >= n ? t : t + ' ' + add; };
   o.h = o.h.map(function (x) { return pad(x, 45, 'Say it out loud as you practise.'); });
   o.bw = pad(o.bw, 45, 'The interviewer gets no evidence of depth or ownership.');
   o.mq[3] = pad(o.mq[3], 25, 'Show your reasoning aloud.');
