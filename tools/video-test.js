@@ -169,6 +169,10 @@ assert.ok(discovery.pick([{ id: 'LONGLECTURE', title: 'BST search and insert ful
     assert.equal(best, null); assert.deepEqual(seen.slice(0, 2), ['KEY_A', 'KEY_B'], 'switches to the second key after a quota error');
     global.fetch = async () => ({ ok: false, status: 403, json: async () => quotaBody });
     await assert.rejects(discovery.searchBest('DSA arrays', 'Arrays', ''), (e) => e.quota === true, 'the last key\'s quota stops the run');
+    const perDay = discovery.apiError(403, { error: { message: "Quota exceeded for quota metric 'Search Queries' and limit 'Search Queries per day' of service 'youtube.googleapis.com'", errors: [{ reason: 'rateLimitExceeded' }] } });
+    assert.ok(perDay.quota && !perDay.retry, 'the per-day search limit counts as a daily quota');
+    const perMin = discovery.apiError(403, { error: { message: "limit 'Queries per minute'", errors: [{ reason: 'rateLimitExceeded' }] } });
+    assert.ok(!perMin.quota && perMin.retry, 'a per-minute limit is still retried');
     global.fetch = realFetch; delete process.env.YOUTUBE_API_KEYS; discovery.keyState.at = 0;
   }
   finish();

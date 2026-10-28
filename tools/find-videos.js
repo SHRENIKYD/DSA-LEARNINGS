@@ -85,7 +85,9 @@ function apiError(status, body) {
   const err = (body && body.error) || {}, reason = (err.errors && err.errors[0] && err.errors[0].reason) || err.status || ('HTTP ' + status);
   const e = new Error(reason + ': ' + (err.message || 'HTTP ' + status));
   e.reason = reason;
-  e.quota = /^(quotaExceeded|dailyLimitExceeded)$/.test(reason);
+  // Google also reports the per-day search limit as rateLimitExceeded ("... limit 'Search Queries per day'"): that is a
+  // daily quota too, not a per-minute limit, so retrying is pointless and the next key should take over.
+  e.quota = /^(quotaExceeded|dailyLimitExceeded)$/.test(reason) || (reason === 'rateLimitExceeded' && /per day/i.test(err.message || ''));
   e.retry = !e.quota && (/^(rateLimitExceeded|userRateLimitExceeded|backendError|internalError)$/.test(reason) || status >= 500);
   return e;
 }
