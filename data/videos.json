@@ -232,7 +232,8 @@
   },
   "be02-t1": {
    "t": "Routing & Controllers: Matching a Request to a Handler",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "be03-t0": {
    "t": "Connecting to a Database: App → Connection → Driver → DB",
@@ -241,7 +242,10 @@
   },
   "be03-t1": {
    "t": "SQL from Code: JDBC, ResultSet and a Real DAO",
-   "id": null
+   "id": "qvqxeeke8dg",
+   "title": "15 - Build a Library System with JDBC | DAO, Singleton & JavaFX",
+   "channel": "Aya Alharazin",
+   "secs": 4551
   },
   "be04-t0": {
    "t": "REST Resource Modelling: Nouns, Collections and Relationships",
@@ -262,7 +266,10 @@
   },
   "be05-t1": {
    "t": "Sessions vs JWT: Where Does \"Who Are You?\" Live?",
-   "id": null
+   "id": "ui74L5N3gb4",
+   "title": "Authentication: Sessions, JWT & Password Hashing | Node.js Backend #5",
+   "channel": "RKTech Learn",
+   "secs": 873
   },
   "be06-t0": {
    "t": "IoC & Dependency Injection: Who Builds the Objects?",
@@ -395,7 +402,10 @@
   },
   "be21-t0": {
    "t": "Background Work in FastAPI: BackgroundTasks, asyncio Tasks and Where They Stop",
-   "id": null
+   "id": "bI-1yRtwwDo",
+   "title": "FastAPI Background Tasks for Non-Blocking Endpoints",
+   "channel": "Andrej Baranovskij",
+   "secs": 518
   },
   "beh01-t0": {
    "t": "How Product-Company Interview Loops Work",
@@ -406,7 +416,8 @@
   },
   "beh01-t1": {
    "t": "A Resume That Passes Screening (and LinkedIn Basics)",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "beh02-t0": {
    "t": "Tell Me About Yourself: Present, Past, Future in 90 Seconds",
@@ -417,7 +428,8 @@
   },
   "beh02-t1": {
    "t": "Conflict With a Teammate: Calm, Curious, Concrete",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "beh03-t0": {
    "t": "Leadership Without Authority (Influence)",
@@ -428,7 +440,8 @@
   },
   "beh03-t1": {
    "t": "Ownership: Going Beyond Your Role",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "beh04-t0": {
    "t": "Clarifying Questions: Inputs, Constraints, Edge Cases, Output",
@@ -437,7 +450,8 @@
   },
   "beh04-t1": {
    "t": "Thinking Aloud Without Rambling & Brute Force First, Then Optimize",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "beh05-t0": {
    "t": "Scope and Impact Signals: Team, Org, Company",
@@ -446,7 +460,8 @@
   },
   "beh05-t1": {
    "t": "Influence Across Teams: RFCs, Alignment and Dissent",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "beh06-t0": {
    "t": "Anatomy of an Offer: Base, Bonus, Sign-On & Benefits",
@@ -799,12 +814,24 @@
    "id": null,
    "at": "2026-10-26"
   },
+  "csharp01-t1": {
+   "t": "Program Structure: Top-Level Statements, Main, Namespaces & usings",
+   "id": "h1pBqoqiZi4",
+   "title": "Implicit usings, file scoped namespaces, top level statements in dotnet",
+   "channel": "Learning Software",
+   "secs": 411
+  },
   "csharp02-t0": {
    "t": "Control Flow: if, switch Statements & Expressions, and Loops",
    "id": "UXeDS20wr60",
    "title": "C# Control Flow Statements | if, if-else, else-if ladder, nested if else and switch statements",
    "channel": "Learn Coding",
    "secs": 1313
+  },
+  "csharp02-t1": {
+   "t": "Methods: Parameters, Return Values, Tuples, Local Functions & Recursion",
+   "id": null,
+   "at": "2026-10-28"
   },
   "csharp03-t0": {
    "t": "Classes vs Structs: Reference Semantics vs Value Semantics",
@@ -813,6 +840,13 @@
    "channel": "Sean Allen",
    "secs": 474
   },
+  "csharp03-t1": {
+   "t": "Constructors: Chaining, Primary Constructors, Object Initializers & required",
+   "id": "Slvyugn458Q",
+   "title": "Primary Constructors in C# 12 Explained!",
+   "channel": "James Montemagno",
+   "secs": 579
+  },
   "csharp04-t0": {
    "t": "Inheritance, Constructor Chaining & base Calls",
    "id": "TRE6f-BiGAk",
@@ -820,10 +854,24 @@
    "channel": "tutorialsEU - C#",
    "secs": 310
   },
+  "csharp04-t1": {
+   "t": "virtual, override, new & sealed — Polymorphism vs Hiding",
+   "id": "SdYaGbmyu84",
+   "title": "C# Inheritance with New, Virtual and override",
+   "channel": "AI & Data Innovation",
+   "secs": 511
+  },
   "csharp05-t0": {
    "t": "Generic Types & Methods — Write Once, Type-Safe for Every T",
    "id": null,
    "at": "2026-10-26"
+  },
+  "csharp05-t1": {
+   "t": "Generic Constraints — Telling the Compiler What T Can Do",
+   "id": "oitvN9YC_PU",
+   "title": "JeremyBytes - C# Generics - Part 5: Generic Constraints & \"default\"",
+   "channel": "Jeremy Clark",
+   "secs": 1205
   },
   "csharp06-t0": {
    "t": "Delegates — Methods You Can Pass Around",
@@ -882,7 +930,8 @@
   },
   "devops01-t1": {
    "t": "Permissions and Ownership in Practice: chmod, chown, umask and the 403 on a Web Root",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "devops02-t0": {
    "t": "Variables, Quoting and Expansion: Why \"$VAR\" Saves Your Server",
@@ -903,7 +952,10 @@
   },
   "devops03-t1": {
    "t": "Ports and Listening Sockets: \"Connection Refused\" vs \"Timed Out\"",
-   "id": null
+   "id": "TyspszifHUo",
+   "title": "How to solve SSH port 22: Connection refused issue in Ubuntu Linux",
+   "channel": "Samiul Al Hossaini",
+   "secs": 327
   },
   "devops04-t0": {
    "t": "Commits and the Commit Graph: Snapshots, the Staging Area and Clean History",
@@ -937,7 +989,8 @@
   },
   "devops06-t1": {
    "t": "IAM Policies: Effect, Action, Resource, Condition and Who Wins",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "devops07-t0": {
    "t": "From Bash to Python: a Real Script with argparse, logging, subprocess and pathlib",
@@ -1053,7 +1106,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java program structure, main, output and comments. Use the lesson for loops and conditionals.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -1080,7 +1133,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java Scanner versus BufferedReader, demonstrating slow versus buffered input. Other languages use the equivalents in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa01-t2": {
    "t": "Primitive vs Reference Types, Overflow & Casting",
@@ -1092,7 +1145,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java primitive values versus object references, with stack/heap diagrams. Casting and overflow are covered in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa01-t3": {
    "t": "How Memory Works: Stack, Heap & References",
@@ -1104,7 +1157,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java stack and heap memory, local variables and object references.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa01-t4": {
    "t": "Arrays & Strings Basics",
@@ -1116,7 +1169,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java array syntax, storage, string arrays and multidimensional arrays. String operations are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa01-t5": {
    "t": "Methods: Breaking Problems into Small Functions",
@@ -1128,7 +1181,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java methods, parameters, return values and reusable functions.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa01-t6": {
    "t": "Reading Constraints: The Hidden Hint in Every Problem",
@@ -1140,7 +1193,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Input constraints and time-limit estimates. Operation budgets depend on language, hardware and the judge; 10⁸ is a heuristic, not a guarantee.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa01-t7": {
    "t": "Writing Your First Brute-Force Solutions",
@@ -1152,7 +1205,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A concrete brute-force pair search followed by an optimized solution. Algorithm explanation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa02-t0": {
    "t": "Counting Loop Iterations (single, nested, triangle, halving, doubling)",
@@ -1184,7 +1237,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Arithmetic and geometric progressions; apply the sums to loop counts in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa02-t2": {
    "t": "Logarithms: log₂ N = How Many Times You Can Halve N",
@@ -1196,7 +1249,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Logarithms as inverse powers and the change-of-base rule. Apply this foundation to repeated halving in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa02-t3": {
    "t": "Big-O, Ω (Omega), Θ (Theta) in Plain English",
@@ -1208,7 +1261,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Big-O, Big-Omega and Big-Theta asymptotic bounds.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa02-t4": {
    "t": "Space Complexity: How Much Extra Memory?",
@@ -1220,7 +1273,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Time and auxiliary-space complexity overview; use the lesson for detailed memory accounting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa02-t5": {
    "t": "Reading Constraints: the 10⁸ Rule and Estimating TLE",
@@ -1232,7 +1285,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Constraints, online judges and TLE estimates. Treat operation counts as rough estimates, not fixed execution-time guarantees.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa03-t0": {
    "t": "Factors (Divisors) in O(√N)",
@@ -1244,7 +1297,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Enumerating divisors in O(√N).",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -1273,7 +1326,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Primality testing by checking divisors up to √N.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa03-t2": {
    "t": "Sieve of Eratosthenes (all primes up to N)",
@@ -1285,7 +1338,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sieve of Eratosthenes for finding all primes up to a bound.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa03-t3": {
    "t": "GCD & LCM — Euclid's Algorithm (with a visual proof)",
@@ -1297,7 +1350,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Euclidean GCD. LCM reduction and the visual proof are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa03-t4": {
    "t": "Modular Arithmetic: the Rules of \"% m\"",
@@ -1309,7 +1362,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular arithmetic rules and remainders.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa03-t5": {
    "t": "Fast Modular Exponentiation (a^b mod m)",
@@ -1321,7 +1374,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular exponentiation. Follow the lesson for the iterative binary-exponentiation implementation.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa03-t6": {
    "t": "Counting Choices: nCr, Factorials & Pascal's Triangle",
@@ -1333,7 +1386,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binomial coefficients, efficient nCr calculation and Pascal triangle construction.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa03-t7": {
    "t": "The Pigeonhole Principle (proofs that something MUST exist)",
@@ -1345,7 +1398,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The pigeonhole principle and why a collision must exist.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa04-t0": {
    "t": "Binary Representation: Numbers as a Row of Light Switches",
@@ -1357,7 +1410,7 @@
    "reviewedAt": "2026-10-21",
    "note": "How binary digits represent numbers and characters.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -1384,7 +1437,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binary representation, one’s/two’s complement and bit operators.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa04-t2": {
    "t": "Bitwise Operators: &, |, ^, ~, <<, >> and Java's >>>",
@@ -1396,7 +1449,7 @@
    "reviewedAt": "2026-10-21",
    "note": "All seven Java bitwise operators, including the unsigned right shift >>>.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa04-t3": {
    "t": "XOR Properties: The Magic Cancel Button",
@@ -1408,7 +1461,7 @@
    "reviewedAt": "2026-10-21",
    "note": "XOR cancellation demonstrated on the single-number problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa04-t4": {
    "t": "Check, Set, Clear and Toggle the i-th Bit (Masks)",
@@ -1420,7 +1473,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Checking, setting, clearing and toggling a bit with masks.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa04-t5": {
    "t": "Brian Kernighan's Trick: n & (n − 1) Removes the Lowest Set Bit",
@@ -1436,7 +1489,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Single Number I: cancel duplicate pairs with XOR.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa04-t7": {
    "t": "Single Number II: Count Each Bit Column, Take Mod 3",
@@ -1448,7 +1501,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Includes counting set bits at each position modulo three, as well as alternative approaches.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa04-t8": {
    "t": "Single Number III: Two Loners — XOR, Split by a Differing Bit, XOR Again",
@@ -1464,7 +1517,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Subset enumeration with bitmasks. Code may use C++; the technique transfers to Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t0": {
    "t": "1D and 2D Arrays (How They Sit in Memory)",
@@ -1478,7 +1531,7 @@
    "start": 82,
    "end": 4025,
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -1507,7 +1560,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Prefix sums and constant-time range-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t10": {
    "t": "2D Prefix Sums: Any Rectangle Sum in O(1)",
@@ -1519,7 +1572,7 @@
    "reviewedAt": "2026-10-21",
    "note": "2D prefix sums and rectangle-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t2": {
    "t": "Even/Odd Index Prefix Sums: Special Index & Equilibrium Index",
@@ -1531,7 +1584,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Even/odd prefix sums and parity changes after deletion. The separate equilibrium-index variant is explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t3": {
    "t": "Carry Forward: Count \"ag\" Pairs & Leaders in an Array",
@@ -1543,7 +1596,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Carry-forward counting of ordered “ag” pairs. Array leaders are another application in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t4": {
    "t": "Kadane's Algorithm: Maximum Subarray Sum",
@@ -1555,7 +1608,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maximum subarray sum using Kadane’s algorithm.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t5": {
    "t": "Contribution Technique: Sum of All Subarray Sums in O(N)",
@@ -1567,7 +1620,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sum of all subarray sums using each element’s contribution.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t6": {
    "t": "Prefix Max & Suffix Max: Trapping Rain Water",
@@ -1579,7 +1632,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Trapping rainwater. Compare the video’s approaches with the lesson’s prefix/suffix maximum arrays.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t7": {
    "t": "Spiral Traversal: Four Shrinking Walls",
@@ -1591,7 +1644,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Spiral traversal using shrinking boundaries. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t8": {
    "t": "Rotate a Matrix by 90°: Transpose + Reverse",
@@ -1603,7 +1656,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Matrix rotation by transposition and reversal.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa05-t9": {
    "t": "Row-Column Sorted Matrix: The Staircase Search",
@@ -1615,7 +1668,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The O(rows + columns) top-right staircase search for separately sorted rows and columns, not flattened binary search.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa06-t0": {
    "t": "Opposite-Direction Pointers: 2-Sum on a Sorted Array",
@@ -1627,7 +1680,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Two Sum II on sorted input using converging pointers. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -1654,7 +1707,7 @@
    "reviewedAt": "2026-10-21",
    "note": "3Sum by sorting, fixing an element and scanning with two pointers.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa06-t2": {
    "t": "Container With Most Water (Move the Shorter Wall)",
@@ -1666,7 +1719,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Container With Most Water and moving the shorter wall.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa06-t3": {
    "t": "Same-Direction Pointers (Slow & Fast): Remove Duplicates, Move Zeroes",
@@ -1678,7 +1731,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Move Zeroes using same-direction pointers. Remove-duplicates is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa06-t4": {
    "t": "Same-Direction Pointers: Pairs with Difference K",
@@ -1690,7 +1743,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a pair with a target difference using sorted-array pointers; not a general two-pointer overview.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa06-t5": {
    "t": "Fixed-Size Sliding Window: Max Sum of a Subarray of Size K",
@@ -1702,7 +1755,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Fixed-length maximum-sum window with Java code. Distinct from unrestricted maximum subarray/Kadane.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa06-t6": {
    "t": "Variable-Size Sliding Window: Smallest Subarray with Sum ≥ K (Grow / Shrink Template)",
@@ -1718,7 +1771,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Recognizing opposite-direction and same-direction pointer patterns.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa07-t0": {
    "t": "The Three Simple Sorts: Bubble, Selection, Insertion",
@@ -1730,7 +1783,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Bubble sort, selection sort and insertion sort in Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -1755,7 +1808,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Counting sort and radix sort, including assumptions behind integer sorting. A longer lecture is intentional.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa07-t2": {
    "t": "Merge Sort: Divide & Conquer (+ Inversion Count)",
@@ -1767,7 +1820,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inversion counting with merge sort. The lesson also explains the underlying sorting recurrence.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa07-t3": {
    "t": "Quick Sort: Partitioning (Lomuto & Hoare), Pivot Choice, Worst Case",
@@ -1779,7 +1832,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Quicksort partitioning and performance. Compare the specific Lomuto/Hoare variants in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa07-t4": {
    "t": "Custom Comparators (lambdas, key functions, multiple keys, overflow-safe compare)",
@@ -1795,7 +1848,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The distinction between stable and unstable sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa07-t6": {
    "t": "Merging Overlapping Intervals",
@@ -1807,7 +1860,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Merging overlapping intervals after sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa07-t7": {
    "t": "Insert Interval (into a sorted, non-overlapping list)",
@@ -1819,7 +1872,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inserting an interval into a sorted non-overlapping list.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa07-t8": {
    "t": "Meeting Rooms I & II, Minimum Platforms (sweep + min-heap)",
@@ -1831,7 +1884,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Meeting Rooms II: count simultaneous meetings. Meeting Rooms I and minimum-platform variations remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t0": {
    "t": "Inside HashSet & HashMap: Hash Function, hashCode/equals, Buckets, Chaining, Treeify, Load Factor & Rehash",
@@ -1861,7 +1914,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Character-frequency signatures and grouping anagrams. First-non-repeating is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t2": {
    "t": "Lookup Set & Complement Map: 2-Sum on an Unsorted Array",
@@ -1873,7 +1926,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Unsorted Two Sum with a complement hash map. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t3": {
    "t": "Window Frequency Map: Distinct Elements in Every Window of Size K",
@@ -1885,7 +1938,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maintain a frequency map while counting distinct values in every fixed-size window.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t4": {
    "t": "Prefix Sum + HashSet: Does a Zero-Sum Subarray Exist?",
@@ -1897,7 +1950,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Zero-sum subarray existence using a set in Java. Distinct from counting all subarrays with a given sum.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t5": {
    "t": "Prefix Sum + HashMap of Counts: Count Subarrays with Sum = K",
@@ -1909,7 +1962,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Count subarrays with sum K using prefix-sum frequencies.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t6": {
    "t": "Prefix Sum + First-Index Map: Longest Subarray with Sum 0 / K and Equal 0s & 1s",
@@ -1921,7 +1974,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest zero-sum subarray using prefix sums and a first-index map in Java. Sum-K and equal-0/1 variants remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t7": {
    "t": "Sliding Window + Hashing: Longest Substring Without Repeats & Minimum Window Substring",
@@ -1933,7 +1986,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest substring without repeated characters. Minimum-window substring is a separate variant explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa08-t8": {
    "t": "HashSet Chain-Start Trick: Longest Consecutive Sequence in O(N)",
@@ -1945,7 +1998,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest consecutive sequence by starting only at chain beginnings.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa09-t0": {
    "t": "Strings Under the Hood: Immutability, char Arithmetic (c - 'a') and the String Pool",
@@ -1959,7 +2012,7 @@
    "start": 36,
    "end": 1322,
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -1984,7 +2037,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Valid palindrome with two pointers and non-alphanumeric filtering.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa09-t2": {
    "t": "String Builders: Why s += c in a Loop Is O(N²)",
@@ -1998,7 +2051,7 @@
    "start": 3642,
    "end": 4357,
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa09-t3": {
    "t": "Longest Palindromic Substring: Expand Around Center (odd & even centers)",
@@ -2010,7 +2063,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest palindromic substring with center expansion.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa09-t4": {
    "t": "Polynomial Rolling Hash (Rabin-Karp): formula, rolling update, mod, collisions",
@@ -2026,7 +2079,7 @@
    "reviewedAt": "2026-10-21",
    "note": "KMP prefix/LPS preprocessing and linear-time pattern matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa09-t6": {
    "t": "Z-Algorithm: Z-array, the [L, R] box, and the pattern + \"$\" + text trick",
@@ -2038,7 +2091,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Z-array, Z-box optimization and pattern-plus-separator-plus-text matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa10-t0": {
    "t": "Classic Binary Search: Halving the Dictionary",
@@ -2050,7 +2103,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Classic sorted-array binary search and halving the search interval. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -2077,7 +2130,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Lower and upper bounds. Apply these primitives to first/last occurrence in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa10-t2": {
    "t": "Search in a Rotated Sorted Array",
@@ -2089,7 +2142,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Search in a rotated sorted array with distinct elements.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa10-t3": {
    "t": "Peak Element: Binary Search Without a Sorted Array",
@@ -2101,7 +2154,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a peak by binary search on slope direction.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa10-t4": {
    "t": "Searching a Monotonic Function: Integer Square Root",
@@ -2113,7 +2166,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Integer square root via binary search, matching this lesson rather than the more general nth-root problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa10-t5": {
    "t": "Binary Search on the Answer: Maximize the Minimum (Aggressive Cows)",
@@ -2125,7 +2178,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Aggressive Cows: maximize a minimum distance with a feasibility predicate.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa10-t6": {
    "t": "Binary Search on the Answer: Minimize the Maximum (Painters, Books)",
@@ -2137,7 +2190,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Allocate Books: minimize the largest allocation. Painter partition is a related variant in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa10-t7": {
    "t": "Koko Eating Bananas & the Monotonic Feasibility Recipe",
@@ -2149,7 +2202,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Koko Eating Bananas and a monotonic feasibility test.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t0": {
    "t": "Recursion & the Call Stack: Base Case, Recursive Case, Stack Overflow",
@@ -2163,7 +2216,7 @@
    "start": 1077,
    "end": 2736,
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": "KiWp1q_HGzg",
@@ -2193,7 +2246,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A recursion-tree derivation for T(n) = 2T(n/2) + cn; other recurrences remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t2": {
    "t": "Tower of Hanoi",
@@ -2205,7 +2258,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Tower of Hanoi with a recursive visualization.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t3": {
    "t": "The Backtracking Template: Choose → Explore → Un-choose",
@@ -2219,7 +2272,7 @@
    "start": 4024,
    "end": 5057,
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t4": {
    "t": "Generating All Subsets / Subsequences (Pick or Not-Pick)",
@@ -2231,7 +2284,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t5": {
    "t": "Permutations: Swap Method, used[] Method & Handling Duplicates",
@@ -2243,7 +2296,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t6": {
    "t": "Combination Sum: Reuse, No-Reuse, Fixed Size & the Start Index",
@@ -2255,7 +2308,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t7": {
    "t": "N-Queens: Constraint Backtracking with O(1) Safety Checks",
@@ -2267,7 +2320,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa11-t8": {
    "t": "Sudoku Solver: Fill, Check, Erase (and Smarter Cell Ordering)",
@@ -2283,7 +2336,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -2310,7 +2363,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa12-t2": {
    "t": "Fast & Slow Pointers: Finding the Middle",
@@ -2322,7 +2375,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa12-t3": {
    "t": "Floyd's Cycle Detection: Is There a Loop, and Where Does It Start?",
@@ -2334,7 +2387,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa12-t4": {
    "t": "Reversing a Linked List In-Place (Iterative & Recursive)",
@@ -2346,7 +2399,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa12-t5": {
    "t": "Reversing in Groups of K",
@@ -2358,7 +2411,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa12-t6": {
    "t": "Merge Two Sorted Lists",
@@ -2370,7 +2423,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa12-t7": {
    "t": "LRU Cache: HashMap + Doubly Linked List",
@@ -2382,7 +2435,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t0": {
    "t": "Stack (LIFO) vs Queue (FIFO) — and which container to use",
@@ -2394,7 +2447,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -2423,7 +2476,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t2": {
    "t": "Min Stack — get the minimum in O(1)",
@@ -2435,7 +2488,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t3": {
    "t": "Infix → Postfix and evaluating Postfix (RPN) with a stack",
@@ -2447,7 +2500,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t4": {
    "t": "Monotonic Stack — Next Greater Element",
@@ -2459,7 +2512,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t5": {
    "t": "Monotonic Stack — Stock Span (previous greater)",
@@ -2471,7 +2524,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t6": {
    "t": "Monotonic Stack — Largest Rectangle in Histogram",
@@ -2483,7 +2536,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t7": {
    "t": "Queue using Two Stacks — amortized O(1)",
@@ -2495,7 +2548,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa13-t8": {
    "t": "Monotonic Deque — Sliding Window Maximum",
@@ -2507,7 +2560,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t0": {
    "t": "Tree Terminology: Root, Leaf, Depth, Height & Friends",
@@ -2519,7 +2572,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -2544,7 +2597,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t10": {
    "t": "BST Delete: Leaf, One Child, Two Children",
@@ -2556,7 +2609,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t11": {
    "t": "Validate a BST & Find the K-th Smallest (Inorder Superpowers)",
@@ -2572,7 +2625,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t2": {
    "t": "Iterative Traversals with an Explicit Stack",
@@ -2588,7 +2641,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t4": {
    "t": "Left View & Right View",
@@ -2600,7 +2653,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t5": {
    "t": "Top View & Bottom View (Horizontal Distance + Map)",
@@ -2612,7 +2665,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t6": {
    "t": "Height & Diameter (Bottom-Up Recursion)",
@@ -2624,7 +2677,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t7": {
    "t": "Balanced Tree Check (Height-Balanced)",
@@ -2636,7 +2689,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t8": {
    "t": "Lowest Common Ancestor (LCA) in a Binary Tree and in a BST",
@@ -2648,7 +2701,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa14-t9": {
    "t": "BST Search & Insert (and Min, Max, Floor, Ceil)",
@@ -2660,7 +2713,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": false,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa15-t0": {
    "t": "Min-Heap & Max-Heap: the array trick, insert (sift-up), extract (sift-down)",
@@ -2672,7 +2725,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -2697,7 +2750,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa15-t2": {
    "t": "Java PriorityQueue: min by default, max with reverseOrder / comparator",
@@ -2709,7 +2762,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa15-t3": {
    "t": "K Largest / K Smallest Elements (the Top-K pattern)",
@@ -2721,7 +2774,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa15-t4": {
    "t": "Merge K Sorted Lists (heap of the current heads)",
@@ -2733,7 +2786,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa15-t5": {
    "t": "Running Median of a Data Stream (two heaps)",
@@ -2745,7 +2798,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa15-t6": {
    "t": "Prefix Trees (Tries): insert, search, startsWith, autocomplete",
@@ -2757,7 +2810,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa15-t7": {
    "t": "Maximum XOR Pair (binary trie + greedy opposite bit)",
@@ -2769,7 +2822,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t0": {
    "t": "The Greedy Mindset: Greedy Choice Property & Exchange-Argument Proofs",
@@ -2781,7 +2834,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -2806,7 +2859,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t2": {
    "t": "Job Sequencing with Deadlines (Best Profit, Latest Free Slot)",
@@ -2818,7 +2871,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t3": {
    "t": "Fractional Knapsack (Greedy by Value per Kg)",
@@ -2830,7 +2883,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t4": {
    "t": "Huffman Coding (Greedy Merging of the Two Smallest)",
@@ -2842,7 +2895,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t5": {
    "t": "Minimum Platforms & Meeting Rooms (Sweep-Line Greedy)",
@@ -2854,7 +2907,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t6": {
    "t": "Gas Station / Circular Tour (Reset the Start When the Tank Goes Negative)",
@@ -2866,7 +2919,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t7": {
    "t": "Jump Game I & II (Farthest Reach, BFS Levels Without a Queue)",
@@ -2878,7 +2931,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa16-t8": {
    "t": "When Greedy Fails: the Coin Change Counterexample",
@@ -2892,7 +2945,7 @@
    "start": 100,
    "end": 427,
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa17-t0": {
    "t": "DP Intuition: Overlapping Subproblems + Optimal Substructure",
@@ -2904,7 +2957,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -2929,7 +2982,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa17-t2": {
    "t": "House Robber: the Take-or-Skip Pattern",
@@ -2941,7 +2994,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa17-t3": {
    "t": "Coin Change: Minimum Coins and Number of Ways",
@@ -2953,7 +3006,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa17-t4": {
    "t": "0/1 Knapsack: Take Each Item at Most Once",
@@ -2965,7 +3018,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa17-t5": {
    "t": "Unbounded Knapsack: Reuse Items as Often as You Like (Rod Cutting)",
@@ -2981,7 +3034,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa17-t7": {
    "t": "Edit Distance (Levenshtein): Insert, Delete, Replace",
@@ -2993,7 +3046,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa17-t8": {
    "t": "Grid DP: Unique Paths (with Obstacles) and Minimum Path Sum",
@@ -3005,7 +3058,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa18-t0": {
    "t": "Longest Increasing Subsequence: O(N²) DP and the O(N log N) “tails” trick",
@@ -3017,7 +3070,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3042,7 +3095,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa18-t2": {
    "t": "Interval DP: Matrix Chain Multiplication and Burst Balloons (solve every range, shortest first)",
@@ -3054,7 +3107,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa18-t3": {
    "t": "DP on Trees: House Robber III and Binary Tree Maximum Path Sum (children report, parent decides)",
@@ -3082,7 +3135,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": "S8rMlJBmVYc",
@@ -3114,7 +3167,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa19-t2": {
    "t": "Multi-Source BFS on Grids: Rotting Oranges, Nearest Distance, Spreading Fire",
@@ -3130,7 +3183,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
+   "byLang": {
+    "cpp": {
+     "id": "muncqlKJrH0",
+     "title": "G-8. Number of Islands | Number of Connected Components in Matrix | C++ | Java",
+     "channel": "take U forward",
+     "secs": 1504
+    }
+   }
   },
   "dsa19-t4": {
    "t": "Cycle Detection: Undirected (parent check) and Directed (three colours)",
@@ -3142,7 +3203,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa19-t5": {
    "t": "Bipartite Graphs: Two-Colouring with BFS (and the Odd-Cycle Rule)",
@@ -3154,7 +3215,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa19-t6": {
    "t": "Topological Sort: Kahn’s Algorithm (BFS) and DFS Post-Order",
@@ -3166,7 +3227,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa19-t7": {
    "t": "Disjoint Set Union (Union-Find): Path Compression + Union by Rank",
@@ -3178,7 +3239,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa20-t0": {
    "t": "Weighted Graphs, Relaxation & Dijkstra with PriorityQueue",
@@ -3190,7 +3251,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3217,7 +3278,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa20-t2": {
    "t": "Bellman-Ford: Negative Edges & Negative-Cycle Detection",
@@ -3229,7 +3290,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa20-t3": {
    "t": "Floyd-Warshall: All-Pairs Shortest Paths with a 3-Loop DP",
@@ -3241,7 +3302,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa20-t4": {
    "t": "Minimum Spanning Trees & Prim's Algorithm",
@@ -3253,7 +3314,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa20-t5": {
    "t": "Kruskal's MST with Disjoint Set Union (DSU)",
@@ -3265,7 +3326,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa20-t6": {
    "t": "Shortest-Path Variants: K Stops, Minimum Effort & Multi-Criteria States",
@@ -3281,7 +3342,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3306,7 +3367,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa21-t2": {
    "t": "Fenwick Tree (Binary Indexed Tree): Prefix Sums That Can Change",
@@ -3318,7 +3379,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa21-t3": {
    "t": "Sparse Table: O(1) Range Minimum on a Static Array",
@@ -3330,7 +3391,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa21-t4": {
    "t": "Sqrt Decomposition: Cut the Array into √N Blocks",
@@ -3342,7 +3403,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa21-t5": {
    "t": "Mo's Algorithm: Answer Offline Range Queries by Sliding a Window Smartly",
@@ -3358,7 +3419,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t0": {
    "t": "Strongly Connected Components (SCC) & Kosaraju's Two-Pass Algorithm",
@@ -3370,7 +3431,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3391,7 +3452,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t2": {
    "t": "Bridges & Articulation Points with Low-Link Values",
@@ -3403,7 +3464,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t3": {
    "t": "Euler Paths & Circuits with Hierholzer's Algorithm",
@@ -3415,7 +3476,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t4": {
    "t": "Lowest Common Ancestor (LCA) with Binary Lifting",
@@ -3427,7 +3488,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t5": {
    "t": "Maximum Flow I: Residual Graphs, Ford-Fulkerson & Edmonds-Karp",
@@ -3439,7 +3500,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t6": {
    "t": "Maximum Flow II: Dinic's Algorithm (Level Graph + Blocking Flow)",
@@ -3451,7 +3512,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t7": {
    "t": "Minimum Cut: The Max-Flow Min-Cut Theorem & Modelling with Cuts",
@@ -3463,7 +3524,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa22-t8": {
    "t": "Bipartite Matching: Kuhn's Augmenting Paths, Flow View, Hopcroft-Karp & König's Theorem",
@@ -3475,7 +3536,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa23-t0": {
    "t": "Bitmask DP: Travelling Salesman (Held-Karp) & the Assignment Problem",
@@ -3487,7 +3548,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3508,7 +3569,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa23-t2": {
    "t": "Probability & Expected-Value DP",
@@ -3520,7 +3581,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa23-t3": {
    "t": "DP Accelerated by Data Structures (Monotonic Deque, Fenwick / Segment Tree, TreeMap)",
@@ -3540,7 +3601,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa23-t6": {
    "t": "Knuth Optimization: Interval DP from O(N³) to O(N²)",
@@ -3552,7 +3613,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa23-t7": {
    "t": "SOS DP (Sum over Subsets): Aggregating Over All Submasks in O(n·2ⁿ)",
@@ -3568,7 +3629,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": "0CesZFo1yOQ",
@@ -3592,7 +3653,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa24-t2": {
    "t": "LCP Array with Kasai’s Algorithm (and Range-Min Superpowers)",
@@ -3608,7 +3669,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa24-t4": {
    "t": "Polynomial Hashing, Double Hashing & Anti-Hash Tests",
@@ -3624,7 +3685,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa24-t6": {
    "t": "Applications Playbook: Distinct Substrings, Longest Repeats & Picking the Right Tool",
@@ -3640,7 +3701,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3661,7 +3722,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa25-t2": {
    "t": "Euler's Totient φ(n) and Euler's Theorem",
@@ -3673,7 +3734,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa25-t3": {
    "t": "Chinese Remainder Theorem: Rebuilding a Number from Its Remainders",
@@ -3689,7 +3750,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa25-t5": {
    "t": "Inclusion–Exclusion: Counting Without Double-Counting",
@@ -3701,7 +3762,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa25-t6": {
    "t": "Catalan Numbers: Brackets, Trees, Mountains and More",
@@ -3713,7 +3774,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa25-t7": {
    "t": "Lucas' Theorem: nCr mod a Small Prime for Gigantic n",
@@ -3733,7 +3794,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa26-t0": {
    "t": "Vectors, Cross Product & Orientation (the CCW Test)",
@@ -3745,7 +3806,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3772,11 +3833,19 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa26-t3": {
    "t": "Polygon Area with the Shoelace Formula (plus Convexity, Pick's Theorem & Point-in-Polygon)",
-   "id": null
+   "id": null,
+   "byLang": {
+    "cpp": {
+     "id": "tBaCGoR5B-Y",
+     "title": "program in C++ to find the area of a polygon",
+     "channel": "Computer Programming Tutor",
+     "secs": 409
+    }
+   }
   },
   "dsa26-t4": {
    "t": "Reservoir Sampling: Fair Random Picks from a Stream of Unknown Length",
@@ -3788,7 +3857,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa26-t5": {
    "t": "Randomized Algorithms: Fisher–Yates Shuffle & Randomized Quickselect",
@@ -3800,7 +3869,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa26-t6": {
    "t": "Amortized Analysis: Dynamic Arrays, Binary Counters, Monotonic Stacks & Union-Find",
@@ -3816,11 +3885,12 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa27-t0": {
    "t": "LRU Cache: HashMap + Doubly Linked List, and Its Real-World Variants",
    "id": null,
+   "at": "2026-10-28",
    "byLang": {
     "cpp": {
      "id": null
@@ -3841,7 +3911,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa27-t2": {
    "t": "Skip List: A Sorted Linked List with Express Lanes",
@@ -3853,7 +3923,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa27-t3": {
    "t": "Bloom Filter: \"Definitely Not\" or \"Probably Yes\" in a Few Bits",
@@ -3865,7 +3935,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa27-t4": {
    "t": "Consistent-Hash Ring: Add or Remove Servers Without Reshuffling Everything",
@@ -3881,7 +3951,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa27-t6": {
    "t": "Designing Iterators: Peeking, Flatten (2D & Nested), Zigzag and BST",
@@ -3901,7 +3971,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa27-t9": {
    "t": "Choosing the Design: Trade-offs, Complexity Cheat Sheet and Eviction Showdown",
@@ -3917,7 +3987,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z",
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z",
    "byLang": {
     "cpp": {
      "id": null
@@ -3938,7 +4008,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa28-t2": {
    "t": "How to Approach an Unseen Problem",
@@ -3950,7 +4020,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa28-t3": {
    "t": "Mixed Timed Problem Sets: Practising Like the Real Thing",
@@ -3962,7 +4032,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa28-t4": {
    "t": "Mock Interview Walkthroughs: What a Strong Round Sounds Like",
@@ -3974,7 +4044,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa28-t5": {
    "t": "Debugging Under Pressure",
@@ -3992,7 +4062,7 @@
    "start": 188,
    "end": 420,
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa28-t7": {
    "t": "Common Mistakes (and the Habit That Prevents Each)",
@@ -4004,7 +4074,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "dsa28-t8": {
    "t": "Final Revision Checklists & Your Last-Week Plan",
@@ -4016,7 +4086,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "fe01-t0": {
    "t": "Browsers, Servers & the Client–Server Idea",
@@ -4027,7 +4097,8 @@
   },
   "fe01-t1": {
    "t": "URLs: The Address of Everything",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "fe02-t0": {
    "t": "Document Structure & How the Browser Reads Your HTML",
@@ -4076,7 +4147,8 @@
   },
   "fe05-t1": {
    "t": "CSS Grid in Depth: Tracks, fr, minmax, auto-fit, Areas, Spans",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "fe06-t0": {
    "t": "Why Accessibility Matters & WCAG Basics (POUR, A / AA / AAA)",
@@ -4196,7 +4268,8 @@
   },
   "hld01-t1": {
    "t": "Clients & Servers: Who Asks, Who Answers",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "hld02-t0": {
    "t": "Vertical vs Horizontal Scaling (Scale Up vs Scale Out)",
@@ -4207,7 +4280,8 @@
   },
   "hld02-t1": {
    "t": "Stateless Services: The Key That Unlocks Scale-Out",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "hld03-t0": {
    "t": "Your Estimation Toolkit: Units, Powers of Two & Handy Constants",
@@ -4346,6 +4420,13 @@
    "channel": "TechingEasy",
    "secs": 619
   },
+  "hld13-t1": {
+   "t": "Search Engines: Inverted Index, Ranking and Elasticsearch",
+   "id": "iHHqnyThrqE",
+   "title": "Inverted Index - The Data Structure Behind Search Engines",
+   "channel": "Arpit Bhayani",
+   "secs": 885
+  },
   "hld14-t0": {
    "t": "Design a URL Shortener (bit.ly / TinyURL)",
    "id": "xFeWVugaouk",
@@ -4377,7 +4458,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java01-t1": {
    "t": "JDK vs JRE vs JVM — and What Lives Inside the JVM",
@@ -4389,7 +4470,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java01-t2": {
    "t": "The main Method, Command-Line Arguments & Exit Codes",
@@ -4401,7 +4482,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java01-t3": {
    "t": "Primitive Types, Ranges, Literals & Defaults",
@@ -4413,7 +4494,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java01-t4": {
    "t": "Type Casting: Widening, Narrowing & Numeric Promotion",
@@ -4425,7 +4506,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java01-t5": {
    "t": "Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence",
@@ -4441,7 +4522,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java01-t7": {
    "t": "char, ASCII & Unicode (UTF-16, Code Points, Emoji)",
@@ -4453,7 +4534,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java02-t0": {
    "t": "Decisions: if/else, the Ternary Operator, switch & Switch Expressions",
@@ -4465,11 +4546,12 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java02-t1": {
    "t": "Loops: for, while, do-while and the Enhanced for-each",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "java02-t2": {
    "t": "Jumping Out Early: break, continue and Labelled Loops",
@@ -4481,7 +4563,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java02-t3": {
    "t": "Methods, the Call Stack and Why Java Is Always Pass-by-Value",
@@ -4493,7 +4575,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java02-t4": {
    "t": "Method Overloading and Varargs (int... args)",
@@ -4505,7 +4587,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java02-t5": {
    "t": "1D Arrays, 2D Arrays and Jagged Arrays",
@@ -4517,7 +4599,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java02-t6": {
    "t": "The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)",
@@ -4533,7 +4615,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java03-t0": {
    "t": "Defining Classes & Creating Objects",
@@ -4545,7 +4627,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java03-t1": {
    "t": "References: Stack vs Heap, Aliasing, null & Pass-by-Value",
@@ -4557,7 +4639,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java03-t2": {
    "t": "Constructors & Constructor Chaining",
@@ -4569,7 +4651,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java03-t3": {
    "t": "The this Keyword",
@@ -4581,7 +4663,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java03-t4": {
    "t": "static: Fields, Methods & Blocks",
@@ -4593,7 +4675,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java03-t5": {
    "t": "Initialization Order: static, instance, constructor",
@@ -4605,7 +4687,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java03-t6": {
    "t": "Access Modifiers & Packages",
@@ -4617,7 +4699,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t0": {
    "t": "Encapsulation: Private Data, Public Behaviour, Guarded Invariants",
@@ -4629,7 +4711,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t1": {
    "t": "Inheritance, extends & super: Reusing a Parent and Building Objects Layer by Layer",
@@ -4641,7 +4723,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t2": {
    "t": "Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override",
@@ -4653,7 +4735,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t3": {
    "t": "Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)",
@@ -4665,7 +4747,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t4": {
    "t": "Abstract Classes: Half-Built Blueprints and the Template Method",
@@ -4677,7 +4759,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t5": {
    "t": "Interfaces: Contracts, default & static Methods, and the Diamond Rules",
@@ -4689,7 +4771,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t6": {
    "t": "final: Variables, References, Methods and Classes",
@@ -4701,7 +4783,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t7": {
    "t": "Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)",
@@ -4713,7 +4795,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java04-t8": {
    "t": "The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize",
@@ -4725,7 +4807,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-27T08:56:22.767Z"
+   "availabilityCheckedAt": "2026-10-28T03:01:45.715Z"
   },
   "java05-t0": {
    "t": "String Immutability: Why a String Can Never Change",
@@ -4762,7 +4844,10 @@
   },
   "java07-t1": {
    "t": "Lists: ArrayList vs LinkedList (and the Real Cost of Each Operation)",
-   "id": null
+   "id": "5dscMs2hnDI",
+   "title": "LinkedList vs ArrayList in Java Tutorial - Which Should You Use?",
+   "channel": "Coding with John",
+   "secs": 703
   },
   "java08-t0": {
    "t": "Why Generics? Generic Classes, Interfaces & Records",
@@ -4797,7 +4882,8 @@
   },
   "java10-t1": {
    "t": "HashMap Internals I: hashCode → Spread → Bucket → Chain",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "java11-t0": {
    "t": "Threads 101: Runnable vs Thread, start() vs run(), join() & the Thread Lifecycle",
@@ -4871,7 +4957,10 @@
   },
   "js03-t1": {
    "t": "Browser APIs vs Node APIs (and the Shared Web Standards)",
-   "id": null
+   "id": "wxbQP1LMZsw",
+   "title": "2.1 Server-side with Node.js - Working with Data and APIs in JavaScript",
+   "channel": "The Coding Train",
+   "secs": 1097
   },
   "js04-t0": {
    "t": "Scope Basics: Global, Function and Block Scope",
@@ -4896,7 +4985,8 @@
   },
   "js05-t1": {
    "t": "Implicit Binding: the Dot Rule and How It Gets Lost",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "js06-t0": {
    "t": "The Prototype Chain: How JavaScript Finds a Property",
@@ -5020,7 +5110,8 @@
   },
   "lld01-t1": {
    "t": "From Requirements to Entities, Attributes & Behaviours (Noun-Verb Analysis)",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "lld02-t0": {
    "t": "Why SOLID? Design Smells and the Ripple of Change",
@@ -5073,7 +5164,8 @@
   },
   "lld03-t1": {
    "t": "KISS & YAGNI — simple first, build only what is needed",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "lld04-t0": {
    "t": "Why Creational Patterns? The Trouble with \"new\" Everywhere",
@@ -5120,7 +5212,10 @@
   },
   "lld05-t1": {
    "t": "Decorator — Add Features by Wrapping",
-   "id": null
+   "id": "Q27318cbs-E",
+   "title": "Decorator Design Pattern Explained | LLD | Get SDE Ready | System Design Interview",
+   "channel": "GET SDE READY",
+   "secs": 1538
   },
   "lld06-t0": {
    "t": "Strategy: Swap the Algorithm, Keep the Code",
@@ -5164,7 +5259,8 @@
   },
   "lld07-t1": {
    "t": "The Brute Force: A Single Procedural \"God Class\" and Why Interviewers Reject It",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "lld08-t0": {
    "t": "BookMyShow I: Requirements, Entities & the Class Design",
@@ -5302,7 +5398,8 @@
   },
   "py02-t1": {
    "t": "Loops: for, while, range(), break, continue & the Loop else",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "py03-t0": {
    "t": "Strings I: Indexing, Slicing, Immutability & Everyday Methods",
@@ -5313,7 +5410,8 @@
   },
   "py03-t1": {
    "t": "Strings II: f-strings, the Format Spec Mini-Language, str() vs repr()",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "py04-t0": {
    "t": "Classes, Objects, __init__ and self",
@@ -5324,7 +5422,8 @@
   },
   "py04-t1": {
    "t": "Instance vs Class Attributes and the Attribute Lookup Chain",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "py05-t0": {
    "t": "list Under the Hood: A Dynamic Array of Pointers (Growth, Amortized O(1), Costly Shifts)",
@@ -5333,7 +5432,8 @@
   },
   "py05-t1": {
    "t": "dict Internals: Hashing, Slots, Collisions & Why Insertion Order Is Kept",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "py06-t0": {
    "t": "First-Class Functions: Functions Are Just Objects",
@@ -5464,7 +5564,10 @@
   },
   "sql04-t1": {
    "t": "LEFT and RIGHT OUTER JOIN: Keep Every Row from One Side (NULL-filled when no match)",
-   "id": null
+   "id": "_xpkzknvKrk",
+   "title": "LEFT JOIN and RIGHT JOIN in Snowflake | Outer Joins, NULLs, Anti Join | Snowflake SQL #25",
+   "channel": "TechBrothersIT",
+   "secs": 353
   },
   "sql05-t0": {
    "t": "Subqueries 101: Scalar, Row & Table Subqueries",
@@ -5524,7 +5627,8 @@
   },
   "sql09-t1": {
    "t": "UPDATE & DELETE Patterns: Safe Edits, Joins, Dedupes and Batches",
-   "id": null
+   "id": null,
+   "at": "2026-10-28"
   },
   "sql10-t0": {
    "t": "Why Indexes Exist: Full Table Scan vs Index Seek",
