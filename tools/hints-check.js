@@ -9,7 +9,8 @@ const ctx = { console, MODULES: [] };
 ctx.registerModule = (m) => ctx.MODULES.push(m);
 vm.createContext(ctx);
 for (const f of ['src/helpers.js', 'src/tracks.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx);
-const strip = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim().toLowerCase();
+// Plain text for comparison only: drop tags, decode the common entities, then drop any angle brackets left over.
+const strip = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/[<>]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 const errors = [];
 let modules = 0, hints = 0;
 function checkList(id, kind, items, list) {
