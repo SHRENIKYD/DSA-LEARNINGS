@@ -98,3 +98,13 @@ Note: `auth.users` (emails, password hashes) is not in the dump, only `public`. 
    For a test restore, insert dummy ids into `auth.users`, or load with `psql -v ON_ERROR_STOP=0`.
 5. Load: `psql "$SCRATCH_DB_URL" -f backup.sql`.
 6. Check: `select count(*) from public.progress;`.
+
+## Visit statistics (0006)
+
+`public.visits` holds one row per random visitor id, page and UTC day (device class, OS family, browser family, web or app, signed in or not, hits). The site and app write only through `log_visit()` (`src/visits.js`); nobody can read or change the table through the API. The owner dashboard is `admin.html` (not linked anywhere), which calls `visits_summary(days)`; it works only for accounts listed in `public.visit_admins`. Add the owner once in the Supabase SQL editor:
+
+```sql
+insert into public.visit_admins (user_id) select id from auth.users where email = '<owner sign-in email>';
+```
+
+The weekly backup workflow deletes rows older than 400 days. Browsers that send Do Not Track or Global Privacy Control, and `localStorage imastery.noStats = '1'`, send nothing.

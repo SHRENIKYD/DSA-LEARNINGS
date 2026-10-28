@@ -51,3 +51,7 @@ Edit the topic's entry in `data/videos.json`: set `id` to the 11-character video
 `src/video.js` shares validation and URL generation across lesson pages and the Watchtower. Optional `start`/`end` timestamps select relevant chapters; external YouTube links retain the start time and are visible before playback. Coverage notes distinguish a focused introduction from a complete lesson. Unknown durations use `secs: 0`.
 
 See [the 232-video review](VIDEO_REVIEW.md) for scope and verification limits.
+
+## Daily app release for new videos
+
+The app carries its own copy of the catalog (built in by `tools/build-app.js`), so new videos reach it only through a new app version. After saving `data/videos.json`, the daily workflow runs `tools/video-release.js`: when at least `VIDEO_APP_RELEASE_MIN` (repository variable, default 1) videos became playable, it bumps `appVersion`, adds a "Lesson videos" entry to `CHANGELOG-APP.md` and syncs the iOS project in the same pull request, then starts the Android workflow, which tags the version and uploads it to Google Play. Days without new videos release nothing. Set the repository variable `VIDEO_APP_RELEASE=false` to switch it off. Every upload goes through Google Play review; a new upload while one is in review replaces it.
