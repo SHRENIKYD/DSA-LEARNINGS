@@ -29,6 +29,11 @@
    "channel": "IBM Technology",
    "secs": 641
   },
+  "ai01-t4": {
+   "t": "What Generative AI Does: Predict the Next Piece, Again and Again",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "ai02-t0": {
    "t": "Chat Assistants vs Coding Assistants",
    "id": "M2C-yFocLu0",
@@ -240,6 +245,13 @@
    "channel": "IBM Technology",
    "secs": 396
   },
+  "ai09-t3": {
+   "t": "Reranking with Cross-Encoders",
+   "id": "ZFbaA9eM0uo",
+   "title": "Advanced RAG 04 - Reranking with Cross Encoders, and Cohere API",
+   "channel": "Sunny Savita",
+   "secs": 1161
+  },
   "ai10-t0": {
    "t": "What MCP Is and Why It Exists (N×M, \"USB-C for AI\")",
    "id": "eur8dUO9mvE",
@@ -258,6 +270,13 @@
    "t": "JSON-RPC Messages and the Connection Lifecycle",
    "id": null,
    "at": "2026-10-28"
+  },
+  "ai10-t3": {
+   "t": "Transports (stdio vs Streamable HTTP) and a Tool-Call Round Trip",
+   "id": "Ea_T5DnnNIk",
+   "title": "MCP Just Went Stateless: How Any Server Can Handle the Next Tool Call",
+   "channel": "Tertiary Courses",
+   "secs": 271
   },
   "ai11-t0": {
    "t": "Function / Tool Calling and JSON-Schema Tool Definitions",
@@ -280,6 +299,13 @@
    "channel": "The Agent Lab",
    "secs": 254
   },
+  "ai11-t3": {
+   "t": "Agent Memory: Short-Term, Long-Term and Summarization",
+   "id": "vfVcDUCucSs",
+   "title": "How to add short-term memory to your  AI agent (Sessions & State Explained)",
+   "channel": "Google Cloud Tech",
+   "secs": 363
+  },
   "ai12-t0": {
    "t": "Prompting vs RAG vs Fine-Tuning: The Decision Framework",
    "id": "zYGDpG-pTho",
@@ -301,6 +327,13 @@
    "channel": "MartinHanderPhD",
    "secs": 1855
   },
+  "ai12-t3": {
+   "t": "RLHF and DPO: Teaching Models What Humans Prefer",
+   "id": "86RPPIJgNow",
+   "title": "RLHF vs DPO: how AI models learn what humans prefer",
+   "channel": "AI Coding Arena",
+   "secs": 299
+  },
   "ai13-t0": {
    "t": "LLM Evals: Golden Sets, Scoring and Regression Tests",
    "id": "v90oqZlFK68",
@@ -317,6 +350,11 @@
   },
   "ai13-t2": {
    "t": "Hallucination Mitigation: Grounding, Citations, Abstaining",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "ai13-t3": {
+   "t": "Guardrails: Input Filters, Output Filters, Schemas and Topic Limits",
    "id": null,
    "at": "2026-10-28"
   },
@@ -339,6 +377,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "ai14-t3": {
+   "t": "Cost Optimization: Token Budgeting, Caching and Batching",
+   "id": "9tvJ_GYJA-o",
+   "title": "Mastering LLM Inference Optimization From Theory to Cost Effective Deployment: Mark Moyou",
+   "channel": "AI Engineer",
+   "secs": 2019
+  },
   "ai15-t0": {
    "t": "Attention Math: Q, K, V, Softmax, the √d Scale and Causal Masks",
    "id": null,
@@ -355,6 +400,13 @@
    "title": "Positional embeddings in transformers EXPLAINED | Demystifying positional encodings.",
    "channel": "AI Coffee Break with Letitia",
    "secs": 580
+  },
+  "ai15-t3": {
+   "t": "The KV Cache: What Is Stored and Why Decoding Is Memory-Bound",
+   "id": "o0gkdZBtwEg",
+   "title": "How KV Cache Speeds Up LLMs for Faster AI Models on GPUs",
+   "channel": "IBM Technology",
+   "secs": 675
   },
   "ai16-t0": {
    "t": "Working With Coding Agents Day to Day: Scope, Context, CLAUDE.md, Small Diffs",
@@ -375,6 +427,13 @@
    "channel": "The Black Box",
    "secs": 217
   },
+  "ai16-t3": {
+   "t": "AI for Debugging, Refactoring and Docs (Including Bisecting a Bug)",
+   "id": "RBfD3Jjo_bM",
+   "title": "AI Code Review for Refactoring and Debugging",
+   "channel": "AI User Group",
+   "secs": 982
+  },
   "ai17-t0": {
    "t": "What Gets Automated, What Gets Augmented, What Gains Value",
    "id": null,
@@ -394,6 +453,13 @@
    "channel": "Aakash Gupta",
    "secs": 3133
   },
+  "ai17-t3": {
+   "t": "Ethics, Regulation, Privacy, IP and Accountability",
+   "id": "hlSpMUtntqA",
+   "title": "Demystifying AI Ethics Roundtable Part 1- Transparency, Explainability, Accountability, & Liability",
+   "channel": "Learn Tourism Conference",
+   "secs": 1710
+  },
   "ai18-t0": {
    "t": "Vectors: Arrows, Lists, Adding, Scaling and Length",
    "id": null,
@@ -412,6 +478,13 @@
    "title": "How Does AI Transform Space? — Matrices as Space Warps (Linear Transformations)",
    "channel": "TensorSense",
    "secs": 646
+  },
+  "ai18-t3": {
+   "t": "Matrix Multiplication: Row-by-Column, Shapes and Composition",
+   "id": "3ZVhqUN9MNo",
+   "title": "How Matrix Multiplication REALLY Works! 🤯 | Visual Explanation #maths",
+   "channel": "PrinceX AI ",
+   "secs": 371
   },
   "ai19-t0": {
    "t": "Probability Basics, Random Variables & the Law of Large Numbers",
@@ -434,6 +507,13 @@
    "channel": "jbstatistics",
    "secs": 477
   },
+  "ai19-t3": {
+   "t": "Distributions II: The Normal Curve, z-Scores & the Central Limit Theorem",
+   "id": "YAlJCEDH2uY",
+   "title": "The Central Limit Theorem, Clearly Explained!!!",
+   "channel": "StatQuest with Josh Starmer",
+   "secs": 455
+  },
   "ai20-t0": {
    "t": "Derivatives: Slope, Rules and the Numeric Check",
    "id": "akyIgjH-2qE",
@@ -454,6 +534,13 @@
    "title": "Gradients and Partial Derivatives",
    "channel": "Physics Videos by Eugene Khutoryansky",
    "secs": 324
+  },
+  "ai20-t3": {
+   "t": "Gradient Descent, Learning Rates and Mini-Batches",
+   "id": "IHZwWFHWa-w",
+   "title": "Gradient descent, how neural networks learn | Deep Learning Chapter 2",
+   "channel": "3Blue1Brown",
+   "secs": 1233
   },
   "be01-t0": {
    "t": "Client–Server & What a Backend Actually Does",
@@ -483,6 +570,11 @@
    "channel": "ByteByteGo",
    "secs": 307
   },
+  "be01-t4": {
+   "t": "JSON: The Language Backends Speak (and Designing Good Payloads)",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "be02-t0": {
    "t": "Project Setup & Your First Endpoint (Spring Boot and Express)",
    "id": "pGFfjeWQ2Hk",
@@ -508,6 +600,13 @@
    "title": "Why Validate Input? Never Trust the Client | Day 67",
    "channel": "Be Software Engineer",
    "secs": 480
+  },
+  "be02-t4": {
+   "t": "Error Handling: Exceptions to Clean HTTP Errors (Global Handler)",
+   "id": "rXdsm9R5TR0",
+   "title": "Global Error Handling in .NET Just Got WAY Better",
+   "channel": "Milan Jovanović",
+   "secs": 789
   },
   "be03-t0": {
    "t": "Connecting to a Database: App → Connection → Driver → DB",
@@ -678,6 +777,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "be09-t3": {
+   "t": "Sorted Sets: Real-Time Leaderboards and Ranking",
+   "id": "08vZrV9hE-0",
+   "title": "Real-Time Leaderboard with Redis & Express.js for 1M+ Users & Live Scores Updates | Project & Code",
+   "channel": "Dev. Shivansh Vasu",
+   "secs": 1733
+  },
   "be10-t0": {
    "t": "Why Microservices? Decomposition by Business Capability & Subdomain",
    "id": "AL9oCOVDJDc",
@@ -699,6 +805,13 @@
    "channel": "Backend 101",
    "secs": 321
   },
+  "be10-t3": {
+   "t": "Synchronous (REST/gRPC) vs Asynchronous Messaging",
+   "id": "Kpn2ajSa92c",
+   "title": "Asynchronous Vs Synchronous Programming",
+   "channel": "Web Dev Simplified",
+   "secs": 454
+  },
   "be11-t0": {
    "t": "The Test Pyramid and the Four Kinds of Tests",
    "id": "FKS5FwK6YbE",
@@ -717,6 +830,13 @@
    "title": "Integration Testing with Testcontainers",
    "channel": "Kotlin by JetBrains",
    "secs": 641
+  },
+  "be11-t3": {
+   "t": "Contract Tests: Consumer-Driven Contracts and Pact",
+   "id": "IetyhDr48RI",
+   "title": "[Introduction to contract testing - Part 2] Contract testing and how Pact works",
+   "channel": "PactFlow",
+   "secs": 630
   },
   "be12-t0": {
    "t": "Profiling: CPU, Heap and Flame Graphs",
@@ -739,6 +859,13 @@
    "channel": "ByteMonk",
    "secs": 482
   },
+  "be12-t3": {
+   "t": "Backpressure and Bounded Queues",
+   "id": "3DTSIlj72Qs",
+   "title": "Backpressure in Software Development simply explained",
+   "channel": "Software Developer Diaries",
+   "secs": 516
+  },
   "be13-t0": {
    "t": "Containers vs VMs, Images and Layers",
    "id": "cAhniD7z4M4",
@@ -757,6 +884,11 @@
    "title": "Kubernetes Ingress in 5 mins",
    "channel": "IBM Technology",
    "secs": 341
+  },
+  "be13-t3": {
+   "t": "ConfigMaps, Secrets, Probes and Rolling Updates",
+   "id": null,
+   "at": "2026-10-28"
   },
   "be14-t0": {
    "t": "The AWS Core Map: Which Service Does What (and the 3-Tier Web App)",
@@ -777,6 +909,13 @@
    "channel": "CodeSnippet by Chetan",
    "secs": 1401
   },
+  "be14-t3": {
+   "t": "DynamoDB: Choosing Keys for Your Access Pattern",
+   "id": "lRb6SfP27UI",
+   "title": "DynamoDB Data Modelling | Single table Design for LinkedIn Posts Likes Comments | Access patterns|",
+   "channel": "Soumil Shah",
+   "secs": 527
+  },
   "be15-t0": {
    "t": "Broken Access Control & IDOR (OWASP A01)",
    "id": "K2PiHznrPBs",
@@ -796,6 +935,11 @@
    "channel": "SOCDemystified",
    "secs": 392
   },
+  "be15-t3": {
+   "t": "SSRF, Insecure Design & Security Misconfiguration (A10, A04, A05)",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "be16-t0": {
    "t": "Structured Logging with Correlation IDs",
    "id": null,
@@ -812,6 +956,13 @@
    "title": "SLOconf 2022: Fred Moyer- Don't chase percentiles use histograms if you want precision SLO latency",
    "channel": "Nobl9",
    "secs": 815
+  },
+  "be16-t3": {
+   "t": "Distributed Tracing with OpenTelemetry",
+   "id": "hLvwoow3XTk",
+   "title": "OpenTelemetry: Simplifying Hybrid Cloud Monitoring",
+   "channel": "IBM Technology",
+   "secs": 340
   },
   "be17-t0": {
    "t": "Your First FastAPI App: Project Layout, ASGI and Running with Uvicorn",
@@ -834,6 +985,13 @@
    "channel": "Nilesh Technology",
    "secs": 903
   },
+  "be17-t3": {
+   "t": "Response Models: Shaping and Filtering What You Send Back",
+   "id": "ZU2cKZHnwRc",
+   "title": "FastAPI Tutorial #4: Response Models & HTTP Status Codes",
+   "channel": "Mathew K Analytics",
+   "secs": 975
+  },
   "be18-t0": {
    "t": "Engine, Sessions and the Unit of Work",
    "id": null,
@@ -850,6 +1008,13 @@
    "t": "Queries in SQLAlchemy 2.0 Style: select(), joins, aggregates, bulk writes",
    "id": null,
    "at": "2026-10-28"
+  },
+  "be18-t3": {
+   "t": "The N+1 Problem and Eager Loading (selectinload, joinedload, raiseload)",
+   "id": "_QmT0GmQJ8o",
+   "title": "N+1 Query Problem Explained ⚡ Fix Slow ORM Performance",
+   "channel": "EasyDev",
+   "secs": 485
   },
   "be19-t0": {
    "t": "Password Hashing in Python: argon2id with pwdlib, bcrypt, Rehash and Safe Verify",
@@ -868,6 +1033,11 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "be19-t3": {
+   "t": "CORS in FastAPI: Origins, Preflight, Credentials and the Wildcard Trap",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "be20-t0": {
    "t": "pytest for API Projects: conftest.py, Fixture Scopes, yield Teardown, parametrize and Settings Overrides",
    "id": null,
@@ -880,6 +1050,11 @@
   },
   "be20-t2": {
    "t": "Test Databases: Real PostgreSQL, Migrations Once, and a Rolled-Back Transaction per Test",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "be20-t3": {
+   "t": "Test Data: Factories (factory_boy and Plain Functions), Deterministic Fakes and Property Tests with Hypothesis",
    "id": null,
    "at": "2026-10-28"
   },
@@ -899,6 +1074,11 @@
   },
   "be21-t2": {
    "t": "Retries, Backoff with Jitter and Idempotent Jobs: Safe to Run Twice",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "be21-t3": {
+   "t": "Redis Caching Patterns in Python: redis.asyncio, Cache-Aside, Stampede Locks, Write-Through and Write-Behind",
    "id": null,
    "at": "2026-10-28"
   },
@@ -928,6 +1108,11 @@
    "channel": "Aced (formerly Exponent)",
    "secs": 209
   },
+  "beh01-t4": {
+   "t": "The 6-Week Prep Plan, Resume Critique and Honest Use of AI",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "beh02-t0": {
    "t": "Tell Me About Yourself: Present, Past, Future in 90 Seconds",
    "id": "kayOhGRcNt4",
@@ -949,6 +1134,11 @@
   },
   "beh02-t3": {
    "t": "Your Biggest Failure or Mistake: Ownership Plus Learning",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "beh02-t4": {
+   "t": "Handling Critical Feedback: Hear, Thank, Act, Close the Loop",
    "id": null,
    "at": "2026-10-28"
   },
@@ -1064,6 +1254,11 @@
    "channel": "Tech With Tim",
    "secs": 1197
   },
+  "cpp01-t4": {
+   "t": "Signed vs Unsigned: Two's Complement, Overflow & Sneaky Conversions",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "cpp02-t0": {
    "t": "Decisions: if/else, Logical Operators, the Ternary & switch",
    "id": "OODFQ3IguDk",
@@ -1091,6 +1286,13 @@
    "title": "Should I pass by const reference or by value?",
    "channel": "The Cherno",
    "secs": 645
+  },
+  "cpp02-t4": {
+   "t": "Default Arguments & Function Overloading",
+   "id": "ElKSqvP43ts",
+   "title": "Function overloading and default arguments in C++ (Episode 2)",
+   "channel": "BBarters",
+   "secs": 535
   },
   "cpp03-t0": {
    "t": "Memory, Addresses & the & Operator",
@@ -1265,6 +1467,11 @@
    "channel": "IQ95 The Homo Siliconiens",
    "secs": 1143
   },
+  "cpp09-t3": {
+   "t": "Type Traits & Compile-Time Decisions (if constexpr)",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "cpp10-t0": {
    "t": "Value Categories: lvalues, rvalues & rvalue References",
    "id": "d5h9xpC9m8I",
@@ -1286,6 +1493,13 @@
    "channel": "Mike Shah",
    "secs": 2091
   },
+  "cpp10-t3": {
+   "t": "Lambdas & Captures",
+   "id": "mWgmBBz0y8c",
+   "title": "Lambdas in C++",
+   "channel": "The Cherno",
+   "secs": 714
+  },
   "cpp11-t0": {
    "t": "std::thread, join, detach & std::jthread",
    "id": "KUwXn_axEME",
@@ -1305,6 +1519,11 @@
    "channel": "Mike Shah",
    "secs": 453
   },
+  "cpp11-t3": {
+   "t": "condition_variable: Sleeping Until Something Changes (Producer-Consumer)",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "cpp12-t0": {
    "t": "Cache Lines & Locality: Why Memory Order Beats Big-O",
    "id": null,
@@ -1321,6 +1540,11 @@
    "title": "Branch prediction: Sorted array processing faster than unsorted array.",
    "channel": "constref",
    "secs": 832
+  },
+  "cpp12-t3": {
+   "t": "Inlining & Compiler Optimizations: What -O2 Really Does",
+   "id": null,
+   "at": "2026-10-28"
   },
   "cpp13-t0": {
    "t": "CRTP: Static Polymorphism & Mixins",
@@ -1340,6 +1564,13 @@
    "title": "Breaking Dependencies - C++ Type Erasure - The Implementation Details - Klaus Iglberger  CppCon 2022",
    "channel": "CppCon",
    "secs": 3636
+  },
+  "cpp13-t3": {
+   "t": "Copy-and-Swap: Exception-Safe Assignment",
+   "id": "10wKJgrjN9M",
+   "title": "Copy and Swap - Learn Modern C++",
+   "channel": "Code Blacksmith",
+   "secs": 436
   },
   "cs01-t0": {
    "t": "What an OS Is For: Resource Manager + Abstraction (and its Services)",
@@ -1367,6 +1598,13 @@
    "channel": "Computerphile",
    "secs": 1007
   },
+  "cs01-t4": {
+   "t": "Booting: From Power Button to init/systemd",
+   "id": "MKHUiZc_Myw",
+   "title": "What Actually Happens When You Press the Power Button? (Linux Boot, Animated)",
+   "channel": "BSP Blueprint",
+   "secs": 470
+  },
   "cs02-t0": {
    "t": "Program vs Process and the Memory Layout",
    "id": "msUPyCtJPSw",
@@ -1392,6 +1630,13 @@
    "t": "Threads vs Processes: What Is Shared, What Is Private",
    "id": null,
    "at": "2026-10-28"
+  },
+  "cs02-t4": {
+   "t": "User vs Kernel Threads: 1:1, N:1, M:N",
+   "id": "ITc09gOrqZk",
+   "title": "L-1.11: Process Vs Threads in Operating System",
+   "channel": "Gate Smashers",
+   "secs": 677
   },
   "cs03-t0": {
    "t": "Scheduling Goals, Metrics and How to Read a Gantt Chart",
@@ -1574,6 +1819,11 @@
    "channel": "Linux Under Pressure",
    "secs": 3113
   },
+  "cs09-t3": {
+   "t": "Union / Overlay Filesystems: Image Layers & Copy-Up",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "cs10-t0": {
    "t": "Why Layers? OSI 7 Layers vs TCP/IP 4 Layers",
    "id": "vv4y_uOneC0",
@@ -1595,6 +1845,13 @@
    "channel": "Sunny Classroom",
    "secs": 354
   },
+  "cs10-t3": {
+   "t": "MAC vs IP Addressing: Why We Need Both",
+   "id": "oGoWqdlaOMI",
+   "title": "Why do we need both IP and MAC address?",
+   "channel": "Sunny Classroom",
+   "secs": 219
+  },
   "cs11-t0": {
    "t": "IPv4 Structure, Classes (Historical) and Special Ranges",
    "id": null,
@@ -1613,6 +1870,11 @@
    "title": "IP addressing and Subnetting | CIDR | Subnet | TechTerms",
    "channel": "TechTerms",
    "secs": 243
+  },
+  "cs11-t3": {
+   "t": "VLSM: Carving One Network into Different-Sized Subnets",
+   "id": null,
+   "at": "2026-10-28"
   },
   "cs12-t0": {
    "t": "UDP: The Postcard Protocol",
@@ -1635,6 +1897,13 @@
    "channel": "Adsorp AI",
    "secs": 1356
   },
+  "cs12-t3": {
+   "t": "Flow Control: Receiver Window & the Sliding Window",
+   "id": "LnbvhoxHn8M",
+   "title": "Sliding Window Protocol",
+   "channel": "Neso Academy",
+   "secs": 474
+  },
   "cs13-t0": {
    "t": "HTTP/1.1 vs HTTP/2 vs HTTP/3: How the Web Talks",
    "id": "FlnXJQ_TgXE",
@@ -1652,6 +1921,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "cs13-t3": {
+   "t": "DNS Resolution in Depth: Stub, Recursive, Root, TLD, Authoritative",
+   "id": "g6R9gRWIIK8",
+   "title": "DNS Server Breakdown: Resolver, Root, Domain & Authoritative",
+   "channel": "The Cloud Girl",
+   "secs": 253
+  },
   "cs14-t0": {
    "t": "QUIC Internals: Streams, Connection IDs, 0-RTT and Loss Recovery",
    "id": null,
@@ -1664,6 +1940,11 @@
   },
   "cs14-t2": {
    "t": "Anycast: How CDNs and DNS Reach the Nearest PoP",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "cs14-t3": {
+   "t": "Load Balancer Internals: L4 vs L7, ECMP, Consistent Hashing, Maglev and DSR",
    "id": null,
    "at": "2026-10-28"
   },
@@ -1691,6 +1972,11 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "csharp01-t4": {
+   "t": "String Interpolation & Formatting: $\"\", Format Specifiers, Culture",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "csharp02-t0": {
    "t": "Control Flow: if, switch Statements & Expressions, and Loops",
    "id": "UXeDS20wr60",
@@ -1712,6 +1998,13 @@
    "t": "Optional & Named Arguments, params Arrays and Overload Resolution",
    "id": null,
    "at": "2026-10-28"
+  },
+  "csharp02-t4": {
+   "t": "Arrays: 1-D, Multidimensional [,] vs Jagged [][], Indices & Ranges",
+   "id": "G1kYoPr1Ru8",
+   "title": "C# multidimensional arrays ⬜",
+   "channel": "Bro Code",
+   "secs": 306
   },
   "csharp03-t0": {
    "t": "Classes vs Structs: Reference Semantics vs Value Semantics",
@@ -1886,6 +2179,13 @@
    "channel": "STARTUP HAKK",
    "secs": 272
   },
+  "csharp09-t3": {
+   "t": "Cancellation Tokens & Timeouts",
+   "id": "rqCFxRtn8UA",
+   "title": "C# Tutorial - How to use Cancellation Tokens. Manage Long-Running Tasks in your Code Efficiently!",
+   "channel": "Nick Proud",
+   "secs": 800
+  },
   "csharp10-t0": {
    "t": "Threads & the Thread Pool",
    "id": "br3zqievHAM",
@@ -1902,6 +2202,11 @@
   },
   "csharp10-t2": {
    "t": "Interlocked, volatile & the .NET Memory Model",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "csharp10-t3": {
+   "t": "SemaphoreSlim & ReaderWriterLockSlim",
    "id": null,
    "at": "2026-10-28"
   },
@@ -1922,6 +2227,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "csharp11-t3": {
+   "t": "Static Abstract Interface Members and Generic Math (C# 11)",
+   "id": "Sclx7F8hFso",
+   "title": "C# 11 - Generic Math(s)",
+   "channel": "Coding Tutorials",
+   "secs": 1078
+  },
   "csharp12-t0": {
    "t": "IL: What the C# Compiler Really Emits",
    "id": "XA-phNGB6kc",
@@ -1941,6 +2253,11 @@
    "channel": "USENIX",
    "secs": 719
   },
+  "csharp12-t3": {
+   "t": "Struct Layout: Padding, Packing, Explicit Offsets and False Sharing",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "csharp13-t0": {
    "t": "Immutability Patterns: Records, init, Immutable and Frozen Collections",
    "id": null,
@@ -1955,6 +2272,11 @@
   },
   "csharp13-t2": {
    "t": "Dispose Patterns: IDisposable, IAsyncDisposable, SafeHandle and Ownership",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "csharp13-t3": {
+   "t": "Async Best Practices: Cancellation, Concurrency Limits and the Classic Mistakes",
    "id": null,
    "at": "2026-10-28"
   },
@@ -1982,6 +2304,11 @@
    "channel": "Logical Bee",
    "secs": 355
   },
+  "devops01-t4": {
+   "t": "Text Tools for Log Detective Work: grep, cut, awk, sort, uniq and sed",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "devops02-t0": {
    "t": "Variables, Quoting and Expansion: Why \"$VAR\" Saves Your Server",
    "id": null,
@@ -2001,6 +2328,11 @@
   },
   "devops02-t3": {
    "t": "Pipes and Redirection in Scripts: Logs, Here-docs and Where Errors Go",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "devops02-t4": {
+   "t": "set -euo pipefail and trap: Scripts That Fail Loudly and Clean Up After Themselves",
    "id": null,
    "at": "2026-10-28"
   },
@@ -2155,6 +2487,11 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "devops09-t3": {
+   "t": "State, Remote Backends and Locking: One Source of Truth, Two Engineers, Zero Leaked Secrets",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "devops10-t0": {
    "t": "Inventory and Ad-hoc Commands: the Address Book and the Megaphone",
    "id": null,
@@ -2167,6 +2504,11 @@
   },
   "devops10-t2": {
    "t": "Idempotent Modules: Describe the Result, Not the Steps",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "devops10-t3": {
+   "t": "Variables, Facts and Precedence: the Sticky Notes on the Fridge",
    "id": null,
    "at": "2026-10-28"
   },
@@ -2191,6 +2533,13 @@
    "channel": "Egee",
    "secs": 469
   },
+  "devops11-t3": {
+   "t": "Reusable Workflows, Composite Actions, GitLab CI and Jenkins",
+   "id": "lRypYtmbKMs",
+   "title": "GitHub Actions Reusable Workflows FULL TUTORIAL with Examples: Templates on Steroids",
+   "channel": "CoderDave",
+   "secs": 524
+  },
   "devops12-t0": {
    "t": "Managed Databases: RDS and PostgreSQL, Multi-AZ vs Read Replicas",
    "id": "fW_prKJR79Y",
@@ -2211,6 +2560,13 @@
    "title": "Route Traffic to Multiple Target Groups using Load Balancer Listener Rules | AWS Load Balancing",
    "channel": "Tiny Technical Tutorials",
    "secs": 1092
+  },
+  "devops12-t3": {
+   "t": "Launch Templates, Auto Scaling Groups, Target Tracking and Health Checks",
+   "id": "51lAFoQZTks",
+   "title": "AWS Auto Scaling Explained: ASGs, Scaling Policies, Health Checks, and Lifecycle Hooks",
+   "channel": "TechStudyDeck",
+   "secs": 628
   },
   "devops13-t0": {
    "t": "Cluster architecture, kind or minikube, and your first kubectl commands",
@@ -2233,6 +2589,13 @@
    "channel": "IBM Technology",
    "secs": 341
   },
+  "devops13-t3": {
+   "t": "ConfigMaps and Secrets (env vars, mounted files, and keeping secrets safe)",
+   "id": "c8LBjmFPjM4",
+   "title": "ConfigMaps and Secrets in Kubernetes",
+   "channel": "Pavan Elthepu",
+   "secs": 995
+  },
   "devops14-t0": {
    "t": "Helm Charts, Values and Releases: the Recipe Kit",
    "id": "-ykwb1d0DXU",
@@ -2252,6 +2615,13 @@
    "channel": "Carlos Santana",
    "secs": 3290
   },
+  "devops14-t3": {
+   "t": "StatefulSets and Persistent Volumes: Pods with a Name and a Locker",
+   "id": "z2jmJHgF204",
+   "title": "💾 Nothing Lasts Forever — Persistent Storage, Volumes & StatefulSets in Kubernetes",
+   "channel": "CertQuests",
+   "secs": 1497
+  },
   "devops15-t0": {
    "t": "Metrics, Logs and Traces: Seeing Inside a Running System",
    "id": "umm-MyCl3Q4",
@@ -2269,6 +2639,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "devops15-t3": {
+   "t": "Grafana: Dashboards That Answer Questions",
+   "id": "vTiIkdDwT-0",
+   "title": "Understanding Dashboards in Grafana | Panels, Visualizations, Queries, and Transformations",
+   "channel": "Grafana",
+   "secs": 352
+  },
   "devops16-t0": {
    "t": "Shift-Left Security and Pipeline Gates: Secrets, SAST, SCA, IaC, Image and DAST",
    "id": "IC1E_Mi6xhc",
@@ -2285,6 +2662,11 @@
   },
   "devops16-t2": {
    "t": "Dynamic Secrets, Leases and TTLs, Rotation, and Envelope Encryption with KMS",
+   "id": null,
+   "at": "2026-10-28"
+  },
+  "devops16-t3": {
+   "t": "Software Supply Chain: SBOMs, Image Signing with cosign, SLSA, Dependabot and CodeQL",
    "id": null,
    "at": "2026-10-28"
   },
@@ -2307,6 +2689,11 @@
    "channel": "Pythoholic",
    "secs": 2180
   },
+  "devops17-t3": {
+   "t": "Multi-Region Deployments: Failover Routing, Global Data, Active-Active vs Active-Passive, Split Brain",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "devops18-t0": {
    "t": "SLOs, Error Budgets, Burn-Rate Alerts and Budget Policies",
    "id": "EEHKiQimv_Q",
@@ -2324,6 +2711,11 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "devops18-t3": {
+   "t": "Toil: Defining, Measuring and Automating It Away (Automation ROI)",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "dsa01-t0": {
    "t": "Core Language Syntax for Problem Solving",
    "id": "23HFxAPyJ9U",
@@ -2334,7 +2726,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java program structure, main, output and comments. Use the lesson for loops and conditionals.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2362,7 +2754,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java Scanner versus BufferedReader, demonstrating slow versus buffered input. Other languages use the equivalents in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2380,7 +2772,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java primitive values versus object references, with stack/heap diagrams. Casting and overflow are covered in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2398,7 +2790,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java stack and heap memory, local variables and object references.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "wJ1L2nSIV1s",
@@ -2418,7 +2810,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java array syntax, storage, string arrays and multidimensional arrays. String operations are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "1FVBeLD_FdE",
@@ -2438,7 +2830,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java methods, parameters, return values and reusable functions.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2456,7 +2848,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Input constraints and time-limit estimates. Operation budgets depend on language, hardware and the judge; 10⁸ is a heuristic, not a guarantee.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2474,7 +2866,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A concrete brute-force pair search followed by an optimized solution. Algorithm explanation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "DKCbsiDBN6c",
@@ -2517,7 +2909,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Arithmetic and geometric progressions; apply the sums to loop counts in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "0F2YqCVaiG0",
@@ -2537,7 +2929,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Logarithms as inverse powers and the change-of-base rule. Apply this foundation to repeated halving in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2555,7 +2947,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Big-O, Big-Omega and Big-Theta asymptotic bounds.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2573,7 +2965,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Time and auxiliary-space complexity overview; use the lesson for detailed memory accounting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "hUdqNPhXOh4",
@@ -2593,7 +2985,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Constraints, online judges and TLE estimates. Treat operation counts as rough estimates, not fixed execution-time guarantees.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2611,7 +3003,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Enumerating divisors in O(√N).",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "fdE_CEk9X2g",
@@ -2643,7 +3035,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Primality testing by checking divisors up to √N.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ZYIXXntyybo",
@@ -2663,7 +3055,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sieve of Eratosthenes for finding all primes up to a bound.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "nDPo9hsDNvU",
@@ -2683,7 +3075,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Euclidean GCD. LCM reduction and the visual proof are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "0oP6XLTI2tY",
@@ -2703,7 +3095,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular arithmetic rules and remainders.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "EzVwUarrNUk",
@@ -2723,7 +3115,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular exponentiation. Follow the lesson for the iterative binary-exponentiation implementation.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "L-Wzglnm4dM",
@@ -2743,7 +3135,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binomial coefficients, efficient nCr calculation and Pascal triangle construction.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2761,7 +3153,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The pigeonhole principle and why a collision must exist.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "IW4hJEgZLWI",
@@ -2781,7 +3173,7 @@
    "reviewedAt": "2026-10-21",
    "note": "How binary digits represent numbers and characters.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2809,7 +3201,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binary representation, one’s/two’s complement and bit operators.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2827,7 +3219,7 @@
    "reviewedAt": "2026-10-21",
    "note": "All seven Java bitwise operators, including the unsigned right shift >>>.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "phUpAEs-6rw",
@@ -2847,7 +3239,7 @@
    "reviewedAt": "2026-10-21",
    "note": "XOR cancellation demonstrated on the single-number problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2865,7 +3257,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Checking, setting, clearing and toggling a bit with masks.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2893,7 +3285,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Single Number I: cancel duplicate pairs with XOR.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2911,7 +3303,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Includes counting set bits at each position modulo three, as well as alternative approaches.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -2933,7 +3325,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Subset enumeration with bitmasks. Code may use C++; the technique transfers to Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa05-t0": {
    "t": "1D and 2D Arrays (How They Sit in Memory)",
@@ -2947,7 +3339,7 @@
    "start": 82,
    "end": 4025,
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "fINt-nzR-o8",
@@ -2979,7 +3371,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Prefix sums and constant-time range-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Hyr3VrgJD2g",
@@ -2999,7 +3391,7 @@
    "reviewedAt": "2026-10-21",
    "note": "2D prefix sums and rectangle-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa05-t2": {
    "t": "Even/Odd Index Prefix Sums: Special Index & Equilibrium Index",
@@ -3011,7 +3403,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Even/odd prefix sums and parity changes after deletion. The separate equilibrium-index variant is explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3029,7 +3421,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Carry-forward counting of ordered “ag” pairs. Array leaders are another application in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3047,7 +3439,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maximum subarray sum using Kadane’s algorithm.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "w_KEocd__20",
@@ -3067,7 +3459,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sum of all subarray sums using each element’s contribution.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3085,7 +3477,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Trapping rainwater. Compare the video’s approaches with the lesson’s prefix/suffix maximum arrays.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ok7zhUA4VmI",
@@ -3105,7 +3497,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Spiral traversal using shrinking boundaries. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3123,7 +3515,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Matrix rotation by transposition and reversal.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa05-t9": {
    "t": "Row-Column Sorted Matrix: The Staircase Search",
@@ -3135,7 +3527,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The O(rows + columns) top-right staircase search for separately sorted rows and columns, not flattened binary search.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa06-t0": {
    "t": "Opposite-Direction Pointers: 2-Sum on a Sorted Array",
@@ -3147,7 +3539,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Two Sum II on sorted input using converging pointers. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3175,7 +3567,7 @@
    "reviewedAt": "2026-10-21",
    "note": "3Sum by sorting, fixing an element and scanning with two pointers.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "n-JNgynPi6Q",
@@ -3195,7 +3587,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Container With Most Water and moving the shorter wall.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Y_4_or0Sc7I",
@@ -3215,7 +3607,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Move Zeroes using same-direction pointers. Remove-duplicates is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3233,7 +3625,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a pair with a target difference using sorted-array pointers; not a general two-pointer overview.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3251,7 +3643,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Fixed-length maximum-sum window with Java code. Distinct from unrestricted maximum subarray/Kadane.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3279,7 +3671,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Recognizing opposite-direction and same-direction pointer patterns.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3297,7 +3689,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Bubble sort, selection sort and insertion sort in Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "n2mtX8mdoEc",
@@ -3325,7 +3717,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Counting sort and radix sort, including assumptions behind integer sorting. A longer lecture is intentional.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "imqr13aIBAY",
@@ -3345,7 +3737,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inversion counting with merge sort. The lesson also explains the underlying sorting recurrence.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "0jxUbvEF380",
@@ -3365,7 +3757,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Quicksort partitioning and performance. Compare the specific Lomuto/Hoare variants in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3395,7 +3787,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The distinction between stable and unstable sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "w7tbj3phOno",
@@ -3415,7 +3807,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Merging overlapping intervals after sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "2JzRBPFYbKE",
@@ -3435,7 +3827,15 @@
    "reviewedAt": "2026-10-21",
    "note": "Inserting an interval into a sorted non-overlapping list.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
+   "byLang": {
+    "cpp": {
+     "id": "XXaVIDIbUn4",
+     "title": "Insert Interval | Brute Force | Optimal | Google | Apple | codestorywithMIK",
+     "channel": "codestorywithMIK",
+     "secs": 1475
+    }
+   }
   },
   "dsa07-t8": {
    "t": "Meeting Rooms I & II, Minimum Platforms (sweep + min-heap)",
@@ -3447,7 +3847,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Meeting Rooms II: count simultaneous meetings. Meeting Rooms I and minimum-platform variations remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa08-t0": {
    "t": "Inside HashSet & HashMap: Hash Function, hashCode/equals, Buckets, Chaining, Treeify, Load Factor & Rehash",
@@ -3478,7 +3878,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Character-frequency signatures and grouping anagrams. First-non-repeating is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3496,7 +3896,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Unsorted Two Sum with a complement hash map. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3514,7 +3914,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maintain a frequency map while counting distinct values in every fixed-size window.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "qF9bLDKsmWc",
@@ -3534,7 +3934,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Zero-sum subarray existence using a set in Java. Distinct from counting all subarrays with a given sum.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3552,7 +3952,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Count subarrays with sum K using prefix-sum frequencies.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Nlo20rlfxSg",
@@ -3572,7 +3972,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest zero-sum subarray using prefix sums and a first-index map in Java. Sum-K and equal-0/1 variants remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3590,7 +3990,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest substring without repeated characters. Minimum-window substring is a separate variant explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "FCbOzdHKW18",
@@ -3610,7 +4010,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest consecutive sequence by starting only at chain beginnings.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa09-t0": {
    "t": "Strings Under the Hood: Immutability, char Arithmetic (c - 'a') and the String Pool",
@@ -3624,7 +4024,7 @@
    "start": 36,
    "end": 1322,
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3650,7 +4050,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Valid palindrome with two pointers and non-alphanumeric filtering.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "L84y20axpIA",
@@ -3672,7 +4072,7 @@
    "start": 3642,
    "end": 4357,
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3690,7 +4090,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest palindromic substring with center expansion.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "5MS14_6rSa8",
@@ -3720,7 +4120,7 @@
    "reviewedAt": "2026-10-21",
    "note": "KMP prefix/LPS preprocessing and linear-time pattern matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3738,7 +4138,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Z-array, Z-box optimization and pattern-plus-separator-plus-text matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3756,7 +4156,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Classic sorted-array binary search and halving the search interval. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3784,7 +4184,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Lower and upper bounds. Apply these primitives to first/last occurrence in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "GKZoTbUNWt0",
@@ -3804,7 +4204,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Search in a rotated sorted array with distinct elements.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "4Ik1nCLjwcI",
@@ -3824,7 +4224,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a peak by binary search on slope direction.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "NUnhHa47f-Q",
@@ -3844,7 +4244,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Integer square root via binary search, matching this lesson rather than the more general nth-root problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3862,7 +4262,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Aggressive Cows: maximize a minimum distance with a feasibility predicate.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Flewu6KqN54",
@@ -3882,7 +4282,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Allocate Books: minimize the largest allocation. Painter partition is a related variant in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "DAQHXe1yNtM",
@@ -3902,7 +4302,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Koko Eating Bananas and a monotonic feasibility test.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3922,7 +4322,7 @@
    "start": 1077,
    "end": 2736,
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "KiWp1q_HGzg",
@@ -3952,7 +4352,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A recursion-tree derivation for T(n) = 2T(n/2) + cn; other recurrences remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -3970,7 +4370,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Tower of Hanoi with a recursive visualization.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "S1j5Q03HzMs",
@@ -3992,7 +4392,7 @@
    "start": 4024,
    "end": 5057,
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4010,7 +4410,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "nuuv1Z46zHU",
@@ -4030,7 +4430,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4048,7 +4448,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4066,7 +4466,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "xFv_Hl4B83A",
@@ -4090,7 +4490,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "-StYr9wILqo",
@@ -4120,7 +4520,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4138,7 +4538,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ZSyUwlzmN-U",
@@ -4158,7 +4558,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Cs3KwAsqqn4",
@@ -4178,7 +4578,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "PQIHq0vfADI",
@@ -4198,7 +4598,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "IH8F4W5AiiQ",
@@ -4218,7 +4618,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "WWOvCh31xBk",
@@ -4238,7 +4638,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
+   "byLang": {
+    "cpp": {
+     "id": "Xc4sICC8m4M",
+     "title": "Implement LRU Cache | C++ and Java Clean and Short Implementation",
+     "channel": "take U forward",
+     "secs": 843
+    }
+   }
   },
   "dsa13-t0": {
    "t": "Stack (LIFO) vs Queue (FIFO) — and which container to use",
@@ -4250,7 +4658,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Rl8N_NbgXbA",
@@ -4282,7 +4690,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "q-JB0hYyouo",
@@ -4302,7 +4710,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "OpwYmEBcPh0",
@@ -4322,7 +4730,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "mg9yi6YuAVk",
@@ -4342,7 +4750,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "rfl_M3SuvIE",
@@ -4362,7 +4770,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "6Izu3F3vibo",
@@ -4382,7 +4790,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ZGMw8Bvpwd4",
@@ -4402,7 +4810,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
+   "byLang": {
+    "cpp": {
+     "id": "88cFfeDDgmo",
+     "title": "Queues and Stacks Part 5: Implementing a Queue using Stacks",
+     "channel": "At the Whiteboard",
+     "secs": 414
+    }
+   }
   },
   "dsa13-t8": {
    "t": "Monotonic Deque — Sliding Window Maximum",
@@ -4414,7 +4830,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa14-t0": {
    "t": "Tree Terminology: Root, Leaf, Depth, Height & Friends",
@@ -4426,7 +4842,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4452,7 +4868,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ySp2epYvgTE",
@@ -4472,7 +4888,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa14-t11": {
    "t": "Validate a BST & Find the K-th Smallest (Inorder Superpowers)",
@@ -4488,7 +4904,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa14-t2": {
    "t": "Iterative Traversals with an Explicit Stack",
@@ -4511,7 +4927,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "EoAsWbO7sqg",
@@ -4531,7 +4947,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "KV4mRzTjlAk",
@@ -4551,7 +4967,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "0FtVY6I4pB8",
@@ -4571,7 +4987,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Rezetez59Nk",
@@ -4591,7 +5007,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
+   "byLang": {
+    "cpp": {
+     "id": "Yt50Jfbd8Po",
+     "title": "L15. Check for Balanced Binary Tree | C++ | Java",
+     "channel": "take U forward",
+     "secs": 750
+    }
+   }
   },
   "dsa14-t8": {
    "t": "Lowest Common Ancestor (LCA) in a Binary Tree and in a BST",
@@ -4603,7 +5027,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa14-t9": {
    "t": "BST Search & Insert (and Min, Max, Floor, Ceil)",
@@ -4615,7 +5039,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": false,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa15-t0": {
    "t": "Min-Heap & Max-Heap: the array trick, insert (sift-up), extract (sift-down)",
@@ -4627,7 +5051,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -4655,7 +5079,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -4675,7 +5099,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4693,7 +5117,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "GkLRlOrcNZA",
@@ -4713,7 +5137,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4731,7 +5155,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "KtJlTfHtMhc",
@@ -4751,7 +5175,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ubKhojIZtHk",
@@ -4771,7 +5195,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
+   "byLang": {
+    "cpp": {
+     "id": "EIhAwfHubE8",
+     "title": "L6. Maximum XOR of Two Numbers in an Array | C++ | Java",
+     "channel": "take U forward",
+     "secs": 2177
+    }
+   }
   },
   "dsa16-t0": {
    "t": "The Greedy Mindset: Greedy Choice Property & Exchange-Argument Proofs",
@@ -4783,7 +5215,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4809,7 +5241,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "DHr-Mn_vzs0",
@@ -4829,7 +5261,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "zPtI8q9gvX8",
@@ -4849,7 +5281,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "nLmhmB6NzcM",
@@ -4869,7 +5301,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "co4_ahEDCho",
@@ -4889,7 +5321,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "TBlKgdYwQ4Q",
@@ -4909,7 +5341,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "xmJZSYSvgfE",
@@ -4929,7 +5361,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
+   "byLang": {
+    "cpp": {
+     "id": "TsRyidwuNF8",
+     "title": "Jump Game iii | LeetCode 1306 | C++",
+     "channel": "Knowledge Center",
+     "secs": 644
+    }
+   }
   },
   "dsa16-t8": {
    "t": "When Greedy Fails: the Coin Change Counterexample",
@@ -4943,7 +5383,7 @@
    "start": 100,
    "end": 427,
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa17-t0": {
    "t": "DP Intuition: Overlapping Subproblems + Optimal Substructure",
@@ -4955,7 +5395,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4981,7 +5421,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "piAlsJySUGE",
@@ -5001,7 +5441,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "u7kxnHnUAYk",
@@ -5021,7 +5461,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "sdQpyeEF-rM",
@@ -5041,7 +5481,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5069,7 +5509,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "sSno9rV8Rhg",
@@ -5089,7 +5529,13 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
+   "byLang": {
+    "cpp": {
+     "id": null,
+     "at": "2026-10-28"
+    }
+   }
   },
   "dsa17-t8": {
    "t": "Grid DP: Unique Paths (with Obstacles) and Minimum Path Sum",
@@ -5101,7 +5547,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa18-t0": {
    "t": "Longest Increasing Subsequence: O(N²) DP and the O(N log N) “tails” trick",
@@ -5113,7 +5559,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5139,7 +5585,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "bHypFVRzEXk",
@@ -5159,7 +5605,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5169,7 +5615,10 @@
   },
   "dsa18-t3": {
    "t": "DP on Trees: House Robber III and Binary Tree Maximum Path Sum (children report, parent decides)",
-   "id": null,
+   "id": "gTCHnamgL9U",
+   "title": "124. Binary Tree Maximum Path Sum | Day 007 | Most Asked Question of Trees",
+   "channel": "Aryan Mittal",
+   "secs": 919,
    "byLang": {
     "cpp": {
      "id": "Rdznb_S8tkg",
@@ -5219,7 +5668,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "S8rMlJBmVYc",
@@ -5251,7 +5700,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "-fOUp6Srnyg",
@@ -5282,7 +5731,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "muncqlKJrH0",
@@ -5302,7 +5751,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "9twcmtQj4DU",
@@ -5322,7 +5771,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "-vu34sct1g8",
@@ -5342,7 +5791,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "gDNm1m3G4wo",
@@ -5362,7 +5811,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa20-t0": {
    "t": "Weighted Graphs, Relaxation & Dijkstra with PriorityQueue",
@@ -5374,7 +5823,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5402,7 +5851,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5420,7 +5869,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "JkmCVkJdg-A",
@@ -5440,7 +5889,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "oNI0rf2P9gE",
@@ -5460,7 +5909,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "mJcZjjKzeqk",
@@ -5480,7 +5929,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "wU6udHRIkcc",
@@ -5510,7 +5959,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "wMH6TbIRsJg",
@@ -5538,7 +5987,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "LMN7-O_SuqM",
@@ -5558,7 +6007,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "vUwindiBWJ0",
@@ -5578,7 +6027,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "0jWeUdxrGm4",
@@ -5598,7 +6047,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5626,7 +6075,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5644,7 +6093,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "NvnicGg3FdA",
@@ -5668,7 +6117,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5686,7 +6135,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5704,7 +6153,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "WUzplLVxYsk",
@@ -5724,7 +6173,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "_-QHfMDde90",
@@ -5744,7 +6193,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "_UcOALraATY",
@@ -5764,7 +6213,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "duKIzgJQ1w8",
@@ -5784,7 +6233,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa22-t8": {
    "t": "Bipartite Matching: Kuhn's Augmenting Paths, Flow View, Hopcroft-Karp & König's Theorem",
@@ -5796,7 +6245,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa23-t0": {
    "t": "Bitmask DP: Travelling Salesman (Held-Karp) & the Assignment Problem",
@@ -5808,7 +6257,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "Q4zHb-Swzro",
@@ -5832,7 +6281,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5850,7 +6299,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ps2ZTj4DAm0",
@@ -5862,7 +6311,10 @@
   },
   "dsa23-t3": {
    "t": "DP Accelerated by Data Structures (Monotonic Deque, Fenwick / Segment Tree, TreeMap)",
-   "id": null,
+   "id": "Pn4Yaz5c2Jo",
+   "title": "Dynamic Programming Made Easy for Beginners 2026 | Dynamic Programming Problems | Data Structures",
+   "channel": "SCALER",
+   "secs": 4862,
    "byLang": {
     "cpp": {
      "id": null,
@@ -5890,7 +6342,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5908,7 +6360,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5930,7 +6382,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "0CesZFo1yOQ",
@@ -5954,7 +6406,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5985,7 +6437,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6013,7 +6465,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6041,7 +6493,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "QEWvTVcpAyg",
@@ -6065,7 +6517,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "vaTlSINdvY0",
@@ -6085,7 +6537,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "iMZEwYfBWDY",
@@ -6098,6 +6550,7 @@
   "dsa25-t3": {
    "t": "Chinese Remainder Theorem: Rebuilding a Number from Its Remainders",
    "id": null,
+   "at": "2026-10-28",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6115,7 +6568,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6133,7 +6586,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": "ntOM8JRAlaY",
@@ -6153,7 +6606,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6179,7 +6632,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa26-t0": {
    "t": "Vectors, Cross Product & Orientation (the CCW Test)",
@@ -6191,7 +6644,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6226,7 +6679,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6236,7 +6689,10 @@
   },
   "dsa26-t3": {
    "t": "Polygon Area with the Shoelace Formula (plus Convexity, Pick's Theorem & Point-in-Polygon)",
-   "id": null,
+   "id": "3RuHTfS7i1I",
+   "title": "Area of triangle formula derivation | Coordinate geometry | Class 10 (India) | Math",
+   "channel": "Khan Academy India - English",
+   "secs": 739,
    "byLang": {
     "cpp": {
      "id": "tBaCGoR5B-Y",
@@ -6256,7 +6712,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6274,7 +6730,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6302,7 +6758,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa27-t0": {
    "t": "LRU Cache: HashMap + Doubly Linked List, and Its Real-World Variants",
@@ -6329,7 +6785,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6347,7 +6803,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6365,7 +6821,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6393,7 +6849,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6425,7 +6881,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa27-t9": {
    "t": "Choosing the Design: Trade-offs, Complexity Cheat Sheet and Eviction Showdown",
@@ -6441,7 +6897,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6463,7 +6919,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6481,7 +6937,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6499,7 +6955,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6517,7 +6973,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6549,7 +7005,7 @@
    "start": 188,
    "end": 420,
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z",
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6567,7 +7023,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "dsa28-t8": {
    "t": "Final Revision Checklists & Your Last-Week Plan",
@@ -6579,7 +7035,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "fe01-t0": {
    "t": "Browsers, Servers & the Client–Server Idea",
@@ -6606,6 +7062,11 @@
    "title": "How Much HTML, CSS, & JavaScript Is Enough? | Realistic Expectations",
    "channel": "Chris Sean",
    "secs": 660
+  },
+  "fe01-t4": {
+   "t": "How a Page Loads: From HTML Bytes to Pixels",
+   "id": null,
+   "at": "2026-10-28"
   },
   "fe02-t0": {
    "t": "Document Structure & How the Browser Reads Your HTML",
@@ -6634,6 +7095,11 @@
    "title": "Vue JS 3 Tutorial for Beginners #7 - Forms & Inputs",
    "channel": "Net Ninja",
    "secs": 2741
+  },
+  "fe02-t4": {
+   "t": "Tables: Tabular Data Done Right",
+   "id": null,
+   "at": "2026-10-28"
   },
   "fe03-t0": {
    "t": "Selectors: How CSS Points at Elements",
@@ -6806,6 +7272,11 @@
    "channel": "Web Dev Cody",
    "secs": 570
   },
+  "fe09-t3": {
+   "t": "Stale Closures: When a Function Remembers Old Values",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "fe10-t0": {
    "t": "Local vs Global vs Server State: Where Does This Data Live?",
    "id": null,
@@ -6824,6 +7295,11 @@
    "title": "Redux Core Explained : Store, Reducers, Actions and Subscribers 🔥 In Telugu 2025 | Learn Redux",
    "channel": "Aravind Samudrala - Telugu",
    "secs": 1390
+  },
+  "fe10-t3": {
+   "t": "Zustand: A Tiny Store with Selectors",
+   "id": null,
+   "at": "2026-10-28"
   },
   "fe11-t0": {
    "t": "The Critical Rendering Path: HTML → DOM, CSS → CSSOM, Render Tree",
@@ -6844,6 +7320,13 @@
    "channel": "xplodivity",
    "secs": 237
   },
+  "fe11-t3": {
+   "t": "Core Web Vitals: LCP, INP and CLS",
+   "id": "cGiSr0MilsI",
+   "title": "Core Web Vitals Explained: LCP, INP & CLS",
+   "channel": "I Code It",
+   "secs": 886
+  },
   "fe12-t0": {
    "t": "Virtual DOM & Reconciliation: How React Decides What to Change",
    "id": "nLXIbX-fprM",
@@ -6862,6 +7345,13 @@
    "t": "Batching: Many setState Calls, One Render",
    "id": null,
    "at": "2026-10-28"
+  },
+  "fe12-t3": {
+   "t": "Concurrent Rendering, Transitions & Suspense",
+   "id": "j3CKzC8Df9M",
+   "title": "React 18 New Features | Concurrency | Automatic Batching | Transitions | Suspense on the Server",
+   "channel": "Rethinking UI",
+   "secs": 911
   },
   "fe13-t0": {
    "t": "The Same-Origin Policy: The Browser’s Number One Rule",
@@ -6882,6 +7372,11 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "fe13-t3": {
+   "t": "XSS: Stored, Reflected, DOM-Based and How to Prevent It",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "fe14-t0": {
    "t": "Package Managers: npm, pnpm, package.json, Semver & Lockfiles",
    "id": null,
@@ -6898,6 +7393,13 @@
    "t": "Transpiling, Polyfills & Tree Shaking",
    "id": null,
    "at": "2026-10-28"
+  },
+  "fe14-t3": {
+   "t": "TypeScript in the Frontend: Props, Generics & Config",
+   "id": "i08-2F6MUJk",
+   "title": "Generics in Typescript for Beginners - Learn by Doing",
+   "channel": "Monsterlessons Academy",
+   "secs": 1139
   },
   "fe15-t0": {
    "t": "Micro-Frontends: Splitting One Big App Into Team-Owned Pieces",
@@ -6917,6 +7419,11 @@
    "title": "Tokens, variables, and styles - Update: Introduction to design systems",
    "channel": "Figma",
    "secs": 793
+  },
+  "fe15-t3": {
+   "t": "Monorepos: One Repo, Many Packages, Only Rebuild What Changed",
+   "id": null,
+   "at": "2026-10-28"
   },
   "fe16-t0": {
    "t": "The Frontend System Design Framework (RADIO)",
@@ -6938,6 +7445,13 @@
    "title": "Design FB News Feed System Design Interview w/ ex: Meta Senior Manager",
    "channel": "Hello Interview",
    "secs": 1572
+  },
+  "fe16-t3": {
+   "t": "Design an Image Carousel (Lazy Load, A11y, Swipe)",
+   "id": "KD1Yo8a_Qis",
+   "title": "Build Infinite Carousel Animations in 4 Minutes",
+   "channel": "Coding2GO",
+   "secs": 240
   },
   "hld01-t0": {
    "t": "What Is System Design? The Big Picture & Asking the Right Questions",
@@ -6965,6 +7479,13 @@
    "channel": "Async Codex",
    "secs": 533
   },
+  "hld01-t4": {
+   "t": "Monolith Basics: One Big Kitchen",
+   "id": "3Xq4DF3rrB8",
+   "title": "2. Monolith vs Microservices — Which One & When?",
+   "channel": "Arpit Vaish",
+   "secs": 335
+  },
   "hld02-t0": {
    "t": "Vertical vs Horizontal Scaling (Scale Up vs Scale Out)",
    "id": "xpDnVSmNFX0",
@@ -6990,6 +7511,13 @@
    "title": "Load Balancing Algorithms Explained: Round Robin, Least Connections, Weighted",
    "channel": "CodeLucky",
    "secs": 311
+  },
+  "hld02-t4": {
+   "t": "Single Points of Failure, Health Checks & Failover",
+   "id": "Uy3XV6A8KgA",
+   "title": "Failover & Health Checks in System Design | Automatic Recovery Explained",
+   "channel": "Engineering Systems",
+   "secs": 406
   },
   "hld03-t0": {
    "t": "Your Estimation Toolkit: Units, Powers of Two & Handy Constants",
@@ -7170,6 +7698,13 @@
    "channel": "IT k Funde",
    "secs": 895
   },
+  "hld09-t3": {
+   "t": "Rate Limiting I: Token Bucket and Leaky Bucket",
+   "id": "YXkOdWBwqaA",
+   "title": "Rate Limiter System Design: Token Bucket, Leaky Bucket, Scaling",
+   "channel": "ByteByteGo",
+   "secs": 466
+  },
   "hld10-t0": {
    "t": "CAP Theorem and PACELC: What Happens When the Network Splits",
    "id": "MNd894WCKSs",
@@ -7189,6 +7724,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "hld10-t3": {
+   "t": "Logical Time: Lamport Clocks and Vector Clocks",
+   "id": "x-D8iFU1d-o",
+   "title": "Distributed Systems 4.1: Logical time",
+   "channel": "Martin Kleppmann",
+   "secs": 1442
+  },
   "hld11-t0": {
    "t": "Why Consensus? Raft Leader Election",
    "id": "Al2JNJBGG30",
@@ -7205,6 +7747,13 @@
    "t": "Paxos Intuition: Prepare, Promise, Accept",
    "id": null,
    "at": "2026-10-28"
+  },
+  "hld11-t3": {
+   "t": "Coordination Services: ZooKeeper & etcd",
+   "id": "F06tdYgcz_A",
+   "title": "What is ZooKeeper? - Coordination Services | Systems Design Interview 0 to 1 with Ex-Google SWE",
+   "channel": "Jordan has no life",
+   "secs": 452
   },
   "hld12-t0": {
    "t": "Redundancy & Failover: Never Have One of Anything",
@@ -7227,6 +7776,13 @@
    "channel": "Software by Design",
    "secs": 231
   },
+  "hld12-t3": {
+   "t": "Bulkheads, Load Shedding & Graceful Degradation",
+   "id": "15OvdcWEz3Y",
+   "title": "Design for Failure Explained | Timeouts, Retries, Circuit Breakers & Graceful Degradation",
+   "channel": "Escoding",
+   "secs": 561
+  },
   "hld13-t0": {
    "t": "Blob / Object Storage (S3-style): Photos, Videos and Backups",
    "id": "DG5eWAClCA0",
@@ -7247,6 +7803,13 @@
    "title": "What is Time Series Analysis?",
    "channel": "IBM Technology",
    "secs": 449
+  },
+  "hld13-t3": {
+   "t": "Data Warehouses, Data Lakes and Lakehouses",
+   "id": "Enu-EH7RHHM",
+   "title": "Data Lakehouses Explained",
+   "channel": "IBM Technology",
+   "secs": 531
   },
   "hld14-t0": {
    "t": "Design a URL Shortener (bit.ly / TinyURL)",
@@ -7269,6 +7832,13 @@
    "channel": "ByteByteGo",
    "secs": 466
   },
+  "hld14-t3": {
+   "t": "Design a Notification System (Push, Email, SMS)",
+   "id": "bBTPZ9NdSk8",
+   "title": "System Design Interview - Notification Service",
+   "channel": "System Design Interview",
+   "secs": 1511
+  },
   "hld15-t0": {
    "t": "WhatsApp: Real-Time Messaging, Delivery & Read Receipts",
    "id": "OStQt5_fdK4",
@@ -7287,6 +7857,13 @@
    "t": "Instagram: Photo Upload, Media Storage, CDN & Counters",
    "id": null,
    "at": "2026-10-28"
+  },
+  "hld15-t3": {
+   "t": "YouTube / Netflix: Transcoding Pipeline & Adaptive Bitrate Streaming",
+   "id": "ZirDk7ZYE4E",
+   "title": "Design a Video Streaming Platform (Netflix/YouTube) — System Design Interview",
+   "channel": "Phani Thaticharla",
+   "secs": 851
   },
   "hld16-t0": {
    "t": "Design Uber: Geohash, Quadtrees & Driver Matching",
@@ -7309,6 +7886,13 @@
    "channel": "Gaurav Sen",
    "secs": 4625
   },
+  "hld16-t3": {
+   "t": "Design a Payment System: Idempotency Keys & Double-Entry Ledgers",
+   "id": "olfaBgJrUBI",
+   "title": "Design a Payment System - System Design Interview",
+   "channel": "Code with Lucian",
+   "secs": 1900
+  },
   "java01-t0": {
    "t": "Installing the JDK & Compile vs Run (javac → bytecode → java)",
    "id": "23HFxAPyJ9U",
@@ -7319,7 +7903,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java01-t1": {
    "t": "JDK vs JRE vs JVM — and What Lives Inside the JVM",
@@ -7331,7 +7915,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java01-t2": {
    "t": "The main Method, Command-Line Arguments & Exit Codes",
@@ -7343,7 +7927,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java01-t3": {
    "t": "Primitive Types, Ranges, Literals & Defaults",
@@ -7355,7 +7939,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java01-t4": {
    "t": "Type Casting: Widening, Narrowing & Numeric Promotion",
@@ -7367,7 +7951,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java01-t5": {
    "t": "Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence",
@@ -7383,7 +7967,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java01-t7": {
    "t": "char, ASCII & Unicode (UTF-16, Code Points, Emoji)",
@@ -7395,7 +7979,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java02-t0": {
    "t": "Decisions: if/else, the Ternary Operator, switch & Switch Expressions",
@@ -7407,7 +7991,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java02-t1": {
    "t": "Loops: for, while, do-while and the Enhanced for-each",
@@ -7424,7 +8008,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java02-t3": {
    "t": "Methods, the Call Stack and Why Java Is Always Pass-by-Value",
@@ -7436,7 +8020,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java02-t4": {
    "t": "Method Overloading and Varargs (int... args)",
@@ -7448,7 +8032,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java02-t5": {
    "t": "1D Arrays, 2D Arrays and Jagged Arrays",
@@ -7460,7 +8044,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java02-t6": {
    "t": "The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)",
@@ -7476,7 +8060,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java03-t0": {
    "t": "Defining Classes & Creating Objects",
@@ -7488,7 +8072,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java03-t1": {
    "t": "References: Stack vs Heap, Aliasing, null & Pass-by-Value",
@@ -7500,7 +8084,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java03-t2": {
    "t": "Constructors & Constructor Chaining",
@@ -7512,7 +8096,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java03-t3": {
    "t": "The this Keyword",
@@ -7524,7 +8108,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java03-t4": {
    "t": "static: Fields, Methods & Blocks",
@@ -7536,7 +8120,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java03-t5": {
    "t": "Initialization Order: static, instance, constructor",
@@ -7548,7 +8132,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java03-t6": {
    "t": "Access Modifiers & Packages",
@@ -7560,7 +8144,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t0": {
    "t": "Encapsulation: Private Data, Public Behaviour, Guarded Invariants",
@@ -7572,7 +8156,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t1": {
    "t": "Inheritance, extends & super: Reusing a Parent and Building Objects Layer by Layer",
@@ -7584,7 +8168,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t2": {
    "t": "Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override",
@@ -7596,7 +8180,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t3": {
    "t": "Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)",
@@ -7608,7 +8192,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t4": {
    "t": "Abstract Classes: Half-Built Blueprints and the Template Method",
@@ -7620,7 +8204,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t5": {
    "t": "Interfaces: Contracts, default & static Methods, and the Diamond Rules",
@@ -7632,7 +8216,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t6": {
    "t": "final: Variables, References, Methods and Classes",
@@ -7644,7 +8228,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t7": {
    "t": "Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)",
@@ -7656,7 +8240,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java04-t8": {
    "t": "The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize",
@@ -7668,7 +8252,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-28T09:36:46.480Z"
+   "availabilityCheckedAt": "2026-10-28T10:05:37.944Z"
   },
   "java05-t0": {
    "t": "String Immutability: Why a String Can Never Change",
@@ -7817,6 +8401,13 @@
    "channel": "Techie Book",
    "secs": 2746
   },
+  "java10-t3": {
+   "t": "LinkedHashMap: Insertion vs Access Order & the 5-line LRU Cache",
+   "id": "gukMFS2z3ZU",
+   "title": "LRU Cache in Java: One Missing Word Breaks It 🤯 (LinkedHashMap)",
+   "channel": "Decode with Mani",
+   "secs": 506
+  },
   "java11-t0": {
    "t": "Threads 101: Runnable vs Thread, start() vs run(), join() & the Thread Lifecycle",
    "id": "nfrWmKLh-ME",
@@ -7835,6 +8426,13 @@
    "title": "Locks, Monitors and Semaphores Explained in Java | Synchronized | Optimistic Locking | Geekific",
    "channel": "Geekific",
    "secs": 580
+  },
+  "java11-t3": {
+   "t": "volatile: Visibility vs Atomicity (and Why a Loop Can Spin Forever)",
+   "id": "WH5UvQJizH0",
+   "title": "Using volatile vs AtomicInteger in Java concurrency",
+   "channel": "Defog Tech",
+   "secs": 447
   },
   "java12-t0": {
    "t": "ExecutorService & Thread Pools (ThreadPoolExecutor from the inside)",
@@ -7857,6 +8455,13 @@
    "channel": "Defog Tech",
    "secs": 590
   },
+  "java12-t3": {
+   "t": "Synchronizers: Semaphore, CountDownLatch, CyclicBarrier & Phaser",
+   "id": "J3QZ5gfCtAg",
+   "title": "Phaser vs CountDownLatch vs CyclicBarrier",
+   "channel": "Defog Tech",
+   "secs": 820
+  },
   "java13-t0": {
    "t": "Class Loading: Loaders, Delegation & the Load → Link → Init Lifecycle",
    "id": null,
@@ -7873,6 +8478,13 @@
    "t": "The JIT Compiler: Tiered C1/C2, Inlining, Escape Analysis & Deoptimization",
    "id": null,
    "at": "2026-10-28"
+  },
+  "java13-t3": {
+   "t": "JVM Memory Areas: Heap, Thread Stacks, Metaspace, Code Cache & Native Memory",
+   "id": "bvW9t7R3m08",
+   "title": "JVM Memory Map: Why Your Heap-Limited Spring Boot App Gets OOM-Killed (Exit 137)",
+   "channel": "Visual Computer Science",
+   "secs": 282
   },
   "java14-t0": {
    "t": "Records: Data Carriers Done Right (Java 16+)",
@@ -7892,6 +8504,11 @@
    "title": "Java 17 to 20 Pattern Matching Full tutorial with Records, Instanceof and Switch - JEP Café #14",
    "channel": "Java",
    "secs": 1187
+  },
+  "java14-t3": {
+   "t": "Text Blocks & the Small Modern Wins (var, Helpful NPEs, Sequenced Collections)",
+   "id": null,
+   "at": "2026-10-28"
   },
   "js01-t0": {
    "t": "Running JavaScript: Browser Console, Node.js & Your First Program",
@@ -7921,6 +8538,11 @@
    "channel": "Programming with Mosh",
    "secs": 351
   },
+  "js01-t4": {
+   "t": "Numbers: Floating Point, NaN, Infinity, -0 & BigInt",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "js02-t0": {
    "t": "Functions: Declarations, Expressions & Arrow Functions",
    "id": "h33Srr5J9nY",
@@ -7946,6 +8568,13 @@
    "t": "Arrays II: map, filter, find, some/every, forEach & Method Pipelines",
    "id": null,
    "at": "2026-10-28"
+  },
+  "js02-t4": {
+   "t": "Arrays III: reduce — Folding a List into One Value",
+   "id": "5nzBDkH9lWI",
+   "title": "Functional JavaScript for Beginners 10 - Reduce in Practice: Converting Arrays into Objects by Id",
+   "channel": "Zaiste Programming",
+   "secs": 448
   },
   "js03-t0": {
    "t": "Engine vs Runtime: What Actually Runs Your JavaScript",
@@ -8150,6 +8779,13 @@
    "channel": "Hitesh Choudhary",
    "secs": 889
   },
+  "js10-t3": {
+   "t": "Narrowing & Type Guards (typeof, in, instanceof, Discriminated Unions, never)",
+   "id": "TdejZsExjws",
+   "title": "Type Narrowing & Type Guards",
+   "channel": "Chai aur Code",
+   "secs": 1392
+  },
   "js11-t0": {
    "t": "Generic Constraints: \"Any Type, As Long As It Has…\"",
    "id": null,
@@ -8167,6 +8803,13 @@
    "channel": "Telusko",
    "secs": 737
   },
+  "js11-t3": {
+   "t": "infer: Pattern-Matching to Pull Types Out",
+   "id": "yQyQa0gbqU0",
+   "title": "Typescript Conditional Types, Type Inference and Pattern Matching",
+   "channel": "Matias Hernández",
+   "secs": 184
+  },
   "js12-t0": {
    "t": "From Source Text to Bytecode: Scanner, Parser, AST & Lazy Parsing",
    "id": null,
@@ -8183,6 +8826,11 @@
    "title": "The Learning Curve Javascript : Ep11 : I & C (Hidden Classes and Inline caching)",
    "channel": "abhishek mojumdar",
    "secs": 630
+  },
+  "js12-t3": {
+   "t": "Deoptimization: When the JIT's Bets Fail",
+   "id": null,
+   "at": "2026-10-28"
   },
   "js13-t0": {
    "t": "Pure Functions & Side Effects",
@@ -8205,6 +8853,13 @@
    "channel": "NeetCodeIO",
    "secs": 489
   },
+  "js13-t3": {
+   "t": "Currying & Partial Application",
+   "id": "k5TC9i5HonI",
+   "title": "Javascript Interview Questions ( Currying ) - Output based Questions, Partial Application and more",
+   "channel": "RoadsideCoder",
+   "secs": 1486
+  },
   "js14-t0": {
    "t": "Polyfills I: call, apply and bind from Scratch",
    "id": "VkmUOktYDAU",
@@ -8225,6 +8880,13 @@
    "title": "Promise APIs + Interview Questions 🔥 | S.02 Ep.05 - Namaste JavaScript  | all, allSettled, race, any",
    "channel": "Akshay Saini",
    "secs": 3598
+  },
+  "js14-t3": {
+   "t": "Debounce and Throttle",
+   "id": "cjIswDCKgu0",
+   "title": "Learn Debounce And Throttle In 16 Minutes",
+   "channel": "Web Dev Simplified",
+   "secs": 988
   },
   "lld01-t0": {
    "t": "Thinking in Objects: Classes, Objects, State & Behaviour",
@@ -8292,6 +8954,10 @@
   },
   "lld01-t4": {
    "t": "UML Class Diagrams: Notation, Reading & Drawing One Step by Step",
+   "id": "6XrL5jXmTwM",
+   "title": "UML class diagrams",
+   "channel": "Lucid Software",
+   "secs": 744,
    "byLang": {
     "cpp": {
      "id": null,
@@ -8383,6 +9049,10 @@
   },
   "lld02-t4": {
    "t": "I — Interface Segregation Principle (ISP)",
+   "id": "-E-E6pd-psU",
+   "title": "Low Level Design 108 | Interface Segregation Principle | 2022 | System Design",
+   "channel": "sudoCODE",
+   "secs": 470,
    "byLang": {
     "cpp": {
      "id": "1nSVLoOBCh4",
@@ -8971,6 +9641,10 @@
   },
   "lld09-t3": {
    "t": "Vending Machine: States, Inventory, Coins and Change",
+   "id": "iH8vU5ezfRY",
+   "title": "How to Start a Vending Machine Business, Cost, Tips, How Much You Make",
+   "channel": "The Business Guy | Asset Protection Planners",
+   "secs": 1136,
    "byLang": {
     "cpp": {
      "id": null,
@@ -9041,6 +9715,10 @@
   },
   "lld10-t3": {
    "t": "Rate Limiter II: Fixed Window, Sliding Window Log & Sliding Window Counter",
+   "id": "7y0KWxaUn-E",
+   "title": "Design Rate Limiter (LLD) - Token Bucket, Fixed & Sliding Window with Thread Safety",
+   "channel": "Shubh Patel",
+   "secs": 1931,
    "byLang": {
     "cpp": {
      "id": null,
@@ -9118,6 +9796,10 @@
   },
   "lld11-t3": {
    "t": "Hexagonal Architecture (Ports & Adapters) at Class Level",
+   "id": "pr7SZStPhNs",
+   "title": "Spring Batch Framework - CSV & Excel Ingestion with Hexagonal Architecture",
+   "channel": "Aman | Schrodinger Smile :):",
+   "secs": 1553,
    "byLang": {
     "cpp": {
      "id": null,
@@ -9145,6 +9827,15 @@
   },
   "lld11-t6": {
    "t": "Domain Events: \"Something Happened\" — Decoupling Side Effects Safely",
+   "byLang": {
+    "cpp": {
+     "id": null,
+     "at": "2026-10-28"
+    }
+   }
+  },
+  "lld11-t7": {
+   "t": "Event Sourcing in Code: Store the Story, Rebuild the State",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9197,6 +9888,10 @@
   },
   "lld12-t3": {
    "t": "In-Memory Key-Value Store with Nested Transactions and TTL",
+   "id": "6fOoXT1HYxk",
+   "title": "Design a Key-Value Store - System Design Mock Interview (with Microsoft Software Engineer)",
+   "channel": "Aced (formerly Exponent)",
+   "secs": 2190,
    "byLang": {
     "cpp": {
      "id": null,
@@ -9232,6 +9927,13 @@
    "channel": "Boot dev",
    "secs": 334
   },
+  "py01-t4": {
+   "t": "Talking to the User: input(), print() & f-strings",
+   "id": "DB9Cq6TSTuQ",
+   "title": "Python user input ⌨️",
+   "channel": "Bro Code",
+   "secs": 438
+  },
   "py02-t0": {
    "t": "Making Decisions: if / elif / else, Truthiness & Short-Circuit Logic",
    "id": null,
@@ -9253,6 +9955,13 @@
    "title": "Python Arguments in Functions (Positional, Keywords & Default Arguments) #13",
    "channel": "Programiz",
    "secs": 375
+  },
+  "py02-t4": {
+   "t": "Lists and Tuples: Ordered Collections",
+   "id": "W8KRzm-HUcc",
+   "title": "Python Tutorial for Beginners 4: Lists, Tuples, and Sets",
+   "channel": "Corey Schafer",
+   "secs": 1745
   },
   "py03-t0": {
    "t": "Strings I: Indexing, Slicing, Immutability & Everyday Methods",
@@ -9277,6 +9986,13 @@
    "t": "Reading & Writing Files: open(), Modes, the Cursor & pathlib",
    "id": null,
    "at": "2026-10-28"
+  },
+  "py03-t4": {
+   "t": "The with Statement: Guaranteed Cleanup (Context Managers)",
+   "id": "L5DdhLCICb4",
+   "title": "Python with Statement: __enter__ and __exit__, Two Methods You Never Wrote",
+   "channel": "Programming threads",
+   "secs": 293
   },
   "py04-t0": {
    "t": "Classes, Objects, __init__ and self",
@@ -9437,6 +10153,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "py10-t3": {
+   "t": "concurrent.futures: Executors, Futures, map, as_completed and wait",
+   "id": "OB0_a8P-aqY",
+   "title": "Mastering Python Tutorial: Using concurrent.futures | packtpub.com",
+   "channel": "Packt ",
+   "secs": 608
+  },
   "py11-t0": {
    "t": "Counter & defaultdict: Hash Maps with Superpowers",
    "id": null,
@@ -9453,6 +10176,13 @@
    "title": "2.6.3 Heap - Heap Sort - Heapify - Priority Queues",
    "channel": "Abdul Bari",
    "secs": 3068
+  },
+  "py11-t3": {
+   "t": "bisect: Binary Search Without Off-by-One Bugs",
+   "id": "aHqyhdfKiuM",
+   "title": "Binary Search in Python | How to Search 1 Million Items in Just 20 Checks",
+   "channel": "letsBug",
+   "secs": 442
   },
   "py12-t0": {
    "t": "Bytecode & dis: What Your Code Turns Into",
@@ -9473,6 +10203,11 @@
    "channel": "Adsorp AI",
    "secs": 1049
   },
+  "py12-t3": {
+   "t": "Reference Counting: Who Is Holding This Object?",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "py13-t0": {
    "t": "Measure First: Profiling with cProfile, pstats & timeit",
    "id": null,
@@ -9489,6 +10224,11 @@
    "title": "Advanced NumPy Course - Vectorization, Masking, Broadcasting & More",
    "channel": "NeuralNine",
    "secs": 2974
+  },
+  "py13-t3": {
+   "t": "Memory Optimization: getsizeof, tracemalloc, __slots__, Generators & Compact Storage",
+   "id": null,
+   "at": "2026-10-28"
   },
   "sql01-t0": {
    "t": "What Is a Database? What Is a DBMS?",
@@ -9518,6 +10258,13 @@
    "channel": "Bro Code",
    "secs": 497
   },
+  "sql01-t4": {
+   "t": "Relationships: One-to-One, One-to-Many, Many-to-Many",
+   "id": "4q-keGvUnag",
+   "title": "SQL Server Tutorial - One-to-many and many-to-many table relationships",
+   "channel": "LinkedIn Learning",
+   "secs": 591
+  },
   "sql02-t0": {
    "t": "SELECT: Picking Columns, Computing Expressions & Naming Them with Aliases",
    "id": null,
@@ -9543,6 +10290,11 @@
    "title": "SQL TRAP equals null vs is null returns 0 rows",
    "channel": "SQLWithAsif",
    "secs": 387
+  },
+  "sql02-t4": {
+   "t": "ORDER BY: Sorting by Many Keys, Directions, Expressions and NULL Placement",
+   "id": null,
+   "at": "2026-10-28"
   },
   "sql03-t0": {
    "t": "The Five Aggregates: COUNT, SUM, AVG, MIN, MAX",
@@ -9717,6 +10469,11 @@
    "channel": "Software Nuggets",
    "secs": 399
   },
+  "sql09-t3": {
+   "t": "Soft Deletes, Restores & Archiving",
+   "id": null,
+   "at": "2026-10-28"
+  },
   "sql10-t0": {
    "t": "Why Indexes Exist: Full Table Scan vs Index Seek",
    "id": null,
@@ -9733,6 +10490,13 @@
    "title": "Clustered vs. Nonclustered Index Structures in SQL Server",
    "channel": "Voluntary DBA",
    "secs": 484
+  },
+  "sql10-t3": {
+   "t": "Hash Indexes vs B+tree Indexes",
+   "id": "9eqKRT5K8hI",
+   "title": "PostgreSQL indexes. B-Tree or Hash. What is better? How it works?",
+   "channel": "JaneExplainsIT",
+   "secs": 350
   },
   "sql11-t0": {
    "t": "The Query Planner: From SQL Text to a Running Plan",
@@ -9753,6 +10517,13 @@
    "id": null,
    "at": "2026-10-28"
   },
+  "sql11-t3": {
+   "t": "Join Algorithms: Nested Loop, Hash Join & Merge Join",
+   "id": "pJWCwfv983Q",
+   "title": "How do nested loop, hash, and merge joins work? Databases for Developers Performance #7",
+   "channel": "The Magic of SQL",
+   "secs": 955
+  },
   "sql12-t0": {
    "t": "Transactions & ACID: All-or-Nothing Units of Work",
    "id": null,
@@ -9772,6 +10543,13 @@
    "channel": "Shubh Patel",
    "secs": 945
   },
+  "sql12-t3": {
+   "t": "Isolation Levels: From READ UNCOMMITTED to SERIALIZABLE",
+   "id": "-gxyut1VLcs",
+   "title": "Isolation Levels in Database Management Systems",
+   "channel": "Edredo for Learners",
+   "secs": 620
+  },
   "sql13-t0": {
    "t": "Pages & Slotted Records: How Rows Really Sit on Disk",
    "id": null,
@@ -9788,6 +10566,13 @@
    "title": "Write-Ahead Logging Explained: Database Durability & Recovery",
    "channel": "CodeLucky",
    "secs": 513
+  },
+  "sql13-t3": {
+   "t": "B-Tree vs LSM-Tree: Memtable, SSTables & the Read/Write Trade-off",
+   "id": "qJIIW9diGmE",
+   "title": "B-tree vs LSM: How Databases Actually Store Data",
+   "channel": "The Hot Path",
+   "secs": 914
   },
   "sql14-t0": {
    "t": "Leader-Follower Replication & Replication Lag",
@@ -9807,6 +10592,13 @@
    "t": "Sharding Strategies: Range, Hash, Consistent Hashing, Directory & Hot Keys",
    "id": null,
    "at": "2026-10-28"
+  },
+  "sql14-t3": {
+   "t": "NoSQL Families: Key-Value, Document, Wide-Column, Graph (and Query-First Modelling)",
+   "id": "zG6CHYCx6ag",
+   "title": "NoSQL database | key value | document | wide column | graph stores",
+   "channel": "WeAreTechies",
+   "secs": 941
   },
   "sql15-t0": {
    "t": "Nth Highest Salary (and Why Ties Break Naive Answers)",
@@ -9828,6 +10620,13 @@
    "title": "SQL Query | How to find 'n' consecutive days EXCLUDING Weekends | LAG | Windows function | streaks",
    "channel": "Learn at Knowstar",
    "secs": 1569
+  },
+  "sql15-t3": {
+   "t": "Gaps & Islands (ranges, missing values, status runs, merged intervals)",
+   "id": "ffNngUTqYBM",
+   "title": "GAPS and ISLANDS in SQL Server",
+   "channel": "Bert Wagner",
+   "secs": 263
   }
  }
 }
