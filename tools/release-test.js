@@ -20,4 +20,14 @@ for (let i = 0; i < 250; i++) {
 }
 console.log('250 releases: ' + codes.slice(0, 3).join(', ') + ' ... ' + codes.slice(-2).join(', ') + ' (last ' + v + '), strictly increasing, no collisions');
 assert.strictEqual(new Set(codes).size, codes.length);
+// Daily video release: only newly playable picks count (a dated miss or an unavailable video is not new).
+{
+  const VR = require('./video-release.js');
+  const before = { videos: { a: { id: 'AAAAAAAAAAA' }, b: { id: null, at: '2026-10-01' }, c: { id: 'CCCCCCCCCCC', byLang: { python: { id: 'PPPPPPPPPPP' } } } } };
+  const after = { videos: { a: { id: 'AAAAAAAAAAA' }, b: { id: 'BBBBBBBBBBB' }, c: { id: 'CCCCCCCCCCC', byLang: { python: { id: 'PPPPPPPPPPP' }, csharp: { id: 'SSSSSSSSSSS' } } }, d: { id: null, at: '2026-10-28' }, e: { id: 'EEEEEEEEEEE', available: false } } };
+  assert.deepStrictEqual(VR.added(before, after), { added: 2, total: 5 });
+  assert.deepStrictEqual(VR.added(after, after), { added: 0, total: 5 });
+  const r = require('child_process').spawnSync(process.execPath, [require('path').join(__dirname, 'video-release.js'), '--dry-run'], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0); assert.match(r.stdout, /no app release|dry run/);
+}
 console.log('release-test: all passed');
