@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "Think about which object Hibernate actually tracks after the call: the argument, or something it hands back to you.",
+    "Recall what the persistence context does with an entity it has already loaded once in this transaction.",
+    "Hibernate queues actions by type, not by the line order of your code. Which kind of action is saved for last?",
+    "Dirty checking compares values at flush time against a copy taken at load, not a history of setter calls.",
+    "A JPQL query does not automatically apply the join implied by a mapping's fetch type. What must happen per author then?",
+    "The word bag is the clue: what goes wrong when two unordered collections are joined into the same result rows?",
+    "Sessions must never share a mutable Java object, so the shared cache keeps something more primitive than objects.",
+    "The shared entity cache is keyed by identifier. Which kinds of loading know the id up front?",
+    "Transaction rules are applied by a wrapper object around your bean. Does a call through this pass through it?",
+    "Spring follows the old EJB rule here: think about unchecked versus checked exceptions.",
+    "Optimistic locking is a compare-and-set done in SQL. Where would the comparison appear in the statement?",
+    "Zero milliseconds of waiting means the database should not queue the request at all.",
+    "Spring can only shrink the SELECT list if it knows in advance exactly which properties you will read.",
+    "Look at how SimpleJpaRepository decides between persist and merge, and what it inspects to decide.",
+    "One of these types answers only whether another page exists, which can be learned by reading one extra row."
+  ],
+  "interview": [
+    "Name the states by asking two questions: is the object in a persistence context, and does it have a database row?",
+    "Think of three guarantees: one object per row, automatic change detection, and delayed SQL. Mention the costs too.",
+    "Start from the snapshot taken at load time, then list ways to avoid or shrink the comparison work at flush.",
+    "Split the 101 into two separate N+1 patterns, one for a to-one and one for a collection, and fix each differently.",
+    "Compare by number of queries, effect on paging, row duplication, and where each is declared.",
+    "Ask when the session closed relative to when the proxy was touched, then separate real fixes from band-aids.",
+    "Contrast the scope of each cache, what is stored, and who else might be writing the same tables.",
+    "The inner proxy cannot roll back a transaction it only joined, so it leaves a flag behind. What does the outer commit find?",
+    "Remember @Transactional is applied by a proxy. List the situations where the call never reaches that proxy logic.",
+    "Use a counter column that every UPDATE checks, and think about how that value travels to the browser and back.",
+    "Think high contention and short transactions, then cover timeouts, NOWAIT, SKIP LOCKED and lock ordering.",
+    "Describe the startup parsing of method names, then name the cases where a name stops being readable or efficient.",
+    "Check id generation, JDBC batching settings, the size of the persistence context, and whether JPA is the right tool at all."
+  ]
+}

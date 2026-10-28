@@ -1,0 +1,34 @@
+{
+  "quiz": [
+    "The first instruction needs every stage to finish; after that, one more instruction completes each cycle.",
+    "Ask in which stage each producer's value first exists and whether that is early enough for the next instruction's EX stage.",
+    "A saturating counter needs two wrong guesses in a row before it changes its prediction.",
+    "Think about how many pipeline stages of wrong-path work must be thrown away and refetched.",
+    "First count the lines (size divided by line size), then split them across the ways.",
+    "The cache has free space elsewhere, so the problem is where the two lines are allowed to go.",
+    "Average access time is the hit time plus the miss rate multiplied by the miss penalty.",
+    "The variables are different, but coherence tracks something bigger than a single variable.",
+    "A core can only write a line when it holds the only valid copy.",
+    "In two's complement the leftmost bit carries a negative weight; add up the weights of the set bits.",
+    "C and C++ treat signed and unsigned arithmetic differently; only one of them is defined to wrap.",
+    "The stored exponent includes a bias that must be removed for single precision.",
+    "Write each candidate in binary; only finite sums of powers of two are exact.",
+    "Little-endian means the least significant byte gets the lowest address.",
+    "Divide the register width in bits by the size of one float in bits."
+  ],
+  "interview": [
+    "Mention the compiler output, the instruction cycle stages, and where the operands live in the memory hierarchy.",
+    "Describe the overlapping stages first, then name hazards caused by shared hardware, data dependencies and branches, with a fix for each.",
+    "The arithmetic is the same in both cases; think about what the CPU must guess at every iteration.",
+    "Walk from registers outward to SSD and give rough nanosecond figures plus the unit of transfer.",
+    "Explain how the address bits are used, then compare how many slots a line may occupy in each design.",
+    "Focus on the unit that coherence protocols track and what happens when two cores write within it.",
+    "Name the four states and describe what a read and a write by another core do to them.",
+    "Consider whether the range of signed integers is symmetric, then list other overflow and conversion traps.",
+    "Describe the sign, exponent and fraction fields, then think about which decimals have finite binary forms.",
+    "Define byte order, then think about every place where bytes leave a register: wires, files and casts.",
+    "Explain wide registers and lanes, then list what makes iterations dependent or memory access irregular.",
+    "Look beyond operation counts: memory access patterns, branches, vector units and parallel work per cycle.",
+    "Combine three ideas: guessing past a check, effects that survive a squash, and timing measurements."
+  ]
+}

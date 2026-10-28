@@ -57,7 +57,10 @@ var TRACKS = [
       ['A', 'Concurrency I: Threads & the Java Memory Model', 'Thread lifecycle, Runnable vs Thread, synchronized and intrinsic locks, volatile, happens-before, visibility vs atomicity, wait/notify, race conditions, deadlock/livelock/starvation.'],
       ['A', 'Concurrency II: java.util.concurrent', 'ExecutorService and thread pools, Callable/Future, ReentrantLock/ReadWriteLock, Semaphore/CountDownLatch/CyclicBarrier, atomics and CAS, BlockingQueue producer-consumer, CompletableFuture, virtual threads (Java 21).'],
       ['E', 'JVM Internals & Performance', 'Class loading and delegation, bytecode basics, JIT (C1/C2, inlining, escape analysis), memory areas (heap, stack, metaspace), GC algorithms (Serial, Parallel, G1, ZGC), GC tuning, memory leaks, profiling tools (jstack, jmap, JFR).'],
-      ['E', 'Modern & Expert Java + Output Question Bank', 'Java 17–21 features (records, sealed classes, pattern matching, text blocks, switch patterns), reflection, annotations and processors, JPMS modules, JMH benchmarking, tricky output-prediction questions.']
+      ['E', 'Modern & Expert Java + Output Question Bank', 'Java 17–21 features (records, sealed classes, pattern matching, text blocks, switch patterns), reflection, annotations and processors, JPMS modules, JMH benchmarking, tricky output-prediction questions.'],
+      ['I', 'Build Tools & Testing: Maven, Gradle, JUnit 5 & Mockito', 'Maven and Gradle (lifecycle, dependency scopes, conflict resolution, multi-module builds, BOMs), JUnit 5 (lifecycle, parameterized and nested tests, assertions with AssertJ), Mockito (mocks, stubs, spies, argument captors, verifying), test doubles, Testcontainers, coverage with JaCoCo.'],
+      ['A', 'JPA & Hibernate Deep Dive', 'Entity mapping and lifecycle states, the persistence context and dirty checking, lazy vs eager loading and the N+1 problem (fetch joins, entity graphs, batch fetching), first- and second-level caches, @Transactional propagation and isolation, optimistic and pessimistic locking, Spring Data JPA repositories and projections.'],
+      ['A', 'Spring Framework Internals: IoC, AOP & Transactions', 'The IoC container and bean lifecycle, bean scopes, how dependency injection resolves beans, configuration and profiles, AOP and proxies (JDK vs CGLIB, the self-invocation pitfall), how @Transactional and @Async work through proxies, auto-configuration internals, and common Spring interview traps.']
     ]
   },
   {
@@ -134,7 +137,10 @@ var TRACKS = [
       ['A', 'Concurrency & Threading', 'Threads and the thread pool, lock/Monitor, Interlocked, SemaphoreSlim, ReaderWriterLockSlim, concurrent collections, Channels, Parallel and PLINQ, volatile and the memory model.'],
       ['A', 'Reflection, Attributes & Advanced Generics', 'Reflection and Type, custom attributes, generic variance (in/out), static abstract interface members, extension methods, operator overloading, expression trees, source generators overview.'],
       ['E', 'CLR Internals & Performance', 'IL, JIT tiers and ReadyToRun, method tables and object headers, struct layout, inlining, BenchmarkDotNet, allocation profiling, string interning, common performance traps.'],
-      ['E', 'Expert Idioms + Question Bank', 'Immutability patterns, Result types, dispose patterns, async best practices, equality and hashing pitfalls, tricky output-prediction questions and a C# interview question bank.']
+      ['E', 'Expert Idioms + Question Bank', 'Immutability patterns, Result types, dispose patterns, async best practices, equality and hashing pitfalls, tricky output-prediction questions and a C# interview question bank.'],
+      ['I', 'ASP.NET Core Web APIs', 'The request pipeline and middleware, the built-in DI container and service lifetimes (singleton, scoped, transient), minimal APIs vs controllers, routing and model binding, configuration and the options pattern, filters, validation, authentication and authorization (JWT, policies), logging and ProblemDetails errors.'],
+      ['A', 'Entity Framework Core', 'DbContext and its lifetime, change tracking and tracking vs no-tracking queries, migrations, relationships and loading (eager Include, explicit, lazy) and the N+1 problem, IQueryable vs IEnumerable, raw SQL, transactions and concurrency tokens, performance (compiled queries, split queries, AsNoTracking).'],
+      ['A', 'Testing & Tooling in .NET', 'xUnit and NUnit, Moq and NSubstitute, test doubles, integration tests with WebApplicationFactory and Testcontainers, testing EF Core, NuGet packages and versioning, MSBuild and project files, dotnet CLI, analyzers, and code coverage.']
     ]
   },
   {
@@ -251,7 +257,7 @@ var TRACKS = [
       ['I', 'Python Backend II: Databases with SQLAlchemy & Alembic', 'Engine, sessions and the unit of work, ORM models and relationships, queries in SQLAlchemy 2.0 style, N+1 and eager loading, transactions, Alembic migrations, connection pooling, repository pattern, async database access.'],
       ['I', 'Python Backend III: Auth, Security & Configuration', 'Password hashing (argon2/bcrypt), OAuth2 password flow with JWT in FastAPI, scopes and roles, CORS, settings from environment with pydantic-settings, secrets handling, rate limiting, input validation and the OWASP checks for Python APIs.'],
       ['A', 'Python Backend IV: Testing & Quality for APIs', 'pytest fixtures and parametrize, TestClient and httpx AsyncClient, test databases and transactions per test, factories, mocking external services, contract tests, coverage, type checking with mypy, linting and formatting with ruff, CI pipelines.'],
-      ['A', 'Python Backend V: Async Workers, Caching & Deployment', 'Background tasks, task queues (Celery, RQ, arq), Redis caching patterns, idempotent jobs and retries, Docker images for Python apps, Gunicorn/Uvicorn workers, structured logging and metrics, Django overview and when to choose it.']
+      ['A', 'Python Backend V: Async Workers, Caching & Deployment', 'Background tasks, task queues (Celery, RQ, arq), Redis caching patterns, idempotent jobs and retries, Docker images for Python apps, Gunicorn/Uvicorn workers, structured logging and metrics, Django overview and when to choose it.'],
     ]
   },
   {
@@ -277,7 +283,10 @@ var TRACKS = [
       ['E', 'The Future of Software Careers with AI', 'What gets automated vs what gains value, T-shaped skills, system thinking and product sense, ethics and regulation, building a learning habit, career roadmap for the next 5 years.'],
       ['B', 'Linear Algebra for Machine Learning', 'Vectors, dot products and cosine similarity, matrices as transformations, matrix multiplication, transpose and inverse, linear systems, eigenvectors intuition, SVD and PCA, how embeddings and attention use these ideas, all in plain Python.'],
       ['B', 'Probability & Statistics for Machine Learning', 'Random variables, distributions (Bernoulli, binomial, normal), expectation and variance, Bayes rule, conditional probability, sampling, confidence intervals, hypothesis tests and A/B tests, entropy and cross-entropy, softmax probabilities.'],
-      ['I', 'Calculus & Optimization for Machine Learning', 'Derivatives and the chain rule, partial derivatives and gradients, gradient descent and learning rates, loss functions (MSE, cross-entropy), backpropagation by hand, momentum and Adam, overfitting and regularisation, convexity intuition.']
+      ['I', 'Calculus & Optimization for Machine Learning', 'Derivatives and the chain rule, partial derivatives and gradients, gradient descent and learning rates, loss functions (MSE, cross-entropy), backpropagation by hand, momentum and Adam, overfitting and regularisation, convexity intuition.'],
+      ['I', 'Classical Machine Learning in Practice', 'Linear and logistic regression, decision trees, random forests and gradient boosting (XGBoost/LightGBM), feature engineering, handling missing values and imbalanced data, metrics (precision, recall, F1, ROC-AUC, PR-AUC), cross-validation, overfitting and regularization, and how these are asked in interviews.'],
+      ['A', 'MLOps & Model Deployment', 'The ML lifecycle in production: data and feature pipelines, feature stores, experiment tracking and model registry (MLflow), packaging and serving models (batch vs online, REST/gRPC), A/B tests and shadow deployments, monitoring data and concept drift, retraining, CI/CD for models, and cost.'],
+      ['E', 'ML System Design Case Studies', 'A framework for ML system design interviews, then case studies: recommendation feed, search ranking, ads click prediction, fraud detection, and content moderation; two-tower retrieval and ranking stages, candidate generation, features, offline and online metrics, feedback loops and scaling.']
     ]
   },
   {
@@ -297,7 +306,10 @@ var TRACKS = [
       ['I', 'IP Addressing, Subnetting, Routing & NAT', 'IPv4/IPv6, CIDR, subnet masks and subnet math, routing tables, static vs dynamic routing, ARP, DHCP, NAT and private IPs.'],
       ['I', 'TCP & UDP Deep Dive', 'UDP use-cases, TCP 3-way handshake and teardown, sequence/ack numbers, flow control (sliding window), congestion control (slow start, AIMD), retransmission, TIME_WAIT.'],
       ['A', 'Application Layer: HTTP, TLS, DNS, WebSockets', 'HTTP/1.1 vs HTTP/2 vs HTTP/3, keep-alive, TLS handshake and certificates, DNS resolution in depth, WebSockets/SSE, what happens when you type a URL.'],
-      ['E', 'Advanced Networking: QUIC, BGP, Load Balancing & Security', 'QUIC internals, BGP and internet routing, anycast, load balancer internals (ECMP, consistent hashing), firewalls, VPNs, DDoS mitigation.']
+      ['E', 'Advanced Networking: QUIC, BGP, Load Balancing & Security', 'QUIC internals, BGP and internet routing, anycast, load balancer internals (ECMP, consistent hashing), firewalls, VPNs, DDoS mitigation.'],
+      ['I', 'Computer Architecture Essentials', 'How a CPU runs code: instructions, pipelining and hazards, branch prediction, the memory hierarchy and caches (lines, associativity, locality, false sharing), number representation (two complement integers, IEEE 754 floats), endianness, SIMD, and why these matter for performance.'],
+      ['A', 'Distributed Systems Fundamentals', 'Why distributed systems are hard: failure models and partial failure, time and clocks (physical, Lamport, vector clocks), replication models, consistency models (linearizable, sequential, causal, eventual), CAP and PACELC, leader election and consensus basics, idempotency and exactly-once myths.'],
+      ['E', 'Compilers & Language Runtimes', 'How code becomes execution: lexing, parsing and ASTs, semantic analysis and type checking, intermediate representations and simple optimizations, interpreters vs bytecode VMs vs JIT compilation, garbage collection algorithms (reference counting, mark-sweep, generational, concurrent), and how this shows up in interviews.']
     ]
   },
   {
@@ -321,7 +333,7 @@ var TRACKS = [
       ['A', 'Observability & Monitoring', 'Metrics, logs and traces, Prometheus scraping and PromQL, Grafana dashboards, alerting rules and on-call, the ELK/EFK stack, OpenTelemetry, SLIs and SLOs, commercial tools such as Datadog.'],
       ['A', 'DevSecOps & Cloud Security', 'Secrets management with HashiCorp Vault, static analysis and dependency scanning in pipelines, container image scanning, least-privilege IAM design, security groups and network segmentation, audit logs, compliance basics.'],
       ['E', 'Advanced Cloud Architecture', 'Microservices on the cloud, service meshes (Istio), disaster recovery strategies (backup and restore, pilot light, warm standby, multi-site), RTO and RPO, multi-region deployments, cost optimisation, the Well-Architected Framework.'],
-      ['E', 'SRE Practice & Capstone', 'Error budgets, incident response and postmortems, capacity planning, toil reduction, chaos engineering, a capstone that provisions and runs a three-tier app end to end, DevOps and SRE interview preparation.']
+      ['E', 'SRE Practice & Capstone', 'Error budgets, incident response and postmortems, capacity planning, toil reduction, chaos engineering, a capstone that provisions and runs a three-tier app end to end, DevOps and SRE interview preparation.'],
     ]
   },
   {

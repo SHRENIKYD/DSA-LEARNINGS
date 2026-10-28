@@ -1,0 +1,33 @@
+{
+  "quiz": [
+    "Think about two different code paths producing the inputs for the same entity at the same moment.",
+    "Ask which feature values were actually knowable when each label event happened.",
+    "Serving needs one entity's latest values in a few milliseconds, not years of history.",
+    "Versions are never overwritten; consider what serving actually looks up to find the model.",
+    "Which option runs the new model on real requests but never returns its output to users?",
+    "Recall the usual thresholds: below 0.1 is fine, and the danger zone starts at 0.25.",
+    "Separate a change in the inputs from a change in what those inputs mean for the outcome.",
+    "Swap P and Q in the formula and see whether the number stays the same.",
+    "Think about payload encoding, typed contracts and connection reuse between services.",
+    "Hardware is far more efficient per item when it processes several items in one pass.",
+    "The same person should keep seeing the same variant, without any database lookup.",
+    "The word continuous here is about the training pipeline running itself on triggers.",
+    "Averages can hide damage to an important group; what should a gate check besides the total?",
+    "Nobody waits for nightly scores, and tree models run well without accelerators."
+  ],
+  "interview": [
+    "Go around the loop: data, features, training, registry, serving, release, monitoring, retraining.",
+    "Define it as a silent mismatch, then cover one shared definition, logging and a comparison check.",
+    "Name the offline and online parts, then say when the operational cost is not worth it.",
+    "Split the answer into recording runs and managing versions, and mention rollback by pointer.",
+    "Start from two questions: does someone wait, and does the input exist only at request time?",
+    "Map each strategy to the question it answers: correctness, health, or business impact.",
+    "Use P(X) versus P(y given X), and say which one needs labels to detect.",
+    "Walk through bins, shares and the formula, then list binning, empty bins and alert fatigue.",
+    "Cover triggers first, then the automated pipeline with gates and a progressive rollout.",
+    "Point out that data and models change too, and describe what CI, CT and CD each check.",
+    "Structure it: requirements, features, model, serving, release, monitoring, retraining, cost.",
+    "Measure cost per model first, then go through serving, training and data levers.",
+    "Think about containers, pinned versions, portable formats and validating inputs at the door."
+  ]
+}

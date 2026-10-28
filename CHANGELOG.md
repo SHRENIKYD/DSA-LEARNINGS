@@ -4,10 +4,15 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
-## [1.10.11] — 2026-10-28 · Angular complete
+## [1.10.11] — 2026-10-28 · Angular complete, plus Java, C#, ML and CS depth
 
 ### Added
-- Angular in the Frontend track is now complete with three more places: Angular Testing, Angular Internals & Performance, and Angular Architecture & Machine Coding (seven Angular places in all), each with hints for its riddles and interview questions.
+- Angular in the Frontend track is now complete with three more places: Angular Testing, Angular Internals & Performance, and Angular Architecture & Machine Coding (seven Angular places in all).
+- Java: Build Tools & Testing (Maven, Gradle, JUnit 5, Mockito), JPA & Hibernate Deep Dive, and Spring Framework Internals (IoC, AOP & transactions).
+- C#: ASP.NET Core Web APIs, Entity Framework Core, and Testing & Tooling in .NET.
+- GenAI & AI: Classical Machine Learning in Practice, MLOps & Model Deployment, and ML System Design Case Studies.
+- CS Core: Computer Architecture Essentials, Distributed Systems Fundamentals, and Compilers & Language Runtimes.
+- Every new place has hints for its riddles and interview questions. These reach the mobile app in its next release.
 
 ## [1.10.10] — 2026-10-28 · Hints everywhere and Angular
 

@@ -1,0 +1,30 @@
+{"quiz":[
+"Think about how many items a big model could score in 100 ms versus how many items the catalogue holds.",
+"Ask what the item tower takes as input. Does anything in it change from one user to the next?",
+"Which feature needs to know about the user and the item at the same moment?",
+"Items that show up in many batches get used as negatives many times. What does that do to their scores?",
+"Recall only asks whether an item was found. What else does a ranking metric care about?",
+"Codes and part numbers are exact strings. Which kind of matching keeps them exact?",
+"Look at the eCPM formula. What happens to the price if the probability is twice too high?",
+"Each kept negative stands for ten real ones. Put that into the correction formula and work it out.",
+"Picture a model that approves every transaction. Which of these metrics would still look great?",
+"A declined payment never goes through. Can a chargeback ever come back for it?",
+"Reviewers have little time. Think about how bad the item is, how likely it breaks the rules, and how many people see it.",
+"Reports and removals depend on what we already enforce. What would give a fair picture of what users see?",
+"Skew comes from writing the same feature twice in two places. How can you make sure it is written once?",
+"Top slots get clicks partly because they are on top. How do you keep that boost out of the score at serving?"
+],"interview":[
+"Go from fuzzy goal to label, then data, features, model, two levels of evaluation, and finally serving and monitoring.",
+"Talk about where each tower's output can be computed, and what that allows at query time over millions of items.",
+"Think about several user actions with different values, including negative ones, and how you would set their weights.",
+"Compare scoring one document alone, comparing two, and judging the whole ordered list.",
+"Split it into retrieval and ranking, offline and online, and head and tail queries.",
+"The probability is multiplied by money. Cover sampling corrections, a calibration layer and checks per segment.",
+"Start with metrics that rare positives cannot fool, then training tricks, features and how the threshold is set.",
+"Train only on data whose labels have arrived, find faster proxy signals, and keep a way to react quickly.",
+"Order the layers from cheapest and most exact to most expensive, and describe how humans and appeals fit in.",
+"The model chooses what users see and then learns from it. Name the biases and ways to explore around them.",
+"Ask where a feature gets computed for training and where it gets computed for serving, and how they can drift apart.",
+"Separate new items from new users. What content or context is known on day one, and how do you gather first signals?",
+"Check the offline gain was real, check the model gets the same inputs online, then check metrics and the experiment."
+]}

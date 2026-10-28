@@ -1,0 +1,31 @@
+{"quiz": [
+"Middleware runs in registration order. Ask what HttpContext.User looks like at the moment the authorization step checks it.",
+"Think about what the rest of the pipeline is: a delegate that only runs if somebody invokes it.",
+"Development builds turn on scope validation. Consider what it checks when a long-lived service asks for a per-request one.",
+"Transient means a fresh object on every single resolution, regardless of the request. Count the resolutions.",
+"Route constraints take part in matching. If one template's constraint fails, which templates are still candidates?",
+"Colons are not portable in environment variable names. Recall which character sequence the provider maps to a section separator.",
+"One interface is computed once, one is scoped and cannot go into a singleton, and one notifies about changes.",
+"The ApiController attribute adds a filter that checks ModelState before your method body ever runs.",
+"Separate 'who are you?' from 'are you allowed?'. The user here is known, just not permitted.",
+"Token validation tolerates small clock differences between servers. Recall the default tolerance in TokenValidationParameters.",
+"Compare what a log backend can query in each case, and when the string formatting work actually happens.",
+"The RFC that defines problem details also registers a dedicated media type with a +json suffix.",
+"Requirements combine with AND. Think about how several handlers for one requirement combine, and what 'doing nothing' means.",
+"An exception handler can only catch what is thrown by components that run inside it, i.e. registered after it."
+],
+"interview": [
+"Describe the chain of delegates, what next means, how Build composes it, and why registration order matters both ways.",
+"Cover instance count, who disposes each kind, thread safety, and the rule about depending on shorter-lived services.",
+"Both produce endpoints on the same routing. Compare overhead, AOT support, validation, filters and team structure.",
+"Mention the DFA built at start-up, constraint and method filtering, and how segment kinds rank against each other.",
+"Walk through the provider order and which one wins, then binding a section to a class, validation, and the three options interfaces.",
+"Ask what each one can see: raw HTTP for every request, or the selected action with its arguments and model state.",
+"Think of a standard error media type, a central exception handler, status code pages, and a trace id for support.",
+"Follow the token: signature and keys from the authority, issuer, audience, lifetime with skew, then claims and policies.",
+"The rule needs the document itself, so think resource-based checks with two handlers for one requirement.",
+"Both symptoms point to object lifetimes. Think about what a singleton might capture and what the root provider keeps alive.",
+"Cover structured templates, per-category levels, scopes, OpenTelemetry with trace ids, and what must never be logged.",
+"Native AOT rules out runtime code generation. Think about which parts rely on reflection: controllers, JSON, binding, libraries.",
+"Think in layers: identity, rate limits partitioned per client, size limits, timeouts with cancellation, caching, and monitoring."
+]}

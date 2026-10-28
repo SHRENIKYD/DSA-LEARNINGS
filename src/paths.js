@@ -16,10 +16,12 @@ var PATHS = (function () {
     java02: ['java01'], java03: ['java02'], java04: ['java03'], java05: ['java04'], java06: ['java04', 'java05'], java07: ['java05'],
     java08: ['java07'], java09: ['java07', 'java08'], java10: ['java07', 'java08'], java11: ['java04', 'java09'], java12: ['java11'],
     java13: ['java10', 'java12'], java14: ['java09', 'java13'],
+    java15: ['java07', 'java08'], java16: ['java15', 'sql05'], java17: ['java16', 'be06'],
     // C#
     csharp02: ['csharp01'], csharp03: ['csharp02'], csharp04: ['csharp03'], csharp05: ['csharp04'], csharp06: ['csharp05'],
     csharp07: ['csharp04', 'csharp06'], csharp08: ['csharp03', 'csharp07'], csharp09: ['csharp06', 'csharp07'], csharp10: ['csharp08', 'csharp09'],
     csharp11: ['csharp05', 'csharp06'], csharp12: ['csharp08', 'csharp11'], csharp13: ['csharp10', 'csharp12'],
+    csharp14: ['csharp06', 'csharp09'], csharp15: ['csharp14', 'sql05'], csharp16: ['csharp14', 'csharp15'],
     // Python
     py02: ['py01'], py03: ['py02'], py04: ['py02'], py05: ['py02', 'py04'], py06: ['py02', 'py04'], py07: ['py05', 'py06'],
     py08: ['py04', 'py05', 'py06'], py09: ['py06', 'py07', 'py08'], py10: ['py07', 'py09'], py11: ['py05', 'py06', 'py07'],
@@ -55,9 +57,11 @@ var PATHS = (function () {
     ai02: ['ai01'], ai03: ['ai01'], ai04: ['ai03'], ai05: ['ai04'], ai06: ['ai05'], ai07: ['ai02'], ai08: ['ai06'], ai09: ['ai07', 'ai08'],
     ai10: ['ai07'], ai11: ['ai09', 'ai10'], ai12: ['ai05', 'ai06'], ai13: ['ai09'], ai14: ['ai09', 'ai13'], ai15: ['ai05', 'ai06', 'ai18', 'ai20'],
     ai16: ['ai02'], ai17: ['ai02'], ai18: ['ai03'], ai19: ['ai03'], ai20: ['ai18'],
+    ai21: ['ai04', 'ai19'], ai22: ['ai21', 'devops13'], ai23: ['ai21', 'ai22', 'hld06'],
     // CS Core
     cs02: ['cs01'], cs03: ['cs02'], cs04: ['cs02'], cs05: ['cs04'], cs06: ['cs02'], cs07: ['cs06'], cs08: ['cs02'], cs09: ['cs06', 'cs08'],
     cs11: ['cs10'], cs12: ['cs10'], cs13: ['cs12'], cs14: ['cs12', 'cs13'],
+    cs15: ['cs01'], cs16: ['cs12', 'cs04'], cs17: ['cs15', 'cs06'],
     // Behavioral
     beh02: ['beh01'], beh03: ['beh02'], beh04: ['beh01'], beh05: ['beh03'], beh06: ['beh01'],
     // Cloud & DevOps

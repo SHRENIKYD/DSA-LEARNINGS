@@ -1,0 +1,37 @@
+{
+  "quiz": [
+    "Think about which stage is the very first to look at raw characters and group them into words.",
+    "What kind of machine recognises token patterns, and can it remember an arbitrary nesting depth?",
+    "Precedence in a hand-written parser comes from how the rule functions call each other, not from the order of if-checks.",
+    "Trace the first call: does the function consume any token before calling itself again?",
+    "Right-associative means the rightmost operator is applied first. Work out 3 ^ 2 before anything else.",
+    "Separate the two questions: when is the type checked, and does the language silently convert values?",
+    "Blocks nest and close in last-in, first-out order. Which structure matches that, and where does lookup start?",
+    "Expand the acronym: single assignment. What does that require of every variable, and what happens at merge points?",
+    "Remember floating point has special values such as NaN and negative zero. Which rewrite ignores them?",
+    "A stack machine needs both operands before the operator. Do a post-order walk of the tree for a - (b * c).",
+    "What does the runtime run before it has enough information about which code is hot and which types appear?",
+    "Optimised code was built on assumptions protected by guards. What must the runtime do when a guard fails?",
+    "Picture two objects pointing at each other with nothing else pointing at them. What are their counts?",
+    "Marking follows pointers from the roots; sweeping walks over memory. Which set does each phase touch?",
+    "A copying collector only touches the objects it copies. How many young objects typically survive?",
+    "Concurrent and generational collectors both need to know about certain pointer stores. What code runs on each store?"
+  ],
+  "interview": [
+    "List the stages in order from characters to machine code, and say what each stage outputs.",
+    "Compare when translation happens and what information each approach has available at that moment.",
+    "Think about what a formatter needs to keep versus what a type checker needs to keep.",
+    "Write one grammar rule per precedence level first; then turn each rule into a function.",
+    "There are two separate axes here: when checks happen, and whether implicit conversions are allowed.",
+    "Think about what becomes easy when every use of a variable has exactly one definition.",
+    "Name the passes, then for each one think about floats, side effects, aliasing and run-time errors.",
+    "Describe the loop at the heart of the VM, then say where the time goes in each iteration.",
+    "The JIT bets on what it has observed. Explain the bet, the guard, and what happens when the bet loses.",
+    "Compare when memory is reclaimed, what each pointer write costs, and what happens with cycles.",
+    "What does the heap look like after many sweeps that never move objects, and how do you fix that?",
+    "Start from the observation that most objects die young, then ask what happens with old-to-young pointers.",
+    "Use the three colours and describe the two things that must both happen for an object to be lost.",
+    "Measure first: what do the GC logs say is live after a full collection, and what is the allocation rate?",
+    "Think about the pipeline you already know, then add sandboxing, limits and an option to embed an existing engine."
+  ]
+}
