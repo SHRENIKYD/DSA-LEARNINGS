@@ -4,6 +4,17 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.13] — 2026-10-28 · Cloud, JavaScript, C++, Next.js and design depth
+
+### Added
+- Cloud & DevOps: Multi-Cloud & Google Cloud (GCP), GitOps with Argo CD & Flux, and Service Mesh & Kubernetes Security.
+- JavaScript & TypeScript: Node.js Internals: libuv, Streams & Worker Threads, and Testing JavaScript: Unit, Integration & E2E.
+- C++: CMake, Build Systems & Toolchains, and Testing, Sanitizers & Tooling in C++.
+- Frontend Engineering: Next.js: App Router, Server Components & Rendering.
+- Low-Level Design: More Case Studies: LRU/LFU Cache, Rate Limiter, Snake & Ladder, Meeting Room Scheduler.
+- High-Level System Design: Case Studies IV: Web Crawler, Job Scheduler, Leaderboard, Stock Exchange, Collaborative Editor.
+- Every new place has hints for its riddles and interview questions.
+
 ## [1.10.12] — 2026-10-28 · SQL, Python, Backend and Behavioral depth
 
 ### Added

@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "Think about which comparison toBe uses and whether two object literals are ever the same reference.",
+  "One of these matchers counts keys whose value is undefined; recall also how Object.is treats NaN.",
+  "Picture nested try/finally blocks: in which order does the cleanup unwind?",
+  "The runner only waits for what the test function gives back. What does this test return?",
+  "One method wipes only the call record; the other also forgets what the mock was programmed to do.",
+  "Which helper keeps firing until no timers are left, and does a self-rescheduling interval ever leave none?",
+  "Fake timers control the timer list but not the microtask queue. Has the timer even been created yet?",
+  "Mock registrations are moved to the top of the file by a transform. Where does your const end up relative to them?",
+  "MSW checks handlers in order and the first match wins. Which API adds a handler in front for one test?",
+  "Follow the Testing Library priority list: start from what assistive technology exposes.",
+  "Two of these variants throw when nothing matches. Which one quietly reports absence instead?",
+  "Compare guessing a wait time with waiting for a condition, and think about what Playwright checks before clicking.",
+  "Count lines that ran, then count each outcome of the if separately.",
+  "Same code with different results points to nondeterminism. Does a retry remove the cause?",
+  "Coverage records execution. Does executing a line prove anything checked its result?"
+ ],
+ "interview": [
+  "Contrast cost and flakiness at each layer, then say where a front end gets the most confidence per test.",
+  "Cover identity versus contents, undefined keys and classes, plus the special cases of -0, NaN and floats.",
+  "Define each double in one line, then explain where the boundary should be and why over-mocking hurts.",
+  "Describe the virtual clock loop, then explain why promise callbacks are outside its control.",
+  "Start from when imports are evaluated, then explain the hoisting transform and the native ESM complication.",
+  "Compare coupling to an HTTP client with intercepting at the network layer, and mention the risk of drift.",
+  "Quote the guiding principle, then walk through query priority, user events and what to assert.",
+  "Name the waiting, retrying, re-resolving and isolation mechanisms, then add network and auth strategies.",
+  "Separate what ran from what was verified, then describe thresholds, patch coverage and mutation testing.",
+  "Confirm, contain, reproduce, find the root cause, verify, then restore. List the usual causes.",
+  "Think of a two-minute case table before coding and turning it into asserts afterwards.",
+  "Weigh small reviewed outputs against giant diffs, unstable data and CI behaviour.",
+  "Consider the build pipeline, ESM support and API compatibility, then list the mechanical migration steps."
+ ]
+}

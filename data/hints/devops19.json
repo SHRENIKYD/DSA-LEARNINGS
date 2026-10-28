@@ -1,0 +1,35 @@
+{
+  "quiz": [
+    "Think about which GCP container holds resources, quotas, enabled APIs and billing links, the way an AWS account does.",
+    "Ask whether a lower level of the hierarchy can take away access that was granted higher up.",
+    "This is about what may be configured, not who may act. Which GCP service sets constraints on resource settings?",
+    "The best credential is one that nobody has to store or rotate. How can a CI job prove who it is with a short-lived token?",
+    "Remember the scope of a GCP VPC compared with an AWS VPC, then ask what still filters the traffic.",
+    "GCP sorts rules by priority number before matching. Which number is looked at first?",
+    "Every VPC has two hidden rules at the very bottom of the list, one per direction.",
+    "Who is allowed to change a tag on a VM, and who is allowed to change the identity a VM runs as?",
+    "Think about where the translation actually happens and whether there is a box in the data path.",
+    "Use Little's law: in-flight requests equal rate times latency, then divide by how many each instance serves.",
+    "In Autopilot Google owns the nodes. What part of your pod spec becomes the billing unit?",
+    "On-demand pricing counts bytes read from storage, not rows returned to you.",
+    "You need multi-region writes with strong consistency, not one primary with asynchronous copies.",
+    "In Pub/Sub, what independently receives every message published to a topic?",
+    "Each request that crosses from one provider to another moves bytes. What does every provider charge for leaving?",
+    "Compare the workflow Terraform gives you with the resource types each provider defines."
+  ],
+  "interview": [
+    "Walk from the top node down to where resources live, then pair each level with its AWS and Azure counterpart.",
+    "Cover allow policy inheritance, what is checked before allows, and how AWS combines policies with explicit deny.",
+    "Explain how workloads get tokens without files, and how outside workloads exchange their own tokens for Google ones.",
+    "Start with the scope of the network and of subnets, then firewall priorities, NAT and sharing across projects.",
+    "Look at what actually applies to the VM, including policies above the VPC, and use a tool that simulates the packet.",
+    "Split by layer (HTTP vs TCP/UDP), by scope (global vs regional) and by whether the client IP must be preserved.",
+    "Start from the workload shape and team skills, then match it to scale-to-zero, Kubernetes or plain VMs.",
+    "Sort them by consistency model, scale-out ability and query shape: transactional, documents or analytics.",
+    "Think about acknowledgements, redelivery, idempotency, dead letters and when ordering or exactly-once is worth it.",
+    "Translate box by box, then call out global networking, IAM scope, serverless concurrency and pricing differences.",
+    "Name concrete things multi-cloud buys, then list what it costs in people, security and data transfer.",
+    "Separate a shared workflow and runtime API from resources and managed data services that stay provider-specific.",
+    "Begin with an IP plan, pick a link type by bandwidth and SLA, then cover routing, filtering, identity and monitoring."
+  ]
+}

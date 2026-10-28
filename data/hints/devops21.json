@@ -1,0 +1,31 @@
+{"quiz": [
+"Separate the component that hands out configuration and certificates from the components that actually carry each request.",
+"ztunnel only understands connections and identities, not HTTP. Which ambient component speaks HTTP?",
+"Multiply the per-try timeout by the number of tries, then remember which timeout always has the final say.",
+"Ejection time is not fixed: it is the base time multiplied by something that grows each time the host misbehaves.",
+"Think about what the mere existence of one ALLOW policy does to the default for that workload.",
+"Read the path segments: trust domain first, then ns, then sa. Mesh identity is tied to a Kubernetes object you assign to Pods.",
+"A binding's kind decides where the grant applies, regardless of the kind of role it points at.",
+"A new Pod can name a service account in its spec, and that account's token is mounted into it.",
+"Baseline forbids dangerous settings; restricted additionally demands that some safe settings be stated explicitly.",
+"Count the dashes: separate list items under from are combined differently from two selectors in the same item.",
+"Default deny blocks every outbound connection, including the very first lookup every app makes before connecting.",
+"base64 is an encoding anyone can reverse. What has to be configured on the API server to change that?",
+"Keyless signing is open to everyone with an OIDC account. What part of the certificate ties it to your pipeline?",
+"Admission tools only see objects when they are created or changed. Which tool watches system calls while containers run?"
+],
+"interview": [
+"Name the two halves, say which one carries requests, which one configures and issues certificates, and what happens when the latter fails.",
+"Compare where the proxy runs, resource cost, L4 vs L7 features and upgrade impact; then give a decision rule and a migration path.",
+"Cover versioned subsets or backends, weights, a header override, automation with metrics, and the pitfalls of connection reuse and schema changes.",
+"Define each mechanism with its Istio fields, then explain how retries multiply across layers and the rules that keep them bounded.",
+"Describe the certificate contents, how the workload obtains and rotates it, what each side verifies, and where policy uses the identity.",
+"State the evaluation order of CUSTOM, DENY and ALLOW, the no-ALLOW-policy default, and how an empty ALLOW policy is used.",
+"Explain scope of each object and binding, the allow-only model, then build a namespaced role for the deployer and verify it.",
+"List the three levels and what each blocks, the namespace label modes, and a phased warn, audit, enforce rollout.",
+"Compare where each engine runs, its language, whether it can mutate or generate, testing and audit, then justify a default choice.",
+"Explain selection, isolation per direction, union of rules and CNI enforcement, then list the classic mistakes with DNS and selectors.",
+"Go from build to admission: signing by digest, identity-pinned verification, attestations, registry allow-lists and digest rewriting.",
+"Structure it by layer: tenancy, identity and RBAC, network and mesh, pod hardening, supply chain, runtime detection, and secrets.",
+"Start with why base64 in etcd is weak, then cover encryption at rest, RBAC, file mounts, external stores, dynamic credentials and GitOps."
+]}

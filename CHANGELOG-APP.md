@@ -2,6 +2,28 @@
 
 From 1.11.1 each app release, whether it brings fixes or features, raises the last number: 1.11.1, 1.11.2, … up to 1.11.99. The release after 1.11.99 is 1.12.0, and the same pattern repeats. The patch number stops at 99 because the Android `versionCode` is MAJOR×10000 + MINOR×100 + PATCH, and a patch of 100 would give the same code as the next minor version, which Google Play rejects. The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.11.14] — 2026-10-28 · 35 new lessons and a working update check
+
+### Added
+- 35 new lessons, with hints for every riddle and interview question:
+  - Frontend Engineering: Angular Testing, Angular Internals & Performance, Angular Architecture & Machine Coding, and Next.js.
+  - Java: Build Tools & Testing, JPA & Hibernate Deep Dive, and Spring Framework Internals.
+  - C#: ASP.NET Core Web APIs, Entity Framework Core, and Testing & Tooling in .NET.
+  - GenAI & AI: Classical Machine Learning in Practice, MLOps & Model Deployment, and ML System Design Case Studies.
+  - CS Core: Computer Architecture Essentials, Distributed Systems Fundamentals, and Compilers & Language Runtimes.
+  - SQL + DBMS: PostgreSQL vs MySQL, and NoSQL Data Modeling.
+  - Python: Packaging, Environments & Tooling; NumPy & pandas; and Django & Django REST Framework.
+  - Backend Engineering: Kafka & RabbitMQ, and GraphQL, gRPC & WebSockets.
+  - Behavioral & Career: Company-Specific Prep, Project Deep-Dive, and Engineering Manager & Tech Lead Interviews.
+  - Cloud & DevOps: Multi-Cloud & Google Cloud, GitOps with Argo CD & Flux, and Service Mesh & Kubernetes Security.
+  - JavaScript & TypeScript: Node.js Internals, and Testing JavaScript.
+  - C++: CMake & Toolchains, and Testing, Sanitizers & Tooling.
+  - Low-Level Design: More Case Studies (LRU/LFU cache, rate limiter, Snake & Ladder, meeting room scheduler).
+  - High-Level System Design: Case Studies IV (web crawler, job scheduler, leaderboard, stock exchange, collaborative editor).
+
+### Fixed
+- "Check for updates" said "You're up to date" even when a newer version was on Google Play. It now finds new releases again. Versions before this one can't detect it, so update this once from Google Play.
+
 ## [1.11.13] — 2026-10-28 · 30 new games, hints and Angular
 
 ### Added

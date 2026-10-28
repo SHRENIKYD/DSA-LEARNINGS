@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "Think about what happens to the later lines that index the vector if the size check fails but the test keeps going.",
+  "Nothing calls the test explicitly; consider which kind of C++ object gets constructed before main starts.",
+  "Recall whether tests in one fixture are allowed to see member state left behind by a previous test.",
+  "First count the parameter tuples from the cartesian product, then remember each TEST_P body gets every tuple.",
+  "Death tests must survive the crash themselves; ask where the dying code actually runs and what is compared with the regex.",
+  "A mock can only replace something the code under test receives from outside; look at who creates the dependency.",
+  "Ask at what moment GoogleMock checks that too few calls happened, and whether that moment ever arrived.",
+  "One tool tracks whether every bit was ever written, the other mostly tracks whether an address may be touched.",
+  "Classify the blocks by whether any pointer to them still exists anywhere in the program at exit.",
+  "Think about who else compiles your library with a newer compiler, and what an error flag would do to them.",
+  "Coverage-guided fuzzers learn from progress; what do they do with an input that reached somewhere new?",
+  "Line coverage only tells you a line ran; think about untested outcomes of the condition and unusual argument values.",
+  "Which summary statistic is barely moved by a single disturbed repetition?",
+  "Addresses become function names only with information from the exact build that produced the crash.",
+  "Shells report a death by signal as 128 plus the signal number; work out which signal this is."
+ ],
+ "interview": [
+  "Explain what the TEST macro expands to, when its registration runs, and what the runner does per test and at the end.",
+  "Split the answer into fatal versus non-fatal checks, then per-test versus once-per-suite setup and isolation.",
+  "Give one concrete scenario each: many input values, many types, and code that is supposed to terminate.",
+  "Define each kind of test double, then name the C++ seams that allow substitution and the over-mocking smell.",
+  "Contrast compile-time instrumentation with running the binary on a simulated CPU: cost, coverage and rebuild needs.",
+  "Cover happens-before with clocks on threads and locks, the lock-order graph, and what runtime tools cannot see.",
+  "Think baseline plus ratchet so no new warnings appear, then prioritised burn-down and a curated linter set.",
+  "Describe the mutate-run-keep loop, then the harness, sanitizers, seeds, dictionaries and where it runs in CI.",
+  "Define each metric by the question it answers, then say what coverage cannot tell you and how to use it per PR.",
+  "Cover optimiser barriers, realistic data, a quiet machine, repetitions with robust statistics and a significance test.",
+  "Start with getting the right binary and symbols, then the debugger commands, then reproducing under sanitizers.",
+  "Organise jobs by how fast they must be: per-PR matrix of compilers and sanitizers versus nightly heavy jobs.",
+  "Separate boilerplate where assistants shine from judgement calls like expected values, mocks and fixing reports."
+ ]
+}
