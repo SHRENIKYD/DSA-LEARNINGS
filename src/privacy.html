@@ -16,13 +16,13 @@
   <a class="brand" href="index.html"><span class="logo">IM</span><div>Interview Mastery<small>beginner → expert</small></div></a>
   <article class="auth-card">
     <h1>Privacy policy</h1>
-    <p class="auth-sub">Last updated: 16 October 2026. This policy covers the Interview Mastery website (shrenikyd.github.io/DSA-LEARNINGS) and the Interview Mastery apps for Android and iOS.</p>
+    <p class="auth-sub">Last updated: 28 October 2026. This policy covers the Interview Mastery website (shrenikyd.github.io/DSA-LEARNINGS) and the Interview Mastery apps for Android and iOS.</p>
 
     <h2>The short version</h2>
     <ul>
       <li>You can use everything without an account. Then your progress stays on your device.</li>
       <li>If you create an account, we store your email address and your learning progress so it syncs between devices.</li>
-      <li>No ads and no analytics or tracking tools. The only thing sent automatically is an anonymous crash report (see Error reports below). We never sell or share your data for advertising.</li>
+      <li>No ads and no third-party analytics or tracking tools. Two things are sent automatically: an anonymous crash report (see Error reports) and an anonymous visit count (see Visit statistics). We never sell or share your data for advertising.</li>
       <li>You can delete your account and its data at any time, in the app or on the web.</li>
     </ul>
 
@@ -41,7 +41,7 @@
       <li><b>Read aloud</b> uses your device's own text-to-speech engine. Lesson text is spoken on your device; nothing is recorded, and the app never uses the microphone.</li>
     </ul>
     <h3>What we do not collect</h3>
-    <p>No location, contacts, photos, microphone, camera, advertising ID, or usage analytics (only the anonymous error reports described below).</p>
+    <p>No location, contacts, photos, microphone, camera or advertising ID, and no third-party analytics. The only usage data is the anonymous visit statistics and error reports described below.</p>
 
     <h2 id="errors">Error reports</h2>
     <p>When the website or app hits an unexpected error, it sends a short anonymous report so we can fix the crash.</p>
@@ -51,6 +51,16 @@
       <li><b>Where:</b> our Supabase database. Only we can read it.</li>
       <li><b>How long:</b> reports older than 90 days are deleted by a weekly cleanup, so none is kept longer than about 97 days.</li>
       <li><b>Opt out:</b> nothing is sent if the setting <code>imastery.noErrors</code> is set to <code>1</code> in your browser's local storage (in the browser console: <code>localStorage.setItem('imastery.noErrors','1')</code>). No reports are sent when accounts and Supabase are not configured or when you are offline.</li>
+    </ul>
+
+    <h2 id="visits">Visit statistics</h2>
+    <p>To know how many people use the website and app, and on which kinds of devices, each page you open is counted once per day.</p>
+    <ul>
+      <li><b>What is sent:</b> a random ID created on your device and stored in its local storage (not linked to your name or email), the page name, whether it is the website or the app, the device type (phone, tablet or computer), the operating system family, the browser family, and whether you are signed in.</li>
+      <li><b>What is not sent:</b> no name, email address, account ID, cookies, precise location or full browser description. We do not store your IP address; our database provider may see it as part of normal network traffic.</li>
+      <li><b>Where:</b> our Supabase database. Only the site owner can see the totals; nobody else can read the records.</li>
+      <li><b>How long:</b> records older than about 13 months are deleted by a weekly cleanup.</li>
+      <li><b>Opt out:</b> nothing is sent if your browser sends Do Not Track or Global Privacy Control, or if <code>imastery.noStats</code> is set to <code>1</code> in local storage (browser console: <code>localStorage.setItem('imastery.noStats','1')</code>). Clearing site data gives you a new random ID.</li>
     </ul>
 
     <h2>Why we use it</h2>

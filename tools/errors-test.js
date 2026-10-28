@@ -54,7 +54,7 @@ t = make({ throws: true }); t.L.error(err('t')); t.L.unhandledrejection({ reason
 console.log('unit ok');
 
 (async () => {
-  const out = '/tmp/claude-0/-home-user-DSA-LEARNINGS/7ee5a772-4bba-50e7-a5de-ba4d0dcbd304/scratchpad/errtest-site';
+  const out = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'errtest-site-'));
   const r = spawnSync(process.execPath, [path.join(__dirname, 'build.js'), out], { encoding: 'utf8', env: Object.assign({}, process.env, { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_PUBLISHABLE_KEY: 'dummykey' }) });
   assert.strictEqual(r.status, 0, r.stderr);
   const { chromium } = require('/opt/node-tools/node_modules/playwright');
@@ -62,7 +62,7 @@ console.log('unit ok');
   const pg = await b.newPage(), posts = [];
   await pg.route('**/*', (rt) => {
     const u = rt.request().url();
-    if (u.includes('example.supabase.co')) { if (rt.request().method() === 'POST') posts.push(rt.request().postDataJSON()); return rt.fulfill({ status: 201, headers: { 'access-control-allow-origin': '*' }, body: '' }); }
+    if (u.includes('example.supabase.co')) { if (rt.request().method() === 'POST' && u.includes('/rest/v1/client_errors')) posts.push(rt.request().postDataJSON()); return rt.fulfill({ status: 201, headers: { 'access-control-allow-origin': '*' }, body: '' }); }
     if (u.startsWith('file:')) return rt.continue();
     return rt.abort();
   });

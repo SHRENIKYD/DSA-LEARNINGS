@@ -191,7 +191,7 @@ for (const t of TRACKS) {
   fs.writeFileSync(path.join(out, t._index), idx);
 }
 
-const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'planner.js', 'engine.js', 'errors.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
+const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'planner.js', 'engine.js', 'errors.js', 'visits.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
 const sbUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, ''), sbKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
 const authOn = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(sbUrl) && /^[A-Za-z0-9._-]+$/.test(sbKey);
 if ((sbUrl || sbKey) && !authOn) { console.warn('WARN: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY look invalid — accounts disabled in this build'); warnings++; }
@@ -245,6 +245,8 @@ for (const t of TRACKS) {
 }
 fs.writeFileSync(path.join(out, 'index.html'), page('src/index.html', { search: true }));
 fs.writeFileSync(path.join(out, 'login.html'), rd('src/login.html').replace(/@@V@@/g, V));
+// Owner-only visitor statistics (not linked; the data needs an account in visit_admins, see supabase/migrations/0006_visits.sql).
+fs.writeFileSync(path.join(out, 'admin.html'), rd('src/admin.html').replace(/@@V@@/g, V));
 fs.writeFileSync(path.join(out, 'videos.html'), page('src/videos.html'));
 fs.writeFileSync(path.join(out, 'passport.html'), page('src/passport.html'));
 fs.writeFileSync(path.join(out, 'route.html'), page('src/route.html'));

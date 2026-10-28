@@ -101,3 +101,5 @@ jobs:
         run: node tools/auth-test.js
       - name: Release tool test
         run: node tools/release-test.js
+      - name: Visit statistics test
+        run: node tools/visits-test.js

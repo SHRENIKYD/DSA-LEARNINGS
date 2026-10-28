@@ -139,6 +139,26 @@ function main() {
   expectDenied('client error ua over 300 chars is rejected', 'anon', null, `insert into public.client_errors (app, ua) values ('web', repeat('u', 301));`);
   expectOk('service role can read client_errors', 'service_role', null, count('public.client_errors'), '2');
 
+  // visits (0006): log_visit is the only way in; nobody reads the table; only visit_admins can call visits_summary.
+  const V1 = '11111111-1111-4111-8111-111111111111', V2 = '22222222-2222-4222-8222-222222222222';
+  const lv = (v, page, dev) => `select public.log_visit('${v}', '${page}', 'web', '${dev || 'mobile'}', 'Android', 'Chrome');`;
+  expectOk('anon logs a visit', 'anon', null, lv(V1, 'index.html'));
+  expectOk('the same visit again only adds a hit', 'anon', null, lv(V1, 'index.html'));
+  expectOk('a signed-in visit is logged', 'authenticated', B, lv(V2, 'dsa.html', 'desktop'));
+  expectOk('one row per visitor, page and day; hits counted', 'service_role', null, `select count(*) || '/' || sum(hits) from public.visits;`, '2/3');
+  expectOk('signed_in is recorded from the session', 'service_role', null, `select string_agg(signed_in::text, ',' order by visitor) from public.visits;`, 'false,true');
+  expectDenied('unknown device is rejected', 'anon', null, lv(V1, 'index.html', 'fridge'));
+  expectDenied('page with unsafe characters is rejected', 'anon', null, lv(V1, 'x<script>'));
+  expectDenied('anon cannot read visits', 'anon', null, count('public.visits'));
+  expectDenied('authenticated cannot read visits', 'authenticated', B, count('public.visits'));
+  expectDenied('anon cannot insert visits directly', 'anon', null, `insert into public.visits (visitor, page, surface, device, os, browser) values ('${V1}', 'a', 'web', 'mobile', 'Other', 'Other');`);
+  expectDenied('authenticated cannot delete visits', 'authenticated', B, `delete from public.visits;`);
+  expectDenied('anon cannot call visits_summary', 'anon', null, `select public.visits_summary(30);`);
+  expectDenied('a non-admin cannot call visits_summary', 'authenticated', B, `select public.visits_summary(30);`);
+  expectDenied('a user cannot make themselves admin', 'authenticated', B, `insert into public.visit_admins values ('${B}');`);
+  expectOk('add B as admin (owner, SQL editor)', 'postgres', null, `insert into public.visit_admins values ('${B}') on conflict do nothing;`);
+  expectOk('the admin reads the summary', 'authenticated', B, `select (s->>'period') || '/' || (s->>'views') || '/' || (s->'devices'->>'mobile') from public.visits_summary(30) s;`, '2/3/1');
+
   // delete account
   expectDenied('anon cannot call delete_my_account', 'anon', null, `select public.delete_my_account();`);
   expectDenied('signed-out user cannot delete anything', 'authenticated', null, `select public.delete_my_account();`);

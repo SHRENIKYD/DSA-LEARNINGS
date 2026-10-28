@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Visitors — Interview Mastery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css?v=@@V@@">
+<style>
+  .adm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+  .adm-kpi{background:var(--panel2,rgba(255,255,255,.04));border:1px solid var(--border);border-radius:14px;padding:12px 14px}
+  .adm-kpi b{display:block;font-family:var(--f-head,inherit);font-size:26px}
+  .adm-kpi span{font-size:13px;opacity:.75}
+  .adm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .adm-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font-size:14px;padding:4px 0}
+  .adm-bar{grid-column:1/-1;height:6px;border-radius:4px;background:var(--border);overflow:hidden}
+  .adm-bar i{display:block;height:100%;background:var(--gold,#F2C14E)}
+  .adm-days{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid var(--border);padding-top:8px}
+  .adm-days i{flex:1;min-width:3px;background:var(--gold,#F2C14E);border-radius:3px 3px 0 0}
+  .adm-table{width:100%;border-collapse:collapse;font-size:14px}
+  .adm-table th,.adm-table td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--border)}
+  .adm-table td.n,.adm-table th.n{text-align:right;font-family:var(--f-mono,monospace)}
+  .adm-bar-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body class="auth-page">
+<main class="legal">
+  <a class="brand" href="index.html"><span class="logo">IM</span><div>Interview Mastery<small>visitor statistics</small></div></a>
+  <article class="auth-card" id="adm">
+    <h1>Visitors</h1>
+    <p class="auth-sub" id="admMsg">Loading…</p>
+  </article>
+</main>
+<script src="assets/config.js?v=@@V@@"></script>
+<script src="vendor/supabase.js?v=@@V@@"></script>
+<script src="assets/auth.js?v=@@V@@"></script>
+<script>
+(function () {
+  var box = document.getElementById('adm'), msg = document.getElementById('admMsg'), days = 30;
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function n(x) { return Number(x || 0).toLocaleString('en-US'); }
+  function bars(title, obj) {
+    var rows = Object.keys(obj || {}).map(function (k) { return [k, obj[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+    var max = rows.reduce(function (m, r) { return Math.max(m, r[1]); }, 0) || 1;
+    return '<section><h2>' + esc(title) + '</h2>' + (rows.length ? rows.map(function (r) {
+      return '<div class="adm-row"><span>' + esc(r[0]) + '</span><b>' + n(r[1]) + '</b><span class="adm-bar"><i style="width:' + Math.round(r[1] / max * 100) + '%"></i></span></div>';
+    }).join('') : '<p class="muted">No visits yet.</p>') + '</section>';
+  }
+  function draw(s) {
+    var maxDay = (s.daily || []).reduce(function (m, d) { return Math.max(m, d.visitors); }, 0) || 1;
+    box.innerHTML = '<div class="adm-bar-top"><h1 style="margin:0">Visitors</h1><label>Period <select id="admDays">' + [7, 30, 90, 365].map(function (d) { return '<option value="' + d + '"' + (d === s.days ? ' selected' : '') + '>last ' + d + ' days</option>'; }).join('') + '</select></label></div>' +
+      '<p class="auth-sub">Unique visitors are counted by a random id stored in each browser or app install; no names, emails or IP addresses are stored. Days are UTC.</p>' +
+      '<div class="adm-kpis">' +
+      '<div class="adm-kpi"><b>' + n(s.today) + '</b><span>active today</span></div>' +
+      '<div class="adm-kpi"><b>' + n(s.week) + '</b><span>active in 7 days</span></div>' +
+      '<div class="adm-kpi"><b>' + n(s.period) + '</b><span>visitors in ' + s.days + ' days</span></div>' +
+      '<div class="adm-kpi"><b>' + n(s.views) + '</b><span>page views</span></div>' +
+      '<div class="adm-kpi"><b>' + n(s.signedIn) + '</b><span>signed in</span></div></div>' +
+      '<section><h2>Visitors per day</h2><div class="adm-days" role="img" aria-label="Visitors per day">' + (s.daily || []).map(function (d) {
+        return '<i title="' + esc(d.day) + ': ' + n(d.visitors) + ' visitors, ' + n(d.views) + ' views" style="height:' + Math.max(2, Math.round(d.visitors / maxDay * 100)) + '%"></i>';
+      }).join('') + '</div></section>' +
+      '<div class="adm-grid">' + bars('Devices', s.devices) + bars('Web or app', s.surfaces) + bars('Operating systems', s.os) + bars('Browsers', s.browsers) + '</div>' +
+      '<section><h2>Top pages</h2><table class="adm-table"><thead><tr><th>Page</th><th class="n">Visitors</th><th class="n">Views</th></tr></thead><tbody>' +
+      (s.pages || []).map(function (p) { return '<tr><td>' + esc(p.page) + '</td><td class="n">' + n(p.visitors) + '</td><td class="n">' + n(p.views) + '</td></tr>'; }).join('') + '</tbody></table></section>';
+    document.getElementById('admDays').addEventListener('change', function (e) { days = +e.target.value; load(); });
+  }
+  function load() {
+    if (!window.Auth || !Auth.enabled) { msg.textContent = 'Accounts are not configured on this build.'; return; }
+    Auth.init().then(function (user) {
+      if (!user) { msg.innerHTML = 'Sign in with the owner account to see visitor statistics. <a href="login.html?next=admin.html">Sign in</a>'; return; }
+      return Auth.client.rpc('visits_summary', { p_days: days }).then(function (r) {
+        if (r.error) { msg.textContent = /not authorized|42501/.test(r.error.message + ' ' + r.error.code) ? 'This account is not allowed to see visitor statistics.' : 'Could not load statistics: ' + r.error.message; return; }
+        draw(r.data || {});
+      });
+    }).catch(function (e) { msg.textContent = 'Could not load statistics: ' + (e && e.message || e); });
+  }
+  load();
+})();
+</script>
+</body>
+</html>
