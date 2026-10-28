@@ -32,9 +32,9 @@
 <script>
 (function () {
   var L = window.IM_VIDEO_LIB || { total: 0, tracks: [] }, cur = 'all', q = '';
-  // Learner language (java|python|js|cpp, '' when none chosen). Language tracks of the other languages stay behind "Show all languages".
+  // Learner language (java|python|js|cpp|csharp, '' when none chosen). Language tracks of the other languages stay behind "Show all languages".
   var LANG = LessonVideo.learnerLang(), showAll = (function () { try { return JSON.parse(localStorage.getItem('imastery.lang')) === 'all'; } catch (e) { return false; } })();
-  var LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp' }, LANG_TRACKS = ['java', 'py', 'js', 'cpp'];
+  var LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp', csharp: 'csharp' }, LANG_TRACKS = ['java', 'py', 'js', 'cpp', 'csharp'];
   function hiddenTrack(t) { return !!LANG && !showAll && LANG_TRACKS.indexOf(t.id) >= 0 && t.id !== LANG_TRACK[LANG]; }
   function shown() { return L.tracks.filter(function (t) { return !hiddenTrack(t); }); }
   function rowsOf(t) { return t.items.map(function (v) { var p = LessonVideo.pick(v, LANG); return p ? Object.assign({}, v, p) : null; }).filter(Boolean); }

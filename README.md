@@ -1,9 +1,30 @@
 # Interview Mastery
 
-A free, beginner-to-expert study site for product-company interviews. It covers 14 tracks and 220 modules:
-DSA + Math, Java, Python, JavaScript/TypeScript, C++, SQL + DBMS, Low-Level Design, High-Level System Design, Frontend, Backend, GenAI & Working With AI (including MCP), CS Core (OS + Networks), Cloud & DevOps, and Behavioral & Career.
+A free, beginner-to-expert study site and Android app for product-company interviews. It covers 15 tracks and 233 modules:
+DSA + Math, Java, Python, JavaScript/TypeScript, C++, C#, SQL + DBMS, Low-Level Design, High-Level System Design, Frontend, Backend, GenAI & Working With AI (including MCP), CS Core (OS + Networks), Cloud & DevOps, and Behavioral & Career.
 
-**Study routes (all three phases released, see [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md), [docs/RELEASE_PHASE2.md](docs/RELEASE_PHASE2.md) and [docs/RELEASE_PHASE3.md](docs/RELEASE_PHASE3.md)).** Pick a career route and a language (Java, Python, JavaScript/TypeScript or C++) on the route page (`route.html`). The site orders modules by prerequisites, shows what to study next and why, gives a schedule at 5–40 hours a week, and counts a module as mastered only after a checkpoint or readiness check. Every DSA problem (28 modules) and every Low-Level Design program (12 modules) has a tested solution in all four languages, and every problem in the Java, Python, JavaScript/TypeScript, C++ and SQL tracks is tested too. Route projects have checklists that count towards progress, and CI runs every check on each change.
+- **Website:** https://shrenikyd.github.io/DSA-LEARNINGS/
+- **Android app:** https://play.google.com/store/apps/details?id=io.github.shrenikyd.interviewmastery
+
+## Screenshots
+
+### Website
+| World map | Track page |
+|---|---|
+| ![World map](docs/screenshots/web-home.png) | ![DSA track](docs/screenshots/web-module.png) |
+| **Route planner** | **Watchtower (lesson videos)** |
+| ![Route planner](docs/screenshots/web-route.png) | ![Lesson videos](docs/screenshots/web-videos.png) |
+
+<p align="center"><img src="docs/screenshots/web-mobile.png" alt="Website on a phone" width="260"></p>
+
+### Android app
+| Home | World | Concept game |
+|---|---|---|
+| <img src="store/screenshots/01-home.png" alt="App home" width="240"> | <img src="store/screenshots/02-map.png" alt="App world map" width="240"> | <img src="store/screenshots/03-game-pointers.png" alt="Two-pointer game" width="240"> |
+| **Concept game** | **Lesson with read-aloud** | **Badges** |
+| <img src="store/screenshots/04-game-brackets.png" alt="Bracket game" width="240"> | <img src="store/screenshots/05-lesson-read-aloud.png" alt="Lesson read aloud" width="240"> | <img src="store/screenshots/06-badges.png" alt="Badges" width="240"> |
+
+**Study routes (all three phases released, see [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md), [docs/RELEASE_PHASE2.md](docs/RELEASE_PHASE2.md) and [docs/RELEASE_PHASE3.md](docs/RELEASE_PHASE3.md)).** Pick a career route and a language (Java, Python, JavaScript/TypeScript, C++ or C#) on the route page (`route.html`). The site orders modules by prerequisites, shows what to study next and why, gives a schedule at 5–40 hours a week, and counts a module as mastered only after a checkpoint or readiness check. Every DSA problem (28 modules) and every Low-Level Design program (12 modules) has a tested solution in all four languages, and every problem in the Java, Python, JavaScript/TypeScript, C++ and SQL tracks is tested too. Route projects have checklists that count towards progress, and CI runs every check on each change.
 
 Every module has the same layout:
 - 🎯 **Learning-path header**: goals, prerequisites and estimated hours.
@@ -17,7 +38,7 @@ Every module has the same layout:
 - 📝 **Quiz** and 🎤 **interview Q&A bank**.
 - 🏟 **Practice Arena** with 12–20 graded problems.
 
-The site is styled as a story journey: the home page is a world map of 7 regions, each track is a land, each module is a place and each topic is a landmark. Progress earns 17 rubber-stamp badges on the Passport page (`passport.html`); lesson videos are collected on the Watchtower page (`videos.html`).
+The site is styled as a story journey: the home page is a world map of 7 regions, each track is a land, each module is a place and each topic is a landmark. Progress earns 17 rubber-stamp badges on the Passport page (`passport.html`); lesson videos are collected on the Watchtower page (`videos.html`). A daily bot finds new lesson videos, redeploys the website and releases a new app version when any are added.
 
 SQL snippets run live in the browser (sql.js), and JavaScript/Python snippets run in a sandbox.
 
@@ -77,7 +98,7 @@ A website-only change does not need an app version bump, and the reverse. Up to 
 | `tools/paths-check.js` | Checks prerequisites, routes, language coverage and schedules (`--strict` for release) |
 | `src/paths.js`, `src/learn.js`, `src/route.html` | Route data (prerequisites, routes, projects, schedules), mastery and review logic, and the route page |
 | `docs/LANGUAGE_AUTHORING.md` | How to add tests and the four language versions to a module |
-| `docs/STUDY_PATHS_PLAN.md`, `docs/RELEASE_PHASE1.md`, `docs/RELEASE_PHASE2.md`, `docs/RELEASE_PHASE3.md`, `docs/RELEASE_REVIEW.md` | The three-phase plan, the release notes for each phase, and the content review of all 220 modules |
+| `docs/STUDY_PATHS_PLAN.md`, `docs/RELEASE_PHASE1.md`, `docs/RELEASE_PHASE2.md`, `docs/RELEASE_PHASE3.md`, `docs/RELEASE_REVIEW.md` | The three-phase plan, the release notes for each phase, and the content review of the original 220 modules |
 | `docs/AUTHORING.md` | How to write a module |
 | `vendor/` | sql.js (MIT) for the in-browser SQL runner, supabase-js 2.117.2 (MIT) for accounts |
 | `src/journey.js` | Journey layer: regions, zones, destinations, stamp rules and the SVG stamp artwork, top bar, Passport page |
@@ -99,3 +120,6 @@ One-time setup:
 The publishable key is meant to be used in browsers; data is protected by row-level security, so never put a secret/service-role key here. Without these variables the site builds with accounts turned off.
 
 Local build with accounts: `SUPABASE_URL=... SUPABASE_PUBLISHABLE_KEY=... node tools/build.js`
+
+## Visitor statistics (owner only)
+The site and app send one anonymous record per page per day (random visitor id, page, web or app, device type, OS and browser family; no names, emails or IP addresses), and skip visitors whose browser sends Do Not Track or Global Privacy Control. Only accounts listed in `public.visit_admins` can open the dashboard at `admin.html`. Setup: run [`supabase/migrations/0006_visits.sql`](supabase/migrations/0006_visits.sql), then see [docs/DATABASE.md](docs/DATABASE.md).
