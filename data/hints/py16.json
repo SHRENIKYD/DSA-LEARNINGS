@@ -1,0 +1,30 @@
+{"quiz":[
+"Django walks urlpatterns from top to bottom and stops at the first pattern that matches the entire path.",
+"Look at the regex behind the int converter and at what its to_python step does with the captured text.",
+"Think about what dispatch does when the instance has no handler for the method, and which methods View always provides.",
+"Count only the calls that evaluate an empty cache; ask whether len() and count() can reuse rows already fetched.",
+"Both requests read the same starting value before either one writes. Which tool lets the database do the arithmetic?",
+"One relation holds a single object per book and the other holds many. Each kind has its own loading tool.",
+"Database rollbacks cannot un-send anything that left the process. Is there a hook that waits for a successful commit?",
+"Signals hook into Model.save() and delete(). Consider which ORM calls never build model instances at all.",
+"Picture the onion: the request travels inward in list order. Which way does the response travel?",
+"Going backwards means undoing each operation. What can Django do with a Python function that has no inverse?",
+"Object-level validation needs clean attributes to work with. When does DRF decide to run it?",
+"The status depends on whether the first authentication class can send an authentication challenge header.",
+"Compare a page defined by a row count with a page defined by the sort value of the last row you saw.",
+"Weigh what each framework ships with against what a small async service that mostly waits on other APIs needs."
+],"interview":[
+"Name the three MTV roles, then follow one request from the server through middleware, the resolver, the view and back.",
+"Compare explicitness with reuse through inheritance, and mention what as_view creates for every request and why mixin order matters.",
+"Separate methods that only build a query object from operations that evaluate it, and mention the result cache.",
+"Describe the extra query per row, then contrast a JOIN for single-valued relations with an IN query for multi-valued ones.",
+"One expression refers to a column value inside SQL, the other combines conditions with OR, AND and NOT.",
+"Cover autocommit, what nesting creates, where to catch exceptions, and how to delay side effects until commit.",
+"Explain how the graph is built and planned, then describe a multi-step expand and contract rollout for big tables.",
+"Describe the factory that receives get_response, the list order, and what Django wraps around each layer.",
+"Weigh decoupling against hidden control flow, the shared transaction, and operations that skip signals entirely.",
+"Go field by field through type conversion and validators, then explain when the object-level step runs.",
+"Separate model-level from object-level checks, note when object checks are skipped, and explain the header rule.",
+"Contrast OFFSET with a keyset condition: performance at depth, stability under inserts, and the features you lose.",
+"Frame it around needs: batteries like admin, ORM and auth versus a lean async layer, plus team skills and hybrids."
+]}

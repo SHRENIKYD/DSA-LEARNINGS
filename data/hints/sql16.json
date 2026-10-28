@@ -1,0 +1,32 @@
+{"quiz": [
+"PostgreSQL never overwrites a row. Ask what changes when no indexed column is touched and the page still has room.",
+"InnoDB keeps only the newest version in the table itself. Think about where the before-image goes and how it is reached.",
+"Compare what each engine must do to undo work: mark a transaction id, or replay many before-images in reverse.",
+"Recall what a secondary index entry points to in a clustered table, and how wide that pointer is here.",
+"Think of the index that only records a minimum and maximum per range of pages, which works when data arrives in order.",
+"InnoDB has only one on-disk index structure for ordinary indexes. Consider what it does with a keyword it cannot honour.",
+"One of these features needs a WHERE clause inside CREATE INDEX. Which engine family lacks that syntax entirely?",
+"PostgreSQL prints actual rows as an average per execution of the node. Multiply by how many times it ran.",
+"The access types range from const to ALL. This one reads every entry of an index rather than every row of the table.",
+"One engine chose the weaker default so each statement sees fresh data; the other keeps a snapshot for the whole transaction.",
+"Find the existing key just above the scanned range and build the half-open interval that ends at it.",
+"InnoDB writes against the latest committed row rather than the snapshot, and it has no first-updater-wins check.",
+"A slot remembers how far its consumer got. Think about what happens to old log files if the consumer never comes back.",
+"Look for the identifier that names every transaction by server and sequence number, so replicas know exactly what they miss.",
+"The binary type normalises the document on input. Think about which value survives when the same key appears twice."
+],
+"interview": [
+"Contrast where the old version lives: next to the new one in the heap, or in a separate log. Then name each cleanup process and what blocks it.",
+"Start from what a leaf page of the primary key holds in InnoDB, then follow what every secondary index must store to find a row.",
+"Group the answer by question type: containment, geometry and overlap, nearest neighbour, huge append-only data, and indexing a subset.",
+"Describe the order you read the tree, the per-loop convention, and the single comparison that most often reveals the root cause.",
+"Walk the columns left to right: how the table is accessed, how much of the index is used, the estimates, and the warning words in Extra.",
+"State each default first, then explain what an UPDATE sees in each engine when another transaction already changed the same row.",
+"Define what an index record lock, a gap lock and their combination cover, then replay two sessions inserting the same missing key.",
+"Separate the physical log stream from the logical one, then explain what must be acknowledged before the client hears commit.",
+"Compare storage form, the operators for reading and containment, and whether one index can serve queries on any key.",
+"Begin with requirements such as types, extensions, team skills, scaling path and connection counts, then name the deciding one.",
+"Think dead tuples versus the cleanup that should remove them, and list everything that can hold back the oldest snapshot.",
+"Consider whether DDL can be rolled back inside a transaction in each engine, and what locks an online schema change needs.",
+"Compare the cost of a process per connection with a thread per connection, and what a transaction-level pooler changes."
+]}

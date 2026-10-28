@@ -26,6 +26,7 @@ var PATHS = (function () {
     py02: ['py01'], py03: ['py02'], py04: ['py02'], py05: ['py02', 'py04'], py06: ['py02', 'py04'], py07: ['py05', 'py06'],
     py08: ['py04', 'py05', 'py06'], py09: ['py06', 'py07', 'py08'], py10: ['py07', 'py09'], py11: ['py05', 'py06', 'py07'],
     py12: ['py05', 'py08'], py13: ['py08', 'py12'],
+    py14: ['py03'], py15: ['py05', 'py07'], py16: ['py08', 'be04'],
     // JavaScript / TypeScript
     js02: ['js01'], js03: ['js02'], js04: ['js02', 'js03'], js05: ['js04'], js06: ['js02', 'js05'], js07: ['js04'], js08: ['js07'],
     js09: ['js06', 'js08'], js10: ['js06', 'js09'], js11: ['js10'], js12: ['js04', 'js06', 'js08'], js13: ['js05', 'js08'], js14: ['js08', 'js13'],
@@ -36,6 +37,7 @@ var PATHS = (function () {
     sql02: ['sql01'], sql03: ['sql02'], sql04: ['sql03'], sql05: ['sql04'], sql06: ['sql05'], sql07: ['sql01', 'sql04'], sql08: ['sql07'],
     sql09: ['sql06', 'sql07'], sql10: ['sql04', 'sql07'], sql11: ['sql06', 'sql10'], sql12: ['sql09', 'sql10'], sql13: ['sql10', 'sql12'],
     sql14: ['sql12', 'sql13'], sql15: ['sql06', 'sql11'],
+    sql16: ['sql10', 'sql12'], sql17: ['sql14'],
     // LLD (prep:lld = your language's classes, interfaces, equality, generics)
     lld01: ['prep:lld'], lld02: ['lld01'], lld03: ['lld02'], lld04: ['lld03'], lld05: ['lld04'], lld06: ['lld05'], lld07: ['lld06'],
     lld08: ['lld07'], lld09: ['lld07'], lld10: ['lld08', 'prep:conc'], lld11: ['lld06', 'lld10'], lld12: ['lld10', 'lld11'],
@@ -53,6 +55,7 @@ var PATHS = (function () {
     be08: ['be03', 'sql10'], be09: ['be08'], be10: ['be09'], be11: ['be04'], be12: ['be09'], be13: ['be10'], be14: ['be13'], be15: ['be05'],
     be16: ['be13'], be17: ['be04', 'py06', 'py09'], be18: ['be17', 'sql07', 'sql09'], be19: ['be05', 'be17'], be20: ['be17', 'py09'],
     be21: ['be18', 'be19'],
+    be22: ['be09', 'be10'], be23: ['be04'],
     // GenAI
     ai02: ['ai01'], ai03: ['ai01'], ai04: ['ai03'], ai05: ['ai04'], ai06: ['ai05'], ai07: ['ai02'], ai08: ['ai06'], ai09: ['ai07', 'ai08'],
     ai10: ['ai07'], ai11: ['ai09', 'ai10'], ai12: ['ai05', 'ai06'], ai13: ['ai09'], ai14: ['ai09', 'ai13'], ai15: ['ai05', 'ai06', 'ai18', 'ai20'],
@@ -64,6 +67,7 @@ var PATHS = (function () {
     cs15: ['cs01'], cs16: ['cs12', 'cs04'], cs17: ['cs15', 'cs06'],
     // Behavioral
     beh02: ['beh01'], beh03: ['beh02'], beh04: ['beh01'], beh05: ['beh03'], beh06: ['beh01'],
+    beh07: ['beh02', 'beh03'], beh08: ['beh04'], beh09: ['beh05'],
     // Cloud & DevOps
     devops02: ['devops01'], devops03: ['devops01'], devops05: ['devops01', 'devops03'], devops06: ['devops05'],
     devops07: ['devops02', 'py03'], devops08: ['devops01', 'devops02'], devops09: ['devops04', 'devops06'], devops10: ['devops01', 'devops02'],

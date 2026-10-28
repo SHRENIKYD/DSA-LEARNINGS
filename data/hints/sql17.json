@@ -1,0 +1,32 @@
+{"quiz": [
+"These stores only answer the questions their keys were built for. What must you know before choosing keys?",
+"Think about what happens to a document's size and every read of it when an array has no upper limit.",
+"MongoDB guarantees atomicity at one specific granularity without a transaction. Which unit is that?",
+"Consider what an unwind stage emits for a document whose array has zero elements.",
+"Stages later in the pipeline process whatever earlier stages let through. Where can an index help most?",
+"Equal scores fall back to comparing member names, and the REV variant flips that comparison.",
+"Volatile policies only look at a certain kind of key. What if no key of that kind exists?",
+"Compare how often each option forces data to disk: per write, once a second, or every few minutes.",
+"An efficient read must tell the cluster exactly which partition to open, using equality on every part.",
+"Compute how many replicas each level needs at RF 3, then check whether the read and write sets must overlap.",
+"Deleting in this store writes a marker rather than removing data immediately. What do readers do with markers?",
+"Filters are evaluated after items are fetched from storage. Which work is billed?",
+"Recall which index type is maintained asynchronously and which must exist from table creation.",
+"Table capacity is spread across partitions, and one item always lives in exactly one partition.",
+"Each increment still touches a single item. Look at what the read side now has to do."
+],
+"interview": [
+"Start from the queries: key, order, rate, latency, consistency and atomicity, then match each to a store's strengths.",
+"Ask whether the child data is bounded, read with the parent, and owned by it. Mention the named patterns in between.",
+"Begin with explain output, then think about stage order, indexes, row multiplication and precomputation.",
+"Name the data structure that keeps members ordered by score, then cover tie order, hot keys and rebuilding.",
+"Separate what may be lost from what may be evicted, and size durability to the cost of losing each kind of data.",
+"List the queries, then do the arithmetic: rows per partition per bucket, bytes per partition and total write rate.",
+"Overlap of replica sets is one thing; think about timestamps, clock skew and partial writes for the rest.",
+"Describe generic keys and typed prefixes that put related items in one partition, then weigh rigidity and backfills.",
+"Compare key choice, creation time, consistency of reads, throughput sharing and size limits of the two index types.",
+"Low overall utilisation with throttling points to uneven load. How do you find and spread the busiest keys?",
+"Decide how stale each copy may be, then pick atomic writes, change streams with idempotent consumers, or reconciliation.",
+"Split the answer into what the tools speed up and which numbers and judgements you must still verify yourself.",
+"Compare memory per user and accuracy at window boundaries for the three approaches, and how to keep them atomic."
+]}

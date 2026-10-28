@@ -10,6 +10,7 @@ assert(!U.newer('app-v1.8.0-beta', '1.7.0'));
 assert(!U.newer('app-v1.8.0', 'unknown'));
 assert.equal(U.latest([release('app-v1.8.0'), release('app-v1.10.0')], '1.7.0').tag_name, 'app-v1.10.0');
 assert.equal(U.latest([release('v9.0.0'), release('app-v2.0.0', { prerelease: true }), release('app-v2.1.0', { assets: [] }), release('app-v2.2.0', { html_url: 'https://example.com' })], '1.7.0'), null);
+assert.equal(U.latest([release('app-v1.11.13', { assets: [{ name: 'interview-mastery-app-v1.11.13.aab' }] })], '1.11.9').tag_name, 'app-v1.11.13');
 function runtime(platform = 'android') {
   const elements = {}, storage = {}, handlers = {}, counts = { fetch: 0, opens: 0 };
   const status = { textContent: '' };

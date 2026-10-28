@@ -1,0 +1,32 @@
+{
+  "quiz": [
+    "Ask which way the data flows. If only the server talks, do you need a channel where the browser talks back?",
+    "Think about how the engine walks down the tree: what does the user object become for the posts field below it?",
+    "Count the query that loads the list, then count one lookup for every item in that list.",
+    "The loader matches results to waiting promises by position, not by id. What does that require of the returned array?",
+    "Picture a cache shared by every user and kept forever. What could one user see that belongs to another?",
+    "The danger is how many objects one request can load. Which check multiplies list sizes before running anything?",
+    "Shift the field number left by three bits, then OR in the wire type, and write the result in hex.",
+    "A varint carries 7 bits of the number per byte. How many bits does 300 need?",
+    "Count messages each way: many from the client, and how many from the server?",
+    "Old data with that number still exists somewhere. What would a new field with the same number do to it?",
+    "The binary format carries numbers, not names. Which other formats or tools do care about names?",
+    "The browser remembers the id of the last event it processed and sends it back on reconnect. Which header carries it?",
+    "Each gateway subscribes to the room topic once and loops over its own members. Count per gateway, not per member.",
+    "Balancers decide per connection. How many connections does a gRPC client usually open to a service?"
+  ],
+  "interview": [
+    "Organise the answer around three questions: who the caller is, which direction data flows, and how varied the reads are.",
+    "Walk through the stages in order, from text to a result, and mention what a resolver receives and how errors appear.",
+    "Explain where the extra queries come from, then the two tricks the loader uses and the contract its batch function must keep.",
+    "One request can be cheap or enormous. List limits that act before execution, during it, and over a client's time window.",
+    "Describe what one field looks like on the wire, how small integers are stored, and what JSON sends that this format skips.",
+    "Count the messages in each direction for each type and attach a realistic product feature to each.",
+    "Think about a request the user gave up on that is still running three services deep. What should each hop pass on?",
+    "Split changes into ones that keep the same numbers and wire types and ones that do not, then name the CI tooling.",
+    "There is no version number in the URL. Think about additive changes, marking fields as old, and measuring who still uses them.",
+    "Compare direction, built-in reconnect and resume, auth options, framing and what you must build yourself on each.",
+    "Separate holding connections from routing messages, then cover durability, slow clients, balancing and deploys.",
+    "Consider a proxy that speaks a browser-friendly variant, a JSON mapping from the same contract, and a composing layer."
+  ]
+}
