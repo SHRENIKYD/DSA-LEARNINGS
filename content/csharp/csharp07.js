@@ -381,7 +381,111 @@ catch (TimeoutException) { Console.WriteLine("handled upstream"); }` }
 <p><b>Serialization constructors.</b> Older guidance said every exception needs a ${C('(SerializationInfo, StreamingContext)')} constructor. BinaryFormatter is obsolete in .NET 8 and that constructor is marked obsolete (SYSLIB0051), so new exception types skip it.</p>
 <p><b>Exception data.</b> ${C('e.Data')} is an ${C('IDictionary')} for attaching context (an order id) without a new type; ${C('e.HResult')} carries a COM-style code; ${C('e.TargetSite')} names the throwing method.</p>
 <p><b>Result types vs exceptions.</b> For failures that are part of the domain (validation, "user not found"), many teams return a ${C('Result<T>')} or a discriminated record instead of throwing — explicit in the signature and cheap. Exceptions stay for bugs and environment failures. Module 13 builds a Result type.</p>`,
-    aiEra: `<p><b>What AI changes:</b> generating a custom exception class with all the constructors is a one-line prompt now. <b>Use AI as a partner:</b> <code>Review my catch blocks: which ones swallow errors, which use throw ex, which catch too broadly?</code> <b>Where AI goes wrong:</b> it still emits the obsolete serialization constructor, derives from ApplicationException, writes ${C('throw ex;')} and adds a custom exception for every method even when ${C('InvalidOperationException')} would do. <b>What you must still own:</b> designing which failures are part of the API contract and what data a caller needs to recover.</p>`
+    aiEra: `<p><b>What AI changes:</b> generating a custom exception class with all the constructors is a one-line prompt now. <b>Use AI as a partner:</b> <code>Review my catch blocks: which ones swallow errors, which use throw ex, which catch too broadly?</code> <b>Where AI goes wrong:</b> it still emits the obsolete serialization constructor, derives from ApplicationException, writes ${C('throw ex;')} and adds a custom exception for every method even when ${C('InvalidOperationException')} would do. <b>What you must still own:</b> designing which failures are part of the API contract and what data a caller needs to recover.</p>`,
+    problems: [{
+      title: 'Overdraft Desk: Filters and Wrapping', level: 'Medium', tags: ['custom exceptions', 'exception filters', 'rethrow'], companies: ['Microsoft', 'JPMorgan'],
+      statement: `<p>Implement ${C('Process(int balance, int[] amounts)')} that withdraws each amount in order and returns a log. Define ${C('InsufficientFundsException : Exception')} with a ${C('Shortfall')} property and ${C('BankException : Exception')} that wraps a cause. The account method ${C('Withdraw(amount)')} throws ${C('ArgumentOutOfRangeException')} when ${C('amount <= 0')} and ${C('InsufficientFundsException')} when ${C('amount > balance')} (shortfall = amount − balance); otherwise it subtracts and the desk logs ${C('"ok A"')}. The desk handles each withdrawal:</p>
+<ul><li>${C('catch (InsufficientFundsException e) when (e.Shortfall <= 10)')}: allow the overdraft (balance −= amount), log ${C('"overdraft A"')}.</li>
+<li>${C('catch (InsufficientFundsException e)')}: log ${C('"declined S"')} with the shortfall, balance unchanged.</li>
+<li>${C('catch (ArgumentOutOfRangeException e)')}: throw ${C('new BankException("bad amount", e)')} — the batch stops. The outer caller catches ${C('BankException')} and logs ${C('"error: "')} plus the inner exception's type name.</li></ul>
+<p>Finally log ${C('"balance B"')} with the final balance (also after an error).</p>`,
+      constraints: `0 ≤ balance ≤ 10<sup>6</sup>, 0 ≤ amounts.Length ≤ 100, −10<sup>6</sup> ≤ amounts[i] ≤ 10<sup>6</sup>`,
+      example: `<p>balance = 100, amounts = ${C('[30, 75, 50]')} → ${C('["ok 30", "overdraft 75", "declined 55", "balance -5"]')}.</p>`,
+      brute: { why: `<p>Returning error codes from Withdraw works, but every caller must remember to check them, and the "why" (the shortfall) needs an extra out parameter. A typed exception carries the data and cannot be silently ignored.</p>`, code: R`
+static List<string> ProcessWithCodes(int balance, int[] amounts)
+{
+    var log = new List<string>();
+    foreach (var a in amounts)
+    {
+        if (a <= 0) { log.Add("error: ArgumentOutOfRangeException"); break; }
+        int shortfall = a - balance;
+        if (shortfall <= 0) { balance -= a; log.Add($"ok {a}"); }
+        else if (shortfall <= 10) { balance -= a; log.Add($"overdraft {a}"); }
+        else log.Add($"declined {shortfall}");
+    }
+    log.Add($"balance {balance}");
+    return log;
+}` },
+      mcq: { q: 'Both handlers catch InsufficientFundsException. Why must the clause with `when (e.Shortfall <= 10)` come first?', options: ['Clauses are tested top to bottom; an unfiltered clause first would catch every shortfall and the filtered one would never run', 'Filters only work on the last catch clause', 'The compiler sorts catch clauses by filter automatically', 'It does not matter; the most specific filter always wins'], answer: 0, explain: 'The runtime picks the first clause whose type matches and whose filter is true. With the plain clause first, the filtered one is unreachable (the compiler reports CS0160 for that order).' },
+      hints: [`<p>Give ${C('InsufficientFundsException')} a constructor ${C('(int shortfall)')} that calls ${C('base($"short by {shortfall}")')} and stores ${C('Shortfall')}.</p>`, `<p>Put the try/catch inside the loop so one declined withdrawal does not stop the batch; the wrap-and-throw escapes the loop on purpose.</p>`, `<p>Wrap the whole loop in ${C('try { ... } catch (BankException e) { log.Add("error: " + e.InnerException!.GetType().Name); } finally { log.Add($"balance {balance}"); }')}.</p>`],
+      solution: {
+        approach: `<p>The custom exception carries the data the handler needs (Shortfall), so the decision lives in an exception filter rather than in an if inside a catch. Unexpected bad input is translated into the domain's ${C('BankException')}, keeping the original as ${C('InnerException')} for diagnosis.</p>`,
+        code: R`
+public class InsufficientFundsException : Exception
+{
+    public int Shortfall { get; }
+    public InsufficientFundsException(int shortfall) : base($"short by {shortfall}") => Shortfall = shortfall;
+}
+
+public class BankException : Exception
+{
+    public BankException(string message, Exception inner) : base(message, inner) { }
+}
+
+public class Solution
+{
+    int balance;
+
+    void Withdraw(int amount)
+    {
+        if (amount <= 0) throw new ArgumentOutOfRangeException(nameof(amount));
+        if (amount > balance) throw new InsufficientFundsException(amount - balance);
+        balance -= amount;
+    }
+
+    public string[] Process(int start, int[] amounts)
+    {
+        balance = start;
+        var log = new List<string>();
+        try
+        {
+            foreach (var a in amounts)
+            {
+                try
+                {
+                    Withdraw(a);
+                    log.Add($"ok {a}");
+                }
+                catch (InsufficientFundsException e) when (e.Shortfall <= 10)
+                {
+                    balance -= a;
+                    log.Add($"overdraft {a}");
+                }
+                catch (InsufficientFundsException e)
+                {
+                    log.Add($"declined {e.Shortfall}");
+                }
+                catch (ArgumentOutOfRangeException e)
+                {
+                    throw new BankException("bad amount", e);
+                }
+            }
+        }
+        catch (BankException e)
+        {
+            log.Add("error: " + e.InnerException!.GetType().Name);
+        }
+        finally
+        {
+            log.Add($"balance {balance}");
+        }
+        return log.ToArray();
+    }
+}`,
+        dry: { head: ['amount', 'balance before', 'thrown', 'handler', 'log'], rows: [['30', '100', '—', '—', 'ok 30'], ['75', '70', 'InsufficientFunds(5)', 'filter true', 'overdraft 75'], ['50', '-5', 'InsufficientFunds(55)', 'plain clause', 'declined 55'], ['(end)', '-5', '—', 'finally', 'balance -5']] },
+        complexity: `<p>O(n) time, O(n) space for the log. Exceptions are costly, but here they model rare business failures, not the normal path.</p>`,
+        followUps: ['Attach the account id via <code>e.Data</code> instead of a new property', 'Why would <code>throw e;</code> in the ArgumentOutOfRange handler be worse than wrapping?']
+      },
+      tests: { sig: 'int int[] -> string[]', fn: 'process', cases: [
+        [[100, [30, 75, 50]], ['ok 30', 'overdraft 75', 'declined 55', 'balance -5']],
+        [[50, []], ['balance 50']],
+        [[10, [10, 10]], ['ok 10', 'overdraft 10', 'balance -10']],
+        [[20, [31, 30]], ['declined 11', 'overdraft 30', 'balance -10']],
+        [[100, [40, 0, 20]], ['ok 40', 'error: ArgumentOutOfRangeException', 'balance 60']],
+        [[5, [-3]], ['error: ArgumentOutOfRangeException', 'balance 5']],
+        [[0, [11, 5, 1]], ['declined 11', 'overdraft 5', 'overdraft 1', 'balance -6']]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -510,7 +614,104 @@ Console.WriteLine(ms.Length); // stream still usable: 3` }
 <p><b>Struct disposables.</b> ${C('using')} on a struct calls Dispose without boxing (the compiler emits a constrained call). ${C('List<T>.Enumerator')} is a disposable struct; ${C('foreach')} disposes enumerators automatically.</p>
 <p><b>Ownership transfer.</b> When a factory creates a disposable and hands it back, ownership moves to the caller. If the factory fails half-way it must dispose what it created: ${C('var s = Open(); try { Configure(s); return s; } catch { s.Dispose(); throw; }')}.</p>
 <p><b>Dependency injection.</b> In ASP.NET Core the container disposes scoped and transient services it created at the end of the scope; you do not dispose injected services yourself.</p>`,
-    aiEra: `<p><b>What AI changes:</b> generated code usually remembers ${C('using')} for files but often forgets it for ${C('HttpResponseMessage')}, ${C('CancellationTokenSource')}, timers and ${C('SemaphoreSlim')}. <b>Use AI as a partner:</b> <code>List every IDisposable created in this file and who disposes it</code>. <b>Where AI goes wrong:</b> creating a new ${C('HttpClient')} in a using block per request (socket exhaustion — use IHttpClientFactory or a shared instance), adding finalizers to classes with no unmanaged state, disposing injected services. <b>What you must still own:</b> the ownership model: who creates, who disposes, and when.</p>`
+    aiEra: `<p><b>What AI changes:</b> generated code usually remembers ${C('using')} for files but often forgets it for ${C('HttpResponseMessage')}, ${C('CancellationTokenSource')}, timers and ${C('SemaphoreSlim')}. <b>Use AI as a partner:</b> <code>List every IDisposable created in this file and who disposes it</code>. <b>Where AI goes wrong:</b> creating a new ${C('HttpClient')} in a using block per request (socket exhaustion — use IHttpClientFactory or a shared instance), adding finalizers to classes with no unmanaged state, disposing injected services. <b>What you must still own:</b> the ownership model: who creates, who disposes, and when.</p>`,
+    problems: [{
+      title: 'Transaction Scope That Rolls Back', level: 'Medium', tags: ['IDisposable', 'using', 'exceptions'], companies: ['Microsoft', 'Oracle'],
+      statement: `<p>Write a ${C('Tx')} class implementing ${C('IDisposable')}: its constructor logs ${C('"begin"')}, ${C('Write(x)')} logs ${C('"write x"')} (throws ${C('InvalidOperationException')} if already committed), ${C('Commit()')} logs ${C('"commit"')}, and ${C('Dispose()')} logs ${C('"rollback"')} if it was not committed, then ${C('"close"')}. A second Dispose call must do nothing.</p>
+<p>Implement ${C('RunBatch(string[] ops)')}: inside ${C('using var tx = new Tx(log);')} run each op — ${C('"commit"')} commits, ${C('"fail"')} throws ${C('InvalidOperationException')}, ${C('"dispose"')} calls ${C('tx.Dispose()')} early, anything else is written. After the scope log ${C('"done"')}. If an exception escapes the scope, catch it outside and log ${C('"error"')} instead of ${C('"done"')}. Return the log.</p>`,
+      constraints: `0 ≤ ops.Length ≤ 100`,
+      example: `<p>${C('["a", "fail", "b"]')} → ${C('["begin", "write a", "rollback", "close", "error"]')}.</p>`,
+      brute: { why: `<p>Calling Rollback in every catch and every early return works until someone adds a new exit path. ${C('using')} turns cleanup into a guarantee: the compiler emits a finally that calls Dispose on every path.</p>`, code: R`
+static List<string> RunBatchManual(string[] ops)
+{
+    var log = new List<string> { "begin" };
+    bool committed = false;
+    foreach (var op in ops)
+    {
+        if (op == "fail") { log.Add("rollback"); log.Add("close"); log.Add("error"); return log; }
+        if (op == "commit") { committed = true; log.Add("commit"); }
+        else log.Add("write " + op);
+    }
+    if (!committed) log.Add("rollback");
+    log.Add("close");
+    log.Add("done");
+    return log;
+}` },
+      mcq: { q: 'An op throws inside the using scope and the caller catches it. In what order do things happen?', options: ['tx.Dispose() runs first (rollback, close), then the caller\'s catch', 'The caller\'s catch runs, then Dispose', 'Dispose is skipped because the scope did not finish normally', 'Dispose runs only when the garbage collector finalizes tx'], answer: 0, explain: 'using lowers to try/finally; the finally runs while the exception unwinds, before control reaches the outer catch.' },
+      hints: [`<p>Keep two flags in Tx: ${C('committed')} and ${C('disposed')}. Dispose returns immediately when ${C('disposed')} is already true.</p>`, `<p>${C('using var')} disposes at the end of the enclosing block, so put it in its own block or method so ${C('"done"')} is logged after ${C('"close"')}.</p>`, `<p>Wrap the call in ${C('try { Body(ops, log); log.Add("done"); } catch (InvalidOperationException) { log.Add("error"); }')}.</p>`],
+      solution: {
+        approach: `<p>The transaction's Dispose encodes the safe default: anything not explicitly committed is rolled back. ${C('using')} guarantees Dispose on normal exit, early exit and exceptions, and the idempotence flag makes an early manual Dispose harmless.</p>`,
+        code: R`
+public class Tx : IDisposable
+{
+    readonly List<string> log;
+    bool committed, disposed;
+
+    public Tx(List<string> log) { this.log = log; log.Add("begin"); }
+
+    public void Write(string x)
+    {
+        if (committed) throw new InvalidOperationException("already committed");
+        log.Add("write " + x);
+    }
+
+    public void Commit() { committed = true; log.Add("commit"); }
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        if (!committed) log.Add("rollback");
+        log.Add("close");
+    }
+}
+
+public class Solution
+{
+    public string[] RunBatch(string[] ops)
+    {
+        var log = new List<string>();
+        try
+        {
+            Body(ops, log);
+            log.Add("done");
+        }
+        catch (InvalidOperationException)
+        {
+            log.Add("error");
+        }
+        return log.ToArray();
+    }
+
+    static void Body(string[] ops, List<string> log)
+    {
+        using var tx = new Tx(log);
+        foreach (var op in ops)
+        {
+            switch (op)
+            {
+                case "commit": tx.Commit(); break;
+                case "fail": throw new InvalidOperationException("fail");
+                case "dispose": tx.Dispose(); break;
+                default: tx.Write(op); break;
+            }
+        }
+    }
+}`,
+        dry: { head: ['op', 'action', 'log grows by'], rows: [['(start)', 'new Tx', 'begin'], ['a', 'Write', 'write a'], ['fail', 'throw', '—'], ['(unwind)', 'Dispose: not committed', 'rollback, close'], ['(outer)', 'catch', 'error']] },
+        complexity: `<p>O(n) time and space for the log.</p>`,
+        followUps: ['Make it <code>IAsyncDisposable</code> with an async rollback', 'What should happen if Dispose itself throws during unwinding?']
+      },
+      tests: { sig: 'string[] -> string[]', fn: 'runBatch', cases: [
+        [[['a', 'fail', 'b']], ['begin', 'write a', 'rollback', 'close', 'error']],
+        [[['a', 'b', 'commit']], ['begin', 'write a', 'write b', 'commit', 'close', 'done']],
+        [[[]], ['begin', 'rollback', 'close', 'done']],
+        [[['x']], ['begin', 'write x', 'rollback', 'close', 'done']],
+        [[['commit', 'fail']], ['begin', 'commit', 'close', 'error']],
+        [[['commit', 'y']], ['begin', 'commit', 'close', 'error']],
+        [[['a', 'dispose', 'commit']], ['begin', 'write a', 'rollback', 'close', 'commit', 'done']]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -598,7 +799,61 @@ Console.WriteLine((unknown & true) == null);    // True` }
 <p><b>Constraint.</b> ${C('Nullable<T>')} has ${C('where T : struct')}, so ${C('int??')} is impossible. Generic code that wants "T or nothing" for both value and reference types needs ${C('T?')} with care (see next topic) or overloads.</p>
 <p><b>Equality and GetHashCode.</b> ${C('Nullable<T>.Equals(object)')} treats null as equal to null; ${C('GetHashCode')} of a null value is 0. ${C('Nullable.Compare')} orders null before all values — unlike the lifted ${C('<')}.</p>
 <p><b>Performance.</b> The JIT handles Nullable well (no boxing on HasValue/Value), but boxing through ${C('object')} or non-generic interfaces still allocates. LINQ ${C('Sum')} over ${C('int?')} skips nulls.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI-generated DTOs often mark every number as ${C('int?')} "to be safe", pushing null checks everywhere. <b>Use AI as a partner:</b> ask <code>Which of these fields can really be missing according to the schema?</code> <b>Where AI goes wrong:</b> using ${C('.Value')} without a check, assuming ${C('a < b || a >= b')} is always true, choosing ${C('-1')} sentinels in DP tables where −1 is a valid answer. <b>What you must still own:</b> the domain decision of what "missing" means and where it must be resolved to a real value.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI-generated DTOs often mark every number as ${C('int?')} "to be safe", pushing null checks everywhere. <b>Use AI as a partner:</b> ask <code>Which of these fields can really be missing according to the schema?</code> <b>Where AI goes wrong:</b> using ${C('.Value')} without a check, assuming ${C('a < b || a >= b')} is always true, choosing ${C('-1')} sentinels in DP tables where −1 is a valid answer. <b>What you must still own:</b> the domain decision of what "missing" means and where it must be resolved to a real value.</p>`,
+    problems: [{
+      title: 'Summarize Readings With Gaps', level: 'Easy', tags: ['nullable value types', 'lifted operators', '??'], companies: ['Siemens', 'Microsoft'],
+      statement: `<p>A sensor logs one reading per hour as ${C('int?')}; ${C('null')} means the sensor was offline. Implement ${C('Summarize(int?[] readings)')} returning ${C('"count sum max"')}: how many readings are present, their sum, and the largest one — or the word ${C('none')} for max when no reading is present. Track the maximum as an ${C('int?')} instead of choosing a sentinel such as ${C('int.MinValue')}. (The tests pass readings as strings, ${C('"null"')} for a gap; a small harness turns them into ${C('int?[]')}.)</p>`,
+      constraints: `0 ≤ readings.Length ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ reading ≤ 10<sup>4</sup>`,
+      example: `<p>${C('[90, null, 75, null, 100]')} → ${C('"3 265 100"')}; ${C('[null, null]')} → ${C('"0 0 none"')}.</p>`,
+      brute: { why: `<p>Starting max at ${C('int.MinValue')} works for the number but then "no reading" and "a reading of int.MinValue" look the same, and you need a separate flag to print none. ${C('int? max = null')} carries that flag for free.</p>`, code: R`
+static string SummarizeSentinel(int?[] readings)
+{
+    int count = 0, sum = 0, max = int.MinValue;
+    foreach (var r in readings)
+    {
+        if (!r.HasValue) continue;
+        count++; sum += r.Value;
+        if (r.Value > max) max = r.Value;
+    }
+    return $"{count} {sum} {(count == 0 ? "none" : max.ToString())}";
+}` },
+      mcq: { q: 'A beginner writes `int? max = null; foreach (var r in readings) if (r > max) max = r;`. What does max hold afterwards?', options: ['null — every comparison with a null operand is false, so it is never assigned', 'The largest reading', 'The first non-null reading', 'It throws InvalidOperationException'], answer: 0, explain: 'The lifted > returns false when either side is null. Since max starts null, r > max is always false. Test `max is null || v > max` instead.' },
+      hints: [`<p>${C('if (r is int v)')} both checks HasValue and unwraps the value.</p>`, `<p>Update with ${C('if (max is null || v > max) max = v;')} — the null check handles the first reading.</p>`, `<p>Format the result with ${C('max?.ToString() ?? "none"')}.</p>`],
+      solution: {
+        approach: `<p>Skip gaps with a pattern that unwraps the value, and let the ${C('int?')} maximum represent "nothing seen yet". The lifted comparison ${C('v > max')} is only reached when max has a value, and ${C('?.')}/${C('??')} turn the empty case into ${C('none')}.</p>`,
+        code: R`
+public class Solution
+{
+    public string Summarize(int?[] readings)
+    {
+        int count = 0, sum = 0;
+        int? max = null;
+        foreach (var r in readings)
+        {
+            if (r is int v)
+            {
+                count++;
+                sum += v;
+                if (max is null || v > max) max = v;
+            }
+        }
+        return $"{count} {sum} {max?.ToString() ?? "none"}";
+    }
+}`,
+        dry: { head: ['reading', 'count', 'sum', 'max'], rows: [['90', '1', '90', '90'], ['null', '1', '90', '90'], ['75', '2', '165', '90'], ['null', '2', '165', '90'], ['100', '3', '265', '100']] },
+        complexity: `<p>O(n) time, O(1) extra space.</p>`,
+        followUps: ['Return the average as <code>double?</code> (null when nothing present)', 'What does <code>readings.Max()</code> return for an all-null <code>int?[]</code>?']
+      },
+      tests: { sig: 'string[] -> string', fn: 'summarizeTokens', harness: { csharp: 'public static class Check { public static string SummarizeTokens(string[] t) => new Solution().Summarize(t.Select(x => x == "null" ? (int?)null : int.Parse(x)).ToArray()); }' }, cases: [
+        [[['90', 'null', '75', 'null', '100']], '3 265 100'],
+        [[[]], '0 0 none'],
+        [[['null', 'null']], '0 0 none'],
+        [[['-5']], '1 -5 -5'],
+        [[['-3', 'null', '-7']], '2 -10 -3'],
+        [[['0', 'null', '4', '4']], '3 8 4'],
+        [[['null', '0']], '1 0 0']
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -1047,7 +1302,62 @@ foreach (var v in values) Console.WriteLine(v is not null and not "" ? $"use {v}
 <p><b>Subsumption across arms.</b> The decision DAG knows that once ${C('Length == 0')} failed, ${C('[]')} cannot match later — and reports an error if a later arm is fully covered by earlier ones.</p>
 <p><b>Constants only.</b> Relational patterns need compile-time constants: ${C('x is > limit')} with a variable ${C('limit')} does not compile; use a ${C('when')} guard. Same for list element constants.</p>
 <p><b>Performance.</b> Patterns over spans with slices are allocation-free; over arrays, a captured slice allocates. Over ${C('List<T>')} a captured slice is not supported at all. Match on ${C('CollectionsMarshal.AsSpan(list)')} if needed.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI translates nested if-statements into combined patterns well, and is decent at command parsers with list patterns. <b>Use AI as a partner:</b> <code>Generate test inputs that hit every arm of this switch, including empty and single-element arrays</code>. <b>Where AI goes wrong:</b> mixing ${C('&&')} inside patterns (not allowed: use ${C('and')}), slicing a ${C('List<T>')} with ${C('.. var rest')}, putting variables in relational patterns, forgetting operator precedence of ${C('not')}/${C('and')}/${C('or')} (${C('not A or B')} is ${C('(not A) or B')}). <b>What you must still own:</b> readability — a 6-level nested pattern is clever but often an if statement is clearer.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI translates nested if-statements into combined patterns well, and is decent at command parsers with list patterns. <b>Use AI as a partner:</b> <code>Generate test inputs that hit every arm of this switch, including empty and single-element arrays</code>. <b>Where AI goes wrong:</b> mixing ${C('&&')} inside patterns (not allowed: use ${C('and')}), slicing a ${C('List<T>')} with ${C('.. var rest')}, putting variables in relational patterns, forgetting operator precedence of ${C('not')}/${C('and')}/${C('or')} (${C('not A or B')} is ${C('(not A) or B')}). <b>What you must still own:</b> readability — a 6-level nested pattern is clever but often an if statement is clearer.</p>`,
+    problems: [{
+      title: 'Classify a Version Number', level: 'Medium', tags: ['list patterns', 'relational patterns', 'logical patterns'], companies: ['Microsoft', 'GitHub'],
+      statement: `<p>A version is given as an ${C('int[]')} of exactly three parts ${C('[major, minor, patch]')}. Return its kind using one switch expression with list, relational and logical patterns (no ${C('when')} guards, no indexing), checking in this order:</p>
+<ul><li>any part negative in the first three positions → ${C('"invalid"')}</li>
+<li>major is 0 → ${C('"prerelease"')}</li>
+<li>major between 1 and 99, minor 0, patch 0 → ${C('"major"')}</li>
+<li>major between 1 and 99, minor &gt; 0, patch 0 → ${C('"minor"')}</li>
+<li>major between 1 and 99, patch &gt; 0 → ${C('"patch"')}</li>
+<li>anything else (wrong length, major ≥ 100) → ${C('"invalid"')}</li></ul>`,
+      constraints: `0 ≤ v.Length ≤ 5, −1000 ≤ v[i] ≤ 1000`,
+      example: `<p>${C('[2, 0, 0]')} → ${C('"major"')}; ${C('[0, 9, 1]')} → ${C('"prerelease"')}; ${C('[1, 2]')} → ${C('"invalid"')}.</p>`,
+      brute: { why: `<p>The if-chain needs a length check before every index access and repeats ${C('v[0] >= 1 && v[0] <= 99')} in three places. The list pattern checks length and elements in one shape and the compiler shares the common tests.</p>`, code: R`
+static string ClassifyIf(int[] v)
+{
+    if (v.Length >= 1 && v[0] < 0 || v.Length >= 2 && v[1] < 0 || v.Length >= 3 && v[2] < 0) return "invalid";
+    if (v.Length != 3) return "invalid";
+    if (v[0] == 0) return "prerelease";
+    if (v[0] < 1 || v[0] > 99) return "invalid";
+    if (v[2] > 0) return "patch";
+    return v[1] > 0 ? "minor" : "major";
+}` },
+      mcq: { q: 'Which pattern matches a three-element array whose first element is between 1 and 99?', options: ['[>= 1 and <= 99, _, _]', '[>= 1 && <= 99, _, _]', '[1..99, _, _]', '[> 0, ..] when v.Length == 3'], answer: 0, explain: 'Patterns combine with the keywords and / or / not; && is not allowed inside a pattern, 1..99 is a range expression, and [> 0, ..] matches any length.' },
+      hints: [`<p>The negative check is three alternatives: ${C('[< 0, ..] or [_, < 0, ..] or [_, _, < 0, ..]')}.</p>`, `<p>Name the shared major range once in each arm: ${C('[>= 1 and <= 99, 0, 0]')}, ${C('[>= 1 and <= 99, > 0, 0]')}, ${C('[>= 1 and <= 99, _, > 0]')}.</p>`, `<p>${C('[0, _, _]')} only matches length 3; finish with ${C('_ => "invalid"')}.</p>`],
+      solution: {
+        approach: `<p>Arms are tried top to bottom, so the negative-part arm comes first and the discard arm last. Each arm describes the whole shape — length and every element — so no index can go out of range.</p>`,
+        code: R`
+public class Solution
+{
+    public string Classify(int[] v) => v switch
+    {
+        [< 0, ..] or [_, < 0, ..] or [_, _, < 0, ..] => "invalid",
+        [0, _, _] => "prerelease",
+        [>= 1 and <= 99, 0, 0] => "major",
+        [>= 1 and <= 99, > 0, 0] => "minor",
+        [>= 1 and <= 99, _, > 0] => "patch",
+        _ => "invalid"
+    };
+}`,
+        dry: { head: ['v', 'first matching arm', 'result'], rows: [['[2, 0, 0]', '[>= 1 and <= 99, 0, 0]', 'major'], ['[3, 4, 0]', '[>= 1 and <= 99, > 0, 0]', 'minor'], ['[0, -1, 2]', '[_, < 0, ..]', 'invalid'], ['[100, 0, 0]', '_', 'invalid']] },
+        complexity: `<p>O(1) time and space: at most a handful of element comparisons.</p>`,
+        followUps: ['Accept an optional fourth build number with <code>[.., var build]</code>', 'Rewrite it over <code>ReadOnlySpan&lt;int&gt;</code>']
+      },
+      tests: { sig: 'int[] -> string', fn: 'classify', cases: [
+        [[[2, 0, 0]], 'major'],
+        [[[3, 4, 0]], 'minor'],
+        [[[1, 0, 7]], 'patch'],
+        [[[0, 9, 1]], 'prerelease'],
+        [[[1, 2]], 'invalid'],
+        [[[0, -1, 2]], 'invalid'],
+        [[[100, 0, 0]], 'invalid'],
+        [[[]], 'invalid'],
+        [[[99, 5, 5]], 'patch'],
+        [[[1, 2, 3, 4]], 'invalid']
+      ] }
+    }]
   });
 
   /* ======================================================================

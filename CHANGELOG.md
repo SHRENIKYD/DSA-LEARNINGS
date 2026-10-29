@@ -4,6 +4,16 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.15] — 2026-10-29 · A quiz after every topic
+
+### Added
+- Every topic in the language courses now ends with a "What would you do?" question and a short practice problem: 36 topics that had none now have one.
+  - C# (26): basics, methods and strings, properties and static members, exceptions and disposal, memory and the garbage collector, async and await, and threading.
+  - Python (3): properties, abstract base classes and `__slots__`.
+  - JavaScript (4): how `this` is decided, `this` in strict mode, WeakMap/WeakSet, and Symbol.
+  - C++ (3): iterators, `auto`/`decltype`/structured bindings, and `optional`/`variant`/`any`.
+- Each new problem has a tested solution in its course's language. These reach the mobile app in its next release.
+
 ## [1.10.14] — 2026-10-29 · AI tools, AI for everyone and deeper AI
 
 ### Added

@@ -1188,7 +1188,47 @@ int main() { Size s; auto [w, h] = s; return w * h == 12 ? 0 : 1; }` },
     aiEra: `<p><b>What AI changes:</b> generated code tends to sprinkle <code>auto</code> everywhere, which reads nicely but hides copies, proxies and signedness. Your review question for each <code>auto</code>: "copy, reference, or proxy?"</p>
       <p><b>Use AI as a partner:</b> <code>For every auto in this function, write the deduced type in a comment</code> — then verify a couple with <code>static_assert(std::is_same_v&lt;decltype(v), ...&gt;)</code> or by hovering in clangd. This is also a great way to learn the rules.</p>
       <p><b>Where AI goes wrong:</b> claims like "auto keeps const" (only with references), using <code>decltype(auto)</code> with <code>return (x);</code>, iterating maps with the wrong pair type, binding <code>auto&amp;</code> to a temporary returned by value (does not compile) and then "fixing" it by removing the <code>&amp;</code> (silent copy).</p>
-      <p><b>What you must still own:</b> the deduction table above. In interviews it shows up as rapid-fire "what is the type of v?" questions, and in production as performance regressions from accidental copies in hot loops.</p>`
+      <p><b>What you must still own:</b> the deduction table above. In interviews it shows up as rapid-fire "what is the type of v?" questions, and in production as performance regressions from accidental copies in hot loops.</p>`,
+    problems: [{
+      title: 'Longest Run of Equal Values (return a pair, unpack with structured bindings)', level: 'Easy', tags: ['auto', 'structured bindings', 'const auto&'], companies: ['Amazon', 'Bloomberg'],
+      statement: `<p>Write <code>std::pair&lt;int, int&gt; longestRun(const std::vector&lt;int&gt;&amp; v)</code> returning <code>{value, length}</code> of the longest block of consecutive equal values (the first one on ties, <code>{0, 0}</code> for an empty vector). Use <code>auto</code> / <code>const auto&amp;</code> for the loop and locals, and have the caller unpack the result with <code>auto [value, len] = longestRun(v);</code>.</p>`,
+      constraints: `0 ≤ N ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ v[i] ≤ 2<sup>31</sup> − 1`,
+      example: `<p>v = <code>[1, 1, 2, 2, 2, 3]</code> → ${H.c('g', '{2, 3}')}.<br>v = <code>[4, 4, 5, 5]</code> → ${H.c('g', '{4, 2}')} — a tie keeps the first run.<br><code>auto [value, len] = longestRun(v);</code> then gives <code>value == 2</code>, <code>len == 3</code>.</p>`,
+      brute: { why: `<p>For every start index, count how far the same value continues: O(N²) for an all-equal input. The C++98 style also returns through two out-parameters (<code>int&amp; bestVal, int&amp; bestLen</code>), which is easy to call wrongly and hides which is which.</p>`, code: R`void longestRunBrute(const vector<int>& v, int& bestVal, int& bestLen) {
+    bestVal = 0; bestLen = 0;
+    for (size_t i = 0; i < v.size(); ++i) {
+        size_t j = i;
+        while (j < v.size() && v[j] == v[i]) ++j;
+        if ((int)(j - i) > bestLen) { bestLen = (int)(j - i); bestVal = v[i]; }
+    }
+}` },
+      mcq: { q: '<code>std::pair&lt;int,int&gt; p{2, 3}; auto [a, b] = p; a = 9;</code> — what is <code>p.first</code> afterwards?', options: ['9, because structured bindings are always references', '2, because <code>auto</code> (no &amp;) copies p into a hidden object and a names its first member', 'It does not compile: bindings are const', '0'], answer: 1, explain: 'auto [a, b] = p creates a hidden copy of p; a and b name that copy\'s members. Write auto& [a, b] = p to alias p itself — then a = 9 would change p.first.' },
+      hints: [`<p>Hint 1: One pass is enough: keep the current run's value and length, and the best run so far.</p>`, `<p>Hint 2: Return a <code>std::pair</code> (or a small struct) — the caller writes <code>auto [value, len] = longestRun(v);</code> and gets two well-named variables.</p>`, `<p>Hint 3: Update the best only when the current length is <b>strictly</b> greater, so ties keep the first run. Iterate with <code>for (const auto&amp; x : v)</code>.</p>`],
+      tests: {"sig":"int[] -> int[]","fn":"longestRunP","harness":{"cpp":"vector<int> longestRunP(vector<int> v) { auto [value, len] = longestRun(v); return {value, len}; }"},"cases":[[[[1,1,2,2,2,3]],[2,3]],[[[]],[0,0]],[[[7]],[7,1]],[[[4,4,5,5]],[4,2]],[[[1,2,3]],[1,1]],[[[-1,-1,-1,0,-1]],[-1,3]],[[[9,8,8,8,8]],[8,4]],[[[-2147483648,-2147483648,2147483647]],[-2147483648,2]],[[{"$rep":5,"n":100000}],[5,100000]]]},
+      solution: {
+        approach: `<p>Scan once. If <code>x</code> equals the current run's value, extend it; otherwise start a new run of length 1. After each step, if the current run is strictly longer than the best, record it. Return both numbers as one <code>pair</code>; at the call site a structured binding gives them names, so nobody confuses <code>.first</code> with <code>.second</code>.</p>`,
+        code: R`#include <utility>
+#include <vector>
+
+std::pair<int, int> longestRun(const std::vector<int>& v) {
+    if (v.empty()) return {0, 0};
+    auto best = std::pair{v[0], 0};            // CTAD: pair<int, int>
+    auto cur  = std::pair{v[0], 0};
+    for (const auto& x : v) {                  // const auto&: no copy, no accidental write
+        if (x == cur.first) ++cur.second;
+        else cur = {x, 1};
+        if (cur.second > best.second) best = cur;
+    }
+    return best;
+}
+
+// usage:
+//   auto [value, len] = longestRun({1, 1, 2, 2, 2, 3});   // value = 2, len = 3`,
+        dry: { head: ['x', 'cur {value, len}', 'best {value, len}'], rows: [['1', '{1, 1}', '{1, 1}'], ['1', '{1, 2}', '{1, 2}'], ['2', '{2, 1}', '{1, 2}'], ['2', '{2, 2}', '{1, 2} (tie, keep)'], ['2', '{2, 3}', '{2, 3}'], ['3', '{3, 1}', H.c('g', '{2, 3}')]] },
+        complexity: `<p>O(N) time, O(1) extra space.</p>`,
+        followUps: ['Also return the start index: switch to a struct <code>{int value, len, start;}</code> — the binding <code>auto [v, l, s]</code> still works.', 'What changes if the loop uses <code>for (auto x : v)</code> on a <code>vector&lt;string&gt;</code>?', 'Why does <code>auto&amp; [value, len] = longestRun(v);</code> not compile?']
+      }
+    }]
   });
   /* ======================================================================
      TOPIC 6 — constexpr, consteval, constinit, if constexpr
@@ -1564,7 +1604,77 @@ int main() {
     aiEra: `<p><b>What AI changes:</b> generated code still often returns <code>nullptr</code>, -1, or empty strings as "missing" markers, or builds class hierarchies for what is really a closed set of cases. Asking for "use std::optional / std::variant here" is a quick, high-value review comment.</p>
       <p><b>Use AI as a partner:</b> <code>Refactor this enum-plus-union struct into std::variant with std::visit, keep behaviour identical, and list every place where a case was previously unhandled</code>. The compile errors from a non-exhaustive visit are a free bug finder.</p>
       <p><b>Where AI goes wrong:</b> using <code>*opt</code> without a check, <code>std::get&lt;T&gt;</code> in places that may throw, <code>std::any</code> where a variant would do, <code>std::optional&lt;T&amp;&gt;</code> (does not compile before C++26), and assuming <code>any_cast&lt;long&gt;</code> works on a stored <code>int</code>.</p>
-      <p><b>What you must still own:</b> modelling — deciding that a value is "maybe", "one of N" or "anything", and making illegal states unrepresentable. That design skill transfers to Rust, Swift, Kotlin and TypeScript too.</p>`
+      <p><b>What you must still own:</b> modelling — deciding that a value is "maybe", "one of N" or "anything", and making illegal states unrepresentable. That design skill transfers to Rust, Swift, Kotlin and TypeScript too.</p>`,
+    problems: [{
+      title: 'RPN Calculator that Returns a Value or an Error (std::variant)', level: 'Medium', tags: ['std::variant', 'std::optional', 'std::visit', 'stack'], companies: ['Bloomberg', 'Google', 'Uber'],
+      statement: `<p>Evaluate an expression in Reverse Polish Notation given as tokens (integers like <code>"-3"</code> or operators <code>+ - * /</code>). Return <code>std::variant&lt;long long, std::string&gt;</code>: the value on success, or an error message on failure — no exceptions, no magic numbers. Use a helper <code>std::optional&lt;long long&gt; parseNum(std::string_view)</code> for tokens. Error messages, checked in this order while scanning: <code>"empty expression"</code> (no tokens), <code>"bad token: T"</code>, <code>"missing operand"</code>, <code>"division by zero"</code>, and at the end <code>"leftover operands"</code> if more than one value remains. Division truncates toward zero.</p>`,
+      constraints: `0 ≤ tokens ≤ 10<sup>4</sup>; numbers fit in long long and so do all intermediate results.`,
+      example: `<p><code>["2", "3", "+", "4", "*"]</code> → ${H.c('g', '20')}<br><code>["1", "0", "/"]</code> → ${H.c('r', '"division by zero"')}<br><code>["3", "x", "+"]</code> → ${H.c('r', '"bad token: x"')}<br>The caller uses <code>std::visit</code> (or <code>std::holds_alternative</code>) to tell the two cases apart.</p>`,
+      brute: { why: `<p>The old style returns <code>long long</code> and signals errors with a sentinel such as <code>-1</code> or <code>LLONG_MIN</code> — but <code>["0", "1", "-"]</code> legitimately evaluates to −1, so the caller cannot tell a result from a failure, and the reason for the failure is lost.</p>`, code: R`long long evalBad(const vector<string>& t) {
+    vector<long long> st;
+    for (auto& s : t) {
+        if (s == "+" || s == "-" || s == "*" || s == "/") {
+            if (st.size() < 2) return -1;            // error... or a real -1?
+            long long b = st.back(); st.pop_back();
+            long long a = st.back(); st.pop_back();
+            if (s == "/" && b == 0) return -1;
+            st.push_back(s == "+" ? a + b : s == "-" ? a - b : s == "*" ? a * b : a / b);
+        } else st.push_back(stoll(s));                 // throws on "x"
+    }
+    return st.size() == 1 ? st[0] : -1;
+}` },
+      mcq: { q: 'A function returns <code>std::variant&lt;long long, std::string&gt; r</code> holding an error string. What does <code>std::get&lt;long long&gt;(r)</code> do?', options: ['Returns 0', 'Converts the string to a number', 'Throws <code>std::bad_variant_access</code>', 'Undefined behaviour, like <code>*opt</code> on an empty optional'], answer: 2, explain: 'std::get checks the active alternative and throws bad_variant_access on a mismatch. Use std::get_if or std::holds_alternative to test first, or std::visit to handle every alternative.' },
+      hints: [`<p>Hint 1: The usual stack algorithm: numbers are pushed; an operator pops b then a and pushes <code>a op b</code>.</p>`, `<p>Hint 2: <code>parseNum</code> can use <code>std::from_chars</code>: it succeeds only if it consumed the whole token without error — return <code>std::nullopt</code> otherwise. But first check whether the token is exactly one operator character, so <code>"-"</code> is an operator and <code>"-3"</code> is a number.</p>`, `<p>Hint 3: The return type <code>std::variant&lt;long long, std::string&gt;</code> converts implicitly from either alternative, so you can write <code>return st.back();</code> or <code>return std::string("missing operand");</code>.</p>`],
+      tests: {"sig":"list<string> -> string","fn":"evalP","harness":{"cpp":"string evalP(vector<string> t) { auto r = evalRPN(t); return std::visit([](const auto& x) -> string { if constexpr (std::is_same_v<std::decay_t<decltype(x)>, long long>) return to_string(x); else return \"error: \" + x; }, r); }"},"cases":[[[["2","3","+","4","*"]],"20"],[[["4","13","5","/","+"]],"6"],[[["1","0","/"]],"error: division by zero"],[[["+"]],"error: missing operand"],[[["1","2"]],"error: leftover operands"],[[[]],"error: empty expression"],[[["3","x","+"]],"error: bad token: x"],[[["-3","4","-"]],"-7"],[[["7","-2","/"]],"-3"],[[["0","1","-"]],"-1"],[[["1000000000","1000000000","*"]],"1000000000000000000"],[[["42"]],"42"],[[["12a"]],"error: bad token: 12a"],[[["5","1","2","+","4","*","+","3","-"]],"14"]]},
+      solution: {
+        approach: `<p>Model each outcome in the type. <code>parseNum</code> returns <code>optional&lt;long long&gt;</code> — "maybe a number". <code>evalRPN</code> returns <code>variant&lt;long long, string&gt;</code> — "exactly one of: a value or a reason". Scan the tokens with a stack; at the first problem return the error string immediately. The caller cannot read the value without checking which alternative is active.</p>`,
+        code: R`#include <charconv>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
+using Result = std::variant<long long, std::string>;
+
+std::optional<long long> parseNum(std::string_view s) {
+    long long v = 0;
+    auto [p, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+    if (s.empty() || ec != std::errc{} || p != s.data() + s.size()) return std::nullopt;
+    return v;
+}
+
+Result evalRPN(const std::vector<std::string>& tokens) {
+    if (tokens.empty()) return std::string("empty expression");
+    std::vector<long long> st;
+    for (const auto& t : tokens) {
+        bool isOp = t.size() == 1 && std::string_view("+-*/").find(t[0]) != std::string_view::npos;
+        if (!isOp) {
+            auto n = parseNum(t);
+            if (!n) return "bad token: " + t;
+            st.push_back(*n);                       // safe: checked above
+            continue;
+        }
+        if (st.size() < 2) return std::string("missing operand");
+        long long b = st.back(); st.pop_back();
+        long long a = st.back(); st.pop_back();
+        switch (t[0]) {
+            case '+': st.push_back(a + b); break;
+            case '-': st.push_back(a - b); break;
+            case '*': st.push_back(a * b); break;
+            default:
+                if (b == 0) return std::string("division by zero");
+                st.push_back(a / b);                // C++ truncates toward zero
+        }
+    }
+    if (st.size() != 1) return std::string("leftover operands");
+    return st.back();
+}`,
+        dry: { head: ['token', 'action', 'stack'], rows: [['"2"', 'parseNum → 2, push', '2'], ['"3"', 'push', '2 3'], ['"+"', 'pop 3, 2 → push 5', '5'], ['"4"', 'push', '5 4'], ['"*"', 'pop 4, 5 → push 20', '20'], ['end', 'one value left', H.c('g', 'variant holds 20')]] },
+        complexity: `<p>O(N) time and O(N) stack space. The variant adds no heap allocation for the number case; the error string is built only on failure.</p>`,
+        followUps: ['Replace <code>std::string</code> with an <code>enum class Err</code> — what does the caller gain?', 'With C++23, rewrite using <code>std::expected&lt;long long, std::string&gt;</code>.', 'Detect overflow in <code>a * b</code> and report it as another error.']
+      }
+    }]
   });
   /* ======================================================================
      TOPIC 8 — Ranges & views

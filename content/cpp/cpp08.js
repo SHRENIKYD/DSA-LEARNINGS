@@ -152,7 +152,44 @@ else cout << "none\n";` }
 <p><b>Performance.</b> Vector iterators are thin wrappers over raw pointers; with optimisation on, an iterator loop compiles to exactly the same machine code as an index loop. Node-based iterators (<code>list</code>, <code>set</code>) chase pointers and miss the cache, which is a big reason the same O(N log N) algorithm is often 3–10× slower on a <code>set</code> than on a sorted <code>vector</code>.</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants write iterator loops and <code>auto</code> declarations instantly, so the boilerplate is no longer the skill. The skill is spotting the <b>category mistakes</b> that compile fine but hurt: <code>std::lower_bound(s.begin(), s.end(), x)</code> on a <code>set</code> (silently O(N)), <code>std::distance</code> inside a loop over a <code>list</code> (O(N²)), or holding an iterator across a <code>push_back</code>.</p>
 <p><b>Use AI as a partner:</b> ask <code>"List every iterator-invalidation risk in this function and say which line causes it"</code> or <code>"Rewrite this with std::ranges and tell me which iterator concept each algorithm requires"</code>. Then verify with <code>-D_GLIBCXX_DEBUG</code>.</p>
-<p><b>Where AI goes wrong:</b> it often dereferences <code>prev(it)</code> without checking <code>it != begin()</code>, and mixes up "one past the end" with "last element". <b>What you must still own:</b> the half-open range mental model and the cost of each iterator move — that is exactly what interviewers probe.</p>`
+<p><b>Where AI goes wrong:</b> it often dereferences <code>prev(it)</code> without checking <code>it != begin()</code>, and mixes up "one past the end" with "last element". <b>What you must still own:</b> the half-open range mental model and the cost of each iterator move — that is exactly what interviewers probe.</p>`,
+    problems: [{
+      title: 'Merge Two Sorted Ranges with Iterators', level: 'Easy', tags: ['iterators', 'two pointers', 'half-open range'], companies: ['Microsoft', 'Amazon', 'TCS'],
+      statement: `<p>Write a function template <code>mergeRanges(first1, last1, first2, last2, out)</code> that merges two <b>sorted</b> half-open ranges into an output iterator using only iterator operations (<code>*</code>, <code>++</code>, <code>!=</code>) — so it works for <code>vector</code>, <code>list</code>, <code>deque</code> or even an input stream. Then use it in <code>vector&lt;int&gt; mergeSorted(const vector&lt;int&gt;&amp; a, const vector&lt;int&gt;&amp; b)</code> to return all values of both in ascending order (duplicates kept). Do not call <code>std::merge</code> or <code>sort</code>.</p>`,
+      constraints: `0 ≤ |a|, |b| ≤ 10<sup>5</sup>, both sorted ascending, −2<sup>31</sup> ≤ value ≤ 2<sup>31</sup> − 1`,
+      example: `<p>a = <code>[1, 3, 5]</code>, b = <code>[2, 4, 6]</code> → ${H.c('g', '[1, 2, 3, 4, 5, 6]')}.<br>a = <code>[]</code>, b = <code>[1, 2]</code> → ${H.c('g', '[1, 2]')} — the first range is empty because <code>begin() == end()</code>, so the loop never dereferences it.</p>`,
+      brute: { why: `<p>Append both vectors and <code>sort</code>: O((N+M) log(N+M)) and it ignores that the inputs are already sorted. It also needs random-access iterators, so it would not work if one input were a <code>list</code>.</p>`, code: R`vector<int> mergeBrute(vector<int> a, const vector<int>& b) {
+    a.insert(a.end(), b.begin(), b.end());
+    sort(a.begin(), a.end());          // needs random access, O(K log K)
+    return a;
+}` },
+      mcq: { q: 'Inside the generic merge you have <code>It1 i</code> pointing into a <code>std::list</code>. Which operation is safe to use?', options: ['<code>i + 1</code> to peek at the next element', '<code>last1 - i</code> to count what is left', '<code>++i</code> and <code>i != last1</code>', '<code>i[0]</code>'], answer: 2, explain: 'A list iterator is bidirectional: it supports ++, --, * and comparison, but not +, - or []. Writing the merge with only ++ and != (input-iterator operations) keeps it valid for every container.' },
+      hints: [`<p>Hint 1: Keep one iterator into each range. While <b>both</b> are not at their end, the smaller front value goes out next.</p>`, `<p>Hint 2: Write to the output with <code>*out++ = value;</code>. Pass <code>back_inserter(result)</code> as <code>out</code> so the vector grows as you write.</p>`, `<p>Hint 3: When one range runs out, copy the rest of the other one. Use <code>!(*j &lt; *i)</code> (take from the first range on ties) so you only need <code>operator&lt;</code>.</p>`],
+      tests: {"sig":"int[] int[] -> int[]","fn":"mergeSorted","cases":[[[[1,3,5],[2,4,6]],[1,2,3,4,5,6]],[[[],[]],[]],[[[],[1,2]],[1,2]],[[[5],[]],[5]],[[[1,1,2],[1,3]],[1,1,1,2,3]],[[[-5,0,0],[-7,-5,10]],[-7,-5,-5,0,0,10]],[[[1,2,3],[4,5,6]],[1,2,3,4,5,6]],[[[4,5,6],[1,2,3]],[1,2,3,4,5,6]],[[[2147483647],[-2147483648]],[-2147483648,2147483647]],[[{"$rep":7,"n":100000},{"$rep":7,"n":100000}],{"$rep":7,"n":200000}]]},
+      solution: {
+        approach: `<p>Two iterators walk the two ranges. At each step compare the fronts, write the smaller one through the output iterator and advance only that iterator. When one range is exhausted (<code>i == last1</code>), the other's remaining elements are all larger, so copy them as they are. Only <code>*</code>, <code>++</code> and <code>!=</code> are used, so the template accepts any input iterators and any output iterator.</p>`,
+        code: R`template <class In1, class In2, class Out>
+Out mergeRanges(In1 i, In1 last1, In2 j, In2 last2, Out out) {
+    while (i != last1 && j != last2) {
+        if (*j < *i) { *out++ = *j; ++j; }   // strictly smaller: take from b
+        else         { *out++ = *i; ++i; }   // ties take from a (stable)
+    }
+    for (; i != last1; ++i) *out++ = *i;     // leftovers of a
+    for (; j != last2; ++j) *out++ = *j;     // leftovers of b
+    return out;
+}
+
+vector<int> mergeSorted(const vector<int>& a, const vector<int>& b) {
+    vector<int> res;
+    res.reserve(a.size() + b.size());
+    mergeRanges(a.begin(), a.end(), b.begin(), b.end(), back_inserter(res));
+    return res;
+}`,
+        dry: { head: ['*i (a)', '*j (b)', 'written', 'res so far'], rows: [['1', '2', '1 (from a)', '1'], ['3', '2', '2 (from b)', '1 2'], ['3', '4', '3 (from a)', '1 2 3'], ['5', '4', '4 (from b)', '1 2 3 4'], ['5', '6', '5 (from a)', '1 2 3 4 5'], ['end', '6', 'copy rest of b', H.c('g', '1 2 3 4 5 6')]] },
+        complexity: `<p>O(N + M) time — every element is written once. O(1) extra space besides the output.</p>`,
+        followUps: ['Call the same template with a <code>list&lt;int&gt;</code> and a <code>vector&lt;int&gt;</code> as inputs — why does it still compile?', 'Merge into an <code>ostream_iterator&lt;int&gt;(cout, " ")</code> instead of a vector.', 'Compare with <code>std::merge</code> and <code>std::inplace_merge</code>.']
+      }
+    }]
   });
 
   /* ======================================================================

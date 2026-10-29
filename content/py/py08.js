@@ -2083,7 +2083,120 @@ except TypeError as e:
       <p><b>Design guidance:</b> start with plain attributes; promote to a property when you need validation, computation or backward compatibility; prefer methods when the work is slow, can fail for external reasons, or takes arguments. For many validated fields, a dataclass with <code>__post_init__</code>, a custom descriptor, or pydantic is less repetitive than a dozen hand-written setters.</p>`,
     aiEra: R`<p>🤖 <b>What AI changes:</b> assistants trained on lots of Java-style code still generate <code>get_x()</code>/<code>set_x()</code> pairs, or the opposite, a property for every field. Your job is to apply the Python idiom: plain attributes by default, properties for logic.</p>
       <p><b>Prompt that helps:</b> <code>Review this class: which attributes need validation or are derived and should be properties, which should stay plain, and which properties do slow I/O and should become methods? Explain each in one line.</code> Asking for a classification forces the model to justify, not just generate.</p>
-      <p><b>Where AI goes wrong:</b> recursive setters (<code>self.x = v</code> inside the <code>x</code> setter); setting <code>self._x</code> directly in <code>__init__</code> so construction bypasses validation; properties that hit the network or database (surprising latency in a loop, N+1 queries); <code>cached_property</code> on a <code>__slots__</code> class; and claims that properties make attributes "private" (they do not; <code>obj._x</code> is still reachable). <b>What you must own:</b> the four-step lookup ladder (data descriptor → instance dict → non-data descriptor/class attr → <code>__getattr__</code>), which explains properties, methods, <code>cached_property</code> and <code>__slots__</code> with one idea.</p>`
+      <p><b>Where AI goes wrong:</b> recursive setters (<code>self.x = v</code> inside the <code>x</code> setter); setting <code>self._x</code> directly in <code>__init__</code> so construction bypasses validation; properties that hit the network or database (surprising latency in a loop, N+1 queries); <code>cached_property</code> on a <code>__slots__</code> class; and claims that properties make attributes "private" (they do not; <code>obj._x</code> is still reachable). <b>What you must own:</b> the four-step lookup ladder (data descriptor → instance dict → non-data descriptor/class attr → <code>__getattr__</code>), which explains properties, methods, <code>cached_property</code> and <code>__slots__</code> with one idea.</p>`,
+    problems: [{
+      title: 'Thermostat: one stored value, three unit properties',
+      level: 'Easy', tags: ['property', 'setter', 'validation', 'computed attribute'], companies: ['Google', 'Honeywell', 'Siemens'],
+      statement: R`<p>Write a class <code>Temperature(celsius=0.0)</code> for a smart-thermostat API. Callers read and write <b>plain attributes</b>, never getters/setters:</p>
+        <ul><li><code>t.celsius</code>, <code>t.fahrenheit</code> and <code>t.kelvin</code> are all readable <b>and</b> writable; writing any of them updates the others.</li>
+        <li>Store <b>only one</b> value (<code>_celsius</code>, a float); the other two are computed, so they can never disagree.</li>
+        <li>A temperature below absolute zero (−273.15 °C) raises <code>ValueError</code>; a non-number (including <code>bool</code>) raises <code>TypeError</code>. A rejected write leaves the old value unchanged. The constructor must validate too.</li>
+        <li><code>del t.celsius</code> is not supported (raises <code>AttributeError</code>); <code>repr(t)</code> → <code>Temperature(celsius=25.0)</code>.</li></ul>`,
+      constraints: R`Values are ints or floats; F = C × 9/5 + 32, K = C + 273.15.`,
+      example: R`<p><code>t = Temperature(100)</code> → <code>t.fahrenheit</code> ${H.c('g', '212.0')}, <code>t.kelvin</code> ${H.c('g', '373.15')}<br><code>t.fahrenheit = -40</code> → <code>t.celsius</code> ${H.c('g', '-40.0')}<br><code>t.kelvin = -1</code> → ${H.c('r', 'ValueError')} and <code>t.celsius</code> is still ${H.c('g', '-40.0')}</p>`,
+      brute: {
+        why: R`<p>The Java-style version stores all three units as plain attributes and offers <code>set_celsius()</code> etc. Any caller who writes <code>t.fahrenheit = 50</code> directly bypasses the conversion, so the three fields silently disagree, and nothing stops <code>t.celsius = -500</code>. Switching to properties later keeps the public <code>t.celsius</code> syntax, which is why Python starts with plain attributes and upgrades only when logic is needed.</p>`,
+        code: R`
+          class TemperatureBrute:
+              def __init__(self, c):
+                  self.celsius = c
+                  self.fahrenheit = c * 9 / 5 + 32
+                  self.kelvin = c + 273.15
+              def set_celsius(self, c):              # callers must remember to use this
+                  self.__init__(c)
+
+          t = TemperatureBrute(100)
+          t.fahrenheit = 50                          # bypasses the conversion
+          print(t.celsius, t.fahrenheit)             # 100 50 -> inconsistent
+          t.celsius = -500                           # no validation at all
+        `
+      },
+      mcq: { q: 'You store only <code>_celsius</code> and expose <code>fahrenheit</code> as a property with a setter. Where should the "below absolute zero" check live so that every write path is covered?', options: ['Only in the <code>celsius</code> setter, with the <code>fahrenheit</code>/<code>kelvin</code> setters (and <code>__init__</code>) converting and assigning through <code>self.celsius = …</code>', 'In <code>__init__</code> only, since that is where the object is created', 'In each getter, raising when the stored value is invalid', 'In <code>__setattr__</code>, because properties cannot validate'], answer: 0, explain: 'One validating setter plus routing every other write through it (including <code>__init__</code>) gives a single source of truth. Validating only in <code>__init__</code> misses later writes; checking in getters lets bad data in and fails late; a property setter is exactly the place for validation.' },
+      hints: [
+        R`<p>Hint 1: Make <code>celsius</code> a <code>@property</code> returning <code>self._celsius</code>, with a <code>@celsius.setter</code> that type-checks, range-checks and only then assigns.</p>`,
+        R`<p>Hint 2: <code>fahrenheit</code> and <code>kelvin</code> are properties whose getters compute from <code>self._celsius</code> and whose setters convert and assign <code>self.celsius = …</code>, reusing the validation. In <code>__init__</code>, write <code>self.celsius = celsius</code> (not <code>self._celsius</code>) so construction is validated too.</p>`,
+        R`<p>Hint 3: <code>bool</code> is a subclass of <code>int</code>, so reject it explicitly. Validate before assigning so a failed write leaves the old value. With no <code>@celsius.deleter</code>, <code>del t.celsius</code> already raises <code>AttributeError</code>: the property is a data descriptor and wins over the instance dict.</p>`
+      ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['t = Temperature(100)', 't.celsius', 't.fahrenheit', 't.kelvin', 't']],
+         ['100.0', '212.0', '373.15', 'Temperature(celsius=100.0)']],
+        [[['t = Temperature()', 't.fahrenheit = -40', 't.celsius', 't.fahrenheit = 212', 't.celsius', 't.kelvin = 0', 't.celsius']],
+         ['-40.0', '100.0', '-273.15']],
+        [[['t = Temperature(-40)', 't.kelvin = -1', 't.celsius', 't.celsius = -300', 't.celsius', 't.fahrenheit = -500', 't.fahrenheit']],
+         ['!ValueError', '-40.0', '!ValueError', '-40.0', '!ValueError', '-40.0']],
+        [[['Temperature(-273.16)', 'Temperature(-273.15).kelvin', 'Temperature("hot")', 'Temperature(True)']],
+         ['!ValueError', '0.0', '!TypeError', '!TypeError']],
+        [[['t = Temperature(25)', 't.celsius = "warm"', 't.celsius', 'del t.celsius', 't.celsius', 'list(vars(t))']],
+         ['!TypeError', '25.0', '!AttributeError', '25.0', "['_celsius']"]],
+        [[['isinstance(Temperature.__dict__["fahrenheit"], property)', 'Temperature.kelvin.fset is not None', 't = Temperature(0)', 't.kelvin', 't.fahrenheit']],
+         ['True', 'True', '273.15', '32.0']],
+        [[['t = Temperature(37)', 'type(t.celsius).__name__', 't.fahrenheit = 50', 't.celsius', 't']],
+         ["'float'", '10.0', 'Temperature(celsius=10.0)']],
+      ] },
+      solution: {
+        approach: R`<p>One stored attribute, <code>_celsius</code>, and three properties. The <code>celsius</code> setter is the only place that validates and assigns; the <code>fahrenheit</code> and <code>kelvin</code> setters convert to Celsius and assign through <code>self.celsius</code>, and so does <code>__init__</code>. The getters compute on demand, so the units cannot drift apart. No deleter is defined, so <code>del</code> fails.</p>`,
+        code: { lang: 'python', run: true, code: R`
+ABS_ZERO_C = -273.15
+
+class Temperature:
+    def __init__(self, celsius=0.0):
+        self.celsius = celsius                     # goes through the validating setter
+
+    @property
+    def celsius(self):
+        return self._celsius
+
+    @celsius.setter
+    def celsius(self, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError(f"temperature must be a number, got {type(value).__name__}")
+        if value < ABS_ZERO_C:
+            raise ValueError(f"{value} °C is below absolute zero")
+        self._celsius = float(value)               # assign only after both checks pass
+
+    @property
+    def fahrenheit(self):
+        return self._celsius * 9 / 5 + 32
+
+    @fahrenheit.setter
+    def fahrenheit(self, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("temperature must be a number")
+        self.celsius = (value - 32) * 5 / 9
+
+    @property
+    def kelvin(self):
+        return self._celsius + 273.15
+
+    @kelvin.setter
+    def kelvin(self, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("temperature must be a number")
+        self.celsius = value - 273.15
+
+    def __repr__(self):
+        return f"Temperature(celsius={self._celsius!r})"
+
+t = Temperature(100)
+print(t.fahrenheit, t.kelvin)        # 212.0 373.15
+t.fahrenheit = -40
+print(t)                             # Temperature(celsius=-40.0)
+try:
+    t.kelvin = -1
+except ValueError as e:
+    print("ValueError:", e, "| still", t.celsius)
+` },
+        dry: { head: ['statement', 'what runs', 'result'], rows: [
+          ['Temperature(100)', '__init__ → celsius setter: checks pass', '_celsius = 100.0'],
+          ['t.fahrenheit', 'fahrenheit getter: 100 × 9/5 + 32', '212.0'],
+          ['t.fahrenheit = -40', 'fahrenheit setter → (−40 − 32) × 5/9 = −40 → celsius setter', '_celsius = -40.0'],
+          ['t.kelvin = -1', 'kelvin setter → −274.15 → celsius setter raises', 'ValueError; _celsius unchanged'],
+          ['del t.celsius', 'property has no fdel', 'AttributeError']
+        ] },
+        complexity: R`<p>Every read and write is O(1); memory is one float per object.</p>`,
+        followUps: ['Cache an expensive derived value with <code>functools.cached_property</code>: how do you invalidate it when <code>celsius</code> changes?', 'Many classes need the same "number ≥ lower bound" check: turn it into a reusable descriptor with <code>__set_name__</code>', 'Should <code>Temperature</code> be immutable (frozen dataclass with conversion methods) instead? Discuss the trade-off for a thermostat API']
+      }
+    }],
   });
 
   /* ======================================================================
@@ -2734,7 +2847,100 @@ except ValueError as e:
       <p><b>ABC vs Protocol in modern codebases.</b> ABCs: runtime enforcement, mixins, explicit opt-in, good for frameworks you own. Protocols (PEP 544): static, structural, no coupling to your package, good for "accept anything that looks like X" in libraries and for typing third-party objects; but <code>runtime_checkable</code> only verifies attribute presence (not signatures), and <code>issubclass()</code> raises <code>TypeError</code> for protocols that declare non-method (data) members. Many teams use both: a <code>Protocol</code> for type hints at the boundary and an ABC as the convenient base class with shared helpers. Do not over-abstract: Python's duck typing means a one-implementation ABC is usually ceremony; introduce the contract when the second or third implementation appears or when plugins come from other teams.</p>`,
     aiEra: R`<p>🤖 <b>What AI changes:</b> asking an assistant for "a plugin system" often yields a deep ABC hierarchy with five abstract layers. Your role is to cut it down: one small contract, maybe a Protocol, and composition elsewhere. On the flip side, AI is good at generating fake/test implementations of an ABC, which makes contract-first design cheaper than ever.</p>
       <p><b>Prompts that help:</b> <code>Given this StorageBackend ABC, generate an in-memory fake implementation and a pytest suite that runs the same contract tests against every subclass (parametrize over implementations).</code> Contract tests ensure every backend honours the ABC beyond just "methods exist". Also useful: <code>Convert this ABC to a typing.Protocol and tell me what runtime guarantees I lose.</code></p>
-      <p><b>Where AI goes wrong:</b> subclasses <code>dict</code> for a custom mapping (then <code>get</code>/<code>update</code> skip the overrides) instead of <code>MutableMapping</code>; uses <code>raise NotImplementedError</code> bodies without <code>ABC</code> (no fail-fast); stacks <code>@abstractmethod</code> outside <code>@property</code> (wrong order); believes <code>register()</code> checks methods or provides mixins; or assumes <code>runtime_checkable</code> verifies signatures. <b>What you must own:</b> knowing which <code>collections.abc</code> class to inherit for a given container and which methods it needs.</p>`
+      <p><b>Where AI goes wrong:</b> subclasses <code>dict</code> for a custom mapping (then <code>get</code>/<code>update</code> skip the overrides) instead of <code>MutableMapping</code>; uses <code>raise NotImplementedError</code> bodies without <code>ABC</code> (no fail-fast); stacks <code>@abstractmethod</code> outside <code>@property</code> (wrong order); believes <code>register()</code> checks methods or provides mixins; or assumes <code>runtime_checkable</code> verifies signatures. <b>What you must own:</b> knowing which <code>collections.abc</code> class to inherit for a given container and which methods it needs.</p>`,
+    problems: [{
+      title: 'Arithmetic progression as a real Sequence (2 methods, 5 free)',
+      level: 'Medium', tags: ['collections.abc', 'Sequence', 'mixin methods', 'abstractmethod'], companies: ['Google', 'Bloomberg', 'Meta'],
+      statement: R`<p>Implement <code>Progression(start, step, n)</code>: the <code>n</code> numbers <code>start, start+step, …</code>, stored in O(1) memory (never build the list). Inherit from <code>collections.abc.Sequence</code> and implement only <code>__len__</code>, <code>__getitem__</code> and <code>__repr__</code>; then <code>in</code>, iteration, <code>reversed()</code>, <code>index</code> and <code>count</code> must work through the inherited mixins.</p>
+        <ul><li><code>n &lt; 0</code> raises <code>ValueError</code>.</li>
+        <li><code>p[i]</code> supports negative indices and raises <code>IndexError</code> when out of range; a non-integer index raises <code>TypeError</code>.</li>
+        <li><code>p[a:b:c]</code> returns a new <code>Progression</code> (any slice of a progression is a progression).</li>
+        <li><code>repr</code> → <code>Progression(3, 4, 5)</code>.</li></ul>`,
+      constraints: R`−10<sup>9</sup> ≤ start, step ≤ 10<sup>9</sup>; 0 ≤ n ≤ 10<sup>12</sup> (so materialising a list is impossible).`,
+      example: R`<p><code>p = Progression(3, 4, 5)</code> is 3, 7, 11, 15, 19<br><code>11 in p</code> → ${H.c('g', 'True')} · <code>p.index(15)</code> → ${H.c('g', '3')} · <code>list(reversed(p))</code> → ${H.c('g', '[19, 15, 11, 7, 3]')}<br><code>p[::-2]</code> → ${H.c('b', 'Progression(19, -8, 3)')} · <code>p[5]</code> → ${H.c('r', 'IndexError')}</p>`,
+      brute: {
+        why: R`<p>Writing a plain class with only <code>__getitem__</code>/<code>__len__</code> makes <code>in</code> and iteration work through the old fallback, but <code>reversed</code> needs <code>__len__</code> too, <code>index</code>/<code>count</code> are missing, <code>isinstance(p, Sequence)</code> is False and nothing flags a forgotten method. The other brute force, storing <code>list(range(...))</code>, costs O(n) memory and dies at n = 10<sup>12</sup>.</p>`,
+        code: R`
+          class ProgressionBrute:
+              def __init__(self, start, step, n):
+                  self.items = [start + step * i for i in range(n)]   # O(n) memory
+              def __len__(self):
+                  return len(self.items)
+              def __getitem__(self, i):
+                  return self.items[i]
+
+          p = ProgressionBrute(3, 4, 5)
+          print(11 in p, list(reversed(p)))
+          print(hasattr(p, "index"))      # False: no free index/count
+        `
+      },
+      mcq: { q: 'Your class inherits <code>collections.abc.Sequence</code> and defines only <code>__len__</code>. What happens on <code>Progression(1, 1, 3)</code>?', options: ['<code>TypeError</code> at creation: <code>__getitem__</code> is still abstract', 'It is created; <code>p[0]</code> later raises <code>NotImplementedError</code>', 'It is created; <code>p[0]</code> later raises <code>AttributeError</code>', 'It works, because <code>Sequence</code> provides a default <code>__getitem__</code> built on <code>__iter__</code>'], answer: 0, explain: '<code>Sequence.__abstractmethods__</code> is <code>{\'__getitem__\', \'__len__\'}</code>. While any abstract method is unimplemented, instantiation fails immediately with <code>TypeError</code>; that fail-fast check is the point of an ABC.' },
+      hints: [
+        R`<p>Hint 1: <code>Sequence</code> requires exactly <code>__getitem__</code> and <code>__len__</code>. The mixins (<code>__contains__</code>, <code>__iter__</code>, <code>__reversed__</code>, <code>index</code>, <code>count</code>) call those two, and <code>__iter__</code> stops at <code>IndexError</code>, so raising it correctly matters.</p>`,
+        R`<p>Hint 2: For an int <code>i</code>: if <code>i &lt; 0</code> add <code>n</code>; if still outside <code>[0, n)</code> raise <code>IndexError</code>; return <code>start + step * i</code>. Reject <code>bool</code>/non-int with <code>TypeError</code> (or accept anything with <code>__index__</code> via <code>operator.index</code>).</p>`,
+        R`<p>Hint 3: For a slice, let Python do the clamping: <code>r = range(self.n)[s]</code> is a range of the chosen indices. Then the result is <code>Progression(start + step * r.start, step * r.step, len(r))</code>. Note <code>Sequence</code> gives no <code>__eq__</code>, so <code>p == [3, 7, …]</code> is False (identity comparison).</p>`
+      ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['p = Progression(3, 4, 5)', 'list(p)', 'len(p)', 'p', 'p[0]', 'p[-1]']],
+         ['[3, 7, 11, 15, 19]', '5', 'Progression(3, 4, 5)', '3', '19']],
+        [[['p = Progression(3, 4, 5)', '11 in p', '12 in p', 'p.index(15)', 'p.count(7)', 'list(reversed(p))', 'p.index(12)']],
+         ['True', 'False', '3', '1', '[19, 15, 11, 7, 3]', '!ValueError']],
+        [[['p = Progression(3, 4, 5)', 'p[1:4]', 'p[::-2]', 'list(p[::-2])', 'p[10:]', 'list(p[-2:])']],
+         ['Progression(7, 4, 3)', 'Progression(19, -8, 3)', '[19, 11, 3]', 'Progression(23, 4, 0)', '[15, 19]']],
+        [[['p = Progression(3, 4, 5)', 'p[5]', 'p[-6]', 'p["1"]', 'Progression(1, 1, -1)']],
+         ['!IndexError', '!IndexError', '!TypeError', '!ValueError']],
+        [[['e = Progression(10, 3, 0)', 'len(e)', 'list(e)', 'bool(e)', '10 in e', 'Progression(0, 0, 3).count(0)']],
+         ['0', '[]', 'False', 'False', '3']],
+        [[['from collections.abc import Sequence', 'isinstance(Progression(1, 1, 1), Sequence)', 'sorted(Sequence.__abstractmethods__)', 'Half = type("Half", (Sequence,), {"__len__": lambda self: 0})', 'Half()']],
+         ['True', "['__getitem__', '__len__']", '!TypeError']],
+        [[['big = Progression(0, 2, 10**12)', 'len(big)', 'big[-1]', 'big[10**11]', 'Progression(1, 1, 3) == [1, 2, 3]']],
+         ['1000000000000', '1999999999998', '200000000000', 'False']],
+      ] },
+      solution: {
+        approach: R`<p>Store three ints. <code>__len__</code> returns <code>n</code>; <code>__getitem__</code> handles a slice by reusing <code>range(n)[s]</code> to compute the selected index range and mapping it back to a progression, and handles an int by normalising a negative index and bounds-checking. Everything else (<code>in</code>, iteration, <code>reversed</code>, <code>index</code>, <code>count</code>) is inherited from <code>Sequence</code> and works because <code>IndexError</code> is raised at the end.</p>`,
+        code: { lang: 'python', run: true, code: R`
+from collections.abc import Sequence
+
+class Progression(Sequence):
+    def __init__(self, start, step, n):
+        if n < 0:
+            raise ValueError("n must be >= 0")
+        self.start, self.step, self.n = start, step, n
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            r = range(self.n)[i]                   # Python clamps the slice for us
+            return Progression(self.start + self.step * r.start, self.step * r.step, len(r))
+        if isinstance(i, bool) or not isinstance(i, int):
+            raise TypeError(f"indices must be integers or slices, not {type(i).__name__}")
+        if i < 0:
+            i += self.n
+        if not 0 <= i < self.n:
+            raise IndexError("Progression index out of range")   # ends the free __iter__
+        return self.start + self.step * i
+
+    def __repr__(self):
+        return f"Progression({self.start}, {self.step}, {self.n})"
+
+p = Progression(3, 4, 5)
+print(list(p), 11 in p, p.index(15), p.count(7))   # free mixins
+print(list(reversed(p)), p[::-2], p[1:4])
+print(Progression(0, 2, 10**12)[-1])                # O(1) memory
+` },
+        dry: { head: ['expression', 'who answers', 'result'], rows: [
+          ['list(p)', 'Sequence.__iter__: p[0], p[1], … until IndexError at p[5]', '[3, 7, 11, 15, 19]'],
+          ['11 in p', 'Sequence.__contains__: iterates and compares', 'True'],
+          ['p.index(15)', 'Sequence.index: loops __getitem__', '3'],
+          ['list(reversed(p))', 'Sequence.__reversed__: len(p)−1 down to 0', '[19, 15, 11, 7, 3]'],
+          ['p[::-2]', 'range(5)[::-2] = range(4, -1, -2) → start 3+4·4, step −8, len 3', 'Progression(19, -8, 3)']
+        ] },
+        complexity: R`<p>O(1) memory; <code>len</code>, indexing and slicing O(1); the inherited <code>in</code>/<code>index</code>/<code>count</code> are O(n) scans.</p>`,
+        followUps: ['Override <code>__contains__</code> and <code>index</code> with O(1) arithmetic (watch <code>step == 0</code>); why is overriding a mixin allowed and encouraged?', 'Add <code>__eq__</code> and <code>__hash__</code> so two progressions with the same elements are equal (how does <code>range</code> do it?)', 'Write the same contract as a <code>typing.Protocol</code>: what do you lose at runtime?']
+      }
+    }],
   });
 
   /* ======================================================================
@@ -2938,7 +3144,105 @@ except ValueError as e:
       <p><b>Alternatives at scale.</b> For truly large homogeneous data, objects of any kind are the wrong tool: use <code>array</code>, NumPy structured arrays, pandas/Polars columns, or tuples. A slotted object with 3 floats is ~57 bytes plus three 24-byte float objects (~130 B total), whereas a NumPy array stores the same as 24 bytes. Measure with <code>tracemalloc</code> or <code>pympler</code>, not <code>sys.getsizeof</code> (which counts only the shallow object). Other caveats: <code>__class__</code> assignment requires compatible layouts; slotted classes cannot use <code>cached_property</code> without <code>'__dict__'</code>; and some libraries (old copy/pickle helpers, ORMs) expect <code>__dict__</code>.</p>`,
     aiEra: R`<p>🤖 <b>What AI changes:</b> assistants sprinkle <code>__slots__</code> or <code>slots=True</code> as a "performance best practice" everywhere. The modern judgement is quantitative: on 3.11+ the gain per object is smaller than older blog posts claim, so measure before trading flexibility.</p>
       <p><b>Prompts that help:</b> <code>Write a tracemalloc benchmark that creates 1,000,000 instances of my class with and without slots and prints bytes per object, then tell me if slots are worth it here.</code> Also: <code>Check this class hierarchy: does every subclass declare __slots__? Will any mixin cause a layout conflict? Do any methods rely on __dict__ (vars, cached_property, setattr of dynamic names)?</code></p>
-      <p><b>Where AI goes wrong:</b> repeats parent slot names in a subclass (wastes space and shadows descriptors), forgets slots in one subclass (silently reintroducing <code>__dict__</code>), adds default values as class attributes (ValueError), combines <code>cached_property</code> with slots, or cites pre-3.11 savings as current fact. <b>What you must own:</b> the layout model (member descriptors at fixed offsets, no dict), the inheritance rule, and the ability to measure memory properly.</p>`
+      <p><b>Where AI goes wrong:</b> repeats parent slot names in a subclass (wastes space and shadows descriptors), forgets slots in one subclass (silently reintroducing <code>__dict__</code>), adds default values as class attributes (ValueError), combines <code>cached_property</code> with slots, or cites pre-3.11 savings as current fact. <b>What you must own:</b> the layout model (member descriptors at fixed offsets, no dict), the inheritance rule, and the ability to measure memory properly.</p>`,
+    problems: [{
+      title: 'Particle hierarchy with no stray attributes',
+      level: 'Medium', tags: ['__slots__', 'inheritance', 'member descriptor', 'memory'], companies: ['NVIDIA', 'Jane Street', 'Unity'],
+      statement: R`<p>A physics simulation creates millions of particles. Write <code>Particle(x, y)</code> and its subclass <code>Charged(x, y, q)</code> using <code>__slots__</code> so that:</p>
+        <ul><li>no instance of either class has a <code>__dict__</code>; assigning an unknown attribute (a typo such as <code>p.vx</code>) raises <code>AttributeError</code>;</li>
+        <li><code>Charged</code> declares <b>only its new slot</b> (<code>'q'</code>), not the parent's;</li>
+        <li><code>p.move(dx, dy)</code> shifts the particle in place and returns <code>None</code>;</li>
+        <li><code>repr</code> → <code>Particle(1, 2)</code> and <code>Charged(1, 2, q=-1)</code>.</li></ul>
+        <p>Instances do not need weak-reference support.</p>`,
+      constraints: R`Up to 10<sup>6</sup> live particles; coordinates and charge are numbers.`,
+      example: R`<p><code>p = Particle(1, 2); p.move(2, 3); p</code> → ${H.c('g', 'Particle(3, 5)')}<br><code>p.vx = 1</code> → ${H.c('r', 'AttributeError')} · <code>hasattr(Charged(0, 0, 1), "__dict__")</code> → ${H.c('g', 'False')}<br><code>Charged.__slots__</code> → ${H.c('b', "('q',)")}</p>`,
+      brute: {
+        why: R`<p>Plain classes give every particle an attribute dict (created lazily on 3.11+, but still a dict the moment anyone touches <code>__dict__</code>), so a typo like <code>p.vx = 1</code> silently creates a new attribute and the bug shows up as wrong physics. A common half-fix, putting <code>__slots__</code> only on the base class, brings the dict straight back in every subclass instance.</p>`,
+        code: R`
+          class Particle:
+              __slots__ = ("x", "y")
+              def __init__(self, x, y):
+                  self.x, self.y = x, y
+
+          class Charged(Particle):                 # forgot __slots__!
+              def __init__(self, x, y, q):
+                  super().__init__(x, y)
+                  self.q = q
+
+          c = Charged(0, 0, 1)
+          c.vx = 5                                 # typo accepted silently
+          print(hasattr(c, "__dict__"), c.__dict__)
+        `
+      },
+      mcq: { q: '<code>Particle</code> has <code>__slots__ = ("x", "y")</code>. Which <code>Charged(Particle)</code> definition keeps instances dict-free without wasting space?', options: ['<code>__slots__ = ("q",)</code>', '<code>__slots__ = ("x", "y", "q")</code>', 'No <code>__slots__</code>: it is inherited from <code>Particle</code>', '<code>__slots__ = ("q", "__dict__")</code>'], answer: 0, explain: 'Each class lists only its new names; parent slots are reused through the MRO. Repeating <code>x</code>/<code>y</code> adds duplicate storage that shadows the parent\'s descriptors; omitting <code>__slots__</code> gives the subclass a <code>__dict__</code> again; listing <code>"__dict__"</code> deliberately re-enables it.' },
+      hints: [
+        R`<p>Hint 1: <code>__slots__ = ("x", "y")</code> in <code>Particle</code> replaces the per-instance dict with two fixed fields, each exposed as a <code>member_descriptor</code> on the class.</p>`,
+        R`<p>Hint 2: The subclass must declare <code>__slots__</code> too, otherwise it gets a <code>__dict__</code> back. List only the new name: <code>__slots__ = ("q",)</code>, and call <code>super().__init__(x, y)</code>.</p>`,
+        R`<p>Hint 3: Do not give a slot a class-level default (<code>x = 0</code> next to <code>__slots__ = ("x",)</code> raises <code>ValueError</code> at class creation). Without <code>"__weakref__"</code> in the slots, <code>weakref.ref(p)</code> raises <code>TypeError</code>, which this spec allows. A slot that was never assigned (or was deleted) raises <code>AttributeError</code> on read.</p>`
+      ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['p = Particle(1, 2)', 'p', 'p.move(2, 3)', 'p', '(p.x, p.y)']],
+         ['Particle(1, 2)', 'Particle(3, 5)', '(3, 5)']],
+        [[['p = Particle(1, 2)', 'p.vx = 1', 'hasattr(p, "__dict__")', 'vars(p)', 'p.x = 10', 'p.x']],
+         ['!AttributeError', 'False', '!TypeError', '10']],
+        [[['c = Charged(1, 2, -1)', 'c', 'c.q', 'c.move(-1, -2)', 'c', 'c.w = 0', 'hasattr(c, "__dict__")']],
+         ['Charged(1, 2, q=-1)', '-1', 'Charged(0, 0, q=-1)', '!AttributeError', 'False']],
+        [[['Particle.__slots__', 'Charged.__slots__', 'type(Particle.__dict__["x"]).__name__', '"x" in Charged.__dict__', 'isinstance(Charged(0, 0, 0), Particle)']],
+         ["('x', 'y')", "('q',)", "'member_descriptor'", 'False', 'True']],
+        [[['import weakref', 'p = Particle(0, 0)', 'weakref.ref(p)', 'del p.x', 'p.x', 'p.y']],
+         ['!TypeError', '!AttributeError', '0']],
+        [[['Loose = type("Loose", (Particle,), {})', 'z = Loose(1, 1)', 'z.extra = 5', 'z.extra', 'hasattr(z, "__dict__")', 'vars(z)']],
+         ['5', 'True', "{'extra': 5}"]],
+        [[['ps = [Charged(i, -i, i % 3) for i in range(100000)]', 'sum(c.q for c in ps)', 'any(hasattr(c, "__dict__") for c in ps)', 'ps[-1]']],
+         ['99999', 'False', 'Charged(99999, -99999, q=0)']],
+      ] },
+      solution: {
+        approach: R`<p>Declare <code>__slots__ = ("x", "y")</code> on the base and <code>__slots__ = ("q",)</code> on the subclass. Every class in the hierarchy (except <code>object</code>) declares slots, so no instance gets a <code>__dict__</code> or <code>__weakref__</code>; attributes live at fixed offsets reached through member descriptors, and unknown names have nowhere to go.</p>`,
+        code: { lang: 'python', run: true, code: R`
+class Particle:
+    __slots__ = ("x", "y")                       # no __dict__, no __weakref__
+
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+    def move(self, dx, dy):
+        self.x += dx
+        self.y += dy
+
+    def __repr__(self):
+        return f"Particle({self.x!r}, {self.y!r})"
+
+class Charged(Particle):
+    __slots__ = ("q",)                           # only the NEW slot
+
+    def __init__(self, x, y, q):
+        super().__init__(x, y)
+        self.q = q
+
+    def __repr__(self):
+        return f"Charged({self.x!r}, {self.y!r}, q={self.q!r})"
+
+p = Particle(1, 2)
+p.move(2, 3)
+print(p)                                         # Particle(3, 5)
+c = Charged(1, 2, -1)
+print(c, hasattr(c, "__dict__"))                 # Charged(1, 2, q=-1) False
+try:
+    c.vx = 1
+except AttributeError as e:
+    print("AttributeError:", e)
+` },
+        dry: { head: ['statement', 'what happens', 'result'], rows: [
+          ['class Charged(Particle): __slots__ = ("q",)', 'type.__new__ adds one member descriptor q; x, y come from Particle', 'layout: header + x + y + q'],
+          ['Charged(1, 2, -1)', 'Particle.__init__ sets x, y via descriptors; then q', 'Charged(1, 2, q=-1)'],
+          ['c.vx = 1', 'no descriptor vx, no __dict__ to fall back to', 'AttributeError'],
+          ['del p.x; p.x', 'slot emptied; member descriptor finds nothing', 'AttributeError'],
+          ['type("Loose", (Particle,), {})', 'subclass without __slots__ gets __dict__ again', 'stray attributes allowed']
+        ] },
+        complexity: R`<p>O(1) per attribute access; memory per particle is a fixed object header plus one pointer per slot, with no dict.</p>`,
+        followUps: ['Measure bytes per object with <code>tracemalloc</code> for 10<sup>6</sup> particles with and without slots on your Python version', 'Write the same classes as <code>@dataclass(slots=True)</code>: why does the decorator have to build a new class?', 'Add a second slotted base <code>Tagged</code> with its own non-empty slots and inherit from both: what error do you get and why?']
+      }
+    }],
   });
 
   /* ======================================================================

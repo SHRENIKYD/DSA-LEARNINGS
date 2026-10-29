@@ -301,7 +301,46 @@ readonly record struct Key(int A, int B);` }
 <p><b>Nullable boxing.</b> Boxing ${C('int?')} gives null or a boxed ${C('int')}; unboxing a boxed int to ${C('int?')} is allowed.</p>
 <p><b>Interpolated string handlers (C# 10).</b> ${C('$"{x}"')} compiles to ${C('DefaultInterpolatedStringHandler.AppendFormatted<T>(x)')}, a generic method — no boxing for value types, and with ${C('ISpanFormattable')} not even a temporary string.</p>
 <p><b>Finding boxing.</b> Look for ${C('box')} instructions in IL (ILSpy / SharpLab), use the "Heap Allocations Viewer" analyzers, or the allocation tab of a profiler (dotMemory, PerfView, Visual Studio). ${C('GC.GetAllocatedBytesForCurrentThread()')} is a quick test probe.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI writes modern generic code by default, so obvious ArrayList boxing is rare; subtle boxing (struct to interface, ${C('object')} parameters in logging APIs) remains. <b>Use AI as a partner:</b> <code>Find every boxing conversion in this hot loop and explain each</code>. <b>Where AI goes wrong:</b> claiming string interpolation always boxes (not since C# 10), recommending struct keys without IEquatable, comparing boxed values with ==. <b>What you must still own:</b> knowing which paths are hot enough for boxing to matter, and confirming with a profiler.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI writes modern generic code by default, so obvious ArrayList boxing is rare; subtle boxing (struct to interface, ${C('object')} parameters in logging APIs) remains. <b>Use AI as a partner:</b> <code>Find every boxing conversion in this hot loop and explain each</code>. <b>Where AI goes wrong:</b> claiming string interpolation always boxes (not since C# 10), recommending struct keys without IEquatable, comparing boxed values with ==. <b>What you must still own:</b> knowing which paths are hot enough for boxing to matter, and confirming with a profiler.</p>`,
+    problems: [{
+      title: 'Count the Boxes', level: 'Easy', tags: ['boxing', 'allocations'], companies: ['Microsoft', 'Unity'],
+      statement: `<p>Each string in ${C('ops')} names one line of code acting on an ${C('int i')} (or a struct ${C('s')}). Return ${C('[boxes, bytes]')}: how many boxing allocations the sequence performs and how many heap bytes they take on 64-bit .NET 8 (24 bytes per boxed int). The operations are:</p>
+<ul><li>${C('objAssign')} — ${C('object o = i;')}</li><li>${C('objCopy')} — ${C('object o2 = o;')}</li><li>${C('arrayListAdd')} — ${C('arrayList.Add(i);')}</li><li>${C('listIntAdd')} — ${C('listOfInt.Add(i);')}</li><li>${C('unbox')} — ${C('int j = (int)o;')}</li><li>${C('interfaceCast')} — ${C('IComparable c = s;')}</li><li>${C('genericCall')} — ${C('Max<T>(s, s) where T : IComparable<T>')}</li><li>${C('formatObject')} — ${C('string.Format("{0}", i)')}</li><li>${C('interpolate')} — ${C('$"{i}"')} (C# 10+)</li><li>${C('toString')} — ${C('i.ToString()')}</li><li>${C('equalsObject')} — ${C('i.Equals((object)j)')}</li></ul>`,
+      constraints: `0 ≤ ops.Length ≤ 10<sup>5</sup>; every op is one of the names above`,
+      example: `<p>[objAssign, objCopy, unbox] → ${C('[1, 24]')}: only the first line converts a value type to ${C('object')}; copying the reference and unboxing allocate nothing.</p>`,
+      brute: { why: `<p>The "everything that touches object boxes" model counts objCopy and unbox too, and the "only ArrayList boxes" model misses interface casts and object parameters. Both give wrong counts — the rule is: a box is allocated exactly when a value type is converted to ${C('object')} or an interface.</p>`, code: R`
+static int[] Guess(string[] ops) => new[] { ops.Length, ops.Length * 24 }; // "every line boxes"` },
+      mcq: { q: 'Why does $"{i}" not box i in C# 10 and later?', options: ['It compiles to a generic AppendFormatted&lt;T&gt; call on an interpolated string handler', 'The compiler caches boxed ints', 'Interpolation calls string.Format(string, object) with a pooled box', 'int is a reference type inside strings'], answer: 0, explain: 'DefaultInterpolatedStringHandler.AppendFormatted&lt;T&gt;(T value) is generic, so the int is passed as an int and formatted via ISpanFormattable — no object conversion.' },
+      hints: [`<p>Ask of each line: is a value type being converted to ${C('object')} or to an interface type?</p>`, `<p>Five of the names box: ${C('objAssign')}, ${C('arrayListAdd')}, ${C('interfaceCast')}, ${C('formatObject')} and ${C('equalsObject')} (the ${C('(object)j')} cast).</p>`, `<p>Put the boxing names in a ${C('HashSet<string>')}, count matches, multiply by 24.</p>`],
+      solution: {
+        approach: `<p>Boxing happens only on a value-type-to-object/interface conversion. Classify each op once with a set of the boxing operations and count; each box of an int is 24 bytes (8 header + 8 method table + 4 value + 4 padding).</p>`,
+        code: R`
+public class Solution
+{
+    private static readonly HashSet<string> Boxing =
+        ["objAssign", "arrayListAdd", "interfaceCast", "formatObject", "equalsObject"];
+
+    public int[] CountBoxes(string[] ops)
+    {
+        int boxes = 0;
+        foreach (var op in ops)
+            if (Boxing.Contains(op)) boxes++;
+        return [boxes, boxes * 24];
+    }
+}`,
+        dry: { head: ['op', 'boxes?', 'total'], rows: [['objAssign', 'yes (int → object)', '1'], ['objCopy', 'no (reference copy)', '1'], ['unbox', 'no (copy out of the box)', '1 → [1, 24]']] },
+        complexity: `<p>O(n) time, O(1) extra space.</p>`,
+        followUps: ['Which of these lines would a struct implementing IComparable&lt;T&gt; avoid boxing on with a constrained generic?', 'How would you confirm the count with GC.GetAllocatedBytesForCurrentThread()?']
+      },
+      tests: { sig: 'string[] -> int[]', fn: 'countBoxes', cases: [
+        [[['objAssign', 'objCopy', 'unbox']], [1, 24]],
+        [[[]], [0, 0]],
+        [[['arrayListAdd', 'arrayListAdd', 'arrayListAdd']], [3, 72]],
+        [[['listIntAdd', 'genericCall', 'interpolate', 'toString']], [0, 0]],
+        [[['interfaceCast', 'formatObject', 'equalsObject', 'unbox']], [3, 72]],
+        [[['objAssign', 'objCopy', 'objCopy', 'arrayListAdd', 'listIntAdd', 'interpolate', 'formatObject', 'equalsObject']], [4, 96]]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -417,7 +456,74 @@ GC.KeepAlive(junk);` }
 <p><b>Regions (.NET 7+).</b> The heap is managed in regions (4 MB small, 32 MB large by default) instead of fixed segments, letting generations grow and shrink flexibly and returning memory to the OS more easily.</p>
 <p><b>Allocation budget.</b> Gen0 size is tuned dynamically (roughly related to L3 cache size). ${C('GCHeapAffinitizeMask')}, ${C('GCHeapCount')} and ${C('GCConserveMemory')} tune server GC in containers. In containers the GC respects cgroup memory limits (heap hard limit defaults to 75% of the container limit).</p>
 <p><b>LOH compaction.</b> ${C('GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce')} compacts the LOH at the next full GC. The 85,000-byte threshold can be raised with ${C('GCLOHThreshold')}.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI is good at reading a dotnet-counters or PerfView summary and suggesting where allocations come from. <b>Use AI as a partner:</b> paste a GC trace summary and ask <code>Which objects are surviving to gen2 and why?</code> <b>Where AI goes wrong:</b> recommending ${C('GC.Collect()')} calls, finalizers "to help the GC", or setting objects to null at the end of methods (pointless — the JIT already knows the last use). <b>What you must still own:</b> measuring GC behaviour under realistic load and fixing the root cause (object lifetimes), not the symptom.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI is good at reading a dotnet-counters or PerfView summary and suggesting where allocations come from. <b>Use AI as a partner:</b> paste a GC trace summary and ask <code>Which objects are surviving to gen2 and why?</code> <b>Where AI goes wrong:</b> recommending ${C('GC.Collect()')} calls, finalizers "to help the GC", or setting objects to null at the end of methods (pointless — the JIT already knows the last use). <b>What you must still own:</b> measuring GC behaviour under realistic load and fixing the root cause (object lifetimes), not the symptom.</p>`,
+    problems: [{
+      title: 'Generations and the LOH Threshold', level: 'Medium', tags: ['GC', 'generations', 'LOH', 'simulation'], companies: ['Microsoft', 'Google'],
+      statement: `<p>Simulate where objects end up. Each op is one of:</p>
+<ul><li>${C('alloc name size')} — allocate a reachable object of ${C('size')} bytes: in gen 0, or on the <b>LOH</b> if size ≥ 85,000;</li><li>${C('drop name')} — the object becomes unreachable;</li><li>${C('gc0')}, ${C('gc1')}, ${C('gc2')} — collect generations 0..N (the LOH only with ${C('gc2')}): unreachable objects there are freed, reachable small objects are promoted one generation (gen 2 stays gen 2), LOH objects stay on the LOH.</li></ul>
+<p>Return one entry per allocated object, in allocation order: ${C('"name:gen0"')}, ${C('"name:gen1"')}, ${C('"name:gen2"')}, ${C('"name:LOH"')} or ${C('"name:freed"')}.</p>`,
+      constraints: `up to 10<sup>4</sup> ops; names are distinct; 1 ≤ size ≤ 10<sup>9</sup>; drop only names live objects`,
+      example: `<p>[alloc big 100000, drop big, gc0, gc1] → ${C('["big:LOH"]')}: the dead large object is not reclaimed until a full (gen 2) collection.</p>`,
+      brute: { why: `<p>Treating every collection as full (free all unreachable objects everywhere) gives "big:freed" above — the common misconception that dropping the last reference and "a GC" reclaims memory. Ephemeral collections never look at gen 2 or the LOH.</p>`, code: R`
+// wrong model: every gcN frees every dead object and LOH is just "gen 0 but big"` },
+      mcq: { q: 'A 100,000-byte byte[] is allocated and survives one gen 0 collection. Where is it?', options: ['On the LOH, logically part of gen 2 — it was never in gen 0', 'Gen 1', 'Gen 0', 'On the stack'], answer: 0, explain: 'Objects of 85,000 bytes or more are allocated directly on the Large Object Heap and are only collected with gen 2; they are not promoted through gens 0 and 1.' },
+      hints: [`<p>Keep, per name, a record ${C('(int Gen, bool Live)')} where Gen 3 means LOH, plus a list of names in allocation order.</p>`, `<p>For ${C('gcN')}, an object is in scope if ${C('Gen <= N')}, or if ${C('N == 2')} and it is on the LOH.</p>`, `<p>In scope and dead → freed; in scope and alive and small → ${C('Math.Min(Gen + 1, 2)')}.</p>`],
+      solution: {
+        approach: `<p>Track generation and reachability per object. Allocation chooses gen 0 or LOH by the 85,000-byte threshold; a gcN only examines gens 0..N (and the LOH for N = 2), freeing the dead and promoting small survivors.</p>`,
+        code: R`
+public class Solution
+{
+    private const int Loh = 3;
+
+    public string[] Generations(string[] ops)
+    {
+        var objs = new Dictionary<string, (int Gen, bool Live)>();
+        var order = new List<string>();
+        var freed = new HashSet<string>();
+        foreach (var op in ops)
+        {
+            var p = op.Split(' ');
+            if (p[0] == "alloc")
+            {
+                objs[p[1]] = (long.Parse(p[2]) >= 85_000 ? Loh : 0, true);
+                order.Add(p[1]);
+            }
+            else if (p[0] == "drop")
+            {
+                objs[p[1]] = (objs[p[1]].Gen, false);
+            }
+            else
+            {
+                int g = op[2] - '0';
+                foreach (var name in objs.Keys.ToList())
+                {
+                    var (gen, live) = objs[name];
+                    bool inScope = gen == Loh ? g == 2 : gen <= g;
+                    if (!inScope) continue;
+                    if (!live) { objs.Remove(name); freed.Add(name); }
+                    else if (gen != Loh) objs[name] = (Math.Min(gen + 1, 2), true);
+                }
+            }
+        }
+        return order.Select(n => freed.Contains(n) ? n + ":freed"
+            : objs[n].Gen == Loh ? n + ":LOH" : n + ":gen" + objs[n].Gen).ToArray();
+    }
+}`,
+        dry: { head: ['op', 'x', 'y', 'z'], rows: [['alloc x 50; drop x', 'gen0 ✗', '—', '—'], ['alloc y 90000', 'gen0 ✗', 'LOH', '—'], ['gc0', 'freed', 'LOH (not examined)', '—'], ['alloc z 1; gc2', 'freed', 'LOH (alive)', 'gen1']] },
+        complexity: `<p>O(ops × live objects) in the worst case; O(objects) space.</p>`,
+        followUps: ['Add a "pin" op: pinned gen 0 survivors fragment the heap — how would you report fragmentation?', 'Model GCSettings.LargeObjectHeapCompactionMode.CompactOnce.']
+      },
+      tests: { sig: 'string[] -> string[]', fn: 'generations', cases: [
+        [[['alloc a 100', 'alloc b 100', 'drop a', 'gc0']], ['a:freed', 'b:gen1']],
+        [[['alloc big 85000', 'alloc small 84999', 'gc0', 'gc0']], ['big:LOH', 'small:gen1']],
+        [[['alloc big 100000', 'drop big', 'gc0', 'gc1']], ['big:LOH']],
+        [[['alloc big 100000', 'drop big', 'gc2']], ['big:freed']],
+        [[['alloc a 10', 'gc0', 'gc1', 'gc2', 'gc2']], ['a:gen2']],
+        [[['alloc a 10', 'gc0', 'drop a', 'gc0', 'alloc b 20', 'gc1']], ['a:freed', 'b:gen1']],
+        [[[]], []],
+        [[['alloc x 50', 'drop x', 'alloc y 90000', 'gc0', 'alloc z 1', 'gc2']], ['x:freed', 'y:LOH', 'z:gen1']]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -583,7 +689,78 @@ class Zombie
 <p><b>Exceptions in finalizers</b> crash the process. Keep them minimal and non-throwing.</p>
 <p><b>Process exit.</b> .NET Core does not run finalizers on exit, so do not rely on them to flush files — use Dispose or ${C('AppDomain.ProcessExit')} / ${C('IHostApplicationLifetime')} hooks.</p>
 <p><b>Analyzers.</b> CA1063 (implement IDisposable correctly), CA1816 (call SuppressFinalize), CA2000 (dispose objects before losing scope) and CA2213 (disposable fields should be disposed) catch most mistakes.</p>`,
-    aiEra: `<p><b>What AI changes:</b> asking for "a class that implements IDisposable" often produces the full finalizer pattern by default, even for a class owning only a ${C('HttpClient')}. <b>Use AI as a partner:</b> <code>Does this class own unmanaged resources directly? If not, simplify its dispose implementation</code>. <b>Where AI goes wrong:</b> adding finalizers to managed-only classes, touching managed fields inside the finalizer path, forgetting SuppressFinalize, or calling virtual methods from constructors in the pattern. <b>What you must still own:</b> knowing who owns each resource and choosing SafeHandle for native interop.</p>`
+    aiEra: `<p><b>What AI changes:</b> asking for "a class that implements IDisposable" often produces the full finalizer pattern by default, even for a class owning only a ${C('HttpClient')}. <b>Use AI as a partner:</b> <code>Does this class own unmanaged resources directly? If not, simplify its dispose implementation</code>. <b>Where AI goes wrong:</b> adding finalizers to managed-only classes, touching managed fields inside the finalizer path, forgetting SuppressFinalize, or calling virtual methods from constructors in the pattern. <b>What you must still own:</b> knowing who owns each resource and choosing SafeHandle for native interop.</p>`,
+    problems: [{
+      title: 'Who Gets Disposed, and When?', level: 'Medium', tags: ['IDisposable', 'using', 'finalizers'], companies: ['Microsoft', 'Stripe'],
+      statement: `<p>Simulate the cleanup of one method body. Each op is one of:</p>
+<ul><li>${C('using X')} — ${C('using var X = new Res();')} (disposed automatically at the end of the enclosing block);</li><li>${C('new X')} — ${C('var X = new Res();')} with no using;</li><li>${C('dispose X')} — an explicit ${C('X.Dispose();')};</li><li>${C('{')} and ${C('}')} — open and close a nested block. The method body itself is a block that closes after the last op.</li></ul>
+<p>${C('Res')} follows the Dispose pattern: the first Dispose releases the resource and calls ${C('GC.SuppressFinalize(this)')}; later calls do nothing. At the end of a block its using variables are disposed in <b>reverse</b> declaration order. After the method returns, every Res never disposed is finalized by the GC. Return the events: ${C('"Dispose X"')} for each real release, then ${C('"Finalize X"')} for each leftover object in creation order (the real finalizer order is unspecified; this order keeps the answer deterministic).</p>`,
+      constraints: `up to 10<sup>4</sup> ops; braces are balanced; names are distinct; dispose names an existing object`,
+      example: `<p>[using A, {, using B, new C, dispose C, }, using D, dispose A] → ${C('["Dispose C", "Dispose B", "Dispose A", "Dispose D"]')}. At the method's end D is disposed, then A again — a no-op.</p>`,
+      brute: { why: `<p>Disposing using variables in declaration order, or reporting A twice, are the typical mistakes. A correct model needs a stack of blocks and an idempotent "disposed" flag per object.</p>`, code: R`
+// wrong: forward order and no idempotency
+// foreach (var name in usingsInBlock) events.Add("Dispose " + name);` },
+      mcq: { q: 'Why does Dispose() call GC.SuppressFinalize(this) in the Dispose pattern?', options: ['Cleanup already ran, so the object can be freed in one GC without going through the finalization queue', 'It makes the GC collect the object immediately', 'It prevents Dispose being called twice', 'It is required for using statements to compile'], answer: 0, explain: 'SuppressFinalize removes the object from finalization, avoiding the f-reachable resurrection, the promotion and the second GC. Idempotency is the class\'s own job (a disposed flag).' },
+      hints: [`<p>Keep a ${C('Stack<List<string>>')} of blocks; ${C('using X')} adds X to the top block's list.</p>`, `<p>On ${C('}')} (and once more at the end) pop the block and dispose its list from last to first.</p>`, `<p>A ${C('HashSet<string>')} of disposed names makes Dispose idempotent; leftovers are created names not in that set.</p>`],
+      solution: {
+        approach: `<p>Blocks form a stack; each holds its using variables. Closing a block disposes them in reverse order through an idempotent Dispose that records only the first release. Whatever was never disposed is reported as finalized, in creation order.</p>`,
+        code: R`
+public class Solution
+{
+    public string[] DisposeOrder(string[] ops)
+    {
+        var events = new List<string>();
+        var disposed = new HashSet<string>();
+        var created = new List<string>();
+        var blocks = new Stack<List<string>>();
+        blocks.Push([]);
+
+        void Dispose(string name)
+        {
+            if (disposed.Add(name)) events.Add("Dispose " + name);
+        }
+        void Close()
+        {
+            var usings = blocks.Pop();
+            for (int i = usings.Count - 1; i >= 0; i--) Dispose(usings[i]);
+        }
+
+        foreach (var op in ops)
+        {
+            if (op == "{") blocks.Push([]);
+            else if (op == "}") Close();
+            else
+            {
+                var parts = op.Split(' ');
+                if (parts[0] == "dispose") Dispose(parts[1]);
+                else
+                {
+                    created.Add(parts[1]);
+                    if (parts[0] == "using") blocks.Peek().Add(parts[1]);
+                }
+            }
+        }
+        Close();
+        foreach (var name in created)
+            if (!disposed.Contains(name)) events.Add("Finalize " + name);
+        return events.ToArray();
+    }
+}`,
+        dry: { head: ['op', 'block stack', 'events'], rows: [['new P', '[ ]', '—'], ['{ ; using Q ; new R', '[ ] [Q]', '—'], ['}', '[ ]', 'Dispose Q'], ['dispose R', '[ ]', '+ Dispose R'], ['end of method', '—', '+ Finalize P']] },
+        complexity: `<p>O(n) time and space.</p>`,
+        followUps: ['How does await using / IAsyncDisposable change the order?', 'What if Res wrapped a SafeHandle instead of having its own finalizer?']
+      },
+      tests: { sig: 'string[] -> string[]', fn: 'disposeOrder', cases: [
+        [[['using A', '{', 'using B', 'new C', 'dispose C', '}', 'using D', 'dispose A']], ['Dispose C', 'Dispose B', 'Dispose A', 'Dispose D']],
+        [[['using A', 'using B', 'using C']], ['Dispose C', 'Dispose B', 'Dispose A']],
+        [[['new X']], ['Finalize X']],
+        [[['new X', 'new Y', 'dispose Y']], ['Dispose Y', 'Finalize X']],
+        [[[]], []],
+        [[['using A', '{', 'using B', '{', 'using C', '}', 'using D', '}']], ['Dispose C', 'Dispose D', 'Dispose B', 'Dispose A']],
+        [[['using A', 'dispose A', 'dispose A']], ['Dispose A']],
+        [[['new P', '{', 'using Q', 'new R', '}', 'dispose R']], ['Dispose Q', 'Dispose R', 'Finalize P']]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -1036,7 +1213,68 @@ Console.WriteLine($"growing: {(b1 - b0) / 1024} KB, pre-sized: {(b2 - b1) / 1024
 <p><b>MemoryPool and IMemoryOwner.</b> ${C('MemoryPool<T>.Shared.Rent()')} returns an ${C('IMemoryOwner<T>')} whose Dispose returns the memory — ownership expressed with using. System.IO.Pipelines builds on this for high-performance networking (Kestrel).</p>
 <p><b>Object pooling.</b> ${C('Microsoft.Extensions.ObjectPool')} pools arbitrary objects (StringBuilders in ASP.NET Core). Pool only objects that are expensive to create or large; pooling small objects can be slower than the GC's gen0 path.</p>
 <p><b>Frozen and immutable data.</b> For data built once and read often, ${C('FrozenDictionary')} (.NET 8) trades build time for faster lookups and fewer objects.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI writes pooling code correctly on the happy path but rarely reasons about lifetimes. <b>Use AI as a partner:</b> <code>Check every ArrayPool.Rent in this file: is the returned length respected, is Return in a finally, can the array be used after Return?</code> <b>Where AI goes wrong:</b> treating ${C('Rent(n).Length')} as n, returning arrays twice, storing rented arrays in long-lived objects, pooling tiny objects where the GC is faster. <b>What you must still own:</b> proving the optimisation with a benchmark and accepting the added complexity only where it pays.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI writes pooling code correctly on the happy path but rarely reasons about lifetimes. <b>Use AI as a partner:</b> <code>Check every ArrayPool.Rent in this file: is the returned length respected, is Return in a finally, can the array be used after Return?</code> <b>Where AI goes wrong:</b> treating ${C('Rent(n).Length')} as n, returning arrays twice, storing rented arrays in long-lived objects, pooling tiny objects where the GC is faster. <b>What you must still own:</b> proving the optimisation with a benchmark and accepting the added complexity only where it pays.</p>`,
+    problems: [{
+      title: 'Bucketed Rent/Return Pool', level: 'Medium', tags: ['ArrayPool', 'pooling', 'simulation'], companies: ['Microsoft', 'Cloudflare'],
+      statement: `<p>Model an ${C('ArrayPool')}-style pool. ${C('rent n')} picks the bucket length = the smallest power of two ≥ n, but at least 16. If that bucket has an idle array, the most recently returned one is reused; otherwise a new array of the bucket length is allocated and gets the next id (1, 2, 3, …). ${C('return id')} puts that array back in its bucket. Return ${C('[allocated, reused, elementsAllocated]')}.</p>`,
+      constraints: `up to 10<sup>4</sup> ops; 1 ≤ n ≤ 2<sup>20</sup>; only rented arrays are returned, at most once each`,
+      example: `<p>[rent 3000, return 1, rent 2049, rent 2048] → ${C('[2, 1, 6144]')}: 3000 and 2049 both use the 4096 bucket (reuse), but 2048 has its own bucket and needs a new array.</p>`,
+      brute: { why: `<p>Without a pool every rent allocates exactly n elements — no reuse, and large buffers land on the LOH each time. Note the pool's arrays are often <b>longer</b> than requested, which is why code must use the requested length, not ${C('array.Length')}.</p>`, code: R`
+static int[] NoPool(string[] ops)
+{
+    int allocated = 0, elements = 0;
+    foreach (var op in ops)
+        if (op.StartsWith("rent")) { allocated++; elements += int.Parse(op[5..]); }
+    return [allocated, 0, elements];
+}` },
+      mcq: { q: 'byte[] buf = ArrayPool&lt;byte&gt;.Shared.Rent(1000); — what is guaranteed about buf.Length?', options: ['It is at least 1000, and may be larger', 'It is exactly 1000', 'It is exactly 1024', 'It is at most 1000'], answer: 0, explain: 'Rent returns an array of at least the requested length (with the shared pool, usually the next power of two). Always track the length you asked for.' },
+      hints: [`<p>Bucket length: ${C('Math.Max(16, (int)BitOperations.RoundUpToPowerOf2((uint)n))')}.</p>`, `<p>Keep a ${C('Dictionary<int, Stack<int>>')} of idle ids per bucket and a ${C('Dictionary<int, int>')} id → length.</p>`, `<p>On rent, ${C('TryPop')} from the bucket's stack; count reuses vs new allocations.</p>`],
+      solution: {
+        approach: `<p>Round each request up to its bucket, reuse LIFO from that bucket's stack if possible, otherwise allocate a new id. Returns push the id onto the stack of its own length.</p>`,
+        code: R`
+using System.Numerics;
+
+public class Solution
+{
+    public int[] PoolStats(string[] ops)
+    {
+        var idle = new Dictionary<int, Stack<int>>();
+        var lengthOf = new Dictionary<int, int>();
+        int allocated = 0, reused = 0, elements = 0;
+        foreach (var op in ops)
+        {
+            var parts = op.Split(' ');
+            int v = int.Parse(parts[1]);
+            if (parts[0] == "rent")
+            {
+                int len = Math.Max(16, (int)BitOperations.RoundUpToPowerOf2((uint)v));
+                if (idle.TryGetValue(len, out var s) && s.TryPop(out _)) reused++;
+                else { allocated++; lengthOf[allocated] = len; elements += len; }
+            }
+            else
+            {
+                int len = lengthOf[v];
+                if (!idle.TryGetValue(len, out var s)) idle[len] = s = new Stack<int>();
+                s.Push(v);
+            }
+        }
+        return [allocated, reused, elements];
+    }
+}`,
+        dry: { head: ['op', 'bucket', 'action', 'idle'], rows: [['rent 3000', '4096', 'allocate #1', '—'], ['return 1', '4096', 'push', '4096: [1]'], ['rent 2049', '4096', 'reuse #1', '—'], ['rent 2048', '2048', 'allocate #2', '—']] },
+        complexity: `<p>O(1) per op (amortised), O(arrays) space.</p>`,
+        followUps: ['Add a per-bucket cap on idle arrays, like the shared pool\'s trimming.', 'Why does ArrayPool.Shared not clear returned arrays by default?']
+      },
+      tests: { sig: 'string[] -> int[]', fn: 'poolStats', cases: [
+        [[['rent 100', 'return 1', 'rent 120']], [1, 1, 128]],
+        [[['rent 100', 'rent 100']], [2, 0, 256]],
+        [[['rent 1', 'rent 16', 'return 1', 'rent 10']], [2, 1, 32]],
+        [[['rent 3000', 'return 1', 'rent 2049', 'rent 2048']], [2, 1, 6144]],
+        [[[]], [0, 0, 0]],
+        [[['rent 200', 'rent 256', 'return 2', 'return 1', 'rent 129', 'rent 256', 'rent 257']], [3, 2, 1024]],
+        [[['rent 1048576', 'return 1', 'rent 1000000']], [1, 1, 1048576]]
+      ] }
+    }]
   });
 
   /* ======================================================================

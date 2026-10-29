@@ -1120,7 +1120,91 @@
       <p><b>Frameworks:</b> Vue 3's reactivity keeps <code>WeakMap&lt;target, Map&lt;key, Set&lt;effect&gt;&gt;&gt;</code>; React and many libraries cache per-object derived data in WeakMaps; Babel compiles <code>#private</code> fields to WeakMaps for older targets.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI tools are good at spotting "this Map keyed by objects never shrinks" in code review, and can generate heap-snapshot investigation steps. But they also over-prescribe WeakMap as a cure-all, even where entries need to be listed (WeakMap cannot) or keys are strings (WeakMap rejects them).</p>
       <p><b>Use AI as a partner:</b> paste a heap snapshot summary or retainer chain and ask <code>Explain which reference keeps these 40k objects alive and propose the smallest fix</code>. Ask it to write a test that uses <code>node --expose-gc</code> and <code>global.gc()</code> plus a <code>FinalizationRegistry</code> to assert an object becomes collectable.</p>
-      <p><b>What you must still own:</b> drawing the reference graph in your head (roots → objects), knowing the limits (no size, object keys only, values strong while key lives), and explaining why GC-observable behaviour is deliberately hidden.</p>`
+      <p><b>What you must still own:</b> drawing the reference graph in your head (roots → objects), knowing the limits (no size, object keys only, values strong while key lives), and explaining why GC-observable behaviour is deliberately hidden.</p>`,
+    problems: [{
+      title: 'Per-Object Visit Counter That Never Leaks',
+      level: 'Easy', tags: ['weakmap', 'weakset', 'memory', 'closures'], companies: ['Atlassian', 'Razorpay', 'Microsoft'],
+      statement: `<p>Write <code>makeVisitCounter()</code>. It returns <code>{ visit(obj), count(obj), isNew(obj) }</code>:</p><ul><li><code>visit(obj)</code> records one more visit for that object and returns its new count.</li><li><code>count(obj)</code> returns the visits so far (<code>0</code> if never visited, also for any non-object).</li><li><code>isNew(obj)</code> returns <code>true</code> the first time it sees an object and <code>false</code> after that.</li></ul><p>The data must be private to each counter and must <b>not keep objects alive</b>: once the app drops an object, the counter must not prevent it from being garbage-collected. Visiting a primitive (number, string) must throw a <code>TypeError</code>.</p>`,
+      constraints: `Up to 10<sup>5</sup> objects; keys are objects you do not own (DOM nodes, library objects); no need to list or count all tracked objects.`,
+      example: `<p><code>const c = makeVisitCounter(); const a = {}, b = {};</code></p><p><code>c.visit(a)</code> → ${H.c('g', '1')}, <code>c.visit(a)</code> → ${H.c('g', '2')}, <code>c.count(b)</code> → ${H.c('m', '0')}, <code>c.isNew(a)</code> → ${H.c('g', 'true')}, <code>c.isNew(a)</code> → ${H.c('m', 'false')}, <code>c.visit(5)</code> → ${H.c('r', 'TypeError')}.</p>`,
+      brute: { why: `<p>A plain <code>Map</code> works functionally, but every visited object stays reachable through the map forever: a memory leak for short-lived DOM nodes. Writing the count onto the object itself (<code>obj.__visits</code>) changes objects you do not own and fails on frozen objects.</p>`,
+        code: `
+          function makeVisitCounter() {
+            const counts = new Map();          // strong: keeps every key alive forever
+            return {
+              visit(o) { const n = (counts.get(o) || 0) + 1; counts.set(o, n); return n; },
+              count(o) { return counts.get(o) || 0; }
+            };
+          }
+        ` },
+      mcq: { q: 'Which of these calls throws a <code>TypeError</code>?', options: ['<code>new WeakMap().set({}, 1)</code>', '<code>new WeakMap().set("id", 1)</code>', '<code>new WeakMap().get("id")</code>', '<code>new WeakSet().has(42)</code>'], answer: 1, explain: 'WeakMap keys and WeakSet members must be objects (or non-registered symbols). <code>set</code>/<code>add</code> with a primitive throws. Lookups like <code>get</code>, <code>has</code> and <code>delete</code> with a primitive simply return <code>undefined</code>/<code>false</code>.' },
+      hints: [
+        `<p>Hint 1: You need data attached to objects you do not own, without keeping them alive. That is exactly a WeakMap (object → number).</p>`,
+        `<p>Hint 2: For "seen before?" you only need membership, not a value: a WeakSet. Keep both in the closure so each counter is private.</p>`,
+        `<p>Hint 3: <code>WeakMap.prototype.set</code> already throws a <code>TypeError</code> for primitive keys, and <code>get</code> returns <code>undefined</code> for them, so <code>count</code> needs only <code>?? 0</code>.</p>`
+      ],
+      tests: { sig: 'string[] -> string[]', fn: 'chk', harness: { js: `function chk(ops) {
+  const c1 = makeVisitCounter(), c2 = makeVisitCounter();
+  const objs = { A: {}, B: {}, F: Object.freeze({}), N: function () {}, P: 5, S: 'A' };
+  return ops.map(function (op) {
+    const parts = op.split(' '), c = parts[0][0] === '2' ? c2 : c1, m = parts[0].replace('2', ''), k = objs[parts[1]];
+    try {
+      if (m === 'v') return String(c.visit(k));
+      if (m === 'c') return String(c.count(k));
+      if (m === 'n') return String(c.isNew(k));
+      if (m === 'keys') return Object.keys(c).sort().join(',');
+    } catch (e) { return e.name; }
+  });
+}` }, cases: [
+        [[["v A", "v A", "v A"]], ["1", "2", "3"]],
+        [[["v A", "c B", "v B", "c A"]], ["1", "0", "1", "1"]],
+        [[["c A"]], ["0"]],
+        [[["v A", "2c A", "2v A", "2v A", "c A"]], ["1", "0", "1", "2", "1"]],
+        [[["n A", "n A", "n B", "n A"]], ["true", "false", "true", "false"]],
+        [[["v P", "v S", "c P", "c S"]], ["TypeError", "TypeError", "0", "0"]],
+        [[["v F", "v F", "c F"]], ["1", "2", "2"]],
+        [[["v N", "n N", "c N"]], ["1", "true", "1"]],
+        [[["keys"]], ["count,isNew,visit"]],
+        [[["n A", "2n A", "v A", "n A"]], ["true", "true", "1", "false"]]
+      ] },
+      solution: {
+        approach: `<p>Use a <b>WeakMap</b> from object to count and a <b>WeakSet</b> of objects already seen, both hidden in a closure. Weak references let the GC reclaim any object the rest of the app has dropped; their entries vanish with it. Primitive keys are rejected by the WeakMap itself.</p>`,
+        code: { lang: 'js', run: true, code: `
+          function makeVisitCounter() {
+            const counts = new WeakMap();   // object -> visits, held weakly
+            const seen = new WeakSet();     // objects isNew has already reported
+            return {
+              visit(obj) {
+                const n = (counts.get(obj) ?? 0) + 1;
+                counts.set(obj, n);         // throws TypeError for primitives
+                return n;
+              },
+              count(obj) { return counts.get(obj) ?? 0; },
+              isNew(obj) {
+                if (seen.has(obj)) return false;
+                seen.add(obj);
+                return true;
+              }
+            };
+          }
+
+          const c = makeVisitCounter();
+          const a = {}, b = Object.freeze({});
+          console.log(c.visit(a), c.visit(a), c.count(b));  // 1 2 0
+          console.log(c.visit(b), c.isNew(a), c.isNew(a));  // 1 true false
+          try { c.visit(5); } catch (e) { console.log(e.name); } // TypeError
+        ` },
+        dry: { head: ['call', 'counts (WeakMap)', 'seen (WeakSet)', 'returns'], rows: [
+          ['visit(a)', 'a → 1', '{}', '1'],
+          ['visit(a)', 'a → 2', '{}', '2'],
+          ['count(b)', 'a → 2', '{}', '0'],
+          ['isNew(a)', 'a → 2', '{ a }', 'true'],
+          ['visit(5)', 'unchanged', '{ a }', '<span class="c-r">TypeError</span>']
+        ] },
+        complexity: `<p>O(1) average per call; memory proportional to the objects that are still alive, never to all objects ever visited.</p>`,
+        followUps: ['Add <code>size()</code>: why can a WeakMap not give it to you, and what would you trade to support it?', 'How would you keep per-DOM-node data that must survive while the node is in the page?', 'When would <code>WeakRef</code> + <code>FinalizationRegistry</code> be needed instead?']
+      }
+    }]
   });
 
   /* =====================================================================
@@ -1244,7 +1328,79 @@
       <p><b>Well-known symbol details.</b> <code>Symbol.toPrimitive</code> overrides the default <code>valueOf</code>/<code>toString</code> order (default: hint 'string' tries toString first, otherwise valueOf first; Date is special and treats 'default' as 'string'). <code>Symbol.species</code> lets subclasses of Array/Promise choose what <code>map</code>/<code>then</code> construct, and is a known source of engine complexity and past security bugs. <code>Symbol.isConcatSpreadable</code> controls <code>concat</code> flattening; <code>Symbol.unscopables</code> hides methods from <code>with</code>. <code>Symbol.dispose</code>/<code>Symbol.asyncDispose</code> power explicit resource management (<code>using res = getHandle()</code>), shipped in TypeScript 5.2 and in V8-based runtimes since 2025.</p>`,
     aiEra: `<p><b>What AI changes:</b> asking "how do I make my class print nicely / compare / iterate" quickly yields well-known-symbol code. The risk is subtle: AI often claims symbols make properties <i>private</i>, which they do not.</p>
       <p><b>Use AI as a partner:</b> <code>List every well-known symbol, which operation triggers it, and give a 3-line example each</code>, then verify each example in Node. Ask it to audit a codebase for <code>Symbol()</code> used where <code>Symbol.for</code> is needed (duplicated package copies) or vice versa.</p>
-      <p><b>What you must still own:</b> knowing the visibility rules (keys/JSON skip them, spread copies them, getOwnPropertySymbols reveals them), the coercion TypeErrors, and when to choose <code>#private</code>, a WeakMap, or a symbol for "hidden" data.</p>`
+      <p><b>What you must still own:</b> knowing the visibility rules (keys/JSON skip them, spread copies them, getOwnPropertySymbols reveals them), the coercion TypeErrors, and when to choose <code>#private</code>, a WeakMap, or a symbol for "hidden" data.</p>`,
+    problems: [{
+      title: 'Attach a Hidden, Collision-Free ID with a Symbol',
+      level: 'Easy', tags: ['symbol', 'metadata', 'object keys'], companies: ['Google', 'Atlassian', 'Zoho'],
+      statement: `<p>Write <code>attachId(obj)</code>. The first time it is called on an object, it stores a new unique numeric id <b>on the object itself</b> under a key that can never clash with the object's own properties (even one named <code>"id"</code>) and returns the id. Later calls on the same object return the same id. The stored id must not show up in <code>Object.keys</code>, <code>for...in</code> or <code>JSON.stringify</code>.</p>`,
+      constraints: `Objects are plain, extensible objects; they may already have any string-keyed properties, including <code>id</code>.`,
+      example: `<p><code>const o = { id: 7, name: 'a' }; attachId(o)</code> → ${H.c('g', '1')} (some new id). <code>attachId(o)</code> again → ${H.c('g', '1')}. <code>o.id</code> is still ${H.c('g', '7')}, and <code>JSON.stringify(o)</code> is still ${H.c('g', '{"id":7,"name":"a"}')}.</p>`,
+      brute: { why: `<p>Storing under a string key like <code>"__id"</code> or <code>"id"</code> either overwrites the user's own <code>id</code> or leaks into <code>Object.keys</code>, loops and JSON payloads. Using <code>Symbol.for('id')</code> avoids loops but is a <b>global</b> key: any other library calling <code>Symbol.for('id')</code> gets the same key and can collide.</p>`,
+        code: `
+          let next = 1;
+          function attachIdNaive(obj) {
+            if (obj.__id === undefined) obj.__id = next++;   // visible in keys, for...in and JSON
+            return obj.__id;
+          }
+        ` },
+      mcq: { q: 'An object has a property keyed by a symbol made with <code>Symbol("id")</code>. Where does that key still show up?', options: ['<code>Object.keys(obj)</code>', '<code>JSON.stringify(obj)</code>', '<code>Object.getOwnPropertySymbols(obj)</code>', '<code>for (const k in obj)</code>'], answer: 2, explain: 'Symbol keys are skipped by <code>Object.keys</code>, <code>for...in</code> and JSON, but they are not private: <code>Object.getOwnPropertySymbols</code> and <code>Reflect.ownKeys</code> list them.' },
+      hints: [
+        `<p>Hint 1: You need a property key that no other code can type by accident. Every <code>Symbol()</code> call returns a brand-new unique value.</p>`,
+        `<p>Hint 2: Create the symbol once at module level (<code>Symbol('id')</code>, not <code>Symbol.for</code>) and a counter next to it.</p>`,
+        `<p>Hint 3: <code>if (!Object.hasOwn(obj, ID)) obj[ID] = next++; return obj[ID];</code>. Symbol-keyed properties are ignored by keys, for...in and JSON automatically.</p>`
+      ],
+      tests: { sig: 'string -> string', fn: 'chk', harness: { js: `function chk(kind) {
+  const o = { id: 7, name: 'a' };
+  const first = attachId(o);
+  if (kind === 'keys') return Object.keys(o).join(',');
+  if (kind === 'json') return JSON.stringify(o);
+  if (kind === 'ownId') return String(o.id);
+  if (kind === 'stable') return String(attachId(o) === first);
+  if (kind === 'distinct') return String(attachId({}) !== attachId({}));
+  if (kind === 'symbols') return String(Object.getOwnPropertySymbols(o).length);
+  if (kind === 'forin') { const ks = []; for (const k in o) ks.push(k); return ks.join(','); }
+  if (kind === 'notRegistered') return String(Symbol.keyFor(Object.getOwnPropertySymbols(o)[0]) === undefined);
+  if (kind === 'spread') return String(attachId({ ...o }) === first);
+  if (kind === 'type') return typeof first;
+}` }, cases: [
+        [["keys"], "id,name"],
+        [["json"], "{\"id\":7,\"name\":\"a\"}"],
+        [["ownId"], "7"],
+        [["stable"], "true"],
+        [["distinct"], "true"],
+        [["symbols"], "1"],
+        [["forin"], "id,name"],
+        [["notRegistered"], "true"],
+        [["spread"], "true"],
+        [["type"], "number"]
+      ] },
+      solution: {
+        approach: `<p>Make one private, unregistered symbol at module level and use it as the property key. Symbols are unique, so the key cannot clash with any string key or with another library's symbol, and the string-key APIs (keys, for...in, JSON) skip it. Note the follow-on gotcha: spread and <code>Object.assign</code> <b>do</b> copy enumerable symbol properties, so a shallow copy inherits the same id.</p>`,
+        code: { lang: 'js', run: true, code: `
+          const ID = Symbol('id');   // unique, not in the global registry
+          let nextId = 1;
+
+          function attachId(obj) {
+            if (!Object.prototype.hasOwnProperty.call(obj, ID)) obj[ID] = nextId++;
+            return obj[ID];
+          }
+
+          const o = { id: 7, name: 'a' };
+          console.log(attachId(o), attachId(o));        // 1 1
+          console.log(o.id, Object.keys(o));            // 7 [ 'id', 'name' ]
+          console.log(JSON.stringify(o));               // {"id":7,"name":"a"}
+          console.log(attachId({ ...o }));              // 1  (spread copied the symbol key!)
+        ` },
+        dry: { head: ['step', 'key used', 'o after', 'returns'], rows: [
+          ['attachId(o)', 'Symbol(id)', '{ id: 7, name: "a", [Symbol(id)]: 1 }', '1'],
+          ['attachId(o)', 'Symbol(id) (already own)', 'unchanged', '1'],
+          ['Object.keys(o)', '-', '-', "['id', 'name']"],
+          ['JSON.stringify(o)', '-', '-', '<span class="c-g">{"id":7,"name":"a"}</span>']
+        ] },
+        complexity: `<p>O(1) time and space per call.</p>`,
+        followUps: ['Make the id non-enumerable with <code>Object.defineProperty</code> so spread does not copy it.', 'Compare this with a WeakMap side table: which works on frozen objects?', 'Why is <code>Symbol.for("id")</code> a bad choice for a library?']
+      }
+    }]
   });
 
   /* =====================================================================

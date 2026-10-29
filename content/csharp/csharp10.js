@@ -115,7 +115,62 @@ Console.WriteLine($"main sees its own id: {local.Value == Environment.CurrentMan
 <p><b>Pool internals (.NET 6+).</b> The pool is implemented in managed code (PortableThreadPool) with a global queue, per-worker local queues (LIFO for locality, FIFO stealing), hill climbing to tune the thread count, and a starvation detector that injects a thread roughly every 500 ms when no progress is made. ${C('ThreadPool.SetMinThreads')} raises the burst capacity.</p>
 <p><b>IO completion.</b> On Windows, I/O completions arrive on IOCP threads; on Linux, an epoll thread dispatches completions to the worker pool. Either way, no thread waits per pending I/O.</p>
 <p><b>Thread affinity.</b> UI frameworks require touching controls from the UI thread (use the SynchronizationContext or Dispatcher). COM STA components need ${C('SetApartmentState(ApartmentState.STA)')} on a dedicated thread.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI defaults to tasks, which is right; but legacy code generation sometimes produces ${C('new Thread')} per request or ${C('Thread.Sleep')} polling loops. <b>Use AI as a partner:</b> <code>Find every blocking call that runs on a thread-pool thread in this service</code>. <b>Where AI goes wrong:</b> capturing loop variables in thread lambdas (classic for-loop closure bug), forgetting Join, unhandled exceptions on threads, using Thread.Abort. <b>What you must still own:</b> deciding which work deserves a dedicated thread and making sure pool threads never block.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI defaults to tasks, which is right; but legacy code generation sometimes produces ${C('new Thread')} per request or ${C('Thread.Sleep')} polling loops. <b>Use AI as a partner:</b> <code>Find every blocking call that runs on a thread-pool thread in this service</code>. <b>Where AI goes wrong:</b> capturing loop variables in thread lambdas (classic for-loop closure bug), forgetting Join, unhandled exceptions on threads, using Thread.Abort. <b>What you must still own:</b> deciding which work deserves a dedicated thread and making sure pool threads never block.</p>`,
+    problems: [{
+      title: 'Chunk Sums on the Thread Pool', level: 'Easy', tags: ['ThreadPool', 'CountdownEvent'], companies: ['Microsoft', 'Intel'],
+      statement: `<p>Split ${C('values')} into ${C('k')} contiguous chunks of size ${C('ceil(n / k)')} (chunk t covers indices ${C('[t·size, min(n, (t+1)·size))')}; trailing chunks may be empty). Queue one work item per chunk with ${C('ThreadPool.QueueUserWorkItem')}; each item sums its chunk into its own slot of a ${C('long[]')}. Wait until every item has finished, then return the per-chunk sums.</p>`,
+      constraints: `0 ≤ n ≤ 10<sup>5</sup>, 1 ≤ k ≤ 16, |values[i]| ≤ 10<sup>9</sup>`,
+      example: `<p>values = [1, 2, 3, 4, 5], k = 2 → size 3 → [6, 9].</p>`,
+      brute: { why: `<p>Starting ${C('new Thread')} per chunk works but pays a full thread creation (stack reservation, OS scheduling) for a tiny job. Pool work items reuse warm threads. The catch: QueueUserWorkItem returns no handle, so you need your own completion signal.</p>`, code: R`
+static long[] PerThread(int[] a, int k)
+{
+    int size = (a.Length + k - 1) / k;
+    var sums = new long[k];
+    var ts = Enumerable.Range(0, k).Select(t => new Thread(() =>
+    {
+        for (int i = t * size; i < Math.Min(a.Length, (t + 1) * size); i++) sums[t] += a[i];
+    })).ToList();
+    ts.ForEach(x => x.Start()); ts.ForEach(x => x.Join());
+    return sums;
+}` },
+      mcq: { q: 'You queue work with ThreadPool.QueueUserWorkItem and must read the results afterwards. What is the right way to know the items are done?', options: ['Signal a CountdownEvent (or similar) from each item in a finally block and Wait on it', 'Call Thread.Join on the pool threads', 'Thread.Sleep long enough for the work to finish', 'Check ThreadPool.ThreadCount until it drops to zero'], answer: 0, explain: 'Pool items have no handle to join, and pool threads never exit when the item ends. An explicit signal (CountdownEvent, or tasks via Task.Run + WhenAll) both waits correctly and publishes the writes to the waiting thread.' },
+      hints: [`<p>${C('int size = (n + k - 1) / k;')} — integer ceiling division.</p>`, `<p>${C('using var done = new CountdownEvent(k);')} and call ${C('done.Signal()')} in a ${C('finally')} inside each item.</p>`, `<p>Capture a fresh local (${C('int t = c;')}) inside the loop so each item sees its own chunk index. Each item writes only ${C('sums[t]')}, so no lock is needed.</p>`],
+      solution: {
+        approach: `<p>Each work item owns one slot of the result array, so there is no shared mutable state. CountdownEvent counts down to zero when the last item finishes; Wait both blocks until then and makes the items' writes visible to the caller.</p>`,
+        code: R`
+public class Solution
+{
+    public long[] ChunkSums(int[] values, int k)
+    {
+        int n = values.Length;
+        int size = (n + k - 1) / k;
+        var sums = new long[k];
+        using var done = new CountdownEvent(k);
+        for (int c = 0; c < k; c++)
+        {
+            int t = c;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    int end = Math.Min(n, (t + 1) * size);
+                    for (int i = t * size; i < end; i++) sums[t] += values[i];
+                }
+                finally { done.Signal(); }
+            });
+        }
+        done.Wait();
+        return sums;
+    }
+}`,
+        dry: { head: ['chunk t', 'indices', 'sum', 'countdown after'], rows: [['0', '0..2 → 1+2+3', '6', '1'], ['1', '3..4 → 4+5', '9', '0 → Wait returns']] },
+        complexity: `<p>O(n) total work, O(k) extra memory; k pool items instead of k new threads.</p>`,
+        followUps: ['Rewrite with Task.Run per chunk and Task.WhenAll', 'What happens if an item throws before Signal and there is no finally?']
+      },
+      tests: { sig: 'int[] int -> long[]', fn: 'chunkSums', cases: [
+        [[[1, 2, 3, 4, 5], 2], [6, 9]], [[[], 3], [0, 0, 0]], [[[7], 4], [7, 0, 0, 0]], [[[-5, 5, 10], 3], [-5, 5, 10]], [[[1000000000, 1000000000, 1000000000], 2], [2000000000, 1000000000]], [[[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 3], [4, 4, 2]]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -637,7 +692,58 @@ Console.WriteLine($"{ready} threads passed the gate");` }
 <p><b>Fairness and starvation.</b> Monitor and SemaphoreSlim are not fair: a releasing thread can re-acquire immediately. ReaderWriterLockSlim prefers writers once one is waiting, so a stream of readers cannot starve writers forever.</p>
 <p><b>Why RW locks often lose.</b> Each read acquisition still writes to shared lock state (an interlocked operation on a shared cache line), so with very short reads the lock itself becomes the bottleneck. Copy-on-write snapshots (${C('ImmutableDictionary')}, or a new Dictionary swapped with Interlocked.Exchange) make reads entirely lock-free.</p>
 <p><b>Async coordination.</b> For async code use SemaphoreSlim, Channels, TaskCompletionSource-based events, or libraries like Nito.AsyncEx (AsyncLock, AsyncReaderWriterLock).</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI correctly reaches for SemaphoreSlim in async code. <b>Use AI as a partner:</b> <code>Check every WaitAsync has exactly one Release in a finally, and that the semaphore is never re-entered by the same flow</code>. <b>Where AI goes wrong:</b> Release outside finally, releasing more than acquired (SemaphoreFullException), recursive acquisition deadlocks with count 1, recommending ReaderWriterLockSlim for tiny critical sections or across awaits. <b>What you must still own:</b> choosing the simplest primitive that matches the access pattern, and measuring before picking a "faster" one.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI correctly reaches for SemaphoreSlim in async code. <b>Use AI as a partner:</b> <code>Check every WaitAsync has exactly one Release in a finally, and that the semaphore is never re-entered by the same flow</code>. <b>Where AI goes wrong:</b> Release outside finally, releasing more than acquired (SemaphoreFullException), recursive acquisition deadlocks with count 1, recommending ReaderWriterLockSlim for tiny critical sections or across awaits. <b>What you must still own:</b> choosing the simplest primitive that matches the access pattern, and measuring before picking a "faster" one.</p>`,
+    problems: [{
+      title: 'Who Gets a Permit?', level: 'Medium', tags: ['SemaphoreSlim', 'simulation'], companies: ['Microsoft', 'Stripe'],
+      statement: `<p>Model a ${C('SemaphoreSlim(permits)')} guarding a resource. Events arrive in order: a positive ${C('id')} means request ${C('id')} asks for a permit; ${C('-id')} means request ${C('id')} (currently holding a permit) releases it. A request that cannot get a permit waits in a FIFO queue; on a release, the oldest waiter is admitted. Return the ids in the order they were admitted. Use a real SemaphoreSlim: ${C('Wait(0)')} for the non-blocking attempt and ${C('Release()')} when nobody is waiting.</p>`,
+      constraints: `1 ≤ permits ≤ 100, 0 ≤ events ≤ 10<sup>4</sup>; ids are distinct positive ints and only holders release`,
+      example: `<p>permits = 2, events = [1, 2, 3, -1, -2] → 1 and 2 enter, 3 waits, 1 releases → 3 enters → [1, 2, 3].</p>`,
+      brute: { why: `<p>Running real threads that call ${C('Wait()')} would make the admission order depend on the scheduler (SemaphoreSlim does not promise FIFO for synchronous waiters), so tests could not be deterministic. Simulating the arrivals and handing a freed permit directly to the oldest waiter makes the rule explicit and repeatable.</p>`, code: R`
+static List<int> CountOnly(int permits, int[] events)
+{
+    int free = permits; var waiting = new Queue<int>(); var order = new List<int>();
+    foreach (int e in events)
+        if (e > 0) { if (free > 0 && waiting.Count == 0) { free--; order.Add(e); } else waiting.Enqueue(e); }
+        else if (waiting.Count > 0) order.Add(waiting.Dequeue());
+        else free++;
+    return order;
+}` },
+      mcq: { q: 'A SemaphoreSlim(3) protects calls to a rate-limited API from 50 concurrent async requests. What does it guarantee?', options: ['At most 3 requests are inside the guarded section at any moment', 'Requests are always admitted in arrival order', 'Each request runs on its own thread', 'The 4th WaitAsync throws because no permit is left'], answer: 0, explain: 'A semaphore limits concurrency to its count. Extra callers wait (asynchronously with WaitAsync); it does not throw, and fairness is not guaranteed — if order matters you must model it yourself, as here.' },
+      hints: [`<p>On a request: if nobody is waiting and ${C('sem.Wait(0)')} returns true, admit it; otherwise enqueue it.</p>`, `<p>On a release: if the queue is non-empty, pass the permit straight to the head (do not Release — the permit changes hands).</p>`, `<p>Only call ${C('sem.Release()')} when no one is waiting, so ${C('CurrentCount')} never exceeds the initial permits.</p>`],
+      solution: {
+        approach: `<p>The semaphore holds the free-permit count; a FIFO queue holds waiters. Checking the queue before Wait(0) stops a newcomer from jumping ahead of someone already waiting, and handing a released permit directly to the head of the queue keeps the order fair.</p>`,
+        code: R`
+public class Solution
+{
+    public int[] AdmissionOrder(int permits, int[] events)
+    {
+        using var sem = new SemaphoreSlim(permits, permits);
+        var waiting = new Queue<int>();
+        var order = new List<int>();
+        foreach (int e in events)
+        {
+            if (e > 0)
+            {
+                if (waiting.Count == 0 && sem.Wait(0)) order.Add(e);
+                else waiting.Enqueue(e);
+            }
+            else
+            {
+                if (waiting.Count > 0) order.Add(waiting.Dequeue());
+                else sem.Release();
+            }
+        }
+        return order.ToArray();
+    }
+}`,
+        dry: { head: ['event', 'free permits', 'waiting', 'admitted'], rows: [['1', '1', '[]', '[1]'], ['2', '0', '[]', '[1, 2]'], ['3', '0', '[3]', '[1, 2]'], ['-1', '0', '[]', '[1, 2, 3]'], ['-2', '1', '[]', '[1, 2, 3]']] },
+        complexity: `<p>O(events) time, O(events) memory for the queue.</p>`,
+        followUps: ['Add a timeout: a waiter that is still queued after T events gives up', 'How would WaitAsync with a CancellationToken change the model?']
+      },
+      tests: { sig: 'int int[] -> int[]', fn: 'admissionOrder', cases: [
+        [[2, [1, 2, 3, -1, -2]], [1, 2, 3]], [[1, [1, 2, 3, -1, -2, -3]], [1, 2, 3]], [[1, [1, 2, 3, -1]], [1, 2]], [[3, []], []], [[2, [5, 6, 7, 8, -6, -5]], [5, 6, 7, 8]], [[1, [4, -4, 9, 10, -9]], [4, 9, 10]], [[2, [1, 2, 3, 4, -2]], [1, 2, 3]]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -739,7 +845,49 @@ Console.WriteLine(current["x"]);` }
 <p><b>ConcurrentQueue.</b> A linked list of fixed-size ring segments with lock-free enqueue/dequeue via Interlocked on head/tail indices. Very fast for many producers and consumers.</p>
 <p><b>ConcurrentBag.</b> Each thread has its own local list; TryTake prefers the local list and steals from others otherwise. It is efficient only when the same threads both add and take (work-stealing scenarios); as a general queue it is slower than ConcurrentQueue.</p>
 <p><b>Correctness beyond single operations.</b> Atomic methods do not compose: "TryGetValue then TryRemove" is two operations. For multi-step invariants use a lock or design the operation as one atomic call (AddOrUpdate, TryUpdate, TryRemove(KeyValuePair)).</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI switches Dictionary to ConcurrentDictionary when it sees threads, which is a start. <b>Use AI as a partner:</b> <code>Which operations here are compound (check-then-act) even though the collection is concurrent?</code> <b>Where AI goes wrong:</b> ContainsKey + indexer sequences, GetOrAdd factories with side effects, relying on Count in hot paths, using ConcurrentBag as a FIFO queue, enumerating expecting a snapshot. <b>What you must still own:</b> identifying the atomic unit of each operation.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI switches Dictionary to ConcurrentDictionary when it sees threads, which is a start. <b>Use AI as a partner:</b> <code>Which operations here are compound (check-then-act) even though the collection is concurrent?</code> <b>Where AI goes wrong:</b> ContainsKey + indexer sequences, GetOrAdd factories with side effects, relying on Count in hot paths, using ConcurrentBag as a FIFO queue, enumerating expecting a snapshot. <b>What you must still own:</b> identifying the atomic unit of each operation.</p>`,
+    problems: [{
+      title: 'Count Distinct Ids in Parallel', level: 'Easy', tags: ['ConcurrentDictionary', 'TryAdd'], companies: ['Amazon', 'Microsoft'],
+      statement: `<p>Process ${C('ids')} with ${C('Parallel.ForEach')} and return how many distinct ids there are. Record seen ids in a ${C('ConcurrentDictionary<int, byte>')} and count with ${C('Interlocked.Increment')} only when ${C('TryAdd')} succeeds — never use ContainsKey followed by Add.</p>`,
+      constraints: `0 ≤ n ≤ 10<sup>5</sup>`,
+      example: `<p>ids = [1, 2, 2, 3, 3, 3] → 3.</p>`,
+      brute: { why: `<p>A shared ${C('HashSet')} corrupts under concurrent Add. A ConcurrentDictionary with "if (!ContainsKey) { Add; count++ }" is still a check-then-act race: two threads can both see the key missing and both count it. TryAdd is one atomic step whose result tells exactly one thread it won.</p>`, code: R`
+using System.Collections.Concurrent;
+
+static int Racy(int[] ids)
+{
+    var seen = new ConcurrentDictionary<int, byte>(); int count = 0;
+    Parallel.ForEach(ids, id => { if (!seen.ContainsKey(id)) { seen[id] = 0; Interlocked.Increment(ref count); } });
+    return count; // may over-count
+}` },
+      mcq: { q: 'Two threads call dict.TryAdd(42, 0) on the same ConcurrentDictionary at the same time, and 42 is not present. What happens?', options: ['Exactly one call returns true; the other returns false', 'Both return true and the second overwrites the first', 'The second throws ArgumentException', 'Both return false because of the conflict'], answer: 0, explain: 'TryAdd is atomic per key: one insertion wins and reports true, the other sees the key already present and reports false — which is what makes it safe to count wins.' },
+      hints: [`<p>${C('if (seen.TryAdd(id, 0)) Interlocked.Increment(ref count);')}</p>`, `<p>${C('seen.Count')} after the loop would also work; counting TryAdd wins shows why the return value matters.</p>`, `<p>Pass the array straight to ${C('Parallel.ForEach')}; the lambda body touches only the dictionary and the counter, both safe to share.</p>`],
+      solution: {
+        approach: `<p>For each id, TryAdd atomically inserts it if absent. Only the single thread whose TryAdd returns true increments the counter, so each distinct id is counted exactly once regardless of scheduling.</p>`,
+        code: R`
+using System.Collections.Concurrent;
+
+public class Solution
+{
+    public int DistinctCount(int[] ids)
+    {
+        var seen = new ConcurrentDictionary<int, byte>();
+        int count = 0;
+        Parallel.ForEach(ids, id =>
+        {
+            if (seen.TryAdd(id, 0)) Interlocked.Increment(ref count);
+        });
+        return count;
+    }
+}`,
+        dry: { head: ['thread A', 'thread B', 'count'], rows: [['TryAdd(2) → true', 'TryAdd(2) → false', '1'], ['TryAdd(3) → false', 'TryAdd(3) → true', '2']] },
+        complexity: `<p>O(n) expected work; O(distinct) memory.</p>`,
+        followUps: ['Also return the first index at which each id appeared (hint: AddOrUpdate with Math.Min)', 'Compare speed with a sequential HashSet for small n']
+      },
+      tests: { sig: 'int[] -> int', fn: 'distinctCount', cases: [
+        [[[1, 2, 2, 3, 3, 3]], 3], [[[]], 0], [[[5]], 1], [[[7, 7, 7, 7]], 1], [[[-1, 1, -1, 0]], 3], [[[10, 20, 30, 40, 50, 10, 20, 30]], 5]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -1014,7 +1162,37 @@ catch (AggregateException ae) { Console.WriteLine(ae.InnerExceptions[0].Message)
 <p><b>Thread injection.</b> Parallel loops may use many pool threads, and long-blocking iterations make the pool inject more; set MaxDegreeOfParallelism when iterations block or when the machine is shared (servers).</p>
 <p><b>Server workloads.</b> In ASP.NET Core, a request already runs concurrently with others; parallelising inside a request steals cores from other requests. Data parallelism shines in batch jobs, desktop apps, and offline processing.</p>
 <p><b>SIMD.</b> Before going multi-core, consider single-core vectorization (${C('System.Numerics.Vector<T>')}, ${C('Vector256')}): span helpers like Sum/IndexOf already use it, and combined with Parallel you get both.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI adds AsParallel() and Parallel.ForEach eagerly. <b>Use AI as a partner:</b> <code>Is this loop CPU-bound and are its iterations independent? Estimate the work per item vs overhead</code>. <b>Where AI goes wrong:</b> Parallel.ForEach over async lambdas (they become async void!), shared List.Add inside parallel loops, parallelising I/O-bound work, AsParallel on tiny collections, assuming PLINQ keeps order. <b>What you must still own:</b> measuring speed-up with realistic data and core counts.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI adds AsParallel() and Parallel.ForEach eagerly. <b>Use AI as a partner:</b> <code>Is this loop CPU-bound and are its iterations independent? Estimate the work per item vs overhead</code>. <b>Where AI goes wrong:</b> Parallel.ForEach over async lambdas (they become async void!), shared List.Add inside parallel loops, parallelising I/O-bound work, AsParallel on tiny collections, assuming PLINQ keeps order. <b>What you must still own:</b> measuring speed-up with realistic data and core counts.</p>`,
+    problems: [{
+      title: 'Ordered Squares with PLINQ', level: 'Easy', tags: ['PLINQ', 'AsOrdered'], companies: ['Microsoft', 'Nvidia'],
+      statement: `<p>Using PLINQ, keep the even numbers of ${C('values')} and return their squares as ${C('long')} values <b>in the original order</b>.</p>`,
+      constraints: `0 ≤ n ≤ 10<sup>5</sup>, |values[i]| ≤ 2·10<sup>5</sup>`,
+      example: `<p>values = [1, 2, 3, 4] → [4, 16].</p>`,
+      brute: { why: `<p>${C('values.AsParallel().Where(...).Select(...)')} without AsOrdered may return the results in any order, so it can fail tests intermittently. Squaring an int before widening (${C('x * x')}) also overflows for |x| > 46340.</p>`, code: R`
+static long[] Unordered(int[] a) =>
+    a.AsParallel().Where(x => x % 2 == 0).Select(x => (long)x * x).ToArray(); // order not guaranteed` },
+      mcq: { q: 'Why might values.AsParallel().Select(f).ToArray() return items in a different order from values?', options: ['PLINQ partitions the input across threads and, unless AsOrdered is used, merges results in whatever order they finish', 'Select always sorts its output', 'ToArray reverses parallel queries', 'PLINQ randomises input to balance load'], answer: 0, explain: 'Each partition runs independently; without AsOrdered the merge has no reason to restore source order. AsOrdered keeps it, at some buffering cost.' },
+      hints: [`<p>${C('values.AsParallel().AsOrdered()')} — AsOrdered right after AsParallel.</p>`, `<p>Cast before multiplying: ${C('(long)x * x')}. Negative evens satisfy ${C('x % 2 == 0')} too.</p>`, `<p>Finish with ${C('ToArray()')}; with AsOrdered the array follows source order.</p>`],
+      solution: {
+        approach: `<p>AsOrdered tells PLINQ to keep track of source positions so the merged output matches input order; the filter and projection are pure functions, so running them in parallel is safe.</p>`,
+        code: R`
+public class Solution
+{
+    public long[] SquaresOfEvens(int[] values) =>
+        values.AsParallel()
+              .AsOrdered()
+              .Where(x => x % 2 == 0)
+              .Select(x => (long)x * x)
+              .ToArray();
+}`,
+        dry: { head: ['index', 'value', 'even?', 'output'], rows: [['0', '1', 'no', '—'], ['1', '2', 'yes', '4'], ['2', '3', 'no', '—'], ['3', '4', 'yes', '16']] },
+        complexity: `<p>O(n) work spread over cores; ordering adds buffering in the merge.</p>`,
+        followUps: ['When is the sequential version faster?', 'Return the indices of the even values instead, still in order']
+      },
+      tests: { sig: 'int[] -> long[]', fn: 'squaresOfEvens', cases: [
+        [[[1, 2, 3, 4]], [4, 16]], [[[]], []], [[[1, 3, 5]], []], [[[6, -2, 0]], [36, 4, 0]], [[[100000, 7]], [10000000000]], [[[8, 1, 8, 2]], [64, 64, 4]]
+      ] }
+    }]
   });
 
   /* ======================================================================
