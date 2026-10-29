@@ -1,0 +1,29 @@
+{"quiz": [
+"Think about which kind of help keeps working after you close your laptop and delivers something to review later.",
+"Look for the task whose done-condition is already written down as a test suite and needs little judgment.",
+"Divide the monthly fee by the price of one task to find where the two costs meet.",
+"Compare how many model calls a single completion makes with a loop that reads files, runs tools and retries.",
+"Three options limit where code goes or how long it stays. One only changes how the screen looks.",
+"A must-have is checked before any points are counted. Can points buy back a failed must-have?",
+"Ask what could happen to the weights if people already know which tool is winning.",
+"Which assets can a new tool read on day one without exporting anything from the old one?",
+"Consider who is accountable for a merge under branch protection and code owners.",
+"Recall the gap between what developers predicted, what they felt afterwards and what the stopwatch said.",
+"Pick the number that describes what happened in production, not how busy the tool was.",
+"Speed went one way and quality went the other. Can a single word like win or loss cover both?",
+"Rules differ by company and by round. Who can tell you the rule for this specific round?"
+],
+"interview": [
+"Name dimensions that stay stable when products are renamed: level of help, surface, timing, cost, data, models, ecosystem.",
+"Contrast what a misunderstanding costs when you watch live versus when you only see the finished pull request.",
+"Decide timing from the task first, then think about where you review diffs most effectively.",
+"List the pricing shapes, say which activities consume usage, and explain how a pilot gives you real usage data.",
+"Think about training use, retention, sub-processors, admin controls and legal cover, scoped to the exact plan.",
+"Start with must-have gates, agree weights before scoring, then gather evidence from a pilot on real tickets.",
+"Follow the work from ticket to spec, plan, sync and async slices, CI, human review, merge and the learning loop.",
+"Combine speed, throughput, quality, cost and people metrics, measured against a baseline with fixed definitions.",
+"Mention that results depend on task type and codebase, and recall a randomised study where perception and measurement differed.",
+"Think about how rules vary by round, how you would find out, and what honesty requires when tools are or are not allowed.",
+"Begin with data classes mapped to tool tiers, then approval, enforced settings, cloud-agent rules, review, incidents and training.",
+"Separate standardising the policy and measurement from standardising the product, and think about portability and lock-in."
+]}

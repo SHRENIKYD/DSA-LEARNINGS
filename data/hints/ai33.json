@@ -1,0 +1,31 @@
+{"quiz": [
+"Think about what the AI knows about your specific order if you tell it nothing at all.",
+"Ask yourself what a link shows on its own, before you have opened and read the page.",
+"Good recaps have a fixed shape and let the AI admit when something was never said.",
+"A result close to exactly two times the expected value is a classic clue. What repeats?",
+"The key idea is whether the information could point to one real, living individual.",
+"Which of these is already available to anyone, so sharing it exposes nothing new?",
+"Think about who can limit the damage, and how much time matters once data has left.",
+"Fluent sounding text can still change the meaning. Who could actually confirm it?",
+"This letter is about what the AI quietly guessed without you telling it.",
+"Look for the task that is a judgement about a person rather than a piece of text.",
+"Think of a kitchen that writes down its best recipes so every cook can reuse them.",
+"Imagine a busy reader who only sees the headline. Which one still tells them something?",
+"It is about a human tendency when people work alongside machines, not about the AI itself.",
+"Laws and rules change over time. Which source is both official and dated?"
+],
+"interview": [
+"Name two or three real tasks, the check you do each time, a data rule you follow and a realistic benefit.",
+"Tell a short story with a specific error, how you spotted it and what you changed in your process afterwards.",
+"Group your answer by type of information: about people, health, money and access, business secrets.",
+"Describe a routine you actually follow, and say where in an answer errors most often hide.",
+"Separate what the AI drafts from what you supply and check, especially any promises.",
+"Be honest about change, then focus on skills that grow in value and practical support you can offer.",
+"Think small and safe first: tools, data rules, a few tasks, shared examples, then measure.",
+"Mention company policy first, then when openness matters to the reader and who stays responsible.",
+"Pick one plain-language data question, how you protected the data, and how you spot-checked it.",
+"Think about decisions about people, personal moments, things you cannot check and sensitive data.",
+"Habits outlast product features. Mention where you get reliable, official updates.",
+"Agree what must be exact first, then plan time for checking and be open about gaps.",
+"Explain it in one plain sentence, then connect it to your responsibility for what you send."
+]}

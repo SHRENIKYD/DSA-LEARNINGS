@@ -1,0 +1,31 @@
+{"quiz": [
+"Divide the image side by the patch side, then remember the grid has two dimensions.",
+"Use ceiling division on each side because a partial patch is padded to a full one, then multiply.",
+"Think about the gap between what a vision encoder outputs and what the language model expects as input vectors.",
+"Picture the batch similarity grid: what happens to the diagonal and what happens to everything else?",
+"No new training is needed; the label names themselves become something the model can embed.",
+"The running product multiplies many numbers smaller than one. Where does such a product head?",
+"The loss compares something the trainer added on purpose with what the network guesses.",
+"Start from the prediction without the prompt and move along the direction the prompt adds.",
+"Compare the number of values in a 512 by 512 RGB image with a 64 by 64 by 4 block.",
+"It is signed metadata about origin and edits. Ask what happens if someone removes the metadata.",
+"Count the edits needed, then divide by the number of words in the reference, not the output.",
+"When every stage streams, later stages start as soon as the earlier ones produce their first piece.",
+"Stopping the audio is obvious. Think about what the model's memory of the conversation now says.",
+"Ask what the model can see about moments that fall between two sampled frames."
+],
+"interview": [
+"Cover patching, the encoder, the projector into the LLM, and what this means for token cost and small text.",
+"Weigh exact deterministic text against layout understanding, and add a validation and human-review layer.",
+"Describe the batch similarity matrix and the loss over rows and columns, then name a blind spot like word order.",
+"Compare captioning pages, embedding images, and retrieving page images; decide how you would measure recall.",
+"Go from adding noise with a schedule, to predicting the noise, to removing it step by step, and mention cost.",
+"Explain the two predictions per step and the extrapolation, then describe what happens to colour and variety.",
+"Mention signed manifests and invisible watermarks together, and be honest about what each cannot prove.",
+"Think real call audio, normalised error rate, the words that really matter, and behaviour during silence.",
+"List every stage from the user's last word to the first sound and give a lever for each one.",
+"Explain silence-based endpointing, then the steps when the user talks over the agent, and the failure modes.",
+"Estimate tokens from sampled frames plus audio, then list ways to cap cost and what sparse sampling misses.",
+"Split the answer into risks from inputs, risks from generated outputs, and legal or governance duties.",
+"Combine a realistic prompt set, human preference, automatic adherence checks, safety prompts, cost and latency."
+]}

@@ -224,7 +224,7 @@
     TRACKS.forEach(function (t) { t.modules.forEach(function (pm) { var x = S.totals.modules[pm.id]; if (x && x.complete && Learn.onPath(pm.id)) shared++; }); });
     return '<section class="card pathsw" data-nav id="pathSwitch" tabindex="-1" aria-labelledby="pwH"><b class="ttl" id="pwH">My path</b>' +
       '<label class="rt-field" for="pwRoute"><span class="kick">Goal</span></label><select id="pwRoute">' + PATHS.ROUTES.map(function (r) { return '<option value="' + esc(r.id) + '"' + (r.id === p.id ? ' selected' : '') + '>' + esc(r.name) + '</option>'; }).join('') + '</select>' +
-      '<label class="rt-field" for="pwLang"><span class="kick">Code language</span></label><select id="pwLang"' + (R.langs.length < 2 ? ' disabled' : '') + '>' + R.langs.map(function (l) { return '<option value="' + l + '"' + (l === p.lang ? ' selected' : '') + '>' + esc(Learn.LANG_NAMES[l]) + '</option>'; }).join('') + '</select>' +
+      '' + (R.noCode ? '' : '<label class="rt-field" for="pwLang"><span class="kick">Code language</span></label><select id="pwLang"' + (R.langs.length < 2 ? ' disabled' : '') + '>' + R.langs.map(function (l) { return '<option value="' + l + '"' + (l === p.lang ? ' selected' : '') + '>' + esc(Learn.LANG_NAMES[l]) + '</option>'; }).join('') + '</select>') +
       '<label class="rt-field" for="pwHours"><span class="kick">Hours per week</span></label><select id="pwHours">' + [5, 10, 20, 40].map(function (x) { return '<option value="' + x + '"' + (x === p.hours ? ' selected' : '') + '>' + x + ' h</option>'; }).join('') + '</select>' +
       modeSeg(m) + '<p class="muted sm" id="pwNote" role="status">Switching keeps all your progress. ' + shared + ' of your ' + S.totals.completeModules + ' completed modules count on ' + esc(R.name) + '.</p></section>';
   }
@@ -236,7 +236,7 @@
       undoToast('Path switched · Progress kept', function () { setPrefQuiet(prev); me(); var u = $(focusId); if (u) u.focus(); });
     }
     r.addEventListener('change', function () { change({ id: r.value }, '#pwRoute'); });
-    $('#pwLang').addEventListener('change', function () { change({ lang: this.value }, '#pwLang'); });
+    if ($('#pwLang')) $('#pwLang').addEventListener('change', function () { change({ lang: this.value }, '#pwLang'); });
     $('#pwHours').addEventListener('change', function () { change({ hours: +this.value }, '#pwHours'); });
   }
 
@@ -616,7 +616,7 @@
     h += '<fieldset class="rt-pick"><legend class="kick">Destination</legend>' + PATHS.ROUTES.map(function (r) {
       return '<label class="rt-opt' + (r.id === p.id ? ' on' : '') + '"><input type="radio" name="rtRoute" value="' + esc(r.id) + '"' + (r.id === p.id ? ' checked' : '') + '><b>' + esc(r.name) + '</b><span class="muted sm">' + esc(r.blurb) + '</span><small>' + r.langs.map(function (l) { return esc(Learn.LANG_NAMES[l]); }).join(' · ') + '</small></label>';
     }).join('') + '</fieldset>';
-    h += '<div class="card"><label class="rt-field" for="rtLang"><span class="kick">Code language</span></label><select id="rtLang"' + (R.langs.length < 2 ? ' disabled' : '') + '>' + R.langs.map(function (l) { return '<option value="' + l + '"' + (l === p.lang ? ' selected' : '') + '>' + esc(Learn.LANG_NAMES[l]) + '</option>'; }).join('') + '</select>' +
+    h += '<div class="card">' + (R.noCode ? '' : '<label class="rt-field" for="rtLang"><span class="kick">Code language</span></label><select id="rtLang"' + (R.langs.length < 2 ? ' disabled' : '') + '>' + R.langs.map(function (l) { return '<option value="' + l + '"' + (l === p.lang ? ' selected' : '') + '>' + esc(Learn.LANG_NAMES[l]) + '</option>'; }).join('') + '</select>') +
       '<fieldset class="rt-hours"><legend class="kick">Hours per week</legend>' + HRS.map(function (x) { return '<label class="rt-h' + (x === p.hours ? ' on' : '') + '"><input type="radio" name="rtHours" value="' + x + '"' + (x === p.hours ? ' checked' : '') + '><span>' + x + ' h</span></label>'; }).join('') + '</fieldset></div>';
     h += '<section aria-labelledby="rtSchedH" class="card"><div class="row sb"><b id="rtSchedH" class="ttl">Schedule</b><span class="mono sm muted">' + sc.total + ' h in all</span></div><dl class="rt-sched">' +
       '<div><dt>Required modules</dt><dd>' + sc.core + ' h</dd></div><div><dt>Recommended modules</dt><dd>' + sc.rec + ' h</dd></div><div><dt>Spaced revision (' + Math.round(PATHS.REVISION * 100) + '%)</dt><dd>' + sc.revision + ' h</dd></div><div><dt>Projects</dt><dd>' + sc.projects + ' h</dd></div>' +

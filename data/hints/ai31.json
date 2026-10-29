@@ -1,0 +1,30 @@
+{"quiz": [
+"Think of the three baristas: the menu and ordering process are the same, but what about depth, speed and cost?",
+"Which tool lets you choose exactly what it reads and points to the passage behind every claim?",
+"Picture something you could listen to on a commute, generated from the documents you uploaded.",
+"The variable name combines the model family's name with the usual words for a secret credential.",
+"A schema constrains the shape of the reply. Does it also promise that the facts inside are right?",
+"Look for the option built for governance: identity and access control, audit trails and regional choices.",
+"Google's terms treat free and paid usage differently. Ask what may happen to free-tier prompts.",
+"The default context file is named after the CLI itself and written in Markdown.",
+"One mode trusts edits because you will review the diff, but still wants a yes before side effects.",
+"MCP servers live in the CLI's JSON configuration file, either in your home folder or in the project.",
+"At I/O 2026 Google pointed individual users of its terminal agent to a tool on its new agent platform.",
+"Jules works on GitHub repositories. What would a reviewer naturally receive at the end?",
+"It is a vendor-neutral Markdown file at the repository root that several coding agents read.",
+"Think of the platform launched alongside Gemini 3 whose 2026 version added a desktop app, CLI and SDK."
+],
+"interview": [
+"Talk about routing by difficulty and volume, measuring on your own examples, and keeping the model name configurable.",
+"Contrast answering from chosen documents with citations against general knowledge, and say when each fits.",
+"Cover samples, system instruction, schema, exporting code, key handling, validation and production hardening.",
+"Same models, different contract: compare speed of setup with identity, audit, region and data-term controls.",
+"Think about edition and terms, training use, retention, approval lists, redaction and who signs off.",
+"Describe the levels where context files are found, how they are combined, and the commands to inspect them.",
+"Layer approvals, isolation, least privilege, trusted integrations and tests, and remember untrusted input.",
+"Contrast hand-off with a plan and a returned diff against step-by-step steering in your own terminal.",
+"Consider secrets, live systems, vague strategy, and tasks with no way to check success.",
+"Mention where it runs, its main features, who the current editions target and the 2026 change for individuals.",
+"Place it between editor helpers and asynchronous hand-off, and mention its history from 2025 to 2026.",
+"Separate stable categories from changing names, and explain how you verify facts and keep work portable."
+]}

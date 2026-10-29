@@ -782,6 +782,7 @@ I('How would you evaluate whether an AI tool improves your team\'s productivity?
 
 registerModule({
   id: 'ai02',
+  langExplain: `<p>The code snippets here are short Python examples of asking an AI for code and checking it; the same habits work in Java, JavaScript, C++, C# or any other language.</p>`,
   title: 'Using AI Tools Effectively',
   intro: `<p>AI assistants are now part of everyday engineering and interview prep. This module teaches you to use them <b>well</b>: choose the right tool, write precise prompts, iterate in short verified rounds, test what comes back, protect private data, and use AI as a tutor that makes you stronger instead of lazier.</p><p>You will practise by rewriting vague prompts, catching a hidden bug with a tiny property-based test harness, redacting personal data before pasting, tutoring yourself through a DP problem without spoilers and critiquing an AI system design.</p>`,
   goals: [

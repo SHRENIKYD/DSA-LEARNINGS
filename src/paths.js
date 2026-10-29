@@ -66,6 +66,9 @@ var PATHS = (function () {
     ai10: ['ai07'], ai11: ['ai09', 'ai10'], ai12: ['ai05', 'ai06'], ai13: ['ai09'], ai14: ['ai09', 'ai13'], ai15: ['ai05', 'ai06', 'ai18', 'ai20'],
     ai16: ['ai02'], ai17: ['ai02'], ai18: ['ai03'], ai19: ['ai03'], ai20: ['ai18'],
     ai21: ['ai04', 'ai19'], ai22: ['ai21', 'devops13'], ai23: ['ai21', 'ai22', 'hld06'],
+    ai24: ['ai07', 'ai09', 'ai11'], ai25: ['ai06', 'ai08'], ai26: ['ai10', 'ai11'], ai27: ['ai05', 'ai20'],
+    ai28: ['ai02'], ai29: ['ai16'], ai30: ['ai16'], ai31: ['ai28'], ai32: ['ai29', 'ai30'],
+    ai33: ['ai01'], ai34: ['ai33'], ai35: ['ai34'], ai36: ['ai01'], ai37: ['ai35', 'ai36'],
     // CS Core
     cs02: ['cs01'], cs03: ['cs02'], cs04: ['cs02'], cs05: ['cs04'], cs06: ['cs02'], cs07: ['cs06'], cs08: ['cs02'], cs09: ['cs06', 'cs08'],
     cs11: ['cs10'], cs12: ['cs10'], cs13: ['cs12'], cs14: ['cs12', 'cs13'],
@@ -120,7 +123,7 @@ var PATHS = (function () {
         { name: 'Introductory system design', mods: ['hld01', 'hld02', 'hld03', 'hld04', 'hld05', 'hld06'] },
         { name: 'Mocks and interviews', mods: ['dsa28', 'beh03', 'beh04'], behavioral: ['beh04'] }
       ],
-      extensions: ['dsa21', 'dsa22', 'dsa23', 'dsa24', 'dsa25', 'dsa26', 'dsa27', 'lld08', 'lld09', 'hld07', 'hld08', 'hld09', 'sql10', 'sql11', 'sql12'] },
+      extensions: ['dsa21', 'dsa22', 'dsa23', 'dsa24', 'dsa25', 'dsa26', 'dsa27', 'lld08', 'lld09', 'hld07', 'hld08', 'hld09', 'sql10', 'sql11', 'sql12', 'lld13', 'hld17', 'cs15', 'cs16', 'cs17', 'csharp14', 'csharp15', 'csharp16', 'beh07', 'beh08', 'beh09'] },
     { id: 'pyback', name: 'Python backend', langs: ['python'], blurb: 'Python first, then DSA, SQL, HTTP and APIs, FastAPI with SQLAlchemy, testing and security, and system design.',
       stages: [
         { name: 'Python', mods: ['py01', 'py02', 'py03', 'py04', 'py05', 'py06', 'py07', 'py08', 'py09'] },
@@ -131,7 +134,7 @@ var PATHS = (function () {
         { name: 'Testing and security', mods: ['be05', 'be19', 'be20', 'be15'], rec: ['be15'] },
         { name: 'System design', mods: ['hld01', 'hld02', 'hld03', 'hld04', 'hld05', 'hld06', 'hld08', 'hld09'], project: 'py-p3', behavioral: ['beh04'] }
       ],
-      extensions: ['py10', 'py11', 'be09', 'be16', 'hld12', 'devops08', 'devops11'] },
+      extensions: ['py10', 'py11', 'be09', 'be16', 'hld12', 'devops08', 'devops11', 'py14', 'py15', 'py16', 'be22', 'be23', 'sql16', 'sql17', 'hld17'] },
     { id: 'frontend', name: 'Frontend', langs: ['js'], blurb: 'JavaScript, then TypeScript, HTML/CSS and the browser, React, and the testing, accessibility and performance work that separates seniors.',
       stages: [
         { name: 'JavaScript', mods: ['js01', 'js02', 'js03', 'js04', 'js05', 'js06', 'js07', 'js08', 'js09'] },
@@ -141,7 +144,7 @@ var PATHS = (function () {
         { name: 'Testing, accessibility and performance', mods: ['fe06', 'fe11', 'fe14', 'fe13'], rec: ['fe13'] },
         { name: 'Architecture and interviews', mods: ['fe15', 'fe16', 'dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], rec: ['dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], project: 'fe-p3', behavioral: ['beh04'] }
       ],
-      extensions: ['js12', 'js13', 'js14', 'fe12', 'fe17', 'fe18', 'fe19', 'fe20', 'fe21', 'fe22', 'fe23', 'hld01', 'hld04', 'hld06'] },
+      extensions: ['js12', 'js13', 'js14', 'fe12', 'fe17', 'fe18', 'fe19', 'fe20', 'fe21', 'fe22', 'fe23', 'hld01', 'hld04', 'hld06', 'fe24', 'js15', 'js16'] },
     { id: 'javaback', name: 'Java backend', langs: ['java'], blurb: 'Java, core DSA and SQL, Spring Boot backends, concurrency, then low-level and high-level design.',
       stages: [
         { name: 'Java', mods: ['java01', 'java02', 'java03', 'java04', 'java05', 'java06', 'java07', 'java08', 'java09'] },
@@ -150,7 +153,7 @@ var PATHS = (function () {
         { name: 'Concurrency', mods: ['java10', 'java11', 'java12'] },
         { name: 'LLD and HLD', mods: ['lld01', 'lld02', 'lld03', 'lld04', 'lld05', 'lld06', 'lld07', 'lld08', 'lld10', 'hld01', 'hld02', 'hld03', 'hld04', 'hld05', 'hld06', 'hld07', 'hld08', 'hld09', 'hld12'], project: 'jb-p3', behavioral: ['beh03', 'beh04'] }
       ],
-      extensions: ['java13', 'java14', 'be10', 'be12', 'be13', 'be16', 'sql11', 'sql12', 'hld10', 'hld14'] },
+      extensions: ['java13', 'java14', 'be10', 'be12', 'be13', 'be16', 'sql11', 'sql12', 'hld10', 'hld14', 'java15', 'java16', 'java17', 'be22', 'be23', 'sql16', 'sql17', 'lld13', 'hld17'] },
     { id: 'aiapp', name: 'AI application development', langs: ['python'], blurb: 'Python, the maths that ML actually uses, ML and LLM foundations, evaluation, retrieval and tools, then deployment and safety.',
       stages: [
         { name: 'Python', mods: ['py01', 'py02', 'py03', 'py04', 'py05', 'py06', 'py07', 'py09'] },
@@ -160,7 +163,7 @@ var PATHS = (function () {
         { name: 'Retrieval and tools', mods: ['ai08', 'ai09', 'ai10', 'ai11'], project: 'ai-p2', behavioral: ['beh01', 'beh02'] },
         { name: 'Deployment and safety', mods: ['be01', 'be04', 'be17', 'ai14'], project: 'ai-p3', behavioral: ['beh04'] }
       ],
-      extensions: ['ai12', 'ai15', 'ai16', 'ai17', 'py10', 'be18', 'be20', 'hld06'] },
+      extensions: ['ai12', 'ai15', 'ai16', 'ai17', 'py10', 'be18', 'be20', 'hld06', 'ai21', 'ai22', 'ai23', 'py15', 'ai24', 'ai25', 'ai26', 'ai27', 'ai28', 'ai29', 'ai30', 'ai31', 'ai32'] },
     { id: 'systems', name: 'C++ / systems', langs: ['cpp'], blurb: 'C++, DSA in C++, memory and ownership, operating systems and concurrency, networking, and systems projects.',
       stages: [
         { name: 'C++', mods: ['cpp01', 'cpp02', 'cpp03', 'cpp04', 'cpp05', 'cpp07', 'cpp08'] },
@@ -169,14 +172,27 @@ var PATHS = (function () {
         { name: 'Operating systems and concurrency', mods: ['cs01', 'cs02', 'cs03', 'cs04', 'cs05', 'cs06', 'cs07', 'cs08', 'cpp11'], behavioral: ['beh01', 'beh02'] },
         { name: 'Networking and systems projects', mods: ['cs10', 'cs11', 'cs12', 'cs13', 'cs09'], project: 'cpp-p3', behavioral: ['beh04'] }
       ],
-      extensions: ['cpp13', 'cs14', 'dsa20', 'dsa21', 'lld10', 'hld10'] },
+      extensions: ['cpp13', 'cs14', 'dsa20', 'dsa21', 'lld10', 'hld10', 'cpp14', 'cpp15', 'cs15', 'cs16', 'cs17'] },
     { id: 'devops', name: 'Cloud & DevOps', langs: ['python'], blurb: 'From Linux and networking to Terraform, Kubernetes, observability and multi-region architecture: cloud support to DevOps, SRE and cloud architect.',
       stages: [
         { name: 'Phase 1: The foundation', mods: ['devops01', 'devops02', 'devops03', 'devops04', 'devops05', 'devops06'], project: 'ops-p1', behavioral: ['beh01'] },
         { name: 'Phase 2: Automation and provisioning', mods: ['py01', 'py02', 'py03', 'devops07', 'devops08', 'devops09', 'devops10', 'devops11', 'devops12'], project: 'ops-p2', behavioral: ['beh02'] },
         { name: 'Phase 3: Orchestration, scale and observability', mods: ['devops13', 'devops14', 'devops15', 'devops16', 'devops17', 'devops18'], project: 'ops-p3', behavioral: ['beh04'] }
       ],
-      extensions: ['cs08', 'cs09', 'cs11', 'cs13', 'hld04', 'hld12', 'be13', 'be14', 'be16'] }
+      extensions: ['cs08', 'cs09', 'cs11', 'cs13', 'hld04', 'hld12', 'be13', 'be14', 'be16', 'devops19', 'devops20', 'devops21'] },
+    { id: 'aitools', name: 'Using AI tools', langs: ['python', 'java', 'js', 'cpp', 'csharp'], blurb: 'Which AI to use and how to use it well: choosing an assistant, giving it the right context, and coding with Claude Code, OpenAI Codex, Google Gemini CLI and Jules, and GitHub Copilot.',
+      stages: [
+        { name: 'Choose and use AI well', mods: ['ai01', 'ai02', 'ai28', 'ai33', 'ai34'] },
+        { name: 'AI coding agents', mods: ['ai16', 'ai29', 'ai30', 'ai31', 'ai32'] }
+      ],
+      extensions: ['ai07', 'ai24', 'ai26', 'ai35', 'ai36'] },
+    { id: 'nontech', name: 'AI for non-tech roles', langs: ['python'], noCode: true, blurb: 'No coding needed: use AI at work, give it the right context, build no-code assistants and automations, use it responsibly, and prepare for AI product and operations interviews.',
+      stages: [
+        { name: 'AI basics', mods: ['ai01', 'ai33', 'ai34', 'ai28'] },
+        { name: 'Build and use AI responsibly', mods: ['ai35', 'ai36'] },
+        { name: 'AI careers and interviews', mods: ['ai37', 'ai17', 'beh01', 'beh02', 'beh03'], behavioral: ['beh04'] }
+      ],
+      extensions: ['ai02', 'beh04', 'beh07'] }
   ];
   var PROJECTS = {
     'sde-p1': { name: 'Problem-solving portfolio', hours: 12, brief: 'Solve and write up 15 mixed problems (5 easy, 7 medium, 3 hard) without topic labels, with brute force, optimised solution, complexity and tests for each.', rubric: ['15 problems are solved and written up: 5 easy, 7 medium, 3 hard, picked without looking at topic labels', 'Every write-up has a brute-force solution and an optimised one that give the same answers on the same sample input', 'Tests for every problem cover empty, single-element and largest-size input, and all of them pass', 'Time and space complexity is stated for both solutions, with a sentence of reasoning, not just the result', 'Every write-up names the clue in the problem statement that pointed to the pattern, such as sorted input, a k-th element or overlapping ranges', 'You re-solved the 3 hardest problems from a blank file a week later without looking at your notes'] },

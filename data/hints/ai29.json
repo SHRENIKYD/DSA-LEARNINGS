@@ -1,0 +1,31 @@
+{"quiz": [
+"Think about which claude.ai plans include coding tools at all, and which one is aimed only at casual chat.",
+"Claude Code ranks credentials in a fixed order. Which kind of credential sitting in your shell would outrank a browser login?",
+"Memory files exist at several levels. Which one lives in your home folder rather than inside a repository?",
+"Rules from every settings file are merged, then checked in a fixed order. Does a more specific rule get to jump the queue?",
+"One mode is like a guided tour: you may look around and suggest changes, but nothing gets touched until you sign off.",
+"Hooks treat one particular exit code as a hard stop. Is 1 that code, or does something else signal blocking?",
+"This front matter field is about who may start the skill. Consider which skills you would not want Claude to start by itself.",
+"A subagent has its own context window. Think about what travels back to the main conversation when it finishes.",
+"MCP servers have scopes. Which scope writes a file at the repository root that teammates receive when they pull?",
+"In a non-interactive run nobody is at the keyboard. What is the safe default for a request that would normally need a person?",
+"One command keeps a summary of the old work, the other starts from nothing. Which fits work that has no link to the last task?",
+"Checkpoints record the edits Claude makes with its own file tools. What about effects of commands it runs in the shell?",
+"The official action is published by the company that makes Claude, under the name of the product plus the word action.",
+"Organisation policy must beat everything else, and your own personal file is the most general. Order the rest between them."
+],
+"interview": [
+"Describe the cycle as a few verbs, then add where permission checks happen and what your own role is at the end.",
+"Separate facts the agent needs every session from material needed only sometimes, and from things that must be enforced.",
+"Go from the most cautious mode to the least, and pair each one with a situation where it is the right choice.",
+"Explain the fixed evaluation order, what wins when two rules match, and what decides when no rule matches at all.",
+"Contrast always-loaded guidance, on-demand procedures, and deterministic actions that must happen every time.",
+"Say how the hook receives the event, what each exit code means, and give one concrete guard you would build.",
+"Mention the separate context window and the summary, then be honest about whether total token use goes down.",
+"Cover the add command for remote and local servers, the three scopes, trust in server output, and when a CLI is simpler.",
+"Talk about the print flag, tool allowlists, turn caps, output formats, reproducible runs, and the official GitHub action.",
+"Start by measuring what fills the window, then choose between summarising and starting fresh, then fix the root causes.",
+"Order matters: stop, measure the damage, use checkpoints for agent edits and git for the rest, then change the process.",
+"Think in layers: organisation policy, repository configuration, review process, and measurement of results.",
+"List several risk categories, and map each to one or two specific features or habits that reduce it."
+]}

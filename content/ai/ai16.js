@@ -1222,6 +1222,7 @@ iv('E', 'You lead a team adopting coding agents on a critical codebase. What cha
 
 registerModule({
   id: 'ai16',
+  langExplain: `<p>The code snippets here are short Python examples of specs, tests and reviews for AI-written code; the practices are the same in any language, and the coding agents in this lesson work with all of them.</p>`,
   title: 'AI-Augmented Software Engineering',
   intro: `<p>This module is about the new day-to-day craft of engineering with AI: how to <b>scope and direct coding agents</b>, why to <b>write the spec and tests before the AI writes the code</b>, how to <b>review and test AI-written code</b> using the common failure patterns, how to use AI for <b>debugging, refactoring and docs</b>, how AI shows up in <b>interviews</b>, and how to stay sharp so the tool never replaces your judgment. Everything is practical, with runnable Python (buggy AI code plus the suite that catches it, a spec-to-test generator, a review scorer, a fuzzer with an oracle) and step-through visuals.</p>`,
   goals: [

@@ -913,6 +913,7 @@ Q('A team proposes adding an LLM to a feature. What questions do you ask first?'
 
 registerModule({
   id: 'ai01',
+  langExplain: `<p>The few code snippets here are short Python illustrations of the ideas; you don't need to write code to follow this lesson, and everything applies the same way whatever language you use.</p>`,
   title: 'AI, ML, Deep Learning & GenAI in Plain English',
   intro: `<p>Everyone talks about AI, but few can say clearly what it is. In this module you learn the real meaning of AI, machine learning, deep learning and generative AI as <b>nested circles</b>, how machines learn (supervised, unsupervised, reinforcement), what a model actually is, the difference between <b>training and inference</b>, how generative AI builds text one word at a time, and where it fails. You will run tiny Python programs for each idea, so nothing stays magic. This is the foundation for every later module in the GenAI track.</p>`,
   goals: [
