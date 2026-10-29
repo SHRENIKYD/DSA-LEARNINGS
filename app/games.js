@@ -794,7 +794,7 @@ var Games = (function () {
       var d1 = pick(D), s1 = rowsOf(d1).reduce(function (a, r) { return a + r.pay; }, 0), d2 = pick(D), m2 = Math.max.apply(null, rowsOf(d2).map(function (r) { return r.pay; }));
       var items = shuffle([
         item(tab + code('SELECT dept, COUNT(*)\nFROM emp\nGROUP BY dept;') + '<p>How many rows come back?</p>', groups, [groups - 1, T.length, groups + 1], 'One row per group: ' + D.join(', ') + ' and the NULL group = ' + groups + '.'),
-        item(tab + code("SELECT SUM(salary)\nFROM emp\nWHERE dept = '" + d1 + "';"), s1, [s1 + rowsOf(d1)[0].salary, s1 - rowsOf(d1)[0].salary, rowsOf(d1).length], 'The ' + d1 + ' salaries are ' + rowsOf(d1).map(function (r) { return r.pay; }).join(' + ') + ' = ' + s1 + '.'),
+        item(tab + code("SELECT SUM(salary)\nFROM emp\nWHERE dept = '" + d1 + "';"), s1, [s1 + rowsOf(d1)[0].pay, s1 - rowsOf(d1)[0].pay, rowsOf(d1).length], 'The ' + d1 + ' salaries are ' + rowsOf(d1).map(function (r) { return r.pay; }).join(' + ') + ' = ' + s1 + '.'),
         item(tab + code('SELECT dept\nFROM emp\nGROUP BY dept\nHAVING COUNT(*) >= 2;') + '<p>How many rows come back?</p>', big, [big + 1, groups, big - 1].filter(function (v) { return v >= 0; }), 'Only groups with at least 2 rows survive HAVING: ' + (D.filter(function (d) { return rowsOf(d).length >= 2; }).join(', ') || 'none') + '.'),
         item(tab + code('SELECT COUNT(dept)\nFROM emp;'), nn, [T.length, nn - 1, groups], 'COUNT(dept) skips the NULL, so it is ' + nn + ', while COUNT(*) would be ' + T.length + '.'),
         item(tab + code("SELECT MAX(salary)\nFROM emp\nWHERE dept = '" + d2 + "';"), m2, shuffle(T.map(function (r) { return r.pay; })).filter(function (v) { return v !== m2; }), 'The highest ' + d2 + ' salary is ' + m2 + '.')
