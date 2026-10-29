@@ -4,6 +4,13 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.16] — 2026-10-29 · New puzzle brings new questions
+
+### Fixed
+- In 32 quiz games, "New puzzle" brought back the same questions in a different order. Each had only 5–7 questions; each now has 30.
+- A quiz game now remembers which questions you have seen on this device and shows unseen ones first. You see all 30 (6 rounds) before any question comes back.
+- Loop counter and Recursion trail make up more question variants: 23 and 16.
+
 ## [1.10.15] — 2026-10-29 · A quiz after every topic
 
 ### Added

@@ -56,7 +56,7 @@ for (let pass = 0; pass < 30; pass++) {
   ({ box, result } = mounted('windowchef')); const trays = box.children[0].children, a = trays.map(b => +b.innerHTML); const sums = a.slice(0, 5).map((_, i) => a.slice(i, i + 3).reduce((n, x) => n + x, 0)); click(trays[sums.indexOf(Math.max(...sums))]); trays.forEach(click); assert.equal(result.wins, 1, 'best window wins once');
 }
 for (const id of ['recursiontrail', 'cssduel', 'httprescue', 'transactionvault', 'promptdetective']) {
-  const g = G.get(id), oracle = new Map(g.puzzles().map(x => [x.q, x.opts[x.ans]]));
+  const g = G.get(id), oracle = new Map(); for (let k = 0; k < 400; k++) g.puzzles().forEach(x => oracle.set(x.q, x.opts[x.ans]));
   for (let pass = 0; pass < 10; pass++) {
     const { box, result } = mounted(id); const [, body, choices, , next] = box.children;
     for (let round = 0; round < 5; round++) {
@@ -78,4 +78,13 @@ const stats = c.Journey.stats({}, {}); const world = E.world(c.Journey, stats, c
 const entries = [{ t: '<b>Binary</b>', c: 'DSA', s: 'search', h: 'dsa.html#dsa10' }, { t: 'Binary', c: 'bad', h: 'javascript:alert(1)' }]; const results = E.search(entries, 'binary', c.TRACKS); assert.match(results, /1 results/); assert.match(results, /&lt;b&gt;Binary/); assert.doesNotMatch(results, /javascript:/);
 assert.match(E.search(entries, '', c.TRACKS), /Search a topic/); assert.match(E.search(entries, 'nothing', c.TRACKS), /No matches/);
 const P = require('../app/play.js'); const week = E.week(P, { '2026-10-19': { g: 1 }, '2026-10-18': { t: 0 } }, new Date(2026, 9, 19, 12)); assert.equal(week.length, 7); assert.equal(week[6].active, true); assert.equal(week[5].active, false);
-console.log('PASS: 73-game registry with 2-3 hints each; new-game helpers and generated answers; 90 interactive randomized wins; 250 round answers; win deduplication/failure paths; lesson mappings; BFS distances; real-progress world; safe search; streak calendar');
+// New puzzle: every fixed-bank quiz has 3 rounds of unseen questions before any repeat.
+for (const g of G.list) {
+  if (typeof g.puzzles !== 'function' || !g.goal || g.goal.indexOf('Five short rounds') !== 0) continue;
+  const pool = new Set(); for (let i = 0; i < 300; i++) g.puzzles().forEach((it) => pool.add(it.q));
+  if (pool.size > 60) continue;
+  assert(pool.size >= (['recursiontrail', 'bigoloop'].includes(g.id) ? 15 : 30), g.id + ' has only ' + pool.size + ' questions; New puzzle would repeat them');
+  const shown = new Set(), full = Math.floor(pool.size / 5); G.fresh.reset(g.id);
+  for (let r = 0; r < full; r++) G.fresh(g.id, g.puzzles).forEach((it) => { assert(!shown.has(it.q), g.id + ' repeated a question before all were seen'); shown.add(it.q); });
+}
+console.log('PASS: 73-game registry with 2-3 hints each; new-game helpers and generated answers; 90 interactive randomized wins; 250 round answers; win deduplication/failure paths; no repeated quiz question until the bank is used up (30 per fixed quiz); lesson mappings; BFS distances; real-progress world; safe search; streak calendar');
