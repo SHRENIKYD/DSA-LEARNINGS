@@ -4,6 +4,14 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.17] — 2026-10-29 · 30 rounds in every quiz game
+
+### Added
+- Every quiz game now has at least 150 questions, which is 30 rounds of 5. "New puzzle" never repeats a question until you have seen all of them.
+  - The 32 fixed-question games went from 30 to 150–168 questions each, about 3,900 new questions in total.
+  - Three games that generate their questions now have more of them: Loop counter (171), Recursion trail (156) and Napkin math (153, now covering peak load, server count, bandwidth, storage per year and cache memory).
+- Every new code-output question was compiled or run in its language (C++, C#, Java, Python, JavaScript) and its answer matched the real output.
+
 ## [1.10.16] — 2026-10-29 · New puzzle brings new questions
 
 ### Fixed
