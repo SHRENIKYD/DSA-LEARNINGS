@@ -1,0 +1,34 @@
+{
+ "quiz": [
+  "Think about the difference between wording one instruction and deciding every token that goes into the window.",
+  "Nothing in the window is wrong, yet quality falls as it fills. Which named effect describes gradual decline with length?",
+  "Recall in long contexts tends to be U-shaped. Which positions sit at the bottom of the U?",
+  "Input and output share one window. Subtract the reserved output from the total.",
+  "Ask which corpus is large and changing, so loading it all up front would be stale or not fit.",
+  "Look for the option that removes raw output the agent already used, at zero extra model cost.",
+  "After a reset the agent must continue the work. What would it need to know to avoid repeating itself?",
+  "Sub-agents usually raise total spend. So what do they protect instead?",
+  "Progressive disclosure has levels. What tiny piece must always be visible so the model knows a skill exists?",
+  "One instruction file is an open, tool-neutral convention rather than tied to a single vendor's agent.",
+  "Prompt caches match from the first token onward. What happens if the very first block changes every time?",
+  "Earlier messages must stay byte-identical for the prefix to match. Which strategy never changes them?",
+  "Extra thinking helps where many steps of reasoning are needed. Which task actually needs planning?",
+  "You want evidence, not impressions: one variable changed, same tasks, repeated runs, compared case by case."
+ ],
+ "interview": [
+  "Contrast writing one instruction with curating all components: tools, documents, history, memory and the output reserve.",
+  "Think about quality, money and latency separately, and when a one-off long-document job is the exception.",
+  "Recall the U-shaped curve, then list fixes for selection, placement and asking the model to quote evidence.",
+  "Start from the output reserve, then fixed costs, must-haves, and flexible slices with caps and a drop order.",
+  "Weigh size and volatility of the corpus, latency targets and the extra round trips of exploring with tools.",
+  "Cover the trigger point, cheap clearing first, a strict summary template, pinned content and how you evaluate it.",
+  "Separate wide, parallel work from tightly coupled work, and remember what happens to total token spend.",
+  "Describe writing state outside the window and reading it back, then think about staleness, privacy and injection.",
+  "Explain the three loading levels and why the description acts like a router for the model.",
+  "Include what the agent cannot discover cheaply; leave out what it can read itself; keep it short and shared.",
+  "Caches match the longest identical prefix. Order blocks by how often they change, and list the usual cache killers.",
+  "Separate hard multi-step tasks from simple ones, and remember where thinking tokens are billed and counted.",
+  "Change one variable, repeat runs, grade with code where possible, and compare per case rather than only totals.",
+  "Suspect the window first: per-step token breakdown, ballooning tool output, a weak summary, then fixes and an eval."
+ ]
+}

@@ -1,0 +1,30 @@
+{"quiz": [
+"Think about whether today's tool is a model you call or a product that runs tasks for you, and when the old one was retired.",
+"Separate the two settings: one says what is technically possible, the other says when to ask. Which one is about writing?",
+"If the policy forbids asking a human, what is the only thing left that can happen to a blocked action?",
+"Picture walking from the project root down to the folder you are in. Are side folders on that path?",
+"Codex takes at most one instruction file per folder. Which name does it check before the plain one?",
+"Current releases keep each profile in its own file inside the Codex home folder, named after the profile.",
+"A cloned repo should not be able to loosen your settings on its own. What must you decide about the folder first?",
+"One setting changes how long the model thinks before answering. The others are about permissions or size limits.",
+"Secrets are needed to install private packages, not to write code. Which phase installs packages?",
+"Look for the task that touches many files that another task also needs.",
+"Code review on GitHub is triggered by mentioning the agent in a PR comment, followed by one word.",
+"Codex reads its review rules from the same instruction files it uses for coding, under a specific heading.",
+"An agent cannot reliably undo many files from memory. Which tool already tracks every change?",
+"Prices and limits move often. Which answer tells you to check the current source instead of memorising numbers?"
+],
+"interview": [
+"Name the surfaces the tool runs on, what it does with a repo, and how it differs from a retired 2021 model of the same name.",
+"Explain the two separate dials, what each value allows, and how you would choose by blast radius.",
+"Cover where the global file lives, how the walk from root to working folder works, the one-file-per-folder rule and ordering.",
+"List the config layers from lowest to highest, mention profiles and trust, and how you would check the result.",
+"Start with which files each piece of work touches, then decide what must go first and what can run side by side.",
+"Mention how review is turned on and triggered, where its focus comes from, and what still has to gate the merge.",
+"Match effort to how hard the task is, and mention what higher effort costs and how you switch mid-session.",
+"Describe the two kinds of server connection, where tokens should come from, and how to limit what the server exposes.",
+"Walk through the loop from a clean branch to a merged PR, and say how git helps when a slice goes wrong.",
+"Think about the runner, the policy when nobody can approve, who verifies the output, and where the result goes.",
+"Name what the two tools share, then the differences in models, instruction files, permissions and cloud features.",
+"Cover accounts and data policy, templates and training, a pilot, measurements, and who keeps the merge button."
+]}

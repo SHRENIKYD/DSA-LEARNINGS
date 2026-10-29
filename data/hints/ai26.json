@@ -1,0 +1,32 @@
+{
+ "quiz": [
+  "Ask whether you could draw the full flowchart before the first invoice arrives.",
+  "Both designs call a model. Focus on which part of the system chooses what happens next.",
+  "The process will be gone after the deploy. Where must the run's progress live so it can continue?",
+  "Frameworks pay off when you need durability, handoffs or tracing. What if you need none of those yet?",
+  "Resume will run the step again. What makes running the same charge twice harmless?",
+  "Retry only errors that might succeed a moment later. Which one describes a temporary condition?",
+  "Picture a thousand clients that all failed at the same second and all wait exactly the same time.",
+  "One protocol connects an agent to tools and data; think about what the other connects it to.",
+  "Discovery happens before any task is sent. Recall the JSON document a remote agent publishes.",
+  "The screenshot is half the size of the real screen in each direction. Scale both numbers.",
+  "Prompts can be overridden by injected text. Prefer controls the model cannot talk its way past.",
+  "Both rules match this call. Recall the precedence order among deny, ask and allow.",
+  "The user needs all three runs to succeed, not just one of them. Pick the strict metric.",
+  "Find which calls got more expensive. Where is per-call token usage recorded?"
+ ],
+ "interview": [
+  "Start with when the steps are known in advance, give a concrete fixed pipeline, then mention hybrids.",
+  "Match each framework to the hard part it was built around: graphs, handoffs, computer tools, workflow agents.",
+  "Explain saving state per step and resuming, then be honest about what happens to a step that crashed mid-way.",
+  "Cover timeouts from a deadline, which errors to retry, backoff with jitter, one retry layer and idempotency.",
+  "Think about a key that stays the same across retries of one logical action, plus limits and approval.",
+  "Contrast connecting to tools versus delegating to an independent agent; mention cards, tasks and states.",
+  "Describe the see, act, see-again loop, coordinate scaling, then the risks of on-screen text and real clicks.",
+  "Use three layers: rules with precedence, a sandbox boundary, and human approval for risky actions.",
+  "Fewer, more meaningful prompts: risk tiers, clear details, editable approvals and measuring approval behaviour.",
+  "One trace per run, spans per model and tool call, standard attribute names, and care with sensitive data.",
+  "An average pass rate hides inconsistency. Think about repeated trials, state checks, safety and cost.",
+  "Combine hard limits enforced in code with ways to make each step cheaper and to avoid wasted steps."
+ ]
+}

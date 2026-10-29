@@ -1,0 +1,30 @@
+{"quiz": [
+"Think about how a chatbot produces text: does it look facts up, or predict words that sound right?",
+"The problem was in the list of earlier court decisions the lawyers relied on. Did those decisions exist?",
+"Ask who the tribunal held accountable when the website's assistant gave a customer wrong information.",
+"Ask where an AI system learns its idea of a good candidate, and what that history looked like.",
+"The name of the test is a clue: you change one small detail and keep everything else the same.",
+"Some items can be changed if leaked but should never leave controlled systems at all. Which is a secret?",
+"In the US, copyright protection is tied to a particular kind of author. Who has to make creative choices?",
+"The meeting looked normal and familiar. Think about which AI technique can fake faces and voices.",
+"Spotting fakes by eye is unreliable. What can an attacker not control when they start a call?",
+"Reading feelings from faces in workplaces and schools is treated very strictly in the Act. How strictly?",
+"Decisions that affect someone's job are one of the areas listed for extra duties in the Act.",
+"A 2026 amendment moved some dates later but kept bans and transparency on time. Which date fits?",
+"Compare the size of one short request with the total growth in data-centre demand reported by the IEA.",
+"A useful label tells readers about the role of the tool, the role of people and who stands behind it."
+],
+"interview": [
+"Use an everyday comparison, explain why fluent text can still be false, and end with a checking habit.",
+"Sort data into simple categories by sensitivity and mention giving people an approved tool to use.",
+"Pick a well-documented case, say where the unfairness came from, and what testing would catch it.",
+"Separate the question of training data from owning the output, and compare at least two countries.",
+"Cover the risk levels with one example each, the key dates after the 2026 change, and who it applies to.",
+"Lean on process rather than on people detecting fakes, and think about independent verification.",
+"Think about legal and contract triggers, substantial AI contribution and what a reader would expect.",
+"List the questions a short policy must answer: tools, data, checking, people decisions, disclosure, problems.",
+"Contrast the per-request figure with the total trend, and say what practical choices reduce waste.",
+"Walk through purpose, data, accuracy, fairness, rights, rules, transparency, security, cost and review.",
+"Consider the impact on pay, possible bias in past data, the legal category, and what role AI could safely play.",
+"Name the kinds of sources you would rely on, how you would note dates, and when you would ask legal."
+]}

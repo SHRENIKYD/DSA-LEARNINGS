@@ -1,0 +1,29 @@
+{"quiz": [
+"Think about what has to happen before an automation does anything at all.",
+"Ask who starts the work each time: a person with a new question, or an event.",
+"Find the step that cannot be undone once it happens, then think about timing.",
+"Multiply the number of runs by the share that goes wrong.",
+"The help centre describes a change of home for these assistants, with a migration path and dates.",
+"Smaller, fixed choices are easier to get right and easier to check than free writing.",
+"Think about where the software runs and who controls those computers.",
+"The name of the app hints that a person gets involved in the middle of the run.",
+"Weigh how often it happens against how bad one mistake would be.",
+"Assume anything inside a shared assistant can be asked about by anyone who can use it.",
+"Separate actions that only look at things from actions that change, send or spend.",
+"A broken input is not noisy on its own; think about what would make it noticed.",
+"Think about what happens when an AI reads text written by someone who wants to steer it."
+],
+"interview": [
+"Contrast them by who starts the work and who decides the steps, then give a one-line example each.",
+"Cover the brief, the fallback rule for missing answers, the files and testing before sharing.",
+"Use the five parts in order and mention unhappy paths, an owner and a success measure.",
+"Place the person before the irreversible step, then explain how you make checking quick and real.",
+"Mention frequency, cost of a mistake, sameness of steps, and whether the process is sound.",
+"Start from runs times error rate, then describe ways to reduce both the rate and the harm.",
+"Compare ease of use, visual style, hosting options and AI features, then say how you would choose.",
+"Trace each step's data: who receives it, under which account, and whether it is needed at all.",
+"Think of a new intern: limited keys, approvals, a pilot, logs and a named owner.",
+"Estimate volume first, then name what drives usage and how to trim it; do not cite prices.",
+"Talk about access levels, what never goes in the files, admin settings and a launch checklist.",
+"Pick something internal and frequent, then describe the baseline and the numbers you would compare."
+]}

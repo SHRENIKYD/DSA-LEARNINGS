@@ -1,0 +1,35 @@
+{
+  "quiz": [
+    "Line the two shapes up from the right and compare one dimension at a time; a missing dimension counts as size 1.",
+    "Think about whether backward() overwrites the .grad field or adds into it, and why the loop clears it every step.",
+    "eval() flips a flag that some layers read. Ask yourself whether it also touches the autograd machinery.",
+    "Check what the loss function already does to the logits internally before computing the log-likelihood.",
+    "nn.Module only tracks attributes it can recognise as modules or parameters. Is a Python list one of those?",
+    "Compare how many exponent bits each 16-bit format keeps, and what that means for very small and very large numbers.",
+    "An inf gradient applied to the weights would ruin them. What is the cheapest safe reaction for one step?",
+    "Since PyTorch 1.1 a warning appears if these two calls happen in one particular order. Which update should come first?",
+    "Ask what else influences the next update besides the weights: momentum buffers, the schedule position, the step count.",
+    "Unpickling a file can do far more than create tensors. What does restricting it to weights rule out?",
+    "Typical fine-tuning learning rates for transformers are around 1e-5 to 5e-5. Compare that with 1e-2.",
+    "Look at the gap between the two curves after epoch 6, and which checkpoint early stopping would restore.",
+    "Compute the global L2 norm of the vector first, then the factor max_norm divided by that norm.",
+    "One of these options lets cuDNN pick kernels by timing them, which may differ from run to run."
+  ],
+  "interview": [
+    "List the five lines inside the batch loop in order, then the separate evaluation pass with its two mode switches.",
+    "Describe what is recorded during forward, the order nodes are visited in backward, and why a node used twice needs addition.",
+    "Name the two common layers that behave differently in the two modes, and what happens if you forget to switch back.",
+    "Separate the jobs: one object returns single examples, the other orders, batches, collates and parallelises them.",
+    "Compare exponent and mantissa bits of the two 16-bit formats and think about tiny gradients underflowing to zero.",
+    "Break memory into weights, gradients, optimizer state and activations, then list a lever that shrinks each one.",
+    "Each technique attacks overfitting from a different angle: more data, noise in activations, smaller weights, or stopping time.",
+    "Think about Adam's statistics at step zero and a random new head producing large, noisy gradients early on.",
+    "Split the answer into what inference needs versus what an exact resume needs, then list common load-time failures.",
+    "Start with a frozen pretrained backbone and a new head, then think about gentle unfreezing with smaller learning rates.",
+    "Cover loading a model with a new head, tokenising once, dynamic padding, the key training arguments and what Trainer automates.",
+    "Go from data checks to the initial loss value, then a tiny one-batch experiment, then gradient checks, and only then tuning.",
+    "Group the causes into learning rate, number format, unsafe maths and bad data, then explain how to find the first bad step.",
+    "List every source of randomness (Python, NumPy, torch, workers, GPU kernels) and what can still differ across machines.",
+    "Review data splits, the loop order, modes, loss inputs, schedule granularity and checkpoint restore, then test with small experiments."
+  ]
+}

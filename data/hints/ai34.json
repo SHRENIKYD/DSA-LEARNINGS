@@ -1,0 +1,28 @@
+{"quiz": [
+"Think about what the AI does when a fact it needs is simply not in the conversation.",
+"Ask which is more precise: describing a style in words, or showing what you mean.",
+"Custom instructions are added to every chat. Which line is true almost every time?",
+"Projects are meant to tailor one area of work. Which layer should win inside it?",
+"Picture a reusable setup for one repeated task, with its own instructions and files.",
+"This chat mode exists for private, one-off questions. What would it do with memory?",
+"Switching a feature off and erasing what it stored are not always the same action.",
+"If the AI can see several conflicting versions of one fact, which one will it use?",
+"Each correction adds more text, including the wrong versions. What would clear them away?",
+"What would let you open the document and confirm each point within seconds?",
+"Think about the classic mistake of sending an email that still says Dear [NAME].",
+"Ask which columns the task actually needs, and what rules apply before data leaves you."
+],
+"interview": [
+"Start from what the AI can actually see, and what it does with the gaps.",
+"Think of the questions a new colleague would ask before starting a writing task.",
+"Compare who writes each one, how widely it applies, and whether it is picked up automatically.",
+"Consider how often the task repeats and whether it needs the same documents each time.",
+"Mention where to look in settings, what turning off does not do, and private chat options.",
+"Cover how the file becomes context, which formats cause trouble, and privacy.",
+"Explain what piles up in a long chat, then describe a clean way to restart.",
+"Name the kinds of details most likely to be wrong and where you would check each.",
+"Describe going from one excellent hand-written request to a tested version with blanks.",
+"Look at one of their real requests together. What is usually missing from it?",
+"Think about shared templates, data rules, training and how you would measure success.",
+"Remember that standing settings shape every chat, including the ones they do not fit."
+]}

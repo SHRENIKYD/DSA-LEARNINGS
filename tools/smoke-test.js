@@ -225,7 +225,7 @@ const server = http.createServer((req, res) => {
           if (await np.evaluate(() => [...document.querySelectorAll('#pRoute, #pCollection, .pp-side')].some((e) => !e.hidden))) err('signed-out passport still shows stamps or settings');
         } else {
           if (!(await np.$('#pRoute .rstages li'))) err('passport has no route progress strip');
-          if ((await np.$$('#pRouteStamps .pst')).length !== 7) err('passport does not show one stamp per route');
+          if ((await np.$$('#pRouteStamps .pst')).length !== await np.evaluate(() => PATHS.ROUTES.length)) err('passport does not show one stamp per route');
         }
       }
       // 5j planner screens (src/planner.js): home in My path mode, today.html, plan.html

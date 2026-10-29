@@ -1,0 +1,28 @@
+{"quiz": [
+"Spell out the three-letter abbreviation and think about what product people agree on before building.",
+"Look for the number that protects users while you push the main goal upward.",
+"A useful test covers more than the questions the AI already handles well.",
+"When two careful people disagree, the instructions they are following are probably the problem.",
+"Think about what a user experiences between pressing send and seeing words appear.",
+"The letters stand for two versions shown to different groups of real people.",
+"Ask which mistake would hurt a person most and be hardest to undo.",
+"Cheaper is fine only for some requests, and only after a quality check.",
+"This role judges and writes answers by following detailed guidelines rather than building systems.",
+"Before solving anything, make sure you know what problem and limits you are solving for.",
+"Think about what stops a project quietly growing bigger than planned.",
+"Look for a measure that would reveal customers who gave up and came back angry."
+],
+"interview": [
+"Think about the inputs engineers need from you, like examples and a quality bar, and honesty about gaps.",
+"Use three layers: a main outcome, quality checks, and things that must not get worse.",
+"Describe where the questions come from, which kinds to include, and who writes the answers.",
+"Consider both the speed benefit and how you would confirm the grader agrees with people.",
+"Focus on what the remaining failures are and whether current reviews are genuine.",
+"Use a simple comparison with words, then name the levers that reduce the count.",
+"Order matters: stop the harm, measure it, tell people, find the cause, then fix and learn.",
+"List the sections that exist only because AI output varies and can be wrong.",
+"Clarify the goal, pick one user, keep exact numbers from bank records, and plan for regulation.",
+"Start by learning why people are not using it, then make it relevant to each role.",
+"Think inventory, risk reviews, rules, policy, training and monitoring with owners.",
+"Pick pieces that show decisions backed by evidence rather than certificates."
+]}

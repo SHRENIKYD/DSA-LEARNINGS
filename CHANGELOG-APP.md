@@ -2,6 +2,20 @@
 
 From 1.11.1 each app release, whether it brings fixes or features, raises the last number: 1.11.1, 1.11.2, … up to 1.11.99. The release after 1.11.99 is 1.12.0, and the same pattern repeats. The patch number stops at 99 because the Android `versionCode` is MAJOR×10000 + MINOR×100 + PATCH, and a patch of 100 would give the same code as the next minor version, which Google Play rejects. The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.11.15] — 2026-10-29 · AI tools, AI for everyone and deeper AI
+
+### Added
+- **AI Tools** section in GenAI & AI: Choosing Your AI Assistant; Claude Code in Practice; OpenAI Codex in Practice; Google AI (Gemini, Gemini CLI and Antigravity CLI, AI Studio, Jules, NotebookLM); and Coding Assistants Compared & Building Your Workflow.
+- **AI for Everyone** section, with no code: AI at Work Without Code; Giving AI the Right Context; No-Code AI Assistants & Automation; AI Risks, Ethics & Regulation in Plain English; and AI Product Management & Non-Tech AI Interviews.
+- Deeper AI: Context Engineering for LLM Apps & Agents; Multimodal AI (vision, speech, voice agents and image generation); Building Agents in Practice (frameworks, A2A and computer use); and Deep Learning in Practice with PyTorch.
+- The tested practice problems in the new AI lessons have solutions in Python, Java, JavaScript, C++ and C#.
+- Two new study routes: **Using AI tools** (in any of the five code languages) and **AI for non-tech roles** (no coding).
+- Every new place has hints for its riddles and interview questions.
+
+### Changed
+- The 32 lessons added on 28 October now appear in their study routes, listed under the route's extensions.
+- The "AI for non-tech roles" route never asks for a code language.
+
 ## [1.11.14] — 2026-10-28 · 35 new lessons and a working update check
 
 ### Added

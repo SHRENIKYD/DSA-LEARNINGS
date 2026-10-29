@@ -1,0 +1,29 @@
+{"quiz":[
+"Think about a car versus its engine: one is the thing you use, the other does the core work.",
+"Look for the tool whose main idea is to search first and then show where each claim came from.",
+"Count the steps a task needs; extra hidden thinking pays off only when there are many.",
+"Separate what gets published from what may stay private, such as the data used to train it.",
+"Which of these is software you install on your own computer to download and start models?",
+"Think about rounding numbers so each one takes up less space, and what that costs in precision.",
+"Consider whether a switch flipped today can reach back in time to data that was already handled.",
+"A chat subscription is for people typing in a website; programs need their own metered access.",
+"A number in brackets is a pointer, not a proof. What would you need to do with that pointer?",
+"Local models are usually weaker and need decent hardware, so what unique benefit justifies them?",
+"Multiply the count of parameters by the bytes used for each one at 16-bit precision.",
+"Benchmarks and buzz measure other people's work. What measures how well it does yours?",
+"Think about which kind of plan a company buys and what contract terms that plan tends to add."
+],
+"interview":[
+"Organise your answer by task, data sensitivity and features rather than listing brand names.",
+"Contrast speed and cost with accuracy on multi-step problems, and say when you would switch.",
+"Define the term in one sentence, name a few families, then give privacy, offline and cost reasons.",
+"Cover approved tools, training settings, what never to paste and what to do after a leak.",
+"Break the bill into requests, input tokens and output tokens, then mention ways to cut it.",
+"Think about weak hardware, the quality gap with top cloud models and who maintains the server.",
+"Use an everyday rounding analogy and mention the trade between memory and answer quality.",
+"Treat the report as a draft: what would you open, what would you date, and what would you drop?",
+"List a handful of short, concrete rules covering tools, data, verification, incidents and ownership.",
+"Mention official sources, a small personal test set of real tasks and dated notes.",
+"Start with must-have requirements, then real tasks, a written rubric, blind scoring and a pilot.",
+"Combine a small local model for most requests with a consent-based escalation path for hard ones."
+]}

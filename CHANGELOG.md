@@ -4,6 +4,19 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.14] — 2026-10-29 · AI tools, AI for everyone and deeper AI
+
+### Added
+- **AI Tools** section in GenAI & AI: Choosing Your AI Assistant; Claude Code in Practice; OpenAI Codex in Practice; Google AI (Gemini, Gemini CLI and Antigravity CLI, AI Studio, Jules, NotebookLM); and Coding Assistants Compared & Building Your Workflow.
+- **AI for Everyone** section, with no code: AI at Work Without Code; Giving AI the Right Context; No-Code AI Assistants & Automation; AI Risks, Ethics & Regulation in Plain English; and AI Product Management & Non-Tech AI Interviews.
+- Deeper AI: Context Engineering for LLM Apps & Agents; Multimodal AI (vision, speech, voice agents and image generation); Building Agents in Practice (frameworks, A2A and computer use); and Deep Learning in Practice with PyTorch.
+- The tested practice problems in the new AI lessons have solutions in Python, Java, JavaScript, C++ and C#.
+- Two new study routes: **Using AI tools** (in any of the five code languages) and **AI for non-tech roles** (no coding).
+- Every new place has hints for its riddles and interview questions.
+
+### Changed
+- The 32 lessons added on 28 October now appear in their study routes, listed under the route's extensions.
+
 ## [1.10.13] — 2026-10-28 · Cloud, JavaScript, C++, Next.js and design depth
 
 ### Added
