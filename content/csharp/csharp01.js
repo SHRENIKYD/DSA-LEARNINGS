@@ -810,6 +810,130 @@ Console.WriteLine(((long)a + b) / 2);      // 2050000000` },
   });
 
   /* ---------- guided problems ---------- */
+  topics[0].problems = [{
+    title: 'Describe a Target Framework Moniker',
+    level: 'Easy', tags: ['dotnet CLI', 'csproj', 'string parsing'], companies: ['Microsoft', 'Accenture', 'Cognizant'],
+    statement: R`<p>The <code>&lt;TargetFramework&gt;</code> line of a <code>.csproj</code> holds a <b>target framework moniker</b> (TFM) that says which runtime <code>dotnet build</code> compiles for. Write <code>public string DescribeTfm(string tfm)</code> in a class <code>Solution</code> that turns a TFM into a readable name:</p>
+<ul>
+<li><code>netX.Y</code> (X ≥ 5) → <code>.NET X.Y</code>; an optional OS suffix <code>-os</code> is added as <code>.NET X.Y (os)</code>.</li>
+<li><code>netcoreappX.Y</code> → <code>.NET Core X.Y</code>.</li>
+<li><code>netstandardX.Y</code> → <code>.NET Standard X.Y</code>.</li>
+<li><code>net</code> followed by 2 or 3 digits only (old .NET Framework) → <code>.NET Framework</code> with the digits joined by dots: <code>net48</code> → <code>.NET Framework 4.8</code>, <code>net472</code> → <code>.NET Framework 4.7.2</code>.</li>
+<li>Anything else → <code>unknown</code>.</li>
+</ul>`,
+    constraints: R`1 ≤ tfm.Length ≤ 30; lowercase ASCII letters, digits, dots and at most one hyphen. A version X.Y has one or two digits per part.`,
+    example: R`<p><code>"net8.0"</code> → <span class="c-g">.NET 8.0</span>; <code>"net8.0-windows"</code> → <span class="c-g">.NET 8.0 (windows)</span>; <code>"net48"</code> → <span class="c-g">.NET Framework 4.8</span>; <code>"net4.8"</code> → <span class="c-r">unknown</span> (a dotted version below 5 is not a valid modern TFM).</p>`,
+    brute: { why: R`<p>Checking <code>StartsWith("net")</code> first matches every TFM — <code>netcoreapp3.1</code> and <code>netstandard2.0</code> would be reported as ".NET coreapp3.1". The order of the checks matters: test the longer prefixes first, and tell a dotted modern version from the dotless Framework form.</p>`, code: R`public class Brute
+{
+    public string DescribeTfm(string tfm) =>
+        tfm.StartsWith("net") ? ".NET " + tfm[3..] : "unknown";   // wrong for netcoreapp / netstandard / net48
+}` },
+    mcq: { q: 'A project file says <code>&lt;TargetFramework&gt;net8.0&lt;/TargetFramework&gt;</code>. Where does <code>dotnet build</code> (Debug) put the compiled assembly?', options: ['<code>obj/net8.0/Hello.exe</code> as native machine code', '<code>bin/Debug/net8.0/Hello.dll</code> containing IL', '<code>bin/Release/Hello.dll</code> containing machine code', 'Nowhere: <code>dotnet build</code> only checks the syntax'], answer: 1, explain: 'The output folder is bin/&lt;Configuration&gt;/&lt;TFM&gt;/, and Debug is the default configuration. The .dll holds IL; the JIT turns it into machine code only when the program runs.' },
+    hints: [
+      R`<p>Hint 1: test <code>netcoreapp</code> and <code>netstandard</code> before the plain <code>net</code> prefix.</p>`,
+      R`<p>Hint 2: for plain <code>net</code>, split off an optional <code>-os</code> suffix with <code>Split('-')</code>, then decide between "digits only" (Framework) and "major.minor" (modern).</p>`,
+      R`<p>Hint 3: a modern version needs a dot and a major of at least 5; <code>int.TryParse</code> rejects junk without throwing.</p>`
+    ],
+    tests: { sig: 'string -> string', fn: 'describeTfm', cases: [
+      [['net8.0'], '.NET 8.0'],
+      [['net8.0-windows'], '.NET 8.0 (windows)'],
+      [['net10.0'], '.NET 10.0'],
+      [['netcoreapp3.1'], '.NET Core 3.1'],
+      [['netstandard2.0'], '.NET Standard 2.0'],
+      [['net48'], '.NET Framework 4.8'],
+      [['net472'], '.NET Framework 4.7.2'],
+      [['net4.8'], 'unknown'],
+      [['net'], 'unknown'],
+      [['dotnet8.0'], 'unknown'],
+      [['net6.0-android'], '.NET 6.0 (android)']
+    ] },
+    solution: {
+      approach: R`<p>Match the specific prefixes first (<code>netcoreapp</code>, <code>netstandard</code>), then handle plain <code>net</code>: strip an optional <code>-os</code> suffix, accept <code>major.minor</code> with major ≥ 5 as modern .NET, and accept 2–3 bare digits (no suffix) as .NET Framework. Everything else is <code>unknown</code>.</p>`,
+      code: R`public class Solution
+{
+    static bool IsVersion(string v) =>
+        v.Split('.') is [var a, var b] && a.Length is 1 or 2 && b.Length is 1 or 2
+        && a.All(char.IsDigit) && b.All(char.IsDigit);
+
+    public string DescribeTfm(string tfm)
+    {
+        if (tfm.StartsWith("netcoreapp"))
+            return IsVersion(tfm[10..]) ? ".NET Core " + tfm[10..] : "unknown";
+        if (tfm.StartsWith("netstandard"))
+            return IsVersion(tfm[11..]) ? ".NET Standard " + tfm[11..] : "unknown";
+        if (!tfm.StartsWith("net")) return "unknown";
+
+        string[] parts = tfm[3..].Split('-');           // "8.0-windows" -> ["8.0", "windows"]
+        if (parts.Length > 2) return "unknown";
+        string ver = parts[0];
+        string? os = parts.Length == 2 ? parts[1] : null;
+
+        if (IsVersion(ver) && int.Parse(ver.Split('.')[0]) >= 5)
+            return os is null ? ".NET " + ver : $".NET {ver} ({os})";
+        if (os is null && ver.Length is 2 or 3 && ver.All(char.IsDigit))
+            return ".NET Framework " + string.Join('.', ver.ToCharArray());   // "472" -> "4.7.2"
+        return "unknown";
+    }
+}`,
+      dry: { head: ['tfm', 'branch', 'ver / os', 'result'], rows: [['net8.0-windows', 'plain net', '"8.0" / "windows"', '.NET 8.0 (windows)'], ['netcoreapp3.1', 'netcoreapp', '"3.1"', '.NET Core 3.1'], ['net472', 'plain net, digits only', '"472" / null', '.NET Framework 4.7.2'], ['net4.8', 'plain net', 'major 4 &lt; 5', '<span class="c-r">unknown</span>']] },
+      complexity: R`<p>O(L) time and memory for a TFM of length L.</p>`,
+      followUps: ['Parse <code>&lt;TargetFrameworks&gt;net8.0;net48&lt;/TargetFrameworks&gt;</code> (multi-targeting) into a list of descriptions', 'Return the <code>bin/Release/&lt;tfm&gt;/</code> output path for each target']
+    }
+  }];
+
+  topics[1].problems = [{
+    title: 'The Generated Main for Top-Level Statements',
+    level: 'Easy', tags: ['top-level statements', 'Main', 'exit codes'], companies: ['Microsoft', 'Infosys', 'EPAM'],
+    statement: R`<p>The compiler turns top-level statements into a hidden entry method. Its <b>return type</b> depends on two facts about your code: whether it uses <code>await</code> and whether it has <code>return</code> with a value. Its <b>parameter list never changes</b>: the generated method always takes <code>string[] args</code>, which is why <code>args</code> is available in every top-level program. Write <code>public string EntrySignature(bool usesArgs, bool usesAwait, bool returnsValue)</code> in a class <code>Solution</code> that returns the generated signature in the form the lesson uses (the real method name is the unspeakable <code>&lt;Main&gt;$</code>; print it as <code>Main</code>):</p>
+<pre>static [async ]RETURN Main(string[] args)</pre>
+<p>RETURN is <code>void</code>, <code>int</code>, <code>Task</code> or <code>Task&lt;int&gt;</code>; <code>async</code> appears only with <code>await</code>. <code>usesArgs</code> tells you whether the code reads <code>args</code> — decide yourself whether it matters. Separate words by single spaces.</p>`,
+    constraints: R`All 8 combinations of the three flags are valid inputs.`,
+    example: R`<p><code>(true, false, true)</code> → <span class="c-g">static int Main(string[] args)</span>. <code>(false, true, false)</code> → <span class="c-g">static async Task Main(string[] args)</span> — the parameter is there even though the code never reads <code>args</code>.</p>`,
+    brute: { why: R`<p>Two common mistakes: hard-coding <code>static void Main(string[] args)</code> (a program that does <code>return 1;</code> would lose its exit code, and one that awaits could not be <code>void</code>), and dropping the parameter when the code does not read <code>args</code> — the generated method always has it. Build the signature from the two parts that really vary.</p>`, code: R`public class Brute
+{
+    public string EntrySignature(bool usesArgs, bool usesAwait, bool returnsValue)
+        => usesArgs ? "static void Main(string[] args)" : "static void Main()";   // wrong return types, and the parameter never disappears
+}` },
+    mcq: { q: '<code>Program.cs</code> contains only <code>var data = await File.ReadAllTextAsync("in.txt"); return data.Length &gt; 0 ? 0 : 1;</code> (it never reads <code>args</code>). What entry method does the compiler generate?', options: ['<code>static async Task&lt;int&gt; Main()</code>', '<code>static int Main(string[] args)</code>', '<code>static async Task&lt;int&gt; Main(string[] args)</code>', 'None — top-level statements cannot use <code>await</code>'], answer: 2, explain: 'await makes it async Task; returning an int makes it Task&lt;int&gt;; the generated entry method always has the string[] args parameter, whether or not the code reads args. The awaited int becomes the process exit code.' },
+    hints: [
+      R`<p>Hint 1: only <code>usesAwait</code> and <code>returnsValue</code> change the result; the parameter list is always <code>string[] args</code>.</p>`,
+      R`<p>Hint 2: return type table: no await → <code>void</code>/<code>int</code>; await → <code>Task</code>/<code>Task&lt;int&gt;</code>.</p>`,
+      R`<p>Hint 3: build the string with interpolation; add <code>"async "</code> only when <code>usesAwait</code>.</p>`
+    ],
+    tests: { sig: 'bool bool bool -> string', fn: 'entrySignature', cases: [
+      [[false, false, false], 'static void Main(string[] args)'],
+      [[true, false, false], 'static void Main(string[] args)'],
+      [[false, false, true], 'static int Main(string[] args)'],
+      [[true, false, true], 'static int Main(string[] args)'],
+      [[false, true, false], 'static async Task Main(string[] args)'],
+      [[true, true, false], 'static async Task Main(string[] args)'],
+      [[false, true, true], 'static async Task<int> Main(string[] args)'],
+      [[true, true, true], 'static async Task<int> Main(string[] args)']
+    ] },
+    solution: {
+      approach: R`<p>Choose the return type from <code>(usesAwait, returnsValue)</code> with a switch expression on a tuple and the <code>async</code> keyword from <code>usesAwait</code>; the parameter is always <code>string[] args</code>, so <code>usesArgs</code> is deliberately ignored.</p>`,
+      code: R`public class Solution
+{
+    public string EntrySignature(bool usesArgs, bool usesAwait, bool returnsValue)
+    {
+        // usesArgs is ignored: the generated entry method always declares string[] args
+        string ret = (usesAwait, returnsValue) switch
+        {
+            (false, false) => "void",
+            (false, true)  => "int",        // the int is the exit code
+            (true, false)  => "Task",
+            (true, true)   => "Task<int>"
+        };
+        string asyncWord = usesAwait ? "async " : "";
+        return $"static {asyncWord}{ret} Main(string[] args)";
+    }
+}`,
+      dry: { head: ['usesArgs', 'usesAwait', 'returnsValue', 'ret', 'result'], rows: [['true', 'false', 'true', 'int', 'static int Main(string[] args)'], ['false', 'true', 'false', 'Task', 'static async Task Main(string[] args)'], ['false', 'false', 'false', 'void', 'static void Main(string[] args)'], ['true', 'true', 'true', 'Task&lt;int&gt;', 'static async Task&lt;int&gt; Main(string[] args)']] },
+      complexity: R`<p>O(1) time and memory.</p>`,
+      followUps: ['Given several classes that each declare <code>Main</code>, explain what <code>&lt;StartupObject&gt;</code> in the csproj chooses', 'What happens (which error) if two files contain top-level statements?']
+    }
+  }];
+
   topics[2].problems = [{
     title: 'Sum of N Large Numbers',
     level: 'Easy', tags: ['types', 'long', 'overflow'], companies: ['Microsoft', 'Infosys', 'TCS'],
@@ -848,6 +972,144 @@ Console.WriteLine(sum);`,
       dry: { head: ['token', 'value', 'sum (long)', 'sum if it were int'], rows: [['1', '1000000000', '1000000000', '1000000000'], ['2', '1000000000', '2000000000', '2000000000'], ['3', '1000000000', '3000000000', '<span class="c-r">-1294967296</span>']] },
       complexity: R`<p>O(N) time; O(N) memory for the token array (a streaming reader would make it O(1)).</p>`,
       followUps: ['Print the sum modulo 10<sup>9</sup>+7 when values go up to 10<sup>18</sup>', 'Rewrite it with the byte-level FastReader from topic 6']
+    }
+  }];
+
+  topics[3].problems = [{
+    title: 'What Does var Infer from a Literal?',
+    level: 'Easy', tags: ['var', 'type inference', 'literals'], companies: ['Microsoft', 'TCS', 'Deloitte'],
+    statement: R`<p>For the line <code>var x = LITERAL;</code> the compiler infers the type of <code>x</code> from the literal alone. Write <code>public string InferVar(string literal)</code> in a class <code>Solution</code> that returns the C# keyword of the inferred type, following the language rules:</p>
+<ul>
+<li>Integer literals (digits only, optionally with <code>_</code> separators) without suffix: the first of <code>int</code>, <code>uint</code>, <code>long</code>, <code>ulong</code> that can hold the value. Suffix <code>U</code> → <code>uint</code> or <code>ulong</code>; <code>L</code> → <code>long</code> or <code>ulong</code>; <code>UL</code>/<code>LU</code> → <code>ulong</code> (suffixes in any case). A value above <code>ulong.MaxValue</code> → <code>error</code>.</li>
+<li>Real literals (with a dot) or a suffix <code>D</code>/<code>F</code>/<code>M</code>: no suffix or <code>D</code> → <code>double</code>, <code>F</code> → <code>float</code>, <code>M</code> → <code>decimal</code>.</li>
+<li><code>true</code>/<code>false</code> → <code>bool</code>; a literal in single quotes → <code>char</code>; in double quotes → <code>string</code>.</li>
+<li><code>null</code> → <code>error</code> (CS0815: cannot assign null to an implicitly-typed variable). Anything else → <code>error</code>.</li>
+</ul>`,
+    constraints: R`1 ≤ literal.Length ≤ 40. Number literals are non-negative and contain no exponent or hex prefix.`,
+    example: R`<p><code>"42"</code> → <span class="c-g">int</span>; <code>"3000000000"</code> → <span class="c-g">uint</span> (too big for int, fits uint); <code>"5L"</code> → <span class="c-g">long</span>; <code>"0.1m"</code> → <span class="c-g">decimal</span>; <code>"null"</code> → <span class="c-r">error</span>.</p>`,
+    brute: { why: R`<p>"Digits means int, a dot means double" is the common mental shortcut, and it is wrong exactly where bugs hide: <code>var big = 3000000000;</code> is a <code>uint</code>, not an <code>int</code> or <code>long</code>, so <code>big - 4000000000</code> behaves unexpectedly; and suffixes like <code>m</code> or <code>f</code> change the type completely.</p>`, code: R`public class Brute
+{
+    public string InferVar(string literal) =>
+        literal.Contains('.') ? "double" : "int";   // ignores suffixes, sizes, bool, char, string, null
+}` },
+    mcq: { q: 'Which line does <b>not</b> compile?', options: ['<code>var total = 0m;</code>', '<code>var name = (string?)null;</code>', '<code>var nothing = null;</code>', '<code>const long Big = 5_000_000_000;</code>'], answer: 2, explain: 'var needs a type from the initialiser and a bare null has none (CS0815). A cast gives null a type, 0m is decimal, and 5_000_000_000 is a long constant that fits.' },
+    hints: [
+      R`<p>Hint 1: handle the easy literal kinds first: <code>null</code>, <code>true</code>/<code>false</code>, quoted char and string.</p>`,
+      R`<p>Hint 2: for numbers, strip the suffix letters (lowercase them first) and the <code>_</code> separators; a dot or a <code>d</code>/<code>f</code>/<code>m</code> suffix means a real literal.</p>`,
+      R`<p>Hint 3: parse the digits with <code>ulong.TryParse</code> (false means too big) and compare against <code>int.MaxValue</code>, <code>uint.MaxValue</code> and <code>long.MaxValue</code>.</p>`
+    ],
+    tests: { sig: 'string -> string', fn: 'inferVar', cases: [
+      [['42'], 'int'],
+      [['2147483647'], 'int'],
+      [['2147483648'], 'uint'],
+      [['3000000000'], 'uint'],
+      [['5000000000'], 'long'],
+      [['9223372036854775808'], 'ulong'],
+      [['18446744073709551616'], 'error'],
+      [['5L'], 'long'],
+      [['5u'], 'uint'],
+      [['5000000000U'], 'ulong'],
+      [['7UL'], 'ulong'],
+      [['1_000_000'], 'int'],
+      [['1.5'], 'double'],
+      [['1.5f'], 'float'],
+      [['0.1m'], 'decimal'],
+      [['10M'], 'decimal'],
+      [['true'], 'bool'],
+      [["'a'"], 'char'],
+      [['"hi"'], 'string'],
+      [['null'], 'error']
+    ] },
+    solution: {
+      approach: R`<p>Recognise the keyword and quoted literals directly. For numbers, peel off the suffix, remove <code>_</code>, and branch: real literals (dot or <code>d</code>/<code>f</code>/<code>m</code>) map to <code>double</code>/<code>float</code>/<code>decimal</code>; integer literals take the first type in the suffix's candidate list that can hold the value.</p>`,
+      code: R`public class Solution
+{
+    public string InferVar(string literal)
+    {
+        string s = literal.Trim();
+        if (s == "null") return "error";                       // CS0815
+        if (s is "true" or "false") return "bool";
+        if (s.Length >= 3 && s[0] == '\'' && s[^1] == '\'') return "char";
+        if (s.Length >= 2 && s[0] == '"' && s[^1] == '"') return "string";
+
+        string t = s.ToLowerInvariant();
+        int end = t.Length;
+        while (end > 0 && char.IsLetter(t[end - 1])) end--;    // split digits and suffix
+        string body = t[..end].Replace("_", ""), suffix = t[end..];
+        if (body.Length == 0 || !char.IsDigit(body[0]) || !char.IsDigit(body[^1])) return "error";
+
+        if (body.Contains('.') || suffix is "d" or "f" or "m")
+        {
+            if (body.Count(c => c == '.') > 1 || !body.All(c => char.IsDigit(c) || c == '.')) return "error";
+            return suffix switch { "" or "d" => "double", "f" => "float", "m" => "decimal", _ => "error" };
+        }
+        if (!ulong.TryParse(body, out ulong v)) return "error";  // non-digits or above ulong.MaxValue
+        return suffix switch
+        {
+            "" => v <= int.MaxValue ? "int" : v <= uint.MaxValue ? "uint" : v <= long.MaxValue ? "long" : "ulong",
+            "u" => v <= uint.MaxValue ? "uint" : "ulong",
+            "l" => v <= long.MaxValue ? "long" : "ulong",
+            "ul" or "lu" => "ulong",
+            _ => "error"
+        };
+    }
+}`,
+      dry: { head: ['literal', 'body / suffix', 'rule', 'type'], rows: [['3000000000', '3000000000 / ""', '&gt; int.MaxValue, ≤ uint.MaxValue', 'uint'], ['5000000000U', '5000000000 / "u"', '&gt; uint.MaxValue', 'ulong'], ['0.1m', '0.1 / "m"', 'real, M', 'decimal'], ['null', '—', 'no type', '<span class="c-r">error</span>']] },
+      complexity: R`<p>O(L) time and memory for a literal of length L.</p>`,
+      followUps: ['Add hex (<code>0xFF</code>) and binary (<code>0b1010</code>) literals', 'Explain why <code>const int X = 3000000000;</code> fails to compile but <code>var x = 3000000000;</code> does not']
+    }
+  }];
+
+  topics[4].problems = [{
+    title: 'Progress Line with Alignment and Percent',
+    level: 'Easy', tags: ['interpolation', 'format specifiers', 'culture'], companies: ['Microsoft', 'Amazon', 'Capgemini'],
+    statement: R`<p>Write <code>public string ProgressLine(string task, long done, long total)</code> in a class <code>Solution</code> that returns one line of a progress report, formatted with the <b>invariant culture</b>:</p>
+<ul>
+<li>the task name <b>left-aligned</b> in 8 characters (longer names are not cut),</li>
+<li>a <code>|</code>, then <code>done</code> with thousands separators <b>right-aligned</b> in 9 characters, a <code>/</code>, and <code>total</code> with thousands separators (no padding),</li>
+<li>a space and the share <code>done / total</code> in brackets with format <code>P1</code> (invariant: one decimal, then a space and <code>%</code>). When <code>total</code> is 0 the share is 0.</li>
+</ul>
+<p>The exact format is <code>$"{task,-8}|{done,9:N0}/{total:N0} [{share:P1}]"</code>.</p>`,
+    constraints: R`0 ≤ done ≤ total ≤ 10<sup>12</sup>; task has 1 to 20 printable ASCII characters.`,
+    example: R`<p><code>("build", 1234, 5000)</code> → <span class="c-g"><code>build   |    1,234/5,000 [24.7 %]</code></span>. 1234 / 5000 = 0.2468, shown as 24.7 %. On a German server without the invariant culture the same code would print <span class="c-r">1.234/5.000 [24,7 %]</span>.</p>`,
+    brute: { why: R`<p>Building the line with <code>+</code> and padding by hand (<code>new string(' ', 8 - task.Length)</code>) is long and crashes when the name is longer than 8. Forgetting the culture makes the output depend on the machine. Computing the share as <code>done / total</code> on two <code>long</code>s is integer division and always prints 0.0 % or 100.0 %.</p>`, code: R`public class Brute
+{
+    public string ProgressLine(string task, long done, long total) =>
+        task + new string(' ', 8 - task.Length) + "|" + done + "/" + total
+        + " [" + (done / total * 100) + "%]";   // crashes on long names, integer division, no separators, current culture
+}` },
+    mcq: { q: 'What does <code>$"[{42,5}][{42,-5}][{3.14159:F2}]"</code> produce?', options: ['<code>[42   ][   42][3.14]</code>', '<code>[   42][42   ][3.14]</code>', '<code>[00042][42000][3.14159]</code>', '<code>[   42][42   ][3.1]</code>'], answer: 1, explain: 'A positive alignment pads on the left (right-aligns), a negative one pads on the right (left-aligns). F2 means fixed-point with exactly 2 decimals.' },
+    hints: [
+      R`<p>Hint 1: alignment goes after a comma, the format after a colon: <code>{value,-8}</code>, <code>{value,9:N0}</code>.</p>`,
+      R`<p>Hint 2: compute the share as <code>(double)done / total</code> and guard <code>total == 0</code>. <code>P1</code> multiplies by 100 for you.</p>`,
+      R`<p>Hint 3: <code>string.Create(CultureInfo.InvariantCulture, $"...")</code> (or <code>FormattableString.Invariant</code>) formats an interpolated string with a fixed culture.</p>`
+    ],
+    tests: { sig: 'string long long -> string', fn: 'progressLine', cases: [
+      [['build', 1234, 5000], 'build   |    1,234/5,000 [24.7 %]'],
+      [['test', 0, 0], 'test    |        0/0 [0.0 %]'],
+      [['deploy', 7, 7], 'deploy  |        7/7 [100.0 %]'],
+      [['download', 500000, 1000000], 'download|  500,000/1,000,000 [50.0 %]'],
+      [['compile-all', 1, 3], 'compile-all|        1/3 [33.3 %]'],
+      [['x', 2, 3], 'x       |        2/3 [66.7 %]'],
+      [['big', 999999999, 1000000000000], 'big     |999,999,999/1,000,000,000,000 [0.1 %]'],
+      [['lint', 1, 1000], 'lint    |        1/1,000 [0.1 %]']
+    ] },
+    solution: {
+      approach: R`<p>One interpolated string does all the work: <code>,-8</code> left-aligns the name, <code>,9:N0</code> right-aligns the count with separators, <code>:P1</code> turns the ratio into a percentage. <code>string.Create</code> with <code>CultureInfo.InvariantCulture</code> makes the separators and the percent pattern identical on every machine.</p>`,
+      code: R`using System.Globalization;
+
+public class Solution
+{
+    public string ProgressLine(string task, long done, long total)
+    {
+        double share = total == 0 ? 0 : (double)done / total;   // avoid integer division and divide-by-zero
+        return string.Create(CultureInfo.InvariantCulture,
+            $"{task,-8}|{done,9:N0}/{total:N0} [{share:P1}]");
+    }
+}`,
+      dry: { head: ['part', 'format', 'value', 'text'], rows: [['task', '{task,-8}', '"build"', '"build&nbsp;&nbsp;&nbsp;"'], ['done', '{done,9:N0}', '1234', '"&nbsp;&nbsp;&nbsp;&nbsp;1,234"'], ['total', '{total:N0}', '5000', '"5,000"'], ['share', '{share:P1}', '0.2468', '"24.7 %"']] },
+      complexity: R`<p>O(length of the output) time and memory.</p>`,
+      followUps: ['Print the same line for <code>de-DE</code> and <code>fr-FR</code> and explain each difference', 'Add an ASCII progress bar <code>[####------]</code> of width 10']
     }
   }];
 

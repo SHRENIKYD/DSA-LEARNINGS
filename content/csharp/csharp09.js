@@ -133,7 +133,60 @@ static void LegacyDownload(string name, Action<bool> callback) => ThreadPool.Que
 <p><b>The thread pool.</b> Task.Run queues to the pool's global queue; tasks queued from a pool thread go to its local queue (LIFO) and idle workers steal from others. The pool injects threads slowly (hill-climbing) when work items block, which is why blocking pool threads causes "thread-pool starvation" latency spikes.</p>
 <p><b>Unobserved exceptions.</b> A faulted task nobody awaits raises ${C('TaskScheduler.UnobservedTaskException')} when finalized; since .NET 4.5 it no longer crashes the process. Fire-and-forget code must catch its own exceptions.</p>
 <p><b>Task.Run vs StartNew.</b> ${C('Task.Factory.StartNew(asyncLambda)')} returns ${C('Task<Task>')} (needs ${C('Unwrap')}) and uses the current scheduler; Task.Run handles async lambdas and always uses the default scheduler. Use StartNew only for ${C('TaskCreationOptions.LongRunning')} dedicated-thread work.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI writes async code fluently; the subtle bugs are in task creation. <b>Use AI as a partner:</b> <code>Which of these Task.Run calls wrap I/O that is already async?</code> <b>Where AI goes wrong:</b> ${C('Task.Run(async () => await httpClient...)')} (pointless thread hop), ${C('.Result')} in library code, fire-and-forget tasks whose exceptions vanish, TaskCompletionSource without RunContinuationsAsynchronously. <b>What you must still own:</b> knowing for each operation whether it is CPU-bound or I/O-bound and where it runs.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI writes async code fluently; the subtle bugs are in task creation. <b>Use AI as a partner:</b> <code>Which of these Task.Run calls wrap I/O that is already async?</code> <b>Where AI goes wrong:</b> ${C('Task.Run(async () => await httpClient...)')} (pointless thread hop), ${C('.Result')} in library code, fire-and-forget tasks whose exceptions vanish, TaskCompletionSource without RunContinuationsAsynchronously. <b>What you must still own:</b> knowing for each operation whether it is CPU-bound or I/O-bound and where it runs.</p>`,
+    problems: [{
+      title: 'Read a Task Without Blocking', level: 'Easy', tags: ['Task<T>', 'TaskStatus', 'exceptions'], companies: ['Microsoft', 'Infosys'],
+      statement: `<p>Implement ${C('Describe(int[] values)')}. For each value build an <b>already finished</b> task without threads or delays: a positive v gives ${C('Task.FromResult(v * v)')}, zero gives a canceled task (${C('Task.FromCanceled<int>')} with a canceled token), and a negative v gives ${C('Task.FromException<int>(new ArgumentException("neg"))')}. Await each task and return one string per value: ${C('"ok:<result>"')}, ${C('"canceled"')} or ${C('"faulted:<exception type name>"')}.</p>`,
+      constraints: `0 ≤ n ≤ 1000, |values[i]| ≤ 40000`,
+      example: `<p>[5, 0, -2] → ${C('["ok:25", "canceled", "faulted:ArgumentException"]')}.</p>`,
+      brute: { why: `<p>Reading ${C('.Result')} works for the successful tasks, but a faulted or canceled task then throws an ${C('AggregateException')} that hides the real type, so the caller cannot tell ArgumentException from cancellation without unwrapping. ${C('await')} rethrows the original exception (or OperationCanceledException).</p>`, code: R`
+static string ViaResult(Task<int> t)
+{
+    try { return "ok:" + t.Result; }
+    catch (AggregateException e) { return "faulted:" + e.GetType().Name; }   // always "AggregateException"
+}` },
+      mcq: { q: 'A Task&lt;int&gt; created with Task.FromException(new ArgumentException()) is awaited inside try/catch. What does the catch block see?', options: ['The original ArgumentException — await unwraps the first inner exception', 'An AggregateException wrapping it', 'Nothing: faulted tasks only throw when .Result is read', 'A TaskCanceledException'], answer: 0, explain: 'The task stores the exception; await rethrows the original exception with its stack trace preserved. Only .Result and .Wait() wrap it in AggregateException.' },
+      hints: [`<p>${C('Task.FromCanceled<int>(new CancellationToken(true))')} needs a token that is already canceled.</p>`, `<p>Await inside ${C('try')} and catch ${C('OperationCanceledException')} before a general ${C('Exception')} — a canceled task throws TaskCanceledException, which derives from it.</p>`, `<p>Expose a synchronous ${C('Describe')} that calls ${C('.GetAwaiter().GetResult()')} on an async helper.</p>`],
+      solution: {
+        approach: `<p>Build each finished task with the Task factory helpers, then await it. The three possible terminal states — RanToCompletion, Canceled, Faulted — map to a value, an OperationCanceledException and the stored exception.</p>`,
+        code: R`
+public class Solution
+{
+    public string[] Describe(int[] values) => DescribeAsync(values).GetAwaiter().GetResult();
+
+    private static Task<int> Make(int v)
+    {
+        if (v > 0) return Task.FromResult(v * v);
+        if (v == 0) return Task.FromCanceled<int>(new CancellationToken(true));
+        return Task.FromException<int>(new ArgumentException("neg"));
+    }
+
+    private static async Task<string[]> DescribeAsync(int[] values)
+    {
+        var result = new List<string>();
+        foreach (int v in values)
+        {
+            Task<int> t = Make(v);
+            try { result.Add("ok:" + await t); }
+            catch (OperationCanceledException) { result.Add("canceled"); }
+            catch (Exception e) { result.Add("faulted:" + e.GetType().Name); }
+        }
+        return result.ToArray();
+    }
+}`,
+        dry: { head: ['value', 'task status', 'await does', 'string'], rows: [['5', 'RanToCompletion', 'returns 25', 'ok:25'], ['0', 'Canceled', 'throws TaskCanceledException', 'canceled'], ['-2', 'Faulted', 'throws ArgumentException', 'faulted:ArgumentException']] },
+        complexity: `<p>O(n) time and memory; no thread is ever blocked because every task is already complete.</p>`,
+        followUps: ['Print task.Status before awaiting — which three values can a finished task have?', 'Rewrite with Task.WhenAll: why does awaiting it surface only the first exception?']
+      },
+      tests: { sig: 'int[] -> string[]', fn: 'describe', cases: [
+        [[[5, 0, -2]], ['ok:25', 'canceled', 'faulted:ArgumentException']],
+        [[[]], []],
+        [[[1]], ['ok:1']],
+        [[[0, 0]], ['canceled', 'canceled']],
+        [[[-7, 3, -1]], ['faulted:ArgumentException', 'ok:9', 'faulted:ArgumentException']],
+        [[[40000, 12]], ['ok:1600000000', 'ok:144']]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -770,7 +823,52 @@ static async Task<string> FetchAsync() { await Task.Delay(10); return "fetched";
 <p><b>Inline continuations.</b> Without a context, a continuation may run synchronously on the thread that completed the task (e.g. inside ${C('TaskCompletionSource.SetResult')}), which can cause reentrancy surprises and stack dives — hence ${C('RunContinuationsAsynchronously')}.</p>
 <p><b>Async-over-sync.</b> Exposing ${C('Task.Run(() => SyncWork())')} as a "FooAsync" method in a library misleads callers: it is not scalable I/O, just a thread hop. Let the caller decide to offload CPU work.</p>
 <p><b>Diagnosing starvation.</b> Symptoms: high latency with low CPU, rising ${C('ThreadPool.ThreadCount')} and ${C('ThreadPool.PendingWorkItemCount')} in dotnet-counters. dotnet-stack/dumps show many threads blocked in ${C('Task.Wait')} or ${C('.Result')}.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI often "fixes" a compile error in a synchronous method by appending ${C('.Result')} to an async call — a deadlock or starvation bug in waiting. <b>Use AI as a partner:</b> <code>List every place this code blocks on a task (.Result, .Wait(), GetResult()) and propose an async-all-the-way refactor</code>. <b>Where AI goes wrong:</b> adding ConfigureAwait(false) in UI code that then touches controls (cross-thread exceptions), or claiming ConfigureAwait(false) is needed everywhere in ASP.NET Core. <b>What you must still own:</b> knowing which environment your code runs in and keeping blocking calls out of async paths.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI often "fixes" a compile error in a synchronous method by appending ${C('.Result')} to an async call — a deadlock or starvation bug in waiting. <b>Use AI as a partner:</b> <code>List every place this code blocks on a task (.Result, .Wait(), GetResult()) and propose an async-all-the-way refactor</code>. <b>Where AI goes wrong:</b> adding ConfigureAwait(false) in UI code that then touches controls (cross-thread exceptions), or claiming ConfigureAwait(false) is needed everywhere in ASP.NET Core. <b>What you must still own:</b> knowing which environment your code runs in and keeping blocking calls out of async paths.</p>`,
+    problems: [{
+      title: 'Which Thread Resumes?', level: 'Medium', tags: ['SynchronizationContext', 'ConfigureAwait', 'model'], companies: ['Microsoft', 'JetBrains'],
+      statement: `<p>An async method starts on a <b>UI thread</b> (which has a single-threaded SynchronizationContext) and performs n awaits in sequence. For await i, ${C('caf[i]')} says whether it uses ${C('ConfigureAwait(false)')} and ${C('done[i]')} says whether the awaited task is <b>already complete</b>. Implement ${C('Threads(bool[] caf, bool[] done)')} returning where the code after each await runs: ${C('"ui"')} or ${C('"pool"')}.</p><p>Rules: an already completed task does not suspend, so execution stays where it is. Otherwise the continuation is posted to the captured context — the UI context if the method is currently on the UI thread and ConfigureAwait(false) was not used — and runs on the thread pool in every other case (pool threads have no SynchronizationContext to return to).</p>`,
+      constraints: `0 ≤ n ≤ 1000, caf.Length == done.Length`,
+      example: `<p>caf [true, false], done [false, false] → ${C('["pool", "pool"]')}: the first await leaves the UI thread and the second has no UI context to capture any more.</p>`,
+      brute: { why: `<p>The common wrong model is "each await returns to where the method started" or "ConfigureAwait(false) always switches thread". Both fail: once a ConfigureAwait(false) actually suspends, the rest of the method is on the pool, and a ConfigureAwait(false) on a completed task changes nothing.</p>`, code: R`
+static string[] Naive(bool[] caf) => caf.Select(c => c ? "pool" : "ui").ToArray();` },
+      mcq: { q: 'In a WinForms click handler, `await httpClient.GetStringAsync(url).ConfigureAwait(false);` is followed by `label.Text = s;`. What happens?', options: ['If the download did not finish synchronously, the assignment runs on a pool thread and throws a cross-thread exception', 'It always runs on the UI thread because the handler started there', 'ConfigureAwait(false) blocks until the UI thread is free', 'It deadlocks'], answer: 0, explain: 'ConfigureAwait(false) tells the awaiter not to post back to the captured SynchronizationContext, so the continuation runs on the thread that completed the task — a pool thread — and touching UI controls there is illegal.' },
+      hints: [`<p>Keep one variable: the current thread ("ui" at the start).</p>`, `<p>If ${C('done[i]')} is true, the thread does not change.</p>`, `<p>Otherwise the new thread is "ui" only when the current thread is "ui" and ${C('caf[i]')} is false.</p>`],
+      solution: {
+        approach: `<p>Simulate the awaiter's decision. A completed awaiter returns <code>IsCompleted == true</code>, so the state machine continues synchronously. An incomplete one captures <code>SynchronizationContext.Current</code> (only non-null on the UI thread) unless ConfigureAwait(false) suppresses it; with no context the continuation runs on the pool.</p>`,
+        code: R`
+public class Solution
+{
+    public string[] Threads(bool[] caf, bool[] done)
+    {
+        string current = "ui";
+        var result = new string[caf.Length];
+        for (int i = 0; i < caf.Length; i++)
+        {
+            if (!done[i])
+            {
+                bool hasContext = current == "ui";
+                current = hasContext && !caf[i] ? "ui" : "pool";
+            }
+            result[i] = current;
+        }
+        return result;
+    }
+}`,
+        dry: { head: ['await', 'caf', 'done', 'resumes on'], rows: [['0', 'true', 'true', 'ui (no suspension)'], ['1', 'false', 'false', 'ui (posted to UI context)'], ['2', 'true', 'false', 'pool'], ['3', 'false', 'false', 'pool (no context left)']] },
+        complexity: `<p>O(n) time, O(n) output.</p>`,
+        followUps: ['How does the answer change in ASP.NET Core, which has no SynchronizationContext?', 'Why does blocking with .Result on the UI thread deadlock only when some await lacks ConfigureAwait(false) and really suspends?']
+      },
+      tests: { sig: 'bool[] bool[] -> string[]', fn: 'threads', cases: [
+        [[[true, false], [false, false]], ['pool', 'pool']],
+        [[[], []], []],
+        [[[false], [false]], ['ui']],
+        [[[true], [false]], ['pool']],
+        [[[true], [true]], ['ui']],
+        [[[false, true, false], [false, true, false]], ['ui', 'ui', 'ui']],
+        [[[true, true, false], [true, false, false]], ['ui', 'pool', 'pool']],
+        [[[false, true, false], [false, false, true]], ['ui', 'pool', 'pool']]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -876,7 +974,85 @@ sealed class Res : IAsyncDisposable
 <p><b>Size.</b> ValueTask&lt;T&gt; is an object reference + T + token + flag; for large T it is bigger to copy than a Task reference. For ${C('ValueTask')} (non-generic) the synchronous case uses a null object.</p>
 <p><b>Analyzer.</b> CA2012 "Use ValueTasks correctly" flags double consumption and storing ValueTasks.</p>
 <p><b>Measure.</b> For most application code the Task allocation (~70–100 bytes) is irrelevant; ValueTask pays off in libraries and inner loops doing millions of operations per second.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI sometimes converts every Task to ValueTask "for performance". <b>Use AI as a partner:</b> <code>Which of these methods usually complete synchronously? Show me the evidence</code>. <b>Where AI goes wrong:</b> storing ValueTasks in fields or lists, passing them to WhenAll without AsTask, awaiting twice, calling .Result on incomplete ValueTasks. <b>What you must still own:</b> the benchmark that justifies it and the consumer rules that keep it correct.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI sometimes converts every Task to ValueTask "for performance". <b>Use AI as a partner:</b> <code>Which of these methods usually complete synchronously? Show me the evidence</code>. <b>Where AI goes wrong:</b> storing ValueTasks in fields or lists, passing them to WhenAll without AsTask, awaiting twice, calling .Result on incomplete ValueTasks. <b>What you must still own:</b> the benchmark that justifies it and the consumer rules that keep it correct.</p>`,
+    problems: [{
+      title: 'Buffered Reader with a ValueTask Fast Path', level: 'Medium', tags: ['ValueTask<T>', 'buffering', 'fast path'], companies: ['Microsoft', 'Unity'],
+      statement: `<p>A source holds ${C('total')} bytes and is read through a buffer of capacity ${C('bufferSize')}. Implement ${C('ValueTask<int> ReadAsync(int k)')}: if the buffer holds data, return ${C('min(k, buffered)')} <b>synchronously</b> with ${C('new ValueTask<int>(...)')}; if the buffer is empty and the source still has bytes, take the <b>slow path</b> — an async refill that loads ${C('min(bufferSize, remaining)')} bytes — then return ${C('min(k, buffered)')}; if the source is exhausted, return 0 synchronously. Implement ${C('ReadAll(int total, int bufferSize, int[] requests)')} returning each read's count followed by the number of slow-path reads.</p>`,
+      constraints: `0 ≤ total ≤ 10<sup>6</sup>, 1 ≤ bufferSize ≤ 10<sup>4</sup>, 1 ≤ requests[i] ≤ 10<sup>4</sup>, 0 ≤ requests.Length ≤ 1000`,
+      example: `<p>total 10, bufferSize 4, requests [3, 3, 3, 3, 3] → ${C('[3, 1, 3, 1, 2, 3]')}: refill 4 → 3, then 1 from the buffer, refill 4 → 3, 1, refill the last 2 → 2; three refills.</p>`,
+      brute: { why: `<p>Declaring ${C('async Task<int> ReadAsync')} is correct but allocates a Task for every read even though most reads are served from memory. ValueTask returns the value inline on the fast path and only pays for a task (or pooled source) when it really suspends.</p>`, code: R`
+class TaskReader
+{
+    int remaining, buffered, bufferSize = 4;
+    public TaskReader(int total) { remaining = total; }
+
+    public async Task<int> ReadAsync(int k)   // allocates a Task<int> per call unless cached
+    {
+        if (buffered == 0 && remaining > 0)
+        {
+            int chunk = await Task.FromResult(Math.Min(bufferSize, remaining));
+            remaining -= chunk; buffered += chunk;
+        }
+        int n = Math.Min(k, buffered); buffered -= n; return n;
+    }
+}` },
+      mcq: { q: 'Which is a correct way to consume a ValueTask&lt;int&gt; returned by ReadAsync?', options: ['Await it exactly once (or call AsTask() once if you need a Task)', 'Store it in a field and await it from two places', 'Call .Result before it has completed', 'Pass the same ValueTask to Task.WhenAll twice'], answer: 0, explain: 'A ValueTask may be backed by a pooled IValueTaskSource that is reused after the first await, so it must be consumed once. AsTask() converts it when you need Task semantics.' },
+      hints: [`<p>Keep two counters: ${C('remaining')} in the source and ${C('buffered')} in the buffer.</p>`, `<p>The fast path is a plain method returning ${C('new ValueTask<int>(n)')}; put the refill in a separate ${C('async ValueTask<int>')} helper so the fast path builds no state machine.</p>`, `<p>The test harness awaits each read in order, so the refill can await an already completed ${C('Task')} — the counts do not depend on timing.</p>`],
+      solution: {
+        approach: `<p>Split ReadAsync into a synchronous fast path that returns a result-backed ValueTask and an async slow path that refills. Count slow-path entries to see how rarely the expensive path runs.</p>`,
+        code: R`
+public class Solution
+{
+    private int remaining, buffered, bufferSize, refills;
+
+    public int[] ReadAll(int total, int bufferSize, int[] requests) => RunAsync(total, bufferSize, requests).GetAwaiter().GetResult();
+
+    private async Task<int[]> RunAsync(int total, int size, int[] requests)
+    {
+        remaining = total; buffered = 0; bufferSize = size; refills = 0;
+        var result = new List<int>();
+        foreach (int k in requests) result.Add(await ReadAsync(k));
+        result.Add(refills);
+        return result.ToArray();
+    }
+
+    public ValueTask<int> ReadAsync(int k)
+    {
+        if (buffered > 0 || remaining == 0) return new ValueTask<int>(Take(k));   // fast path: no allocation
+        return RefillAndReadAsync(k);
+    }
+
+    private async ValueTask<int> RefillAndReadAsync(int k)
+    {
+        refills++;
+        int chunk = await FetchAsync(Math.Min(bufferSize, remaining));
+        remaining -= chunk;
+        buffered += chunk;
+        return Take(k);
+    }
+
+    private static Task<int> FetchAsync(int n) => Task.FromResult(n);   // stands in for real I/O
+
+    private int Take(int k)
+    {
+        int n = Math.Min(k, buffered);
+        buffered -= n;
+        return n;
+    }
+}`,
+        dry: { head: ['request', 'buffered before', 'path', 'returns', 'buffered after'], rows: [['3', '0', 'slow (refill 4)', '3', '1'], ['3', '1', 'fast', '1', '0'], ['3', '0', 'slow (refill 4)', '3', '1'], ['3', '1', 'fast', '1', '0'], ['3', '0', 'slow (refill 2)', '2', '0']] },
+        complexity: `<p>O(1) per read; allocations only on refills, so with a large buffer almost every read is allocation-free.</p>`,
+        followUps: ['Implement the slow path with ManualResetValueTaskSourceCore to avoid allocating even when suspending', 'Why must the fast path not be marked async?']
+      },
+      tests: { sig: 'int int int[] -> int[]', fn: 'readAll', cases: [
+        [[10, 4, [3, 3, 3, 3, 3]], [3, 1, 3, 1, 2, 3]],
+        [[0, 4, [5, 5]], [0, 0, 0]],
+        [[3, 10, []], [0]],
+        [[8, 8, [2, 2, 2, 2, 2]], [2, 2, 2, 2, 0, 1]],
+        [[5, 2, [10, 10, 10, 10]], [2, 2, 1, 0, 3]],
+        [[6, 3, [1, 1, 1, 1, 1, 1, 1]], [1, 1, 1, 1, 1, 1, 0, 2]]
+      ] }
+    }]
   });
 
   /* ======================================================================
@@ -1001,7 +1177,72 @@ static async IAsyncEnumerable<int> Squares(int n) { for (int i = 1; i <= n; i++)
 <p><b>ConfigureAwait.</b> ${C('await foreach (var x in src.ConfigureAwait(false))')} applies to MoveNextAsync/DisposeAsync awaits; inside the iterator, awaits need their own ConfigureAwait.</p>
 <p><b>Push vs pull.</b> IAsyncEnumerable is pull-based; Rx's ${C('IObservable<T>')} is push-based. Channels sit between: a producer pushes into a bounded buffer and consumers pull with ReadAllAsync (module 10).</p>
 <p><b>ASP.NET Core.</b> Returning IAsyncEnumerable from an action streams the JSON array as items are produced (System.Text.Json writes and flushes progressively), reducing memory and time-to-first-byte.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI tends to return ${C('Task<List<T>>')} by habit. <b>Use AI as a partner:</b> <code>Should this repository method stream results? What happens to memory for 10 million rows?</code> <b>Where AI goes wrong:</b> calling ToListAsync immediately (losing the streaming benefit), forgetting [EnumeratorCancellation] so tokens are ignored, using System.Linq.Async operators without the package, enumerating the same stream twice expecting cached results. <b>What you must still own:</b> choosing between buffering and streaming, and the cancellation/backpressure story.</p>`
+    aiEra: `<p><b>What AI changes:</b> AI tends to return ${C('Task<List<T>>')} by habit. <b>Use AI as a partner:</b> <code>Should this repository method stream results? What happens to memory for 10 million rows?</code> <b>Where AI goes wrong:</b> calling ToListAsync immediately (losing the streaming benefit), forgetting [EnumeratorCancellation] so tokens are ignored, using System.Linq.Async operators without the package, enumerating the same stream twice expecting cached results. <b>What you must still own:</b> choosing between buffering and streaming, and the cancellation/backpressure story.</p>`,
+    problems: [{
+      title: 'Batch an Async Stream', level: 'Easy', tags: ['IAsyncEnumerable', 'async iterators', 'batching'], companies: ['Microsoft', 'Uber'],
+      statement: `<p>Write an async iterator ${C('Batch(IAsyncEnumerable<int> source, int size)')} that yields arrays of ${C('size')} consecutive items, with a shorter final batch for the leftovers and no empty batch. Implement ${C('Batches(int[] items, int size)')}: turn ${C('items')} into an async stream (an async iterator that awaits ${C('Task.CompletedTask')} before each item), batch it, and consume the batches with ${C('await foreach')} into a list.</p>`,
+      constraints: `0 ≤ n ≤ 10<sup>4</sup>, 1 ≤ size ≤ 10<sup>4</sup>`,
+      example: `<p>[1, 2, 3, 4, 5, 6, 7], size 3 → ${C('[[1, 2, 3], [4, 5, 6], [7]]')}.</p>`,
+      brute: { why: `<p>Buffering the whole stream into a list and then slicing gives the same batches but holds every item in memory and delays the first batch until the source ends — exactly what streaming is meant to avoid (think writing database rows in batches of 1000).</p>`, code: R`
+static async Task<List<int[]>> BufferThenSlice(IAsyncEnumerable<int> src, int size)
+{
+    var all = new List<int>();
+    await foreach (int x in src) all.Add(x);
+    return all.Chunk(size).ToList();
+}` },
+      mcq: { q: 'An async iterator method contains `yield return` and `await`. When does its body start running?', options: ['On the first MoveNextAsync call, i.e. when await foreach asks for the first item', 'When the method is called', 'On a background thread as soon as it is created', 'Only after the consumer calls ToListAsync'], answer: 0, explain: 'Like synchronous iterators, async iterators are lazy: calling the method only creates the enumerable; the body runs up to the next yield each time MoveNextAsync is awaited.' },
+      hints: [`<p>Keep a ${C('List<int>')} for the current batch inside ${C('await foreach')}; when it reaches ${C('size')}, ${C('yield return')} it as an array and start a new list.</p>`, `<p>After the loop, yield the leftovers only if the list is non-empty.</p>`, `<p>The source: ${C('async IAsyncEnumerable<int> From(int[] a) { foreach (var x in a) { await Task.CompletedTask; yield return x; } }')}.</p>`],
+      solution: {
+        approach: `<p>Accumulate items as they arrive and emit a batch whenever it is full; flush the remainder at the end. Each batch reaches the consumer as soon as it is complete, without waiting for the rest of the stream.</p>`,
+        code: R`
+public class Solution
+{
+    public int[][] Batches(int[] items, int size) => CollectAsync(items, size).GetAwaiter().GetResult();
+
+    private static async Task<int[][]> CollectAsync(int[] items, int size)
+    {
+        var result = new List<int[]>();
+        await foreach (int[] batch in Batch(From(items), size)) result.Add(batch);
+        return result.ToArray();
+    }
+
+    private static async IAsyncEnumerable<int> From(int[] items)
+    {
+        foreach (int x in items)
+        {
+            await Task.CompletedTask;   // stands in for real asynchronous work
+            yield return x;
+        }
+    }
+
+    public static async IAsyncEnumerable<int[]> Batch(IAsyncEnumerable<int> source, int size)
+    {
+        var current = new List<int>(size);
+        await foreach (int x in source)
+        {
+            current.Add(x);
+            if (current.Count == size)
+            {
+                yield return current.ToArray();
+                current.Clear();
+            }
+        }
+        if (current.Count > 0) yield return current.ToArray();
+    }
+}`,
+        dry: { head: ['item', 'current batch', 'yielded'], rows: [['1, 2, 3', '[1, 2, 3]', '[1, 2, 3]'], ['4, 5, 6', '[4, 5, 6]', '[4, 5, 6]'], ['7', '[7]', '—'], ['end of stream', '[7]', '[7] (flush)']] },
+        complexity: `<p>O(n) time; O(size) memory inside the operator, independent of the stream length.</p>`,
+        followUps: ['Add a [EnumeratorCancellation] CancellationToken parameter and pass it through WithCancellation', 'Also flush a partial batch if no new item arrives within a time window']
+      },
+      tests: { sig: 'int[] int -> int[][]', fn: 'batches', cases: [
+        [[[1, 2, 3, 4, 5, 6, 7], 3], [[1, 2, 3], [4, 5, 6], [7]]],
+        [[[], 2], []],
+        [[[1, 2, 3, 4], 2], [[1, 2], [3, 4]]],
+        [[[5], 1], [[5]]],
+        [[[1, 2], 5], [[1, 2]]],
+        [[[9, 8, 7, 6, 5, 4], 4], [[9, 8, 7, 6], [5, 4]]]
+      ] }
+    }]
   });
 
   /* ======================================================================

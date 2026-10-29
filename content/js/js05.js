@@ -251,7 +251,82 @@
       <p><b>Production reality:</b> almost all modern code (ES modules, classes, TypeScript output with <code>"alwaysStrict"</code>, bundlers) is strict, so the default binding today is effectively <code>undefined</code>. The sloppy "global object" behaviour still bites in old scripts, in inline <code>onclick</code> attributes, and in quick console experiments, which is exactly where interview puzzles live. Performance-wise, <code>this</code> is just the "receiver" register in V8; there is no runtime cost to using it, but the sloppy-mode <code>ToObject</code> boxing of primitives allocates a wrapper object on every call.</p>`,
     aiEra: `<p><b>🤖 What AI changes:</b> assistants write most boilerplate methods now, and they usually get <code>this</code> right inside classes. Where they slip is the <b>environment</b>: they answer "what is top-level this?" with <code>window</code> even when your code is an ES module or Node CommonJS, and they forget that an inline handler or legacy script is sloppy.</p>
       <p><b>Use AI as a partner:</b> ask <code>Give me 8 tricky "what does this log" snippets about default binding; do not show answers</code>, solve them by hand with the five-question flow, then ask it to check. Paste a <code>TypeError: Cannot read properties of undefined</code> stack trace and ask "which call-site lost its receiver?"; it is good at spotting the detached method.</p>
-      <p><b>Where AI goes wrong:</b> it may "fix" a lost-this bug by switching a file to sloppy mode or by adding a global; reject that. It also invents rules like "this is the enclosing object" for object literals. <b>What you must still own:</b> reading a call-site and naming the rule in one sentence, knowing the strict vs sloppy fallback, and asking which host (browser script, module, Node) the code runs in.</p>`
+      <p><b>Where AI goes wrong:</b> it may "fix" a lost-this bug by switching a file to sloppy mode or by adding a global; reject that. It also invents rules like "this is the enclosing object" for object literals. <b>What you must still own:</b> reading a call-site and naming the rule in one sentence, knowing the strict vs sloppy fallback, and asking which host (browser script, module, Node) the code runs in.</p>`,
+    problems: [{
+      title: 'A Greeter That Reports a Lost Receiver',
+      level: 'Easy', tags: ['this', 'call-site', 'default binding'], companies: ['Flipkart', 'Swiggy', 'Zoho'],
+      statement: `<p>Write <code>makeGreeter(name)</code>. It returns an object <code>{ name, greet() }</code>. <code>greet()</code> returns <code>"Hi, " + this.name</code> when it is called <b>with a receiver</b> (any object). When it is called with <b>no receiver</b> (a bare call after the method was copied out), it must return the string <code>"no receiver"</code> instead of crashing, in both strict code (<code>this</code> is <code>undefined</code>) and sloppy code (<code>this</code> is <code>globalThis</code>).</p>`,
+      constraints: `<code>name</code> is a non-empty string; the method may be copied to other objects, stored in variables, or wrapped in parentheses before it is called.`,
+      example: `<p><code>const g = makeGreeter('Asha')</code>. <code>g.greet()</code> → ${H.c('g', '"Hi, Asha"')}. <code>const f = g.greet; f()</code> → ${H.c('m', '"no receiver"')}. <code>({ name: 'Ben', greet: g.greet }).greet()</code> → ${H.c('g', '"Hi, Ben"')}: the call-site, not the place of definition, picks <code>this</code>.</p>`,
+      brute: { why: `<p>The obvious method reads <code>this.name</code> directly. It works for <code>g.greet()</code>, but a bare call in strict code throws <code>TypeError: Cannot read properties of undefined</code>, and in sloppy code it silently reads <code>globalThis.name</code> (often <code>""</code> in a browser, the window's name).</p>`,
+        code: `
+          function makeGreeter(name) {
+            return { name, greet() { return 'Hi, ' + this.name; } };   // crashes on a bare call in strict code
+          }
+        ` },
+      mcq: { q: 'In a module (strict mode), <code>const f = user.greet; f();</code> runs. What is <code>this</code> inside <code>greet</code>?', options: ['<code>user</code>, because greet was defined on it', '<code>undefined</code>, because the call-site has no object before the dot', '<code>globalThis</code>', 'The function <code>f</code> itself'], answer: 1, explain: 'Only the call-site matters. <code>f()</code> is a bare call, so default binding applies: <code>undefined</code> in strict code (it would be <code>globalThis</code> in sloppy code). Where the function was defined is irrelevant.' },
+      hints: [
+        `<p>Hint 1: <code>this</code> is decided at the moment of the call. Look at the two "no receiver" values default binding can produce.</p>`,
+        `<p>Hint 2: Strict bare call → <code>undefined</code>; sloppy bare call → <code>globalThis</code>. Check for both before touching <code>this.name</code>.</p>`,
+        `<p>Hint 3: Recipe: <code>if (this == null || this === globalThis) return 'no receiver'; return 'Hi, ' + this.name;</code>. Do not use an arrow function for <code>greet</code>: it would ignore the call-site completely.</p>`
+      ],
+      tests: { sig: 'string -> string', fn: 'chk', harness: { js: `function chk(form) {
+  const g = makeGreeter('Asha');
+  const ben = { name: 'Ben' };
+  if (form === 'method') return g.greet();
+  if (form === 'bracket') return g['greet']();
+  if (form === 'parens') return (g.greet)();
+  if (form === 'detached') { const f = g.greet; return f(); }
+  if (form === 'comma') return (0, g.greet)();
+  if (form === 'borrowed') { ben.greet = g.greet; return ben.greet(); }
+  if (form === 'callback') return [1].map(g.greet)[0];
+  if (form === 'sloppyBare') return new Function('f', 'return f()')(g.greet);
+  if (form === 'nested') { const o = { inner: { name: 'Cy', greet: g.greet } }; return o.inner.greet(); }
+  if (form === 'otherName') return makeGreeter('Dev').greet();
+}` }, cases: [
+        [["method"], "Hi, Asha"],
+        [["bracket"], "Hi, Asha"],
+        [["parens"], "Hi, Asha"],
+        [["detached"], "no receiver"],
+        [["comma"], "no receiver"],
+        [["borrowed"], "Hi, Ben"],
+        [["callback"], "no receiver"],
+        [["sloppyBare"], "no receiver"],
+        [["nested"], "Hi, Cy"],
+        [["otherName"], "Hi, Dev"]
+      ] },
+      solution: {
+        approach: `<p>Keep <code>greet</code> a normal method so the call-site sets <code>this</code>. Before reading <code>this.name</code>, detect the two results of default binding: <code>undefined</code> (strict) and <code>globalThis</code> (sloppy, e.g. when a sloppy wrapper calls it bare; the method itself stays strict, so it would actually see <code>undefined</code>, but checking both makes it safe either way).</p>`,
+        code: { lang: 'js', run: true, code: `
+          'use strict';
+          function makeGreeter(name) {
+            return {
+              name,
+              greet() {
+                if (this == null || this === globalThis) return 'no receiver';  // default binding
+                return 'Hi, ' + this.name;                                      // implicit binding
+              }
+            };
+          }
+
+          const g = makeGreeter('Asha');
+          console.log(g.greet());                       // Hi, Asha
+          const f = g.greet;
+          console.log(f());                             // no receiver
+          console.log((0, g.greet)());                  // no receiver (comma drops the base)
+          console.log({ name: 'Ben', greet: g.greet }.greet()); // Hi, Ben
+        ` },
+        dry: { head: ['call-site', 'object before the dot?', 'this', 'result'], rows: [
+          ['g.greet()', 'g', 'g', '"Hi, Asha"'],
+          ['(g.greet)()', 'g (parens keep the reference)', 'g', '"Hi, Asha"'],
+          ['f()', 'none', 'undefined', '"no receiver"'],
+          ['(0, g.greet)()', 'none (comma yields a plain value)', 'undefined', '"no receiver"'],
+          ['ben.greet()', 'ben', 'ben', '<span class="c-g">"Hi, Ben"</span>']
+        ] },
+        complexity: `<p>O(1) time and space per call.</p>`,
+        followUps: ['Make <code>f()</code> still greet Asha (hint: <code>bind</code>, next topics).', 'Why does <code>[1].map(g.greet)</code> lose the receiver, and how does <code>map</code>\'s second argument fix it?', 'What would an arrow-function <code>greet</code> return in each call form?']
+      }
+    }]
   });
 
   /* =====================================================================
@@ -1783,7 +1858,78 @@ function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return
       <p><b>TypeScript angle:</b> <code>"strict": true</code> in tsconfig enables <code>noImplicitThis</code> (error when <code>this</code> has an implicit any type) and <code>alwaysStrict</code> (emit "use strict" and parse in strict mode). You can declare <code>function handler(this: HTMLButtonElement, e: Event)</code> so the compiler checks every call-site.</p>`,
     aiEra: `<p><b>🤖 What AI changes:</b> nearly all code an assistant writes for you is module-based and therefore strict, so the sloppy rules mostly appear in legacy code you are asked to migrate. AI is useful for that migration: <code>Convert this IIFE-based script to ES modules and list every behaviour change caused by strict mode</code>. It will usually catch implicit globals; check this-related changes yourself.</p>
       <p><b>Use AI as a partner:</b> generate a matrix of contexts (script, module, CJS, class, static, getter, inline handler) and ask it to predict <code>this</code>; then run each in the right host and compare. You will catch the assistant assuming a browser.</p>
-      <p><b>Where AI goes wrong:</b> it often says top-level <code>this</code> in Node is <code>globalThis</code> or <code>undefined</code> without asking CJS vs ESM, and it may forget that primitives are not boxed in strict functions. <b>What you must still own:</b> knowing which mode a given piece of code is in, the three this-related differences, and how to explain them crisply with a one-line example each.</p>`
+      <p><b>Where AI goes wrong:</b> it often says top-level <code>this</code> in Node is <code>globalThis</code> or <code>undefined</code> without asking CJS vs ESM, and it may forget that primitives are not boxed in strict functions. <b>What you must still own:</b> knowing which mode a given piece of code is in, the three this-related differences, and how to explain them crisply with a one-line example each.</p>`,
+    problems: [{
+      title: 'Predict this for Any Receiver in Strict and Sloppy Code',
+      level: 'Medium', tags: ['this', 'strict mode', 'boxing', 'call'], companies: ['Microsoft', 'Adobe', 'Atlassian'],
+      statement: `<p>Write <code>receiverKind(value, strict)</code>. It must call a function <b>of the requested mode</b> with <code>fn.call(value)</code> and report what that function actually saw as <code>this</code>: <code>"undefined"</code>, <code>"null"</code>, <code>"global"</code> (it is <code>globalThis</code>), or otherwise <code>typeof this</code> (<code>"number"</code>, <code>"string"</code>, <code>"boolean"</code>, <code>"object"</code>, ...). Do not hard-code the rules: let the engine bind <code>this</code> and observe it.</p>`,
+      constraints: `<code>value</code> may be any primitive, <code>null</code>, <code>undefined</code> or an object; <code>strict</code> is a boolean. The file you write in may itself be strict.`,
+      example: `<p><code>receiverKind(5, true)</code> → ${H.c('g', '"number"')} (strict keeps the primitive). <code>receiverKind(5, false)</code> → ${H.c('m', '"object"')} (sloppy boxes it into a <code>Number</code>). <code>receiverKind(null, false)</code> → ${H.c('m', '"global"')}; <code>receiverKind(null, true)</code> → ${H.c('g', '"null"')}.</p>`,
+      brute: { why: `<p>A lookup table of the rules ("strict: unchanged; sloppy: null → global, primitive → object") gives right answers but observes nothing, so it cannot catch host differences. Worse, writing both helpers as normal functions in a strict file makes <b>both</b> strict, because strictness is inherited lexically; the "sloppy" one never boxes.</p>`,
+        code: `
+          'use strict';
+          function receiverKindNaive(value, strict) {
+            function probe() { return this; }   // strict too: the whole file is strict!
+            const t = probe.call(value);
+            return t === undefined ? 'undefined' : t === null ? 'null' : typeof t;
+          }
+        ` },
+      mcq: { q: 'A file starts with <code>"use strict"</code>. Which function inside it runs in <b>sloppy</b> mode?', options: ['A nested <code>function inner() {}</code>', 'A method in an object literal', 'A function created with <code>new Function("return this")</code>', 'A class method'], answer: 2, explain: 'Strictness is lexical and inherited by nested code, and class bodies are always strict. <code>new Function</code> compiles its body as fresh top-level code, so it is sloppy unless the body itself starts with "use strict".' },
+      hints: [
+        `<p>Hint 1: You need two probe functions whose only job is <code>return this</code>: one strict, one sloppy.</p>`,
+        `<p>Hint 2: Nested functions inherit strictness. <code>new Function('return this')</code> is sloppy regardless of the surrounding file; <code>new Function('"use strict"; return this')</code> is strict.</p>`,
+        `<p>Hint 3: Classify the observed value in order: <code>undefined</code>, <code>null</code>, <code>=== globalThis</code>, then <code>typeof</code>.</p>`
+      ],
+      tests: { sig: 'string bool -> string', fn: 'chk', harness: { js: `function chk(kind, strict) {
+  const values = { num: 5, str: 'hi', bool: true, undef: undefined, nul: null, obj: { a: 1 }, fn: function () {}, big: BigInt(10) };
+  return receiverKind(values[kind], strict);
+}` }, cases: [
+        [["num", true], "number"],
+        [["num", false], "object"],
+        [["str", true], "string"],
+        [["str", false], "object"],
+        [["bool", true], "boolean"],
+        [["bool", false], "object"],
+        [["undef", true], "undefined"],
+        [["undef", false], "global"],
+        [["nul", true], "null"],
+        [["nul", false], "global"],
+        [["obj", true], "object"],
+        [["obj", false], "object"],
+        [["fn", false], "function"],
+        [["big", true], "bigint"],
+        [["big", false], "object"]
+      ] },
+      solution: {
+        approach: `<p>Build one probe per mode. Because strictness is decided by source text, the <code>Function</code> constructor is the reliable way to get a sloppy function even from inside strict code or a module. Call the chosen probe with <code>call(value)</code>, then classify what came back.</p>`,
+        code: { lang: 'js', run: true, code: `
+          'use strict';
+          const strictProbe = new Function('"use strict"; return this;');
+          const sloppyProbe = new Function('return this;');   // Function bodies start sloppy
+
+          function receiverKind(value, strict) {
+            const t = (strict ? strictProbe : sloppyProbe).call(value);
+            if (t === undefined) return 'undefined';
+            if (t === null) return 'null';
+            if (t === globalThis) return 'global';
+            return typeof t;
+          }
+
+          console.log(receiverKind(5, true), receiverKind(5, false));         // number object
+          console.log(receiverKind(null, true), receiverKind(null, false));   // null global
+          console.log(receiverKind(undefined, true));                         // undefined
+        ` },
+        dry: { head: ['value', 'strict probe sees', 'sloppy probe sees'], rows: [
+          ['5', '5 → "number"', 'Number {5} → "object"'],
+          ["'hi'", '"string"', 'String {"hi"} → "object"'],
+          ['undefined', '"undefined"', 'globalThis → "global"'],
+          ['null', '"null"', 'globalThis → "global"'],
+          ['{ a: 1 }', '"object"', '<span class="c-g">"object"</span> (objects are never changed)']
+        ] },
+        complexity: `<p>O(1) per call; the two probes are compiled once.</p>`,
+        followUps: ['Why is a sloppy method on <code>Number.prototype</code> unable to see <code>this === 5</code>?', 'What does <code>receiverKind</code> report for a class method probe, and why?', 'Run the probes in a different realm (iframe / <code>vm</code>): what is "global" then?']
+      }
+    }]
   });
 
   /* =====================================================================

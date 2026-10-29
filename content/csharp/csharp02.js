@@ -1082,6 +1082,153 @@ public class Solution
     }
   }];
 
+
+  topics[1].problems = [{
+    title: 'Fast Modular Power with a Recursive Local Function',
+    level: 'Medium', tags: ['recursion', 'local functions', 'methods'], companies: ['Google', 'Microsoft', 'Codenation'],
+    statement: R`<p>Write <code>public long ModPow(long b, long e, long m)</code> in class <code>Solution</code> that returns b<sup>e</sup> mod m. Define b<sup>0</sup> = 1 (so the answer for e = 0 is <code>1 % m</code>). Do not use <code>BigInteger</code> or <code>Math.Pow</code>.</p>`,
+    constraints: R`0 ≤ b ≤ 10<sup>9</sup>, 0 ≤ e ≤ 10<sup>18</sup>, 1 ≤ m ≤ 10<sup>9</sup>.`,
+    example: R`<p><code>ModPow(2, 10, 1000)</code> → 1024 mod 1000 = <span class="c-g">24</span>. <code>ModPow(5, 3, 13)</code> → 125 mod 13 = <span class="c-g">8</span>.</p>`,
+    brute: { why: R`<p>Multiplying e times is O(e): with e = 10<sup>18</sup> it never finishes. A naive recursion <code>b * Pow(b, e - 1)</code> is just as slow and also needs e stack frames, which overflows the 1 MB stack long before that.</p>`, code: R`public class Brute
+{
+    public long ModPow(long b, long e, long m)
+    {
+        long r = 1 % m;
+        for (long i = 0; i < e; i++) r = r * (b % m) % m;   // O(e)
+        return r;
+    }
+}` },
+    mcq: { q: 'The recursion computes <code>Go(e / 2)</code> once per call. How deep does the call stack get for e = 10<sup>18</sup>?', options: ['About 10<sup>18</sup> frames: it overflows', 'About 60 frames', 'About 10<sup>9</sup> frames', 'One frame: C# eliminates tail calls'], answer: 1, explain: 'Each call halves e, so the depth is about log2(10^18) ≈ 60 — far below the 1 MB stack limit. C# does not guarantee tail-call elimination, so depth must be kept small by the algorithm itself.' },
+    hints: [
+      R`<p>Hint 1: b<sup>e</sup> = (b<sup>e/2</sup>)<sup>2</sup> when e is even, and b · (b<sup>e/2</sup>)<sup>2</sup> when e is odd.</p>`,
+      R`<p>Hint 2: put the recursive helper <code>long Go(long k)</code> inside <code>ModPow</code> as a local function; it can capture <code>b</code> and <code>m</code>.</p>`,
+      R`<p>Hint 3: reduce with <code>% m</code> after every multiplication. Values stay below 10<sup>9</sup>, so a product is below 10<sup>18</sup> and fits in <code>long</code>. The base case returns <code>1 % m</code> (m may be 1).</p>`
+    ],
+    tests: { sig: 'long long long -> long', fn: 'modPow', cases: [
+      [[2, 10, 1000], 24], [[5, 3, 13], 8], [[3, 0, 7], 1], [[2, 10, 1], 0], [[0, 0, 5], 1], [[7, 2, 1000000000], 49],
+      [[10, 9, 7], 6], [[999999999, 2, 1000000000], 1], [[2, 1000000000000000000, 3], 1], [[3, 5, 1000000000], 243], [[0, 5, 9], 0]
+    ] },
+    solution: {
+      approach: R`<p>Exponentiation by squaring: a recursive local function halves the exponent on each call, so there are only O(log e) calls. Being a local function, it sits next to its only caller and captures <code>b</code> and <code>m</code>.</p>`,
+      code: R`public class Solution
+{
+    public long ModPow(long b, long e, long m)
+    {
+        long baseMod = b % m;
+        return Go(e);
+
+        long Go(long k)                       // local function, captures baseMod and m
+        {
+            if (k == 0) return 1 % m;         // base case
+            long half = Go(k / 2);
+            long r = half * half % m;
+            return k % 2 == 1 ? r * baseMod % m : r;
+        }
+    }
+}`,
+      dry: { head: ['call', 'half', 'half² mod 1000', 'odd?', 'returns'], rows: [['Go(0)', '—', '—', '—', '1'], ['Go(1)', '1', '1', 'yes', '2'], ['Go(2)', '2', '4', 'no', '4'], ['Go(5)', '4', '16', 'yes', '32'], ['Go(10)', '32', '1024 → 24', 'no', '24']] },
+      complexity: R`<p>O(log e) time and O(log e) stack depth (about 60 frames at most).</p>`,
+      followUps: ['Rewrite it as a loop over the bits of e (no recursion at all)', 'Return the result together with the number of multiplications as a tuple']
+    }
+  }];
+
+  topics[3].problems = [{
+    title: 'Join Non-Empty Parts with an Optional Separator and params',
+    level: 'Easy', tags: ['params', 'optional parameters', 'named arguments'], companies: ['Microsoft', 'Infosys'],
+    statement: R`<p>Write <code>public string JoinNonEmpty(string separator = ", ", params string[] parts)</code> in class <code>Solution</code>. It joins the parts with the separator, <b>skipping</b> parts that are <code>null</code> or empty, so no doubled separators appear. With no non-empty parts it returns <code>""</code>.</p>`,
+    constraints: R`0 ≤ parts.Length ≤ 10<sup>4</sup>; the separator may be "".`,
+    example: R`<p><code>JoinNonEmpty("-", "a", "b", "c")</code> → <span class="c-g">"a-b-c"</span>. <code>JoinNonEmpty(parts: new[] { "x", "", "y" })</code> → <span class="c-g">"x, y"</span> (default separator).</p>`,
+    brute: { why: R`<p>A separate overload for one, two, three … parts copies the same logic many times and still cannot take a fourth part. Building with <code>+=</code> also copies the growing string on every step.</p>`, code: R`public class Brute
+{
+    public string JoinNonEmpty(string separator, string a) => a ?? "";
+    public string JoinNonEmpty(string separator, string a, string b)
+        => string.IsNullOrEmpty(a) ? (b ?? "") : string.IsNullOrEmpty(b) ? a : a + separator + b;
+    // ... and another overload for every extra part
+    public string JoinNonEmpty(string separator = ", ", params string[] parts)
+    {
+        string res = "";
+        foreach (var p in parts)
+            if (!string.IsNullOrEmpty(p)) res = res.Length == 0 ? p : res + separator + p;   // O(n) copy each time
+        return res;
+    }
+}` },
+    mcq: { q: 'With the signature <code>JoinNonEmpty(string separator = ", ", params string[] parts)</code>, what does <code>JoinNonEmpty("a", "b")</code> return?', options: ['"a, b"', '"b"', 'Compile error: ambiguous call', '"ab"'], answer: 1, explain: 'Positional arguments fill parameters left to right: "a" becomes the separator and only "b" goes into parts. To use the default separator, name the params argument: JoinNonEmpty(parts: new[] { "a", "b" }).' },
+    hints: [
+      R`<p>Hint 1: an optional parameter may come before a <code>params</code> array, because <code>params</code> must be last.</p>`,
+      R`<p>Hint 2: filter with <code>string.IsNullOrEmpty</code>, then let <code>string.Join</code> place separators only between kept parts.</p>`,
+      R`<p>Hint 3: <code>parts</code> is never null when called with separate values; an empty call gives an empty array, and Join of nothing is "".</p>`
+    ],
+    tests: { sig: 'string string[] -> string', fn: 'joinNonEmpty', cases: [
+      [['-', ['a', 'b', 'c']], 'a-b-c'], [[', ', ['x', '', 'y']], 'x, y'], [['+', []], ''], [['/', ['', '', '']], ''],
+      [['', ['ab', 'cd']], 'abcd'], [[' | ', ['only']], 'only'], [['-', ['', 'a', '']], 'a'], [['::', ['p', 'q', '', 'r']], 'p::q::r']
+    ] },
+    solution: {
+      approach: R`<p>One method covers every arity thanks to <code>params</code>, and the optional separator keeps the common call short. Filter the empty parts, then join once.</p>`,
+      code: R`public class Solution
+{
+    public string JoinNonEmpty(string separator = ", ", params string[] parts)
+    {
+        var kept = new List<string>(parts.Length);
+        foreach (var p in parts)
+            if (!string.IsNullOrEmpty(p)) kept.Add(p);
+        return string.Join(separator, kept);
+    }
+}`,
+      dry: { head: ['part', 'kept?', 'kept list'], rows: [['"x"', 'yes', '[x]'], ['""', 'no', '[x]'], ['"y"', 'yes', '[x, y]'], ['Join(", ")', '—', '"x, y"']] },
+      complexity: R`<p>O(total length) time and memory.</p>`,
+      followUps: ['Add an optional <code>bool trim = false</code> that trims each part and also drops whitespace-only parts', 'Accept <code>params object[]</code> and format each value with ToString']
+    }
+  }];
+
+  topics[5].problems = [{
+    title: 'Title-Case Every Word',
+    level: 'Easy', tags: ['strings', 'char', 'immutability'], companies: ['Amazon', 'TCS', 'Accenture'],
+    statement: R`<p>Write <code>public string TitleCase(string s)</code> in class <code>Solution</code>. A word is a maximal run of non-space characters. Make the first character of each word upper-case and every other character of the word lower-case (use the invariant culture). Spaces stay exactly where they are, and characters that are not letters are left unchanged.</p>`,
+    constraints: R`0 ≤ s.Length ≤ 10<sup>5</sup>; ASCII characters, words separated by ' '.`,
+    example: R`<p><code>"hello world"</code> → <span class="c-g">"Hello World"</span>; <code>"  mIxEd   CASE "</code> → <span class="c-g">"  Mixed   Case "</span>.</p>`,
+    brute: { why: R`<p>Strings are immutable, so "changing" one character with <code>Substring</code> + <code>+</code> builds a whole new string each time: O(n) per character, O(n²) overall — about 10<sup>10</sup> character copies for 10<sup>5</sup> characters.</p>`, code: R`public class Brute
+{
+    public string TitleCase(string s)
+    {
+        for (int i = 0; i < s.Length; i++)
+        {
+            bool start = i == 0 || s[i - 1] == ' ';
+            char c = start ? char.ToUpperInvariant(s[i]) : char.ToLowerInvariant(s[i]);
+            s = s.Substring(0, i) + c + s.Substring(i + 1);   // new string every step
+        }
+        return s;
+    }
+}` },
+    mcq: { q: 'Why does <code>s[0] = char.ToUpperInvariant(s[0]);</code> not compile?', options: ['char.ToUpperInvariant returns a string', 'The string indexer is read-only because strings are immutable (CS0200)', 'You must write <code>s.Chars[0]</code>', 'Strings are value types'], answer: 1, explain: 'A string cannot be changed after it is created, so its indexer has only a getter. Copy the characters into a char[] (ToCharArray), change the array, and build one new string with new string(chars).' },
+    hints: [
+      R`<p>Hint 1: <code>char[] buf = s.ToCharArray();</code> gives you a mutable copy.</p>`,
+      R`<p>Hint 2: a character starts a word when it is not a space and it is at index 0 or the previous character is a space.</p>`,
+      R`<p>Hint 3: use <code>char.ToUpperInvariant</code> / <code>char.ToLowerInvariant</code> (they leave digits and symbols alone) and finish with <code>new string(buf)</code>.</p>`
+    ],
+    tests: { sig: 'string -> string', fn: 'titleCase', cases: [
+      [['hello world'], 'Hello World'], [[''], ''], [['  mIxEd   CASE '], '  Mixed   Case '], [['a'], 'A'],
+      [['c# is FUN'], 'C# Is Fun'], [['123abc DEF'], '123abc Def'], [['x y z'], 'X Y Z'], [['   '], '   ']
+    ] },
+    solution: {
+      approach: R`<p>Copy the immutable string into a <code>char[]</code> once, fix each character in place using the previous character to detect word starts, then create a single new string.</p>`,
+      code: R`public class Solution
+{
+    public string TitleCase(string s)
+    {
+        char[] buf = s.ToCharArray();
+        for (int i = 0; i < buf.Length; i++)
+        {
+            bool start = i == 0 || s[i - 1] == ' ';
+            buf[i] = start ? char.ToUpperInvariant(s[i]) : char.ToLowerInvariant(s[i]);
+        }
+        return new string(buf);
+    }
+}`,
+      dry: { head: ['i', 's[i]', 'word start?', 'buf[i]'], rows: [['0', 'c', 'yes', 'C'], ['1', '#', 'no', '#'], ['2', '␣', 'no', '␣'], ['3', 'i', 'yes', 'I'], ['4', 's', 'no', 's']] },
+      complexity: R`<p>O(n) time; O(n) memory for the copy and the result.</p>`,
+      followUps: ['Keep short words like "of" and "the" lower-case unless they are first', 'Treat tabs and other <code>char.IsWhiteSpace</code> characters as separators too']
+    }
+  }];
   /* ======================================================================
      PRACTICE
      ====================================================================== */

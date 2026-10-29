@@ -999,6 +999,103 @@ Console.WriteLine($"{d:yyyy-MM-dd} {next:yyyy-MM-dd}");   // 2026-10-25 2026-10-
     }
   }];
 
+  topics[2].problems = [{
+    title: 'Volume Control: a Clamping Setter and Computed Properties',
+    level: 'Easy', tags: ['properties', 'setter logic', 'computed property', 'object initializer'], companies: ['Microsoft', 'Spotify', 'Sonos'],
+    statement: R`<p>Write <code>public class VolumeControl</code> with a read/write property <code>int Level</code> whose setter <b>clamps</b> the value into 0..100 (it never throws), a computed get-only property <code>bool IsMuted</code> (true when <code>Level</code> is 0) and a computed get-only property <code>string Label</code>: <code>"muted"</code> for 0, <code>"low"</code> for 1–33, <code>"medium"</code> for 34–66, <code>"high"</code> for 67–100. The harness creates <code>new VolumeControl { Level = start }</code>, applies each change with <code>v.Level += d</code> and returns <code>$"{v.Level} {v.Label}"</code>.</p>`,
+    constraints: R`Up to 1000 changes; every start and change fits in an int with |value| ≤ 10<sup>6</sup>.`,
+    example: R`<p>start 50, changes [10, −5] → <span class="c-g">55 medium</span>; start 90, changes [20, −20] → <span class="c-g">80 high</span> (the first change clamps to 100, so the second lands on 80, not 90).</p>`,
+    brute: { why: R`<p>A public field cannot enforce anything: every caller must remember to clamp, and one that forgets stores 140. Storing <code>Label</code> and <code>IsMuted</code> as extra fields is worse — they go stale the moment <code>Level</code> changes without updating them.</p>`, code: R`public class LooseVolume
+{
+    public int Level;            // anyone can write 140 or -3
+    public string Label = "";    // stored copy: must be kept in sync by hand
+}` },
+    mcq: { q: 'Start at 90 and run <code>v.Level += 20; v.Level -= 20;</code>. What is <code>v.Level</code>, and why?', options: ['90, because += and -= cancel out', '80: <code>+=</code> calls the getter then the setter, the setter clamps 110 to 100, and 100 − 20 is 80', '110, because compound assignment bypasses the setter', 'It does not compile: <code>+=</code> needs a field'], answer: 1, explain: 'v.Level += 20 is v.Level = v.Level + 20: get 90, set 110, which the setter stores as 100. The next line reads 100 and sets 80. Every write, compound or not, runs the setter.' },
+    hints: [
+      R`<p>Hint 1: use a private backing field <code>_level</code> and a full property whose <code>set</code> stores <code>Math.Clamp(value, 0, 100)</code>.</p>`,
+      R`<p>Hint 2: computed properties are expression-bodied: <code>public bool IsMuted =&gt; Level == 0;</code> — they store nothing.</p>`,
+      R`<p>Hint 3: <code>Label</code> is a switch expression with relational patterns: <code>0 =&gt; "muted", &lt;= 33 =&gt; "low", &lt;= 66 =&gt; "medium", _ =&gt; "high"</code>.</p>`
+    ],
+    tests: { sig: 'int int[] -> string', fn: 'adjust', harness: { csharp: 'public static class Check { public static string Adjust(int start, int[] changes) { var v = new VolumeControl { Level = start }; foreach (var d in changes) v.Level += d; if (v.IsMuted != (v.Level == 0)) return "IsMuted wrong"; return $"{v.Level} {v.Label}"; } }' }, cases: [
+      [[50, [10, -5]], '55 medium'], [[50, [100]], '100 high'], [[10, [-30]], '0 muted'], [[150, []], '100 high'], [[-20, [5]], '5 low'],
+      [[33, []], '33 low'], [[34, []], '34 medium'], [[66, [1]], '67 high'], [[100, [-100, 1]], '1 low'], [[90, [20, -20]], '80 high'], [[0, { $rep: 1, n: 1000 }], '100 high']
+    ] },
+    solution: {
+      approach: R`<p>All writes go through one setter, so the 0..100 rule lives in exactly one place — including writes from the object initializer and from <code>+=</code>. <code>IsMuted</code> and <code>Label</code> are computed from <code>Level</code> on every read, so they can never disagree with it.</p>`,
+      code: R`public class VolumeControl
+{
+    private int _level;
+
+    public int Level
+    {
+        get => _level;
+        set => _level = Math.Clamp(value, 0, 100);   // every write is clamped
+    }
+
+    public bool IsMuted => Level == 0;                // computed: no stored state
+
+    public string Label => Level switch
+    {
+        0 => "muted",
+        <= 33 => "low",
+        <= 66 => "medium",
+        _ => "high"
+    };
+}`,
+      dry: { head: ['statement', 'get', 'set(value)', '_level', 'Label'], rows: [['new { Level = 90 }', '—', '90', '90', 'high'], ['Level += 20', '90', '110 → clamped', '100', 'high'], ['Level += -20', '100', '80', '80', 'high']] },
+      complexity: R`<p>O(1) per get or set; the class stores a single int.</p>`,
+      followUps: ['Raise a <code>Changed</code> event only when the clamped value actually differs', 'Make <code>Level</code> <code>init</code>-only and add a <code>WithLevel(int)</code> method instead']
+    }
+  }];
+
+  topics[3].problems = [{
+    title: 'Team Scoreboard: Instance Scores and a Shared Static Total',
+    level: 'Easy', tags: ['static', 'shared state', 'instance vs static'], companies: ['Unity', 'Microsoft', 'EA'],
+    statement: R`<p>Write <code>public class Player</code> with a public parameterless constructor, an instance get-only (privately set) property <code>int Score</code>, and two <b>static</b> properties shared by all players: <code>int TotalScore</code> (sum of every player's points) and <code>int Count</code> (players created). <code>void AddPoints(int points)</code> adds to both this player's <code>Score</code> and <code>TotalScore</code>, and ignores points ≤ 0. <code>static void Reset()</code> sets both static values back to 0. The harness calls <code>Player.Reset()</code>, creates <code>n</code> players, applies each <code>[playerIndex, points]</code> pair and returns every player's score followed by <code>TotalScore</code> and <code>Count</code>.</p>`,
+    constraints: R`0 ≤ n ≤ 100; up to 1000 operations; the total stays below 2<sup>31</sup>.`,
+    example: R`<p>n = 2, ops [[0,5],[1,3],[0,2]] → <span class="c-g">[7, 3, 10, 2]</span>: each player keeps its own score, and there is one total for the whole class.</p>`,
+    brute: { why: R`<p>Making <code>TotalScore</code> an instance field gives every player its own "total" that only counts its own points. Recomputing the total by keeping a list of all players works, but leaks every object forever and costs O(n) per read. One static field is the honest model of "one value for the whole type" — and it needs a <code>Reset</code>, because static state outlives any single game (or test).</p>`, code: R`public class NaivePlayer
+{
+    public int Score;
+    public int TotalScore;           // per instance: each player sees only its own points
+    public void AddPoints(int p) { Score += p; TotalScore += p; }
+}` },
+    mcq: { q: 'The tests run one after another in the same process. What goes wrong if the harness does <b>not</b> call <code>Player.Reset()</code> first?', options: ['Nothing: statics are reset when the objects are garbage-collected', 'TotalScore and Count keep the values left by the previous test, because a static field lives for the whole program, not per object', 'Each new Player gets its own copy of the static fields', 'The compiler rejects static fields without an explicit reset'], answer: 1, explain: 'Static fields belong to the type and live until the process (AppDomain) ends. Instances come and go; the statics carry over — a classic source of order-dependent test failures.' },
+    hints: [
+      R`<p>Hint 1: <code>public static int TotalScore { get; private set; }</code> — one variable for the whole type; the same for <code>Count</code>.</p>`,
+      R`<p>Hint 2: increment <code>Count</code> in the constructor; an instance member may read and write statics, but not the other way round.</p>`,
+      R`<p>Hint 3: in <code>AddPoints</code>, return early when <code>points &lt;= 0</code>; otherwise update <code>Score</code> and <code>TotalScore</code> together.</p>`
+    ],
+    tests: { sig: 'int int[][] -> int[]', fn: 'play', harness: { csharp: 'public static class Check { public static int[] Play(int n, int[][] ops) { Player.Reset(); var ps = new List<Player>(); for (int i = 0; i < n; i++) ps.Add(new Player()); foreach (var op in ops) ps[op[0]].AddPoints(op[1]); var res = ps.Select(p => p.Score).ToList(); res.Add(Player.TotalScore); res.Add(Player.Count); return res.ToArray(); } }' }, cases: [
+      [[2, [[0, 5], [1, 3], [0, 2]]], [7, 3, 10, 2]], [[1, []], [0, 0, 1]], [[0, []], [0, 0]], [[3, [[2, 10], [2, -4], [1, 0]]], [0, 0, 10, 10, 3]],
+      [[2, [[1, 1]]], [0, 1, 1, 2]], [[3, [[0, 100], [1, 200], [2, 300]]], [100, 200, 300, 600, 3]], [[1, { $rep: [0, 1000000], n: 1000 }], [1000000000, 1000000000, 1]]
+    ] },
+    solution: {
+      approach: R`<p>Per-player data is instance state; the team-wide total and the creation count are static state, so every instance updates the same two variables. Private setters keep outsiders from writing them, and <code>Reset</code> gives a clean slate between games and tests.</p>`,
+      code: R`public class Player
+{
+    public static int TotalScore { get; private set; }   // one per type
+    public static int Count { get; private set; }
+
+    public int Score { get; private set; }               // one per object
+
+    public Player() => Count++;
+
+    public void AddPoints(int points)
+    {
+        if (points <= 0) return;
+        Score += points;
+        TotalScore += points;                            // instance code may update statics
+    }
+
+    public static void Reset() { TotalScore = 0; Count = 0; }
+}`,
+      dry: { head: ['step', 'P0.Score', 'P1.Score', 'TotalScore', 'Count'], rows: [['Reset + 2 × new', '0', '0', '0', '2'], ['P0 +5', '5', '0', '5', '2'], ['P1 +3', '5', '3', '8', '2'], ['P0 +2', '7', '3', '10', '2']] },
+      complexity: R`<p>O(1) per operation; the statics take constant space no matter how many players exist.</p>`,
+      followUps: ['Make the counters thread-safe with <code>Interlocked.Add</code>', 'Replace the statics with an injected <code>Team</code> object and compare how easy each is to test']
+    }
+  }];
+
   topics[4].problems = [{
     title: 'Deduplicate Events with a Record Key',
     level: 'Easy', tags: ['records', 'value equality', 'HashSet'], companies: ['Amazon', 'Datadog', 'Splunk'],
@@ -1072,6 +1169,51 @@ Console.WriteLine($"{d:yyyy-MM-dd} {next:yyyy-MM-dd}");   // 2026-10-25 2026-10-
       dry: { head: ['point', 'hash bucket (same for equal points)', 'Equals with existing?', 'set size'], rows: [['(1,2)', 'h(1,2)', '—', '1'], ['(1,2)', 'h(1,2)', '<span class="c-g">yes</span> → not added', '1'], ['(2,1)', 'h(2,1)', 'no', '2']] },
       complexity: R`<p>O(1) per comparison and hash; O(n) expected for n insertions.</p>`,
       followUps: ['Replace the class with <code>public record Point(int X, int Y);</code> and compare the generated code on sharplab.io', 'Implement IComparable&lt;Point&gt; for sorting by X then Y']
+    }
+  }];
+
+  topics[6].problems = [{
+    title: 'Running Statistics as a readonly struct',
+    level: 'Medium', tags: ['readonly struct', 'immutability', 'defensive copies', 'overflow'], companies: ['Microsoft', 'Bloomberg', 'Jane Street'],
+    statement: R`<p>Write <code>public readonly struct Stats</code> with get-only properties <code>int Count</code>, <code>long Sum</code>, <code>int Min</code>, <code>int Max</code> and a method <code>Stats Add(int x)</code> that returns a <b>new</b> <code>Stats</code> including <code>x</code>. <code>default(Stats)</code> is the empty accumulator (all zero); the first <code>Add</code> sets Min and Max to <code>x</code>. The harness starts from <code>var s = default(Stats); var before = s;</code>, folds the input with <code>s = s.Add(x)</code> and returns <code>[before.Count, s.Count, s.Sum, s.Min, s.Max]</code>.</p>`,
+    constraints: R`Up to 10<sup>5</sup> values, each a full-range int; the sum may exceed the int range.`,
+    example: R`<p>[3, 1, 4] → <span class="c-g">[0, 3, 8, 1, 4]</span>. <code>before</code> still reports 0 values: every <code>Add</code> produced a new struct.</p>`,
+    brute: { why: R`<p>A mutable struct with <code>void Add(int x)</code> looks natural, but it silently loses updates whenever it is called on a copy: through a <code>readonly</code> field (the compiler makes a defensive copy), a <code>List&lt;Stats&gt;</code> element, a <code>foreach</code> variable or a property getter. A class avoids that but allocates on the heap for a 20-byte value.</p>`, code: R`public struct MutableStats
+{
+    public int Count; public long Sum;
+    public void Add(int x) { Count++; Sum += x; }   // mutates whichever copy it is called on
+}
+// private readonly MutableStats _s;  _s.Add(5);  // runs on a defensive copy: _s.Count stays 0` },
+    mcq: { q: 'A class has <code>private readonly MutableStats _s;</code> where <code>MutableStats</code> is a non-readonly struct with <code>void Add(int x)</code>. What does <code>_s.Add(5)</code> do?', options: ['Updates _s, because readonly only blocks reassignment of the whole field', 'It does not compile', 'The compiler calls Add on a hidden defensive copy, so _s is unchanged and the update vanishes', 'It boxes _s and updates the boxed copy in place'], answer: 2, explain: 'The compiler cannot prove Add leaves the struct alone, so to protect the readonly field it copies the value and calls Add on the copy. Declaring the struct readonly removes the copy and, with Add returning a new value, makes the update visible.' },
+    hints: [
+      R`<p>Hint 1: declare <code>public readonly struct Stats</code> with a constructor taking all four values; all properties are <code>{ get; }</code>.</p>`,
+      R`<p>Hint 2: <code>Add</code> returns <code>new Stats(1, x, x, x)</code> when <code>Count == 0</code>, otherwise <code>new Stats(Count + 1, Sum + x, Math.Min(Min, x), Math.Max(Max, x))</code>.</p>`,
+      R`<p>Hint 3: keep <code>Sum</code> as <code>long</code> — two <code>int.MaxValue</code> values already overflow an int.</p>`
+    ],
+    tests: { sig: 'int[] -> long[]', fn: 'fold', harness: { csharp: 'public static class Check { public static long[] Fold(int[] xs) { var s = default(Stats); var before = s; foreach (var x in xs) s = s.Add(x); return [before.Count, s.Count, s.Sum, s.Min, s.Max]; } }' }, cases: [
+      [[[3, 1, 4]], [0, 3, 8, 1, 4]], [[[]], [0, 0, 0, 0, 0]], [[[7]], [0, 1, 7, 7, 7]], [[[-5, -2, -9]], [0, 3, -16, -9, -2]], [[[0, 0, 0]], [0, 3, 0, 0, 0]],
+      [[[2147483647, 2147483647]], [0, 2, 4294967294, 2147483647, 2147483647]], [[[-2147483648, 5]], [0, 2, -2147483643, -2147483648, 5]], [[{ $range: [1, 1001] }], [0, 1000, 500500, 1, 1000]]
+    ] },
+    solution: {
+      approach: R`<p>A <code>readonly struct</code> guarantees no member mutates <code>this</code>, so the compiler never needs defensive copies, and each <code>Add</code> returns the next state that the caller stores back. The empty state is simply <code>default</code>, distinguished by <code>Count == 0</code>.</p>`,
+      code: R`public readonly struct Stats
+{
+    public int Count { get; }
+    public long Sum { get; }        // long: the sum can exceed int
+    public int Min { get; }
+    public int Max { get; }
+
+    public Stats(int count, long sum, int min, int max) { Count = count; Sum = sum; Min = min; Max = max; }
+
+    public Stats Add(int x) => Count == 0
+        ? new Stats(1, x, x, x)
+        : new Stats(Count + 1, Sum + x, Math.Min(Min, x), Math.Max(Max, x));
+
+    public double Mean => Count == 0 ? 0 : (double)Sum / Count;
+}`,
+      dry: { head: ['x', 's before', 's after', 'before (start)'], rows: [['3', '(0, 0, 0, 0)', '(1, 3, 3, 3)', '(0, 0, 0, 0)'], ['1', '(1, 3, 3, 3)', '(2, 4, 1, 3)', '(0, 0, 0, 0)'], ['4', '(2, 4, 1, 3)', '(3, 8, 1, 4)', '(0, 0, 0, 0)']] },
+      complexity: R`<p>O(1) per <code>Add</code>, no heap allocation; O(n) to fold n values.</p>`,
+      followUps: ['Add a <code>Merge(in Stats other)</code> that combines two partial results (useful for parallel folds)', 'Track the variance with Welford\'s method while staying immutable']
     }
   }];
 
