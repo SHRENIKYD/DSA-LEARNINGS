@@ -1,10 +1,9 @@
 var Games = (function () {
   function h(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
   function btn(label, cls) { var b = h('button', 'b3' + (cls ? ' ' + cls : ''), label); b.type = 'button'; return b; }
-  function rand() { return globalThis.crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296; }
-  function rnd(a, b) { return a + Math.floor(rand() * (b - a + 1)); }
-  function pick(a) { return a[Math.floor(rand() * a.length)]; }
-  function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(rand() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+  function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function sup(e) { return String(e).split('').map(function (d) { return '⁰¹²³⁴⁵⁶⁷⁸⁹'[+d]; }).join(''); }
   function fmt(x) { if (!isFinite(x)) return '∞'; if (x < 1000) return String(Math.round(x)); var e = Math.floor(Math.log10(x)), m = Math.round(x / Math.pow(10, e) * 10) / 10; if (m >= 10) { m = 1; e++; } return m + '×10' + sup(e); }
   function each(list, fn) { Array.prototype.forEach.call(list, fn); }
@@ -17,7 +16,7 @@ var Games = (function () {
     learned: 'You just did binary search. Each guess at the middle throws away half of what is left, so a range of N numbers needs at most ⌈log₂(N+1)⌉ guesses. That is O(log N).',
     mount: function (el, api) {
       var size = rnd(30, 1000), min = rnd(1, 400), max = min + size - 1, lo = min, hi = max, used = 0, over = false;
-      var tries = Math.ceil(Math.log2(size + 1)), secret = rnd(min, max);
+      var tries = Math.ceil(Math.log2(size + 1)), target = rnd(min, max);
       var head = h('p', 'g-goal', 'Range <b>' + min + '–' + max + '</b> (' + size + ' numbers) · <b>' + tries + '</b> tries, because 2' + sup(tries) + ' = ' + Math.pow(2, tries) + ' ≥ ' + size);
       var bar = h('div', 'g-span', '<i class="win"></i><i class="mk"></i>'), info = h('div', 'g-row'), dots = h('div', 'g-tries'), rg = h('span', 'g-range');
       var row = h('div', 'g-slide'), inp = h('input'), val = h('span', 'g-num'), msg = h('div', 'g-msg'), go = btn('GUESS');
@@ -30,7 +29,7 @@ var Games = (function () {
         w.style.left = ((lo - min) / size * 100) + '%'; w.style.width = (Math.max(0, hi - lo + 1) / size * 100) + '%';
         mk.style.left = ((g - min + 0.5) / size * 100) + '%';
         each(dots.children, function (e, ix) { e.className = ix < used ? 'u' : ''; });
-        rg.textContent = over ? 'answer: ' + secret : 'still possible: ' + lo + '–' + hi;
+        rg.textContent = over ? 'answer: ' + target : 'still possible: ' + lo + '–' + hi;
         val.textContent = g;
       }
       msg.textContent = 'Slide to a number and tap Guess. Tip: aim for the middle of what is left.';
@@ -38,11 +37,11 @@ var Games = (function () {
       go.addEventListener('click', function () {
         if (over) return;
         var g = +inp.value; used++; api.tick();
-        if (g === secret) { over = true; paint(); msg.className = 'g-msg win'; msg.innerHTML = '<b>Found ' + secret + ' in ' + used + (used === 1 ? ' try' : ' tries') + '!</b>'; go.disabled = true; api.win(); return; }
-        if (g < secret) lo = Math.max(lo, g + 1); else hi = Math.min(hi, g - 1);
+        if (g === target) { over = true; paint(); msg.className = 'g-msg win'; msg.innerHTML = '<b>Found ' + target + ' in ' + used + (used === 1 ? ' try' : ' tries') + '!</b>'; go.disabled = true; api.win(); return; }
+        if (g < target) lo = Math.max(lo, g + 1); else hi = Math.min(hi, g - 1);
         var mid = Math.floor((lo + hi) / 2);
-        if (used >= tries) { over = true; paint(); api.miss(); msg.className = 'g-msg'; msg.innerHTML = 'Out of tries, it was <b>' + secret + '</b>. Guess the middle every time and ' + tries + ' is always enough.'; go.disabled = true; return; }
-        msg.innerHTML = '<b>' + (g < secret ? 'Higher' : 'Lower') + '</b> than ' + g + '. ' + (hi - lo + 1) + ' left, the middle is ' + mid + '.';
+        if (used >= tries) { over = true; paint(); api.miss(); msg.className = 'g-msg'; msg.innerHTML = 'Out of tries, it was <b>' + target + '</b>. Guess the middle every time and ' + tries + ' is always enough.'; go.disabled = true; return; }
+        msg.innerHTML = '<b>' + (g < target ? 'Higher' : 'Lower') + '</b> than ' + g + '. ' + (hi - lo + 1) + ' left, the middle is ' + mid + '.';
         inp.value = mid; paint();
       });
       paint();
@@ -137,7 +136,7 @@ var Games = (function () {
         }
         C = 5; G = ['RFFFF', 'FFF#F', 'FFFFF', '#F#FF', 'FFFFR'].map(function (r) { return r.split(''); }); dist = bfs(); answer = 4;
       }
-      make(rand() < 0.25);
+      make(Math.random() < 0.25);
       var grid = h('div', 'g-orch'), cells = [], minute = 0, picked = null, done = false;
       grid.style.gridTemplateColumns = 'repeat(' + C + ',1fr)';
       var head = h('div', 'g-row'), mv = h('span', 'g-range'), ask = h('div', 'g-choices four'), msg = h('div', 'g-msg'), step = btn('PLAY 1 MINUTE');
@@ -234,7 +233,7 @@ var Games = (function () {
     var out = '', st = [];
     while (out.length < n) {
       var left = n - out.length;
-      if (st.length && (st.length >= left || rand() < 0.45)) out += CLOSE[OPEN.indexOf(st.pop())];
+      if (st.length && (st.length >= left || Math.random() < 0.45)) out += CLOSE[OPEN.indexOf(st.pop())];
       else { var o = pick(OPEN.split('')); st.push(o); out += o; }
     }
     return out;
@@ -256,7 +255,7 @@ var Games = (function () {
     learned: 'A stack solves it: push every opening bracket, and on a closing bracket pop and check that it matches. Fail on a mismatch or an empty stack; at the end the stack must be empty. One pass, O(N) time.',
     mount: function (el, api) {
       var rounds = [], score = 0, at = 0;
-      for (var i = 0; i < 5; i++) { var b0 = makeBalanced(2 * rnd(3, 5)); rounds.push(rand() < 0.5 ? b0 : breakIt(b0)); }
+      for (var i = 0; i < 5; i++) { var b0 = makeBalanced(2 * rnd(3, 5)); rounds.push(Math.random() < 0.5 ? b0 : breakIt(b0)); }
       var head = h('div', 'g-row'), pos = h('span', 'g-range'), str = h('div', 'g-brk'), stack = h('div', 'g-stack'), msg = h('div', 'g-msg'), ch = h('div', 'g-choices');
       var yes = btn('✓ Balanced', 'ghost'), no = btn('✕ Not balanced', 'ghost'), nxt = btn('NEXT STRING');
       ch.appendChild(yes); ch.appendChild(no); head.appendChild(pos);
@@ -598,7 +597,7 @@ var Games = (function () {
     learned: 'Preorder visits a node before its children, inorder between them, postorder after them; all three are one recursive DFS with the visit line moved. Level order is BFS with a queue. Every walk touches each node once: O(N).',
     mount: function (el, api) {
       var has = { 1: 1, 2: 1, 3: 1 }, val = {}, k;
-      do { for (k = 4; k <= 7; k++) { if (rand() < 0.7) has[k] = 1; else delete has[k]; } } while (Object.keys(has).length < 5);
+      do { for (k = 4; k <= 7; k++) { if (Math.random() < 0.7) has[k] = 1; else delete has[k]; } } while (Object.keys(has).length < 5);
       var vals = shuffle(range(60)), vi = 0; Object.keys(has).forEach(function (x) { val[x] = vals[vi++]; });
       var w = pick(WALKS), order = [];
       function dfs(x) { if (!has[x]) return; if (w.id === 'pre') order.push(x); dfs(2 * x); if (w.id === 'in') order.push(x); dfs(2 * x + 1); if (w.id === 'post') order.push(x); }
@@ -725,14 +724,14 @@ var Games = (function () {
   var PEOPLE = ['Asha', 'Ben', 'Chen', 'Dina', 'Eli', 'Farah', 'Gus', 'Hana', 'Ivan', 'Jai', 'Kim', 'Lola'], DEPTS = ['Eng', 'Sales', 'Ops'];
   function empTable() {
     for (;;) {
-      var sal = shuffle(range(20)).slice(0, 6).map(function (x) { return 40 + x * 5; });
-      var rows = shuffle(PEOPLE).slice(0, 6).map(function (nm, i) { return { name: nm, dept: i === 5 ? null : pick(DEPTS), salary: sal[i] }; });
+      var pays = shuffle(range(20)).slice(0, 6).map(function (x) { return 40 + x * 5; });
+      var rows = shuffle(PEOPLE).slice(0, 6).map(function (nm, i) { return { name: nm, dept: i === 5 ? null : pick(DEPTS), pay: pays[i] }; });
       rows = shuffle(rows);
       var cnt = {}; rows.forEach(function (r) { if (r.dept) cnt[r.dept] = (cnt[r.dept] || 0) + 1; });
       if (Object.keys(cnt).length >= 2 && Object.keys(cnt).some(function (d) { return cnt[d] >= 2; })) return rows;
     }
   }
-  function empHtml(rows) { return tbl(['name', 'dept', 'salary'], rows.map(function (r) { return [r.name, r.dept, r.salary]; })); }
+  function empHtml(rows) { return tbl(['name', 'dept', 'salary'], rows.map(function (r) { return [r.name, r.dept, r.pay]; })); }
   function deptsOf(rows) { var d = []; rows.forEach(function (r) { if (r.dept && d.indexOf(r.dept) < 0) d.push(r.dept); }); return d; }
 
   /* 16. WHERE: tap the rows the query returns. */
@@ -741,21 +740,21 @@ var Games = (function () {
     goal: 'Read the query, tap every row it returns, then run it. Three queries.',
     learned: 'WHERE keeps a row only when the condition is TRUE. Any comparison with NULL is UNKNOWN, not TRUE, so dept <> \'Eng\' drops the NULL row too; use IS NULL to find it. AND needs both sides, OR needs one, and ORDER BY … LIMIT picks rows after sorting.',
     mount: function (el, api) {
-      var T = empTable(), D = deptsOf(T), sals = T.map(function (r) { return r.salary; }).sort(function (p, q) { return p - q; });
+      var T = empTable(), D = deptsOf(T), sals = T.map(function (r) { return r.pay; }).sort(function (p, q) { return p - q; });
       var Q = shuffle([
-        function () { var x = sals[rnd(1, 4)]; return { sql: "SELECT name FROM emp\nWHERE salary > " + x + ";", f: function (r) { return r.salary > x; }, why: 'Strictly greater: the row with exactly ' + x + ' is not included.' }; },
-        function () { var d = pick(D), x = sals[rnd(1, 3)]; return { sql: "SELECT name FROM emp\nWHERE dept = '" + d + "' AND salary >= " + x + ";", f: function (r) { return r.dept === d && r.salary >= x; }, why: 'AND needs both conditions to be true.' }; },
-        function () { var d = pick(D), x = sals[rnd(1, 3)]; return { sql: "SELECT name FROM emp\nWHERE dept = '" + d + "' OR salary < " + x + ";", f: function (r) { return r.dept === d || r.salary < x; }, why: 'OR keeps a row when either side is true.' }; },
+        function () { var x = sals[rnd(1, 4)]; return { sql: "SELECT name FROM emp\nWHERE salary > " + x + ";", f: function (r) { return r.pay > x; }, why: 'Strictly greater: the row with exactly ' + x + ' is not included.' }; },
+        function () { var d = pick(D), x = sals[rnd(1, 3)]; return { sql: "SELECT name FROM emp\nWHERE dept = '" + d + "' AND salary >= " + x + ";", f: function (r) { return r.dept === d && r.pay >= x; }, why: 'AND needs both conditions to be true.' }; },
+        function () { var d = pick(D), x = sals[rnd(1, 3)]; return { sql: "SELECT name FROM emp\nWHERE dept = '" + d + "' OR salary < " + x + ";", f: function (r) { return r.dept === d || r.pay < x; }, why: 'OR keeps a row when either side is true.' }; },
         function () { var d = pick(D); return { sql: "SELECT name FROM emp\nWHERE dept <> '" + d + "';", f: function (r) { return r.dept !== null && r.dept !== d; }, why: 'NULL <> \'' + d + '\' is UNKNOWN, so the NULL row is dropped.' }; },
-        function () { return { sql: "SELECT name FROM emp\nORDER BY salary DESC\nLIMIT 2;", f: function (r) { return r.salary >= sals[sals.length - 2]; }, why: 'Sort by salary, highest first, then keep the first 2.' }; },
-        function () { var lo = sals[1], hi = sals[3]; return { sql: "SELECT name FROM emp\nWHERE dept IS NULL\n   OR salary BETWEEN " + lo + " AND " + hi + ";", f: function (r) { return r.dept === null || (r.salary >= lo && r.salary <= hi); }, why: 'BETWEEN includes both ends, and IS NULL is the way to match NULL.' }; }
+        function () { return { sql: "SELECT name FROM emp\nORDER BY salary DESC\nLIMIT 2;", f: function (r) { return r.pay >= sals[sals.length - 2]; }, why: 'Sort by salary, highest first, then keep the first 2.' }; },
+        function () { var lo = sals[1], hi = sals[3]; return { sql: "SELECT name FROM emp\nWHERE dept IS NULL\n   OR salary BETWEEN " + lo + " AND " + hi + ";", f: function (r) { return r.dept === null || (r.pay >= lo && r.pay <= hi); }, why: 'BETWEEN includes both ends, and IS NULL is the way to match NULL.' }; }
       ]).slice(0, 3).map(function (mk) { return mk(); });
       var at = 0, score = 0, sel = {}, done = false;
       var head = h('div', 'g-row'), st = h('span', 'g-range'), q = h('div', 'g-q'), rows = h('div', 'g-rows'), msg = h('div', 'g-msg'), run = btn('RUN QUERY'), nxt = btn('NEXT QUERY');
       head.appendChild(st);
       var hdr = h('div', 'g-rh', '<span>name</span><span>dept</span><span>salary</span>'); rows.appendChild(hdr);
       var RB = T.map(function (r, k) {
-        var b = h('button', 'g-r', '<span>' + esc(r.name) + '</span><span>' + (r.dept === null ? '<i>NULL</i>' : esc(r.dept)) + '</span><span>' + r.salary + '</span>'); b.type = 'button';
+        var b = h('button', 'g-r', '<span>' + esc(r.name) + '</span><span>' + (r.dept === null ? '<i>NULL</i>' : esc(r.dept)) + '</span><span>' + r.pay + '</span>'); b.type = 'button';
         b.setAttribute('aria-pressed', 'false');
         b.addEventListener('click', function () { if (done) return; sel[k] = !sel[k]; b.classList.toggle('on', !!sel[k]); b.setAttribute('aria-pressed', sel[k] ? 'true' : 'false'); api.tick(); });
         rows.appendChild(b); return b;
@@ -792,13 +791,13 @@ var Games = (function () {
       function rowsOf(d) { return T.filter(function (r) { return r.dept === d; }); }
       var groups = D.length + 1, nn = T.filter(function (r) { return r.dept !== null; }).length;
       var big = D.filter(function (d) { return rowsOf(d).length >= 2; }).length;
-      var d1 = pick(D), s1 = rowsOf(d1).reduce(function (a, r) { return a + r.salary; }, 0), d2 = pick(D), m2 = Math.max.apply(null, rowsOf(d2).map(function (r) { return r.salary; }));
+      var d1 = pick(D), s1 = rowsOf(d1).reduce(function (a, r) { return a + r.pay; }, 0), d2 = pick(D), m2 = Math.max.apply(null, rowsOf(d2).map(function (r) { return r.pay; }));
       var items = shuffle([
         item(tab + code('SELECT dept, COUNT(*)\nFROM emp\nGROUP BY dept;') + '<p>How many rows come back?</p>', groups, [groups - 1, T.length, groups + 1], 'One row per group: ' + D.join(', ') + ' and the NULL group = ' + groups + '.'),
-        item(tab + code("SELECT SUM(salary)\nFROM emp\nWHERE dept = '" + d1 + "';"), s1, [s1 + rowsOf(d1)[0].salary, s1 - rowsOf(d1)[0].salary, rowsOf(d1).length], 'The ' + d1 + ' salaries are ' + rowsOf(d1).map(function (r) { return r.salary; }).join(' + ') + ' = ' + s1 + '.'),
+        item(tab + code("SELECT SUM(salary)\nFROM emp\nWHERE dept = '" + d1 + "';"), s1, [s1 + rowsOf(d1)[0].salary, s1 - rowsOf(d1)[0].salary, rowsOf(d1).length], 'The ' + d1 + ' salaries are ' + rowsOf(d1).map(function (r) { return r.pay; }).join(' + ') + ' = ' + s1 + '.'),
         item(tab + code('SELECT dept\nFROM emp\nGROUP BY dept\nHAVING COUNT(*) >= 2;') + '<p>How many rows come back?</p>', big, [big + 1, groups, big - 1].filter(function (v) { return v >= 0; }), 'Only groups with at least 2 rows survive HAVING: ' + (D.filter(function (d) { return rowsOf(d).length >= 2; }).join(', ') || 'none') + '.'),
         item(tab + code('SELECT COUNT(dept)\nFROM emp;'), nn, [T.length, nn - 1, groups], 'COUNT(dept) skips the NULL, so it is ' + nn + ', while COUNT(*) would be ' + T.length + '.'),
-        item(tab + code("SELECT MAX(salary)\nFROM emp\nWHERE dept = '" + d2 + "';"), m2, shuffle(T.map(function (r) { return r.salary; })).filter(function (v) { return v !== m2; }), 'The highest ' + d2 + ' salary is ' + m2 + '.')
+        item(tab + code("SELECT MAX(salary)\nFROM emp\nWHERE dept = '" + d2 + "';"), m2, shuffle(T.map(function (r) { return r.pay; })).filter(function (v) { return v !== m2; }), 'The highest ' + d2 + ' salary is ' + m2 + '.')
       ]).slice(0, 4);
       rounds(el, api, items, 3);
     }
@@ -813,14 +812,14 @@ var Games = (function () {
       var U, O, nm;
       for (;;) {
         nm = shuffle(PEOPLE).slice(0, 4); U = [1, 2, 3, 4];
-        O = []; var k = rnd(5, 6); for (var i = 0; i < k; i++) O.push({ id: 100 + i, uid: rnd(1, 5) });
-        var none = U.filter(function (u) { return !O.some(function (o) { return o.uid === u; }); }).length, orphan = O.filter(function (o) { return o.uid === 5; }).length;
+        O = []; var k = rnd(5, 6); for (var i = 0; i < k; i++) O.push({ id: 100 + i, who: rnd(1, 5) });
+        var none = U.filter(function (u) { return !O.some(function (o) { return o.who === u; }); }).length, orphan = O.filter(function (o) { return o.who === 5; }).length;
         if (none >= 1 && orphan >= 1) break;
       }
-      var cnt = function (u) { return O.filter(function (o) { return o.uid === u; }).length; };
-      var inner = O.filter(function (o) { return o.uid <= 4; }).length, left = U.reduce(function (a, u) { return a + Math.max(1, cnt(u)); }, 0);
+      var cnt = function (u) { return O.filter(function (o) { return o.who === u; }).length; };
+      var inner = O.filter(function (o) { return o.who <= 4; }).length, left = U.reduce(function (a, u) { return a + Math.max(1, cnt(u)); }, 0);
       var anti = U.filter(function (u) { return !cnt(u); }).length, oleft = O.length, cross = U.length * O.length;
-      var tabs = '<div class="g-two">' + tbl(['users.id', 'name'], U.map(function (u) { return [u, nm[u - 1]]; })) + tbl(['orders.id', 'user_id'], O.map(function (o) { return [o.id, o.uid]; })) + '</div>';
+      var tabs = '<div class="g-two">' + tbl(['users.id', 'name'], U.map(function (u) { return [u, nm[u - 1]]; })) + tbl(['orders.id', 'user_id'], O.map(function (o) { return [o.id, o.who]; })) + '</div>';
       var items = shuffle([
         item(tabs + code('SELECT *\nFROM users u\nJOIN orders o ON o.user_id = u.id;'), inner, [left, oleft, inner - 1, U.length], 'Only orders whose user_id exists in users match: ' + inner + ' rows. The order for user 5 has no user.'),
         item(tabs + code('SELECT *\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id;'), left, [inner, U.length, left + 1, oleft], 'Every user appears; matched users once per order, users with no order once with NULLs: ' + left + ' rows.'),
@@ -1002,7 +1001,7 @@ var Games = (function () {
       function q2() { var k = blk(), ip = [10, 0, k.x, k.y]; return item('<p>Network address of <b>' + ipStr(ip) + '/' + k.n + '</b>?</p>', ipStr([10, 0, k.x, k.net]), [ipStr([10, 0, k.x, k.y]), ipStr([10, 0, k.x, (k.net + k.b) % 256]), ipStr([10, 0, k.x, 0]), ipStr([10, 0, k.x, Math.max(0, k.net - k.b)])], 'Block size ' + k.b + ': ' + k.y + ' rounds down to ' + k.net + '.'); }
       function q3() { var k = blk(), ip = [192, 168, k.x, k.y], bc = k.net + k.b - 1; return item('<p>Broadcast address of <b>' + ipStr(ip) + '/' + k.n + '</b>?</p>', ipStr([192, 168, k.x, bc]), [ipStr([192, 168, k.x, 255]), ipStr([192, 168, k.x, bc + 1]), ipStr([192, 168, k.x, k.net]), ipStr([192, 168, k.x, bc - 1])], 'Network ' + k.net + ' + block ' + k.b + ' − 1 = ' + bc + '.'); }
       function q4() {
-        var k = blk(), inside = rand() < 0.5, z = inside ? k.net + rnd(0, k.b - 1) : (k.net + k.b + rnd(0, 20)) % 256;
+        var k = blk(), inside = Math.random() < 0.5, z = inside ? k.net + rnd(0, k.b - 1) : (k.net + k.b + rnd(0, 20)) % 256;
         if (z >= k.net && z < k.net + k.b) inside = true;
         return { q: '<p>Is <b>172.16.' + k.x + '.' + z + '</b> inside <b>172.16.' + k.x + '.' + k.net + '/' + k.n + '</b>?</p>', opts: ['Yes', 'No'], ans: inside ? 0 : 1, why: 'The block runs from ' + k.net + ' to ' + (k.net + k.b - 1) + ', and ' + z + (inside ? ' is in it.' : ' is not.') };
       }
@@ -1161,7 +1160,7 @@ var Games = (function () {
   }
   fresh.reset = function (id) { seenLoad(); delete seenMem[id]; seenSave(); };
   var recursiontrail = quizGame('recursiontrail', 'algo', 'dsa11', 'dsa', 'Recursion trail', 'Functions · Call stack', 'Each recursive call pauses until its child returns. A base case stops the descent; then the calls unwind in reverse order.', function () {
-    return range(5).map(function () { var n = rnd(2, 9), down = rand() < .5, answer = range(n + 1).map(function (i) { return i - 1; }); if (down) answer.reverse();
+    return range(5).map(function () { var n = rnd(2, 9), down = Math.random() < .5, answer = range(n + 1).map(function (i) { return i - 1; }); if (down) answer.reverse();
       return item(code('walk(n):\n  if n < 0: return\n' + (down ? '  print(n)\n  walk(n - 1)' : '  walk(n - 1)\n  print(n)') + '\nwalk(' + n + ')'), answer.join(' '), [answer.slice().reverse().join(' '), String(n), 'Never stops'], down ? 'Printing before the call shows the descent, including zero.' : 'Printing after the call waits for the child, so values appear during unwinding.'); });
   });
   var cssduel = quizGame('cssduel', 'web', 'fe03', 'fe', 'Cascade duel', 'Frontend · CSS specificity', 'For declarations of the same origin, importance and layer, specificity wins first; source order breaks a tie. Inheritance is not a stronger selector.', function () {
@@ -1309,8 +1308,8 @@ var Games = (function () {
   function randomDag(names) {
     var order = shuffle(names), needs = {};
     names.forEach(function (n) { needs[n] = []; });
-    for (var i = 1; i < order.length; i++) for (var j = 0; j < i; j++) if (rand() < 0.3) needs[order[i]].push(order[j]);
-    for (var k = 1; k < order.length; k++) if (!needs[order[k]].length && rand() < 0.6) needs[order[k]].push(order[rnd(0, k - 1)]);
+    for (var i = 1; i < order.length; i++) for (var j = 0; j < i; j++) if (Math.random() < 0.3) needs[order[i]].push(order[j]);
+    for (var k = 1; k < order.length; k++) if (!needs[order[k]].length && Math.random() < 0.6) needs[order[k]].push(order[rnd(0, k - 1)]);
     names.forEach(function (n) { needs[n].sort(); });
     return needs;
   }
@@ -1365,7 +1364,7 @@ var Games = (function () {
   var bstbuild = quizGame('bstbuild', 'algo', 'dsa14', 'dsa', 'BST builder', 'DSA 14 · Binary Search Trees', 'Insertion order shapes a binary search tree: each key walks left (smaller) or right (bigger) from the root. Sorted input makes a tall chain (height N), while a good mix stays close to log₂ N levels. Balanced trees (AVL, red-black) fix the shape automatically.', function () {
     return range(5).map(function () {
       var n = rnd(5, 8), keys = shuffle(range(30)).slice(0, n);
-      if (rand() < 0.25) keys.sort(function (a, b) { return a - b; });
+      if (Math.random() < 0.25) keys.sort(function (a, b) { return a - b; });
       var lv = bstLevels(keys), best = Math.ceil(Math.log2(n + 1));
       return item('Insert into an empty BST, in this order:<br><b>' + keys.join(', ') + '</b><br>How many levels does the tree have?', lv, [lv + 1, lv - 1 > 0 ? lv - 1 : lv + 2, best !== lv ? best : n, n !== lv ? n : lv + 3], 'Walking each key down from the root gives ' + lv + ' level' + (lv === 1 ? '' : 's') + '; the best possible for ' + n + ' keys is ' + best + '.');
     });
@@ -2048,7 +2047,7 @@ var Games = (function () {
   function gbFmt(g) { return g >= 1000 ? (g / 1000) + ' TB' : (g < 1 ? g : Math.round(g)) + ' GB'; }
   var estimator = quizGame('estimator', 'design', 'hld03', 'hld', 'Napkin math', 'HLD 3 · Estimation', 'Back-of-the-envelope: a day is about 10⁵ seconds (86,400), so requests per second ≈ daily requests ÷ 100,000. Storage per day = items per day × size per item; one million items of 1 KB is about 1 GB.', function () {
     return range(5).map(function () {
-      if (rand() < .5) {
+      if (Math.random() < .5) {
         var dau = pick([1, 5, 10, 50, 100, 200]), act = pick([2, 5, 10, 20, 50]), qps = dau * act * 10;
         return item(dau + ' million daily users each make ' + act + ' requests a day. Roughly how many requests per second on average?', 'about ' + qps, others('about ' + qps, ['about ' + qps * 10, 'about ' + qps / 10, 'about ' + qps * 100]), (dau * act) + ' million requests ÷ about 100,000 seconds ≈ ' + qps + ' per second.');
       }
@@ -2272,7 +2271,7 @@ var Games = (function () {
   });
   var pagewalk = quizGame('pagewalk', 'cs', 'cs06', 'cs', 'Page walker', 'CS 6 · Virtual memory', 'With pages of 2ᵏ bytes, a virtual address splits into a page number (address ÷ 2ᵏ, the high bits) and an offset (address mod 2ᵏ, the low k bits). The page table maps the page number to a frame; the offset stays the same.', function () {
     return range(5).map(function () {
-      var k = pick([8, 10, 12]), size = 1 << k, a = rnd(size, 65535), pg = a >> k, off = a & (size - 1), askPage = rand() < .5;
+      var k = pick([8, 10, 12]), size = 1 << k, a = rnd(size, 65535), pg = a >> k, off = a & (size - 1), askPage = Math.random() < .5;
       var right = askPage ? pg : off;
       return item('Page size ' + size + ' bytes. Virtual address ' + a + ' (hex 0x' + a.toString(16).toUpperCase() + '). What is the <b>' + (askPage ? 'page number' : 'offset') + '</b>?', right,
         others(right, [pg, off, pg + 1, Math.max(0, pg - 1), a % 1000, off + 1, a >> (k - 1)]), 'Page = ' + a + ' ÷ ' + size + ' = ' + pg + ', offset = ' + a + ' mod ' + size + ' = ' + off + '.');
@@ -2317,7 +2316,7 @@ var Games = (function () {
     return range(5).map(function () {
       var d = [pick([7, 6, 5, 4]), pick([7, 6, 5, 4, 0]), pick([5, 4, 0, 1])], oct = d.join(''), str = d.map(perm).join('');
       var alt = [[d[0], d[2], d[1]], [d[1], d[0], d[2]], [d[0], d[1] ^ 2, d[2]], [d[0], d[1], d[2] ^ 1], [d[0] ^ 1, d[1], d[2]]];
-      if (rand() < .5) return item('Which octal mode equals <b>' + str + '</b>?', oct, others(oct, alt.map(function (x) { return x.join(''); })), 'Add 4, 2, 1 for r, w, x in each group of three: ' + d.join(', ') + '.');
+      if (Math.random() < .5) return item('Which octal mode equals <b>' + str + '</b>?', oct, others(oct, alt.map(function (x) { return x.join(''); })), 'Add 4, 2, 1 for r, w, x in each group of three: ' + d.join(', ') + '.');
       return item(code('chmod ' + oct + ' deploy.sh') + 'Resulting permissions?', str, others(str, alt.map(function (x) { return x.map(perm).join(''); })), d.map(function (x) { return x + ' = ' + perm(x); }).join(', ') + ' for owner, group and others.');
     });
   });
