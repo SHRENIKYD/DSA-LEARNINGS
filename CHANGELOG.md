@@ -4,6 +4,16 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.19] — 2026-10-30 · 24 new SQL games
+
+### Added
+- **Play:** SQL now has 30 games, up from 6. The 24 new ones cover every SQL lesson, from keys and NULLs to query plans, isolation levels, sharding and NoSQL modelling.
+- **New game formats:**
+  - **True or false:** five quick calls.
+  - **Odd one out:** four tiles, find the one that does not belong.
+- **Size:** every new game has 150 or more questions (about 3,900 in all). A question does not come back until you have seen them all.
+- **Checked answers:** every question that shows a query and asks for its result was answered by running the query in SQLite. The PostgreSQL table-and-constraint questions were also run on PostgreSQL 16.
+
 ## [1.10.18] — 2026-10-30 · What's new after every update
 
 ### Added

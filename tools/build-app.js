@@ -16,11 +16,15 @@ if (r.status !== 0) process.exit(r.status || 1);
 const FILES = ['experience.js', 'experience.css', 'icon.png', 'update.js', 'play.js', 'games.js', 'sound.js', 'speech.js', 'reader.js', 'app.js', 'bridge.js', 'app.css', 'bridge.css', 'reader.css'];
 const hash = crypto.createHash('sha1');
 for (const f of FILES) hash.update(fs.readFileSync(path.join(root, 'app', f)));
+const PACKS = fs.existsSync(path.join(root, 'app', 'games')) ? fs.readdirSync(path.join(root, 'app', 'games')).filter((f) => f.endsWith('.js')).sort() : [];
+for (const f of PACKS) hash.update(fs.readFileSync(path.join(root, 'app', 'games', f)));
 hash.update(VERSION);
 const V = hash.digest('hex').slice(0, 10);
 
 fs.mkdirSync(path.join(out, 'app'), { recursive: true });
 for (const f of FILES) fs.copyFileSync(path.join(root, 'app', f), path.join(out, 'app', f));
+fs.mkdirSync(path.join(out, 'app', 'games'), { recursive: true });
+for (const f of PACKS) fs.copyFileSync(path.join(root, 'app', 'games', f), path.join(out, 'app', 'games', f));
 fs.writeFileSync(path.join(out, 'index.html'), rd('app/index.html').replace(/@@V@@/g, V).replace(/@@VERSION@@/g, VERSION));
 fs.rmSync(path.join(out, '.nojekyll'), { force: true });
 // The app's "What's new" popup shows the app changelog, not the website's.
