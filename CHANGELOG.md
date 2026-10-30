@@ -4,6 +4,17 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.21] — 2026-10-30 · 24 new design games
+
+### Added
+- **Play:** Design now has 30 games, up from 6.
+  - **Low-level design:** clean code, creational, structural and behavioral patterns, the LLD interview framework, case studies (BookMyShow, Splitwise, library), state machines, concurrency, DDD and the expert case studies (LRU cache, rate limiter, logger).
+  - **High-level design:** request flow, scalability, DNS/CDN/load balancing, databases at scale, consistent hashing, messaging, APIs and rate limiting, consensus, reliability, storage, and four sets of case studies, from URL shortener to stock exchange.
+- **Size:** every new game has 150 or more questions, about 3,900 in all.
+- **Checked:**
+  - Every availability, quorum, hashing and capacity calculation was recomputed by a script.
+  - The Java concurrency output questions were run.
+
 ## [1.10.20] — 2026-10-30 · 28 new behavioral games
 
 ### Added
