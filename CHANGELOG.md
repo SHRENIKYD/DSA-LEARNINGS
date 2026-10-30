@@ -4,6 +4,13 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.18] — 2026-10-30 · What's new after every update
+
+### Added
+- After each update, a "What's new" window shows the notes for that release once. Tap **Got it** and it stays closed until the next release.
+- The app shows its own release notes the same way, starting with its next update.
+- First-time visitors don't see it.
+
 ## [1.10.17] — 2026-10-29 · 30 rounds in every quiz game
 
 ### Added

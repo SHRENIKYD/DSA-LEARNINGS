@@ -23,6 +23,8 @@ fs.mkdirSync(path.join(out, 'app'), { recursive: true });
 for (const f of FILES) fs.copyFileSync(path.join(root, 'app', f), path.join(out, 'app', f));
 fs.writeFileSync(path.join(out, 'index.html'), rd('app/index.html').replace(/@@V@@/g, V).replace(/@@VERSION@@/g, VERSION));
 fs.rmSync(path.join(out, '.nojekyll'), { force: true });
+// The app's "What's new" popup shows the app changelog, not the website's.
+fs.writeFileSync(path.join(out, 'assets', 'whatsnew-data.js'), require('./whatsnew-lib.js').dataJs(rd('CHANGELOG-APP.md')));
 // Error reports from the app carry the app version (pages that do not set IM_VERSION get it here).
 for (const f of fs.readdirSync(out).filter((x) => x.endsWith('.html') && x !== 'index.html')) {
   const file = path.join(out, f), html = fs.readFileSync(file, 'utf8');
