@@ -429,7 +429,7 @@ var Games = (function () {
     function stat() { pos.innerHTML = 'round <b>' + (at + 1) + '</b> of ' + n + ' · score ' + score; }
     function show() {
       var it = items[at]; answered = false; stat(); body.innerHTML = it.q; ch.innerHTML = ''; nxt.hidden = true;
-      ch.className = 'g-choices' + (it.opts.length > 2 ? ' col' : '');
+      ch.className = 'g-choices' + (it.grid ? ' odd' : it.opts.length > 2 ? ' col' : it.tf ? ' tf' : '');
       msg.className = 'g-msg'; msg.textContent = 'You need ' + need + ' of ' + n + ' right to win.';
       it.opts.forEach(function (o, i) { var b = btn(esc(o), 'ghost mono'); b.addEventListener('click', function () { answer(i, b); }); ch.appendChild(b); });
     }
@@ -1141,21 +1141,22 @@ var Games = (function () {
   var SEEN_KEY = 'im.quizSeen', seenMem = {};
   function seenLoad() { try { var v = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); if (v && typeof v === 'object') seenMem = v; } catch (e) {} return seenMem; }
   function seenSave() { try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenMem)); } catch (e) {} }
+  function key(it) { return it.k || it.q; }
   function fresh(id, build) {
     lastBank = null;
     var first = build(), k = first.length, bank = lastBank, pool = [], byQ = {};
-    function add(list) { list.forEach(function (it) { if (!byQ[it.q]) { byQ[it.q] = 1; pool.push(it); } }); }
+    function add(list) { list.forEach(function (it) { if (!byQ[key(it)]) { byQ[key(it)] = 1; pool.push(it); } }); }
     if (bank && bank.length && bank[0].q) add(bank);
     else return first;
     var seen = (seenLoad()[id] || []).filter(function (q) { return byQ[q]; }), was = {};
     seen.forEach(function (q) { was[q] = 1; });
-    var pick = shuffle(pool.filter(function (it) { return !was[it.q]; })).slice(0, k);
+    var pick = shuffle(pool.filter(function (it) { return !was[key(it)]; })).slice(0, k);
     if (pick.length < k) {
-      var have = {}; pick.forEach(function (it) { have[it.q] = 1; });
-      seen.forEach(function (q) { if (pick.length < k && !have[q]) { pick.push(pool.filter(function (it) { return it.q === q; })[0]); have[q] = 1; } });
+      var have = {}; pick.forEach(function (it) { have[key(it)] = 1; });
+      seen.forEach(function (q) { if (pick.length < k && !have[q]) { pick.push(pool.filter(function (it) { return key(it) === q; })[0]); have[q] = 1; } });
       seen = [];
     }
-    seenMem[id] = seen.concat(pick.map(function (it) { return it.q; })); seenSave();
+    seenMem[id] = seen.concat(pick.map(key)); seenSave();
     return shuffle(pick);
   }
   fresh.bank = function (build) { lastBank = null; build(); var b = lastBank; return b && b.length && b[0].q ? b : null; };
@@ -6643,6 +6644,27 @@ var Games = (function () {
   LIST.forEach(function (g) { g.cat = g.cat || 'algo'; g.hints = g.hints || HINTS[g.id] || []; });
   var BY = {}; LIST.forEach(function (g) { BY[g.id] = g; });
   var BYMOD = {}; LIST.forEach(function (g) { if (!BYMOD[g.mid]) BYMOD[g.mid] = g; });
+  /* Game packs (app/games/*.js) add games built from a question bank:
+     kind 'quiz' (pick the answer), 'tf' (true or false) or 'odd' (which one does not belong). */
+  var GOALS = { quiz: 'Five short rounds. Get four right to win; every answer explains the idea.', tf: 'True or false? Five quick calls. Get four right to win.', odd: 'Four tiles, one does not belong. Five rounds; get four right to win.' };
+  function bankItem(kind, r) {
+    if (kind === 'tf') return { q: r[0], opts: ['True', 'False'], ans: r[1] ? 0 : 1, why: r[2], tf: true };
+    if (kind === 'odd') { var c = choose(r[1], r[2]); return { q: r[0] || 'Which one does not belong?', opts: c.opts, ans: c.ans, why: r[3], grid: true, k: (r[0] || '') + '|' + [r[1]].concat(r[2]).sort().join('|') }; }
+    return item(r[4] ? code(r[0]) : r[0], r[1], r[2], r[3]);
+  }
+  function packGame(d) {
+    var kind = d.kind || 'quiz', build = function () { return some(d.bank.map(function (r) { return bankItem(kind, r); }), 5); };
+    return { id: d.id, cat: d.cat, mid: d.mid, track: d.track, title: d.title, kicker: d.kicker, goal: GOALS[kind], learned: d.learned, hints: d.hints, kind: kind, puzzles: build,
+      mount: function (el, api) { rounds(el, api, fresh(d.id, build), 4); } };
+  }
+  function add(defs) {
+    defs.forEach(function (d) {
+      var g = d.mount ? d : packGame(d);
+      if (BY[g.id]) throw new Error('duplicate game id ' + g.id);
+      g.cat = g.cat || 'algo'; g.hints = g.hints || [];
+      LIST.push(g); BY[g.id] = g; if (!BYMOD[g.mid]) BYMOD[g.mid] = g;
+    });
+  }
   function inCat(cat) { return LIST.filter(function (g) { return !cat || cat === 'all' || g.cat === cat; }); }
   return {
     list: LIST,
@@ -6651,7 +6673,12 @@ var Games = (function () {
     get: function (id) { return BY[id]; },
     forModule: function (mid) { return BYMOD[mid]; },
     random: function (avoid, cat) { var c = inCat(cat).filter(function (g) { return g.id !== avoid; }); return pick(c.length ? c : LIST); },
-    bfsLayers: bfsLayers, topoValid: topoValid, dsuGroups: dsuGroups, bstLevels: bstLevels, rrFinish: rrFinish, balanced: balanced, inversions: inversions, pySlice: pySlice, minCoins: minCoins, greedyCoins: greedyCoins, fresh: fresh
+    bfsLayers: bfsLayers, topoValid: topoValid, dsuGroups: dsuGroups, bstLevels: bstLevels, rrFinish: rrFinish, balanced: balanced, inversions: inversions, pySlice: pySlice, minCoins: minCoins, greedyCoins: greedyCoins, fresh: fresh,
+    PACKS: ['sql'],
+    add: add, kit: { h: h, btn: btn, esc: esc, rnd: rnd, pick: pick, shuffle: shuffle, range: range, item: item, code: code, some: some, rounds: rounds, fresh: fresh, choose: choose, others: others, tbl: tbl }
   };
 })();
-if (typeof module !== 'undefined') module.exports = Games;
+if (typeof module !== 'undefined') {
+  module.exports = Games;
+  Games.PACKS.forEach(function (p) { require('./games/' + p + '.js'); });
+}

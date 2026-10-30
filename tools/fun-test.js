@@ -12,7 +12,13 @@ function node() {
 global.document = { createElement: node };
 function mounted(id) { const box = node(), result = { wins: 0, misses: 0, ticks: 0 }; G.get(id).mount(box, { win() { result.wins++; }, miss() { result.misses++; }, tick() { result.ticks++; } }); return { box, result }; }
 function click(b) { if (!b.disabled && b.events.click) b.events.click(); }
-assert.equal(G.list.length, 73); assert.equal(new Set(G.list.map(g => g.id)).size, 73);
+assert(G.list.length >= 73); assert.equal(new Set(G.list.map(g => g.id)).size, G.list.length);
+// Every pack in app/games/ is registered, loaded by the app page, and each pack game has a lesson, 2-3 hints and a kind.
+const packFiles = fs.readdirSync('app/games').filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).sort();
+assert.deepEqual(G.PACKS.slice().sort(), packFiles, 'Games.PACKS must list every file in app/games');
+const appHtml = fs.readFileSync('app/index.html', 'utf8');
+packFiles.forEach((p) => assert(appHtml.indexOf('src="app/games/' + p + '.js?v=@@V@@"') > appHtml.indexOf('app/games.js'), 'app/index.html must load app/games/' + p + '.js after games.js'));
+for (const g of G.list.filter((x) => x.kind)) { assert(['quiz', 'tf', 'odd'].includes(g.kind), g.id + ' kind'); assert(/^[a-z]+\d\d$/.test(g.mid), g.id + ' needs a lesson id'); assert(g.learned && g.title && g.kicker, g.id + ' text'); }
 // Every game has 2-3 hints; categories in the registry are all offered as filters.
 for (const g of G.list) { assert(Array.isArray(g.hints) && g.hints.length >= 2 && g.hints.length <= 3, g.id + ' needs 2-3 hints'); g.hints.forEach((t) => assert(typeof t === 'string' && t.length > 20, g.id + ' hint too short')); }
 const catIds = new Set(G.cats.map((c) => c[0])); G.list.forEach((g) => assert(catIds.has(g.cat), g.id + ' category ' + g.cat + ' has no filter'));
@@ -82,9 +88,9 @@ const P = require('../app/play.js'); const week = E.week(P, { '2026-10-19': { g:
 for (const g of G.list) {
   if (typeof g.puzzles !== 'function') continue;
   const bank = G.fresh.bank(g.puzzles); if (!bank) continue;
-  const qs = new Set(bank.map((it) => it.q));
+  const qs = new Set(bank.map((it) => it.k || it.q));
   assert(qs.size >= 150, g.id + ' has only ' + qs.size + ' questions; it needs 30 rounds of 5');
   G.fresh.reset(g.id); const shown = new Set();
-  for (let r = 0; r < Math.floor(qs.size / 5); r++) G.fresh(g.id, g.puzzles).forEach((it) => { assert(!shown.has(it.q), g.id + ' repeated a question before all were seen'); shown.add(it.q); });
+  for (let r = 0; r < Math.floor(qs.size / 5); r++) G.fresh(g.id, g.puzzles).forEach((it) => { const k = it.k || it.q; assert(!shown.has(k), g.id + ' repeated a question before all were seen'); shown.add(k); });
 }
-console.log('PASS: 73-game registry with 2-3 hints each; new-game helpers and generated answers; 90 interactive randomized wins; 250 round answers; win deduplication/failure paths; at least 30 rounds (150 questions) per quiz, none repeated until all are seen; lesson mappings; BFS distances; real-progress world; safe search; streak calendar');
+console.log('PASS: ' + G.list.length + '-game registry with 2-3 hints each; new-game helpers and generated answers; 90 interactive randomized wins; 250 round answers; win deduplication/failure paths; at least 30 rounds (150 questions) per quiz, none repeated until all are seen; lesson mappings; BFS distances; real-progress world; safe search; streak calendar');

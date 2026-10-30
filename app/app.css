@@ -412,3 +412,6 @@ p{margin:0}
 .hint-list:empty{display:none}
 .hint-list li{background:var(--y-bg);border:1px solid var(--y);border-radius:12px;padding:9px 12px;font-size:14px;line-height:1.4}
 .g-choices .muted{font-weight:500;opacity:.7;font-size:.85em;margin-left:4px}
+.g-choices.tf .b3{font-size:1.15rem;padding:18px 10px}
+.g-choices.odd{grid-template-columns:1fr 1fr}
+.g-choices.odd .b3{min-height:72px;white-space:normal}
