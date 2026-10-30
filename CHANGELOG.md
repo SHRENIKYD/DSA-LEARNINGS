@@ -4,6 +4,22 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.20] — 2026-10-30 · 28 new behavioral games
+
+### Added
+- **Play:** Behavioral now has 30 games, up from 2. The 28 new games cover all 9 behavioral lessons:
+  - interview loops, resumes and the STAR method
+  - teamwork, conflict and failure stories
+  - leadership, ownership, ambiguity and prioritisation
+  - talking through coding and design rounds
+  - senior and staff signals
+  - negotiation, offers and career growth
+  - Amazon's Leadership Principles and company research
+  - project deep dives and presentations
+  - manager and tech-lead rounds
+- **Size and format:** every new game has 150 or more questions (about 4,300 in all), as a quiz, true or false, or odd one out.
+- **Leadership Principles:** these games were reviewed so each scenario has one clearly best principle, and they use the official names.
+
 ## [1.10.19] — 2026-10-30 · 24 new SQL games
 
 ### Added
