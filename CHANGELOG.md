@@ -4,6 +4,20 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.22] — 2026-10-30 · 26 new Java games
+
+### Added
+- **Play:** Java now has 30 games, up from 4. The 26 new ones cover every Java lesson:
+  - Language basics: types, control flow and String APIs, classes and static, OOP and polymorphism.
+  - Core libraries: wrappers and equals/hashCode, exceptions and I/O, generics, lambdas and Collectors, collections internals.
+  - Concurrency and the JVM: threads and the memory model, java.util.concurrent, JVM internals, modern Java 21.
+  - Tools and frameworks: Maven/Gradle/JUnit/Mockito, JPA/Hibernate, and Spring.
+- **Size:** every new game has 150 or more questions, about 4,400 in all.
+- **Checked:** every "what does this print" question (more than 1,300) was compiled and run on Java 21, and the answer is the real output. Every "does this compile" item was checked with javac.
+
+### Fixed
+- Each Play game now has its own title.
+
 ## [1.10.21] — 2026-10-30 · 24 new design games
 
 ### Added
