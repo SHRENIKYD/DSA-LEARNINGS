@@ -196,7 +196,7 @@ for (const t of TRACKS) {
   fs.writeFileSync(path.join(out, t._index), idx);
 }
 
-const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'planner.js', 'engine.js', 'errors.js', 'visits.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
+const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'planner.js', 'engine.js', 'errors.js', 'visits.js', 'auth.js', 'login.js', 'journey.js', 'whatsnew.js', 'style.css'];
 const sbUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, ''), sbKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
 const authOn = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(sbUrl) && /^[A-Za-z0-9._-]+$/.test(sbKey);
 if ((sbUrl || sbKey) && !authOn) { console.warn('WARN: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY look invalid — accounts disabled in this build'); warnings++; }
@@ -262,6 +262,13 @@ const contact = /^[^\s@<>"]+@[^\s@<>"]+\.[A-Za-z]{2,}$/.test(contactEmail)
   ? 'Questions or requests: <b>' + H(contactEmail) + '</b>. To delete your account, use the steps above.'
   : 'Questions: open an issue at <a href="https://github.com/SHRENIKYD/DSA-LEARNINGS/issues">github.com/SHRENIKYD/DSA-LEARNINGS/issues</a>. Issues are public, so do not include personal details there; to delete your account, use the steps above.';
 fs.writeFileSync(path.join(out, 'privacy.html'), rd('src/privacy.html').replace(/@@V@@/g, V).replace('@@CONTACT@@', () => contact));
+// "What's new" popup: the newest CHANGELOG.md entry, shown once after an update (src/whatsnew.js).
+fs.writeFileSync(path.join(out, 'assets', 'whatsnew-data.js'), require('./whatsnew-lib.js').dataJs(rd('CHANGELOG.md')));
+for (const f of fs.readdirSync(out).filter((x) => x.endsWith('.html'))) {
+  const file = path.join(out, f), html = fs.readFileSync(file, 'utf8');
+  if (html.includes('assets/whatsnew.js') || !html.includes('</body>')) continue;
+  fs.writeFileSync(file, html.replace('</body>', () => '<script src="assets/whatsnew-data.js?v=' + V + '"></script>\n<script src="assets/whatsnew.js?v=' + V + '"></script>\n</body>'));
+}
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 function H(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 

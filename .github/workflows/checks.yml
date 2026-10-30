@@ -101,6 +101,8 @@ jobs:
         run: node tools/auth-test.js
       - name: Release tool test
         run: node tools/release-test.js
+      - name: What's new popup data
+        run: node tools/whatsnew-test.js
       - name: Riddle and interview hints
         run: node tools/hints-check.js --require
       - name: Visit statistics test
