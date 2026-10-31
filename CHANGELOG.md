@@ -4,6 +4,19 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.30] — 2026-11-01 · 27 new AI games
+
+### Added
+- **Play:** AI now has 30 games, up from 3. The 27 new games cover the AI lessons:
+  - **Foundations:** AI in plain English, using AI tools, maths and Python for AI, ML foundations, neural networks.
+  - **LLMs:** how LLMs work, LLM myths, prompt engineering, transformer internals, context engineering.
+  - **Building with AI:** embeddings and vector databases, RAG, MCP, agents, building agents in practice, multimodal AI.
+  - **Training and operations:** fine-tuning and alignment, evaluation and guardrails, LLMOps, MLOps, ML system design, PyTorch.
+  - **Maths for ML:** linear algebra, probability and statistics, calculus and optimisation, classical ML.
+  - **Careers:** AI-augmented software engineering.
+- **Size:** every new game has 150 or more questions, about 4,400 in all.
+- **Checked:** numeric answers were computed with Python and numpy, and numpy code questions were run.
+
 ## [1.10.29] — 2026-10-31 · 24 new CS & systems games
 
 ### Added
