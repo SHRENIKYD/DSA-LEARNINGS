@@ -4,6 +4,22 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.25] — 2026-10-31 · 27 new C++ games
+
+### Added
+- **Play:** C++ now has 30 games, up from 3. The 27 new ones cover every C++ lesson:
+  - Language basics: types and compilation, control flow and strings, pointers and references, classes, OOP.
+  - Object lifetime: virtual functions and the rule of 3/5/0, RAII and memory.
+  - The standard library: STL containers, algorithms and iterators.
+  - Modern C++: templates and concepts, move semantics, lambdas and ranges, concurrency.
+  - Expert topics: performance and undefined behaviour, expert idioms.
+  - Tools: CMake, testing and sanitizers.
+- **Size:** every new game has 150 or more questions, about 4,300 in all.
+- **Checked:**
+  - Every "what does this print" question was compiled and run with g++ 13 (C++20), with the undefined-behaviour and memory checkers on.
+  - Every "Compile error" answer was compiled again on its own.
+  - Every "undefined behaviour" answer was confirmed by a sanitizer, Valgrind or a compiler warning.
+
 ## [1.10.24] — 2026-10-31 · 26 new Python games
 
 ### Added
