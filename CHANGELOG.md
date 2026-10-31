@@ -4,6 +4,21 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.24] — 2026-10-31 · 26 new Python games
+
+### Added
+- **Play:** Python now has 30 games, up from 4. The 26 new ones cover every Python lesson:
+  - **Language basics:** syntax and types, control flow and collections, strings and files, modules, OOP.
+  - **Under the hood:** data-structure internals and comprehensions, CPython internals, performance.
+  - **Advanced features:** functools, context managers and itertools, iterators, dunders and dataclasses, MRO.
+  - **Errors and testing:** exceptions, pytest and mock, type hints.
+  - **Concurrency:** threads, processes and asyncio.
+  - **Practical Python:** Pythonic DSA, packaging and tooling, NumPy and pandas, Django.
+- **Size:** every new game has 150 or more questions, about 4,500 in all.
+- **Checked:**
+  - Every "what does this print" question was run on Python 3.13. The NumPy, pandas, Django and pytest questions were run with those libraries installed.
+  - The answer to each question is the real output.
+
 ## [1.10.23] — 2026-10-31 · 26 new JavaScript & TypeScript games
 
 ### Added
