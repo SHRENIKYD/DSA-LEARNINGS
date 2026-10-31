@@ -6674,7 +6674,7 @@ var Games = (function () {
     forModule: function (mid) { return BYMOD[mid]; },
     random: function (avoid, cat) { var c = inCat(cat).filter(function (g) { return g.id !== avoid; }); return pick(c.length ? c : LIST); },
     bfsLayers: bfsLayers, topoValid: topoValid, dsuGroups: dsuGroups, bstLevels: bstLevels, rrFinish: rrFinish, balanced: balanced, inversions: inversions, pySlice: pySlice, minCoins: minCoins, greedyCoins: greedyCoins, fresh: fresh,
-    PACKS: ['sql', 'beh', 'design'],
+    PACKS: ['sql', 'beh', 'design', 'java'],
     add: add, kit: { h: h, btn: btn, esc: esc, rnd: rnd, pick: pick, shuffle: shuffle, range: range, item: item, code: code, some: some, rounds: rounds, fresh: fresh, choose: choose, others: others, tbl: tbl }
   };
 })();

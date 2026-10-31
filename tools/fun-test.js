@@ -18,6 +18,7 @@ const packFiles = fs.readdirSync('app/games').filter((f) => f.endsWith('.js')).m
 assert.deepEqual(G.PACKS.slice().sort(), packFiles, 'Games.PACKS must list every file in app/games');
 const appHtml = fs.readFileSync('app/index.html', 'utf8');
 packFiles.forEach((p) => assert(appHtml.indexOf('src="app/games/' + p + '.js?v=@@V@@"') > appHtml.indexOf('app/games.js'), 'app/index.html must load app/games/' + p + '.js after games.js'));
+assert.equal(new Set(G.list.map((g) => g.title.toLowerCase())).size, G.list.length, 'every game needs its own title');
 for (const g of G.list.filter((x) => x.kind)) { assert(['quiz', 'tf', 'odd'].includes(g.kind), g.id + ' kind'); assert(/^[a-z]+\d\d$/.test(g.mid), g.id + ' needs a lesson id'); assert(g.learned && g.title && g.kicker, g.id + ' text'); }
 // Every game has 2-3 hints; categories in the registry are all offered as filters.
 for (const g of G.list) { assert(Array.isArray(g.hints) && g.hints.length >= 2 && g.hints.length <= 3, g.id + ' needs 2-3 hints'); g.hints.forEach((t) => assert(typeof t === 'string' && t.length > 20, g.id + ' hint too short')); }
