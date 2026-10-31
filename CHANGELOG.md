@@ -4,6 +4,18 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.27] — 2026-10-31 · 24 new Web & APIs games
+
+### Added
+- **Play:** Web & APIs now has 30 games, up from 6. The 24 new games cover the frontend and backend lessons:
+  - **Frontend basics:** how the web works, HTML, DOM events, CSS layout, browser APIs and storage.
+  - **React:** fundamentals, state and data fetching, internals and rendering, Next.js.
+  - **Angular:** fundamentals and DI, RxJS and signals, Angular at scale.
+  - **Frontend quality:** web performance, frontend security, tooling and testing.
+  - **Backend:** how backends work, REST and CRUD, Node.js, data access, caching and async work, security, observability, FastAPI, GraphQL/gRPC/WebSockets.
+- **Size:** every new game has 150 or more questions, about 3,800 in all.
+- **Checked:** the Express, Node, FastAPI and RxJS code questions were run, and their answers come from the real output.
+
 ## [1.10.26] — 2026-10-31 · 27 new C# games
 
 ### Added
