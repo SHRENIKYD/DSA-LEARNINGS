@@ -4,6 +4,19 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.26] — 2026-10-31 · 27 new C# games
+
+### Added
+- **Play:** C# now has 30 games, up from 3. The 27 new games cover every C# lesson:
+  - **Language basics:** types and .NET basics, control flow and strings, classes, structs and records.
+  - **OOP and the type system:** inheritance and modifiers, generics and collections.
+  - **Functions and data:** delegates and LINQ, exceptions, pattern matching and nullability.
+  - **Runtime and memory:** boxing, Span and garbage collection, CLR internals and performance.
+  - **Async and concurrency:** tasks, threading and concurrency types, reflection.
+  - **Advanced and frameworks:** expert idioms, ASP.NET Core, EF Core, testing and tooling.
+- **Size:** every new game has 150 or more questions, about 4,400 in all.
+- **Checked:** every "what does this print" question was compiled and run on .NET 8 (C# 12). Every "Compile error" answer was checked against the compiler's real error.
+
 ## [1.10.25] — 2026-10-31 · 27 new C++ games
 
 ### Added
