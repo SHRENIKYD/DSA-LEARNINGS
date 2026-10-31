@@ -4,6 +4,16 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.29] — 2026-10-31 · 24 new CS & systems games
+
+### Added
+- **Play:** CS & systems now has 30 games, up from 6. The 24 new games cover every CS lesson:
+  - **Operating systems:** what an OS does, processes and threads, CPU scheduling, synchronization, deadlocks, virtual memory, file systems and storage, Linux internals, virtualization.
+  - **Networking:** OSI and TCP/IP, routing and NAT, TCP and UDP, HTTP/TLS/DNS, QUIC, BGP and load balancing.
+  - **Hardware and systems:** computer architecture, distributed systems, compilers and runtimes.
+- **Size:** every new game has 150 or more questions, about 4,200 in all.
+- **Checked:** numeric answers (scheduling, paging, Banker's algorithm, routing, TCP windows, caches, clocks and quorums) were computed by script; fork, file-descriptor and architecture code questions were compiled and run.
+
 ## [1.10.28] — 2026-10-31 · 27 new Git & DevOps games
 
 ### Added
