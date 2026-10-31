@@ -4,6 +4,20 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.23] — 2026-10-31 · 26 new JavaScript & TypeScript games
+
+### Added
+- **Play:** JavaScript now has 30 games, up from 4. The 26 new ones cover every JS and TypeScript lesson:
+  - **Language:** operators and types, arrays and objects, browser vs Node, closures, call/apply/bind, prototypes and classes.
+  - **Async:** promises, async/await and the event loop.
+  - **Modern JS:** iterators, generators, Set and Map, and modules.
+  - **TypeScript:** basics, assignability, type-level programming and advanced types.
+  - **Under the hood:** V8 and garbage collection, functional patterns, polyfills, Node.js internals and testing.
+- **Size:** every new game has 150 or more questions, about 4,300 in all.
+- **Checked:**
+  - Every "what does this print" question was run in Node 22, and the answer is the real output.
+  - Every TypeScript "does it compile / what is this type" item was checked with the TypeScript compiler in strict mode.
+
 ## [1.10.22] — 2026-10-30 · 26 new Java games
 
 ### Added
