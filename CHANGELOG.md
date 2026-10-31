@@ -4,6 +4,14 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.31] — 2026-11-01 · 7 new Algorithms games
+
+### Added
+- **Play:** Algorithms now has 30 games, up from 23. The 7 new games cover lessons the existing games didn't: number theory, string algorithms, greedy algorithms, dynamic programming II, advanced graph algorithms, advanced strings/maths/geometry, and pattern recognition.
+- **Size:** every new game has 150 or more questions, about 1,700 in all.
+- **Checked:** trace and compute answers come from Python implementations of each algorithm run on generated inputs.
+- Every Play category now has at least 30 games.
+
 ## [1.10.30] — 2026-11-01 · 27 new AI games
 
 ### Added
