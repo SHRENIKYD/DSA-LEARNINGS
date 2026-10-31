@@ -4,6 +4,18 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.28] — 2026-10-31 · 27 new Git & DevOps games
+
+### Added
+- **Play:** Git & DevOps now has 30 games, up from 3. The 27 new games cover every DevOps lesson:
+  - **Foundations:** Linux, Bash scripting, cloud networking, Git, Python for automation.
+  - **Cloud:** compute and storage, identity and networks, managed services, architecture, GCP and multi-cloud.
+  - **Containers and Kubernetes:** Docker, Kubernetes core, Helm and day-2 operations, service mesh and cluster security.
+  - **Delivery:** Terraform and infrastructure as code, Ansible, CI/CD pipelines, GitOps.
+  - **Operations:** monitoring, DevSecOps, SRE practice.
+- **Size:** every new game has 150 or more questions, about 4,300 in all.
+- **Checked:** the Bash, Git and Python "what does this print" questions were run, and their answers come from the real output.
+
 ## [1.10.27] — 2026-10-31 · 24 new Web & APIs games
 
 ### Added
