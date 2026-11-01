@@ -11,6 +11,9 @@ on:
       lang:
         description: Language for the extra pass (java, python, js, cpp, csharp). Leave empty to rotate by day of the year.
         default: ''
+      retry:
+        description: Track id whose topics without a video are searched again now with shorter queries (e.g. csharp). Leave empty to skip.
+        default: ''
 
 permissions:
   contents: write
@@ -36,8 +39,10 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           YOUTUBE_API_KEYS: ${{ secrets.YOUTUBE_API_KEYS }}
           MAX: ${{ inputs.max || '50' }}
+          RETRY: ${{ inputs.retry || '' }}
         run: |
           node tools/find-videos.js --check
+          if [ -n "$RETRY" ]; then node tools/find-videos.js --retry "$RETRY" --max 40; fi
           node tools/find-videos.js --max "$MAX" --per-key
       # One language per day (day of the year % 4), at most 40 searches: 50 + 40 searches stay under the 10,000-unit quota.
       - name: Search per-language videos for today's language

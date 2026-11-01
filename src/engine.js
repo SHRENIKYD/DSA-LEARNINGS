@@ -1,4 +1,5 @@
 var MODULES = [];
+var COPY_IC = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>', COPIED_IC = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
 // Track pages load a small index (window.IM_MINDEX) first; each module file arrives when the learner opens it
 // and registers itself here, taking its index entry's place.
 function registerModule(m) { if (typeof App !== 'undefined' && App.loadedModule(m)) return; MODULES.push(m); }
@@ -159,7 +160,7 @@ var App = (function () {
       var runnable = (s.lang === 'sql' && s.db !== undefined) || ((s.lang === 'js' || s.lang === 'javascript' || s.lang === 'python' || s.lang === 'py') && s.run);
       h += '<div class="cpane" data-pane="' + i + '"' + (i ? ' hidden' : '') + '><div class="code-head"><span>' + esc(s.title || (LANGS[s.lang] || LANGS.text).name) + '</span><span class="code-btns">' +
         (runnable ? '<button class="btn run" type="button" data-lang="' + s.lang + '" data-snip="' + k + '">' + ICONS.play + 'Run</button><button class="btn edit" type="button">Edit</button>' : '') +
-        '<button class="btn copy" type="button">Copy</button></span></div><pre tabindex="0"><code>' + highlight(code, s.lang) + '</code></pre>' + (runnable ? '<div class="run-out" hidden></div>' : '') + '</div>';
+        '<button class="btn copy" type="button" aria-label="Copy code" title="Copy code">' + COPY_IC + '</button></span></div><pre tabindex="0"><code>' + highlight(code, s.lang) + '</code></pre>' + (runnable ? '<div class="run-out" hidden></div>' : '') + '</div>';
     });
     return h + '</div>';
   }
@@ -966,9 +967,10 @@ var App = (function () {
     document.addEventListener('click', function (e) {
       var t = e.target;
       if (!t.closest) return;
-      if (t.classList.contains('copy')) {
-        var pre = t.closest('.cpane'), ta = $('textarea', pre), txt = ta ? ta.value : $('pre', pre).textContent;
-        var done = function () { t.textContent = 'Copied!'; setTimeout(function () { t.textContent = 'Copy'; }, 1200); };
+      var cp = t.closest('.copy');
+      if (cp) {
+        var pre = cp.closest('.cpane'), ta = $('textarea', pre), txt = ta ? ta.value : $('pre', pre).textContent;
+        var done = function () { cp.innerHTML = COPIED_IC; cp.setAttribute('aria-label', 'Copied'); setTimeout(function () { cp.innerHTML = COPY_IC; cp.setAttribute('aria-label', 'Copy code'); }, 1200); };
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, done);
         else { var x = document.createElement('textarea'); x.value = txt; document.body.appendChild(x); x.select(); try { document.execCommand('copy'); } catch (er) { } x.remove(); done(); }
       } else if (t.classList.contains('run')) runSnippet(t);

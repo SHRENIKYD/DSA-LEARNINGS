@@ -26,6 +26,9 @@ function strip(s) { return String(s || '').replace(/<[^>]*>/g, '').replace(/&amp
 function seconds(iso) { const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || ''); return m ? (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0) : 0; }
 // Topic notes in brackets ("BST search (and min, max)") are dropped from queries and matching; acronyms such as BST,
 // DFS or LRU count as words even though they are short.
+// The part of a topic title before its first ":" or dash ("ref, out & in Parameters: Passing..." -> "ref, out & in Parameters"):
+// a shorter, broader query and match target for topics whose full title found nothing.
+function head(s) { return core(s).split(/\s*[:\u2014\u2013]\s*|\s+-\s+/)[0].trim() || core(s); }
 function core(s) { return strip(s).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim() || strip(s); }
 // Filler words carry no topic meaning; leaving them out lets a title match on the words that matter.
 const STOP = new Set(['with', 'from', 'into', 'using', 'your', 'what', 'when', 'that', 'this', 'their', 'than', 'then', 'them', 'they', 'have', 'does', 'each', 'more', 'most', 'also', 'only', 'over', 'very', 'about', 'basics', 'introduction', 'intro']);
@@ -201,6 +204,25 @@ async function searchDefault(db, all, max) {
   return { found, none, replaced };
 }
 
+// --retry <track>: search that track's misses again now (ignoring RETRY_DAYS) with the shorter head() query.
+function retryTodo(db, all, track) { return searchOrder(all.filter((t) => t.trackId === track && db.videos[t.id] && db.videos[t.id].id === null && !db.videos[t.id].curated)); }
+async function searchRetry(db, all, track, max) {
+  const todo = retryTodo(db, all, track).slice(0, max);
+  let found = 0, none = 0;
+  for (const t of todo) {
+    try {
+      const h = head(t.title), best = await searchBest(((QUERY_PREFIX[t.trackId] || '') + ' ' + h + ' tutorial').trim(), h, '');
+      const prev = db.videos[t.id], keep = prev.byLang ? { byLang: prev.byLang } : {};
+      if (best) { db.videos[t.id] = Object.assign({ t: t.title, id: best.id, title: best.title, channel: best.channel, secs: best.secs }, keep); found++; }
+      else { prev.at = today(); none++; }
+    } catch (e) {
+      if (e.quota) { console.log('quota reached after ~' + usage.units + ' units this run, stopping (' + e.message + ')'); break; }
+      console.warn('skip ' + t.id + ': ' + e.message);
+    }
+  }
+  return { found, none, remaining: retryTodo(db, all, track).length };
+}
+
 async function main() {
   if (!apiKeys().length) { console.log('YOUTUBE_API_KEY / YOUTUBE_API_KEYS is not set: nothing to do.'); return; }
   const args = process.argv.slice(2), lang = args.includes('--lang') ? args[args.indexOf('--lang') + 1] : '';
@@ -247,6 +269,13 @@ async function main() {
     return;
   }
 
+  const retry = args.includes('--retry') ? args[args.indexOf('--retry') + 1] : '';
+  if (retry) {
+    const r = await searchRetry(db, all, retry, max);
+    save(db);
+    console.log('retry ' + retry + ' (~' + usage.units + ' quota units): ' + r.found + ' found, ' + r.none + ' still with no good match, ' + r.remaining + ' ' + retry + ' topics without a video');
+    return;
+  }
   if (lang) {
     const r = await searchLang(db, all, lang, max);
     save(db);
@@ -260,4 +289,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { usage, apiError, apiKeys, keyState, LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };
+module.exports = { head, retryTodo, searchRetry, usage, apiError, apiKeys, keyState, LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };
