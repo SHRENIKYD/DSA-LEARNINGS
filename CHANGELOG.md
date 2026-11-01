@@ -8,6 +8,7 @@ From 1.7.0 the website and the mobile app have separate versions. This file is t
 
 ### Changed
 - **Code blocks:** the "Copy" button is now a copy icon on every lesson page. It turns into a tick for a moment after copying, and its label still reads "Copy code" for screen readers. On narrow phones the old text button could wrap to "Cop / y"; the icon no longer does.
+- **Lesson videos:** the video bot can now search one track's empty topics again straight away, with shorter search wording (the part of the title before the colon). It is used first for C#, where 38 of 93 topics had no video.
 
 ## [1.10.32] — 2026-11-01 · Review queue syncs right away
 

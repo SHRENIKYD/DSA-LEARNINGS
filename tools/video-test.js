@@ -159,6 +159,20 @@ assert.ok(discovery.pick([{ id: 'LONGLECTURE', title: 'BST search and insert ful
   // A dated default miss waits; an undated one is searched.
   assert.ok(!discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null, at: new Date().toISOString().slice(0, 10) } } }, ct));
   assert.ok(discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null } } }, ct));
+  // --retry: a fresh miss in the chosen track is searched again now, with the shorter head() query.
+  assert.equal(discovery.head('ref, out & in Parameters: Passing Variables, Not Values'), 'ref, out & in Parameters');
+  assert.equal(discovery.head('Generic Types & Methods \u2014 Write Once'), 'Generic Types & Methods');
+  const csT = all.find((t) => t.trackId === 'csharp'), qs = [];
+  const csMem = { v: 1, videos: { [csT.id]: { t: csT.title, id: null, at: new Date().toISOString().slice(0, 10) } } };
+  assert.ok(!discovery.needsDefault(csMem, csT), 'a fresh miss waits in the normal pass');
+  assert.deepEqual(discovery.retryTodo(csMem, all, 'csharp').map((t) => t.id), [csT.id], 'but --retry picks it up now');
+  assert.equal(discovery.retryTodo(csMem, all, 'java').length, 0, '--retry only touches the chosen track');
+  discovery.setClient(async (endpoint, params) => { if (endpoint === 'search') { qs.push(params.q); return { items: [{ id: { videoId: 'RETRYFOUND1' } }] }; } return { items: [
+    { id: 'RETRYFOUND1', snippet: { title: 'C# ' + discovery.head(csT.title) + ' tutorial', channelTitle: 'Bro Code', liveBroadcastContent: 'none' }, contentDetails: { duration: 'PT12M' }, statistics: { viewCount: '50000', likeCount: '2000' }, status: { embeddable: true, privacyStatus: 'public' } }] }; });
+  const rt = await discovery.searchRetry(csMem, all, 'csharp', 5);
+  assert.equal(rt.found, 1);
+  assert.equal(csMem.videos[csT.id].id, 'RETRYFOUND1', 'the retried topic gets the found video');
+  assert.equal(qs[0], 'C# ' + discovery.head(csT.title) + ' tutorial', 'retry query is the short head of the title');
   discovery.setClient(null);
   // Several API keys: a key that reports its daily quota hands over to the next one; the last one's quota stops the run.
   {
