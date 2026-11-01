@@ -518,6 +518,13 @@
    "channel": "IBM Technology",
    "secs": 657
   },
+  "ai13-t5": {
+   "t": "Data Leakage, System-Prompt Extraction and PII Redaction",
+   "id": "ZDaog_MJGS8",
+   "title": "Protect sensitive data with Azure AI Language PII Redaction",
+   "channel": "Microsoft Developer",
+   "secs": 255
+  },
   "ai14-t0": {
    "t": "Designing a Chatbot / RAG Product End to End",
    "id": "o7uMZkuegEE",
@@ -548,6 +555,13 @@
    "t": "Semantic Cache: Similarity Threshold and Invalidation",
    "id": null,
    "at": "2026-10-31"
+  },
+  "ai14-t5": {
+   "t": "Rate Limits, Retries with Backoff, and Provider Fallback",
+   "id": "ERILxtGx7d0",
+   "title": "How to Make Your AI App Reliable: Retries, Backoff, Fallback Models",
+   "channel": "Kristian",
+   "secs": 445
   },
   "ai15-t0": {
    "t": "Attention Math: Q, K, V, Softmax, the √d Scale and Causal Masks",
@@ -580,6 +594,13 @@
    "channel": "Liv4IT",
    "secs": 1252
   },
+  "ai15-t5": {
+   "t": "Scaling Laws and Chinchilla: How Big, How Much Data, How Much Compute",
+   "id": "MFLU1c7uf-8",
+   "title": "Chinchilla Scaling Laws: Why Bigger Isn't Better (70B beats 280B) | 20-Min Deep Dive",
+   "channel": "Papers by Hand",
+   "secs": 1088
+  },
   "ai16-t0": {
    "t": "Working With Coding Agents Day to Day: Scope, Context, CLAUDE.md, Small Diffs",
    "id": null,
@@ -610,6 +631,11 @@
    "title": "AI bots are now conducting job interviews. I tried it",
    "channel": "The Verge",
    "secs": 554
+  },
+  "ai16-t5": {
+   "t": "Productivity Without Skill Atrophy: Deliberate Practice, Explain-Before-Accept, AI-Off Reps",
+   "id": null,
+   "at": "2026-11-01"
   },
   "ai17-t0": {
    "t": "What Gets Automated, What Gets Augmented, What Gains Value",
@@ -1783,6 +1809,13 @@
    "id": null,
    "at": "2026-10-31"
   },
+  "be13-t5": {
+   "t": "CI/CD Pipelines: From Commit to Production",
+   "id": "4BibQ69MD8c",
+   "title": "Azure DevOps Tutorial for Beginners | CI/CD with Azure Pipelines",
+   "channel": "TechWorld with Nana",
+   "secs": 2189
+  },
   "be14-t0": {
    "t": "The AWS Core Map: Which Service Does What (and the 3-Tier Web App)",
    "id": null,
@@ -1813,6 +1846,13 @@
    "t": "Serverless and Messaging: SQS, SNS, Lambda, API Gateway, S3 Uploads, Cold Starts",
    "id": null,
    "at": "2026-10-31"
+  },
+  "be14-t5": {
+   "t": "High Availability and Disaster Recovery: Multi-AZ vs Multi-Region, RTO and RPO",
+   "id": "OmASCUJEVy8",
+   "title": "🔥 The Ultimate Guide to Disaster Recovery: RTO, RPO, & Failover!",
+   "channel": "ByteMonk",
+   "secs": 653
   },
   "be15-t0": {
    "t": "Broken Access Control & IDOR (OWASP A01)",
@@ -1845,6 +1885,13 @@
    "channel": "Cloud Explainers",
    "secs": 519
   },
+  "be15-t5": {
+   "t": "Zero Trust: Never Trust, Always Verify",
+   "id": "DLQAbJm4gFM",
+   "title": "What is Zero Trust Network Access (ZTNA)? The Zero Trust Model, Framework and Technologies Explained",
+   "channel": "The CISO Perspective",
+   "secs": 464
+  },
   "be16-t0": {
    "t": "Structured Logging with Correlation IDs",
    "id": null,
@@ -1873,6 +1920,11 @@
    "t": "Alerting: Symptoms, SLOs and Burn Rates",
    "id": null,
    "at": "2026-10-31"
+  },
+  "be16-t5": {
+   "t": "Incident Response and Blameless Postmortems",
+   "id": null,
+   "at": "2026-11-01"
   },
   "be17-t0": {
    "t": "Your First FastAPI App: Project Layout, ASGI and Running with Uvicorn",
@@ -2897,6 +2949,13 @@
    "id": null,
    "at": "2026-10-31"
   },
+  "cpp14-t5": {
+   "t": "Dependencies: find_package, vcpkg, Conan 2 and FetchContent",
+   "id": "6GkZnII8Jss",
+   "title": "Build, install and find C/C++ dependencies, CMake and find_package",
+   "channel": "constref",
+   "secs": 730
+  },
   "cpp15-t0": {
    "t": "Unit Tests with GoogleTest & Catch2: How a Test Framework Really Works",
    "id": "wttsSAc721A",
@@ -2925,6 +2984,13 @@
    "title": "2022 LLVM Dev Mtg: Static Analysis in Clang",
    "channel": "LLVM",
    "secs": 3454
+  },
+  "cpp15-t5": {
+   "t": "Fuzzing with libFuzzer: Coverage-Guided Bug Hunting",
+   "id": "Nz28rj-3fd8",
+   "title": "Fuzzing 0x01 - libFuzzer, clang and Honggfuzz",
+   "channel": "Chris Powell",
+   "secs": 2504
   },
   "cs01-t0": {
    "t": "What an OS Is For: Resource Manager + Abstraction (and its Services)",
@@ -3439,6 +3505,13 @@
    "channel": "Jordan has no life",
    "secs": 677
   },
+  "cs13-t5": {
+   "t": "What Happens When You Type a URL (End to End)",
+   "id": "AlkDbnbv7dk",
+   "title": "What happens when you type a URL into your browser?",
+   "channel": "ByteByteGo",
+   "secs": 320
+  },
   "cs14-t0": {
    "t": "QUIC Internals: Streams, Connection IDs, 0-RTT and Loss Recovery",
    "id": null,
@@ -3465,6 +3538,13 @@
    "title": "Stateful vs Stateless Firewalls - You NEED to know the difference",
    "channel": "LearnCantrill",
    "secs": 844
+  },
+  "cs14-t5": {
+   "t": "VPNs: IPsec vs WireGuard vs TLS VPNs",
+   "id": "32KKwgF67Ho",
+   "title": "VPNs, Proxies and Secure Tunnels Explained (Deepdive)",
+   "channel": "LiveOverflow",
+   "secs": 792
   },
   "cs15-t0": {
    "t": "Instructions and the Fetch-Decode-Execute Cycle",
@@ -3501,6 +3581,13 @@
    "channel": "Neso Academy",
    "secs": 718
   },
+  "cs15-t5": {
+   "t": "Integers: Binary, Two's Complement and Overflow",
+   "id": "lKTsv6iVxV4",
+   "title": "Binary: Plusses & Minuses (Why We Use Two's Complement) - Computerphile",
+   "channel": "Computerphile",
+   "secs": 976
+  },
   "cs16-t0": {
    "t": "Why Distributed Systems Are Hard: Partial Failure & Failure Models",
    "id": "mtfvVl4Cc-w",
@@ -3536,6 +3623,13 @@
    "channel": "Distributed Systems Course",
    "secs": 1138
   },
+  "cs16-t5": {
+   "t": "CAP and PACELC: The Trade-off, Stated Precisely",
+   "id": "V0WBsciTz14",
+   "title": "CAP Theorem Explained — Why Every Distributed System Makes This Trade-Off | System Design Basics",
+   "channel": "ByteLearn",
+   "secs": 1890
+  },
   "cs17-t0": {
    "t": "The Compiler Pipeline & Lexical Analysis (Tokens, Maximal Munch, Regular Languages)",
    "id": "IpCXrZweNbE",
@@ -3569,8 +3663,10 @@
   },
   "csharp01-t0": {
    "t": ".NET SDK & the dotnet CLI: C# → IL → JIT → Machine Code",
-   "id": null,
-   "at": "2026-10-26"
+   "id": "RQLzp2Z8-BE",
+   "title": "Intro To The .NET CLI - How To Use It, Why We Need It, And More",
+   "channel": "IAmTimCorey",
+   "secs": 2594
   },
   "csharp01-t1": {
    "t": "Program Structure: Top-Level Statements, Main, Namespaces & usings",
@@ -3588,18 +3684,24 @@
   },
   "csharp01-t3": {
    "t": "var, const & readonly: Type Inference and Immutability",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "usa-WKwV_GI",
+   "title": "CONST and READONLY in C# .Net made easy! | When to use const and when to use readonly? | Codelligent",
+   "channel": "CODELLIGENT",
+   "secs": 384
   },
   "csharp01-t4": {
    "t": "String Interpolation & Formatting: $\"\", Format Specifiers, Culture",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "taejaz9OwKY",
+   "title": "C# string interpolation 💲",
+   "channel": "Bro Code",
+   "secs": 205
   },
   "csharp01-t5": {
    "t": "Console Input & Fast I/O: ReadLine, Split, Parse, Buffered Streams",
-   "id": null,
-   "at": "2026-10-31"
+   "id": "_SXJyA605bI",
+   "title": "C# user input ⌨️",
+   "channel": "Bro Code",
+   "secs": 215
   },
   "csharp02-t0": {
    "t": "Control Flow: if, switch Statements & Expressions, and Loops",
@@ -3610,18 +3712,22 @@
   },
   "csharp02-t1": {
    "t": "Methods: Parameters, Return Values, Tuples, Local Functions & Recursion",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "IPpEefuFiVM",
+   "title": "C# methods 📞",
+   "channel": "Bro Code",
+   "secs": 365
   },
   "csharp02-t2": {
    "t": "ref, out & in Parameters: Passing Variables, Not Values",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "7xYSFbUPP0E",
+   "title": "Part 17 - C# Tutorial - Method parameters.avi",
+   "channel": "kudvenkat",
+   "secs": 1231
   },
   "csharp02-t3": {
    "t": "Optional & Named Arguments, params Arrays and Overload Resolution",
    "id": null,
-   "at": "2026-10-28"
+   "at": "2026-11-01"
   },
   "csharp02-t4": {
    "t": "Arrays: 1-D, Multidimensional [,] vs Jagged [][], Indices & Ranges",
@@ -3632,8 +3738,10 @@
   },
   "csharp02-t5": {
    "t": "Strings: Immutability, Comparison, Common Operations & char",
-   "id": null,
-   "at": "2026-10-31"
+   "id": "h6_x9Rxh5rU",
+   "title": "Working With Strings | C# | Tutorial 6",
+   "channel": "Giraffe Academy",
+   "secs": 758
   },
   "csharp03-t0": {
    "t": "Classes vs Structs: Reference Semantics vs Value Semantics",
@@ -3651,8 +3759,10 @@
   },
   "csharp03-t2": {
    "t": "Properties: get/set, Validation, Computed Values & init Accessors",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "gvQziNULkdY",
+   "title": "13. How to program in C# - PROPERTIES - Beginner Tutorial",
+   "channel": "Brackeys",
+   "secs": 1113
   },
   "csharp03-t3": {
    "t": "Static Members: Shared State, Static Classes & Utility Methods",
@@ -3719,8 +3829,10 @@
   },
   "csharp05-t0": {
    "t": "Generic Types & Methods — Write Once, Type-Safe for Every T",
-   "id": null,
-   "at": "2026-10-26"
+   "id": "4KsRfrd-FJ8",
+   "title": "Learn Generics in C# – Generic Class & Method with Examples",
+   "channel": "IT Sensei",
+   "secs": 883
   },
   "csharp05-t1": {
    "t": "Generic Constraints — Telling the Compiler What T Can Do",
@@ -3731,8 +3843,10 @@
   },
   "csharp05-t2": {
    "t": "List — The Default Collection, Inside and Out",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "aLhAmimoQj8",
+   "title": "C# List of objects 🦸‍♂️",
+   "channel": "Bro Code",
+   "secs": 209
   },
   "csharp05-t3": {
    "t": "Dictionary & HashSet — O(1) Lookups",
@@ -3743,8 +3857,10 @@
   },
   "csharp05-t4": {
    "t": "SortedDictionary, SortedSet & SortedList — Order on Demand",
-   "id": null,
-   "at": "2026-10-30"
+   "id": "cZntj194FnY",
+   "title": "SortedDictionary, SortedList, IComparable, and IComparer",
+   "channel": "Dr. Mahmoud Hammad",
+   "secs": 1225
   },
   "csharp05-t5": {
    "t": "Queue, Stack, LinkedList & PriorityQueue",
@@ -3755,8 +3871,10 @@
   },
   "csharp06-t0": {
    "t": "Delegates — Methods You Can Pass Around",
-   "id": null,
-   "at": "2026-10-26"
+   "id": "jQgwEsJISy0",
+   "title": "C# Events and Delegates Made Simple | Mosh",
+   "channel": "Programming with Mosh",
+   "secs": 1924
   },
   "csharp06-t1": {
    "t": "Func, Action, Predicate & Lambda Expressions",
@@ -3767,13 +3885,17 @@
   },
   "csharp06-t2": {
    "t": "Closures — Lambdas That Remember Variables",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "h3MsnBRqzcY",
+   "title": "What are Closures in C# and why you NEED to know about them",
+   "channel": "Nick Chapsas",
+   "secs": 721
   },
   "csharp06-t3": {
    "t": "Events — Publish/Subscribe Done Safely",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "jQgwEsJISy0",
+   "title": "C# Events and Delegates Made Simple | Mosh",
+   "channel": "Programming with Mosh",
+   "secs": 1924
   },
   "csharp06-t4": {
    "t": "LINQ — Query Syntax, Method Syntax & the Core Operators",
@@ -3812,8 +3934,10 @@
   },
   "csharp07-t3": {
    "t": "Nullable Value Types: int?, HasValue and Lifted Operators",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "HuLJbiqpIM0",
+   "title": "Part 6 - C# Tutorial - Nullable Types.avi",
+   "channel": "kudvenkat",
+   "secs": 961
   },
   "csharp07-t4": {
    "t": "Nullable Reference Types & the Null Operators",
@@ -3846,7 +3970,7 @@
   "csharp08-t2": {
    "t": "The Generational GC, Gen 0/1/2 & the Large Object Heap",
    "id": null,
-   "at": "2026-10-28"
+   "at": "2026-11-01"
   },
   "csharp08-t3": {
    "t": "Finalizers vs Dispose: the Dispose Pattern & SafeHandle",
@@ -3857,13 +3981,15 @@
   },
   "csharp08-t4": {
    "t": "Span & ReadOnlySpan: Views Without Copies",
-   "id": null,
-   "at": "2026-10-30"
+   "id": "FM5dpxJMULY",
+   "title": "What is Span in C# and why you should be using it",
+   "channel": "Nick Chapsas",
+   "secs": 915
   },
   "csharp08-t5": {
    "t": "stackalloc, Memory & the ref struct Rules",
    "id": null,
-   "at": "2026-10-31"
+   "at": "2026-11-01"
   },
   "csharp09-t0": {
    "t": "Task & Task: Promises of Future Results",
@@ -3902,8 +4028,10 @@
   },
   "csharp09-t5": {
    "t": "ValueTask & ValueTask: Avoiding Allocations on the Fast Path",
-   "id": null,
-   "at": "2026-10-31"
+   "id": "dCj7-KvaIJ0",
+   "title": "Task vs ValueTask: When Should I use ValueTask?",
+   "channel": "Brian Lagunas",
+   "secs": 643
   },
   "csharp10-t0": {
    "t": "Threads & the Thread Pool",
@@ -3922,12 +4050,12 @@
   "csharp10-t2": {
    "t": "Interlocked, volatile & the .NET Memory Model",
    "id": null,
-   "at": "2026-10-28"
+   "at": "2026-11-01"
   },
   "csharp10-t3": {
    "t": "SemaphoreSlim & ReaderWriterLockSlim",
    "id": null,
-   "at": "2026-10-28"
+   "at": "2026-11-01"
   },
   "csharp10-t4": {
    "t": "Concurrent Collections",
@@ -3938,13 +4066,17 @@
   },
   "csharp10-t5": {
    "t": "Channels: Async Producer/Consumer Pipelines",
-   "id": null,
-   "at": "2026-10-31"
+   "id": "E0Ld7ZgE4oY",
+   "title": "C# Channels Explained (System.Threading.Channels)",
+   "channel": "Raw Coding",
+   "secs": 2831
   },
   "csharp11-t0": {
    "t": "Reflection: Reading and Calling Types at Run Time",
-   "id": null,
-   "at": "2026-10-27"
+   "id": "y8-uq6Ur7Dc",
+   "title": "Part 53   C# Tutorial   Reflection in C#",
+   "channel": "kudvenkat",
+   "secs": 1660
   },
   "csharp11-t1": {
    "t": "Custom Attributes: Metadata Your Framework Reads",
@@ -3955,8 +4087,10 @@
   },
   "csharp11-t2": {
    "t": "Generic Variance: in, out and the Array Trap",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "aX4S2Erj6qM",
+   "title": "Advanced C# Generics for Unity Developers: Variance Demystified",
+   "channel": "git-amend",
+   "secs": 709
   },
   "csharp11-t3": {
    "t": "Static Abstract Interface Members and Generic Math (C# 11)",
@@ -3988,8 +4122,10 @@
   },
   "csharp12-t1": {
    "t": "The JIT: Tiered Compilation, Dynamic PGO, ReadyToRun and Native AOT",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "CMMi5UeEnVM",
+   "title": "What is CLR and JIT compiler in C# | C# Interview Questions | C# Interview Questions & Answers",
+   "channel": "Tural Suleymani",
+   "secs": 336
   },
   "csharp12-t2": {
    "t": "Objects in Memory: Header, Method Table and Size",
@@ -4000,23 +4136,29 @@
   },
   "csharp12-t3": {
    "t": "Struct Layout: Padding, Packing, Explicit Offsets and False Sharing",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "j-fYT4MHNDk",
+   "title": "C# Data structures: Class vs. Struct vs. Record",
+   "channel": "tutorialsEU - C#",
+   "secs": 370
   },
   "csharp12-t4": {
    "t": "What the JIT Optimises: Inlining, Devirtualization and Bounds Checks",
-   "id": null,
-   "at": "2026-10-31"
+   "id": "T_Nk9vIDmkQ",
+   "title": "C# What JIT Generates? - Folds",
+   "channel": "LevelUp",
+   "secs": 636
   },
   "csharp12-t5": {
    "t": "Measuring Correctly: BenchmarkDotNet and Benchmark Hygiene",
    "id": null,
-   "at": "2026-10-31"
+   "at": "2026-11-01"
   },
   "csharp13-t0": {
    "t": "Immutability Patterns: Records, init, Immutable and Frozen Collections",
-   "id": null,
-   "at": "2026-10-27"
+   "id": "2DASY9fY--k",
+   "title": "High Memory Cost of Immutability is a Lie",
+   "channel": "Zoran on C#",
+   "secs": 965
   },
   "csharp13-t1": {
    "t": "Result Types: Expected Failures Without Exceptions",
@@ -4027,13 +4169,17 @@
   },
   "csharp13-t2": {
    "t": "Dispose Patterns: IDisposable, IAsyncDisposable, SafeHandle and Ownership",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "CV5UlcfFls4",
+   "title": "The Dispose Pattern",
+   "channel": "Coding Tutorials",
+   "secs": 988
   },
   "csharp13-t3": {
    "t": "Async Best Practices: Cancellation, Concurrency Limits and the Classic Mistakes",
-   "id": null,
-   "at": "2026-10-28"
+   "id": "2moh18sh5p4",
+   "title": "C# Async / Await - Make your app more responsive and faster with asynchronous programming",
+   "channel": "IAmTimCorey",
+   "secs": 2337
   },
   "csharp13-t4": {
    "t": "Equality and Hashing Pitfalls",
@@ -4044,8 +4190,10 @@
   },
   "csharp13-t5": {
    "t": "Question Bank I: Evaluation Order, Overload Resolution, Numbers and Initialization",
-   "id": null,
-   "at": "2026-10-31"
+   "id": "Sk-bVqrlFvE",
+   "title": "C# Question Bank | Question paper generator system | Soru bankası",
+   "channel": "Loğman Nuriyev",
+   "secs": 281
   },
   "csharp14-t0": {
    "t": "The Request Pipeline and Middleware",
@@ -4057,7 +4205,7 @@
   "csharp14-t1": {
    "t": "The Built-in DI Container and Service Lifetimes",
    "id": null,
-   "at": "2026-10-29"
+   "at": "2026-11-01"
   },
   "csharp14-t2": {
    "t": "Minimal APIs vs Controllers",
@@ -4080,6 +4228,13 @@
    "channel": "Milan Jovanović",
    "secs": 541
   },
+  "csharp14-t5": {
+   "t": "Filters and Validation",
+   "id": "akvpDSrkCew",
+   "title": "MediatR Validation Behavior - Validation In C# Web API",
+   "channel": "Jono Williams",
+   "secs": 916
+  },
   "csharp15-t0": {
    "t": "DbContext: The Unit of Work and Its Lifetime",
    "id": "vN_j1Bs0ALU",
@@ -4096,8 +4251,10 @@
   },
   "csharp15-t2": {
    "t": "Migrations: Evolving the Schema with the Model",
-   "id": null,
-   "at": "2026-10-29"
+   "id": "90_6J5tnwkw",
+   "title": "EF Core Migrations Deep Dive, Applying Migration, SQL Scripts",
+   "channel": "Milan Jovanović",
+   "secs": 1001
   },
   "csharp15-t3": {
    "t": "Relationships and Loading: Include, Explicit, Lazy and N+1",
@@ -4113,10 +4270,17 @@
    "channel": "Harshit Agarwal",
    "secs": 710
   },
+  "csharp15-t5": {
+   "t": "Raw SQL, Transactions and Optimistic Concurrency",
+   "id": null,
+   "at": "2026-11-01"
+  },
   "csharp16-t0": {
    "t": "xUnit and NUnit: Facts, Theories, Fixtures and the Test Lifecycle",
-   "id": null,
-   "at": "2026-10-29"
+   "id": "JD2ZMxCPnqc",
+   "title": "xUnit or NUnit? Picking the Right Testing Library",
+   "channel": "Nick Chapsas",
+   "secs": 600
   },
   "csharp16-t1": {
    "t": "Test Doubles: Stubs, Fakes, Mocks and Spies with Moq and NSubstitute",
@@ -4127,8 +4291,10 @@
   },
   "csharp16-t2": {
    "t": "Integration Tests: WebApplicationFactory, Stub Handlers and Testcontainers",
-   "id": null,
-   "at": "2026-10-29"
+   "id": "RXSPCIrrjHc",
+   "title": "ASP.NET Core Integration Testing Tutorial",
+   "channel": "Julio Casal",
+   "secs": 1475
   },
   "csharp16-t3": {
    "t": "Testing EF Core: Providers, Change Tracking and Repositories",
@@ -4139,8 +4305,17 @@
   },
   "csharp16-t4": {
    "t": "NuGet Packages and Versioning: SemVer, Ranges, Resolution and Central Management",
-   "id": null,
-   "at": "2026-10-31"
+   "id": "AF1y9gLcxjQ",
+   "title": "Creating NuGet Packages the easy way with .NET Standard in C#",
+   "channel": "IAmTimCorey",
+   "secs": 4497
+  },
+  "csharp16-t5": {
+   "t": "MSBuild, Project Files and the dotnet CLI",
+   "id": "s6HocP3nJsI",
+   "title": "Dotnet CLI - Creating and publishing NuGet packages",
+   "channel": "LEAD with TECH",
+   "secs": 628
   },
   "devops01-t0": {
    "t": "Filesystem Layout and Navigation: Where Things Live and What Fills the Disk",
@@ -4593,6 +4768,13 @@
    "channel": "Tech Tutorials with Piyush",
    "secs": 1732
   },
+  "devops13-t5": {
+   "t": "Resource requests and limits, QoS classes, and namespaces with quotas",
+   "id": "lKH1K5R3kqg",
+   "title": "All You Need to Know in 12 Minutes: Pods' Requests and Limits in Kubernetes",
+   "channel": "The Good Guy",
+   "secs": 760
+  },
   "devops14-t0": {
    "t": "Helm Charts, Values and Releases: the Recipe Kit",
    "id": "-ykwb1d0DXU",
@@ -4626,6 +4808,11 @@
    "channel": "Prepare-sh",
    "secs": 1366
   },
+  "devops14-t5": {
+   "t": "NetworkPolicies: Closing Doors in an Open Building",
+   "id": null,
+   "at": "2026-11-01"
+  },
   "devops15-t0": {
    "t": "Metrics, Logs and Traces: Seeing Inside a Running System",
    "id": "umm-MyCl3Q4",
@@ -4655,6 +4842,11 @@
    "id": null,
    "at": "2026-10-31"
   },
+  "devops15-t5": {
+   "t": "Logs: Structured Logging, Request IDs, Redaction, Sampling and Loki or EFK",
+   "id": null,
+   "at": "2026-11-01"
+  },
   "devops16-t0": {
    "t": "Shift-Left Security and Pipeline Gates: Secrets, SAST, SCA, IaC, Image and DAST",
    "id": "IC1E_Mi6xhc",
@@ -4683,6 +4875,13 @@
    "t": "Least-Privilege IAM Design: Permission Boundaries, SCPs and Access Analyzer",
    "id": null,
    "at": "2026-10-31"
+  },
+  "devops16-t5": {
+   "t": "Security Groups, Network Segmentation and Zero-Trust Basics",
+   "id": "yn6CPQ9RioA",
+   "title": "Zero Trust Explained in 4 mins",
+   "channel": "IBM Technology",
+   "secs": 223
   },
   "devops17-t0": {
    "t": "Microservices on the Cloud: Boundaries, the Distributed Monolith, Sync vs Async and Safe Retries",
@@ -4833,7 +5032,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java program structure, main, output and comments. Use the lesson for loops and conditionals.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4865,7 +5064,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java Scanner versus BufferedReader, demonstrating slow versus buffered input. Other languages use the equivalents in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4880,6 +5079,10 @@
      "title": "185. BufferedWriter class with System.out || Input-Streams || Output-Streams || Java IO Streams",
      "channel": "Sri Sai IT Hub",
      "secs": 871
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -4893,7 +5096,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java primitive values versus object references, with stack/heap diagrams. Casting and overflow are covered in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -4908,6 +5111,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -4921,7 +5128,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java stack and heap memory, local variables and object references.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "wJ1L2nSIV1s",
@@ -4940,6 +5147,12 @@
      "title": "Memory Allocation in C# | Stack vs Heap (Value Types & Reference Types)",
      "channel": "LogicUnboxed",
      "secs": 451
+    },
+    "python": {
+     "id": "OdQSWuG78Sk",
+     "title": "Python 101 #3 - Memory management, Stack and Heap, Object Mutability",
+     "channel": "appskill",
+     "secs": 660
     }
    }
   },
@@ -4953,7 +5166,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java array syntax, storage, string arrays and multidimensional arrays. String operations are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "1FVBeLD_FdE",
@@ -4966,6 +5179,12 @@
      "title": "C# arrays 🚗",
      "channel": "Bro Code",
      "secs": 357
+    },
+    "python": {
+     "id": "TQMvBTKn2p0",
+     "title": "Static Arrays, Dynamic Arrays, and Strings - Big O Complexity - DSA Course in Python Lecture 2",
+     "channel": "Greg Hogg",
+     "secs": 1104
     }
    }
   },
@@ -4979,7 +5198,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java methods, parameters, return values and reusable functions.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5001,7 +5220,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Input constraints and time-limit estimates. Operation budgets depend on language, hardware and the judge; 10⁸ is a heuristic, not a guarantee.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5019,7 +5238,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A concrete brute-force pair search followed by an optimized solution. Algorithm explanation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "DKCbsiDBN6c",
@@ -5068,7 +5287,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Arithmetic and geometric progressions; apply the sums to loop counts in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "0F2YqCVaiG0",
@@ -5087,6 +5306,12 @@
      "title": "Java Program to find sum of Geometric Series Using Formula",
      "channel": "Sonal",
      "secs": 1056
+    },
+    "python": {
+     "id": "pELSAdmvb6Q",
+     "title": "Finding missing term in Arithmetic and Geometric Sequence using Python",
+     "channel": "Code with HZ",
+     "secs": 606
     }
    }
   },
@@ -5100,7 +5325,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Logarithms as inverse powers and the change-of-base rule. Apply this foundation to repeated halving in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5113,6 +5338,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -5126,7 +5355,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Big-O, Big-Omega and Big-Theta asymptotic bounds.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5139,6 +5368,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -5152,7 +5385,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Time and auxiliary-space complexity overview; use the lesson for detailed memory accounting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "hUdqNPhXOh4",
@@ -5163,6 +5396,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "Ozb9nx1FCqU",
+     "title": "🔥 Space Complexity in Python Explained: Memory Usage & Hidden Costs | DSA Module 3 🚀",
+     "channel": "CODE WITH NM",
+     "secs": 4496
     }
    }
   },
@@ -5176,7 +5415,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Constraints, online judges and TLE estimates. Treat operation counts as rough estimates, not fixed execution-time guarantees.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5198,7 +5437,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Enumerating divisors in O(√N).",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "fdE_CEk9X2g",
@@ -5236,7 +5475,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Primality testing by checking divisors up to √N.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ZYIXXntyybo",
@@ -5255,6 +5494,12 @@
      "title": "Frequently Asked Java Program 11: Check Given Number is Prime Or Not",
      "channel": "SDET- QA",
      "secs": 720
+    },
+    "python": {
+     "id": "SmXQ2NKA2uk",
+     "title": "Python program to check if a number is prime or not | step by step explanation",
+     "channel": "Joey'sTech",
+     "secs": 447
     }
    }
   },
@@ -5268,7 +5513,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sieve of Eratosthenes for finding all primes up to a bound.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "nDPo9hsDNvU",
@@ -5287,6 +5532,12 @@
      "title": "Coding \"The Sieve of Eratosthenes\": An ancient algorithm for calculating prime numbers.",
      "channel": "Exercism",
      "secs": 2304
+    },
+    "python": {
+     "id": "JA_YrFwE1hc",
+     "title": "Finding Primes in Python with the Sieve of Eratosthenes",
+     "channel": "mCoding",
+     "secs": 411
     }
    }
   },
@@ -5300,7 +5551,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Euclidean GCD. LCM reduction and the visual proof are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "0oP6XLTI2tY",
@@ -5319,6 +5570,12 @@
      "title": "Program to Calculate LCM and GCD (HCF) in C#",
      "channel": "C Plus+",
      "secs": 616
+    },
+    "python": {
+     "id": "V-9HtC9gTYA",
+     "title": "Python Program #26 - Find HCF or GCD using Euclidean algorithm",
+     "channel": "Programming For Beginners",
+     "secs": 368
     }
    }
   },
@@ -5332,7 +5589,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular arithmetic rules and remainders.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "EzVwUarrNUk",
@@ -5343,6 +5600,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "cqmAip7wp-4",
+     "title": "Negative Integers using Modular Arithmatic In Python",
+     "channel": "Jared Hall",
+     "secs": 224
     }
    }
   },
@@ -5356,7 +5619,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular exponentiation. Follow the lesson for the iterative binary-exponentiation implementation.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "L-Wzglnm4dM",
@@ -5382,7 +5645,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binomial coefficients, efficient nCr calculation and Pascal triangle construction.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5400,7 +5663,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The pigeonhole principle and why a collision must exist.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "IW4hJEgZLWI",
@@ -5420,7 +5683,7 @@
    "reviewedAt": "2026-10-21",
    "note": "How binary digits represent numbers and characters.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5452,7 +5715,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binary representation, one’s/two’s complement and bit operators.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5467,6 +5730,12 @@
      "title": "How Java Stores Negative & Floating Point Numbers | Java Full Course #4",
      "channel": "Coder Army",
      "secs": 3475
+    },
+    "python": {
+     "id": "Cxxlg_GfYRA",
+     "title": "Bitwise NOT Operator and Negative Numbers in Binary | Python Tutorial",
+     "channel": "Muhammad Abrar Afzal",
+     "secs": 362
     }
    }
   },
@@ -5480,7 +5749,7 @@
    "reviewedAt": "2026-10-21",
    "note": "All seven Java bitwise operators, including the unsigned right shift >>>.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "phUpAEs-6rw",
@@ -5499,6 +5768,12 @@
      "title": "#6 Java Common Operators in Telugu | Java Tutorial in Telugu | Operators in Java Telugu |Java Telugu",
      "channel": "Telugu Programmer",
      "secs": 561
+    },
+    "python": {
+     "id": "PyfKCvHALj8",
+     "title": "#14 Python Tutorial for Beginners | Python BitWise Operators",
+     "channel": "Telusko",
+     "secs": 762
     }
    }
   },
@@ -5512,7 +5787,7 @@
    "reviewedAt": "2026-10-21",
    "note": "XOR cancellation demonstrated on the single-number problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5525,6 +5800,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -5538,7 +5817,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Checking, setting, clearing and toggling a bit with masks.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5547,6 +5826,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "qgwRE5bqGEs",
+     "title": "How to Toggle a bit in a number in C/C++/Java/Python-Interview-NXP,Qualcomm-Bit Manipulation",
+     "channel": "Dilip kumar Gangwar",
+     "secs": 550
     }
    }
   },
@@ -5575,7 +5860,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Single Number I: cancel duplicate pairs with XOR.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5593,7 +5878,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Includes counting set bits at each position modulo three, as well as alternative approaches.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5615,7 +5900,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Subset enumeration with bitmasks. Code may use C++; the technique transfers to Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa05-t0": {
    "t": "1D and 2D Arrays (How They Sit in Memory)",
@@ -5629,7 +5914,7 @@
    "start": 82,
    "end": 4025,
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "fINt-nzR-o8",
@@ -5667,7 +5952,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Prefix sums and constant-time range-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Hyr3VrgJD2g",
@@ -5686,6 +5971,12 @@
      "title": "Range Sum Query – Immutable  C#  LeetCode 303  Prefix Sum  DSA",
      "channel": "Nizam with Programming",
      "secs": 1135
+    },
+    "python": {
+     "id": "fFVZt-6sgyo",
+     "title": "Subarray Sum Equals K - Prefix Sums - Leetcode 560 - Python",
+     "channel": "NeetCode",
+     "secs": 919
     }
    }
   },
@@ -5699,7 +5990,7 @@
    "reviewedAt": "2026-10-21",
    "note": "2D prefix sums and rectangle-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa05-t2": {
    "t": "Even/Odd Index Prefix Sums: Special Index & Equilibrium Index",
@@ -5711,7 +6002,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Even/odd prefix sums and parity changes after deletion. The separate equilibrium-index variant is explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5724,6 +6015,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -5737,7 +6032,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Carry-forward counting of ordered “ag” pairs. Array leaders are another application in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5752,6 +6047,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "J3ZqXdD5p7A",
+     "title": "Leaders in an Array | Carry Forward Technique | Detailed Explanation & Problem Solving  |  MAC",
+     "channel": "mac",
+     "secs": 358
     }
    }
   },
@@ -5765,7 +6066,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maximum subarray sum using Kadane’s algorithm.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "w_KEocd__20",
@@ -5778,6 +6079,12 @@
      "title": "LeetCode 53: Maximum Subarray | C# Solution |",
      "channel": "Code Scribbler",
      "secs": 661
+    },
+    "python": {
+     "id": "5WZl3MMT0Eg",
+     "title": "Maximum Subarray - Amazon Coding Interview Question - Leetcode 53 - Python",
+     "channel": "NeetCode",
+     "secs": 483
     }
    }
   },
@@ -5791,7 +6098,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sum of all subarray sums using each element’s contribution.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5813,7 +6120,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Trapping rainwater. Compare the video’s approaches with the lesson’s prefix/suffix maximum arrays.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ok7zhUA4VmI",
@@ -5833,7 +6140,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Spiral traversal using shrinking boundaries. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5851,7 +6158,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Matrix rotation by transposition and reversal.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa05-t9": {
    "t": "Row-Column Sorted Matrix: The Staircase Search",
@@ -5863,7 +6170,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The O(rows + columns) top-right staircase search for separately sorted rows and columns, not flattened binary search.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa06-t0": {
    "t": "Opposite-Direction Pointers: 2-Sum on a Sorted Array",
@@ -5875,7 +6182,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Two Sum II on sorted input using converging pointers. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5907,7 +6214,7 @@
    "reviewedAt": "2026-10-21",
    "note": "3Sum by sorting, fixing an element and scanning with two pointers.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "n-JNgynPi6Q",
@@ -5924,6 +6231,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "mk9XmSI4CAQ",
+     "title": "3Sum Explained Clearly | Two Pointers Pattern | LeetCode 15 Python",
+     "channel": "TechTrouble Solved",
+     "secs": 1621
     }
    }
   },
@@ -5937,7 +6250,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Container With Most Water and moving the shorter wall.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Y_4_or0Sc7I",
@@ -5956,6 +6269,12 @@
      "title": "Container With Most Water - 11. LeetCode - C#",
      "channel": "Teddy Smith",
      "secs": 458
+    },
+    "python": {
+     "id": "UuiTKBwPgAo",
+     "title": "Container with Most Water - Leetcode 11 - Python",
+     "channel": "NeetCode",
+     "secs": 757
     }
    }
   },
@@ -5969,7 +6288,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Move Zeroes using same-direction pointers. Remove-duplicates is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -5984,6 +6303,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "4YphoefH3kE",
+     "title": "Remove Duplicates from Sorted Array II (LeetCode 80) | Two Pointers",
+     "channel": "Dry Run",
+     "secs": 482
     }
    }
   },
@@ -5997,7 +6322,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a pair with a target difference using sorted-array pointers; not a general two-pointer overview.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6006,6 +6331,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6019,7 +6348,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Fixed-length maximum-sum window with Java code. Distinct from unrestricted maximum subarray/Kadane.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6053,7 +6382,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Recognizing opposite-direction and same-direction pointer patterns.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6071,7 +6400,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Bubble sort, selection sort and insertion sort in Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "n2mtX8mdoEc",
@@ -6105,7 +6434,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Counting sort and radix sort, including assumptions behind integer sorting. A longer lecture is intentional.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "imqr13aIBAY",
@@ -6124,6 +6453,12 @@
      "title": "Counting Sort implemented in C#",
      "channel": "kc70",
      "secs": 588
+    },
+    "python": {
+     "id": "BVGRgTALQ44",
+     "title": "RADIX Sort in Python | tutorial and how to implement in code",
+     "channel": "Programming and Math Tutorials",
+     "secs": 1121
     }
    }
   },
@@ -6137,7 +6472,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inversion counting with merge sort. The lesson also explains the underlying sorting recurrence.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "0jxUbvEF380",
@@ -6156,6 +6491,12 @@
      "title": "Merge Sort EXPLAINED! 🤯 The Divide & Conquer Algorithm Every Programmer Must Know | C# DSA",
      "channel": "Bite Sized Learning 24x7",
      "secs": 482
+    },
+    "python": {
+     "id": "79-teqUxC14",
+     "title": "Lec-54: Merge Sort in Python 🐍 with Code | DSA in Python 🐍",
+     "channel": "Gate Smashers",
+     "secs": 573
     }
    }
   },
@@ -6169,7 +6510,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Quicksort partitioning and performance. Compare the specific Lomuto/Hoare variants in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6184,6 +6525,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6203,6 +6548,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "tt4_7YyvqR4",
+     "title": "Custom Sorting in Python Tutorial",
+     "channel": "TM Quest",
+     "secs": 563
     }
    }
   },
@@ -6216,7 +6567,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The distinction between stable and unstable sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "w7tbj3phOno",
@@ -6240,7 +6591,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Merging overlapping intervals after sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "2JzRBPFYbKE",
@@ -6260,7 +6611,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inserting an interval into a sorted non-overlapping list.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "XXaVIDIbUn4",
@@ -6280,7 +6631,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Meeting Rooms II: count simultaneous meetings. Meeting Rooms I and minimum-platform variations remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa08-t0": {
    "t": "Inside HashSet & HashMap: Hash Function, hashCode/equals, Buckets, Chaining, Treeify, Load Factor & Rehash",
@@ -6315,7 +6666,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Character-frequency signatures and grouping anagrams. First-non-repeating is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6328,6 +6679,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "lWuAKHDoifA",
+     "title": "Python Count Frequency: Count Frequency of Characters in String Python",
+     "channel": "Automate with Rakesh",
+     "secs": 466
     }
    }
   },
@@ -6341,7 +6698,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Unsorted Two Sum with a complement hash map. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6354,6 +6711,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6367,7 +6728,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maintain a frequency map while counting distinct values in every fixed-size window.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "qF9bLDKsmWc",
@@ -6384,6 +6745,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "ZR6FPE7-5Qc",
+     "title": "Count distinct elements in every window (Python)",
+     "channel": "Ishwar Ambare",
+     "secs": 577
     }
    }
   },
@@ -6397,7 +6764,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Zero-sum subarray existence using a set in Java. Distinct from counting all subarrays with a given sum.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6406,6 +6773,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6419,7 +6790,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Count subarrays with sum K using prefix-sum frequencies.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Nlo20rlfxSg",
@@ -6439,7 +6810,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest zero-sum subarray using prefix sums and a first-index map in Java. Sum-K and equal-0/1 variants remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6457,7 +6828,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest substring without repeated characters. Minimum-window substring is a separate variant explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "FCbOzdHKW18",
@@ -6477,7 +6848,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest consecutive sequence by starting only at chain beginnings.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa09-t0": {
    "t": "Strings Under the Hood: Immutability, char Arithmetic (c - 'a') and the String Pool",
@@ -6491,7 +6862,7 @@
    "start": 36,
    "end": 1322,
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6521,7 +6892,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Valid palindrome with two pointers and non-alphanumeric filtering.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "L84y20axpIA",
@@ -6540,6 +6911,12 @@
      "title": "How to check if string is palindrome | C# string manipulation | C# tutorial | C# interview question",
      "channel": "Just Pick and Learn",
      "secs": 194
+    },
+    "python": {
+     "id": "jJXJ16kPFWg",
+     "title": "Valid Palindrome - Leetcode 125 - Python",
+     "channel": "NeetCode",
+     "secs": 898
     }
    }
   },
@@ -6555,7 +6932,7 @@
    "start": 3642,
    "end": 4357,
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6572,6 +6949,12 @@
      "title": "04D-C# String Concatenation (C#)",
      "channel": "Stephen Hustedde",
      "secs": 361
+    },
+    "python": {
+     "id": "pZIwn52DEsU",
+     "title": "30 Days of Python - Day 6 - String Formatting & F Strings - Python TUTORIAL",
+     "channel": "CodingEntrepreneurs",
+     "secs": 974
     }
    }
   },
@@ -6585,7 +6968,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest palindromic substring with center expansion.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "5MS14_6rSa8",
@@ -6602,6 +6985,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "XYQecbcd6_c",
+     "title": "Longest Palindromic Substring - Python - Leetcode 5",
+     "channel": "NeetCode",
+     "secs": 491
     }
    }
   },
@@ -6617,6 +7006,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6630,7 +7023,7 @@
    "reviewedAt": "2026-10-21",
    "note": "KMP prefix/LPS preprocessing and linear-time pattern matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6648,7 +7041,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Z-array, Z-box optimization and pattern-plus-separator-plus-text matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6666,7 +7059,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Classic sorted-array binary search and halving the search interval. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6698,7 +7091,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Lower and upper bounds. Apply these primitives to first/last occurrence in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "GKZoTbUNWt0",
@@ -6717,6 +7110,12 @@
      "title": "First & Last OCCURRENCE in String | Coding Question",
      "channel": "Learn With Shital",
      "secs": 265
+    },
+    "python": {
+     "id": "ViotQxoHip4",
+     "title": "DSA in Python - Find First & Last Occurrence in Sorted Array | Binary Search - Part 50 [Hindi]",
+     "channel": "Code and Debug",
+     "secs": 970
     }
    }
   },
@@ -6730,7 +7129,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Search in a rotated sorted array with distinct elements.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "4Ik1nCLjwcI",
@@ -6749,6 +7148,12 @@
      "title": "LeetCode in C# | 33. - Search in Rotated Sorted Array",
      "channel": "Josh Ackland",
      "secs": 1086
+    },
+    "python": {
+     "id": "U8XENwh8Oy8",
+     "title": "Search in rotated sorted array - Leetcode 33 - Python",
+     "channel": "NeetCode",
+     "secs": 808
     }
    }
   },
@@ -6762,7 +7167,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a peak by binary search on slope direction.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "NUnhHa47f-Q",
@@ -6781,6 +7186,12 @@
      "title": "LeetCode 153: Find Minimum in Rotated Sorted Array | C# Solution | Binary Search |",
      "channel": "Code Scribbler",
      "secs": 338
+    },
+    "python": {
+     "id": "NUnhHa47f-Q",
+     "title": "Find Peak Element | Binary Search Optimization | C++ Java Python",
+     "channel": "RisingBrain",
+     "secs": 1317
     }
    }
   },
@@ -6794,7 +7205,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Integer square root via binary search, matching this lesson rather than the more general nth-root problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6803,6 +7214,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6816,7 +7231,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Aggressive Cows: maximize a minimum distance with a feasibility predicate.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Flewu6KqN54",
@@ -6836,7 +7251,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Allocate Books: minimize the largest allocation. Painter partition is a related variant in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "DAQHXe1yNtM",
@@ -6856,7 +7271,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Koko Eating Bananas and a monotonic feasibility test.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6876,7 +7291,7 @@
    "start": 1077,
    "end": 2736,
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "KiWp1q_HGzg",
@@ -6912,7 +7327,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A recursion-tree derivation for T(n) = 2T(n/2) + cn; other recurrences remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6925,6 +7340,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6938,7 +7357,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Tower of Hanoi with a recursive visualization.",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "S1j5Q03HzMs",
@@ -6957,6 +7376,12 @@
      "title": "Tower of Hanoi recursively move disks from one stack to another in c#",
      "channel": "kc70",
      "secs": 180
+    },
+    "python": {
+     "id": "buWXDMbY3Ww",
+     "title": "Fun Python Project. Recursion and the Towers of Hanoi",
+     "channel": "Python Programmer",
+     "secs": 1349
     }
    }
   },
@@ -6972,7 +7397,7 @@
    "start": 4024,
    "end": 5057,
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6985,6 +7410,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -6998,7 +7427,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "nuuv1Z46zHU",
@@ -7009,6 +7438,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "UP3dOYJa05s",
+     "title": "Subsets - Leetcode 78 - Recursive Backtracking (Python)",
+     "channel": "Greg Hogg",
+     "secs": 711
     }
    }
   },
@@ -7022,7 +7457,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7040,7 +7475,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7058,7 +7493,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "xFv_Hl4B83A",
@@ -7082,7 +7517,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "-StYr9wILqo",
@@ -7118,7 +7553,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7133,6 +7568,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "-Cjgt5I0YvM",
+     "title": "Leetcode Tricks - Dummy Nodes in Linked Lists (Python)",
+     "channel": "LeetPrep",
+     "secs": 398
     }
    }
   },
@@ -7146,7 +7587,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ZSyUwlzmN-U",
@@ -7165,6 +7606,12 @@
      "title": "LeetCode 876: Middle of the Linked List | C# Solution | Fast & Slow Pointers |",
      "channel": "Code Scribbler",
      "secs": 313
+    },
+    "python": {
+     "id": "ZSyUwlzmN-U",
+     "title": "Middle of the Linked List | Brute Force & Fast Slow Pointer Approach | Python Java C++",
+     "channel": "RisingBrain",
+     "secs": 545
     }
    }
   },
@@ -7178,7 +7625,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Cs3KwAsqqn4",
@@ -7195,6 +7642,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "wjYnzkAhcNk",
+     "title": "Find the Duplicate Number - Floyd's Cycle Detection - Leetcode 287 - Python",
+     "channel": "NeetCode",
+     "secs": 1054
     }
    }
   },
@@ -7208,7 +7661,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "PQIHq0vfADI",
@@ -7221,6 +7674,12 @@
      "title": "011 Reverse Linked List - C#",
      "channel": "esSolutions",
      "secs": 679
+    },
+    "python": {
+     "id": "G0_I-ZF0S38",
+     "title": "Reverse Linked List - Iterative AND Recursive - Leetcode 206 - Python",
+     "channel": "NeetCode",
+     "secs": 667
     }
    }
   },
@@ -7234,7 +7693,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "IH8F4W5AiiQ",
@@ -7254,7 +7713,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "WWOvCh31xBk",
@@ -7274,7 +7733,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Xc4sICC8m4M",
@@ -7294,7 +7753,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Rl8N_NbgXbA",
@@ -7332,7 +7791,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "q-JB0hYyouo",
@@ -7351,6 +7810,12 @@
      "title": "LeetCode 20: Valid Parentheses | C# Solution | Stack Implementation |",
      "channel": "Code Scribbler",
      "secs": 465
+    },
+    "python": {
+     "id": "WTzjTskDFMg",
+     "title": "Valid Parentheses - Stack - Leetcode 20 - Python",
+     "channel": "NeetCode",
+     "secs": 643
     }
    }
   },
@@ -7364,7 +7829,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "OpwYmEBcPh0",
@@ -7381,6 +7846,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "qkLl7nAwDPo",
+     "title": "Design Min Stack - Amazon Interview Question - Leetcode 155 - Python",
+     "channel": "NeetCode",
+     "secs": 533
     }
    }
   },
@@ -7394,7 +7865,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "mg9yi6YuAVk",
@@ -7411,6 +7882,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -7424,7 +7899,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "rfl_M3SuvIE",
@@ -7437,6 +7912,12 @@
      "title": "LeetCode 496: Next Greater Element I — The HashMap Trick (C#)",
      "channel": "DSA Mastery Lab",
      "secs": 201
+    },
+    "python": {
+     "id": "68a1Dc_qVq4",
+     "title": "Next Greater Element I - Leetcode 496 - Python",
+     "channel": "NeetCode",
+     "secs": 893
     }
    }
   },
@@ -7450,7 +7931,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "6Izu3F3vibo",
@@ -7470,7 +7951,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ZGMw8Bvpwd4",
@@ -7490,7 +7971,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "88cFfeDDgmo",
@@ -7510,7 +7991,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa14-t0": {
    "t": "Tree Terminology: Root, Leaf, Depth, Height & Friends",
@@ -7522,7 +8003,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7552,7 +8033,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ySp2epYvgTE",
@@ -7571,6 +8052,12 @@
      "title": "Leet Code Problem 105 Construct Binary Tree from Preorder and Inorder Traversal C# Solution",
      "channel": "kc70",
      "secs": 467
+    },
+    "python": {
+     "id": "ihj4IQGZ2zc",
+     "title": "Construct Binary Tree from Inorder and Preorder Traversal - Leetcode 105 - Python",
+     "channel": "NeetCode",
+     "secs": 1022
     }
    }
   },
@@ -7584,7 +8071,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa14-t11": {
    "t": "Validate a BST & Find the K-th Smallest (Inorder Superpowers)",
@@ -7600,7 +8087,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa14-t2": {
    "t": "Iterative Traversals with an Explicit Stack",
@@ -7618,6 +8105,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -7631,7 +8122,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "EoAsWbO7sqg",
@@ -7650,6 +8141,12 @@
      "title": "Level order traversal of a binary tree in Python/Java/C# - CodeStandard",
      "channel": "CodeStandard",
      "secs": 201
+    },
+    "python": {
+     "id": "MBZ-gBkjdMc",
+     "title": "Binary Tree Level Order Traversal - LeetCode 102 Python",
+     "channel": "Deepti Talesra",
+     "secs": 443
     }
    }
   },
@@ -7663,7 +8160,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "KV4mRzTjlAk",
@@ -7676,6 +8173,12 @@
      "title": "Facebook - Binary Tree Right Side View | BFS Approach | C#",
      "channel": "The Code Architect",
      "secs": 773
+    },
+    "python": {
+     "id": "JZCzt4xwv58",
+     "title": "Binary Tree Right Side View - LeetCode 199 Python",
+     "channel": "Deepti Talesra",
+     "secs": 502
     }
    }
   },
@@ -7689,7 +8192,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "0FtVY6I4pB8",
@@ -7709,7 +8212,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Rezetez59Nk",
@@ -7729,7 +8232,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Yt50Jfbd8Po",
@@ -7749,7 +8252,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa14-t9": {
    "t": "BST Search & Insert (and Min, Max, Floor, Ceil)",
@@ -7761,7 +8264,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": false,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa15-t0": {
    "t": "Min-Heap & Max-Heap: the array trick, insert (sift-up), extract (sift-down)",
@@ -7773,7 +8276,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -7807,7 +8310,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -7824,6 +8327,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "E2v9hBgG6gE",
+     "title": "Heaps & Priority Queues - Heapify, Heap Sort, Heapq Library - DSA Course in Python Lecture 9",
+     "channel": "Greg Hogg",
+     "secs": 1448
     }
    }
   },
@@ -7837,7 +8346,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7852,6 +8361,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -7865,7 +8378,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "GkLRlOrcNZA",
@@ -7884,6 +8397,12 @@
      "title": "LeetCode 3194: Minimum Average of Smallest and Largest Elements | C# Solution | Array Manipulation",
      "channel": "Code Scribbler",
      "secs": 332
+    },
+    "python": {
+     "id": "XEmy13g1Qxc",
+     "title": "Kth Largest Element in an Array - Quick Select - Leetcode 215 - Python",
+     "channel": "NeetCode",
+     "secs": 1128
     }
    }
   },
@@ -7897,7 +8416,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7906,6 +8425,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "q5a5OiGbT6Q",
+     "title": "Merge K Sorted Lists - Leetcode 23 - Python",
+     "channel": "NeetCode",
+     "secs": 634
     }
    }
   },
@@ -7919,7 +8444,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "KtJlTfHtMhc",
@@ -7939,7 +8464,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ubKhojIZtHk",
@@ -7959,7 +8484,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "EIhAwfHubE8",
@@ -7979,7 +8504,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8009,7 +8534,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "DHr-Mn_vzs0",
@@ -8026,6 +8551,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "120ORaCUyWY",
+     "title": "1.Activity Selection  | Greedy | Python | GFG | Must Do Coding Interview Questions",
+     "channel": "GearPath",
+     "secs": 448
     }
    }
   },
@@ -8039,7 +8570,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "zPtI8q9gvX8",
@@ -8056,6 +8587,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "kC0e2MW8OMc",
+     "title": "Job Sequencing Problem | GFG | Greedy Approach | Java Solution| Python Solution",
+     "channel": "Ash Tech Coder",
+     "secs": 796
     }
    }
   },
@@ -8069,7 +8606,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "nLmhmB6NzcM",
@@ -8088,6 +8625,12 @@
      "title": "Dynamic Programming – 0/1 Knapsack Problem Tutorial",
      "channel": "freeCodeCamp.org",
      "secs": 2778
+    },
+    "python": {
+     "id": "K_qtZbLSYm0",
+     "title": "DSA in Python - Fractional Knapsack | Greedy + Sorting Optimal Solution | GFG - Part 99 [Hindi]",
+     "channel": "Code and Debug",
+     "secs": 1208
     }
    }
   },
@@ -8101,7 +8644,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "co4_ahEDCho",
@@ -8112,6 +8655,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "JCOph23TQTY",
+     "title": "Huffman Coding -  Python Implementation and Demo",
+     "channel": "Bhrigu Srivastava",
+     "secs": 2074
     }
    }
   },
@@ -8125,7 +8674,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "TBlKgdYwQ4Q",
@@ -8145,7 +8694,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "xmJZSYSvgfE",
@@ -8165,7 +8714,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "TsRyidwuNF8",
@@ -8187,7 +8736,7 @@
    "start": 100,
    "end": 427,
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa17-t0": {
    "t": "DP Intuition: Overlapping Subproblems + Optimal Substructure",
@@ -8199,7 +8748,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8229,7 +8778,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "piAlsJySUGE",
@@ -8246,6 +8795,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "piAlsJySUGE",
+     "title": "Dynamic Programming - Top Down Memoization & Bottom Up Tabulation - DSA Course in Python Lecture 15",
+     "channel": "Greg Hogg",
+     "secs": 1241
     }
    }
   },
@@ -8259,7 +8814,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "u7kxnHnUAYk",
@@ -8274,6 +8829,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "73r3KWiEvyk",
+     "title": "House Robber -  Leetcode 198 - Python Dynamic Programming",
+     "channel": "NeetCode",
+     "secs": 635
     }
    }
   },
@@ -8287,7 +8848,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "sdQpyeEF-rM",
@@ -8306,6 +8867,12 @@
      "title": "[Tutorial] [C#] How to make a Coin Change Calculator - Part 2",
      "channel": "TrixHacking",
      "secs": 398
+    },
+    "python": {
+     "id": "koE9ly1CFDc",
+     "title": "Coin Change - Leetcode 322 - Dynamic Programming (Python)",
+     "channel": "Greg Hogg",
+     "secs": 927
     }
    }
   },
@@ -8319,7 +8886,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8328,6 +8895,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -8351,7 +8922,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "sSno9rV8Rhg",
@@ -8371,7 +8942,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8389,7 +8960,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa18-t0": {
    "t": "Longest Increasing Subsequence: O(N²) DP and the O(N log N) “tails” trick",
@@ -8401,7 +8972,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8431,7 +9002,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "bHypFVRzEXk",
@@ -8448,6 +9019,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "-E8E3wPNRBo",
+     "title": "Leetcode - Palindrome Partitioning II (Python)",
+     "channel": "Timothy H Chang",
+     "secs": 444
     }
    }
   },
@@ -8461,7 +9038,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8474,6 +9051,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -8499,6 +9080,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "nHR8ytpzz7c",
+     "title": "House Robber III - Tree - Leetcode 337",
+     "channel": "NeetCode",
+     "secs": 1082
     }
    }
   },
@@ -8549,7 +9136,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "S8rMlJBmVYc",
@@ -8587,7 +9174,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "-fOUp6Srnyg",
@@ -8604,6 +9191,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "97J9ForvBrI",
+     "title": "Breadth First Search (BFS) & Level Order Traversal (LOT) in Python",
+     "channel": "Future Infinitive",
+     "secs": 195
     }
    }
   },
@@ -8623,6 +9216,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -8636,7 +9233,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "muncqlKJrH0",
@@ -8655,6 +9252,12 @@
      "title": "LeetCode 200: Number of Islands | C# Solution | DFS Approach",
      "channel": "Code Scribbler",
      "secs": 361
+    },
+    "python": {
+     "id": "8f1XPm4WOUc",
+     "title": "Number of Connected Components in an Undirected Graph - Union Find - Leetcode 323 - Python",
+     "channel": "NeetCode",
+     "secs": 959
     }
    }
   },
@@ -8668,7 +9271,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "9twcmtQj4DU",
@@ -8692,7 +9295,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "-vu34sct1g8",
@@ -8712,7 +9315,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "gDNm1m3G4wo",
@@ -8732,7 +9335,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa20-t0": {
    "t": "Weighted Graphs, Relaxation & Dijkstra with PriorityQueue",
@@ -8744,7 +9347,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8778,7 +9381,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8793,6 +9396,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -8806,7 +9413,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "JkmCVkJdg-A",
@@ -8823,6 +9430,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "7C_w5RIEyoU",
+     "title": "DSA in Python - Bellman-Ford Algorithm | Detect Negative Cycles | GFG Problem | Part 153 [Hindi]",
+     "channel": "Code and Debug",
+     "secs": 1553
     }
    }
   },
@@ -8836,7 +9449,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "oNI0rf2P9gE",
@@ -8853,6 +9466,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "LULHxlvOhGc",
+     "title": "DSA in Python - Floyd Warshall Algorithm | All-Pairs Shortest Path | GFG Problem | Part 154 [Hindi]",
+     "channel": "Code and Debug",
+     "secs": 1816
     }
    }
   },
@@ -8866,7 +9485,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "mJcZjjKzeqk",
@@ -8890,7 +9509,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "wU6udHRIkcc",
@@ -8920,7 +9539,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "wMH6TbIRsJg",
@@ -8954,7 +9573,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "LMN7-O_SuqM",
@@ -8971,6 +9590,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -8984,7 +9607,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "vUwindiBWJ0",
@@ -8999,6 +9622,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9012,7 +9639,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "0jWeUdxrGm4",
@@ -9029,6 +9656,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9042,7 +9673,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9074,7 +9705,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9092,7 +9723,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "NvnicGg3FdA",
@@ -9109,6 +9740,10 @@
      "title": "Strongly Connected Components: Kosaraju's Algorithm Step by Step | DSA Course L109",
      "channel": "The Modern SDE",
      "secs": 536
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9122,7 +9757,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9135,6 +9770,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9148,7 +9787,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9161,6 +9800,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9174,7 +9817,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "WUzplLVxYsk",
@@ -9189,6 +9832,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "ZdEKKaDETtA",
+     "title": "Eulerian Path/Circuit - Hierholzer's Algorithm",
+     "channel": "Python Coding Practices",
+     "secs": 492
     }
    }
   },
@@ -9202,7 +9851,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "_-QHfMDde90",
@@ -9228,7 +9877,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "_UcOALraATY",
@@ -9248,7 +9897,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "duKIzgJQ1w8",
@@ -9268,7 +9917,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa22-t8": {
    "t": "Bipartite Matching: Kuhn's Augmenting Paths, Flow View, Hopcroft-Karp & König's Theorem",
@@ -9280,7 +9929,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa23-t0": {
    "t": "Bitmask DP: Travelling Salesman (Held-Karp) & the Assignment Problem",
@@ -9292,7 +9941,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "Q4zHb-Swzro",
@@ -9309,6 +9958,10 @@
      "title": "Traveling Salesman Problem using Dynamic Programming | DAA",
      "channel": "Jenny's Lectures CS IT",
      "secs": 1893
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9322,7 +9975,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9335,6 +9988,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9348,7 +10005,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ps2ZTj4DAm0",
@@ -9363,6 +10020,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "4wMMi1Ob4VU",
+     "title": "A Useful Trick in Probability and Expected Value",
+     "channel": "The Quant Quest",
+     "secs": 1093
     }
    }
   },
@@ -9386,6 +10049,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "ONsSlHFvtgo",
+     "title": "Python Data Structures and Algorithms: Best Practices for Beginners",
+     "channel": "Digis Podcast: Software Development & Technologies",
+     "secs": 988
     }
    }
   },
@@ -9414,7 +10083,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9432,7 +10101,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9454,7 +10123,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "0CesZFo1yOQ",
@@ -9471,6 +10140,10 @@
      "title": "Longest Palindromic Substring Manacher's Algorithm",
      "channel": "Tushar Roy - Coding Made Simple",
      "secs": 1006
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9484,7 +10157,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9497,6 +10170,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9520,6 +10197,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "qvxBPt9yA_s",
+     "title": "13.Suffix Array Construction and Kasai’s Algorithm in Python",
+     "channel": "Web Fusion with Bharadwaj",
+     "secs": 1604
     }
    }
   },
@@ -9533,7 +10216,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9546,6 +10229,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "iTblAHe7s7w",
+     "title": "Aho-Corasick Content Moderator API in Python — Why One Pass Beats 1,000 Regex Checks",
+     "channel": "Fun with Learning Technology",
+     "secs": 441
     }
    }
   },
@@ -9574,7 +10263,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9602,7 +10291,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "QEWvTVcpAyg",
@@ -9619,6 +10308,10 @@
      "title": "Solving Modular Linear Equations ax ≡ b (mod n) and Modular Inverses in Java | DSA Course L164",
      "channel": "The Modern SDE",
      "secs": 539
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9632,7 +10325,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "vaTlSINdvY0",
@@ -9647,6 +10340,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "h5OSrM_hTl4",
+     "title": "Python - Exponents, Modular Exponents, Modular Inverse Tutorial",
+     "channel": "MCC Py Tutorials",
+     "secs": 2629
     }
    }
   },
@@ -9660,7 +10359,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "iMZEwYfBWDY",
@@ -9677,6 +10376,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9692,6 +10395,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9705,7 +10412,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9727,7 +10434,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": "ntOM8JRAlaY",
@@ -9747,7 +10454,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9773,7 +10480,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa26-t0": {
    "t": "Vectors, Cross Product & Orientation (the CCW Test)",
@@ -9785,7 +10492,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9800,6 +10507,12 @@
     "java": {
      "id": null,
      "at": "2026-10-30"
+    },
+    "python": {
+     "id": "hDoGgBRHJsc",
+     "title": "10.1) Inner or Dot Product of Two n-vectors",
+     "channel": "Python for Econometrics",
+     "secs": 205
     }
    }
   },
@@ -9819,6 +10532,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9832,7 +10549,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9845,6 +10562,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9866,6 +10587,12 @@
      "title": "Computing polygon area using C#",
      "channel": "Engineering Educational Channel",
      "secs": 1987
+    },
+    "python": {
+     "id": "nbtF21_uRJg",
+     "title": "Lesson-20 | Challenge-II (Area and Perimeter of Any Polygon)| [OOP in Python]",
+     "channel": "Learning Orbis",
+     "secs": 504
     }
    }
   },
@@ -9879,7 +10606,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9901,7 +10628,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9929,7 +10656,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa27-t0": {
    "t": "LRU Cache: HashMap + Doubly Linked List, and Its Real-World Variants",
@@ -9947,6 +10674,10 @@
     "java": {
      "id": null,
      "at": "2026-10-30"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9960,7 +10691,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9973,6 +10704,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -9986,7 +10721,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9999,6 +10734,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -10012,7 +10751,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10021,6 +10760,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -10049,7 +10792,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10081,7 +10824,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa27-t9": {
    "t": "Choosing the Design: Trade-offs, Complexity Cheat Sheet and Eviction Showdown",
@@ -10097,7 +10840,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10110,6 +10853,10 @@
     "java": {
      "id": null,
      "at": "2026-10-30"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -10123,7 +10870,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10136,6 +10883,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -10149,7 +10900,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10162,6 +10913,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "M1jXnHyzmqA",
+     "title": "Python List Use Cases & Real Time Scenarios | Solve the hardest problem using List Comprehension 🔥",
+     "channel": "Sumit Mittal",
+     "secs": 3761
     }
    }
   },
@@ -10175,7 +10932,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10184,6 +10941,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -10197,7 +10958,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10233,7 +10994,7 @@
    "start": 188,
    "end": 420,
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z",
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10251,7 +11012,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "dsa28-t8": {
    "t": "Final Revision Checklists & Your Last-Week Plan",
@@ -10263,7 +11024,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "fe01-t0": {
    "t": "Browsers, Servers & the Client–Server Idea",
@@ -10750,6 +11511,13 @@
    "id": null,
    "at": "2026-10-31"
   },
+  "fe13-t5": {
+   "t": "Content Security Policy and Clickjacking Defence",
+   "id": "ET3o4EtDqL8",
+   "title": "Content Security Policy Explained | Prevent XSS with CSP, Nonce, and Unsafe-Inline Walkthrough",
+   "channel": "AdiTOSH",
+   "secs": 632
+  },
   "fe14-t0": {
    "t": "Package Managers: npm, pnpm, package.json, Semver & Lockfiles",
    "id": null,
@@ -10781,6 +11549,13 @@
    "channel": "Hungry Turtle Code",
    "secs": 725
   },
+  "fe14-t5": {
+   "t": "Unit Testing: Jest, Vitest & the Test Pyramid",
+   "id": "isI1c0eGSZ0",
+   "title": "When To Unit, E2E, And Integration Test",
+   "channel": "The PrimeTime",
+   "secs": 898
+  },
   "fe15-t0": {
    "t": "Micro-Frontends: Splitting One Big App Into Team-Owned Pieces",
    "id": null,
@@ -10809,6 +11584,11 @@
    "t": "PWAs & Service Workers: Cache Strategies That Survive Bad Wi-Fi",
    "id": null,
    "at": "2026-10-31"
+  },
+  "fe15-t5": {
+   "t": "Offline-First Apps: Local Database, Outbox Queue & Background Sync",
+   "id": null,
+   "at": "2026-11-01"
   },
   "fe16-t0": {
    "t": "The Frontend System Design Framework (RADIO)",
@@ -10844,6 +11624,13 @@
    "title": "FAANG System Design Interview: Design A Chat System (WhatsApp, Facebook Messenger, Discord, Slack)",
    "channel": "ByteByteGo",
    "secs": 525
+  },
+  "fe16-t5": {
+   "t": "Design a Google Sheets-like Grid (Virtualization, Dependency Graph, Recalculation)",
+   "id": "jtONWhpRPJo",
+   "title": "Make Your Google Sheets Look PRO in Under 10 Minutes!",
+   "channel": "New EdTech Classroom",
+   "secs": 565
   },
   "fe17-t0": {
    "t": "Angular CLI, Workspace and Bootstrapping",
@@ -11582,6 +12369,13 @@
    "channel": "Jordan has no life",
    "secs": 559
   },
+  "hld13-t5": {
+   "t": "Stream Processing: Flink, Windows, Watermarks and State",
+   "id": "sdhwpUAjqaI",
+   "title": "Event Time and Watermarks | Apache Flink 101",
+   "channel": "Confluent, an IBM Company",
+   "secs": 718
+  },
   "hld14-t0": {
    "t": "Design a URL Shortener (bit.ly / TinyURL)",
    "id": "xFeWVugaouk",
@@ -11685,6 +12479,13 @@
    "channel": "ScaleDojo",
    "secs": 539
   },
+  "hld16-t5": {
+   "t": "Design an Ad Click Aggregator: Streaming Windows, Dedup & Late Events",
+   "id": "6TroztUV3f8",
+   "title": "Design an Ad Click Aggregator | Systems Design Questions 3.0 With Ex-Google SWE",
+   "channel": "Jordan has no life",
+   "secs": 1079
+  },
   "hld17-t0": {
    "t": "Design a Web Crawler: URL Frontier, Politeness, robots.txt & Dedupe",
    "id": "Cc1LeOq7u70",
@@ -11730,7 +12531,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java01-t1": {
    "t": "JDK vs JRE vs JVM — and What Lives Inside the JVM",
@@ -11742,7 +12543,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java01-t2": {
    "t": "The main Method, Command-Line Arguments & Exit Codes",
@@ -11754,7 +12555,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java01-t3": {
    "t": "Primitive Types, Ranges, Literals & Defaults",
@@ -11766,7 +12567,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java01-t4": {
    "t": "Type Casting: Widening, Narrowing & Numeric Promotion",
@@ -11778,7 +12579,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java01-t5": {
    "t": "Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence",
@@ -11795,7 +12596,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java01-t7": {
    "t": "char, ASCII & Unicode (UTF-16, Code Points, Emoji)",
@@ -11807,7 +12608,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java02-t0": {
    "t": "Decisions: if/else, the Ternary Operator, switch & Switch Expressions",
@@ -11819,7 +12620,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java02-t1": {
    "t": "Loops: for, while, do-while and the Enhanced for-each",
@@ -11836,7 +12637,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java02-t3": {
    "t": "Methods, the Call Stack and Why Java Is Always Pass-by-Value",
@@ -11848,7 +12649,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java02-t4": {
    "t": "Method Overloading and Varargs (int... args)",
@@ -11860,7 +12661,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java02-t5": {
    "t": "1D Arrays, 2D Arrays and Jagged Arrays",
@@ -11872,7 +12673,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java02-t6": {
    "t": "The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)",
@@ -11888,7 +12689,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java03-t0": {
    "t": "Defining Classes & Creating Objects",
@@ -11900,7 +12701,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java03-t1": {
    "t": "References: Stack vs Heap, Aliasing, null & Pass-by-Value",
@@ -11912,7 +12713,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java03-t2": {
    "t": "Constructors & Constructor Chaining",
@@ -11924,7 +12725,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java03-t3": {
    "t": "The this Keyword",
@@ -11936,7 +12737,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java03-t4": {
    "t": "static: Fields, Methods & Blocks",
@@ -11948,7 +12749,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java03-t5": {
    "t": "Initialization Order: static, instance, constructor",
@@ -11960,7 +12761,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java03-t6": {
    "t": "Access Modifiers & Packages",
@@ -11972,7 +12773,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t0": {
    "t": "Encapsulation: Private Data, Public Behaviour, Guarded Invariants",
@@ -11984,7 +12785,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t1": {
    "t": "Inheritance, extends & super: Reusing a Parent and Building Objects Layer by Layer",
@@ -11996,7 +12797,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t2": {
    "t": "Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override",
@@ -12008,7 +12809,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t3": {
    "t": "Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)",
@@ -12020,7 +12821,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t4": {
    "t": "Abstract Classes: Half-Built Blueprints and the Template Method",
@@ -12032,7 +12833,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t5": {
    "t": "Interfaces: Contracts, default & static Methods, and the Diamond Rules",
@@ -12044,7 +12845,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t6": {
    "t": "final: Variables, References, Methods and Classes",
@@ -12056,7 +12857,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t7": {
    "t": "Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)",
@@ -12068,7 +12869,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java04-t8": {
    "t": "The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize",
@@ -12080,7 +12881,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-10-31T21:48:26.813Z"
+   "availabilityCheckedAt": "2026-11-01T16:13:41.848Z"
   },
   "java05-t0": {
    "t": "String Immutability: Why a String Can Never Change",
@@ -12465,6 +13266,13 @@
    "channel": "SysSketch",
    "secs": 336
   },
+  "java14-t5": {
+   "t": "Annotations & Annotation Processors",
+   "id": "DkZr7_c9ry8",
+   "title": "Annotations In Java Tutorial - How To Create And Use Your Own Custom Annotations",
+   "channel": "Coding with John",
+   "secs": 1201
+  },
   "java15-t0": {
    "t": "Maven Basics: the POM, Coordinates, Lifecycle Phases, Plugins & Scopes",
    "id": "6ySq0a6YFjA",
@@ -12491,6 +13299,13 @@
    "t": "Parameterized Tests & Fluent Assertions with AssertJ",
    "id": null,
    "at": "2026-10-31"
+  },
+  "java15-t5": {
+   "t": "Test Doubles & Mockito: Mocks, Stubs, Spies, Argument Captors & Verification",
+   "id": "wHITQSTrxNQ",
+   "title": "Mockito Tutorial: Test Doubles, Mocks and Stubs | Build & Test Unit 14",
+   "channel": "Learn Programming With Vivek",
+   "secs": 393
   },
   "java16-t0": {
    "t": "Entity Mapping and the Four Lifecycle States",
@@ -12522,6 +13337,11 @@
    "title": "How Spring Boot @Transactional REALLY Works (Commit, Rollback, Propagation, Proxy Explained)",
    "channel": "ConquerTheFear",
    "secs": 955
+  },
+  "java16-t5": {
+   "t": "Locking in JPA: @Version, LockModeType, NOWAIT and SKIP LOCKED",
+   "id": null,
+   "at": "2026-11-01"
   },
   "java17-t0": {
    "t": "Inside refresh(): BeanDefinitions, the BeanFactory & BeanFactoryPostProcessors",
@@ -13077,6 +13897,13 @@
    "channel": "NeetCodeIO",
    "secs": 833
   },
+  "js14-t5": {
+   "t": "Currying and Flattening",
+   "id": "iZLP4qOwY8I",
+   "title": "Currying - Part 6 of Functional Programming in JavaScript",
+   "channel": "Fun Fun Function",
+   "secs": 528
+  },
   "js15-t0": {
    "t": "Inside Node.js: V8 + libuv + Bindings, and the Six Phases of the Event Loop",
    "id": "MIqvESIAP54",
@@ -13103,6 +13930,13 @@
    "t": "EventEmitter: Synchronous Events, once/off, the error Event and Listener Leaks",
    "id": null,
    "at": "2026-10-31"
+  },
+  "js15-t5": {
+   "t": "Using More Cores: worker_threads, cluster and child_process",
+   "id": "Vej327jN8WI",
+   "title": "Worker Threads in Node.js: The Secret to High-Performance Backends 🔥",
+   "channel": "ByteMonk",
+   "secs": 472
   },
   "js16-t0": {
    "t": "expect() and Matchers: What \"Equal\" Really Means",
@@ -13132,6 +13966,13 @@
    "t": "Module Mocking and Network Doubles: jest.mock, vi.mock and MSW",
    "id": null,
    "at": "2026-10-31"
+  },
+  "js16-t5": {
+   "t": "Integration and E2E: React Testing Library Principles and Playwright",
+   "id": "jydYq7oAtD8",
+   "title": "Software Testing Course – Playwright, E2E, and AI Agents",
+   "channel": "freeCodeCamp.org",
+   "secs": 3811
   },
   "lld01-t0": {
    "t": "Thinking in Objects: Classes, Objects, State & Behaviour",
@@ -13178,6 +14019,10 @@
     "java": {
      "id": null,
      "at": "2026-10-30"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13205,6 +14050,12 @@
      "title": "Association vs Composition vs Aggregation in C#  C# Interview Questions and answers",
      "channel": "Questpond",
      "secs": 1132
+    },
+    "python": {
+     "id": "zHrad-Neoq4",
+     "title": "Dependency → Association → Aggregation → Composition. UML Relationships Explained",
+     "channel": "Coders Bring Change",
+     "secs": 602
     }
    }
   },
@@ -13232,6 +14083,12 @@
      "title": "C# Lesson 8 Inheritance & Polymorphism Explained | Real-World OOP",
      "channel": "Omoefe Codes ",
      "secs": 1090
+    },
+    "python": {
+     "id": "9z0aSowfhy4",
+     "title": "The True Power of OOP: Inheritance & Polymorphism Compared",
+     "channel": "963 Unplugged",
+     "secs": 392
     }
    }
   },
@@ -13249,6 +14106,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13325,6 +14186,12 @@
      "title": "Java OOP - Single Responsibility Principle",
      "channel": "Job Ready Programmer",
      "secs": 833
+    },
+    "python": {
+     "id": "cmznZf9uXC8",
+     "title": "Single Responsibility Principle in Python (The S in SOLID)",
+     "channel": "Denis Orehovsky",
+     "secs": 506
     }
    }
   },
@@ -13352,6 +14219,12 @@
      "title": "Design Patterns: Open Closed Principle Explained Practically in C# (The O in SOLID)",
      "channel": "IAmTimCorey",
      "secs": 3152
+    },
+    "python": {
+     "id": "VqeBgD5TuAQ",
+     "title": "The Open-Closed principle. An example in Python",
+     "channel": "Coders Bring Change",
+     "secs": 371
     }
    }
   },
@@ -13379,6 +14252,12 @@
      "title": "Design Patterns: Liskov Substitution Principle Explained Practically in C# (The L in SOLID)",
      "channel": "IAmTimCorey",
      "secs": 2376
+    },
+    "python": {
+     "id": "D9KodZT7GVQ",
+     "title": "Liskov Substitution Principle Explained with Real Examples in Python | Low Level Design - Lesson 6",
+     "channel": "Code and Debug",
+     "secs": 1182
     }
    }
   },
@@ -13400,6 +14279,12 @@
      "title": "Design Patterns: Interface Segregation Principle Explained Practically in C# (The I in SOLID)",
      "channel": "IAmTimCorey",
      "secs": 2424
+    },
+    "python": {
+     "id": "sfwXE_YWU7c",
+     "title": "Interface Segregation Principle Explained with Real Examples in Python | Low Level Design - Lesson 7",
+     "channel": "Code and Debug",
+     "secs": 349
     }
    }
   },
@@ -13480,6 +14365,10 @@
     "java": {
      "id": null,
      "at": "2026-10-30"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13507,6 +14396,12 @@
      "title": "Why Favor Object Composition Over Class Inheritance? A Deep Dive",
      "channel": "Zoran on C#",
      "secs": 1140
+    },
+    "python": {
+     "id": "0mcP8ZpUR38",
+     "title": "Composition Is Better Than Inheritance in Python",
+     "channel": "ArjanCodes",
+     "secs": 1409
     }
    }
   },
@@ -13534,6 +14429,12 @@
      "title": "Coupling and Cohesion Explained",
      "channel": "Gui Ferreira",
      "secs": 703
+    },
+    "python": {
+     "id": "eiDyK_ofPPM",
+     "title": "Cohesion and Coupling: Write BETTER PYTHON CODE Part 1",
+     "channel": "ArjanCodes",
+     "secs": 1574
     }
    }
   },
@@ -13553,6 +14454,10 @@
      "title": "Violation of Law of Demeter - API Tutorial",
      "channel": "Huynh Son Ca",
      "secs": 410
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13633,6 +14538,12 @@
      "title": "What is a Singleton Class in Java and How Do You Implement It | Java Interview Questions and Answers",
      "channel": "Java Guides",
      "secs": 288
+    },
+    "python": {
+     "id": "JeEZe8oFPBs",
+     "title": "Singleton Pattern Explained with Python – One Instance to Rule Them All #systemdesign",
+     "channel": "Coding with Neeraj",
+     "secs": 775
     }
    }
   },
@@ -13652,6 +14563,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13673,6 +14588,10 @@
      "title": "Abstract Factory Without Jargon: Matching Packages, Real-Life Examples - Concept Overview",
      "channel": "C# straight to the point",
      "secs": 687
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13690,6 +14609,12 @@
      "title": "Fluent Builder Pattern in C# – Build Complex Objects the Clean Way",
      "channel": "Poorna Soysa",
      "secs": 737
+    },
+    "python": {
+     "id": "AUQJ9eeP-Ls",
+     "title": "How to Build a Production-Ready RAG AI Agent in Python (Step-by-Step)",
+     "channel": "Tech With Tim",
+     "secs": 4589
     }
    }
   },
@@ -13766,6 +14691,12 @@
      "title": "Decorator Pattern in C#: Add Behavior Without Touching Your Class",
      "channel": "Mace Labs",
      "secs": 816
+    },
+    "python": {
+     "id": "bAehPH1a6QY",
+     "title": "Python Day 134: Building Your First Python Decorator",
+     "channel": "The Industry Portal",
+     "secs": 337
     }
    }
   },
@@ -13785,6 +14716,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13804,6 +14739,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13819,6 +14758,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13900,6 +14843,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13919,6 +14866,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13938,6 +14889,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -13953,6 +14908,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14028,6 +14987,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14051,6 +15014,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "OAWV0g7ZW4Y",
+     "title": "Parking Lot System Design | LLD, UML Class Diagram, Design Patterns, Concurrency & Code (Tamil)",
+     "channel": "Devaraj Umapathi",
+     "secs": 4233
     }
    }
   },
@@ -14070,6 +15039,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14089,6 +15062,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14154,6 +15131,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14173,6 +15154,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14196,6 +15181,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14211,6 +15200,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14270,6 +15263,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14289,6 +15286,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14310,6 +15311,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14325,6 +15330,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14382,6 +15391,10 @@
      "title": "What are concurrent generic collections in c# || concurrent generic collections in c#",
      "channel": "jitender2000",
      "secs": 553
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14407,6 +15420,12 @@
      "title": "How To Implement Rate Limiting In .NET + BONUS: Rate Limiter Algorithms 101",
      "channel": "Milan Jovanović",
      "secs": 582
+    },
+    "python": {
+     "id": "ewIPAzxT1qI",
+     "title": "I Built a Rate Limiter From Scratch in Python",
+     "channel": "Sarthak Vinayaka",
+     "secs": 611
     }
    }
   },
@@ -14432,6 +15451,12 @@
      "title": "How to implement fixed window rate limiter in .Net?",
      "channel": "TheTechPaper",
      "secs": 263
+    },
+    "python": {
+     "id": "wZGsPFL29NM",
+     "title": "Let's Code Fixed Window Rate Limiter in Python",
+     "channel": "Harith Bakhrani",
+     "secs": 658
     }
    }
   },
@@ -14447,6 +15472,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14511,6 +15540,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14530,6 +15563,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14553,6 +15590,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "tUn0hDG3BBk",
+     "title": "Lunch & Learn: Hexagonal Architecture with Python",
+     "channel": "Jobsity",
+     "secs": 2170
     }
    }
   },
@@ -14572,6 +15615,10 @@
      "title": "DDD in .NET Apps: Entities and Value Objects - A Comprehensive Guide",
      "channel": "Codewrinkles",
      "secs": 1818
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14645,6 +15692,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14668,6 +15719,10 @@
      "title": "♟️ Chess Special Moves - Prevent & Checkmate! - 3/3 [Unity tutorial 2021][C#]",
      "channel": "Mercenary Camp",
      "secs": 2542
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14689,6 +15744,12 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": "fu2cD_6E8Hw",
+     "title": "Time Based Key-Value Store - Leetcode 981 - Python",
+     "channel": "NeetCode",
+     "secs": 1036
     }
    }
   },
@@ -14704,6 +15765,10 @@
     "java": {
      "id": null,
      "at": "2026-10-30"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14719,6 +15784,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14736,6 +15805,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14751,6 +15824,10 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
   },
@@ -14762,8 +15839,17 @@
     "csharp": {
      "id": null,
      "at": "2026-10-31"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-01"
     }
    }
+  },
+  "lld13-t5": {
+   "t": "Meeting Room Scheduler II: Recurring Bookings, Exceptions and All-or-Nothing Series",
+   "id": null,
+   "at": "2026-11-01"
   },
   "py01-t0": {
    "t": "Installing Python, Running Code & the REPL",
@@ -15264,6 +16350,13 @@
    "id": null,
    "at": "2026-10-31"
   },
+  "py14-t5": {
+   "t": "Linting, Formatting and Type Checking: Ruff, mypy, pre-commit",
+   "id": "cRWH3y3ncIA",
+   "title": "mypy · ruff · black · pre-commit — pro toolchain | L11 · Pro",
+   "channel": "Dargslan",
+   "secs": 396
+  },
   "py15-t0": {
    "t": "NumPy Arrays: One Block of Memory, One dtype, Vectorized Math",
    "id": null,
@@ -15295,6 +16388,13 @@
    "channel": "Chart Explorers",
    "secs": 820
   },
+  "py15-t5": {
+   "t": "Reshaping: pivot, pivot_table, melt, stack/unstack",
+   "id": "M3oB2urOHXY",
+   "title": "How to Reshape Dataframes | Pivot, Stack, Melt and More",
+   "channel": "Mısra Turp",
+   "secs": 769
+  },
   "py16-t0": {
    "t": "Projects, Apps, MTV and URL Routing with Path Converters",
    "id": null,
@@ -15323,6 +16423,13 @@
    "t": "Migrations: makemigrations, migrate, the Dependency Graph and Safe Schema Changes",
    "id": null,
    "at": "2026-10-31"
+  },
+  "py16-t5": {
+   "t": "Middleware, Signals, the Admin and Authentication",
+   "id": "TGvK5z9R8Ik",
+   "title": "Two Factor Authentication with Django - Admin Demo",
+   "channel": "GoDjango",
+   "secs": 341
   },
   "sql01-t0": {
    "t": "What Is a Database? What Is a DBMS?",
@@ -15859,6 +16966,13 @@
    "channel": "ByteByteGo",
    "secs": 333
   },
+  "sql14-t5": {
+   "t": "NewSQL: Spanner, CockroachDB, Raft and Distributed Transactions",
+   "id": "hhRgb-rA_HM",
+   "title": "Nathan VanBenschoten — Fearless global transactions with CockroachDB",
+   "channel": "Hydra",
+   "secs": 4281
+  },
   "sql15-t0": {
    "t": "Nth Highest Salary (and Why Ties Break Naive Answers)",
    "id": "fh4yBn0oTaM",
@@ -15892,6 +17006,13 @@
    "id": null,
    "at": "2026-10-31"
   },
+  "sql15-t5": {
+   "t": "Funnels & Retention Cohorts",
+   "id": "OwCATJh4lNg",
+   "title": "Customer Retention & Cohort Analysis | How VCs Calculate Customer Retention",
+   "channel": "Eric Andrews",
+   "secs": 1070
+  },
   "sql16-t0": {
    "t": "MVCC Two Ways: PostgreSQL Tuple Versions + VACUUM vs InnoDB Undo + Purge",
    "id": null,
@@ -15922,6 +17043,11 @@
    "t": "Isolation Defaults, Locking Reads and InnoDB Gap Locks",
    "id": null,
    "at": "2026-10-31"
+  },
+  "sql16-t5": {
+   "t": "Replication and Failover: WAL Streaming vs Binlog, Sync Modes and Promotion",
+   "id": null,
+   "at": "2026-11-01"
   },
   "sql17-t0": {
    "t": "Access Patterns First: Choosing Document, Key-Value, Wide-Column or DynamoDB",
