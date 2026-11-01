@@ -70,7 +70,7 @@ var Auth = (function () {
        review = imastery.review (spaced-review queue), days = imastery.days (activity days, last 60)
      imastery.playmeta = { updatedAt, sig } remembers when the local copy last changed (sig = canonical JSON of the blob).
      Two devices can both play, so pulling merges instead of last-write-wins; see mergeBlob and docs/DATABASE.md. */
-  var DEVICE_SETTINGS = { sound: 1, haptics: 1, motion: 1, bit: 1, tts: 1 }, DAYS_KEEP = 60, REVIEW_KEEP = 300;
+  var DEVICE_SETTINGS = { sound: 1, haptics: 1, motion: 1, bit: 1, tts: 1, notify: 1 }, DAYS_KEEP = 60, REVIEW_KEEP = 300;
   function isObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
   function canon(v) {
     if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';

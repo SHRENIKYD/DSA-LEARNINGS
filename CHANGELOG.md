@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.34] — 2026-11-02 · App reminders
+
+### Added
+- **App:** reminders in the Android app (app 1.11.23): streak at risk, reviews due, daily plan, daily quests, level close, weekly summary, and optional mock-round and come-back nudges. The website itself sends no notifications.
+
 ## [1.10.33] — 2026-11-01 · Copy icon on code blocks
 
 ### Changed

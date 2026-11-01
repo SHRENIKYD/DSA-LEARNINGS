@@ -1,7 +1,7 @@
 {
   "name": "interview-mastery",
-  "version": "1.10.33",
-  "appVersion": "1.11.22",
+  "version": "1.10.34",
+  "appVersion": "1.11.23",
   "private": true,
   "description": "Beginner-to-expert interview prep: 13 tracks with visualizers, practice and progress sync.",
   "repository": "github:SHRENIKYD/DSA-LEARNINGS",
@@ -25,7 +25,8 @@
     "@capacitor/app": "8.1.1",
     "@capacitor/browser": "8.0.4",
     "@capacitor/core": "8.5.2",
-    "@capacitor/ios": "8.5.2"
+    "@capacitor/ios": "8.5.2",
+    "@capacitor/local-notifications": "8.3.1"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
