@@ -2,7 +2,7 @@ name: Lesson videos
 
 on:
   schedule:
-    - cron: '30 18 * * *'   # 12:00 AM IST (18:30 UTC)
+    - cron: '30 22 * * *'   # 4:00 AM IST (22:30 UTC)
   workflow_dispatch:
     inputs:
       max:
@@ -12,8 +12,12 @@ on:
         description: Language for the extra pass (java, python, js, cpp, csharp). Leave empty to rotate by day of the year.
         default: ''
       retry:
-        description: Track id whose topics without a video are searched again now with shorter queries (e.g. csharp). Leave empty to skip.
+        description: Track id whose topics without a video are searched again now with shorter queries (e.g. csharp). Leave empty to rotate by day of the year; "none" skips it.
         default: ''
+      force:
+        description: Run even if another video update succeeded in the last 12 hours.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -25,7 +29,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # One update (and at most one app release) per night: a late scheduled run or a backup run is skipped when another
+  # video update already succeeded in the last 12 hours.
+  gate:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force && 'true' || 'false' }}
+        run: |
+          since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          n=$(gh api "repos/${{ github.repository }}/actions/workflows/videos.yml/runs?status=success&per_page=20" \
+            --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }} and .created_at >= \"$since\")] | length")
+          if [ "$FORCE" = "true" ] || [ "$n" = "0" ]; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; echo "A video update already succeeded since $since: skipping this run."; fi
   videos:
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,7 +66,10 @@ jobs:
           RETRY: ${{ inputs.retry || '' }}
         run: |
           node tools/find-videos.js --check
-          if [ -n "$RETRY" ]; then node tools/find-videos.js --retry "$RETRY" --max 40; fi
+          # Each night one language track's topics without a video are searched again with shorter queries.
+          tracks=(java py cpp js csharp)
+          if [ -z "$RETRY" ]; then RETRY="${tracks[$(( 10#$(date -u +%j) % 5 ))]}"; fi
+          if [ "$RETRY" != "none" ]; then echo "Retry pass: $RETRY"; node tools/find-videos.js --retry "$RETRY" --max 50; fi
           node tools/find-videos.js --max "$MAX" --per-key
       # One language per day (day of the year % 4), at most 40 searches: 50 + 40 searches stay under the 10,000-unit quota.
       - name: Search per-language videos for today's language
