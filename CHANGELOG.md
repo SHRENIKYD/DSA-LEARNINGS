@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.32] — 2026-11-01 · Review queue syncs right away
+
+### Fixed
+- **Account sync:** marking a section for review now saves it to your account straight away. Before, the review queue only reached the account the next time other progress changed.
+
 ## [1.10.31] — 2026-11-01 · 7 new Algorithms games
 
 ### Added
