@@ -207,7 +207,7 @@ var Learn = (function () {
 
   /* ---------- spaced review ---------- */
   function reviews() { var r = get('imastery.review', []); return Array.isArray(r) ? r : []; }
-  function saveReviews(r) { set('imastery.review', r.slice(0, 300)); }
+  function saveReviews(r) { set('imastery.review', r.slice(0, 300)); if (window.Auth && Auth.changed) Auth.changed('play'); }
   function remember(section, mod, title) {
     var r = reviews(), now = Date.now(), cur = r.filter(function (x) { return x.id === section; })[0];
     if (cur) { cur.step = 0; cur.due = now + DAY; cur.misses = (cur.misses || 0) + 1; }

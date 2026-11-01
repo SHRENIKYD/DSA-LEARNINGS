@@ -228,4 +228,13 @@ const notToday = (todayDow + 3) % 7;
   ok(qs.every((q) => q.mod && q.section === q.mod + '-quiz'), 'each question carries its module and section for review scheduling');
 }
 
+// ---- Review queue changes tell the account sync to push (play layer)
+{
+  const c = fresh();
+  const kinds = [];
+  c.Auth = { changed: (k) => kinds.push(k) };
+  c.Learn.remember('dsa05-s1', 'dsa05', 'Prefix sums');
+  ok(kinds.includes('play'), 'saving the review queue marks play data changed for sync');
+}
+
 console.log('\nplanner-test: ' + passed + ' assertions passed');
