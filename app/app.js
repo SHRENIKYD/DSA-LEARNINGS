@@ -52,10 +52,37 @@
       if (gained > 0) toast('+' + gained + ' XP' + (got ? ' · quest done!' : ''));
       if (S.level.level > before.level.level) celebrate({ kick: 'Level up', title: 'Level ' + S.level.level + ' · ' + S.level.name, sub: 'Keep the streak going.' });
       S.badges.forEach(function (b, i) { if (b.earned && !before.badges[i].earned) celebrate({ kick: 'Badge unlocked', title: b.name, sub: b.how, badge: b }); });
-      Object.keys(S.totals.modules).forEach(function (mid) { var a = S.totals.modules[mid], b = before.totals.modules[mid]; if (a.complete && b && !b.complete) { var x = pmById(mid); celebrate({ kick: 'Module complete', title: x ? x.pm.title : mid, sub: '+' + Play.XP.module + ' XP bonus' }); } });
+      Object.keys(S.totals.modules).forEach(function (mid) { var a = S.totals.modules[mid], b = before.totals.modules[mid]; if (a.complete && b && !b.complete) { var x = pmById(mid); celebrate({ kick: 'Module complete', title: x ? x.pm.title : mid, sub: '+' + Play.XP.module + ' XP bonus' }); if (window.Notify) Notify.now('mock', 'Mock round ready', 'You finished ' + (x ? x.pm.title : mid) + '. Try a 20-minute mock round?', planOn() ? '#plan' : '#play', play.settings.notify, 60); } });
     }
     play.lastLevel = S.level.level;
     save();
+    notifySync();
+  }
+
+
+  /* ---------- local reminders (app only) ---------- */
+  function notifySettings() { return Notify.settings(play.settings.notify); }
+  function activeDay(x) { return !!x && ((x.t || 0) + (x.q || 0) + (x.g || 0) + (x.x || 0)) > 0; }
+  function notifyInput() {
+    var days = play.days || {}, d = now(), week = { days: 0, games: 0, topics: 0 }, last = null, nx = null;
+    for (var i = 0; i < 7; i++) { var x = days[Play.dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - i))]; if (activeDay(x)) { week.days++; week.games += x.g || 0; week.topics += x.t || 0; } }
+    Object.keys(days).forEach(function (k) { if (activeDay(days[k]) && (!last || k > last)) last = k; });
+    try { if (planOn()) { var n = Planner.next(), td = Planner.today(); if (n) nx = { title: n.title, minutes: td && td.minutes }; } } catch (e) { }
+    if (!nx) { var nm = nextModule(play.track || 'dsa'); if (nm) nx = { title: nm.title }; }
+    var rv = []; try { rv = Learn.reviews().map(function (r) { return { due: r.due, title: r.title }; }); } catch (e) { }
+    return { settings: play.settings.notify, streak: S.streak, reviews: rv, next: nx, quests: { xp: S.quests.reduce(function (a, q) { return a + (q.xp || 0); }, 0) }, level: S.level, week: week,
+      lastActive: last ? new Date(+last.slice(0, 4), +last.slice(5, 7) - 1, +last.slice(8, 10)) : null };
+  }
+  var notifyT;
+  function notifySync(ask) {
+    if (!window.Notify || !Notify.available() || !S) return;
+    clearTimeout(notifyT);
+    notifyT = setTimeout(function () {
+      // Ask for permission once, after the learner has done something (never on the very first screen).
+      var first = !play.settings.notify;
+      if (first) { play.settings.notify = Notify.settings(null); save(); }
+      Notify.sync(notifyInput(), { ask: ask || (first && !!notifyInput().lastActive) });
+    }, 600);
   }
 
   var toastT;
@@ -511,6 +538,15 @@
     var set = [['sound', 'Sound effects'], ['haptics', 'Haptics'], ['bit', 'Show Bit, the mascot'], ['motion', 'Confetti and motion']];
     h += pathSwitcher();
     h += '<div class="list"><label class="set" for="set-theme">Light theme<input type="checkbox" class="tog" id="set-theme"' + (theme() === 'light' ? ' checked' : '') + '></label>' + set.map(function (s) { return '<label class="set" for="set-' + s[0] + '">' + s[1] + '<input type="checkbox" class="tog" id="set-' + s[0] + '" data-set="' + s[0] + '"' + (play.settings[s[0]] ? ' checked' : '') + '></label>'; }).join('') + '</div>';
+    if (window.Notify && Notify.available()) {
+      var ns = notifySettings(), HRS = [7, 9, 12, 18, 19, 20, 21];
+      var hl = function (x) { return (x % 12 || 12) + (x < 12 ? ' AM' : ' PM'); };
+      h += '<div class="list" id="remind"><div class="set"><b>Reminders</b><span class="muted">Quiet ' + hl(ns.quietFrom) + '–' + hl(ns.quietTo) + '</span></div>' +
+        [['core', 'Streak and reviews', 'Streak at risk, sections due for review'], ['helpful', 'Daily plan and progress', 'Study plan, daily quests, level close, weekly summary'], ['optin', 'Extra nudges', 'Mock round after a module, come-back reminders']].map(function (g) {
+          return '<label class="set" for="nt-' + g[0] + '"><span>' + g[1] + '<br><span class="muted sm">' + g[2] + '</span></span><input type="checkbox" class="tog" id="nt-' + g[0] + '" data-nt="' + g[0] + '"' + (ns[g[0]] ? ' checked' : '') + '></label>';
+        }).join('') +
+        '<label class="set" for="nt-hour">Daily plan time<select id="nt-hour">' + HRS.map(function (x) { return '<option value="' + x + '"' + (x === ns.hour ? ' selected' : '') + '>' + hl(x) + '</option>'; }).join('') + '</select></label><p class="sm muted" id="ntStatus" role="status" aria-live="polite"></p></div>';
+    }
     if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
     h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a><button class="set" type="button" id="dlData">Download my data<span class="muted">JSON</span></button><div id="dlOut" class="sm muted" role="status" aria-live="polite"></div>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
     h += '<div class="list"><button class="set" type="button" id="checkUpdates">Check for updates<span class="muted">↗</span></button><p class="sm muted" id="updateStatus" role="status" aria-live="polite"></p></div>';
@@ -522,6 +558,15 @@
     if (sub === 'path') { var sw = $('#pathSwitch'); if (sw) { if (sw.scrollIntoView) sw.scrollIntoView({ block: 'start' }); sw.focus(); } }
     Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'motion') document.documentElement.classList.toggle('calm', !c.checked); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
     $('#set-theme').addEventListener('change', function () { setTheme(this.checked ? 'light' : 'dark'); Sound.play('tap'); });
+    var ntSave = function () {
+      var ns = notifySettings();
+      Array.prototype.forEach.call(document.querySelectorAll('[data-nt]'), function (c) { ns[c.dataset.nt] = c.checked; });
+      var hs = $('#nt-hour'); if (hs) ns.hour = +hs.value;
+      play.settings.notify = ns; save();
+      Notify.sync(notifyInput(), { ask: true }).then(function (ok) { var st = $('#ntStatus'); if (st) st.textContent = ok ? 'Reminders updated.' : 'Notifications are off for this app. Turn them on in your phone settings.'; });
+    };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nt]'), function (c) { c.addEventListener('change', ntSave); });
+    var nh = $('#nt-hour'); if (nh) nh.addEventListener('change', ntSave);
     $('#dlData').addEventListener('click', function () {
       var out = $('#dlOut'); out.textContent = 'Preparing your data…';
       Auth.downloadData(function (text, name) {
@@ -718,6 +763,7 @@
   route();
   setTheme(theme());
   if (window.AppUpdates) AppUpdates.init();
+  if (window.Notify) Notify.onTap(function (r) { location.hash = r; });
   window.addEventListener('pageshow', function () { setTheme(theme()); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { setTheme(theme()); refresh(); var p = (location.hash || '#home').slice(1).split('/')[0]; if (p !== 'game') route(); } });
   if (Auth.enabled) {

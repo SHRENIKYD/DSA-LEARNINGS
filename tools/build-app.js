@@ -13,7 +13,7 @@ fs.rmSync(out, { recursive: true, force: true });
 const r = spawnSync(process.execPath, [path.join(__dirname, 'build.js'), out], { stdio: 'inherit', env: process.env });
 if (r.status !== 0) process.exit(r.status || 1);
 
-const FILES = ['experience.js', 'experience.css', 'icon.png', 'update.js', 'play.js', 'games.js', 'sound.js', 'speech.js', 'reader.js', 'app.js', 'bridge.js', 'app.css', 'bridge.css', 'reader.css'];
+const FILES = ['experience.js', 'experience.css', 'icon.png', 'update.js', 'notify.js', 'play.js', 'games.js', 'sound.js', 'speech.js', 'reader.js', 'app.js', 'bridge.js', 'app.css', 'bridge.css', 'reader.css'];
 const hash = crypto.createHash('sha1');
 for (const f of FILES) hash.update(fs.readFileSync(path.join(root, 'app', f)));
 const PACKS = fs.existsSync(path.join(root, 'app', 'games')) ? fs.readdirSync(path.join(root, 'app', 'games')).filter((f) => f.endsWith('.js')).sort() : [];
