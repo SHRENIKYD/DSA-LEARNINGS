@@ -207,6 +207,10 @@ try { hash.update(rd('data/videos.json')); } catch (e) { }
 hash.update(rd('src/video.js'));
 const V = hash.digest('hex').slice(0, 10);
 for (const f of ASSETS) fs.writeFileSync(path.join(out, 'assets', f), f.endsWith('.css') ? minCss(rd('src/' + f)) : minJs(rd('src/' + f), 'src/' + f));
+// Read aloud on the website's lesson pages: the app's speech and player, plus a Listen button (src/listen.js).
+for (const f of ['speech.js', 'reader.js']) fs.writeFileSync(path.join(out, 'assets', f), minJs(rd('app/' + f), 'app/' + f));
+fs.writeFileSync(path.join(out, 'assets', 'listen.js'), minJs(rd('src/listen.js'), 'src/listen.js'));
+fs.writeFileSync(path.join(out, 'assets', 'reader.css'), minCss(rd('app/reader.css')));
 fs.writeFileSync(path.join(out, 'assets', 'config.js'), configJs);
 fs.writeFileSync(path.join(out, 'assets', 'progress-map.js'), 'window.IM_MODS=' + JSON.stringify(MODS) + ';');
 // The planner's mock rounds load a track's quiz file on demand (Planner.mock), so the file names travel with the path metadata.
