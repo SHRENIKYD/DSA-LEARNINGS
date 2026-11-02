@@ -95,11 +95,7 @@
   })();
   var tmr; $('#vsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { q = v.trim(); render(); }, 120); });
   $('#vlist').addEventListener('click', function (e) {
-    var b = e.target.closest('.vid-play'); if (!b) return;
-    var id = b.getAttribute('data-vid'); if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
-    var fr = document.createElement('div'); fr.className = 'vid-frame';
-    fr.innerHTML = '<iframe src="' + LessonVideo.embedUrl(LessonVideo.fromButton(b)) + '" title="' + esc(b.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
-    b.replaceWith(fr);
+    var b = e.target.closest('.vid-play'); if (b) LessonVideo.play(b);
   });
   Journey.bar({ theme: true });
   var want = decodeURIComponent(location.hash.slice(1));

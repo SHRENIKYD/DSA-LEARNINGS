@@ -983,11 +983,7 @@ var App = (function () {
         } else { $('textarea', pane).remove(); pr.hidden = false; t.textContent = 'Edit'; }
       } else if (t.classList.contains('ctab')) showTab(t);
       else if (t.closest('.vid-play')) {
-        var vb = t.closest('.vid-play'), vidId = vb.getAttribute('data-vid');
-        if (!/^[A-Za-z0-9_-]{11}$/.test(vidId)) return;
-        var fr = document.createElement('div'); fr.className = 'vid-frame';
-        fr.innerHTML = '<iframe src="' + LessonVideo.embedUrl(LessonVideo.fromButton(vb)) + '" title="' + esc(vb.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
-        vb.replaceWith(fr);
+        LessonVideo.play(t.closest('.vid-play'));
       } else if (t.closest('[data-langshow]')) {
         revealLang(t.closest('[data-langshow]').getAttribute('data-langshow'), true);
       } else if (t.closest('[data-testout]')) {

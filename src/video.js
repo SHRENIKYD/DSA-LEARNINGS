@@ -77,5 +77,16 @@
     var s = time(v.start), e = time(v.end);
     return s || e ? 'Chapter ' + stamp(s) + (e > s ? '–' + stamp(e) : '') + ' · ' : (time(v.secs) ? Math.max(1, Math.round(v.secs / 60)) + ' min · ' : '');
   }
-  return { publicEntry: publicEntry, cleanTitle: cleanTitle, attrs: attrs, fromButton: fromButton, embedUrl: embedUrl, watchUrl: watchUrl, label: label, pick: pick, resolveAll: resolveAll, learnerLang: learnerLang, langName: function (l) { return LANG_NAMES[l] || ''; }, LANGS: LANGS };
+  // Swaps a video button for the embedded player with a close icon (top centre, shown on hover/focus); closing puts the button back.
+  function play(b) {
+    if (!b || !/^[A-Za-z0-9_-]{11}$/.test(b.getAttribute('data-vid') || '')) return null;
+    var title = (b.querySelector('b') || b).textContent.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+    var fr = document.createElement('div'); fr.className = 'vid-frame';
+    fr.innerHTML = '<iframe src="' + embedUrl(fromButton(b)) + '" title="' + title + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>' +
+      '<button type="button" class="vid-close" aria-label="Close video" title="Close video"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
+    fr.querySelector('.vid-close').addEventListener('click', function (e) { e.stopPropagation(); fr.replaceWith(b); b.focus(); });
+    b.replaceWith(fr);
+    return fr;
+  }
+  return { play: play, publicEntry: publicEntry, cleanTitle: cleanTitle, attrs: attrs, fromButton: fromButton, embedUrl: embedUrl, watchUrl: watchUrl, label: label, pick: pick, resolveAll: resolveAll, learnerLang: learnerLang, langName: function (l) { return LANG_NAMES[l] || ''; }, LANGS: LANGS };
 });
