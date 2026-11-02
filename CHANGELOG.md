@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.36] — 2026-11-02 · Privacy policy: reminders
+
+### Changed
+- **Privacy policy:** explains app reminders. They are scheduled on your phone from progress already stored there, nothing about them is sent anywhere, the settings stay on the device, and you can turn them off under Me → Reminders or in your phone's settings.
+
 ## [1.10.35] — 2026-11-02 · Accessibility fixes
 
 ### Fixed
