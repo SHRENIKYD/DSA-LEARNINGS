@@ -557,7 +557,7 @@ var App = (function () {
     var hasHow = asList(t.viz).length || asList(t.code).length, probs = topicProblems(t);
     var layers = [[t.analogy, 'an', 'Legend'], [t.explain, 'idea', 'Explain'], [vid, 'vid', 'Video'], [t.clues && t.clues.length, 'clues', 'Clues'], [hasHow, 'viz', 'Visualize'],
       [t.examples && t.examples.length, 'ex', 'Examples'], [t.deepDive, 'deep', 'Deep dive'], [t.aiEra, 'ai', 'AI era'], [probs.length, 'q0', 'Treasure']];
-    var h = '<section class="card topic" id="' + id + '"><div class="topic-head"><h2><span class="tnum">' + m.num + '.' + (i + 1) + '</span>' + t.title + '</h2>' + doneBox(id, 'Understood') + '</div>' +
+    var h = '<section class="card topic" id="' + id + '"><div class="topic-head"><h2><span class="tnum">' + m.num + '.' + (i + 1) + '</span>' + t.title + '</h2>' + doneBox(id, 'Understood') + '<button type="button" class="topic-tog" aria-expanded="true" aria-label="Collapse this section"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + '</div>' +
       '<nav class="lnav" aria-label="Lesson layers">' + layers.filter(function (L) { return L[0]; }).map(function (L) { return '<a href="#' + id + '-' + L[1] + '">' + L[2] + '</a>'; }).join('') + '</nav>';
     if (t.analogy) h += '<div class="box analogy" id="' + id + '-an"><span class="tag">The legend of this place · real-world analogy</span>' + t.analogy + '</div>';
     if (t.explain) h += '<div class="layer" id="' + id + '-idea"><div class="layer-tag lv-B">The idea in plain English</div><div class="explain">' + t.explain + '</div></div>';
@@ -587,13 +587,13 @@ var App = (function () {
   function quizHtml(m) {
     var q = m.quiz || [], qh = hintsOf(m).quiz || [];
     if (!q.length) return '';
-    return '<section class="card gate" id="' + m.id + '-quiz"><div class="topic-head"><h2>' + JI('gate') + 'Riddle gate — ' + q.length + ' riddles</h2>' + doneBox(m.id + '-quiz', 'Completed') + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why. Answer every riddle right and the gate opens by itself.</div>' +
+    return '<section class="card gate" id="' + m.id + '-quiz"><div class="topic-head"><h2>' + JI('gate') + 'Riddle gate — ' + q.length + ' riddles</h2>' + doneBox(m.id + '-quiz', 'Completed') + '<button type="button" class="topic-tog" aria-expanded="true" aria-label="Collapse this section"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why. Answer every riddle right and the gate opens by itself.</div>' +
       q.map(function (x, i) { return mcqHtml({ q: '<b>Q' + (i + 1) + '.</b> ' + x.q, options: x.options, answer: x.answer, explain: x.explain, hint: qh[i] }, 'quizq'); }).join('') + '</section>';
   }
   function interviewHtml(m) {
     var iv = m.interview || [], ih = hintsOf(m).interview || [];
     if (!iv.length) return '';
-    return '<section class="card tavern" id="' + m.id + '-iv"><div class="topic-head"><h2>' + JI('lantern') + 'Interview tavern — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
+    return '<section class="card tavern" id="' + m.id + '-iv"><div class="topic-head"><h2>' + JI('lantern') + 'Interview tavern — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '<button type="button" class="topic-tog" aria-expanded="true" aria-label="Collapse this section"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
       iv.map(function (x, i) {
         return '<details class="iv"><summary><span class="ivn">Q' + (i + 1) + '</span> ' + x.q + (x.level ? ' ' + lvlBadge(x.level) : '') + '</summary><div class="dbody">' +
           (ih[i] ? '<p class="ivhint">💡 <b>Hint:</b> ' + esc(ih[i]) + '</p><details class="ivans"><summary>Show the model answer</summary>' : '') + x.a +
@@ -914,16 +914,27 @@ var App = (function () {
       $$('.viz', main).forEach(function (el) { try { mountViz(el); } catch (e) { $('.narr-text', el).textContent = 'Visualizer error: ' + e.message; } });
       watchEnds(main);
       updateProgress();
+      var first = $$('section.topic', main).filter(function (s) { return !s.hidden; })[0] || $(FOLD, main);
+      if (first) openOnly(first);
       if (hs === mid) window.scrollTo(0, 0);
     }
     if (hs !== mid) {
       var hid = document.getElementById(hs), sec = hid && hid.closest && hid.closest('section.topic[hidden]');
       if (sec) revealLang(mid, false);
-      var el = document.getElementById(hs);
+      var el = document.getElementById(hs), own = el && el.closest && el.closest(FOLD);
+      if (own && own.classList.contains('fold')) openOnly(own);
       if (el) { el.scrollIntoView({ block: 'start' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
     }
     closeMenu();
   }
+  /* ---------- lessons as an accordion: one section open at a time ---------- */
+  var FOLD = 'section.topic, section.gate, section.tavern';
+  function setFold(sec, fold) {
+    sec.classList.toggle('fold', fold);
+    var b = $('.topic-tog', sec);
+    if (b) { b.setAttribute('aria-expanded', fold ? 'false' : 'true'); b.setAttribute('aria-label', fold ? 'Expand this section' : 'Collapse this section'); }
+  }
+  function openOnly(sec) { $$(FOLD, $('#main')).forEach(function (s) { setFold(s, s !== sec); }); }
   function closeMenu() {
     if (!$('#sidebar')) return;
     $('#sidebar').classList.remove('open');
@@ -1005,6 +1016,10 @@ var App = (function () {
           pr.hidden = true; pr.parentNode.insertBefore(ta2, pr.nextSibling); t.textContent = 'Reset';
         } else { $('textarea', pane).remove(); pr.hidden = false; t.textContent = 'Edit'; }
       } else if (t.classList.contains('ctab')) showTab(t);
+      else if (t.closest('.topic-tog')) {
+        var fs = t.closest(FOLD);
+        if (fs.classList.contains('fold')) { openOnly(fs); fs.scrollIntoView({ block: 'start' }); } else setFold(fs, true);
+      }
       else if (t.closest('.vid-play')) {
         LessonVideo.play(t.closest('.vid-play'));
       } else if (t.closest('[data-langshow]')) {
