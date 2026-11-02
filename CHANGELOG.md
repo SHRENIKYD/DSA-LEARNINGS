@@ -4,6 +4,12 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.37] — 2026-11-02 · Read aloud on the website, close button on videos
+
+### Added
+- **Read aloud on the website:** lesson pages have a speaker button at the bottom right. It reads the topic you are looking at with your browser's built-in voice, highlights each paragraph, and can continue to the next topic. Speed, voice and "continue" are remembered in this browser. The app keeps its own read-aloud button.
+- **Lesson videos:** a close (✕) icon appears at the top centre of a playing video when you hover over it (always shown on touch screens). It stops the video and brings back the video card. Works on lesson pages and the Videos page.
+
 ## [1.10.36] — 2026-11-02 · Privacy policy: reminders
 
 ### Changed
