@@ -1042,3 +1042,11 @@ h1[tabindex="-1"]:focus,h2[tabindex="-1"]:focus{outline:none}
 
 .pp-signin{margin-top:10px;align-self:center;background:var(--paper-ink);color:var(--paper);border-color:var(--paper-ink)}
 .pp-signin svg.ic{width:18px;height:18px}
+
+/* Website read aloud (src/listen.js): floating speaker icon button; the player sits at the bottom edge (no app tab bar). */
+.web-listen{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:58;display:flex;align-items:center;justify-content:center;width:52px;height:52px;padding:0;border-radius:50%;border:1px solid var(--gold);background:var(--gold);color:var(--on-gold);font:700 15px/1 var(--f-body);cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.web-listen svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.web-listen:focus-visible{outline:2px solid var(--text);outline-offset:3px}
+.im-web .im-tts{bottom:0;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+body.im-web.im-tts-open{padding-bottom:calc(272px + env(safe-area-inset-bottom,0px))}
+@media print{.web-listen{display:none}}

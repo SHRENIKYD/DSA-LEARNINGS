@@ -80,11 +80,18 @@
   // Swaps a video button for the embedded player with a close icon (top centre, shown on hover/focus); closing puts the button back.
   function play(b) {
     if (!b || !/^[A-Za-z0-9_-]{11}$/.test(b.getAttribute('data-vid') || '')) return null;
-    var title = (b.querySelector('b') || b).textContent.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
     var fr = document.createElement('div'); fr.className = 'vid-frame';
-    fr.innerHTML = '<iframe src="' + embedUrl(fromButton(b)) + '" title="' + title + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>' +
-      '<button type="button" class="vid-close" aria-label="Close video" title="Close video"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
-    fr.querySelector('.vid-close').addEventListener('click', function (e) { e.stopPropagation(); fr.replaceWith(b); b.focus(); });
+    var ifr = document.createElement('iframe');
+    ifr.src = embedUrl(fromButton(b));
+    ifr.title = (b.querySelector('b') || b).textContent;
+    ifr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+    ifr.setAttribute('allowfullscreen', '');
+    ifr.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    var x = document.createElement('button');
+    x.type = 'button'; x.className = 'vid-close'; x.title = 'Close video'; x.setAttribute('aria-label', 'Close video');
+    x.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    x.addEventListener('click', function (e) { e.stopPropagation(); fr.replaceWith(b); b.focus(); });
+    fr.appendChild(ifr); fr.appendChild(x);
     b.replaceWith(fr);
     return fr;
   }

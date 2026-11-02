@@ -42,6 +42,8 @@ for (const t of TRACKS) {
   const f = path.join(out, t.id + '.html');
   if (!fs.existsSync(f)) continue;
   let html = fs.readFileSync(f, 'utf8');
+  // The app has its own read-aloud button (app/bridge.js), so the website's Listen button and its copies are left out.
+  html = html.replace(/<!--web-tts-->[\s\S]*?<!--\/web-tts-->\n?/, '').replace(/<!--web-tts-css-->[\s\S]*?<!--\/web-tts-css-->\n?/, '');
   html = html.replace('</head>', '<link rel="stylesheet" href="app/bridge.css?v=' + V + '">\n<link rel="stylesheet" href="app/reader.css?v=' + V + '">\n</head>')
     .replace('</body>', ['assets/search-index.js', 'app/play.js', 'app/sound.js', 'app/speech.js', 'app/reader.js', 'app/bridge.js'].map((f) => '<script src="' + f + '?v=' + V + '"></script>').join('\n') + '\n</body>');
   fs.writeFileSync(f, html);
