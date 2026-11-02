@@ -748,6 +748,23 @@ var App = (function () {
     if (TP && nMore) h += '</details>';
     return h;
   }
+  var navOpen = {};
+  // A place's lesson list in the sidebar; built only while the place is open, so closed places hold no links.
+  function navSub(m) {
+    var h = '';
+    // A lesson ticks only when its own problems are solved too; otherwise the row says how many are left.
+    m.topics.forEach(function (t, i) {
+      var tid = m.id + '-t' + i, np = topicProblems(t).length, left = 0;
+      for (var j = 0; j < np; j++) if (!DONE[tid + '-q' + j]) left++;
+      h += '<a href="#' + tid + '" class="' + (DONE[tid] && !left ? 'ok' : '') + '"><span class="nav-t">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</span>' + (DONE[tid] && left ? '<span class="nav-left" title="' + left + ' problem' + (left === 1 ? '' : 's') + ' in this lesson not solved yet">' + left + ' left</span>' : '') + '</a>';
+    });
+    if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz" class="' + (DONE[m.id + '-quiz'] ? 'ok' : '') + '">Riddle gate (' + m.quiz.length + ')</a>';
+    if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv" class="' + (DONE[m.id + '-iv'] ? 'ok' : '') + '">Interview tavern (' + m.interview.length + ')</a>';
+    var pn = (m.practice || []).length, pd = 0;
+    for (var k = 0; k < pn; k++) if (DONE[m.id + '-p' + k]) pd++;
+    h += '<a href="#' + m.id + '-arena" class="' + (pn && pd === pn ? 'ok' : '') + '">Practice arena (' + pd + '/' + pn + ')</a>';
+    return h;
+  }
   function navHtml() {
     var cur = curPlace(), TP = trackPath(), onp = {}, h = '';
     if (TP && TP.length) TP.forEach(function (id) { onp[id] = 1; });
@@ -765,14 +782,10 @@ var App = (function () {
         if (!m) { h += '<div class="nav-mod soon" title="coming soon"><span class="num">' + pm.num + '</span><span>' + esc(pm.title) + '</span><span class="cnt">soon</span></div>'; return; }
         var ids = items(m), d = doneOf(ids), act = current === m, full = ids.length && d === ids.length;
         var ms2 = window.Learn ? Learn.status(m.id, DONE) : {};
-        h += '<a class="nav-mod' + (act ? ' active' : '') + (full ? ' full' : cur === m ? ' nhere' : '') + (ms2.mastered ? ' mastered' : '') + '" href="#' + m.id + '"' + (ms2.mastered ? ' title="Mastered"' : '') + '><span class="num">' + (ms2.mastered ? '★' : full ? '✓' : m.num) + '</span><span>' + m.title + tag + '</span><span class="cnt">' + (ids.length ? Math.round(d / ids.length * 100) : 0) + '%</span></a>';
-        if (act) {
-          h += '<div class="nav-sub">';
-          m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
-          if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz" class="' + (DONE[m.id + '-quiz'] ? 'ok' : '') + '">Riddle gate (' + m.quiz.length + ')</a>';
-          if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv" class="' + (DONE[m.id + '-iv'] ? 'ok' : '') + '">Interview tavern (' + m.interview.length + ')</a>';
-          h += '<a href="#' + m.id + '-arena">Practice arena (' + (m.practice || []).length + ')</a></div>';
-        }
+        var open = navOpen[m.id] !== undefined ? navOpen[m.id] : act;
+        h += '<div class="nav-row"><a class="nav-mod' + (act ? ' active' : '') + (full ? ' full' : cur === m ? ' nhere' : '') + (ms2.mastered ? ' mastered' : '') + '" href="#' + m.id + '"' + (ms2.mastered ? ' title="Mastered"' : '') + '><span class="num">' + (ms2.mastered ? '★' : full ? '✓' : m.num) + '</span><span>' + m.title + tag + '</span><span class="cnt">' + (ids.length ? Math.round(d / ids.length * 100) : 0) + '%</span></a>' +
+          '<button type="button" class="nav-tog" data-navtog="' + m.id + '" aria-expanded="' + open + '" aria-controls="ns-' + m.id + '" aria-label="' + (open ? 'Hide' : 'Show') + ' lessons in ' + esc(stripTags(m.title)) + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div>';
+        h += '<div class="nav-sub" id="ns-' + m.id + '"' + (open ? '>' + navSub(m) : ' hidden>') + '</div>';
     }
     h += '<a class="nav-back" href="index.html">' + ICONS.back + 'World map</a><a class="nav-mod' + (!current ? ' active' : '') + '" href="#"><span class="num">' + esc(TRACK.icon) + '</span><span>Land overview</span></a>';
     if (!TP) { zones(false); return h; }
@@ -797,6 +810,16 @@ var App = (function () {
     var nav = $('#nav'), st = nav.scrollTop;
     nav.innerHTML = navHtml();
     nav.scrollTop = st;
+    if (!nav._tog) {
+      nav._tog = true;
+      nav.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('[data-navtog]');
+        if (!b) return;
+        var id = b.getAttribute('data-navtog'), sub = document.getElementById('ns-' + id), open = sub.hidden;
+        sub.innerHTML = open ? navSub(loaded(id)) : ''; sub.hidden = !open; navOpen[id] = open;
+        b.setAttribute('aria-expanded', open); b.setAttribute('aria-label', b.getAttribute('aria-label').replace(/^(Hide|Show)/, open ? 'Hide' : 'Show'));
+      });
+    }
   }
 
   /* ---------- search ---------- */

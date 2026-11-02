@@ -69,6 +69,17 @@ svg.ic.fill{fill:currentColor;stroke:none}
 .nav-mod .cnt{margin-left:auto;font-family:var(--f-mono);font-size:11px;color:var(--muted)}
 .nav-mod.full .cnt{color:var(--g);font-weight:600}
 .nav-sub{margin:2px 0 8px 42px;border-left:1px solid var(--border2);padding-left:8px}
+.nav-row{display:flex;align-items:center;gap:2px}
+.nav-row .nav-mod{flex:1;min-width:0}
+.nav-tog{flex:none;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}
+.nav-tog:hover{background:var(--raised);color:var(--text)}
+.nav-tog svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+.nav-tog[aria-expanded="true"] svg{transform:rotate(90deg)}
+.nav-tog:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.nav-sub a:has(.nav-t){display:flex;align-items:center;gap:6px}
+.nav-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nav-left{flex:none;font-size:11px;font-weight:700;color:var(--on-gold);background:var(--gold);border-radius:999px;padding:1px 7px}
+@media (prefers-reduced-motion:reduce){.nav-tog svg{transition:none}}
 .nav-sub a{display:block;font-size:13px;color:var(--muted);text-decoration:none;padding:3px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-sub a:hover{color:var(--text);background:var(--raised)}
 .nav-sub a.ok::before{content:"✓ ";color:var(--g)}

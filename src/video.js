@@ -79,10 +79,12 @@
   }
   // Swaps a video button for the embedded player with a close icon (top centre, shown on hover/focus); closing puts the button back.
   function play(b) {
-    if (!b || !/^[A-Za-z0-9_-]{11}$/.test(b.getAttribute('data-vid') || '')) return null;
+    var m = b && /^[A-Za-z0-9_-]{11}$/.exec(b.getAttribute('data-vid') || '');
+    if (!m) return null;
+    var st = Math.max(0, parseInt(b.getAttribute('data-start'), 10) || 0), en = Math.max(0, parseInt(b.getAttribute('data-end'), 10) || 0);
     var fr = document.createElement('div'); fr.className = 'vid-frame';
     var ifr = document.createElement('iframe');
-    ifr.src = embedUrl(fromButton(b));
+    ifr.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(m[0]) + '?autoplay=1&rel=0&playsinline=1' + (st ? '&start=' + st : '') + (en > st ? '&end=' + en : '');
     ifr.title = (b.querySelector('b') || b).textContent;
     ifr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
     ifr.setAttribute('allowfullscreen', '');

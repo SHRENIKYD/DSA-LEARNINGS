@@ -4,11 +4,16 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
-## [1.10.37] — 2026-11-02 · Read aloud on the website, close button on videos
+## [1.10.37] — 2026-11-02 · Read aloud on the website, close button on videos, collapsible sidebar
 
 ### Added
+- **Lesson sidebar:** every place can be opened or closed with the arrow next to it, to show or hide its lessons.
 - **Read aloud on the website:** lesson pages have a speaker button at the bottom right. It reads the topic you are looking at with your browser's built-in voice, highlights each paragraph, and can continue to the next topic. Speed, voice and "continue" are remembered in this browser. The app keeps its own read-aloud button.
 - **Lesson videos:** a close (✕) icon appears at the top centre of a playing video when you hover over it (always shown on touch screens). It stops the video and brings back the video card. Works on lesson pages and the Videos page.
+
+### Fixed
+- **Progress you can't see:** a module's percentage also counts the problems inside its lessons, which the sidebar didn't show. A lesson now gets its tick only when its problems are solved too; otherwise it shows a "1 left" label. The practice arena row shows how many problems are solved (for example 15/15).
+
 
 ## [1.10.36] — 2026-11-02 · Privacy policy: reminders
 
