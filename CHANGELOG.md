@@ -4,6 +4,14 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.35] — 2026-11-02 · Accessibility fixes
+
+### Fixed
+- **Screen readers:** buttons and links now announce the words you can see. This covers lesson video buttons, the track progress links on Home, the "My path" button, and the visualizer's Prev button. Extra context such as "Play video" or "Change path" is still read out after the visible text.
+
+### Changed
+- **Updates:** Capacitor 8.6 (app runtime), axe-core 4.14 (accessibility checks) and small package updates.
+
 ## [1.10.34] — 2026-11-02 · App reminders
 
 ### Added
