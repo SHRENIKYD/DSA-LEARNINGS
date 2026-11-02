@@ -445,7 +445,7 @@ var App = (function () {
         : '<input type="text" aria-label="' + esc(v.inputLabel || 'Input') + '" value="' + esc(v.input) + '">') + '<button class="btn" data-act="load" type="button">Load</button></div>' : '') +
       '<div class="viz-stage"></div><div class="viz-tl" role="group" aria-label="Step timeline"></div>' +
       '<div class="narr" aria-live="polite"><span class="tag">Narrator</span><div class="narr-prev"></div><div class="narr-text"></div></div>' +
-      '<div class="viz-ctrl"><button class="btn" data-act="prev" type="button" aria-label="Previous step">' + ICONS.prev + 'Prev</button><button class="btn primary" data-act="play" type="button">' + ICONS.play + 'Play</button>' +
+      '<div class="viz-ctrl"><button class="btn" data-act="prev" type="button">' + ICONS.prev + 'Prev<span class="sr-only"> step</span></button><button class="btn primary" data-act="play" type="button">' + ICONS.play + 'Play</button>' +
       '<button class="btn" data-act="next" type="button" aria-label="Next step">Next' + ICONS.next + '</button><button class="btn ghost" data-act="reset" type="button">' + ICONS.reset + 'Reset</button>' +
       '<select data-act="speed" aria-label="Playback speed"><option value="1800">Slow</option><option value="1100" selected>Normal</option><option value="550">Fast</option></select></div>' +
       '<div class="legend"><span class="lg-cur">current / checking</span><span class="lg-ok">new / inserted / match</span><span class="lg-bad">duplicate / removed / conflict</span><span class="lg-win">window / range</span><span class="lg-sel">special / answer</span><span class="lg-done">finished</span></div></div>';
@@ -548,7 +548,7 @@ var App = (function () {
   function videoHtml(id, v) {
     var mins = LessonVideo.label(v);
     return '<div class="box vid" id="' + id + '-vid"><span class="tag">From the watchtower · watch it explained</span>' +
-      '<button type="button" class="vid-play" ' + LessonVideo.attrs(v) + ' aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><span class="vid-meta"><b>' + esc(v.title) + '</b><small>' + esc(v.channel) + ' · ' + mins + 'YouTube</small></span></button>' +
+      '<button type="button" class="vid-play" ' + LessonVideo.attrs(v) + '><span class="sr-only">Play video: </span><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><span class="vid-meta"><b>' + esc(v.title) + '</b><small>' + esc(v.channel) + ' · ' + mins + 'YouTube</small></span></button>' +
       '<p class="vid-note">' + (v.note ? esc(v.note) + ' ' : '') + 'Plays from YouTube when you tap it. ' + (v.curated ? 'Selected for this lesson.' : 'Suggested automatically; check the coverage against the lesson.') + '</p>' +
       '<a class="vid-open" href="' + esc(LessonVideo.watchUrl(v)) + '" target="_blank" rel="noopener noreferrer">Open on YouTube</a></div>';
   }
@@ -1264,8 +1264,8 @@ var App = (function () {
         (hide ? '' : '<button type="button" class="btn ghost pb-x" data-pbx aria-label="Dismiss the pick a path banner">×</button>') + '</div>';
     }
     var m = Learn.mode();
-    return '<div class="pb-in"><button type="button" class="btn pb-chip" data-onb aria-haspopup="dialog" aria-label="My path: ' + esc(R.name + ', ' + Learn.LANG_NAMES[p.lang] + ', ' + p.hours + ' hours a week') + '. Change path">' + flag +
-      '<span class="pb-k">My path:</span> <b>' + esc(R.name) + '</b><span class="pb-d"> · ' + esc(Learn.LANG_NAMES[p.lang]) + ' · ' + p.hours + ' h/wk</span></button>' +
+    return '<div class="pb-in"><button type="button" class="btn pb-chip" data-onb aria-haspopup="dialog">' + flag +
+      '<span class="pb-k">My path:</span> <b>' + esc(R.name) + '</b><span class="pb-d"> · ' + esc(Learn.LANG_NAMES[p.lang]) + ' · ' + p.hours + ' h/wk</span><span class="sr-only">. Change path</span></button>' +
       '<div class="pb-mode" role="group" aria-label="What to show"><button type="button" data-mode="path" aria-pressed="' + (m === 'path') + '">My path</button><button type="button" data-mode="all" aria-pressed="' + (m === 'all') + '">Explore all</button></div></div>';
   }
   function drawPathbar() {
@@ -1464,7 +1464,7 @@ var App = (function () {
       '<div class="jrow"><h3 class="ph-sub">On your path · ' + plural(PT.length, 'track') + '</h3><span class="muted">' + (TRACKS.length - PT.length) + ' other lands</span></div><div class="pathtracks">' + PT.map(function (t) {
         var tr = trackBy[t.track], pc = t.required ? Math.round(t.done / t.required * 100) : 0, cur = n && n.track === t.track;
         var nx = t.mods.filter(function (id) { return !Learn.status(id, D).satisfied; })[0];
-        return '<a class="ptrack' + (cur ? ' cur' : '') + '" data-track="' + t.track + '" href="' + (nx ? Learn.href(nx) : t.track + '.html') + '" aria-label="' + esc((tr ? tr.title : t.track) + ': ' + t.done + ' of ' + t.required + ' done' + (nx ? ', continue with ' + (Learn.meta(nx) || {}).title : ', complete')) + '"><b>' + esc(tr ? tr.title : t.track) + '</b><span class="jbar-p c-violet"><i style="width:' + pc + '%"></i></span><span class="mono">' + t.done + '/' + t.required + '</span>' +
+        return '<a class="ptrack' + (cur ? ' cur' : '') + '" data-track="' + t.track + '" href="' + (nx ? Learn.href(nx) : t.track + '.html') + '"><b>' + esc(tr ? tr.title : t.track) + '</b><span class="jbar-p c-violet"><i style="width:' + pc + '%"></i></span><span class="mono">' + t.done + '/' + t.required + '<span class="sr-only"> done</span></span>' +
           '<small class="muted">' + (cur ? 'you are here' : nx ? 'next: ' + esc((Learn.meta(nx) || {}).title) : 'complete on your path') + '</small></a>';
       }).join('') + '</div>' +
       '<div class="quick"><a href="today.html"><span class="n">' + todo + '</span>Today’s items</a><a href="plan.html"><span class="n">' + W.hoursLeft + 'h</span>Left on path</a><button type="button" data-jump aria-keyshortcuts="/"><span class="n">/</span>Jump to…</button></div>' +

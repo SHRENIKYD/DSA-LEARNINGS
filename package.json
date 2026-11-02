@@ -1,6 +1,6 @@
 {
   "name": "interview-mastery",
-  "version": "1.10.34",
+  "version": "1.10.35",
   "appVersion": "1.11.25",
   "private": true,
   "description": "Beginner-to-expert interview prep: 13 tracks with visualizers, practice and progress sync.",
@@ -21,20 +21,20 @@
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "8.0.2",
-    "@capacitor/android": "8.5.2",
-    "@capacitor/app": "8.1.1",
-    "@capacitor/browser": "8.0.4",
-    "@capacitor/core": "8.5.2",
-    "@capacitor/ios": "8.5.2",
+    "@capacitor/android": "8.6.0",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/browser": "8.0.5",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/ios": "8.6.0",
     "@capacitor/local-notifications": "8.3.1"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.2",
+    "@capacitor/cli": "8.6.0",
     "@fontsource/atkinson-hyperlegible": "5.3.0",
     "@fontsource/bricolage-grotesque": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
-    "@fontsource/source-sans-3": "5.3.0",
+    "@fontsource/source-sans-3": "5.3.1",
     "@fontsource/space-grotesk": "5.3.0",
-    "axe-core": "4.10.2"
+    "axe-core": "4.14.0"
   }
 }
