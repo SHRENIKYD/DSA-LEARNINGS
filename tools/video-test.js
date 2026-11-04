@@ -36,10 +36,21 @@ for (const [id, e] of Object.entries(db.videos)) {
   else assert(V.publicEntry(e, topics.get(id)), 'Unexpectedly hidden video: ' + id);
   have++;
 }
+function reviewedChoice(entry, record) {
+  assert(entry, 'Reviewed topic missing: ' + record.topic);
+  if (entry.id === record.id) {
+    assert.equal(entry.curated, true);
+    return entry;
+  }
+  assert(entry.was, 'Review does not match catalog: ' + record.topic);
+  assert.equal(entry.was.id, record.id, 'Archived review does not match catalog: ' + record.topic);
+  assert.match(entry.was.replacedAt, /^\d{4}-\d{2}-\d{2}$/);
+  assert(entry.was.note && entry.was.reviewedAt, 'Archived review metadata missing: ' + record.topic);
+  return entry.was;
+}
 for (const e of review.entries) {
-  assert.equal(db.videos[e.topic].id, e.id, 'Review does not match catalog: ' + e.topic);
+  reviewedChoice(db.videos[e.topic], e);
   assert.equal(e.source, V.watchUrl({ id: e.id }));
-  assert.equal(db.videos[e.topic].curated, true);
   assert.equal(e.playbackVerified, false, 'Do not claim playback verification from an offline check');
 }
 const sample = db.videos['dsa09-t2'];
@@ -155,7 +166,14 @@ assert.ok(discovery.pick([{ id: 'LONGLECTURE', title: 'BST search and insert ful
   assert.equal(pyMem.videos[ct.id].id, 'REPLACEMENT', 'the replacement becomes the shown video');
   assert.equal(pyMem.videos[ct.id].curated, undefined, 'the replacement is a bot pick, not curated');
   assert.equal(pyMem.videos[ct.id].was.id, 'GONEVIDEO01', 'the removed curated pick is kept for review');
+  const archivedReview = { topic: ct.id, id: 'GONEVIDEO01' };
+  assert.equal(reviewedChoice(pyMem.videos[ct.id], archivedReview).id, 'GONEVIDEO01');
+  assert.throws(() => reviewedChoice(pyMem.videos[ct.id], { ...archivedReview, id: 'WRONGVIDEO1' }), /Archived review does not match/);
+  assert.throws(() => reviewedChoice({ ...pyMem.videos[ct.id], was: undefined }, archivedReview), /Review does not match/);
   assert.ok(!discovery.needsDefault(pyMem, ct), 'a replaced topic is not searched again');
+  delete pyMem.videos[ct.id].id; // A later availability check removes the bot replacement.
+  await discovery.searchDefault(pyMem, [ct], 5);
+  assert.equal(reviewedChoice(pyMem.videos[ct.id], archivedReview).id, 'GONEVIDEO01', 'later searches retain the original review');
   // A dated default miss waits; an undated one is searched.
   assert.ok(!discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null, at: new Date().toISOString().slice(0, 10) } } }, ct));
   assert.ok(discovery.needsDefault({ videos: { [ct.id]: { t: ct.title, id: null } } }, ct));
