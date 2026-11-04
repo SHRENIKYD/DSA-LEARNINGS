@@ -11,6 +11,11 @@ function check(file, w, h, opaque) {
 for (const [d, k] of Object.entries({ mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 })) {
   for (const suffix of ['', '_round']) check('android/app/src/main/res/mipmap-' + d + '/ic_launcher' + suffix + '.png', 48 * k, 48 * k);
   check('android/app/src/main/res/mipmap-' + d + '/ic_launcher_foreground.png', 108 * k, 108 * k);
+  check('android/app/src/main/res/drawable-' + d + '/ic_stat_notify.png', 24 * k, 24 * k);
+}
+const keep = fs.readFileSync(path.join(root, 'android/app/src/main/res/raw/notification_icons_keep.xml'), 'utf8');
+for (const name of ['ic_stat_notify', 'ic_notify_large']) {
+  assert(keep.includes('@drawable/' + name), 'Release shrinker must retain ' + name);
 }
 check('ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png', 1024, 1024, true);
 check('store/play-icon-512.png', 512, 512, true); check('app/icon.png', 192, 192);
