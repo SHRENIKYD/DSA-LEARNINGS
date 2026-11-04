@@ -189,6 +189,7 @@ async function searchDefault(db, all, max) {
     try {
       const best = await searchBest(t.query, t.title, '');
       const prev = db.videos[t.id], keep = prev && prev.byLang ? { byLang: prev.byLang } : {};
+      if (prev && prev.was) keep.was = prev.was;
       if (prev && prev.curated) {
         if (!best) { prev.searchedAt = today(); none++; continue; } // stays hidden for review until a replacement is found
         keep.was = { id: prev.id, title: prev.title, channel: prev.channel, note: prev.note, reviewedAt: prev.reviewedAt, replacedAt: today() };
@@ -260,7 +261,7 @@ async function main() {
       } else {
         const next = availability(e, live[r.id], now);
         if (next) db.videos[r.k] = next;
-        else if (e.byLang && Object.keys(e.byLang).length) { delete e.id; delete e.title; delete e.channel; delete e.secs; removed++; }
+        else if (e.was || (e.byLang && Object.keys(e.byLang).length)) { delete e.id; delete e.title; delete e.channel; delete e.secs; removed++; }
         else { delete db.videos[r.k]; removed++; }
       }
     });
