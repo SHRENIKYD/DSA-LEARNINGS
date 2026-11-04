@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Capacitor resolves these drawable names from JavaScript/config at runtime.
+     Keep them in release builds, where Android's resource shrinker cannot see those references. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_notify,@drawable/ic_notify_large" />
