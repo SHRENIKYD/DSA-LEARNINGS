@@ -26,6 +26,12 @@
   color-scheme:light;
 }
 *{box-sizing:border-box}
+/* Animate palette changes only, without moving layouts or slowing page startup. */
+@media (prefers-reduced-motion:no-preference){
+  :root.theme-changing,:root.theme-changing *,:root.theme-changing *::before,:root.theme-changing *::after{
+    transition:background-color 300ms ease,color 300ms ease,border-color 300ms ease,box-shadow 300ms ease,fill 300ms ease,stroke 300ms ease!important;
+  }
+}
 [hidden]{display:none!important}
 html,body{margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font:16.5px/1.62 var(--f-body);-webkit-font-smoothing:antialiased}

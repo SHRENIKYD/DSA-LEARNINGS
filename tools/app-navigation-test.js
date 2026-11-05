@@ -5,6 +5,9 @@ const path = require('path');
 const root = path.join(__dirname, '..'), nodes = {}, storage = {}, events = {};
 function element() { const n = { innerHTML: '', textContent: '', style: {}, children: [], checked: false, offsetWidth: 0, events: {}, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, removeAttribute() {}, addEventListener(k, fn) { this.events[k] = fn; }, appendChild(c) { this.children.push(c); }, scrollIntoView() {}, focus() {}, querySelector() { return element(); }, querySelectorAll() { return []; } }; return n; }
 const ctx = { console, Date, setTimeout() { return 1; }, clearTimeout() {}, navigator: {}, location: { pathname: '/index.html', hash: '#home', replace(h) { this.hash = h; } }, localStorage: { getItem(k) { return storage[k] || null; }, setItem(k, v) { storage[k] = v; } }, document: { hidden: false, documentElement: { setAttribute() {}, classList: { toggle() {} } }, querySelector(s) { return nodes[s] ||= element(); }, querySelectorAll() { return []; }, addEventListener() {} }, Sound: { enable() {}, play() {} }, Reader: { configure() {}, close() {}, available() { return false; } }, Auth: { enabled: false, user() { return null; }, changed() { ctx.synced = (ctx.synced || 0) + 1; } }, AppUpdates: { init() {} }, addEventListener(k, f) { events[k] = f; }, matchMedia() { return { matches: false }; }, IM_VERSION: '1.8.0' };
+ctx.document.documentElement = element();
+ctx.document.documentElement.setAttribute = function (key, value) { (this.attrs ||= {})[key] = value; };
+ctx.document.documentElement.getAttribute = function (key) { return (this.attrs || {})[key] || null; };
 ctx.window = ctx; vm.createContext(ctx);
 // The route screen reads the same generated data files as the website (run node tools/build.js first).
 const built = ['site', 'app-www'].map(d => path.join(root, d, 'assets')).find(d => fs.existsSync(path.join(d, 'paths-data.js')));

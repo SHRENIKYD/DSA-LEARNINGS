@@ -1,3 +1,23 @@
+// Only explicit theme changes animate; startup and background synchronization stay immediate.
+var ThemeMotion = (function () {
+  var timer;
+  function apply(t, animate) {
+    var root = document.documentElement;
+    if (root.getAttribute('data-theme') === t) return;
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var motion = true;
+    try { var p = JSON.parse(localStorage.getItem('imastery.play')); motion = !p || !p.settings || p.settings.motion !== false; } catch (e) { }
+    clearTimeout(timer);
+    root.classList.remove('theme-changing');
+    if (animate && !reduced && motion) {
+      root.classList.add('theme-changing');
+      void root.offsetWidth; // Commit the old palette before changing its variables.
+      timer = setTimeout(function () { root.classList.remove('theme-changing'); }, 350);
+    }
+    root.setAttribute('data-theme', t);
+  }
+  return { apply: apply };
+})();
 var Journey = (function () {
   function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function get(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
@@ -152,7 +172,7 @@ var Journey = (function () {
     var tb = document.getElementById('themeBtn');
     if (opts.theme && tb) {
       var label = function () { var d = document.documentElement.getAttribute('data-theme') !== 'light'; tb.innerHTML = d ? themeIcon('sun') : themeIcon('moon'); tb.setAttribute('aria-label', d ? 'Switch to daylight map' : 'Switch to night map'); tb.title = tb.getAttribute('aria-label'); };
-      tb.addEventListener('click', function () { var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'; set('imastery.theme', t); document.documentElement.setAttribute('data-theme', t); label(); });
+      tb.addEventListener('click', function () { var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'; set('imastery.theme', t); ThemeMotion.apply(t, true); label(); });
       window.addEventListener('pageshow', label); window.addEventListener('storage', label);
       label();
     }
@@ -263,7 +283,7 @@ var Journey = (function () {
     }
     var th = document.getElementById('pTheme');
     var syncTh = function () { th.checked = document.documentElement.getAttribute('data-theme') === 'light'; };
-    th.addEventListener('change', function () { var t = th.checked ? 'light' : 'dark'; set('imastery.theme', t); document.documentElement.setAttribute('data-theme', t); var tb = document.getElementById('themeBtn'); if (tb) tb.innerHTML = themeIcon(t === 'light' ? 'moon' : 'sun'); });
+    th.addEventListener('change', function () { var t = th.checked ? 'light' : 'dark'; set('imastery.theme', t); ThemeMotion.apply(t, true); var tb = document.getElementById('themeBtn'); if (tb) tb.innerHTML = themeIcon(t === 'light' ? 'moon' : 'sun'); });
     window.addEventListener('pageshow', syncTh); window.addEventListener('storage', function () { syncTh(); draw(); });
     syncTh();
     var ds = document.getElementById('pDest');
