@@ -3,13 +3,14 @@ name: Lesson videos
 on:
   schedule:
     - cron: '30 22 * * *'   # 4:00 AM IST (22:30 UTC)
+    - cron: '17 0,2,4 * * *' # Backups: 05:47, 07:47 and 09:47 IST
   workflow_dispatch:
     inputs:
       max:
         description: Shared topic-search budget per API key across all tracks and languages (1–95)
         default: '90'
       force:
-        description: Run even if another video update succeeded in the last 12 hours.
+        description: Run even if another video update succeeded today (India time).
         type: boolean
         default: false
 
@@ -23,8 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # One update (and at most one app release) per night: a late scheduled run or a backup run is skipped when another
-  # video update already succeeded in the last 12 hours.
+  # One successful update per India calendar day. Failed publish attempts remain eligible for backups.
   gate:
     runs-on: ubuntu-24.04
     permissions:
@@ -37,7 +37,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ inputs.force && 'true' || 'false' }}
         run: |
-          since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          day=$(TZ=Asia/Kolkata date +%Y-%m-%d)
+          since=$(date -u -d "$day 00:00:00 +0530" +%Y-%m-%dT%H:%M:%SZ)
           n=$(gh api "repos/${{ github.repository }}/actions/workflows/videos.yml/runs?status=success&per_page=20" \
             --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }} and .created_at >= \"$since\")] | length")
           if [ "$FORCE" = "true" ] || [ "$n" = "0" ]; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; echo "A video update already succeeded since $since: skipping this run."; fi
@@ -63,6 +64,7 @@ jobs:
       - name: Check the catalog before saving it
         run: |
           node tools/video-daily-test.js
+          node tools/video-publish-test.js
           node tools/video-test.js
       # main requires a pull request, so the update goes through one: push a branch, open a PR, merge it, redeploy.
       - name: Save through a pull request and redeploy the website
@@ -72,7 +74,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/videos.json
-          if git diff --cached --quiet; then echo "No video changes"; exit 0; fi
+          if git diff --cached --quiet; then echo "No video changes; check unfinished publishing"; node tools/video-publish.js --recover; exit 0; fi
           # The app carries its own copy of the catalog: when new videos became playable, also bump the app version so
           # the Android workflow builds and uploads a new release. Turn off with the repository variable
           # VIDEO_APP_RELEASE=false; VIDEO_APP_RELEASE_MIN sets the smallest number of new videos worth a release.
@@ -88,6 +90,5 @@ jobs:
           url=$(gh pr create --base main --head "$branch" --title "Update lesson videos ($(date -u +%Y-%m-%d))" \
             --body "Daily lesson-video update from the Lesson videos workflow. The catalog passed tools/video-test.js before this PR was opened.$([ "$released" = true ] && echo " Bumps the app to $version so the new videos ship in the app.")")
           gh pr merge "$url" --merge --delete-branch
-          gh workflow run pages.yml --ref main
-          # A merge made with the workflow token does not trigger other workflows, so start the app build explicitly.
-          if [ "$released" = true ]; then gh workflow run android.yml --ref main; fi
+          # Wait for actual deployment/upload results, so a failed release does not suppress backup attempts.
+          if [ "$released" = true ]; then node tools/video-publish.js --app; else node tools/video-publish.js; fi
