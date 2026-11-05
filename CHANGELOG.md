@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.39] — 2026-11-05 · Smooth theme switching
+
+### Changed
+- **Theme switching:** dark and light palettes now transition smoothly over 300 ms from the header, profile settings and lesson pages. Rapid toggles settle on the selected theme. Startup remains immediate, and reduced-motion preferences or the saved motion-off setting disable the animation.
+
 ## [1.10.38] — 2026-11-02 · Lessons open one at a time
 
 ### Changed
