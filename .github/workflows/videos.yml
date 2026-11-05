@@ -6,14 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       max:
-        description: Topics to search in the default pass (each costs 100 of the 10,000 daily quota units; the language pass adds up to 40 more, so keep max at 50 or less on a day both run)
-        default: '50'
-      lang:
-        description: Language for the extra pass (java, python, js, cpp, csharp). Leave empty to rotate by day of the year.
-        default: ''
-      retry:
-        description: Track id whose topics without a video are searched again now with shorter queries (e.g. csharp). Leave empty to rotate by day of the year; "none" skips it.
-        default: ''
+        description: Shared topic-search budget per API key across all tracks and languages (1–95)
+        default: '90'
       force:
         description: Run even if another video update succeeded in the last 12 hours.
         type: boolean
@@ -58,33 +52,18 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - name: Drop removed videos, then search topics without one
+      - name: Check availability and search across all tracks and languages
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           YOUTUBE_API_KEYS: ${{ secrets.YOUTUBE_API_KEYS }}
-          MAX: ${{ inputs.max || '50' }}
-          RETRY: ${{ inputs.retry || '' }}
+          SEARCHES_PER_KEY: ${{ inputs.max || '90' }}
         run: |
           node tools/find-videos.js --check
-          # Each night one language track's topics without a video are searched again with shorter queries.
-          tracks=(java py cpp js csharp)
-          if [ -z "$RETRY" ]; then RETRY="${tracks[$(( 10#$(date -u +%j) % 5 ))]}"; fi
-          if [ "$RETRY" != "none" ]; then echo "Retry pass: $RETRY"; node tools/find-videos.js --retry "$RETRY" --max 50; fi
-          node tools/find-videos.js --max "$MAX" --per-key
-      # One language per day (day of the year % 4), at most 40 searches: 50 + 40 searches stay under the 10,000-unit quota.
-      - name: Search per-language videos for today's language
-        env:
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          YOUTUBE_API_KEYS: ${{ secrets.YOUTUBE_API_KEYS }}
-          LANG_INPUT: ${{ inputs.lang }}
-        run: |
-          langs=(csharp python csharp js csharp cpp csharp java)
-          lang="$LANG_INPUT"
-          if [ -z "$lang" ]; then lang="${langs[$(( 10#$(date -u +%j) % 8 ))]}"; fi
-          echo "Language pass: $lang"
-          node tools/find-videos.js --lang "$lang" --max 40 --per-key
+          node tools/video-daily.js
       - name: Check the catalog before saving it
-        run: node tools/video-test.js
+        run: |
+          node tools/video-daily-test.js
+          node tools/video-test.js
       # main requires a pull request, so the update goes through one: push a branch, open a PR, merge it, redeploy.
       - name: Save through a pull request and redeploy the website
         env:
