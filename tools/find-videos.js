@@ -80,7 +80,7 @@ function pick(cands, topicTitle) {
 let client = null; // tests replace this with a fixture; production uses the YouTube Data API below
 // Quota units this process spent (search = 100, videos = 1), printed with every summary so a key shared with another
 // project shows up as "quota reached" long before ~10,000 units.
-const usage = { units: 0 };
+const usage = { units: 0, exhausted: false };
 const COST = { search: 100, videos: 1 };
 // Google's error reason decides what happens: the daily quota stops the run; per-minute limits and server errors are
 // retried with a growing pause (up to 3 tries); anything else is a normal error for that topic.
@@ -108,6 +108,7 @@ async function api(endpoint, params) {
     if (r.ok) return body;
     const e = apiError(r.status, body);
     if (e.quota && keyState.at + 1 < keys.length) { keyState.at++; console.log('key ' + keyState.at + ' of ' + keys.length + ' used up its daily quota; switching to key ' + (keyState.at + 1)); attempt = 0; continue; }
+    if (e.quota) usage.exhausted = true;
     if (!e.retry || attempt >= 3) throw e;
     console.warn('retrying ' + endpoint + ' after ' + e.message);
     await pause(2000 * attempt);
@@ -135,12 +136,12 @@ async function searchBest(query, title, lang) {
 }
 
 // Topics in the language-dependent tracks (dsa, lld) that have no byLang[lang] pick yet, in searchOrder.
-function langTodo(all, db, lang) {
+function langTodo(all, db, lang, retryDays = RETRY_DAYS) {
   const pickOf = (t) => db.videos[t.id] && db.videos[t.id].byLang && db.videos[t.id].byLang[lang];
-  return searchOrder(all.filter((t) => LANG_TRACKS.indexOf(t.trackId) >= 0 && (!pickOf(t) || (!pickOf(t).id && due(pickOf(t))))));
+  return searchOrder(all.filter((t) => LANG_TRACKS.indexOf(t.trackId) >= 0 && (!pickOf(t) || (!pickOf(t).id && (!pickOf(t).at || (Date.parse(today()) - Date.parse(pickOf(t).at)) / 864e5 >= retryDays)))));
 }
-async function searchLang(db, all, lang, max) {
-  const todo = langTodo(all, db, lang).slice(0, max);
+async function searchLang(db, all, lang, max, retryDays = RETRY_DAYS) {
+  const todo = langTodo(all, db, lang, retryDays).slice(0, max);
   let found = 0, none = 0, searched = 0;
   for (const t of todo) {
     try {
@@ -214,6 +215,7 @@ async function searchRetry(db, all, track, max) {
     try {
       const h = head(t.title), best = await searchBest(((QUERY_PREFIX[t.trackId] || '') + ' ' + h + ' tutorial').trim(), h, '');
       const prev = db.videos[t.id], keep = prev.byLang ? { byLang: prev.byLang } : {};
+      if (prev.was) keep.was = prev.was;
       if (best) { db.videos[t.id] = Object.assign({ t: t.title, id: best.id, title: best.title, channel: best.channel, secs: best.secs }, keep); found++; }
       else { prev.at = today(); none++; }
     } catch (e) {

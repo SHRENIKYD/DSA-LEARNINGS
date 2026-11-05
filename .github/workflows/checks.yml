@@ -26,7 +26,10 @@ jobs:
         with:
           node-version: 22
       - name: Validate reviewed video mappings and playback helpers
-        run: node tools/video-test.js
+        run: |
+          node tools/video-daily-test.js
+          node tools/video-publish-test.js
+          node tools/video-test.js
 
   smoke:
     if: github.event_name == 'pull_request'
