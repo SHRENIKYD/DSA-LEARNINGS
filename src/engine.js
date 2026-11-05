@@ -945,8 +945,8 @@ var App = (function () {
   /* ---------- common chrome ---------- */
   function chrome() {
     var tb = $('#themeBtn');
-    function apply(t) {
-      document.documentElement.setAttribute('data-theme', t);
+    function apply(t, animate) {
+      ThemeMotion.apply(t, animate);
       tb.innerHTML = t === 'dark' ? ICONS.sun : ICONS.moon;
       tb.setAttribute('aria-label', t === 'dark' ? 'Switch to daylight map' : 'Switch to night map'); tb.title = tb.getAttribute('aria-label');
       var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F6F1E4' : '#12263A');
@@ -956,7 +956,7 @@ var App = (function () {
     tb.addEventListener('click', function () {
       var t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       store.set('imastery.theme', t);
-      apply(t);
+      apply(t, true);
     });
     window.addEventListener('pageshow', sync);
     window.addEventListener('storage', function (e) { if (e.key === 'imastery.theme') sync(); });

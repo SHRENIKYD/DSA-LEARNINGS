@@ -19,9 +19,9 @@
   var S = null;
 
   function theme() { return lsGet('imastery.theme', null) === 'light' ? 'light' : 'dark'; }
-  function setTheme(t) {
+  function setTheme(t, animate) {
     lsSet('imastery.theme', t);
-    document.documentElement.setAttribute('data-theme', t);
+    ThemeMotion.apply(t, animate);
     var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F6F1E4' : '#12263A');
   }
   function done() { return lsGet('imastery.done', {}) || {}; }
@@ -557,7 +557,7 @@
     wirePathSwitcher(); wireNav();
     if (sub === 'path') { var sw = $('#pathSwitch'); if (sw) { if (sw.scrollIntoView) sw.scrollIntoView({ block: 'start' }); sw.focus(); } }
     Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'motion') document.documentElement.classList.toggle('calm', !c.checked); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
-    $('#set-theme').addEventListener('change', function () { setTheme(this.checked ? 'light' : 'dark'); Sound.play('tap'); });
+    $('#set-theme').addEventListener('change', function () { setTheme(this.checked ? 'light' : 'dark', true); Sound.play('tap'); });
     var ntSave = function () {
       var ns = notifySettings();
       Array.prototype.forEach.call(document.querySelectorAll('[data-nt]'), function (c) { ns[c.dataset.nt] = c.checked; });
