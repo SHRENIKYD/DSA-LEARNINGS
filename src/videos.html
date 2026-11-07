@@ -42,8 +42,10 @@
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   var all = 0, OPTS = [];
   function counts() {
-    all = 0; shown().forEach(function (t) { all += rowsOf(t).length; });
-    $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video. Coverage notes explain what each video teaches.' : 'Videos are being added. Check back soon.';
+    // Only the tracks on show count, so a hidden language's videos and landmarks are left out of both numbers.
+    var total = 0; all = 0; shown().forEach(function (t) { all += rowsOf(t).length; total += t.topics || t.items.length; });
+    if (!shown().some(function (t) { return t.topics; })) total = L.total;
+    $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + total.toLocaleString('en-US') + ' landmarks have a video. Coverage notes explain what each video teaches.' : 'Videos are being added. Check back soon.';
     OPTS = [['all', 'All tracks', all]].concat(shown().map(function (t) { return [t.id, t.title, rowsOf(t).length]; }));
     if (!OPTS.some(function (c) { return c[0] === cur; })) cur = 'all';
   }
