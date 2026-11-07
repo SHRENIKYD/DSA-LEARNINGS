@@ -227,7 +227,7 @@ fs.writeFileSync(path.join(out, 'assets', 'videos.js'), videoJs + '\nwindow.IM_V
 const lib = { total: ALLT.length, tracks: [] };
 for (const t of TRACKS) {
   const items = ALLT.filter((x) => x.tr === t.id && vidJs[x.tid]).map((x) => Object.assign({ mn: x.mn, mt: x.mt, tt: x.tt, tid: x.tid }, vidJs[x.tid]));
-  if (items.length) lib.tracks.push({ id: t.id, short: t.short, title: t.title, items: items });
+  if (items.length) lib.tracks.push({ id: t.id, short: t.short, title: t.title, topics: ALLT.filter((x) => x.tr === t.id).length, items: items });
 }
 fs.writeFileSync(path.join(out, 'assets', 'video-library.js'), videoJs + '\nwindow.IM_VIDEO_LIB=' + JSON.stringify(lib).replace(/</g, '\\u003c') + ';');
 
