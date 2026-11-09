@@ -6966,7 +6966,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java program structure, main, output and comments. Use the lesson for loops and conditionals.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -6984,7 +6984,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -7002,7 +7002,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java Scanner versus BufferedReader, demonstrating slow versus buffered input. Other languages use the equivalents in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7020,7 +7020,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -7038,7 +7038,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java primitive values versus object references, with stack/heap diagrams. Casting and overflow are covered in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7056,7 +7056,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": "LvIBrNeZ51U",
@@ -7076,7 +7076,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java stack and heap memory, local variables and object references.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "wJ1L2nSIV1s",
@@ -7120,7 +7120,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java array syntax, storage, string arrays and multidimensional arrays. String operations are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "1FVBeLD_FdE",
@@ -7164,15 +7164,15 @@
    "reviewedAt": "2026-10-21",
    "note": "Java methods, parameters, return values and reusable functions.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "mX4V5ffJooA",
@@ -7202,11 +7202,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Input constraints and time-limit estimates. Operation budgets depend on language, hardware and the judge; 10⁸ is a heuristic, not a guarantee.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -7236,7 +7236,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A concrete brute-force pair search followed by an optimized solution. Algorithm explanation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "DKCbsiDBN6c",
@@ -7253,6 +7253,16 @@
      "title": "2sum leetcode  python solution brute force approach",
      "channel": "CodeHigh",
      "secs": 215
+    },
+    "java": {
+     "id": "L8_tP5QshU8",
+     "title": "LeetCode TwoSum Problem Explained.(Most optimal soltuion and brute force as well)- JAVA.",
+     "channel": "JK Codes",
+     "secs": 838
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -7305,7 +7315,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Arithmetic and geometric progressions; apply the sums to loop counts in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "0F2YqCVaiG0",
@@ -7349,7 +7359,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Logarithms as inverse powers and the change-of-base rule. Apply this foundation to repeated halving in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7357,7 +7367,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -7365,7 +7375,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -7383,7 +7393,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Big-O, Big-Omega and Big-Theta asymptotic bounds.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7399,7 +7409,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -7417,7 +7427,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Time and auxiliary-space complexity overview; use the lesson for detailed memory accounting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "hUdqNPhXOh4",
@@ -7426,8 +7436,10 @@
      "secs": 4864
     },
     "csharp": {
-     "id": null,
-     "at": "2026-10-31"
+     "id": "t5RLkR3ABI4",
+     "title": "Chapter#3-Lec#7- Space Complexity I Scalability I Efficiency I Computer Science  (Class 11)",
+     "channel": "ITCM Edu Tech ",
+     "secs": 537
     },
     "python": {
      "id": "Ozb9nx1FCqU",
@@ -7459,15 +7471,15 @@
    "reviewedAt": "2026-10-21",
    "note": "Constraints, online judges and TLE estimates. Treat operation counts as rough estimates, not fixed execution-time guarantees.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -7493,7 +7505,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Enumerating divisors in O(√N).",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "fdE_CEk9X2g",
@@ -7537,7 +7549,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Primality testing by checking divisors up to √N.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ZYIXXntyybo",
@@ -7581,7 +7593,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sieve of Eratosthenes for finding all primes up to a bound.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "nDPo9hsDNvU",
@@ -7625,7 +7637,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Euclidean GCD. LCM reduction and the visual proof are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "0oP6XLTI2tY",
@@ -7669,7 +7681,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular arithmetic rules and remainders.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "EzVwUarrNUk",
@@ -7679,7 +7691,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "cqmAip7wp-4",
@@ -7707,7 +7719,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular exponentiation. Follow the lesson for the iterative binary-exponentiation implementation.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "L-Wzglnm4dM",
@@ -7751,11 +7763,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Binomial coefficients, efficient nCr calculation and Pascal triangle construction.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -7785,7 +7797,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The pigeonhole principle and why a collision must exist.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "IW4hJEgZLWI",
@@ -7802,6 +7814,16 @@
      "title": "Pigeonhole principle theory and uses: Hashing and Compression",
      "channel": "CyberExplore",
      "secs": 613
+    },
+    "java": {
+     "id": "sWX1eMPYzSU",
+     "title": "Pigeonhole sort | pigeonhole principal | Java plus DSA Placement | FAANG",
+     "channel": "ShashCode",
+     "secs": 1005
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -7815,7 +7837,7 @@
    "reviewedAt": "2026-10-21",
    "note": "How binary digits represent numbers and characters.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7833,7 +7855,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -7851,7 +7873,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binary representation, one’s/two’s complement and bit operators.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7889,7 +7911,7 @@
    "reviewedAt": "2026-10-21",
    "note": "All seven Java bitwise operators, including the unsigned right shift >>>.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "phUpAEs-6rw",
@@ -7931,7 +7953,7 @@
    "reviewedAt": "2026-10-21",
    "note": "XOR cancellation demonstrated on the single-number problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7947,7 +7969,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -7965,7 +7987,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Checking, setting, clearing and toggling a bit with masks.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7973,7 +7995,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "qgwRE5bqGEs",
@@ -8002,11 +8024,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -8032,11 +8054,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Single Number I: cancel duplicate pairs with XOR.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -8068,11 +8090,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Includes counting set bits at each position modulo three, as well as alternative approaches.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -8081,6 +8103,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -8100,6 +8130,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -8113,7 +8151,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Subset enumeration with bitmasks. Code may use C++; the technique transfers to Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8122,6 +8160,20 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": "A3fhGv6IA8Q",
+     "title": "Bitmasks & Subset Enumeration in Java | Animated DSA #24",
+     "channel": "It's Leo",
+     "secs": 756
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -8137,7 +8189,7 @@
    "start": 82,
    "end": 4025,
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "fINt-nzR-o8",
@@ -8181,7 +8233,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Prefix sums and constant-time range-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Hyr3VrgJD2g",
@@ -8225,7 +8277,7 @@
    "reviewedAt": "2026-10-21",
    "note": "2D prefix sums and rectangle-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8236,6 +8288,24 @@
      "title": "Matrix Block Sum – 2D Prefix Sum | Running Sum of 2D Array | C++, Java, Python",
      "channel": "RisingBrain",
      "secs": 2036
+    },
+    "python": {
+     "id": "3hF88U-KHyY",
+     "title": "Matrix Block Sum – 2D Prefix Sum | Running Sum of 2D Array | C++, Java, Python",
+     "channel": "RisingBrain",
+     "secs": 2036
+    },
+    "java": {
+     "id": "3hF88U-KHyY",
+     "title": "Matrix Block Sum – 2D Prefix Sum | Running Sum of 2D Array | C++, Java, Python",
+     "channel": "RisingBrain",
+     "secs": 2036
+    },
+    "js": {
+     "id": "OFcBatbqlUE",
+     "title": "363. Max Sum of Rectangle No Larger Than K | Leetcode Unlocked - Python",
+     "channel": "Leetcode Unlocked",
+     "secs": 258
     }
    }
   },
@@ -8249,7 +8319,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Even/odd prefix sums and parity changes after deletion. The separate equilibrium-index variant is explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8265,7 +8335,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -8283,7 +8353,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Carry-forward counting of ordered “ag” pairs. Array leaders are another application in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8321,7 +8391,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maximum subarray sum using Kadane’s algorithm.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "w_KEocd__20",
@@ -8365,15 +8435,15 @@
    "reviewedAt": "2026-10-21",
    "note": "Sum of all subarray sums using each element’s contribution.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -8401,7 +8471,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Trapping rainwater. Compare the video’s approaches with the lesson’s prefix/suffix maximum arrays.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ok7zhUA4VmI",
@@ -8441,11 +8511,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Spiral traversal using shrinking boundaries. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -8454,6 +8524,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -8467,7 +8545,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Matrix rotation by transposition and reversal.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": "aT-2BiaPCe8",
@@ -8486,6 +8564,18 @@
      "title": "Rotate Matrix 90 degrees Version 1 | Python",
      "channel": "Colorful Codes",
      "secs": 952
+    },
+    "java": {
+     "id": "p7mNNrur6eI",
+     "title": "🔥 LeetCode 48: Rotate Image | In-Place Matrix Rotation (Transpose + Reverse) #dsa #matrix #leetcode",
+     "channel": "Daily Coding Engineer",
+     "secs": 565
+    },
+    "js": {
+     "id": "FyoqjyxoE8Y",
+     "title": "Rotate by 90 degree matrix || javascript || an anti-clockwise dir without using any extra space.",
+     "channel": "Cyber Spartan",
+     "secs": 1030
     }
    }
   },
@@ -8499,7 +8589,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The O(rows + columns) top-right staircase search for separately sorted rows and columns, not flattened binary search.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8510,6 +8600,24 @@
      "title": "Search in Sorted Matrix 2 | Staircase Approach Explained | Optimal Solution | DSA | C++, Python,Java",
      "channel": "RisingBrain",
      "secs": 1118
+    },
+    "python": {
+     "id": "Ber2pi2C0j0",
+     "title": "Search a 2D Matrix - Leetcode 74 - Python",
+     "channel": "NeetCode",
+     "secs": 659
+    },
+    "java": {
+     "id": "2jqTPmHyz8U",
+     "title": "Search in Sorted Matrix 2 | Staircase Approach Explained | Optimal Solution | DSA | C++, Python,Java",
+     "channel": "RisingBrain",
+     "secs": 1118
+    },
+    "js": {
+     "id": "2uHc6Ro9D8c",
+     "title": "Search 2D Matrix II - Leetcode 240 | JavaScript O(m+n) Staircase Solution",
+     "channel": "Web Coder Abhishek",
+     "secs": 433
     }
    }
   },
@@ -8523,7 +8631,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Two Sum II on sorted input using converging pointers. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8540,8 +8648,10 @@
      "secs": 618
     },
     "java": {
-     "id": null,
-     "at": "2026-10-30"
+     "id": "CWUnvUJ29zw",
+     "title": "[Java] Leetcode 167. Two Sum II - Input array is sorted [Two Pointers #1]",
+     "channel": "Eric Programming",
+     "secs": 336
     },
     "js": {
      "id": null,
@@ -8559,7 +8669,7 @@
    "reviewedAt": "2026-10-21",
    "note": "3Sum by sorting, fixing an element and scanning with two pointers.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "n-JNgynPi6Q",
@@ -8601,7 +8711,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Container With Most Water and moving the shorter wall.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Y_4_or0Sc7I",
@@ -8645,7 +8755,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Move Zeroes using same-direction pointers. Remove-duplicates is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8683,7 +8793,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a pair with a target difference using sorted-array pointers; not a general two-pointer overview.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8691,7 +8801,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -8717,11 +8827,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Fixed-length maximum-sum window with Java code. Distinct from unrestricted maximum subarray/Kadane.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": "oB7BAkFnwRY",
@@ -8756,7 +8866,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -8790,11 +8900,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Recognizing opposite-direction and same-direction pointer patterns.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -8803,6 +8913,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -8816,7 +8934,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Bubble sort, selection sort and insertion sort in Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "n2mtX8mdoEc",
@@ -8829,8 +8947,10 @@
      "at": "2026-11-06"
     },
     "python": {
-     "id": null,
-     "at": "2026-10-27"
+     "id": "gcRUIO-8r3U",
+     "title": "Sorting: Bubble, Insertion, Selection, Merge, Quick, Counting Sort - DSA Course in Python Lecture 10",
+     "channel": "Greg Hogg",
+     "secs": 2501
     },
     "java": {
      "id": "PkJIc5tBRUE",
@@ -8856,7 +8976,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Counting sort and radix sort, including assumptions behind integer sorting. A longer lecture is intentional.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "imqr13aIBAY",
@@ -8900,7 +9020,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inversion counting with merge sort. The lesson also explains the underlying sorting recurrence.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "0jxUbvEF380",
@@ -8944,7 +9064,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Quicksort partitioning and performance. Compare the specific Lomuto/Hoare variants in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8962,7 +9082,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -8985,7 +9105,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "tt4_7YyvqR4",
@@ -9017,7 +9137,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The distinction between stable and unstable sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "w7tbj3phOno",
@@ -9027,7 +9147,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "4gK9bnlOq8o",
@@ -9059,7 +9179,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Merging overlapping intervals after sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "2JzRBPFYbKE",
@@ -9103,7 +9223,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inserting an interval into a sorted non-overlapping list.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "XXaVIDIbUn4",
@@ -9122,6 +9242,18 @@
      "title": "Insert Interval - Leetcode 57 - Python",
      "channel": "NeetCode",
      "secs": 711
+    },
+    "java": {
+     "id": "K7B9ZTKoRpQ",
+     "title": "[Java] Leetcode 57. Insert Interval [Intervals #2]",
+     "channel": "Eric Programming",
+     "secs": 686
+    },
+    "js": {
+     "id": "mUvCAk3_ms8",
+     "title": "Insert Intervals - LeetCode 57 - JavaScript",
+     "channel": "AlgoJS",
+     "secs": 614
     }
    }
   },
@@ -9135,7 +9267,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Meeting Rooms II: count simultaneous meetings. Meeting Rooms I and minimum-platform variations remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -9152,6 +9284,16 @@
      "title": "Meeting Rooms II - Leetcode 253 - Python",
      "channel": "NeetCode",
      "secs": 706
+    },
+    "java": {
+     "id": "EmNKUHlHVzQ",
+     "title": "Minimum Platforms | Greedy Algorithm |JAVA | Amazon | Google | Microsoft | Interview Question",
+     "channel": "Md Sameer",
+     "secs": 1227
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -9172,11 +9314,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -9194,7 +9336,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Character-frequency signatures and grouping anagrams. First-non-repeating is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9202,7 +9344,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -9230,7 +9372,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Unsorted Two Sum with a complement hash map. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9246,7 +9388,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -9264,7 +9406,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maintain a frequency map while counting distinct values in every fixed-size window.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "qF9bLDKsmWc",
@@ -9304,7 +9446,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Zero-sum subarray existence using a set in Java. Distinct from counting all subarrays with a given sum.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9312,7 +9454,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -9340,7 +9482,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Count subarrays with sum K using prefix-sum frequencies.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Nlo20rlfxSg",
@@ -9380,11 +9522,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest zero-sum subarray using prefix sums and a first-index map in Java. Sum-K and equal-0/1 variants remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -9414,7 +9556,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest substring without repeated characters. Minimum-window substring is a separate variant explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "FCbOzdHKW18",
@@ -9433,6 +9575,18 @@
      "title": "Longest Substring Without Repeating Characters - Leetcode 3 - Python",
      "channel": "NeetCode",
      "secs": 406
+    },
+    "java": {
+     "id": "k3A1zjpGdTA",
+     "title": "LeetCode Q2: Longest Substring Without Repeating Characters Using Sliding Window and HashMap in Java",
+     "channel": "Naveen AutomationLabs",
+     "secs": 1306
+    },
+    "js": {
+     "id": "i1edO6FkGm0",
+     "title": "Longest Substring Without Repeating Characters - LeetCode 3 - JavaScript",
+     "channel": "AlgoJS",
+     "secs": 403
     }
    }
   },
@@ -9446,7 +9600,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest consecutive sequence by starting only at chain beginnings.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -9459,6 +9613,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -9474,7 +9636,7 @@
    "start": 36,
    "end": 1322,
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9486,11 +9648,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -9508,7 +9670,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Valid palindrome with two pointers and non-alphanumeric filtering.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "L84y20axpIA",
@@ -9554,7 +9716,7 @@
    "start": 3642,
    "end": 4357,
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9594,7 +9756,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest palindromic substring with center expansion.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "5MS14_6rSa8",
@@ -9641,7 +9803,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -9667,11 +9829,13 @@
    "reviewedAt": "2026-10-21",
    "note": "KMP prefix/LPS preprocessing and linear-time pattern matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
-     "id": null,
-     "at": "2026-10-28"
+     "id": "BhxJiqShYcQ",
+     "title": "Understanding the Z Algorithm/ Efficient Pattern Matching in Linear Time and Space Complexity",
+     "channel": "LearnWithCode",
+     "secs": 727
     },
     "csharp": {
      "id": null,
@@ -9705,11 +9869,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Z-array, Z-box optimization and pattern-plus-separator-plus-text matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -9741,7 +9905,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Classic sorted-array binary search and halving the search interval. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9758,8 +9922,10 @@
      "secs": 386
     },
     "java": {
-     "id": null,
-     "at": "2026-10-30"
+     "id": "aUS_pVvvmCw",
+     "title": "DSA in Java #12 | Binary search with ONE template: first and last position in a sorted array",
+     "channel": "SyntaxPilot",
+     "secs": 749
     },
     "js": {
      "id": "sOdjN0Kt4LI",
@@ -9779,7 +9945,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Lower and upper bounds. Apply these primitives to first/last occurrence in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "GKZoTbUNWt0",
@@ -9821,7 +9987,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Search in a rotated sorted array with distinct elements.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "4Ik1nCLjwcI",
@@ -9865,7 +10031,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a peak by binary search on slope direction.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "NUnhHa47f-Q",
@@ -9909,7 +10075,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Integer square root via binary search, matching this lesson rather than the more general nth-root problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9917,7 +10083,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -9945,7 +10111,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Aggressive Cows: maximize a minimum distance with a feasibility predicate.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Flewu6KqN54",
@@ -9989,7 +10155,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Allocate Books: minimize the largest allocation. Painter partition is a related variant in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "DAQHXe1yNtM",
@@ -10031,11 +10197,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Koko Eating Bananas and a monotonic feasibility test.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -10046,6 +10212,16 @@
      "title": "Koko Eating Bananas - Binary Search - Leetcode 875 - Python",
      "channel": "NeetCode",
      "secs": 912
+    },
+    "java": {
+     "id": "ceYZ5RgwQwQ",
+     "title": "Koko Eating Bananas - Leetcode 875 - Binary Search (Python)",
+     "channel": "Greg Hogg",
+     "secs": 814
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -10061,7 +10237,7 @@
    "start": 1077,
    "end": 2736,
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "KiWp1q_HGzg",
@@ -10103,7 +10279,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A recursion-tree derivation for T(n) = 2T(n/2) + cn; other recurrences remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10111,7 +10287,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -10119,7 +10295,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": "p-cj4Vh8cMg",
@@ -10139,7 +10315,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Tower of Hanoi with a recursive visualization.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "S1j5Q03HzMs",
@@ -10185,7 +10361,7 @@
    "start": 4024,
    "end": 5057,
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10201,7 +10377,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -10219,7 +10395,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "nuuv1Z46zHU",
@@ -10229,7 +10405,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "UP3dOYJa05s",
@@ -10261,11 +10437,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -10295,11 +10471,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -10329,7 +10505,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "xFv_Hl4B83A",
@@ -10346,6 +10522,16 @@
      "title": "N-Queens - Backtracking - Leetcode 51 - Python",
      "channel": "NeetCode",
      "secs": 1071
+    },
+    "java": {
+     "id": "xFv_Hl4B83A",
+     "title": "6.1 N Queens Problem using Backtracking",
+     "channel": "Abdul Bari",
+     "secs": 821
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -10369,6 +10555,16 @@
      "title": "Develop the Sudoku Solver with PyQt6",
      "channel": "Sek Socheat",
      "secs": 2358
+    },
+    "java": {
+     "id": "mtEnDhYyKO8",
+     "title": "DSA-1 | 068/200 | LC37: Sudoku Solver | Java Full Lesson",
+     "channel": "Chaitanya Kumar",
+     "secs": 552
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -10382,7 +10578,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "-StYr9wILqo",
@@ -10424,7 +10620,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "YmkUl_Qsunk",
@@ -10464,7 +10660,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ZSyUwlzmN-U",
@@ -10508,7 +10704,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Cs3KwAsqqn4",
@@ -10548,7 +10744,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "PQIHq0vfADI",
@@ -10592,7 +10788,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "IH8F4W5AiiQ",
@@ -10632,7 +10828,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "WWOvCh31xBk",
@@ -10676,7 +10872,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Xc4sICC8m4M",
@@ -10693,6 +10889,18 @@
      "title": "LRU Cache - LeetCode 146 - Python - Visually Explained",
      "channel": "Hello Byte",
      "secs": 180
+    },
+    "java": {
+     "id": "iLNQ2DVFUxo",
+     "title": "LRU Cache | LeetCode 146 | Java | Amazon Interview Question | Double Linked list + HashMap | Stacy",
+     "channel": "Stacy",
+     "secs": 771
+    },
+    "js": {
+     "id": "3Z9G5qRmI-I",
+     "title": "LEETCODE 146 (JAVASCRIPT) | LRU CACHE",
+     "channel": "Andy Gala",
+     "secs": 1062
     }
    }
   },
@@ -10706,7 +10914,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Rl8N_NbgXbA",
@@ -10748,7 +10956,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "q-JB0hYyouo",
@@ -10792,7 +11000,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "OpwYmEBcPh0",
@@ -10834,7 +11042,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "mg9yi6YuAVk",
@@ -10854,7 +11062,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -10872,7 +11080,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "rfl_M3SuvIE",
@@ -10916,7 +11124,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "6Izu3F3vibo",
@@ -10960,7 +11168,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ZGMw8Bvpwd4",
@@ -11004,7 +11212,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "88cFfeDDgmo",
@@ -11021,6 +11229,18 @@
      "title": "Implement Queue using Stacks -- Grind75(Question 13)",
      "channel": "Cornered House",
      "secs": 338
+    },
+    "java": {
+     "id": "83r2JVsu5Ro",
+     "title": "Implement Queue using 2 Stacks | Brute Force vs Optimized Approach | Amortized O(1) Explained | Java",
+     "channel": "RisingBrain",
+     "secs": 1031
+    },
+    "js": {
+     "id": "osa9_yzPKEY",
+     "title": "Implementing a Queue using Stacks - The Easy Solution!!",
+     "channel": "ProgressiveCoder",
+     "secs": 485
     }
    }
   },
@@ -11034,7 +11254,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -11051,6 +11271,18 @@
      "title": "Sliding Window Maximum - Leetcode 239 | Monotonic Deque O(N) | Java & Python",
      "channel": "Code With K5KC",
      "secs": 466
+    },
+    "java": {
+     "id": "MCvGwtkqJS0",
+     "title": "Sliding Window Maximum | Sliding Window Algorithm | Deque Data Structure | DSA-One Course #54",
+     "channel": "Anuj Kumar Sharma",
+     "secs": 1092
+    },
+    "js": {
+     "id": "kx7PSOBagFY",
+     "title": "Data Structures in Javascript ( Sliding Window Maximum) | DSA Interview Questions | Deque | Leetcode",
+     "channel": "RoadsideCoder",
+     "secs": 1522
     }
    }
   },
@@ -11064,7 +11296,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -11076,11 +11308,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -11098,7 +11330,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ySp2epYvgTE",
@@ -11142,7 +11374,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -11153,6 +11385,22 @@
      "title": "Delete Node in Binary Search Tree (BST) | 3 Cases Explained | Python, Java & C++ | DSA",
      "channel": "RisingBrain",
      "secs": 978
+    },
+    "python": {
+     "id": "_tOkQ_STDNs",
+     "title": "Delete Node in Binary Search Tree (BST) | 3 Cases Explained | Python, Java & C++ | DSA",
+     "channel": "RisingBrain",
+     "secs": 978
+    },
+    "java": {
+     "id": "_tOkQ_STDNs",
+     "title": "Delete Node in Binary Search Tree (BST) | 3 Cases Explained | Python, Java & C++ | DSA",
+     "channel": "RisingBrain",
+     "secs": 978
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -11174,6 +11422,24 @@
      "title": "Kth Smallest Element in BST | Optimized Using BST Iterator logic | Python, Java & C++ | DSA",
      "channel": "RisingBrain",
      "secs": 744
+    },
+    "python": {
+     "id": "5LUXSvjmGCw",
+     "title": "Kth Smallest Element in a BST - Leetcode 230 - Python",
+     "channel": "NeetCode",
+     "secs": 656
+    },
+    "java": {
+     "id": "PwjF3RO9djY",
+     "title": "Kth Smallest Element in a BST - Leetcode 230 - Trees (Python)",
+     "channel": "Greg Hogg",
+     "secs": 466
+    },
+    "js": {
+     "id": "PwjF3RO9djY",
+     "title": "Kth Smallest Element in a BST - Leetcode 230 - Trees (Python)",
+     "channel": "Greg Hogg",
+     "secs": 466
     }
    }
   },
@@ -11187,7 +11453,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": "0uhPFD_Fvbk",
@@ -11200,6 +11466,24 @@
      "title": "L13. Preorder Inorder Postorder Traversals in One Traversal | C++ | Java | Stack | Binary Trees",
      "channel": "take U forward",
      "secs": 657
+    },
+    "python": {
+     "id": "ihj4IQGZ2zc",
+     "title": "Construct Binary Tree from Inorder and Preorder Traversal - Leetcode 105 - Python",
+     "channel": "NeetCode",
+     "secs": 1022
+    },
+    "java": {
+     "id": "aZNaLrVebKQ",
+     "title": "L34. Construct a Binary Tree from Preorder and Inorder Traversal | C++ | Java",
+     "channel": "take U forward",
+     "secs": 1132
+    },
+    "js": {
+     "id": "gadH7h5B2dc",
+     "title": "LEETCODE 105 (JAVASCRIPT) | CONSTRUCT BINARY TREE FROM PREORDER AND INORDER TRAVERSAL",
+     "channel": "Andy Gala",
+     "secs": 367
     }
    }
   },
@@ -11224,7 +11508,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -11242,7 +11526,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "EoAsWbO7sqg",
@@ -11286,7 +11570,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "KV4mRzTjlAk",
@@ -11330,7 +11614,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "0FtVY6I4pB8",
@@ -11372,7 +11656,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Rezetez59Nk",
@@ -11414,7 +11698,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Yt50Jfbd8Po",
@@ -11433,6 +11717,18 @@
      "title": "Balanced Binary Tree - Leetcode 110 - Python",
      "channel": "NeetCode",
      "secs": 791
+    },
+    "java": {
+     "id": "Yt50Jfbd8Po",
+     "title": "L15. Check for Balanced Binary Tree | C++ | Java",
+     "channel": "take U forward",
+     "secs": 750
+    },
+    "js": {
+     "id": "5cU1ILGy6dM",
+     "title": "Binary Search Tree - Beau teaches JavaScript",
+     "channel": "freeCodeCamp.org",
+     "secs": 814
     }
    }
   },
@@ -11446,7 +11742,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": "X-j1wi3y278",
@@ -11459,6 +11755,24 @@
      "title": "L27. Lowest Common Ancestor in Binary Tree | LCA | C++ | Java",
      "channel": "take U forward",
      "secs": 849
+    },
+    "python": {
+     "id": "gs2LMfuOR9k",
+     "title": "Lowest Common Ancestor of a Binary Search Tree - Leetcode 235 - Python",
+     "channel": "NeetCode",
+     "secs": 403
+    },
+    "java": {
+     "id": "cOjLyASDJcc",
+     "title": "Lowest Common Ancestor in a Binary Tree | LCA of a Binary Tree | DSA-One Course #64",
+     "channel": "Anuj Kumar Sharma",
+     "secs": 660
+    },
+    "js": {
+     "id": "r6AXIfdi9oQ",
+     "title": "Lowest Common Ancestor of a Binary Search Tree - Leetcode 235 - Trees (Python)",
+     "channel": "Greg Hogg",
+     "secs": 528
     }
    }
   },
@@ -11486,6 +11800,24 @@
      "title": "L43. Insert a given Node in Binary Search Tree | BST | C++ | Java",
      "channel": "take U forward",
      "secs": 498
+    },
+    "python": {
+     "id": "Cpg8f79luEA",
+     "title": "Insert into a Binary Search Tree - Leetcode 701 - Python",
+     "channel": "NeetCodeIO",
+     "secs": 588
+    },
+    "java": {
+     "id": "KcNt6v_56cc",
+     "title": "L40. Search in a Binary Search Tree | BST | C++ | Java",
+     "channel": "take U forward",
+     "secs": 393
+    },
+    "js": {
+     "id": "kC1008goX8g",
+     "title": "Algorithms and REPL, Javascript, Node, and Binary Search Trees (BST)",
+     "channel": "Olivier Butler",
+     "secs": 991
     }
    }
   },
@@ -11499,7 +11831,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -11513,7 +11845,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": "Q_eia3jC9Ts",
@@ -11539,7 +11871,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -11581,7 +11913,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -11599,7 +11931,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -11617,7 +11949,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "GkLRlOrcNZA",
@@ -11661,7 +11993,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -11669,7 +12001,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "q5a5OiGbT6Q",
@@ -11699,7 +12031,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "KtJlTfHtMhc",
@@ -11741,7 +12073,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ubKhojIZtHk",
@@ -11781,7 +12113,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "EIhAwfHubE8",
@@ -11798,6 +12130,18 @@
      "title": "Maximum XOR for Each Query - Leetcode 1829 - Python",
      "channel": "NeetCodeIO",
      "secs": 695
+    },
+    "java": {
+     "id": "EIhAwfHubE8",
+     "title": "L6. Maximum XOR of Two Numbers in an Array | C++ | Java",
+     "channel": "take U forward",
+     "secs": 2177
+    },
+    "js": {
+     "id": "BnDmd_0butU",
+     "title": "LeetCode [HARD] Minimum XOR Sum of Two Arrays",
+     "channel": "Just.Poccio",
+     "secs": 347
     }
    }
   },
@@ -11811,7 +12155,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -11823,11 +12167,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -11845,7 +12189,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "DHr-Mn_vzs0",
@@ -11885,7 +12229,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "zPtI8q9gvX8",
@@ -11925,7 +12269,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "nLmhmB6NzcM",
@@ -11969,7 +12313,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "co4_ahEDCho",
@@ -11979,7 +12323,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "JCOph23TQTY",
@@ -12011,7 +12355,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "TBlKgdYwQ4Q",
@@ -12051,7 +12395,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "xmJZSYSvgfE",
@@ -12095,7 +12439,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "TsRyidwuNF8",
@@ -12114,6 +12458,18 @@
      "title": "Jump Game II - Greedy - Leetcode 45 - Python",
      "channel": "NeetCode",
      "secs": 718
+    },
+    "java": {
+     "id": "SBO-YYAKh5s",
+     "title": "LeetCode 45: Jump Game II | Java Solution | Dynamic Programming & Greedy Approach",
+     "channel": "Code Scribbler",
+     "secs": 493
+    },
+    "js": {
+     "id": "YSEsSs3hB6A",
+     "title": "Doodle Jump in JavaScript",
+     "channel": "Code with Ania Kubów",
+     "secs": 3042
     }
    }
   },
@@ -12129,7 +12485,7 @@
    "start": 100,
    "end": 427,
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -12140,6 +12496,20 @@
      "title": "DP與BFS用C++解Leetcode 322 Coin Change換硬幣零錢",
      "channel": "An-Wen Deng",
      "secs": 1400
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": "Iy0IR6lwdDw",
+     "title": "DSA-1 | 066/200 | LC322: Coin Change | Java Full Lesson",
+     "channel": "Chaitanya Kumar",
+     "secs": 526
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -12153,7 +12523,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12165,11 +12535,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -12187,7 +12557,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "piAlsJySUGE",
@@ -12229,7 +12599,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "u7kxnHnUAYk",
@@ -12267,7 +12637,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "sdQpyeEF-rM",
@@ -12311,7 +12681,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12319,7 +12689,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -12344,7 +12714,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -12374,7 +12744,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "sSno9rV8Rhg",
@@ -12416,11 +12786,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": "X_xLO46SVM4",
@@ -12433,6 +12803,18 @@
      "title": "Edit Distance - Dynamic Programming - Leetcode 72 - Python",
      "channel": "NeetCode",
      "secs": 1260
+    },
+    "java": {
+     "id": "We3YDTzNXEk",
+     "title": "Minimum Edit Distance Dynamic Programming",
+     "channel": "Tushar Roy - Coding Made Simple",
+     "secs": 587
+    },
+    "js": {
+     "id": "0YUBQTqarE0",
+     "title": "Edit Distance (Levenshtein Distance) | Dynamic Programming | JavaScript | LeetCode 72",
+     "channel": "Ashwini Kemshetty",
+     "secs": 1037
     }
    }
   },
@@ -12446,7 +12828,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": "GizQZzpaBwY",
@@ -12457,6 +12839,24 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": "pGMsrvt0fpk",
+     "title": "Minimum Path Sum - Dynamic Programming - Leetcode 64 - Python",
+     "channel": "NeetCode",
+     "secs": 535
+    },
+    "java": {
+     "id": "LMwWZcJyLMo",
+     "title": "LeetCode 64: Minimum Path Sum | Java Solution | Dynamic Programming",
+     "channel": "Code Scribbler",
+     "secs": 431
+    },
+    "js": {
+     "id": "kl_WqSXts4U",
+     "title": "LeetCode: 64. Minimum Path Sum (Visualized)",
+     "channel": "Code With Zi",
+     "secs": 809
     }
    }
   },
@@ -12470,7 +12870,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12482,11 +12882,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -12504,7 +12904,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "bHypFVRzEXk",
@@ -12544,7 +12944,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12560,7 +12960,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -12589,7 +12989,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "nHR8ytpzz7c",
@@ -12616,7 +13016,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -12641,7 +13041,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -12668,7 +13068,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -12698,7 +13098,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "S8rMlJBmVYc",
@@ -12742,7 +13142,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "-fOUp6Srnyg",
@@ -12795,7 +13195,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -12813,7 +13213,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "muncqlKJrH0",
@@ -12857,7 +13257,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "9twcmtQj4DU",
@@ -12867,7 +13267,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "k7Hd32SiRGo",
@@ -12899,7 +13299,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "-vu34sct1g8",
@@ -12939,7 +13339,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "gDNm1m3G4wo",
@@ -12956,6 +13356,16 @@
      "title": "DSA Python - Topological Sort Using DFS | GFG Problem | Directed Acyclic Graph - Part 135 [Hindi]",
      "channel": "Code and Debug",
      "secs": 1030
+    },
+    "java": {
+     "id": "XMiIk1B0v-w",
+     "title": "Kahn's Algorithm | Topological Sort using BFS | Graph Data Structure | Kahn Algorithm | DSAOne #80",
+     "channel": "Anuj Kumar Sharma",
+     "secs": 734
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -12969,7 +13379,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -12986,6 +13396,16 @@
      "title": "DSA in Python - Disjoint Set (Union-Find) | Path Compression + Union by Size/Rank | Part 158 [Hindi]",
      "channel": "Code and Debug",
      "secs": 2677
+    },
+    "java": {
+     "id": "wU6udHRIkcc",
+     "title": "1.12 Disjoint Sets Data Structure - Weighted Union and Collapsing Find",
+     "channel": "Abdul Bari",
+     "secs": 1564
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -12999,7 +13419,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13037,7 +13457,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13055,7 +13475,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13073,7 +13493,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "JkmCVkJdg-A",
@@ -13115,7 +13535,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "oNI0rf2P9gE",
@@ -13131,7 +13551,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "LULHxlvOhGc",
@@ -13155,7 +13575,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "mJcZjjKzeqk",
@@ -13164,8 +13584,10 @@
      "secs": 1150
     },
     "csharp": {
-     "id": null,
-     "at": "2026-10-31"
+     "id": "zFErJBKU-AQ",
+     "title": "Prim's Algorithm In C# (Theory + Code Implementation)",
+     "channel": "Suresh Srivastava",
+     "secs": 914
     },
     "python": {
      "id": "f7JOBJIC-NA",
@@ -13197,7 +13619,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "wU6udHRIkcc",
@@ -13234,7 +13656,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -13243,6 +13665,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -13256,7 +13686,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "wMH6TbIRsJg",
@@ -13270,7 +13700,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": "ZBHKZF5w4YU",
@@ -13294,7 +13724,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "LMN7-O_SuqM",
@@ -13316,7 +13746,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13334,7 +13764,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "vUwindiBWJ0",
@@ -13352,7 +13782,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13370,7 +13800,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "0jWeUdxrGm4",
@@ -13386,7 +13816,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -13408,7 +13838,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13416,7 +13846,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -13441,7 +13871,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -13471,11 +13901,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": "eHgq2pv_8IA",
@@ -13488,6 +13918,16 @@
      "title": "LeetCode#303 Range Sum Query - Immutable - Python",
      "channel": "CodeJulian",
      "secs": 180
+    },
+    "java": {
+     "id": "c5O7E_PDO4U",
+     "title": "Sparse Table Algorithm Range Minimum Query",
+     "channel": "Tushar Roy - Coding Made Simple",
+     "secs": 1654
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -13501,7 +13941,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "NvnicGg3FdA",
@@ -13521,7 +13961,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13539,7 +13979,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13547,7 +13987,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -13555,7 +13995,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13573,7 +14013,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13589,7 +14029,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13607,7 +14047,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "WUzplLVxYsk",
@@ -13621,7 +14061,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "ZdEKKaDETtA",
@@ -13645,7 +14085,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "_-QHfMDde90",
@@ -13687,7 +14127,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "_UcOALraATY",
@@ -13727,7 +14167,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "duKIzgJQ1w8",
@@ -13744,6 +14184,16 @@
      "title": "Ford Fulkerson Algorithm Edmonds Karp Algorithm For Max Flow",
      "channel": "Tushar Roy - Coding Made Simple",
      "secs": 2281
+    },
+    "java": {
+     "id": "_SdF4KK_dyM",
+     "title": "Dinic's Algorithm | Network Flow | Source Code",
+     "channel": "WilliamFiset",
+     "secs": 572
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -13757,7 +14207,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -13770,6 +14220,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -13783,7 +14241,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -13792,6 +14250,18 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -13805,7 +14275,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "Q4zHb-Swzro",
@@ -13825,7 +14295,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13843,7 +14313,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13851,7 +14321,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -13859,7 +14329,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -13877,7 +14347,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ps2ZTj4DAm0",
@@ -13924,7 +14394,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "ONsSlHFvtgo",
@@ -13951,7 +14421,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -13977,11 +14447,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14011,11 +14481,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14024,6 +14494,16 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": "1FcEBApfAPk",
+     "title": "[Coding] Optimal Binary Search Tree with Frequency Constraints (DP + Knuth — Java DSA Prep",
+     "channel": "The Autonomous Architect",
+     "secs": 200
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14043,6 +14523,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14056,7 +14544,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "0CesZFo1yOQ",
@@ -14076,7 +14564,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14094,7 +14582,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14102,7 +14590,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14110,7 +14598,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14161,7 +14649,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14173,7 +14661,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "iTblAHe7s7w",
@@ -14198,7 +14686,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -14224,11 +14712,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14255,7 +14743,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14264,6 +14752,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14277,7 +14773,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "QEWvTVcpAyg",
@@ -14297,7 +14793,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": "f5qB5w1Q-q4",
@@ -14317,7 +14813,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "vaTlSINdvY0",
@@ -14326,8 +14822,10 @@
      "secs": 874
     },
     "java": {
-     "id": null,
-     "at": "2026-10-30"
+     "id": "8_FErO3Bpg8",
+     "title": "51. Modular Inverse using Extended Euclidean Algorithm (Java)",
+     "channel": "Web Fusion with Bharadwaj",
+     "secs": 1427
     },
     "csharp": {
      "id": null,
@@ -14355,7 +14853,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "iMZEwYfBWDY",
@@ -14375,7 +14873,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14396,7 +14894,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -14422,7 +14920,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "oBH9dH6KGLM",
@@ -14432,7 +14930,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "LOgSBeJln_0",
@@ -14460,7 +14958,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "ntOM8JRAlaY",
@@ -14498,11 +14996,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14511,6 +15009,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14530,6 +15036,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14545,6 +15059,18 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14558,7 +15084,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -14567,6 +15093,18 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14580,7 +15118,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": "GiWV9L-kHec",
@@ -14596,7 +15134,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "python": {
      "id": "hDoGgBRHJsc",
@@ -14623,7 +15161,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14631,7 +15169,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14649,7 +15187,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14665,7 +15203,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14720,15 +15258,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -14754,11 +15292,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14787,7 +15325,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14796,6 +15334,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14809,7 +15355,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -14822,6 +15368,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -14842,11 +15396,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14864,7 +15418,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14872,7 +15426,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -14880,7 +15434,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14898,7 +15452,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14914,7 +15468,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -14932,7 +15486,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14940,7 +15494,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -14965,11 +15519,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -14995,11 +15549,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -15028,7 +15582,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -15037,6 +15591,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -15056,6 +15618,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -15069,7 +15639,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -15078,6 +15648,20 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": "D4T2N0yAr20",
+     "title": "Search Suggestions System - Leetcode 1268 - Python",
+     "channel": "NeetCode",
+     "secs": 796
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -15093,6 +15677,18 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -15106,7 +15702,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15118,11 +15714,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -15140,7 +15736,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15148,7 +15744,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -15156,7 +15752,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -15174,7 +15770,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15210,7 +15806,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15218,7 +15814,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -15244,15 +15840,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -15313,11 +15909,11 @@
    "start": 188,
    "end": 420,
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": "ka_WCmNdybE",
@@ -15330,6 +15926,18 @@
      "title": "Ace Senior Python Software Engineer Interview Questions: System Design, Core Concepts, and Coding",
      "channel": " Latestexamprep",
      "secs": 1402
+    },
+    "java": {
+     "id": "Ppf5y4Y24rg",
+     "title": "Senior Java System Design What Good Looks Like in International Hiring - Live #46",
+     "channel": "Java Challengers",
+     "secs": 2120
+    },
+    "js": {
+     "id": "Zmg7XiPla80",
+     "title": "Senior JavaScript Engineer Interview Questions 2026: Expert Q&A, JavaScript Systems & Career Prep!!!",
+     "channel": "Quizzprep free",
+     "secs": 1174
     }
    }
   },
@@ -15343,7 +15951,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": "_ceGKgNWFXw",
@@ -15362,6 +15970,18 @@
      "title": "5 Common Python Mistakes and How to Fix Them",
      "channel": "Corey Schafer",
      "secs": 1759
+    },
+    "java": {
+     "id": "rjDUpxtUPAE",
+     "title": "10 Most Common Java Developer Mistakes",
+     "channel": "Amigoscode",
+     "secs": 973
+    },
+    "js": {
+     "id": "_bOoM0S7zF8",
+     "title": "Avoid THESE 5 JavaScript Beginner MISTAKES",
+     "channel": "Coding2GO",
+     "secs": 387
     }
    }
   },
@@ -15375,7 +15995,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z",
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -15384,6 +16004,18 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -17438,7 +18070,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java01-t1": {
    "t": "JDK vs JRE vs JVM — and What Lives Inside the JVM",
@@ -17450,7 +18082,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java01-t2": {
    "t": "The main Method, Command-Line Arguments & Exit Codes",
@@ -17462,7 +18094,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java01-t3": {
    "t": "Primitive Types, Ranges, Literals & Defaults",
@@ -17474,7 +18106,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java01-t4": {
    "t": "Type Casting: Widening, Narrowing & Numeric Promotion",
@@ -17486,7 +18118,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java01-t5": {
    "t": "Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence",
@@ -17505,7 +18137,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java01-t7": {
    "t": "char, ASCII & Unicode (UTF-16, Code Points, Emoji)",
@@ -17517,7 +18149,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java02-t0": {
    "t": "Decisions: if/else, the Ternary Operator, switch & Switch Expressions",
@@ -17529,7 +18161,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java02-t1": {
    "t": "Loops: for, while, do-while and the Enhanced for-each",
@@ -17548,7 +18180,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java02-t3": {
    "t": "Methods, the Call Stack and Why Java Is Always Pass-by-Value",
@@ -17560,7 +18192,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java02-t4": {
    "t": "Method Overloading and Varargs (int... args)",
@@ -17572,7 +18204,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java02-t5": {
    "t": "1D Arrays, 2D Arrays and Jagged Arrays",
@@ -17584,7 +18216,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java02-t6": {
    "t": "The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)",
@@ -17603,7 +18235,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java03-t0": {
    "t": "Defining Classes & Creating Objects",
@@ -17615,7 +18247,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java03-t1": {
    "t": "References: Stack vs Heap, Aliasing, null & Pass-by-Value",
@@ -17627,7 +18259,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java03-t2": {
    "t": "Constructors & Constructor Chaining",
@@ -17639,7 +18271,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java03-t3": {
    "t": "The this Keyword",
@@ -17651,7 +18283,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java03-t4": {
    "t": "static: Fields, Methods & Blocks",
@@ -17663,7 +18295,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java03-t5": {
    "t": "Initialization Order: static, instance, constructor",
@@ -17675,7 +18307,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java03-t6": {
    "t": "Access Modifiers & Packages",
@@ -17687,7 +18319,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t0": {
    "t": "Encapsulation: Private Data, Public Behaviour, Guarded Invariants",
@@ -17699,7 +18331,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t1": {
    "t": "Inheritance, extends & super: Reusing a Parent and Building Objects Layer by Layer",
@@ -17711,7 +18343,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t2": {
    "t": "Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override",
@@ -17723,7 +18355,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t3": {
    "t": "Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)",
@@ -17735,7 +18367,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t4": {
    "t": "Abstract Classes: Half-Built Blueprints and the Template Method",
@@ -17747,7 +18379,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t5": {
    "t": "Interfaces: Contracts, default & static Methods, and the Diamond Rules",
@@ -17759,7 +18391,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t6": {
    "t": "final: Variables, References, Methods and Classes",
@@ -17771,7 +18403,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t7": {
    "t": "Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)",
@@ -17783,7 +18415,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java04-t8": {
    "t": "The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize",
@@ -17795,7 +18427,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-08T01:40:32.880Z"
+   "availabilityCheckedAt": "2026-11-09T01:48:43.414Z"
   },
   "java05-t0": {
    "t": "String Immutability: Why a String Can Never Change",
@@ -19367,11 +19999,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -19466,7 +20098,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -19491,11 +20123,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -19522,7 +20154,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -19557,11 +20189,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -19773,7 +20405,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -19847,11 +20479,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20055,11 +20687,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20127,7 +20759,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20158,7 +20790,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20210,11 +20842,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -20239,7 +20871,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -20277,8 +20909,10 @@
      "at": "2026-11-06"
     },
     "python": {
-     "id": null,
-     "at": "2026-10-27"
+     "id": "6nCpsT1jBaE",
+     "title": "A2A Protocol: Make Your AI Agents Talk to Each Other (Python)",
+     "channel": "ByteBuilder",
+     "secs": 509
     },
     "java": {
      "id": "VDb3DlQ6_VE",
@@ -20350,7 +20984,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20379,7 +21013,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20400,7 +21034,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -20427,11 +21061,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -20504,6 +21138,16 @@
      "title": "Structural Pattern Matching in Python 3.10",
      "channel": "CompilersLab",
      "secs": 448
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": "u1PfzJ-68tM",
+     "title": "Enhance Your JavaScript Datepicker: Choosing the Right Design Pattern",
+     "channel": "vlogommentary",
+     "secs": 186
     }
    }
   },
@@ -20524,7 +21168,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": "CbdPYIHykRY",
@@ -20551,7 +21195,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -20559,7 +21203,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20579,6 +21223,18 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -20603,7 +21259,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20632,7 +21288,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20653,7 +21309,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -20678,11 +21334,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -20707,7 +21363,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -20734,7 +21390,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -20743,6 +21399,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -20762,6 +21426,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -20777,6 +21449,18 @@
     "cpp": {
      "id": null,
      "at": "2026-11-05"
+    },
+    "python": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -20797,11 +21481,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20822,7 +21506,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -20830,7 +21514,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20894,7 +21578,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -20917,7 +21601,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -20942,11 +21626,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -20979,7 +21663,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": "q1jqy4l6jxg",
@@ -21016,7 +21700,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": "8w5XxgctvV8",
@@ -21047,7 +21731,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21078,7 +21762,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21099,7 +21783,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -21124,7 +21808,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21163,11 +21847,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21198,7 +21882,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21227,7 +21911,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21256,7 +21940,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21277,7 +21961,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -21300,7 +21984,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21337,11 +22021,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21372,7 +22056,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21467,7 +22151,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
@@ -21492,7 +22176,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21523,7 +22207,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21562,11 +22246,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21587,7 +22271,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21595,7 +22279,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21624,7 +22308,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21641,7 +22325,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "java": {
      "id": "aMcmKVRk-Sk",
@@ -21705,7 +22389,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21734,7 +22418,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21761,7 +22445,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-10-28"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21770,6 +22454,14 @@
     "python": {
      "id": null,
      "at": "2026-11-08"
+    },
+    "java": {
+     "id": null,
+     "at": "2026-11-09"
+    },
+    "js": {
+     "id": null,
+     "at": "2026-11-09"
     }
    }
   },
@@ -21790,11 +22482,11 @@
     },
     "python": {
      "id": null,
-     "at": "2026-10-27"
+     "at": "2026-11-09"
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21825,7 +22517,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21856,7 +22548,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21908,11 +22600,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21933,7 +22625,7 @@
    "byLang": {
     "java": {
      "id": null,
-     "at": "2026-10-30"
+     "at": "2026-11-09"
     },
     "csharp": {
      "id": null,
@@ -21941,7 +22633,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21972,7 +22664,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -21997,11 +22689,11 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
-     "at": "2026-11-01"
+     "at": "2026-11-09"
     },
     "js": {
      "id": null,
@@ -22022,7 +22714,7 @@
    "byLang": {
     "csharp": {
      "id": null,
-     "at": "2026-10-31"
+     "at": "2026-11-09"
     },
     "python": {
      "id": null,
