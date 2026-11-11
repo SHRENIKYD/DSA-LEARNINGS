@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>(function(){function t(){var v;try{v=JSON.parse(localStorage.getItem('imastery.theme'))}catch(e){}document.documentElement.setAttribute('data-theme',v==='light'?'light':'dark')}t();addEventListener('pageshow',t);addEventListener('storage',function(e){if(e.key==='imastery.theme')t()})})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interview Handbook — Interview Mastery</title>
+<meta name="description" content="Every Interview Mastery interview question with a model answer: search by topic, filter by level from beginner to expert, or practise in rapid-fire mode.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css?v=@@V@@">
+<style>
+.hb-sel{width:100%;min-height:46px;font:inherit;font-size:15px;font-weight:600;padding:10px 12px;border:1px solid var(--border2);border-radius:12px;background:var(--raised);color:var(--text)}
+.hb-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hb-chip{font:inherit;font-size:14px;font-weight:600;min-height:40px;padding:6px 14px;border-radius:999px;border:1px solid var(--border2);background:var(--raised);color:var(--text);cursor:pointer}
+.hb-chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.hb-chip:focus-visible,.hb-sel:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hb-chip .n{font-family:var(--f-mono);font-size:12px;opacity:.8;margin-left:4px}
+.hb-rfbtn{margin-left:auto}
+.hb-place{margin:10px 0 0}
+.hb-place h2{font-family:var(--f-head);font-size:20px;margin:14px 0 8px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.hb-place h2 small{font-family:var(--f-body);font-size:13px;font-weight:400;color:var(--muted)}
+.hb-place h2 a{font-family:var(--f-body);font-size:13px;font-weight:600}
+.hb-list details.iv{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin:0 0 8px}
+.hb-list details.iv>summary{cursor:pointer;line-height:1.45}
+.hb-list .dbody{margin-top:10px;overflow-x:auto}
+.hb-list .dbody blockquote,.hb-rf blockquote{margin:12px 0 4px;padding:10px 14px;border-left:4px solid var(--green);background:var(--raised);border-radius:0 10px 10px 0}
+.hb-list .dbody pre,.hb-rf pre{overflow:auto;padding:12px;border-radius:10px;background:var(--code-bg,var(--raised));border:1px solid var(--border);font-family:var(--f-mono);font-size:13px;line-height:1.5}
+.hb-list .dbody table,.hb-rf table{border-collapse:collapse;margin:8px 0}
+.hb-list .dbody th,.hb-list .dbody td,.hb-rf th,.hb-rf td{border:1px solid var(--border2);padding:6px 10px;text-align:left;vertical-align:top}
+.hb-more{align-self:center}
+.hb-rf{background:var(--panel);border:1px solid var(--border2);border-radius:16px;padding:clamp(16px,3vw,28px);display:flex;flex-direction:column;gap:14px;max-width:900px;width:100%;margin:0 auto}
+.hb-rf h2{font-family:var(--f-head);font-size:clamp(20px,3vw,26px);margin:0;line-height:1.3}
+.hb-rf .hb-rfmeta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--muted);font-size:14px}
+.hb-rf .hb-rfans{overflow-x:auto}
+.hb-rf .hb-bar .btn{min-height:44px}
+</style>
+</head>
+<body class="vpage">
+@@JBAR@@
+<main class="vmain">
+  <div class="vtop"><div><span class="kicker">The handbook · interview questions</span><h1>Every interview question, with a model answer</h1><p class="vcount" id="hcount"></p></div></div>
+  <div class="vtools">
+    <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="hsearch" type="search" placeholder="Search questions and answers" aria-label="Search interview questions" autocomplete="off"></label>
+    <select id="htrack" class="hb-sel" aria-label="Track"></select>
+  </div>
+  <div class="hb-bar" id="hlevels" role="group" aria-label="Level"></div>
+  <section id="hrf" class="hb-rf" hidden aria-live="polite"></section>
+  <div id="hlist" class="hb-list" aria-live="polite"></div>
+  <button type="button" class="btn line hb-more" id="hmore" hidden>Show more questions</button>
+</main>
+<script src="assets/config.js?v=@@V@@"></script>
+<script src="assets/visits.js?v=@@V@@"></script>
+<script src="assets/tracks.js?v=@@V@@"></script>
+<script src="assets/handbook-index.js?v=@@V@@"></script>
+<script src="assets/journey.js?v=@@V@@"></script>
+<script>
+(function () {
+  var IDX = window.IM_HBINDEX || [], KEY = 'imastery.handbook';
+  var LEVELS = [['all', 'All levels'], ['B', 'Beginner'], ['I', 'Intermediate'], ['A', 'Advanced'], ['E', 'Expert']];
+  var LNAME = { B: 'Beginner', I: 'Intermediate', A: 'Advanced', E: 'Expert' };
+  var PAGE = 60, cur = '', lvl = 'all', q = '', shown = PAGE, rows = [], rf = null;
+  var $ = function (s) { return document.querySelector(s); };
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function text(html) { var d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; }
+  function entry(id) { for (var i = 0; i < IDX.length; i++) if (IDX[i].id === id) return IDX[i]; return null; }
+  function saved() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify({ track: cur, level: lvl })); } catch (e) { } }
+
+  // Each track's questions live in one file, fetched the first time the track is picked.
+  var loading = {};
+  function load(id) {
+    if ((window.IM_HB || {})[id]) return Promise.resolve();
+    if (loading[id]) return loading[id];
+    var e = entry(id);
+    loading[id] = new Promise(function (ok, fail) {
+      var s = document.createElement('script');
+      s.src = e.src; s.onload = function () { ok(); }; s.onerror = function () { delete loading[id]; fail(new Error('load')); };
+      document.head.appendChild(s);
+    });
+    return loading[id];
+  }
+  // One row: { t: track entry, n: place number, q, l: level, a, f: follow-ups, s: lower-case search text }
+  function build() {
+    var e = entry(cur), data = (window.IM_HB || {})[cur] || [];
+    rows = data.map(function (r) { return { t: e, n: r[0], q: r[1], l: r[2], a: r[3], f: r[4] || [], s: null }; });
+  }
+  function matches() {
+    var words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    return rows.filter(function (r) {
+      if (lvl !== 'all' && r.l !== lvl) return false;
+      if (!words.length) return true;
+      if (r.s === null) r.s = (text(r.q) + ' ' + text(r.a)).toLowerCase();
+      return words.every(function (w) { return r.s.indexOf(w) >= 0; });
+    });
+  }
+  function levelBar() {
+    var c = { all: rows.length, B: 0, I: 0, A: 0, E: 0 };
+    rows.forEach(function (r) { c[r.l] = (c[r.l] || 0) + 1; });
+    $('#hlevels').innerHTML = LEVELS.map(function (L) { return '<button type="button" class="hb-chip" data-l="' + L[0] + '" aria-pressed="' + (L[0] === lvl) + '">' + L[1] + '<span class="n">' + (c[L[0]] || 0) + '</span></button>'; }).join('') +
+      '<button type="button" class="btn hb-rfbtn" id="hrfbtn">Rapid fire</button>';
+  }
+  function answer(r) {
+    return r.a + (r.f.length ? '<h4>Likely follow-ups</h4><ul>' + r.f.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '');
+  }
+  function render() {
+    var list = matches(), e = entry(cur), h = '', place = -1, mods = {};
+    (e ? e.mods : []).forEach(function (m) { mods[m[0]] = m; });
+    $('#hcount').textContent = e ? list.length.toLocaleString('en-US') + ' of ' + rows.length.toLocaleString('en-US') + ' questions in ' + e.title + '. Say your answer out loud, then open the model answer.' : 'Questions are being added. Check back soon.';
+    list.slice(0, shown).forEach(function (r, i) {
+      if (r.n !== place) {
+        if (place !== -1) h += '</section>';
+        place = r.n;
+        var m = mods[r.n] || [r.n, '', '', 0];
+        h += '<section class="hb-place"><h2>Place ' + r.n + ' · ' + esc(m[2]) + ' <small>' + m[3] + ' question' + (m[3] === 1 ? '' : 's') + '</small> <a href="' + esc(e.id) + '.html#' + esc(m[1]) + '-iv">Open the lesson ›</a></h2>';
+      }
+      h += '<details class="iv" data-i="' + i + '"><summary>' + r.q + ' <span class="lvlb lv-' + esc(r.l) + '">' + (LNAME[r.l] || '') + '</span></summary><div class="dbody"></div></details>';
+    });
+    if (place !== -1) h += '</section>';
+    $('#hlist').innerHTML = h || (rows.length ? '<p class="vempty">No questions match' + (q ? ' “' + esc(q) + '”' : '') + '. Try another word or level.</p>' : '');
+    $('#hlist')._rows = list;
+    $('#hmore').hidden = list.length <= shown;
+  }
+  function refresh() { shown = PAGE; levelBar(); render(); }
+  function pick(id) {
+    cur = id; save();
+    $('#htrack').value = id; if ($('#htrack').__jdd) $('#htrack').__jdd.refresh();
+    closeRf();
+    $('#hcount').textContent = 'Loading questions…';
+    load(id).then(function () { if (cur !== id) return; build(); refresh(); }, function () { $('#hcount').textContent = 'The questions could not be loaded. Check your connection and try again.'; $('#hlist').innerHTML = ''; });
+  }
+
+  /* ---------- rapid fire: one question at a time, the line to say first ---------- */
+  function sayLine(html) {
+    var d = document.createElement('div'); d.innerHTML = html;
+    var b = Array.prototype.filter.call(d.querySelectorAll('blockquote'), function (x) { return /^\s*Say it in the interview/i.test(x.textContent); })[0];
+    return b ? b.outerHTML : '';
+  }
+  function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  function openRf() {
+    var list = matches();
+    if (!list.length) return;
+    rf = { list: shuffle(list.slice()), i: 0, open: false };
+    $('#hlist').hidden = true; $('#hmore').hidden = true; $('#hrf').hidden = false;
+    drawRf(); $('#hrf').scrollIntoView({ block: 'nearest' });
+  }
+  function closeRf() { if (!rf) return; rf = null; $('#hrf').hidden = true; $('#hrf').innerHTML = ''; $('#hlist').hidden = false; render(); }
+  function drawRf() {
+    var r = rf.list[rf.i], say = sayLine(r.a);
+    $('#hrf').innerHTML = '<div class="hb-rfmeta"><b>Rapid fire</b><span>Question ' + (rf.i + 1) + ' of ' + rf.list.length + '</span><span class="lvlb lv-' + esc(r.l) + '">' + (LNAME[r.l] || '') + '</span><span>Place ' + r.n + '</span></div>' +
+      '<h2>' + r.q + '</h2>' +
+      (rf.open ? '<div class="hb-rfans">' + (say ? say + '<details><summary>Show the full answer</summary>' + answer(r) + '</details>' : answer(r)) + '</div>' : '<p class="muted">Answer out loud in under 45 seconds, then check.</p>') +
+      '<div class="hb-bar">' + (rf.open ? '' : '<button type="button" class="btn" data-rf="show">Show the answer</button>') +
+      '<button type="button" class="btn' + (rf.open ? '' : ' line') + '" data-rf="next">' + (rf.i + 1 < rf.list.length ? 'Next question' : 'Start again') + '</button>' +
+      (rf.i > 0 ? '<button type="button" class="btn line" data-rf="prev">Previous</button>' : '') +
+      '<button type="button" class="btn ghost" data-rf="close">Back to the list</button></div>';
+    var f = $('#hrf').querySelector('[data-rf="' + (rf.open ? 'next' : 'show') + '"]'); if (f) f.focus();
+  }
+
+  $('#htrack').innerHTML = IDX.map(function (t) { return '<option value="' + esc(t.id) + '">' + esc(t.title) + ' · ' + t.n + '</option>'; }).join('');
+  $('#htrack').addEventListener('change', function () { pick(this.value); });
+  $('#hlevels').addEventListener('click', function (e) {
+    if (e.target.closest('#hrfbtn')) { if (rf) closeRf(); else openRf(); return; }
+    var b = e.target.closest('.hb-chip'); if (!b) return;
+    lvl = b.getAttribute('data-l'); save(); closeRf(); refresh();
+  });
+  $('#hlist').addEventListener('toggle', function (e) {
+    var d = e.target; if (!d.matches || !d.matches('details.iv') || !d.open) return;
+    var body = d.querySelector('.dbody'); if (body.firstChild) return;
+    var r = ($('#hlist')._rows || [])[+d.getAttribute('data-i')]; if (r) body.innerHTML = answer(r);
+  }, true);
+  $('#hmore').addEventListener('click', function () { shown += PAGE; render(); });
+  $('#hrf').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-rf]'); if (!b || !rf) return;
+    var a = b.getAttribute('data-rf');
+    if (a === 'close') return closeRf();
+    if (a === 'show') rf.open = true;
+    else if (a === 'next') { rf.i = (rf.i + 1) % rf.list.length; rf.open = false; }
+    else if (a === 'prev') { rf.i = Math.max(0, rf.i - 1); rf.open = false; }
+    drawRf();
+  });
+  var tmr; $('#hsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { q = v.trim(); closeRf(); shown = PAGE; render(); }, 150); });
+  Journey.bar({ theme: true });
+
+  var st = saved(), want = decodeURIComponent(location.hash.slice(1));
+  if (LEVELS.some(function (L) { return L[0] === st.level; })) lvl = st.level;
+  if (!IDX.length) { $('#hcount').textContent = 'Questions are being added. Check back soon.'; return; }
+  pick(entry(want) ? want : entry(st.track) ? st.track : IDX[0].id);
+  addEventListener('hashchange', function () { var w = decodeURIComponent(location.hash.slice(1)); if (entry(w) && w !== cur) pick(w); });
+})();
+</script>
+</body>
+</html>

@@ -124,11 +124,13 @@ function moduleStub(m, file) {
 }
 const MODS = {};
 const PMETA = {}, CHECKS = {}, QUIZFILES = {};
+// Interview handbook (handbook.html): every answered interview question of a track in one file, loaded when the track is picked.
+const HBINDEX = [];
 const LBIT = { java: 1, python: 2, py: 2, js: 4, ts: 4, javascript: 4, typescript: 4, cpp: 8, 'c++': 8, csharp: 16, 'c#': 16, cs: 16 };
 
 for (const t of TRACKS) {
   const dir = path.join(root, 'content', t.id);
-  const scripts = [], quizzes = {};
+  const scripts = [], quizzes = {}, hbRows = [], hbMods = [];
   for (const pm of t.modules) {
     const f = path.join(dir, pm.id + '.js');
     if (!fs.existsSync(f)) continue;
@@ -170,6 +172,10 @@ for (const t of TRACKS) {
       CHECKS[pm.id] = (m.quiz || []).filter((q) => q && Array.isArray(q.options) && q.options.length >= 2).slice(0, 4).map((q) => [q.q, q.options, q.answer, q.explain || '']);
     }
     MODS[pm.id] = [m.topics.length, m.topics.map((tp) => asList(tp.problems).concat(asList(tp.problem)).length), (m.practice || []).length, m.quiz && m.quiz.length ? 1 : 0, m.interview && m.interview.length ? 1 : 0];
+    if (m.interview && m.interview.length) {
+      hbMods.push([pm.num, pm.id, strip(m.title || pm.title), m.interview.length]);
+      m.interview.forEach((q) => hbRows.push([pm.num, q.q, q.level || 'I', q.a, asList(q.followUps)]));
+    }
     SI.modules[pm.id] = { items: ctx.App.items(m), pl: (m.practice || []).map((p) => String(p.level || 'Medium').charAt(0).toUpperCase()).join('') };
     SI.entries.push({ t: pm.num + '. ' + strip(m.title || pm.title), c: t.short + ' · Module', h: href + pm.id, s: strip(pm.scope).toLowerCase() });
     m.topics.forEach((tp, i) => {
@@ -191,6 +197,12 @@ for (const t of TRACKS) {
   const qFile = 'assets/m/' + t.id + '-quiz.' + shortHash(qz) + '.js';
   fs.writeFileSync(path.join(out, qFile), qz);
   QUIZFILES[t.id] = qFile;
+  if (hbRows.length) {
+    const hb = 'window.IM_HB=window.IM_HB||{};IM_HB[' + JSON.stringify(t.id) + ']=' + JSON.stringify(hbRows).replace(/</g, '\\u003c') + ';\n';
+    const hbFile = 'assets/m/' + t.id + '-hb.' + shortHash(hb) + '.js';
+    fs.writeFileSync(path.join(out, hbFile), hb);
+    HBINDEX.push({ id: t.id, short: t.short, title: t.title, n: hbRows.length, src: hbFile, mods: hbMods });
+  }
   const idx = 'window.IM_QUIZSRC=' + JSON.stringify(qFile) + ';window.IM_MINDEX=' + JSON.stringify(scripts).replace(/</g, '\\u003c') + ';\n';
   t._index = 'assets/m/' + t.id + '-index.' + shortHash(idx) + '.js';
   fs.writeFileSync(path.join(out, t._index), idx);
@@ -216,6 +228,7 @@ fs.writeFileSync(path.join(out, 'assets', 'progress-map.js'), 'window.IM_MODS=' 
 // The planner's mock rounds load a track's quiz file on demand (Planner.mock), so the file names travel with the path metadata.
 fs.writeFileSync(path.join(out, 'assets', 'paths-data.js'), 'window.IM_PATHMETA=' + JSON.stringify(PMETA).replace(/</g, '\\u003c') + ';window.IM_QUIZFILES=' + JSON.stringify(QUIZFILES) + ';');
 fs.writeFileSync(path.join(out, 'assets', 'checks.js'), 'window.IM_CHECKS=' + JSON.stringify(CHECKS).replace(/<\/script/gi, '<\\/script') + ';');
+fs.writeFileSync(path.join(out, 'assets', 'handbook-index.js'), 'window.IM_HBINDEX=' + JSON.stringify(HBINDEX).replace(/</g, '\\u003c') + ';');
 fs.writeFileSync(path.join(out, 'assets', 'search-index.js'), 'window.SEARCH_INDEX=' + JSON.stringify(SI) + ';');
 let VIDS = {};
 try { VIDS = JSON.parse(rd('data/videos.json')).videos || {}; } catch (e) { }
@@ -240,6 +253,7 @@ function jbar(o) {
     '<a href="today.html" data-page="today">' + IC('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M9 15l2 2 4-4"/>') + '<span>Today</span></a>' +
     '<a href="route.html" data-page="route">' + IC('<path d="M5 21V4h11l-2 4 2 4H5"/>') + '<span>Your route</span></a>' +
     '<a href="videos.html" data-page="videos">' + IC('<path d="M8 21l4-11 4 11"/><path d="M6 10h12"/><path d="M9 6.5a3 3 0 0 1 6 0"/><path d="M5 4a9 9 0 0 1 14 0"/>') + '<span>Watchtower</span></a>' +
+    '<a href="handbook.html" data-page="handbook">' + IC('<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/><path d="M9 8h6"/>') + '<span>Handbook</span></a>' +
     '<a href="passport.html" data-page="passport">' + IC('<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9 16h6"/>') + '<span>Passport</span></a></nav>' +
     (o.search ? '<div class="jsearch"><label class="sbox">' + IC('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>') + '<input id="gsearch" aria-label="Search the world" type="search" placeholder="Search every land, landmark and riddle" autocomplete="off"><kbd>/</kbd></label><div id="gresults" hidden></div></div>' : '<span class="jsp"></span>') +
     '<button id="themeBtn" class="jbtn" type="button" aria-label="Switch theme"></button><a id="jav" class="jav" href="passport.html" aria-label="Your passport"></a>' +
@@ -257,6 +271,7 @@ fs.writeFileSync(path.join(out, 'login.html'), rd('src/login.html').replace(/@@V
 // Owner-only visitor statistics (not linked; the data needs an account in visit_admins, see supabase/migrations/0006_visits.sql).
 fs.writeFileSync(path.join(out, 'admin.html'), rd('src/admin.html').replace(/@@V@@/g, V));
 fs.writeFileSync(path.join(out, 'videos.html'), page('src/videos.html'));
+fs.writeFileSync(path.join(out, 'handbook.html'), page('src/handbook.html'));
 fs.writeFileSync(path.join(out, 'passport.html'), page('src/passport.html'));
 fs.writeFileSync(path.join(out, 'route.html'), page('src/route.html'));
 fs.writeFileSync(path.join(out, 'today.html'), page('src/today.html'));
