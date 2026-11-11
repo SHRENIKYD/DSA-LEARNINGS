@@ -1366,8 +1366,6 @@ public class BookingFunctions(IBookingService svc)
 }`) +
     `<ul>
       <li><b>Why isolated:</b> the older in-process model tied you to the host's .NET version and assemblies, and its support ended on 10 November 2026.</li>
-      <li><b>You get:</b> normal dependency injection, your own middleware (<code>UseMiddleware</code>), and any supported .NET version.</li>
-      <li><b>Triggers and bindings:</b> HTTP, timer, queue, Service Bus, blob, Event Grid.</li>
       <li><b><code>AuthorizationLevel.Anonymous</code></b> means no function key is required, so you must authenticate callers yourself, with App Service authentication, or at an API gateway.</li>
       <li><b>Cold start:</b> the Flex Consumption plan with always-ready instances, or the Premium plan, keeps instances warm.</li>
     </ul>
@@ -1401,7 +1399,6 @@ interview.push({
       <li><b>Auth:</b> register a test authentication handler that produces a known user.</li>
       <li><b>Outside services:</b> replace typed HTTP clients with fakes or a stub server.</li>
     </ul>
-    <p>My usual mix: many fast unit tests for logic, a smaller set of these integration tests per endpoint, and a few end-to-end smoke tests after deployment.</p>
     <blockquote><b>Say it in the interview:</b> WebApplicationFactory hosts the real pipeline in memory, so a test exercises routing, auth, validation and serialization through an HttpClient. I swap external dependencies in ConfigureTestServices and run the database in a container.</blockquote>`,
   followUps: ['Why avoid the EF Core in-memory provider for these tests?', 'How do you fake an authenticated user?', 'How do you keep integration tests fast and isolated from each other?']
 });
@@ -1528,7 +1525,7 @@ builder.Services.AddScoped<SqlOrderRepo>();
 builder.Services.AddScoped<IOrderRepo>(sp => new LoggingOrderRepo(
     sp.GetRequiredService<SqlOrderRepo>(),
     sp.GetRequiredService<ILogger<LoggingOrderRepo>>()));`) +
-    `<p>Points to say while you write it: the caller and the SQL class do not change; decorators stack (logging around caching around SQL), and the order of stacking changes the meaning; use <code>throw;</code> and not <code>throw ex;</code>. The built-in container has no <code>Decorate</code> method, so you register with a factory lambda as above or use the Scrutor library. For one interface with many methods, a decorator per method gets long; then a pipeline behaviour or an interceptor is a better fit.</p>
+    `<p>Points to say while you write it: the caller and the SQL class do not change; decorators stack (logging around caching around SQL), and the order of stacking changes the meaning; use <code>throw;</code> and not <code>throw ex;</code>. The built-in container has no <code>Decorate</code> method, so you register with a factory lambda as above or use the Scrutor library.</p>
     <blockquote><b>Say it in the interview:</b> The decorator implements the same interface, wraps the inner repository, measures and logs around the call, and rethrows. I register it so that consumers asking for the interface get the decorator, which holds the real one inside.</blockquote>`,
   followUps: ['If you stack caching and logging, which goes outside?', 'Why throw; and not throw ex;?', 'How would you do this for 30 interfaces without 30 classes?']
 });
@@ -1601,10 +1598,7 @@ interview.push({
       ['Retry, backoff, jitter', 'short, temporary faults', 'only for idempotent operations'],
       ['Bulkhead', 'one slow dependency must not use up all threads or connections', 'separate pools or limits'],
       ['Cache-aside', 'cut read load', 'plan invalidation and protect against a stampede'],
-      ['Idempotency key', 'a retried write must not happen twice', 'store the result per key'],
-      ['API gateway and BFF', 'one entry point; a backend shaped for each front end', 'auth, rate limits and routing in one place'],
-      ['Strangler fig', 'replace a legacy system gradually', 'route feature by feature'],
-      ['Health endpoints', 'let the platform know when to route or restart', 'liveness and readiness']
+      ['Idempotency key', 'a retried write must not happen twice', 'store the result per key']
     ]) +
     `<p>How they combine in a checkout: the order service saves the order and an outbox row in one transaction; a relay publishes <code>OrderPlaced</code>; payment and stock react; if payment fails, a saga step cancels the order; every consumer is idempotent because messages can arrive twice.</p>
     <blockquote><b>Say it in the interview:</b> Across services I assume at-least-once delivery and partial failure. So I use an outbox to publish reliably, idempotent consumers, sagas with compensation in place of distributed transactions, and timeouts, retries and circuit breakers on every outgoing call.</blockquote>`,
@@ -1640,15 +1634,7 @@ interview.push({
 
 api.MapGet("/{id:guid}", async (Guid id, ICustomerService svc, CancellationToken ct) =>
     await svc.GetAsync(id, ct) is { } c ? Results.Ok(c) : Results.NotFound());
-
-api.MapPost("/", async (CreateCustomer body, ICustomerService svc, CancellationToken ct) =>
-{
-    var created = await svc.CreateAsync(body, ct);
-    return Results.Created("/api/customers/" + created.Id, created);
-})
-.WithName("CreateCustomer")
-.Produces<CustomerDto>(201)
-.ProducesValidationProblem();`) +
+`) +
     `<ul>
       <li><b>Route constraints</b> such as <code>:int</code>, <code>:guid</code>, <code>:minlength(3)</code> decide whether a route matches. They are for picking a route, not for validating input.</li>
       <li><b>Precedence:</b> more specific templates win; literal segments beat parameters.</li>
@@ -1678,11 +1664,9 @@ interview.push({
     }
 }
 
-// In a minimal API endpoint filter or the handler:
 var result = await validator.ValidateAsync(body, ct);
 if (!result.IsValid) return Results.ValidationProblem(result.ToDictionary());   // 400 problem+json`) +
-    `<p>The response is a validation problem: status 400 with an <code>errors</code> object listing messages per field, so the front end can show them next to the right input.</p>
-    <p>Client-side validation is only for user comfort. The server must check everything again, because anyone can call the API directly.</p>
+    `<p>The response is a validation problem: status 400 with an <code>errors</code> object listing messages per field.</p>
     <blockquote><b>Say it in the interview:</b> Shape and range checks at the API edge, business invariants in the domain, and a consistent 400 validation problem response. I never trust client-side validation, and I keep validators as separate, unit-tested classes when rules get complex.</blockquote>`,
   followUps: ['400 vs 422 for validation errors?', 'Where would you check "email must be unique"?', 'How do you return several errors at once?']
 });
@@ -1702,12 +1686,10 @@ interview.push({
 public partial class AppJsonContext : JsonSerializerContext { }   // source generation`) +
     T(['Pitfall', 'Detail'], [
       ['Two sets of defaults', '<code>new JsonSerializerOptions()</code> is case-sensitive and keeps PascalCase. ASP.NET Core uses web defaults: camelCase and case-insensitive'],
-      ['Controllers vs minimal APIs', 'controllers are configured with <code>AddJsonOptions</code>, minimal APIs with <code>ConfigureHttpJsonOptions</code>'],
       ['Enums', 'numbers unless you add the string converter'],
       ['Dates', 'prefer <code>DateTimeOffset</code> in UTC'],
       ['Reference loops', 'throws by default: return DTOs, not entity graphs'],
       ['Polymorphism', 'declare derived types with <code>[JsonDerivedType]</code>'],
-      ['Unknown or missing properties', 'unknown ones are ignored; use <code>required</code> for must-have properties'],
       ['Coming from Newtonsoft.Json', 'stricter: no comments, no numbers in quotes, no private setters unless told']
     ]) +
     `<p><b>Source generation</b> writes the serialization code at build time: faster startup, no reflection, and it is required for Native AOT.</p>
@@ -1724,13 +1706,8 @@ interview.push({
       <li><b>Phases:</b> mark what is reachable from the roots (stack variables, static fields, GC handles), then sweep or compact.</li>
       <li><b>Modes:</b> Workstation or Server GC (one heap per core: more throughput, more memory). Background GC does most Gen 2 work while the app keeps running.</li>
       <li><b>Finalizers</b> run later on a separate thread and keep the object alive for another collection. Prefer <code>IDisposable</code>; call <code>GC.SuppressFinalize(this)</code> in <code>Dispose</code> if the class has a finalizer.</li>
-      <li><b>Pinned objects</b> (for native interop) cannot be moved and fragment the heap.</li>
     </ul>
     <p><b>Managed leaks</b> are references you forgot: static collections, events never unsubscribed, unbounded caches, undisposed timers, a long-lived <code>DbContext</code>.</p>` +
-    T(['Symptom', 'Likely cause', 'Fix'], [
-      ['latency spikes with Gen 2 collections', 'many mid-lived objects or big arrays', 'pool buffers (<code>ArrayPool&lt;T&gt;</code>), stream data'],
-      ['memory only goes up', 'something still references the objects', 'compare two heap dumps, find the root']
-    ]) +
     `<blockquote><b>Say it in the interview:</b> It is a generational, compacting collector: cheap Gen 0 collections for short-lived objects, expensive Gen 2 for long-lived ones, and a separate heap for objects over 85,000 bytes. Leaks in .NET are unwanted references, and I find them by comparing heap dumps.</blockquote>`,
   followUps: ['Why is a finalizer more expensive than Dispose?', 'Server GC vs Workstation GC in a small container?', 'When, if ever, would you call GC.Collect?']
 });
@@ -1748,10 +1725,9 @@ interview.push({
     `<p>How I choose:</p>
     <ul>
       <li>A long-running API: plain JIT. Startup happens once and the peak speed is best.</li>
-      <li>Cold starts hurt (scale-to-zero containers, functions): ReadyToRun first, because it needs no code changes.</li>
-      <li>Small tools, sidecars, tiny functions: Native AOT, after checking every library. Minimal APIs, System.Text.Json source generation and logging source generators work. EF Core's support is still limited, and anything built on heavy reflection needs care.</li>
+      <li>Cold starts hurt (scale-to-zero containers, functions): ReadyToRun first.</li>
+      <li>Small tools, sidecars, tiny functions: Native AOT, after checking every library. EF Core's support is still limited, and anything built on heavy reflection needs care.</li>
     </ul>
-    <p>Dynamic PGO has been on by default since .NET 8.</p>
     <blockquote><b>Say it in the interview:</b> The JIT gives the best steady-state speed, with a warm-up. ReadyToRun and Native AOT move that work to build time to cut cold start. Native AOT is the most extreme: one native file with no JIT, at the price of restrictions on reflection, so I check library support before choosing it.</blockquote>`,
   followUps: ['Why can Native AOT code be slower at peak than JIT code?', 'What replaces reflection in an AOT app?', 'How would you cut the cold start of a function app?']
 });
@@ -1768,18 +1744,12 @@ interview.push({
         { TokenLimit = 20, TokensPerPeriod = 10, ReplenishmentPeriod = TimeSpan.FromSeconds(1) }));
 });
 builder.Services.AddOutputCache(o => o.AddPolicy("short", p => p.Expire(TimeSpan.FromSeconds(30)).Tag("products")));
-builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
-    .AddDbContextCheck<ShopDb>(tags: ["ready"]);
 
 app.UseRateLimiter();
-app.UseOutputCache();
-app.MapHealthChecks("/health/live",  new() { Predicate = r => r.Tags.Contains("live") });
-app.MapHealthChecks("/health/ready", new() { Predicate = r => r.Tags.Contains("ready") });`) +
+app.UseOutputCache();`) +
     `<ul>
       <li><b>Rate limiter algorithms:</b> fixed window, sliding window, token bucket (allows bursts), concurrency. Counters are per instance; for one global limit use the gateway or a shared store.</li>
       <li><b>Output cache</b> stores whole responses on the server and can be cleared by tag when data changes. By default it does not cache authenticated requests.</li>
-      <li><b>Compression:</b> often done by the proxy. If the app does it over HTTPS, be aware of compression side-channel attacks on pages that mix secrets and user input.</li>
       <li><b>Liveness</b> = the process is alive. <b>Readiness</b> = dependencies are reachable. Never put the database in the liveness check, or one database blip restarts every instance.</li>
     </ul>
     <blockquote><b>Say it in the interview:</b> I rate limit per user with a token bucket and return 429, cache hot read endpoints with tag-based invalidation, and expose separate liveness and readiness endpoints. Liveness stays trivial so that a dependency outage does not cause a restart storm.</blockquote>`,
@@ -1798,7 +1768,7 @@ interview.push({
     .WithMetrics(m => m
         .AddAspNetCoreInstrumentation()
         .AddRuntimeInstrumentation())
-    .UseOtlpExporter();        // or UseAzureMonitor() for Application Insights
+    .UseOtlpExporter();
 
 static readonly ActivitySource Source = new("Booking.Workflow");
 
@@ -1808,9 +1778,7 @@ activity?.SetTag("booking.id", bookingId);`) +
       <li><b>Trace:</b> the whole journey of one request. <b>Span:</b> one step in it. In .NET a span is a <code>System.Diagnostics.Activity</code>.</li>
       <li><b>Propagation:</b> the trace ID travels to the next service in the W3C <code>traceparent</code> header. <code>HttpClient</code> adds it automatically, and message brokers need it copied into message headers.</li>
       <li><b>Correlation:</b> <code>Activity.Current?.TraceId</code> is attached to log lines, so one ID finds logs and traces. Return it in error responses.</li>
-      <li><b>Metrics:</b> request rate, error rate, duration, plus runtime counters such as GC and thread pool queue length. Create your own with <code>Meter</code>.</li>
-      <li><b>Cost control:</b> sample traces (keep all errors, a share of successes) and keep tag values low-cardinality.</li>
-      <li><b>Hot paths:</b> <code>[LoggerMessage]</code> source-generated log methods avoid allocations.</li>
+      <li><b>Metrics:</b> request rate, error rate, duration, plus runtime counters such as GC and thread pool queue length.</li>
     </ul>
     <blockquote><b>Say it in the interview:</b> I instrument with OpenTelemetry so traces, metrics and logs share one trace ID that flows between services in the traceparent header. Auto-instrumentation covers ASP.NET Core and HttpClient, and I add custom spans and metrics around the business steps that matter.</blockquote>`,
   followUps: ['How does the trace ID cross a message queue?', 'What is sampling and what do you lose with it?', 'Which four signals would you alert on for an API?']
@@ -1836,8 +1804,8 @@ finally { ArrayPool<byte>.Shared.Return(rented); }`) +
       ['<code>Span&lt;T&gt;</code> / <code>ReadOnlySpan&lt;T&gt;</code>', 'stack only (a <code>ref struct</code>)', 'synchronous parsing and slicing'],
       ['<code>Memory&lt;T&gt;</code> / <code>ReadOnlyMemory&lt;T&gt;</code>', 'can be stored on the heap', 'fields, and data that must survive an <code>await</code>']
     ]) +
-    `<p><b>Why a ref struct is restricted:</b> a span may point at stack memory, so the compiler makes sure it can never outlive that memory. It cannot be a field of a class, cannot be boxed, cannot be captured by a lambda, and cannot be alive across an <code>await</code>. Since C# 13 you may declare one in an async method as long as it is not used after an await, and ref structs can implement interfaces.</p>
-    <p><b>Where it pays off:</b> parsers, serializers, network pipelines (Kestrel and <code>System.IO.Pipelines</code> are built on it). Where it does not: ordinary business code. Measure with BenchmarkDotNet's memory diagnoser first; less garbage means fewer Gen 0 collections, but readability has a price too.</p>
+    `<p><b>Why a ref struct is restricted:</b> a span may point at stack memory, so the compiler makes sure it can never outlive that memory. It cannot be a field of a class, and cannot be alive across an <code>await</code>. Since C# 13 you may declare one in an async method as long as it is not used after an await.</p>
+    <p><b>Where it pays off:</b> parsers, serializers, network pipelines (Kestrel and <code>System.IO.Pipelines</code> are built on it). Where it does not: ordinary business code.</p>
     <blockquote><b>Say it in the interview:</b> Span is a stack-only view over existing memory, which lets me slice and parse without allocating. When data has to live on the heap or across an await I use Memory. I use these in measured hot paths, together with stackalloc and ArrayPool, not everywhere.</blockquote>`,
   followUps: ['Why can a Span not be a field in a class?', 'What happens if you forget to return a rented array?', 'How would you prove an optimisation removed allocations?']
 });
@@ -1848,15 +1816,14 @@ interview.push({
     <p><b>How it happens:</b> code blocks a thread on asynchronous work with <code>.Result</code>, <code>.Wait()</code> or <code>.GetAwaiter().GetResult()</code>, or uses blocking I/O and <code>Thread.Sleep</code>. The blocked thread needs <i>another</i> pool thread to complete the work it waits for. When all threads wait, nothing can finish. The pool notices and adds threads, but only about one or two per second, so a traffic burst outruns it.</p>` +
     T(['Signal', 'Tool'], [
       ['thread pool queue length rising, thread count climbing steadily, CPU low', '<code>dotnet-counters monitor System.Runtime</code>'],
-      ['hundreds of threads with the same blocked stack', '<code>dotnet-stack report</code> or a dump opened with <code>dotnet-dump</code> (<code>clrthreads</code>, <code>parallelstacks</code>)'],
-      ['latency grows with concurrency, not with payload size', 'a load test with step increases']
+      ['hundreds of threads with the same blocked stack', '<code>dotnet-stack report</code> or a dump opened with <code>dotnet-dump</code> (<code>clrthreads</code>, <code>parallelstacks</code>)']
     ]) +
     CODE(`// Blocks a pool thread for the whole call
 var order = orderService.GetAsync(id).Result;
 
 // Frees the thread while waiting
 var order = await orderService.GetAsync(id, ct);`) +
-    `<p><b>Fix:</b> async all the way down, including data access and HTTP calls; remove sync wrappers around async libraries; move truly blocking work off request threads; add timeouts. Raising <code>ThreadPool.SetMinThreads</code> can buy time during an incident, but it treats the symptom. An analyzer rule that bans <code>.Result</code> and <code>.Wait()</code> stops it coming back.</p>
+    `<p><b>Fix:</b> async all the way down, including data access and HTTP calls; remove sync wrappers around async libraries; move truly blocking work off request threads; add timeouts. Raising <code>ThreadPool.SetMinThreads</code> can buy time during an incident, but it treats the symptom.</p>
     <blockquote><b>Say it in the interview:</b> Low CPU with a growing request queue points to blocked threads, usually sync-over-async. I confirm it with dotnet-counters and a stack dump showing many threads parked on the same call, then make that path fully async. Raising the minimum thread count is only a stopgap.</blockquote>`,
   followUps: ['Why does the pool add threads so slowly?', 'Why does .Result not deadlock in ASP.NET Core the way it did in classic ASP.NET?', 'Is Task.Run a fix for blocking code in a web API?']
 });
@@ -1865,18 +1832,16 @@ interview.push({
   q: 'How are assemblies loaded in modern .NET, and what replaced AppDomains?', level: 'E',
   a: `<p>Assemblies are loaded lazily, the first time a type from them is needed, and isolation between sets of assemblies is now done with <code>AssemblyLoadContext</code> because modern .NET has only one AppDomain per process.</p>
     <ul>
-      <li><b>Resolution:</b> for a normal app the host reads <code>MyApp.deps.json</code> (the exact list of dependencies and versions) and <code>MyApp.runtimeconfig.json</code> (which shared framework to use), and builds the list of trusted assemblies. There is no Global Assembly Cache and no binding redirects as in .NET Framework.</li>
+      <li><b>Resolution:</b> for a normal app the host reads <code>MyApp.deps.json</code> (the exact list of dependencies and versions) and <code>MyApp.runtimeconfig.json</code> (which shared framework to use), and builds the list of trusted assemblies.</li>
       <li><b>Default context:</b> everything the app references loads into the default <code>AssemblyLoadContext</code>. One version of an assembly per context.</li>
       <li><b>Custom contexts:</b> a plug-in host creates one context per plug-in, with an <code>AssemblyDependencyResolver</code>, so two plug-ins can use different versions of the same library.</li>
       <li><b>Unloading:</b> a context created as <i>collectible</i> can be unloaded, but only when nothing references its types any more. Unloading is cooperative, not forced.</li>
     </ul>` +
     T(['.NET Framework', 'Modern .NET'], [
       ['several AppDomains per process, with a security boundary', 'one AppDomain; isolation by process or container'],
-      ['unload an AppDomain to unload code', 'collectible <code>AssemblyLoadContext</code>'],
-      ['Remoting between domains', 'gRPC, pipes or HTTP between processes'],
-      ['GAC and binding redirects', '<code>deps.json</code> and NuGet resolution at build time']
+      ['unload an AppDomain to unload code', 'collectible <code>AssemblyLoadContext</code>']
     ]) +
-    `<p>A type's identity includes its load context: the same class loaded in two contexts is two different types, which is the usual cause of the confusing "cannot cast X to X" error in plug-in systems. Share contract assemblies from the default context to avoid it. None of this works under Native AOT, which has no run-time loading.</p>
+    `<p>A type's identity includes its load context: the same class loaded in two contexts is two different types, which is the usual cause of the confusing "cannot cast X to X" error in plug-in systems.</p>
     <blockquote><b>Say it in the interview:</b> Modern .NET resolves assemblies from deps.json into a default AssemblyLoadContext and loads them on first use. For plug-ins I create a collectible load context per plug-in for version isolation and unloading. For real security isolation I use a separate process, because AppDomain sandboxes no longer exist.</blockquote>`,
   followUps: ['Why might an AssemblyLoadContext refuse to unload?', 'What causes "type X cannot be cast to type X"?', 'What are deps.json and runtimeconfig.json for?']
 });
