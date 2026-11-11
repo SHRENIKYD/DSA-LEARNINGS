@@ -1813,7 +1813,7 @@ finally { ArrayPool<byte>.Shared.Return(rented); }`) +
 interview.push({
   q: 'Under load, requests hang while the CPU is almost idle. What is thread pool starvation and how do you diagnose it?', level: 'E',
   a: `<p>Thread pool starvation means every pool thread is blocked waiting for something, so new requests sit in a queue even though the CPU has nothing to do.</p>
-    <p><b>How it happens:</b> code blocks a thread on asynchronous work with <code>.Result</code>, <code>.Wait()</code> or <code>.GetAwaiter().GetResult()</code>,. The blocked thread needs <i>another</i> pool thread to complete the work it waits for. When all threads wait, nothing can finish. The pool notices and adds threads, but only about one or two per second, so a traffic burst outruns it.</p>` +
+    <p><b>How it happens:</b> code blocks a thread on asynchronous work with <code>.Result</code>, <code>.Wait()</code> or <code>.GetAwaiter().GetResult()</code>. The blocked thread needs <i>another</i> pool thread to complete the work it waits for. When all threads wait, nothing can finish. The pool notices and adds threads, but only about one or two per second, so a traffic burst outruns it.</p>` +
     T(['Signal', 'Tool'], [
       ['thread pool queue length rising, thread count climbing steadily, CPU low', '<code>dotnet-counters monitor System.Runtime</code>'],
       ['hundreds of threads with the same blocked stack', '<code>dotnet-stack report</code> or a dump opened with <code>dotnet-dump</code> (<code>clrthreads</code>, <code>parallelstacks</code>)']
@@ -1834,7 +1834,7 @@ interview.push({
     <ul>
       <li><b>Resolution:</b> for a normal app the host reads <code>MyApp.deps.json</code> (the exact list of dependencies and versions) and <code>MyApp.runtimeconfig.json</code> (which shared framework to use), and builds the list of trusted assemblies.</li>
       <li><b>Default context:</b> everything the app references loads into the default <code>AssemblyLoadContext</code>.</li>
-      <li><b>Custom contexts:</b> a plug-in host creates one context per plug-in, with an <code>AssemblyDependencyResolver</code>, so two plug-ins can use different versions of the same library.</li>
+      <li><b>Custom contexts:</b> a plug-in host creates one context per plug-in, so two plug-ins can use different versions of the same library.</li>
       <li><b>Unloading:</b> a context created as <i>collectible</i> can be unloaded, but only when nothing references its types any more.</li>
     </ul>` +
     T(['.NET Framework', 'Modern .NET'], [

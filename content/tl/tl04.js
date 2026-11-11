@@ -88,7 +88,7 @@ topics.push({
     { narr: 'The admin retries the same DELETE. Now the answer is <b>404 Not Found</b>. The <i>response</i> differs but the <i>state</i> is the same (the order is gone), so DELETE is still idempotent.', hl: { A: 'cur', D: 'done' }, ehl: { 'C-G': 'ok', 'G-A': 'ok', 'A-D': 'win' }, parts: [t1Row('DELETE /api/v1/orders/501 (again)', '404 Not Found', 'Already gone: same end state')] }
   ]),
   examples: [
-    { title: 'URLs for a shop: nouns, plurals, one level of nesting', html: `<p>Name the <b>thing</b>, not the action. The method is the verb.</p>`, code: { lang: 'http', code: 'GET    /api/v1/orders?status=shipped&page=2&pageSize=50&sort=-createdAt\nGET    /api/v1/orders/501\nPOST   /api/v1/orders\nPUT    /api/v1/orders/501\nPATCH  /api/v1/orders/501\nDELETE /api/v1/orders/501\nGET    /api/v1/orders/501/items\nPOST   /api/v1/orders/501/cancel' } },
+    { title: 'URLs for a shop: nouns, plurals, one level of nesting', html: `<p>Name the <b>thing</b>, not the action. The HTTP method is the verb, and filters go in the query string.</p>`, code: { lang: 'http', code: 'GET    /api/v1/orders?status=shipped&page=2&pageSize=50&sort=-createdAt\nGET    /api/v1/orders/501\nPOST   /api/v1/orders\nPUT    /api/v1/orders/501\nPATCH  /api/v1/orders/501\nDELETE /api/v1/orders/501\nGET    /api/v1/orders/501/items\nPOST   /api/v1/orders/501/cancel' } },
     { title: 'Why the second DELETE can return 404 and still be idempotent', html: `<p>Idempotent is about the <b>state on the server</b>, not about the response text. After 1 DELETE the order is gone. After 3 DELETEs the order is gone. Same state, so a client or a proxy can retry a DELETE after a timeout without fear. A POST that creates an order is different: 3 POSTs can create 3 orders.</p>` },
     { title: '400, 401, 403, 404, 409, 422 on one endpoint', html: `${H.table(['Situation on PUT /orders/501', 'Code'], [['The JSON is broken', '400'], ['No token, or the token expired', '401'], ['Token is fine, but this order belongs to someone else', '403 (or 404 to hide that it exists)'], ['No order with id 501', '404'], ['The order was already shipped, so it cannot be changed', '409'], ['JSON is valid, but quantity is -3', '422 (many teams use 400 for this too)']])}<p>Pick one rule for 400 versus 422 and apply it everywhere. Consistency matters more than the choice.</p>` }
   ],
@@ -848,7 +848,7 @@ app.MapGet("/api/v1/orders", GetOrders).RequireRateLimiting("api");</code></pre>
   followUps: ['What is the difference between rate limiting and throttling?', 'How should a client react to a 429?', 'How do you rate limit an endpoint whose calls differ a lot in cost?'] });
 
 interview.push({ q: 'Write a complete CRUD controller in ASP.NET Core.', level: 'I',
-  a: `<p>A CRUD controller maps each HTTP method to one service call and returns the matching status code; it should hold no business logic.</p>
+  a: `<p>A CRUD controller maps each HTTP method to one service call and returns the matching status code.</p>
 <pre><code>[ApiController]
 [Route("api/v1/orders")]
 [Authorize]
@@ -869,16 +869,12 @@ public class OrdersController(IOrderService orders) : ControllerBase
         return CreatedAtRoute(nameof(Get), new { id = created.Id }, created);   // 201 + Location
     }
 
-    [HttpPut("{id:int}")]
-    public async Task&lt;IActionResult&gt; Replace(int id, UpdateOrder body, CancellationToken ct)
-        =&gt; await orders.ReplaceAsync(id, body, ct) ? NoContent() : NotFound();
-
     [HttpDelete("{id:int}")]
     [Authorize(Policy = "Orders.Delete")]
     public async Task&lt;IActionResult&gt; Delete(int id, CancellationToken ct)
         =&gt; await orders.DeleteAsync(id, ct) ? NoContent() : NotFound();
 }</code></pre>
-<p>What to point out: <code>[ApiController]</code> gives automatic 400 on invalid models; DTOs in and out, never entities; a capped page size; a <code>CancellationToken</code> on every action; 201 with Location on create; a stricter policy on delete.</p>
+<p>PUT follows the DELETE pattern: 204 or 404. Points to mention: <code>[ApiController]</code> returns 400 for invalid models; DTOs, never entities; a capped page size; a <code>CancellationToken</code> everywhere.</p>
 <blockquote><b>Say it in the interview:</b> My controllers are thin: bind, authorize, call a service, map the result to a status code. DTOs at the edge, cancellation tokens everywhere, 201 with Location on create, 204 on delete.</blockquote>`,
   followUps: ['Why not return the EF Core entity directly?', 'Where does validation happen?', 'Where do you check that the order belongs to the caller?'] });
 
@@ -1015,17 +1011,17 @@ interview.push({ q: 'How do you call another HTTP API reliably from .NET?', leve
 interview.push({ q: 'Walk me through your REST API security checklist (OWASP API Security Top 10).', level: 'E',
   a: `<p>Most API breaches are authorization mistakes, not broken encryption, and the OWASP API Security Top 10 (2023 edition) is the checklist I review against.</p>
 <table><tr><th>Risk</th><th>What I do</th></tr>
-<tr><td>1. Broken object level authorization (BOLA)</td><td>check on every call that <i>this</i> caller may access <i>this</i> id, not only that they are signed in</td></tr>
-<tr><td>2. Broken authentication</td><td>validate token signature, issuer, audience and expiry; short-lived tokens</td></tr>
-<tr><td>3. Broken object property level authorization</td><td>DTOs in and out; never bind a request body straight to an entity (mass assignment); do not return fields the caller should not see</td></tr>
+<tr><td>1. Broken object level authorization (BOLA)</td><td>check that <i>this</i> caller may access <i>this</i> id</td></tr>
+<tr><td>2. Broken authentication</td><td>validate signature, issuer, audience, expiry</td></tr>
+<tr><td>3. Broken object property level authorization</td><td>DTOs in and out; never bind a body straight to an entity (mass assignment)</td></tr>
 <tr><td>4. Unrestricted resource consumption</td><td>page size caps, rate limits, body size limits, timeouts</td></tr>
 <tr><td>5. Broken function level authorization</td><td>a role or policy on every endpoint, deny by default</td></tr>
-<tr><td>6. Unrestricted access to sensitive business flows</td><td>limits and bot protection on flows such as checkout or sign-up</td></tr>
+<tr><td>6. Unrestricted access to sensitive business flows</td><td>limits on flows such as checkout or sign-up</td></tr>
 <tr><td>7. Server-side request forgery</td><td>never fetch a user-supplied URL without an allow-list</td></tr>
 <tr><td>8. Security misconfiguration</td><td>HTTPS only, strict CORS, no verbose errors, security headers</td></tr>
 <tr><td>9. Improper inventory management</td><td>know every endpoint and version; retire old ones</td></tr>
-<tr><td>10. Unsafe consumption of APIs</td><td>validate data from third parties and from AI model output like any user input</td></tr></table>
-<p>Injection is no longer its own entry, but parameterised queries and allow-listed sort fields remain basic hygiene. As a lead I make the top item testable: an integration test where user A requests user B's resource and must get 403 or 404.</p>
+<tr><td>10. Unsafe consumption of APIs</td><td>validate third-party data and AI model output</td></tr></table>
+<p>Injection has no entry of its own now, but parameterised queries remain basic hygiene. I make item 1 testable: user A requests user B's resource and must get 403 or 404.</p>
 <blockquote><b>Say it in the interview:</b> Authentication tells me who is calling; the bugs are usually in authorization. I check object-level access on every request, use DTOs to stop over-posting and data leaks, cap everything, and back it with tests where one user asks for another user's data.</blockquote>`,
   followUps: ['Give a concrete BOLA example and its fix.', 'What is mass assignment?', 'How do you find endpoints nobody remembers?'] });
 
@@ -1241,7 +1237,7 @@ interview.push({ q: 'How do mutations, subscriptions and errors work in GraphQL?
 
 interview.push({ q: 'What is the N+1 problem in GraphQL and how does DataLoader solve it?', level: 'A',
   a: `<p>N+1 means one query fetches a list of N items and then a separate query runs for each item, so one request becomes N+1 database calls.</p>
-<p>It happens because each field has its own resolver. The <code>orders</code> resolver returns 20 rows. Then the <code>customer</code> resolver runs 20 times, once per order, each with its own lookup: 21 queries. Nest one more level and it multiplies again.</p>
+<p>Each field has its own resolver. <code>orders</code> returns 20 rows, then the <code>customer</code> resolver runs 20 times, each with its own lookup: 21 queries.</p>
 <p>A <b>DataLoader</b> fixes it with batching and caching, per request:</p>
 <ol><li>Each resolver asks the loader for one key and gets a pending task.</li>
 <li>The loader collects all keys asked for in the same execution step.</li>
@@ -1257,7 +1253,7 @@ interview.push({ q: 'What is the N+1 problem in GraphQL and how does DataLoader 
         return await db.Customers.Where(c =&gt; ids.Contains(c.Id)).ToDictionaryAsync(c =&gt; c.Id, ct);
     }
 }</code></pre>
-<p>Result: 2 queries instead of 21, and still 2 with 200 orders. The other tool is <b>projection</b>: Hot Chocolate can translate the requested fields into one EF Core query with joins. Guard against a return of the problem with a test that counts SQL statements per operation.</p>
+<p>Result: 2 queries instead of 21, and still 2 with 200 orders. Guard it with a test that counts SQL statements per operation.</p>
 <blockquote><b>Say it in the interview:</b> Each child resolver runs per parent row, which gives N+1 queries. A DataLoader collects the keys and loads them in one batched query per request, and I keep a test on the SQL count so it stays fixed.</blockquote>`,
   followUps: ['Why is the DataLoader cache scoped to one request?', 'Does REST have N+1 problems too?', 'When is a join through projection better than a DataLoader?'] });
 
@@ -1267,10 +1263,9 @@ interview.push({ q: 'How do you secure a GraphQL API and keep it fast?', level: 
 <tr><td>Very deep or wide queries</td><td>maximum depth and a cost (complexity) limit calculated before execution</td></tr>
 <tr><td>Huge lists</td><td>every list is paged (Relay-style connections) with a capped <code>first</code></td></tr>
 <tr><td>Unknown queries from outside</td><td><b>persisted queries</b>: only queries registered at build time may run, sent by hash</td></tr>
-<tr><td>Schema discovery</td><td>turn off introspection in production if the API is not public</td></tr>
+<tr><td>Schema discovery</td><td>turn off introspection in production if not public</td></tr>
 <tr><td>Data reached through a side path</td><td>authorization on types, fields and resolvers; the same object can be reached from many parents</td></tr>
 <tr><td>One request doing the work of thousands</td><td>rate limit by query cost, not by request count; set timeouts</td></tr>
-<tr><td>Batching abuse</td><td>limit how many operations or aliases one request may contain</td></tr>
 <tr><td>N+1</td><td>DataLoader and projections</td></tr></table>
 <p><b>Speed:</b> cache at resolver level for hot data; with persisted queries sent as GET, a CDN can cache public results. <b>Observability:</b> every request needs an operation name, and you log name, cost, duration and error count, because "POST /graphql took 2 s" tells you nothing.</p>
 <p>The architectural decision is who the clients are. For your own apps, persisted queries turn the API into a fixed, reviewable set of operations and remove most risk. A truly public GraphQL API needs the full cost model.</p>
@@ -1297,15 +1292,15 @@ source.onmessage = (e) =&gt; showStatus(e.data);</code></pre>
 interview.push({ q: 'Compare AMQP, MQTT, Kafka, Azure Service Bus, Event Grid and Event Hubs.', level: 'I',
   a: `<p>These are tools for services to send each other messages through a broker, so the sender does not have to wait for the receiver or even know whether it is running.</p>
 <table><tr><th>Name</th><th>What it is</th><th>Use it for</th></tr>
-<tr><td>AMQP</td><td>a wire protocol for reliable broker messaging; Service Bus speaks AMQP 1.0</td><td>you rarely choose it directly</td></tr>
-<tr><td>MQTT</td><td>a very light publish and subscribe protocol</td><td>IoT devices on weak networks</td></tr>
+<tr><td>AMQP</td><td>a wire protocol for broker messaging; Service Bus uses it</td><td>rarely chosen directly</td></tr>
+<tr><td>MQTT</td><td>a very light publish and subscribe protocol</td><td>IoT devices</td></tr>
 <tr><td>Kafka</td><td>a distributed, partitioned log; consumers track their own position and can replay</td><td>high-volume event streams</td></tr>
 <tr><td>Azure Service Bus</td><td>enterprise queues and topics: sessions for ordering, dead-letter queue, duplicate detection, scheduled delivery</td><td>business messages that must not be lost</td></tr>
 <tr><td>Azure Event Grid</td><td>pushes small events to subscribers</td><td>reacting to "something happened", such as a file upload</td></tr>
 <tr><td>Azure Event Hubs</td><td>a partitioned log like Kafka, and it offers a Kafka-compatible endpoint</td><td>telemetry and clickstream ingestion</td></tr></table>
 <p>Two ideas to state clearly:</p>
 <ul><li><b>Queue versus topic.</b> A queue delivers each message to one receiver (point to point). A topic copies each message to every subscription (publish and subscribe).</li>
-<li><b>At-least-once delivery.</b> A message may arrive twice, for example when a receiver finishes the work but crashes before confirming. So every consumer must be <b>idempotent</b>: processing the same message twice has the same effect as once.</li></ul>
+<li><b>At-least-once delivery.</b> A message may arrive twice, so every consumer must be <b>idempotent</b>: processing the same message twice has the same effect as once.</li></ul>
 <blockquote><b>Say it in the interview:</b> Service Bus for business commands and workflows, Event Grid for lightweight reactive events, Event Hubs or Kafka for high-volume streams, MQTT for devices. Whatever the broker, delivery is at least once, so my handlers are idempotent.</blockquote>`,
   followUps: ['What is a dead-letter queue and who looks at it?', 'How do you keep messages for one order in sequence?', 'What is the outbox pattern?'] });
 
@@ -1330,7 +1325,7 @@ interview.push({ q: 'How do you receive and send webhooks safely and reliably?',
 <li><b>Block replays.</b> Reject messages whose timestamp is older than a few minutes.</li>
 <li><b>Deduplicate.</b> Save the event id with a unique index; a repeat gets 200 and is skipped.</li>
 <li><b>Answer fast.</b> Queue the event, return 200, process in the background.</li>
-<li><b>Do not trust order.</b> Use a version in the event, or fetch the current state from the sender's API.</li></ol>
+<li><b>Do not trust order.</b> Use a version in the event.</li></ol>
 <pre><code>var expected = HMACSHA256.HashData(secretBytes, rawBodyBytes);
 var given = Convert.FromHexString(signatureHeader);
 if (!CryptographicOperations.FixedTimeEquals(expected, given))
@@ -1339,7 +1334,7 @@ if (!CryptographicOperations.FixedTimeEquals(expected, given))
 <ul><li>Write the event to an <b>outbox</b> table in the same transaction as the business change, so it cannot be lost.</li>
 <li>Deliver from a queue with a short timeout, exponential backoff for hours or days, then a dead-letter store.</li>
 <li>Give each event an id, a type and a timestamp; sign it with a per-receiver secret that can be rotated.</li>
-<li>Offer a delivery log and a resend button. Refuse receiver URLs that point at internal addresses.</li></ul>
+<li>Offer a delivery log and a resend button.</li></ul>
 <blockquote><b>Say it in the interview:</b> Receiving: verify the HMAC signature and timestamp, deduplicate by event id, acknowledge quickly and process asynchronously. Sending: outbox, retries with backoff, signed events with ids. The promise is at-least-once, never exactly-once.</blockquote>`,
   followUps: ['Why compare signatures in constant time?', 'Why must you sign the raw body and not the parsed JSON?', 'How do you rotate a webhook secret without dropping events?'] });
 
@@ -1348,12 +1343,6 @@ interview.push({ q: 'How does SignalR work, and how do you scale it across sever
 <ul><li><b>Hub:</b> a class whose methods clients call. The server calls clients back by name: <code>Clients.All</code>, <code>Clients.User(id)</code>, <code>Clients.Group(name)</code>.</li>
 <li><b>Transports:</b> WebSockets first, then server-sent events, then long polling. The client finds out through a <code>negotiate</code> request.</li>
 <li><b>Groups:</b> named sets of connections, for example one per order or per tenant.</li></ul>
-<pre><code>public class OrderHub : Hub
-{
-    public Task Follow(string orderId)
-        =&gt; Groups.AddToGroupAsync(Context.ConnectionId, "order-" + orderId);
-}
-// elsewhere: hubContext.Clients.Group("order-501").SendAsync("statusChanged", "Shipped");</code></pre>
 <p><b>The scaling problem:</b> a connection lives on one server. A message raised on server 1 does not reach clients connected to server 2.</p>
 <table><tr><th>Option</th><th>How</th><th>Notes</th></tr>
 <tr><td>Azure SignalR Service</td><td>clients connect to the managed service; app servers send to it</td><td>no sticky sessions; handles very large connection counts</td></tr>
@@ -1386,7 +1375,7 @@ curl -X POST https://api.example.com/api/v1/orders \\
   -H "Content-Type: application/json" \\
   -d '{"productId":17,"quantity":2}'</code></pre>
 <table><tr><th>Tool</th><th>What it is good for</th></tr>
-<tr><td>curl</td><td>on every machine and server; easy to paste into a bug report or a pipeline</td></tr>
+<tr><td>curl</td><td>on every machine; easy to paste into a bug report</td></tr>
 <tr><td>Postman</td><td>a visual client with collections, environments and test scripts</td></tr>
 <tr><td>.http files</td><td>plain-text requests stored in the repository; run from Visual Studio, Rider or the VS Code REST Client extension</td></tr>
 <tr><td>Newman</td><td>runs Postman collections from the command line, for CI</td></tr></table>
@@ -1417,19 +1406,8 @@ interview.push({ q: 'Write a unit test for a service with xUnit and Moq.', level
         _orders.Verify(r =&gt; r.SaveAsync(It.Is&lt;Order&gt;(o =&gt; o.Status == OrderStatus.Shipped), default), Times.Once);
         _notifier.Verify(n =&gt; n.SendAsync("a@example.com", It.IsAny&lt;string&gt;()), Times.Once);
     }
-
-    [Theory]
-    [InlineData(OrderStatus.Placed)]
-    [InlineData(OrderStatus.Cancelled)]
-    public async Task Ship_Throws_AndSavesNothing_WhenNotPaid(OrderStatus status)
-    {
-        _orders.Setup(r =&gt; r.GetAsync(1, default)).ReturnsAsync(new Order { Id = 1, Status = status });
-
-        await Assert.ThrowsAsync&lt;InvalidOperationException&gt;(() =&gt; Sut().ShipAsync(1, default));
-        _orders.Verify(r =&gt; r.SaveAsync(It.IsAny&lt;Order&gt;(), default), Times.Never);
-    }
 }</code></pre>
-<p>What makes it good: the name says method, outcome and condition; <code>[Fact]</code> is one case and <code>[Theory]</code> runs the same test with several inputs; there is a failure path, and it checks that nothing was saved. The front end version looks the same with Vitest: <code>vi.fn()</code> fakes, <code>expect(save).toHaveBeenCalledWith(...)</code>, and <code>it.each</code> for several inputs.</p>
+<p>What makes it good: the name says method, outcome and condition, and each test checks one behaviour. I add a failure-path test as a <code>[Theory]</code> with <code>[InlineData]</code> for each wrong status: it expects <code>Assert.ThrowsAsync</code> and verifies <code>SaveAsync</code> was called <code>Times.Never</code>. The front end version looks the same in Vitest with <code>vi.fn()</code> fakes and <code>it.each</code>.</p>
 <blockquote><b>Say it in the interview:</b> Arrange, act, assert; one behaviour per test; a name that reads like a sentence; and always a failure-path test that proves nothing was persisted.</blockquote>`,
   followUps: ['What is the difference between a mock, a stub and a fake?', 'When does heavy mocking become a problem?', 'Moq or NSubstitute: does the choice matter?'] });
 
@@ -1442,7 +1420,7 @@ interview.push({ q: 'How do you write an integration test with WebApplicationFac
         b.ConfigureTestServices(s =&gt;
         {
             s.RemoveAll&lt;DbContextOptions&lt;ShopDb&gt;&gt;();
-            s.AddDbContext&lt;ShopDb&gt;(o =&gt; o.UseSqlServer(TestDb.ConnectionString));   // container
+            s.AddDbContext&lt;ShopDb&gt;(o =&gt; o.UseSqlServer(TestDb.ConnectionString));
             s.AddAuthentication("Test")
              .AddScheme&lt;AuthenticationSchemeOptions, TestAuthHandler&gt;("Test", _ =&gt; { });
         })).CreateClient();
@@ -1454,16 +1432,10 @@ interview.push({ q: 'How do you write an integration test with WebApplicationFac
         Assert.Equal(HttpStatusCode.Created, res.StatusCode);
         Assert.NotNull(res.Headers.Location);
     }
-
-    [Fact]
-    public async Task Post_ReturnsBadRequest_WhenQuantityMissing()
-    {
-        var res = await _client.PostAsJsonAsync("/api/v1/orders", new { productId = 17 });
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-    }
 }</code></pre>
-<p><b>Fidelity warning:</b> the EF Core in-memory provider does not enforce constraints, transactions or SQL translation. For anything that depends on database behaviour, run a real engine with Testcontainers, or SQLite at the least.</p>
-<p>Swap only what you must (database location, sign-in, outside HTTP services). The more that stays real, the more the test proves.</p>
+<p>Add the same for a missing field (400) and for no token (401).</p>
+<p><b>Fidelity warning:</b> the EF Core in-memory provider does not enforce constraints, transactions or SQL translation. Use a real engine with Testcontainers.</p>
+<p>Swap only what you must. The more that stays real, the more the test proves.</p>
 <blockquote><b>Say it in the interview:</b> I host the real app in memory with WebApplicationFactory, replace only the database connection and the auth scheme, and assert on status codes, headers and bodies. For SQL behaviour I use a real database in a container, not the in-memory provider.</blockquote>`,
   followUps: ['How do you keep database state from leaking between tests?', 'Why is a missing Location header invisible to a unit test?', 'How do you make these tests fast enough for every pull request?'] });
 
@@ -1485,8 +1457,8 @@ public async Task GetBooking_Returns404_WhenMissing()
 }</code></pre>
 <p>Why this works:</p>
 <ul><li>In the <b>isolated worker model</b> with ASP.NET Core integration, a function is a normal class with constructor injection. Its method takes an <code>HttpRequest</code> and returns an <code>IActionResult</code>, so no Functions host is needed.</li>
-<li>The function body should only bind input, validate, call a service and map the result. The logic lives in the service, which has its own unit tests.</li></ul>
-<p>What a unit test cannot show: route templates, authorization level, binding configuration and <code>host.json</code> settings. Cover those with a few integration tests against the function app running locally (Azure Functions Core Tools, with Azurite for storage) or in a test slot. Note that the older in-process model reached the end of support in November 2026, so new and migrated apps use the isolated worker.</p>
+<li>The function body only binds input, validates, calls a service and maps the result.</li></ul>
+<p>A unit test cannot show routes, authorization level or binding settings. Cover those with a few integration tests against the app running locally (Core Tools with Azurite) or in a test slot. The older in-process model reached the end of support in November 2026.</p>
 <blockquote><b>Say it in the interview:</b> My functions are thin adapters over injected services. I unit test the method directly with mocks and a DefaultHttpContext, and cover triggers and bindings with a small set of integration tests against a running host.</blockquote>`,
   followUps: ['How would you test a queue-triggered function?', 'What does the isolated worker model change for testing?', 'How do you test a timer trigger without waiting?'] });
 
@@ -1505,9 +1477,9 @@ var http = new HttpClient(new StubHandler(_ =&gt;
 <tr><td>Stub handler (above)</td><td>unit tests of a typed client: test 200, 404, 500, timeouts and bad JSON</td></tr>
 <tr><td>WireMock.Net</td><td>integration tests: a real local HTTP server with scripted responses</td></tr>
 <tr><td>Mock Service Worker (MSW)</td><td>TypeScript: intercepts requests in Node tests and in the browser</td></tr>
-<tr><td>Provider sandbox</td><td>a few scheduled tests against the vendor's test environment</td></tr></table>
+</table>
 <p>Do not mock <code>HttpClient</code> itself; its methods are not virtual. Wrap the remote API in your own interface, and mock that interface in the tests of the code above it.</p>
-<p>For AI features: never call the real language model in unit tests. It is slow, costs money and gives different output each time. Stub the client interface, and keep a small separate set of evaluation tests (fixed prompts with expected properties) that run on a schedule or before a release.</p>
+<p>For AI features: never call the real language model in unit tests. Stub the client interface, and keep a small set of evaluation tests (fixed prompts with expected properties) that run on a schedule.</p>
 <blockquote><b>Say it in the interview:</b> I stub at the HttpMessageHandler or with a local mock server, and I test the unhappy answers on purpose: 500, timeout, malformed body. Real third parties and language models are never called from unit tests.</blockquote>`,
   followUps: ['How do you test that your retry policy really retries?', 'What is the risk of stubs drifting from the real API?', 'How do you simulate a timeout?'] });
 
@@ -1521,7 +1493,7 @@ interview.push({ q: 'What is contract testing, and how do you detect breaking AP
 import Ajv from "ajv";
 const validate = new Ajv().compile(schemas.OrderDto);
 expect(validate(await res.json())).toBe(true);</code></pre>
-<p>How I roll it out: start with the OpenAPI diff, because it is one pipeline step and catches most accidents. Add Pact where teams deploy on their own schedules and the cost of a break is high. Contract tests do not replace integration tests: they check the shape of messages, not whether the business logic is right.</p>
+<p>I start with the OpenAPI diff, because it is one pipeline step. I add Pact where teams deploy on their own schedules. Contract tests do not replace integration tests: they check the shape of messages, not whether the business logic is right.</p>
 <blockquote><b>Say it in the interview:</b> I generate the OpenAPI document on every build and diff it against the released version, failing on breaking changes. Where independent teams consume the API, consumer-driven contracts with Pact tell us exactly whose expectations a change would break.</blockquote>`,
   followUps: ['Who owns a consumer-driven contract?', 'What is the difference between contract tests and end-to-end tests?', 'How do you handle an intended breaking change in this setup?'] });
 
@@ -1552,16 +1524,16 @@ export default function () {
 <ul><li>Latency as percentiles: p50, p95, p99. Not the average, which hides the slow tail.</li>
 <li>Throughput (requests per second) and error rate.</li>
 <li>Saturation: which resource ran out first. CPU, memory, database capacity, connection pool, thread pool.</li></ul>
-<p><b>What makes the result believable:</b> production-like data volume, a realistic mix of endpoints, a warm-up, think time between calls, and an environment sized like production. Run more than one shape: a normal load test, a <b>stress</b> test to find the breaking point, a <b>spike</b> test, and a long <b>soak</b> test to find leaks.</p>
+<p><b>What makes it believable:</b> production-like data volume, a realistic mix of endpoints and think time between calls. Run more than one shape: a normal load test, a <b>stress</b> test to find the breaking point, a <b>spike</b> test, and a long <b>soak</b> test to find leaks.</p>
 <blockquote><b>Say it in the interview:</b> I script realistic user flows in k6 with thresholds on p95 latency and error rate, so the pipeline fails when we regress. I report percentiles, throughput, errors and the first resource to saturate, tested on production-like data.</blockquote>`,
   followUps: ['Why is the average response time misleading?', 'What is the difference between a stress test and a soak test?', 'The p99 is bad but the p50 is fine. Where do you look?'] });
 
 interview.push({ q: 'How do you test authentication and authorization?', level: 'A',
   a: `<p>You test that every endpoint gives the right answer to four kinds of caller: nobody, the wrong role, the right role, and the right role asking for someone else's data.</p>
-<ul><li><b>Unit tests</b> for authorization policies and handlers, using a hand-built <code>ClaimsPrincipal</code>.</li>
+<ul><li><b>Unit tests</b> for policies, using a hand-built <code>ClaimsPrincipal</code>.</li>
 <li><b>Integration tests</b> with a test authentication handler that produces known claims, asserting 200, 401 and 403 per endpoint.</li>
-<li><b>Object-level tests:</b> user A requests user B's resource and must get 403 or 404. This is the test most teams forget, and it guards against the top API risk.</li>
-<li><b>Pipeline scans:</b> dependency audit, static analysis, and a dynamic scan such as an OWASP ZAP baseline.</li></ul>
+<li><b>Object-level tests:</b> user A requests user B's resource and must get 403 or 404.</li>
+</ul>
 <pre><code>public class TestAuthHandler(IOptionsMonitor&lt;AuthenticationSchemeOptions&gt; o, ILoggerFactory l, UrlEncoder e)
     : AuthenticationHandler&lt;AuthenticationSchemeOptions&gt;(o, l, e)
 {
@@ -1569,15 +1541,13 @@ interview.push({ q: 'How do you test authentication and authorization?', level: 
     {
         if (!Request.Headers.TryGetValue("X-Test-User", out var user))
             return Task.FromResult(AuthenticateResult.NoResult());        // leads to 401
-
         var role = Request.Headers["X-Test-Role"].FirstOrDefault() ?? "Reader";
-        var identity = new ClaimsIdentity(
+        var id = new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, user.ToString()), new Claim(ClaimTypes.Role, role)], "Test");
-        return Task.FromResult(AuthenticateResult.Success(
-            new AuthenticationTicket(new ClaimsPrincipal(identity), "Test")));
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(id), "Test")));
     }
 }</code></pre>
-<p>A useful extra: one test that lists every endpoint and fails if any lacks an authorization rule, unless it is on an explicit "anonymous" list. The real token validation (issuer, audience, expiry) is checked by a small number of tests against the identity provider's test tenant.</p>
+<p>A useful extra: one test that lists every endpoint and fails if any lacks an authorization rule.</p>
 <blockquote><b>Say it in the interview:</b> A test auth handler lets me call each endpoint as anonymous, wrong role and right role and assert 401, 403 and 200. Then I add the test that matters most: user A asking for user B's data must be refused.</blockquote>`,
   followUps: ['How do you make sure a new endpoint cannot ship without authorization?', 'Why return 404 instead of 403 for another user\'s resource?', 'How do you test token expiry?'] });
 
@@ -1610,7 +1580,7 @@ interview.push({ q: 'What do you check in a REST API code review as a tech lead?
 <li><b>Writes:</b> idempotency for anything a client may retry; concurrency control for updates.</li>
 <li><b>Observability:</b> structured logs with correlation ids; no secrets or personal data in logs.</li>
 <li><b>Contract and tests:</b> OpenAPI updated, backward compatibility considered, tests for the happy path and for failures.</li></ol>
-<p><b>How I run the review matters as much as the list.</b> Machines check what machines can: formatting, analyzers, the OpenAPI diff, coverage. I spend my attention on design and risk. I mark comments as "must fix" or "suggestion", explain the reason behind each one so the author learns the rule, and when the same remark shows up three times I turn it into a template, an analyzer or a shared helper so it stops needing a reviewer at all.</p>
+<p><b>How I run the review matters too.</b> Machines check formatting, analyzers and the OpenAPI diff. I mark comments as "must fix" or "suggestion" and explain the reason, and when the same remark shows up three times I turn it into a template or an analyzer.</p>
 <blockquote><b>Say it in the interview:</b> My checklist is contract, edge data, authorization down to the object, paging, cancellation and timeouts, idempotent and concurrency-safe writes, safe logging, and tests for failures. Repeated comments become automation, so reviews stay about design.</blockquote>`,
   followUps: ['Which of these would block a merge, and which would not?', 'How do you review a 2,000-line pull request?', 'How do you get the team to apply this list without you?'] });
 
