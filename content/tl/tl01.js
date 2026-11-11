@@ -1354,8 +1354,8 @@ public class OrderService                               // depends on the contra
     public OrderService(INotifier notifier) => _notifier = notifier;
     public Task CompleteAsync(string customer) => _notifier.SendAsync(customer, "Order shipped");
 }`) +
-  `<p>In an online shop, <code>OrderService</code> does not know or care whether the customer gets an email or a text. Adding push notifications later means one new class and one registration line, with no change to the service.</p>
-  <blockquote><b>Say it in the interview:</b> Encapsulation protects state, abstraction hides detail behind a contract, inheritance models is-a, and polymorphism lets one call do the right thing for each type. In my code that mostly means services depending on interfaces, so new behaviour is a new class and not an edit to old ones.</blockquote>`,
+  `<p>In an online shop, <code>OrderService</code> does not know whether the customer gets an email or a text. Adding push notifications later is one new class, with no change to the service.</p>
+  <blockquote><b>Say it in the interview:</b> Encapsulation protects state, abstraction hides detail behind a contract, inheritance models is-a, and polymorphism lets one call do the right thing for each type. In my code that means services depend on interfaces, so new behaviour is a new class.</blockquote>`,
   ['What is the difference between abstraction and encapsulation?', 'Give an example where inheritance was the wrong tool.', 'How does polymorphism help with the open/closed principle?']);
 
 Q('B', 'What are the access modifiers in C#?',
@@ -1420,7 +1420,7 @@ public class EmployeeService(IEmployeeRepository repo, ILogger<EmployeeService> 
     public Task<Employee?> GetAsync(int id) { log.LogInformation("Loading {Id}", id); return repo.GetByIdAsync(id); }
 }`) +
   `<p><b>Order when creating a derived object:</b> derived field initialisers, base field initialisers, base constructor body, derived constructor body.</p>
-  <p><b>Danger:</b> do not call a virtual method from a constructor. The override runs before the derived class has finished setting itself up.</p>
+  <p><b>Danger:</b> a virtual method called from a constructor runs the override before the derived class is set up.</p>
   <p><b>Primary constructor note:</b> on a class (unlike a record) the parameters are not properties and are <b>not</b> readonly, so they can be reassigned by mistake.</p>
   <blockquote><b>Say it in the interview:</b> I chain constructors with this and base so the validation lives in one place. Static constructors run once per type. I use primary constructors for dependency injection in services, knowing the parameters are mutable captures, not readonly fields.</blockquote>`,
   ['What happens if you declare no constructor at all?', 'Why is calling a virtual method in a constructor risky?', 'How is a primary constructor on a record different from one on a class?']);
@@ -1573,8 +1573,7 @@ public class Order
     public decimal Total(decimal basePrice)
         => _rules.Aggregate(basePrice, (price, rule) => rule.Apply(price));
 }`) +
-  `<p><b>Why deep hierarchies hurt:</b> the <b>fragile base class</b> problem. Children depend on hidden details of the parent, so a change in the base breaks derived classes in ways that are hard to see. Combinations also explode: discount types times customer types times regions becomes dozens of subclasses, where composition needs only a handful of small rule classes.</p>
-  <p><b>Quick test:</b> can the child replace the parent in every caller without surprises? If not (a penguin that cannot <code>Fly()</code>), it is not real inheritance.</p>
+  `<p><b>Why deep hierarchies hurt:</b> the <b>fragile base class</b> problem. Children depend on hidden details of the parent, so a change in the base breaks derived classes in ways that are hard to see. Combinations also explode into dozens of subclasses, where composition needs a handful of small rule classes.</p>
   <blockquote><b>Say it in the interview:</b> I default to composition and keep inheritance for genuine is-a relationships with a base class that was designed for extension. Composition lets behaviours vary independently and be tested alone, and it avoids the fragile base class problem.</blockquote>`,
   ['Tell me about a hierarchy you replaced with composition.', 'How does the Liskov substitution principle guide this choice?', 'What is the downside of composition?']);
 
@@ -1602,8 +1601,8 @@ public async Task Returns_unknown_when_employee_is_missing()
 
     Assert.Equal("Unknown", await sut.GetDisplayNameAsync(5, default));
 }`) +
-  `<p><b>What makes this work:</b> the service receives its dependency through the constructor (dependency injection) and knows only the contract. Production wires in the real repository and the test wires in a mock. The test is fast, repeatable and checks one decision.</p>
-  <p><b>Lead-level judgement:</b> mock at boundaries you do not control (database, HTTP, time, message bus). Do not add an interface for every class and do not mock simple value objects. Tests that mock everything only prove that the mocks were configured. For data access, an integration test against a real database in a container often finds more bugs.</p>
+  `<p><b>What makes this work:</b> the service receives its dependency through the constructor (dependency injection) and knows only the contract. Production wires in the real repository and the test wires in a mock.</p>
+  <p><b>Lead-level judgement:</b> mock at boundaries you do not control (database, HTTP, time). Do not add an interface for every class. Tests that mock everything only prove that the mocks were configured.</p>
   <blockquote><b>Say it in the interview:</b> I depend on interfaces at the boundaries and inject them through the constructor, so a unit test can replace the database or an external service with a mock. I mock only what is slow or outside my control, and cover the real integration with a smaller set of integration tests.</blockquote>`,
   ['What is the difference between a mock, a stub and a fake?', 'How would you test code that uses DateTime.UtcNow?', 'When is adding an interface over-engineering?']);
 
@@ -1622,8 +1621,8 @@ Action<string> printText = printAny;                // OK: contravariance
 
 // List<object> list = new List<string>();          // error: List<T> is invariant
 // If it were allowed, list.Add(42) would put an int into a list of strings.`) +
-  `<p><b>Rule:</b> <code>out</code> = T appears only in return positions. <code>in</code> = T appears only in parameter positions. The compiler enforces this when you declare your own interface or delegate.</p>
-  <p><b>Limits:</b> variance works only on interfaces and delegates, and only for reference types, so <code>IEnumerable&lt;int&gt;</code> cannot become <code>IEnumerable&lt;object&gt;</code>. Arrays are covariant too (<code>object[] a = new string[1];</code>), but that is unsafe and throws <code>ArrayTypeMismatchException</code> on a bad write.</p>
+  `<p><b>Rule:</b> <code>out</code> = T appears only in return positions. <code>in</code> = T appears only in parameter positions.</p>
+  <p><b>Limits:</b> variance works only on interfaces and delegates, and only for reference types, so <code>IEnumerable&lt;int&gt;</code> cannot become <code>IEnumerable&lt;object&gt;</code>. Arrays are covariant too, but unsafely: a bad write throws <code>ArrayTypeMismatchException</code>.</p>
   <blockquote><b>Say it in the interview:</b> Covariance, marked out, is for producers of T, so IEnumerable of string works as IEnumerable of object. Contravariance, marked in, is for consumers of T. List of T is invariant because it both reads and writes.</blockquote>`,
   ['Why does variance not work for value types?', 'Is Func&lt;T, TResult&gt; covariant, contravariant or both?', 'Where have you declared your own variant interface?']);
 
@@ -1776,7 +1775,6 @@ Q('A', 'How would you write your own simple LINQ operator?',
 }`) +
   `<p><b>How it works:</b> <code>yield return</code> makes the compiler turn the method into a hidden class that implements <code>IEnumerator&lt;T&gt;</code> and remembers where it paused (a state machine). Nothing runs when the method is called. The body runs bit by bit as the caller asks for the next item. That is exactly why LINQ is deferred.</p>
   <p><b>The detail that shows experience:</b> code inside an iterator method does not run until the first <code>MoveNext()</code>. If the null checks were in the same method as the <code>yield</code>, a null argument would only blow up later, far from the call. Splitting into a wrapper plus an inner iterator makes the check immediate.</p>
-  <p>Because it is lazy, it works on endless sequences and uses O(1) extra memory. <code>yield break</code> ends the sequence early.</p>
   <blockquote><b>Say it in the interview:</b> I would write an extension method on IEnumerable of T that loops over the source and yields matching items. yield return makes the compiler generate a state machine, which is why execution is deferred, and I validate arguments in a wrapper so errors surface at the call.</blockquote>`,
   ['What does the compiler generate for yield return?', 'How would you write Take or Select?', 'What is IAsyncEnumerable and when would you use it?']);
 
@@ -1846,7 +1844,7 @@ service.OrderPlaced += (sender, e) => Console.WriteLine($"Order {e.OrderId} plac
 service.Place(7);`) +
   `<p><b>Event vs delegate:</b> an event is a delegate with restricted access. Code outside the class can only use <code>+=</code> and <code>-=</code>. It cannot raise the event or wipe out other subscribers with <code>=</code>.</p>
   <p><b>Memory-leak warning:</b> the publisher holds a reference to every subscriber. If the publisher lives a long time (a static or singleton object) and subscribers never unsubscribe, they can never be garbage collected. Always pair <code>+=</code> with <code>-=</code>, usually in <code>Dispose</code>.</p>
-  <p><b>Other points:</b> handlers run one after another on the thread that raised the event, so a slow handler blocks the publisher and an exception in one stops the rest. Events are for in-process notification. Between services, use a message broker.</p>
+  <p><b>Also:</b> handlers run one after another on the raising thread, so a slow handler blocks the publisher. Between services, use a message broker instead.</p>
   <blockquote><b>Say it in the interview:</b> An event is a delegate that outsiders can only subscribe to or unsubscribe from, which gives publish and subscribe inside one process. The main risk is a long-lived publisher keeping subscribers alive, so I always unsubscribe.</blockquote>`,
   ['Why is ?.Invoke safer than checking for null and then calling?', 'How would you unsubscribe a lambda handler?', 'What is a weak event pattern?']);
 
@@ -1903,15 +1901,13 @@ Q('E', 'What are expression trees, and what is Expression&lt;Func&lt;T, bool&gt;
 
 Expression<Func<Employee, bool>> asData = e => e.Salary > 50000 && e.IsActive;
 // a tree: AndAlso( GreaterThan(e.Salary, 50000), e.IsActive )
-Console.WriteLine(asData.Body);           // inspectable
 Func<Employee, bool> compiled = asData.Compile();   // turn it back into runnable code`) +
   `<p><b>Why it matters:</b> this is the whole trick behind EF Core. <code>IQueryable&lt;T&gt;.Where</code> takes an <code>Expression</code>, so EF Core can walk the tree and write <code>WHERE Salary &gt; 50000 AND IsActive = 1</code>. <code>IEnumerable&lt;T&gt;.Where</code> takes a <code>Func</code>, which can only be run in memory.</p>
   <table><thead><tr><th></th><th><code>Func&lt;T, bool&gt;</code></th><th><code>Expression&lt;Func&lt;T, bool&gt;&gt;</code></th></tr></thead><tbody>
   <tr><td>What it is</td><td>compiled code</td><td>a tree of nodes</td></tr>
   <tr><td>Can be translated</td><td>no</td><td>yes (SQL, OData, rules)</td></tr>
-  <tr><td>Cost to call</td><td>cheap</td><td><code>Compile()</code> is expensive, so cache it</td></tr>
   </tbody></table>
-  <p><b>Limits:</b> only expression lambdas can be converted, not statement bodies, and many newer language features are not allowed inside them. A provider throws at run time if the tree contains something it cannot translate, such as a call to your own C# method. Other uses: building dynamic filters and sorts, mapping libraries, and mocking frameworks reading <code>Setup(x =&gt; x.Method())</code>.</p>
+  <p><b>Limits:</b> only expression lambdas can be converted, not statement bodies. A provider throws at run time if the tree contains something it cannot translate, such as a call to your own C# method. Other uses: dynamic filters, mapping libraries and mocking frameworks.</p>
   <blockquote><b>Say it in the interview:</b> Assigning a lambda to Expression of Func makes the compiler build a data structure describing the code instead of compiling it. EF Core walks that tree to generate SQL, which is why IQueryable filters run in the database and IEnumerable filters run in memory.</blockquote>`,
   ['Why does passing a Func to an EF Core Where load the whole table?', 'How would you build a dynamic filter from user input safely?', 'Why should you cache the result of Compile()?']);
 
@@ -1962,7 +1958,7 @@ catch (Exception ex)
 
 Q('I', 'When and how do you create a custom exception?',
   `<p>Create your own exception type only when callers need to react to that failure differently from other failures. Otherwise use a built-in one.</p>
-  <p><b>Good reasons:</b> the API layer must turn it into a specific HTTP status (not found is 404, conflict is 409), or a caller must retry on it, or it must carry extra data such as an order id. <b>Bad reason:</b> "to have our own exceptions".</p>` +
+  <p><b>Good reasons:</b> the API layer must turn it into a specific HTTP status (not found is 404, conflict is 409), or a caller must retry on it, or it must carry extra data such as an order id.</p>` +
   K(`public sealed class OrderNotFoundException : Exception
 {
     public int OrderId { get; }
@@ -1978,7 +1974,6 @@ Q('I', 'When and how do you create a custom exception?',
   <li>Name ends in <code>Exception</code>, and it derives from <code>Exception</code> (not <code>ApplicationException</code>).</li>
   <li>Offer a constructor that takes an <b>inner exception</b>, so the original cause is never lost.</li>
   <li>Carry data as properties, not only inside the message text.</li>
-  <li>Keep the hierarchy shallow: a few types that map to how callers respond.</li>
   <li>Do not put secrets or personal data in the message. It ends up in logs.</li>
   </ul>
   <p><b>Out-of-date advice to correct:</b> older guidance said to add <code>[Serializable]</code> and a special serialization constructor. That pattern is obsolete since .NET 8, and <code>BinaryFormatter</code> was removed in .NET 9, so new code should not add it.</p>
@@ -2009,18 +2004,18 @@ finally
   <li><b>Catch only what you can handle, enrich or translate.</b> No empty catch blocks, and no blanket <code>catch (Exception)</code> in the middle of the code.</li>
   <li><b><code>throw;</code></b> keeps the stack trace. <code>throw ex;</code> resets it.</li>
   <li><b>Do not use exceptions for expected outcomes.</b> Throwing is slow. Use <code>TryParse</code>, <code>TryGetValue</code> or a result object for things like bad input.</li>
-  <li><b>Fail fast on bad arguments</b> with guard clauses such as <code>ArgumentNullException.ThrowIfNull</code>.</li>
+  <li><b>Fail fast on bad arguments</b> with guard clauses.</li>
   <li><b>Custom exceptions</b> only when callers must react differently.</li>
   <li><b>Clean up</b> with <code>using</code> or <code>finally</code>.</li>
   <li><b>In APIs,</b> convert exceptions to consistent HTTP responses in one place and never send stack traces to clients.</li>
-  <li><b>Log once,</b> with the full exception object and structured fields.</li>
+  <li><b>Log once,</b> with the full exception object.</li>
   </ol>
   <blockquote><b>Say it in the interview:</b> I catch specific exceptions only where I can handle or add context, rethrow with throw to keep the stack trace, avoid exceptions for normal control flow, and convert whatever is left into a consistent error response in one global handler.</blockquote>`,
   ['What is an exception filter and why is it better than catch-and-rethrow?', 'How should a cancelled request be handled?', 'What is wrong with catch (Exception) { }?']);
 
 Q('A', 'How do you handle exceptions globally in an ASP.NET Core API?',
   `<p>Put one handler at the edge of the application that catches anything nobody else handled, logs it once, and returns a clean, consistent error to the caller.</p>
-  <p>The standard error format is <b>Problem Details</b> (RFC 9457, which replaced RFC 7807): a small JSON object with <code>type</code>, <code>title</code>, <code>status</code>, <code>detail</code> and optional extra fields.</p>` +
+  <p>The standard error format is <b>Problem Details</b> (RFC 9457): a small JSON object with <code>type</code>, <code>title</code>, <code>status</code> and <code>detail</code>.</p>` +
   K(`// Program.cs (.NET 8 and later)
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
@@ -2033,17 +2028,17 @@ public sealed class DomainExceptionHandler(ILogger<DomainExceptionHandler> log) 
     {
         var status = ex switch
         {
-            OrderNotFoundException => StatusCodes.Status404NotFound,
-            ConflictException      => StatusCodes.Status409Conflict,
-            _                      => StatusCodes.Status500InternalServerError
+            OrderNotFoundException => 404,
+            ConflictException      => 409,
+            _                      => 500
         };
-        log.LogError(ex, "Request failed with {Status}", status);
+        log.LogError(ex, "Request failed");
         ctx.Response.StatusCode = status;
         await ctx.Response.WriteAsJsonAsync(new ProblemDetails { Status = status, Title = "Request failed" }, ct);
         return true;      // handled
     }
 }`) +
-  `<p><b>What a lead adds:</b> map known exceptions to 4xx codes and everything unknown to 500 with a generic message. Never return the stack trace or the exception message of an unknown error, because it can leak internals. Include a trace id so support can find the log entry. Validation errors should be returned as 400 by model validation, not thrown. A cancelled request (client went away) should not be logged as an error.</p>
+  `<p><b>What a lead adds:</b> never return the stack trace or message of an unknown error, because it can leak internals. Include a trace id for support. Return validation errors as 400 from model validation, not by throwing.</p>
   <blockquote><b>Say it in the interview:</b> I register Problem Details and one IExceptionHandler, so every unhandled exception is logged once and mapped to a consistent response: known domain exceptions become 404 or 409, anything else becomes a generic 500 with a trace id and no internal details.</blockquote>`,
   ['Why not put try/catch in every controller action?', 'What is the difference between exception middleware and an exception filter?', 'How do you return validation errors in the same format?']);
 
