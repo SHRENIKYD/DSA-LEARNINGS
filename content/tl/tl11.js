@@ -1625,18 +1625,7 @@ interview.push({ q: `Trapping rain water: how much water is held between the bar
     <blockquote><b>Say it in the interview:</b> Water at each bar is the minimum of the left and right maximum minus the bar height. With two pointers I always process the lower side, whose limit is already known. O(n) time, O(1) space.</blockquote>`,
   followUps: [`Explain the version with two helper arrays first.`, `Solve it with a stack.`, `What changes for a 2D height map?`] });
 
-interview.push({ q: `Find the longest subarray whose sum is at most K.`, level: 'E', a: `<p>If all numbers are zero or more, a sliding window is enough: grow on the right, and shrink from the left while the sum is above K.</p>
-    <pre><code>static int LongestAtMostKPositive(int[] a, int k)   // only when no number is negative
-{
-    int best = 0, left = 0; long sum = 0;
-    for (int right = 0; right &lt; a.Length; right++)
-    {
-        sum += a[right];
-        while (sum &gt; k) sum -= a[left++];       // too big: shrink from the left
-        best = Math.Max(best, right - left + 1);
-    }
-    return best;
-}   // O(n) time, O(1) space</code></pre>
+interview.push({ q: `Find the longest subarray whose sum is at most K.`, level: 'E', a: `<p>If all numbers are zero or more, a sliding window is enough: add each item on the right, and remove items from the left while the sum is above K. That is O(n).</p>
     <p>With negative numbers the window breaks, because removing an item can make the sum <i>bigger</i>. Then use prefix sums. The subarray from l to r has a sum of at most K when <code>pre[l] &gt;= pre[r] - K</code>, and we want the <b>earliest</b> such l. A running maximum of the prefixes never goes down, so it can be binary searched:</p>
     <pre><code>static int LongestAtMostK(int[] a, int k)
 {
@@ -1917,7 +1906,6 @@ interview.push({ q: `Find the shortest path from the top-left to the bottom-righ
     <ul>
       <li>The queue holds the cell and its distance. Here the distance counts cells, so the start is 1.</li>
       <li>A cell is marked visited <b>when it is added</b> to the queue. Marking it later lets the same cell be queued many times.</li>
-      <li>The <code>dr</code> and <code>dc</code> arrays hold the 4 directions and replace 4 copies of the same code.</li>
     </ul>
     <p>DFS would find <i>a</i> path, not the shortest. BFS is right only because every step costs the same. In JavaScript, use an index into the array as the queue head, because <code>shift()</code> is O(n).</p>
     <blockquote><b>Say it in the interview:</b> BFS from the start, storing each cell with its distance and marking cells visited when they are enqueued. The first time I dequeue the target I return its distance. O(rows times columns) time and space.</blockquote>`,
@@ -1946,7 +1934,7 @@ interview.push({ q: `Do "set matrix zeroes" with O(1) extra space.`, level: 'A',
       <li>Clear the inner cells from the markers.</li>
       <li>Clear the first row and the first column <b>last</b>. Doing it earlier would destroy the markers.</li>
     </ol>
-    <p>Time stays O(rows × columns), and extra space drops from O(rows + columns) to 2 booleans. The price is code that is harder to read, so in production I would keep the simple version unless memory really matters.</p>
+    <p>Time stays O(rows × columns), extra space is 2 booleans. The code is harder to read.</p>
     <blockquote><b>Say it in the interview:</b> I reuse the first row and first column as marker storage, with two booleans to remember whether they themselves need clearing, and I clear them last. O(1) extra space.</blockquote>`,
   followUps: [`What goes wrong if you clear the first row before the inner cells?`, `When would you choose the simpler O(rows + columns) version?`] });
 
@@ -1981,7 +1969,6 @@ interview.push({ q: `The grid has 10 million cells and your recursive island cou
     <p><b>What else matters at this size:</b></p>
     <ul>
       <li>Storing a cell as one <code>int</code> (<code>r * cols + c</code>) avoids allocating an object or tuple for every cell.</li>
-      <li>Mark before enqueue, so the queue never holds a cell twice.</li>
       <li>If the grid does not fit in memory, read it row by row and join labels with union-find, keeping only 2 rows in memory.</li>
     </ul>
     <blockquote><b>Say it in the interview:</b> The recursive DFS overflows the stack, and that cannot be caught in .NET. I switch to an iterative BFS with an explicit queue of packed cell indexes: the same O(rows times columns) time, but the memory is on the heap.</blockquote>`,
