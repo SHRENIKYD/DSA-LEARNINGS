@@ -1435,7 +1435,6 @@ interview.push({ q: 'How do you write an integration test with WebApplicationFac
 }</code></pre>
 <p>Add the same for a missing field (400) and for no token (401).</p>
 <p><b>Fidelity warning:</b> the EF Core in-memory provider does not enforce constraints, transactions or SQL translation. Use a real engine with Testcontainers.</p>
-<p>Swap only what you must. The more that stays real, the more the test proves.</p>
 <blockquote><b>Say it in the interview:</b> I host the real app in memory with WebApplicationFactory, replace only the database connection and the auth scheme, and assert on status codes, headers and bodies. For SQL behaviour I use a real database in a container, not the in-memory provider.</blockquote>`,
   followUps: ['How do you keep database state from leaking between tests?', 'Why is a missing Location header invisible to a unit test?', 'How do you make these tests fast enough for every pull request?'] });
 

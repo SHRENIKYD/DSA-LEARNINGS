@@ -220,7 +220,8 @@ class Demo
         half = n / 2;
         return n % 2 == 0;
     }
-    static double Length(in Point p)                        // in: read-only reference, no copy
+    // From C# 7.2 you can write "in Point p" here: a read-only reference, so the struct is not copied.
+    static double Length(Point p)
     {
         return Math.Sqrt(p.X * p.X + p.Y * p.Y);
     }
@@ -243,7 +244,7 @@ class Demo
         Console.WriteLine(even + " " + half);          // False 5
 
         Point p = new Point(3, 4);
-        Console.WriteLine(Length(in p));               // 5
+        Console.WriteLine(Length(p));                  // 5
         Console.WriteLine(Sum(1, 2, 3));               // 6
         Console.WriteLine(Send("a@shop.test", urgent: true));   // named + optional
 
@@ -298,7 +299,7 @@ topics.push({
     <p><b>Extension methods</b> are static methods written with <code>this</code> on the first parameter, so you can call them as if they belonged to the type. All of LINQ is built this way.</p>`,
   clues: ['"What is the difference between ref and out?"', '"Is C# pass by value or pass by reference?"', '"If I pass a list to a method and the method adds an item, does the caller see it? What if the method assigns a new list?"', '"int.Parse vs int.TryParse vs Convert.ToInt32"', '"What is an extension method? Can it see private members?"', '"What is the difference between a field and a property?"', '"How do you write a thread-safe singleton?"', '"What does init do? What does required do?"'],
   code: [{ lang: 'csharp', code: CS_METHODS, run: true }, { lang: 'csharp', code: CS_PROPS, check: false }],
-  codeTitle: ['ref, out, in, params, optional and named arguments, TryParse, extension method', 'Properties: init, required, private set, computed, and the C# 14 field keyword'],
+  codeTitle: ['ref, out, params, optional and named arguments, TryParse, extension method', 'Properties: init, required, private set, computed, and the C# 14 field keyword'],
   viz: codeViz('By value, ref and out: what the caller sees after each call',
     'static void AddOne(int x)        { x++; }\nstatic void AddOneRef(ref int x) { x++; }\nstatic bool TryHalf(int n, out int half)\n{ half = n / 2; return n % 2 == 0; }\n\nint score = 10;\nAddOne(score);\nAddOneRef(ref score);\nbool even = TryHalf(score, out int h);\nint total = Sum(1, 2, 3);   // params int[]',
     [
