@@ -1041,7 +1041,7 @@ interview.push({ q: 'How do you work with product owners and QA?', level: 'B',
 <blockquote><b>Say it in the interview:</b> We agree acceptance criteria together before coding, QA is in the conversation from the start, and we demo every sprint. That way we find misunderstandings in a meeting instead of in production.</blockquote>`,
   followUps: ['Product keeps changing requirements mid-sprint. What do you do?', 'Who decides whether a bug blocks the release?', 'How do you explain technical debt to a product owner?'] });
 
-interview.push({ q: 'How do you talk about confidential or internal projects safely in an interview?', level: 'B',
+interview.push({ q: 'How do you talk about confidential work safely in an interview?', level: 'B',
   a: `<p>You describe the problem, the pattern and your decisions in general words, and you leave out anything that identifies a customer, a product or a business number.</p>
 <ol>
 <li><b>Talk about problems, patterns and decisions</b>, not customer names, internal system names, internal metrics, pricing or roadmaps.</li>
