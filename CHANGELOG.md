@@ -4,6 +4,12 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.42] — 2026-11-11 · Tech Lead interview track and the Interview handbook
+
+### Added
+- **New track, Tech Lead Interview: .NET Full Stack (12 places, 613 interview questions):** C# language and OOP, C# async and memory, .NET and ASP.NET Core, APIs, sign-in and access (OAuth 2.0, OpenID Connect, Entra ID), Azure, databases, AI, front end (TypeScript, React, Angular), architecture and the tech lead playbook, and two coding-round places. Every question has a level (Beginner to Expert), a model answer that starts with one plain sentence, and a "Say it in the interview" line. Each place also has lessons with visualizers, 12 practice problems and a 12-question riddle gate. It sits in Career Harbor.
+- **Interview handbook (handbook.html, in the top bar):** every answered interview question of every track in one place. Pick a track, search questions and answers, filter by level, or use rapid-fire mode, which shows one shuffled question at a time with the line to say first. Each lesson's interview tavern links to it.
+
 ## [1.10.41] — 2026-11-11 · More lesson videos
 
 ### Added

@@ -1710,7 +1710,7 @@ practice.push(P({
 practice.push(P({
   t: 'The admin page is "protected" by hiding the button', l: 'Easy', tags: ['front-end', 'authorization'],
   s: 'In a code review you see that the React app hides the "Refund order" button unless the ID token has the role <code>Admin</code>. The endpoint <code>POST /orders/{id}/refund</code> has only <code>[Authorize]</code>. The author says: "Normal users cannot see the button, so it is safe." What is your review comment?',
-  ex: `<p>${H.c('r', 'curl -X POST https://api.contoso.example/orders/7/refund -H "Authorization: Bearer (any signed-in user token)"')} → today this returns ${H.c('r', '200')}.</p>`,
+  ex: `<p><span class="c-r" style="overflow-wrap:anywhere;white-space:normal">curl -X POST https://api.contoso.example/orders/7/refund -H "Authorization: Bearer (any signed-in user token)"</span> → today this returns ${H.c('r', '200')}.</p>`,
   weak: 'Looks good. Maybe also add a route guard on the refunds page to be extra safe.',
   why: 'A second client-side check adds nothing. Any signed-in user can call the endpoint directly, because the server only asks for "some valid token".',
   q: ['Where must the Admin rule be enforced?', ['In the React component', 'In the route guard', 'On the API endpoint, with a role or policy check', 'In the CSS'], 2, 'Only the server is a trust boundary. The UI check is for convenience.'],
