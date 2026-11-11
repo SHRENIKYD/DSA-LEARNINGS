@@ -593,7 +593,7 @@ var App = (function () {
   function interviewHtml(m) {
     var iv = m.interview || [], ih = hintsOf(m).interview || [];
     if (!iv.length) return '';
-    return '<section class="card tavern" id="' + m.id + '-iv"><div class="topic-head"><h2>' + JI('lantern') + 'Interview tavern — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '<button type="button" class="topic-tog" aria-expanded="true" aria-label="Collapse this section"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
+    return '<section class="card tavern" id="' + m.id + '-iv"><div class="topic-head"><h2>' + JI('lantern') + 'Interview tavern — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '<button type="button" class="topic-tog" aria-expanded="true" aria-label="Collapse this section"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts. <a href="handbook.html#' + m.id.replace(/\d+$/, '') + '">Search and filter every question in the handbook ›</a></div>' +
       iv.map(function (x, i) {
         return '<details class="iv"><summary><span class="ivn">Q' + (i + 1) + '</span> ' + x.q + (x.level ? ' ' + lvlBadge(x.level) : '') + '</summary><div class="dbody">' +
           (ih[i] ? '<p class="ivhint">💡 <b>Hint:</b> ' + esc(ih[i]) + '</p><details class="ivans"><summary>Show the model answer</summary>' : '') + x.a +
@@ -837,7 +837,7 @@ var App = (function () {
     });
   }
   /* Screens the home search can jump to (the "/" shortcut already focuses the box). */
-  var SCREENS = [['Home', 'index.html', 'World map'], ['Today', 'today.html', 'Your plan for today'], ['Plan', 'plan.html', 'Hours, interview date, forecast'], ['Passport', 'passport.html', 'Stamps and settings'], ['Your route', 'route.html', 'Stages and schedule'], ['Watchtower', 'videos.html', 'Video library']];
+  var SCREENS = [['Home', 'index.html', 'World map'], ['Today', 'today.html', 'Your plan for today'], ['Plan', 'plan.html', 'Hours, interview date, forecast'], ['Passport', 'passport.html', 'Stamps and settings'], ['Your route', 'route.html', 'Stages and schedule'], ['Watchtower', 'videos.html', 'Video library'], ['Handbook', 'handbook.html', 'Interview questions and answers']];
   function screenHits(q, words) {
     if (!HOME) return '';
     return SCREENS.filter(function (sc) { var t = sc[0].toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0 || sc[2].toLowerCase().indexOf(w) >= 0; }); })

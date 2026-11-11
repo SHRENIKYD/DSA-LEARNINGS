@@ -292,6 +292,7 @@
     }
     var nv = Object.keys(window.IM_VIDEOS || {}).length;
     if (nv) h += '<a class="card vidcard" href="videos.html"><span class="kick">Videos</span><b class="ttl">Watch topics explained</b><span class="muted sm">' + nv.toLocaleString('en-US') + ' topics have a video so far. New ones are added every day.</span><span class="b3 ghost">🎬 OPEN VIDEOS</span></a>';
+    h += '<a class="card vidcard" href="handbook.html"><span class="kick">Interview handbook</span><b class="ttl">Every interview question, answered</b><span class="muted sm">Search by topic, filter by level, or practise in rapid-fire mode.</span><span class="b3 ghost">OPEN THE HANDBOOK</span></a>';
     h += '<div class="journey-shortcuts"><a class="card" href="#world"><span>◈</span><b>Explore islands</b><small>Find your next lesson</small></a><a class="card" href="#passport"><span>▧</span><b>Your passport</b><small>Collect your journey</small></a><a class="card" href="#expedition"><span>☀</span><b>Daily quests</b><small>One small victory</small></a><a class="card" href="#search"><span>⌕</span><b>Search lessons</b><small>Every track, one place</small></a></div>';
     page('home', h, { nav: true });
   }

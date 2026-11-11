@@ -52,8 +52,8 @@ svg.ic.fill{fill:currentColor;stroke:none}
 .sbox{position:relative;display:flex;align-items:center}
 .sbox svg{position:absolute;left:11px;color:var(--muted);pointer-events:none}
 .sbox kbd{position:absolute;right:9px;font-size:11px;color:var(--muted);border:1px solid var(--border2);border-radius:5px;padding:0 6px;pointer-events:none}
-#search,#gsearch,#vsearch{width:100%;min-height:44px;padding:8px 40px 8px 36px;border-radius:14px;border:1px solid var(--border2);background:var(--raised);color:var(--text);font:inherit;font-size:14.5px}
-#search:focus,#gsearch:focus,#vsearch:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+#search,#gsearch,#vsearch,#hsearch{width:100%;min-height:44px;padding:8px 40px 8px 36px;border-radius:14px;border:1px solid var(--border2);background:var(--raised);color:var(--text);font:inherit;font-size:14.5px}
+#search:focus,#gsearch:focus,#vsearch:focus,#hsearch:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border2);background:var(--raised);color:var(--text);min-height:38px;padding:6px 14px;border-radius:12px;cursor:pointer;font:inherit;font-size:14px;font-weight:700;text-decoration:none;line-height:1.2}
 .btn:hover{border-color:var(--accent)}
 .btn:disabled{opacity:.4;cursor:not-allowed}

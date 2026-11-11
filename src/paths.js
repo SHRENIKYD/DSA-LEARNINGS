@@ -76,6 +76,8 @@ var PATHS = (function () {
     // Behavioral
     beh02: ['beh01'], beh03: ['beh02'], beh04: ['beh01'], beh05: ['beh03'], beh06: ['beh01'],
     beh07: ['beh02', 'beh03'], beh08: ['beh04'], beh09: ['beh05'],
+    // Tech Lead interview
+    tl02: ['tl01'], tl03: ['tl01'], tl05: ['tl04'], tl06: ['tl03'], tl10: ['tl03', 'tl04'], tl12: ['tl11'],
     // Cloud & DevOps
     devops02: ['devops01'], devops03: ['devops01'], devops05: ['devops01', 'devops03'], devops06: ['devops05'],
     devops07: ['devops02', 'py03'], devops08: ['devops01', 'devops02'], devops09: ['devops04', 'devops06'], devops10: ['devops01', 'devops02'],
@@ -102,7 +104,8 @@ var PATHS = (function () {
     ai13: ['ai11'], ai14: ['hld06'], ai16: ['ai11'], ai18: ['py02'], ai19: ['py02'], ai20: ['ai19'],
     cs08: ['cs07'], cs12: ['cs11'],
     devops01: ['cs01', 'cs08'], devops02: ['cs08'], devops03: ['cs10', 'cs11', 'cs13'], devops04: ['devops01'], devops07: ['py02'], devops08: ['cs09'],
-    devops12: ['hld04', 'hld05'], devops15: ['hld12', 'be16'], devops16: ['be15'], devops17: ['hld10', 'be10', 'be14'], devops18: ['beh01']
+    devops12: ['hld04', 'hld05'], devops15: ['hld12', 'be16'], devops16: ['be15'], devops17: ['hld10', 'be10', 'be14'], devops18: ['beh01'],
+    tl01: ['csharp01', 'csharp03'], tl02: ['csharp09'], tl04: ['be04'], tl07: ['sql10'], tl08: ['ai01'], tl09: ['fe08'], tl10: ['hld01', 'beh09'], tl11: ['dsa02'], tl12: ['dsa08']
   };
   var PREP = {
     java: { name: 'Java', dsa: ['java01', 'java02', 'java05', 'java07'], lld: ['java03', 'java04', 'java05', 'java08'], conc: ['java11', 'java12'] },

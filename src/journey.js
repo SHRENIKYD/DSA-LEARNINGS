@@ -29,7 +29,7 @@ var Journey = (function () {
     { key: 'peaks', name: 'Design Peaks', area: 'System design', tracks: ['lld', 'hld'], color: 'clay', icon: 'mountain', x: 565, y: 110, rx: 110, ry: 65, lx: 68, ly: 12 },
     { key: 'port', name: 'Builder Port', area: 'Engineering', tracks: ['fe', 'be'], color: 'sky', icon: 'anchor', x: 560, y: 330, rx: 120, ry: 80, lx: 70, ly: 62 },
     { key: 'obs', name: 'AI Observatory', area: 'AI', tracks: ['ai'], color: 'violet', icon: 'telescope', x: 350, y: 395, rx: 85, ry: 50, lx: 42, ly: 77 },
-    { key: 'harbor', name: 'Career Harbor', area: 'Career', tracks: ['beh'], color: 'gold', icon: 'scroll', x: 100, y: 100, rx: 78, ry: 50, lx: 4, ly: 10 },
+    { key: 'harbor', name: 'Career Harbor', area: 'Career', tracks: ['beh', 'tl'], color: 'gold', icon: 'scroll', x: 100, y: 100, rx: 78, ry: 50, lx: 4, ly: 10 },
     { key: 'cloud', name: 'Cloud Citadel', area: 'Cloud & DevOps', tracks: ['devops'], color: 'sky', icon: 'cloud', x: 345, y: 272, rx: 72, ry: 42, lx: 41, ly: 50 }
   ];
   var NEW_LAND = { key: 'new', name: 'Uncharted', area: 'New lands', tracks: [], color: 'sky', icon: 'compass' };
@@ -163,7 +163,7 @@ var Journey = (function () {
   function bar(opts) {
     opts = opts || {};
     var here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
-    var page = here === 'videos.html' ? 'videos' : here === 'passport.html' ? 'passport' : here === 'route.html' ? 'route' : here === 'today.html' ? 'today' : here === 'plan.html' ? 'plan' : here === 'index.html' || here === '' ? 'home' : 'land';
+    var page = here === 'videos.html' ? 'videos' : here === 'handbook.html' ? 'handbook' : here === 'passport.html' ? 'passport' : here === 'route.html' ? 'route' : here === 'today.html' ? 'today' : here === 'plan.html' ? 'plan' : here === 'index.html' || here === '' ? 'home' : 'land';
     Array.prototype.forEach.call(document.querySelectorAll('.jnav a'), function (a) {
       var on = a.getAttribute('data-page') === page;
       a.classList.toggle('on', on);

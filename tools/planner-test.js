@@ -26,7 +26,7 @@ function fresh() {
   vm.createContext(ctx);
   for (const f of ['src/paths.js', 'src/learn.js', 'src/planner.js']) vm.runInContext(rd(f), ctx, { filename: f });
   // Fake build-time maps for every module of the SDE / Java route: 2 h, 3 topics, 2 practice problems, a riddle gate.
-  const TR = { java: 'java', py: 'py', js: 'js', cpp: 'cpp', dsa: 'dsa', sql: 'sql', cs: 'cs', lld: 'lld', hld: 'hld', beh: 'beh', be: 'be', fe: 'fe', ai: 'ai', devops: 'devops' };
+  const TR = { java: 'java', py: 'py', js: 'js', cpp: 'cpp', dsa: 'dsa', sql: 'sql', cs: 'cs', lld: 'lld', hld: 'hld', beh: 'beh', be: 'be', fe: 'fe', ai: 'ai', devops: 'devops', tl: 'tl' };
   const PM = {}, MODS = {};
   const pl = ctx.PATHS.plan('sde', 'java');
   pl.items.concat(pl.extensions.map((id) => ({ id }))).forEach((it) => {
