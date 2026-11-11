@@ -1813,7 +1813,7 @@ finally { ArrayPool<byte>.Shared.Return(rented); }`) +
 interview.push({
   q: 'Under load, requests hang while the CPU is almost idle. What is thread pool starvation and how do you diagnose it?', level: 'E',
   a: `<p>Thread pool starvation means every pool thread is blocked waiting for something, so new requests sit in a queue even though the CPU has nothing to do.</p>
-    <p><b>How it happens:</b> code blocks a thread on asynchronous work with <code>.Result</code>, <code>.Wait()</code> or <code>.GetAwaiter().GetResult()</code>, or uses blocking I/O and <code>Thread.Sleep</code>. The blocked thread needs <i>another</i> pool thread to complete the work it waits for. When all threads wait, nothing can finish. The pool notices and adds threads, but only about one or two per second, so a traffic burst outruns it.</p>` +
+    <p><b>How it happens:</b> code blocks a thread on asynchronous work with <code>.Result</code>, <code>.Wait()</code> or <code>.GetAwaiter().GetResult()</code>,. The blocked thread needs <i>another</i> pool thread to complete the work it waits for. When all threads wait, nothing can finish. The pool notices and adds threads, but only about one or two per second, so a traffic burst outruns it.</p>` +
     T(['Signal', 'Tool'], [
       ['thread pool queue length rising, thread count climbing steadily, CPU low', '<code>dotnet-counters monitor System.Runtime</code>'],
       ['hundreds of threads with the same blocked stack', '<code>dotnet-stack report</code> or a dump opened with <code>dotnet-dump</code> (<code>clrthreads</code>, <code>parallelstacks</code>)']
@@ -1833,9 +1833,9 @@ interview.push({
   a: `<p>Assemblies are loaded lazily, the first time a type from them is needed, and isolation between sets of assemblies is now done with <code>AssemblyLoadContext</code> because modern .NET has only one AppDomain per process.</p>
     <ul>
       <li><b>Resolution:</b> for a normal app the host reads <code>MyApp.deps.json</code> (the exact list of dependencies and versions) and <code>MyApp.runtimeconfig.json</code> (which shared framework to use), and builds the list of trusted assemblies.</li>
-      <li><b>Default context:</b> everything the app references loads into the default <code>AssemblyLoadContext</code>. One version of an assembly per context.</li>
+      <li><b>Default context:</b> everything the app references loads into the default <code>AssemblyLoadContext</code>.</li>
       <li><b>Custom contexts:</b> a plug-in host creates one context per plug-in, with an <code>AssemblyDependencyResolver</code>, so two plug-ins can use different versions of the same library.</li>
-      <li><b>Unloading:</b> a context created as <i>collectible</i> can be unloaded, but only when nothing references its types any more. Unloading is cooperative, not forced.</li>
+      <li><b>Unloading:</b> a context created as <i>collectible</i> can be unloaded, but only when nothing references its types any more.</li>
     </ul>` +
     T(['.NET Framework', 'Modern .NET'], [
       ['several AppDomains per process, with a security boundary', 'one AppDomain; isolation by process or container'],
@@ -1954,8 +1954,7 @@ interview.push({
       ['<b>I</b>nterface segregation', 'no client should depend on methods it does not use', 'an <code>IRepository</code> with 20 methods', 'small role interfaces'],
       ['<b>D</b>ependency inversion', 'depend on abstractions, not on details', 'domain code creates a <code>SqlConnection</code>', 'inject an interface; the infrastructure layer implements it']
     ]) +
-    `<p>Other principles to name in the same breath: <b>DRY</b> (but a wrong shared abstraction is worse than a little duplication), <b>KISS</b>, <b>YAGNI</b> (do not build for needs you do not have yet), composition over inheritance, and separation of concerns.</p>
-    <p>The senior point: SOLID is a means, not a score. Splitting a 40-line class into five interfaces to satisfy a rule makes the code harder to follow. Apply a principle when the code is actually hurting: hard to test, or risky to change.</p>
+    `<p>The senior point: SOLID is a means, not a score. Splitting a 40-line class into five interfaces to satisfy a rule makes the code harder to follow. Apply a principle when the code is actually hurting: hard to test, or risky to change.</p>
     <blockquote><b>Say it in the interview:</b> My best example is open/closed: we had a switch that every new report type had to edit. We moved each type behind one interface with DI registration, so a new report is a new class and nothing tested is touched. I apply SOLID where change is frequent, not everywhere.</blockquote>`,
   followUps: ['Dependency inversion vs dependency injection?', 'Give an example where applying SOLID made code worse.', 'How does interface segregation help testing?']
 });
