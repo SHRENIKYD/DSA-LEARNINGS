@@ -61,6 +61,8 @@ jobs:
         run: |
           node tools/find-videos.js --check
           node tools/video-daily.js
+          # Leftover budget: topics still without a video, searched with shorter wording (each at most every 14 days).
+          node tools/find-videos.js --broad --max 40 --per-key
       - name: Check the catalog before saving it
         run: |
           node tools/video-daily-test.js

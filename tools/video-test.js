@@ -191,6 +191,18 @@ assert.ok(discovery.pick([{ id: 'LONGLECTURE', title: 'BST search and insert ful
   assert.equal(rt.found, 1);
   assert.equal(csMem.videos[csT.id].id, 'RETRYFOUND1', 'the retried topic gets the found video');
   assert.equal(qs[0], 'C# ' + discovery.head(csT.title) + ' tutorial', 'retry query is the short head of the title');
+  // --broad: misses in any track, searched with the short query; a fresh broadAt waits BROAD_DAYS.
+  {
+    const bt = all.find((t) => t.trackId === 'beh'), bq = [];
+    const bm = { v: 1, videos: { [bt.id]: { t: bt.title, id: null, at: new Date().toISOString().slice(0, 10) } } };
+    assert.deepEqual(discovery.broadTodo(bm, all).map((t) => t.id), [bt.id], 'a recent nightly miss is still broad-searched');
+    discovery.setClient(async (endpoint, params) => { if (endpoint === 'search') { bq.push(params.q); return { items: [] }; } return { items: [] }; });
+    const br = await discovery.searchBroad(bm, all, 5);
+    assert.equal(br.none, 1);
+    assert.ok(bq[0].endsWith(' explained') && bq[0].includes(discovery.head(bt.title)), 'broad query uses the short head: ' + bq[0]);
+    assert.equal(bm.videos[bt.id].at, new Date().toISOString().slice(0, 10), 'the nightly retry date is untouched');
+    assert.equal(discovery.broadTodo(bm, all).length, 0, 'a broad miss waits ' + discovery.BROAD_DAYS + ' days');
+  }
   discovery.setClient(null);
   // Several API keys: a key that reports its daily quota hands over to the next one; the last one's quota stops the run.
   {
