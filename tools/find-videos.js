@@ -226,6 +226,31 @@ async function searchRetry(db, all, track, max) {
   return { found, none, remaining: retryTodo(db, all, track).length };
 }
 
+// --broad: topics still without a video (any track) are searched again with the shorter head() query, at most once every
+// BROAD_DAYS per topic (tracked in broadAt, separate from the nightly 30-day retry's "at").
+const BROAD_DAYS = 14;
+function broadTodo(db, all) {
+  return searchOrder(all.filter((t) => { const e = db.videos[t.id]; return e && e.id === null && !e.curated && (!e.broadAt || (Date.parse(today()) - Date.parse(e.broadAt)) / 864e5 >= BROAD_DAYS); }));
+}
+async function searchBroad(db, all, max) {
+  const todo = broadTodo(db, all).slice(0, max);
+  let found = 0, none = 0, searched = 0;
+  for (const t of todo) {
+    try {
+      const h = head(t.title), best = await searchBest(((QUERY_PREFIX[t.trackId] || '') + ' ' + h + ' explained').trim(), h, '');
+      searched++;
+      const prev = db.videos[t.id], keep = prev.byLang ? { byLang: prev.byLang } : {};
+      if (prev.was) keep.was = prev.was;
+      if (best) { db.videos[t.id] = Object.assign({ t: t.title, id: best.id, title: best.title, channel: best.channel, secs: best.secs }, keep); found++; }
+      else { prev.broadAt = today(); none++; }
+    } catch (e) {
+      if (e.quota) { console.log('quota reached after ~' + usage.units + ' units this run, stopping (' + e.message + ')'); break; }
+      console.warn('skip ' + t.id + ': ' + e.message);
+    }
+  }
+  return { found, none, searched, remaining: broadTodo(db, all).length };
+}
+
 async function main() {
   if (!apiKeys().length) { console.log('YOUTUBE_API_KEY / YOUTUBE_API_KEYS is not set: nothing to do.'); return; }
   const args = process.argv.slice(2), lang = args.includes('--lang') ? args[args.indexOf('--lang') + 1] : '';
@@ -272,6 +297,12 @@ async function main() {
     return;
   }
 
+  if (args.includes('--broad')) {
+    const r = await searchBroad(db, all, max);
+    save(db);
+    console.log('broad (~' + usage.units + ' quota units): ' + r.searched + ' searched, ' + r.found + ' found, ' + r.none + ' still with no good match, ' + r.remaining + ' topics waiting for a broad search');
+    return;
+  }
   const retry = args.includes('--retry') ? args[args.indexOf('--retry') + 1] : '';
   if (retry) {
     const r = await searchRetry(db, all, retry, max);
@@ -292,4 +323,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { head, retryTodo, searchRetry, usage, apiError, apiKeys, keyState, LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };
+module.exports = { head, retryTodo, searchRetry, broadTodo, searchBroad, BROAD_DAYS, usage, apiError, apiKeys, keyState, LANGS, LANG_TRACKS, RETRY_DAYS, due, core, needsDefault, searchDefault, setClient, langTodo, searchLang, searchBest, pick, seconds, words, searchOrder, topics, availability };

@@ -4,6 +4,12 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.41] — 2026-11-11 · More lesson videos
+
+### Added
+- **Behavioral videos:** 29 hand-picked videos for Behavioral lessons that had none (coding-round communication, project deep dives, offers and negotiation, EM/TL loops and more). Each has a note on what it covers and what the lesson adds. Behavioral now has a video for 58 of its 60 landmarks.
+- **Video bot:** each night it also searches the remaining topics without a video using shorter, broader wording (each topic at most every 14 days), using search budget that was going unused.
+
 ## [1.10.40] — 2026-11-07 · Video count fix
 
 ### Fixed

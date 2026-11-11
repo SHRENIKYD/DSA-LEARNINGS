@@ -3131,8 +3131,13 @@
   },
   "beh01-t4": {
    "t": "The 6-Week Prep Plan, Resume Critique and Honest Use of AI",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "BH3y1V7KUKg",
+   "title": "7 Steps to Pass Technical Interviews - What I Actually Did",
+   "channel": "Tech With Tim",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "A developer's step-by-step technical interview prep routine; the lesson adds a 6-week schedule, resume critique and honest AI use."
   },
   "beh02-t0": {
    "t": "Tell Me About Yourself: Present, Past, Future in 90 Seconds",
@@ -3171,8 +3176,13 @@
   },
   "beh02-t5": {
    "t": "Working in a Team and Helping a Struggling Teammate",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "6zQ7tq53U1s",
+   "title": "Describe Your Ability to be a Team Player Interview Question",
+   "channel": "Andrew LaCivita",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "How to show you are a team player in an interview answer; the lesson adds a story about helping a struggling teammate."
   },
   "beh02-t6": {
    "t": "Practice Lab: Scoring Your Answers and Mock Interviews With AI",
@@ -3190,8 +3200,13 @@
   },
   "beh03-t1": {
    "t": "Ownership: Going Beyond Your Role",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "YnpFCzPpE-E",
+   "title": "Amazon Leadership Principles OWNERSHIP Questions & Example Answer (Ex- Amazon Leader)",
+   "channel": "Holly Lee",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "An ex-Amazon leader explains Ownership questions with an example answer; the lesson adds going beyond your role in tech settings."
   },
   "beh03-t2": {
    "t": "Dealing with Ambiguity: Progress with Incomplete Info",
@@ -3230,28 +3245,53 @@
   },
   "beh04-t1": {
    "t": "Thinking Aloud Without Rambling & Brute Force First, Then Optimize",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "c1gjL47uH3w",
+   "title": "How To Think Out Loud: A Guide for Coding Interviews",
+   "channel": "CodeLucky",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Short guide to thinking out loud in coding interviews; the lesson adds avoiding rambling and the brute-force-then-optimize flow."
   },
   "beh04-t2": {
    "t": "Trade-offs and Testing Your Own Code (Dry Run + Edge Cases)",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "JDGMFwb5330",
+   "title": "How to Dry Run Code with Test Cases in a Coding Interview | AlgoCademy Podcast",
+   "channel": "Booly from AlgoCademy",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Walks through dry-running code with test cases in an interview; the lesson adds trade-off discussion and edge-case checklists."
   },
   "beh04-t3": {
    "t": "Handling Hints, Getting Stuck and Changing Course Gracefully",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "WLBcmyNaeKc",
+   "title": "What To Do If You're Stuck In A Coding Interview",
+   "channel": "Clément Mihailescu",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Clément Mihailescu on what to do when stuck in a coding interview; the lesson adds taking hints and changing course gracefully."
   },
   "beh04-t4": {
    "t": "Time Management Across a 45-Minute Round",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "3mp1X4luL8o",
+   "title": "Google SWE L3 Interview Prep: 45-Minute Coding Round Framework",
+   "channel": "Nikita Gandhi",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "A framework for splitting a 45-minute coding round; the lesson adds concrete time checkpoints and recovery tactics."
   },
   "beh04-t5": {
    "t": "Design-Round Communication: Drive the Conversation",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "FkLAEAcQXcc",
+   "title": "How to Answer Any System Design Interview (The Delivery Framework)",
+   "channel": "Hello Interview",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Hello Interview's delivery framework for driving a system design interview; the lesson adds communication habits for leading the conversation."
   },
   "beh04-t6": {
    "t": "Full Mock Transcript: Coding Round (Two Sum / Top-K) - Good vs Poor",
@@ -3269,13 +3309,23 @@
   },
   "beh05-t0": {
    "t": "Scope and Impact Signals: Team, Org, Company",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "xV6j2Dxvoxw",
+   "title": "Three Things Blocking Your Promotion to Staff/Principal Engineer (from an Amazon Principal Engineer)",
+   "channel": "A Life Engineered",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "An Amazon Principal Engineer on what blocks staff promotion, including scope; the lesson adds team/org/company impact signals."
   },
   "beh05-t1": {
    "t": "Influence Across Teams: RFCs, Alignment and Dissent",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "lOhbA6BJbKs",
+   "title": "Influencing without management authority as a senior individual contributor | StaffPlus Broadcasts",
+   "channel": "LeadDev",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "LeadDev talk on influencing without authority as a senior IC; the lesson adds RFCs, alignment and handling dissent."
   },
   "beh05-t2": {
    "t": "Technical Strategy Stories: Roadmaps, Build vs Buy, Migrations",
@@ -3286,13 +3336,23 @@
   },
   "beh05-t3": {
    "t": "Mentoring and Raising the Bar",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "-ENU1vjNSdQ",
+   "title": "HOW TO HELP JUNIOR ENGINEERS: 5 tips for helping senior developers mentoring junior engineers",
+   "channel": "Domenico Solazzo",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Five tips for senior developers mentoring junior engineers; the lesson adds raising the bar and how to tell mentoring stories."
   },
   "beh05-t4": {
    "t": "Handling Production Incidents: IC Role, Comms, Blameless Postmortems",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "Fv0nwb1Qn6A",
+   "title": "Blameless Postmortem Culture In Software Engineering",
+   "channel": "Clément Mihailescu",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Explains blameless postmortem culture; the lesson adds incident commander roles and incident communication."
   },
   "beh05-t5": {
    "t": "Project Retrospectives: What You Would Do Differently",
@@ -3303,8 +3363,13 @@
   },
   "beh06-t0": {
    "t": "Anatomy of an Offer: Base, Bonus, Sign-On & Benefits",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "Mc-b8CHmnk0",
+   "title": "Understanding Software Engineer Salaries, RSUs, and Vesting Periods",
+   "channel": "TheCoderNamedBridget",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Explains software engineer salaries, RSUs and vesting; the lesson adds bonus, sign-on and benefits breakdown."
   },
   "beh06-t1": {
    "t": "Equity Deep Dive: RSUs vs Options, Vesting, Cliffs & Refreshers",
@@ -3315,13 +3380,23 @@
   },
   "beh06-t2": {
    "t": "Total Compensation Over 4 Years: The Calculator",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "nnYTJe9Y-nU",
+   "title": "How To Maximize Tech Compensation: Avoiding The 4 Year Cliff",
+   "channel": "ygongcode",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Explains the 4-year vesting cliff in tech compensation; the lesson adds a year-by-year total compensation calculator."
   },
   "beh06-t3": {
    "t": "Negotiation Principles & Polite Scripts",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "w8gkC3bzges",
+   "title": "10 Rules of Salary Negotiation (how to raise your offer from Meta, Google, etc.)",
+   "channel": "IGotAnOffer: Engineering",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Ten rules of salary negotiation for big-tech offers; the lesson adds polite word-for-word scripts."
   },
   "beh06-t4": {
    "t": "Multiple Offers, Exploding Deadlines & Counter-Offers",
@@ -3332,8 +3407,13 @@
   },
   "beh06-t5": {
    "t": "Career Ladders: IC vs Manager Track, Levels & Expectations",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "DoKhgh-Gewo",
+   "title": "Software Engineering Paths to Consider: IC vs Engineering Manager",
+   "channel": "Life at Miro",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Compares the IC and engineering manager career paths; the lesson adds levels and expectations at each rung."
   },
   "beh06-t6": {
    "t": "Staying Relevant with AI & a Continuous Learning Plan",
@@ -3370,28 +3450,53 @@
   },
   "beh07-t4": {
    "t": "Netflix, Indian Product Companies and Startups",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "dROZmreGGYU",
+   "title": "2026 Netflix SWE Culture Fit Interview: What They're Actually Looking For",
+   "channel": "Prepfully",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "What Netflix's SWE culture-fit interview looks for; the lesson adds Indian product companies and startups."
   },
   "beh07-t5": {
    "t": "Researching a Company and Team, and Mapping Your Stories to It",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "dXqznIrzh-s",
+   "title": "How to Research a Company Before Your Job Interview",
+   "channel": "Jeff H Sipe - Practice Interviews ",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Jeff H Sipe on researching a company before an interview; the lesson adds mapping your stories to the company and team."
   },
   "beh07-t6": {
    "t": "Tailoring Answers Without Sounding Rehearsed",
-   "id": null,
-   "at": "2026-11-08"
+   "id": "Phzt9DL3cMU",
+   "title": "There is NO Need to Memorize Job Interview Answers",
+   "channel": "Andrew LaCivita",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Why you should not memorize interview answers; the lesson adds how to tailor stories while staying natural."
   },
   "beh08-t0": {
    "t": "Choosing the Right Project to Present",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "rtUz6s-It7k",
+   "title": "How to Explain Your Project in Interview | Impress Your Interviewer🔥",
+   "channel": "Ashish Kumar",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "How to explain your project in an interview; the lesson adds how to choose which project to present."
   },
   "beh08-t1": {
    "t": "The Structure: Context, Goal, Role, Architecture, Decisions, Results, Lessons",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "1AqKOCsQi0A",
+   "title": "“Walk Me Through a Project You Built” — Technical Project Deep Dive (5 Examples)",
+   "channel": "VirtualInterview",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Five example walkthroughs of a technical project deep dive; the lesson adds the context-goal-role-architecture-decisions-results-lessons structure."
   },
   "beh08-t2": {
    "t": "Diagrams: Drawing Your Architecture in Two Minutes",
@@ -3407,13 +3512,23 @@
   },
   "beh08-t4": {
    "t": "Handling Drill-Down Questions",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "KhEvEWzMvcE",
+   "title": "Meta Technical Project Retrospective Interview for EMs - a deep-dive",
+   "channel": "Prepfully",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Breaks down a technical project retrospective interview and its probing; the lesson adds tactics for drill-down questions."
   },
   "beh08-t5": {
    "t": "\"I\" vs \"We\" and Owning Mistakes",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "pq5sqZXBPuY",
+   "title": "How I failed Interviews - Too Many 'We's During my Behavior Interview",
+   "channel": "ShowOffer - Tech Interview Coaching Platform",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "A candidate explains failing interviews by saying \"we\" too often; the lesson adds owning mistakes honestly."
   },
   "beh08-t6": {
    "t": "Presenting to Senior and Staff-Level Panels",
@@ -3424,18 +3539,33 @@
   },
   "beh09-t0": {
    "t": "What EM and TL Loops Really Assess",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "Yk5XC6ZMsf8",
+   "title": "Engineering Management: Interviews & Hiring ft. Google Engineering Director",
+   "channel": "Aced (formerly Exponent)",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "A Google engineering director on EM interviews and hiring; the lesson adds what EM and TL loops assess."
   },
   "beh09-t1": {
    "t": "One-on-Ones, Feedback and Growing People",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "lAc3QCwrwJM",
+   "title": "How I Approach One on Ones as a Software Engineering Manager",
+   "channel": "Code Commute",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "An engineering manager on running one-on-ones; the lesson adds giving feedback and growing people."
   },
   "beh09-t2": {
    "t": "Performance Problems: Handling an Underperformer",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "DLBLiwI8uuY",
+   "title": "How to Answer: \"How Did You Manage a Low Performer?\" | #Interview101 Tips | Tech Q&A | #HackerTrail",
+   "channel": "HackerTrail",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "Short guide to answering how you managed a low performer; the lesson adds a full performance-management story arc."
   },
   "beh09-t3": {
    "t": "Hiring and Team Building",
@@ -3446,18 +3576,33 @@
   },
   "beh09-t4": {
    "t": "Execution: Planning, Prioritization and Managing Risk",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "CJVpg4enHPA",
+   "title": "LinkedIn Engineering Manager Mock Interview: Engineering Prioritization",
+   "channel": "Aced (formerly Exponent)",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "LinkedIn EM mock interview on engineering prioritization; the lesson adds planning and risk management."
   },
   "beh09-t5": {
    "t": "Cross-Team Conflict and Managing Up and Sideways",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "YhAeqfYLLeQ",
+   "title": "Managing Up - Have You Got Your Manager to Work For You?  (From L8 SWE at Microsoft)",
+   "channel": "Kun Chen",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "A Microsoft L8 engineer on managing up; the lesson adds cross-team conflict and managing sideways."
   },
   "beh09-t6": {
    "t": "Technical Leadership and Architecture Ownership",
-   "id": null,
-   "at": "2026-11-08"
+   "id": "_QUuOJK--nM",
+   "title": "What it Takes to Be a Great Technical Leader (with Engineering Director)",
+   "channel": "Aced (formerly Exponent)",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-11",
+   "note": "An engineering director on what it takes to be a great technical leader; the lesson adds architecture ownership."
   },
   "cpp01-t0": {
    "t": "From Source to Executable: Preprocessor → Compiler → Assembler → Linker",
