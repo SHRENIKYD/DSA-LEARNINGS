@@ -1,0 +1,476 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes: choosing a shared database between services early on. It felt fast, because no APIs were needed, but within a year every schema change needed three teams to agree and releases were tied together.</p><p>Today I would give each service its own data from day one, or keep one modular monolith with separate schemas per module. The lesson is to reverse decisions that block independent change, and to leave cheap ones alone.</p>",
+    "<p>Operability and cost are the most forgotten: how the system is deployed, monitored, backed up and paid for. Teams list speed and features but not 'who gets paged and how do they see what broke'.</p><p>Close behind are security, data retention and recovery time. A simple habit helps: for every design, ask 'how do we run it at 3 a.m., and what does it cost per month at 10 times the traffic?'</p>",
+    "<p>Something is good enough when it meets the stated requirements with some headroom, and the next improvement costs more than the risk it removes. Write the targets down first, for example 'p95 under 300 ms at 200 requests per second'.</p><p>If the system meets them and we can measure it, we stop. Anything beyond that is a backlog item with a reason, not a reflex. Reversible choices can be good enough sooner than one-way doors.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Ask what the system must do and how big it is. Those two questions decide almost everything else: the core features, and the scale (users, requests per second, data size).</p><p>Example: 'A booking app' is very different at 1,000 users than at 10 million. If the answers allow a third question, I would ask about the most important non-functional need, such as consistency or latency.</p>",
+    "<p>I deep dive where the risk or the scale is highest, or where the interviewer shows interest. Usually that is the data store and the one flow that must be correct, such as payment or booking.</p><p>I say it aloud: 'The hardest part here is double booking, may I go deeper on that?' This shows judgement, and it lets the interviewer steer me to what they want to test.</p>",
+    "<p>Version one is the smallest design that meets the core requirements: one API, one database, simple caching, basic monitoring. It should work for the expected load, not for a dream load.</p><p>Waiting for later: sharding, multi-region, advanced search, recommendation features. I name them as next steps and say which number (for example 5,000 requests per second) would trigger each of them.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Module boundaries: a modular monolith talking through a public contract",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\n// Orders module: only the interface is public to other modules.\npublic interface IOrdersApi { decimal TotalFor(string customer); }\n\n// Internal details are hidden. In a real solution this class is \"internal\"\n// in its own project, so other modules cannot reference it directly.\nclass OrdersModule : IOrdersApi\n{\n    readonly Dictionary<string, List<decimal>> data = new Dictionary<string, List<decimal>>\n    {\n        [\"anna\"] = new List<decimal> { 20m, 35.5m },\n        [\"bob\"] = new List<decimal> { 10m }\n    };\n    public decimal TotalFor(string c)\n    {\n        decimal sum = 0;\n        if (data.TryGetValue(c, out var list)) foreach (var x in list) sum += x;\n        return sum;\n    }\n}\n\n// Billing module depends only on the contract, never on Orders internals.\nclass BillingModule\n{\n    readonly IOrdersApi orders;\n    public BillingModule(IOrdersApi o) { orders = o; }\n    public string Invoice(string c) => $\"Invoice for {c}: {orders.TotalFor(c)}\";\n}\n\nclass Program\n{\n    static void Main()\n    {\n        // One deployable unit, two modules, one clear seam between them.\n        var billing = new BillingModule(new OrdersModule());\n        Console.WriteLine(billing.Invoice(\"anna\"));\n        Console.WriteLine(billing.Invoice(\"bob\"));\n        // Time O(items per customer), space O(1) extra.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>A distributed monolith is a system split into many services that still have to be deployed and changed together. You pay the cost of microservices (network, operations) and get none of the freedom.</p><p>Signs: one change needs releases of 4 services in the right order, services share a database, or a call chain of 6 synchronous hops. The fix is to merge services or repair the boundaries.</p>",
+    "<p>Use one project per module and make the internal types <code>internal</code>, so only a small contracts project is public. Add architecture tests that fail the build when a module references another module's internals.</p><pre><code>// NetArchTest style\nTypes.InAssembly(billing).ShouldNot()\n  .HaveDependencyOn(\"Orders.Internal\")</code></pre><p>Also give each module its own schema and DbContext, so tables are not shared.</p>",
+    "<p>A plain monolith is right for a small team (say 3 to 8 people), a new product whose boundaries are still unknown, and modest scale. One deployment, one database and simple debugging beat distributed complexity.</p><p>Move to modules when the code gets tangled, and to separate services only when a part needs its own scaling, release speed or team.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use gRPC between internal services when you want speed, strict typed contracts and streaming. It uses HTTP/2 and compact binary messages, and generates clients from a .proto file.</p><p>Use REST when callers are browsers, partners or mixed languages, or when easy debugging and caching matter. Many teams use REST at the edge and gRPC inside; both are fine, so choose by the team's skills and tooling.</p>",
+    "<p>A queue delivers each message to one consumer (competing consumers share the work). A topic delivers a copy to every subscriber, each with its own subscription.</p><p>Example: 'ResizeImage' jobs go on a queue, so one worker does each job. 'OrderPlaced' goes to a topic, so Billing, Email and Analytics each get their own copy. In Azure Service Bus both exist.</p>",
+    "<p>Return 202 Accepted with a job ID right away, then let the client learn the result. Three ways: the client polls <code>GET /jobs/{id}</code>, the server pushes through SignalR or a webhook, or the user gets an email.</p><p>Polling every 2 seconds is simplest. The job resource shows state (queued, running, done, failed) and a link to the result.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Anything kept in the memory of one instance is no longer shared: sessions, in-memory caches, uploaded files on local disk, in-process timers. A user may log in on instance A and land on B, where they are logged out.</p><p>Fix by moving state out: sessions and caches to Redis, files to blob storage, and scheduled jobs to a single leader or a queue.</p>",
+    "<p>Replica lag is the delay before a read copy of the database shows a write made on the primary. A user saves a profile, reloads, and sees old data from a replica that is 1 second behind.</p><p>Handle it by reading from the primary right after a write (for a few seconds), by session stickiness to the primary, or by showing the saved value from the client. Monitor the lag and alert at, say, 5 seconds.</p>",
+    "<p>Autoscale a queue worker on queue length per worker, or on message age, not on CPU. CPU can be low while thousands of messages wait.</p><p>Example: if each worker handles 10 messages a second and 3,000 are waiting, add workers until the backlog drains in your target time. In Azure, KEDA or Azure Container Apps scale rules support Service Bus queue length.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Write an ADR for decisions that are expensive to reverse or affect more than one team: a database choice, a messaging style, an authentication approach, a major library, a service boundary.</p><p>A good test: if a new joiner in a year would ask 'why did we do it this way?', write one. Naming of a variable or choice of a small helper library does not need one.</p>",
+    "<p>Keep diagrams as code in the repository (Mermaid, PlantUML, Structurizr) next to the source, and review them in the same pull request as the change. Generated diagrams from code or infrastructure files stay current almost for free.</p><p>Use the C4 model with few levels, so there is little to update. A stale diagram with no owner should be deleted.</p>",
+    "<p>The tech lead or architect usually owns the decision, and the people affected review it in a pull request with a short deadline, for example 3 working days. Silence means consent.</p><p>Big cross-team decisions go to a small architecture group. The key point is that one named person decides, and the ADR records who and when. Approval by committee for every ADR slows teams down.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Dependency inversion: clean architecture in 40 lines",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\n// Domain layer: knows nothing about databases. It owns the interface.\npublic record Order(int Id, decimal Amount);\npublic interface IOrderRepository { void Save(Order o); IReadOnlyList<Order> All(); }\n\n// Application layer: business rule uses only the interface.\npublic class PlaceOrder\n{\n    readonly IOrderRepository repo;\n    public PlaceOrder(IOrderRepository r) { repo = r; }\n    public string Handle(int id, decimal amount)\n    {\n        if (amount <= 0) return \"rejected: amount must be positive\"; // rule lives inward\n        repo.Save(new Order(id, amount));\n        return \"saved order \" + id;\n    }\n}\n\n// Infrastructure layer: depends inward on the interface (arrows point to the domain).\npublic class InMemoryRepository : IOrderRepository\n{\n    readonly List<Order> list = new List<Order>();\n    public void Save(Order o) { list.Add(o); }\n    public IReadOnlyList<Order> All() => list;\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var repo = new InMemoryRepository();          // swap for an EF Core repo in production\n        var useCase = new PlaceOrder(repo);\n        Console.WriteLine(useCase.Handle(1, 49.90m));\n        Console.WriteLine(useCase.Handle(2, -5m));\n        Console.WriteLine(\"stored orders: \" + repo.All().Count);\n        // Time O(1) per call, space O(n) for stored orders.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Validate in two places with different jobs: shape checks (required, length, format) at the edge in the API or request model, and business rules (stock available, credit limit) in the domain or application layer.</p><p>Edge validation gives fast 400 answers. Domain validation protects the rules even when the call comes from a job or another service. Never rely only on the front end.</p>",
+    "<p>Usually no, in a larger system. Domain entities carry behaviour and rules, while EF Core entities are shaped for tables, with navigation properties and mapping needs. Mixing them makes each one worse.</p><p>For a small CRUD app a single class is fine and saves mapping code. Separate them when the model gets rich, or when the database shape starts bending the domain design.</p>",
+    "<p>Vertical slice architecture organises code by feature (for example 'PlaceOrder') instead of by layer. Each slice holds its request, handler, validation and data access together.</p><p>Prefer it when features are mostly independent and change often: a change touches one folder rather than four layers. Shared rules still go into a small domain core. Often paired with MediatR-style handlers or minimal API endpoints.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Add the new field or endpoint without removing the old one, move consumers to the new shape, then remove the old one. This is the expand and contract approach, and consumers get a deadline, for example 3 months.</p><p>For truly breaking changes publish a new version (<code>/v2</code> or a new event type), run both, and track who still calls v1 through logs before switching it off.</p>",
+    "<p>One service owns the customer data. The other either calls its API when it needs it, or keeps a small read copy, updated from the owner's events (for example name and email only).</p><p>Never share the database table. If the second service only needs the data to display, store just the fields it needs and accept that the copy may be a few seconds old.</p>",
+    "<p>Too small means a service that cannot do anything useful alone, or needs five other services for every request. Size by business capability and by team: one team, owning a few services it can keep in its head.</p><p>If two services always change and deploy together, they are one service. A good test is whether you can release one without coordinating with another team.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Event vs command with simple at-least-once delivery and idempotent handler",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nrecord OrderPlaced(Guid EventId, int OrderId); // an event: past tense, many subscribers\n\nclass Bus\n{\n    readonly List<Action<OrderPlaced>> subs = new List<Action<OrderPlaced>>();\n    public void Subscribe(Action<OrderPlaced> h) { subs.Add(h); }\n    public void Publish(OrderPlaced e) { foreach (var s in subs) s(e); }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var bus = new Bus();\n        var seen = new HashSet<Guid>();   // processed message ids = idempotency\n        int emails = 0;\n\n        bus.Subscribe(e => {\n            if (!seen.Add(e.EventId)) { Console.WriteLine(\"duplicate ignored \" + e.OrderId); return; }\n            emails++; Console.WriteLine(\"email sent for order \" + e.OrderId);\n        });\n        bus.Subscribe(e => Console.WriteLine(\"analytics counted order \" + e.OrderId));\n\n        var evt = new OrderPlaced(Guid.NewGuid(), 42);\n        bus.Publish(evt);\n        bus.Publish(evt);  // broker redelivered: at-least-once means this can happen\n        Console.WriteLine(\"emails sent: \" + emails);\n        // Time O(subscribers) per publish, space O(processed ids).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Treat the event as a public contract. Only add optional fields (compatible change). For a breaking change, publish a new event type or a version field (<code>OrderPlaced.v2</code>) and send both during a migration period.</p><p>Consumers must ignore fields they do not know. Keep a schema registry or contract tests so you know who consumes what before you change anything.</p>",
+    "<p>Thin events (just the ID) keep messages small and always fetch fresh data, but force every subscriber to call back, creating load and coupling. Fat events carry the data the subscribers need, so they work independently, but they grow and can go stale.</p><p>A middle way works well: include the fields most subscribers use, plus the ID, and let rare cases call back.</p>",
+    "<p>Put a correlation ID in every message and log line, and use distributed tracing (OpenTelemetry) so one trace spans all 5 subscribers. Then search the trace ID in your tracing tool.</p><p>Also keep a dead-letter queue to inspect failed messages, and log event IDs on receive and on completion. Without these, event flows are very hard to follow.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Retry with exponential backoff and jitter, plus a tiny circuit breaker",
+    "csharp": "using System;\n\nclass Breaker\n{\n    int failures; DateTime openUntil = DateTime.MinValue;\n    public bool Open => DateTime.UtcNow < openUntil;\n    public void Fail() { if (++failures >= 3) openUntil = DateTime.UtcNow.AddSeconds(30); }\n    public void Ok() { failures = 0; }\n}\n\nclass Program\n{\n    static int calls;\n    static string FlakyService() { if (++calls < 4) throw new Exception(\"503\"); return \"OK on call \" + calls; }\n\n    static void Main()\n    {\n        var rnd = new Random(1);\n        var breaker = new Breaker();\n        for (int attempt = 1; attempt <= 5; attempt++)\n        {\n            if (breaker.Open) { Console.WriteLine(\"circuit open, failing fast\"); break; }\n            try { Console.WriteLine(FlakyService()); breaker.Ok(); break; }\n            catch (Exception e)\n            {\n                breaker.Fail();\n                // exponential backoff: 100, 200, 400 ms ... plus random jitter\n                double delay = 100 * Math.Pow(2, attempt - 1) + rnd.Next(0, 50);\n                Console.WriteLine($\"attempt {attempt} failed ({e.Message}), wait {delay:F0} ms\");\n            }\n        }\n        // Time O(attempts), space O(1). Real code would use Polly or Microsoft.Extensions.Resilience.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Without jitter, all clients that failed together retry together, at 1 s, 2 s, 4 s, in sharp waves. This is a retry storm and it can keep a recovering service down.</p><p>Jitter adds a random delay to each client, spreading the retries over time. Example: 1,000 clients retrying at exactly 2.0 s is a spike; spread over 1.5 to 2.5 s it is a trickle.</p>",
+    "<p>Closed: calls flow normally while failures are counted. Open: after too many failures the breaker rejects calls immediately for a set time, for example 30 seconds. Half-open: after that time a few test calls are allowed; if they succeed the breaker closes, otherwise it opens again.</p><p>This protects the failing dependency and gives callers a fast answer.</p>",
+    "<p>Never retry errors that will fail again the same way: 400 bad request, 401/403 not allowed, 404 not found, validation errors. Retrying them wastes capacity.</p><p>Also do not retry non-idempotent calls (like 'charge the card') unless you send an idempotency key. Retry only transient faults: timeouts, 429 (after the Retry-After delay), 503.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Cache-aside with expiry, and a stampede guard",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Cache\n{\n    readonly Dictionary<string, (string val, DateTime exp)> store = new Dictionary<string, (string, DateTime)>();\n    readonly object gate = new object();\n    public int DbCalls;\n\n    string LoadFromDb(string key) { DbCalls++; return \"value-of-\" + key; } // slow and costly\n\n    public string Get(string key)\n    {\n        lock (gate)  // one loader at a time: avoids a stampede on a cold key\n        {\n            if (store.TryGetValue(key, out var e) && e.exp > DateTime.UtcNow) return e.val; // hit\n            var v = LoadFromDb(key);                                                          // miss\n            store[key] = (v, DateTime.UtcNow.AddSeconds(60));                                 // TTL 60 s\n            return v;\n        }\n    }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var c = new Cache();\n        for (int i = 0; i < 5; i++) Console.WriteLine(c.Get(\"user:7\"));\n        Console.WriteLine(\"5 reads, database calls: \" + c.DbCalls);\n        // Time O(1) per read, space O(keys). Without the cache: 5 database calls.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Use a shared cache (Redis) for data that must be consistent across instances, or send an invalidation message so every instance drops its local copy. A short TTL is the simplest safety net.</p><p>Option: two levels, a small in-memory cache (30 seconds) in front of Redis. On change, delete the Redis key and publish a Redis pub/sub message so instances clear their memory entry. In .NET 9+, HybridCache does this layering.</p>",
+    "<p>Never cache secrets, one-time tokens, or data that differs per user unless the user is part of the key. Avoid caching data where staleness is dangerous, such as account balances before a payment or stock count at checkout.</p><p>Do not cache error responses for long, and do not cache responses with personal data in a shared cache without access rules.</p>",
+    "<p>Use IMemoryCache for one instance or small data where a short delay between instances is fine. It is the fastest, with no network hop, but each instance has its own copy.</p><p>Use Redis when many instances need the same data, when data must survive restarts, or when the cache is big. It costs a network call, around 1 ms. Many systems use both layers.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Back-of-the-envelope capacity estimate",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        double usersPerDay = 2_000_000, reqPerUser = 20;\n        double secondsPerDay = 100_000;               // rounded from 86,400\n        double avgRps = usersPerDay * reqPerUser / secondsPerDay;\n        double peakRps = avgRps * 5;                  // peak is often 5-10x average\n        double perServerRps = 500;                    // measured or assumed capacity\n        double servers = Math.Ceiling(peakRps / perServerRps) + 1; // +1 for failure\n\n        double bookingsPerDay = 200_000, bytesEach = 2_000;\n        double gbPerYear = bookingsPerDay * bytesEach * 365 / 1e9;\n\n        Console.WriteLine($\"average RPS: {avgRps}\");\n        Console.WriteLine($\"peak RPS:    {peakRps}\");\n        Console.WriteLine($\"servers:     {servers}\");\n        Console.WriteLine($\"storage/year: {gbPerYear:F0} GB\");\n        // The numbers only steer the design; precision is not the goal.\n        // Time and space O(1).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>About 10 servers: if one server handles roughly 500 requests per second, 4,000 / 500 = 8, plus 2 spare so one failure or a deployment does not overload the rest.</p><p>Round honestly and state the assumption ('500 per server, measured by load test'). Autoscaling is better than a fixed size when traffic varies a lot.</p>",
+    "<p>The one that decides the architecture: usually write rate or data size. At 10 times more reads you add caches and replicas, easy. At 10 times more writes, one database may not cope, and you must partition.</p><p>Say it in the interview: 'At 100 writes per second one database is fine; at 10,000 I would shard, so I design the key now.'</p>",
+    "<p>Cache memory is items multiplied by size per item, plus overhead. Example: cache 1 million product records of 2 KB each = 2 GB, plus about 30% overhead = roughly 2.6 GB.</p><p>Cache only the hot part: if 20% of items get 80% of reads, 200,000 items = 0.4 GB is enough. Then check the hit rate and adjust.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>RBAC gives permissions through roles ('Manager can approve'); it is simple and fits most apps. ABAC decides from attributes of the user, the resource and the situation ('a manager can approve invoices in their own department, under 10,000, during office hours').</p><p>Start with RBAC; add attribute rules (policies in ASP.NET Core) when roles multiply into dozens.</p>",
+    "<p>Support two valid secrets at once. Add the new secret in the key store (Azure Key Vault), update consumers to read the latest version, confirm they use it, and then retire the old one.</p><p>For database passwords use two users that alternate, or use managed identities so there is no password at all. Rotation should be automated and practised, not a once-a-year panic.</p>",
+    "<p>STRIDE lists six threat types: Spoofing (pretending to be someone), Tampering (changing data), Repudiation (denying an action), Information disclosure (leaks), Denial of service (making it unavailable), Elevation of privilege (gaining rights).</p><p>Use it on each arrow of the architecture diagram: for each, ask which of the six could happen and what control stops it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SLO and error budget in numbers",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        double slo = 0.999;                   // objective: 99.9% of requests succeed\n        long total = 10_000_000;              // requests this month\n        long failed = 6_500;                  // measured failures (the SLI numerator)\n\n        double sli = 1.0 - (double)failed / total;\n        long budget = (long)(total * (1 - slo));      // failures we may afford\n        double used = (double)failed / budget * 100;\n\n        Console.WriteLine($\"SLI measured: {sli:P3}\");\n        Console.WriteLine($\"error budget: {budget} failed requests\");\n        Console.WriteLine($\"budget used:  {used:F0}%\");\n        Console.WriteLine(used > 100 ? \"freeze features, fix reliability\" : \"room to ship\");\n        // Time O(1), space O(1).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>An error budget is the amount of failure your SLO allows. With a 99.9% target over a month you may fail 0.1% of requests, about 43 minutes of downtime.</p><p>While budget remains, the team ships features. When it is spent, the team pauses features and fixes reliability. It turns 'be more stable' into a shared number that product and engineering agree on.</p>",
+    "<p>A bad alert wakes someone but needs no action: it fires on a symptom that fixes itself, is a duplicate, or has no runbook. Too many of those create alert fatigue and real alerts get ignored.</p><p>Good alerts are urgent, actionable and about user impact (error rate, latency, SLO burn rate), not about a CPU briefly at 85%.</p>",
+    "<p>Do not log what you do not need, and mask what you must log: log user IDs rather than names, emails or card numbers. Use structured logging with a deny-list of fields, and a redaction step in the logging pipeline.</p><p>Review log samples in code review, set short retention (for example 30 days), and restrict who can read logs. Never log request bodies by default.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pick blue/green when you want an instant, whole-system switch and an instant rollback, and can afford two environments. It suits releases with big changes or where all users must see the same version.</p><p>Pick canary when you want to limit risk by exposing 1 to 5% of users first and watching real traffic. It suits frequent releases and large user bases, and needs good metrics.</p>",
+    "<p>Compare the canary with the stable version on error rate, latency (p95), saturation (CPU, memory) and key business numbers such as checkout success. Set limits beforehand, for example 'errors not more than 0.2% above the baseline'.</p><p>If a limit is crossed, rollback is automatic. If not, expand in steps: 5%, 25%, 50%, 100%, with a wait at each step.</p>",
+    "<p>Plan for it before the migration. Use expand and contract: add new columns first (old code still works), deploy, migrate data, then remove old columns in a later release. Then rollback of the code never needs rollback of the data.</p><p>For risky changes take a backup or snapshot first. A rollback script that was never tested is not a plan.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do coarse checks at the gateway (is the token valid, does it have the right scope), and fine-grained checks inside the service that owns the data ('can this user see this order?').</p><p>The gateway does not know your business rules, and services must not trust that every call came through it. So each service validates the token and checks the resource itself.</p>",
+    "<p>A BFF is a small back end built for one client (web, mobile) that calls your services and shapes the answers that client needs. GraphQL is a query language and runtime that lets any client pick the fields it wants from a single endpoint.</p><p>They can be combined: a BFF can expose GraphQL. BFF is about who owns the API per client; GraphQL is about how clients ask.</p>",
+    "<p>If the gateway is a single point of failure, the whole system looks down. Run at least 2 instances across zones behind a load balancer, keep it stateless and simple, and use a managed service (Azure Front Door, API Management) with its own availability SLA.</p><p>Keep business logic out of it, so it rarely changes and is rarely deployed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a unique counter and encode it, so two IDs can never be the same. A hash of the URL can collide, and then you must check the database and retry with a salt.</p><p>With several servers, give each a range of numbers (server A takes 1 to 1,000,000) or use a central ID service, so the counter stays unique without a lock on every request.</p>",
+    "<p>Because two requests can read the counter at the same moment. Both see 99, both think they have room, and both let the request through: the limit is exceeded.</p><p>Use an atomic increment (Redis <code>INCR</code> with an expiry, or a Lua script) so check and increment are one step. A read, then a write, is a race.</p>",
+    "<p>Streaming a big file through your API ties up threads and memory and costs bandwidth, and your servers become the bottleneck. Instead, give the client a short-lived signed URL (SAS token in Azure Blob Storage) and let it upload directly to storage.</p><p>The API only issues the permission and records the metadata. Storage then scales on its own.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Eventual consistency: a read replica that lags",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static Dictionary<string, string> primary = new Dictionary<string, string>();\n    static Dictionary<string, string> replica = new Dictionary<string, string>();\n    static Queue<(string k, string v)> replication = new Queue<(string, string)>();\n\n    static void Write(string k, string v) { primary[k] = v; replication.Enqueue((k, v)); }\n    static void ReplicateOne() { if (replication.Count > 0) { var (k, v) = replication.Dequeue(); replica[k] = v; } }\n    static string Read(Dictionary<string, string> db, string k) => db.TryGetValue(k, out var v) ? v : \"(old/empty)\";\n\n    static void Main()\n    {\n        primary[\"name\"] = replica[\"name\"] = \"Anna\";\n        Write(\"name\", \"Anne\");                                       // user saves\n        Console.WriteLine(\"read replica now:    \" + Read(replica, \"name\")); // stale\n        Console.WriteLine(\"read primary now:    \" + Read(primary, \"name\")); // read-your-writes\n        ReplicateOne();                                              // replication catches up\n        Console.WriteLine(\"read replica later:  \" + Read(replica, \"name\"));\n        // Eventual consistency: all copies agree once updates stop and replication finishes.\n        // Time O(1) per operation, space O(keys).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>A single SQL Server instance has no network partition between nodes, so CAP does not really apply to it. It is strongly consistent and available as long as that one machine is up.</p><p>With Always On availability groups or geo-replication, the choice returns: synchronous commit favours consistency (writes can stall), asynchronous favours availability (possible data loss on failover).</p>",
+    "<p>Say: 'Some screens may show data that is a few seconds old, but all copies catch up on their own. Like a bank app where a card payment shows as pending first.'</p><p>Then ask which screens must be exact (balance at payment) and which can lag (reports, counters). That is the useful part of the conversation.</p>",
+    "<p>Most likely the read came from a replica or cache that had not received the write yet. The system is eventually consistent and the user read in the gap.</p><p>Fixes: read from the primary right after a write, keep a version or timestamp and wait until the replica has it, or update the screen from the write response so the user sees their own change (read-your-writes).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Saga orchestrator with compensation",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static void Main()\n    {\n        // Each step has an action and a compensation that undoes it.\n        var steps = new List<(string name, Func<bool> act, Action undo)>\n        {\n            (\"reserve stock\", () => true,  () => Console.WriteLine(\"  undo: release stock\")),\n            (\"charge card\",   () => true,  () => Console.WriteLine(\"  undo: refund card\")),\n            (\"book shipping\", () => false, () => Console.WriteLine(\"  undo: cancel shipping\")) // fails\n        };\n\n        var done = new Stack<(string name, Func<bool> act, Action undo)>();\n        foreach (var s in steps)\n        {\n            Console.WriteLine(\"run: \" + s.name);\n            if (s.act()) { done.Push(s); continue; }\n            Console.WriteLine(\"failed at: \" + s.name + \", compensating\");\n            while (done.Count > 0) done.Pop().undo();   // reverse order\n            Console.WriteLine(\"saga ended: order cancelled\");\n            return;\n        }\n        Console.WriteLine(\"saga ended: order confirmed\");\n        // Time O(steps), space O(steps). Real sagas persist their state between steps.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Retry it, because compensations must be idempotent and safe to repeat. If it keeps failing, put the saga in a 'needs attention' state, raise an alert, and let a person or a repair job finish it.</p><p>Never drop it silently. Design compensations to be simple and very reliable (refund, release), and log every step so the state is always known.</p>",
+    "<p>Show the real status: 'Order received, payment being confirmed', with the saga state behind it (pending, confirmed, failed). Do not show 'confirmed' before it is.</p><p>Update the screen by polling or push, and send an email when it finishes. A visible pending state is honest and much better than a spinner that never ends.</p>",
+    "<p>Put the step that is hardest or impossible to undo last, so most failures happen before it and need no compensation. Example: send the confirmation email and ship the parcel after payment succeeds, not before.</p><p>Steps that can be reversed cheaply (reserve stock) go first. This keeps the chain short when something fails.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Transactional outbox plus idempotent consumer",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static List<string> orders = new List<string>();                      // business table\n    static List<(Guid id, string payload, bool sent)> outbox = new List<(Guid, string, bool)>(); // outbox table\n    static HashSet<Guid> processed = new HashSet<Guid>();                 // consumer's inbox\n\n    static void PlaceOrder(string name)\n    {\n        // In a real database both inserts are ONE transaction: both happen or neither.\n        orders.Add(name);\n        outbox.Add((Guid.NewGuid(), \"OrderPlaced:\" + name, false));\n    }\n\n    static void Consume((Guid id, string payload, bool sent) m)\n    {\n        if (!processed.Add(m.id)) { Console.WriteLine(\"skip duplicate \" + m.payload); return; }\n        Console.WriteLine(\"handled \" + m.payload);\n    }\n\n    static void Main()\n    {\n        PlaceOrder(\"book\");\n        for (int round = 1; round <= 2; round++)           // publisher runs twice (crash and restart)\n            foreach (var m in outbox) Consume(m);          // at-least-once: sends again\n        Console.WriteLine(\"orders: \" + orders.Count + \", handled once: \" + processed.Count);\n        // Time O(messages), space O(messages). \"Exactly once\" = at-least-once + idempotent handling.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Make the claim atomic in the database: select the rows with a lock that skips locked rows (<code>UPDATE ... OUTPUT</code> or <code>WITH (UPDLOCK, READPAST)</code> in SQL Server), or mark them with a lease owner and expiry.</p><p>Even then duplicates can occur after a crash, so consumers must be idempotent. The lock reduces duplicates; it does not remove the need for idempotency.</p>",
+    "<p>Keep them at least as long as the broker can redeliver or a client can retry, plus a margin. Often 7 to 30 days is enough, with a unique index and a cleanup job.</p><p>If the same message ID can appear after that window, an old duplicate will be processed again, so choose the window from the real maximum retry or replay time.</p>",
+    "<p>The inbox pattern is the receiving side of the outbox: the consumer stores each incoming message ID in a table, in the same transaction as its own change. If the ID exists already, the message is skipped.</p><p>It gives the consumer exactly-once effects on top of at-least-once delivery.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Event sourcing: rebuild state by replaying events",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nabstract class Event { }\nclass Deposited : Event { public decimal Amount; }\nclass Withdrawn : Event { public decimal Amount; }\n\nclass Account\n{\n    public decimal Balance;\n    public void Apply(Event e)   // state is only ever changed by applying events\n    {\n        if (e is Deposited d) Balance += d.Amount;\n        else if (e is Withdrawn w) Balance -= w.Amount;\n    }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var log = new List<Event>                       // append-only: the source of truth\n        {\n            new Deposited { Amount = 100 },\n            new Withdrawn { Amount = 30 },\n            new Deposited { Amount = 5 }\n        };\n        var acc = new Account();\n        foreach (var e in log) acc.Apply(e);\n        Console.WriteLine(\"events: \" + log.Count + \", balance: \" + acc.Balance);\n        // Balance after the first 2 events (time travel):\n        var past = new Account();\n        for (int i = 0; i < 2; i++) past.Apply(log[i]);\n        Console.WriteLine(\"balance after 2 events: \" + past.Balance);\n        // Time O(events); snapshots make replay faster. Space O(events).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Accept that the read side is eventually consistent and design for it: show the result of a command from the command's own response, or keep a version number and wait or retry until the read model reaches it.</p><p>Monitor projection lag and alert when it passes a limit (for example 5 seconds). Tell the user a change is being processed if needed.</p>",
+    "<p>Never edit stored events. Add an upcaster, a small function that converts an old event version to the new shape when it is read. Events keep their meaning; only the reading code changes.</p><p>Example: an old <code>AddressChanged</code> with one text field is read as the new event with street and city split. Version each event type so upcasters are chained.</p>",
+    "<p>No. CQRS only says reads and writes use different models; this can be two classes over the same database. Two databases (a fast read store) are an optional step for when the reads need a different shape or scale.</p><p>Start with one database and separate models, and split the stores only if you can show a need.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Multi-tenancy: a query filter that isolates tenants",
+    "csharp": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\nrecord Invoice(int Id, string TenantId, decimal Amount);\n\nclass TenantContext { public string TenantId = \"\"; }\n\nclass InvoiceRepo\n{\n    readonly List<Invoice> table = new List<Invoice>\n    {\n        new Invoice(1, \"acme\", 100), new Invoice(2, \"acme\", 40), new Invoice(3, \"globex\", 999)\n    };\n    readonly TenantContext ctx;\n    public InvoiceRepo(TenantContext c) { ctx = c; }\n\n    // Like an EF Core global query filter: every query is scoped automatically.\n    public IEnumerable<Invoice> Query() => table.Where(i => i.TenantId == ctx.TenantId);\n    // A developer who forgets the filter would leak data, so isolation must be automatic.\n    public IEnumerable<Invoice> UnsafeAll() => table;\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var ctx = new TenantContext { TenantId = \"acme\" };   // from the validated token\n        var repo = new InvoiceRepo(ctx);\n        Console.WriteLine(\"acme sees: \" + string.Join(\", \", repo.Query().Select(i => i.Id)));\n        ctx.TenantId = \"globex\";\n        Console.WriteLine(\"globex sees: \" + string.Join(\", \", repo.Query().Select(i => i.Id)));\n        Console.WriteLine(\"unfiltered (bug): \" + repo.UnsafeAll().Count() + \" rows\");\n        // Time O(rows) here (a database uses an index on TenantId), space O(1).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Script it: keep a tenant catalog table, and run the migration tool for each tenant in parallel batches with a limit (for example 10 at a time), recording success per tenant. Failed ones are retried or flagged.</p><p>Migrations must be backward compatible (expand and contract), because for a while tenants run on different schema versions. Try it on a few pilot tenants first.</p>",
+    "<p>Data residency moves the tenant's data, backups and logs to the target region. Database-per-tenant makes this easy: copy or restore the database there and change the tenant's connection in the catalog.</p><p>With a shared database it is hard. Also check where processing, caches and third-party services run, since legal rules often cover those too.</p>",
+    "<p>In EF Core, <code>IgnoreQueryFilters()</code> turns the filter off for that query. Raw SQL (<code>FromSqlRaw</code>, <code>ExecuteSql</code>) and other tools like Dapper also skip it, and so do bulk operations written by hand.</p><p>Guard against it: review these usages, add tests that check tenant A cannot read tenant B, and use SQL Server row-level security as a second line of defence.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "DDD aggregate protecting an invariant",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass OrderLine { public string Sku = \"\"; public int Qty; public decimal Price; }\n\n// Aggregate root: the only door into the order; it protects the rules.\nclass Order\n{\n    readonly List<OrderLine> lines = new List<OrderLine>();\n    const int MaxLines = 3;\n    public bool Submitted { get; private set; }\n\n    public void AddLine(string sku, int qty, decimal price)\n    {\n        if (Submitted) throw new InvalidOperationException(\"order already submitted\");\n        if (qty <= 0) throw new ArgumentException(\"qty must be positive\");\n        if (lines.Count >= MaxLines) throw new InvalidOperationException(\"max 3 lines\");\n        lines.Add(new OrderLine { Sku = sku, Qty = qty, Price = price });\n    }\n    public void Submit() { if (lines.Count == 0) throw new InvalidOperationException(\"empty order\"); Submitted = true; }\n    public decimal Total() { decimal t = 0; foreach (var l in lines) t += l.Qty * l.Price; return t; }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var o = new Order();\n        o.AddLine(\"A1\", 2, 10m); o.AddLine(\"B2\", 1, 4.5m);\n        o.Submit();\n        Console.WriteLine(\"total: \" + o.Total());\n        try { o.AddLine(\"C3\", 1, 1m); } catch (Exception e) { Console.WriteLine(\"blocked: \" + e.Message); }\n        // Time O(lines), space O(lines).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>As small as possible while still protecting one business rule that must be true in one transaction. Most aggregates are one root with a few child objects, not a whole customer with all their orders.</p><p>Big aggregates cause lock contention and slow loads. If two things do not need to be consistent at the same instant, they belong in different aggregates.</p>",
+    "<p>Through domain events and eventual consistency. Aggregate A changes and raises an event; a handler updates aggregate B in its own transaction, after the first has committed.</p><p>Reference other aggregates by ID, not by object. Only inside one aggregate do you get immediate consistency.</p>",
+    "<p>Run event storming or a workshop with the domain experts: write business events on sticky notes ('Order placed', 'Payment received') and group them. Where words change meaning, or different people own the process, a context boundary appears.</p><p>Listen to the language: when 'customer' means different things to Sales and Support, those are two contexts.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a change feed from the database (change data capture or the outbox) and have a worker update the index. Do not write to both in the request, because one of the two writes can fail and they drift apart.</p><p>Add a periodic full reindex as a safety net, and track lag. The index is a copy, so it can always be rebuilt from the database.</p>",
+    "<p>Give the reservation a time limit (for example 10 minutes) and a status. A background job or a message with a delay expires unpaid reservations and puts the stock back.</p><p>Only the confirmed payment turns a reservation into a sale. Make the release idempotent, as the user could pay at the very moment it expires.</p>",
+    "<p>Chain the records with hashes: each entry stores a hash of its content plus the previous entry's hash, so changing an old row breaks every hash after it. Publish the latest hash somewhere separate from the data.</p><p>Also use append-only storage (immutable blob storage with a legal hold), restricted write rights, and regular verification jobs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The assistant must treat document text as data, never as instructions. Defences, in layers: keep the system instructions separate from retrieved content, give the model no tools it does not need, and never let it act without a user confirmation.</p><p>Even if the model is tricked into 'delete everything', it can only propose; the API checks the user's permissions and a person must confirm. Log and filter suspicious text as well.</p>",
+    "<p>Keep a fixed test set of real questions with expected outcomes (an evaluation set, 50 to 200 cases) and run it in CI on every prompt or model change. Score the results automatically where possible (correct tool, correct fields) and review a sample by hand.</p><p>Compare the score to the last release and block the change if it drops. Add every production failure to the set.</p>",
+    "<p>Use smaller models for easy steps, send only the needed text (retrieval, not whole documents), cache repeated answers and prompts, and set limits per user and per request (maximum tokens, rate limits).</p><p>Track cost per request and per tenant, with an alert on spikes. Run long jobs in batch at lower priority.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pick a slice that is valuable, fairly independent and low risk: for example reporting, notifications or a clearly separated module with few links to the rest. A first success proves the approach and builds trust.</p><p>Avoid the most tangled core first. Use the data on change frequency and pain to choose, and keep the first slice to a few weeks.</p>",
+    "<p>Avoid two writers. Give one system ownership of the table, and let the other call it or read a synchronised copy. During the migration, sync changes with events or change data capture in one direction.</p><p>If both must write for a short time, use a clear rule for conflicts and a plan to switch ownership on a set date.</p>",
+    "<p>Translate to their outcomes: faster delivery, fewer outages, lower cost, and risks of the old system (a technology reaching end of support). Show the cost of doing nothing as a number.</p><p>Deliver in small steps that show value, reserve a fixed share (for example 20%) of capacity for it, and report progress with a few simple measures.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Downtime allowed per availability target, and serial dependencies",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        double minutesPer30Days = 30 * 24 * 60;\n        foreach (double target in new[] { 0.99, 0.999, 0.9999 })\n            Console.WriteLine($\"{target:P2} -> {minutesPer30Days * (1 - target):F1} min downtime per 30 days\");\n\n        // Services in a chain multiply: the result is lower than the weakest one.\n        double[] chain = { 0.9995, 0.9995, 0.999 };   // gateway, app, database\n        double combined = 1;\n        foreach (var a in chain) combined *= a;\n        Console.WriteLine($\"chain of 3 services: {combined:P3}\");\n        // Redundancy (2 copies in parallel): 1 - (1-a)^2\n        double parallel = 1 - Math.Pow(1 - 0.999, 2);\n        Console.WriteLine($\"two 99.9% copies in parallel: {parallel:P4}\");\n        // Time O(1), space O(1).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Active-active serves traffic from both regions and gives the fastest failover and best use of money spent, but is much harder: data must be written in both places and conflicts handled. Active-passive keeps a standby region that takes over on failure; simpler, but failover takes minutes and the standby needs testing.</p><p>Choose active-passive unless the business truly needs near-zero downtime.</p>",
+    "<p>Your system cannot be more available than its dependencies, so you must design around them. Add a fallback (a second provider, a cache, a queue to retry later), or degrade a feature instead of failing completely.</p><p>Also say plainly to the business that a 99.99% promise on top of a 99.95% service needs redundancy, and show the cost.</p>",
+    "<p>RTO (recovery time objective) is how long you can be down: 'back within 1 hour'. RPO (recovery point objective) is how much data you can lose: 'at most the last 5 minutes'.</p><p>They drive design and cost: an RPO near zero needs synchronous replication; a short RTO needs a ready standby and rehearsed failover. Ask the business for both numbers per system.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Coding is about 20 to 40% of my week, and it shrinks as the team grows. The rest is design, reviews, planning, 1-to-1 talks and unblocking people.</p><p>I pick work that does not sit on the critical path: prototypes, tooling, a small bug fix. If the team waits for my code, I am coding too much.</p>",
+    "<p>A tech lead owns the technical side: design, quality, and how the code is built, and usually still writes code. An engineering manager owns the people side: hiring, pay, performance, careers, and team budget.</p><p>In small teams one person does both; then it helps to say which hat you are wearing in a conversation.</p>",
+    "<p>Honest answer: balancing time, and saying no to good ideas. I also find it hard to let go of doing things myself when it would be faster than explaining.</p><p>I handle it by delegating with clear outcomes, accepting that others do it differently, and reviewing rather than redoing. That is where the team grows.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Aim for about 2 minutes: 20 seconds of situation and task, 60 to 80 seconds of action, 20 seconds of result. Short enough to keep attention, long enough to be specific.</p><p>Stop when you have given the result. If the interviewer wants more, they will ask, and that gives you the follow-up questions you prepared for.</p>",
+    "<p>Use the closest story and say so: 'I have not faced exactly that, but in a similar case...'. Or tell what you would do and why, based on principles you have applied before.</p><p>Do not invent a story. Prepare 6 to 8 flexible stories before the interview so most questions have a match.</p>",
+    "<p>Use 'I' for your own decisions and actions, and 'we' for shared work. Name the specific thing you did: 'I wrote the design, ran the migration, and presented the plan'.</p><p>Give credit to others too; it shows leadership. If asked 'what was your part?', answer with 2 or 3 concrete actions.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not read 2,000 lines line by line. Ask the author to split it into smaller pull requests, or do a short call where they walk through it, and review the risky parts first (data, security, public API).</p><p>If it cannot be split (a generated or mechanical change), review the human-written parts and check that automated tests pass. Agree a size limit for the future.</p>",
+    "<p>Make it about the code, not the person: comment on the change ('this method can return null'), ask questions, and praise good work. Talk face to face when the written tone goes wrong.</p><p>Agree team rules: comments are suggestions with reasons, and I accept review of my own code in public too. This shows reviews are normal for everyone.</p>",
+    "<p>Review AI-generated code at least as carefully, because it looks confident and is often subtly wrong: invented APIs, missing edge cases, weak error handling, and unsafe defaults. Check that the author understands every line.</p><p>Look harder at security, tests that really assert something, and duplicated code. Ask 'why this approach?' as normal.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A senior needs less on the tools and more on context: the domain, why decisions were made, who to talk to, and what the team expects of them. Give them a bigger first task, like a design review.</p><p>A junior needs a buddy, small tasks, frequent check-ins, and more explanation of how we work. Both get the same welcome and access.</p>",
+    "<p>Write more down, schedule video calls instead of relying on chat, and assign a buddy. Plan the first week hour by hour, with introductions to the team and a first small task.</p><p>Check in daily for the first 2 weeks. Remote people miss casual hallway talk, so create places to ask questions.</p>",
+    "<p>Look at concrete signs: first pull request merged in week 1, can run and test locally unaided by day 3, asks questions freely, and feels settled at 30, 60 and 90 day check-ins.</p><p>Ask the person directly what was confusing, and fix the documentation each time. Time to first production change is a good measure.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Separate the change from the sprint plan: add it to the backlog, say what it replaces if the sprint is full, and let the product owner choose. Changes mid-sprint cost focus, so trade scope, do not just add.</p><p>If it happens often, ask why (unclear goals, pressure from above) and propose shorter planning cycles or a protected sprint goal.</p>",
+    "<p>The product owner decides based on business impact, with the tech lead and QA giving the facts: who is affected, how often, workaround, risk. Agree the rules early: for example, anything that loses data or money blocks the release.</p><p>The decision belongs to a named person, not to whoever shouts loudest.</p>",
+    "<p>Use money and speed: 'This shortcut adds two days to each pricing change. Fixing it takes eight days once, and pays back after four changes.' Compare to a loan with interest.</p><p>Ask for a regular share of capacity (for example 15 to 20%), not a big one-off project, and show results.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Say politely: 'I cannot share the customer's name because of confidentiality, but I can describe the problem and what I did.' Then go straight back to the substance.</p><p>Most interviewers respect this, as it shows you will protect their secrets too. Offer a generic label such as 'a large retailer' and keep the focus on your decisions.</p>",
+    "<p>No, not code from your employer, unless it is public or you have written permission. Instead write a small example from scratch, or show an open-source project of your own.</p><p>You can explain the structure and decisions in words or on a whiteboard, without the original files.</p>",
+    "<p>Use relative or rounded numbers: 'about three times faster', 'cut the failure rate by more than half', 'from tens of seconds to under a second'. Give the shape of the result without the exact business figure.</p><p>Keep it honest. Ranges and ratios are believable and still safe.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The questions about the company's culture and the job's real nature suit a hiring manager, such as 'What does success look like in 6 months?' and 'What is the biggest risk on this team?'.</p><p>To a future peer you ask about daily work: how reviews go, how often they deploy, and what they dislike. Ask each person what they know best.</p>",
+    "<p>Answers that would make me hesitate: no clear owner for the role, no tests or reviews, constant firefighting with no plan to change, or a manager who cannot explain how success is measured.</p><p>A single red flag is a reason to ask more; several together are a reason to say no.</p>",
+    "<p>Say so honestly: 'You covered that already, so a different question: ...' and ask about something deeper, such as how the team handled its last failed project or what they would change.</p><p>Keep 2 or 3 spare questions. Never say 'no questions', it looks like low interest.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Answer with the reason you want this role: the company's product, its engineering challenges, and what you can add. Be specific, one or two facts you really looked up.</p><p>Example: 'You run a booking platform at a scale I find interesting, and the role mixes design and leading, which is what I do best.' Avoid generic praise.</p>",
+    "<p>Pick the part you really did and say so plainly: 'I designed the caching layer and wrote the first version; two colleagues built the UI.' Name the decision and the result.</p><p>If asked about details, you should be able to go one level deeper. Honest scope is more convincing than a big claim.</p>",
+    "<p>Say what they would truly say, with evidence: 'Calm in incidents, and I explain things clearly. They would also say I can take on too much and I am learning to delegate sooner.'</p><p>Pick two strengths and one honest growth point with a step you already take.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Link a skill to a need of the role, with proof: 'You need someone to lead a migration while shipping features. I did this on a booking system and cut deploy time from days to hours.'</p><p>Do not compare yourself to others. Describe what you bring and let them decide.</p>",
+    "<p>Give a real, recent example with a result: a technology, a way of working, or a mistake you now avoid. For example: 'I learned the new .NET minimal API model and used it to cut an endpoint's code by half.'</p><p>It shows you keep growing and reflect on your work.</p>",
+    "<p>Be honest but safe: work with no purpose, endless meetings without decisions, and unclear ownership. Then say how you handle it: 'I ask for the goal and propose a clear owner.'</p><p>Do not name a task central to the job. End on how you cope.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "N+1 queries versus one batched query (the classic performance fix)",
+    "csharp": "using System;\nusing System.Collections.Generic;\nusing System.Diagnostics;\nusing System.Linq;\n\nclass Program\n{\n    static int dbCalls;\n    static Dictionary<int, List<string>> itemsByOrder = Enumerable.Range(1, 500)\n        .ToDictionary(i => i, i => new List<string> { \"a\" + i, \"b\" + i });\n\n    // Each call simulates a database round trip (~1 ms in real life).\n    static List<string> ItemsForOrder(int id) { dbCalls++; return itemsByOrder[id]; }\n    static Dictionary<int, List<string>> ItemsForOrders(int[] ids)\n    { dbCalls++; return ids.ToDictionary(i => i, i => itemsByOrder[i]); }\n\n    static void Main()\n    {\n        int[] orderIds = Enumerable.Range(1, 500).ToArray();\n\n        dbCalls = 0; int n1 = 0;\n        foreach (var id in orderIds) n1 += ItemsForOrder(id).Count;       // N+1 pattern\n        Console.WriteLine($\"N+1:     {n1} items, {dbCalls} database calls\");\n\n        dbCalls = 0;\n        int batched = ItemsForOrders(orderIds).Values.Sum(l => l.Count);  // one query with IN (...)\n        Console.WriteLine($\"batched: {batched} items, {dbCalls} database call\");\n        // At 1 ms per call: about 500 ms against about 1 ms. Time O(N) both here, round trips O(N) vs O(1).\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>I measured on the same data and the same environment, before and after, using the p95 response time from application monitoring plus the number of database calls from a profiler. Not a single run, but a few hundred requests.</p><p>Example: p95 12 s before, 0.7 s after, and database calls per request from 800 to 3. Keep the numbers so you can prove the result.</p>",
+    "<p>Alternatives I weighed: add an index, cache the result, paginate the page, or build a precomputed summary table. The profile showed the main cost was many small queries, so batching won.</p><p>I picked the cheapest change with the biggest effect and kept the others as next steps.</p>",
+    "<p>Next I would try the next option: paging so the page never loads all orders, then caching, then a read model. I would also check whether the page asks for more than the user needs.</p><p>If still not enough, I would tell the stakeholders early with the numbers and discuss scope or a deeper change.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Explain the risks in numbers, offer a small test (a spike of 1 to 2 days) to compare, and agree on a review point. If the technology is not truly harmful, let the team try with a contained scope.</p><p>I may disagree and commit: once decided, I support it fully. If it is dangerous (security, data loss), I escalate with evidence.</p>",
+    "<p>Write an ADR when the decision is hard to reverse, affects several teams, or you would struggle to explain it in a year. Skip it for local choices that can be changed in a day.</p><p>The question to ask: 'what would a new person need to understand why we did this?'</p>",
+    "<p>Pick a real and modest one: for example, choosing a message broker feature that did not fit our load. Say what you decided, what you missed, the impact, and what changed after: now I test with realistic load before committing.</p><p>Show learning, not blame.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not set a fixed number as a goal because teams then write weak tests to hit it. I use coverage as a signal, with a floor on new code (for example 80%) and attention to critical paths.</p><p>Coverage says what code ran, not whether the tests check anything. Review the quality of assertions and use mutation testing selectively.</p>",
+    "<p>Treat flaky tests as bugs: quarantine them so they do not block everyone, record them in the backlog, and fix the cause (shared state, time, order, real network). Track the flaky rate.</p><p>Never just rerun until green. A flaky test taught people to ignore red builds, which is worse than no test.</p>",
+    "<p>Code reviewed, tests written and passing, no new analyser warnings, acceptance criteria met, documentation or API docs updated, logging and monitoring added, deployed to a test environment, and approved by the product owner.</p><p>Keep it short enough to follow, and agree on it as a team.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Speak in business terms: show the cost in days lost per sprint and the risk, and ask for a regular share of capacity instead of a big one-off project. Offer to attach debt work to features that touch the same area.</p><p>Share a small win after each cycle, so the investment is visible.</p>",
+    "<p>Deliberate debt is a conscious shortcut ('we ship now and fix next sprint'), recorded with a plan. Accidental debt comes from not knowing better or from poor practice.</p><p>Deliberate debt is a tool when tracked; the dangerous kind is the unrecorded debt nobody knows about.</p>",
+    "<p>When the cost of change on the old code keeps rising, the technology is end-of-life or cannot meet a hard requirement, and a gradual replacement (strangler approach) is impossible. Even then, the rewrite must be scoped and measured.</p><p>Most rewrites take longer than planned, so prefer incremental replacement.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Three-point estimate: range and expected value",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        // (name, optimistic, most likely, pessimistic) in days\n        var tasks = new[]\n        {\n            (\"API endpoints\",   3.0, 5.0, 9.0),\n            (\"Database change\", 1.0, 2.0, 5.0),\n            (\"Tests + review\",  2.0, 3.0, 5.0),\n        };\n        double totalExpected = 0, totalVar = 0;\n        foreach (var (name, o, m, p) in tasks)\n        {\n            double e = (o + 4 * m + p) / 6;      // PERT weighted average\n            double sd = (p - o) / 6;             // spread of the guess\n            totalExpected += e; totalVar += sd * sd;\n            Console.WriteLine($\"{name,-16} expected {e:F1} d (+/- {sd:F1})\");\n        }\n        double total = Math.Round(totalExpected, 1), sdTotal = Math.Sqrt(totalVar);\n        Console.WriteLine($\"total: {total} days, likely range {total - sdTotal * 2:F1} to {total + sdTotal * 2:F1} days\");\n        // Time O(tasks), space O(1). Give the range, not one number.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Use whichever the team understands, but be clear about what they mean. Story points measure relative size and help with planning by team speed; days are easier for outsiders but often wrongly read as a promise.</p><p>I use points for sprint planning and turn them into date ranges for stakeholders, using the team's measured speed.</p>",
+    "<p>Give a date with a confidence level and a range: 'most likely 14 March, 90% sure by 4 April', and say what would move it. If a single date is demanded, give the safe end and agree on scope that can be dropped.</p><p>Write the assumptions down; they are the heart of an honest answer.</p>",
+    "<p>Do a short spike first (1 to 3 days) to learn the main unknowns, then estimate with a wide range and add a buffer. Say it is a rough estimate and when it will be improved.</p><p>Compare with similar past work, and re-estimate at every checkpoint.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>When the date is fixed, scope and quality have to give, never quality silently. Cut to the legally required minimum, add people only if work can be split, and ask the regulator early about any allowed flexibility.</p><p>Make a plan with daily tracking and a list of what is deliberately left out and when it will be done.</p>",
+    "<p>Honestly and early, with a plan: 'We are behind by about a week. Here is why, and here are the options.' Ask for their ideas. Do not hide it or blame anyone.</p><p>People can handle a clear problem; they cannot handle surprises and silence. Agree what changes, and keep checking in.</p>",
+    "<p>The best retrospectives lead to one or two concrete changes with an owner, such as splitting stories smaller, adding a design review before building, or estimating test effort. Then check later whether it worked.</p><p>A slip with no change afterwards will repeat.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pick a real example and describe their growth: the starting point, what you did (stretch tasks, feedback, being a sounding board), and the result, like leading their first design or being promoted. Credit them, not yourself.</p><p>Name one thing you learned from helping them.</p>",
+    "<p>Ask questions and learn from them as well. A more experienced person needs a different kind of help: access to people, the context of the business, and honest feedback on how their work is received.</p><p>Mentoring can run both ways; I can say 'you know this better, teach me, and I will help with the team side'.</p>",
+    "<p>Take responsibility as the one who set the task, not the person. Talk about what happened and what was learned, and repair the damage together. Then adjust the next task so it is achievable and the safety net is stronger.</p><p>Failing safely is how people grow, so the response matters more than the failure.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Respect the facts first: what did the data show, and would they have been right? If their option was supported, I would say so openly and change course. The goal is a good decision, not winning.</p><p>Then record the decision in an ADR with the reason. Thank the person; it keeps future debates honest.</p>",
+    "<p>Use the best information available, pick the option that is easiest to reverse, and set a point to review. A decision with a review date is safer than a long argument.</p><p>Tell the team clearly that it is a time-boxed bet and what result would change it.</p>",
+    "<p>Say yes, and be honest. Example: 'The team chose the other approach. I disagreed and said so, then I supported it fully.' Then explain what you did to make it work and what you learned, or how the result proved something.</p><p>Shows maturity and team spirit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Very supportive in a real case, if I owned it: they wanted the facts, the fix and the prevention. They cared less about the mistake than about whether I told them early and learned.</p><p>If you are not sure, say what you hope: that you reported it straight away and proposed a plan.</p>",
+    "<p>Blameless means we look for what in the system allowed the mistake, not who made it: missing checks, unclear process, poor tools. People then report problems early instead of hiding them.</p><p>It does not mean no accountability: the person still owns the follow-up actions.</p>",
+    "<p>Pick one where the team missed something, and show what you did as the lead: say sorry to affected people, fix it, and put a safety in place. For example, a deployment that skipped a check, which led to a pipeline gate.</p><p>Leaders own the team's mistakes in public and fix them quietly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The process is the same, but I expect more. A senior has more impact and sets an example, so the problem spreads faster. I also use a more direct conversation about expectations at their level.</p><p>I check whether they are bored, blocked, or personally troubled. The senior status should not delay action or the involvement of my manager.</p>",
+    "<p>After the first honest talk, set a short plan of 4 to 6 weeks with clear, measurable goals and weekly check-ins. If there is no progress by the review date, I involve my manager or HR with written notes.</p><p>Do not wait months; it is unfair to the person and to the team.</p>",
+    "<p>Be kind and flexible: ask what support would help, adjust workload for a time, and point to the company's support options. Keep it private, and do not guess about the details.</p><p>Set a check-in date to review. Involve HR when needed, as it protects both of you.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Last I coded something that was low risk on the critical path: for example a tool that checks configuration in the pipeline. I choose such work because it keeps me close to the code and does not block the team.</p><p>Name a real task and why you took it.</p>",
+    "<p>Regular habits: reading release notes and blogs, trying new features in small projects, talking to other leads, reading team pull requests, and a monthly time slot for learning. I focus on depth in areas used at work.</p><p>Share what I learn in short team sessions, which also helps others.</p>",
+    "<p>The team should continue normally. That is my test: if they cannot, I am a bottleneck. Before time off I make sure decisions are documented, someone has authority to decide, and key knowledge is shared.</p><p>Use it as a check that you have built a team that does not depend on you.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Some things are never worth building ourselves: authentication, payments, email delivery, and encryption. They are hard to get right and a mistake is costly. Use Microsoft Entra ID, a payment provider, and standard crypto libraries.</p><p>Build only the parts which set the product apart.</p>",
+    "<p>Have an exit plan from the start: wrap the vendor in an interface so it can be replaced, keep data exportable, and write the contract with price caps. If the price jumps, compare alternatives and negotiate, or move the part of the work with the least effort.</p><p>The cost of switching is the real lock-in.</p>",
+    "<p>Check: activity (recent releases, open issues), who maintains it and how many, licence (can we use it commercially?), security record, documentation, and how widely it is used. Try it in a small proof of concept.</p><p>Plan for the case that it is abandoned: wrap it so it can be replaced.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Review time usually goes up at first, since there is more code and it needs closer reading, while writing time goes down. The net result depends on the review habits and test quality.</p><p>Measure it: review time per pull request, size of pull requests, defects. Keep pull requests small, and agree on rules for AI-written code.</p>",
+    "<p>Never paste secrets (keys, passwords), customer or personal data, confidential contracts, or proprietary source code into a tool that is not approved by the company. Use only approved tools with data protection agreements.</p><p>Write the rule down, and teach it during onboarding.</p>",
+    "<p>Ask juniors to explain the generated code in their own words, write the first version of some tasks without AI, and do pair sessions and design work. Review for understanding, not only for working code.</p><p>Use AI as a tutor: ask why, not just for the answer.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Restore service first, with a guide: stop the bleeding using other means. Use a feature flag to switch off the affected feature, restore from backup if needed, or fix forward with a small patch tested in a copy.</p><p>This is why migrations should be backward compatible; plan the answer before the release.</p>",
+    "<p>Decide by impact, using agreed severity levels: wake people for customer-facing outages, data loss or security issues; let the rest wait until morning. Use an on-call rotation with fair pay and rest.</p><p>Avoid heroes. Alerts must be actionable, and someone on call must be able to decide.</p>",
+    "<p>Put each action in the backlog with an owner and a date, track it like feature work, and review open items at each retro or monthly. A short list of high-value items beats a long one.</p><p>Check the effect: did a similar incident recur?</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Take it to your manager early and openly, not as a fight. Explain the facts and that you are happy to discuss it with the person involved. Then agree who decides.</p><p>Do not argue in public. Later, talk to the stakeholder directly and aim to restore trust.</p>",
+    "<p>A flat no is right when the request breaks the law, harms security or users, or risks data loss that cannot be undone. Say it clearly and explain why, with what you can do instead.</p><p>In every other case, a no with options is better than a no alone.</p>",
+    "<p>Do what you promised, and a little more, quickly. Keep them updated, bring options and explain progress in their language. Show that the alternative you offered worked.</p><p>Trust comes from reliable delivery and honest messages, even when they are bad news.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Set a rule: a decision is made by a date, and once made we commit. Reopening needs new facts, not a repeat of the old argument. Say it in private first, then in the team.</p><p>If it continues, treat it as a behaviour problem and talk about it directly with the person.</p>",
+    "<p>Say so openly, and let someone else make the call or ask a neutral person to review. Do not hide your preference or use your authority to push it.</p><p>If your option wins on the facts, fine; but make sure the others had a fair hearing.</p>",
+    "<p>Agree up front who decides what (ADR owners), set time limits for debate, and use a template to compare options. Use small experiments for disputes, and hold design reviews early.</p><p>Build a habit of 'disagree and commit' and revisit decisions on schedule.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>No, report it at once to the right person, and follow the security process. A serious security problem is not something to leave for a plan. Fix or reduce the risk first (restrict access, rotate a key), and record it.</p><p>Do it calmly, and show the team how you handle it.</p>",
+    "<p>Talk to them openly, early: ask for their advice, and give them real ownership in an area they care about. Acknowledge their disappointment, and treat them as a partner.</p><p>If it remains hard, my manager can help. Respect their experience; it is an asset to the team.</p>",
+    "<p>Agree on 3 or 4 measurable goals for 30, 60 and 90 days. For example: understand the system, ship a first change, establish a regular review, and improve a delivery measure. Write them down and check them every two weeks.</p><p>Ask the manager: 'What would make you say this hire went well?'</p>"
+   ]
+  }
+ ]
+}
