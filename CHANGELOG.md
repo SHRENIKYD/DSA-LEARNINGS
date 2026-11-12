@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.44] — 2026-11-12 · Programs and follow-up answers for the Tech Lead interview questions
+
+### Added
+- **Tech Lead Interview track (all 12 places, 613 questions):** 405 questions now have a runnable program and all 1,704 follow-up questions open to a written answer. Programs use the language that fits the question: C# for the .NET, API, sign-in, Azure, database, AI and architecture places, JavaScript for the front-end place, and all five languages (Java, Python, JavaScript, C++, C#) for the two coding-round places. Questions about cloud services, product comparisons, leadership and process, and the rapid-fire entries, have written answers without a program.
+
 ## [1.10.43] — 2026-11-12 · Programs and follow-up answers for DSA interview questions
 
 ### Added
