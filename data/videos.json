@@ -39,7 +39,8 @@
   "ai01-t5": {
    "t": "Limits, Hallucinations, Myths and When NOT to Use ML",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "ai02-t0": {
    "t": "Chat Assistants vs Coding Assistants",
@@ -244,6 +245,13 @@
    "channel": "Annie Sexton",
    "secs": 434
   },
+  "ai06-t1": {
+   "t": "Embeddings: Giving Every Token a Meaning-Address",
+   "id": "wgfSDrqYMJ4",
+   "title": "What are Word Embeddings?",
+   "channel": "IBM Technology",
+   "secs": 518
+  },
   "ai06-t2": {
    "t": "Self-Attention: Each Word Looks at the Others",
    "id": "QCJQG4DuHT0",
@@ -317,7 +325,8 @@
   "ai07-t4": {
    "t": "Delimiters, XML Tags and Prompt Templates",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "ai07-t5": {
    "t": "Self-Consistency: Ask Several Times, Take the Majority",
@@ -798,7 +807,8 @@
   "ai17-t0": {
    "t": "What Gets Automated, What Gets Augmented, What Gains Value",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "ai17-t1": {
    "t": "T-Shaped Skills: Depth Plus Breadth",
@@ -1053,7 +1063,8 @@
   "ai21-t6": {
    "t": "Cross-Validation, Hyper-parameter Tuning and Fighting Overfitting",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "ai22-t0": {
    "t": "The ML Lifecycle in Production and Data/Feature Pipelines",
@@ -1163,7 +1174,8 @@
   "ai24-t2": {
    "t": "Just-in-Time Retrieval vs Pre-Loading",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "ai24-t3": {
    "t": "Compaction, Summarisation and Clearing Old Tool Results",
@@ -1175,7 +1187,8 @@
   "ai24-t4": {
    "t": "Structured Notes, External Memory and Sub-Agents to Isolate Context",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "ai24-t5": {
    "t": "Progressive Disclosure: Skills and Context Files (CLAUDE.md, AGENTS.md, GEMINI.md)",
@@ -1187,7 +1200,8 @@
   "ai24-t6": {
    "t": "Ordering Context for Prompt-Cache Hits",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "ai24-t7": {
    "t": "Reasoning Models, Thinking Budgets and Measuring Context Quality",
@@ -1239,7 +1253,8 @@
   "ai25-t6": {
    "t": "Video at a Glance, Plus Evaluating, Securing and Costing Multimodal Systems",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "ai26-t0": {
    "t": "Workflows vs Agents: When a Fixed Pipeline Wins",
@@ -1342,7 +1357,8 @@
   "ai27-t6": {
    "t": "Checkpoints, Transfer Learning and Fine-Tuning With Hugging Face",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "ai27-t7": {
    "t": "Debugging Training and Reproducibility",
@@ -1463,8 +1479,10 @@
   },
   "ai30-t1": {
    "t": "Approval Modes and Sandboxing: How Much Codex May Do Alone",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "kn32PHG2wcU",
+   "title": "SANDBOXING in Cybersecurity under 4 minutes!",
+   "channel": "Tech with Jono",
+   "secs": 237
   },
   "ai30-t2": {
    "t": "AGENTS.md: How Codex Finds Your Project Instructions",
@@ -1476,7 +1494,8 @@
   "ai30-t3": {
    "t": "Configuration: config.toml, Profiles, Models, Reasoning and MCP",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "ai30-t4": {
    "t": "The IDE Extension, Codex Cloud Tasks and Working in Parallel",
@@ -1558,7 +1577,8 @@
   "ai32-t1": {
    "t": "Terminal vs IDE vs Cloud Agents, and Synchronous vs Asynchronous Work",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "ai32-t2": {
    "t": "Cost Models: Seats, Included Usage, Credits and Overage",
@@ -1570,7 +1590,8 @@
   "ai32-t3": {
    "t": "Privacy, Data Retention, Enterprise Controls and Model Choice",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "ai32-t4": {
    "t": "Choosing a Tool for Yourself and for a Team: The Weighted Decision Matrix",
@@ -1582,7 +1603,8 @@
   "ai32-t5": {
    "t": "A Daily Workflow From Spec to Merged PR, Across Tools",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "ai32-t6": {
    "t": "Measuring Real Productivity, the Evidence, and What Is Allowed in Interviews",
@@ -1615,7 +1637,8 @@
   "ai33-t3": {
    "t": "Spreadsheets and Data Questions in Plain Words",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "ai33-t4": {
    "t": "Presentations, Translation and Brainstorming",
@@ -1654,8 +1677,10 @@
   },
   "ai34-t1": {
    "t": "The Briefing Recipe: Role, Goal, Audience, Format and Examples",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "xV7O8KIuPTc",
+   "title": "NVIDIA Sells the Shovels: The AI Value Chain Explained | Briefing Basics EP6",
+   "channel": "3-Minute Briefing",
+   "secs": 506
   },
   "ai34-t2": {
    "t": "Attaching Files: What Happens to Them",
@@ -1742,7 +1767,8 @@
   "ai35-t6": {
    "t": "Reliability, Cost, Privacy and When NOT to Automate",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "ai35-t7": {
    "t": "A Starter Set of Automations for Common Jobs",
@@ -1848,7 +1874,8 @@
   "ai37-t6": {
    "t": "Case Interview Frameworks, Common Questions and a Portfolio Without a Tech Background",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "be01-t0": {
    "t": "Client–Server & What a Backend Actually Does",
@@ -1979,7 +2006,8 @@
   "be03-t4": {
    "t": "Repositories: CRUD, Naming-Convention Queries and Spring Data / Prisma Clients",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "be03-t5": {
    "t": "Transactions from Code: Commit, Rollback and the Money Transfer",
@@ -2173,12 +2201,14 @@
   "be07-t1": {
    "t": "process.nextTick, Microtasks and Starvation",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "be07-t2": {
    "t": "libuv Thread Pool & Why a CPU Loop Blocks Everything",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "be07-t3": {
    "t": "Streams and Backpressure",
@@ -2524,7 +2554,8 @@
   "be13-t3": {
    "t": "ConfigMaps, Secrets, Probes and Rolling Updates",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "be13-t4": {
    "t": "Autoscaling: HPA, the Replica Formula and Friends",
@@ -2612,8 +2643,10 @@
   },
   "be15-t1": {
    "t": "Injection (SQL, Command, XSS) & Input Validation with Allow-Lists (A03)",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "Tj3mOBlua7M",
+   "title": "PHP Security: Master Input Validation to Prevent Attacks! 🛡️",
+   "channel": "CodeLucky",
+   "secs": 314
   },
   "be15-t2": {
    "t": "Cryptographic & Authentication Failures, Secrets Management & Rotation (A02, A07)",
@@ -2694,13 +2727,16 @@
   },
   "be16-t4": {
    "t": "Alerting: Symptoms, SLOs and Burn Rates",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "AqnsDRx5ceU",
+   "title": "SDI Vol 2 · Ch 5: Metrics Monitoring and Alerting (1/2) – Metrics, Time Series and Storage Choice",
+   "channel": "Backend Deep Dives",
+   "secs": 513
   },
   "be16-t5": {
    "t": "Incident Response and Blameless Postmortems",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "be16-t6": {
    "t": "SRE Practices: Toil, Error Budgets and On-Call",
@@ -2775,7 +2811,8 @@
   "be18-t0": {
    "t": "Engine, Sessions and the Unit of Work",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "be18-t1": {
    "t": "ORM Models and Relationships (DeclarativeBase, Mapped, relationship)",
@@ -2896,8 +2933,10 @@
   },
   "be20-t2": {
    "t": "Test Databases: Real PostgreSQL, Migrations Once, and a Rolled-Back Transaction per Test",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "rXziIaZAsgo",
+   "title": "The Pentester's Guide to Frontend, Backend, and Databases",
+   "channel": "Madhukar Reddy",
+   "secs": 706
   },
   "be20-t3": {
    "t": "Test Data: Factories (factory_boy and Plain Functions), Deterministic Fakes and Property Tests with Hypothesis",
@@ -2951,17 +2990,21 @@
   "be21-t2": {
    "t": "Retries, Backoff with Jitter and Idempotent Jobs: Safe to Run Twice",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "be21-t3": {
    "t": "Redis Caching Patterns in Python: redis.asyncio, Cache-Aside, Stampede Locks, Write-Through and Write-Behind",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "DgQ86CYo73w",
+   "title": "Top Redis Caching Strategies Every Backend Developer Should Know",
+   "channel": "SWE with Vivek Bharatha",
+   "secs": 789
   },
   "be21-t4": {
    "t": "In-Process Caches: functools.lru_cache, a Hand-Made LRU and Two-Level (L1 + Redis) Caching",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "be21-t5": {
    "t": "Docker Images for Python Services: Multi-Stage, Slim, Non-Root, Locked and Health-Checked",
@@ -3008,7 +3051,8 @@
   "be22-t2": {
    "t": "Offsets, Commits, Retention and Log Compaction",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "be22-t3": {
    "t": "Delivery Semantics: Idempotent and Transactional Producers (Exactly-Once)",
@@ -3137,7 +3181,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "A developer's step-by-step technical interview prep routine; the lesson adds a 6-week schedule, resume critique and honest AI use."
+   "note": "A developer's step-by-step technical interview prep routine; the lesson adds a 6-week schedule, resume critique and honest AI use.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh02-t0": {
    "t": "Tell Me About Yourself: Present, Past, Future in 90 Seconds",
@@ -3182,7 +3228,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "How to show you are a team player in an interview answer; the lesson adds a story about helping a struggling teammate."
+   "note": "How to show you are a team player in an interview answer; the lesson adds a story about helping a struggling teammate.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh02-t6": {
    "t": "Practice Lab: Scoring Your Answers and Mock Interviews With AI",
@@ -3206,7 +3254,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "An ex-Amazon leader explains Ownership questions with an example answer; the lesson adds going beyond your role in tech settings."
+   "note": "An ex-Amazon leader explains Ownership questions with an example answer; the lesson adds going beyond your role in tech settings.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh03-t2": {
    "t": "Dealing with Ambiguity: Progress with Incomplete Info",
@@ -3251,7 +3301,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Short guide to thinking out loud in coding interviews; the lesson adds avoiding rambling and the brute-force-then-optimize flow."
+   "note": "Short guide to thinking out loud in coding interviews; the lesson adds avoiding rambling and the brute-force-then-optimize flow.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh04-t2": {
    "t": "Trade-offs and Testing Your Own Code (Dry Run + Edge Cases)",
@@ -3261,7 +3313,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Walks through dry-running code with test cases in an interview; the lesson adds trade-off discussion and edge-case checklists."
+   "note": "Walks through dry-running code with test cases in an interview; the lesson adds trade-off discussion and edge-case checklists.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh04-t3": {
    "t": "Handling Hints, Getting Stuck and Changing Course Gracefully",
@@ -3271,7 +3325,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Clément Mihailescu on what to do when stuck in a coding interview; the lesson adds taking hints and changing course gracefully."
+   "note": "Clément Mihailescu on what to do when stuck in a coding interview; the lesson adds taking hints and changing course gracefully.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh04-t4": {
    "t": "Time Management Across a 45-Minute Round",
@@ -3281,7 +3337,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "A framework for splitting a 45-minute coding round; the lesson adds concrete time checkpoints and recovery tactics."
+   "note": "A framework for splitting a 45-minute coding round; the lesson adds concrete time checkpoints and recovery tactics.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh04-t5": {
    "t": "Design-Round Communication: Drive the Conversation",
@@ -3291,7 +3349,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Hello Interview's delivery framework for driving a system design interview; the lesson adds communication habits for leading the conversation."
+   "note": "Hello Interview's delivery framework for driving a system design interview; the lesson adds communication habits for leading the conversation.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh04-t6": {
    "t": "Full Mock Transcript: Coding Round (Two Sum / Top-K) - Good vs Poor",
@@ -3315,7 +3375,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "An Amazon Principal Engineer on what blocks staff promotion, including scope; the lesson adds team/org/company impact signals."
+   "note": "An Amazon Principal Engineer on what blocks staff promotion, including scope; the lesson adds team/org/company impact signals.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh05-t1": {
    "t": "Influence Across Teams: RFCs, Alignment and Dissent",
@@ -3325,7 +3387,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "LeadDev talk on influencing without authority as a senior IC; the lesson adds RFCs, alignment and handling dissent."
+   "note": "LeadDev talk on influencing without authority as a senior IC; the lesson adds RFCs, alignment and handling dissent.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh05-t2": {
    "t": "Technical Strategy Stories: Roadmaps, Build vs Buy, Migrations",
@@ -3342,7 +3406,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Five tips for senior developers mentoring junior engineers; the lesson adds raising the bar and how to tell mentoring stories."
+   "note": "Five tips for senior developers mentoring junior engineers; the lesson adds raising the bar and how to tell mentoring stories.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh05-t4": {
    "t": "Handling Production Incidents: IC Role, Comms, Blameless Postmortems",
@@ -3352,7 +3418,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Explains blameless postmortem culture; the lesson adds incident commander roles and incident communication."
+   "note": "Explains blameless postmortem culture; the lesson adds incident commander roles and incident communication.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh05-t5": {
    "t": "Project Retrospectives: What You Would Do Differently",
@@ -3369,7 +3437,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Explains software engineer salaries, RSUs and vesting; the lesson adds bonus, sign-on and benefits breakdown."
+   "note": "Explains software engineer salaries, RSUs and vesting; the lesson adds bonus, sign-on and benefits breakdown.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh06-t1": {
    "t": "Equity Deep Dive: RSUs vs Options, Vesting, Cliffs & Refreshers",
@@ -3386,7 +3456,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Explains the 4-year vesting cliff in tech compensation; the lesson adds a year-by-year total compensation calculator."
+   "note": "Explains the 4-year vesting cliff in tech compensation; the lesson adds a year-by-year total compensation calculator.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh06-t3": {
    "t": "Negotiation Principles & Polite Scripts",
@@ -3396,7 +3468,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Ten rules of salary negotiation for big-tech offers; the lesson adds polite word-for-word scripts."
+   "note": "Ten rules of salary negotiation for big-tech offers; the lesson adds polite word-for-word scripts.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh06-t4": {
    "t": "Multiple Offers, Exploding Deadlines & Counter-Offers",
@@ -3413,12 +3487,15 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Compares the IC and engineering manager career paths; the lesson adds levels and expectations at each rung."
+   "note": "Compares the IC and engineering manager career paths; the lesson adds levels and expectations at each rung.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh06-t6": {
    "t": "Staying Relevant with AI & a Continuous Learning Plan",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "beh07-t0": {
    "t": "Amazon: 16 Leadership Principles, the Loop and the Bar Raiser",
@@ -3456,7 +3533,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "What Netflix's SWE culture-fit interview looks for; the lesson adds Indian product companies and startups."
+   "note": "What Netflix's SWE culture-fit interview looks for; the lesson adds Indian product companies and startups.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh07-t5": {
    "t": "Researching a Company and Team, and Mapping Your Stories to It",
@@ -3466,7 +3545,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Jeff H Sipe on researching a company before an interview; the lesson adds mapping your stories to the company and team."
+   "note": "Jeff H Sipe on researching a company before an interview; the lesson adds mapping your stories to the company and team.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh07-t6": {
    "t": "Tailoring Answers Without Sounding Rehearsed",
@@ -3476,7 +3557,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Why you should not memorize interview answers; the lesson adds how to tailor stories while staying natural."
+   "note": "Why you should not memorize interview answers; the lesson adds how to tailor stories while staying natural.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh08-t0": {
    "t": "Choosing the Right Project to Present",
@@ -3486,7 +3569,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "How to explain your project in an interview; the lesson adds how to choose which project to present."
+   "note": "How to explain your project in an interview; the lesson adds how to choose which project to present.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh08-t1": {
    "t": "The Structure: Context, Goal, Role, Architecture, Decisions, Results, Lessons",
@@ -3496,7 +3581,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Five example walkthroughs of a technical project deep dive; the lesson adds the context-goal-role-architecture-decisions-results-lessons structure."
+   "note": "Five example walkthroughs of a technical project deep dive; the lesson adds the context-goal-role-architecture-decisions-results-lessons structure.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh08-t2": {
    "t": "Diagrams: Drawing Your Architecture in Two Minutes",
@@ -3508,7 +3595,8 @@
   "beh08-t3": {
    "t": "Decisions, Trade-offs and Results With Numbers",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "beh08-t4": {
    "t": "Handling Drill-Down Questions",
@@ -3518,7 +3606,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Breaks down a technical project retrospective interview and its probing; the lesson adds tactics for drill-down questions."
+   "note": "Breaks down a technical project retrospective interview and its probing; the lesson adds tactics for drill-down questions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh08-t5": {
    "t": "\"I\" vs \"We\" and Owning Mistakes",
@@ -3528,7 +3618,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "A candidate explains failing interviews by saying \"we\" too often; the lesson adds owning mistakes honestly."
+   "note": "A candidate explains failing interviews by saying \"we\" too often; the lesson adds owning mistakes honestly.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh08-t6": {
    "t": "Presenting to Senior and Staff-Level Panels",
@@ -3545,7 +3637,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "A Google engineering director on EM interviews and hiring; the lesson adds what EM and TL loops assess."
+   "note": "A Google engineering director on EM interviews and hiring; the lesson adds what EM and TL loops assess.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh09-t1": {
    "t": "One-on-Ones, Feedback and Growing People",
@@ -3555,7 +3649,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "An engineering manager on running one-on-ones; the lesson adds giving feedback and growing people."
+   "note": "An engineering manager on running one-on-ones; the lesson adds giving feedback and growing people.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh09-t2": {
    "t": "Performance Problems: Handling an Underperformer",
@@ -3565,7 +3661,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "Short guide to answering how you managed a low performer; the lesson adds a full performance-management story arc."
+   "note": "Short guide to answering how you managed a low performer; the lesson adds a full performance-management story arc.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh09-t3": {
    "t": "Hiring and Team Building",
@@ -3582,7 +3680,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "LinkedIn EM mock interview on engineering prioritization; the lesson adds planning and risk management."
+   "note": "LinkedIn EM mock interview on engineering prioritization; the lesson adds planning and risk management.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh09-t5": {
    "t": "Cross-Team Conflict and Managing Up and Sideways",
@@ -3592,7 +3692,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "A Microsoft L8 engineer on managing up; the lesson adds cross-team conflict and managing sideways."
+   "note": "A Microsoft L8 engineer on managing up; the lesson adds cross-team conflict and managing sideways.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "beh09-t6": {
    "t": "Technical Leadership and Architecture Ownership",
@@ -3602,7 +3704,9 @@
    "secs": 0,
    "curated": true,
    "reviewedAt": "2026-11-11",
-   "note": "An engineering director on what it takes to be a great technical leader; the lesson adds architecture ownership."
+   "note": "An engineering director on what it takes to be a great technical leader; the lesson adds architecture ownership.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "cpp01-t0": {
    "t": "From Source to Executable: Preprocessor → Compiler → Assembler → Linker",
@@ -3999,7 +4103,8 @@
   "cpp08-t3": {
    "t": "accumulate & the <numeric> Toolbox (and the init-type Trap)",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp08-t4": {
    "t": "next_permutation: Walking Through Every Arrangement in Order",
@@ -4052,13 +4157,16 @@
   },
   "cpp09-t3": {
    "t": "Type Traits & Compile-Time Decisions (if constexpr)",
-   "id": null,
-   "at": "2026-11-10"
+   "id": "liRuKOkk7Qg",
+   "title": "A real-world example of advanced compile-time computation techniques in C++",
+   "channel": "C++ tips and tricks",
+   "secs": 324
   },
   "cpp09-t4": {
    "t": "SFINAE, enable_if & the Detection Idiom",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp09-t5": {
    "t": "C++20 Concepts & requires Clauses",
@@ -4133,7 +4241,8 @@
   "cpp11-t1": {
    "t": "Data Races, Race Conditions & Why \"It Worked on My Machine\" Means Nothing",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp11-t2": {
    "t": "Mutexes: lock_guard, unique_lock, scoped_lock & Avoiding Deadlock",
@@ -4201,7 +4310,8 @@
   "cpp12-t4": {
    "t": "The Undefined Behavior Catalogue: Spot the UB",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp12-t5": {
    "t": "Sanitizers: ASan, UBSan, TSan, MSan & Friends",
@@ -4283,12 +4393,14 @@
   "cpp14-t1": {
    "t": "Static vs Shared Libraries, Symbol Resolution, the ODR and Linker Errors",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp14-t2": {
    "t": "Header Dependencies, Include Guards and Incremental Rebuilds",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp14-t3": {
    "t": "Modern CMake: Targets, target_link_libraries and PUBLIC / PRIVATE / INTERFACE",
@@ -4300,7 +4412,8 @@
   "cpp14-t4": {
    "t": "Build Types, Compiler Flags, Presets and Generator Expressions",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp14-t5": {
    "t": "Dependencies: find_package, vcpkg, Conan 2 and FetchContent",
@@ -4312,7 +4425,8 @@
   "cpp14-t6": {
    "t": "Cross-Compiling, Build Speed (ccache, PCH, Unity Builds) and C++20 Modules",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp15-t0": {
    "t": "Unit Tests with GoogleTest & Catch2: How a Test Framework Really Works",
@@ -4324,7 +4438,8 @@
   "cpp15-t1": {
    "t": "Fixtures, Parameterised, Typed & Death Tests",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp15-t2": {
    "t": "Mocking with GoogleMock: Seams, Expectations and Matchers",
@@ -4357,12 +4472,14 @@
   "cpp15-t6": {
    "t": "Code Coverage & Google Benchmark: Measuring Tests and Speed",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cpp15-t7": {
    "t": "Debugging with gdb/lldb, Core Dumps & CI for C++ Projects",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "cs01-t0": {
    "t": "What an OS Is For: Resource Manager + Abstraction (and its Services)",
@@ -4764,7 +4881,8 @@
   "cs08-t2": {
    "t": "File Descriptors 0/1/2, Redirection and Here-docs",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "cs08-t3": {
    "t": "Pipes and the Essential Toolbox: grep, sed, awk, find, xargs, sort, uniq, cut, tar, curl",
@@ -5014,7 +5132,8 @@
   "cs13-t1": {
    "t": "Keep-Alive, Head-of-Line Blocking & Counting Round Trips",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "cs13-t2": {
    "t": "TLS 1.2 vs 1.3, Key Exchange & Certificate Chains",
@@ -5327,7 +5446,8 @@
   "csharp02-t3": {
    "t": "Optional & Named Arguments, params Arrays and Overload Resolution",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp02-t4": {
    "t": "Arrays: 1-D, Multidimensional [,] vs Jagged [][], Indices & Ranges",
@@ -5612,7 +5732,8 @@
   "csharp08-t2": {
    "t": "The Generational GC, Gen 0/1/2 & the Large Object Heap",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp08-t3": {
    "t": "Finalizers vs Dispose: the Dispose Pattern & SafeHandle",
@@ -5631,12 +5752,14 @@
   "csharp08-t5": {
    "t": "stackalloc, Memory & the ref struct Rules",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp08-t6": {
    "t": "ArrayPool & Allocation-Free Techniques",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp09-t0": {
    "t": "Task & Task: Promises of Future Results",
@@ -5704,12 +5827,14 @@
   "csharp10-t2": {
    "t": "Interlocked, volatile & the .NET Memory Model",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp10-t3": {
    "t": "SemaphoreSlim & ReaderWriterLockSlim",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp10-t4": {
    "t": "Concurrent Collections",
@@ -5784,7 +5909,8 @@
   "csharp11-t7": {
    "t": "Advanced Constraints, Generic Caches and Source Generators",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp12-t0": {
    "t": "IL: What the C# Compiler Really Emits",
@@ -5824,7 +5950,8 @@
   "csharp12-t5": {
    "t": "Measuring Correctly: BenchmarkDotNet and Benchmark Hygiene",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp12-t6": {
    "t": "Allocation Profiling: Finding Hidden Allocations and Removing Them",
@@ -5836,7 +5963,8 @@
   "csharp12-t7": {
    "t": "String Interning and the Classic .NET Performance Traps",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp13-t0": {
    "t": "Immutability Patterns: Records, init, Immutable and Frozen Collections",
@@ -5904,7 +6032,8 @@
   "csharp14-t1": {
    "t": "The Built-in DI Container and Service Lifetimes",
    "id": null,
-   "at": "2026-11-05"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   },
   "csharp14-t2": {
    "t": "Minimal APIs vs Controllers",
@@ -6077,7 +6206,8 @@
   "devops01-t4": {
    "t": "Text Tools for Log Detective Work: grep, cut, awk, sort, uniq and sed",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "devops01-t5": {
    "t": "Package Managers: apt, dnf and Keeping Servers Patched",
@@ -6124,7 +6254,8 @@
   "devops02-t4": {
    "t": "set -euo pipefail and trap: Scripts That Fail Loudly and Clean Up After Themselves",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "devops02-t5": {
    "t": "Cron Jobs and Log Rotation: Scheduled Work That Runs at 3 a.m. Without You",
@@ -6437,7 +6568,8 @@
   "devops08-t4": {
    "t": "Small and Secure Images: Base Choice, Non-Root, Scanning, and Never Baking Secrets",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "devops08-t5": {
    "t": "Volumes and Networks: Keeping Data and Talking to Each Other",
@@ -6610,7 +6742,8 @@
   "devops11-t4": {
    "t": "Environments, Approvals, Secrets, OIDC and Build Once, Deploy Many",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "devops11-t5": {
    "t": "Deployment Strategies, Rollbacks, Feature Flags and Database Migrations",
@@ -6769,7 +6902,8 @@
   "devops14-t6": {
    "t": "Cluster Upgrades, Drain and Day-2 Troubleshooting",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "devops15-t0": {
    "t": "Metrics, Logs and Traces: Seeing Inside a Running System",
@@ -6801,8 +6935,10 @@
   },
   "devops15-t4": {
    "t": "Alerting: Rules, Alertmanager Routing and On-Call Hygiene",
-   "id": null,
-   "at": "2026-11-08"
+   "id": "6FPirn__Cv4",
+   "title": "Notification Systems Explained: Push Notifications & Alerting (Beginner's Guide)",
+   "channel": "CodeLucky",
+   "secs": 263
   },
   "devops15-t5": {
    "t": "Logs: Structured Logging, Request IDs, Redaction, Sampling and Loki or EFK",
@@ -6856,7 +6992,8 @@
   "devops16-t2": {
    "t": "Dynamic Secrets, Leases and TTLs, Rotation, and Envelope Encryption with KMS",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "devops16-t3": {
    "t": "Software Supply Chain: SBOMs, Image Signing with cosign, SLSA, Dependabot and CodeQL",
@@ -6971,7 +7108,8 @@
   "devops18-t5": {
    "t": "SRE vs DevOps vs Platform Engineering, Healthy On-Call and Runbooks",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "devops18-t6": {
    "t": "Capstone: Provision, Ship and Operate a Three-Tier App End to End",
@@ -6997,12 +7135,14 @@
   "devops19-t1": {
    "t": "Global VPCs, Regional Subnets and Firewall Rules: Priorities, Tags, Service Accounts and Hierarchical Policies",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "devops19-t2": {
    "t": "Cloud NAT, Global Load Balancers and Hybrid Connectivity: Anycast IPs, Private Access and Non-Overlapping IP Plans",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "devops19-t3": {
    "t": "Compute on GCP: Compute Engine and MIGs, GKE Standard vs Autopilot, Cloud Run and Cloud Run Functions",
@@ -7154,7 +7294,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java program structure, main, output and comments. Use the lesson for loops and conditionals.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7190,7 +7330,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java Scanner versus BufferedReader, demonstrating slow versus buffered input. Other languages use the equivalents in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7226,7 +7366,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java primitive values versus object references, with stack/heap diagrams. Casting and overflow are covered in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7264,7 +7404,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java stack and heap memory, local variables and object references.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "wJ1L2nSIV1s",
@@ -7308,7 +7448,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java array syntax, storage, string arrays and multidimensional arrays. String operations are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "1FVBeLD_FdE",
@@ -7352,7 +7492,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java methods, parameters, return values and reusable functions.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7390,7 +7530,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Input constraints and time-limit estimates. Operation budgets depend on language, hardware and the judge; 10⁸ is a heuristic, not a guarantee.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7424,7 +7564,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A concrete brute-force pair search followed by an optimized solution. Algorithm explanation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "DKCbsiDBN6c",
@@ -7503,7 +7643,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Arithmetic and geometric progressions; apply the sums to loop counts in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "0F2YqCVaiG0",
@@ -7547,7 +7687,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Logarithms as inverse powers and the change-of-base rule. Apply this foundation to repeated halving in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7581,7 +7721,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Big-O, Big-Omega and Big-Theta asymptotic bounds.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7615,7 +7755,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Time and auxiliary-space complexity overview; use the lesson for detailed memory accounting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "hUdqNPhXOh4",
@@ -7659,7 +7799,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Constraints, online judges and TLE estimates. Treat operation counts as rough estimates, not fixed execution-time guarantees.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7693,7 +7833,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Enumerating divisors in O(√N).",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "fdE_CEk9X2g",
@@ -7737,7 +7877,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Primality testing by checking divisors up to √N.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ZYIXXntyybo",
@@ -7781,7 +7921,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sieve of Eratosthenes for finding all primes up to a bound.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "nDPo9hsDNvU",
@@ -7825,7 +7965,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Euclidean GCD. LCM reduction and the visual proof are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "0oP6XLTI2tY",
@@ -7869,7 +8009,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular arithmetic rules and remainders.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "EzVwUarrNUk",
@@ -7907,7 +8047,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular exponentiation. Follow the lesson for the iterative binary-exponentiation implementation.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "L-Wzglnm4dM",
@@ -7951,7 +8091,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binomial coefficients, efficient nCr calculation and Pascal triangle construction.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7985,7 +8125,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The pigeonhole principle and why a collision must exist.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "IW4hJEgZLWI",
@@ -8025,7 +8165,7 @@
    "reviewedAt": "2026-10-21",
    "note": "How binary digits represent numbers and characters.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8061,7 +8201,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binary representation, one’s/two’s complement and bit operators.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8099,7 +8239,7 @@
    "reviewedAt": "2026-10-21",
    "note": "All seven Java bitwise operators, including the unsigned right shift >>>.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "phUpAEs-6rw",
@@ -8141,7 +8281,7 @@
    "reviewedAt": "2026-10-21",
    "note": "XOR cancellation demonstrated on the single-number problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8175,7 +8315,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Checking, setting, clearing and toggling a bit with masks.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8242,7 +8382,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Single Number I: cancel duplicate pairs with XOR.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8278,7 +8418,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Includes counting set bits at each position modulo three, as well as alternative approaches.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8315,7 +8455,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -8341,7 +8481,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Subset enumeration with bitmasks. Code may use C++; the technique transfers to Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8349,7 +8489,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -8379,7 +8519,7 @@
    "start": 82,
    "end": 4025,
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "fINt-nzR-o8",
@@ -8423,7 +8563,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Prefix sums and constant-time range-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Hyr3VrgJD2g",
@@ -8467,7 +8607,7 @@
    "reviewedAt": "2026-10-21",
    "note": "2D prefix sums and rectangle-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8509,7 +8649,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Even/odd prefix sums and parity changes after deletion. The separate equilibrium-index variant is explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8545,7 +8685,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Carry-forward counting of ordered “ag” pairs. Array leaders are another application in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8583,7 +8723,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maximum subarray sum using Kadane’s algorithm.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "w_KEocd__20",
@@ -8627,7 +8767,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sum of all subarray sums using each element’s contribution.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8663,7 +8803,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Trapping rainwater. Compare the video’s approaches with the lesson’s prefix/suffix maximum arrays.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ok7zhUA4VmI",
@@ -8703,7 +8843,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Spiral traversal using shrinking boundaries. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8737,7 +8877,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Matrix rotation by transposition and reversal.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": "aT-2BiaPCe8",
@@ -8781,7 +8921,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The O(rows + columns) top-right staircase search for separately sorted rows and columns, not flattened binary search.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8823,7 +8963,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Two Sum II on sorted input using converging pointers. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8861,7 +9001,7 @@
    "reviewedAt": "2026-10-21",
    "note": "3Sum by sorting, fixing an element and scanning with two pointers.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "n-JNgynPi6Q",
@@ -8903,7 +9043,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Container With Most Water and moving the shorter wall.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Y_4_or0Sc7I",
@@ -8947,7 +9087,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Move Zeroes using same-direction pointers. Remove-duplicates is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8985,7 +9125,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a pair with a target difference using sorted-array pointers; not a general two-pointer overview.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9019,7 +9159,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Fixed-length maximum-sum window with Java code. Distinct from unrestricted maximum subarray/Kadane.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9092,7 +9232,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Recognizing opposite-direction and same-direction pointer patterns.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9126,7 +9266,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Bubble sort, selection sort and insertion sort in Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "n2mtX8mdoEc",
@@ -9168,7 +9308,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Counting sort and radix sort, including assumptions behind integer sorting. A longer lecture is intentional.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "imqr13aIBAY",
@@ -9212,7 +9352,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inversion counting with merge sort. The lesson also explains the underlying sorting recurrence.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "0jxUbvEF380",
@@ -9256,7 +9396,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Quicksort partitioning and performance. Compare the specific Lomuto/Hoare variants in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9329,7 +9469,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The distinction between stable and unstable sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "w7tbj3phOno",
@@ -9371,7 +9511,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Merging overlapping intervals after sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "2JzRBPFYbKE",
@@ -9415,7 +9555,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inserting an interval into a sorted non-overlapping list.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "XXaVIDIbUn4",
@@ -9459,7 +9599,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Meeting Rooms II: count simultaneous meetings. Meeting Rooms I and minimum-platform variations remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -9528,7 +9668,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Character-frequency signatures and grouping anagrams. First-non-repeating is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9564,7 +9704,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Unsorted Two Sum with a complement hash map. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9598,7 +9738,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maintain a frequency map while counting distinct values in every fixed-size window.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "qF9bLDKsmWc",
@@ -9638,7 +9778,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Zero-sum subarray existence using a set in Java. Distinct from counting all subarrays with a given sum.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9674,7 +9814,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Count subarrays with sum K using prefix-sum frequencies.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Nlo20rlfxSg",
@@ -9714,7 +9854,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest zero-sum subarray using prefix sums and a first-index map in Java. Sum-K and equal-0/1 variants remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9748,7 +9888,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest substring without repeated characters. Minimum-window substring is a separate variant explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "FCbOzdHKW18",
@@ -9792,7 +9932,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest consecutive sequence by starting only at chain beginnings.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -9800,7 +9940,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -9828,7 +9968,7 @@
    "start": 36,
    "end": 1322,
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9862,7 +10002,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Valid palindrome with two pointers and non-alphanumeric filtering.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "L84y20axpIA",
@@ -9908,7 +10048,7 @@
    "start": 3642,
    "end": 4357,
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9948,7 +10088,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest palindromic substring with center expansion.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "5MS14_6rSa8",
@@ -10021,7 +10161,7 @@
    "reviewedAt": "2026-10-21",
    "note": "KMP prefix/LPS preprocessing and linear-time pattern matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "BhxJiqShYcQ",
@@ -10061,7 +10201,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Z-array, Z-box optimization and pattern-plus-separator-plus-text matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10097,7 +10237,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Classic sorted-array binary search and halving the search interval. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10113,17 +10253,17 @@
      "channel": "Derrick Sherrill",
      "secs": 386
     },
-    "java": {
-     "id": "aUS_pVvvmCw",
-     "title": "DSA in Java #12 | Binary search with ONE template: first and last position in a sorted array",
-     "channel": "SyntaxPilot",
-     "secs": 749
-    },
     "js": {
      "id": "sOdjN0Kt4LI",
      "title": "Binary Search Explained with Animation | Code From Scratch",
      "channel": "Code From Scratch",
      "secs": 409
+    },
+    "java": {
+     "id": "aLodWBljkbU",
+     "title": "DSA in Java #12 | Binary search with ONE template: first and last position in a sorted array",
+     "channel": "SyntaxPilot",
+     "secs": 762
     }
    }
   },
@@ -10137,7 +10277,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Lower and upper bounds. Apply these primitives to first/last occurrence in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "GKZoTbUNWt0",
@@ -10179,7 +10319,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Search in a rotated sorted array with distinct elements.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "4Ik1nCLjwcI",
@@ -10223,7 +10363,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a peak by binary search on slope direction.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "NUnhHa47f-Q",
@@ -10267,7 +10407,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Integer square root via binary search, matching this lesson rather than the more general nth-root problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10303,7 +10443,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Aggressive Cows: maximize a minimum distance with a feasibility predicate.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Flewu6KqN54",
@@ -10347,7 +10487,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Allocate Books: minimize the largest allocation. Painter partition is a related variant in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "DAQHXe1yNtM",
@@ -10389,7 +10529,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Koko Eating Bananas and a monotonic feasibility test.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10429,7 +10569,7 @@
    "start": 1077,
    "end": 2736,
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "KiWp1q_HGzg",
@@ -10471,7 +10611,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A recursion-tree derivation for T(n) = 2T(n/2) + cn; other recurrences remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10507,7 +10647,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Tower of Hanoi with a recursive visualization.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "S1j5Q03HzMs",
@@ -10553,7 +10693,7 @@
    "start": 4024,
    "end": 5057,
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10587,7 +10727,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "nuuv1Z46zHU",
@@ -10629,7 +10769,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10663,7 +10803,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10697,7 +10837,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "xFv_Hl4B83A",
@@ -10772,7 +10912,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "-StYr9wILqo",
@@ -10814,7 +10954,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "YmkUl_Qsunk",
@@ -10854,7 +10994,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ZSyUwlzmN-U",
@@ -10898,7 +11038,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Cs3KwAsqqn4",
@@ -10938,7 +11078,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "PQIHq0vfADI",
@@ -10982,7 +11122,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "IH8F4W5AiiQ",
@@ -11022,7 +11162,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "WWOvCh31xBk",
@@ -11066,7 +11206,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Xc4sICC8m4M",
@@ -11108,7 +11248,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Rl8N_NbgXbA",
@@ -11150,7 +11290,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "q-JB0hYyouo",
@@ -11194,7 +11334,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "OpwYmEBcPh0",
@@ -11236,7 +11376,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "mg9yi6YuAVk",
@@ -11274,7 +11414,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "rfl_M3SuvIE",
@@ -11318,7 +11458,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "6Izu3F3vibo",
@@ -11362,7 +11502,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ZGMw8Bvpwd4",
@@ -11406,7 +11546,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "88cFfeDDgmo",
@@ -11448,7 +11588,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -11490,7 +11630,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -11524,7 +11664,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ySp2epYvgTE",
@@ -11568,7 +11708,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -11647,7 +11787,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": "0uhPFD_Fvbk",
@@ -11720,7 +11860,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "EoAsWbO7sqg",
@@ -11764,7 +11904,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "KV4mRzTjlAk",
@@ -11808,7 +11948,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "0FtVY6I4pB8",
@@ -11850,7 +11990,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Rezetez59Nk",
@@ -11892,7 +12032,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Yt50Jfbd8Po",
@@ -11936,7 +12076,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": "X-j1wi3y278",
@@ -12025,7 +12165,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -12065,7 +12205,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -12107,7 +12247,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12143,7 +12283,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "GkLRlOrcNZA",
@@ -12187,7 +12327,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12225,7 +12365,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "KtJlTfHtMhc",
@@ -12267,7 +12407,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ubKhojIZtHk",
@@ -12307,7 +12447,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "EIhAwfHubE8",
@@ -12349,7 +12489,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12383,7 +12523,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "DHr-Mn_vzs0",
@@ -12423,7 +12563,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "zPtI8q9gvX8",
@@ -12463,7 +12603,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "nLmhmB6NzcM",
@@ -12507,7 +12647,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "co4_ahEDCho",
@@ -12549,7 +12689,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "TBlKgdYwQ4Q",
@@ -12589,7 +12729,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "xmJZSYSvgfE",
@@ -12633,7 +12773,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "TsRyidwuNF8",
@@ -12679,7 +12819,7 @@
    "start": 100,
    "end": 427,
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -12717,7 +12857,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12751,7 +12891,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "piAlsJySUGE",
@@ -12793,7 +12933,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "u7kxnHnUAYk",
@@ -12833,7 +12973,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "sdQpyeEF-rM",
@@ -12877,7 +13017,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12940,7 +13080,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "sSno9rV8Rhg",
@@ -12982,7 +13122,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13024,7 +13164,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": "GizQZzpaBwY",
@@ -13034,7 +13174,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": "pGMsrvt0fpk",
@@ -13066,7 +13206,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13100,7 +13240,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "bHypFVRzEXk",
@@ -13140,7 +13280,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13296,7 +13436,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "S8rMlJBmVYc",
@@ -13340,7 +13480,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "-fOUp6Srnyg",
@@ -13411,7 +13551,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "muncqlKJrH0",
@@ -13455,7 +13595,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "9twcmtQj4DU",
@@ -13497,7 +13637,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "-vu34sct1g8",
@@ -13537,7 +13677,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "gDNm1m3G4wo",
@@ -13577,7 +13717,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -13617,7 +13757,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13655,7 +13795,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13691,7 +13831,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "JkmCVkJdg-A",
@@ -13733,7 +13873,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "oNI0rf2P9gE",
@@ -13773,7 +13913,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "mJcZjjKzeqk",
@@ -13817,7 +13957,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "wU6udHRIkcc",
@@ -13886,7 +14026,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "wMH6TbIRsJg",
@@ -13924,7 +14064,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "LMN7-O_SuqM",
@@ -13964,7 +14104,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "vUwindiBWJ0",
@@ -14002,7 +14142,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "0jWeUdxrGm4",
@@ -14040,7 +14180,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14103,7 +14243,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14143,7 +14283,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "NvnicGg3FdA",
@@ -14181,7 +14321,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14215,7 +14355,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14249,7 +14389,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "WUzplLVxYsk",
@@ -14287,7 +14427,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "_-QHfMDde90",
@@ -14329,7 +14469,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "_UcOALraATY",
@@ -14369,7 +14509,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "duKIzgJQ1w8",
@@ -14409,7 +14549,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -14417,7 +14557,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -14443,7 +14583,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -14451,7 +14591,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -14477,7 +14617,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "Q4zHb-Swzro",
@@ -14515,7 +14655,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14549,7 +14689,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ps2ZTj4DAm0",
@@ -14649,7 +14789,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14683,7 +14823,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14722,7 +14862,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -14748,7 +14888,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "0CesZFo1yOQ",
@@ -14786,7 +14926,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14853,7 +14993,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14904,7 +15044,8 @@
      "id": null,
      "at": "2026-11-07"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "dsa24-t5": {
    "t": "Suffix Automaton (Intro): A Tiny Machine That Knows Every Substring",
@@ -14916,7 +15057,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14979,7 +15120,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "QEWvTVcpAyg",
@@ -15019,7 +15160,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "vaTlSINdvY0",
@@ -15059,7 +15200,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "iMZEwYfBWDY",
@@ -15126,7 +15267,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "oBH9dH6KGLM",
@@ -15164,7 +15305,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "ntOM8JRAlaY",
@@ -15202,7 +15343,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15239,7 +15380,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -15268,7 +15409,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -15294,7 +15435,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -15302,7 +15443,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -15328,7 +15469,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": "GiWV9L-kHec",
@@ -15397,7 +15538,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15468,7 +15609,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15502,7 +15643,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15567,7 +15708,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -15575,7 +15716,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -15630,7 +15771,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15664,7 +15805,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15698,7 +15839,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15761,7 +15902,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15829,7 +15970,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -15855,7 +15996,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -15863,7 +16004,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": "D4T2N0yAr20",
@@ -15892,7 +16033,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -15918,7 +16059,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15952,7 +16093,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15986,7 +16127,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16022,7 +16163,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16056,7 +16197,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16082,8 +16223,10 @@
   },
   "dsa28-t5": {
    "t": "Debugging Under Pressure",
-   "id": null,
-   "at": "2026-11-08",
+   "id": "SBjbyOmTAsw",
+   "title": "LIVE 🔥 LeetCode Weekly Contest 503 | Full Intense Problem Solving Under Pressure",
+   "channel": "CODEFATHER",
+   "secs": 2596,
    "byLang": {
     "cpp": {
      "id": "-zru2YrUJJA",
@@ -16125,7 +16268,7 @@
    "start": 188,
    "end": 420,
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16167,7 +16310,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": "_ceGKgNWFXw",
@@ -16211,7 +16354,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z",
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -16219,7 +16362,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -16245,7 +16388,8 @@
   "fe01-t1": {
    "t": "URLs: The Address of Everything",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "fe01-t2": {
    "t": "HTTP: Requests, Responses, Headers & Status Codes",
@@ -16481,7 +16625,8 @@
   "fe05-t4": {
    "t": "Transitions, Keyframe Animations and Easing",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "fe05-t5": {
    "t": "CSS Variables (Custom Properties) and Theming",
@@ -16534,8 +16679,10 @@
   },
   "fe06-t6": {
    "t": "Accessible Forms: Labels, Groups, Hints & Errors",
-   "id": null,
-   "at": "2026-11-05"
+   "id": "2O8pkybH6po",
+   "title": "Learn HTML forms in 8 minutes 📝",
+   "channel": "Bro Code",
+   "secs": 519
   },
   "fe06-t7": {
    "t": "Screen Readers, Live Regions & Testing Accessibility",
@@ -16771,7 +16918,8 @@
   "fe11-t1": {
    "t": "Style, Layout, Paint & Composite: Where Every Frame Goes",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "fe11-t2": {
    "t": "Reflow vs Repaint, Forced Layout & Layout Thrashing",
@@ -16811,7 +16959,8 @@
   "fe11-t7": {
    "t": "Taming Scroll & Input Events: Throttle, Debounce, rAF, Passive Listeners",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "fe12-t0": {
    "t": "Virtual DOM & Reconciliation: How React Decides What to Change",
@@ -16935,7 +17084,8 @@
   "fe14-t2": {
    "t": "Transpiling, Polyfills & Tree Shaking",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "fe14-t3": {
    "t": "TypeScript in the Frontend: Props, Generics & Config",
@@ -17162,17 +17312,21 @@
   "fe18-t2": {
    "t": "The Injector Tree: Element vs Environment Injectors",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "fe18-t3": {
    "t": "Provider Recipes: useClass, useValue, useFactory, useExisting, multi",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "fe18-t4": {
    "t": "InjectionToken: DI for Things That Are Not Classes",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "UyoT9WQHARo",
+   "title": "Fixing Angular Error: No Provider for InjectionToken ORIGIN_URL Explained",
+   "channel": "The Debug Zone",
+   "secs": 242
   },
   "fe18-t5": {
    "t": "HttpClient and Functional Interceptors",
@@ -17184,7 +17338,8 @@
   "fe18-t6": {
    "t": "Testing DI with TestBed and HttpTestingController",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "fe19-t0": {
    "t": "Observables vs Promises: Subscribe, Values Over Time, Teardown",
@@ -17371,17 +17526,20 @@
   "fe22-t4": {
    "t": "Who Triggers Change Detection? zone.js Patching, NgZone and Zoneless Scheduling",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "fe22-t5": {
    "t": "Bundle Size, Lazy Chunks, the esbuild Application Builder, Build Analysis & Budgets",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "fe22-t6": {
    "t": "Runtime Profiling with Angular DevTools & the Chrome Performance Panel, and Hunting Memory Leaks",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "fe23-t0": {
    "t": "Structuring Large Angular Apps: Feature, UI, Data-Access & Util Libraries, Smart vs Presentational, Facades",
@@ -17449,7 +17607,8 @@
   "fe24-t1": {
    "t": "Nested Layouts, Templates, Loading, Error & Not-Found Boundaries",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "fe24-t2": {
    "t": "The Server/Client Boundary: Directives, Imports & Serializable Props",
@@ -17482,7 +17641,8 @@
   "fe24-t6": {
    "t": "Middleware (Proxy in Next 16), Matchers & the Edge Runtime",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "fe24-t7": {
    "t": "Metadata, Images, Fonts, Performance & Deployment (and Pages vs App Router)",
@@ -17500,8 +17660,10 @@
   },
   "hld01-t1": {
    "t": "Clients & Servers: Who Asks, Who Answers",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "L5BlpPU_muY",
+   "title": "The Client Server Model | Clients and Servers",
+   "channel": "The TechCave",
+   "secs": 374
   },
   "hld01-t2": {
    "t": "IP Addresses, Ports & DNS at a Glance",
@@ -17639,7 +17801,8 @@
   "hld03-t6": {
    "t": "Phases 1–4 in Practice: Requirements, Estimates, API & Data Model",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "hld03-t7": {
    "t": "Phases 5–7 in Practice: High-Level Design, Deep Dives & Trade-offs",
@@ -17805,7 +17968,8 @@
   "hld07-t0": {
    "t": "Why hash(key) % N Breaks When Servers Change",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "hld07-t1": {
    "t": "The Hash Ring: Walk Clockwise to Your Server",
@@ -17873,7 +18037,8 @@
   "hld08-t4": {
    "t": "Ordering Guarantees & Choosing the Partition Key",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "hld08-t5": {
    "t": "Failure Handling: Retries, Poison Messages & Dead-Letter Queues",
@@ -17997,7 +18162,8 @@
   "hld11-t1": {
    "t": "Raft Log Replication, Commit Index & Repairing Followers",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "hld11-t2": {
    "t": "Paxos Intuition: Prepare, Promise, Accept",
@@ -18050,10 +18216,10 @@
   },
   "hld12-t0": {
    "t": "Redundancy & Failover: Never Have One of Anything",
-   "id": "ewXv_aU0k9s",
-   "title": "L02: System Reliability | How SLAs, Redundancy & Uptime Ensure Your Systems Never Fail",
-   "channel": "Aarchi Gandhi",
-   "secs": 1732
+   "id": "rVhlUDwMdWY",
+   "title": "Availability & Reliability: The Nines, SLA/SLO, Redundancy, Failover | System Design Course Lesson 4",
+   "channel": "The Code Notebook",
+   "secs": 260
   },
   "hld12-t1": {
    "t": "Timeouts & Retries: Exponential Backoff, Jitter and Retry Budgets",
@@ -18310,7 +18476,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java01-t1": {
    "t": "JDK vs JRE vs JVM — and What Lives Inside the JVM",
@@ -18322,7 +18488,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java01-t2": {
    "t": "The main Method, Command-Line Arguments & Exit Codes",
@@ -18334,7 +18500,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java01-t3": {
    "t": "Primitive Types, Ranges, Literals & Defaults",
@@ -18346,7 +18512,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java01-t4": {
    "t": "Type Casting: Widening, Narrowing & Numeric Promotion",
@@ -18358,7 +18524,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java01-t5": {
    "t": "Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence",
@@ -18377,7 +18543,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java01-t7": {
    "t": "char, ASCII & Unicode (UTF-16, Code Points, Emoji)",
@@ -18389,7 +18555,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java02-t0": {
    "t": "Decisions: if/else, the Ternary Operator, switch & Switch Expressions",
@@ -18401,7 +18567,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java02-t1": {
    "t": "Loops: for, while, do-while and the Enhanced for-each",
@@ -18420,7 +18586,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java02-t3": {
    "t": "Methods, the Call Stack and Why Java Is Always Pass-by-Value",
@@ -18432,7 +18598,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java02-t4": {
    "t": "Method Overloading and Varargs (int... args)",
@@ -18444,7 +18610,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java02-t5": {
    "t": "1D Arrays, 2D Arrays and Jagged Arrays",
@@ -18456,7 +18622,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java02-t6": {
    "t": "The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)",
@@ -18475,7 +18641,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java03-t0": {
    "t": "Defining Classes & Creating Objects",
@@ -18487,7 +18653,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java03-t1": {
    "t": "References: Stack vs Heap, Aliasing, null & Pass-by-Value",
@@ -18499,7 +18665,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java03-t2": {
    "t": "Constructors & Constructor Chaining",
@@ -18511,7 +18677,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java03-t3": {
    "t": "The this Keyword",
@@ -18523,7 +18689,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java03-t4": {
    "t": "static: Fields, Methods & Blocks",
@@ -18535,7 +18701,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java03-t5": {
    "t": "Initialization Order: static, instance, constructor",
@@ -18547,7 +18713,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java03-t6": {
    "t": "Access Modifiers & Packages",
@@ -18559,7 +18725,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t0": {
    "t": "Encapsulation: Private Data, Public Behaviour, Guarded Invariants",
@@ -18571,7 +18737,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t1": {
    "t": "Inheritance, extends & super: Reusing a Parent and Building Objects Layer by Layer",
@@ -18583,7 +18749,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t2": {
    "t": "Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override",
@@ -18595,7 +18761,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t3": {
    "t": "Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)",
@@ -18607,7 +18773,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t4": {
    "t": "Abstract Classes: Half-Built Blueprints and the Template Method",
@@ -18619,7 +18785,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t5": {
    "t": "Interfaces: Contracts, default & static Methods, and the Diamond Rules",
@@ -18631,7 +18797,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t6": {
    "t": "final: Variables, References, Methods and Classes",
@@ -18643,7 +18809,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t7": {
    "t": "Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)",
@@ -18655,7 +18821,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java04-t8": {
    "t": "The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize",
@@ -18667,7 +18833,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-11T02:02:51.984Z"
+   "availabilityCheckedAt": "2026-11-12T02:47:41.668Z"
   },
   "java05-t0": {
    "t": "String Immutability: Why a String Can Never Change",
@@ -18742,7 +18908,8 @@
   "java06-t3": {
    "t": "Custom Exceptions, Chaining, Translation and Best Practices",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "java06-t4": {
    "t": "java.io vs java.nio: Streams, Readers, Charsets, Buffers and Channels",
@@ -19167,7 +19334,8 @@
   "java14-t3": {
    "t": "Text Blocks & the Small Modern Wins (var, Helpful NPEs, Sequenced Collections)",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "java14-t4": {
    "t": "Reflection: Inspecting & Invoking Code at Runtime",
@@ -19235,7 +19403,8 @@
   "java15-t4": {
    "t": "Parameterized Tests & Fluent Assertions with AssertJ",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "java15-t5": {
    "t": "Test Doubles & Mockito: Mocks, Stubs, Spies, Argument Captors & Verification",
@@ -19268,7 +19437,8 @@
   "java16-t2": {
    "t": "Lazy Loading, Proxies and the N+1 Cures: Fetch Joins, Entity Graphs, Batch Fetching",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "java16-t3": {
    "t": "First-Level, Second-Level and Query Caches",
@@ -19322,7 +19492,8 @@
   "java17-t3": {
    "t": "Scopes, Scoped Proxies & @Configuration Full vs Lite Mode",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "java17-t4": {
    "t": "AOP Proxy Internals: Advisors, the Interceptor Chain, JDK vs CGLIB & Self-Invocation",
@@ -19593,7 +19764,8 @@
   "js05-t3": {
    "t": "new Binding and the Precedence of the Four Rules",
    "id": null,
-   "at": "2026-11-11"
+   "at": "2026-11-11",
+   "broadAt": "2026-11-12"
   },
   "js05-t4": {
    "t": "Arrow Functions and Lexical this",
@@ -19941,7 +20113,8 @@
   "js12-t1": {
    "t": "Ignition, Sparkplug, Maglev & TurboFan: How Hot Code Gets Faster",
    "id": null,
-   "at": "2026-11-11"
+   "at": "2026-11-11",
+   "broadAt": "2026-11-12"
   },
   "js12-t2": {
    "t": "Hidden Classes (Shapes/Maps), Inline Caches & Elements Kinds",
@@ -20156,7 +20329,8 @@
   "js15-t7": {
    "t": "Diagnosing a Blocked Event Loop, Memory Leaks and Profiling in Production",
    "id": null,
-   "at": "2026-11-11"
+   "at": "2026-11-11",
+   "broadAt": "2026-11-12"
   },
   "js16-t0": {
    "t": "expect() and Matchers: What \"Equal\" Really Means",
@@ -20203,7 +20377,8 @@
   "js16-t6": {
    "t": "Coverage and Its Limits, Flaky Tests, and TDD in Interviews",
    "id": null,
-   "at": "2026-11-11"
+   "at": "2026-11-11",
+   "broadAt": "2026-11-12"
   },
   "lld01-t0": {
    "t": "Thinking in Objects: Classes, Objects, State & Behaviour",
@@ -20236,7 +20411,8 @@
      "id": null,
      "at": "2026-11-10"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld01-t1": {
    "t": "From Requirements to Entities, Attributes & Behaviours (Noun-Verb Analysis)",
@@ -20263,7 +20439,8 @@
      "id": null,
      "at": "2026-11-10"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld01-t2": {
    "t": "Has-a Relationships: Association, Aggregation, Composition & Dependency",
@@ -20455,7 +20632,8 @@
      "id": null,
      "at": "2026-11-10"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld02-t1": {
    "t": "S — Single Responsibility Principle (SRP)",
@@ -20891,7 +21069,8 @@
      "channel": "Bro Code",
      "secs": 734
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld03-t6": {
    "t": "Code Smells & Safe Refactoring (spot it, name it, fix it in small steps)",
@@ -20924,7 +21103,8 @@
      "id": null,
      "at": "2026-11-08"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld04-t0": {
    "t": "Why Creational Patterns? The Trouble with \"new\" Everywhere",
@@ -21405,7 +21585,8 @@
      "channel": "vlogommentary",
      "secs": 186
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld06-t0": {
    "t": "Strategy: Swap the Algorithm, Keep the Code",
@@ -21478,7 +21659,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -21681,7 +21862,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -21710,7 +21891,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -22264,7 +22445,8 @@
      "id": null,
      "at": "2026-11-08"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld10-t0": {
    "t": "Thread-Safe Design: Races, Invariants & the Three Cures",
@@ -22297,8 +22479,10 @@
   },
   "lld10-t1": {
    "t": "Synchronized Collections vs Concurrent Collections",
-   "id": null,
-   "at": "2026-11-06",
+   "id": "_ZFyokX0ySg",
+   "title": "Java Concurrent Collections: ConcurrentHashMap, BlockingQueue (Ep12)",
+   "channel": "The Simplified Architect",
+   "secs": 1014,
    "byLang": {
     "cpp": {
      "id": null,
@@ -22669,7 +22853,8 @@
      "id": null,
      "at": "2026-11-08"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "lld11-t6": {
    "t": "Domain Events: \"Something Happened\" — Decoupling Side Effects Safely",
@@ -22876,7 +23061,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     }
    }
   },
@@ -22905,7 +23090,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     }
    }
   },
@@ -22936,7 +23121,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     }
    }
   },
@@ -22965,7 +23150,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     }
    }
   },
@@ -22986,7 +23171,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "java": {
      "id": null,
@@ -23011,7 +23196,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -23038,7 +23223,7 @@
     },
     "cpp": {
      "id": null,
-     "at": "2026-11-05"
+     "at": "2026-11-12"
     },
     "python": {
      "id": null,
@@ -23052,7 +23237,8 @@
      "id": null,
      "at": "2026-11-08"
     }
-   }
+   },
+   "broadAt": "2026-11-12"
   },
   "py01-t0": {
    "t": "Installing Python, Running Code & the REPL",
@@ -23225,7 +23411,8 @@
   "py04-t1": {
    "t": "Instance vs Class Attributes and the Attribute Lookup Chain",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "py04-t2": {
    "t": "Methods: Instance Methods, Bound Methods and Methods Calling Methods",
@@ -23300,7 +23487,8 @@
   "py05-t6": {
    "t": "Big-O Cheat Sheet for Built-ins: list, dict, set, deque, str, heapq, sort",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "py06-t0": {
    "t": "First-Class Functions: Functions Are Just Objects",
@@ -23466,7 +23654,8 @@
   "py09-t2": {
    "t": "Raising Exceptions, Custom Exception Classes, Chaining (raise from) and ExceptionGroup",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "py09-t3": {
    "t": "EAFP vs LBYL: \"Just Try It\" vs \"Check First\"",
@@ -23541,7 +23730,8 @@
   "py10-t5": {
    "t": "Tasks, gather, TaskGroup, Timeouts, Cancellation and Rate Limiting",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "py10-t6": {
    "t": "Async Pitfalls: Blocking the Loop, Forgotten Awaits, Lost Tasks and Races Across await",
@@ -23553,7 +23743,8 @@
   "py10-t7": {
    "t": "Choosing the Right Model and Designing Concurrent Systems in Python",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "py11-t0": {
    "t": "Counter & defaultdict: Hash Maps with Superpowers",
@@ -23654,7 +23845,8 @@
   "py12-t5": {
    "t": "Small-Int Cache, String Interning & Why \"is\" Lies to You",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "py12-t6": {
    "t": "Descriptors: How obj.attr Really Works",
@@ -23679,8 +23871,10 @@
   },
   "py13-t0": {
    "t": "Measure First: Profiling with cProfile, pstats & timeit",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "nCJ2eC-Qygs",
+   "title": "Python program to find the sum of first n natural numbers tutorial",
+   "channel": "United Top Tech",
+   "secs": 250
   },
   "py13-t1": {
    "t": "Cheap Wins in Pure Python: Right Data Structure, Built-ins & Fewer Bytecodes",
@@ -23720,7 +23914,8 @@
   "py13-t6": {
    "t": "Mutable Default Arguments, Aliasing & Late Binding: \"When Is This Evaluated?\"",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "py13-t7": {
    "t": "The Gotchas Bank: Predict-the-Output Questions and How to Crack Them",
@@ -23739,12 +23934,14 @@
   "py14-t1": {
    "t": "pip, PEP 440 Versions and Dependency Resolution",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "py14-t2": {
    "t": "pyproject.toml, Build Backends, Wheels vs sdists",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "py14-t3": {
    "t": "Poetry, uv, Pinning and Lock Files",
@@ -23756,7 +23953,8 @@
   "py14-t4": {
    "t": "src Layout, Editable Installs and Import Resolution",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "py14-t5": {
    "t": "Linting, Formatting and Type Checking: Ruff, mypy, pre-commit",
@@ -23768,7 +23966,8 @@
   "py14-t6": {
    "t": "Publishing to PyPI and Reproducible Builds in CI and Docker",
    "id": null,
-   "at": "2026-11-08"
+   "at": "2026-11-08",
+   "broadAt": "2026-11-12"
   },
   "py15-t0": {
    "t": "NumPy Arrays: One Block of Memory, One dtype, Vectorized Math",
@@ -23780,7 +23979,8 @@
   "py15-t1": {
    "t": "Broadcasting, Reshaping, and Views vs Copies",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "py15-t2": {
    "t": "pandas Series & DataFrame: Labels, loc vs iloc, and Filtering",
@@ -23820,12 +24020,14 @@
   "py15-t7": {
    "t": "apply vs Vectorized, Categoricals, Memory and Performance Pitfalls",
    "id": null,
-   "at": "2026-11-10"
+   "at": "2026-11-10",
+   "broadAt": "2026-11-12"
   },
   "py16-t0": {
    "t": "Projects, Apps, MTV and URL Routing with Path Converters",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "py16-t1": {
    "t": "Views: Function-Based, Class-Based, Generic Views and Mixins",
@@ -24242,8 +24444,10 @@
   },
   "sql08-t0": {
    "t": "Anomalies: Why One Big Table Breaks",
-   "id": null,
-   "at": "2026-11-06"
+   "id": "bJMyDzYOofw",
+   "title": "ANOMALIES IN DBMS || TYPES OF ANOMALIES || INSERT , DELETE , UPDATE ANOMALIES || DBMS || SQL",
+   "channel": "Sundeep Saradhi Kanthety",
+   "secs": 881
   },
   "sql08-t1": {
    "t": "Functional Dependencies, Attribute Closure & Candidate Keys",
@@ -24318,7 +24522,8 @@
   "sql09-t3": {
    "t": "Soft Deletes, Restores & Archiving",
    "id": null,
-   "at": "2026-11-06"
+   "at": "2026-11-06",
+   "broadAt": "2026-11-12"
   },
   "sql09-t4": {
    "t": "Views: Saved Queries for Simplicity and Security",
@@ -24546,8 +24751,10 @@
   },
   "sql13-t6": {
    "t": "Column Stores: Columnar Layout, Compression, Zone Maps & Vectorized Scans",
-   "id": null,
-   "at": "2026-11-08"
+   "id": "nt8aBnmRBUo",
+   "title": "OLTP vs OLAP Explained: Row vs Column Storage and Why It Cuts Query Cost",
+   "channel": "Trapture Explains",
+   "secs": 560
   },
   "sql14-t0": {
    "t": "Leader-Follower Replication & Replication Lag",
@@ -24628,8 +24835,10 @@
   },
   "sql15-t4": {
    "t": "Sessionization (inactivity timeout → session ids)",
-   "id": null,
-   "at": "2026-11-07"
+   "id": "9gnnnC-GdtI",
+   "title": "SQL Sessionization: Why 30-Minute Slots Split Visits",
+   "channel": "Prateek Goel | GrowAsEngineers",
+   "secs": 807
   },
   "sql15-t5": {
    "t": "Funnels & Retention Cohorts",
@@ -24697,7 +24906,8 @@
   "sql16-t4": {
    "t": "Isolation Defaults, Locking Reads and InnoDB Gap Locks",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "sql16-t5": {
    "t": "Replication and Failover: WAL Streaming vs Binlog, Sync Modes and Promotion",
@@ -24744,7 +24954,8 @@
   "sql17-t4": {
    "t": "Redis Persistence, TTLs and Eviction Policies",
    "id": null,
-   "at": "2026-11-07"
+   "at": "2026-11-07",
+   "broadAt": "2026-11-12"
   },
   "sql17-t5": {
    "t": "Cassandra: Query-First Tables, Partition & Clustering Keys, Tunable Consistency",
@@ -24765,10 +24976,414 @@
    "id": null,
    "at": "2026-11-10"
   },
-  "ai06-t1": {
-   "t": "Embeddings: Giving Every Token a Meaning-Address",
+  "tl01-t0": {
+   "t": "The Type System: Values, References, Strings and Null",
+   "id": "i7twT3x5yv8",
+   "title": "System Design Interview: A Step-By-Step Guide",
+   "channel": "ByteByteGo",
+   "secs": 594
+  },
+  "tl01-t1": {
+   "t": "Methods, Parameters and Properties",
+   "id": "XM3bqM7Jo7o",
+   "title": "Methods & Parameters in C# .NET",
+   "channel": "Interview Happy",
+   "secs": 309
+  },
+  "tl01-t2": {
+   "t": "Object-Oriented Programming: Classes, Interfaces and Polymorphism",
+   "id": "pTB0EiLXUC8",
+   "title": "Object-Oriented Programming, Simplified",
+   "channel": "Programming with Mosh",
+   "secs": 454
+  },
+  "tl01-t3": {
+   "t": "Generics, Collections and LINQ",
+   "id": "aNTDJ9bnRU4",
+   "title": "C# generics ⁉️",
+   "channel": "Bro Code",
+   "secs": 333
+  },
+  "tl01-t4": {
+   "t": "Delegates, Events, Lambdas and Exceptions",
+   "id": "jQgwEsJISy0",
+   "title": "C# Events and Delegates Made Simple | Mosh",
+   "channel": "Programming with Mosh",
+   "secs": 1924
+  },
+  "tl02-t0": {
+   "t": "async/await and the Task Model",
+   "id": "ktSlDGdZRMs",
+   "title": "When You Shouldn't Use Await Async in .NET",
+   "channel": "Nick Chapsas",
+   "secs": 471
+  },
+  "tl02-t1": {
+   "t": "Threads, Locks and Concurrent Collections",
+   "id": "gJWMLuNESmQ",
+   "title": "Concurrent Collections in C#: Understanding Race Conditions and Deadlocks",
+   "channel": "C# interview questions",
+   "secs": 1182
+  },
+  "tl02-t2": {
+   "t": "Memory, the Garbage Collector, IDisposable and Span",
+   "id": "y7FTxAqExyU",
+   "title": ".NET's hidden Garbage Collector - from 1.9GB to 85MB of memory?",
+   "channel": "Ed Andersen",
+   "secs": 217
+  },
+  "tl02-t3": {
+   "t": "Modern C# by Version",
+   "id": "1u5E_GiXF9M",
+   "title": "Top C# Interview Questions And Answers | C# Interview Preparation | C# Training | Simplilearn",
+   "channel": "Simplilearn",
+   "secs": 2230
+  },
+  "tl02-t4": {
+   "t": "SOLID and Clean Code in C#",
+   "id": "7-UiElw-Fgc",
+   "title": "SOLID Principles & Design Patterns | C# .NET Core Interview (Episode 1)",
+   "channel": "The DotNet Way",
+   "secs": 499
+  },
+  "tl02-t5": {
+   "t": "Reflection, Serialization and Architect-Level C#",
+   "id": "b1_Qxw71xNg",
+   "title": "Introduction to Reflection - C# .NET Tutorial",
+   "channel": "Nick Proud",
+   "secs": 862
+  },
+  "tl03-t0": {
+   "t": ".NET History, Versions and Support",
    "id": null,
-   "at": "2026-11-11"
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl03-t1": {
+   "t": "ASP.NET Core Fundamentals: Host, Pipeline, DI and Configuration",
+   "id": "UIkV-sLdEuE",
+   "title": "Middleware in ASP.NET Core – Everything You Need to Know in 5 Minutes",
+   "channel": "Aura Theme",
+   "secs": 336
+  },
+  "tl03-t2": {
+   "t": "Design Patterns in C# and .NET",
+   "id": "YMAwgRwjEOQ",
+   "title": "5 Design Patterns That Are ACTUALLY Used By Developers",
+   "channel": "Alex Hyett",
+   "secs": 567
+  },
+  "tl03-t3": {
+   "t": "Runtime Internals: CLR, JIT, Assemblies and the Garbage Collector",
+   "id": "8i1Nv7wGsjk",
+   "title": ".NET GC Internals - 01. Introduction",
+   "channel": "Dotnetos",
+   "secs": 5286
+  },
+  "tl03-t4": {
+   "t": "Features by Version and the Production Toolbox",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl04-t0": {
+   "t": "REST and HTTP Basics: Resources, Methods and Status Codes",
+   "id": "qmpUfWN7hh4",
+   "title": "HTTP Status Codes Explained In 5 Minutes",
+   "channel": "ByteByteGo",
+   "secs": 307
+  },
+  "tl04-t1": {
+   "t": "Designing REST APIs That Survive Production: Retries, Paging, Versions, Caching",
+   "id": "ISBbNOMfQ_M",
+   "title": "Designing Production-Ready APIs | Validation, Security, Versioning | Microservices Masterclass Ep. 7",
+   "channel": "Avinash Explains Tech",
+   "secs": 934
+  },
+  "tl04-t2": {
+   "t": "SOAP, gRPC and GraphQL: Picking the Right API Style",
+   "id": "yWzKJPw_VzM",
+   "title": "What Is GraphQL? REST vs. GraphQL",
+   "channel": "ByteByteGo",
+   "secs": 315
+  },
+  "tl04-t3": {
+   "t": "Real-Time and Messaging: WebSockets, SignalR, SSE, Webhooks and Queues",
+   "id": "sN5YpfOpCHA",
+   "title": "Building Messaging Apps in .NET Using the Official RabbitMQ Client",
+   "channel": "Milan Jovanović",
+   "secs": 712
+  },
+  "tl04-t4": {
+   "t": "API Testing: From Unit Tests to Load Tests",
+   "id": "RgoytbbYbr8",
+   "title": "Unit testing your Web APIs [18 of 18] | Web APIs for Beginners",
+   "channel": "dotnet",
+   "secs": 345
+  },
+  "tl05-t0": {
+   "t": "The Mental Model: Who Signs In, Who Decides, and the Three Tokens",
+   "id": "PqsIanFv93o",
+   "title": "Stop Memorizing HLD & LLD Diagrams Learn an Architect's Secret Mental Model #systemdesign #hld #lld",
+   "channel": "ClarifyDeCode",
+   "secs": 493
+  },
+  "tl05-t1": {
+   "t": "The Flows: Authorization Code with PKCE, Client Credentials, On-Behalf-Of",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl05-t2": {
+   "t": "End to End: A Stateless API, Token Storage, Renewal and Revocation",
+   "id": "1t1_a1BZ04o",
+   "title": "How to NOT Fail a Technical Interview",
+   "channel": "Fireship",
+   "secs": 506
+  },
+  "tl05-t3": {
+   "t": "The Front End: MSAL in React, the API Client and the Interceptor",
+   "id": "PRSyHTajxPk",
+   "title": "Front End vs Back End | Front End vs Back End Explained | Full Stack Training | Simplilearn",
+   "channel": "Simplilearn",
+   "secs": 495
+  },
+  "tl05-t4": {
+   "t": "The Back End: Token Validation, Scopes, Roles and Policies in .NET",
+   "id": "PRSyHTajxPk",
+   "title": "Front End vs Back End | Front End vs Back End Explained | Full Stack Training | Simplilearn",
+   "channel": "Simplilearn",
+   "secs": 495
+  },
+  "tl05-t5": {
+   "t": "Troubleshooting 401 and 403, and Saying It Well in the Interview",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl06-t0": {
+   "t": "Azure Fundamentals and Choosing Where Code Runs",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl06-t1": {
+   "t": "Azure Functions in Depth: Triggers, Plans, Scaling and Reliability",
+   "id": "IiUH6NonZW4",
+   "title": "Azure Functions in 10 Minutes – Flow Explained",
+   "channel": "Interview Happy",
+   "secs": 825
+  },
+  "tl06-t2": {
+   "t": "Storage, Messaging, Secrets and Network Security",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl06-t3": {
+   "t": "Monitoring, High Availability and Azure OpenAI in Production",
+   "id": "fQ9RFR1KTbY",
+   "title": "How to use Microsoft Azure AI Studio and Azure OpenAI models",
+   "channel": "Adrian Twarog",
+   "secs": 997
+  },
+  "tl06-t4": {
+   "t": "DevOps, CI/CD, Infrastructure as Code and Architecture Answers",
+   "id": "M4CXOocovZ4",
+   "title": "CI/CD Explained | How DevOps Use Pipelines for Automation",
+   "channel": "Akamai Developers",
+   "secs": 400
+  },
+  "tl07-t0": {
+   "t": "Tables, Normalization, Indexes and Execution Plans",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl07-t1": {
+   "t": "Transactions, Isolation Levels, Locks and Deadlocks",
+   "id": "-gxyut1VLcs",
+   "title": "Isolation Levels in Database Management Systems",
+   "channel": "Edredo for Learners",
+   "secs": 620
+  },
+  "tl07-t2": {
+   "t": "Stored Procedures, EF Core and Dapper",
+   "id": "ialFGpKD8yI",
+   "title": "Dapper v/s Entity Framework(Core) -  .NET Interview Question",
+   "channel": "DotNetMastery",
+   "secs": 345
+  },
+  "tl07-t3": {
+   "t": "Cosmos DB and NoSQL Data Modelling",
+   "id": "U66r2rB7E6U",
+   "title": "Azure SQL vs Cosmos DB – Which One Should You Use?",
+   "channel": "Interview Happy",
+   "secs": 693
+  },
+  "tl07-t4": {
+   "t": "Caching with Redis and Scaling: Replicas, Partitioning, Sharding",
+   "id": "a4yX7RUgTxI",
+   "title": "Top 5 Redis Use Cases",
+   "channel": "ByteByteGo",
+   "secs": 388
+  },
+  "tl08-t0": {
+   "t": "How Large Language Models Work: Tokens, Context Window, Temperature and Prompts",
+   "id": "5sLYAQS9sWQ",
+   "title": "How Large Language Models Work",
+   "channel": "IBM Technology",
+   "secs": 334
+  },
+  "tl08-t1": {
+   "t": "Embeddings, Vector Search and Retrieval-Augmented Generation (RAG)",
+   "id": "T-D1OfcDW1M",
+   "title": "What is Retrieval-Augmented Generation (RAG)?",
+   "channel": "IBM Technology",
+   "secs": 396
+  },
+  "tl08-t2": {
+   "t": "Function Calling and Agents",
+   "id": "CyLYY_xb5bQ",
+   "title": "You Can Learn AI Agent System Design In 19 Min | RAG, Vector Database, Evals, Function Calling",
+   "channel": "Sean‘s AI Stories",
+   "secs": 1169
+  },
+  "tl08-t3": {
+   "t": "Evaluation, Cost, Latency and Safety",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl08-t4": {
+   "t": "Calling AI Services from .NET and Leading with AI-Assisted Development",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl09-t0": {
+   "t": "TypeScript: Types, Generics and Narrowing",
+   "id": "_ePaceZU8CQ",
+   "title": "10 | TypeScript Interview Series | Generic Types in TypeScript Explained with Examples | Hindi",
+   "channel": "WorldGyan",
+   "secs": 864
+  },
+  "tl09-t1": {
+   "t": "TypeScript at the Edges: Erased Types, Strict Mode, API Clients and JavaScript Basics",
+   "id": null,
+   "at": "2026-11-12"
+  },
+  "tl09-t2": {
+   "t": "React: Rendering, Hooks and Effects",
+   "id": "-4XpG5_Lj_o",
+   "title": "Learn React Hooks: useEffect - Simply Explained!",
+   "channel": "Cosden Solutions",
+   "secs": 847
+  },
+  "tl09-t3": {
+   "t": "React: State Choices, Performance, Forms, Routing and Testing",
+   "id": "s2skans2dP4",
+   "title": "React JS Explained In 10 Minutes",
+   "channel": "Dennis Ivy",
+   "secs": 600
+  },
+  "tl09-t4": {
+   "t": "Angular: Components, DI, RxJS, Signals and Change Detection",
+   "id": "eNuMUslF8Bw",
+   "title": "Angular change detection explained in 5 minutes",
+   "channel": "Simplified Courses",
+   "secs": 366
+  },
+  "tl10-t0": {
+   "t": "Shaping a System: The Design Framework, Monolith vs Microservices, Layers",
+   "id": null,
+   "at": "2026-11-12"
+  },
+  "tl10-t1": {
+   "t": "Data Across Services: Messaging, Consistency, Saga, Outbox, CQRS",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl10-t2": {
+   "t": "Staying Up Under Load: Resilience, Caching, Scale, Observability, Security",
+   "id": "Q4XUptm9S8w",
+   "title": "System Design Interview: When to use API Gateway, Load Balancer, or Reverse Proxy?",
+   "channel": "IT k Funde",
+   "secs": 895
+  },
+  "tl10-t3": {
+   "t": "Shipping and Explaining Design: ADRs, DDD, Multi-Tenancy, Safe Releases",
+   "id": "i53Gi_K3o7I",
+   "title": "20 System Design Concepts Explained in 10 Minutes",
+   "channel": "NeetCode",
+   "secs": 701
+  },
+  "tl10-t4": {
+   "t": "The Tech Lead Playbook: STAR Stories and Leadership Answers",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl11-t0": {
+   "t": "How to Approach a Coding Question Out Loud",
+   "id": "Q4C3ZRJLnac",
+   "title": "How to Solve ANY Coding Interview Question in 6 Steps",
+   "channel": "Anthony D. Mays",
+   "secs": 753
+  },
+  "tl11-t1": {
+   "t": "String Problems: Two Pointers, Counting, Windows and Stacks",
+   "id": "hF-6eudOD0M",
+   "title": "Difference Between String and Stringbuilder in Csharp | C#.NET Interview Questions & Answers",
+   "channel": "Questpond",
+   "secs": 682
+  },
+  "tl11-t2": {
+   "t": "Array Problems: Hash Maps, Two Pointers, Running Totals and Binary Search",
+   "id": "46YP5f1EsRg",
+   "title": "Top 10 Array Logical Problems in Java | Coding Interview Questions | 10 Must-Know Array Programs",
+   "channel": "Think Type Smile",
+   "secs": 1783
+  },
+  "tl11-t3": {
+   "t": "Matrix Problems: Rotate, Spiral, Search and Grid Walks",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl12-t0": {
+   "t": "Linked Lists, Stacks and Queues",
+   "id": "N6dOwBde7-M",
+   "title": "Learn Linked Lists in 13 minutes 🔗",
+   "channel": "Bro Code",
+   "secs": 804
+  },
+  "tl12-t1": {
+   "t": "Trees and Graphs: DFS, BFS and Ordering",
+   "id": "IqQ7QpmiBJ0",
+   "title": "C# Trees and Graphs Explained | Data Structures and Algorithms in C# | C# Tutorial | Simplilearn",
+   "channel": "Simplilearn",
+   "secs": 1360
+  },
+  "tl12-t2": {
+   "t": "Hash Maps and Designed Structures: LRU Cache, Heap, Trie, Union-Find",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
+  },
+  "tl12-t3": {
+   "t": "Recursion, Backtracking and Dynamic Programming",
+   "id": "iGuhrSMWeVk",
+   "title": "Number of Islands Coding Interview Question | Recursive Backtracking | Pair Programming",
+   "channel": "Josh's DevBox",
+   "secs": 1423
+  },
+  "tl12-t4": {
+   "t": "Bits, Maths and the Small Programs Interviewers Still Ask",
+   "id": null,
+   "at": "2026-11-12",
+   "broadAt": "2026-11-12"
   }
  }
 }
