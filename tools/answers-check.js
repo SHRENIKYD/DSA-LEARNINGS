@@ -11,6 +11,9 @@ const { spawnSync } = require('child_process');
 const root = path.join(__dirname, '..');
 const args = process.argv.slice(2), require_ = args.includes('--require'), run = args.includes('--run'), only = args.filter((a) => !a.startsWith('--'));
 const LANGS = ['java', 'python', 'js', 'cpp', 'csharp'];
+const DOTNET = ['dotnet', '/opt/dotnet/dotnet'].find((d) => { const r = spawnSync(d, ['--version'], { encoding: 'utf8', timeout: 60000 }); return !r.error && r.status === 0; });
+// DSA and LLD programs come in all five languages; other tracks may give only the languages that fit the question.
+const ALL_FIVE = new Set(['dsa', 'lld']);
 const TAGS = /<\/?([a-z0-9]+)[^>]*>/gi, OK_TAGS = new Set('p b i u em strong code pre sub sup br hr small mark kbd span div ul ol li table thead tbody tr th td h4 h5 blockquote'.split(' '));
 const text = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 const errors = [];
@@ -37,7 +40,15 @@ function exec(w, lang, code) {
     else if (lang === 'python') { fs.writeFileSync(path.join(dir, 'main.py'), code); r = sh('python3', ['main.py']); }
     else if (lang === 'js') { fs.writeFileSync(path.join(dir, 'main.js'), code); r = sh(process.execPath, ['main.js']); }
     else if (lang === 'cpp') { fs.writeFileSync(path.join(dir, 'main.cpp'), code); r = sh('g++', ['-std=c++20', '-O1', '-o', 'main', 'main.cpp']); if (r.status === 0) r = sh(path.join(dir, 'main'), []); }
-    else { fs.writeFileSync(path.join(dir, 'Main.cs'), code); r = sh('mcs', ['-out:main.exe', 'Main.cs']); if (r.status === 0) r = sh('mono', ['main.exe']); }
+    else {
+      // Mono first (fast, C# 7); newer syntax falls back to the .NET SDK when one is installed.
+      fs.writeFileSync(path.join(dir, 'Main.cs'), code); r = sh('mcs', ['-out:main.exe', 'Main.cs']);
+      if (r.status === 0) r = sh('mono', ['main.exe']);
+      else if (DOTNET) {
+        fs.writeFileSync(path.join(dir, 'a.csproj'), '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>disable</Nullable><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>');
+        r = spawnSync(DOTNET, ['run', '--nologo', '-v', 'q'], { cwd: dir, encoding: 'utf8', timeout: 240000, env: Object.assign({}, process.env, { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' }) });
+      }
+    }
     if (r.error || r.status !== 0) errors.push(w + ' [' + lang + ']: ' + String((r.error && r.error.message) || r.stderr || r.stdout).trim().split('\n').slice(0, 3).join(' | '));
     else if (!String(r.stdout).trim()) errors.push(w + ' [' + lang + ']: the program printed nothing');
     else ran++;
@@ -72,8 +83,10 @@ for (const t of ctx.TRACKS) {
       if (typeof x.code.title !== 'string' || x.code.title.trim().length < 5) errors.push(w + ': code.title is required');
       const extra = Object.keys(x.code).filter((k) => k !== 'title' && !LANGS.includes(k));
       if (extra.length) errors.push(w + ': unknown code keys ' + extra.join(', '));
+      if (!LANGS.some((l) => typeof x.code[l] === 'string')) errors.push(w + ': code needs at least one language');
       LANGS.forEach((l) => {
         const c = x.code[l];
+        if (c === undefined && !ALL_FIVE.has(t.id)) return;
         if (typeof c !== 'string' || c.trim().length < 40) { errors.push(w + ': code.' + l + ' is missing'); return; }
         if (/<\/script/i.test(c)) errors.push(w + ': code.' + l + ' contains </script');
         if (c.split('\n').length > 80) errors.push(w + ': code.' + l + ' is over 80 lines');
