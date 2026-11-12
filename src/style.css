@@ -1062,6 +1062,8 @@ svg.cp-ic{width:34px;height:34px;color:var(--gold)}
 pre{max-width:100%;min-width:0;overflow-x:auto}
 h1[tabindex="-1"]:focus,h2[tabindex="-1"]:focus{outline:none}
 @media (max-width:600px){.jnav{min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}.jnav::-webkit-scrollbar{display:none}.jnav a{flex:none}}
+/* Phones: the avatar already opens the passport, so its nav link is dropped to fit the other five without scrolling. */
+@media (max-width:600px){.jnav a[data-page="passport"]{display:none}.jnav{gap:2px}.jnav a{padding:0 10px}}
 /* language mode: the learner's language first, the other code languages behind one tab (src/engine.js codeTabs) */
 .ctab.more{color:var(--accent-fg);font-weight:500}
 .ctab.more[aria-expanded="true"]{color:var(--text)}
