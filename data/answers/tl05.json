@@ -1,0 +1,462 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "401 for who you are, 403 for what you may do",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    // Fake identity store: token -> user name, user -> roles\n    static Dictionary<string, string> tokens = new Dictionary<string, string> { { \"tok-priya\", \"priya\" }, { \"tok-sam\", \"sam\" } };\n    static Dictionary<string, string[]> roles = new Dictionary<string, string[]> { { \"priya\", new[] { \"Manager\" } }, { \"sam\", new string[0] } };\n\n    // Time O(1) per call, space O(1)\n    static int Handle(string token, string neededRole)\n    {\n        // Authentication: who are you?\n        string user;\n        if (token == null || !tokens.TryGetValue(token, out user)) return 401;\n        // Authorization: what may you do?\n        if (Array.IndexOf(roles[user], neededRole) < 0) return 403;\n        return 200;\n    }\n\n    static void Main()\n    {\n        string[] calls = { null, \"tok-bad\", \"tok-sam\", \"tok-priya\" };\n        foreach (string t in calls)\n            Console.WriteLine(\"token=\" + (t ?? \"none\") + \" needs Manager -> \" + Handle(t, \"Manager\"));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>401 is for failed authentication, 403 is for failed authorization. 401 means the API could not trust who you are (no token, expired, wrong audience). 403 means it knows exactly who you are and the answer is still no.</p><p>Example: no token gives 401; a valid token for Sam, who lacks the Manager role, gives 403. Fixing a 401 means getting a good token; fixing a 403 means changing permissions.</p>",
+    "<p>Yes, in a limited way: anonymous access. A public product page needs no sign-in, so no identity is checked, yet a rule still decides it (everyone may read). Authorization needs <em>some</em> subject to decide about, even if that subject is \"anonymous\".</p><p>What cannot work is a rule like \"only managers\" without knowing who the caller is. Any rule about a person depends on authentication first. In ASP.NET Core, <code>[AllowAnonymous]</code> is the explicit way to say \"no identity needed\".</p>",
+    "<p>From the validated token's claims, never from the request body or a header the client chose. After the JWT middleware verifies the signature, <code>HttpContext.User</code> holds the claims, and you read them with <code>User.FindFirst(\"name\")</code> or <code>User.Identity.Name</code>.</p><p>For a stable key use the <code>oid</code> claim, not the display name, because names can change and repeat. Reading it from the token is safe because the signature proves Entra ID wrote it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because OAuth 2.0 says nothing about who the user is; it only hands out access tokens that say what an app may do. An access token can be opaque and has no standard user information in it.</p><p>\"Sign in\" is the job of OpenID Connect, which adds the ID token and a standard <code>userinfo</code> endpoint. So the precise phrase is \"sign in with OpenID Connect (built on OAuth 2.0)\". Using an access token as proof of login is a classic mistake.</p>",
+    "<p>Choose SAML when a partner or product only supports SAML and cannot be changed, which is common with older enterprise software, some government systems and certain SaaS products that offer SSO only through SAML.</p><p>For a new React and .NET app you would pick OpenID Connect: JSON tokens, simpler libraries, and a natural fit for single-page apps and mobile. Entra ID can speak both, so you can keep a SAML app next to OIDC apps in the same tenant.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Only the access token is accepted by the API (audience check)",
+    "csharp": "using System;\n\nclass Token\n{\n    public string Kind;      // \"id\", \"access\" or \"refresh\"\n    public string Audience;  // who the token is meant for\n    public string Scope;\n}\n\nclass Program\n{\n    const string ApiAudience = \"api://orders\";\n\n    // Time O(1), space O(1)\n    static string ApiAccepts(Token t)\n    {\n        if (t.Kind == \"refresh\") return \"reject: refresh tokens only go to the token endpoint\";\n        if (t.Audience != ApiAudience) return \"reject 401: aud is \" + t.Audience + \", not \" + ApiAudience;\n        if (t.Kind == \"access\" && t.Scope == \"Orders.Read\") return \"accept: scope Orders.Read\";\n        return \"reject: wrong kind or scope\";\n    }\n\n    static void Main()\n    {\n        Token[] sent =\n        {\n            new Token { Kind = \"id\", Audience = \"client-app-id\" },\n            new Token { Kind = \"refresh\", Audience = \"token-endpoint\" },\n            new Token { Kind = \"access\", Audience = ApiAudience, Scope = \"Orders.Read\" },\n        };\n        foreach (var t in sent)\n            Console.WriteLine(t.Kind + \" token -> \" + ApiAccepts(t));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Because a refresh token is powerful: it can mint new access tokens for a long time. In a SPA it sits in the browser, where a script injection could steal it, so Entra ID gives it a fixed 24-hour life and does not extend it.</p><p>Server-side apps that keep the token on a protected server can have much longer refresh lifetimes. After 24 hours the SPA must send the user through sign-in again (often invisible if the Entra ID session is still alive).</p>",
+    "<p>It reads the ID token to learn who signed in: name, email, <code>oid</code>, and to show \"Hello Priya\". It validates the token (signature, <code>aud</code> equal to its own client id, <code>nonce</code>) and then uses it for the UI only.</p><p>It must never send the ID token to the API as a bearer token. Its <code>aud</code> is the client app, not the API, so the API rejects it with 401.</p>",
+    "<p>The <code>offline_access</code> scope. With MSAL you do not add it by hand: MSAL always includes <code>openid</code>, <code>profile</code> and <code>offline_access</code> for you.</p><p>Without it, the token response contains no refresh token and the user would have to sign in again when the access token expires, usually after about an hour.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Decode a JWT: three parts, and why decoding is not validating",
+    "csharp": "using System;\nusing System.Text;\n\nclass Program\n{\n    static string B64Url(string s)\n    {\n        return Convert.ToBase64String(Encoding.UTF8.GetBytes(s)).TrimEnd('=').Replace('+', '-').Replace('/', '_');\n    }\n\n    static string Decode(string part)\n    {\n        string p = part.Replace('-', '+').Replace('_', '/');\n        while (p.Length % 4 != 0) p += \"=\";            // restore Base64 padding\n        return Encoding.UTF8.GetString(Convert.FromBase64String(p));\n    }\n\n    // Time O(n) in token length, space O(n)\n    static void Main()\n    {\n        string header = \"{\\\"alg\\\":\\\"RS256\\\",\\\"kid\\\":\\\"key-1\\\"}\";\n        string payload = \"{\\\"iss\\\":\\\"https://issuer.example\\\",\\\"aud\\\":\\\"api://orders\\\",\\\"oid\\\":\\\"u-001\\\",\\\"exp\\\":1900000000}\";\n        string token = B64Url(header) + \".\" + B64Url(payload) + \".c2ln\";   // fake signature\n        Console.WriteLine(\"token  = \" + token);\n\n        string[] parts = token.Split('.');\n        Console.WriteLine(\"header = \" + Decode(parts[0]));\n        Console.WriteLine(\"payload= \" + Decode(parts[1]));\n        // Anyone can read this. Nothing here proved the signature is genuine.\n        Console.WriteLine(\"signature checked? NO - decoding is not validating\");\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>The <code>oid</code> (object id) claim, together with <code>tid</code> when you have several tenants. It is a GUID that never changes for a user in a tenant.</p><p>Do not use email, name or <code>preferred_username</code>: they can change or be reused. <code>sub</code> is also stable but is different per client app, so it cannot be matched across apps. Store <code>(tid, oid)</code> as the key in your database.</p>",
+    "<p>Decoding only reads the Base64URL text, which anyone can do. Validating proves the token is genuine and meant for you: the signature matches a trusted key, and <code>iss</code>, <code>aud</code>, <code>exp</code> and <code>nbf</code> are correct.</p><p>A forged token decodes perfectly well, so decoded claims are untrusted until the signature is verified. Sites like jwt.ms are for debugging, never for trust.</p>",
+    "<p><code>kid</code> is the key id: it tells the API which public key from the published key set to use to verify this token's signature. Entra ID has several signing keys at once and rotates them, so the API cannot assume one fixed key.</p><p>Lookup is a dictionary read: find the key with the same <code>kid</code> in the cached JWKS, then verify. An unknown <code>kid</code> usually means a rotation, so refresh the key set once.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Verify a signature locally with a cached public key by kid",
+    "csharp": "using System;\nusing System.Collections.Generic;\nusing System.Security.Cryptography;\nusing System.Text;\n\nclass Program\n{\n    static Dictionary<string, RSA> keyCache = new Dictionary<string, RSA>();   // kid -> public key\n    static int downloads = 0;\n\n    // Pretend JWKS download: only called when kid is unknown\n    static void RefreshKeys(Dictionary<string, RSA> published)\n    {\n        downloads++;\n        foreach (var kv in published) keyCache[kv.Key] = kv.Value;\n    }\n\n    // Verify is local CPU work: O(1) per token, no network\n    static bool Verify(string kid, byte[] data, byte[] sig, Dictionary<string, RSA> published)\n    {\n        if (!keyCache.ContainsKey(kid)) RefreshKeys(published);   // rotation: refresh once\n        if (!keyCache.ContainsKey(kid)) return false;\n        return keyCache[kid].VerifyData(data, sig, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);\n    }\n\n    static void Main()\n    {\n        RSA issuerKey = RSA.Create(2048);   // the identity provider's private key\n        var published = new Dictionary<string, RSA> { { \"key-1\", RSA.Create() } };\n        published[\"key-1\"].ImportParameters(issuerKey.ExportParameters(false));\n        byte[] data = Encoding.UTF8.GetBytes(\"header.payload\");\n        byte[] sig = issuerKey.SignData(data, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);\n\n        for (int i = 1; i <= 3; i++)\n            Console.WriteLine(\"request \" + i + \" valid=\" + Verify(\"key-1\", data, sig, published) + \" downloads=\" + downloads);\n        Console.WriteLine(\"unknown kid valid=\" + Verify(\"key-9\", data, sig, published) + \" downloads=\" + downloads);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Entra ID starts signing new tokens with a new key and a new <code>kid</code>. The API sees an unknown <code>kid</code>, refreshes the key set from the JWKS address, and carries on. The Microsoft libraries do this automatically.</p><p>Old keys stay published for a while, so tokens signed earlier still verify. This is why you never copy a key by hand: a rotation would break the API at once.</p>",
+    "<p>Because keys rotate, and a key in your code or config would stop working the day Entra ID changes it. Worse, it freezes your trust decision: if that key leaks or is replaced, you must redeploy.</p><p>Fetching keys from the discovery document keeps the trust anchored to the issuer address only, and refreshes itself.</p>",
+    "<p>The attacker is hoping the API accepts it without any signature. A safe API ignores the algorithm in the header: it only allows the algorithms it chose (for example RS256) and rejects <code>none</code> and anything unexpected with 401.</p><p>This was a real class of bugs in old libraries. In .NET set <code>ValidAlgorithms</code> if you want to be explicit, and never let the token pick the check.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Delegated scopes (scp) vs application roles (roles)",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    // Time O(k) for k claims, space O(1)\n    static string Describe(Dictionary<string, string> claims)\n    {\n        if (claims.ContainsKey(\"scp\"))\n            return \"user token (delegated): acting for \" + claims[\"oid\"] + \", scopes \" + claims[\"scp\"];\n        if (claims.ContainsKey(\"roles\"))\n            return \"app-only token: no user, app roles \" + claims[\"roles\"];\n        return \"no permissions claim: reject\";\n    }\n\n    static void Main()\n    {\n        var userToken = new Dictionary<string, string> { { \"oid\", \"priya\" }, { \"scp\", \"Orders.Read\" } };\n        var appToken = new Dictionary<string, string> { { \"oid\", \"job-service\" }, { \"roles\", \"Orders.ReadAll\" } };\n        var bare = new Dictionary<string, string> { { \"oid\", \"x\" } };\n\n        Console.WriteLine(Describe(userToken));\n        Console.WriteLine(Describe(appToken));\n        Console.WriteLine(Describe(bare));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>By the claims. A delegated (user) token has a <code>scp</code> claim and a user in <code>oid</code>; an app-only token has a <code>roles</code> claim and no <code>scp</code>. The <code>idtyp</code> claim (optional, <code>app</code> for app tokens) also helps.</p><p>This matters: an endpoint meant for users must not accept an app token by accident, and the other way round. Check the right claim in the policy.</p>",
+    "<p>Group ids are GUIDs that mean nothing in code, can change per tenant, and a user in many groups can overflow the token (it then carries a link instead of the list). App roles are named by you, like <code>Orders.Manager</code>, travel in the <code>roles</code> claim and are defined in your app registration.</p><p>Your code then checks a readable name, and an admin assigns users or groups to the role in the portal.</p>",
+    "<p><code>.default</code> means \"use all the permissions already granted to this app for that resource\". For client credentials you write <code>api://&lt;id&gt;/.default</code> because an app has no user to pick individual scopes.</p><p>The token's <code>roles</code> claim then lists exactly the app roles an admin consented to. You cannot ask for a role that was not granted.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>They are two different resources with different jobs. The API registration exposes scopes and app roles and is the audience (<code>aud</code>) of tokens. The SPA registration is the client: it has redirect addresses and asks for the API's scopes.</p><p>Separate apps mean separate permission, consent and secret handling, and the same API can later serve a mobile app or a daemon without changing the SPA's settings.</p>",
+    "<p>A managed identity is a service principal that Azure creates and manages for an Azure resource such as an App Service or Function. It has no app registration you maintain and no secret: Azure rotates the credentials for you.</p><p>You grant it roles (for example to Key Vault) in the same way as any other service principal.</p>",
+    "<p>On the enterprise application (the service principal) for the API: <b>Users and groups</b>, then <b>Add user/group</b>, choose the user and the app role. Assignments live in the tenant, not in the app registration.</p><p>If \"Assignment required\" is on, only assigned users can get a token at all. The role then appears in the <code>roles</code> claim at the next sign-in.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because an app permission (an app role) needs admin consent, and the token only contains roles that were granted. Adding the permission in the app registration only <em>requests</em> it. Until an admin clicks \"Grant admin consent\", it does not appear in tokens.</p><p>Also check that you asked for <code>.default</code> and that the token was requested after consent, not a cached one.</p>",
+    "<p>Asking for permissions only when the feature needs them, not all at sign-in. The app first asks for <code>openid profile</code>; later, when the user opens reports, it asks for <code>Reports.Read</code> and the user sees one small prompt.</p><p>With MSAL you simply pass the new scope to <code>acquireTokenSilent</code>; if consent is missing you get an interaction-required error and call the popup or redirect.</p>",
+    "<p>An app (usually the SPA) that you tell Entra ID is trusted to call your API, so the user is never asked to consent to that pair. You add the client id under \"Expose an API\" on the API registration.</p><p>It is useful when you own both apps: the user signs in once and sees no consent screen for your own API. It does not bypass the user's real permissions.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Multi-tenant issuer check: allow-list of tenants",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static HashSet<string> allowedTenants = new HashSet<string> { \"tenant-a\", \"tenant-b\" };\n\n    // Issuer must be the issuer pattern for the tenant id carried in the token itself.\n    // Time O(1), space O(1)\n    static string Validate(string iss, string tid)\n    {\n        string expected = \"https://login.example/\" + tid + \"/v2.0\";\n        if (iss != expected) return \"reject: issuer does not match tid\";\n        if (!allowedTenants.Contains(tid)) return \"reject: tenant not allowed\";\n        return \"accept tenant \" + tid;\n    }\n\n    static void Main()\n    {\n        Console.WriteLine(Validate(\"https://login.example/tenant-a/v2.0\", \"tenant-a\"));\n        Console.WriteLine(Validate(\"https://login.example/tenant-z/v2.0\", \"tenant-z\"));   // valid token, unknown customer\n        Console.WriteLine(Validate(\"https://login.example/tenant-a/v2.0\", \"tenant-b\"));   // tid lies about the issuer\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Any valid token from any issuer that signs correctly is accepted, including a token an attacker got from their own tenant. The signature would still be fine, because the attacker's tenant signs with its own genuine keys.</p><p>So in a multi-tenant API you can use a custom issuer validator, but never turn issuer validation off. Turning it off removes the main link between a token and the tenant you trust.</p>",
+    "<p>A guest (B2B) user signs in at their home tenant but is represented in yours. The token comes from <em>your</em> tenant, with <code>tid</code> as yours, an <code>oid</code> for the guest object in your directory, and often <code>idp</code> showing the home identity provider.</p><p>Treat guests with care: their roles and group membership come from your tenant, so manage those assignments deliberately.</p>",
+    "<p>Create a user in tenant A and order data for tenant B in the same database. Call the API with A's token and ask for B's order id, then expect 404 or 403, never the data. Also test with B's token on A's data.</p><p>Automate it as an integration test with fake tokens, and make sure every query filters on <code>tid</code> (an EF Core global query filter is a good safety net).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Pick the OAuth flow from two questions",
+    "csharp": "using System;\n\nclass Program\n{\n    // Time O(1), space O(1)\n    static string Pick(bool hasUser, bool canKeepSecret, bool noBrowser, bool callsOnBehalf)\n    {\n        if (callsOnBehalf) return \"On-behalf-of (swap the incoming user token)\";\n        if (!hasUser) return \"Client credentials (managed identity or certificate)\";\n        if (noBrowser) return \"Device code\";\n        return canKeepSecret ? \"Authorization code, confidential client\" : \"Authorization code + PKCE\";\n    }\n\n    static void Main()\n    {\n        Console.WriteLine(\"SPA calling API:     \" + Pick(true, false, false, false));\n        Console.WriteLine(\"Server web app:      \" + Pick(true, true, false, false));\n        Console.WriteLine(\"Nightly job:         \" + Pick(false, true, false, false));\n        Console.WriteLine(\"CLI on a server:     \" + Pick(true, false, true, false));\n        Console.WriteLine(\"API calls API as user: \" + Pick(true, true, false, true));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>A confidential client can keep a secret (a server-side web app or a daemon with a certificate). A public client cannot: anything shipped to a browser or device can be read by its user.</p><p>So a public client can't prove its identity with a secret; it uses PKCE and registered redirect addresses instead. Never put a client secret in React or Angular code.</p>",
+    "<p>Because the app is installed on the user's own phone, which they control. The binary can be decompiled and any secret inside extracted, so the secret protects nothing.</p><p>Mobile apps use authorization code with PKCE through the system browser, and the app is registered as a public client with its own redirect scheme.</p>",
+    "<p>When the user is told to type a code on another device, they can be tricked by an attacker who starts the flow and sends them the code (device-code phishing). The user then approves a token that goes to the attacker.</p><p>Use it only for devices that truly lack a browser, and consider blocking it with Conditional Access where nobody needs it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "PKCE: verifier, challenge and the server check",
+    "csharp": "using System;\nusing System.Security.Cryptography;\nusing System.Text;\n\nclass Program\n{\n    static string B64Url(byte[] b)\n    {\n        return Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');\n    }\n\n    static string Challenge(string verifier)\n    {\n        using (var sha = SHA256.Create())\n            return B64Url(sha.ComputeHash(Encoding.ASCII.GetBytes(verifier)));   // S256\n    }\n\n    // Time O(n) for hashing a short string, space O(1)\n    static void Main()\n    {\n        // 1. The app makes a random secret and keeps it, sends only the hash\n        var rnd = new byte[32];\n        using (var r = RandomNumberGenerator.Create()) r.GetBytes(rnd);\n        string verifier = B64Url(rnd);\n        string challenge = Challenge(verifier);\n        Console.WriteLine(\"code_challenge sent in the browser: \" + challenge);\n\n        // 2. The server stored the challenge with the issued code. Later it checks the verifier.\n        Console.WriteLine(\"real app redeems code: \" + (Challenge(verifier) == challenge));\n        Console.WriteLine(\"thief with stolen code, no verifier: \" + (Challenge(\"guess\") == challenge));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>HTTPS protects the wire, not the end points. The authorization code travels through the browser, where another app, an extension or a redirect handler could copy it. PKCE makes a stolen code useless, because redeeming it needs the verifier that never left the app.</p><p>It stops code interception, not eavesdropping on the connection.</p>",
+    "<p>The browser is the only link between Entra ID and the app, so the code has to go through it as a redirect. But the browser is also where logs, history and extensions live, so the code is made short-lived and single-use.</p><p>Tokens are returned in a direct back-channel call (HTTPS POST from the app to the token endpoint), never in the URL, so they don't leak into history or referrer headers.</p>",
+    "<p>Technically they have a secret, so they are protected already. But current guidance (OAuth 2.1) says use PKCE for all clients: it also defends against code injection and costs nothing.</p><p>MSAL for web apps (Microsoft.Identity.Web) enables it by default.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Steps: (1) find every place that sends <code>response_type=token</code> and which API it calls; (2) register the app as a SPA in Entra ID and enable authorization code with PKCE; (3) switch to MSAL.js v2 or later; (4) test sign-in, silent renewal and logout; (5) turn off the implicit grant checkboxes in the registration and deploy.</p><p>Do it per app, with a rollback plan, and tell users the redirect addresses may change.</p>",
+    "<p>Almost never. It is blocked when multi-factor authentication is required, doesn't work with federated or passkey users, and teaches users to type their password into your app. Microsoft recommends against it.</p><p>The only cases are old automation where nothing else works, in a test tenant with no MFA. Even there, prefer client credentials or a managed identity.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "state and nonce checks on the sign-in response",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static string savedState = \"s-123\";   // kept by the app before the redirect\n    static string savedNonce = \"n-456\";\n\n    // Time O(1), space O(1)\n    static string CheckRedirect(string returnedState, string idTokenNonce)\n    {\n        if (returnedState != savedState) return \"reject: state mismatch (forged redirect, CSRF)\";\n        if (idTokenNonce != savedNonce) return \"reject: nonce mismatch (replayed ID token)\";\n        return \"accept: sign-in completes\";\n    }\n\n    static void Main()\n    {\n        Console.WriteLine(\"good response:       \" + CheckRedirect(\"s-123\", \"n-456\"));\n        Console.WriteLine(\"attacker's response: \" + CheckRedirect(\"s-999\", \"n-456\"));\n        Console.WriteLine(\"replayed old token:  \" + CheckRedirect(\"s-123\", \"n-000\"));\n        // PKCE is a third guard: it protects the code exchange, not this redirect\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>An attacker starts a sign-in with their own account, then gets the victim's browser to finish it with the attacker's response. The victim ends up signed in as the attacker and may enter private data into the attacker's account.</p><p>The <code>state</code> value defeats it: the victim's browser has no matching saved state, so the response is rejected.</p>",
+    "<p>MSAL stores them in the browser cache (sessionStorage by default) before the page leaves for the sign-in site, then reads them when the page returns and <code>handleRedirectPromise</code> runs. They are keyed to the request so parallel requests don't clash.</p><p>You don't handle them yourself; if storage is wiped during sign-in you get a state or nonce error.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "The checks an API runs on every token",
+    "csharp": "using System;\n\nclass Jwt\n{\n    public string Iss, Aud, Scp;\n    public long Exp, Nbf;\n    public bool SignatureOk;\n}\n\nclass Program\n{\n    const long SkewSeconds = 300;   // 5 minutes tolerance\n\n    // Time O(1), space O(1); no memory of earlier requests\n    static string Validate(Jwt t, long now)\n    {\n        if (!t.SignatureOk) return \"401 bad signature\";\n        if (t.Iss != \"https://issuer.example/tenant/v2.0\") return \"401 wrong issuer\";\n        if (t.Aud != \"api://orders\") return \"401 wrong audience\";\n        if (now > t.Exp + SkewSeconds) return \"401 expired\";\n        if (now + SkewSeconds < t.Nbf) return \"401 not valid yet\";\n        if (t.Scp != \"Orders.Read\") return \"403 missing scope\";\n        return \"200 OK\";\n    }\n\n    static void Main()\n    {\n        long now = 1000000;\n        var good = new Jwt { SignatureOk = true, Iss = \"https://issuer.example/tenant/v2.0\", Aud = \"api://orders\", Scp = \"Orders.Read\", Exp = now + 3600, Nbf = now - 10 };\n        Console.WriteLine(\"good:    \" + Validate(good, now));\n        Console.WriteLine(\"expired: \" + Validate(good, now + 4000));\n        good.Aud = \"api://other\";\n        Console.WriteLine(\"wrong aud: \" + Validate(good, now));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Only refreshing the signing keys, and only when the cache is empty or the <code>kid</code> is unknown. All the claim checks (issuer, audience, expiry) are local. Normally a request involves no call to Entra ID at all.</p><p>Resource-based checks, such as loading the order from your own database, are calls too, but they are your own.</p>",
+    "<p>5 minutes in the Microsoft libraries. Clocks on different machines never agree exactly, so without a tolerance a token created a second \"in the future\" or expired a second ago would be rejected randomly.</p><p>Five minutes is a trade-off: small enough to be safe, large enough to absorb normal drift. You can lower <code>ClockSkew</code> if your servers use time sync.</p>",
+    "<p>\"A user can only read their own order\": the check needs the order loaded from the database, to compare its owner with the caller's <code>oid</code>. Another: \"a manager may approve only invoices below their limit\".</p><p>This cannot be an attribute on the endpoint, because the decision depends on the data, so use <code>IAuthorizationService</code> with the loaded resource.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A BFF with an HttpOnly, Secure, SameSite cookie, and tokens kept on the server. The browser holds nothing JavaScript can read, so an XSS bug cannot copy a token to send away.</p><p>The cost is a server component and CSRF protection. For banking the extra security is worth it.</p>",
+    "<p>No. If an attacker can run script in your page, they can read the key from the same page, or they just call the API from inside the page with the stored token. Encryption in the browser protects against nothing here, because the code that decrypts it is also reachable by the attacker.</p><p>The real defences are stopping XSS (CSP, output encoding) and keeping tokens out of reach of script.</p>",
+    "<p>Single sign-on. When the SPA needs a token and the app has none, a redirect to Entra ID finds the session cookie and returns a code instantly, with no password prompt. It also lets a second app in the same browser sign in silently.</p><p>It lives on the Microsoft sign-in site, not on your domain, and ends on logout or after its lifetime.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Server session lookup vs signed token, and revocation",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static Dictionary<string, string> sessions = new Dictionary<string, string>();   // session id -> user\n    static HashSet<string> deny = new HashSet<string>();\n\n    static void Main()\n    {\n        // Session id: the server stores the data and can delete it at once\n        sessions[\"abc123\"] = \"priya\";\n        Console.WriteLine(\"session lookup: \" + (sessions.ContainsKey(\"abc123\") ? sessions[\"abc123\"] : \"none\"));\n        sessions.Remove(\"abc123\");   // revoke = delete\n        Console.WriteLine(\"after revoke:   \" + (sessions.ContainsKey(\"abc123\") ? sessions[\"abc123\"] : \"none\"));\n\n        // JWT: the data is inside, the server checks only expiry (here a fake clock)\n        long now = 100, exp = 3700;\n        Console.WriteLine(\"jwt valid at t=100:   \" + (now < exp));\n        Console.WriteLine(\"jwt still valid at t=3000 after 'revoke': \" + (3000 < exp));\n        // To revoke a JWT early you need a deny list: extra state again\n        deny.Add(\"jti-1\");\n        Console.WriteLine(\"deny list size: \" + deny.Count);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>A BFF needs a server that runs all the time, adds a hop for every API call, must be scaled and secured, and ties the front end to it. You also need CSRF protection and session storage.</p><p>In return the browser never sees a token. For a simple internal app a SPA with MSAL is often enough; for sensitive data the BFF is worth the cost.</p>",
+    "<p>Move the sessions out of each server's memory into a shared store such as Redis or SQL (<code>IDistributedCache</code>), so any of the 10 servers can read any session. Or store the whole session in an encrypted cookie. Sticky sessions also work but fail when a server dies.</p><p>Remember the store becomes a dependency: if it is down, nobody can sign in.</p>",
+    "<p>A browser adds cookies automatically, so another site can make it send a request with your cookie. A bearer token in the <code>Authorization</code> header is added only by your own JavaScript, and a foreign site cannot read it or add it.</p><p>The trade-off: bearer tokens avoid CSRF but must live where script can reach them, so XSS becomes the main danger.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "acquireTokenSilent: cache first, refresh when expired",
+    "js": "// Fake MSAL-style cache with a controllable clock. Time O(1), space O(1).\nlet now = 0;                       // seconds\nlet cache = { token: \"at-1\", expiresAt: 3600 };\nlet refreshCalls = 0;\n\nfunction refreshWithRefreshToken() {\n  refreshCalls++;\n  return { token: \"at-\" + (refreshCalls + 1), expiresAt: now + 3600 };\n}\n\nfunction acquireTokenSilent() {\n  // Return the cached token while it is still good (with 5 minutes margin)\n  if (cache && cache.expiresAt - now > 300) return cache.token + \" (from cache)\";\n  // Otherwise use the refresh token, no user action needed\n  cache = refreshWithRefreshToken();\n  return cache.token + \" (renewed)\";\n}\n\nfor (const t of [0, 1800, 3400, 3700, 3800]) {\n  now = t;\n  console.log(\"t=\" + t + \"s -> \" + acquireTokenSilent());\n}\nconsole.log(\"refresh calls made: \" + refreshCalls);\n"
+   },
+   "followUps": [
+    "<p>The refresh token expires (24 hours for a SPA) and silent renewal fails with an interaction-required error. The app then calls <code>acquireTokenRedirect</code> or the popup. If the Entra ID session cookie is still alive, the user sees no password prompt, just a quick bounce.</p><p>If the session is gone too, they sign in again.</p>",
+    "<p>A 401 can mean the new token also fails, for example the audience is wrong or the account was disabled. Retrying forever would hammer the API and the identity service and never succeed.</p><p>So refresh once, repeat the request once, and if it is still 401, send the user to sign in or show an error. Use a retry flag on the request.</p>",
+    "<p>Browsers that block third-party cookies stop the hidden iframe from seeing the Entra ID session cookie, so iframe-based silent sign-in fails. Silent renewal with the refresh token is a plain HTTPS call and works without cookies.</p><p>So renewal is fine while the refresh token lives; only the \"get a brand new session silently\" case needs a visible redirect.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Opaque token introspection with a short cache",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Info { public string User; public string Tenant; public long CachedUntil; }\n\nclass Program\n{\n    static int identityCalls = 0;\n    static Dictionary<string, Info> cache = new Dictionary<string, Info>();\n\n    // The identity service (\"who is this?\"); the token itself says nothing\n    static Info Introspect(string token)\n    {\n        identityCalls++;\n        return token == \"sess-777\" ? new Info { User = \"priya\", Tenant = \"t1\" } : null;\n    }\n\n    // Time O(1) average, space O(n) for n cached tokens\n    static string Authenticate(string token, long now)\n    {\n        Info i;\n        if (!cache.TryGetValue(token, out i) || i.CachedUntil < now)\n        {\n            i = Introspect(token);\n            if (i == null) return \"401\";\n            i.CachedUntil = now + 30;      // short TTL limits the revocation delay\n            cache[token] = i;\n        }\n        return i.User + \"@\" + i.Tenant;\n    }\n\n    static void Main()\n    {\n        long[] times = { 0, 5, 10, 40 };\n        foreach (long t in times) Console.WriteLine(\"t=\" + t + \" -> \" + Authenticate(\"sess-777\", t));\n        Console.WriteLine(\"bad token -> \" + Authenticate(\"nope\", 0));\n        Console.WriteLine(\"identity service calls: \" + identityCalls);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Cache by token for a short time (a few seconds to a minute), only for successful results, and never longer than the token's own lifetime. Include the tenant in the key. The cache time is exactly how long a revoked session may still work, so pick it on purpose.</p><p>Use an in-memory cache with an expiry, or Redis if there are many servers. For negative answers, cache briefly to avoid load from bad tokens.</p>",
+    "<p>Only the edge (a gateway or the first service) deals with the raw credential. It validates once and then passes a small, trusted context (user id, tenant, roles) to services behind it, usually in internal headers or an internal token.</p><p>Inner services trust that context only because the network or signing guarantees it came from the edge. Everything must be impossible to send from outside.</p>",
+    "<p>Yes. A common design: JWT for the outer, short-lived access, with the issuer also able to introspect for high-risk calls; or opaque reference tokens at the edge that a gateway swaps for JWTs inside (token exchange).</p><p>The point is to get the benefits of both: JWT speed and statelessness inside, central control at the edge.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Short access tokens plus a deny list bound the damage",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static HashSet<string> deniedSessions = new HashSet<string>();\n\n    // A JWT is checked by expiry; the optional deny list adds one lookup. O(1) time.\n    static string Check(string sid, long exp, long now)\n    {\n        if (now >= exp) return \"401 expired\";\n        if (deniedSessions.Contains(sid)) return \"401 revoked\";\n        return \"200 OK\";\n    }\n\n    static void Main()\n    {\n        long issued = 0, exp = 3600;   // 60 minute token\n        Console.WriteLine(\"t=100 normal:           \" + Check(\"s1\", exp, 100));\n        // account disabled at t=200, refresh tokens are stopped by the identity provider\n        Console.WriteLine(\"t=300 no deny list:     \" + Check(\"s1\", exp, 300) + \"  <- still works until expiry\");\n        deniedSessions.Add(\"s1\");\n        Console.WriteLine(\"t=300 with deny list:   \" + Check(\"s1\", exp, 300));\n        Console.WriteLine(\"t=4000 expired anyway:  \" + Check(\"s2\", exp, 4000));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>First, revoke sign-in sessions for the user (Entra ID: revoke sessions, which kills refresh tokens), reset the password and disable the account if needed. Second, cut the access window: the stolen access token works until it expires, so keep tokens short and use CAE where supported. Third, remove device-bound secrets, check sign-in logs, and tell security.</p><p>After 10:00 plus the access token lifetime, nothing from that laptop works.</p>",
+    "<p>That only removes your copy. The attacker (or malware) may already have copied the token, and the identity provider's session and refresh token are still valid. Deleting local data is a logout, not a revocation.</p><p>Real revocation happens on the server side: end the session, disable refresh tokens, and make the API reject the old one.</p>",
+    "<p>A lookup on every request and a store that must be fast and shared by all servers. You also have to keep the entries until each token expires, and the store becomes a single point of failure. It reintroduces the state you chose JWTs to avoid.</p><p>Keep it tiny: store only revoked ids until their <code>exp</code> and use a distributed cache.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>System-assigned is created with the resource and deleted with it; one resource, one identity. User-assigned is a separate Azure resource that you can attach to many resources and that survives their deletion.</p><p>Use system-assigned for simple one-to-one cases, and user-assigned when several apps need the same permissions or when you want to create the identity and its role assignments before the app exists.</p>",
+    "<p>A certificate's private key can be stored in a vault and never shown, it lasts a defined time, and the app proves possession by signing rather than sending a shared password. A client secret is a string that gets pasted into configs, chats and logs, and is easy to leak.</p><p>Best of all, use a managed identity so there is nothing to store.</p>",
+    "<p>The downstream API receives a token with the user's permissions that was meant for the first API (wrong audience), and a leaked or confused token could be reused against more services. Forwarding also skips the downstream's own consent and scopes.</p><p>On-behalf-of swaps the incoming token for a new one issued for the downstream API, with its audience and scopes, keeping the user's identity.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Don't treat it as a plain failure. Read the <code>WWW-Authenticate</code> header, get the <code>claims</code> value, and pass it to MSAL (<code>claims</code> parameter on the token request), which sends the user through the required step such as MFA. Then retry the original request once with the new token.</p><p>A normal 401 handler that just refreshes the same token would loop forever.</p>",
+    "<p>Use Conditional Access authentication context. Define an auth context (for example \"c1\") that requires MFA, apply the policy to it, and make the refund endpoint demand it. If the token lacks it, the API answers 401 with a claims challenge naming the context, and the client steps up.</p><p>Other endpoints stay without the extra prompt. It is step-up authentication per operation.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A client-side guard can be skipped; only the server check counts",
+    "js": "// Time O(1), space O(1)\nconst user = { name: \"sam\", roles: [] };\n\n// Client side: improves the experience only\nfunction routeGuard(u) { return u.roles.includes(\"Admin\"); }\n\n// Server side: the real protection, runs on a machine the user does not control\nfunction apiDeleteAllOrders(callerRoles) {\n  return callerRoles.includes(\"Admin\") ? \"200 deleted\" : \"403 forbidden\";\n}\n\nconsole.log(\"guard lets sam see the admin page? \" + routeGuard(user));\n\n// A tester (or attacker) ignores the app and calls the API directly, like curl\nconsole.log(\"curl as sam           -> \" + apiDeleteAllOrders(user.roles));\n\n// Or edits the front end in the browser console so the guard says yes\nconst tampered = { name: \"sam\", roles: [\"Admin\"] };\nconsole.log(\"guard after tampering -> \" + routeGuard(tampered));\nconsole.log(\"API with the real token roles -> \" + apiDeleteAllOrders(user.roles));\n"
+   },
+   "followUps": [
+    "<p>Call the admin endpoints directly with curl or Postman using no token (expect 401), then a normal user's token (expect 403), then an admin token (expect 200). Use the tool, not the UI. Also try another tenant's or user's ids.</p><p>Automate these as integration tests, so a missing <code>[Authorize]</code> is caught before release.</p>",
+    "<p>Yes, for the user experience only: showing or hiding buttons and menus. The ID token or a roles claim tells the UI what to show.</p><p>But the decision is never made there. Anyone can change what the UI shows, so the API must check roles itself on every request using the access token.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It runs in the browser, where code and any secret can be read by the user. A public client cannot prove its identity with a secret, so it relies on PKCE and exact redirect addresses. In MSAL the class is <code>PublicClientApplication</code>.</p><p>A server-side app that can protect a secret or certificate is a confidential client.</p>",
+    "<p>In the app registration, under Authentication, add the redirect URI as a platform of type \"Single-page application\" (for example <code>http://localhost:3000</code> for dev and your real https address for production). It must match <code>redirectUri</code> exactly, including scheme and port.</p><p>A mismatch gives the AADSTS50011 error. Also expose the API scope and add it to the SPA's permissions.</p>",
+    "<p>It finishes a redirect sign-in. When the page loads after returning from Entra ID, it reads the code from the URL, exchanges it for tokens, stores them and returns the result (or null if this load was not a redirect).</p><p>Call it once at startup, before you render, and await it. In msal-react the provider does this for you.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "One request interceptor adds the token to every call",
+    "js": "// A tiny HTTP client with interceptors (like axios). Time O(i) per call for i interceptors.\nconst interceptors = [];\nconst client = {\n  use(fn) { interceptors.push(fn); },\n  async get(url) {\n    let req = { url, headers: {} };\n    for (const fn of interceptors) req = await fn(req);   // each can change the request\n    return \"GET \" + req.url + \" headers=\" + JSON.stringify(req.headers);\n  }\n};\n\n// Stand-in for acquireTokenSilent\nasync function getAccessToken() { return \"eyJ.fake.token\"; }\n\nclient.use(async (req) => {\n  // Only our own API gets the token. Never send it to a third party.\n  if (req.url.startsWith(\"https://api.contoso.example/\")) {\n    req.headers.Authorization = \"Bearer \" + (await getAccessToken());\n  }\n  req.headers[\"X-Correlation-ID\"] = \"id-\" + (req.url.length);\n  return req;\n});\n\n(async () => {\n  console.log(await client.get(\"https://api.contoso.example/orders\"));\n  console.log(await client.get(\"https://cdn.other.example/logo.png\"));\n})();\n"
+   },
+   "followUps": [
+    "<p>Because the token is a key. Any site that receives it can call your API as the user until it expires. A request to a CDN, analytics service or a typo-squatted address would leak it.</p><p>Check the destination in the interceptor (exact origin, not a substring) and attach the token only to your own API.</p>",
+    "<p>403 means the user is known but not allowed. A new token has the same permissions, so every retry fails the same way and only adds load. Retry only for 401 (once, after refresh) and for temporary errors like 503 or 429 with backoff.</p><p>For 403, show a clear \"no access\" message.</p>",
+    "<p>Interceptors for axios or HttpClient don't cover <code>fetch</code>, so wrap it: write one <code>apiFetch(url, options)</code> function that gets the token and adds the header, and ban raw <code>fetch</code> for your API in code review or lint rules.</p><p>For streaming or long calls (SSE, WebSocket), get the token before starting; a long connection won't pick up a renewed token, so reconnect or send the token again before it expires.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Angular's <code>HttpRequest</code> is immutable. You cannot change headers on the original, so you call <code>req.clone({ setHeaders: { Authorization: ... } })</code> and pass the copy to <code>next.handle</code>.</p><p>This also keeps other interceptors and retries safe from surprising edits to the same object.</p>",
+    "<p>They run in the order they are provided for the request, and in the reverse order for the response. Put the one that adds the token before the one that handles 401, and keep logging near the outside so it sees the final result.</p><p>With the functional style, the order of the list in <code>withInterceptors([a, b, c])</code> is the order.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Single-flight refresh: five 401s trigger one token call",
+    "js": "// Time O(1) per caller, space O(1). One shared promise is the whole trick.\nlet refreshCalls = 0;\nlet refreshing = null;\n\nfunction getNewToken() {\n  refreshCalls++;\n  return new Promise((resolve) => setTimeout(() => resolve(\"new-token\"), 50));\n}\n\nfunction refreshOnce() {\n  if (!refreshing) {\n    refreshing = getNewToken().finally(() => { refreshing = null; });\n  }\n  return refreshing;   // everyone awaits the same promise\n}\n\nasync function callApi(id) {\n  // pretend the first try failed with 401, so we refresh and retry once\n  const token = await refreshOnce();\n  return \"request \" + id + \" retried with \" + token;\n}\n\n(async () => {\n  const results = await Promise.all([1, 2, 3, 4, 5].map(callApi));\n  results.forEach((r) => console.log(r));\n  console.log(\"token refresh calls: \" + refreshCalls);\n})();\n"
+   },
+   "followUps": [
+    "<p>Each tab has its own JavaScript, so the promise trick works only inside one tab. With the MSAL cache in localStorage the tabs share tokens, and MSAL uses a lock/broadcast so tabs usually do not all refresh at once. With sessionStorage each tab has its own cache and refreshes alone.</p><p>Occasional duplicate refreshes are harmless as long as the refresh token is not single-use.</p>",
+    "<p>Then every waiting request must fail the same way: reject the shared promise once, clear it, and send the user to sign in. Do not retry in a loop. Make sure all five requests get the same error and only one sign-in redirect starts.</p><p>The <code>finally</code> in the code clears the stored promise so a later attempt can try again.</p>",
+    "<p>Yes, partly. MSAL de-duplicates identical silent token requests that are already in flight for the same scopes and account, so parallel <code>acquireTokenSilent</code> calls share one network call.</p><p>You still want your own single-flight around the retry logic, because the 401 handling (forcing a refresh and replaying requests) is your code, not MSAL's.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It means a sign-in is already running (popup open, or a redirect not yet handled) and you started another. MSAL allows only one interactive request at a time.</p><p>Fix it by awaiting <code>handleRedirectPromise</code> before any call, disabling the login button while busy, and clearing the stuck flag with care if a user closed the popup.</p>",
+    "<p>Save the current path before starting login (in <code>state</code>, using MSAL's <code>state</code> option, or in storage) and navigate to it after <code>handleRedirectPromise</code> returns. MSAL's <code>navigateToLoginRequestUrl</code> option does this by default.</p><p>Don't put sensitive data in that value; treat it as untrusted and allow only your own paths.</p>",
+    "<p>A BFF handles the sign-in on the server and uses a first-party cookie on your own domain, not a hidden iframe on a third-party domain. Tokens and refresh happen server-side, so the browser's cookie rules don't affect them.</p><p>That is one of the reasons BFF is popular after browsers began blocking third-party cookies.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Middleware order: authentication before authorization",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Ctx { public string Token; public string User; public bool NeedsAuth = true; public string Result; }\n\nclass Program\n{\n    delegate void Next();\n\n    static void Main()\n    {\n        Console.WriteLine(\"correct order:  \" + Run(new[] { \"authn\", \"authz\" }, \"tok-priya\"));\n        Console.WriteLine(\"authz first:    \" + Run(new[] { \"authz\", \"authn\" }, \"tok-priya\"));\n        Console.WriteLine(\"no token:       \" + Run(new[] { \"authn\", \"authz\" }, null));\n    }\n\n    // Time O(m) for m middlewares, space O(m)\n    static string Run(string[] order, string token)\n    {\n        var c = new Ctx { Token = token };\n        int i = 0;\n        Next next = null;\n        next = () =>\n        {\n            if (c.Result != null) return;\n            if (i >= order.Length) { c.Result = \"200 endpoint ran for \" + c.User; return; }\n            string name = order[i++];\n            if (name == \"authn\") { if (c.Token == \"tok-priya\") c.User = \"priya\"; }   // fills User\n            else if (c.NeedsAuth && c.User == null) { c.Result = \"401 (authz saw no user)\"; return; }\n            next();\n        };\n        next();\n        return c.Result;\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Authorization runs while <code>HttpContext.User</code> is still empty, so every protected endpoint sees an anonymous user and answers 401 even with a perfect token. The authentication step must come first, because it is what fills <code>User</code>.</p><p>The right order is routing, then <code>UseAuthentication()</code>, then <code>UseAuthorization()</code>, then the endpoints.</p>",
+    "<p>It is open to everyone, unless you set a fallback policy. Without <code>[Authorize]</code>, no requirement is attached, so anonymous callers get in. That is why people add a <code>FallbackPolicy</code> that requires an authenticated user, then mark public endpoints with <code>[AllowAnonymous]</code>.</p><p>Secure by default is safer than remembering to add an attribute each time.</p>",
+    "<p>With <code>RequireAuthorization()</code> on the endpoint or on a group: <code>app.MapGet(\"/orders\", handler).RequireAuthorization(\"Orders.Read\")</code>, and <code>AllowAnonymous()</code> for public ones. A <code>MapGroup(\"/api\").RequireAuthorization()</code> secures all endpoints in the group at once.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>DefaultPolicy is used for <code>[Authorize]</code> without a policy name (by default \"must be authenticated\"). FallbackPolicy applies to endpoints that have <em>no</em> authorization metadata at all. Setting the fallback to \"authenticated user\" locks the whole API unless you mark exceptions.</p><p>The two can differ: change the default to require a scope and the fallback to only authentication.</p>",
+    "<p>On the individual endpoint or controller that must be public, such as health checks, login callbacks or a public catalog. Don't put it on a base class by accident, because it would open all derived controllers.</p><p>Also remember that <code>[AllowAnonymous]</code> overrides <code>[Authorize]</code> on the same endpoint.</p>",
+    "<p>It sets sensible defaults (audience, issuer, token validation for the v2 tokens), integrates with the Microsoft identity platform (key rotation, tenants, app roles), gives helpers like <code>GetObjectId()</code> and <code>RequiredScope</code>, and supports downstream API calls and on-behalf-of.</p><p>Plain <code>AddJwtBearer</code> can do the same, but you must configure each check yourself.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Resource-based check: the order must belong to the caller",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Order { public int Id; public string Tenant; public string OwnerOid; }\n\nclass Program\n{\n    static List<Order> db = new List<Order>\n    {\n        new Order { Id = 1, Tenant = \"t1\", OwnerOid = \"priya\" },\n        new Order { Id = 2, Tenant = \"t1\", OwnerOid = \"sam\" },\n        new Order { Id = 3, Tenant = \"t2\", OwnerOid = \"priya\" },\n    };\n\n    // Time O(n) scan here (indexed lookup in a real database), space O(1)\n    static string Get(string tid, string oid, int id)\n    {\n        Order o = db.Find(x => x.Id == id && x.Tenant == tid);   // tenant filter first\n        if (o == null) return \"404 not found\";\n        if (o.OwnerOid != oid) return \"404 not found\";           // hide that it exists\n        return \"200 order \" + o.Id;\n    }\n\n    static void Main()\n    {\n        Console.WriteLine(\"priya reads order 1: \" + Get(\"t1\", \"priya\", 1));\n        Console.WriteLine(\"priya reads order 2: \" + Get(\"t1\", \"priya\", 2));   // sam's order\n        Console.WriteLine(\"priya reads order 3: \" + Get(\"t1\", \"priya\", 3));   // other tenant\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Often 404 for records the caller should not even know about, because 403 confirms that the id exists and lets someone scan ids. Use 403 when the caller knows the resource exists and the rule is clear (for example they can see the order but not cancel it).</p><p>Pick one rule and apply it everywhere, and log the denied attempt either way.</p>",
+    "<p>Inject <code>IHttpContextAccessor</code> and read <code>HttpContext.User</code>, or better, wrap it in a small <code>ICurrentUser</code> service registered as scoped, which exposes <code>Oid</code> and <code>Tid</code>. Services then depend on the interface and are easy to test.</p><p>In background jobs there is no HTTP context, so pass the user id explicitly.</p>",
+    "<p>Unit test the rule with fake data: owner gets 200, another user gets 404/403, other tenant gets 404. Then an integration test with <code>WebApplicationFactory</code> and a test authentication handler that creates a claims principal with chosen <code>oid</code> and <code>tid</code>.</p><p>Test the failing cases first; they are the security promise.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A policy passes when any handler succeeds and none fails",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Caller { public string[] Roles; public decimal RefundLimit; public bool Mfa; }\n\nclass Program\n{\n    // Each handler returns: 1 = succeed, 0 = no opinion, -1 = explicit fail\n    delegate int Handler(Caller c, decimal amount);\n\n    // Time O(h) for h handlers, space O(1)\n    static bool CanRefund(Caller c, decimal amount, List<Handler> handlers)\n    {\n        bool anySucceed = false;\n        foreach (var h in handlers)\n        {\n            int r = h(c, amount);\n            if (r < 0) return false;   // an explicit fail always wins\n            if (r > 0) anySucceed = true;\n        }\n        return anySucceed;\n    }\n\n    static void Main()\n    {\n        var handlers = new List<Handler>\n        {\n            (c, a) => Array.IndexOf(c.Roles, \"Manager\") >= 0 ? 1 : 0,\n            (c, a) => a <= c.RefundLimit ? 1 : -1,        // limit is a hard rule\n            (c, a) => a > 500 && !c.Mfa ? -1 : 0,         // big refunds need MFA\n        };\n        var priya = new Caller { Roles = new[] { \"Manager\" }, RefundLimit = 1000, Mfa = true };\n        Console.WriteLine(\"refund 200:  \" + CanRefund(priya, 200, handlers));\n        Console.WriteLine(\"refund 2000: \" + CanRefund(priya, 2000, handlers));\n        priya.Mfa = false;\n        Console.WriteLine(\"refund 700 without MFA: \" + CanRefund(priya, 700, handlers));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>If any handler calls <code>Fail()</code> the requirement fails. Otherwise it succeeds if at least one handler called <code>Succeed</code>. Handlers that do nothing are ignored, and all requirements in a policy must pass.</p><p>That lets you add an \"OR\" with several handlers and a hard \"NO\" with a failing one.</p>",
+    "<p>Write a requirement and a handler that load the user's permissions through a service (cached) and check them against the endpoint's needed permission, or use a claims transformation that adds permission claims when the user is authenticated.</p><p>Keep the lookup cached per request or for a short time, since it runs on every call.</p>",
+    "<p>Rules end up copied everywhere, are hard to change (a rename means editing many files), and are hard to test. A new rule like \"managers in Finance only\" needs edits across controllers.</p><p>A named policy keeps the rule in one place; the controller says what it needs, not how it is decided.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Since .NET 8, the JsonWebToken handler (<code>JsonWebTokenHandler</code>) is the default in JwtBearer. It is faster and allocates less than the older <code>JwtSecurityTokenHandler</code>.</p><p>One visible difference is that the validated token is a <code>JsonWebToken</code>, not a <code>JwtSecurityToken</code>, so code that casts it needs to change.</p>",
+    "<p>It tells ASP.NET Core which claim type holds role names, so that <code>[Authorize(Roles=\"Admin\")]</code> and <code>User.IsInRole</code> work. Entra ID puts roles in the <code>roles</code> claim, whereas the default role claim type is a long Microsoft URI.</p><p>If you turn off inbound claim mapping, set <code>RoleClaimType = \"roles\"</code> or role checks silently fail.</p>",
+    "<p>Each new manager would download the metadata and keys again and cache nothing, so you would call the identity provider on every request. That is slow, may hit rate limits, and a failure there breaks sign-in.</p><p>Use one shared instance (the JwtBearer middleware holds it for you) so keys are cached and refreshed on a schedule.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A function key is a shared secret in a URL or header. It says nothing about which person or app is calling, cannot carry roles or expire per user, and when it leaks anyone can use it until you rotate it for everybody.</p><p>It is fine as an extra gate for service-to-service, but user access needs a real identity token.</p>",
+    "<p>They are triggered by Azure itself, not by a caller with a token. The Function connects to the queue or storage using its managed identity (or a connection setting) with a role such as Storage Queue Data Message Processor.</p><p>The message content is data to validate, not proof of who sent it, unless it is signed.</p>",
+    "<p>Make that one function <code>AuthorizationLevel.Anonymous</code> and exclude its path in Easy Auth (excluded paths) or in the API Management policy. Keep it minimal: it returns only OK or not OK and shows no data.</p><p>Everything else stays protected, so the platform's probe works without a token.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Key Vault Secrets User (to read secrets) on the vault or the single secret, using Azure RBAC. Use Key Vault Crypto User for keys and Key Vault Certificates Officer to manage certificates.</p><p>Give the least role at the narrowest scope. Old \"access policies\" still exist but RBAC is the recommended model.</p>",
+    "<p>An app has no user, so there are no user-chosen scopes to list. <code>api://&lt;id&gt;/.default</code> means \"all application permissions an admin granted me for that API\", and the token's <code>roles</code> claim carries them.</p><p>Asking for a specific scope such as <code>Orders.Read</code> in this flow is an error.</p>",
+    "<p>MSAL for confidential clients has an in-memory cache per instance; with 6 instances each has its own, so the same user may trigger OBO calls on each. To share, use a distributed cache (Redis or SQL) through Microsoft.Identity.Web's token cache adapters.</p><p>It also lets a cached OBO token survive a restart, saving calls to Entra ID.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>SameSite=Strict</code>. After sign-in, Entra ID sends the browser back to your site with a cross-site redirect, and Strict blocks the cookie, so the app sees you as signed out. <code>Lax</code> allows the cookie on top-level navigations like this.</p><p>Lax or None (with Secure) is used for the sign-in cookie, and Strict can be used for later app cookies.</p>",
+    "<p>The server keeps the refresh token with the session and, when the access token is near expiry, calls the token endpoint itself (for example through <code>IHttpClientFactory</code> and Duende.AccessTokenManagement or Microsoft.Identity.Web). The browser never sees any token.</p><p>Calls from the SPA to the BFF carry only the cookie.</p>",
+    "<p>When the app is small and low-risk, has no sensitive data, cannot run a server, or all pages are public/internal and an MSAL SPA with short-lived tokens is accepted by security. Also when the team cannot run and secure the extra service.</p><p>For regulated or high-value data the BFF is usually worth it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Issue and verify an HS256 JWT; reject alg none",
+    "csharp": "using System;\nusing System.Security.Cryptography;\nusing System.Text;\n\nclass Program\n{\n    static byte[] key = Encoding.UTF8.GetBytes(\"demo-secret-from-key-vault-32bytes!\");\n\n    static string B64(byte[] b) { return Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_'); }\n\n    static string Sign(string data)\n    {\n        using (var h = new HMACSHA256(key)) return B64(h.ComputeHash(Encoding.UTF8.GetBytes(data)));\n    }\n\n    static string Issue(string alg, string payload)\n    {\n        string head = B64(Encoding.UTF8.GetBytes(\"{\\\"alg\\\":\\\"\" + alg + \"\\\"}\"));\n        string body = B64(Encoding.UTF8.GetBytes(payload));\n        return head + \".\" + body + \".\" + (alg == \"none\" ? \"\" : Sign(head + \".\" + body));\n    }\n\n    // Time O(n) in token size, space O(n). The API picks the algorithm, not the token.\n    static string Verify(string token)\n    {\n        string[] p = token.Split('.');\n        string h64 = p[0].Replace('-', '+').Replace('_', '/');\n        while (h64.Length % 4 != 0) h64 += \"=\";\n        string head = Encoding.UTF8.GetString(Convert.FromBase64String(h64));\n        if (!head.Contains(\"HS256\")) return \"reject: algorithm not allowed\";\n        return Sign(p[0] + \".\" + p[1]) == p[2] ? \"accept\" : \"reject: bad signature\";\n    }\n\n    static void Main()\n    {\n        string good = Issue(\"HS256\", \"{\\\"sub\\\":\\\"u1\\\",\\\"exp\\\":1900000000}\");\n        Console.WriteLine(\"good token:     \" + Verify(good));\n        Console.WriteLine(\"alg none token: \" + Verify(Issue(\"none\", \"{\\\"sub\\\":\\\"admin\\\"}\")));\n        string[] parts = good.Split('.');\n        Console.WriteLine(\"edited payload: \" + Verify(parts[0] + \".\" + B64(Encoding.UTF8.GetBytes(\"{\\\"sub\\\":\\\"admin\\\"}\")) + \".\" + parts[2]));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>The attacker changes the token's algorithm to make the server use the wrong key type. For example, the API expects RS256 (public key verifies), but the attacker sets HS256 and signs the token using the <em>public key</em> as the HMAC secret. A careless library verifies with the public key as a secret and accepts it.</p><p>Defend by allowing only the algorithms you chose, per key.</p>",
+    "<p>Each refresh token belongs to a family and can be used once. When it is used, you issue a new one and mark the old one as used. If an old one appears again, somebody copied it, so you revoke the entire family and force sign-in.</p><p>The honest user and the thief race, and the replay is the signal.</p>",
+    "<p>ASP.NET Core Identity gives you user and password storage with hashing, lockout, two-factor, email confirmation, roles and claims, and cookie sign-in. In .NET 8+ it also has bearer-token endpoints (<code>MapIdentityApi</code>).</p><p>It does not give you a full OAuth/OIDC server, key rotation or federation; use a provider such as Entra ID, or Duende IdentityServer or OpenIddict for that.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Two issuers, two schemes, a policy that names the scheme",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    // scheme name -> the only issuer that scheme trusts\n    static Dictionary<string, string> schemes = new Dictionary<string, string>\n    {\n        { \"Staff\", \"https://staff-idp.example/v2.0\" },\n        { \"Customers\", \"https://customer-idp.example/\" },\n    };\n\n    // A policy lists the schemes it accepts. Time O(s) for s schemes, space O(1).\n    static string Authorize(string tokenIssuer, string tokenRole, string[] policySchemes)\n    {\n        foreach (string s in policySchemes)\n            if (schemes[s] == tokenIssuer)\n                return tokenRole == \"Admin\" && s != \"Staff\" ? \"403 role not valid for this issuer\" : \"200 via scheme \" + s;\n        return \"401 issuer not accepted by this policy\";\n    }\n\n    static void Main()\n    {\n        string[] staffOnly = { \"Staff\" };\n        string[] both = { \"Staff\", \"Customers\" };\n        Console.WriteLine(\"staff token, staff policy:     \" + Authorize(\"https://staff-idp.example/v2.0\", \"Admin\", staffOnly));\n        Console.WriteLine(\"customer token, staff policy:  \" + Authorize(\"https://customer-idp.example/\", \"Customer\", staffOnly));\n        Console.WriteLine(\"customer token, both policy:   \" + Authorize(\"https://customer-idp.example/\", \"Customer\", both));\n        Console.WriteLine(\"customer claims Admin role:    \" + Authorize(\"https://customer-idp.example/\", \"Admin\", both));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Because a claim only means something if you know who made it. A customer provider may allow users to set a role or group claim themselves, while the same words from your staff provider come from your HR system. If you accept \"role=Admin\" from either, a customer could become an admin.</p><p>So trust is per issuer: the scheme and issuer decide which claims you believe.</p>",
+    "<p>Run both providers in parallel as two schemes, move users in groups, and map claims so the API sees the same internal user key, usually by storing a link between the old and new subject ids. Watch usage of the old scheme, then remove it when it reaches zero.</p><p>Expect different claim names, token lifetimes and sign-out behaviour, and test each.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "What the client does for 401, 403 and temporary errors",
+    "js": "// Time O(1), space O(1)\nfunction clientAction(status, alreadyRetried) {\n  if (status === 401) return alreadyRetried ? \"send user to sign in\" : \"refresh token once, then retry\";\n  if (status === 403) return \"show 'no access'; do not retry\";\n  if (status === 429 || status === 503) return \"wait with backoff, then retry\";\n  if (status >= 200 && status < 300) return \"use the response\";\n  return \"show a generic error\";\n}\n\nconst cases = [[200, false], [401, false], [401, true], [403, false], [503, false], [500, false]];\nfor (const c of cases) {\n  console.log(\"status \" + c[0] + \" retried=\" + c[1] + \" -> \" + clientAction(c[0], c[1]));\n}\n"
+   },
+   "followUps": [
+    "<p>Return 404 when saying \"forbidden\" would reveal that something exists, such as another user's order id or a hidden admin resource. The caller learns nothing, and scanners can't map your data.</p><p>Use 403 when the caller is allowed to know the resource exists. Whichever you choose, use it consistently.</p>",
+    "<p><code>UseAuthentication</code> and the JWT handler produce 401 through the challenge (with <code>WWW-Authenticate</code>), when no valid identity is found for an endpoint that needs one. The authorization middleware produces 403 through the forbid when the identity exists but fails the policy; it produces 401 itself if there is no user at all.</p><p>You can customise both responses in the handler events or with an <code>IAuthorizationMiddlewareResultHandler</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Map a failure to its likely cause from the claims",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    // Time O(1), space O(1). Real systems read these from the decoded (never logged) token.\n    static string Diagnose(string aud, string ver, long exp, long now, string scp)\n    {\n        if (aud != \"api://orders\") return \"401: aud mismatch - token for another API, or an ID token\";\n        if (ver != \"2.0\") return \"401: issuer mismatch - v1.0 token sent to a v2.0 API\";\n        if (now > exp + 300) return \"401: expired (check refresh logic and server clock)\";\n        if (scp == null || !scp.Contains(\"Orders.Read\")) return \"403: scope missing - consent or request scopes\";\n        return \"token looks fine - look at roles, tenant and data rules\";\n    }\n\n    static void Main()\n    {\n        long now = 10000;\n        Console.WriteLine(Diagnose(\"client-id\", \"2.0\", now + 600, now, \"Orders.Read\"));\n        Console.WriteLine(Diagnose(\"api://orders\", \"1.0\", now + 600, now, \"Orders.Read\"));\n        Console.WriteLine(Diagnose(\"api://orders\", \"2.0\", now - 900, now, \"Orders.Read\"));\n        Console.WriteLine(Diagnose(\"api://orders\", \"2.0\", now + 600, now, \"Other.Read\"));\n        Console.WriteLine(Diagnose(\"api://orders\", \"2.0\", now + 600, now, \"Orders.Read\"));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Log the reason and a few safe claims (<code>aud</code>, <code>iss</code>, <code>tid</code>, <code>exp</code>, <code>scp</code>, a correlation id), never the token itself, which is a password for the user. A debug tool can decode the token locally when a developer pastes it from their own session.</p><p>Application Insights traces with the correlation id from the client let you find the failed call without the token.</p>",
+    "<p><code>ver</code> says whether the token is v1.0 or v2.0. They have different issuer formats (sts.windows.net vs login.microsoftonline.com/.../v2.0), and the API's registration setting <code>accessTokenAcceptedVersion</code> decides what it receives.</p><p>An issuer mismatch often means the API validates for v2 but the registration still issues v1.</p>",
+    "<p>They may ask for different things: Postman might use a token from a different app or user, with other scopes or an old cached token; the browser adds CORS rules, cookies, and a different redirect and tenant. CORS blocks are enforced only by the browser, so Postman ignores them.</p><p>Compare the decoded tokens and the actual request headers from both.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stateless API: any server rebuilds the user from the token",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Principal { public string Oid; public string[] Roles; }\n\nclass Server\n{\n    public string Name;\n    public int Requests;\n    // Same validation code and same cached public keys on every server. Time O(1), space O(1)\n    public Principal Handle(Dictionary<string, string> claims)\n    {\n        Requests++;\n        return new Principal { Oid = claims[\"oid\"], Roles = claims[\"roles\"].Split(',') };   // lives for this request only\n    }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var farm = new[] { new Server { Name = \"A\" }, new Server { Name = \"B\" }, new Server { Name = \"C\" } };\n        var claims = new Dictionary<string, string> { { \"oid\", \"u-001\" }, { \"roles\", \"Reader,Manager\" } };\n\n        for (int i = 0; i < 6; i++)\n        {\n            Server s = farm[i % 3];   // a load balancer, no sticky sessions\n            Principal p = s.Handle(claims);\n            Console.WriteLine(\"request \" + (i + 1) + \" -> server \" + s.Name + \": user \" + p.Oid + \" roles \" + string.Join(\"+\", p.Roles));\n        }\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Because every request brings its own proof: the token. Each server has the same validation settings and fetches the same public keys, so any of them can verify the token and rebuild the user. No server needs to have seen you before.</p><p>That is why a load balancer can send you anywhere, and why you can add servers freely.</p>",
+    "<p>You lose easy scaling and resilience: you'd need a shared session store or sticky routing, extra memory, and a failure of that store signs everyone out. You also add a second source of truth next to the token.</p><p>You would gain instant revocation, which may be worth it for some apps, but then it is a different design (cookie session, BFF).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Choose the one the interviewer is probing, and use three beats: what it is, why it exists, one example. For PKCE: it is a one-time secret proof, it exists because browser apps can't keep a client secret and a code can be stolen, and in MSAL the app sends a hash first and the original later.</p><p>Practise with a timer, and stop when you've covered the three beats.</p>",
+    "<p>Token storage changes: a mobile app uses the platform's secure storage (Keychain, Keystore) through the MSAL library rather than the browser cache, and sign-in uses the system browser with a custom redirect scheme. It is still a public client with PKCE.</p><p>Also, third-party cookie problems do not apply the same way, and device-bound or broker sign-in (Authenticator) is possible.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Scopes are in the <code>scp</code> claim (a space-separated string) for delegated user tokens. App roles are in the <code>roles</code> claim (an array) for app tokens and for user app roles.</p><p>Both can appear in the same token. Check the claim that your design uses.</p>",
+    "<p>It refreshes the key set once from the discovery document, then retries validation. If the <code>kid</code> is still missing, it rejects the token with 401. That handles a key rotation without letting random ids force a download on each request, so limit how often the refresh may happen.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>CORS is enforced by browsers, which refuse to let a web page read a response from another origin unless the server allows it. curl, Postman and servers are not browsers and don't apply that rule. So CORS protects users' browsers from other sites, not the API from direct callers.</p><p>It is not authentication; the API still needs tokens.</p>",
+    "<p>Entra ID answers the sign-in or token request with an error saying interaction is required, and in a claims challenge the API sends back 401 with <code>WWW-Authenticate</code> and a <code>claims</code> value. MSAL turns this into <code>InteractionRequiredAuthError</code>.</p><p>The app then runs an interactive request (popup or redirect) with the claims, and the user completes the MFA.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The API never sees the refresh token, and ideally never the ID token. The refresh token is a long-lived credential meant only for the token endpoint; if it were sent to APIs, any compromised API could mint new tokens as the user.</p><p>Sending each token only to the party it is meant for limits what a leak can do.</p>",
+    "<p>Best from the claims in the access token (for example <code>name</code>, if the app registration is set up to include it), or from your own user table keyed by <code>oid</code>. If you need more, call Microsoft Graph with an on-behalf-of token (<code>/me</code>).</p><p>Don't make the front end send the name in the request body and trust it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Unit test a request interceptor with a fake token provider",
+    "js": "// An interceptor is a plain function, so it is easy to test. Time O(1), space O(1).\nfunction makeInterceptor(getToken, apiOrigin) {\n  return async (req) => {\n    if (new URL(req.url).origin === apiOrigin) {\n      req.headers = Object.assign({}, req.headers, { Authorization: \"Bearer \" + (await getToken()) });\n    }\n    return req;\n  };\n}\n\nlet passed = 0;\nfunction check(name, ok) { console.log((ok ? \"PASS \" : \"FAIL \") + name); if (ok) passed++; }\n\n(async () => {\n  const intercept = makeInterceptor(async () => \"fake-token\", \"https://api.contoso.example\");\n\n  const own = await intercept({ url: \"https://api.contoso.example/orders\", headers: {} });\n  check(\"adds token to own API\", own.headers.Authorization === \"Bearer fake-token\");\n\n  const other = await intercept({ url: \"https://evil.example/x\", headers: {} });\n  check(\"no token for other host\", other.headers.Authorization === undefined);\n\n  const lookalike = await intercept({ url: \"https://api.contoso.example.evil.example/\", headers: {} });\n  check(\"no token for look-alike host\", lookalike.headers.Authorization === undefined);\n  console.log(passed + \" of 3 passed\");\n})();\n"
+   },
+   "followUps": [
+    "<p>It should never log tokens, hold business logic, swallow errors silently, change the meaning of a response, or send the token to hosts that aren't yours. It also shouldn't retry endlessly or call UI code directly.</p><p>Keep it to cross-cutting plumbing: headers, correlation ids, one refresh-and-retry, and mapping errors to a common shape.</p>",
+    "<p>Pass a fake token function and a fake request object, call the interceptor directly and check the headers it returns (as in the program above). Test the cases: own host, other host, look-alike host, token failure, and a 401 retry that happens only once.</p><p>No browser or network is needed, so the tests run in milliseconds.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>At several places: the authorization code in the redirect (PKCE answers that), the tokens in browser storage (XSS answers that), the token in transit to a third-party host (the interceptor's host check answers that), the logs where tokens might be printed, and the API itself if it skips checks.</p><p>Mark each with the defence you name, and mention the refresh token as the most valuable target.</p>",
+    "<p>Add a fourth box and an arrow from API 1 to API 2. The first API must not forward the user's token; it either uses on-behalf-of to get a token for API 2 (user identity kept), or client credentials if the call is not on behalf of a user. API 2 checks its own <code>aud</code> and scopes or roles.</p><p>The user's consent must cover both APIs, and each hop is validated again.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>No. An HttpOnly cookie cannot be read by script, so the attacker cannot copy it, but injected script can still make requests from inside the page, and the browser attaches the cookie. So the attacker can act as the user while the page is open.</p><p>It reduces the damage (no token theft for later), but XSS still must be prevented.</p>",
+    "<p>Lax sends the cookie on top-level navigations that use safe methods, such as clicking a link to your site or a GET redirect, but not on cross-site POSTs, images, or fetches. So a link-based attack on a GET endpoint that changes data still works; never change state with GET.</p><p>Strict blocks even those, and None allows everything (needs Secure).</p>",
+    "<p>For example <code>default-src 'self'</code> plus <code>script-src 'self'</code> with a nonce, which blocks inline and third-party scripts that an attacker injects. Add <code>object-src 'none'</code> and <code>frame-ancestors 'none'</code> to stop plugins and clickjacking.</p><p>Roll it out with report-only mode first so you don't break the page.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The stolen access token works until it expires, which is why it is short-lived (about an hour). Reduce the risk by storing it out of script's reach (memory or BFF), applying a strict CSP, and revoking sessions; CAE can cut off critical events within minutes. Detect odd use with sign-in and API logs.</p><p>Say plainly that a bearer token is only as safe as its holder.</p>",
+    "<p>It is rejected with 401, since there is no token. The point of the four layers is that the API doesn't depend on the client being honest: it checks the signature, issuer, audience, expiry and permissions on every call. A hand-made request with a token that is invalid, expired or meant for another API fails as well.</p><p>Only the checks on the server count.</p>",
+    "<p>The access token expires at the API check (<code>exp</code>), and the client's MSAL refreshes it using the refresh token before the next call (<code>acquireTokenSilent</code>). The API never refreshes anything. When the refresh token expires too, the user signs in again.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why password hashing must be slow",
+    "csharp": "using System;\nusing System.Diagnostics;\nusing System.Security.Cryptography;\nusing System.Text;\n\nclass Program\n{\n    static byte[] Hash(string pw, byte[] salt, int iterations)\n    {\n        using (var k = new Rfc2898DeriveBytes(pw, salt, iterations, HashAlgorithmName.SHA256))\n            return k.GetBytes(32);\n    }\n\n    // Cost grows linearly with iterations; space O(1)\n    static void Main()\n    {\n        byte[] salt = new byte[16];\n        using (var r = RandomNumberGenerator.Create()) r.GetBytes(salt);   // unique random salt per password\n\n        foreach (int it in new[] { 1, 10000, 600000 })\n        {\n            var sw = Stopwatch.StartNew();\n            Hash(\"correct horse battery\", salt, it);\n            sw.Stop();\n            Console.WriteLine(\"iterations=\" + it + \" -> slow enough for an attacker? \" + (it >= 600000 ? \"yes\" : \"no\"));\n        }\n        // Same password + different salt = different hash, so rainbow tables fail\n        byte[] salt2 = new byte[16];\n        Console.WriteLine(\"same password, different salt equal? \" + (Convert.ToBase64String(Hash(\"pw\", salt, 1000)) == Convert.ToBase64String(Hash(\"pw\", salt2, 1000))));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Because an attacker who steals the hash file guesses billions of passwords per second with a fast hash like SHA-256. A slow, tunable hash (Argon2id, bcrypt, PBKDF2 with many iterations) makes each guess costly, while a real login only needs one check.</p><p>Example: 0.2 s per guess is fine for one user, but turns a million guesses into over two days per CPU core.</p>",
+    "<p>Run a secret scanner over the full history (for example gitleaks or GitHub secret scanning). Then treat any hit as leaked: rotate the secret immediately, because deleting it from Git does not remove the old commits and copies. Afterwards move it to Key Vault and add a pre-commit or pipeline scan.</p>",
+    "<p>Write an integration test with two tenants' data: sign in as tenant A, ask for every id of tenant B (read, update, delete, list and search) and expect 404/403 or empty results, never data. Add a test that fails if a query lacks the tenant filter (a global filter or a repository rule).</p><p>Run it in CI so a new endpoint cannot slip through.</p>"
+   ]
+  }
+ ]
+}
