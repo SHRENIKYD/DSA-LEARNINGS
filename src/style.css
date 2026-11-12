@@ -328,6 +328,7 @@ details.qhint{margin:8px 0 2px;font-size:15px}
 details.qhint>summary{cursor:pointer;color:var(--accent-fg);font-weight:600}
 details.qhint>div{padding:6px 14px 12px}
 .ivhint{margin:0 0 8px}
+details.ivfu{margin:6px 0;border:1px solid var(--border);border-radius:10px;padding:8px 12px}details.ivfu>summary{cursor:pointer;font-weight:600}details.ivfu>.dbody{margin-top:8px}
 details.ivans>summary{cursor:pointer;color:var(--accent-fg);font-weight:600;margin-bottom:6px}
 .ivn{display:inline-block;min-width:36px;font-family:var(--f-mono);font-weight:600;color:var(--accent-fg)}
 .examples{margin-bottom:10px}

@@ -30,6 +30,9 @@
 .hb-list .dbody table,.hb-rf table{border-collapse:collapse;margin:8px 0}
 .hb-list .dbody th,.hb-list .dbody td,.hb-rf th,.hb-rf td{border:1px solid var(--border2);padding:6px 10px;text-align:left;vertical-align:top}
 .hb-more{align-self:center}
+.hb-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.hb-tabs .hb-chip{min-height:36px;padding:4px 12px;font-size:13px}
+.hb-rf details.ivfu,.hb-list details.ivfu{background:none}
 .hb-rf{background:var(--panel);border:1px solid var(--border2);border-radius:16px;padding:clamp(16px,3vw,28px);display:flex;flex-direction:column;gap:14px;max-width:900px;width:100%;margin:0 auto}
 .hb-rf h2{font-family:var(--f-head);font-size:clamp(20px,3vw,26px);margin:0;line-height:1.3}
 .hb-rf .hb-rfmeta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--muted);font-size:14px}
@@ -84,7 +87,7 @@
   // One row: { t: track entry, n: place number, q, l: level, a, f: follow-ups, s: lower-case search text }
   function build() {
     var e = entry(cur), data = (window.IM_HB || {})[cur] || [];
-    rows = data.map(function (r) { return { t: e, n: r[0], q: r[1], l: r[2], a: r[3], f: r[4] || [], s: null }; });
+    rows = data.map(function (r) { return { t: e, n: r[0], q: r[1], l: r[2], a: r[3], f: r[4] || [], c: r[5] || null, fa: r[6] || [], s: null }; });
   }
   function matches() {
     var words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -101,8 +104,31 @@
     $('#hlevels').innerHTML = LEVELS.map(function (L) { return '<button type="button" class="hb-chip" data-l="' + L[0] + '" aria-pressed="' + (L[0] === lvl) + '">' + L[1] + '<span class="n">' + (c[L[0]] || 0) + '</span></button>'; }).join('') +
       '<button type="button" class="btn hb-rfbtn" id="hrfbtn">Rapid fire</button>';
   }
+  // A program in up to five languages: the learner's language first, the others one tap away.
+  var CODE_LANGS = [['java', 'Java'], ['python', 'Python'], ['js', 'JavaScript'], ['cpp', 'C++'], ['csharp', 'C#']];
+  function codeLang() {
+    var l = null;
+    try { l = JSON.parse(localStorage.getItem('imastery.lang')); if (!l || l === 'all') { var rt = JSON.parse(localStorage.getItem('imastery.route')); l = rt && rt.lang; } } catch (e) { }
+    return l;
+  }
+  function program(c) {
+    if (!c) return '';
+    var have = CODE_LANGS.filter(function (l) { return c[l[0]]; }), pref = codeLang(), on = have.some(function (l) { return l[0] === pref; }) ? pref : have[0] && have[0][0];
+    if (!have.length) return '';
+    return '<h4>Program</h4><div class="hb-code"><div class="hb-tabs" role="group" aria-label="Code language">' + have.map(function (l) { return '<button type="button" class="hb-chip" data-cl="' + l[0] + '" aria-pressed="' + (l[0] === on) + '">' + l[1] + '</button>'; }).join('') + '</div>' +
+      have.map(function (l) { return '<pre data-cl="' + l[0] + '"' + (l[0] === on ? '' : ' hidden') + '><code>' + esc(c[l[0]]) + '</code></pre>'; }).join('') + '</div>';
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.hb-tabs .hb-chip'); if (!b) return;
+    var box = b.closest('.hb-code'), l = b.getAttribute('data-cl');
+    Array.prototype.forEach.call(box.querySelectorAll('.hb-chip'), function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    Array.prototype.forEach.call(box.querySelectorAll('pre'), function (x) { x.hidden = x.getAttribute('data-cl') !== l; });
+  });
   function answer(r) {
-    return r.a + (r.f.length ? '<h4>Likely follow-ups</h4><ul>' + r.f.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '');
+    var fu = !r.f.length ? '' : '<h4>Likely follow-ups</h4>' + (r.fa.length
+      ? r.f.map(function (f, j) { return r.fa[j] ? '<details class="ivfu"><summary>' + f + '</summary><div class="dbody">' + r.fa[j] + '</div></details>' : '<p>' + f + '</p>'; }).join('')
+      : '<ul>' + r.f.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>');
+    return r.a + program(r.c) + fu;
   }
   function render() {
     var list = matches(), e = entry(cur), h = '', place = -1, mods = {};
