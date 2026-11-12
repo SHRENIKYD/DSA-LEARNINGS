@@ -590,14 +590,25 @@ var App = (function () {
     return '<section class="card gate" id="' + m.id + '-quiz"><div class="topic-head"><h2>' + JI('gate') + 'Riddle gate — ' + q.length + ' riddles</h2>' + doneBox(m.id + '-quiz', 'Completed') + '<button type="button" class="topic-tog" aria-expanded="true" aria-label="Collapse this section"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why. Answer every riddle right and the gate opens by itself.</div>' +
       q.map(function (x, i) { return mcqHtml({ q: '<b>Q' + (i + 1) + '.</b> ' + x.q, options: x.options, answer: x.answer, explain: x.explain, hint: qh[i] }, 'quizq'); }).join('') + '</section>';
   }
+  // data/answers/<module>.json: a program in the five code languages and a written answer per follow-up.
+  function ivProgram(x) {
+    var c = x && x.code;
+    if (!c) return '';
+    return '<h4>Program</h4>' + codeTabs(CODE_LANGS.filter(function (l) { return c[l[0]]; }).map(function (l) { return { lang: l[0], code: c[l[0]], title: c.title }; }));
+  }
+  function ivFollowUps(list, x) {
+    var a = (x && x.followUps) || [];
+    if (!a.length) return '<ul>' + list.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>';
+    return list.map(function (f, j) { return a[j] ? '<details class="ivfu"><summary>' + f + '</summary><div class="dbody">' + a[j] + '</div></details>' : '<p class="ivfu-q">' + f + '</p>'; }).join('');
+  }
   function interviewHtml(m) {
-    var iv = m.interview || [], ih = hintsOf(m).interview || [];
+    var iv = m.interview || [], ih = hintsOf(m).interview || [], ia = (window.IM_ANSWERS || {})[m.id] || [];
     if (!iv.length) return '';
     return '<section class="card tavern" id="' + m.id + '-iv"><div class="topic-head"><h2>' + JI('lantern') + 'Interview tavern — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '<button type="button" class="topic-tog" aria-expanded="true" aria-label="Collapse this section"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts. <a href="handbook.html#' + m.id.replace(/\d+$/, '') + '">Search and filter every question in the handbook ›</a></div>' +
       iv.map(function (x, i) {
         return '<details class="iv"><summary><span class="ivn">Q' + (i + 1) + '</span> ' + x.q + (x.level ? ' ' + lvlBadge(x.level) : '') + '</summary><div class="dbody">' +
-          (ih[i] ? '<p class="ivhint">💡 <b>Hint:</b> ' + esc(ih[i]) + '</p><details class="ivans"><summary>Show the model answer</summary>' : '') + x.a +
-          (x.followUps && x.followUps.length ? '<h4>Likely follow-ups</h4><ul>' + x.followUps.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + (ih[i] ? '</details>' : '') + '</div></details>';
+          (ih[i] ? '<p class="ivhint">💡 <b>Hint:</b> ' + esc(ih[i]) + '</p><details class="ivans"><summary>Show the model answer</summary>' : '') + x.a + ivProgram(ia[i]) +
+          (x.followUps && x.followUps.length ? '<h4>Likely follow-ups</h4>' + ivFollowUps(x.followUps, ia[i]) : '') + (ih[i] ? '</details>' : '') + '</div></details>';
       }).join('') + '</section>';
   }
 

@@ -4,6 +4,15 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.43] — 2026-11-12 · Programs and follow-up answers for DSA interview questions
+
+### Added
+- **DSA interview questions (all 28 places, 390 questions):** 385 questions now have a runnable program in Java, Python, JavaScript, C++ and C#, shown in your code language first, and all 859 "likely follow-up" questions now open to a written answer. This shows in each lesson's interview tavern and in the Interview handbook. The other tracks follow.
+- **Interview handbook follows your path:** with a route chosen it lists only that route's tracks (and your own language track) and opens programs in your language. "Show all tracks" and "Other languages" reveal the rest.
+
+### Fixed
+- **Phone top bar:** the Passport icon was cut off behind the theme button. On phones its link is dropped (your avatar already opens the passport), so the other five fit.
+
 ## [1.10.42] — 2026-11-11 · Tech Lead interview track and the Interview handbook
 
 ### Added

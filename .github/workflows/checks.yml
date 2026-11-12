@@ -110,5 +110,7 @@ jobs:
         run: node tools/notify-test.js
       - name: Riddle and interview hints
         run: node tools/hints-check.js --require
+      - name: Interview programs and follow-up answers
+        run: node tools/answers-check.js
       - name: Visit statistics test
         run: node tools/visits-test.js

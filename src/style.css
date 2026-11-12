@@ -328,6 +328,7 @@ details.qhint{margin:8px 0 2px;font-size:15px}
 details.qhint>summary{cursor:pointer;color:var(--accent-fg);font-weight:600}
 details.qhint>div{padding:6px 14px 12px}
 .ivhint{margin:0 0 8px}
+details.ivfu{margin:6px 0;border:1px solid var(--border);border-radius:10px;padding:8px 12px}details.ivfu>summary{cursor:pointer;font-weight:600}details.ivfu>.dbody{margin-top:8px}
 details.ivans>summary{cursor:pointer;color:var(--accent-fg);font-weight:600;margin-bottom:6px}
 .ivn{display:inline-block;min-width:36px;font-family:var(--f-mono);font-weight:600;color:var(--accent-fg)}
 .examples{margin-bottom:10px}
@@ -1061,6 +1062,8 @@ svg.cp-ic{width:34px;height:34px;color:var(--gold)}
 pre{max-width:100%;min-width:0;overflow-x:auto}
 h1[tabindex="-1"]:focus,h2[tabindex="-1"]:focus{outline:none}
 @media (max-width:600px){.jnav{min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}.jnav::-webkit-scrollbar{display:none}.jnav a{flex:none}}
+/* Phones: the avatar already opens the passport, so its nav link is dropped to fit the other five without scrolling. */
+@media (max-width:600px){.jnav a[data-page="passport"]{display:none}.jnav{gap:2px}.jnav a{padding:0 10px}}
 /* language mode: the learner's language first, the other code languages behind one tab (src/engine.js codeTabs) */
 .ctab.more{color:var(--accent-fg);font-weight:500}
 .ctab.more[aria-expanded="true"]{color:var(--text)}

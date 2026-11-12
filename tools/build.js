@@ -149,7 +149,12 @@ for (const t of TRACKS) {
     // Riddle and interview hints (data/hints/<id>.json) ride in front of the module so they exist before it registers.
     const hf = path.join(root, 'data', 'hints', pm.id + '.json');
     const hints = fs.existsSync(hf) ? 'window.IM_HINTS=window.IM_HINTS||{};IM_HINTS[' + JSON.stringify(pm.id) + ']=' + JSON.stringify(JSON.parse(fs.readFileSync(hf, 'utf8'))).replace(/</g, '\\u003c') + ';\n' : '';
-    const body = hints + min;
+    // Programs and follow-up answers for interview questions (data/answers/<id>.json) ride along the same way.
+    const af = path.join(root, 'data', 'answers', pm.id + '.json');
+    const ans = fs.existsSync(af) ? JSON.parse(fs.readFileSync(af, 'utf8')).interview || [] : [];
+    const extra = ans.length ? 'window.IM_ANSWERS=window.IM_ANSWERS||{};IM_ANSWERS[' + JSON.stringify(pm.id) + ']=' + JSON.stringify(ans).replace(/</g, '\\u003c') + ';\n' : '';
+    hash.update(extra);
+    const body = hints + extra + min;
     hash.update(hints);
     const file = 'assets/m/' + pm.id + '.' + shortHash(body) + '.js';
     fs.writeFileSync(path.join(out, file), body);
@@ -174,7 +179,7 @@ for (const t of TRACKS) {
     MODS[pm.id] = [m.topics.length, m.topics.map((tp) => asList(tp.problems).concat(asList(tp.problem)).length), (m.practice || []).length, m.quiz && m.quiz.length ? 1 : 0, m.interview && m.interview.length ? 1 : 0];
     if (m.interview && m.interview.length) {
       hbMods.push([pm.num, pm.id, strip(m.title || pm.title), m.interview.length]);
-      m.interview.forEach((q) => hbRows.push([pm.num, q.q, q.level || 'I', q.a, asList(q.followUps)]));
+      m.interview.forEach((q, i) => { const x = ans[i] || {}; hbRows.push([pm.num, q.q, q.level || 'I', q.a, asList(q.followUps)].concat(x.code || x.followUps ? [x.code || null, x.followUps || []] : [])); });
     }
     SI.modules[pm.id] = { items: ctx.App.items(m), pl: (m.practice || []).map((p) => String(p.level || 'Medium').charAt(0).toUpperCase()).join('') };
     SI.entries.push({ t: pm.num + '. ' + strip(m.title || pm.title), c: t.short + ' · Module', h: href + pm.id, s: strip(pm.scope).toLowerCase() });
