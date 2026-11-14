@@ -39,7 +39,7 @@
   "ai01-t5": {
    "t": "Limits, Hallucinations, Myths and When NOT to Use ML",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "ai02-t0": {
@@ -325,7 +325,7 @@
   "ai07-t4": {
    "t": "Delimiters, XML Tags and Prompt Templates",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "ai07-t5": {
@@ -1175,7 +1175,7 @@
   "ai24-t2": {
    "t": "Just-in-Time Retrieval vs Pre-Loading",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "ai24-t3": {
@@ -1188,7 +1188,7 @@
   "ai24-t4": {
    "t": "Structured Notes, External Memory and Sub-Agents to Isolate Context",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "ai24-t5": {
@@ -1498,7 +1498,7 @@
   "ai30-t3": {
    "t": "Configuration: config.toml, Profiles, Models, Reasoning and MCP",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "ai30-t4": {
@@ -1594,7 +1594,7 @@
   "ai32-t3": {
    "t": "Privacy, Data Retention, Enterprise Controls and Model Choice",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "ai32-t4": {
@@ -1641,7 +1641,7 @@
   "ai33-t3": {
    "t": "Spreadsheets and Data Questions in Plain Words",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "ai33-t4": {
@@ -2013,7 +2013,7 @@
   "be03-t4": {
    "t": "Repositories: CRUD, Naming-Convention Queries and Spring Data / Prisma Clients",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "be03-t5": {
@@ -2562,7 +2562,7 @@
   "be13-t3": {
    "t": "ConfigMaps, Secrets, Probes and Rolling Updates",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "be13-t4": {
@@ -3012,7 +3012,7 @@
   "be21-t4": {
    "t": "In-Process Caches: functools.lru_cache, a Hand-Made LRU and Two-Level (L1 + Redis) Caching",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "be21-t5": {
@@ -3060,7 +3060,7 @@
   "be22-t2": {
    "t": "Offsets, Commits, Retention and Log Compaction",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "be22-t3": {
@@ -3192,7 +3192,7 @@
    "reviewedAt": "2026-11-11",
    "note": "A developer's step-by-step technical interview prep routine; the lesson adds a 6-week schedule, resume critique and honest AI use.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh02-t0": {
    "t": "Tell Me About Yourself: Present, Past, Future in 90 Seconds",
@@ -3239,7 +3239,7 @@
    "reviewedAt": "2026-11-11",
    "note": "How to show you are a team player in an interview answer; the lesson adds a story about helping a struggling teammate.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh02-t6": {
    "t": "Practice Lab: Scoring Your Answers and Mock Interviews With AI",
@@ -3265,7 +3265,7 @@
    "reviewedAt": "2026-11-11",
    "note": "An ex-Amazon leader explains Ownership questions with an example answer; the lesson adds going beyond your role in tech settings.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh03-t2": {
    "t": "Dealing with Ambiguity: Progress with Incomplete Info",
@@ -3312,7 +3312,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Short guide to thinking out loud in coding interviews; the lesson adds avoiding rambling and the brute-force-then-optimize flow.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh04-t2": {
    "t": "Trade-offs and Testing Your Own Code (Dry Run + Edge Cases)",
@@ -3324,7 +3324,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Walks through dry-running code with test cases in an interview; the lesson adds trade-off discussion and edge-case checklists.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh04-t3": {
    "t": "Handling Hints, Getting Stuck and Changing Course Gracefully",
@@ -3336,7 +3336,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Clément Mihailescu on what to do when stuck in a coding interview; the lesson adds taking hints and changing course gracefully.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh04-t4": {
    "t": "Time Management Across a 45-Minute Round",
@@ -3348,7 +3348,7 @@
    "reviewedAt": "2026-11-11",
    "note": "A framework for splitting a 45-minute coding round; the lesson adds concrete time checkpoints and recovery tactics.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh04-t5": {
    "t": "Design-Round Communication: Drive the Conversation",
@@ -3360,7 +3360,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Hello Interview's delivery framework for driving a system design interview; the lesson adds communication habits for leading the conversation.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh04-t6": {
    "t": "Full Mock Transcript: Coding Round (Two Sum / Top-K) - Good vs Poor",
@@ -3386,7 +3386,7 @@
    "reviewedAt": "2026-11-11",
    "note": "An Amazon Principal Engineer on what blocks staff promotion, including scope; the lesson adds team/org/company impact signals.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh05-t1": {
    "t": "Influence Across Teams: RFCs, Alignment and Dissent",
@@ -3398,7 +3398,7 @@
    "reviewedAt": "2026-11-11",
    "note": "LeadDev talk on influencing without authority as a senior IC; the lesson adds RFCs, alignment and handling dissent.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh05-t2": {
    "t": "Technical Strategy Stories: Roadmaps, Build vs Buy, Migrations",
@@ -3417,7 +3417,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Five tips for senior developers mentoring junior engineers; the lesson adds raising the bar and how to tell mentoring stories.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh05-t4": {
    "t": "Handling Production Incidents: IC Role, Comms, Blameless Postmortems",
@@ -3429,7 +3429,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Explains blameless postmortem culture; the lesson adds incident commander roles and incident communication.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh05-t5": {
    "t": "Project Retrospectives: What You Would Do Differently",
@@ -3448,7 +3448,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Explains software engineer salaries, RSUs and vesting; the lesson adds bonus, sign-on and benefits breakdown.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh06-t1": {
    "t": "Equity Deep Dive: RSUs vs Options, Vesting, Cliffs & Refreshers",
@@ -3467,7 +3467,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Explains the 4-year vesting cliff in tech compensation; the lesson adds a year-by-year total compensation calculator.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh06-t3": {
    "t": "Negotiation Principles & Polite Scripts",
@@ -3479,7 +3479,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Ten rules of salary negotiation for big-tech offers; the lesson adds polite word-for-word scripts.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh06-t4": {
    "t": "Multiple Offers, Exploding Deadlines & Counter-Offers",
@@ -3498,7 +3498,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Compares the IC and engineering manager career paths; the lesson adds levels and expectations at each rung.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh06-t6": {
    "t": "Staying Relevant with AI & a Continuous Learning Plan",
@@ -3544,7 +3544,7 @@
    "reviewedAt": "2026-11-11",
    "note": "What Netflix's SWE culture-fit interview looks for; the lesson adds Indian product companies and startups.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh07-t5": {
    "t": "Researching a Company and Team, and Mapping Your Stories to It",
@@ -3556,7 +3556,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Jeff H Sipe on researching a company before an interview; the lesson adds mapping your stories to the company and team.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh07-t6": {
    "t": "Tailoring Answers Without Sounding Rehearsed",
@@ -3568,7 +3568,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Why you should not memorize interview answers; the lesson adds how to tailor stories while staying natural.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh08-t0": {
    "t": "Choosing the Right Project to Present",
@@ -3580,7 +3580,7 @@
    "reviewedAt": "2026-11-11",
    "note": "How to explain your project in an interview; the lesson adds how to choose which project to present.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh08-t1": {
    "t": "The Structure: Context, Goal, Role, Architecture, Decisions, Results, Lessons",
@@ -3592,7 +3592,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Five example walkthroughs of a technical project deep dive; the lesson adds the context-goal-role-architecture-decisions-results-lessons structure.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh08-t2": {
    "t": "Diagrams: Drawing Your Architecture in Two Minutes",
@@ -3604,7 +3604,7 @@
   "beh08-t3": {
    "t": "Decisions, Trade-offs and Results With Numbers",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "beh08-t4": {
@@ -3617,7 +3617,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Breaks down a technical project retrospective interview and its probing; the lesson adds tactics for drill-down questions.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh08-t5": {
    "t": "\"I\" vs \"We\" and Owning Mistakes",
@@ -3629,7 +3629,7 @@
    "reviewedAt": "2026-11-11",
    "note": "A candidate explains failing interviews by saying \"we\" too often; the lesson adds owning mistakes honestly.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh08-t6": {
    "t": "Presenting to Senior and Staff-Level Panels",
@@ -3648,7 +3648,7 @@
    "reviewedAt": "2026-11-11",
    "note": "A Google engineering director on EM interviews and hiring; the lesson adds what EM and TL loops assess.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh09-t1": {
    "t": "One-on-Ones, Feedback and Growing People",
@@ -3660,7 +3660,7 @@
    "reviewedAt": "2026-11-11",
    "note": "An engineering manager on running one-on-ones; the lesson adds giving feedback and growing people.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh09-t2": {
    "t": "Performance Problems: Handling an Underperformer",
@@ -3672,7 +3672,7 @@
    "reviewedAt": "2026-11-11",
    "note": "Short guide to answering how you managed a low performer; the lesson adds a full performance-management story arc.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh09-t3": {
    "t": "Hiring and Team Building",
@@ -3691,7 +3691,7 @@
    "reviewedAt": "2026-11-11",
    "note": "LinkedIn EM mock interview on engineering prioritization; the lesson adds planning and risk management.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh09-t5": {
    "t": "Cross-Team Conflict and Managing Up and Sideways",
@@ -3703,7 +3703,7 @@
    "reviewedAt": "2026-11-11",
    "note": "A Microsoft L8 engineer on managing up; the lesson adds cross-team conflict and managing sideways.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "beh09-t6": {
    "t": "Technical Leadership and Architecture Ownership",
@@ -3715,7 +3715,7 @@
    "reviewedAt": "2026-11-11",
    "note": "An engineering director on what it takes to be a great technical leader; the lesson adds architecture ownership.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "cpp01-t0": {
    "t": "From Source to Executable: Preprocessor → Compiler → Assembler → Linker",
@@ -6216,7 +6216,7 @@
   "devops01-t4": {
    "t": "Text Tools for Log Detective Work: grep, cut, awk, sort, uniq and sed",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "devops01-t5": {
@@ -6264,7 +6264,7 @@
   "devops02-t4": {
    "t": "set -euo pipefail and trap: Scripts That Fail Loudly and Clean Up After Themselves",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "devops02-t5": {
@@ -6578,7 +6578,7 @@
   "devops08-t4": {
    "t": "Small and Secure Images: Base Choice, Non-Root, Scanning, and Never Baking Secrets",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "devops08-t5": {
@@ -7002,7 +7002,7 @@
   "devops16-t2": {
    "t": "Dynamic Secrets, Leases and TTLs, Rotation, and Envelope Encryption with KMS",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "devops16-t3": {
@@ -7146,13 +7146,13 @@
   "devops19-t1": {
    "t": "Global VPCs, Regional Subnets and Firewall Rules: Priorities, Tags, Service Accounts and Hierarchical Policies",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "devops19-t2": {
    "t": "Cloud NAT, Global Load Balancers and Hybrid Connectivity: Anycast IPs, Private Access and Non-Overlapping IP Plans",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "devops19-t3": {
@@ -7305,7 +7305,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java program structure, main, output and comments. Use the lesson for loops and conditionals.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "SA1CRPdCai4",
@@ -7343,15 +7343,15 @@
    "reviewedAt": "2026-10-21",
    "note": "Java Scanner versus BufferedReader, demonstrating slow versus buffered input. Other languages use the equivalents in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "JA1MNmgrDhI",
@@ -7379,11 +7379,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Java primitive values versus object references, with stack/heap diagrams. Casting and overflow are covered in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "hTShKthSARE",
@@ -7417,7 +7417,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java stack and heap memory, local variables and object references.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "wJ1L2nSIV1s",
@@ -7461,7 +7461,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java array syntax, storage, string arrays and multidimensional arrays. String operations are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "1FVBeLD_FdE",
@@ -7505,7 +7505,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Java methods, parameters, return values and reusable functions.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7529,7 +7529,7 @@
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -7543,7 +7543,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Input constraints and time-limit estimates. Operation budgets depend on language, hardware and the judge; 10⁸ is a heuristic, not a guarantee.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7555,7 +7555,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -7577,7 +7577,7 @@
    "reviewedAt": "2026-10-21",
    "note": "A concrete brute-force pair search followed by an optimized solution. Algorithm explanation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "DKCbsiDBN6c",
@@ -7656,7 +7656,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Arithmetic and geometric progressions; apply the sums to loop counts in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "0F2YqCVaiG0",
@@ -7700,11 +7700,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Logarithms as inverse powers and the change-of-base rule. Apply this foundation to repeated halving in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -7734,7 +7734,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Big-O, Big-Omega and Big-Theta asymptotic bounds.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7768,7 +7768,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Time and auxiliary-space complexity overview; use the lesson for detailed memory accounting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "hUdqNPhXOh4",
@@ -7812,7 +7812,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Constraints, online judges and TLE estimates. Treat operation counts as rough estimates, not fixed execution-time guarantees.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -7828,11 +7828,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -7846,7 +7846,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Enumerating divisors in O(√N).",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "fdE_CEk9X2g",
@@ -7890,7 +7890,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Primality testing by checking divisors up to √N.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ZYIXXntyybo",
@@ -7934,7 +7934,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sieve of Eratosthenes for finding all primes up to a bound.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "nDPo9hsDNvU",
@@ -7978,7 +7978,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Euclidean GCD. LCM reduction and the visual proof are expanded in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "0oP6XLTI2tY",
@@ -8022,7 +8022,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular arithmetic rules and remainders.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "EzVwUarrNUk",
@@ -8060,7 +8060,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Modular exponentiation. Follow the lesson for the iterative binary-exponentiation implementation.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "L-Wzglnm4dM",
@@ -8104,7 +8104,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Binomial coefficients, efficient nCr calculation and Pascal triangle construction.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8116,7 +8116,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -8138,7 +8138,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The pigeonhole principle and why a collision must exist.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "IW4hJEgZLWI",
@@ -8178,7 +8178,7 @@
    "reviewedAt": "2026-10-21",
    "note": "How binary digits represent numbers and characters.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8214,15 +8214,15 @@
    "reviewedAt": "2026-10-21",
    "note": "Binary representation, one’s/two’s complement and bit operators.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "iV8hy9DdKFM",
@@ -8252,7 +8252,7 @@
    "reviewedAt": "2026-10-21",
    "note": "All seven Java bitwise operators, including the unsigned right shift >>>.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "phUpAEs-6rw",
@@ -8294,7 +8294,7 @@
    "reviewedAt": "2026-10-21",
    "note": "XOR cancellation demonstrated on the single-number problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8328,7 +8328,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Checking, setting, clearing and toggling a bit with masks.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8377,11 +8377,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -8395,7 +8395,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Single Number I: cancel duplicate pairs with XOR.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8431,7 +8431,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Includes counting set bits at each position modulo three, as well as alternative approaches.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8494,7 +8494,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Subset enumeration with bitmasks. Code may use C++; the technique transfers to Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8532,7 +8532,7 @@
    "start": 82,
    "end": 4025,
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "fINt-nzR-o8",
@@ -8576,19 +8576,13 @@
    "reviewedAt": "2026-10-21",
    "note": "Prefix sums and constant-time range-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Hyr3VrgJD2g",
      "title": "USACO - How to do a 2D Prefix Sum in any language (C++, Python, Java, etc)",
      "channel": "Code Steve",
      "secs": 1112
-    },
-    "java": {
-     "id": "liU6avyvXQM",
-     "title": "Prefix Sum Explained: Any Range Sum in 1 Step | Java DSA",
-     "channel": "Compiled Canvas",
-     "secs": 656
     },
     "csharp": {
      "id": "_wIkKC3TB9s",
@@ -8607,6 +8601,12 @@
      "title": "Leetcode | 303. Range Sum Query - Immutable | Approach : Prefix-Sum Array | Easy | Javascript",
      "channel": "Software Interviews Prep",
      "secs": 829
+    },
+    "java": {
+     "id": "QgNBuGt3Gw8",
+     "title": "Prefix Sums Explained: Any Range Sum in One Step",
+     "channel": "Bitwise Tales",
+     "secs": 501
     }
    }
   },
@@ -8620,7 +8620,7 @@
    "reviewedAt": "2026-10-21",
    "note": "2D prefix sums and rectangle-sum queries.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8662,11 +8662,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Even/odd prefix sums and parity changes after deletion. The separate equilibrium-index variant is explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "wGgojTwm9AI",
@@ -8698,7 +8698,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Carry-forward counting of ordered “ag” pairs. Array leaders are another application in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8736,7 +8736,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maximum subarray sum using Kadane’s algorithm.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "w_KEocd__20",
@@ -8780,7 +8780,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Sum of all subarray sums using each element’s contribution.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8802,7 +8802,7 @@
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -8816,7 +8816,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Trapping rainwater. Compare the video’s approaches with the lesson’s prefix/suffix maximum arrays.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ok7zhUA4VmI",
@@ -8856,7 +8856,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Spiral traversal using shrinking boundaries. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -8890,7 +8890,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Matrix rotation by transposition and reversal.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": "aT-2BiaPCe8",
@@ -8934,7 +8934,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The O(rows + columns) top-right staircase search for separately sorted rows and columns, not flattened binary search.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -8976,7 +8976,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Two Sum II on sorted input using converging pointers. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9014,7 +9014,7 @@
    "reviewedAt": "2026-10-21",
    "note": "3Sum by sorting, fixing an element and scanning with two pointers.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "n-JNgynPi6Q",
@@ -9030,7 +9030,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "mk9XmSI4CAQ",
@@ -9056,7 +9056,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Container With Most Water and moving the shorter wall.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Y_4_or0Sc7I",
@@ -9100,7 +9100,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Move Zeroes using same-direction pointers. Remove-duplicates is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9138,7 +9138,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a pair with a target difference using sorted-array pointers; not a general two-pointer overview.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9172,7 +9172,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Fixed-length maximum-sum window with Java code. Distinct from unrestricted maximum subarray/Kadane.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9198,7 +9198,7 @@
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -9245,7 +9245,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Recognizing opposite-direction and same-direction pointer patterns.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9279,7 +9279,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Bubble sort, selection sort and insertion sort in Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "n2mtX8mdoEc",
@@ -9321,7 +9321,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Counting sort and radix sort, including assumptions behind integer sorting. A longer lecture is intentional.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "imqr13aIBAY",
@@ -9365,7 +9365,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inversion counting with merge sort. The lesson also explains the underlying sorting recurrence.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "0jxUbvEF380",
@@ -9409,7 +9409,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Quicksort partitioning and performance. Compare the specific Lomuto/Hoare variants in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9482,7 +9482,7 @@
    "reviewedAt": "2026-10-21",
    "note": "The distinction between stable and unstable sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "w7tbj3phOno",
@@ -9524,7 +9524,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Merging overlapping intervals after sorting.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "2JzRBPFYbKE",
@@ -9568,7 +9568,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Inserting an interval into a sorted non-overlapping list.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "XXaVIDIbUn4",
@@ -9612,7 +9612,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Meeting Rooms II: count simultaneous meetings. Meeting Rooms I and minimum-platform variations remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -9681,11 +9681,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Character-frequency signatures and grouping anagrams. First-non-repeating is a related exercise in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -9693,7 +9693,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "lWuAKHDoifA",
@@ -9717,11 +9717,11 @@
    "reviewedAt": "2026-10-21",
    "note": "Unsorted Two Sum with a complement hash map. Python implementation; Java is provided in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -9751,7 +9751,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Maintain a frequency map while counting distinct values in every fixed-size window.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "qF9bLDKsmWc",
@@ -9791,7 +9791,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Zero-sum subarray existence using a set in Java. Distinct from counting all subarrays with a given sum.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9827,7 +9827,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Count subarrays with sum K using prefix-sum frequencies.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Nlo20rlfxSg",
@@ -9867,7 +9867,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest zero-sum subarray using prefix sums and a first-index map in Java. Sum-K and equal-0/1 variants remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -9879,7 +9879,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -9901,7 +9901,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest substring without repeated characters. Minimum-window substring is a separate variant explained in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "FCbOzdHKW18",
@@ -9945,7 +9945,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest consecutive sequence by starting only at chain beginnings.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -9981,7 +9981,7 @@
    "start": 36,
    "end": 1322,
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10015,7 +10015,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Valid palindrome with two pointers and non-alphanumeric filtering.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "L84y20axpIA",
@@ -10061,11 +10061,13 @@
    "start": 3642,
    "end": 4357,
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
-     "id": null,
-     "at": "2026-11-07"
+     "id": "ov3fhlLyV-A",
+     "title": "How to Create a C++ Multiplication Timetable in C++ Builder using For Loop",
+     "channel": "DJ Oamen",
+     "secs": 889
     },
     "java": {
      "id": "-Xa6b_2lkM0",
@@ -10101,7 +10103,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Longest palindromic substring with center expansion.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "5MS14_6rSa8",
@@ -10174,7 +10176,7 @@
    "reviewedAt": "2026-10-21",
    "note": "KMP prefix/LPS preprocessing and linear-time pattern matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "BhxJiqShYcQ",
@@ -10214,7 +10216,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Z-array, Z-box optimization and pattern-plus-separator-plus-text matching.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10226,7 +10228,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "lsOOs5J8ycw",
@@ -10250,7 +10252,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Classic sorted-array binary search and halving the search interval. Implementation uses Python; the lesson provides Java.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10290,7 +10292,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Lower and upper bounds. Apply these primitives to first/last occurrence in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "GKZoTbUNWt0",
@@ -10332,7 +10334,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Search in a rotated sorted array with distinct elements.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "4Ik1nCLjwcI",
@@ -10376,7 +10378,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Finding a peak by binary search on slope direction.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "NUnhHa47f-Q",
@@ -10420,7 +10422,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Integer square root via binary search, matching this lesson rather than the more general nth-root problem.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10456,7 +10458,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Aggressive Cows: maximize a minimum distance with a feasibility predicate.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Flewu6KqN54",
@@ -10500,7 +10502,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Allocate Books: minimize the largest allocation. Painter partition is a related variant in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "DAQHXe1yNtM",
@@ -10542,7 +10544,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Koko Eating Bananas and a monotonic feasibility test.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10582,7 +10584,7 @@
    "start": 1077,
    "end": 2736,
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "KiWp1q_HGzg",
@@ -10624,11 +10626,11 @@
    "reviewedAt": "2026-10-21",
    "note": "A recursion-tree derivation for T(n) = 2T(n/2) + cn; other recurrences remain in the lesson.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -10636,7 +10638,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -10660,7 +10662,7 @@
    "reviewedAt": "2026-10-21",
    "note": "Tower of Hanoi with a recursive visualization.",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "S1j5Q03HzMs",
@@ -10706,7 +10708,7 @@
    "start": 4024,
    "end": 5057,
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10740,7 +10742,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "nuuv1Z46zHU",
@@ -10782,7 +10784,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10816,7 +10818,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -10850,7 +10852,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "xFv_Hl4B83A",
@@ -10925,7 +10927,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "-StYr9wILqo",
@@ -10967,7 +10969,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "YmkUl_Qsunk",
@@ -10983,7 +10985,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "-Cjgt5I0YvM",
@@ -11007,7 +11009,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ZSyUwlzmN-U",
@@ -11051,7 +11053,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Cs3KwAsqqn4",
@@ -11091,7 +11093,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "PQIHq0vfADI",
@@ -11135,7 +11137,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "IH8F4W5AiiQ",
@@ -11175,7 +11177,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "WWOvCh31xBk",
@@ -11219,7 +11221,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Xc4sICC8m4M",
@@ -11261,7 +11263,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Rl8N_NbgXbA",
@@ -11303,7 +11305,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "q-JB0hYyouo",
@@ -11347,7 +11349,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "OpwYmEBcPh0",
@@ -11389,7 +11391,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "mg9yi6YuAVk",
@@ -11427,7 +11429,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "rfl_M3SuvIE",
@@ -11471,7 +11473,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "6Izu3F3vibo",
@@ -11515,7 +11517,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ZGMw8Bvpwd4",
@@ -11559,7 +11561,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "88cFfeDDgmo",
@@ -11601,7 +11603,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -11643,7 +11645,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -11677,7 +11679,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ySp2epYvgTE",
@@ -11721,7 +11723,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -11800,7 +11802,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": "0uhPFD_Fvbk",
@@ -11873,7 +11875,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "EoAsWbO7sqg",
@@ -11917,7 +11919,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "KV4mRzTjlAk",
@@ -11961,7 +11963,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "0FtVY6I4pB8",
@@ -12003,7 +12005,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Rezetez59Nk",
@@ -12045,7 +12047,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Yt50Jfbd8Po",
@@ -12089,7 +12091,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": "X-j1wi3y278",
@@ -12178,7 +12180,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -12218,7 +12220,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "HqPJF2L5h9U",
@@ -12234,7 +12236,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "E2v9hBgG6gE",
@@ -12260,7 +12262,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12296,7 +12298,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "GkLRlOrcNZA",
@@ -12340,7 +12342,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12358,7 +12360,7 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": "O5JzsSV-lA8",
@@ -12378,7 +12380,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "KtJlTfHtMhc",
@@ -12420,7 +12422,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ubKhojIZtHk",
@@ -12460,7 +12462,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "EIhAwfHubE8",
@@ -12502,7 +12504,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -12510,7 +12512,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -12536,7 +12538,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "DHr-Mn_vzs0",
@@ -12552,7 +12554,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "120ORaCUyWY",
@@ -12576,7 +12578,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "zPtI8q9gvX8",
@@ -12616,7 +12618,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "nLmhmB6NzcM",
@@ -12660,7 +12662,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "co4_ahEDCho",
@@ -12702,7 +12704,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "TBlKgdYwQ4Q",
@@ -12742,7 +12744,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "xmJZSYSvgfE",
@@ -12786,7 +12788,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "TsRyidwuNF8",
@@ -12832,7 +12834,7 @@
    "start": 100,
    "end": 427,
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -12870,15 +12872,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-06"
+     "at": "2026-11-14"
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -12904,7 +12906,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "piAlsJySUGE",
@@ -12920,7 +12922,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "piAlsJySUGE",
@@ -12946,7 +12948,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "u7kxnHnUAYk",
@@ -12986,7 +12988,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "sdQpyeEF-rM",
@@ -13030,7 +13032,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13046,11 +13048,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -13071,7 +13073,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -13093,7 +13095,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "sSno9rV8Rhg",
@@ -13135,7 +13137,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13177,7 +13179,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": "GizQZzpaBwY",
@@ -13219,7 +13221,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13227,7 +13229,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -13253,7 +13255,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "bHypFVRzEXk",
@@ -13269,7 +13271,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "-E8E3wPNRBo",
@@ -13293,7 +13295,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13373,11 +13375,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -13398,7 +13400,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -13449,7 +13451,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "S8rMlJBmVYc",
@@ -13493,7 +13495,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "-fOUp6Srnyg",
@@ -13509,7 +13511,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "97J9ForvBrI",
@@ -13564,7 +13566,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "muncqlKJrH0",
@@ -13608,7 +13610,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "9twcmtQj4DU",
@@ -13650,7 +13652,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "-vu34sct1g8",
@@ -13690,7 +13692,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "gDNm1m3G4wo",
@@ -13730,7 +13732,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -13770,7 +13772,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -13778,7 +13780,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": "ElgFQvsPmf0",
@@ -13808,11 +13810,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "SEJ18NhhDzc",
@@ -13822,7 +13824,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -13844,7 +13846,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "JkmCVkJdg-A",
@@ -13886,7 +13888,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "oNI0rf2P9gE",
@@ -13926,7 +13928,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "mJcZjjKzeqk",
@@ -13970,7 +13972,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "wU6udHRIkcc",
@@ -14039,7 +14041,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "wMH6TbIRsJg",
@@ -14049,7 +14051,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -14077,7 +14079,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "LMN7-O_SuqM",
@@ -14117,7 +14119,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "vUwindiBWJ0",
@@ -14155,7 +14157,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "0jWeUdxrGm4",
@@ -14193,7 +14195,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14209,11 +14211,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -14234,7 +14236,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -14256,7 +14258,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14296,7 +14298,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "NvnicGg3FdA",
@@ -14306,7 +14308,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "8ryn-J1OI_U",
@@ -14334,11 +14336,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -14368,7 +14370,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14402,7 +14404,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "WUzplLVxYsk",
@@ -14440,7 +14442,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "_-QHfMDde90",
@@ -14467,8 +14469,10 @@
      "secs": 849
     },
     "js": {
-     "id": null,
-     "at": "2026-11-07"
+     "id": "S_YPA9j3kO8",
+     "title": "LeetCode 236. Lowest Common Ancestor of a Binary Tree (Medium)",
+     "channel": "Sketch the Algorithm",
+     "secs": 479
     }
    }
   },
@@ -14482,7 +14486,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "_UcOALraATY",
@@ -14522,7 +14526,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "duKIzgJQ1w8",
@@ -14562,7 +14566,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -14596,7 +14600,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -14630,7 +14634,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "Q4zHb-Swzro",
@@ -14640,7 +14644,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "hh-uFQ-MGfw",
@@ -14668,11 +14672,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -14702,7 +14706,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ps2ZTj4DAm0",
@@ -14784,11 +14788,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -14802,7 +14806,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14814,7 +14818,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -14836,7 +14840,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -14901,7 +14905,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "0CesZFo1yOQ",
@@ -14911,7 +14915,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "V-sEwsca1ak",
@@ -14939,11 +14943,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -15006,7 +15010,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15035,7 +15039,7 @@
   "dsa24-t4": {
    "t": "Polynomial Hashing, Double Hashing & Anti-Hash Tests",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15051,11 +15055,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    },
    "broadAt": "2026-11-12"
@@ -15070,7 +15074,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15082,7 +15086,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -15133,7 +15137,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "QEWvTVcpAyg",
@@ -15143,7 +15147,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "vUsgDUVoiWM",
@@ -15173,7 +15177,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "vaTlSINdvY0",
@@ -15213,7 +15217,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "iMZEwYfBWDY",
@@ -15280,7 +15284,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "oBH9dH6KGLM",
@@ -15300,11 +15304,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -15318,7 +15322,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "ntOM8JRAlaY",
@@ -15332,7 +15336,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "trcg8AFmRGI",
@@ -15356,7 +15360,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15448,7 +15452,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -15482,7 +15486,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": "GiWV9L-kHec",
@@ -15521,7 +15525,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -15551,7 +15555,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15622,7 +15626,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15638,11 +15642,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -15656,7 +15660,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15668,7 +15672,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "WxjSrARCW7M",
@@ -15721,7 +15725,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -15754,11 +15758,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -15784,11 +15788,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -15818,7 +15822,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15852,7 +15856,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15897,11 +15901,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -15915,7 +15919,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15927,7 +15931,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "ydrsAGN-GNk",
@@ -16009,7 +16013,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -16074,15 +16078,15 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -16108,11 +16112,11 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -16142,7 +16146,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16178,7 +16182,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16212,7 +16216,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16228,11 +16232,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -16257,7 +16261,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -16283,7 +16287,7 @@
    "start": 188,
    "end": 420,
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "cpp": {
      "id": null,
@@ -16325,7 +16329,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": "_ceGKgNWFXw",
@@ -16369,7 +16373,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z",
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z",
    "byLang": {
     "csharp": {
      "id": null,
@@ -16640,9 +16644,10 @@
   },
   "fe05-t4": {
    "t": "Transitions, Keyframe Animations and Easing",
-   "id": null,
-   "at": "2026-11-07",
-   "broadAt": "2026-11-12"
+   "id": "qRsXBLwGZ6s",
+   "title": "CSS Animations and Transitions: Creating Engaging User Experiences Without Performance Issues",
+   "channel": "Royal Research - Official",
+   "secs": 368
   },
   "fe05-t5": {
    "t": "CSS Variables (Custom Properties) and Theming",
@@ -17329,13 +17334,13 @@
   "fe18-t2": {
    "t": "The Injector Tree: Element vs Environment Injectors",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "fe18-t3": {
    "t": "Provider Recipes: useClass, useValue, useFactory, useExisting, multi",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "fe18-t4": {
@@ -17543,7 +17548,7 @@
   "fe22-t4": {
    "t": "Who Triggers Change Detection? zone.js Patching, NgZone and Zoneless Scheduling",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "fe22-t5": {
@@ -17624,7 +17629,7 @@
   "fe24-t1": {
    "t": "Nested Layouts, Templates, Loading, Error & Not-Found Boundaries",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "fe24-t2": {
@@ -18494,7 +18499,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java01-t1": {
    "t": "JDK vs JRE vs JVM — and What Lives Inside the JVM",
@@ -18506,7 +18511,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java01-t2": {
    "t": "The main Method, Command-Line Arguments & Exit Codes",
@@ -18518,7 +18523,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java01-t3": {
    "t": "Primitive Types, Ranges, Literals & Defaults",
@@ -18530,7 +18535,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java01-t4": {
    "t": "Type Casting: Widening, Narrowing & Numeric Promotion",
@@ -18542,7 +18547,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java01-t5": {
    "t": "Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence",
@@ -18561,7 +18566,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java01-t7": {
    "t": "char, ASCII & Unicode (UTF-16, Code Points, Emoji)",
@@ -18573,7 +18578,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java02-t0": {
    "t": "Decisions: if/else, the Ternary Operator, switch & Switch Expressions",
@@ -18585,7 +18590,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java02-t1": {
    "t": "Loops: for, while, do-while and the Enhanced for-each",
@@ -18604,7 +18609,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java02-t3": {
    "t": "Methods, the Call Stack and Why Java Is Always Pass-by-Value",
@@ -18616,7 +18621,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java02-t4": {
    "t": "Method Overloading and Varargs (int... args)",
@@ -18628,7 +18633,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java02-t5": {
    "t": "1D Arrays, 2D Arrays and Jagged Arrays",
@@ -18640,7 +18645,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java02-t6": {
    "t": "The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)",
@@ -18659,7 +18664,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java03-t0": {
    "t": "Defining Classes & Creating Objects",
@@ -18671,7 +18676,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java03-t1": {
    "t": "References: Stack vs Heap, Aliasing, null & Pass-by-Value",
@@ -18683,7 +18688,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java03-t2": {
    "t": "Constructors & Constructor Chaining",
@@ -18695,7 +18700,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java03-t3": {
    "t": "The this Keyword",
@@ -18707,7 +18712,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java03-t4": {
    "t": "static: Fields, Methods & Blocks",
@@ -18719,7 +18724,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java03-t5": {
    "t": "Initialization Order: static, instance, constructor",
@@ -18731,7 +18736,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java03-t6": {
    "t": "Access Modifiers & Packages",
@@ -18743,7 +18748,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t0": {
    "t": "Encapsulation: Private Data, Public Behaviour, Guarded Invariants",
@@ -18755,7 +18760,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t1": {
    "t": "Inheritance, extends & super: Reusing a Parent and Building Objects Layer by Layer",
@@ -18767,7 +18772,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t2": {
    "t": "Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override",
@@ -18779,7 +18784,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t3": {
    "t": "Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)",
@@ -18791,7 +18796,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t4": {
    "t": "Abstract Classes: Half-Built Blueprints and the Template Method",
@@ -18803,7 +18808,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t5": {
    "t": "Interfaces: Contracts, default & static Methods, and the Diamond Rules",
@@ -18815,7 +18820,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t6": {
    "t": "final: Variables, References, Methods and Classes",
@@ -18827,7 +18832,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t7": {
    "t": "Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)",
@@ -18839,7 +18844,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java04-t8": {
    "t": "The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize",
@@ -18851,7 +18856,7 @@
    "curated": true,
    "reviewedAt": "2026-10-21",
    "available": true,
-   "availabilityCheckedAt": "2026-11-13T02:44:52.752Z"
+   "availabilityCheckedAt": "2026-11-14T02:35:00.632Z"
   },
   "java05-t0": {
    "t": "String Immutability: Why a String Can Never Change",
@@ -19421,7 +19426,7 @@
   "java15-t4": {
    "t": "Parameterized Tests & Fluent Assertions with AssertJ",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "java15-t5": {
@@ -20439,11 +20444,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -20592,7 +20597,7 @@
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -20613,7 +20618,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -20865,7 +20870,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -20925,11 +20930,11 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -21057,7 +21062,7 @@
   "lld03-t5": {
    "t": "Naming & Small Functions (code that reads like a story)",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "byLang": {
     "cpp": {
      "id": "6SnxFx9aRps",
@@ -21203,7 +21208,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -21310,11 +21315,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -21335,7 +21340,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "4r0T0AHUcig",
@@ -21428,7 +21433,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -21529,11 +21534,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -21650,7 +21655,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -21658,7 +21663,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -21707,7 +21712,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -21806,11 +21811,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -21831,7 +21836,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -21968,7 +21973,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -21976,7 +21981,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -21997,7 +22002,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "kzfrbkDcYjA",
@@ -22152,7 +22157,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "vBjwynm59qk",
@@ -22162,7 +22167,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -22185,7 +22190,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -22334,7 +22339,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "WnTe0w_pfs0",
@@ -22344,7 +22349,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -22446,7 +22451,7 @@
   "lld09-t5": {
    "t": "Production-Grade State Machines: Table-Driven Engines, Thread-Safe Transitions, Persistence and Testing",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "byLang": {
     "cpp": {
      "id": null,
@@ -22509,7 +22514,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "RoQvj3MJgNQ",
@@ -22628,11 +22633,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -22736,7 +22741,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -22744,7 +22749,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -22843,18 +22848,18 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
   "lld11-t5": {
    "t": "DDD Building Blocks II: Aggregates, Boundaries and Repositories",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "byLang": {
     "cpp": {
      "id": null,
@@ -22975,7 +22980,7 @@
    "byLang": {
     "cpp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": "hvRXOpJPQVY",
@@ -22985,7 +22990,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -23068,7 +23073,7 @@
    "byLang": {
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -23101,7 +23106,7 @@
     },
     "csharp": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "python": {
      "id": null,
@@ -23198,11 +23203,11 @@
     },
     "java": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "js": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     }
    }
   },
@@ -23223,7 +23228,7 @@
     },
     "python": {
      "id": null,
-     "at": "2026-11-07"
+     "at": "2026-11-14"
     },
     "java": {
      "id": null,
@@ -23753,7 +23758,7 @@
   "py10-t5": {
    "t": "Tasks, gather, TaskGroup, Timeouts, Cancellation and Rate Limiting",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "py10-t6": {
@@ -23869,7 +23874,7 @@
   "py12-t5": {
    "t": "Small-Int Cache, String Interning & Why \"is\" Lies to You",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "py12-t6": {
@@ -23958,13 +23963,13 @@
   "py14-t1": {
    "t": "pip, PEP 440 Versions and Dependency Resolution",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "py14-t2": {
    "t": "pyproject.toml, Build Backends, Wheels vs sdists",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "py14-t3": {
@@ -23977,7 +23982,7 @@
   "py14-t4": {
    "t": "src Layout, Editable Installs and Import Resolution",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "py14-t5": {
@@ -24003,7 +24008,7 @@
   "py15-t1": {
    "t": "Broadcasting, Reshaping, and Views vs Copies",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "py15-t2": {
@@ -24050,7 +24055,7 @@
   "py16-t0": {
    "t": "Projects, Apps, MTV and URL Routing with Path Converters",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "py16-t1": {
@@ -24930,7 +24935,7 @@
   "sql16-t4": {
    "t": "Isolation Defaults, Locking Reads and InnoDB Gap Locks",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "sql16-t5": {
@@ -24978,7 +24983,7 @@
   "sql17-t4": {
    "t": "Redis Persistence, TTLs and Eviction Policies",
    "id": null,
-   "at": "2026-11-07",
+   "at": "2026-11-14",
    "broadAt": "2026-11-12"
   },
   "sql17-t5": {
