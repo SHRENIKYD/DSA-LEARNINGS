@@ -1,0 +1,113 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "URL frontier: per-host queues and a ready-time heap",
+    "python": "import heapq\n\n# One back queue per host; a min-heap holds (next_allowed_time, host).\nqueues = {\n    \"a.com\": [\"a.com/1\", \"a.com/2\", \"a.com/3\"],\n    \"b.com\": [\"b.com/1\", \"b.com/2\"],\n    \"c.com\": [\"c.com/1\"],\n}\nCRAWL_DELAY = 2.0                      # seconds between hits to one host\nheap = [(0.0, host) for host in queues]\nheapq.heapify(heap)\nprint(\"hosts:\", {h: len(q) for h, q in queues.items()})\n\nclock = 0.0\nwhile heap:\n    ready, host = heapq.heappop(heap)  # host with the smallest ready time\n    clock = max(clock, ready)          # wait if it is not ready yet\n    url = queues[host].pop(0)\n    print(f\"t={clock:4.1f} fetch {url}\")\n    clock += 0.5                       # pretend the fetch took 0.5s\n    if queues[host]:                   # push the host back, delayed\n        heapq.heappush(heap, (clock + CRAWL_DELAY, host))\n# Each pop/push is O(log H) for H hosts; memory is O(URLs).\n"
+   },
+   "followUps": [
+    "<p>A good rule is about three back queues per fetcher thread, so each thread always has several hosts ready to serve. A thread works on one host at a time, and every fetch to a host must be followed by a polite wait. If you give a thread only one queue, it sits idle during that wait.</p><p>Example: crawl delay 2 s and fetch time 0.5 s means one host is busy about 0.5 of every 2.5 s, so a thread needs roughly 5 hosts to stay fully busy. In practice you size queues as threads x 3 and watch thread idle time.</p>",
+    "<p>You cap how fast you crawl that host and spread its work over time, because one host can never be fetched faster than its crawl delay allows. At 1 request per second, 50 million URLs take about 580 days, so you accept that most of them will not be fetched.</p><p>Steps: give the host a page budget by importance, rank its URLs (sitemaps, link depth, freshness), keep a bounded in-memory window of that host's queue and spill the rest to disk, and use a bigger rate only if the owner allows it in robots.txt or agrees to it. Detect trap-like growth too (see spider traps).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Near-duplicate detection with SimHash",
+    "python": "import hashlib\n\ndef simhash(text, bits=64):\n    # Each word votes +1/-1 on every bit position; the sign decides the bit.\n    v = [0] * bits\n    for w in text.lower().split():\n        h = int(hashlib.md5(w.encode()).hexdigest(), 16) & ((1 << bits) - 1)\n        for i in range(bits):\n            v[i] += 1 if (h >> i) & 1 else -1\n    return sum(1 << i for i in range(bits) if v[i] > 0)\n\ndef hamming(a, b):\n    return bin(a ^ b).count(\"1\")\n\ndoc1 = (\"the crawler stores one canonical copy of every page and the mirror site \"\n        \"serves the same article with a different footer and a new banner today\")\ndoc2 = doc1.replace(\"banner\", \"advert\")   # one word changed\ndoc3 = \"stock exchanges match buy and sell orders using price time priority rules\"\nh1, h2, h3 = simhash(doc1), simhash(doc2), simhash(doc3)\nprint(\"doc1 vs doc2 (near duplicate) distance:\", hamming(h1, h2))\nprint(\"doc1 vs doc3 (different) distance:\", hamming(h1, h3))\nTHRESHOLD = 3                          # within 3 bits = near duplicate\nprint(\"doc2 is duplicate of doc1:\", hamming(h1, h2) <= THRESHOLD)\nprint(\"doc3 is duplicate of doc1:\", hamming(h1, h3) <= THRESHOLD)\n"
+   },
+   "followUps": [
+    "<p>For a seen-URL filter, pick around 1 percent false positives (about 10 bits per URL and 7 hash functions). A false positive means we wrongly skip a new URL, which costs a missed page but never a crash, so a small loss is fine.</p><p>Example: 10 billion URLs at 10 bits is about 12.5 GB, which fits across a cluster. At 0.1 percent it needs about 14.4 bits, around 18 GB. Because a Bloom hit can be wrong, back it with the exact sharded store: only a Bloom <i>miss</i> is trusted as new, and hits are verified when the cost of a miss matters.</p>",
+    "<p>Choose the canonical URL by a fixed ranking, so the choice is stable and every node agrees. Prefer the URL named by rel=canonical (if it points to a page with the same content), then the one in sitemaps, then https over http, then the shortest URL without tracking parameters, then the one with the most inbound links.</p><p>Example: <code>http://a.com/x?utm=1</code> and <code>https://a.com/x</code> have the same body hash, so https://a.com/x wins. If a tie remains, take the lexicographically smallest URL so the answer never flips between runs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You run a headless browser (for example a Chromium pool) only for pages that need it, because rendering is 10 to 100 times more costly than a plain fetch. First fetch the raw HTML; if it has little text but many script tags, send it to a render queue.</p><p>Limit each render with a time budget (say 10 s), block images and ads, cap network requests, and run browsers in sandboxes. At 5 pages per second per browser core, 1000 pages per second would need about 200 cores, so render only the important sites.</p>",
+    "<p>Treat 429 (Too Many Requests) as an order to slow down: stop hitting that host, honour the Retry-After header, then come back later at a lower rate. Do not retry at once, because that makes things worse and can get you blocked.</p><p>Steps: push the host back in the heap with its ready time set to now plus Retry-After (or a doubling backoff such as 1, 2, 4, 8 minutes), cut its crawl rate by half, and slowly raise it again after clean responses. Return the URL to the queue and log the event.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Cron run ids: one effect per scheduled time",
+    "python": "import hashlib\n\nruns = {}          # stands in for a table with a UNIQUE key on run_id\neffects = []       # what the target system actually did\n\ndef run_id(job, scheduled_time):\n    # Same job + same scheduled time always gives the same id.\n    return hashlib.sha1(f\"{job}@{scheduled_time}\".encode()).hexdigest()[:8]\n\ndef scheduler_fire(job, t):\n    rid = run_id(job, t)\n    if rid in runs:                    # unique-key insert would fail\n        print(\"scheduler: duplicate fire ignored for\", rid)\n        return None\n    runs[rid] = \"queued\"\n    return rid\n\ndef worker(rid, job):\n    # Target remembers run ids it has already applied (idempotency key).\n    if rid in effects:\n        print(\"target: already applied\", rid, \"- skipped\")\n        return\n    effects.append(rid)\n    print(\"target: applied\", job, \"run\", rid)\n\nrid = scheduler_fire(\"backup\", \"2026-01-01T00:00Z\")\nscheduler_fire(\"backup\", \"2026-01-01T00:00Z\")   # a second scheduler fires too\nworker(rid, \"backup\")\nworker(rid, \"backup\")                           # retry after a lost ack\nprint(\"effects:\", len(effects))                 # exactly 1\n"
+   },
+   "followUps": [
+    "<p>Another scheduler takes over when the dead one's leader lease expires, and it must not miss or repeat the 02:00 runs. A lease of 10 s means the new leader starts within about 10 s, then scans for jobs with next_run_at in the past and fires them (catch-up).</p><p>Because run ids are hash(job, scheduled time), a run the dead leader already inserted is rejected as a duplicate by the unique key, and a run it never inserted is created now. Nothing is lost or doubled; it is just late by a few seconds, which you report as scheduling lag.</p>",
+    "<p>Set the lease to a few times the heartbeat interval and well below the time you can tolerate a stalled job. A common choice is heartbeat every 5 s and lease 15 s, so two missed heartbeats do not trigger a false takeover.</p><p>Short leases recover fast but cause false expiries during garbage-collection pauses or network blips; long leases make crashes slow to notice. Fencing tokens make a too-short lease safe, because a stale worker's commit is rejected. Measure your longest pauses and set the lease above them.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Measure the gap between the time a job was meant to start and the time it really started, called scheduling lag, and watch its percentiles. A job is on time if the lag is within its tolerance, for example p99 under 1 second.</p><p>Example: scheduled 00:00:00, started 00:00:03 gives lag 3 s. Track it per tenant and per priority, plus the queue depth and the share of runs that missed their window. Alert when the p99 lag passes the target, not the average, because averages hide the late jobs.</p>",
+    "<p>A fair policy gives every tenant a guaranteed share and lets others use idle capacity, such as weighted fair queueing or per-tenant token buckets with a cap on concurrent runs.</p><p>Example: 100 workers, 4 tenants with equal weight each get 25 slots. If tenant A sends 10,000 jobs and the others are idle, A may use all 100; when B arrives, B gets its 25 back as A's running jobs finish. Round-robin between tenant queues prevents a big tenant from blocking a small one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep the schedule as a calendar rule and compute each run in UTC, using the rule you choose: either exactly 90 minutes of elapsed time, or 90 minutes of wall-clock time. For an interval, elapsed time is the sensible choice and the best default.</p><p>Example: a run at 00:30 on the night clocks go forward 1 hour (01:00 becomes 02:00) lands at 03:00 local, since 90 minutes really passed. Document the choice, and use calendar rules (daily at 09:00) only for jobs people expect at a clock time.</p>",
+    "<p>You recompute the next run times from the new rules, because stored UTC instants for future runs may now point to the wrong local time. Keep the schedule expression and the zone name, and not only the UTC time, so you can recompute.</p><p>Steps: ship the new tz database, find jobs in the affected zone, recalculate next_run_at, and log the change. Example: if a country cancels DST, a 09:00 job that was stored as 08:00 UTC must move to 09:00 UTC when the offset changes. Do this before the transition date.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Leaderboard ranks with a tie rule",
+    "python": "# Leaderboard with a tie rule: higher score first, earlier achiever first.\n# Encode both in one number: score * BIG + (BIG - 1 - time).\nBIG = 10**6\nplayers = {                      # name: (score, time the score was reached)\n    \"ann\": (900, 50), \"bob\": (950, 70), \"cy\": (900, 20), \"dee\": (700, 10),\n}\nprint(\"input:\", players)\n\nboard = {}                       # stands in for a Redis sorted set\nfor name, (score, t) in players.items():\n    board[name] = score * BIG + (BIG - 1 - t)\n\nranked = sorted(board, key=lambda n: -board[n])   # ZREVRANGE\nprint(\"top 3:\", [(n, players[n][0]) for n in ranked[:3]])\n\ndef rank(name):                  # ZREVRANK: count of strictly higher + 1\n    return 1 + sum(1 for v in board.values() if v > board[name])\n\nfor n in [\"bob\", \"cy\", \"ann\", \"dee\"]:\n    print(n, \"rank\", rank(n))\n# Real Redis does ZREVRANK in O(log N); this demo scans in O(N).\n"
+   },
+   "followUps": [
+    "<p>You split the board into several smaller sorted sets by hash of the player id, then combine them when someone asks for top-K. Each shard returns its own top K and a coordinator merges them.</p><p>Example: 8 shards and K = 100 means the coordinator merges 800 candidates and keeps 100, which is fast. Writes are spread evenly, so 8 nodes handle 8 times the write rate. For exact rank, ask every shard how many players have a higher score and add the counts; cache this for approximate ranks when exactness is not needed.</p>",
+    "<p>You cannot stop all cheating, so you make it costly and spot it afterwards. The key rule is that the server computes scores, never the client.</p><p>Steps: validate each result against game rules (a score per minute cannot pass a maximum), sign requests and reject replays using match_id, rate limit submissions per account, run statistical checks for outliers (a jump from 1,000 to 9,000,000), and keep a way to remove a player and rebuild the board from the database, which is the source of truth.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You change the score boundaries slowly, using the score histogram to find new split points so every shard holds about the same number of players. Then you move only the players whose scores cross a new boundary.</p><p>Example: if shard 3 has 2 million players and the others 1 million each, split its range at the median score and hand half to a new shard. Do it in the background by copying first, switching a routing table, then deleting the old copy, so reads stay correct throughout.</p>",
+    "<p>For a public leaderboard, a few seconds is usually fine, because a rank that is 5 seconds old still looks right to a player. For a player's own score, show it from the write result instead of the cached count.</p><p>Example: if 20,000 scores arrive per second and a boundary count is 5 seconds old, the count is off by at most 100,000 out of 50 million, a 0.2 percent error. Refresh sooner near the top ranks where each place matters, and later in the tail.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Order book with price-time matching",
+    "python": "from collections import deque\n\nbids, asks = {}, {}              # price (integer ticks) -> FIFO queue of [id, qty]\n\ndef submit(side, oid, price, qty):\n    book, opp = (bids, asks) if side == \"buy\" else (asks, bids)\n    while qty > 0 and opp:\n        best = min(opp) if side == \"buy\" else max(opp)\n        if (side == \"buy\" and best > price) or (side == \"sell\" and best < price):\n            break\n        q = opp[best]\n        while qty > 0 and q:\n            rest = q[0]\n            n = min(qty, rest[1])\n            print(f\"  trade {n} @ {best} (resting {rest[0]}, incoming {oid})\")\n            qty -= n\n            rest[1] -= n\n            if rest[1] == 0:\n                q.popleft()      # price-time: oldest order at the level goes first\n        if not q:\n            del opp[best]\n    if qty > 0:\n        book.setdefault(price, deque()).append([oid, qty])\n\norders = [(\"sell\", \"S1\", 101, 5), (\"sell\", \"S2\", 101, 5), (\"sell\", \"S3\", 102, 5),\n          (\"buy\", \"B1\", 101, 7), (\"buy\", \"B2\", 102, 6)]\nfor o in orders:\n    print(\"order\", o)\n    submit(*o)\nprint(\"asks left:\", {p: [list(x) for x in q] for p, q in asks.items()})\nprint(\"bids left:\", {p: [list(x) for x in q] for p, q in bids.items()})\n"
+   },
+   "followUps": [
+    "<p>You add a call phase before the open where orders gather without matching, then compute one opening price at which the most volume trades, and match all crossing orders at that single price. After that, normal continuous matching starts.</p><p>Example: buys 100 @ 10.2, 100 @ 10.1; sells 150 @ 10.0, 50 @ 10.1. At 10.1 buys total 200 and sells 200, so volume 200 is the maximum and the open price is 10.1. Orders at better prices fill first, equal ones by time. The engine stays a deterministic state machine with a new mode.</p>",
+    "<p>You split symbols over many matching engines, because books for different symbols never interact. Each symbol is owned by exactly one engine, and a routing table maps symbol to engine.</p><p>Example: 10,000 symbols over 50 engines is 200 symbols each; give busy symbols (the top 20) their own engine. Each engine has its own sequencer and journal, so order within a symbol is still total. Cross-symbol products such as spreads need extra handling and are kept rare.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You take the snapshot from a copy, not from the engine on the hot path. A standby replays the journal like the primary and has the same state, so it can write the snapshot while the primary keeps trading.</p><p>Steps: the standby pauses its own replay at sequence number N, writes the book to disk (or forks the process, using copy-on-write memory), and records N with the file. To recover, load the snapshot and replay journal entries after N. Example: snapshot at N = 5,000,000 and a crash at 5,200,000 means replaying 200,000 messages, about a second.</p>",
+    "<p>The journal is an append-only file of sequenced messages in fixed binary layout, written in order and never changed. Each record has a sequence number, a timestamp, a type, a length and the payload, plus a checksum.</p><p>Example: record 5,000,001 = new order, symbol 7, buy, price 10100 ticks, qty 50. Files are split into segments (for example 1 GB), with an index of sequence number to file offset. Replicas copy the same bytes, so replay on any machine produces the identical book. Old segments are archived after a snapshot.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Operational transform for two inserts",
+    "python": "# Operational transform for inserts: shift position if the other insert is earlier.\ndef transform(op, other):\n    pos, ch, site = op\n    opos, och, osite = other\n    # other insert before us (or same spot and lower site id) pushes us right\n    if opos < pos or (opos == pos and osite < site):\n        return (pos + 1, ch, site)\n    return op\n\ndef apply(doc, op):\n    pos, ch, _ = op\n    return doc[:pos] + ch + doc[pos:]\n\ndoc = \"abc\"\na = (1, \"X\", 1)                  # user 1 inserts X at 1\nb = (2, \"Y\", 2)                  # user 2 inserts Y at 2, at the same time\nprint(\"start:\", doc, \"ops:\", a, b)\n\n# Server order: a then b. b is rewritten against a.\nserver = apply(apply(doc, a), transform(b, a))\n# Another replica receives b first, then a transformed against b.\nother = apply(apply(doc, b), transform(a, b))\nprint(\"order a,b:\", server)\nprint(\"order b,a:\", other)\nprint(\"converged:\", server == other)\n\n# same-position tie broken by site id\nc, d = (1, \"P\", 1), (1, \"Q\", 2)\nr1 = apply(apply(doc, c), transform(d, c))\nr2 = apply(apply(doc, d), transform(c, d))\nprint(\"tie:\", r1, r2, r1 == r2)\n"
+   },
+   "followUps": [
+    "<p>A cursor is just a position, so you transform it the same way as an insert position: if someone inserts before it, shift it right by the length inserted; if they delete before it, shift left.</p><p>Example: cursor at 5, another user inserts 3 characters at 2, so the cursor moves to 8. If they delete positions 3 to 4 (2 characters), the cursor moves to 3. A cursor inside a deleted range goes to the start of that range. An insert exactly at the cursor needs a rule (usually the cursor stays before the new text unless it is the author's own).</p>",
+    "<p>Undo is not just deleting the last edit; you create an inverse operation and transform it against everything done since. Each user undoes only their own edits, not other people's.</p><p>Example: you typed &quot;cat&quot; at 0, then a colleague typed &quot;big &quot; at 0. Your undo (delete 3 chars at 0) must be transformed against their insert so it becomes delete 3 chars at 4. Without that step you would delete &quot;big&quot;. Rich text and redo make this harder.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A tombstone is a record that an element was deleted, and you remove it only when every replica has seen the delete. Then no old update can mention the element again.</p><p>Steps: track the oldest version each replica has acknowledged (a stable version), drop tombstones older than it, and compact runs of characters into blocks. Example: after all 5 clients confirm version 1000, deletes before 1000 are purged. For long-offline clients, set a limit and force them to resync from a snapshot.</p>",
+    "<p>The interleaving anomaly is when two users type words at the same place at once and the merge mixes their letters, such as &quot;hweolrllod&quot; instead of &quot;hello&quot; then &quot;world&quot;.</p><p>It happens when the ordering rule compares each character separately. Good algorithms (for example Yjs) keep characters from one insert together by using the left and right neighbours of the whole run. Example: Ann types &quot;hello&quot;, Bob types &quot;world&quot; at position 0; the result must be one word after the other, never mixed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would use managed services for the parts that are common and not unique, and build the hot core myself. The leaderboard (a managed Redis sorted set), the scheduler queue and durable store, and the crawler's blob storage, queues and fetch fleet fit managed services well.</p><p>The exchange matching engine does not: its latency needs bare metal, colocation and kernel bypass. The collaborative editor can use a managed WebSocket service plus an open-source CRDT library. Rule: buy plumbing, build the piece that gives you the special guarantee.</p>",
+    "<p>I would pick the job scheduler. In a regional outage the leader leases in that region stop being renewed, so a standby region (with replicated job data) wins the lease and takes over after the lease time, say 30 seconds.</p><p>Steps: replicated job store with a few seconds of lag, the new region scans for runs due since the last known point, and run ids (hash of job and time) prevent duplicates of runs already started. A few runs may be late and a few are retried; idempotent targets make that safe. After recovery, fail back deliberately.</p>"
+   ]
+  }
+ ]
+}

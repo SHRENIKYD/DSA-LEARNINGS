@@ -1,0 +1,133 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Offline message: durable inbox with sequence numbers",
+    "python": "# Offline delivery: durable inbox with per-recipient sequence numbers.\ninbox = {}      # user -> list of (seq, text)\nnext_seq = {}   # user -> last assigned sequence\nseen_ids = set()  # client message ids already stored (dedup)\n\ndef send(to, msg_id, text):\n    if msg_id in seen_ids:           # retry from the client: ignore duplicate\n        return \"dup\"\n    seen_ids.add(msg_id)\n    seq = next_seq.get(to, 0) + 1    # server assigns the order\n    next_seq[to] = seq\n    inbox.setdefault(to, []).append((seq, text))   # durable write first\n    return seq                       # then ack the sender (one tick)\n\ndef sync(user, last_acked):\n    # Bob reconnects and sends the last sequence he has seen\n    rows = [r for r in inbox.get(user, []) if r[0] > last_acked]\n    return rows\n\nprint(\"bob offline; alice sends 3 messages (one retried)\")\nprint(send(\"bob\", \"m1\", \"hi\"))\nprint(send(\"bob\", \"m2\", \"are you there?\"))\nprint(send(\"bob\", \"m2\", \"are you there?\"))  # duplicate retry\nprint(send(\"bob\", \"m3\", \"call me\"))\nrows = sync(\"bob\", 0)\nprint(\"bob reconnects with last_acked=0 ->\", rows)\ninbox[\"bob\"] = [r for r in inbox[\"bob\"] if r[0] > rows[-1][0]]  # ack deletes rows\nprint(\"after ack, inbox rows left:\", len(inbox[\"bob\"]))\n"
+   },
+   "followUps": [
+    "<p>The message is not lost, because the push is only a nudge and the message is already stored safely in Bob's inbox. If APNs or FCM fails, the server retries with backoff, and Bob's app pulls the inbox the next time it opens or reconnects.</p><p>Example: the push fails 3 times and Bob opens the app 2 hours later. He sends last acked sequence 41, the server streams 42 to 47, and nothing is missing. Also run a periodic sweep that re-sends pushes for old unread rows.</p>",
+    "<p>You cap and expire it, because an inbox cannot grow forever. Keep messages for a fixed window (for example 30 days), then delete them and tell the client its history has a gap so it can show \"messages expired\".</p><p>Per user, a limit such as 100,000 rows or 500 MB protects storage: 10 messages a day for 180 days is only 1,800 rows, but a busy group can send millions. For long offline users, send one \"you have N new messages\" summary instead of N pushes, and page the sync in batches of 500.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Drain the old gateways slowly instead of cutting them off. Mark an old gateway as draining so it accepts no new connections, then ask clients in small batches to reconnect to a new gateway.</p><p>Example: 1M sockets on a node, 2% asked to leave every 10 seconds, so the full drain takes about 8 minutes and reconnects stay near 20K per 10 s. Clients reconnect with random jitter and resume from their last acked sequence, so nothing is lost. Without jitter, 1M simultaneous reconnects (a thundering herd) can overload the session store and login path.</p>",
+    "<p>Server-Sent Events are enough when data only flows from server to client, such as live scores, notifications or a progress bar. SSE is plain HTTP, reconnects automatically and passes through most proxies.</p><p>Chat needs the client to send messages too, but that can be a normal HTTP POST while SSE carries the incoming stream. WebSockets win when you need frequent small messages in both directions, binary frames or very low overhead. SSE also keeps one connection per tab on HTTP/1.1 limits, so use HTTP/2 to avoid running out of connections.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Ordering: server sequence numbers and gap repair",
+    "python": "# Server-assigned sequence numbers and gap repair on the client.\nimport random\n\nclass Sequencer:                      # one owner per conversation\n    def __init__(self):\n        self.n = 0\n        self.log = {}\n    def append(self, text):\n        self.n += 1                   # monotonic, assigned at durable write\n        self.log[self.n] = text\n        return self.n\n\nseq = Sequencer()\nfor t in [\"a\", \"b\", \"c\", \"d\", \"e\"]:\n    seq.append(t)\n\narrived = [1, 2, 4, 5]                # message 3 was lost on the way\nprint(\"client received seqs:\", arrived)\nshown = sorted(arrived)\nexpected = 1\nfor s in shown:\n    if s != expected:                 # gap detected\n        print(\"gap: missing\", list(range(expected, s)))\n        for m in range(expected, s):  # ask the server for the missing range\n            arrived.append(m)\n    expected = s + 1\nfinal = [seq.log[s] for s in sorted(arrived)]\nprint(\"rendered in order:\", final)\n"
+   },
+   "followUps": [
+    "<p>A new owner takes over and carries on the sequence from the last durable value, so the order never goes backwards. Group ownership is leased: a coordinator (or consensus store) hands the group to another node when the lease expires.</p><p>Example: the old sequencer last stored 120, so the new one reads the highest stored sequence, 120, and assigns 121 next. To stop two owners at once, give every lease a fencing token and have the database reject writes from an older token. Clients simply retry messages with the same client id, so duplicates are dropped.</p>",
+    "<p>Usually no. Users only need a consistent order inside one conversation, so a separate sequence per group is enough, and there is no need for a global clock.</p><p>The exception is when one event depends on another across conversations, for example you reply in group B to something you read in group A. Even then, people accept slight reordering between chats. If you really need it, attach a causal token (the highest sequence you have seen) to the message, or use per-user hybrid logical clocks. Both cost extra metadata, so skip them unless the product needs it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Hybrid fan-out: push for normal authors, pull for celebrities",
+    "python": "# Hybrid fan-out: push for normal authors, pull for celebrities.\nTHRESHOLD = 3                      # followers above this = celebrity (toy value)\nfollowers = {\"ann\": [\"u1\", \"u2\"], \"star\": [\"u1\", \"u2\", \"u3\", \"u4\", \"u5\"]}\nfollows = {\"u1\": [\"ann\", \"star\"], \"u2\": [\"star\"]}\ntimeline = {}                      # precomputed lists (push)\nposts = {\"ann\": [], \"star\": []}    # author's own recent posts\n\ndef post(author, pid):\n    posts[author].append(pid)\n    if len(followers[author]) <= THRESHOLD:\n        for f in followers[author]:           # fan-out on write\n            timeline.setdefault(f, []).append(pid)\n        return \"pushed to %d timelines\" % len(followers[author])\n    return \"celebrity: stored once, no fan-out\"\n\ndef read_feed(user):\n    feed = list(timeline.get(user, []))       # cheap cache read\n    for a in follows.get(user, []):\n        if len(followers[a]) > THRESHOLD:     # merge celebrities at read time\n            feed += posts[a]\n    return sorted(feed)\n\nprint(post(\"ann\", \"p1\"))\nprint(post(\"star\", \"p2\"))\nprint(post(\"ann\", \"p3\"))\nprint(\"u1 feed:\", read_feed(\"u1\"))\nprint(\"u2 feed:\", read_feed(\"u2\"))\n"
+   },
+   "followUps": [
+    "<p>Choose the threshold from cost, not from taste: push while the write cost per post is small compared with the read cost you save. A common starting point is around 10,000 to 100,000 followers, then tune it from measurements.</p><p>Example: an author with 1M followers, of whom 100K are active, costs 100K cache writes per post when you push only to active users. If 200 write workers do 5,000 writes per second each (1M/s), that post takes 0.1 s of the fleet, which may be fine. Raise or lower the number until fan-out lag stays under your goal (for example p99 under 5 seconds).</p>",
+    "<p>Switch the account's mode for new posts only, and leave old timelines as they are. When the follower count crosses the threshold, mark the author as celebrity, stop pushing new posts and let readers pull them at read time.</p><p>Existing timeline entries stay valid until they age out, so nothing needs a risky rewrite. Add hysteresis: go to pull at 100K but return to push only below 80K, so an account at 99,990 followers does not flip every hour. Readers merge both sources by post id, so the change is invisible to them.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put hedged requests on the slow, read-only calls that fan out: the batched post fetch and the celebrity-list lookups. A hedge means sending a second copy of the request to another replica if the first has not answered by about the p95 latency.</p><p>Example: if the normal answer takes 10 ms and p99 is 80 ms, wait 15 ms and then send the duplicate; the first reply wins and the other is cancelled. This adds about 5% extra load but cuts the tail sharply. Never hedge writes unless they are idempotent, and cap hedges to a small share of traffic.</p>",
+    "<p>Run the new model on a small, random slice of users and compare with the old one, while guard metrics can stop it automatically. Hash the user id so the same person always sees the same variant.</p><p>Steps: first shadow-score the new model offline with no user impact, then give it 1% of users, watch latency p99, errors and engagement (time spent, hides, reports), and widen to 5%, 25%, 100% only if guard metrics hold. Keep a kill switch that falls back to the old ranker, and run long enough (for example 1 to 2 weeks) to see novelty effects fade.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use resumable, chunked uploads: split the video into parts (for example 8 MB), upload each part separately and let the client ask which parts are done. If the connection drops, it restarts only the missing parts.</p><p>Example: a 400 MB file is 50 parts; after 31 parts the phone loses signal, so on reconnect it asks the server, sees parts 1 to 31, and sends parts 32 to 50. With S3-style multipart upload, parts go to separate pre-signed URLs and a final \"complete\" call joins them. Parts can upload in parallel, and incomplete uploads are cleaned up after a few days.</p>",
+    "<p>Create several renditions during processing and choose one per request with the Accept header or a client hint. Browsers that support WebP or AVIF say so in Accept, and the CDN or an image service returns the best format.</p><p>Example: a 1 MB JPEG might become about 600 KB as WebP and about 450 KB as AVIF. Store each under its own key (photo.jpg, photo.webp, photo.avif), make the CDN cache vary on the format, and fall back to JPEG for old clients. AVIF costs more CPU to encode, so generate it ahead of time for popular images.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Hot post likes: sharded counter with batched database write",
+    "python": "# Sharded counter for a hot post plus batched write to the database.\nimport zlib\n\nK = 4\ncells = [0] * K                    # k counter cells (stand-in for Redis keys)\ndb_count = 0\nliked = set()                      # unique (post, user) set makes likes idempotent\n\ndef like(user):\n    if user in liked:              # same user twice: no change\n        return\n    liked.add(user)\n    cells[zlib.crc32(user.encode()) % K] += 1     # user hash picks a cell, spreading the load\n\nusers = [\"u%d\" % i for i in range(1000)]\nfor u in users:\n    like(u)\nlike(\"u5\")                         # duplicate like ignored\nprint(\"cells:\", cells, \"sum:\", sum(cells))\n\ndef flush():                       # batching consumer: one DB write per batch\n    global db_count\n    db_count = sum(cells)\n    return 1\n\nwrites = flush()\nprint(\"db count:\", db_count, \"after\", writes, \"write instead of\", len(users))\n"
+   },
+   "followUps": [
+    "<p>Do not rely on one counter for a number that must be exact; use the database as the source of truth and update it in a transaction. For a paid vote, each vote is a row written once (unique key per voter), and the total is a count over those rows.</p><p>Example: a unique key on (poll_id, voter_id) stops double votes even on retries. To handle the load, shard by poll and partition the vote table, and keep the cached counter only for display. Pay the price in throughput: a single strongly consistent row handles maybe a few thousand writes per second, so show an estimate live and reconcile to the exact total at the end.</p>",
+    "<p>Intersect the post's likers with the viewer's follow list, but only for a small sample, because computing it for every viewer is too costly. Show \"Alice and 3 others\" using a few friends rather than a full scan.</p><p>Approach: read the most recent 100 likers of the post (or the viewer's top 200 close contacts) and check which are in the viewer's follow set, which is a cached set lookup. Example: 200 candidates times one set lookup each is 200 operations, cheap. Do it lazily for visible posts only, and cache the result for a minute.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give the premiere its own high-priority queue and let back-catalogue jobs use only leftover capacity. Priority queues with reserved workers stop a big re-encode batch from delaying a launch.</p><p>Example: reserve 30% of the encode fleet for premieres and let the other 70% run low-priority work, which can be paused and resumed because jobs are chunked and idempotent. Scale out spot instances before the premiere, encode the most-watched renditions first (720p, 1080p) so playback can start, and finish the rare ones (4K, extra codecs) afterwards.</p>",
+    "<p>Use AV1 when the saving in bandwidth is worth the extra encoding cost and the device can decode it. That means popular titles watched many times, and viewers on devices with hardware AV1 decoding.</p><p>Example: if AV1 is about 30% smaller than H.264 and a title gets 10M views, the delivery saving is large compared with a one-time encode that costs several times more CPU. For a video watched 20 times, keep H.264. The decision is a break-even: encode cost versus views times bytes saved, and the player picks AV1 only if the device supports it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Adaptive bitrate: pick the rendition from measured throughput",
+    "python": "# Throughput-based adaptive bitrate selection.\nRENDITIONS = [300, 750, 1500, 3000, 6000]   # kbps\nSAFETY = 0.8\n\ndef choose(estimate_kbps):\n    best = RENDITIONS[0]\n    for r in RENDITIONS:\n        if r <= SAFETY * estimate_kbps:     # highest bitrate under 80%\n            best = r\n    return best\n\nthroughput = [400, 1200, 2500, 5000, 5200, 1800, 900]  # measured per segment\nest = None\ncurrent = RENDITIONS[0]                     # start low to begin playing fast\nfor i, t in enumerate(throughput):\n    est = t if est is None else 0.7 * est + 0.3 * t   # smoothed estimate\n    target = choose(est)\n    if target > current:                    # step up one level at a time\n        current = RENDITIONS[RENDITIONS.index(current) + 1]\n    else:\n        current = target                    # step down immediately\n    print(\"segment %d: measured %d, est %.0f -> %d kbps\" % (i, t, est, current))\n"
+   },
+   "followUps": [
+    "<p>Start low because the player knows nothing about the network yet, and the first goal is to begin playback quickly with no stall. A small first segment downloads fast, so the picture starts in about a second.</p><p>Example: at 300 kbps a 2-second segment is 75 KB, which arrives in well under a second even on a slow link. After one or two segments the throughput estimate is trustworthy and the player climbs, one step at a time. Starting high risks a long wait or a stall, which users dislike more than a blurry first few seconds.</p>",
+    "<p>Live streaming keeps the buffer small, because viewers are close to real time and there is no future content to download. The player runs only a few seconds behind the live edge, so there is less room to absorb a slow network.</p><p>Example: VOD may buffer 30 seconds ahead; low-latency live might hold 3 to 6 seconds. So the algorithm is more conservative (lower rendition when unsure), segments or parts are shorter (1 to 2 s, or chunked transfer), and a viewer who falls behind may be sped up slightly or moved to a lower rendition. Latency is traded for fewer stalls.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Consistent hashing: few videos move when a cache is added",
+    "python": "# Consistent hashing of video ids over cache servers.\nimport bisect, hashlib\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest(), 16) % 10000\n\nclass Ring:\n    def __init__(self, nodes, vnodes=20):\n        self.ring = sorted((h(\"%s#%d\" % (n, v)), n) for n in nodes for v in range(vnodes))\n        self.keys = [k for k, _ in self.ring]\n    def get(self, key):\n        i = bisect.bisect(self.keys, h(key)) % len(self.ring)  # next point clockwise\n        return self.ring[i][1]\n\nvideos = [\"video%d\" % i for i in range(200)]\nbefore = Ring([\"c1\", \"c2\", \"c3\"])\nafter = Ring([\"c1\", \"c2\", \"c3\", \"c4\"])     # add one cache server\nmoved = sum(1 for v in videos if before.get(v) != after.get(v))\nprint(\"videos:\", len(videos), \"servers: 3 -> 4\")\nprint(\"moved with consistent hashing:\", moved)\nprint(\"moved with hash % N:\", sum(1 for v in videos if h(v) % 3 != h(v) % 4))\n"
+   },
+   "followUps": [
+    "<p>Predict demand for each region and fill the cache boxes overnight, when network use is low, with what people there will probably watch tomorrow. The inputs are recent views, new releases, recommendations and local tastes.</p><p>Example: if a box holds 100 TB and a popular title in 5 renditions takes 0.5 TB, you rank titles by expected regional views per terabyte and fill from the top. Long-tail titles are left to the origin. Compare the next morning's hit rate (for example 95%) against predictions, and use the errors to improve the model.</p>",
+    "<p>Let the caches fill on demand, with protections so the origin does not collapse. The first requests miss, so use request collapsing: if 10,000 viewers ask for the same segment, only one request goes to the parent cache or origin and the others wait for it.</p><p>Add a tiered cache (edge, mid-tier, origin shield) so misses hit a shield first, and pre-position the title to nearby edges as soon as views climb. If a box is overloaded, steer new viewers to another cache or CDN by error rate. A hit like this usually warms the cache within a minute or two.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "File sync: chunk hashes and uploading only missing chunks",
+    "python": "# Chunk a file, hash chunks, upload only the missing ones.\nimport hashlib\nCHUNK = 8                                    # tiny chunk size for the demo\nstore = {}                                   # hash -> bytes (block server)\n\ndef chunks(data):\n    return [data[i:i + CHUNK] for i in range(0, len(data), CHUNK)]\n\ndef upload(data):\n    hashes, sent = [], 0\n    for c in chunks(data):\n        hh = hashlib.sha256(c).hexdigest()[:8]\n        hashes.append(hh)\n        if hh not in store:                  # server says this chunk is missing\n            store[hh] = c\n            sent += 1\n    return hashes, sent\n\nv1 = b\"AAAAAAAABBBBBBBBCCCCCCCCDDDDDDDD\"\nv2 = b\"AAAAAAAABBBBBBBBCCXCCCCCDDDDDDDD\"     # one byte edited in chunk 3\nh1, s1 = upload(v1)\nprint(\"v1 chunks:\", len(h1), \"uploaded:\", s1)\nh2, s2 = upload(v2)\nprint(\"v2 chunks:\", len(h2), \"uploaded:\", s2)\nprint(\"version = ordered chunk hashes:\", h2)\n"
+   },
+   "followUps": [
+    "<p>Because they find the same chunk boundaries after an edit, while fixed-size chunks shift everything after an insertion. Content-defined chunking cuts where a rolling hash of the nearby bytes matches a pattern, so boundaries follow the content.</p><p>Example: insert 1 byte at the start of a 100 MB file with 4 MB fixed chunks and every chunk changes, so you re-upload 100 MB. With content-defined chunks only the chunk around the insert changes, about 4 MB. The cost is extra CPU for the rolling hash and chunks of uneven size.</p>",
+    "<p>Count references and delete a chunk only when nothing points to it, and only after a safety delay. Every file version holds references to its chunks, so a chunk becomes garbage when the last version using it is removed.</p><p>Safe method: mark-and-sweep. Collect all chunk hashes still referenced by any version, then delete only chunks older than, say, 7 days that are not in that set. The age rule protects chunks just uploaded but not yet committed. Run it in the background and log deletions so a bug can be recovered from backups.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sync conflicts: compare-and-swap and conflicted copy",
+    "python": "# Optimistic commit: compare-and-swap on the base version, keep both on conflict.\nmeta = {\"version\": 1, \"content\": \"base\"}\nfiles = {\"report.txt\": dict(meta)}\n\ndef commit(name, base_version, content):\n    cur = files[name]\n    if cur[\"version\"] != base_version:       # someone committed first\n        conflict = name.replace(\".txt\", \" (conflicted copy).txt\")\n        files[conflict] = {\"version\": 1, \"content\": content}\n        return \"conflict -> saved as \" + conflict\n    files[name] = {\"version\": base_version + 1, \"content\": content}\n    return \"ok, now version %d\" % (base_version + 1)\n\nprint(\"both devices start from version 1\")\nprint(\"laptop:\", commit(\"report.txt\", 1, \"laptop edit\"))\nprint(\"phone :\", commit(\"report.txt\", 1, \"phone edit\"))\nfor k in sorted(files):\n    print(k, files[k])\n"
+   },
+   "followUps": [
+    "<p>Treat delete as another version, a tombstone, so it goes through the same compare-and-swap check as an edit. Then whichever commit arrives first wins, and the other is a conflict.</p><p>Common policy: edit beats delete, because losing data is worse than keeping a file. Example: the laptop deletes report.txt while the phone edits it offline. The phone's commit has a base older than the tombstone, so the server restores the file with the phone's edit and tells the laptop. Keep tombstones for a period (for example 30 days) so offline devices learn about deletes and the trash can restore them.</p>",
+    "<p>Tag every change with the device that made it and the version it produced, so a device ignores changes it created itself. A sync loop happens when device A writes a file, B downloads it and the watcher treats that download as a new local edit, sending it back.</p><p>Fixes: record the content hash and version of each file written by sync and skip file-system events that match it; compare hashes before uploading (same hash means no change); ignore temporary files. Example: B writes v7 with hash h7, sees an event with hash h7 and does nothing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Almost all the saving survives, because a small share of chunks (popular files, installers, shared documents) accounts for most duplicates. Dedup within each account stays on, so you only lose cross-user duplicates of rare content.</p><p>Example: if 5% of chunks are seen by 10 or more accounts and these make up 80% of cross-account savings, restricting to them keeps 80% of the gain. Measure it from real data: count how many accounts hold each chunk and choose the threshold, for instance 5 accounts, that keeps most of the saving at small privacy risk.</p>",
+    "<p>Remove access by reference, not by deleting the shared bytes straight away. The content is blocked for the reported file's references, and the chunk is deleted only once no other legitimate file still uses it.</p><p>Steps: identify the chunk hashes of the reported file, mark them as blocked so no new reference can be made, remove the reporting account's links, and run garbage collection. If the same chunks belong to other users' files (a copy of the same illegal file), those are removed too. Keep an audit log of the request and the action taken.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Detect it from counters, not from guessing: sample requests and count hits per key in short windows, and flag any key above a limit. A simple way is a top-k sketch (count-min sketch or heavy hitters) in each cache or proxy node.</p><p>Example: if the average key gets 50 requests per second and a key reaches 20,000 per second, mark it hot. Then copy it to a local in-process cache, replicate it across shards, or add a suffix (key#1 to key#8) so reads spread out. Keep the flag for a few minutes and drop it when traffic falls.</p>",
+    "<p>Send one notification job per event and let the push service spread the work, rather than sending 100M pushes at once. Use queues with rate limits, batching and priority so the service can absorb a spike.</p><p>Example: 100M pushes at 50K per second take about 33 minutes, so spread them over time and send first to the most active users. Collapse repeats (one \"3 new posts\" instead of 3 pushes), skip people who muted the account, apply per-provider limits for APNs and FCM, and keep this traffic apart from other notifications such as security codes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run the smart models on the device, since the server cannot read messages. Small language models on the phone can suggest replies from the last few messages, and nothing is sent to your servers.</p><p>Other options are opt-in: the user chooses to share one message with an assistant, ideally processed in a secure enclave, or the client sends only a safe, anonymised summary. Example: a 100 MB on-device model can run in tens of milliseconds on a modern phone. The costs are model size, battery and older devices, so offer it as an optional feature.</p>",
+    "<p>Sender Keys are simple and cheap but need work when membership changes, while MLS handles large and changing groups with logarithmic cost. In Sender Keys each member shares one key chain with the group, so sending is one encryption, but removing a member means every remaining member makes and shares a new key (N messages).</p><p>MLS arranges members in a tree: adding or removing a member updates about log2(N) nodes, so a group of 1,024 needs about 10 updates, not 1,023. It also gives stronger security after compromise. The trade-off is more complex protocol and server support, so Sender Keys suit small groups and MLS large ones.</p>"
+   ]
+  }
+ ]
+}
