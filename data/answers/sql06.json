@@ -1,0 +1,144 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Window function vs GROUP BY: same data, different shape",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE emp(name TEXT, dept TEXT, salary INT)\")\ndb.executemany(\"INSERT INTO emp VALUES (?,?,?)\", [\n    (\"Ann\", \"eng\", 120), (\"Bob\", \"eng\", 100), (\"Cy\", \"ops\", 80),\n    (\"Di\", \"ops\", 90), (\"Ed\", \"ops\", 70)])\n\n# GROUP BY collapses rows: one row per department\nprint(\"GROUP BY:\")\nfor r in db.execute(\"SELECT dept, SUM(salary) FROM emp GROUP BY dept ORDER BY dept\"):\n    print(\" \", r)\n\n# Window keeps every row and adds the department total next to it\nprint(\"SUM() OVER (PARTITION BY dept):\")\nq = \"\"\"SELECT name, dept, salary,\n              SUM(salary) OVER (PARTITION BY dept) AS dept_total\n       FROM emp ORDER BY dept, name\"\"\"\nfor r in db.execute(q):\n    print(\" \", r)\n"
+   },
+   "followUps": [
+    "<p>Yes. GROUP BY runs first and produces one row per group, then a window function can run over those grouped rows. The window sees the aggregated output, so its arguments must be grouped columns or aggregates.</p><p>Example: <code>SELECT dept, SUM(salary) AS tot, RANK() OVER (ORDER BY SUM(salary) DESC) AS r FROM emp GROUP BY dept</code>. With totals 220 and 240 this returns two rows, ranks 2 and 1. You cannot reference a raw non-grouped column inside the window.</p>",
+    "<p>An empty <code>OVER ()</code> means one window containing every row of the result, with no partitions and no ordering. Each row can then see a whole-table value without collapsing.</p><p>Example: <code>SELECT name, salary, salary * 100.0 / SUM(salary) OVER () AS pct FROM emp</code>. With salaries 50 and 150, the total is 200, so the rows get 25.0 and 75.0 percent. In a distributed engine this forces all rows through one worker, so use it only on small results.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ROW_NUMBER, RANK and DENSE_RANK on a tie",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE emp(id INT, salary INT)\")\ndb.executemany(\"INSERT INTO emp VALUES (?,?)\", [(1, 120), (2, 120), (3, 110)])\n\n# Same ORDER BY salary DESC, three numbering rules for the tie 120/120\nq = \"\"\"SELECT id, salary,\n              ROW_NUMBER() OVER (ORDER BY salary DESC, id) AS row_number, -- unique\n              RANK()       OVER w AS rank,        -- ties share, then a gap\n              DENSE_RANK() OVER w AS dense_rank   -- ties share, no gap\n       FROM emp\n       WINDOW w AS (ORDER BY salary DESC)\n       ORDER BY id\"\"\"\nprint(\"id salary row_number rank dense_rank\")\nfor r in db.execute(q):\n    print(*r)\n# ROW_NUMBER needs the id tiebreaker to be repeatable;\n# RANK / DENSE_RANK give ties the same number on their own\n"
+   },
+   "followUps": [
+    "<p>Use DENSE_RANK, because it numbers distinct salary values without gaps, so rank 2 is the second highest value even when the top salary is shared.</p><p>Salaries 120, 120, 110: DENSE_RANK gives 1, 1, 2, so <code>WHERE dr = 2</code> returns 110. RANK would give 1, 1, 3 and find nothing for 2. ROW_NUMBER would give 2 to a 120 duplicate, which is wrong. Run it in a CTE and filter outside.</p>",
+    "<p>Add a tiebreaker column that is unique per row to the window ORDER BY, so no two rows ever compare equal. The primary key is the usual choice.</p><pre><code>ROW_NUMBER() OVER (\n  PARTITION BY dept\n  ORDER BY salary DESC, id ASC)</code></pre><p>Now two people on 120 are always numbered in id order, so the result is the same on every run, replica and plan. Pick the tiebreaker that matches the business rule, such as the earliest hire or the latest event.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Windows run after WHERE: use a CTE to filter",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE t(id INT, dept TEXT, salary INT)\")\ndb.executemany(\"INSERT INTO t VALUES (?,?,?)\",\n               [(1, \"a\", 50), (2, \"a\", 70), (3, \"b\", 60), (4, \"b\", 40)])\n\n# Windows run after WHERE, so they cannot be used inside WHERE\ntry:\n    db.execute(\"SELECT * FROM t WHERE ROW_NUMBER() OVER (ORDER BY salary) = 1\")\nexcept sqlite3.Error as e:\n    print(\"error:\", e)\n\n# Fix: compute the window in a CTE, filter outside\nq = \"\"\"WITH r AS (SELECT *, ROW_NUMBER() OVER\n                  (PARTITION BY dept ORDER BY salary DESC) AS rn FROM t)\n       SELECT id, dept, salary FROM r WHERE rn = 1 ORDER BY dept\"\"\"\nprint(\"top earner per dept:\", db.execute(q).fetchall())\n\n# A window can wrap an aggregate: GROUP BY runs first, window second\nq = \"\"\"SELECT dept, SUM(salary) AS total,\n              RANK() OVER (ORDER BY SUM(salary) DESC) AS rnk\n       FROM t GROUP BY dept ORDER BY rnk\"\"\"\nprint(\"rank of dept totals:\", db.execute(q).fetchall())\n"
+   },
+   "followUps": [
+    "<p>Compute the window in a CTE and filter on it outside, which is exactly what QUALIFY does for you in one query.</p><pre><code>WITH r AS (\n  SELECT *, RANK() OVER (PARTITION BY dept\n         ORDER BY salary DESC) AS rk\n  FROM employees)\nSELECT * FROM r WHERE rk &lt;= 3;</code></pre><p>The original would be <code>SELECT * FROM employees QUALIFY rk &lt;= 3</code> with the window written in QUALIFY. A subquery in FROM works equally well.</p>",
+    "<p>LIMIT does not change what a window sees, because LIMIT is applied after window functions are computed. The window runs over every row that passed WHERE, and only then are rows cut.</p><p>Example: 10 rows, <code>SUM(x) OVER ()</code> with LIMIT 3 still returns the total of all 10 rows on each of the 3 rows. To window only a subset, apply the limit in a subquery or CTE first, then run the window outside.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Top 3 per department with three tie rules",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE employees(name TEXT, dept TEXT, salary INT)\")\ndb.executemany(\"INSERT INTO employees VALUES (?,?,?)\", [\n    (\"A\", \"eng\", 150), (\"B\", \"eng\", 150), (\"C\", \"eng\", 140),\n    (\"D\", \"eng\", 140), (\"E\", \"eng\", 130), (\"F\", \"ops\", 90), (\"G\", \"ops\", 80)])\n\n# Rank inside each department, then filter in an outer query\nbase = \"\"\"WITH r AS (\n  SELECT name, dept, salary,\n         ROW_NUMBER() OVER w AS rn, RANK() OVER w AS rk, DENSE_RANK() OVER w AS dr\n  FROM employees WINDOW w AS (PARTITION BY dept ORDER BY salary DESC))\nSELECT name, dept, salary FROM r WHERE %s ORDER BY dept, salary DESC, name\"\"\"\n\n# ROW_NUMBER: exactly 3 people; RANK: ties included; DENSE_RANK: 3 salary levels\nfor label, cond in [(\"ROW_NUMBER\", \"rn <= 3\"), (\"RANK\", \"rk <= 3\"), (\"DENSE_RANK\", \"dr <= 3\")]:\n    rows = db.execute(base % cond).fetchall()\n    print(label, [n for n, d, s in rows if d == \"eng\"])\n"
+   },
+   "followUps": [
+    "<p>PostgreSQL recognises the pattern of a ranking function filtered by <code>&lt;= N</code> in an outer query and uses a Run Condition in the WindowAgg node (version 15 and later). It stops reading a partition once the condition becomes false, instead of numbering every row.</p><p>With an index on (dept, salary DESC) it can also skip the sort. In older versions the whole partition is numbered first, then filtered. Check EXPLAIN for WindowAgg with a Run Condition.</p>",
+    "<p>MySQL 5.7 has no window functions, so count the people paid more in the same department using a correlated subquery.</p><pre><code>SELECT * FROM employees e\nWHERE (SELECT COUNT(*) FROM employees x\n       WHERE x.dept = e.dept\n         AND x.salary &gt; e.salary) &lt; 3;</code></pre><p>This is the RANK rule, with ties included. It costs O(N) per row, so O(N squared) per department without an index on (dept, salary). Or use session variables to mimic ROW_NUMBER, which is fragile. Upgrading to 8.0 is better.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Running total: default RANGE frame vs ROWS",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE tx(id INT, ts INT, amount INT)\")\n# ids 2 and 3 happen at the same timestamp 2 (peers)\ndb.executemany(\"INSERT INTO tx VALUES (?,?,?)\",\n               [(1, 1, 10), (2, 2, 20), (3, 2, 30), (4, 3, 40)])\n\nq = \"\"\"SELECT id, ts, amount,\n  SUM(amount) OVER (ORDER BY ts)  AS default_frame,   -- RANGE: peers share a value\n  SUM(amount) OVER (ORDER BY ts, id\n        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS rows_frame\n  FROM tx ORDER BY id\"\"\"\nprint(\"id ts amount default(RANGE) ROWS\")\nfor r in db.execute(q):\n    print(*r)\n# default: rows 2 and 3 both show 60 (the total \"jumps\");\n# ROWS gives 30 then 60, one value per physical row\n"
+   },
+   "followUps": [
+    "<p>Use RANGE when peers (rows with the same ORDER BY value) should be treated as one unit, or when you need a value-based window such as the last 7 days.</p><p>Example: <code>SUM(amount) OVER (ORDER BY day RANGE BETWEEN INTERVAL '6' DAY PRECEDING AND CURRENT ROW)</code> gives a calendar-correct 7-day total even if some days have no rows. ROWS would count 7 rows, which could span 20 days. Same-day orders also share one total, which is sometimes wanted.</p>",
+    "<p>Add the month to PARTITION BY, so the window restarts for each month.</p><pre><code>SUM(amount) OVER (\n  PARTITION BY account, DATE_TRUNC('month', ts)\n  ORDER BY ts, id\n  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)</code></pre><p>Each partition starts its own sum from zero. Transactions of 10, 20 in January and 5 in February give 10, 30, then 5. In SQLite use <code>strftime('%Y-%m', ts)</code> instead of DATE_TRUNC.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Month-over-month growth with LAG",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE sales(d TEXT, rev INT)\")\ndb.executemany(\"INSERT INTO sales VALUES (?,?)\", [\n    (\"2024-01-05\", 100), (\"2024-01-20\", 50), (\"2024-02-10\", 180),\n    (\"2024-03-02\", 90), (\"2024-03-15\", 90)])\n\n# Step 1: one row per month. Step 2: LAG looks at the previous month row\nq = \"\"\"WITH m AS (SELECT strftime('%Y-%m', d) AS mon, SUM(rev) AS rev\n             FROM sales GROUP BY 1)\nSELECT mon, rev,\n       ROUND(100.0 * (rev - LAG(rev) OVER (ORDER BY mon))\n             / NULLIF(LAG(rev) OVER (ORDER BY mon), 0), 1) AS mom_pct\nFROM m ORDER BY mon\"\"\"\n# 100.0 avoids integer division; NULLIF avoids divide by zero\nprint(\"month revenue mom_pct\")\nfor r in db.execute(q):\n    print(*r)\n"
+   },
+   "followUps": [
+    "<p>Compare each month to the row 12 months back with <code>LAG(rev, 12)</code>, provided every month exists exactly once, so that 12 rows back means 12 months back.</p><pre><code>100.0 * (rev - LAG(rev, 12) OVER (ORDER BY mon))\n  / NULLIF(LAG(rev, 12) OVER (ORDER BY mon), 0)</code></pre><p>Revenue 150 last January and 180 this January gives 20.0 percent. If months can be missing, join to a month spine first, or self-join on the date plus 12 months, so the pairing is by calendar and not by row position.</p>",
+    "<p>Keep the zero month as a real row and guard the division, because a zero denominator has no sensible growth percentage.</p><p>With NULLIF(prev, 0) the percent becomes NULL when the previous month was 0, and the report can show n/a. When the current month is 0 and the previous was 150, growth is (0 - 150) / 150 = -100 percent, which is correct. If the month is absent entirely, add it from a month spine with COALESCE(rev, 0), or LAG will compare against the wrong month.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "The LAST_VALUE default-frame trap",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE s(day INT, x INT)\")\ndb.executemany(\"INSERT INTO s VALUES (?,?)\", [(1, 10), (2, 20), (3, 30)])\n\nq = \"\"\"SELECT day, x,\n  LAST_VALUE(x) OVER (ORDER BY day) AS trap,\n  LAST_VALUE(x) OVER (ORDER BY day\n      ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS fixed,\n  FIRST_VALUE(x) OVER (ORDER BY day DESC) AS first_reversed\nFROM s ORDER BY day\"\"\"\n# trap: default frame ends at the current row, so it just returns x\n# fixed: the frame covers the whole partition\nprint(\"day x trap fixed first_reversed\")\nfor r in db.execute(q):\n    print(*r)\n"
+   },
+   "followUps": [
+    "<p>It returns NULL on the first two rows and the value only when the frame has three rows. The default frame ends at the current row, so on row 1 the frame holds one row, and on row 2 it holds two.</p><p>Example with values 10, 20, 30: NTH_VALUE(x, 3) OVER (ORDER BY day) returns NULL, NULL, 30. To get 30 on every row, use <code>ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING</code>.</p>",
+    "<p>Carry the latest non-NULL value forward by counting non-NULLs, then take the first value of that group.</p><pre><code>WITH g AS (SELECT *, COUNT(x) OVER (ORDER BY day) AS grp FROM t)\nSELECT day, FIRST_VALUE(x) OVER (\n  PARTITION BY grp ORDER BY day) AS filled\nFROM g;</code></pre><p>COUNT(x) ignores NULLs, so grp rises only on real values. Values 5, NULL, NULL, 9 give groups 1, 1, 1, 2, so the NULLs inherit 5.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ROWS vs RANGE vs GROUPS frames",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE d(row_id INT, day INT, v INT)\")\ndata = [(1, 1, 100), (2, 2, 120), (3, 3, 90), (4, 5, 150), (5, 5, 20), (6, 6, 130)]\ndb.executemany(\"INSERT INTO d VALUES (?,?,?)\", data)\n\n# Same bounds (1 PRECEDING .. CURRENT ROW), three meanings of \"1\"\nq = \"\"\"SELECT row_id, day, v,\n  SUM(v) OVER (ORDER BY day, row_id ROWS   BETWEEN 1 PRECEDING AND CURRENT ROW) AS by_rows,\n  SUM(v) OVER (ORDER BY day         RANGE  BETWEEN 1 PRECEDING AND CURRENT ROW) AS by_range,\n  SUM(v) OVER (ORDER BY day         GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) AS by_groups\nFROM d ORDER BY row_id\"\"\"\n# ROWS: physical rows. RANGE: day within [day-1, day], peers included.\n# GROUPS: whole peer groups (distinct day values)\nprint(\"row day v rows range groups\")\nfor r in db.execute(q):\n    print(*r)\n"
+   },
+   "followUps": [
+    "<p>EXCLUDE TIES removes the current row's peers from the frame but keeps the current row itself. It is used with ROWS, RANGE or GROUPS frames.</p><p>Example: the first day-5 row has peers {150, 20}. A frame of RANGE BETWEEN 1 PRECEDING AND CURRENT ROW sums 170. With EXCLUDE TIES the other peer (20) is dropped and the current row stays, so the sum is 150. EXCLUDE CURRENT ROW, EXCLUDE GROUP and EXCLUDE NO OTHERS are the siblings. Support varies: SQLite and PostgreSQL have it, SQL Server does not.</p>",
+    "<p>Because an offset such as 1 PRECEDING means a distance in the ORDER BY value, and distance only makes sense along one number or date line.</p><p>With ORDER BY day, 1 PRECEDING means day minus 1. With ORDER BY day, region there is no single number to subtract from, so the database cannot decide which rows are within 1. RANGE with no offset (only UNBOUNDED or CURRENT ROW) allows several columns, since it only compares equality of peers.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Gaps and islands: consecutive login streaks",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE logins(user TEXT, d TEXT)\")\ndb.executemany(\"INSERT INTO logins VALUES (?,?)\", [\n    (\"u1\", \"2024-05-01\"), (\"u1\", \"2024-05-02\"), (\"u1\", \"2024-05-02\"),\n    (\"u1\", \"2024-05-03\"), (\"u1\", \"2024-05-07\"),\n    (\"u2\", \"2024-05-01\"), (\"u2\", \"2024-05-03\"), (\"u2\", \"2024-05-04\")])\n\n# date minus row number is constant inside a run of consecutive days\nq = \"\"\"WITH x AS (SELECT DISTINCT user, d FROM logins),   -- de-duplicate first\n g AS (SELECT user, d,\n         julianday(d) - ROW_NUMBER() OVER (PARTITION BY user ORDER BY d) AS grp\n       FROM x)\nSELECT user, MIN(d), MAX(d), COUNT(*) AS days\nFROM g GROUP BY user, grp ORDER BY user, MIN(d)\"\"\"\nprint(\"all streaks (user, start, end, days):\")\nfor r in db.execute(q):\n    print(\" \", r)\nprint(\"users with 3+ day streak:\",\n      sorted({r[0] for r in db.execute(q) if r[3] >= 3}))\n"
+   },
+   "followUps": [
+    "<p>Compute the streak length per island, then keep the maximum per user.</p><pre><code>WITH s AS (SELECT user, COUNT(*) AS len FROM g\n           GROUP BY user, grp)\nSELECT user, MAX(len) AS longest\nFROM s GROUP BY user;</code></pre><p>Here g is the (user, d, grp) table from the main answer. For dates 1, 2, 3, 7 the streaks have lengths 3 and 1, so the longest is 3. Add MIN(d) and MAX(d) to report the dates as well.</p>",
+    "<p>Treat a gap of up to 2 days as still connected: flag a new island only when the difference to the previous date is greater than 2.</p><pre><code>CASE WHEN d - LAG(d) OVER w &gt; 2 THEN 1 ELSE 0 END</code></pre><p>Then take a running SUM of flags as the island id. Dates 1, 2, 4, 5 have gaps of 1, 2, 1, so all stay in one island (5 calendar days, 4 login days). The row number trick with a constant offset does not work here, so use the LAG and flag method.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sessionize clicks with a 30-minute timeout",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE clicks(user TEXT, ts INT)\")  # ts in minutes\ndb.executemany(\"INSERT INTO clicks VALUES (?,?)\", [\n    (\"u1\", 0), (\"u1\", 10), (\"u1\", 25), (\"u1\", 100), (\"u1\", 120), (\"u2\", 5)])\n\nq = \"\"\"WITH f AS (   -- flag = 1 when a new session starts\n  SELECT user, ts,\n    CASE WHEN LAG(ts) OVER w IS NULL OR ts - LAG(ts) OVER w > 30\n         THEN 1 ELSE 0 END AS flag\n  FROM clicks WINDOW w AS (PARTITION BY user ORDER BY ts)),\ns AS (   -- running sum of flags = session number\n  SELECT user, ts, SUM(flag) OVER (PARTITION BY user ORDER BY ts\n         ROWS UNBOUNDED PRECEDING) AS sess FROM f)\nSELECT user, sess, MIN(ts) AS start, MAX(ts) AS end_, COUNT(*) AS clicks\nFROM s GROUP BY user, sess ORDER BY user, sess\"\"\"\nprint(\"user session start end clicks\")\nfor r in db.execute(q):\n    print(*r)\n"
+   },
+   "followUps": [
+    "<p>A late event can land in the middle of a finished session, split it, or bridge two sessions into one, so earlier results can change. A plain append-only batch would miss that.</p><p>Fix: re-run sessionization over a lookback window, such as the last 2 days, and overwrite those days (merge by user and session start). Clicks at 0, 10 and 100 minutes form two sessions, but a late click at 50 makes gaps 40 and 50, so nothing merges. A late click at 35 joins them in a chain (gaps 25 and 65, so it only extends the first). Also keep event time separate from arrival time.</p>",
+    "<p>Aggregate each session to its duration, then average the durations: duration is MAX(ts) minus MIN(ts) per session.</p><pre><code>SELECT AVG(dur) FROM (\n  SELECT MAX(ts) - MIN(ts) AS dur\n  FROM s GROUP BY user, sess)</code></pre><p>With sessions of 25 and 20 minutes the average is 22.5. A one-click session has duration 0, which drags the average down, so decide whether to include it or add a minimum like 1 minute of dwell time.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sliding SUM (add/subtract) vs sliding MAX (deque)",
+    "python": "from collections import deque\n\n# Sliding window of width 3 over a list: count work done by two approaches\ndata = [5, 1, 4, 2, 8, 3, 7]\nk = 3\nprint(\"input:\", data, \"window:\", k)\n\n# SUM with add/subtract (inverse transition): O(1) work per row\ntotal, sums, ops = 0, [], 0\nfor i, x in enumerate(data):\n    total += x; ops += 1                 # add the entering row\n    if i >= k:\n        total -= data[i - k]; ops += 1   # subtract the leaving row\n    sums.append(total)\nprint(\"sliding SUM:\", sums[k - 1:], \"ops:\", ops)\n\n# MAX has no inverse: naive recompute touches k rows every time\nnaive = [max(data[i - k + 1:i + 1]) for i in range(k - 1, len(data))]\nprint(\"sliding MAX naive:\", naive, \"ops:\", k * len(naive))\n\n# Better: a monotonic deque keeps candidates, amortised O(1) per row\ndq, best = deque(), []\nfor i, x in enumerate(data):\n    while dq and data[dq[-1]] <= x:\n        dq.pop()                          # smaller values can never win\n    dq.append(i)\n    if dq[0] <= i - k:\n        dq.popleft()                      # expired from the window\n    if i >= k - 1:\n        best.append(data[dq[0]])\nprint(\"sliding MAX deque:\", best)\n"
+   },
+   "followUps": [
+    "<p>SUM can undo the row that leaves the window by subtracting it, but MAX cannot, because removing the old maximum does not tell you the next largest value.</p><p>For a window of 3 over 5, 1, 4, 2, the sum moves by +2 -5 in one step. For MAX, when 5 leaves you must rescan the others to find 4. Naive MAX is O(N x k). Engines use a monotonic deque or segment tree to bring it down to O(N) or O(N log N), but with more state and code.</p>",
+    "<p>Each distinct window spec needs its own sort and its own pass, so two specs with different PARTITION BY keys cost two sorts and the result is joined back row by row.</p><p>Example: SUM over (PARTITION BY user ORDER BY ts) and COUNT over (PARTITION BY country ORDER BY ts). The planner sorts by (user, ts), computes the first, then re-sorts by (country, ts) for the second, so the plan shows two Sort and two WindowAgg nodes. Reduce cost by sharing specs, pre-aggregating or dropping unneeded windows.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Median per group with ROW_NUMBER and COUNT",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE m(id INT, g TEXT, x INT)\")\ndb.executemany(\"INSERT INTO m VALUES (?,?,?)\", [\n    (1, \"a\", 5), (2, \"a\", 1), (3, \"a\", 9),            # odd count: median 5\n    (4, \"b\", 4), (5, \"b\", 4), (6, \"b\", 10), (7, \"b\", 2)])  # even: (4+4)/2\n\n# rn numbers rows in value order; c is the group size\nq = \"\"\"WITH r AS (\n  SELECT g, x,\n         ROW_NUMBER() OVER (PARTITION BY g ORDER BY x, id) AS rn,\n         COUNT(*)     OVER (PARTITION BY g) AS c\n  FROM m)\nSELECT g, AVG(x) AS median FROM r\nWHERE rn IN ((c + 1) / 2, (c + 2) / 2)   -- integer division picks 1 or 2 rows\nGROUP BY g ORDER BY g\"\"\"\nprint(\"data:\", db.execute(\"SELECT g, x FROM m ORDER BY g, x\").fetchall())\nfor r in db.execute(q):\n    print(r)\n"
+   },
+   "followUps": [
+    "<p>PERCENTILE_CONT interpolates between neighbouring values and may return a number that is not in the data, while PERCENTILE_DISC returns an actual value from the data.</p><p>For 2, 4, 4, 10 the median (0.5) with CONT is (4 + 4) / 2 = 4. For 1, 2, 3, 4, CONT gives 2.5 but DISC gives 2, the first value whose cumulative share reaches 50 percent. Use DISC when the result must be a real observed value, such as a real price.</p>",
+    "<p>Define the window by rows or by dates and compute the median over those values; it is not possible with a plain PERCENTILE function in most engines.</p><p>Options: a self-join on the date range (<code>ON b.d BETWEEN a.d - 6 AND a.d</code>) then compute the median per anchor row as in the main answer, which costs O(N x 7). Or use a user-defined aggregate, or an approximate sketch. Median is not decomposable, so you cannot slide it with add and subtract like SUM.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Non-unique ORDER BY makes ROW_NUMBER unstable",
+    "python": "import sqlite3\n\nrows = [(1, \"u1\", \"2024-01-01 10:00\", 5), (2, \"u1\", \"2024-01-01 10:00\", 7)]\n\ndef latest(order, data):\n    db = sqlite3.connect(\":memory:\")\n    db.execute(\"CREATE TABLE ev(id INT, user TEXT, ts TEXT, val INT)\")\n    db.executemany(\"INSERT INTO ev VALUES (?,?,?,?)\", data)\n    q = f\"\"\"SELECT id, val FROM (\n      SELECT *, ROW_NUMBER() OVER (PARTITION BY user ORDER BY {order}) AS rn\n      FROM ev) WHERE rn = 1\"\"\"\n    return db.execute(q).fetchall()\n\n# Both loads hold the same rows; only the load order differs\nprint(\"ORDER BY ts DESC (not unique)\")\nprint(\"  load order A:\", latest(\"ts DESC\", rows))\nprint(\"  load order B:\", latest(\"ts DESC\", rows[::-1]))   # may differ!\nprint(\"ORDER BY ts DESC, id DESC (unique)\")\nprint(\"  load order A:\", latest(\"ts DESC, id DESC\", rows))\nprint(\"  load order B:\", latest(\"ts DESC, id DESC\", rows[::-1]))  # always same\n# Ties on ts mean the engine may pick either row; the id tiebreaker fixes it\n"
+   },
+   "followUps": [
+    "<p>ROW_NUMBER, RANK, DENSE_RANK and COUNT with a window are stable even with ties for the values they return, but not every row they are attached to. The ranks depend only on the ORDER BY values.</p><p>RANK and DENSE_RANK give tied rows the same number, whatever the order, and SUM over the default frame includes all peers. ROW_NUMBER, NTILE, LAG, LEAD, FIRST_VALUE, LAST_VALUE and ROWS-frame sums are not, since they depend on physical row order among ties.</p>",
+    "<p>Write a uniqueness test and a stability test that run on every change, so a broken ordering fails the pipeline.</p><p>Test 1: <code>SELECT user, ts FROM ev GROUP BY 1, 2 HAVING COUNT(*) &gt; 1</code> must return 0 rows (a dbt unique test on the combination). Test 2: load a fixed fixture with deliberate ties twice, in different insertion orders, and assert the two outputs are equal. The program above shows this: the same rows in another order gave a different winner until id was added.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Hot partition key skew across workers",
+    "python": "# Simulate a distributed window: rows are hashed by PARTITION BY key to workers\nimport zlib\n\nWORKERS = 4\nevents = [\"bot\"] * 9000 + [f\"user{i % 50}\" for i in range(1000)]  # one hot key\nprint(\"events:\", len(events), \"distinct keys:\", len(set(events)))\n\ndef load(keys):\n    per = [0] * WORKERS\n    for k in keys:\n        per[zlib.crc32(k.encode()) % WORKERS] += 1   # same key -> same worker\n    return per\n\nprint(\"rows per worker, PARTITION BY user:\", load(events))\n# OVER () has no key: every row is one partition, so one worker sorts all\nprint(\"rows per worker, OVER () global   :\", [len(events), 0, 0, 0])\n# Mitigation: isolate the skewed key and treat it separately\nnormal = [k for k in events if k != \"bot\"]\nprint(\"without the hot key               :\", load(normal))\nprint(\"hot key rows handled separately   :\", events.count(\"bot\"))\n"
+   },
+   "followUps": [
+    "<p>Use a two-level approach: compute running totals per day or per partition in parallel, then add the previous partitions' totals as an offset.</p><p>Step 1: aggregate to daily sums (small). Step 2: one cheap global window over those few rows, for example 365 rows for a year, using <code>SUM(day_total) OVER (ORDER BY day)</code>. Step 3: join back and add the offset to the within-day running sum. The only single-worker step runs on thousands of rows and not 5 billion.</p>",
+    "<p>The new run has no rows before the boundary, so LAG returns NULL for the first new row unless you give it the previous value from the existing table.</p><p>Fix: in the incremental filter, also read the last row (or last N rows) before the boundary per key, union them with the new data, run the window, then keep only the new rows. For a LAG of 1 you need one row per user from before the cutoff. Without this, every day's first row shows a false null or a false jump.</p>"
+   ]
+  }
+ ]
+}
