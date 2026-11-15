@@ -1,0 +1,97 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Stop the agent, do not let it start editing, and fix the plan rather than the code. Say what is wrong in one or two sentences (wrong file, wrong approach, missing edge case), add the missing constraint to the task card, and ask for a new plan.</p><p>Example: the plan says to rewrite the whole <code>billing</code> module for a one-line rounding fix. I reply: 'Only change <code>round_total()</code>; do not touch other functions.' A bad plan costs seconds to correct; the same mistake in a finished diff costs a review and a revert. If two plans in a row go wrong, the task card is probably unclear, so I rewrite it.</p>",
+    "<p>I size a diff by what one person can review carefully in about 15 to 20 minutes, which is usually under 200 changed lines and one concern. Beyond that, reviewers skim and bugs slip through.</p><p>Example: 'add a discount feature' becomes three diffs: (1) tests for the rules, about 60 lines; (2) the smallest code that passes, about 40 lines; (3) cleanup and wiring, about 30 lines. Risky areas such as auth or migrations get smaller diffs than a UI label change. If a diff grows past the limit, I stop the agent and split it, rather than reviewing it as one lump.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep it small on purpose: add a line only after the agent repeats a mistake, and delete a line when it is obsolete or when a tool now enforces it. Review the file like code, for example every month.</p><p>Example: a 120-line file gets pruned to 40 by removing rules the linter already checks, tips that are true of every project, and a duplicated folder map. Move long background material into separate docs and link to them with one line. A rule that has not mattered in three months is a candidate for removal. Short files get read; long ones get skimmed.</p>",
+    "<p>Anything that must hold every single time should be a hook, lint rule or CI check, because prose can be forgotten but a tool cannot be argued with.</p><p>Good candidates: formatting (run the formatter after every edit), blocking secrets from being committed, forbidding edits to merged migration files, blocking deletion of test files, and requiring tests to pass before a commit. Keep in the text file the things that need judgement, such as 'prefer the existing repository pattern' or 'ask before adding a dependency'. Rule of thumb: if a script can check it in a second, a script should.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then the tests give a wrong answer with full confidence, so the spec is the thing to fix first, and the code and tests follow. A spec is a hypothesis about what people want, and it can be wrong.</p><p>Example: the spec says 'discount 10 percent over 100 euros', but the business meant 'at least 100'. Tests at exactly 100 pass while the real behaviour is wrong. Defences: review the spec with the product owner using concrete examples, especially boundaries; keep specs in version control; when a test fails for a surprising reason, ask whether the spec is wrong before changing code. Change spec, then tests, then code, in that order.</p>",
+    "<p>Write the cases as rows of input and expected output, then let one loop turn every row into a test. Each row is one concrete example from the spec.</p><p>Example table for a discount: (50, 0), (99, 0), (100, 10), (101, 10.1). The test loops over the rows and asserts the result. In Python:</p><pre><code>@pytest.mark.parametrize('amount,expected',\n  [(50,0),(99,0),(100,10),(101,10.1)])\ndef test_discount(amount, expected):\n    assert discount(amount) == expected</code></pre><p>The agent can propose extra rows, but a human checks each expected value from the spec, not from the code. Never copy expected values from the implementation's own output.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Plausible-but-wrong logic is usually the most dangerous in payments, because it looks right, passes the happy path and moves real money before anyone notices. Rounding, currency, and retry handling are typical places.</p><p>Example: a retry wrapper that resends a charge after a timeout without an idempotency key can bill a customer twice. Catch it with a second reviewer, tests you write yourself for failures and duplicates, an oracle with exact decimal arithmetic, and a staged rollout. Silent error swallowing is a close second, since a swallowed failure shows as a missing payment later.</p>",
+    "<p>Check that every package and function the AI mentions actually exists, before installing or running anything. Models sometimes invent plausible names, and attackers can register those names with malicious code.</p><p>Steps: look the package up on the official registry and check its age, downloads and maintainers; compare the name carefully with the well-known one (typos); install from a lockfile; keep a dependency allow-list so new packages need approval; run in a sandbox. For a function, open the documentation or the installed source and confirm the signature. Running the code usually exposes a missing method immediately.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Bisect to the first bad commit",
+    "python": "# git bisect simulation: binary search for the first bad commit\n# Time O(log N) checks, space O(1)\ncommits = list(range(1, 1001))      # commit 1 is oldest\nFIRST_BAD = 637                     # hidden culprit\n\ndef check(c):\n    \"\"\"Stand-in for the test script: True means good.\"\"\"\n    return c < FIRST_BAD\n\nlo, hi = 0, len(commits) - 1        # commits[lo] is known good, commits[hi] is known bad\nruns = 0\nwhile hi - lo > 1:\n    mid = (lo + hi) // 2            # test the middle commit\n    runs += 1\n    if check(commits[mid]):\n        lo = mid                    # still good, culprit is later\n    else:\n        hi = mid                    # bad, culprit is here or earlier\nprint(\"commits:\", len(commits))\nprint(\"first bad commit:\", commits[hi])\nprint(\"checks run:\", runs)\n"
+   },
+   "followUps": [
+    "<p>Make the state part of the test: create or restore the exact database state inside the check script, so every bisect step starts from the same known data.</p><p>Example: the script loads a small fixture dump (about 20 rows that trigger the bug) into a throwaway database, runs the failing query, and exits 1 if the result is wrong. If old commits use an older schema, run the migrations that belong to that commit first, or exit 125 to skip commits whose schema cannot load. Never bisect against a shared or production database.</p>",
+    "<p>Treat the dependency version as the thing that changes: bisect over the versions, or over the commits of the lockfile, instead of your own code.</p><p>Steps: (1) list versions between the last good and first bad release, for example 2.1.0 to 2.9.0; (2) pin each version in a clean environment and run the check; (3) binary search, which needs about 3 runs for 8 versions. If the dependency is in git, <code>git bisect</code> inside its repository finds the commit. Then read the release notes for that version and add a test for the changed behaviour before deciding to pin, patch, or adapt.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Name your stop-and-escalate list in advance: situations where the agent must stop and a human decides. It makes risk decisions explicit instead of left to the moment.</p><p>Typical items: touching authentication, secrets or permissions; destructive migrations (drop column, delete data); payment or money logic; anything run against production; adding a dependency or a licence change; deleting or weakening tests; changes bigger than the agreed diff size; the agent being unsure or repeating a failing attempt twice. When one of these appears, the agent pauses, explains, and waits for approval.</p>",
+    "<p>Look at past results and adjust the checking level up or down. Keep a simple log of AI changes that caused bugs, rework or incidents, and what check would have caught them.</p><p>Example: after three bugs in date handling, make date code always get a property test and a second reviewer. If CSS changes never caused a problem in 50 changes, a quick visual check is enough. Review the log monthly. The goal is to spend verification effort where mistakes actually happened, not evenly or by feeling.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Differential test against a slow oracle",
+    "python": "# Differential + property testing: fast AI-written function vs slow obvious oracle\nimport random\n\ndef oracle_max_sub(a, k):\n    # slow but obviously correct: try every window\n    return max(sum(a[i:i + k]) for i in range(len(a) - k + 1))\n\ndef fast_max_sub(a, k):\n    # sliding window (AI-written); the planted bug is the commented line\n    s = sum(a[:k])\n    best = s\n    for i in range(k, len(a)):\n        s += a[i] - a[i - k]\n        best = max(best, s)\n    return best\n\ndef buggy_max_sub(a, k):\n    s = sum(a[:k])\n    best = s\n    for i in range(k, len(a) - 1):   # BUG: skips the last window\n        s += a[i] - a[i - k]\n        best = max(best, s)\n    return best\n\ndef run(fn, name):\n    rng = random.Random(42)          # seeded so failures repeat\n    for t in range(1000):\n        n = rng.randint(1, 6)        # small sizes make edges common\n        a = [rng.randint(-3, 3) for _ in range(n)]\n        k = rng.randint(1, n)\n        if fn(a, k) != oracle_max_sub(a, k):\n            print(name, \"FAILS on a =\", a, \"k =\", k, \"->\", fn(a, k), \"expected\", oracle_max_sub(a, k))\n            return\n    print(name, \"passed 1000 random cases\")\n\nrun(fast_max_sub, \"fast\")\nrun(buggy_max_sub, \"buggy\")\n"
+   },
+   "followUps": [
+    "<p>Then the oracle gives false confidence, since both versions can agree and both be wrong. So check the oracle itself first, by hand and against the spec.</p><p>Example: the slow oracle computes the average with integer division, so it returns 2 for [2, 3], and a fast version using integer division also returns 2: they agree, yet the true answer is 2.5. Defences: keep the oracle tiny so it is readable; verify it on a few hand-worked examples; use a different algorithm, not a copy of the same logic; compare with a trusted library when one exists. Differential testing proves agreement, not correctness.</p>",
+    "<p>Test the effect through a fake or a recording replacement, so the test checks what was asked of the outside world and not the real thing.</p><p>Example: a function that sends emails gets a fake mailer that stores messages in a list. The property is: after running with 3 users, the list has exactly 3 messages and none is sent twice if the function is called again (idempotence). For a database, use an in-memory copy; for time, inject a fixed clock; for random, pass a seed. Run the property over many generated inputs, resetting the fake each time.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Golden-master test for a refactor",
+    "python": "# Characterisation (golden) tests: record legacy output, then check a refactor against it\ndef legacy_price(qty, member):\n    p = qty * 10\n    if qty > 5:\n        p = p - p * 10 / 100\n    if member:\n        p = p - 2\n    return round(p, 2)\n\ndef refactored_price(qty, member):\n    base = qty * 10\n    discount = 0.9 if qty > 5 else 1.0\n    return round(base * discount - (2 if member else 0), 2)\n\ndef refactored_wrong(qty, member):\n    base = qty * 10\n    discount = 0.9 if qty >= 5 else 1.0     # boundary slip\n    return round(base * discount - (2 if member else 0), 2)\n\ninputs = [(q, m) for q in (0, 1, 5, 6, 20) for m in (False, True)]\ngolden = {i: legacy_price(*i) for i in inputs}   # recorded once from old code\nprint(\"recorded\", len(golden), \"golden cases\")\n\nfor name, fn in ((\"refactored\", refactored_price), (\"refactored_wrong\", refactored_wrong)):\n    diffs = [(i, golden[i], fn(*i)) for i in inputs if fn(*i) != golden[i]]\n    print(name, \"OK\" if not diffs else \"DIFFERS: \" + str(diffs))\n"
+   },
+   "followUps": [
+    "<p>Treat them as a record of what the old code did, not as the truth, and have a human decide what to do with each suspected bug.</p><p>Mark suspicious cases (negative totals, wrong rounding) as known bugs in a separate list. Keep the old behaviour during the refactor so the diff stays clean, then fix each bug in its own commit with a new failing test and a changed golden value. Never fix bugs and refactor in the same step; you could not tell which change caused a difference.</p>",
+    "<p>Review a big AI refactor by its evidence, not by reading every line: the same tests before and after, small commits, and a diff that is mostly moves and renames.</p><p>Steps: (1) check that the golden or characterisation tests pass at every commit; (2) review commit by commit, each with one named change; (3) use a tool that shows moved code as moved; (4) look for scope creep in the file list, and for changed tests; (5) run the tests plus a shadow comparison on real traffic when money is involved. If a commit mixes concerns, send it back to be split.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Prepare for each type of round on its own terms, since each tests something different. For rounds without AI, I practice fundamentals by hand; for AI-enabled rounds, I practice the process with an assistant.</p><p>Plan: classic coding rounds, two or three timed problems a week with no assistant, speaking my reasoning aloud. Take-home, building something small with AI, then rehearsing a walkthrough where I explain every line. AI-enabled rounds, practicing the loop of clarify, plan, tests first, prompt, verify, fix. System design and behavioural, drawing trade-offs and writing two or three honest stories. I always check the recruiter's description first.</p>",
+    "<p>Ask the interviewer or recruiter directly, before the round, and follow the answer. Asking is normal and shows care.</p><p>A good message: 'Is AI assistance allowed or expected in this round, and if so which tools?' If you cannot get an answer, assume it is not allowed and work without it, and say aloud what you would do with an assistant ('with a tool I would generate test cases here'). Using undisclosed tools where they are not permitted can cost you the offer, while working unaided never does. Write the answer down in case there is later a disagreement.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Say yes and do it, calmly and out loud. A working method without AI shows that you understand the fundamentals and that AI is a tool, not a crutch.</p><p>Steps: restate the problem, give a simple solution first, write a small example by hand, then code it, narrating your decisions. For example, for 'reverse words in a sentence', I split on spaces, reverse the list, join, and test with 'a b c'. If I forget syntax, I say what I would normally look up. Then I mention how I would check it with an assistant in real work, which shows judgement without breaking the rule.</p>",
+    "<p>Use a short, honest story with a clear structure: what happened, how you noticed, what you changed. Never blame the tool alone; show the safeguard you added.</p><p>Example: Situation: I asked an assistant for a retry helper in a data job. Task: ship it before the deadline. Action: it caught all exceptions and returned an empty list, so failed pages vanished silently; my test with a deliberately failing page showed 0 rows instead of an error. I changed it to retry three times and then raise. Result: no lost data, and I now grep for bare <code>except</code> in every AI diff.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make practice a scheduled habit, with fixed time and a fixed shape, so it does not depend on motivation. A weekly routine of about four to five hours works, with a quarter or so of practice time in AI-off mode.</p><p>Example week: Monday, one algorithm problem by hand (45 minutes). Wednesday, debug a failing test using only prints and a debugger (60 minutes). Friday, read an unfamiliar open-source file and write a half-page summary (45 minutes). Weekend, explain one concept from memory in writing. Monthly, redo an old task unaided and compare time and errors. Before interviews, shift more time to unaided work.</p>",
+    "<p>Teach juniors to use AI as a tutor and to explain every piece before keeping it. Make the habit visible in reviews and pairing, not only in advice.</p><p>Ways: in code review, ask them to walk through any AI-written block and trace one input; ask for tests before code; set small AI-off exercises such as debugging with prints; share my own failures and checks; use hint-style prompts ('give me a hint, not the answer'). Praise understanding and good questions rather than speed. The goal is that a junior can still fix the code when the assistant is unavailable.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would pause agent use when the evidence shows quality is falling or risk is rising faster than we can control. Agreeing the triggers before starting makes this a calm decision, not an argument.</p><p>Example triggers: change-failure rate up by half for two sprints; a security incident traced to agent code; review queues taking more than two days; a secret or customer data exposed to an agent; repeated test deletions. The pause is scoped: stop agents on the affected area, keep a human-only path, hold a blameless review, fix the guardrail, and resume after the agreed measures are in place.</p>",
+    "<p>Treat disagreement as a question to settle with evidence, then write the result into the working agreement. Listen first, because sceptics often spot real risks and enthusiasts spot real gains.</p><p>Steps: (1) have each side state the concern in concrete terms; (2) run a small time-boxed experiment, for example two sprints on one service with agreed measures such as lead time and rollbacks; (3) review results together; (4) decide, record the reasoning, and revisit after six weeks. For safety rules, the lead decides; for style preferences, let the team choose. Nobody is forced to use agents for their own learning goals.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,97 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>No single fact settles it, but a few signals would. If tools keep being used mostly for drafts that humans rewrite, and measured productivity gains stay small, I would expect less change than I predict. If fully checked, end-to-end tasks (a real feature with tests) start succeeding on a large share of tickets, I would move toward faster change. I would watch job postings, defect rates of AI-assisted code and team throughput, not headlines. Example: if 3 of 10 tickets are done with no human edits, my view shifts a lot.</p>",
+    "<p>Junior roles are the most uncertain part, because routine tasks that used to teach beginners are the ones most exposed. Still, teams need people who will become seniors, so good teams keep juniors and change what they do: more reading, reviewing, testing and debugging with feedback. A junior who can explain and verify AI output stands out. I would say this is a prediction, not a fact, and recommend building visible proof of skill such as a small tested project.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, in my own words: the assistant once suggested a retry loop with no backoff for a payment call. It looked tidy and passed the happy-path test. In review I noticed that a failing service would be hit by every client at once, which could make an outage worse. I added exponential backoff with jitter (waits like 1s, 2s, 4s plus randomness) and a failure-path test. Lesson: ask what happens when things fail, and always read the diff.</p>",
+    "<p>I would not delegate decisions I cannot evaluate or that carry accountability: security-sensitive design, final approval of a production change, handling of customer data, and tough conversations with people. I also would not delegate understanding of code I must debug at 3 a.m. AI can draft and suggest, but the owner who signs off must be a human who can explain every line. A good test is: if it is wrong, could I tell?</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I pick the next depth by looking at where the team's problems, my stem and the market overlap. I list gaps, score each from 1 to 5 on impact for the team, link to my stem and my interest, and choose the top one. Example: if slow queries cause most incidents, deepening database performance scores higher than learning a new front-end framework. I then set a small project and a date to check progress, and revisit every quarter.</p>",
+    "<p>A pure specialist is better when the problem is hard, narrow and high stakes, for example a cryptography, compiler or database-engine expert on a team that already has strong generalists. Deep rarity is valuable when others depend on you for correctness. The risk is that the field shifts under you, so even specialists need enough breadth to communicate with neighbours. In small teams or startups, breadth usually wins, because one person must cover many jobs.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Quality gate and cost estimate for an AI feature",
+    "python": "# Decide on an AI feature: quality gate on an eval set, then monthly cost\neval_set = [  # (case id, did the model answer correctly?)\n    (\"q1\", True), (\"q2\", True), (\"q3\", False), (\"q4\", True), (\"q5\", True),\n    (\"q6\", True), (\"q7\", False), (\"q8\", True), (\"q9\", True), (\"q10\", True)]\nQUALITY_BAR = 0.80          # agreed before the pilot, not after\n\npassed = sum(ok for _, ok in eval_set)\nrate = passed / len(eval_set)\nprint(\"eval set size:\", len(eval_set), \"passed:\", passed, \"rate:\", rate)\n\n# cost = requests * (input tokens + output tokens) * price per token\nrequests_per_month = 200_000\ntokens_in, tokens_out = 800, 200\nprice_in, price_out = 0.000002, 0.000008   # placeholder prices per token\ncost = requests_per_month * (tokens_in * price_in + tokens_out * price_out)\nprint(\"monthly cost: %.2f\" % cost)\n\nbudget = 1000.0\nif rate >= QUALITY_BAR and cost <= budget:\n    print(\"decision: expand the pilot\")\nelse:\n    print(\"decision: stop or fix before expanding\")\n"
+   },
+   "followUps": [
+    "<p>I would not ship an AI feature to real users with no evaluation, but I would be constructive and offer a smaller path. I would explain the risk in plain terms (an unknown error rate means unknown harm and support cost) and propose a quick, cheap test: 50 to 100 real examples scored by two people in a day, or a limited beta with a switch to turn it off. If leadership still decides to ship, I would record my concern in writing and add monitoring and rollback.</p>",
+    "<p>Estimate cost per request first, then multiply. Cost = requests per month x (input tokens x input price + output tokens x output price), plus retrieval, hosting and human review. Example: 200,000 requests x (800 in + 200 out tokens) at placeholder prices of 0.000002 and 0.000008 per token gives about 640 per month. Then add a margin for retries and growth, test with real traffic samples, and compare against the value, such as minutes saved per user.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Teams would be organised around risk, not just features. I would identify early which of our features fall in the high-risk tier, and give them an owner for documentation, logging and human oversight. Compliance work such as risk assessment and data records becomes part of the definition of done for those features, not an afterthought. Legal and security join design reviews early. Low-risk features keep a light process, mostly transparency notices, so the extra effort goes where the risk is.</p>",
+    "<p>Many regions matter if we serve users there. The US has no single federal AI law, so sector rules and state laws apply, along with agency guidance. The UK has favoured a regulator-led approach. China has rules on generative AI and recommendation algorithms. Standards such as ISO/IEC 42001 and the NIST AI Risk Management Framework are voluntary but widely used. I would not rely on memory for details, because they change; I would confirm with legal.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Ownership of AI-generated code is unsettled and depends on the country and on how much human creative input there was, so I would not assume anything. Some jurisdictions require human authorship for copyright. Tool terms of service usually say who may use the output, but that is a contract, not a guarantee of copyright. In practice I follow company policy, ask legal, and make sure a human meaningfully shapes and reviews important code. I treat this as a legal question, not a technical one.</p>",
+    "<p>The same way as for human-written code, plus extra care. I keep a software bill of materials, run licence scanners in CI, and check that each licence (MIT, Apache-2.0, GPL and so on) fits how we ship. For example, copyleft code such as GPL linked into a closed product can create obligations. If a scanner or review finds a suspicious block in AI output, I trace the source, replace it or comply with the licence, and note the decision. Legal sets the final policy.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would first make sure I understand their view, then present the evidence calmly and in writing: what I measured, who could be harmed and what the options are. I would ask what would change their mind, and propose a low-cost step like a limited rollout or review. If they still disagree on a serious matter, I would record my concern and ask to involve the people responsible for risk, such as compliance or my skip-level manager, openly rather than behind their back.</p>",
+    "<p>Whistleblowing is a last resort, for serious harm or illegality when internal channels have been tried or cannot be trusted, such as hidden safety risks or fraud. Before it, I would document facts, use internal reporting routes, and seek advice from legal counsel or an official protected-disclosure channel, because laws and protections differ by country. I would not leak confidential data over a disagreement about priorities. The test is: serious harm, credible evidence, and no safe internal path.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A recent example: I wanted to understand how retrieval-augmented generation actually works, so I built a small search over 20 notes with word counts and cosine similarity, then wrote down three cases where it failed. That taught me more about chunking and evaluation than reading articles. I keep the answer specific and honest: what I tried, what surprised me and what I would do next, and I note that tools change quickly so I hold the conclusions loosely.</p>",
+    "<p>I keep the plan small and sustainable: 30 to 45 minutes on most days, not every evening, and weekends mostly free. I choose a few topics instead of chasing everything, skip hype, and accept that I will not know it all. Rest, exercise and sleep are part of the plan, because tired learning is slow. When a week is bad, the 10-minute minimum keeps the habit alive without guilt. If stress keeps building, I talk to my manager about workload.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would not take away the tool; I would make them explain and test. In pair sessions I ask them to walk through the code line by line and say why. I set tasks where they first sketch a solution on paper or debug without AI for 30 minutes, then compare with the tool. In review I ask about edge cases rather than just correcting. I tell them clearly that the goal is judgment, and I praise good questions. If it continues, I raise it with the manager.</p>",
+    "<p>I measure growth by evidence, not output volume. Signals: how well they explain their code, how often reviewers find fewer problems over time, the quality of their tests, how independently they debug, and the size of tasks they can own (one bug, then one feature, then a small system). I set two or three goals per quarter with them and review examples together. For example, moving from 5 review comments per change to 2 over three months is a useful sign.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Show impact beyond your own team with evidence. Pick problems that cross teams, write down the problem and a clear proposal, build agreement with the people affected, and then track the result with numbers. Example: a shared testing platform that cuts build time from 30 to 12 minutes for 6 teams. Keep a log of decisions, designs you influenced and people you grew. Staff impact is judged by how much others succeed because of you, so collect their outcomes, not only your own commits.</p>",
+    "<p>I would choose by what energises me and where I can have the most effect. Staff engineer means staying close to technical problems and influencing through ideas and design. Manager means being responsible for people: hiring, feedback, growth, planning. I would try a taste of each, such as leading a project or mentoring, and ask people in both jobs about their week. It is a reversible choice in many companies, and I would not take management just for the title.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Scoring no-regret career moves across scenarios",
+    "python": "# Five-year plan under uncertainty: pick moves that hold up in every scenario\nscenarios = [\"AI boosts demand\", \"flat market\", \"my area shrinks\"]\n# usefulness of each move in each scenario (0 to 10), same order as scenarios\nmoves = {\n    \"deep backend stem\":      [8, 7, 4],\n    \"debugging/verification\": [9, 8, 7],\n    \"communication\":          [7, 7, 8],\n    \"build one LLM feature\":  [9, 5, 3],\n    \"financial buffer\":       [5, 6, 9],\n    \"bet on one tool\":        [8, 3, 1],\n}\nprint(\"scenarios:\", scenarios)\nrows = []\nfor name, scores in moves.items():\n    worst = min(scores)               # no-regret means a good worst case\n    avg = sum(scores) / len(scores)\n    rows.append((worst, avg, name))\n    print(\"%-24s worst=%d avg=%.1f\" % (name, worst, avg))\n\nrows.sort(reverse=True)               # best worst-case first\nprint(\"no-regret moves:\", [n for w, a, n in rows if w >= 6])\nprint(\"scenario-specific:\", [n for w, a, n in rows if w < 6])\n"
+   },
+   "followUps": [
+    "<p>I set triggers in advance, with numbers, so I do not decide in a panic. Examples: if my team's open roles fall by half for two quarters, if the share of tasks done end to end by tools passes what I can review, or if my main skill shows up in far fewer job postings, I move toward my backup plan. I check these signals every quarter, and I talk with a mentor before making a big change. The rule keeps me calm: act on evidence, not news cycles.</p>",
+    "<p>I would use my stem as a base and move to an adjacent area quickly. If backend data work shrank, I would look at what it is close to: data quality, platform, reliability or AI evaluation. I would spend 3 to 6 months on a small project in the new area, use my savings buffer to avoid a rushed choice, and tell my network. Skills like debugging, system thinking and communication transfer, so I would start from them and not from zero.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A ship gate for an AI-assisted change",
+    "python": "# A ship gate for an AI-assisted change: every check must pass\nchange = {\n    \"files\": [\"billing/charge.py\", \"billing/test_charge.py\", \"notes.txt\"],\n    \"added_lines\": [\"retry(call)\", \"key = 'AKIA_PLACEHOLDER'\", \"x = 1\"],\n    \"tests_pass\": True,\n    \"has_failure_path_test\": False,\n    \"reviewed_by_human_who_understands\": True,\n}\nRISKY = (\"billing/\", \"auth/\", \"migrations/\")   # money, access, data\n\ndef gate(ch):\n    problems = []\n    if not ch[\"tests_pass\"]:\n        problems.append(\"tests fail\")\n    if any(\"AKIA\" in ln or \"password\" in ln for ln in ch[\"added_lines\"]):\n        problems.append(\"possible secret in diff\")\n    if not ch[\"has_failure_path_test\"]:\n        problems.append(\"no failure-path test\")\n    risky = [f for f in ch[\"files\"] if f.startswith(RISKY)]\n    if risky and not ch[\"reviewed_by_human_who_understands\"]:\n        problems.append(\"risky area needs an expert reviewer\")\n    if any(f.endswith(\".txt\") for f in ch[\"files\"]):\n        problems.append(\"unexpected file: review why\")\n    return problems\n\nprint(\"files:\", change[\"files\"])\nissues = gate(change)\nfor p in issues:\n    print(\"BLOCK:\", p)\nprint(\"verdict:\", \"ship with staged rollout\" if not issues else \"do not ship yet\")\n"
+   },
+   "followUps": [
+    "<p>I would compare before and after using outcomes, not feelings: change-failure rate (share of releases that cause incidents or rollbacks), time to restore, bugs found after release, review time and rework. Example: if 4 of 50 changes failed last quarter (8 percent) and 9 of 55 fail after wide AI use (16 percent), that is a warning even if throughput is up. I would segment by AI-assisted and not, remember other causes, and run small experiments before reacting.</p>",
+    "<p>A good rollback plan is decided before the release. It means a feature flag or previous version that can be restored in minutes, backward-compatible database changes, a staged rollout (for example 1 percent, 10 percent, then 100 percent), and alerts with clear thresholds, such as error rate above 2 percent for 5 minutes. One named person has authority to roll back without a meeting. I rehearse it for risky changes. Data migrations need a tested way back or a backup.</p>"
+   ]
+  }
+ ]
+}
