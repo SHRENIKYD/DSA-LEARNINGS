@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Right after routing and before the controller. Middleware forms a chain around the handler: each piece can do work, then call <code>next()</code> (Express) or let the filter chain continue (Spring <code>Filter</code> or <code>HandlerInterceptor</code>).</p><p>Order: logging first (so every request is recorded, even rejected ones), then authentication (who are you?), then authorisation, then body parsing and validation, then the controller. An auth failure stops the chain early and returns 401 without touching the service.</p>",
+    "<p>The framework fails before your controller runs and returns <b>400 Bad Request</b>. The JSON parser cannot build the object, so the controller method never executes and the service is never called.</p><p>Spring throws <code>HttpMessageNotReadableException</code>; Express's <code>express.json()</code> passes a <code>SyntaxError</code> to the error handler. Your global handler should map it to 400 with the standard error body and a short message such as \"malformed JSON\", without echoing the raw payload or parser internals. Valid JSON with wrong field values is a different case: that is a validation error.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because URLs are stored in many places you do not control: browser history, server and proxy access logs, the <code>Referer</code> header sent to other sites, bookmarks and monitoring tools. A password in <code>?password=hunter2</code> stays readable in all of them for months.</p><p>Send credentials in a POST body over HTTPS, or better, exchange them once for a short-lived token sent in the <code>Authorization</code> header. Query strings are for non-sensitive filters like <code>?page=2</code>.</p>",
+    "<p>Use a small, predictable set of named parameters, and bind them into one object on the server. Example: <code>GET /books?author=Orwell&amp;year_gte=1940&amp;sort=-year&amp;page=2&amp;size=20</code>.</p><p>In Spring, a <code>@ModelAttribute</code> or record collects them; in Express you read <code>req.query</code> and validate with a schema. Give every filter a default, cap <code>size</code> (say 100), and whitelist the sort fields so clients cannot sort by internal columns. If filters become complex (nested AND/OR), a <code>POST /books/search</code> with a JSON body is acceptable.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put <code>@Transactional</code> on the <b>service</b> method, because one business operation is the unit that must succeed or fail as a whole.</p><p>Example: \"transfer 50\" debits one account and credits another through two repository calls; if the second fails, the first must roll back. The repository only knows single operations, and the controller knows nothing about data. Spring starts the transaction on entry and rolls back on a runtime exception. Keep transactions short, and do not call them from controllers, where JSON writing would run inside the transaction.</p>",
+    "<p>A fat controller is one that contains business rules, data access or mapping, so each endpoint is long and hard to test. The fix is to move code outward step by step.</p><ol><li>Move rules (duplicate check, price calculation) into a service method.</li><li>Move queries into a repository.</li><li>Leave the controller with 3 to 6 lines: read input, call the service, return the status and body.</li></ol><p>A sign you are done: you can call the service from a test or a queue consumer with no HTTP objects at all.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use <b>400</b> when the request cannot be understood (broken JSON, wrong type), and <b>422 Unprocessable Content</b> when the JSON is well formed but breaks a rule (email without @, end date before start date).</p><p>The split helps clients: 400 means \"fix your request format\", 422 means \"fix these field values\". Many teams use just 400 for both, which is fine if it is documented and consistent. Pick one policy for the whole API and put it in the shared error guidelines.</p>",
+    "<p>Either is defensible, so choose one and stay consistent. <b>404</b> tells the caller \"nothing was there to delete\", which can reveal a bug such as a wrong id. <b>204</b> treats DELETE as idempotent: the end state (resource absent) is the same, so retries always succeed.</p><p>Example: a client deletes id 7, the response is lost, it retries. With 404 the retry looks like a failure; with 204 it does not. Retry-heavy clients usually prefer 204, while strict APIs prefer 404. Document the choice.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the client is under the user's control, so anyone can bypass the form with curl or by editing the page. Client checks only improve the experience (instant feedback); they are not security.</p><p>Example: the page limits a quantity to 1 to 10, but a script sends <code>quantity=-5000</code> and gets a refund. Always validate on the server, treat every request as hostile, and keep the client rules as a convenience copy.</p>",
+    "<p>Annotate the controller with <code>@Validated</code> and put constraints directly on the parameters.</p><pre><code>@GetMapping(\"/books/{id}\")\nBook get(@PathVariable @Min(1) long id,\n         @RequestParam(defaultValue=\"10\") @Max(100) int size)</code></pre><p>A failure throws <code>ConstraintViolationException</code> (different from the body's <code>MethodArgumentNotValidException</code>), so map both to the same 400 error shape in your advice class. Type problems, such as \"abc\" for a number, give <code>MethodArgumentTypeMismatchException</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is the correlation id: a unique value (often a UUID) attached to each request so you can follow it across logs and services. Without it, a user report such as \"I got an error at 10:42\" means searching thousands of lines.</p><p>Generate it at the edge (or accept one from the gateway), put it in the logging context, return it in the error body and <code>X-Request-Id</code>, and pass it to downstream calls. Support asks the user for the id and finds the exact stack trace in one search.</p>",
+    "<p>You can no longer change the status code, because the status line and headers are already sent. The only things left are to log the error and close the connection, which the client sees as a truncated or broken response.</p><p>In Express, calling <code>res.status(500)</code> now throws \"headers already sent\"; the default handler closes the socket. Design for it: validate and load data before you start writing, and for long streams send an error marker in the stream format (for example a final error line) so clients can detect failure.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Route order: :id swallows /search",
+    "js": "// Express-style routing: first registered match wins\nconst routes = [];\nfunction get(pattern, name) { routes.push({ pattern, name }); }\n\n// Match \"/api/books/:id\" style patterns segment by segment\nfunction match(pattern, path) {\n  const p = pattern.split('/'), q = path.split('/');\n  if (p.length !== q.length) return null;\n  const params = {};\n  for (let i = 0; i < p.length; i++) {\n    if (p[i].startsWith(':')) params[p[i].slice(1)] = q[i]; // :id matches ANY segment\n    else if (p[i] !== q[i]) return null;\n  }\n  return params;\n}\n\nfunction dispatch(path) {\n  for (const r of routes) {            // registration order, stop at first hit\n    const params = match(r.pattern, path);\n    if (params) return r.name + ' ' + JSON.stringify(params);\n  }\n  return '404';\n}\n\nget('/api/books/:id', 'getById');      // BUG: parameterised route first\nget('/api/books/search', 'search');\nconsole.log('wrong order:');\nconsole.log('  /api/books/5      ->', dispatch('/api/books/5'));\nconsole.log('  /api/books/search ->', dispatch('/api/books/search'));\n\nroutes.length = 0;\nget('/api/books/search', 'search');    // FIX: literal route first\nget('/api/books/:id', 'getById');\nconsole.log('right order:');\nconsole.log('  /api/books/5      ->', dispatch('/api/books/5'));\nconsole.log('  /api/books/search ->', dispatch('/api/books/search'));\n"
+   },
+   "followUps": [
+    "<p>Because both patterns can match the same URL and Express takes the first one registered. With nesting, <code>/books/:id</code> beats a later <code>/books/featured</code>, and the same goes for <code>/users/:id/orders</code> against <code>/users/me/orders</code>.</p><p>Example: <code>me</code> gets treated as a user id and the lookup fails. Keep literal segments registered before parameterised siblings at every level, or put them in separate routers mounted in the right order.</p>",
+    "<p>Add a regular expression after the parameter name, in Express 4 syntax: <code>router.get('/:id(\\\\d+)', handler)</code>. Now <code>/5</code> matches, but <code>/search</code> does not and falls through to later routes or the 404 handler.</p><p>In Spring the equivalent is <code>@GetMapping(\"/{id:[0-9]+}\")</code>. Newer Express 5 dropped inline regexes, so there you validate in the handler (or middleware) and answer 400. A pattern restriction is a safety net, not a replacement for validation.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Mass assignment is when the server copies every field from the request into the entity, so a client can set fields it should never control. Sending <code>{\"name\":\"Ann\",\"role\":\"ADMIN\"}</code> to a profile update turns the user into an admin.</p><p>Famous case: in 2012 a researcher used it on GitHub (Rails) to add his own key to another organisation's repository. Fix: bind to a request DTO that only has the allowed fields, never to the entity.</p>",
+    "<p>Use a mapper library so you do not hand-write copies. In Java, <b>MapStruct</b> generates plain mapping code at compile time (no reflection, errors caught at build). Records make DTOs one line each.</p><p>In JavaScript, a small <code>pick(obj, ['title','author'])</code> helper or a schema library (zod strips unknown keys) does the same. Keep mappers dumb: field-to-field copies only, with business logic in the service. Hand-written mapping is fine for small APIs and is clearer than reflection-heavy tools.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Service tested with a fake repository",
+    "python": "# Service depends on a repository interface, so a fake makes unit tests instant\nclass FakeRepo:\n    def __init__(self):\n        self.rows, self.saves = [], 0\n    def find_by_isbn(self, isbn):\n        return next((r for r in self.rows if r[\"isbn\"] == isbn), None)\n    def save(self, book):\n        self.saves += 1\n        self.rows.append(book)\n        return len(self.rows)\n\nclass BookService:\n    def __init__(self, repo):\n        self.repo = repo  # injected: could be SQL later, no change here\n    def create(self, book):\n        errors = []\n        if not book.get(\"title\"): errors.append(\"title required\")\n        if not book.get(\"isbn\"): errors.append(\"isbn required\")\n        if errors: raise ValueError(errors)           # all errors, not just first\n        if self.repo.find_by_isbn(book[\"isbn\"]): raise KeyError(\"duplicate isbn\")\n        return self.repo.save(book)\n\nrepo = FakeRepo(); svc = BookService(repo)\nprint(\"valid    ->\", svc.create({\"title\": \"Dune\", \"isbn\": \"1\"}))\nfor bad in ({\"title\": \"\", \"isbn\": \"\"}, {\"title\": \"Dune\", \"isbn\": \"1\"}):\n    try: svc.create(bad)\n    except Exception as e: print(\"rejected ->\", type(e).__name__, e.args[0])\nprint(\"save calls:\", repo.saves, \"(expected 1)\")\n"
+   },
+   "followUps": [
+    "<p>A <b>stub</b> returns canned answers, a <b>fake</b> is a simple working replacement (an in-memory list), and a <b>mock</b> also records calls so you can verify them.</p><p>Use a stub when you only need input (\"findById returns this book\"). Use a fake when behaviour matters across several calls (save then find). Use a mock when the call itself is the outcome, such as \"an email was sent once\". Prefer fakes: they test results, not implementation, so refactoring does not break tests.</p>",
+    "<p>A unit test with a fake proves your logic, not that the real parts fit together. It cannot catch a wrong SQL query, a missing column, a failed JSON mapping, a bad transaction setup or a unique constraint that behaves differently from your fake.</p><p>An integration test runs the real repository against a real (or containerised) database and often the HTTP layer, so it finds those wiring faults. Keep many fast unit tests and a smaller number of integration tests over the key paths.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Optimistic concurrency with a version check",
+    "python": "# Optimistic concurrency: update only if the version still matches\nclass Store:\n    def __init__(self):\n        self.rows = {1: {\"title\": \"Dune\", \"version\": 1}}\n\n    def get(self, id):\n        r = self.rows[id]\n        return dict(r)  # the client keeps a copy and its version (the ETag)\n\n    def update(self, id, title, if_match):\n        r = self.rows[id]\n        # compare and write happen together (one atomic step in a real DB)\n        if r[\"version\"] != if_match:\n            return 412, \"Precondition Failed\"\n        r[\"title\"] = title\n        r[\"version\"] += 1\n        return 200, dict(r)\n\ns = Store()\nalice = s.get(1)\nbob = s.get(1)\nprint(\"both read:\", alice)\nprint(\"alice saves:\", s.update(1, \"Dune (2nd ed)\", alice[\"version\"]))\nprint(\"bob saves  :\", s.update(1, \"Dune Messiah\", bob[\"version\"]))\n# Bob must refetch, merge, and retry with the new version\nbob = s.get(1)\nprint(\"bob retries:\", s.update(1, \"Dune Messiah\", bob[\"version\"]))\n"
+   },
+   "followUps": [
+    "<p>Because ETag is also a cache validator. The server sends <code>ETag: \"v7\"</code>; the client later asks with <code>If-None-Match: \"v7\"</code>. If nothing changed, the server replies <b>304 Not Modified</b> with no body and the client reuses its copy.</p><p>The same version value therefore serves two jobs: <code>If-None-Match</code> saves bandwidth on reads, <code>If-Match</code> protects writes. A 2 KB book record turns into a 0-byte reply on each unchanged refresh.</p>",
+    "<p>Because otherwise another request can sneak in between them. Naive flow: read version 3, check it equals 3, then write. Two requests can both read 3, both pass the check, and the second write overwrites the first.</p><p>Do it in one statement: <code>UPDATE books SET title=?, version=version+1 WHERE id=? AND version=?</code> and check that 1 row changed. The database makes that check-and-write atomic; 0 rows means someone else won, so return 412.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotency key replays the first response",
+    "python": "# Idempotency key: a retry returns the stored response, no second charge\nimport hashlib, json\n\nstore = {}      # key -> (payload_hash, status, body); a DB unique constraint in real life\ncharges = []\n\ndef create_order(key, payload):\n    h = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()\n    if key in store:\n        old_hash, status, body = store[key]\n        if old_hash != h:\n            return 422, \"key reused with a different payload\"\n        return status, body          # replay the saved answer\n    charges.append(payload[\"amount\"])  # the real side effect happens once\n    body = {\"orderId\": len(charges), \"amount\": payload[\"amount\"]}\n    store[key] = (h, 201, body)\n    return 201, body\n\np = {\"item\": \"book\", \"amount\": 20}\nprint(\"first  :\", create_order(\"k-123\", p))\nprint(\"retry  :\", create_order(\"k-123\", p))\nprint(\"other  :\", create_order(\"k-123\", {\"item\": \"book\", \"amount\": 99}))\nprint(\"charges:\", charges)\n"
+   },
+   "followUps": [
+    "<p>In a shared store that every instance can reach, because a retry may be routed to a different server. Typical choices are Redis (<code>SET key value NX EX 86400</code>) or a database table with a unique constraint on the key.</p><p>An in-memory map on each instance fails: instance A saw the key, the retry lands on B, and the customer is charged twice. Prefer the database if the key must commit together with the order; use Redis when speed matters and slight loss is tolerable.</p>",
+    "<p>Yes for final results, no for temporary failures. If the first attempt returned 400 or 422, replaying the same answer is right, since the same request will fail again. A 500 or 503 caused by an outage should not be stored: release the key so the retry can actually run.</p><p>Rule: store outcomes that are deterministic for the same input (success and validation errors), delete the key when the failure was transient. Always compare the payload hash so a reused key with a different body is rejected.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Atomic id generation under concurrent requests",
+    "java": "import java.util.*;\nimport java.util.concurrent.*;\nimport java.util.concurrent.atomic.AtomicLong;\n\npublic class Main {\n    static long unsafeNext = 0;                      // plain field\n    static final AtomicLong safeNext = new AtomicLong();\n\n    public static void main(String[] args) throws Exception {\n        Set<Long> unsafeIds = ConcurrentHashMap.newKeySet();\n        Set<Long> safeIds = ConcurrentHashMap.newKeySet();\n        ExecutorService pool = Executors.newFixedThreadPool(4);\n        List<Future<?>> fs = new ArrayList<>();\n        for (int t = 0; t < 4; t++) {\n            fs.add(pool.submit(() -> {\n                for (int i = 0; i < 1000; i++) {\n                    unsafeIds.add(unsafeNext++);              // read-modify-write: not atomic\n                    safeIds.add(safeNext.getAndIncrement());   // one atomic step\n                }\n            }));\n        }\n        for (Future<?> f : fs) f.get();\n        pool.shutdown();\n        System.out.println(\"requests: 4 threads x 1000 = 4000\");\n        System.out.println(\"atomic ids distinct: \" + safeIds.size());\n        // unsafe count varies per run, but can never exceed 4000 (duplicates appear)\n        System.out.println(\"unsafe ids <= 4000: \" + (unsafeIds.size() <= 4000));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Node runs your JavaScript on one thread, so two statements without an <code>await</code> between them cannot interleave. A plain <code>nextId++</code> is safe there.</p><p>But races still happen across <code>await</code> points: <code>if (!(await repo.exists(x))) await repo.save(x)</code> lets two requests both pass the check while the first awaits. Also, multiple Node processes or servers share nothing. So single-threaded removes memory corruption, not check-then-act bugs.</p>",
+    "<p>The database enforces uniqueness in one place, whatever instance sent the write. Create <code>UNIQUE INDEX ON books(isbn)</code>. Two requests inserting the same isbn at once: one succeeds, the other fails with a constraint violation that you map to <b>409 Conflict</b>.</p><p>No application lock or shared cache is needed. This is why \"check then insert\" in code is only advisory: the check can be stale a millisecond later, but the index cannot be bypassed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Return a stable machine-readable <code>code</code> (like <code>BOOK_NOT_FOUND</code>) and let the client translate it, or pick the language from the <code>Accept-Language</code> header for the human <code>message</code>.</p><p>Clients must switch on <code>code</code>, never on message text, so changing or translating a message cannot break them. Never reuse or rename a code. Keep message wording free to change, and keep any placeholders (field names, limits) in separate fields of the error object.</p>",
+    "<p>Return <b>207 Multi-Status</b> (or 200) with one result per item, so the client knows exactly which items worked. Example for 3 items: <code>[{\"index\":0,\"status\":201},{\"index\":1,\"status\":422,\"error\":{...}},{\"index\":2,\"status\":201}]</code>.</p><p>Each failed item reuses the standard error shape. Decide up front whether the batch is all-or-nothing (one transaction, a single 4xx on any failure) or partial, and document it. Keep batches small (say 100) and make retries safe with per-item idempotency keys.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give the assistant the conventions as written context, not as memory: a short team file (for example <code>CLAUDE.md</code> or a rules document) with layering, status-code policy, error shape and naming, plus one good example endpoint to copy.</p><p>Then prompt concretely: \"add a Book endpoint following the Order example; controller thin; errors via the global handler\". Review the diff against your checklist and update the rules file when you see the same mistake twice.</p>",
+    "<p>Mutation testing deliberately breaks the code and checks that tests fail. A tool (PIT for Java, Stryker for JavaScript) makes small changes, such as flipping <code>&gt;</code> to <code>&gt;=</code> or removing a call, and runs the suite on each variant.</p><p>If a mutant survives (tests still pass), the tests do not really check that behaviour. Example: 20 mutants, 14 killed gives a 70% score; look at the 6 survivors. Doing it by hand also works: remove the duplicate check and see whether a test fails.</p>"
+   ]
+  }
+ ]
+}

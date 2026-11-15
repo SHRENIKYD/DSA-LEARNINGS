@@ -1,0 +1,109 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The browser can skip DNS, the TCP and TLS handshakes, and often the whole request. The browser and OS remember the DNS answer, so the lookup is skipped. A keep-alive or HTTP/2 connection may still be open, so no new handshakes. With <code>Cache-Control: max-age=3600</code> the stored copy is used without asking the server at all.</p><p>Static files (CSS, JS, images) are usually cached the longest, so the second visit often costs only one small request for the HTML.</p>",
+    "<p>A CDN sits between the browser and your origin servers, close to the user. DNS sends the user to the nearest CDN edge. If the edge holds a cached copy of the file, it answers at once. If not, it asks your origin, stores the reply and serves it.</p><p>Example: a user in Mumbai gets an image from an edge 10 ms away instead of from an origin 150 ms away. The CDN also absorbs traffic spikes, so your nginx and app servers see far fewer requests.</p>",
+    "<p>TCP only sets up a reliable connection; TLS then sets up encryption on top of it, so TLS costs extra round trips. TCP needs 1 round trip (SYN, SYN-ACK, ACK). TLS 1.3 adds 1 more round trip, TLS 1.2 adds 2, and a resumed session can need 0. TLS also costs CPU for key exchange and certificate checks.</p><p>On a 100 ms link, TCP plus TLS 1.3 is about 200 ms before the first request byte. Keep-alive and HTTP/3 (QUIC combines both handshakes) reduce it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the user controls the browser and can bypass or edit your frontend checks. Frontend validation is only for convenience, for fast feedback. Server validation is the real security and data-integrity check.</p><p>Example: the form limits quantity to 1 to 10, but anyone can send <code>curl -d '{\"qty\":-5}'</code> straight to your API. If the server does not check, a negative quantity could refund money. Also other clients (mobile app, partner) may not run your frontend code at all.</p>",
+    "<p>Yes, and it happens all the time. A server becomes a client the moment it calls another service. Your order service answers the browser (as a server) and then calls a payment service, a database or an email API (as a client).</p><p>So the words describe the role in one conversation, not a kind of machine. In a microservice system a single process is a server to its callers and a client to everything it depends on, which is why timeouts and retries matter on outgoing calls too.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the client send a unique <code>Idempotency-Key</code> with the POST, and have the server remember the result of that key. A retry with the same key gets the saved response instead of creating a second order.</p><p>Example: key <code>k1</code> creates order 9001. The client times out and retries with <code>k1</code>; the server returns order 9001 again. Another approach is to make the operation naturally idempotent, for example a client-chosen id with <code>PUT /orders/{uuid}</code>.</p>",
+    "<p>Pick PUT when the client sends the complete new state, and PATCH when it changes only a few fields. PUT is simple and always idempotent: sending <code>{\"name\":\"Asha\",\"phone\":\"123\"}</code> ten times leaves the same record. But a PUT with a missing field would erase it, and it wastes bandwidth on large objects.</p><p>PATCH is better for \"change only the phone number\", or when several clients edit different fields, because they will not overwrite each other. Prefer absolute values in PATCH so it stays idempotent.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>401 means \"I do not know who you are\" and 403 means \"I know who you are, but you may not do this\". 401 means missing, expired or invalid credentials; the client can log in and try again. 403 means authentication worked but permission is lacking, and logging in again will not help.</p><p>Example: calling <code>GET /admin/users</code> with no token gives 401; calling it with a normal user's valid token gives 403. (Some APIs return 404 instead of 403 to hide that a resource exists.)</p>",
+    "<p>Both come from a proxy, but 502 means the proxy got a bad or no answer, while 504 means it got no answer in time. 502: the app is down, crashed, refused the connection or sent garbage, and it fails fast. 504: the app is alive but slow, and the proxy gave up after its timeout (nginx <code>proxy_read_timeout</code>, default 60 s).</p><p>So for 502 look at whether the process is running; for 504 look for slow queries or blocked threads.</p>",
+    "<p>Because every tool in between trusts the status code, and a 200 with an error hides failures from them. Monitoring will show a 100% success rate while users see errors. Caches and CDNs may store the error as a good response, and clients cannot decide whether to retry.</p><p>Example: <code>200 {\"error\":\"not found\"}</code> may be cached for an hour, but <code>404</code> is understood by every browser, proxy, SDK and alert rule. Use the right code and put details in the body.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Float rounding versus integer cents and Decimal for money",
+    "python": "from decimal import Decimal\nimport json\n\n# Floats are binary: 0.1 and 0.2 have no exact representation\nprint(\"0.1 + 0.2 =\", 0.1 + 0.2)\nprices = [0.10] * 3\nprint(\"float total of three 0.10 items:\", sum(prices), \"(equals 0.30?\", sum(prices) == 0.30, \")\")\n\n# Fix 1: integer minor units (paise/cents) - exact, fast\ncents = [10, 10, 10]\nprint(\"integer total in cents:\", sum(cents))\n\n# Fix 2: decimal numbers built from strings\ntotal = sum(Decimal(s) for s in [\"0.10\", \"0.10\", \"0.10\"])\nprint(\"Decimal total:\", total)\n\n# JSON carries the amount as an integer plus a currency code\nbody = json.dumps({\"amount\": sum(cents), \"currency\": \"USD\"})\nprint(\"json:\", body)\nprint(\"parsed back:\", json.loads(body))\n"
+   },
+   "followUps": [
+    "<p>Add new things and never remove or change the meaning of old things. Adding an optional field is safe, because old clients ignore fields they do not know. Do not rename a field, change its type, or make an optional field required in the same version.</p><p>When a breaking change is unavoidable, add a new version (<code>/v2/orders</code> or a version header), run both for a deprecation period, watch usage, and then retire the old one. Clients should be told to ignore unknown fields.</p>",
+    "<p>Mass assignment is when the server copies every field of the incoming JSON onto an internal object, so an attacker can set fields they should not. Example: the profile update accepts <code>{\"name\":\"A\",\"role\":\"admin\"}</code> and writes <code>role</code> too.</p><p>Avoid it by binding the request to a small DTO (data transfer object) that contains only the allowed fields, such as <code>name</code> and <code>phone</code>, validating it, and then copying those fields explicitly. Never bind JSON straight onto a database entity.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Signed token: any server verifies, nobody can forge",
+    "js": "const crypto = require('crypto');\nconst SECRET = 'demo-secret-placeholder';   // real keys come from a vault, never source code\n\nconst b64 = (s) => Buffer.from(s).toString('base64url');\nconst sign = (data) => crypto.createHmac('sha256', SECRET).update(data).digest('base64url');\n\n// token = payload.signature ; payload is readable, but cannot be changed unnoticed\nfunction issue(claims) {\n  const payload = b64(JSON.stringify(claims));\n  return payload + '.' + sign(payload);\n}\n\n// any server holding the secret can verify without a database lookup\nfunction verify(token, now) {\n  const [payload, sig] = token.split('.');\n  const expected = sign(payload);\n  if (!sig || sig.length !== expected.length ||\n      !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return 'rejected: bad signature';\n  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString());\n  if (claims.exp < now) return 'rejected: expired';\n  return 'accepted: user ' + claims.sub + ' role ' + claims.role;\n}\n\nconst token = issue({ sub: 'u42', role: 'user', exp: 1000 });\nconsole.log('token  :', token);\nconsole.log('valid  :', verify(token, 500));\nconsole.log('expired:', verify(token, 2000));\n\n// attacker edits the payload to become admin, but cannot recompute the signature\nconst forged = b64(JSON.stringify({ sub: 'u42', role: 'admin', exp: 1000 })) + '.' + token.split('.')[1];\nconsole.log('forged :', verify(forged, 500));\n"
+   },
+   "followUps": [
+    "<p>The main downsides are that a token cannot be taken back easily, it can get large, and mistakes in handling it are dangerous. A JWT is valid until it expires, so if it is stolen or the user is fired, it still works for the rest of its lifetime. The fix is short expiry plus a refresh token or a deny-list, which adds state again.</p><p>Also: the payload is only signed, not hidden, so no secrets inside; it is sent on every request (a few hundred bytes); accepting the <code>none</code> algorithm or a weak secret is a classic bug.</p>",
+    "<p>Sticky sessions mean the load balancer always sends one user to the same server, because that server keeps the user's session in its memory. It works, but it is fragile, so avoid it.</p><p>Problems: if that server crashes or is replaced in a deploy, every user stuck to it is logged out. Load becomes uneven (a few heavy users overload one server), and autoscaling is harder. Keeping sessions in Redis, or using signed tokens, lets any server handle any request.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Scale it separately from the app servers, using the usual steps in order: first indexes and query fixes, then a cache, then read replicas, and finally sharding. Add a bigger machine (vertical scaling) first because it is simplest.</p><p>Example: 90% of traffic is reads, so one primary takes writes and three replicas serve reads (reads become about 4 times larger). Replicas lag slightly, so reads right after a write may go to the primary. Sharding by user id splits writes but makes cross-shard queries hard, so do it last.</p>",
+    "<p>Use rolling restarts with draining, and make clients able to reconnect quickly. Stop sending new connections to an old instance, tell its clients to reconnect (a close frame with a \"go away\" code), and wait for it to empty before shutting it down.</p><p>Clients reconnect with random delay (jitter) so 100,000 users do not all arrive at once. Keep the real state (subscriptions, unread messages) in Redis or a database, so the new instance can resume without loss. Deploy a few instances at a time, never all at once.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Nginx sees the real client as its own connection, so it passes the client IP in a header and the app must read that header. Nginx adds <code>X-Forwarded-For: 198.51.100.7</code> (or the standard <code>Forwarded</code> header), and the app reads it instead of the socket address, which would be nginx's own IP.</p><p>Trust the header only from your known proxies, because a client can fake it. With several proxies, the list grows (<code>client, proxy1</code>), and you take the entry added by your trusted proxy. Spring's <code>forward-headers-strategy</code> handles this.</p>",
+    "<p>Make each inner layer's timeout shorter than the layer outside it, so the layer closest to the user gives up last. Example: browser 30 s, nginx <code>proxy_read_timeout</code> 25 s, app request timeout 20 s, database query timeout 5 s.</p><p>If the database timeout were longer than nginx's, nginx would return 504 while the app kept working on a request nobody waits for. Also set short connect timeouts (1 to 3 s), because a dead host should fail fast.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotency key: retries replay the saved response",
+    "python": "import hashlib, json\n\nstore = {}          # idempotency key -> (request hash, saved response)\ncharges = []        # the side effect we must not repeat\n\ndef post_payment(key, body):\n    body_hash = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()\n    if key in store:\n        saved_hash, response = store[key]\n        if saved_hash != body_hash:              # same key, different request: refuse\n            return 422, {\"error\": \"key reused with a different body\"}\n        return response                          # replay the saved answer, charge nothing\n    charges.append(body[\"amount\"])               # the real work happens once\n    response = (201, {\"payment_id\": len(charges), \"amount\": body[\"amount\"]})\n    store[key] = (body_hash, response)           # real code: unique constraint / SET NX\n    return response\n\nreq = {\"amount\": 500, \"to\": \"acct-9\"}\nprint(\"first try :\", post_payment(\"key-abc\", req))\nprint(\"retry     :\", post_payment(\"key-abc\", req))     # client timed out and retried\nprint(\"retry     :\", post_payment(\"key-abc\", req))\nprint(\"bad reuse :\", post_payment(\"key-abc\", {\"amount\": 900, \"to\": \"acct-9\"}))\nprint(\"new key   :\", post_payment(\"key-xyz\", req))\nprint(\"charges made:\", charges)   # 2 charges: retries were ignored\n"
+   },
+   "followUps": [
+    "<p>Use a two-step record: save an \"in progress\" marker before charging, then update it with the result. If the server crashes after charging but before saving, the retry finds the marker and cannot tell whether the charge happened. So ask the payment provider.</p><p>The best fix is to pass your own idempotency key to the provider too: the provider returns the original charge instead of charging again. Otherwise a reconciliation job compares the markers with provider records and repairs them.</p>",
+    "<p>Scope the key per user (or per account), together with the endpoint, so two users can never collide. The stored key is something like <code>(user_id, key)</code>. With a global scope, user A's random key could accidentally or maliciously match user B's and return B's saved response, which leaks data.</p><p>Clients generate a UUID, so collisions are very unlikely, but the per-user scope also lets you enforce limits and delete a user's keys. Keys must not be reusable across different endpoints.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Each layer must give up before the layer in front of it, and the inner timeouts must add up to less than the outer one. Example: client 30 s, nginx 25 s, app 20 s, database 5 s. Then the user sees a clean error from the layer that failed.</p><p>If they are reversed (nginx 5 s, app 30 s), nginx returns 504 at 5 s while the app keeps running the request for 25 more seconds. That wasted work piles up under load. Also pass a deadline downstream when you can.</p>",
+    "<p>Retries multiply the load on a service that is already struggling. If a server handles 1,000 requests per second and is slow, each failed call is tried again, so it receives 2,000 or 3,000 requests per second, and it gets even slower. This is a retry storm.</p><p>With 3 layers each retrying 3 times, one user action can become 27 calls to the database. Limit it: retry only idempotent calls, use exponential backoff with jitter, cap attempts (2 or 3), add a retry budget (for example 10% extra), and use a circuit breaker.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ETag: 304 on revalidate, 412 on a lost update",
+    "python": "import hashlib, json\n\ndoc = {\"id\": 7, \"name\": \"Asha\", \"version\": 1}\n\ndef etag(d):\n    # strong ETag: hash of the exact bytes of the representation\n    return '\"' + hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:8] + '\"'\n\ndef get(if_none_match=None):\n    tag = etag(doc)\n    if if_none_match == tag:\n        return 304, tag, None                    # no body sent, saves bandwidth\n    return 200, tag, dict(doc)\n\ndef put(new_doc, if_match):\n    global doc\n    if if_match != etag(doc):\n        return 412, \"Precondition Failed\"       # someone else changed it first\n    doc = new_doc\n    return 200, \"updated\"\n\nstatus, tag, body = get()\nprint(\"first GET   :\", status, tag, body)\nprint(\"revalidate  :\", get(tag)[:2])             # 304: client reuses its cached copy\n\n# two editors both read the same version\ntag_a = tag_b = tag\nprint(\"editor A PUT:\", put({\"id\": 7, \"name\": \"Asha K\", \"version\": 2}, tag_a))\nprint(\"editor B PUT:\", put({\"id\": 7, \"name\": \"Asha Z\", \"version\": 2}, tag_b))\nprint(\"after change:\", get(tag)[:2])             # tag differs, so full body again\n"
+   },
+   "followUps": [
+    "<p>Hash the representation, or use a version number that you already store. Hashing the response bytes (a short SHA-256 or a fast hash) costs CPU on every GET but needs no extra storage.</p><p>Cheaper: use the row's <code>version</code> or <code>updated_at</code> column as the tag, e.g. <code>\"v7\"</code>, so no hashing at all. A conditional GET can then check the tag with a tiny query (<code>SELECT version</code>) and skip building the body if it matches.</p>",
+    "<p>Cache-Control max-age says \"do not ask me at all until this time\", while ETag says \"ask me, and I will tell you cheaply if it changed\". With <code>max-age=60</code>, the browser uses its copy for 60 seconds with zero network requests, even if the data changed.</p><p>After it expires, the browser revalidates with <code>If-None-Match</code> and gets a 304 if nothing changed. They work together: max-age avoids requests, ETag makes the remaining requests cheap. Only ETag with <code>If-Match</code> protects writes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Publish several keys, label each with an id (<code>kid</code>), and overlap them: add the new key, switch signing to it, and keep the old one for verification until old tokens have expired. Every token header carries its <code>kid</code>, so the server picks the right key.</p><p>Example with 10-minute access tokens: day 0 publish key B next to key A in the JWKS endpoint; day 1 sign with B; remove A after 10 minutes more. No user is logged out, because tokens signed with A stay valid until they expire.</p>",
+    "<p>Choose JWTs when many separate services must verify identity without calling one central store, and opaque tokens when you need instant revocation and little data in the client. A JWT is verified locally (fast, stateless) but is hard to cancel. An opaque random string needs a lookup on each request (Redis), but you can delete it and see the full session at once.</p><p>Common compromise: short JWT access tokens (5 min) with an opaque refresh token, as in the main answer.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Request smuggling is when a proxy and the app server disagree about where one HTTP request ends, so an attacker hides a second request inside the first. For example, the proxy believes <code>Content-Length</code> and the app believes <code>Transfer-Encoding: chunked</code>.</p><p>The hidden request is then run with someone else's connection, which can bypass proxy security rules or poison other users' responses. Defence: reject requests that have both headers, use the same strict parser at both ends, and prefer HTTP/2 end to end.</p>",
+    "<p>Limit them at the cheapest place, before your application code runs, and identify clients by IP, API key or user. Nginx can use <code>limit_req</code> (for example 10 requests per second per IP, burst 20) and <code>limit_conn</code>. Also cap request size and header time so slow clients are cut off.</p><p>Behind that, a token bucket per API key in Redis allows fair per-user limits. Return <code>429</code> with <code>Retry-After</code>. Edge services (CDN or WAF) can stop floods before they reach your servers at all.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,127 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>It returns an <code>int</code>: the number of rows the statement changed (inserted, updated or deleted). For DDL such as CREATE TABLE it returns 0.</p><p>Example: <code>UPDATE accounts SET balance = balance - 50 WHERE id = 7</code> returns 1 if the row exists and 0 if not. Always check it. A result of 0 on a conditional update means nothing matched, which is how optimistic locking and safe debits detect a lost race. For very large counts use <code>executeLargeUpdate()</code>, which returns a <code>long</code>.</p>",
+    "<p>Because it closes the statement, result set and connection for you, even when an exception is thrown. Without it, one forgotten <code>close()</code> leaks a connection, and a pool of 10 connections is empty after 10 such errors.</p><p>Resources are closed in reverse order of opening, and an exception from close does not hide the original one (it is attached as suppressed).</p><pre><code>try (Connection c = ds.getConnection();\n     PreparedStatement ps = c.prepareStatement(sql)) {\n  ps.setLong(1, id);\n}</code></pre><p>Closing a pooled connection returns it to the pool; it does not disconnect.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SQL injection: string-built query vs bound parameter",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE users(name TEXT, secret TEXT)\")\ndb.executemany(\"INSERT INTO users VALUES(?, ?)\",\n               [(\"alice\", \"pw-a\"), (\"bob\", \"pw-b\")])\n\nevil = \"x' OR '1'='1\"\nprint(\"input:\", evil)\n\n# Unsafe: input becomes part of the SQL text\nsql = \"SELECT name FROM users WHERE name = '\" + evil + \"'\"\nprint(\"built SQL:\", sql)\nprint(\"unsafe rows:\", db.execute(sql).fetchall())\n\n# Safe: the ? value is sent separately and never parsed as SQL\nsafe = db.execute(\"SELECT name FROM users WHERE name = ?\", (evil,))\nprint(\"safe rows:\", safe.fetchall())\n\n# Allowlist for things that cannot be parameters (ORDER BY direction)\ndirection = \"DESC; DROP TABLE users\"\ndirection = direction if direction in (\"ASC\", \"DESC\") else \"ASC\"\nprint(\"order by:\", direction)\n# Time O(n) scan either way; the fix costs nothing at runtime.\n"
+   },
+   "followUps": [
+    "<p>No, an ORM reduces the risk but does not remove it. Generated queries use bound parameters, so normal finders are safe. The danger is the places where you build text yourself: native queries, HQL/JPQL built with <code>+</code>, <code>$queryRawUnsafe</code>, or a dynamic <code>ORDER BY</code> taken from a request parameter.</p><p>Example: <code>\"FROM User WHERE name = '\" + name + \"'\"</code> in JPQL is injectable exactly like SQL. Rule: any string that reaches the database must be a constant, with values bound as parameters and identifiers checked against an allowlist.</p>",
+    "<p>Second-order injection is when malicious text is stored safely first and then used unsafely later. The first insert uses a prepared statement, so the data is saved exactly as typed. A second query, often a report or admin job, reads it back and glues it into a new SQL string.</p><p>Example: a user registers as <code>bob'--</code>. A nightly job builds <code>\"UPDATE users SET flag=1 WHERE name='\" + name + \"'\"</code> from the stored value, and the comment breaks the query. Fix: treat data from your own database as untrusted too and always bind parameters.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>No. Placeholders can only stand for values, not for identifiers such as table or column names. The SQL is parsed before the values are bound, so the database must already know the table.</p><p>If the table or sort column comes from the user, map it through an allowlist and then concatenate the trusted constant:</p><pre><code>Set&lt;String&gt; ok = Set.of(\"orders\", \"refunds\");\nif (!ok.contains(t)) throw new IllegalArgumentException();\nString sql = \"SELECT * FROM \" + t + \" WHERE id = ?\";</code></pre><p>Never concatenate the raw input.</p>",
+    "<p>It means the database itself, not the driver, parses and plans the statement once and then runs it many times with different values. The client sends a PREPARE message, gets a handle, and later sends only the handle and the parameters.</p><p>Benefit: the parse and plan work is saved when you run the same query 1,000 times. Caveats: the plan may be generic and sometimes worse for skewed data, and with a pooled connection the prepared statement lives on that one connection. Some drivers (PostgreSQL JDBC) switch to server-side after a few executions (<code>prepareThreshold</code>, default 5).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use the two-password (or two-user) overlap: add the new secret first, switch the apps, then remove the old one. Nothing ever sees an invalid password.</p><ol><li>Create a second database user, or allow the new password next to the old.</li><li>Store the new value in the secrets manager.</li><li>Roll the app instances gradually so each reads the new value.</li><li>When no connection uses the old one, disable it.</li></ol><p>Pooled connections already open keep working until they are recycled, so set a maximum connection lifetime (for example 30 minutes) to make the changeover finish.</p>",
+    "<p>Treat it as leaked at once: rotate the password first, clean up second. Deleting the commit is not enough because clones, forks and CI caches already have it.</p><ol><li>Change the password in the database and the secrets manager now.</li><li>Check the database audit logs for logins from unknown places since the commit.</li><li>Remove the secret from the code and, if needed, rewrite history (a tool like git filter-repo), knowing that this does not undo the exposure.</li><li>Add secret scanning and a pre-commit hook, and write a short post-mortem.</li></ol>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is the awkward gap between how data is stored in tables (rows, foreign keys, no inheritance) and how code models it (objects, references, inheritance, collections). An ORM has to bridge it.</p><p>Examples: an object graph <code>order.getItems()</code> becomes a join on a foreign key; inheritance has no table equivalent, so it becomes one table or a table per class; object identity (<code>==</code>) differs from a primary key; and navigating a graph can fire one query per object (N+1). These gaps are why ORMs bring special rules.</p>",
+    "<p>A report is the classic case: raw SQL wins whenever you need set-based work the ORM would do row by row.</p><p>Example: <em>total sales per region per month</em> with a window function. In raw SQL it is one query: <code>SELECT region, month, SUM(total) FROM orders GROUP BY region, month</code>. Through entities you might load 200,000 orders into memory and add them up in a loop. Bulk update is the same: <code>UPDATE orders SET status='OLD' WHERE created &lt; ?</code> is one statement instead of 200,000 dirty-checked entities. Use SQL, still with bound parameters.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The EntityManager is the main JPA interface for working with entities. It owns the persistence context, the set of managed objects for one unit of work.</p><p>Core calls: <code>persist(e)</code> to make a new entity managed, <code>find(Class, id)</code> to load by key, <code>merge(e)</code> to copy a detached object back, <code>remove(e)</code>, <code>flush()</code> and <code>createQuery(jpql)</code>. In Spring you rarely create one; it is injected and bound to the current transaction. In Hibernate the native equivalent is the <code>Session</code>.</p>",
+    "<p>Yes. JPA is a standard, not tied to Spring. In plain Java SE or Jakarta EE you add a provider such as Hibernate, a <code>persistence.xml</code> and a database driver, then create an <code>EntityManagerFactory</code>.</p><pre><code>var emf = Persistence.createEntityManagerFactory(\"app\");\nEntityManager em = emf.createEntityManager();\nem.getTransaction().begin();\nem.persist(order);\nem.getTransaction().commit();</code></pre><p>You then manage transactions and closing yourself, which Spring would otherwise do with <code>@Transactional</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It removes every item from the collection that is no longer in it, by deleting its row. Without it, removing an item from <code>order.items</code> only breaks the link and leaves an orphan row in the table.</p><p>Example: an order has items A, B and C and you call <code>items.remove(B)</code>. With <code>orphanRemoval = true</code> Hibernate runs <code>DELETE FROM order_items WHERE id = B</code> at flush. It is meant for parts that cannot exist alone (child belongs to exactly one parent); do not use it when other entities may point to the child.</p>",
+    "<p>The database row gets a null <code>order_id</code> (or the insert fails), because the owning side is the many side. Hibernate writes the foreign key only from <code>OrderItem.order</code>; the list on <code>Order</code> is the inverse side and is ignored for the SQL.</p><p>Example: <code>order.getItems().add(item)</code> without <code>item.setOrder(order)</code>. After save the item is stored with <code>order_id = NULL</code> or throws a constraint error with <code>optional=false</code>, and reloading the order shows no items. Fix: a helper <code>addItem</code> that sets both sides.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is slow because Spring Data usually loads the matching entities first and then deletes them one by one. For 10,000 matching rows that means 1 select plus 10,000 DELETE statements, plus any cascades.</p><p>The reason is that derived deletes go through the persistence context so lifecycle callbacks and cascades work. If you do not need them, write one statement:</p><pre><code>@Modifying\n@Query(\"delete from Order o where o.status = :s\")\nint deleteByStatusBulk(String s);</code></pre><p>That is one DELETE. Clear the persistence context afterwards, since bulk statements bypass it.</p>",
+    "<p>A projection is a query that returns only some fields instead of full entities. It saves memory and bandwidth and avoids loading lazy associations.</p><p>Example: you need only id and email of 50,000 users. Declare an interface projection:</p><pre><code>interface UserView { Long getId(); String getEmail(); }\nList&lt;UserView&gt; findByActiveTrue();</code></pre><p>Spring generates <code>SELECT id, email ...</code> instead of all 20 columns, and the results are not managed entities, so no dirty checking is spent on them. DTO classes and records also work.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Safe transfer: conditional debit with rollback",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\", isolation_level=None)  # manual control\ndb.execute(\"CREATE TABLE acc(id INTEGER PRIMARY KEY, bal INTEGER CHECK(bal >= 0))\")\ndb.executemany(\"INSERT INTO acc VALUES(?, ?)\", [(1, 100), (2, 50)])\n\ndef transfer(src, dst, amount):\n    db.execute(\"BEGIN\")  # one transaction for both steps\n    try:\n        # conditional debit: succeeds only if enough money\n        cur = db.execute(\"UPDATE acc SET bal = bal - ? WHERE id = ? AND bal >= ?\",\n                         (amount, src, amount))\n        if cur.rowcount != 1:\n            raise ValueError(\"insufficient funds\")\n        db.execute(\"UPDATE acc SET bal = bal + ? WHERE id = ?\", (amount, dst))\n        db.execute(\"COMMIT\")\n        return \"ok\"\n    except Exception as e:\n        db.execute(\"ROLLBACK\")  # undo the partial work\n        return \"failed: \" + str(e)\n\ndef show():\n    print(db.execute(\"SELECT id, bal FROM acc ORDER BY id\").fetchall(),\n          \"total =\", db.execute(\"SELECT SUM(bal) FROM acc\").fetchone()[0])\n\nshow()\nprint(\"transfer 30 from 1 to 2:\", transfer(1, 2, 30)); show()\nprint(\"transfer 500 from 1 to 2:\", transfer(1, 2, 500)); show()\n# Time O(1) rows touched; total money is always 150.\n"
+   },
+   "followUps": [
+    "<p>Repeatable Read or Serializable are the safe choices; at Read Committed the plain read-then-write pattern is unsafe, and a conditional update fixes it.</p><p>Example: two transfers each read balance 100 and each write 100 - 80 = 20; both succeed and 160 leaves an account that held 100. With the single statement <code>UPDATE ... SET balance = balance - 80 WHERE id=1 AND balance &gt;= 80</code>, Read Committed is enough because the row lock makes the second update re-check the balance. At Serializable or Repeatable Read, be ready to retry on error 40001.</p>",
+    "<p>Write an append-only ledger in the same transaction as the balance change, and never update or delete those rows. Each movement is a row: id, account, amount, direction, balance after, timestamp, who or what caused it, and the idempotency key.</p><p>Example: a transfer of 30 inserts two rows (-30 on account 1, +30 on account 2) with the same transfer id. A check query <code>SUM(amount)</code> over all rows must equal the sum of balances. Revoke UPDATE and DELETE on the table and fix mistakes with a reversing entry, so the history stays honest.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Autocommit vs explicit transaction after a failure",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\", isolation_level=None)\ndb.execute(\"CREATE TABLE acc(id INTEGER PRIMARY KEY, bal INTEGER)\")\ndb.executemany(\"INSERT INTO acc VALUES(?, ?)\", [(1, 100), (2, 0)])\n\ndef move(fail_in_middle):\n    db.execute(\"UPDATE acc SET bal = bal - 40 WHERE id = 1\")  # step 1\n    if fail_in_middle:\n        raise RuntimeError(\"crash before credit\")\n    db.execute(\"UPDATE acc SET bal = bal + 40 WHERE id = 2\")  # step 2\n\ndef rows():\n    return db.execute(\"SELECT id, bal FROM acc ORDER BY id\").fetchall()\n\nprint(\"start:\", rows())\n\n# Autocommit: each statement commits on its own\ntry:\n    move(True)\nexcept RuntimeError as e:\n    print(\"autocommit error:\", e)\nprint(\"autocommit result:\", rows(), \"-> 40 vanished\")\n\n# Explicit transaction: both steps or neither\ndb.execute(\"UPDATE acc SET bal = 100 WHERE id = 1\")\ndb.execute(\"BEGIN\")\ntry:\n    move(True)\n    db.execute(\"COMMIT\")\nexcept RuntimeError as e:\n    db.execute(\"ROLLBACK\")\n    print(\"transaction error:\", e)\nprint(\"transaction result:\", rows(), \"-> unchanged\")\n"
+   },
+   "followUps": [
+    "<p>Rows already committed stay; anything in the uncommitted transaction is rolled back automatically. The database never applies half a transaction.</p><p>Example: you debit account 1 by 40, and the app crashes before the credit and commit. The database notices the dead connection (or its timeout), rolls the debit back, and releases the row locks. The balance is 100 again. The catch is the delay: until the database notices, locks can block others, so set socket and lock timeouts.</p>",
+    "<p>A savepoint is a named marker inside a transaction that lets you roll back part of the work without losing the rest.</p><pre><code>Savepoint sp = c.setSavepoint(\"items\");\ntry { insertItems(c); }\ncatch (SQLException e) { c.rollback(sp); }\nc.commit();</code></pre><p>Example: an order is inserted, then optional loyalty points fail. Roll back to the savepoint, keep the order, and commit. Spring nested transactions (<code>PROPAGATION_NESTED</code>) use savepoints. In PostgreSQL a failed statement aborts the whole transaction unless you use one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The N+1 problem is one query to load a list plus one extra query for each item to load its related data: 1 + N queries instead of 1 or 2.</p><p>Example: load 100 orders, then touch <code>order.getCustomer()</code> in a loop, and Hibernate fires 100 more selects (101 in total). Detect it by turning on SQL logging in development, using a query counter in tests (fail if more than 3 statements), or looking at slow-query logs. Fix with <code>join fetch</code>, <code>@EntityGraph</code>, batch fetching or a projection.</p>",
+    "<p>The four states are new (transient), managed (persistent), detached and removed.</p><ul><li><b>New</b>: <code>new Order()</code>, not known to the session, no row.</li><li><b>Managed</b>: after <code>persist</code> or <code>find</code>; changes are tracked and flushed.</li><li><b>Detached</b>: the session closed; it has an id but changes are no longer tracked until <code>merge</code>.</li><li><b>Removed</b>: scheduled for DELETE at flush.</li></ul><p>This is why editing an object after the transaction ends saves nothing.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Optimistic locking with a version column",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE doc(id INTEGER PRIMARY KEY, body TEXT, version INTEGER)\")\ndb.execute(\"INSERT INTO doc VALUES(1, 'hello', 1)\")\n\ndef load():\n    return db.execute(\"SELECT body, version FROM doc WHERE id = 1\").fetchone()\n\ndef save(body, seen_version):\n    # succeeds only if nobody changed the row since we read it\n    cur = db.execute(\n        \"UPDATE doc SET body = ?, version = version + 1 WHERE id = 1 AND version = ?\",\n        (body, seen_version))\n    db.commit()\n    return cur.rowcount == 1\n\na_body, a_ver = load()  # user A opens the form\nb_body, b_ver = load()  # user B opens the same form\nprint(\"A and B both read version\", a_ver)\n\nprint(\"A saves:\", \"ok\" if save(\"A edit\", a_ver) else \"conflict\")\nprint(\"B saves:\", \"ok\" if save(\"B edit\", b_ver) else \"conflict (retry or HTTP 409)\")\nprint(\"final row:\", load())\n# Without the version check, B would silently overwrite A: a lost update.\n"
+   },
+   "followUps": [
+    "<p>They are the same idea at the HTTP level. The ETag is the version of a resource, and <code>If-Match</code> makes the update conditional on it: optimistic locking over HTTP.</p><p>Example: <code>GET /doc/1</code> returns <code>ETag: \"v3\"</code> (the version column). The client sends <code>PUT /doc/1</code> with <code>If-Match: \"v3\"</code>. The server runs <code>UPDATE ... WHERE id=1 AND version=3</code>; zero rows means answer <code>412 Precondition Failed</code> (or 409). The user then reloads and merges.</p>",
+    "<p>A lost update is when two users read the same value, both change it, and the last write silently overwrites the first.</p><p>Example: stock is 10. Clerk A reads 10 and sells 3, writing 7. Clerk B read 10 too, sells 2, and writes 8. The final value is 8, but it should be 5; A's sale is lost. Cures: a version check (optimistic), <code>SELECT ... FOR UPDATE</code> (pessimistic), or one atomic statement <code>SET qty = qty - 3</code>. The demo program above shows the version check.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Serverless functions can start hundreds of instances at once, and each opens its own connections, so a database that allows 100 connections can be exhausted quickly. Instances also freeze and thaw, leaving connections half-open.</p><p>Example: 300 concurrent invocations each with a pool of 5 try to open 1,500 connections. Fixes: a pool size of 1 per instance, an external pooler or proxy (PgBouncer, RDS Proxy, Prisma Accelerate), HTTP-based database drivers, and reusing the client outside the handler so warm invocations share it.</p>",
+    "<p>Run them as a separate, controlled step before the new code takes traffic, and write each migration so old and new code both work (expand then contract).</p><ol><li>Keep migrations in git and apply them with the same tool in every environment.</li><li>Run them once in a pipeline job (not on every app start) with a lock.</li><li>Prefer additive changes: add a nullable column, deploy, backfill, then drop the old one in a later release.</li><li>Test on a copy of production-sized data and have a rollback or forward-fix plan.</li></ol>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotency key prevents a double charge",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE payment(key TEXT PRIMARY KEY, amount INTEGER)\")\ndb.execute(\"CREATE TABLE ledger(key TEXT, amount INTEGER)\")\n\ndef pay(key, amount):\n    try:\n        with db:  # one short transaction\n            db.execute(\"INSERT INTO payment VALUES(?, ?)\", (key, amount))  # UNIQUE key\n            db.execute(\"INSERT INTO ledger VALUES(?, ?)\", (key, amount))\n        return \"charged \" + str(amount)\n    except sqlite3.IntegrityError:\n        return \"duplicate key, returning stored result (no second charge)\"\n\nprint(pay(\"req-1\", 25))\nprint(pay(\"req-1\", 25))   # client retry after a timeout\nprint(pay(\"req-2\", 10))\nprint(\"ledger:\", db.execute(\"SELECT key, amount FROM ledger\").fetchall())\nprint(\"total charged:\", db.execute(\"SELECT SUM(amount) FROM ledger\").fetchone()[0])\n"
+   },
+   "followUps": [
+    "<p>Compare two lists every day: your ledger and the provider's settlement report, matching by the idempotency key or provider transaction id.</p><ol><li>Download the provider file for the previous day (cut-off in one time zone).</li><li>Load it into a staging table.</li><li>Full outer join with your payments on id: find rows missing on either side, and rows where the amount or status differs.</li><li>Auto-fix known cases (for example stuck IN_PROGRESS that the provider shows as succeeded) and raise tickets for the rest.</li></ol><p>Example: 10,000 yours vs 10,002 theirs: 2 charges we never recorded, so refund or record them.</p>",
+    "<p>The in-flight transaction is lost, because only committed work survives a failover, so the app must be ready to retry safely. The connection breaks with an error, and you cannot know whether the commit happened just before the crash.</p><p>This is exactly why the idempotency key is a UNIQUE row in the same transaction. After reconnecting, retry the same request: if the key exists, the first attempt did commit and you return the stored result; if not, it runs once. Use timeouts, retry with backoff, and never retry non-idempotent calls without a key.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Validating LLM-written SQL with an allowlist",
+    "python": "import re\n\nALLOWED = {\"orders\": {\"id\", \"status\", \"total\"}}\n\ndef check(sql):\n    s = sql.strip().rstrip(\";\")\n    if \";\" in s:\n        return \"reject: multiple statements\"\n    m = re.fullmatch(r\"select\\s+(.+?)\\s+from\\s+(\\w+)(\\s+limit\\s+\\d+)?\", s, re.I)\n    if not m:\n        return \"reject: not a simple SELECT\"\n    cols, table = m.group(1), m.group(2).lower()\n    if table not in ALLOWED:\n        return \"reject: table not allowed\"\n    for c in [x.strip().lower() for x in cols.split(\",\")]:\n        if c not in ALLOWED[table]:\n            return \"reject: column not allowed: \" + c\n    if not m.group(3):\n        s += \" LIMIT 100\"  # force a row limit\n    return \"ok: \" + s\n\ntests = [\n    \"SELECT id, total FROM orders\",\n    \"SELECT id FROM orders; DROP TABLE orders\",\n    \"SELECT card_number FROM orders\",\n    \"SELECT * FROM users\",\n    \"DELETE FROM orders\",\n]\nfor t in tests:\n    print(t, \"=>\", check(t))\n# Layer this with a read-only DB role and a statement timeout.\n"
+   },
+   "followUps": [
+    "<p>Classic injection comes from a developer who glued user text into SQL, and parameters fix it. With an LLM the SQL itself is written by the model, so there is no safe parameter slot and you cannot just bind values.</p><p>Also the attacker's route is indirect: prompt injection, where text in the question or in a document makes the model produce harmful SQL. So the defence moves from escaping to constraining: a read-only role, allowlisted tables, a parser check, limits, and ideally a typed query spec instead of free SQL. Assume the model output is hostile.</p>",
+    "<p>Test the guardrails like an attacker, with an automated suite that runs on every change, and check both the validator and the database role.</p><ul><li>A list of attack prompts: ask for another tenant's rows, <code>DROP TABLE</code>, <code>pg_read_file</code>, multiple statements, comments, and \"ignore your rules\".</li><li>Unit-test the validator with these SQL strings (the demo shows cases).</li><li>Connect as the real restricted role and confirm each attack fails at the database, not just in code.</li><li>Check that a slow query is stopped by the timeout, and that every query is logged.</li></ul>"
+   ]
+  }
+ ]
+}
