@@ -1,0 +1,134 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Start with metrics, then structured logs, then traces. Metrics are cheap and give you the golden signals and alerts from day one: request rate, error rate, latency. Structured JSON logs with a request id come next, because every service already writes them. Add traces once you have more than two services and need to see which hop is slow. Wire all three with the same service name from the start so linking later costs nothing.</p>",
+    "<p>Anything that stops the shared identifiers from travelling. Typical breaks: logs without the trace id, a service that renames <code>service.name</code>, a thread pool or async hop that drops the context, a queue message without headers, and mixed propagation formats (B3 versus W3C). Example: if 1 service in 5 forgets to forward <code>traceparent</code>, traces split into fragments and the pivot from graph to trace fails. Test the link in staging with one request and check that the same id appears in all three.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a percentile is not additive: the average of two p99 values is not the p99 of the combined traffic. Example: pod A has p90 of 0.5 s and pod B has 1.0 s; the average is 0.75 s, but the true combined p90 from the merged buckets is 0.9 s. A busy pod and an idle pod also count equally in an average, which is wrong. Add the histogram buckets across pods first, then compute the quantile once with <code>histogram_quantile</code>.</p>",
+    "<p>Put edges where decisions happen, especially at the SLO threshold, then space them roughly exponentially around the typical value. For an SLO of 300 ms use something like 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2.5, 5 seconds. Fewer buckets means less cardinality (each bucket is one series per label combination); wider buckets mean a coarser quantile estimate. Check real data afterwards: if most requests fall into one bucket, split it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Cardinality: series multiply with every label",
+    "python": "# Series count = product of label cardinalities (one series per label combination)\nfrom math import prod\n\nlabels = {\"method\": 4, \"status\": 5, \"route\": 11, \"pod\": 6}\nbase = prod(labels.values())\nprint(\"labels:\", labels)\nprint(\"series without user_id:\", base)\n\nusers = 200_000\nprint(\"series with user_id   :\", base * users)   # multiplies everything again\n\n# Tiny simulation: count distinct label combinations seen in 5000 requests\nseen_a, seen_b = set(), set()\nfor i in range(5000):\n    key = (i % 4, i % 5, i % 11, i % 6)\n    seen_a.add(key)\n    seen_b.add(key + (i % 2000,))                  # add a user_id label\nprint(\"simulated, no user_id  :\", len(seen_a))\nprint(\"simulated, with user_id:\", len(seen_b))\n"
+   },
+   "followUps": [
+    "<p>Ask Prometheus which metric names have the most series. Use <code>topk(10, count by (__name__) ({__name__=~\".+\"}))</code> (expensive, run it carefully), the TSDB status page, or <code>promtool tsdb analyze</code>. Then for the worst metric, <code>count by (label) (...)</code> shows which label has too many values. Also watch <code>prometheus_tsdb_head_series</code> over time: a sudden jump right after a deploy points to the change that added the label.</p>",
+    "<p>There is no fixed number, but a rule of thumb is dozens to low hundreds, and never unbounded. A label should have a small, known set of values such as method, status class or region. Think in the product: 5 methods x 8 routes x 6 pods = 240 series, fine; adding a label of 10,000 values gives 2.4 million. Avoid user ids, emails, request ids, full URLs and timestamps as labels, and put them in logs or traces.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Counter reset handling in increase and rate",
+    "python": "# increase() over a counter that resets (process restart) at t=60\ntimes = [0, 15, 30, 45, 60, 75, 90]\nvals = [100, 130, 160, 190, 10, 40, 70]\nprint(\"samples:\", list(zip(times, vals)))\n\nincrease = 0\nfor prev, cur in zip(vals, vals[1:]):\n    if cur < prev:\n        increase += cur        # reset: the new value counts as growth from zero\n    else:\n        increase += cur - prev\n\nwindow = times[-1] - times[0]\nprint(\"naive last-first :\", vals[-1] - vals[0])      # wrong, hides the restart\nprint(\"reset-aware      :\", increase)\nprint(\"rate per second  : %.4f\" % (increase / window))\n"
+   },
+   "followUps": [
+    "<p>Because rate needs at least two samples inside the window to compute a slope. With a 15 s scrape, a <code>[15s]</code> window may hold only one sample and returns nothing. A good rule is four scrapes: <code>[1m]</code> for 15 s scrapes. The extra room also tolerates one missed or late scrape, so graphs and alerts do not show gaps. Longer windows smooth more but react slower: with <code>[5m]</code> a spike takes up to 5 minutes to fade.</p>",
+    "<p>It is a built-in Grafana variable that picks the range for you from the panel's step and the data source scrape interval, at least four scrape intervals. Use it as <code>rate(x[$__rate_interval])</code>. Zooming out gives a longer window and zooming in a shorter one, so the graph keeps enough samples per window and avoids gaps. If you hard-code <code>[1m]</code> and then scrape every 60 s, rate returns empty results.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "histogram_quantile on summed buckets, and why averaging p90s fails",
+    "python": "# histogram_quantile: find the bucket holding the rank, then interpolate inside it\nbounds = [0.1, 0.25, 0.5, 1.0, float(\"inf\")]\n\ndef quantile(q, counts):\n    rank = q * counts[-1]\n    prev_count, prev_bound = 0, 0.0\n    for b, c in zip(bounds, counts):\n        if c >= rank:\n            if b == float(\"inf\"):\n                return prev_bound          # only the highest finite bound is known\n            return prev_bound + (b - prev_bound) * (rank - prev_count) / (c - prev_count)\n        prev_count, prev_bound = c, b\n\npod_a = [50, 80, 90, 95, 100]    # cumulative counts per le bucket\npod_b = [10, 40, 70, 90, 100]\ntotal = [a + b for a, b in zip(pod_a, pod_b)]   # sum by (le)\nprint(\"summed buckets:\", total)\nprint(\"p50 = %.3f s\" % quantile(0.5, total))\nprint(\"p90 = %.3f s\" % quantile(0.9, total))\nprint(\"p99 = %.3f s (rank is in +Inf bucket)\" % quantile(0.99, total))\navg = (quantile(0.9, pod_a) + quantile(0.9, pod_b)) / 2\nprint(\"average of per-pod p90 = %.3f s (wrong)\" % avg)\n"
+   },
+   "followUps": [
+    "<p>Because the quantile is found by looking at cumulative counts across all pods for each <code>le</code> boundary. The <code>le</code> label is what says which bucket a count belongs to. If you drop it, you add all buckets into one number and the function has nothing to interpolate. Keep <code>le</code> and add other labels you want in the output: <code>sum by (le, route)</code> gives one p99 per route. Summing by only <code>(job)</code> without le fails.</p>",
+    "<p>Record the heavy inner part so dashboards and alerts stay cheap and consistent. For example: <code>job:http_request_duration_seconds_bucket:rate5m = sum by (job, le) (rate(http_request_duration_seconds_bucket[5m]))</code>. Then the p99 query is a light <code>histogram_quantile(0.99, job:...:rate5m)</code>. Record error ratios for the SLO too, over several windows (5m, 1h, 6h), since burn-rate alerts reuse them. Follow the <code>level:metric:operations</code> naming.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Silences should be short, owned and traceable. Require a comment with a ticket link, an author, and an expiry (hours, not months), and match narrowly by labels such as service and alertname rather than silencing everything. Allow them for planned maintenance and known issues being fixed. Review active silences weekly and alert on silences that last more than, say, 24 hours. A silence is a pause, not a fix: if you keep silencing the same alert, fix or delete the alert.</p>",
+    "<p>First find out why it flaps. Typical fixes: add a <code>for:</code> duration (for example 10m) so brief dips do not fire; use a hysteresis, with different fire and clear thresholds; widen the rate window; alert on a ratio over a longer window instead of an instantaneous value. In Alertmanager, <code>group_interval</code> and <code>repeat_interval</code> limit how often you are notified. If the condition is not actionable, make it a ticket or dashboard item.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Test it with <code>amtool config routes test --config.file=alertmanager.yml severity=page team=payments</code>, which prints the receiver that the labels would reach. Keep a list of label sets for each team and severity in CI, and fail the build when a route changes unexpectedly. Also send a real test alert with <code>amtool alert add</code> to a staging receiver and run a game day, so you find a bad webhook before the incident.</p>",
+    "<p><code>send_resolved: true</code> makes Alertmanager send a second notification when the alert stops firing, so the channel or paging tool can close the incident. Without it, the page stays open until a person closes it. It is on by default for some receivers (Slack, email) and off for others (PagerDuty resolves via its own event). Leave it on for chat, since the all-clear message saves people checking dashboards.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use the USE method: for a pool, utilisation is connections in use divided by the maximum, saturation is the number of requests waiting for a connection or the wait time, and errors are timeouts or refused connections. A pool is a resource that requests queue on, so inside view matters. Example: 50 of 50 in use with 30 waiting means saturation, and latency climbs even if CPU is idle. Then confirm user impact with RED on the service in front.</p>",
+    "<p>Failed requests are often very fast (an immediate 500 or a rejected connection) or very slow (a timeout). Mixing them with successes distorts the latency: a service failing instantly can look faster, with a lower p99, while it is broken. Example: 90 successes at 200 ms and 10 instant errors at 5 ms give a median that looks better than reality. Measure latency of successful requests for the SLO and track errors separately, then look at failed-request latency to find timeouts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Parse and forward a W3C traceparent header",
+    "js": "// W3C traceparent: version-traceid-parentspanid-flags\nconst incoming = \"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\";\n\nfunction parse(h) {\n  const p = h.split(\"-\");\n  const ok = p.length === 4 && /^[0-9a-f]{32}$/.test(p[1]) && /^[0-9a-f]{16}$/.test(p[2]);\n  if (!ok || /^0+$/.test(p[1])) return null;       // all-zero trace id is invalid\n  return { version: p[0], traceId: p[1], parentId: p[2], sampled: (parseInt(p[3], 16) & 1) === 1 };\n}\n\n// A new hop keeps the trace id, makes a new span id, and passes the flags on\nfunction nextHeader(ctx, newSpanId) {\n  return [ctx.version, ctx.traceId, newSpanId, ctx.sampled ? \"01\" : \"00\"].join(\"-\");\n}\n\nconsole.log(\"incoming :\", incoming);\nconst ctx = parse(incoming);\nconsole.log(\"parsed   :\", JSON.stringify(ctx));\nconsole.log(\"outgoing :\", nextHeader(ctx, \"b7ad6b7169203331\"));\nconsole.log(\"bad input:\", parse(\"00-123-456-01\"));\n"
+   },
+   "followUps": [
+    "<p>Baggage is key-value data that travels with the trace context to every downstream service (W3C <code>baggage</code> header), for example <code>tenant=gold</code>. It is not added to spans automatically. Never put secrets, personal data or large values in it: it is sent in the headers of every call, including to third-party services, and adds size to every request. Keep it to a few small, non-sensitive items, and copy values to span attributes when you want to search by them.</p>",
+    "<p>A parent-child link says one span caused and waits for the other within the same trace. A span link says only that a span is related to another, possibly in a different trace, with no timing nesting. Use links for batch consumers: a job that processes 50 queued messages links to the 50 producer spans, since it has no single parent. Also for fan-in, retries that start new traces, and async follow-up work.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>First check whether the missing service even creates spans: look for sampling (the sample bit was 0), no instrumentation, or exporter errors and dropped batches in the SDK or Collector. Next check propagation: if the service forwards no <code>traceparent</code>, you see a gap or a new root trace. Compare the trace id in that service's logs with the trace store. Also check clock skew and a Collector memory limiter dropping data. Until fixed, use that service's RED metrics and logs.</p>",
+    "<p>Look at the start and end times of sibling spans under the same parent. In a serial chain each span begins when the previous one ends: for example three calls of 120 ms each, starting at 0, 120 and 240 ms, total 360 ms. If they are independent they could run together and cost about 120 ms. A staircase shape in the waterfall is the sign. Fix with concurrent calls, a batch API or a cache, and compare the new trace afterwards.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The usual order is: <code>memory_limiter</code> first, so the Collector refuses data before it runs out of memory; then enrichment or filtering such as <code>resourcedetection</code>, <code>attributes</code> and redaction; then sampling (<code>tail_sampling</code>); and <code>batch</code> last, to group data before export. Order matters because a processor only sees what comes before it: sampling after batching would work on already combined data, and redaction after sampling wastes work.</p>",
+    "<p>Head sampling decides when the trace starts, for example keep 10 percent at random. It is cheap and simple but blind: it may drop the one slow or failed request. Tail sampling waits until the trace is complete, then keeps traces that had errors or high latency, plus a small random share. It needs a buffer (memory) and all spans of a trace on the same Collector. Example: keep 100 percent of errors and 5 percent of the rest.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The OpenMetrics spec limits the exemplar label set to 128 UTF-8 characters in total (names plus values). A trace id of 32 hex characters plus a span id of 16 fit easily, but a long list of extra labels would not, and the exemplar is dropped or truncated. So keep it to <code>trace_id</code> and maybe <code>span_id</code>. Also exemplars are stored in a bounded in-memory ring buffer, so older ones disappear.</p>",
+    "<p>Put the same <code>trace_id</code> and <code>span_id</code> in every structured log line, usually via the logging library's integration with OpenTelemetry. In Grafana, set up a derived field on the logs data source that turns the trace id into a link to the tracing data source, and a trace-to-logs setting for the other direction. Example log: <code>{\"msg\":\"charge failed\",\"trace_id\":\"4bf92f35...\"}</code>. Then one click goes from a log line to the full trace.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Ask who owns the user experience: the service team together with product. The team knows how the service behaves and product knows what users tolerate, so they agree the number, and the owner of the budget policy (usually the engineering lead) signs it. SRE advises and gives data, but does not choose alone. Review the SLO every quarter or after big incidents, because a target nobody owns turns into a number on a wall that nobody acts on.</p>",
+    "<p>Because each extra nine costs far more and users cannot notice it: their phone, Wi-Fi or other services already fail more often. 99.99 percent allows only about 4.3 minutes a month, which leaves no room to deploy or take risk. With 100 percent you could never change anything. A target slightly below what users need leaves an error budget that pays for releases and experiments. Pick the lowest level that keeps users happy.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Multi-window burn-rate alert check",
+    "python": "# Multi-window multi-burn-rate alert check for a 99.9 percent / 30 day SLO\nSLO = 0.999\nallowed = 1 - SLO                       # 0.001 error ratio allowed\nrules = [(\"page 14.4x\", 14.4, \"1h\", \"5m\"), (\"page 6x\", 6, \"6h\", \"30m\"),\n         (\"ticket 3x\", 3, \"1d\", \"2h\"), (\"ticket 1x\", 1, \"3d\", \"6h\")]\n\ndef check(name, ratios):\n    print(name)\n    for label, burn, long_w, short_w in rules:\n        b_long = ratios[long_w] / allowed      # burn rate = error ratio / allowed\n        b_short = ratios[short_w] / allowed\n        fire = b_long >= burn and b_short >= burn   # both windows must exceed\n        print(\"  %-11s long %5.1f short %5.1f -> %s\" % (label, b_long, b_short, \"FIRE\" if fire else \"ok\"))\n\nongoing = {\"1h\": 0.02, \"5m\": 0.03, \"6h\": 0.004, \"30m\": 0.01,\n           \"1d\": 0.001, \"2h\": 0.008, \"3d\": 0.0005}\nrecovered = dict(ongoing, **{\"5m\": 0.0002, \"30m\": 0.0002})\ncheck(\"outage still happening:\", ongoing)\ncheck(\"outage already fixed:\", recovered)\nprint(\"budget used by burn 216 for 1h: %.0f%%\" % (216 * 1 / 720 * 100))\n"
+   },
+   "followUps": [
+    "<p>Low traffic makes the error ratio jumpy: with 100 requests an hour, one failure is 1 percent, a burn of 10 on a 99.9 percent SLO. Options: use longer windows so more events are counted, add a minimum request count to the alert, combine several services into one SLI, or alert on a count of failed requests instead. You can also generate synthetic traffic (a probe every minute) so the ratio has data. Accept that ticket-level alerts are enough for rarely used services.</p>",
+    "<p>You need the error ratio over each window as a recording rule, so the alert expressions stay short and fast. For example <code>sli:error_ratio:rate5m</code>, <code>rate30m</code>, <code>rate1h</code>, <code>rate2h</code>, <code>rate6h</code>, <code>rate1d</code> and <code>rate3d</code>, each computed as errors divided by total requests. The alert is then <code>sli:error_ratio:rate1h &gt; 14.4 * 0.001 and sli:error_ratio:rate5m &gt; 14.4 * 0.001</code>. That is 7 windows for one SLO, and tools like Sloth or Pyrra can generate them.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Redacting secrets and personal data from log lines",
+    "python": "# Redact secrets and personal data before a log line leaves the process\nimport re\n\nRULES = [\n    (re.compile(r\"(?i)\\b(password|token|secret|api_key)=\\S+\"), r\"\\1=[REDACTED]\"),\n    (re.compile(r\"Bearer\\s+[A-Za-z0-9._~+/-]+\"), \"Bearer [REDACTED]\"),\n    (re.compile(r\"[\\w.+-]+@[\\w-]+\\.[\\w.]+\"), \"[EMAIL]\"),\n    (re.compile(r\"\\b(?:\\d[ -]?){12,15}\\d\\b\"), \"[CARD]\"),     # card-like digit runs\n]\n\ndef redact(line):\n    for pattern, repl in RULES:\n        line = pattern.sub(repl, line)\n    return line\n\nlines = [\n    \"login ok user=ana@example.com password=hunter2 ip=203.0.113.9\",\n    \"call upstream Authorization: Bearer abc.def-123 status=200\",\n    \"payment card 4111 1111 1111 1111 for order 8841\",\n    \"note: pw is correct horse battery staple\",     # regex cannot catch this\n]\nfor line in lines:\n    print(\"IN :\", line)\n    print(\"OUT:\", redact(line))\n"
+   },
+   "followUps": [
+    "<p>Regex redaction only finds what looks like a known pattern. It misses free text such as a password written in a sentence, names, addresses, secrets in unusual formats, data split across two log lines, encoded or hashed values (base64), and values nested in JSON that a pattern breaks. It can also give false positives, for example an order number that looks like a card number. So combine it with not logging the data at all, an allow-list of fields and review of what developers log.</p>",
+    "<p>Plant canary secrets and check for them. In a test, send requests carrying a fake password, a fake bearer token and a fake card number such as 4111 1111 1111 1111, then query the log store, trace store and metrics for those exact strings; the test fails if any is found. Add unit tests for the redaction function with sample lines, and run a periodic scan on production logs with secret-detection patterns. Also test the collector's scrubbing step.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look for costs that scale with something you cannot easily limit: custom metrics and high-cardinality tags, log ingest and indexing volume (debug logs left on), the number of traced spans retained, user seats, long retention, and data transfer between regions. Also paid add-ons such as synthetic checks, security or profiling modules, and per-host charges for short-lived autoscaled nodes. Estimate with your real volumes, set budgets and usage alerts, and review the bill monthly.</p>",
+    "<p>Choose Elasticsearch when you need full-text search over log content with free-form queries, complex aggregations, or already use it for search and have the skills. Loki indexes only labels and stores log text compressed in cheap object storage, so it is much cheaper to run but slower for arbitrary searching of a large time range. Example: finding one error string across 30 days is easy in Elasticsearch, while Loki is great when you filter by labels first.</p>"
+   ]
+  }
+ ]
+}
