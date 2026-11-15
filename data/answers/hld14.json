@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because different URLs can hash to the same 7 characters, and the table fills up faster than you expect. Seven base62 characters hold 3.5 trillion codes, but by the birthday effect the first collision appears after only about a couple of million links. Each one needs a conditional insert and a retry with a salt, so writes get slower as the table grows. A counter-based ID never collides. The one benefit of hashing is free dedupe of identical long URLs, which a unique index on a URL hash can also give you.</p>",
+    "<p>New shortening stops, but redirects keep working because they only read the store and cache. With leased blocks the effect is small: each app server holds a block of, say, 1,000 IDs and keeps issuing from it for minutes. Lost IDs do not matter in a 3.5-trillion space. Run the coordinator (etcd or a DB sequence) as a replicated group, and let servers prefetch the next block when the current one is 20% left. If it stays down, return a clear 503 for creates only.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Base62 codes from leased ID blocks, with a reversible scramble",
+    "python": "# Short codes: leased ID blocks + base62 + reversible scramble\nALPHA = \"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\"\n\ndef encode(n):\n    s = \"\"\n    while True:\n        n, r = divmod(n, 62)      # peel off one base-62 digit\n        s = ALPHA[r] + s\n        if n == 0:\n            return s\n\ndef decode(s):\n    n = 0\n    for ch in s:\n        n = n * 62 + ALPHA.index(ch)\n    return n\n\nclass AppServer:\n    def __init__(self, name, block_start, size):\n        self.name, self.cur, self.end = name, block_start, block_start + size\n    def next_id(self):            # no network call: IDs come from the leased block\n        n = self.cur\n        self.cur += 1\n        return n\n\nSPACE = 62 ** 7                   # 7 characters = 3.5 trillion codes\nMULT = 1000003                    # odd and not a multiple of 31, so invertible mod 62^7\nINV = pow(MULT, -1, SPACE)\n\na, b = AppServer(\"A\", 5000, 1000), AppServer(\"B\", 6000, 1000)\nfor server in (a, b, a):\n    n = server.next_id()\n    plain = encode(n)\n    hidden = encode(n * MULT % SPACE)     # scrambled so codes are not sequential\n    back = decode(hidden) * INV % SPACE\n    print(server.name, \"id\", n, \"plain\", plain, \"scrambled\", hidden, \"decodes to\", back)\n"
+   },
+   "followUps": [
+    "<p>Give each region its own range of the ID space, so regions never need to talk to each other to stay unique. For example, reserve a 2-bit region prefix: region 0 issues IDs starting with bits 00, region 1 with 01, and so on, and each region leases blocks from its local coordinator. Codes are then globally unique with no cross-region call on the write path. Reads of a code in another region need replication of the mapping, which can be asynchronous because a code is written once and rarely changes.</p>",
+    "<p>Reverse the encoding: treat the code as digits in base 62 and rebuild the number as <code>n = n * 62 + digit</code> for each character from left to right. For \"1iE\" that is ((1*62)+18)*62+40 = 5000. If you applied a scramble, undo it afterwards with the inverse (multiply by the modular inverse of the multiplier). It costs O(L) time for a code of length L, which is 7, so effectively constant, and O(1) space. See the program above.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the first successful read delete the paste atomically, so only one reader can ever win. Store a flag <code>burn=true</code> and on read do a conditional delete or an atomic <code>GETDEL</code>-style operation: whoever gets the row back shows it, everyone else sees 404. If two people open the link at the same moment, exactly one succeeds. Do not put burn-after-reading pastes in a CDN, and do not let link-preview bots or prefetchers trigger the read, for example by requiring a click on a button (POST) to reveal it.</p>",
+    "<p>Hash the content and use the hash as the blob key, so two identical pastes point to the same stored object. Example: SHA-256 of the text gives <code>blob/ab12...</code>; before uploading, check if it exists and skip the upload. Keep a reference count (or never delete shared blobs until no metadata row points at them) so one user deleting does not break the other. It saves storage only when duplicates are common, and it costs one hash per upload, O(size) time. Mind privacy: confirm-by-hash lets someone test whether a text already exists.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fixed window vs token bucket at a window boundary",
+    "python": "# Limit: 5 requests per second. Compare fixed window and token bucket.\nLIMIT = 5\n\nclass FixedWindow:\n    def __init__(self):\n        self.window, self.count = -1, 0\n    def allow(self, t):\n        w = int(t)                        # which whole second are we in?\n        if w != self.window:\n            self.window, self.count = w, 0\n        if self.count < LIMIT:\n            self.count += 1\n            return True\n        return False\n\nclass TokenBucket:\n    def __init__(self):\n        self.tokens, self.last = float(LIMIT), 0.0\n    def allow(self, t):\n        # refill lazily from elapsed time: no timer thread needed\n        self.tokens = min(LIMIT, self.tokens + (t - self.last) * LIMIT)\n        self.last = t\n        if self.tokens >= 1:\n            self.tokens -= 1\n            return True\n        return False\n\n# 5 requests just before the second boundary, 5 just after\ntimes = [0.90, 0.92, 0.94, 0.96, 0.98, 1.00, 1.02, 1.04, 1.06, 1.08]\nfor name, limiter in ((\"fixed window\", FixedWindow()), (\"token bucket\", TokenBucket())):\n    result = [limiter.allow(t) for t in times]\n    print(name, \"allowed\", sum(result), \"of\", len(times), result)\n"
+   },
+   "followUps": [
+    "<p>A fixed or sliding window counter per account and per IP, with a strict limit, plus a slow penalty after failures. Login attempts need a hard cap, not bursts, so for example 5 failures in 15 minutes then lock or add a delay. A token bucket with a capacity of 5 and a very slow refill (1 token every 3 minutes) also works. Count failures only, key by both account and IP so one attacker cannot lock out everyone, add CAPTCHA or exponential backoff, and fail closed if the limiter store is down.</p>",
+    "<p>Refill lazily: store only the token count and the time of the last update, and on each request add <code>elapsed * rate</code>, capped at the capacity. Example: capacity 5, rate 5 per second, 0 tokens at t=0, request at t=0.4 means 2 tokens. No timer thread runs, so a million idle keys cost nothing. The program above does exactly this. It is O(1) time and two numbers of space per key.</p><pre><code>tokens = min(cap, tokens + (now - last) * rate);\nlast = now;\nif (tokens &gt;= 1) { tokens--; allow(); }\nelse deny();</code></pre>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Split the hot key across several sub-limiters and give each a share of the quota. If one customer is allowed 10,000 requests per second, create 10 sub-keys of 1,000, route each request to one by random choice, and rebalance occasionally. Another option is for each gateway to lease a slice of quota from the central store (say 500 tokens at a time) and spend it locally, touching Redis once per 500 requests. The cost is some inaccuracy, bounded by the unspent leases, which is usually acceptable for a high limit.</p>",
+    "<p>Do not run a single global counter across regions, because the round trip is 100 ms or more. Give each region a local limiter holding its share of the quota (for example 50/50), and sync usage asynchronously every second or so to rebalance shares. The accuracy loss is about regions times sync interval times rate. For tight limits, such as billing quotas, send a customer's traffic to its home region instead, or use a stricter central check for only those few customers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Fail over to a second provider automatically. Keep two or more SMS providers behind your own sender interface, track each one's success rate and latency, and a circuit breaker opens when errors pass a threshold (say 20% over one minute). Then critical messages go to the backup, while retries with backoff continue on the first. Keep the backup warm with a small share of traffic, so its credentials and rate limits are known to work. For OTPs you can also fall back to voice or push. Make the send idempotent so a slow first provider does not cause two codes.</p>",
+    "<p>Put campaigns in their own queue and worker pool and throttle them at the producer, so they cannot take capacity from critical traffic. Example: a 10M-message campaign at a cap of 2,000 messages per second takes about 83 minutes and never touches the OTP pool. Fan out in batches rather than all at once, respect provider rate limits and user quiet hours, and pause automatically if error rates climb. Low-priority queues use weighted fair scheduling with aging so they are slowed, not starved.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Deduplicate notifications with an atomic claim and TTL",
+    "python": "# Duplicate-safe sending with an atomic \"set if not exists\" and a TTL\nclass DedupStore:\n    def __init__(self):\n        self.keys = {}                    # key -> expiry time\n    def set_nx(self, key, now, ttl):      # stands in for Redis SET key 1 NX EX ttl\n        if key in self.keys and self.keys[key] > now:\n            return False                  # someone already claimed it\n        self.keys[key] = now + ttl\n        return True\n\nstore = DedupStore()\nsent = []\n\ndef notify(key, now):\n    if store.set_nx(key, now, ttl=3600):  # claim first, then send\n        sent.append(key)\n        return \"sent\"\n    return \"skipped duplicate\"\n\nkey = \"order_shipped:A991:push\"\nprint(\"first call :\", notify(key, now=0))\nprint(\"retry      :\", notify(key, now=5))           # e.g. the queue redelivered it\nprint(\"other chan :\", notify(\"order_shipped:A991:email\", now=6))\nprint(\"after TTL  :\", notify(key, now=4000))        # claim expired, allowed again\nprint(\"messages sent:\", sent)\n"
+   },
+   "followUps": [
+    "<p>You may send a few duplicates or lose a few, depending on your claim order, so decide which is worse. If the dedup store loses data (a failover without the latest writes), keys claimed recently disappear and a retried message passes through again. For an informational push, one extra is fine. For something costly, such as a payment receipt, back the check with a database unique constraint on the dedup key so the durable store is the source of truth, and use Redis only to cut load.</p>",
+    "<p>A timeout means you do not know whether the provider sent it, so you must retry safely. Resend with the same idempotency key or collapse key, so a provider that did process it treats the retry as the same message. If the provider offers no key, check delivery status by message id before retrying, and cap retries with backoff. Example: send, timeout after 2 s, retry with key <code>order_shipped:A991:push</code>; the user sees one notification, not two. Without a key you must choose between possible duplicates or possible loss.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Hash ring, preference list and quorum read/write",
+    "python": "# Consistent-hash ring with replicas and quorum reads/writes (N=3, W=2, R=2)\nimport hashlib, bisect\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest(), 16) % 10**6\n\nNODES = [\"n1\", \"n2\", \"n3\", \"n4\", \"n5\"]\nring = sorted((h(n + \"#\" + str(v)), n) for n in NODES for v in range(8))  # virtual nodes\npoints = [p for p, _ in ring]\n\ndef preference_list(key, n=3):\n    i = bisect.bisect(points, h(key)) % len(ring)    # next point clockwise\n    out = []\n    while len(out) < n:                               # walk on, skipping repeat nodes\n        node = ring[i % len(ring)][1]\n        if node not in out:\n            out.append(node)\n        i += 1\n    return out\n\nstore = {n: {} for n in NODES}                        # node -> key -> (version, value)\nN, W, R = 3, 2, 2\nkey = \"cart:42\"\nprefs = preference_list(key, N)\nprint(\"replicas for\", key, \"=\", prefs)\n\nfor node in prefs[:W]:                                # write succeeds after W acks\n    store[node][key] = (1, \"milk\")\nprint(\"after write, W acks:\", [store[n].get(key) for n in prefs])\n\nreads = [store[n].get(key, (0, None)) for n in prefs[-R:]]   # read the last R replicas\nprint(\"read from\", prefs[-R:], \"->\", max(reads), \"(R+W>N, so sets overlap)\")\n"
+   },
+   "followUps": [
+    "<p>It does not guarantee linearizability, which means a read that always sees the latest completed write. It only guarantees that a read set and a write set share at least one replica. With N=3, W=2, R=2, a write to A and B and a read from B and C does overlap on B. But a failed write that reached only one replica can still be seen later, sloppy quorums may place data on stand-in nodes, and two concurrent writes can both succeed. Choose a version scheme (vector clocks) to detect conflicts.</p>",
+    "<p>A delete is stored as a marker called a tombstone, a special value with a version, instead of removing the data. Without it, a replica that missed the delete would still hold the old value, and read repair or anti-entropy would copy it back (the deleted item comes back to life). Tombstones are kept for a grace period, for example 10 days, longer than any replica could be down, then dropped by compaction. In the mini LSM above, a tombstone hides the key until compaction removes it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Session guarantees give a single client a sensible view without paying for full linearizability. Read-your-writes means that after you write, your own later reads see it; you can get it by pinning the client to one replica, or by sending the write's version (a token) with the next read so replicas older than it are skipped or repaired. Monotonic reads means you never see time go backwards. They cost little and fix most user-visible oddities, but different users may still see different states.</p>",
+    "<p>Pick Raft or Paxos when wrong or stale answers cost more than occasional unavailability: account balances, inventory counts, locks, leader election, metadata. Raft gives one ordered log per shard, so reads and writes are linearizable, and a majority (2 of 3, 3 of 5) must be reachable. In a partition the minority side refuses writes. Writes pay one extra round trip to the leader plus a majority acknowledgement, usually a few milliseconds in one region, tens of milliseconds across regions.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Mini LSM tree: memtable, runs, tombstones, compaction",
+    "python": "# Tiny LSM tree: memtable, immutable sorted runs, tombstones, compaction\nTOMB = None\nMEM_LIMIT = 3\n\nclass LSM:\n    def __init__(self):\n        self.mem, self.runs = {}, []      # runs: newest last, each a sorted list\n    def put(self, k, v):\n        self.mem[k] = v                   # in a real system the WAL is appended first\n        if len(self.mem) >= MEM_LIMIT:    # memtable full: flush as a sorted file\n            self.runs.append(sorted(self.mem.items()))\n            self.mem = {}\n    def delete(self, k):\n        self.put(k, TOMB)                 # deletes are writes of a tombstone\n    def get(self, k):\n        if k in self.mem:\n            return self.mem[k]\n        for run in reversed(self.runs):   # newest to oldest\n            for key, v in run:\n                if key == k:\n                    return v\n        return None\n    def compact(self):\n        merged = {}\n        for run in self.runs:             # later runs overwrite earlier ones\n            merged.update(run)\n        self.runs = [sorted((k, v) for k, v in merged.items() if v is not TOMB)]\n\ndb = LSM()\nfor k, v in [(\"a\", 1), (\"b\", 2), (\"c\", 3), (\"a\", 10), (\"d\", 4)]:\n    db.put(k, v)\ndb.delete(\"b\")\nprint(\"runs before:\", db.runs, \"memtable:\", db.mem)\nprint(\"get a =\", db.get(\"a\"), \" get b =\", db.get(\"b\"))\ndb.put(\"e\", 5)\ndb.compact()\nprint(\"runs after compaction:\", db.runs, \"memtable:\", db.mem)\n"
+   },
+   "followUps": [
+    "<p>Size-tiered compaction merges several similar-sized files into one bigger file; it is cheap on writes but can leave many overlapping files, so reads and disk space suffer. Leveled compaction keeps each level as non-overlapping sorted files, with each level about 10 times larger than the last, so a read checks about one file per level, but data is rewritten many times (high write amplification). Rule of thumb: size-tiered for write-heavy loads, leveled for read-heavy or space-tight loads.</p>",
+    "<p>A Bloom filter tells you quickly that a key is definitely not in a file, so the read skips it without any disk access. It can give false positives (about 1% with around 10 bits per key) but never false negatives. Example: a read for a missing key would check 8 files; with filters it touches roughly 8 * 0.01 = 0.08 files on average. It costs a little memory per file and is checked in O(k) hash operations, where k is the number of hash functions.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a store with a single ordering mechanism for the cart, such as a consensus-backed database per shard, or a primary region with replicas. If carts must be identical everywhere at once, you must accept cross-region latency on writes (50 to 150 ms) and lose availability for a region cut off from the majority. Many shops accept less: keep each user's cart in their home region and merge on conflict, because a brief difference is cheaper than slow checkouts. Ask the business what stale really costs.</p>",
+    "<p>Attach a version to every value, such as a vector clock, and compare versions on write and read. If one version includes all the events of the other, the newer one wins; if neither includes the other, they are concurrent siblings and a conflict exists. Example: clocks {A:2} and {A:1,B:1} are concurrent. Then merge in the app (union of cart items for an OR-set) or use last-write-wins when losing one update is acceptable. Anti-entropy with Merkle trees finds out-of-sync replicas by comparing hashes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Preferably not: use separate clusters, or at least separate instances, for each job. A cache can be evicted and flushed freely, but a rate limiter and a dedup store hold state that you do not want to lose, and an eviction policy that is right for one is wrong for the others. Also a cache stampede or a hot key can use up CPU and memory and starve the limiter, which then fails open at the worst moment. Separate clusters cost more but keep failures local and settings (eviction, persistence) different.</p>",
+    "<p>Warm it gradually so the database is not hit by everything at once. Options: preload the top keys from logs or a snapshot before moving traffic; shift traffic to the new cache in steps (10%, 25%, 50%); coalesce requests so only one fetch per key goes to the database; add random jitter to TTLs so keys do not all expire together. Example: if the database handles 2,000 reads per second and the cold cache would send 40,000, you need coalescing or a staged ramp over several minutes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Stay calm and treat it as a useful signal, not an attack. Restate their concern in one sentence, say whether you agree it is a real weak spot, then show how you would handle it, for example \"you are right, the single database is a bottleneck beyond about 5,000 writes per second; I would shard by user id.\" Give the cost of the fix too. If you do not know, say what you would measure. Never defend a design blindly; changing it in response shows good judgement.</p>",
+    "<p>Pick the part where the design is hardest and where failure costs most, using what the requirements and numbers showed. For a URL shortener that is ID generation and the read path; for a notification system it is delivery guarantees and priority; for a rate limiter it is distributed accuracy. Offer two or three options to the interviewer and ask which they want to explore, then go deep on one. A good deep dive names the problem, two approaches, and the trade-off you chose.</p>"
+   ]
+  }
+ ]
+}
