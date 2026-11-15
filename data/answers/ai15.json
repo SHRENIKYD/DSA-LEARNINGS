@@ -81,7 +81,7 @@
    },
    "followUps": [
     "<p>Per token, the forward pass costs about 2N FLOPs (a multiply and an add per parameter) and the backward pass about 4N, because it computes gradients for both activations and weights. That is 6N per token.</p><p>Over D tokens the total is 6ND. Example: N = 70B, D = 1.4T gives 6 x 7e10 x 1.4e12 = 5.9e23 FLOPs. It ignores attention-score work, which is small for short contexts.</p>",
-    "<p>Because training is paid once but serving is paid for every request. A small model trained on far more tokens is a bit worse per training FLOP, yet it is cheaper to run billions of times.</p><p>Example: an 8B model on 15T tokens (about 1,900 tokens per parameter) beats a Chinchilla-sized 8B (160B tokens) at the same inference price. The extra training compute is repaid by the lower serving cost.</p>",
+    "<p>Because training is paid once but serving is paid for every request. A small model trained on far more tokens is a bit worse per training FLOP, yet it is cheaper to run billions of times.</p><p>Example: an 8B model on 15T tokens (about 1,900 tokens per parameter) beats a Chinchilla-sized 8B (roughly 200B tokens) at the same inference price. The extra training compute is repaid by the lower serving cost.</p>",
     "<p>Quality text is finite: public web text is roughly tens of trillions of tokens, and repeating data gives diminishing returns after a few epochs. Synthetic data and multimodal data help but add noise risks.</p><p>Energy and hardware also bind: a 1e26 FLOP run needs tens of thousands of GPUs and tens of megawatts for months. Returns follow a power law, so each 10x of compute buys a smaller loss drop.</p>"
    ]
   },

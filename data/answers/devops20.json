@@ -46,7 +46,7 @@
    "code": null,
    "followUps": [
     "<p>Do not take the project from anything a team can edit freely. Hard-code <code>project</code> in the ApplicationSet template, for example <code>project: team-payments</code>, or derive it from something the platform controls, such as the folder path. Then protect that ApplicationSet with CODEOWNERS and with an AppProject that limits which ApplicationSets and namespaces a team may use. If the template read the project from a file the team owns, a team could write <code>project: default</code> and escape its limits.</p>",
-    "<p><b>RollingSync</b> is an alpha ApplicationSet strategy that updates the generated Applications in ordered steps instead of all at once. You label the Applications (for example <code>env=dev</code>, then <code>env=prod</code>) and define steps with a <code>maxUpdate</code>, such as 25 percent at a time. Argo CD waits for each step to be healthy before starting the next. It gives you progressive delivery across many clusters. Because it is not on by default it must be enabled explicitly and its behaviour can change between versions.</p>"
+    "<p><b>RollingSync</b> is a progressive-sync ApplicationSet strategy (beta in recent Argo CD versions) that updates the generated Applications in ordered steps instead of all at once. You label the Applications (for example <code>env=dev</code>, then <code>env=prod</code>) and define steps with a <code>maxUpdate</code>, such as 25 percent at a time. Argo CD waits for each step to be healthy before starting the next. It gives you progressive delivery across many clusters. Because it is not on by default it must be enabled explicitly and its behaviour can change between versions.</p>"
    ]
   },
   {

@@ -37,7 +37,7 @@
   {
    "code": null,
    "followUps": [
-    "<p>Yes, and it is a common setup: React Query for data fetched from the API and Redux for genuine client state such as UI workflow or a cart. They do not overlap if you keep a rule: server data is never copied into Redux.</p><p>Example: <code>useQuery(['products'])</code> supplies the list, while a Redux slice holds the selected filters and cart. A mutation's <code>onSuccess</code> can dispatch a Redux action and also invalidate queries. Copying API results into Redux creates two sources of truth that drift apart.</p>",
+    "<p>Yes, and it is a common setup: React Query for data fetched from the API and Redux for genuine client state such as UI workflow or a cart. They do not overlap if you keep a rule: server data is never copied into Redux.</p><p>Example: <code>useQuery({ queryKey: ['products'] })</code> supplies the list, while a Redux slice holds the selected filters and cart. A mutation's <code>onSuccess</code> can dispatch a Redux action and also invalidate queries. Copying API results into Redux creates two sources of truth that drift apart.</p>",
     "<p>Migrate when most of your Redux code is hand-written loading, error and caching logic around API calls. React Query gives you that for free, so thunks, <code>isLoading</code> flags and manual refetch code can be deleted.</p><p>Signals: the same data is fetched in many places, stale screens after mutations, many <code>pending/fulfilled/rejected</code> reducers. Do it one endpoint at a time: replace a thunk with <code>useQuery</code>, delete its slice, and keep Redux for the state that is truly client-only. Typical result is a big drop in lines of code.</p>"
    ]
   },

@@ -95,7 +95,7 @@
   {
    "code": null,
    "followUps": [
-    "<p>Automated tools like axe catch only about 30 to 40 percent of issues, because many problems need human judgement. Axe cannot tell if alt text is accurate, whether the reading order makes sense, or whether a keyboard flow is usable.</p><p>It also cannot judge if a label is meaningful (\"Click here\"), whether focus moves to a sensible place after an action, whether content is understandable, or how a real screen reader sounds. That is why a manual checklist and screen-reader testing are still needed.</p>",
+    "<p>Automated tools like axe catch only a minority of issues (estimates range from roughly 30 to 57 percent), because many problems need human judgement. Axe cannot tell if alt text is accurate, whether the reading order makes sense, or whether a keyboard flow is usable.</p><p>It also cannot judge if a label is meaningful (\"Click here\"), whether focus moves to a sensible place after an action, whether content is understandable, or how a real screen reader sounds. That is why a manual checklist and screen-reader testing are still needed.</p>",
     "<p>First report the defects to the vendor and check for a more accessible version or alternative product. Meanwhile, wrap the widget with a safer experience: an accessible fallback (a native form or link), a clear label and a visible focus ring around it.</p><p>Add the problem to your risk log and contract requirements (ask for a VPAT or conformance report). In future choices, test widgets before buying. If it cannot be fixed, replace it; do not hide it with an overlay.</p>"
    ]
   },

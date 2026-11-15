@@ -67,7 +67,7 @@
   {
    "code": null,
    "followUps": [
-    "<p>They stay. Deleting a StatefulSet does not delete its PersistentVolumeClaims by default, so the data survives and a new StatefulSet with the same name and claim template re-attaches the same volumes.</p><p>This protects data but also leaves cost behind, so clean up on purpose with <code>kubectl delete pvc -l app=db</code>. Since Kubernetes 1.27 you can set <code>persistentVolumeClaimRetentionPolicy</code> with <code>whenDeleted: Delete</code> and/or <code>whenScaled: Delete</code> to remove claims automatically.</p>",
+    "<p>They stay. Deleting a StatefulSet does not delete its PersistentVolumeClaims by default, so the data survives and a new StatefulSet with the same name and claim template re-attaches the same volumes.</p><p>This protects data but also leaves cost behind, so clean up on purpose with <code>kubectl delete pvc -l app=db</code>. Since about Kubernetes 1.27 (beta; stable later) you can set <code>persistentVolumeClaimRetentionPolicy</code> with <code>whenDeleted: Delete</code> and/or <code>whenScaled: Delete</code> to remove claims automatically.</p>",
     "<p>An operator knows the database's own rules and runs the tasks a StatefulSet cannot: backups, failover, ordered upgrades, user and replica setup.</p><p>Example: when a primary dies, a StatefulSet only restarts <code>db-0</code>, but an operator promotes the most up-to-date replica, repoints the Service and rebuilds the old primary as a replica. Upgrades also go replicas first, primary last. Operators encode that knowledge as a Kubernetes custom resource you declare once.</p>"
    ]
   },
