@@ -4,6 +4,18 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.48] — 2026-11-16 · Every interview question now has programs and follow-up answers, an Interview handbook and 2,214 lesson videos
+
+### Added
+- **Programs and written follow-up answers for every interview question in all 16 tracks (298 modules):** 4,548 questions now open to 10,145 written answers for their "likely follow-up" questions, and 2,918 of the questions have a runnable program. Programs open in your chosen language first; language-neutral ideas also come in Java, Python, JavaScript, C++ and C#. Questions about products, tools and process, and almost every Behavioral question, have written answers without a program.
+- **Interview handbook (`handbook.html`):** every interview question in one searchable place. It follows your route and language, filters by level (beginner to expert), and has a rapid-fire mode for quick revision.
+- **Tech Lead Interview track (.NET full stack, 12 places, 613 questions),** with databases and AI places, built from generic versions of the practice question sets.
+- **Lesson videos for 122 more topics.** 2,214 of 2,228 topics now have a "Watch it explained" video. Where a video covers only part of a lesson, the note under it says what the lesson adds. The other 14 topics are still being searched for a good match.
+
+### Changed
+- Phones show a shorter top bar (the passport link is hidden below 600 px wide).
+- The README and the docs describe the interview answers (`docs/INTERVIEW_ANSWERS.md`) and the current video status (`docs/VIDEOS.md`).
+
 ## [1.10.47] — 2026-11-15 · Lesson videos for 122 more topics
 
 ### Added

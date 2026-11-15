@@ -52,6 +52,15 @@ Automatic triggers run at 04:00 IST, with backups at 05:47, 07:47 and 09:47 IST.
 
 Each run that changes `data/videos.json` commits it to `main` and redeploys the website; when at least one video became playable it also bumps the app version and uploads a new release to Google Play.
 
+## Current coverage (release 1.10.48)
+
+- 2,214 of 2,228 lesson topics (99.4%) have a video. 1,832 were chosen by the daily bot and 382 are hand-picked (`curated`), 122 of them added on 2026-11-15.
+- The hand-picked additions were found by search and each id was re-checked against YouTube's public oEmbed endpoint (it exists and may be embedded). Playback, transcripts and exact durations were not checked, so their `secs` is `0` and no length is shown. Each carries a coverage note and a record in `data/video-review.json` (`playbackVerified: false`). Where a video covers only part of a lesson the note says what the lesson adds.
+- 14 topics have no video because nothing suitable was found: ai01-t5, ai17-t0, ai25-t6, ai35-t6, ai35-t7, ai36-t7, beh08-t3, csharp12-t7, lld06-t10, lld09-t5, py05-t6, sql09-t3, tl08-t3 and tl10-t4. The daily bot retries them every 30 days.
+- Weakest hand-picked matches to revisit when a better video appears: fe24-t6 (a Next 12 video for a Next 16 topic), be22-t2 (no log compaction), cpp15-t6 (benchmarking only), fe22-t5 (bundle budgets only), devops19-t2 (Cloud NAT only) and sql17-t7 (hot keys only partly).
+- Per-language picks: 691 (DSA and Low-Level Design).
+- The app carries its own copy of the catalog; the new videos reach it with the next app version.
+
 ## Fixing a bad pick
 
 Edit the topic's entry in `data/videos.json`: set `id` to the 11-character video id from the YouTube link (`watch?v=<id>`) and update `title`, `channel` and `secs`, or set `"id": null` to show no video for that topic. Keep `t` aligned with the current topic title. Record the reason and evidence in `data/video-review.json` when changing a reviewed choice. Run `npm run test:videos`.
