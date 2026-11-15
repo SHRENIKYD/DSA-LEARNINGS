@@ -1,0 +1,127 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Cache-aside read and delete-on-write",
+    "python": "# Cache-aside: the app checks the cache, falls back to the DB, deletes on write.\ndb = {\"user:1\": \"Ann\"}\ncache = {}\nstats = {\"hit\": 0, \"miss\": 0}\n\ndef read(key):\n    if key in cache:              # 1. try the cache first\n        stats[\"hit\"] += 1\n        return cache[key]\n    stats[\"miss\"] += 1\n    value = db.get(key)           # 2. miss: load from the database\n    cache[key] = value            # 3. store it (a real cache also sets a TTL)\n    return value\n\ndef write(key, value):\n    db[key] = value               # update the source of truth first\n    cache.pop(key, None)          # then delete (not overwrite) the cache key\n\nprint(\"read 1:\", read(\"user:1\"))\nprint(\"read 2:\", read(\"user:1\"))\nwrite(\"user:1\", \"Anna\")\nprint(\"read 3 after write:\", read(\"user:1\"))\nprint(\"hits =\", stats[\"hit\"], \"misses =\", stats[\"miss\"])\n"
+   },
+   "followUps": [
+    "<p>Delete after the commit, because before the commit another reader can put the old value straight back. Example: you delete the key, a reader misses, reads the database (still the old row, since your transaction has not committed), and caches it. Then you commit. The cache now holds stale data until the TTL ends. Deleting after the commit means any reader that misses will see the new row.</p><p>A tiny race still exists (a reader loaded old data just before the commit and writes it after your delete), which is why a TTL stays as a safety net.</p>",
+    "<p>Write-through is better when readers must almost never see stale data and reads of just-written data are common. Every write goes to the cache and the database together, so the cache is always warm and consistent. Example: a user profile that is saved and then shown right away on the next page.</p><p>The cost is slower writes (two systems per write) and caching data that may never be read again. It also needs care if one of the two writes fails. Cache-aside is simpler and is the better default for read-heavy data that tolerates a short delay.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look up the player's rank, then ask for a slice around it. With rank r from ZREVRANK (0-based), run ZREVRANGE lb r-2 r+2 WITHSCORES to get two above and two below. Example: rank 41 gives positions 39 to 43. Clamp the start at 0 so you never send a negative index near the top.</p><pre><code>r = ZREVRANK(lb, me)\nstart = max(0, r - 2)\nZREVRANGE(lb, start, r + 2, WITHSCORES)</code></pre><p>Both calls are O(log N + K) for K returned entries. Wrap them in a Lua script or MULTI if rank may change between calls.</p>",
+    "<p>Split the board across several Redis nodes and merge, because one sorted set of 300 million members (roughly tens of GB) is too big and too hot for one node. The usual approach is to shard by score range or by user-id hash. With score-range buckets (0-999, 1000-1999, ...) a player's rank is the count of players in higher buckets plus the rank inside their own bucket.</p><p>Top-10 is then just the highest non-empty bucket. Hash sharding is simpler to balance but needs a top-K merge from every shard for the global top list. Often you keep an exact board only for the top few thousand and show approximate ranks (percentiles) for everyone else.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Single-flight stops a cache stampede",
+    "python": "# Single-flight: only one thread rebuilds an expired hot key.\nimport threading\n\ncache = {}\nlock = threading.Lock()\ndb_loads = 0\n\ndef slow_db_load():\n    global db_loads\n    db_loads += 1\n    return \"report-data\"\n\ndef get(key):\n    if key in cache:\n        return cache[key]\n    with lock:                        # only one rebuilder at a time\n        if key not in cache:          # re-check: someone may have filled it\n            cache[key] = slow_db_load()\n    return cache[key]\n\nresults = []\nthreads = [threading.Thread(target=lambda: results.append(get(\"hot\")))\n           for _ in range(20)]\nfor t in threads: t.start()\nfor t in threads: t.join()\nprint(\"requests:\", len(results))\nprint(\"database loads:\", db_loads)    # 1, not 20\n"
+   },
+   "followUps": [
+    "<p>Watch the database first: query rate, connection count and latency. All three problems end up hurting the database, so it shows the damage soonest. Then watch the cache hit ratio, which tells you whether the cache is working at all.</p><p>Example: a hit ratio falling from 95 percent to 60 percent while database queries triple points to an avalanche or a stampede. A steady miss rate on keys that never exist points to penetration, so also track the share of misses that return nothing. Alert on a sudden change, not just a threshold.</p>",
+    "<p>A lock makes the others wait for one rebuild, while stale-while-revalidate lets them keep using the old value. With a lock, 99 requests block (or fail) until the one rebuilder finishes, so latency spikes for them. With stale-while-revalidate the expired value is still returned instantly and one background task refreshes it.</p><p>The trade-off is that users may see data a few seconds old, and you must keep the stale copy for a grace period. Use the lock when stale data is unacceptable; use stale-while-revalidate when speed matters more than freshness.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Token bucket rate limiter with a fake clock",
+    "python": "# Token bucket with a fake clock so the output is repeatable.\n# Time O(1) per request, space O(1) per client.\nclass TokenBucket:\n    def __init__(self, capacity, rate):\n        self.capacity = capacity      # burst size\n        self.rate = rate              # tokens added per second\n        self.tokens = capacity\n        self.last = 0.0\n\n    def allow(self, now):\n        # refill for the time that passed, never above capacity\n        self.tokens = min(self.capacity, self.tokens + (now - self.last) * self.rate)\n        self.last = now\n        if self.tokens >= 1:\n            self.tokens -= 1          # spend one token\n            return True\n        return False\n\nbucket = TokenBucket(capacity=3, rate=1)\ntimes = [0.0, 0.1, 0.2, 0.3, 0.4, 1.5, 2.6]\nprint(\"capacity 3, refill 1 token per second\")\nfor t in times:\n    print(\"t=%.1f\" % t, \"allowed\" if bucket.allow(t) else \"429 rejected\")\n"
+   },
+   "followUps": [
+    "<p>Because if the process dies between the two steps, the key lives forever with no expiry. Example: INCR creates the counter at 1, the server crashes, EXPIRE never runs, and that client is blocked permanently once the count passes the limit, or never reset at all. Two concurrent first requests can also both think they were first.</p><p>Fix it by running both in one Lua script, which Redis executes without interleaving other commands, or by setting the expiry with SET NX EX before incrementing.</p><pre><code>n = INCR key\nif n == 1 then EXPIRE key 60 end</code></pre>",
+    "<p>A token bucket allows a controlled burst and then a smooth steady rate, while a fixed window only counts per calendar slice. With capacity 10 and 1 token per second a client can send 10 requests at once, then one per second. A fixed window of 10 per minute can let 10 requests through at 12:00:59 and another 10 at 12:01:00, which is 20 within two seconds.</p><p>The bucket stores only a token count and a last-refill time, so memory is O(1) per client.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A fencing token is a number that rises every time a lock is granted, and the protected resource rejects any request carrying an older number. Example: client A gets token 33, pauses, and its lease expires. Client B gets token 34 and writes. When A wakes up and writes with 33, the storage sees 33 is lower than 34 and refuses it.</p><p>This makes the resource itself the final guard, so a slow lock holder cannot corrupt data. It needs the resource to track the highest token it has seen. A plain Redis lock does not produce such a counter by itself.</p>",
+    "<p>Use pg_advisory_lock when the data you protect already lives in PostgreSQL and you want the lock tied to that database. It is held by the session, so if the connection drops, Postgres releases the lock automatically and there is no lease to expire while the client is paused. Because it shares the transaction fate with your data, you can also use pg_advisory_xact_lock so it is released at commit.</p><p>Example: one worker per tenant for a migration. The limits are that it is per database, not cluster-wide across many databases, and it holds a connection while waiting.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The offset is a number that marks how far a consumer group has read in a partition. Kafka keeps messages in order, and the consumer stores the position of the next message it should read. Example: offset 120 means messages 0 to 119 are done and the next read is 120.</p><p>The consumer commits the offset after processing, so after a restart it resumes from the last committed value. Committing early risks loss; committing late risks duplicates. Rewinding the offset replays old messages, which is how Kafka supports reprocessing. Each consumer group has its own offsets.</p>",
+    "<p>SQS FIFO queues drop duplicates that share the same message deduplication ID within a 5-minute window. You supply the ID yourself (for example an order id) or turn on content-based deduplication, where SQS hashes the message body. Example: if a producer retries a send with ID order-42, the second copy is accepted by the API but not delivered again.</p><p>Only the 5-minute window is covered, so a duplicate sent later gets through. Consumers still need to be idempotent. Ordering is guaranteed within a message group ID, not across the whole queue.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Duplicates come from retries: any time a sender or receiver is not sure whether a step worked, it repeats it. Typical cases are a producer that resends because the broker ack was lost, a consumer that crashes after processing but before acking so the broker redelivers, a visibility timeout shorter than the processing time, and a consumer-group rebalance replaying uncommitted messages.</p><p>Example: you process payment 7, the network drops your ack, the broker redelivers, and the payment is handled twice. That is why at-least-once delivery needs idempotent handlers.</p>",
+    "<p>The outbox is the producer-side trick and the inbox is the consumer-side trick, and together they cover both ends. Outbox: write the event into a table in the same transaction as the business change, and a relay publishes it later. This stops lost or phantom events when saving and sending are separate steps.</p><p>Inbox: the consumer records each message id in a table inside the same transaction as its work, and skips ids it has already seen. So the message may arrive twice, but it takes effect once. The outbox gives at-least-once publishing; the inbox turns that into exactly-once effect.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotent payment consumer with a processed-ids table",
+    "python": "# Idempotent consumer: processed-ids insert and balance change in ONE transaction.\nimport sqlite3\n\ncon = sqlite3.connect(\":memory:\")\ncon.execute(\"CREATE TABLE processed (id TEXT PRIMARY KEY)\")\ncon.execute(\"CREATE TABLE account (balance INTEGER)\")\ncon.execute(\"INSERT INTO account VALUES (100)\")\n\ndef handle(msg_id, amount):\n    try:\n        with con:                                   # commit or roll back together\n            con.execute(\"INSERT INTO processed VALUES (?)\", (msg_id,))\n            con.execute(\"UPDATE account SET balance = balance - ?\", (amount,))\n        return \"applied\"\n    except sqlite3.IntegrityError:                  # primary key hit: duplicate\n        return \"duplicate, skipped\"\n\ndeliveries = [(\"m1\", 30), (\"m2\", 20), (\"m1\", 30), (\"m2\", 20), (\"m3\", 10)]\nfor msg_id, amount in deliveries:\n    print(msg_id, \"-\", amount, \"->\", handle(msg_id, amount))\nprint(\"final balance:\", con.execute(\"SELECT balance FROM account\").fetchone()[0])\n"
+   },
+   "followUps": [
+    "<p>A Redis set is a poor dedup store because it is not in the same transaction as your database change, so the two can disagree. Example: you add the id to Redis, then the database commit fails; the retry is now skipped and the payment is lost. Reverse the order and a crash lets it run twice.</p><p>Redis can also lose data on failover or eviction, forgetting ids and allowing duplicates. A table in the same database commits or rolls back together with the money change, so it is the safe choice. Redis is fine as a fast pre-check in front of it.</p>",
+    "<p>Out-of-order messages are not stopped by this pattern, because it only detects exact repeats of the same id. Example: message 2 (balance set to 80) arrives before message 1 (balance set to 100), so an older update can overwrite a newer one.</p><p>Fix it with a version or sequence number per entity: apply a message only if its version is higher than the stored one, using a guarded update such as the one below. Or partition by entity key so one account's messages stay in order, or design operations as commutative deltas instead of overwrites.</p><pre><code>UPDATE acct SET bal=?, ver=?\nWHERE id=? AND ver &lt; ?</code></pre>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Exponential backoff with full jitter and a DLQ",
+    "python": "# Retry with exponential backoff, a cap and full jitter, then a dead-letter queue.\nimport random\n\nrng = random.Random(7)                    # fixed seed so output repeats\nBASE, CAP, MAX_ATTEMPTS = 1.0, 20.0, 5\ndead_letter = []\n\ndef call_dependency():\n    raise TimeoutError(\"dependency down\")   # always fails, to show the policy\n\ndef process(msg):\n    for attempt in range(MAX_ATTEMPTS):\n        try:\n            return call_dependency()\n        except TimeoutError as e:           # transient: retry\n            ceiling = min(CAP, BASE * 2 ** attempt)\n            delay = rng.uniform(0, ceiling) # full jitter: random in [0, ceiling]\n            print(\"attempt\", attempt + 1, \"failed, ceiling %.0fs, wait %.2fs\" % (ceiling, delay))\n    dead_letter.append(msg)                 # out of attempts: park it\n    print(\"moved to DLQ:\", msg)\n\nprocess(\"order-42\")\nprint(\"DLQ size:\", len(dead_letter))\n"
+   },
+   "followUps": [
+    "<p>A retry storm is when many clients retry failed calls at the same time and the extra load keeps the struggling service down. Example: a database slows down, 1000 clients time out and each retries 3 times immediately, so the service now sees 4000 requests instead of 1000 and cannot recover.</p><p>Defences are exponential backoff with jitter so retries spread out, a cap on attempts, a retry budget (for example at most 10 percent extra traffic), and circuit breakers that stop calling a dependency that is clearly down.</p>",
+    "<p>Retry in only one layer, usually the one closest to the user or the failing call. Example: if the client retries 3 times, the API 3 times and the service 3 times, one user action becomes 27 calls to the database. Each layer multiplies the next.</p><p>Pass a deadline or remaining-attempts header downstream so inner layers stop when the outer one has already given up. Use retry budgets, make inner layers fail fast, and have only the outermost layer, or the one with the clearest idea of the error, perform retries. Always combine with idempotency.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If the lock holder crashes, the job stops mid-run and the lock stays until it expires, then another instance can start it again. That is why every lock needs an expiry (a TTL or lease). Example: with a 10-minute lock, the next run can begin 10 minutes after the crash.</p><p>The job must be safe to rerun: make steps idempotent or resume from a checkpoint, because half the work may already be done. Pick the TTL longer than the normal run but short enough that recovery is quick, and alert if a run does not finish.</p>",
+    "<p>lockAtLeastFor keeps the lock for a minimum time even if the job finishes sooner, which stops other instances running it again straight away. Example: a job runs at 10:00:00 and finishes in 50 ms on instance A. Instance B's clock is 2 seconds behind, so it would also see 10:00:00 and run the job. With lockAtLeastFor of 30 seconds, B finds the lock still held and skips.</p><p>It protects against clock skew between instances. lockAtMostFor is the opposite: the upper limit that frees the lock if the holder dies.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Apply backpressure by making the producer slow down or stop when the consumer cannot keep up, instead of letting work pile up without limit. Ways to do it: a bounded queue that blocks or rejects when full, returning 429 or 503 to callers, limiting in-flight messages with a prefetch count, and pausing consumption of upstream sources.</p><p>Example: a queue limited to 1000 jobs rejects the 1001st, so the API tells the client to retry later rather than running out of memory. Shed low-priority work first, and scale consumers when the queue stays near its limit.</p>",
+    "<p>A bounded queue is a queue with a fixed maximum size, so it cannot grow forever. When it is full, adding a new item either blocks the producer, fails fast, or drops something, depending on the policy you choose. Example: a queue capped at 100 means at most 100 jobs wait in memory at any time.</p><p>This protects memory and makes overload visible instead of hidden. An unbounded queue just hides a slow consumer until the process runs out of memory. Pick the cap from the memory you can afford and the delay you can tolerate.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Abandoned versions cost memory only until their TTL ends, which is why short TTLs matter. After a bump from v12 to v13, the v12 keys are never read again but sit in Redis. Example: 10,000 cached pages of 5 KB each is 50 MB of dead data per bump, and frequent bumps stack up.</p><p>Redis eviction (an LRU or LFU maxmemory policy) also drops them as they go cold. Keep TTLs to minutes, debounce bumps during bulk updates, and watch memory use. This waste is usually cheaper than trying to find and delete every list key.</p>",
+    "<p>If the version counter is lost, restart it from a value that cannot repeat old keys, because reusing v1 could expose stale entries that are still in the cache. Safe options: start from the current timestamp or a random epoch value, persist the counter in the database as the source of truth and cache it, or flush the list keys after a lost counter.</p><p>Example: the counter vanishes and resets to 1, but an old list:mugs:v1:page2 still lives for another 4 minutes and gets served. A timestamp-based version makes that collision practically impossible.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Warm a cold cache gradually and only for the hot data, so you do not slam the database. Load the most-requested keys first (from access logs or a top-keys list), do it at a controlled rate, and run it in the background with a concurrency limit. Example: preload the top 1000 product pages at 50 per second instead of letting 10,000 users trigger them at once.</p><p>Also use single-flight so one request rebuilds each key, add TTL jitter so the warmed keys do not all expire together, and shift traffic back to the node slowly with a gradual ramp.</p>",
+    "<p>Sentinel gives high availability for a single primary with replicas, while Cluster also splits the data across many nodes. Sentinel watches the primary and promotes a replica when it fails; all data still lives on one primary, so it is limited by one machine's memory and write throughput. Cluster divides keys into 16384 hash slots across several primaries, each with replicas, so it scales memory and writes and also fails over.</p><p>Cluster limits multi-key commands to keys in the same slot. Choose Sentinel for a modest dataset, Cluster when you need to scale beyond one node.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Transactional outbox and relay",
+    "python": "# Transactional outbox: business row + event row in one transaction, relay publishes later.\nimport sqlite3\n\ncon = sqlite3.connect(\":memory:\")\ncon.execute(\"CREATE TABLE orders (id INTEGER PRIMARY KEY, item TEXT)\")\ncon.execute(\"CREATE TABLE outbox (id INTEGER PRIMARY KEY, event TEXT, sent INTEGER DEFAULT 0)\")\nbroker = []\n\ndef place_order(order_id, item):\n    with con:                                       # one local transaction\n        con.execute(\"INSERT INTO orders VALUES (?, ?)\", (order_id, item))\n        con.execute(\"INSERT INTO outbox (event) VALUES (?)\",\n                    (\"OrderPlaced:%d\" % order_id,))\n\ndef relay():\n    rows = con.execute(\"SELECT id, event FROM outbox WHERE sent = 0 ORDER BY id\").fetchall()\n    for row_id, event in rows:\n        broker.append(event)                        # publish first...\n        with con:                                   # ...then mark sent (a crash between = duplicate)\n            con.execute(\"UPDATE outbox SET sent = 1 WHERE id = ?\", (row_id,))\n\nplace_order(1, \"mug\")\nplace_order(2, \"lamp\")\nprint(\"broker before relay:\", broker)\nrelay()\nprint(\"broker after relay:\", broker)\nrelay()                                             # nothing new to send\nprint(\"broker after 2nd relay:\", broker)\n"
+   },
+   "followUps": [
+    "<p>The main drawbacks are delay, extra database load and a risk of duplicates. A relay that polls every second adds up to a second of latency, and polling an outbox table constantly costs queries even when it is empty. Many relays at once need SKIP LOCKED so they do not publish the same row.</p><p>If the relay publishes and crashes before marking the row as sent, the event is published again, so consumers must be idempotent. Ordering can also break with several relays. Change-data-capture such as reading the database log avoids the polling cost and has lower delay.</p>",
+    "<p>Delete or archive rows that have been sent, using a scheduled cleanup job. Example: every night remove outbox rows where sent = 1 and the sent time is older than 7 days, in small batches of a few thousand so you do not lock the table or bloat the log.</p><p>Keep a short retention period to help with debugging and replay, and partition the table by date so old partitions can be dropped instantly. Index the unsent rows (a partial index on sent = 0) so the relay's query stays fast however large the table gets.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Message age shows how late you are, while depth only shows how many are waiting, and the same depth can mean very different things. A depth of 10,000 may be fine if consumers clear it in seconds, and a depth of 50 may be a problem if the oldest message has waited an hour because of a stuck consumer.</p><p>Age maps directly to what users and SLAs care about (delay). It also reveals poison messages that block progress. Alert when the oldest message exceeds your target, for example 5 minutes, and use depth for capacity planning.</p>",
+    "<p>Kafka consumer lag is the same idea as queue depth: it is the number of messages between the latest offset in a partition and the consumer group's committed offset. Example: the log end is at 5000 and the group has committed 4200, so the lag is 800.</p><p>Growing lag means consumers are slower than producers, just like a growing queue. Check it per partition, since one stuck partition hides inside a healthy total. Also track the time lag (how old the oldest unread message is). Fix it by adding consumers up to the partition count, speeding up processing, or adding partitions.</p>"
+   ]
+  }
+ ]
+}

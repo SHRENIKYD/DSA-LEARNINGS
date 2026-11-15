@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look at where bugs are found and how long the suite takes, not at a fixed ratio. Track the share of tests per layer, total run time, flaky-test rate, and for each escaped bug which layer should have caught it.</p><p>Healthy example: 1,500 unit tests in 40 s, 150 integration tests in 4 min, 12 E2E in 6 min, under 1% flaky. If 12 minutes of feedback is mostly E2E, the shape is wrong.</p>",
+    "<p>Only a few critical user journeys stay E2E, because each one is slow and fragile. I keep the ones where losing money or trust would hurt: sign-up, login, checkout and payment, and one happy path per major integration.</p><p>Everything else, such as validation and edge cases, goes down to unit or integration level. A good size is 5 to 15 journeys that run in minutes, plus the same checks as synthetic monitors in production.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stub, mock, spy and fake side by side",
+    "python": "# Stub, mock, spy and fake around one small service.\nclass Service:\n    def __init__(self, rates, repo, mailer):\n        self.rates, self.repo, self.mailer = rates, repo, mailer\n\n    def checkout(self, user, usd):\n        eur = round(usd * self.rates.rate(\"USD\", \"EUR\"), 2)\n        self.repo.save(user, eur)\n        self.mailer.send(user, \"paid \" + str(eur))\n        return eur\n\nclass StubRates:                      # stub: canned answer\n    def rate(self, a, b): return 0.5\n\nclass FakeRepo:                       # fake: working in-memory version\n    def __init__(self): self.rows = {}\n    def save(self, k, v): self.rows[k] = v\n\nclass SpyMailer:                      # spy: records calls to inspect later\n    def __init__(self): self.calls = []\n    def send(self, to, body): self.calls.append((to, body))\n\nclass MockMailer:                     # mock: expectation checked by itself\n    def __init__(self, expected): self.expected, self.seen = expected, []\n    def send(self, to, body): self.seen.append((to, body))\n    def verify(self):\n        assert self.seen == self.expected, \"unexpected calls: %s\" % self.seen\n\nrepo, spy = FakeRepo(), SpyMailer()\nprint(\"result:\", Service(StubRates(), repo, spy).checkout(\"ann\", 10))\nprint(\"fake state:\", repo.rows)         # assert on state\nprint(\"spy calls:\", spy.calls)          # assert on interactions afterwards\nmock = MockMailer([(\"bob\", \"paid 5.0\")])\nService(StubRates(), FakeRepo(), mock).checkout(\"bob\", 10)\nmock.verify()\nprint(\"mock verified: exactly one email sent\")\n"
+   },
+   "followUps": [
+    "<p>A mock makes a test brittle when it checks how the code works instead of what it achieves. If the test asserts that repo.save was called once and then you refactor to saveAll, the behaviour is the same but the test fails.</p><p>Mocks of types you do not own, or long chains of expected calls, make this worse. Prefer asserting on results or on state in a fake, and mock only an outward effect such as sending one email.</p>",
+    "<p>Run the same contract test against both the fake and the real implementation. One abstract test class holds the rules, for example: saving an id twice overwrites, finding a missing id returns empty, a duplicate unique key throws.</p><p>The in-memory fake runs it in milliseconds; the real adapter runs it with Testcontainers. If the two ever disagree, the fake is wrong, so you fix it before tests give false comfort.</p><pre><code>abstract class RepoContract { abstract Repo make();\n  @Test void missingIdIsEmpty() { assertTrue(make().find(\"x\").isEmpty()); } }</code></pre>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Injected clock: expiry and retry backoff without waiting",
+    "python": "# Inject the clock and the sleeper so time-based code is deterministic.\nclass FakeClock:\n    def __init__(self, t): self.t = t\n    def now(self): return self.t\n    def sleep(self, s): self.t += s      # \"sleeping\" just moves time\n\ndef is_expired(token_expiry, clock):\n    return clock.now() >= token_expiry\n\ndef retry(op, clock, attempts=4, base=1.0):\n    for i in range(attempts):\n        try:\n            return op()\n        except RuntimeError:\n            if i == attempts - 1:\n                raise\n            clock.sleep(base * 2 ** i)    # 1s, 2s, 4s backoff\n\nclock = FakeClock(1000)\nprint(\"expired at t=1000:\", is_expired(1060, clock))\nclock.t = 1060\nprint(\"expired at t=1060:\", is_expired(1060, clock))\n\ncalls = []\ndef flaky():\n    calls.append(clock.now())\n    if len(calls) < 4:\n        raise RuntimeError(\"down\")\n    return \"ok\"\n\nclock.t = 0\nprint(\"result:\", retry(flaky, clock))\nprint(\"attempt times:\", calls)            # [0, 1.0, 3.0, 7.0], no real waiting\n"
+   },
+   "followUps": [
+    "<p>Wrap the call behind your own small interface or inject it as a function, so tests can replace it. UUID.randomUUID() is a static call you cannot override, so create an IdGenerator with a method next(); production uses UUID, tests return \"id-1\", \"id-2\".</p><p>Mocking statics with tools like Mockito's mockStatic works but is a last resort for code you cannot change, because it hides the dependency instead of showing it.</p>",
+    "<p>Inject the sleeper (or a Clock plus scheduler) so tests never really wait. The retry code calls sleeper.sleep(delay); the test passes a fake that records the delay and moves a fake clock forward.</p><p>Then assert on the recorded delays: with a base of 1 s and doubling, you expect [1, 2, 4] after three failures, and the test finishes in microseconds. Also test the cap and the give-up after the last attempt.</p><pre><code>List&lt;Long&gt; waits = new ArrayList&lt;&gt;();\nRetry r = new Retry(waits::add, 4);\nassertEquals(List.of(1000L, 2000L, 4000L), waits);</code></pre>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run the tests against an embedded or local real database installed without Docker, or against a database service the CI platform provides. Most CI systems can start Postgres or MySQL as a service container or a pre-installed package, and Testcontainers can also point at a remote Docker host.</p><p>If none is possible, keep fast unit tests on fakes and run the real-database tests in a separate stage on a runner that has Docker, so the gap is small and visible.</p>",
+    "<p>Start the container at the old schema version, load realistic rows, then run the new migration and check the data and constraints. Flyway lets you migrate to a target version, so you migrate to N-1, insert data, then migrate to N.</p><p>Include nasty cases: nulls, duplicates that a new unique index would reject, and a large table to see lock time. Example: adding NOT NULL to a column with 3 null rows must fail the test until a backfill step exists.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Consumer contract catches a renamed field",
+    "python": "# Consumer-driven contract: consumer states needs, provider replays them.\ncontract = {                              # written by the consumer's tests\n    \"request\": {\"method\": \"GET\", \"path\": \"/users/7\"},\n    \"status\": 200,\n    \"body_types\": {\"id\": int, \"email\": str},\n}\n\ndef provider_v1(method, path):\n    return 200, {\"id\": 7, \"email\": \"a@x.test\", \"name\": \"Ann\"}\n\ndef provider_v2(method, path):            # renamed email -> mail\n    return 200, {\"id\": 7, \"mail\": \"a@x.test\", \"name\": \"Ann\"}\n\ndef verify(provider, c):\n    status, body = provider(c[\"request\"][\"method\"], c[\"request\"][\"path\"])\n    errors = []\n    if status != c[\"status\"]:\n        errors.append(\"status \" + str(status))\n    for field, typ in c[\"body_types\"].items():\n        if field not in body:\n            errors.append(\"missing field \" + field)\n        elif not isinstance(body[field], typ):\n            errors.append(\"wrong type for \" + field)\n    return errors                         # extra fields (name) are fine\n\nfor name, p in ((\"v1\", provider_v1), (\"v2\", provider_v2)):\n    errs = verify(p, contract)\n    print(name, \"OK\" if not errs else \"BREAKS consumer: \" + \", \".join(errs))\n"
+   },
+   "followUps": [
+    "<p>Use a two-step change: stop using the field, then remove it. First, every consumer deletes the field from its contracts; the broker shows when no active contract mentions it. Then the provider removes it and can-i-deploy passes.</p><p>For safety, deploy the provider change only after all consumer versions in production have been released without the field. If one old consumer still needs it, can-i-deploy blocks the release and names that consumer.</p>",
+    "<p>Use message pacts: the consumer writes an example payload it can handle, and the producer's test proves it can generate a message matching it. No broker queue is needed, only the message shape.</p><p>For high-volume topics, a schema registry with backward or forward compatibility rules does the same job automatically. Example: adding an optional field is allowed, renaming one fails the build. Semantics, such as ordering, still need a few real tests.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Hexagonal core with swappable adapters",
+    "python": "# Hexagonal: the core owns the port; adapters plug in from outside.\nclass OrderService:                       # core / use case\n    def __init__(self, repo, notifier):\n        self.repo, self.notifier = repo, notifier   # outbound ports\n\n    def place(self, order_id, qty):\n        if qty <= 0:\n            raise ValueError(\"qty must be positive\")  # business rule\n        self.repo.save(order_id, qty)\n        self.notifier.notify(\"order \" + order_id + \" x\" + str(qty))\n        return order_id\n\nclass InMemoryRepo:                       # adapter 1 (tests)\n    def __init__(self): self.data = {}\n    def save(self, k, v): self.data[k] = v\n\nclass FileLikeRepo:                       # adapter 2 (stands in for a DB)\n    def __init__(self): self.lines = []\n    def save(self, k, v): self.lines.append(k + \",\" + str(v))\n\nclass ConsoleNotifier:\n    def notify(self, msg): print(\"notify:\", msg)\n\nfor repo in (InMemoryRepo(), FileLikeRepo()):\n    svc = OrderService(repo, ConsoleNotifier())   # same core, other adapter\n    svc.place(\"A1\", 3)\n    print(type(repo).__name__, \"->\", vars(repo))\ntry:\n    OrderService(InMemoryRepo(), ConsoleNotifier()).place(\"A2\", 0)\nexcept ValueError as e:\n    print(\"rejected:\", e)\n"
+   },
+   "followUps": [
+    "<p>Validation of input shape (is the field present, is it a number) goes in the inbound adapter; business rules (stock must be positive) go in the core. Transactions are opened by the application service around a use case, because that is the unit of work.</p><p>Example: the controller rejects a missing quantity with a 400; the OrderService checks stock and runs inside one transaction. The domain code itself stays free of transaction annotations where possible.</p>",
+    "<p>Often no, if you want a clean core, but it is a trade-off. Strictly, entity annotations tie the domain to JPA, so the pure approach has a separate domain class and maps to a JPA entity in the adapter.</p><p>The pragmatic option is to allow annotations on domain classes when the project is small and the mapping code would cost more than it saves. Decide once, write it in an ADR, and have ArchUnit enforce it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Write the rule as a test that fails the build. With ArchUnit you state it in code, for example that nothing in the domain package may depend on Spring, or that adapters may depend on the core but never the reverse.</p><pre><code>noClasses().that().resideInAPackage(\"..domain..\")\n  .should().dependOnClassesThat()\n  .resideInAPackage(\"org.springframework..\").check(classes);</code></pre><p>Run it with the unit tests so a violation shows up in the pull request, not months later.</p>",
+    "<p>It is overkill for small CRUD services, prototypes, scripts and short-lived tools, where the layers only add files and mapping with no logic to protect. If a controller calls a repository and returns it, an extra use-case class adds nothing.</p><p>It pays off when business rules are rich, several integrations exist, or the system will live for years. A good test: would swapping the database or testing the rules without a framework be valuable? If not, keep it simple.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Size a context by team and language, not by lines of code: one team can own it and its terms mean one thing inside it. If one word needs two definitions, split it; if two parts always change together and need constant chatter, merge them.</p><p>A start is one context per team of 5 to 9 people. Too big becomes a mud ball, too small (a context per entity) creates chatty calls and distributed transactions.</p>",
+    "<p>They share data through explicit contracts, not shared tables. Typical ways: an API call, or published events such as OrderPaid carrying only the fields others need, which each context stores in its own model.</p><p>Example: Billing owns the customer's tax id; Shipping receives CustomerMoved with an id and an address and keeps its own copy. Each context translates the event into its own language, and the source of truth stays with the owner.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Log every unmapped value the translator sees and alert on it. The ACL should map unknown codes to a safe default such as UNKNOWN, never crash, and increment a metric tagged with the raw code.</p><p>Example: legacy status codes A, B, C are mapped; one day code D appears. A dashboard shows unmapped_status{code=\"D\"}=14 per hour, so the team adds the mapping deliberately. Keep a sample of the raw payload for debugging.</p>",
+    "<p>Move consumers one by one onto the new model, then delete the layer once nothing depends on the legacy system. Route a slice of traffic to the new service (strangler fig), compare results, then switch it all.</p><p>Steps: measure ACL calls per feature, migrate the biggest users, turn the legacy call off, check the unmapped metric stays at zero, then remove the translator and the legacy port in a final small pull request.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A payment provider is usually an Anti-Corruption Layer on our side over the provider's Open Host Service. We cannot change them, and their model (charges, intents, webhooks) is not our language of orders and refunds.</p><p>We translate at the edge into our own Payment concept, which also makes switching providers possible. We would be a conformist only if the provider model fit us perfectly, which is rare for money flows.</p>",
+    "<p>A cycle means two contexts depend on each other, so neither can change or deploy alone. In practice you see coordinated releases, shared libraries that both must update, and calls in both directions that fail together.</p><p>Fix it by picking one direction, pushing the shared concept into a third context, or replacing one direction with an event. Example: Orders calls Billing and Billing calls Orders for status; make Billing react to OrderPlaced events instead.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Create the environment per pull request, for example with Docker Compose or a Kubernetes namespace, deploy only the changed service and stub or reuse stable versions of the rest, then delete it after the merge. They give a safe place for a few smoke journeys without a shared queue for one staging system.</p><p>They are a supplement, not a gate for everything: contracts catch most breaks, ephemeral environments catch wiring and configuration mistakes.</p>",
+    "<p>Test each hop on its own, plus a small flow check. The producer test checks the event it emits; the consumer test feeds it an example event, including duplicates and out-of-order ones, and checks the result; message pacts or schema compatibility link them.</p><p>Then one end-to-end test waits for the final effect with polling (Awaitility, a timeout of 10 s), not a fixed sleep. Also test the dead-letter path: a bad message must land there instead of blocking the topic.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Mutation testing exposes weak assertions",
+    "python": "# Tiny mutation test: change the code, see whether any test notices.\nSRC = \"def can_vote(age): return age >= 18\"\nMUTANTS = [SRC.replace(\">=\", \">\"), SRC.replace(\"18\", \"19\"), SRC.replace(\">=\", \"<\")]\n\ndef run_tests(src, tests):\n    env = {}\n    exec(src, env)                        # load the (mutated) function\n    return all(env[\"can_vote\"](a) == want for a, want in tests)\n\nweak = [(30, True), (5, False)]           # line coverage 100%, weak asserts\nstrong = weak + [(18, True), (17, False)] # adds the boundary\n\nfor label, tests in ((\"weak\", weak), (\"strong\", strong)):\n    print(label, \"suite passes on original:\", run_tests(SRC, tests))\n    killed = sum(not run_tests(m, tests) for m in MUTANTS)\n    print(label, \"mutants killed: %d of %d\" % (killed, len(MUTANTS)))\n    for m in MUTANTS:\n        if run_tests(m, tests):\n            print(\"  survived:\", m)\n"
+   },
+   "followUps": [
+    "<p>Mutation testing deliberately breaks your code and checks that a test fails. A tool changes small things, for example >= to > or true to false, one mutant at a time, and runs the tests against each.</p><p>If a test fails, the mutant is killed; if all pass, it survived, which means no test would notice that bug. The mutation score is killed divided by total, so 8 killed out of 10 is 80%. It is slow, so run it on core modules only.</p>",
+    "<p>Treat generated tests like any other code: check that they assert behaviour, not just that they run. Ask what bug each test would catch, and break the code on purpose to see it fail, or run mutation testing on it.</p><p>Warning signs: no assertions, assertions copied from the implementation, mocks of everything, names like test1, and snapshots nobody reads. Also check they cover edge cases (empty, null, boundaries) and not only the happy path.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>List what the agent must always do, with short examples. Typical content: the package layout and the dependency direction, naming rules, how to run build and tests, and what not to touch.</p><ul><li>Domain code imports no framework classes.</li><li>New features get a unit test using fakes, plus an integration test if SQL changes.</li><li>Never edit generated code or migrations already applied.</li></ul><p>Keep it under a page and link the ADRs for the reasons.</p>",
+    "<p>Make exceptions explicit, small and temporary. Add a documented waiver: an ADR or comment with the reason, the owner and an expiry date, and exclude exactly that class in the ArchUnit rule or freeze it in the baseline.</p><p>Example: legacy class PaymentMapper may import the old SDK until 30 June. The build fails after the date, which forces someone to fix it or renew the waiver on purpose. Review the list of exceptions every quarter.</p>"
+   ]
+  }
+ ]
+}

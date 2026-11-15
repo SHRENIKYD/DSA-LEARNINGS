@@ -1,0 +1,130 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Event loop order: sync, ticks, microtasks, then phases",
+    "js": "// Event loop order: main script, then microtasks, then loop phases.\nconst fs = require('fs');\n\nconsole.log('1 sync: main script start');\nprocess.nextTick(() => console.log('3 nextTick (tick queue first)'));\nPromise.resolve().then(() => console.log('4 promise (microtask, after ticks)'));\nconsole.log('2 sync: main script end');\n\n// Inside an I/O callback we are in the poll phase, so the check\n// phase (setImmediate) comes before the next timers phase.\nfs.readFile(__filename, () => {\n  console.log('--- inside readFile callback (poll phase) ---');\n  setTimeout(() => console.log('8 setTimeout 0 (next lap, timers)'), 0);\n  setImmediate(() => console.log('7 setImmediate (check phase, this lap)'));\n  process.nextTick(() => console.log('5 nextTick after callback'));\n  Promise.resolve().then(() => console.log('6 promise after callback'));\n});"
+   },
+   "followUps": [
+    "<p>In the poll phase, on the main thread. <code>fs.readFile</code> does the actual disk read on a libuv pool thread; when it finishes, the result is queued and the loop runs your callback during the next poll phase.</p><p>So the callback never runs on the worker thread. Any <code>nextTick</code> or promise you schedule inside it runs right after it, and a <code>setImmediate</code> you schedule there runs in the check phase of the same lap, before any <code>setTimeout(0)</code>.</p>",
+    "<p>It waits (blocks) for I/O, but only as long as it is safe to. If nothing is ready, poll looks at what else is pending: if <code>setImmediate</code> callbacks are queued it moves straight on to the check phase; otherwise it sleeps until the nearest timer is due or an I/O event arrives.</p><p>Example: one timer due in 50 ms and no I/O means poll sleeps up to 50 ms using no CPU (via epoll or kqueue), then the loop wraps around to run the timer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "nextTick vs promises vs setImmediate ordering",
+    "js": "// Microtask ordering: nextTick queue is drained before the promise queue,\n// and the promise queue is drained fully before the loop moves on.\nconst log = [];\nconst say = (s) => { log.push(s); console.log(s); };\n\nsetImmediate(() => say('G setImmediate'));\nPromise.resolve().then(() => {\n  say('C promise 1');\n  // A tick scheduled from inside a microtask waits until the\n  // microtask queue is empty, then runs before the loop continues.\n  process.nextTick(() => say('F nextTick scheduled from a promise'));\n  Promise.resolve().then(() => say('E promise 3 (nested, same drain)'));\n});\nPromise.resolve().then(() => say('D promise 2'));\nqueueMicrotask(() => say('D2 queueMicrotask (same queue as promises)'));\nprocess.nextTick(() => say('B nextTick'));\nsay('A sync');\nsetImmediate(() => console.log('order:', log.map((s) => s[0]).join('')));"
+   },
+   "followUps": [
+    "<p>Because the names describe the wrong thing. <code>nextTick</code> does not wait for the next tick of the loop; it runs before the loop continues. <code>setImmediate</code> does not run immediately; it runs in the check phase, later than a tick.</p><p>The names are historical and cannot be changed without breaking old code. Mental model: <code>nextTick</code> means after this operation, <code>Promise.then</code> means after the ticks, <code>setImmediate</code> means after the I/O poll of this lap, <code>setTimeout</code> means at least N ms from now.</p>",
+    "<p>Use <code>setImmediate</code>. Process a slice of the work, then schedule the next slice with <code>setImmediate</code> so the loop can handle I/O and timers in between.</p><pre><code>function step() {\n  doSlice();                  // e.g. 1000 items\n  if (more) setImmediate(step);\n}</code></pre><p><code>nextTick</code> and promises would not help: they run before the loop moves on, so a long chain still starves I/O. Example: 1,000,000 items in slices of 1,000 give 1,000 yields, each delaying a waiting request by one slice, not the whole job.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The thread libuv uses for the pool: it runs blocking calls that have no non-blocking OS version, so the main thread never waits on them. That covers most <code>fs</code> calls, <code>dns.lookup</code>, <code>crypto.pbkdf2</code>, <code>scrypt</code>, <code>randomBytes</code> and async <code>zlib</code>.</p><p>There are 4 threads by default, so only 4 such tasks run at once; the rest queue. Network sockets do not use the pool; they use epoll, kqueue or IOCP directly, which is why thousands of connections are cheap.</p>",
+    "<p>Any heavy computation on the main thread. Example: hashing a large upload with a synchronous loop, or running <code>JSON.parse</code> on a 200 MB string takes about 1 second. During that second no other request is read, written or timed, so 5,000 connected clients all freeze at once.</p><p>Also bad: a regex with catastrophic backtracking, image resizing in pure JavaScript, or <code>fs.readFileSync</code> in a handler. Move such work to worker threads or another service.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Blocking loop vs chunked work that yields",
+    "js": "// Same CPU work, two ways. A \"request\" is queued right after the work starts.\n// We print the order to see whether the request waits for all the work.\nfunction work(a, b) { let s = 0; for (let i = a; i < b; i++) s += i % 7; return s; }\n\nconst TOTAL = 3000000, CHUNK = 1000000;\n\n// 1) Blocking: one long synchronous loop.\nsetImmediate(() => console.log('blocking: request served AFTER all work'));\nconsole.log('blocking: start, result', work(0, TOTAL));\n\n// 2) Chunked: do a slice, then yield with setImmediate.\nsetTimeout(() => {\n  let done = 0, sum = 0;\n  function step() {\n    sum += work(done, done + CHUNK);\n    done += CHUNK;\n    console.log('chunked: finished', done, 'of', TOTAL);\n    if (done < TOTAL) setImmediate(step); // let other callbacks run in between\n    else console.log('chunked: result', sum);\n  }\n  setImmediate(() => console.log('chunked: request served between chunks'));\n  step();\n}, 10);\n// Cost: same total CPU, slightly more overhead; latency of others drops\n// from the whole job to one chunk."
+   },
+   "followUps": [
+    "<p>Measure how late a timer fires compared with when it should have. With <code>perf_hooks.monitorEventLoopDelay()</code> Node records this in a histogram for you.</p><pre><code>const h = monitorEventLoopDelay({resolution: 20});\nh.enable();\nsetInterval(() =&gt; {\n  log(h.percentile(99) / 1e6);  // ms\n  h.reset();\n}, 5000);</code></pre><p>Healthy services show p99 lag of a few ms. If p99 is 400 ms, something blocked the loop for that long. Also check <code>performance.eventLoopUtilization()</code> for how busy the loop is.</p>",
+    "<p>Match the pool size to what the work is limited by. For CPU-bound work, use about the number of cores: with 8 cores, 8 workers keep every core busy, and more only adds context switching. For work that mostly waits (I/O), a larger pool helps because threads sleep.</p><p>Then verify by load test: raise the size until throughput stops improving. Memory matters too, since each worker thread has its own V8 heap (tens of MB). Start at cores minus 1 and tune with measurements.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Thread pool queue delays a quick task (simulation)",
+    "js": "// Simulated libuv pool: fixed workers, a queue, and a virtual clock (ms).\n// Not real threads: it shows how queueing delays a quick job (like a DNS lookup).\nfunction simulate(poolSize, tasks) {\n  const free = new Array(poolSize).fill(0); // time each worker becomes free\n  const out = [];\n  for (const t of tasks) {\n    let w = 0;                                   // pick the worker free earliest\n    for (let i = 1; i < poolSize; i++) if (free[i] < free[w]) w = i;\n    const start = Math.max(free[w], t.arrive);\n    free[w] = start + t.cost;\n    out.push(t.name + ' waited ' + (start - t.arrive) + ' ms, done at ' + free[w]);\n  }\n  return out;\n}\n\n// 8 slow file reads (100 ms each) arrive at t=0, then a 5 ms DNS lookup at t=1.\nconst tasks = [];\nfor (let i = 1; i <= 8; i++) tasks.push({ name: 'read' + i, arrive: 0, cost: 100 });\ntasks.push({ name: 'dns', arrive: 1, cost: 5 });\n\nfor (const size of [4, 8]) {\n  console.log('--- pool size ' + size + ' ---');\n  const lines = simulate(size, tasks);\n  console.log(lines[0]);\n  console.log(lines[lines.length - 1]);\n}"
+   },
+   "followUps": [
+    "<p><code>dns.resolve</code> (and its variants like <code>resolve4</code>) does not use the pool. It makes real network DNS queries through the c-ares library, which is asynchronous. <code>dns.lookup</code> uses the system call <code>getaddrinfo</code>, which blocks, so it runs in the pool.</p><p>Also, <code>http.get</code> uses <code>dns.lookup</code> by default, so many slow file operations can delay outgoing requests. Using <code>resolve</code> or a DNS cache avoids that.</p>",
+    "<p>Because extra threads cost memory and compete for CPU cores and the disk. With 4 cores, a pool of 64 running <code>pbkdf2</code> gives no more throughput than 4, while each task takes much longer to finish because they share cores, and context switching adds overhead.</p><p>For I/O-bound pool work (slow disks, network file systems) a bigger pool helps up to the device limit. Past that it only increases queued memory and latency. Measure, then pick.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Backpressure: write() false and drain",
+    "js": "// Backpressure: write() returns false once the buffer reaches highWaterMark.\nconst { Writable } = require('stream');\n\nconst slow = new Writable({\n  highWaterMark: 10,                       // buffer limit in bytes\n  write(chunk, enc, cb) { setTimeout(cb, 20); } // slow consumer: 20 ms per chunk\n});\n\nlet i = 0;\nfunction produce() {\n  while (i < 6) {\n    const ok = slow.write(Buffer.alloc(4)); // 4-byte chunks\n    i++;\n    console.log('wrote chunk', i, '-> write() returned', ok,\n                '| buffered bytes:', slow.writableLength);\n    if (!ok) {                              // stop, wait for the buffer to empty\n      console.log('   producer pauses until drain');\n      slow.once('drain', () => { console.log('   drain: resuming'); produce(); });\n      return;\n    }\n  }\n  slow.end(() => console.log('all chunks written'));\n}\nproduce();\n// Memory stays near highWaterMark instead of growing with the data size."
+   },
+   "followUps": [
+    "<p>No, it is a soft threshold. <code>write()</code> still accepts data after the buffer passes the mark; it just returns <code>false</code> to tell you to stop. A producer that ignores this keeps filling memory.</p><p>Example: <code>highWaterMark</code> of 16 KiB and a 100 KiB <code>write()</code> call: the whole chunk is buffered, the return value is <code>false</code>, and <code>writableLength</code> is 100 KiB. Only the well-behaved producer that waits for <code>'drain'</code> keeps memory near the mark.</p>",
+    "<p>The same way, through the OS. If the client reads slowly, its TCP receive window fills, the server's send buffer fills, and then Node's socket buffer fills, so <code>socket.write()</code> returns <code>false</code>. Pausing the source stops reading from the file, and the source's own OS buffers fill in turn.</p><p>So the pressure chain runs from the slow client back to the disk. <code>pipeline()</code> does this wiring for you. Without it, memory per slow client grows with the unsent data.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use <code>pipeline</code> and listen for failure, because it destroys every stream in the chain when one closes early. When the client disconnects, the response stream closes; <code>pipeline</code> then destroys the file read stream, which closes the file descriptor.</p><pre><code>pipeline(fs.createReadStream(p), res, (err) =&gt; {\n  if (err) log(err.code);  // ERR_STREAM_PREMATURE_CLOSE\n});</code></pre><p>With plain <code>pipe()</code> the file stream stays open and leaks one descriptor per aborted download, until the process hits its limit (often 1024).</p>",
+    "<p>Do not load it with <code>JSON.parse</code>; that needs the whole text in memory (more than 10 GB of heap). Use a streaming parser that emits tokens or items as they arrive, for example a library such as stream-json, inside a <code>pipeline</code>.</p><p>Better still, change the format: newline-delimited JSON (one object per line) can be read with <code>readline</code> and parsed line by line, using memory for one record. For example, 50 million lines of 200 bytes each are processed with a few KB of memory in use at once.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "EventEmitter: once wrapper and pitfalls",
+    "js": "const EventEmitter = require('events');\n\n// A tiny once(): wrap the listener so it removes itself before running.\nfunction onceOf(em, name, fn) {\n  function wrapper(...args) {\n    em.off(name, wrapper);       // remove first, so it fires only once\n    return fn.apply(this, args);\n  }\n  em.on(name, wrapper);\n}\n\nconst em = new EventEmitter();\nonceOf(em, 'hello', (n) => console.log('once listener got', n));\nem.on('hello', (n) => console.log('normal listener got', n));\nconsole.log('emit 1 ran listeners:', em.emit('hello', 1)); // both run\nconsole.log('emit 2 ran listeners:', em.emit('hello', 2)); // only normal runs\nconsole.log('listeners left:', em.listenerCount('hello'));\n\n// Pitfall: 'error' with no listener throws.\ntry { em.emit('error', new Error('boom')); }\ncatch (e) { console.log('unhandled error event threw:', e.message); }\n\n// Pitfall: a throwing listener stops the later ones.\nconst e2 = new EventEmitter();\ne2.on('x', () => { throw new Error('first failed'); });\ne2.on('x', () => console.log('second listener'));\ntry { e2.emit('x'); } catch (e) { console.log('emit threw:', e.message, '- second never ran'); }"
+   },
+   "followUps": [
+    "<p>Wrap the listener so it removes itself before it runs, then register the wrapper.</p><pre><code>function once(em, name, fn) {\n  function w(...a) { em.off(name, w); return fn.apply(this, a); }\n  em.on(name, w);\n}</code></pre><p>Remove first, then call, so that if the listener emits the same event again it does not fire twice. Node's real version also supports <code>off(name, fn)</code> with the original function by storing it on the wrapper (<code>w.listener = fn</code>).</p>",
+    "<p>When you want to wait for events with <code>for await</code> instead of nesting callbacks: <code>for await (const [msg] of on(emitter, 'data'))</code> from <code>events</code>. Errors and ending become normal control flow, and the loop gives you natural backpressure, since the next event is handled only when you ask for it.</p><p>For a single event use <code>await once(emitter, 'ready')</code>. Use an <code>AbortSignal</code> to stop waiting, otherwise a never-emitted event leaves the code hanging forever.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run several workers behind the primary and replace them one by one so there is always capacity. With cluster, the primary calls <code>cluster.fork()</code> for a new worker, waits for its <code>'listening'</code> event, then asks the old worker to <code>disconnect()</code>; it finishes its in-flight requests and exits.</p><p>Example with 4 workers: restart them one at a time and the service never drops below 3 workers. Under Kubernetes a rolling update of pods does the same job, and PM2's <code>reload</code> automates the cluster version.</p>",
+    "<p>Because a WebSocket handshake takes several HTTP requests in some setups (and Socket.IO's long-polling fallback sends many), and the server keeps per-connection state in one process's memory. If round-robin sends request 2 to a different worker, that worker does not know the session and rejects it.</p><p>Sticky sessions (by IP hash or cookie) send one client always to the same worker. Alternatively keep the state in Redis with a pub/sub adapter so any worker can serve it; this is also needed to broadcast to rooms across workers.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Mini Express middleware chain with error handler",
+    "js": "// A mini Express: middleware list + compose. Error handlers have 4 params.\nfunction createApp() {\n  const stack = [];\n  return {\n    use(fn) { stack.push(fn); },\n    handle(req, res) {\n      let i = 0;\n      function next(err) {\n        const fn = stack[i++];\n        if (!fn) return err ? res.push('500 ' + err.message) : res.push('404');\n        const isErrorMw = fn.length === 4;\n        try {\n          if (err && isErrorMw) fn(err, req, res, next);   // error path\n          else if (!err && !isErrorMw) fn(req, res, next); // normal path\n          else next(err);                                  // skip mismatches\n        } catch (e) { next(e); }                           // sync throw -> error path\n      }\n      next();\n    }\n  };\n}\n\nfunction run(path) {\n  const app = createApp(), res = [];\n  app.use((req, r, next) => { r.push('log ' + req.path); next(); });\n  app.use((req, r, next) => req.path === '/bad' ? next(new Error('bad input')) : next());\n  app.use((req, r, next) => { if (req.path === '/crash') throw new Error('bug'); next(); });\n  app.use((req, r) => r.push('200 hello')); // ends: never calls next\n  app.use((err, req, r, next) => { r.push('handled: ' + err.message); });\n  app.handle({ path }, res);\n  console.log(path.padEnd(7), '->', res.join(' | '));\n}\n['/ok', '/bad', '/crash'].forEach(run);"
+   },
+   "followUps": [
+    "<p>The request hangs. If a middleware neither ends the response nor calls <code>next()</code>, Express does nothing else and the client waits until its own timeout, while the connection and the request object stay in memory.</p><p>Example: an auth middleware that checks a token, and on success forgets <code>next()</code>: every request to protected routes never gets a reply. The usual rule is that every code path either sends a response or calls <code>next()</code>, and never does both.</p>",
+    "<p><code>compose</code> turns a list of functions into one function, each receiving a <code>next</code> that runs the following one.</p><pre><code>function compose(list) {\n  return (ctx) =&gt; {\n    const run = (i) =&gt; i === list.length ? undefined\n      : list[i](ctx, () =&gt; run(i + 1));\n    return run(0);\n  };\n}</code></pre><p>This is the idea behind Koa. Each step can do work before and after <code>await next()</code>. It costs O(n) per request for n middleware.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Encapsulation means a plugin and its children get their own scope: decorators, hooks and routes added inside do not leak out to siblings or the parent. Example: an <code>auth</code> plugin adds an <code>onRequest</code> hook; only routes registered inside that plugin are protected, while a sibling <code>/health</code> plugin stays open.</p><p>To share something on purpose (a database connection) wrap the plugin with <code>fastify-plugin</code>, which breaks the encapsulation. In Express a global <code>app.use</code> affects everything after it, so the isolation must be built by hand with routers.</p>",
+    "<p>Put Fastify in front step by step. Option 1: use <code>@fastify/express</code> (or <code>@fastify/middie</code>) to mount the whole Express app inside Fastify, then rewrite one route at a time as native Fastify routes with schemas.</p><p>Option 2: run both and route by path at the proxy (<code>/api/v2</code> goes to Fastify). Move the shared logic (services, database code) out of the handlers first so both frameworks can call it. Verify each moved route with the same tests and compare latency before and after.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because after an uncaught exception the process may be in an unknown state: a half-updated object, a lock never released, a connection left open. Carrying on can corrupt data or serve wrong answers while looking healthy.</p><p>The safe pattern is to log the error, stop accepting new work, finish or abandon in-flight requests within a short timeout, and exit with a non-zero code so the supervisor (Kubernetes, systemd, PM2) starts a clean process. Running several instances means one restart does not cause an outage.</p>",
+    "<p>Stop taking new requests, let current ones finish, release resources, then exit. Steps on <code>SIGTERM</code>: set a flag so the health check fails; call <code>server.close()</code>; wait for connections to end; close the database pool; exit.</p><pre><code>process.on('SIGTERM', async () =&gt; {\n  setTimeout(() =&gt; process.exit(1), 25000).unref();\n  await new Promise(r =&gt; server.close(r));\n  await db.end();\n  process.exit(0);\n});</code></pre><p>The forced-exit timer must be shorter than the platform's kill timeout (30 s by default in Kubernetes).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because <code>server.close()</code> only stops new connections; it completes after every existing connection ends. A keep-alive connection that is idle stays open, and a stuck client can hold one open for minutes, so the callback never fires.</p><p>Fix: after calling <code>close()</code>, call <code>server.closeIdleConnections()</code> (Node 18.2+), and after a deadline <code>closeAllConnections()</code>. Also send <code>Connection: close</code> on responses sent during shutdown. WebSockets are never idle-closed, so close them yourself.</p>",
+    "<p>The primary process must coordinate the workers. On <code>SIGTERM</code> the primary tells each worker to stop (<code>worker.disconnect()</code>), and each worker runs its own graceful shutdown: close its server, finish requests, exit. The primary exits when all workers are gone.</p><p>Watch out for signals: with a process manager the signal may go only to the primary, or to all processes. Under Kubernetes, with one process per pod, none of this is needed; the pod receives the signal directly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look at where the waiting happens. Loop blocking: event loop lag is high and CPU is high on the main thread during spikes, and even tiny unrelated requests (a <code>/health</code> check) become slow. Pool starvation: lag stays low, <code>/health</code> is fast, but only requests that use fs, DNS or crypto are slow.</p><p>Test: time a trivial <code>fs.stat</code> or <code>crypto.randomBytes</code> in the background. If it takes 500 ms while the loop lag is 2 ms, the pool queue is the problem. Fix it by limiting concurrency or raising <code>UV_THREADPOOL_SIZE</code>.</p>",
+    "<p>Base them on a latency target and on your baseline. A good start: warn when p99 event loop delay stays above 100 ms for 5 minutes; page when it is above 500 ms, or when event loop utilization is above 0.9 for 5 minutes. Add alerts for p99 request latency and for GC pause time.</p><p>Use a short window plus a minimum duration so a single brief blip does not wake anyone. Tune after a week using real data: if the p99 is normally 20 ms, a threshold of 100 ms is five times higher than normal.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give every event an id and let the client reconnect with the standard <code>Last-Event-ID</code> header. The browser's <code>EventSource</code> sends it automatically. The server keeps recent chunks of each response (for example the last 60 seconds in Redis keyed by response id) and replays everything after that id, then continues.</p><p>The model call cannot be resumed from the middle, so the server must keep generating without the client (and store the output) or restart. Decide by cost: for short answers regenerating is simpler; for long ones keep the buffer.</p>",
+    "<p>Keep a small bounded buffer between the model and the response, and let backpressure do the rest. If <code>res.write()</code> returns <code>false</code>, pause reading from the upstream until <code>'drain'</code>. Upstream then slows too (its TCP window fills), so memory stays bounded.</p><p>Set a limit, for example 1 MB per stream. If the client falls further behind than that, close the stream with an error event and abort the upstream with the <code>AbortController</code>. With 1,000 streams that caps the buffers at about 1 GB, instead of unbounded growth.</p>"
+   ]
+  }
+ ]
+}
