@@ -1,0 +1,136 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use <code>-E</code> to stop after preprocessing, <code>-S</code> to stop after compilation (assembly), and <code>-c</code> to stop after assembling (an object file).</p><p>Example: <code>g++ -E main.cpp -o main.ii</code> gives the expanded text, <code>-S</code> gives <code>main.s</code>, <code>-c</code> gives <code>main.o</code>. With no flag, all four stages run including linking. Use <code>-E</code> to see what macros and includes produced, and <code>-S</code> to inspect the generated assembly.</p>",
+    "<p>Name mangling is the compiler encoding a function's namespace, class and parameter types into its symbol name, so that overloads get different names in the object file.</p><p>The linker only knows flat symbol names. In C++ you can have <code>void f(int)</code> and <code>void f(double)</code>; they become something like <code>_Z1fi</code> and <code>_Z1fd</code>. Mangling also makes a signature mismatch show up as an undefined reference. Use <code>nm -C</code> or <code>c++filt</code> to turn them back into readable names.</p>",
+    "<p><code>-flto</code> (link-time optimization) keeps the compiler's intermediate form in the object files so the optimizer can see the whole program at link time, not one .cpp at a time.</p><p>That lets it inline a function from util.cpp into main.cpp and drop unused code across files. Example: a tiny getter defined in another .cpp can be inlined with LTO but not without it. The costs are slower links and more memory used during the link step.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Declaration vs definition",
+    "cpp": "#include <iostream>\n\nint add(int, int);        // declaration only: name and type\nextern int counter;       // declaration: storage is defined elsewhere\nstruct Node;              // incomplete type: declared, not defined\n\nNode* nothing() { return nullptr; }  // a pointer to an incomplete type is fine\n\nint counter = 3;                       // definition: allocates storage\nint add(int a, int b) { return a + b; } // definition: has a body\nstruct Node { int val; double w; };    // class definition: full member list\n\nint main() {\n    // Node n;  // would not compile above the struct definition\n    std::cout << \"add(2,3) = \" << add(2, 3) << \"\\n\";\n    std::cout << \"counter = \" << counter << \"\\n\";\n    std::cout << \"nothing() is null: \" << (nothing() == nullptr) << \"\\n\";\n    std::cout << \"sizeof(Node) = \" << sizeof(Node) << \"\\n\";  // now complete\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>It is a definition: at namespace scope, <code>int x;</code> creates the variable and reserves storage, and it is zero-initialized because it has static storage.</p><p>To only declare it, write <code>extern int x;</code>. That is why putting <code>int x;</code> in a header included by two .cpp files gives a multiple-definition link error: each file then defines its own <code>x</code>. (Inside a class, <code>int x;</code> is a member declaration, a different situation.)</p>",
+    "<p>A pointer has a fixed size no matter what it points to, but an object needs the compiler to know how many bytes it takes and what members it has.</p><p>With <code>struct Node;</code> alone, <code>Node* p;</code> is fine because a pointer is just an address (8 bytes on 64-bit). <code>Node n;</code> or <code>sizeof(Node)</code> fails because the size is unknown. You also cannot use <code>p-&gt;val</code> until the full definition is visible. This is how headers avoid including each other.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With a static library (.a), the linker only pulls in the members that satisfy symbols it currently needs, scanning left to right, so a library listed before the objects that use it can be skipped.</p><p>Example: <code>g++ -lfoo main.o</code> fails with undefined references, while <code>g++ main.o -lfoo</code> works. The linker sees <code>main.o</code> first, notes it needs <code>foo()</code>, then finds it in libfoo. If library A needs symbols from library B, list A before B.</p>",
+    "<p><code>extern \"C\"</code> tells the compiler to give a function a plain C symbol name, without C++ name mangling.</p><p>C code has no overloads, so a C library exports <code>add</code>, not <code>_Z3addii</code>. If a C++ file declares it without <code>extern \"C\"</code>, it asks the linker for the mangled name and gets an undefined reference. Headers shared by both languages wrap declarations in <code>#ifdef __cplusplus extern \"C\" { ... } #endif</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>#pragma once is shorter and cannot have a name typo, but it is not in the standard; include guards are fully portable.</p><p>Guards: you must pick a unique macro name (copy-pasted names cause silently skipped headers), but they work everywhere. #pragma once: one line, and compilers can skip re-reading the file. Its weak spot is when the same file is reachable by different paths (copies, symlinks, odd network drives). In practice GCC, Clang and MSVC all support it well.</p>",
+    "<p>Since C++17, <code>inline</code> on a function or variable mainly means \"multiple identical definitions across translation units are allowed and merged\"; it is no longer a request to expand the code at the call site.</p><p>That is why you can put <code>inline int maxConn = 100;</code> or a small function body in a header without a multiple-definition link error. The compiler decides on its own whether to actually inline calls, so <code>inline</code> is not a speed hint.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fundamental type sizes on this platform",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // sizeof(char) is always 1; the rest depend on the platform\n    cout << \"char        \" << sizeof(char) << \"\\n\";\n    cout << \"short       \" << sizeof(short) << \"\\n\";\n    cout << \"int         \" << sizeof(int) << \"\\n\";\n    cout << \"long        \" << sizeof(long) << \"\\n\";\n    cout << \"long long   \" << sizeof(long long) << \"\\n\";\n    cout << \"float       \" << sizeof(float) << \"\\n\";\n    cout << \"double      \" << sizeof(double) << \"\\n\";\n    cout << \"bool        \" << sizeof(bool) << \"\\n\";\n    cout << \"void*       \" << sizeof(void*) << \"\\n\";\n    // exact-width types give the same size everywhere\n    static_assert(sizeof(int32_t) == 4, \"int32_t must be 4 bytes\");\n    static_assert(sizeof(uint64_t) == 8, \"uint64_t must be 8 bytes\");\n    cout << \"int32_t     \" << sizeof(int32_t) << \"\\n\";\n    cout << \"uint64_t    \" << sizeof(uint64_t) << \"\\n\";\n    cout << \"int_fast32_t \" << sizeof(int_fast32_t) << \"\\n\";\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p><code>int_fast32_t</code> is the type the platform thinks is fastest with at least 32 bits, so use it when you need a minimum range and care about speed more than exact size.</p><p>On x86-64 Linux glibc it is actually 8 bytes (<code>long</code>), because 64-bit arithmetic avoids extra work, while <code>int32_t</code> is exactly 4. That makes it a poor fit for arrays or file formats, where memory or layout matters. Use <code>int32_t</code> for exact layout, <code>int_fast32_t</code> for loop counters.</p>",
+    "<p><code>bool</code> is at least 1 byte because every object must have its own address, and addresses point to bytes, not bits.</p><p>So <code>sizeof(bool)</code> is 1 on common platforms, even though it only holds true or false. Bit-level packing would need shifting and masking on every access. When you need real bits, use <code>std::bitset&lt;N&gt;</code> or <code>std::vector&lt;bool&gt;</code>, which pack 8 values per byte but return proxy objects instead of real references.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Two's complement and the int8_t range",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Print the 8-bit pattern of several values\n    for (int v : {127, 1, 0, -1, -127, -128}) {\n        int8_t x = static_cast<int8_t>(v);\n        cout << setw(5) << v << \" = \" << bitset<8>(static_cast<unsigned char>(x)) << \"\\n\";\n    }\n    // Negate by flipping all bits and adding one\n    int8_t a = 5;\n    int8_t neg = static_cast<int8_t>(~a + 1);\n    cout << \"negate 5 -> \" << static_cast<int>(neg) << \"\\n\";\n    // abs(INT_MIN) overflows int; compute it safely in unsigned\n    int m = INT_MIN;\n    unsigned int mag = 0u - static_cast<unsigned int>(m);\n    cout << \"INT_MIN = \" << m << \", safe magnitude = \" << mag << \"\\n\";\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>Do the negation in a wider or unsigned type: the magnitude of INT_MIN (2147483648) fits in <code>unsigned int</code> or <code>long long</code> even though it does not fit in <code>int</code>.</p><pre><code>unsigned mag(int x) {\n    return x &lt; 0 ? 0u - (unsigned)x : (unsigned)x;\n}\n// mag(INT_MIN) == 2147483648u\n</code></pre><p>Unsigned wrap-around is well defined, so <code>0u - 2147483648u</code> gives 2147483648u. Time and space are O(1).</p>",
+    "<p>Since C++20, right-shifting a negative number is an arithmetic shift: the sign bit is copied in, so the result stays negative and the shift rounds toward minus infinity.</p><p>Example: <code>-8 &gt;&gt; 1</code> is <code>-4</code>, and <code>-1 &gt;&gt; 5</code> is still <code>-1</code>. Before C++20 this was implementation-defined, though nearly all compilers did the same. Left-shifting a negative value was undefined before C++20; shifting by a count that is negative or at least the bit width is still undefined.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Signed vs unsigned overflow and safe checks",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// Check BEFORE adding: the addition itself would be undefined behavior\nbool addOverflows(int a, int b) {\n    return b > 0 ? a > INT_MAX - b : a < INT_MIN - b;\n}\n\nint main() {\n    unsigned int u = UINT_MAX;\n    u = u + 1;  // defined: wraps modulo 2^32\n    cout << \"UINT_MAX + 1 = \" << u << \"\\n\";\n\n    int a = INT_MAX, b = 1;\n    cout << \"INT_MAX + 1 would overflow? \" << addOverflows(a, b) << \"\\n\";\n    cout << \"10 + 20 would overflow? \" << addOverflows(10, 20) << \"\\n\";\n\n    int r;\n    // GCC/Clang builtin: returns true when the result did not fit\n    bool bad = __builtin_add_overflow(a, b, &r);\n    cout << \"builtin says overflow: \" << bad << \"\\n\";\n\n    long long wide = static_cast<long long>(a) + b;  // compute in a wider type\n    cout << \"in long long: \" << wide << \"\\n\";\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>Any check that performs the overflowing addition first and tests afterwards is unsafe, because the compiler may assume the addition never overflowed and remove the test.</p><pre><code>int sum = a + b;\nif (sum &lt; a) { /* overflow detected? */ }\n</code></pre><p>For <code>b &gt; 0</code> the compiler reasons that <code>a + b &lt; a</code> is impossible without overflow, so it may delete the branch. Safe versions: test before adding (<code>a &gt; INT_MAX - b</code>), use <code>__builtin_add_overflow</code>, or do the math in <code>long long</code>.</p>",
+    "<p>Use unsigned types for bit patterns, masks, hashes and modular arithmetic, where wrap-around is what you want and defined behavior is guaranteed.</p><p>Example: a hash <code>h = h * 31 + c</code> on <code>uint32_t</code> wraps predictably on every platform. Do not use unsigned just because a value \"cannot be negative\": <code>size_t i = 0; i--</code> wraps to a huge number, and <code>i &gt;= 0</code> is always true, which creates endless loops. For counts and indices that you subtract from, prefer a signed type.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Usual arithmetic conversions and their bugs",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    vector<int> v;  // empty\n    // size() is unsigned, so size() - 1 wraps to a huge number\n    cout << \"v.size() - 1 = \" << v.size() - 1 << \"\\n\";\n    cout << \"buggy loop condition 0 < size()-1: \" << (0 < v.size() - 1) << \"\\n\";\n    cout << \"safe: \" << (0 < static_cast<long long>(v.size()) - 1) << \"\\n\";\n\n    cout << \"-1 < 1u        : \" << (-1 < 1u) << \"\\n\";           // -1 becomes huge unsigned\n    cout << \"cmp_less(-1,1u): \" << std::cmp_less(-1, 1u) << \"\\n\"; // compares real values\n\n    uint16_t a = 65535;\n    // a * a is computed as int (overflow!), so widen first\n    uint32_t p = static_cast<uint32_t>(a) * a;\n    cout << \"65535*65535 widened = \" << p << \"\\n\";\n\n    cout << \"type of 'a'+1 is int: \" << is_same_v<decltype('a' + 1), int> << \"\\n\";\n    cout << \"'a' + 1 = \" << 'a' + 1 << \"\\n\";\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>It is <code>int</code>, with the value 98: <code>'a'</code> is a <code>char</code>, which is promoted to <code>int</code> before the addition (97 + 1 = 98).</p><p>That is why <code>std::cout &lt;&lt; 'a' + 1</code> prints <code>98</code> and not <code>b</code>. To get a char back, cast it: <code>static_cast&lt;char&gt;('a' + 1)</code> is <code>'b'</code>. The same promotion happens for <code>short</code> and <code>bool</code> in any arithmetic.</p>",
+    "<p><code>std::cmp_less(a, b)</code> (C++20, in &lt;utility&gt;) compares the real mathematical values of two integers even when one is signed and the other unsigned.</p><p>With the normal operator, <code>-1 &lt; 1u</code> is false because -1 converts to 4294967295u. <code>std::cmp_less(-1, 1u)</code> is true, as you would expect. There are also <code>cmp_equal</code>, <code>cmp_greater</code> and so on. It costs a couple of extra checks, so use it where mixing signs is unavoidable.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fast I/O setup and parsing with from_chars",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);  // do not sync with C stdio on each call\n    cin.tie(nullptr);             // do not flush cout before each read\n\n    string text = \"12 -7 300 45 8\";  // stands in for a big input\n    cout << \"input: \" << text << '\\n';\n\n    long long sum = 0;\n    const char* p = text.data();\n    const char* end = p + text.size();\n    while (p < end) {\n        while (p < end && *p == ' ') ++p;       // skip spaces\n        int x;\n        auto res = from_chars(p, end, x);       // fast, no locale, no allocation\n        if (res.ec != errc()) break;\n        sum += x;\n        p = res.ptr;\n    }\n    cout << \"sum = \" << sum << '\\n';  // '\\n' instead of endl avoids a flush\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>It hangs because the program's prompt is still sitting in the output buffer, and the judge or user is waiting for it before sending the next input.</p><p>With <code>cin.tie(nullptr)</code> and no flush, <code>cout</code> only writes when its buffer fills or the program ends. The reader waits for a query, the program waits for the reply, and nobody moves. Fix: write <code>cout &lt;&lt; q &lt;&lt; std::endl;</code> or <code>cout.flush()</code> after every query. Use flushing only for interactive tasks.</p>",
+    "<p>Because <code>eof()</code> becomes true only after a read has already failed, so the loop runs one extra time with a stale or garbage value.</p><pre><code>int x;\nwhile (!cin.eof()) { cin &gt;&gt; x; sum += x; }  // wrong\nwhile (cin &gt;&gt; x) sum += x;                // right\n</code></pre><p>With the input \"1 2\" the wrong loop adds the last value twice (sum 5 instead of 3). Testing the read itself, as in <code>while (cin &gt;&gt; x)</code>, is correct and also stops on bad input.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why using namespace std is risky: name clashes",
+    "cpp": "#include <iostream>\n#include <iterator>\n#include <vector>\n#include <string>\n\nnamespace app {\n    // our own function named like std::distance\n    int distance(int a, int b) { return b > a ? b - a : a - b; }\n}\n\nint main() {\n    std::vector<int> v = {1, 2, 3, 4};\n    // Qualified names make it obvious which function is called\n    std::cout << \"app::distance(3, 10) = \" << app::distance(3, 10) << \"\\n\";\n    std::cout << \"std::distance over v = \"\n              << std::distance(v.begin(), v.end()) << \"\\n\";\n\n    using std::cout;  // targeted using-declaration: one name only\n    cout << \"using-declaration works\\n\";\n\n    {\n        using namespace std::literals;  // small scope: acceptable\n        auto s = \"hello\"s;              // std::string literal\n        cout << s << \" has \" << s.size() << \" chars\\n\";\n    }\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>A using-declaration brings in one name; a using-directive brings in every name from a namespace.</p><p><code>using std::cout;</code> makes just <code>cout</code> usable unqualified. <code>using namespace std;</code> makes all of std visible for lookup, so a name like <code>count</code> or <code>distance</code> can become ambiguous with your own. The declaration is safer because you control exactly which names enter, and a clash with an existing name in the same scope is reported at once.</p>",
+    "<p>Mostly yes: <code>using namespace std::literals;</code> only exposes literal suffixes such as <code>s</code>, <code>ms</code> and <code>sv</code>, which are designed so they cannot clash with normal names.</p><p>Example: <code>\"hi\"s</code> is a <code>std::string</code> and <code>250ms</code> is a <code>std::chrono::milliseconds</code>. Still keep it inside a function or .cpp file rather than in a header, so you do not push it onto every user of that header.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ADL and the swap idiom",
+    "cpp": "#include <iostream>\n#include <utility>\n\nnamespace shapes {\n    struct Box { int w; };\n    // Found through ADL because Box lives in namespace shapes\n    void swap(Box& a, Box& b) {\n        std::cout << \"  shapes::swap called\\n\";\n        std::swap(a.w, b.w);\n    }\n}\n\ntemplate <class T>\nvoid mySwap(T& a, T& b) {\n    using std::swap;  // fallback for types without their own swap\n    swap(a, b);       // unqualified call: ADL may find a better one\n}\n\nint main() {\n    int x = 1, y = 2;\n    std::cout << \"swap ints (std::swap):\\n\";\n    mySwap(x, y);\n    std::cout << \"  x=\" << x << \" y=\" << y << \"\\n\";\n\n    shapes::Box a{10}, b{20};\n    std::cout << \"swap boxes (custom):\\n\";\n    mySwap(a, b);\n    std::cout << \"  a.w=\" << a.w << \" b.w=\" << b.w << \"\\n\";\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>Yes, since C++20: ADL can find a function template even if you write explicit template arguments, as long as some template with that name is visible at that point.</p><p>Before C++20, <code>f&lt;int&gt;(x)</code> was parsed as a comparison unless a template named <code>f</code> was already visible by normal lookup, so ADL did not kick in. Example: <code>get&lt;0&gt;(myTuple)</code> relies on this for types in your own namespace. Explicit arguments still do not change which namespaces ADL searches.</p>",
+    "<p>A hidden friend is a friend function defined inside a class body, which can only be found through ADL and not through normal lookup.</p><pre><code>struct Box {\n    int w;\n    friend void swap(Box&amp; a, Box&amp; b) { std::swap(a.w, b.w); }\n};\n</code></pre><p>Because it is invisible to ordinary lookup, it cannot clash with other overloads or be picked by accident; it is only considered when a <code>Box</code> is an argument. It is the recommended way to write <code>operator&lt;&lt;</code>, <code>swap</code> and comparison operators.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Static initialization order and construct on first use",
+    "cpp": "#include <iostream>\n\nstruct Logger {\n    const char* name;\n    Logger(const char* n) : name(n) { std::cout << \"construct \" << name << \"\\n\"; }\n    ~Logger() { std::cout << \"destroy   \" << name << \"\\n\"; }\n};\n\nLogger g1(\"global1\");  // runs before main, in declaration order within a TU\nLogger g2(\"global2\");\nconstinit int limit = 42;  // C++20: guaranteed constant initialization\n\n// Construct on first use: initialized when first called, thread-safe since C++11\nLogger& lazy() {\n    static Logger l(\"lazy\");\n    return l;\n}\n\nint main() {\n    std::cout << \"main starts, limit = \" << limit << \"\\n\";\n    lazy();\n    lazy();  // second call does not construct again\n    std::cout << \"main ends\\n\";\n    return 0;  // statics are destroyed in reverse order of construction\n}\n"
+   },
+   "followUps": [
+    "<p><code>constinit</code> guarantees that a variable with static or thread storage is initialized at compile time (constant initialization), so no dynamic initializer runs for it.</p><p>If the initializer is not a constant expression, the code does not compile. Unlike <code>constexpr</code>, the variable can still be modified later. Example: <code>constinit int limit = compute();</code> only compiles if <code>compute()</code> is constexpr. That removes the init-order fiasco for that variable, because it is ready before any other code runs.</p>",
+    "<p>Because static objects are destroyed in reverse order of construction, a destructor may use another global that has already been destroyed.</p><p>Example: a global <code>Logger</code> is built after a global <code>Cache</code>; if Cache's destructor writes to the Logger, that is fine, but if the order is reversed the Logger is already gone, and the program touches a dead object (undefined behavior at exit). Across translation units the construction order is unspecified, so the destruction order is too. A function-local static (or an intentionally leaked object) avoids it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sharing config: inline variable, constexpr, accessor",
+    "cpp": "#include <iostream>\n#include <mutex>\n\n// C++17 inline variable: put this in a header; all TUs share ONE object\ninline int maxConn = 100;\n\n// constexpr constant: each TU gets its own copy, fine for values that never change\nconstexpr int kTimeoutMs = 2500;\n\n// Encapsulated, lazily created, with a mutex for run-time changes\nstruct Config {\n    int retries = 3;\n    std::mutex m;\n};\nConfig& config() {\n    static Config c;  // no initialization-order problem\n    return c;\n}\n\nint main() {\n    std::cout << \"maxConn = \" << maxConn << \"\\n\";\n    maxConn = 250;  // visible to every file that includes the header\n    std::cout << \"maxConn after change = \" << maxConn << \"\\n\";\n    std::cout << \"kTimeoutMs = \" << kTimeoutMs << \"\\n\";\n    {\n        std::lock_guard<std::mutex> g(config().m);\n        config().retries = 5;\n    }\n    std::cout << \"retries = \" << config().retries << \"\\n\";\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>Protect it with a <code>std::mutex</code> (or make it <code>std::atomic</code> if it is a simple value), because an unprotected write racing with reads is undefined behavior.</p><pre><code>std::atomic&lt;int&gt; maxConn{100};\nmaxConn.store(250);          // writer\nint n = maxConn.load();      // reader\n</code></pre><p>For a whole struct, hide it behind an accessor with a mutex, or publish a new immutable copy through <code>std::shared_ptr</code> so readers always see a consistent set of values.</p>",
+    "<p>Because a namespace-scope <code>const</code> variable has internal linkage by default, each .cpp that includes the header gets its own private copy and the linker never sees it.</p><p>That is why <code>const int k = 5;</code> in a header causes no multiple-definition error, while a non-const <code>int k = 5;</code> does. The default does not apply to <code>extern const int k;</code>, which has external linkage. For one shared object across files in C++17, use <code>inline const int k = 5;</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Guarding against common undefined behavior",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// Each helper refuses the input that would be undefined behavior\nbool safeDiv(int a, int b, int& out) {\n    if (b == 0 || (a == INT_MIN && b == -1)) return false;  // INT_MIN / -1 overflows\n    out = a / b;\n    return true;\n}\nbool safeShift(int v, int s, int& out) {\n    if (s < 0 || s >= 32) return false;  // shift count must be in [0, 31]\n    out = static_cast<int>(static_cast<unsigned>(v) << s);\n    return true;\n}\nconstexpr int square(int x) { return x * x; }\n\nint main() {\n    int r;\n    cout << \"INT_MIN / -1 ok? \" << safeDiv(INT_MIN, -1, r) << \"\\n\";\n    cout << \"100 / 7 ok? \" << safeDiv(100, 7, r) << \" -> \" << r << \"\\n\";\n    cout << \"1 << 32 ok? \" << safeShift(1, 32, r) << \"\\n\";\n    cout << \"1 << 5 ok? \" << safeShift(1, 5, r) << \" -> \" << r << \"\\n\";\n    // Overflow inside constexpr is a compile error, so UB cannot hide there\n    constexpr int sq = square(46340);\n    cout << \"46340^2 = \" << sq << \"\\n\";\n    unsigned char c = 200;\n    cout << \"isalpha(unsigned char 200) = \" << (isalpha(c) != 0) << \"\\n\";\n    return 0;\n}\n"
+   },
+   "followUps": [
+    "<p>Undefined behavior means the standard places no requirements at all on what happens; unspecified means a valid result from a set of options; implementation-defined means the compiler picks and documents it.</p><p>Examples: the order in which <code>f(a(), b())</code> evaluates its arguments is unspecified (some order, no crash). The size of <code>int</code> is implementation-defined (documented per compiler). <code>INT_MAX + 1</code> is undefined (anything may happen). Portable code can rely on unspecified results only if it works for every option.</p>",
+    "<p>Erroneous behavior (C++26) is a new category for mistakes like reading an uninitialized local variable: the program is wrong, but it is no longer undefined, so the compiler cannot assume it never happens.</p><p>Such reads give a fixed, implementation-chosen value instead of arbitrary results, and implementations are encouraged to report them (for example, by diagnostics or a trap). This keeps bugs detectable and limits damage, while still allowing <code>[[indeterminate]]</code> to opt out for performance-critical code.</p>"
+   ]
+  }
+ ]
+}

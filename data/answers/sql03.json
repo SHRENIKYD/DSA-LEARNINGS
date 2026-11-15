@@ -1,0 +1,144 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "COUNT(*) vs COUNT(col) vs COUNT(DISTINCT col)",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE customers(id INTEGER, phone TEXT, country TEXT)\")\nrows = [(1, \"111\", \"US\"), (2, None, \"US\"), (3, \"222\", \"UK\"),\n        (4, None, \"FR\"), (5, \"333\", \"IN\"), (6, \"444\", \"UK\")]\ndb.executemany(\"INSERT INTO customers VALUES (?,?,?)\", rows)\nprint(\"rows:\", rows)\n\n# COUNT(*) counts rows; COUNT(col) skips NULLs; DISTINCT removes repeats\nq = \"\"\"SELECT COUNT(*), COUNT(phone), COUNT(DISTINCT country),\n              COUNT(*) - COUNT(phone) FROM customers\"\"\"\ntotal, phones, countries, missing = db.execute(q).fetchone()\nprint(\"COUNT(*)              =\", total)\nprint(\"COUNT(phone)          =\", phones)\nprint(\"COUNT(DISTINCT country) =\", countries)\nprint(\"missing phones        =\", missing)\n"
+   },
+   "followUps": [
+    "<p>Concatenate or nest the two columns, because SQLite has no <code>COUNT(DISTINCT a, b)</code>. Use a subquery: <code>SELECT COUNT(*) FROM (SELECT DISTINCT a, b FROM t);</code> This also treats NULL as one value, which is often what you want. Example: pairs (US,1),(US,1),(UK,2) give 2.</p><p>Row values also work in some engines, but the subquery is portable. Cost: one hash or sort over N rows, O(N) time.</p>",
+    "<p>It is expensive because the engine must remember every distinct value it has seen, so memory grows with the number of distinct values, and partial counts from different machines cannot simply be added. With 1 billion rows and 500 million distinct ids, that is a huge hash table or a full sort. <b>HyperLogLog</b> is an approximate counter: it hashes each value and tracks the longest run of leading zero bits seen, which estimates the count with about 1 to 2 percent error in a few kilobytes. Sketches can be merged across nodes, which is why engines offer <code>APPROX_COUNT_DISTINCT</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "WHERE filters rows, HAVING filters groups",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE emp(name TEXT, dept TEXT, salary INT)\")\ndata = [(\"a\", \"IT\", 60000), (\"b\", \"IT\", 55000), (\"c\", \"IT\", 40000),\n        (\"d\", \"HR\", 70000), (\"e\", \"HR\", 30000), (\"f\", \"Ops\", 52000)]\ndb.executemany(\"INSERT INTO emp VALUES (?,?,?)\", data)\nprint(\"input:\", data)\n\n# WHERE drops low earners row by row, before grouping\n# HAVING then drops groups with fewer than 2 remaining rows\nq = \"\"\"SELECT dept, COUNT(*) FROM emp\n       WHERE salary >= 50000\n       GROUP BY dept\n       HAVING COUNT(*) >= 2\"\"\"\nprint(\"depts with 2+ earners of 50k+:\", db.execute(q).fetchall())\n\n# An aggregate in WHERE is an error: the groups do not exist yet\ntry:\n    db.execute(\"SELECT dept FROM emp WHERE COUNT(*) >= 2 GROUP BY dept\")\nexcept sqlite3.Error as e:\n    print(\"aggregate in WHERE ->\", e)\n"
+   },
+   "followUps": [
+    "<p>Yes, in most engines. Without GROUP BY the whole table is treated as one group, so <code>SELECT COUNT(*) FROM t HAVING COUNT(*) &gt; 5</code> returns one row if there are more than 5 rows and no rows otherwise. PostgreSQL, MySQL and SQL Server allow it. SQLite is stricter in old versions, which reject HAVING without GROUP BY. It is rare in practice; a subquery or a plain WHERE on a derived table is usually clearer.</p>",
+    "<p>It depends on the database. MySQL and SQLite allow a SELECT alias in HAVING, so <code>SELECT dept, COUNT(*) AS n ... HAVING n &gt; 2</code> works. PostgreSQL and SQL Server reject it because HAVING runs before SELECT in the logical order, so you must repeat <code>COUNT(*) &gt; 2</code>. For portability, repeat the expression, or wrap the query in a subquery and filter on the alias in an outer WHERE.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Logical clause order: aliases and aggregates",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE sales(region TEXT, amount INT)\")\ndata = [(\"N\", 10), (\"N\", 30), (\"S\", 5), (\"S\", 5), (\"E\", 100)]\ndb.executemany(\"INSERT INTO sales VALUES (?,?)\", data)\nprint(\"input:\", data)\n\n# ORDER BY runs after SELECT, so it can use the alias \"total\"\nq = \"\"\"SELECT region, SUM(amount) AS total FROM sales\n       GROUP BY region ORDER BY total DESC\"\"\"\nprint(\"alias in ORDER BY:\", db.execute(q).fetchall())\n\n# WHERE runs before GROUP BY: aggregates do not exist yet\ntry:\n    db.execute(\"SELECT region FROM sales WHERE SUM(amount) > 20 GROUP BY region\")\nexcept sqlite3.Error as e:\n    print(\"aggregate in WHERE ->\", e)\n\n# HAVING runs after GROUP BY, so the aggregate is allowed\nq = \"SELECT region FROM sales GROUP BY region HAVING SUM(amount) > 20\"\nprint(\"same idea with HAVING:\", db.execute(q).fetchall())\n"
+   },
+   "followUps": [
+    "<p>Window functions run after GROUP BY and HAVING but before DISTINCT and ORDER BY. The order is FROM, WHERE, GROUP BY, HAVING, <b>window functions</b>, SELECT list, DISTINCT, ORDER BY, LIMIT. That is why you cannot filter on a window result in WHERE or HAVING: it does not exist yet. Example: to keep only <code>ROW_NUMBER() = 1</code>, put the query in a subquery or CTE and filter in the outer WHERE. Some engines offer QUALIFY, which filters right after window evaluation.</p>",
+    "<p>SQLite is more lenient than the standard: it lets a WHERE clause refer to a SELECT alias as an extension, and so do MySQL and BigQuery. PostgreSQL follows the standard logical order, in which WHERE runs before the SELECT list creates the alias, so it reports that the column does not exist. If you want portable code, repeat the expression in WHERE or put the aliased query in a subquery or CTE and filter outside: <code>SELECT * FROM (SELECT a*2 AS d FROM t) WHERE d &gt; 10</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "GROUP BY golden rule: SQLite bare column",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE emp(name TEXT, dept TEXT, salary INT)\")\ndata = [(\"ann\", \"IT\", 50), (\"bob\", \"IT\", 90), (\"cy\", \"IT\", 70),\n        (\"di\", \"HR\", 40), (\"ed\", \"HR\", 60)]\ndb.executemany(\"INSERT INTO emp VALUES (?,?,?)\", data)\nprint(\"input:\", data)\n\n# Breaking the rule: SQLite accepts it and picks a value from some row\nbad = \"SELECT dept, name, COUNT(*) FROM emp GROUP BY dept\"\nprint(\"bare name with COUNT (arbitrary):\", db.execute(bad).fetchall())\n\n# Documented exception: with a single MAX, the bare column comes from the max row\nok = \"SELECT dept, name, MAX(salary) FROM emp GROUP BY dept\"\nprint(\"bare name with MAX (max row):    \", db.execute(ok).fetchall())\n\n# Portable fix: join back to the per-group maximum\nfix = \"\"\"SELECT e.dept, e.name, e.salary FROM emp e\n         JOIN (SELECT dept, MAX(salary) m FROM emp GROUP BY dept) t\n           ON e.dept = t.dept AND e.salary = t.m\"\"\"\nprint(\"join-back (portable):\", db.execute(fix).fetchall())\n"
+   },
+   "followUps": [
+    "<p>A functional dependency means one column's value is fully determined by another: if <code>id</code> is the primary key, then <code>name</code> and <code>email</code> are determined by it, because each id has exactly one row. PostgreSQL knows the primary key, so <code>SELECT id, name, COUNT(*) FROM t GROUP BY id</code> is legal even though name is not listed. It does not infer dependencies from unique non-key columns or from joins in the same way, so there you must list the columns.</p>",
+    "<p>Join each row to the per-department maximum: <pre><code>SELECT e.* FROM emp e\nJOIN (SELECT dept, MAX(salary) m FROM emp GROUP BY dept) t\n  ON e.dept = t.dept AND e.salary = t.m;</code></pre> The subquery finds one maximum per dept, and the join keeps every employee who matches it. With dept IT salaries 50, 90, 70 it returns the 90 row. Ties return all tied employees. A correlated subquery <code>salary = (SELECT MAX(...) WHERE dept = e.dept)</code> works too.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Aggregates and NULL: SUM of empty, COALESCE",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE t(g TEXT, x INT)\")\ndata = [(\"a\", 10), (\"a\", None), (\"a\", 20), (\"b\", None)]\ndb.executemany(\"INSERT INTO t VALUES (?,?)\", data)\nprint(\"input:\", data)\n\n# NULLs are ignored: AVG over 10 and 20 is 15, not 10\nq = \"SELECT g, COUNT(*), COUNT(x), SUM(x), AVG(x), AVG(COALESCE(x,0)) FROM t GROUP BY g\"\nprint(\"g, COUNT(*), COUNT(x), SUM, AVG, AVG(COALESCE):\")\nfor r in db.execute(q):\n    print(\" \", r)\n\n# Group b has only NULLs: SUM is NULL, COALESCE turns it into 0\nprint(\"SUM for b:\", db.execute(\"SELECT SUM(x) FROM t WHERE g='b'\").fetchone())\nprint(\"COALESCE(SUM):\", db.execute(\"SELECT COALESCE(SUM(x),0) FROM t WHERE g='b'\").fetchone())\n\n# Empty set: COUNT gives 0, SUM gives NULL\nprint(\"empty:\", db.execute(\"SELECT COUNT(x), SUM(x) FROM t WHERE g='zzz'\").fetchone())\n"
+   },
+   "followUps": [
+    "<p>Normally no, but they differ in empty or all-NULL groups. <code>SUM(COALESCE(x,0))</code> treats each NULL as 0 and then adds, so an all-NULL group gives 0, and an empty set gives NULL. <code>COALESCE(SUM(x),0)</code> gives 0 in both cases. For values 10 and NULL, both give 10. The first form is slower because it does extra work per row. Use COALESCE around SUM unless you also need NULLs counted as zeros in another aggregate such as AVG.</p>",
+    "<p><code>TOTAL(x)</code> is a SQLite-only aggregate that works like SUM but always returns a floating-point number and returns 0.0 instead of NULL when there are no non-NULL values. So <code>TOTAL(x)</code> over an empty set is 0.0, where <code>SUM(x)</code> gives NULL. It also never raises an integer overflow error. It is handy, but not portable, so for other databases use <code>COALESCE(SUM(x), 0)</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Conditional aggregation in one pass",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE pay(id INT, state TEXT, amount INT)\")\ndata = [(1, \"approved\", 100), (2, \"declined\", 40), (3, \"approved\", 60),\n        (4, \"approved\", 20), (5, \"declined\", 80)]\ndb.executemany(\"INSERT INTO pay VALUES (?,?,?)\", data)\nprint(\"input:\", data)\n\n# One scan, several differently filtered metrics (CASE inside the aggregate)\nq = \"\"\"SELECT COUNT(*),\n              SUM(CASE WHEN state='approved' THEN 1 ELSE 0 END),\n              SUM(amount),\n              SUM(CASE WHEN state='approved' THEN amount ELSE 0 END)\n       FROM pay\"\"\"\nn, ok, total, ok_amt = db.execute(q).fetchone()\nprint(\"count\", n, \"approved\", ok, \"total\", total, \"approved amount\", ok_amt)\n# Numerator and denominator come from the same rows\nprint(\"approval rate:\", ok / n)\n\n# Same thing with FILTER (SQLite 3.30+)\nq = \"SELECT COUNT(*) FILTER (WHERE state='approved') FROM pay\"\nprint(\"FILTER version:\", db.execute(q).fetchone()[0])\n"
+   },
+   "followUps": [
+    "<p>Because COUNT counts every non-NULL value, and 0 is not NULL. <code>CASE WHEN x THEN 1 ELSE 0 END</code> never returns NULL, so every row is counted, and you get the total row count instead of the matching rows. Example: with 5 rows of which 3 match, you get 5. Fix it by dropping the ELSE, <code>COUNT(CASE WHEN x THEN 1 END)</code>, or by using <code>SUM(CASE WHEN x THEN 1 ELSE 0 END)</code>.</p>",
+    "<p>Plain SQL cannot create columns whose names depend on the data, because a query's columns are fixed when it is parsed. So you use <b>dynamic SQL</b>: first run <code>SELECT DISTINCT subject FROM scores</code>, then build the text of the pivot query in application code or a stored procedure, and execute it. Alternatively return the long format and pivot in the application or BI tool. Validate or quote the names to avoid SQL injection.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Pivot rows to columns with CASE",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE scores(student TEXT, subject TEXT, score INT)\")\ndata = [(\"amy\", \"Math\", 90), (\"amy\", \"Art\", 70), (\"ben\", \"Math\", 60)]\ndb.executemany(\"INSERT INTO scores VALUES (?,?,?)\", data)\nprint(\"long format:\", data)\n\n# One conditional aggregate per output column, GROUP BY the row label\n# MAX with no ELSE keeps a missing exam as NULL instead of 0\nq = \"\"\"SELECT student,\n              MAX(CASE WHEN subject='Math' THEN score END) AS math,\n              MAX(CASE WHEN subject='Art'  THEN score END) AS art\n       FROM scores GROUP BY student ORDER BY student\"\"\"\ndb.execute(\"CREATE TABLE w AS \" + q)\nprint(\"wide format (student, math, art):\")\nfor r in db.execute(q):\n    print(\" \", r)\n\n# Unpivot back with UNION ALL, one SELECT per column\nq = \"\"\"SELECT student, 'Math', math FROM w UNION ALL\n       SELECT student, 'Art', art FROM w\"\"\"\nprint(\"unpivot:\", db.execute(q).fetchall())\n"
+   },
+   "followUps": [
+    "<p>Look for duplicates before pivoting: <code>SELECT student, subject, COUNT(*) FROM scores GROUP BY student, subject HAVING COUNT(*) &gt; 1;</code> Any row returned means the pivot cell is ambiguous. <code>MAX(CASE ...)</code> silently keeps the larger of two scores, and <code>SUM</code> would add them. If Amy has Math 90 and Math 60, MAX shows 90 and hides the second row. Decide the rule (latest, average, error) and enforce it with a unique key.</p>",
+    "<p>Pivot in the BI tool when the columns change often, when the set of columns is unknown ahead of time, or when users want to drag fields around. A pivot table in the tool also keeps totals and sorting consistent. Keep the pivot in SQL when the result feeds another query, an export with fixed columns, or a scheduled report, because then the shape must be stable. A good compromise is to return tidy rows (one per student and subject) from SQL.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "CASE pitfalls: order, NULL, missing ELSE",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE t(x INT)\")\nvals = [5, 50, 100, None]\ndb.executemany(\"INSERT INTO t VALUES (?)\", [(v,) for v in vals])\nprint(\"input:\", vals)\n\n# 1. First TRUE branch wins: x=5 would match both, so order matters\nq = \"\"\"SELECT x, CASE WHEN x < 10 THEN 'tiny' WHEN x < 100 THEN 'small'\n                     WHEN x > 100 THEN 'big' END FROM t\"\"\"\nprint(\"ladder (100 falls in a gap, NULL has no ELSE):\")\nfor r in db.execute(q):\n    print(\" \", r)\n\n# 2. CASE x WHEN NULL never matches because NULL = NULL is not true\nq = \"SELECT CASE x WHEN NULL THEN 'null' ELSE 'other' END FROM t WHERE x IS NULL\"\nprint(\"WHEN NULL:\", db.execute(q).fetchall())\nq = \"SELECT CASE WHEN x IS NULL THEN 'null' ELSE 'other' END FROM t WHERE x IS NULL\"\nprint(\"WHEN x IS NULL:\", db.execute(q).fetchall())\n"
+   },
+   "followUps": [
+    "<p>No, SQL does not guarantee that CASE short-circuits in every case. Logically only the first TRUE branch is returned, but the optimizer may evaluate sub-expressions early, particularly constants and aggregates. For example <code>CASE WHEN y = 0 THEN 0 ELSE x / y END</code> can still fail in some engines if <code>x / y</code> is folded early. Guard the dangerous part itself with <code>x / NULLIF(y, 0)</code> rather than trusting the order of the branches.</p>",
+    "<p>Test every boundary with a small table, one row for each edge value and one just on each side. For ranges like <code>&lt; 10</code>, <code>&lt; 100</code>, test 9, 10, 99, 100, 101, NULL and a negative. Compare the output with the expected label, using a join or a count of mismatches. Also add a check that no row returns NULL when the ladder is meant to be complete: <code>SELECT COUNT(*) FROM t WHERE label IS NULL</code> should be 0.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Avoid division by zero with NULLIF",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE d(name TEXT, hits INT, views INT)\")\ndata = [(\"a\", 3, 4), (\"b\", 0, 0), (\"c\", 1, 3)]\ndb.executemany(\"INSERT INTO d VALUES (?,?,?)\", data)\nprint(\"input:\", data)\n\n# SQLite returns NULL for /0, PostgreSQL or SQL Server would raise an error\nprint(\"raw hits/views:\", db.execute(\"SELECT hits/views FROM d\").fetchall())\n\n# NULLIF(views, 0) makes the denominator NULL, so the result is NULL everywhere\nq = \"SELECT name, 1.0 * hits / NULLIF(views, 0) FROM d\"\nprint(\"NULLIF + decimal:\", db.execute(q).fetchall())\n\n# Integer division truncates: 1/3 becomes 0 without the 1.0 factor\nq = \"SELECT name, hits / NULLIF(views, 0) FROM d\"\nprint(\"integer division:\", db.execute(q).fetchall())\n\n# Decide deliberately: show NULL, or COALESCE to 0\nq = \"SELECT name, COALESCE(1.0 * hits / NULLIF(views, 0), 0) FROM d\"\nprint(\"COALESCE to 0:\", db.execute(q).fetchall())\n"
+   },
+   "followUps": [
+    "<p>Because the guard may not be evaluated first, and because NULL or other bad inputs still slip through. The optimizer can evaluate <code>x / y</code> before the CASE test, so in PostgreSQL a constant like <code>1/0</code> can fail at planning time. A guard <code>y = 0</code> also ignores NULL y, which gives NULL anyway, so it is fine but easy to misread. <code>NULLIF(y, 0)</code> makes the denominator itself safe. Use it wherever a zero is possible.</p>",
+    "<p>Integer division throws away the fraction, so percentages collapse to 0 or 1. In most engines <code>3 / 4</code> is 0, so a 75 percent rate shows as 0. Convert one side to decimal: <code>100.0 * hits / NULLIF(views, 0)</code> gives 75.0. Multiply by 100.0 before dividing so the order of operations keeps the precision. Check the result type, because decimal scale can also round.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Second highest salary, NULL if missing",
+    "python": "import sqlite3\n\ndef run(salaries):\n    db = sqlite3.connect(\":memory:\")\n    db.execute(\"CREATE TABLE employees(salary INT)\")\n    db.executemany(\"INSERT INTO employees VALUES (?)\", [(s,) for s in salaries])\n    # Strictly below the max, so ties at the top are skipped\n    q = \"\"\"SELECT MAX(salary) AS second FROM employees\n           WHERE salary < (SELECT MAX(salary) FROM employees)\"\"\"\n    # An aggregate without GROUP BY always returns exactly one row\n    print(salaries, \"->\", db.execute(q).fetchall())\n    # LIMIT/OFFSET returns zero rows when there is no second value\n    alt = \"SELECT salary FROM employees ORDER BY salary DESC LIMIT 1 OFFSET 1\"\n    print(\"   LIMIT/OFFSET:\", db.execute(alt).fetchall())\n\nrun([100, 200, 300])\nrun([300, 300, 100])  # tie at the top: OFFSET 1 wrongly gives 300\nrun([300])            # no second value\nrun([])\n"
+   },
+   "followUps": [
+    "<p>Rank the salaries per department and keep rank N: <pre><code>SELECT dept, salary FROM (\n  SELECT dept, salary,\n    DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) r\n  FROM emp) WHERE r = N;</code></pre> DENSE_RANK gives ties the same rank and does not skip numbers, so with salaries 90, 90, 70 the second highest is 70. Departments with fewer than N distinct salaries return no row; use a left join from the department list if you need NULL.</p>",
+    "<p>An index on <code>salary</code> makes this fast because MAX(salary) can read the last entry of the b-tree in O(log N) instead of scanning every row. The inner subquery then finds the top value, and the outer query seeks the next value below it, again with an index range lookup. Without the index, both steps are full scans, O(N). For the per-department version, use an index on <code>(dept, salary)</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Ratio of totals vs average of ratios",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE daily(day INT, visits INT, signups INT)\")\ndata = [(1, 2, 1), (2, 900, 90), (3, 100, 10)]\ndb.executemany(\"INSERT INTO daily VALUES (?,?,?)\", data)\nprint(\"input (day, visits, signups):\", data)\n\n# Average of ratios: each day weighs the same, so a tiny day dominates\nq = \"SELECT AVG(1.0 * signups / visits) FROM daily\"\nprint(\"AVG of ratios   :\", round(db.execute(q).fetchone()[0], 4))\n\n# Ratio of totals: the true overall rate, 101 / 1002\nq = \"SELECT 1.0 * SUM(signups) / SUM(visits) FROM daily\"\nprint(\"ratio of totals :\", round(db.execute(q).fetchone()[0], 4))\n\n# A weighted average gives the same answer as the ratio of totals\nq = \"SELECT SUM(1.0 * signups / visits * visits) / SUM(visits) FROM daily\"\nprint(\"weighted average:\", round(db.execute(q).fetchone()[0], 4))\n"
+   },
+   "followUps": [
+    "<p>Use the total times the weight, divided by the sum of weights: <code>SUM(value * weight) / NULLIF(SUM(weight), 0)</code>. Example: scores 90 with weight 1 and 60 with weight 3 give (90 + 180) / 4 = 67.5, while the plain average is 75. For rates, the weight is the denominator, which makes the result equal to the ratio of totals. Exclude rows where the value is NULL from both sums, or the weights are counted without values.</p>",
+    "<p>Averaging ratios is right when the business definition is per item and each item counts equally. For example, a per-user satisfaction score where every user should weigh the same, whatever how many events they produced: compute each user's rate, then average the rates. Another is the average rating per product, where a product with 2 reviews matters as much as one with 2000. Be explicit in the metric definition which of the two is meant.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "GROUP BY plan and index in SQLite",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE emp(dept TEXT, salary INT)\")\ndata = [(\"IT\", 5), (\"HR\", 3), (\"IT\", 9), (\"Ops\", 4), (\"HR\", 8)]\ndb.executemany(\"INSERT INTO emp VALUES (?,?)\", data)\nprint(\"input:\", data)\n\nq = \"SELECT dept, MAX(salary) FROM emp GROUP BY dept\"\n\ndef plan(label):\n    # EXPLAIN QUERY PLAN shows how the engine will run the query\n    print(label)\n    for row in db.execute(\"EXPLAIN QUERY PLAN \" + q):\n        print(\"   \", row[3])\n\nplan(\"without index (sorts with a temp b-tree):\")\ndb.execute(\"CREATE INDEX ix ON emp(dept, salary)\")\nplan(\"with index on (dept, salary) (reads already in order):\")\nprint(\"result:\", db.execute(q).fetchall())\n\n# Hash aggregation by hand: one pass, memory proportional to groups\nacc = {}\nfor d, s in data:\n    acc[d] = max(acc.get(d, s), s)\nprint(\"hash aggregate:\", acc)\n"
+   },
+   "followUps": [
+    "<p>It means SQLite has no index that gives rows in grouping order, so it builds a temporary sorted structure of the group keys in memory or on disk and then reads it to form groups. It is the sort-based strategy. With 1 million rows it sorts 1 million keys, O(N log N). Adding an index on the grouped column, such as <code>(dept)</code> or <code>(dept, salary)</code>, removes that line because rows are already in order.</p>",
+    "<p>Because a median is not decomposable: the median of two partial medians is not the overall median. For node A with values 1, 2, 3 (median 2) and node B with values 10 (median 10), the combined set 1, 2, 3, 10 has median 2.5, not 6. A median needs the full distribution, so nodes must send all values or a histogram. Engines use approximate quantile sketches such as t-digest, which are mergeable, to get an answer with small error.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Join fan-out inflates SUM and COUNT",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.executescript(\"\"\"\nCREATE TABLE orders(id INT, customer INT, amount INT);\nCREATE TABLE items(order_id INT, sku TEXT);\nINSERT INTO orders VALUES (1, 7, 100), (2, 7, 100);\nINSERT INTO items VALUES (1,'a'), (1,'b'), (1,'c'), (2,'d');\n\"\"\")\nprint(\"orders: (1,cust 7,100) (2,cust 7,100); items: 3 for order 1, 1 for order 2\")\nprint(\"true total = 200, true orders = 2\")\n\n# Fan-out: order 1 is repeated once per item, so 100 is counted 3 times\nq = \"\"\"SELECT SUM(o.amount), COUNT(*), COUNT(DISTINCT o.id)\n       FROM orders o JOIN items i ON i.order_id = o.id\"\"\"\nprint(\"joined (sum, rows, distinct orders):\", db.execute(q).fetchone())\n\n# Fix: aggregate the child table to the parent grain first\nq = \"\"\"SELECT SUM(o.amount), COUNT(*)\n       FROM orders o JOIN (SELECT order_id, COUNT(*) n FROM items\n                           GROUP BY order_id) i ON i.order_id = o.id\"\"\"\nprint(\"pre-aggregated (sum, orders):\", db.execute(q).fetchone())\n\n# SUM(DISTINCT) is not a fix: the two equal amounts of 100 collapse\nprint(\"SUM(DISTINCT):\", db.execute(\n    \"SELECT SUM(DISTINCT o.amount) FROM orders o JOIN items i ON i.order_id=o.id\").fetchone())\n"
+   },
+   "followUps": [
+    "<p>No, it usually makes the answer wrong in a different way. <code>SUM(DISTINCT amount)</code> removes repeated amounts, not repeated rows. With orders of 100 and 100 it counts 100 once, so the total becomes 100 instead of 200, and it still fails when different duplicated orders have different amounts. The right fix is to pre-aggregate the child table to the parent grain, or sum before joining, and use <code>COUNT(DISTINCT o.id)</code> for counts.</p>",
+    "<p>Compare the aggregate before and after the join. For the same filter, run <code>SELECT SUM(amount) FROM orders</code> and the joined query; the numbers should be equal, and a mismatch means fan-out. Also assert row counts: the joined row count should not be bigger than the parent table for a one-to-one join. Test with a tiny fixture where one parent has several children, for instance 1 order with 3 items, and check the expected total.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Verify an AI query against a hand check",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE sales(region TEXT, month TEXT, amount INT)\")\n# Edge-case rows: a NULL amount, a zero, a duplicate, a lone month\ndata = [(\"N\", \"Jan\", 10), (\"N\", \"Feb\", None), (\"S\", \"Jan\", 0),\n        (\"S\", \"Jan\", 0), (\"S\", \"Feb\", 25)]\ndb.executemany(\"INSERT INTO sales VALUES (?,?,?)\", data)\nprint(\"test rows:\", data)\n\n# A pivot an AI might write\npivot = \"\"\"SELECT region,\n    SUM(CASE WHEN month='Jan' THEN amount ELSE 0 END),\n    SUM(CASE WHEN month='Feb' THEN amount ELSE 0 END)\n    FROM sales GROUP BY region ORDER BY region\"\"\"\nrows = db.execute(pivot).fetchall()\nprint(\"pivot:\", rows)\n\n# Reconciliation: pivot grand total must equal the plain total\npivot_total = sum(a + b for _, a, b in rows)\nplain_total = db.execute(\"SELECT COALESCE(SUM(amount),0) FROM sales\").fetchone()[0]\nprint(\"pivot total\", pivot_total, \"plain total\", plain_total)\nprint(\"match:\", pivot_total == plain_total)\n\n# Row counts must also reconcile, so no row fell out of every column\nn = db.execute(\"SELECT COUNT(*) FROM sales WHERE month IN ('Jan','Feb')\").fetchone()[0]\nprint(\"rows covered by pivot columns:\", n, \"of\", len(data))\n"
+   },
+   "followUps": [
+    "<p>Run reconciliation checks against the source table. First, the grand total of all pivot columns must equal the plain total: <code>SELECT SUM(amount) FROM sales</code> versus the sum of the pivoted cells, e.g. both 35. Second, the row count covered by the columns should equal the row count of the source, so no category was left out. Third, check the number of distinct row labels, and compare a few individual cells by hand with a filtered query.</p>",
+    "<p>Read the query for features that differ by engine and test it on the target. Check aliases in HAVING or WHERE, <code>FILTER</code>, integer division, division-by-zero behaviour, <code>LIMIT</code> versus <code>TOP</code>, bare columns in GROUP BY, and string functions. PostgreSQL rejects non-grouped columns, errors on division by zero, and does not accept SELECT aliases in WHERE. Run the query on a small PostgreSQL instance with the same edge-case rows and compare the result to the original.</p>"
+   ]
+  }
+ ]
+}

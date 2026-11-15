@@ -1,0 +1,138 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Find the hot spot with cProfile",
+    "python": "import cProfile, pstats, io\n\ndef slow_has_dup(items):\n    # O(n^2): \"in list\" scans the list every time\n    seen = []\n    for x in items:\n        if x in seen:\n            return True\n        seen.append(x)\n    return False\n\ndef fast_has_dup(items):\n    # O(n): set membership is O(1) on average\n    return len(set(items)) != len(items)\n\ndef main():\n    data = list(range(3000))\n    print(\"input size:\", len(data))\n    print(\"slow:\", slow_has_dup(data), \"fast:\", fast_has_dup(data))\n\npr = cProfile.Profile()\npr.enable()\nmain()\npr.disable()\nout = io.StringIO()\nstats = pstats.Stats(pr, stream=out).sort_stats(\"tottime\")\nstats.print_stats(3)\n# keep only function names so the output is stable\nnames = [l.split()[-1] for l in out.getvalue().splitlines() if \"(\" in l and \"{\" not in l]\nprint(\"top functions by own time:\", names[:2])\n"
+   },
+   "followUps": [
+    "<p>Use a sampling profiler that attaches from outside, such as <code>py-spy</code>. It needs no restart and no code change.</p><p>Run <code>py-spy dump --pid 1234</code> for one snapshot of every thread's stack, or <code>py-spy record -o flame.svg --pid 1234 --duration 30</code> for a flame graph. It reads the process memory, so overhead is tiny. Take one before and one after the release and compare the widest boxes. For a long-lived service, continuous profiling tools do the same thing all day.</p>",
+    "<p>A flat profile usually means the cost is spread out, so look at the shape rather than one function.</p><p>Sort by <code>cumtime</code> and look at callers: total time may belong to a pattern, such as 100 small queries per request or logging in every loop. Check call counts (50,000 calls of a 20 microsecond helper is 1 second). Check GC time, serialization and I/O wait. If nothing stands out, the fix is architectural: batch work, cache, or reduce the data size. Amdahl's law says 10 equal 10% slices cannot be fixed by tuning one.</p>",
+    "<p>Add a benchmark with a fixed budget and fail the build when it gets slower than a threshold.</p><p>Use <code>pytest-benchmark</code> or <code>pyperf</code> on realistic data, store the baseline from the main branch, and compare each pull request. Because CI machines are noisy, allow roughly 10 to 20 percent tolerance or compare call counts, which are exact. Also add a load test against staging for the key endpoints, and alert on p99 latency after deploy so a slow release is rolled back quickly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Mutable default argument and the None fix",
+    "python": "def add_bad(item, bucket=[]):\n    # the list is created ONCE, when def runs\n    bucket.append(item)\n    return bucket\n\ndef add_good(item, bucket=None):\n    # create a fresh list inside the body\n    if bucket is None:\n        bucket = []\n    bucket.append(item)\n    return bucket\n\nprint(\"bad :\", add_bad(1), add_bad(2), add_bad(3))\nprint(\"good:\", add_good(1), add_good(2), add_good(3))\nprint(\"stored default:\", add_bad.__defaults__)\n\n# Sentinel when None itself is a legal value\n_MISSING = object()\ndef f(x=_MISSING):\n    return \"no argument\" if x is _MISSING else \"got %r\" % (x,)\nprint(f(), \"|\", f(None))\n"
+   },
+   "followUps": [
+    "<p>Because a <code>def</code> is an executable statement, and Python runs it once to create the function object. The defaults are part of that object.</p><p>That gives two real benefits: calling is cheap (no expression re-run per call), and defaults can capture values, for example <code>def f(x, n=n)</code> in a loop. The price is the shared-mutable trap. A language that re-evaluates defaults per call would hide cost and make <code>f.__defaults__</code> meaningless. Python chose the simple, predictable rule: evaluated once, at definition.</p>",
+    "<p>Both problems come from names being looked up later, while a default argument is evaluated right now.</p><p>In <code>[lambda: i for i in range(3)]</code> every lambda reads the same <code>i</code> when called, so you get 2, 2, 2. Writing <code>lambda i=i: i</code> freezes the current value at definition time, giving 0, 1, 2. So the same \"evaluated once at def\" rule that causes the mutable default bug is the tool that fixes late binding.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "cProfile, timeit and tracemalloc side by side",
+    "python": "import cProfile, pstats, io, timeit, tracemalloc\n\ndef build(n):\n    return [str(i) * 3 for i in range(n)]\n\n# 1) cProfile: exact call counts\npr = cProfile.Profile()\npr.enable()\nbuild(1000)\npr.disable()\nst = pstats.Stats(pr, stream=io.StringIO())\ncalls = sum(v[0] for k, v in st.stats.items() if k[2] == \"build\")\nprint(\"build() was called\", calls, \"time\")\n\n# 2) timeit: micro-benchmark to compare two versions\nt_loop = timeit.timeit(\"s=0\\nfor i in range(1000): s+=i\", number=200)\nt_sum = timeit.timeit(\"sum(range(1000))\", number=200)\nprint(\"builtin sum faster than loop:\", t_sum < t_loop)\n\n# 3) tracemalloc: memory allocated by a line\ntracemalloc.start()\ndata = build(20000)\ncurrent, peak = tracemalloc.get_traced_memory()\ntracemalloc.stop()\nprint(\"items:\", len(data), \"allocated more than 1 MB:\", current > 1_000_000)\n"
+   },
+   "followUps": [
+    "<p>Because a deterministic profiler hooks every function call and return, and that fixed overhead is large compared with a tiny function.</p><p>If a helper takes 0.2 microseconds and the hook adds 1 microsecond per call, the profile makes it look five times heavier than it is, and may point you at the wrong function. Code with few big calls is measured well. Confirm with a sampling profiler (<code>py-spy</code>) or time the suspect with <code>timeit</code>. Trust call counts, and be careful with per-call times.</p>",
+    "<p>PEP 669 adds a low-overhead monitoring API (<code>sys.monitoring</code>, Python 3.12) so tools can watch events without the old <code>sys.settrace</code> cost.</p><p>The old hooks ran on every line and call and slowed programs by a large factor. With PEP 669 a tool subscribes only to the events it needs and can switch off events per code location. That makes profilers, debuggers and coverage tools faster, and lets coverage turn a line's check off after it has been hit once.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why contiguous typed arrays beat lists of objects",
+    "python": "import sys\nfrom array import array\n\nn = 1000\nas_list = [float(i) for i in range(n)]\nas_array = array(\"d\", as_list)      # unboxed 8-byte doubles, contiguous\n\n# a list holds pointers; each float is a separate 24-byte object\nlist_bytes = sys.getsizeof(as_list) + sum(sys.getsizeof(x) for x in as_list)\narray_bytes = sys.getsizeof(as_array)\nprint(\"elements:\", n)\nprint(\"list of floats  ~\", list_bytes, \"bytes\")\nprint(\"array('d')      ~\", array_bytes, \"bytes\")\nprint(\"array is smaller:\", array_bytes < list_bytes)\n\n# Both give the same answer; the array version stores raw C doubles,\n# which is the layout NumPy uses so one C loop can process them all.\nprint(\"sum list :\", sum(as_list))\nprint(\"sum array:\", sum(as_array))\n"
+   },
+   "followUps": [
+    "<p>Broadcasting lets NumPy combine arrays of different shapes by stretching size-1 dimensions, without copying data.</p><p>Compare shapes from the right. Each pair must be equal or one of them must be 1 (or missing). Example: a (3, 1) column <code>[[0],[10],[20]]</code> plus a (3,) row <code>[1,2,3]</code> broadcasts to (3, 3): the first row is 1, 2, 3, the second is 11, 12, 13, and the third is 21, 22, 23. Shapes (3,) and (4,) fail with a ValueError.</p>",
+    "<p>Work in place or in chunks so that the big intermediate array never exists at once.</p><p>Use <code>out=</code> in ufuncs (<code>np.add(a, b, out=a)</code>), in-place operators like <code>a *= 2</code>, and <code>np.einsum</code> or <code>numexpr</code> for chains. For a pairwise distance on 100,000 points, a (n, n) matrix is 10^10 floats, about 80 GB. Process 1,000 rows at a time instead, and use smaller dtypes such as <code>float32</code>.</p>",
+    "<p>Because <code>np.vectorize</code> is only a convenience wrapper: it still calls your Python function once per element.</p><p>There is no C loop for your logic, so you pay the full interpreter cost per item and often get the same speed as a plain <code>for</code> loop, sometimes slower. The docs say it is not for performance. Real speed comes from expressing the logic with ufuncs, <code>np.where</code> and masks, or compiling the loop with Numba.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Shrink per-record memory with __slots__ and tuples",
+    "python": "import sys\nfrom dataclasses import dataclass\n\n@dataclass\nclass Plain:\n    a: int\n    b: int\n\n@dataclass(slots=True)\nclass Slotted:\n    a: int\n    b: int\n\ndef size_of(obj):\n    # instance size plus its __dict__ if it has one\n    extra = sys.getsizeof(obj.__dict__) if hasattr(obj, \"__dict__\") else 0\n    return sys.getsizeof(obj) + extra\n\np, s, t, d = Plain(1, 2), Slotted(1, 2), (1, 2), {\"a\": 1, \"b\": 2}\nprint(\"plain object :\", size_of(p))\nprint(\"slotted      :\", size_of(s))\nprint(\"tuple        :\", size_of(t))\nprint(\"dict         :\", size_of(d))\nprint(\"slots smaller than plain:\", size_of(s) < size_of(p))\nprint(\"has __dict__:\", hasattr(p, \"__dict__\"), hasattr(s, \"__dict__\"))\nprint(\"20M records: save\", (size_of(p) - size_of(s)) * 20_000_000 // 10**6, \"MB with slots\")\n"
+   },
+   "followUps": [
+    "<p>Because freed memory goes back to Python's allocator, not necessarily to the operating system.</p><p>pymalloc keeps 256 KB arenas, and an arena can only be released when every block in it is free. If 1 live object remains in each arena after you delete 19 million records, nearly all arenas stay mapped, so RSS stays high even though the memory is reusable inside Python. Fixes: process in a separate worker process that exits, use arrays or NumPy (large blocks do return), or build the data in chunks.</p>",
+    "<p><code>__slots__</code> saves memory and speeds up attribute access, but you lose flexibility.</p><p>Each instance drops its <code>__dict__</code>, saving roughly 100 bytes or more, so 20 million objects may save about 2 GB. The costs: you cannot add new attributes, no <code>__weakref__</code> unless declared, multiple inheritance with slots is tricky, and default values need care. For plain data it is usually worth it; for objects that get monkey-patched it is not.</p>",
+    "<p>Use <code>mmap</code> when the data is a large file you read in pieces, so the OS pages it in on demand instead of you loading it all.</p><p>Memory-mapped files let several processes share the same pages, and random access to a 20 GB file costs only the pages touched. NumPy has <code>np.memmap</code> for fixed-width records. It is a poor fit when you must touch all the data many times with little RAM (the OS will thrash) or when the records are variable-length Python objects.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The cost is per call, and it is small for big work but large for tiny work.</p><p>Each crossing converts arguments, may copy data, and manages reference counts. Typically it costs 50 to 500 nanoseconds. Calling a C function on 1 element a million times is therefore slow, while calling it once on a million-element buffer is fast. Design the boundary to be coarse: pass whole arrays (via the buffer protocol, zero-copy) and return results in bulk.</p>",
+    "<p>The free-threaded build lets threads run Python in parallel, so native extensions must now be thread-safe themselves.</p><p>Previously the GIL silently protected extension state. Now an extension has to rebuild for the <code>cp313t</code> tag, declare it supports no-GIL (otherwise the interpreter re-enables the GIL on import), and use locks or atomics for shared C state. On the plus side, a Rust or Cython extension can be called from many Python threads and truly scale across cores.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Shared counter: lock makes x += 1 safe",
+    "python": "import threading, sys\n\ncounter = 0\nlock = threading.Lock()\n\ndef work(n):\n    global counter\n    for _ in range(n):\n        with lock:            # x += 1 is load, add, store: not atomic\n            counter += 1\n\nthreads = [threading.Thread(target=work, args=(50000,)) for _ in range(4)]\nfor t in threads:\n    t.start()\nfor t in threads:\n    t.join()\n\nprint(\"threads: 4, increments each: 50000\")\nprint(\"expected:\", 4 * 50000)\nprint(\"counter :\", counter)\nprint(\"correct :\", counter == 4 * 50000)\ngil = getattr(sys, \"_is_gil_enabled\", lambda: True)()\nprint(\"GIL enabled (True on a normal build):\", gil)\n"
+   },
+   "followUps": [
+    "<p>No. <code>x += 1</code> is several steps, and a thread switch can land between them.</p><p>In bytecode it is load, add, store. If two threads both load 5, both store 6, one increment is lost. Four threads doing 100,000 increments each can end below 400,000. It can also fail on the free-threaded build more often. Protect it with a <code>threading.Lock</code>, use <code>queue.Queue</code>, or give each thread its own counter and add them at the end.</p>",
+    "<p>Multiprocessing loses when the work per task is small compared with the cost of moving data between processes.</p><p>Arguments and results are pickled and copied, and starting a worker costs about 50 to 100 ms. Sending a 500 MB list to each of 8 workers is slower than the work. Threads share memory for free, so for I/O-bound jobs, or for NumPy code that releases the GIL, threads win. Processes win for CPU-bound pure Python with small inputs and large compute.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A wheel tag says which Python and platform a wheel is built for, for example <code>cp312-cp312-manylinux_2_28_x86_64</code>.</p><p>The three parts are the Python tag (cp312 = CPython 3.12), the ABI tag, and the platform tag. pip lists the tags your interpreter supports in order of preference and picks the matching wheel with the best rank. A pure-Python wheel is <code>py3-none-any</code>. If nothing matches, pip falls back to the sdist and builds it.</p>",
+    "<p>The <code>src</code> layout stops you from importing the project from the working directory by accident, so tests run against the installed package.</p><p>With the code at the repository root, <code>import mypkg</code> works from the current folder even if packaging is broken, so a missing file in the wheel goes unnoticed until users report it. With <code>src/mypkg</code>, the package is importable only after install (<code>pip install -e .</code>), so CI tests what you actually ship.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A lock file freezes the whole dependency tree, including transitive packages, so every install gets exactly the same versions.</p><p>A range such as <code>requests&gt;=2.30</code> means that Monday's build and Friday's build can pull different versions of 40 sub-dependencies, so a bug appears with no code change. The lock records exact versions and hashes (for example urllib3 2.2.1), making CI, staging and production identical, and a rollback truly restores the old state.</p>",
+    "<p>Check which top-level package pulls it in, then upgrade that package or constrain the transitive one.</p><p>Steps: run <code>pip-audit</code> or <code>uv tree --invert</code> to find the path. If a newer parent release allows a fixed version, upgrade the parent. If not, add a constraint (<code>urllib3&gt;=2.2.2</code>) and relock, run the tests, and deploy. For a library, avoid pinning the transitive package and tell users the minimum fixed version.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Late binding in closures and three fixes",
+    "python": "from functools import partial\n\nlate = [lambda: i for i in range(3)]\nprint(\"late binding   :\", [f() for f in late])\n\ndefault = [lambda i=i: i for i in range(3)]\nprint(\"default arg    :\", [f() for f in default])\n\ndef show(i):\n    return i\nparts = [partial(show, i) for i in range(3)]\nprint(\"partial        :\", [f() for f in parts])\n\ndef make(i):\n    return lambda: i     # each call gets its own scope and cell\nfactory = [make(i) for i in range(3)]\nprint(\"factory        :\", [f() for f in factory])\n\n# the cell is shared: changing i afterwards changes every late lambda\nprint(\"cell contents  :\", late[0].__closure__[0].cell_contents)\n"
+   },
+   "followUps": [
+    "<p>Yes, for the loop variable, though a generator expression adds its own twist: it runs lazily.</p><p>In <code>gens = (lambda: i for i in range(3))</code> the lambdas still share one cell, and since the generator is consumed later, they see the final value. With <code>[f() for f in gens]</code> evaluated while the generator advances you can see 0, 1, 2 instead, depending on when you call. Always bind the value explicitly (<code>i=i</code>) so the result does not depend on timing.</p>",
+    "<p>A closure cell is a small heap object that holds one captured variable, and the function keeps references to its cells.</p><p>You can see them as <code>f.__closure__</code>, a tuple of cell objects, and read the value with <code>.cell_contents</code>. The names are in <code>f.__code__.co_freevars</code>. The outer function and every inner function that captured the variable share the same cell, which is why a change in one place is visible in all.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "is versus == for numbers and strings",
+    "python": "a = int(\"1000\")\nb = int(\"1000\")\nprint(\"a == b:\", a == b)\nprint(\"a is b:\", a is b, \"(separate objects made at runtime)\")\n\nc = int(\"100\")\nd = int(\"100\")\nprint(\"100 == 100:\", c == d, \" is:\", c is d, \"(small int cache, not guaranteed)\")\n\ns1 = \"\".join([\"py\", \"thon\"])\ns2 = \"\".join([\"py\", \"thon\"])\nprint(\"strings equal:\", s1 == s2, \" same object:\", s1 is s2)\n\nimport sys\nprint(\"after sys.intern same object:\", sys.intern(s1) is sys.intern(s2))\n\nx = float(\"nan\")\nprint(\"x == x:\", x == x, \" x is x:\", x is x, \" x in [x]:\", x in [x])\n\n# Correct use of 'is': singletons\nvalue = None\nprint(\"value is None:\", value is None)\n"
+   },
+   "followUps": [
+    "<p>Because NaN is never equal to anything, even itself, but <code>in</code> checks identity before equality.</p><p>The list's <code>__contains__</code> tests <code>x is item or x == item</code>. Here the item is the same object as <code>x</code>, so the identity check succeeds and returns True. A different NaN object, <code>float(\"nan\") in [x]</code>, gives False. The same shortcut applies to <code>list.index</code> and <code>count</code>. Use <code>math.isnan</code> to test for NaN.</p>",
+    "<p><code>sys.intern</code> keeps one shared copy of equal strings, so equal strings become the same object.</p><p>Comparing two interned strings is a pointer check instead of a character scan, and 1 million copies of \"status_active\" use one string in memory instead of a million. Use it for many repeated strings such as column names or keys. Do not use it to make <code>is</code> comparisons; keep using <code>==</code> in normal code.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Removing from a list while iterating",
+    "python": "a = [1, 2, 3]\nprint(\"start:\", a)\nfor x in a:\n    a.remove(x)          # list shrinks, the iterator index keeps going\nprint(\"after buggy loop:\", a)\n\nb = [1, 2, 3, 4, 5, 6]\nb = [x for x in b if x % 2 == 0]       # fix 1: build a new list\nprint(\"filtered:\", b)\n\nc = [1, 2, 3]\nfor x in c[:]:                         # fix 2: iterate over a copy\n    c.remove(x)\nprint(\"copy loop:\", c)\n\nd = {\"a\": 1, \"b\": 2, \"c\": 3}\ntry:\n    for k in d:\n        del d[k]\nexcept RuntimeError as e:\n    print(\"dict error:\", e)\nfor k in list(d):                      # safe: snapshot of the keys\n    del d[k]\nprint(\"dict now:\", d)\n"
+   },
+   "followUps": [
+    "<p>Appending inside the loop keeps it running, since the iterator checks the length each step, so you can get an infinite loop.</p><p>For <code>a = [1]; for x in a: a.append(x + 1)</code> the list grows as fast as the index, and it never stops (until memory runs out). If you want to process only the original items, loop over a copy <code>a[:]</code> or a fixed <code>range(len(a))</code>. A queue-like worklist that grows on purpose is better written with <code>while queue:</code> and <code>pop</code>.</p>",
+    "<p>Iterate over a snapshot of the keys, or build a new dict.</p><p>Deleting while iterating the dict raises <code>RuntimeError: dictionary changed size during iteration</code>. Safe options: <code>for k in list(d): if bad(k): del d[k]</code> (O(n), extra O(n) memory), or <code>d = {k: v for k, v in d.items() if keep(k)}</code>. Changing values of existing keys is allowed, because the size does not change.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Mutating a key that is stored in a set",
+    "python": "class Box:\n    def __init__(self, v):\n        self.v = v\n    def __eq__(self, other):\n        return isinstance(other, Box) and self.v == other.v\n    def __hash__(self):\n        return hash(self.v)          # depends on mutable state\n\nb = Box(1)\ns = {b}\nprint(\"before mutation:\", b in s, \"len:\", len(s))\nb.v = 2                               # hash changes, bucket does not\nprint(\"after b.v = 2  :\", b in s, \"len:\", len(s))\nprint(\"Box(1) in s    :\", Box(1) in s, \"(right bucket, but __eq__ fails)\")\nprint(\"still iterable :\", [x.v for x in s])\n\nclass OnlyEq:\n    def __eq__(self, other):\n        return True\nprint(\"__hash__ with only __eq__:\", OnlyEq.__hash__)\n\nprint(\"1, 1.0, True collapse:\", {1, 1.0, True})\nprint(\"hash(-1), hash(-2):\", hash(-1), hash(-2))\n"
+   },
+   "followUps": [
+    "<p>A list can change, so its hash would change too. A tuple cannot change, so it can be hashed, as long as everything inside it is hashable.</p><p><code>hash((1, 2))</code> works, but <code>hash((1, [2]))</code> raises TypeError because the inner list is unhashable. Lists define <code>__eq__</code> by content and set <code>__hash__ = None</code>. If lists were allowed as keys, mutating one after insertion would lose the entry exactly as in the mutated Box example.</p>",
+    "<p>Because CPython uses -1 as an error code in the C hash function, so an object whose real hash is -1 is changed to -2.</p><p>The C API returns -1 to signal \"an error happened\". To keep that value free, <code>hash(-1)</code> is turned into -2. As a result both -1 and -2 give -2. This is only a collision, so dictionaries still work correctly; they just compare the two keys with <code>==</code>. It is an implementation detail, not something to rely on.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Algorithm first: O(n^2) to O(n) before any native code",
+    "python": "import time\n\ndef count_pairs_slow(nums, target):\n    # O(n^2): check every pair\n    c = 0\n    for i in range(len(nums)):\n        for j in range(i + 1, len(nums)):\n            if nums[i] + nums[j] == target:\n                c += 1\n    return c\n\ndef count_pairs_fast(nums, target):\n    # O(n) time, O(n) space: remember counts of values seen so far\n    seen, c = {}, 0\n    for x in nums:\n        c += seen.get(target - x, 0)\n        seen[x] = seen.get(x, 0) + 1\n    return c\n\nnums = [(i * 7919) % 2003 for i in range(2000)]\nt0 = time.perf_counter(); slow = count_pairs_slow(nums, 1000)\nt1 = time.perf_counter(); fast = count_pairs_fast(nums, 1000)\nt2 = time.perf_counter()\nprint(\"n =\", len(nums), \"target = 1000\")\nprint(\"slow:\", slow, \" fast:\", fast, \" same:\", slow == fast)\nprint(\"fast version is quicker:\", (t2 - t1) < (t1 - t0))\n# keep this slow reference as a test oracle when you optimise further\n"
+   },
+   "followUps": [
+    "<p>Build wheels for each platform in CI with <code>cibuildwheel</code>, and publish them next to an sdist.</p><p>It runs on Linux, macOS and Windows runners and creates a wheel per Python version, for example <code>cp312-win_amd64</code> and <code>cp312-macosx_arm64</code> (via <code>maturin</code> or <code>scikit-build-core</code> for Rust and C++). Upload with Trusted Publishing. Then <code>pip install</code> downloads a ready binary and no user needs a compiler.</p>",
+    "<p>Keep the pure-Python function importable, and try to import the fast one first.</p><pre><code>try:\n    from ._fast import compute\nexcept ImportError:\n    from ._pure import compute</code></pre><p>The sdist and the pure wheel (<code>py3-none-any</code>) still work on unsupported platforms, only slower. Run the same tests against both implementations in CI, with an environment variable to force the fallback.</p>"
+   ]
+  }
+ ]
+}

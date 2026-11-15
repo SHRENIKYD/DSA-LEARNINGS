@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Inside a generic function, T is an unknown specific type chosen by the caller, so U is not guaranteed to fit it.</p><p>Because T might be a narrower type than U. The constraint only says T is at least a U. Example: <code>function f&lt;T extends string&gt;(): T { return \"a\"; }</code> is an error, because the caller may pick T = \"b\", and \"a\" is not a \"b\". Assignability goes one way: T to U is fine, U to T is not. Fix by returning a value derived from the T argument you received, or by using an overload or a cast when you really know better.</p>",
+    "<p>It is a conditional type that cannot pick a branch yet because T is still an unresolved type parameter.</p><p>Inside <code>function f&lt;T&gt;(x: T) { ... }</code> the type <code>T extends string ? 1 : 2</code> stays unresolved, so you cannot assign 1 or 2 to it. Only when a caller supplies a real type, such as f(\"hi\"), does it become 1. In practice this means a function returning a conditional type usually needs an overload or a cast inside, and the public signature carries the type-level logic.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Omit on a union keeps only shared keys",
+    "js": "// Runtime model of Omit on a union: keyof (A | B) is only the COMMON keys.\nconst circle = { kind: \"circle\", radius: 3, id: 1 };\nconst square = { kind: \"square\", side: 4, id: 2 };\nconst union = [circle, square]; // stands for the type A | B\n\nconst omit = (obj, keys) =>\n  Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));\n\n// Wrong: Omit<A | B, \"id\"> works on the union as a whole (common keys only)\nconst common = Object.keys(union[0]).filter((k) => union.every((v) => k in v));\nconst whole = common.filter((k) => k !== \"id\");\nconsole.log(\"input:\", JSON.stringify(union));\nconsole.log(\"common keys of union:\", common);\nconsole.log(\"Omit on whole union keeps keys:\", whole); // radius and side are lost\n\n// Right: distribute, i.e. apply Omit to each member (T extends any ? Omit<T,K> : never)\nconst distributed = union.map((v) => omit(v, [\"id\"]));\nconsole.log(\"distributed Omit:\", JSON.stringify(distributed));\n// Time O(members * keys), space O(members * keys)\n"
+   },
+   "followUps": [
+    "<p>Omit is written to accept any string key, not only keys that exist in T, so that it works when T is generic or a union.</p><p><code>keyof any</code> is <code>string | number | symbol</code>, so <code>Omit&lt;User, \"typo\"&gt;</code> compiles and removes nothing. It was kept lenient on purpose: with <code>K extends keyof T</code>, many generic uses such as <code>Omit&lt;T, \"id\"&gt;</code> inside a function over unknown T would fail. If you want typo safety, write your own <code>StrictOmit&lt;T, K extends keyof T&gt;</code>.</p>",
+    "<p>Plain Omit flattens a union to its shared keys, so the variant-specific fields disappear.</p><p>For <code>{kind:\"c\", r:number} | {kind:\"s\", side:number}</code>, <code>keyof</code> gives only <code>\"kind\"</code>, so <code>Omit&lt;U, \"kind\"&gt;</code> gives <code>{}</code>.</p><p>Distribute instead:</p><pre><code>type DistOmit&lt;T, K extends keyof any&gt; =\n  T extends any ? Omit&lt;T, K&gt; : never;\n// DistOmit&lt;U,\"kind\"&gt; = {r:number} | {side:number}</code></pre>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Distribution over a union vs judging it whole",
+    "js": "// Runtime model of a distributive conditional type: T extends string ? true : false\n// A union type is modeled as an array of member type names.\nconst isString = (member) => member === \"string\";\n\n// Distributive: judge each member separately, then union the results\nfunction distributive(union) {\n  return [...new Set(union.map(isString))];\n}\n// Wrapped [T] extends [string]: judge the union as a whole\nfunction wrapped(union) {\n  return union.every(isString);\n}\n\nconst inputs = [[\"string\"], [\"string\", \"number\"], [\"number\"], []];\nfor (const u of inputs) {\n  console.log(\n    \"T =\", JSON.stringify(u),\n    \"| distributive ->\", JSON.stringify(distributive(u)),\n    \"| wrapped ->\", wrapped(u)\n  );\n}\n// [] models never: distribution over zero members gives an empty union (never),\n// while the wrapped form answers true because every() of nothing is true.\n// Time O(n) per check, space O(n).\n"
+   },
+   "followUps": [
+    "<p>Because T is naked there, so TypeScript runs the check on each union member separately.</p><p><code>boolean</code> is really <code>true | false</code>. So <code>IsString&lt;boolean&gt;</code> checks true and false separately, giving <code>false | false</code>, which is <code>false</code>. That is why a type that looks like it answers one question for boolean can return a union. For a union like <code>string | number</code> you get <code>true | false</code>, which prints as boolean. Wrapping in a tuple, <code>[T] extends [string]</code>, stops this.</p>",
+    "<p>IsUnion checks whether a type is the same as its own distributed copy; if not, it was a union.</p><pre><code>type IsUnion&lt;T, U = T&gt; =\n  [T] extends [never] ? false :\n  T extends any ? ([U] extends [T] ? false : true) : never;</code></pre><p>Step 1: the outer T distributes into each member. Step 2: U keeps the whole type, and <code>[U] extends [T]</code> asks if the whole fits in one member. For <code>string</code> yes, so false. For <code>string | number</code> no, so true. The never guard handles the empty case.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The checker cannot decide which infer to trust, so it combines the candidates by intersection.</p><p>In a contravariant position (function parameters), repeated infer candidates are intersected. <code>T extends {a: (x: infer U) =&gt; void; b: (x: infer U) =&gt; void} ? U : never</code> with parameters string and number gives <code>string &amp; number</code>, which is never. In covariant positions (return types, properties) the candidates are unioned instead. This trick is how UnionToIntersection works.</p>",
+    "<p>Use Parameters, or infer the first element of the tuple.</p><p><code>Parameters&lt;F&gt;</code> returns a tuple, so index it: <code>Parameters&lt;F&gt;[0]</code>. Or directly:</p><pre><code>type First&lt;F&gt; = F extends (a: infer A, ...r: any[]) =&gt; any ? A : never;\n// First&lt;(x: string, y: number) =&gt; void&gt; = string</code></pre>For a function with no parameters you get <code>undefined</code> from the index form, and never from the infer form."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because Partial maps over keyof T, and a primitive has no meaningful own keys, so a homomorphic mapped type returns the primitive itself.</p><p>When T is instantiated with a primitive, a homomorphic mapped type is defined to return that primitive unchanged. So <code>Partial&lt;string&gt;</code> is <code>string</code>, and <code>Readonly&lt;number&gt;</code> is <code>number</code>. Otherwise you would get a weird object type with every String method optional. For <code>Partial&lt;string | {a: 1}&gt;</code> it distributes, giving <code>string | {a?: 1}</code>.</p>",
+    "<p>Pick is declared as K extends keyof T, mapping over [P in K], and that link to keyof T lets TypeScript treat it as homomorphic.</p><p>Pick is <code>{ [P in K]: T[P] }</code> with <code>K extends keyof T</code>. The compiler recognises a mapped type whose key set is a type parameter constrained by keyof T, so it copies modifiers. Example: <code>Pick&lt;{readonly a: 1; b?: 2}, \"a\" | \"b\"&gt;</code> stays <code>{readonly a: 1; b?: 2}</code>. A mapped type over a plain string union loses this.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Typed paths: list all paths with a depth limit and read by path",
+    "js": "// Runtime twin of typed dotted paths: list all valid paths, with a depth limit,\n// then read a value by path (what PathValue does at the type level).\nconst user = {\n  name: \"Ada\",\n  address: { city: \"Paris\", geo: { lat: 48.8, lng: 2.3 } },\n  tags: [\"x\"],\n};\n\n// Like Paths<T>: K | `${K}.${Paths<T[K]>}`, with a depth counter to stop blow-ups\nfunction paths(obj, depth = 3) {\n  if (depth === 0 || typeof obj !== \"object\" || obj === null) return [];\n  const out = [];\n  for (const k of Object.keys(obj)) {\n    out.push(k);\n    for (const rest of paths(obj[k], depth - 1)) out.push(k + \".\" + rest);\n  }\n  return out;\n}\n\n// Like PathValue<T, P>: split at the first dot, recurse on the rest\nfunction get(obj, path) {\n  const i = path.indexOf(\".\");\n  if (i === -1) return obj[path];\n  return get(obj[path.slice(0, i)], path.slice(i + 1));\n}\n\nconsole.log(\"all paths:\", paths(user));\nconsole.log(\"depth 1 :\", paths(user, 1));\nconsole.log(\"address.geo.lat =\", get(user, \"address.geo.lat\"));\nconsole.log(\"address.city   =\", get(user, \"address.city\"));\n// Cost: path count grows with total properties, so wide objects give many paths.\n"
+   },
+   "followUps": [
+    "<p>Wrap the recursion with a counter: a tuple whose length is the current depth, and stop at the limit.</p><pre><code>type Paths&lt;T, D extends any[] = []&gt; =\n  D['length'] extends 4 ? never :\n  T extends object ? { [K in keyof T &amp; string]:\n    K | `${K}.${Paths&lt;T[K], [...D, 0]&gt;}` }[keyof T &amp; string]\n  : never;</code></pre>Each level adds one element to D. At depth 4 it returns never, so a model with 10 levels does not explode the compiler.",
+    "<p>Write a path-based setter with the same PathValue type for the value, so the value type matches the path.</p><pre><code>function set&lt;T, P extends Paths&lt;T&gt;&gt;(\n  obj: T, path: P, value: PathValue&lt;T, P&gt; ): void { /* walk and assign */ }</code></pre>Passing the path as a generic P lets TypeScript look up the exact type for value. Example: set(user, \"address.city\", 5) is an error if city is a string. Runtime stays the same loop: split on dots, walk to the parent, assign the last key."
+   ]
+  },
+  {
+   "code": {
+    "title": "Template literal cross product size and splitting strings",
+    "js": "// Template literal types model: unions in holes make a cross product.\nconst sizes = [\"sm\", \"lg\"];\nconst colors = [\"red\", \"blue\"];\nconst cross = sizes.flatMap((s) => colors.map((c) => `${s}-${c}`));\nconsole.log(\"sizes x colors:\", cross, \"count =\", cross.length);\n\n// Growth is multiplicative, which is why TS caps unions at 100,000 members\nconst a = Array.from({ length: 10 }, (_, i) => \"a\" + i);\nconst b = Array.from({ length: 10 }, (_, i) => \"b\" + i);\nconst c = Array.from({ length: 10 }, (_, i) => \"c\" + i);\nconsole.log(\"10 x 10 x 10 =\", a.length * b.length * c.length, \"literals\");\nconsole.log(\"50 x 50 x 50 =\", 50 * 50 * 50, \"literals (over the 100000 cap)\");\n\n// Parsing like `${infer H}.${infer R}`: infer H is the SHORTEST match (first dot)\nfunction splitFirst(s) {\n  const i = s.indexOf(\".\");\n  return i === -1 ? [s] : [s.slice(0, i), s.slice(i + 1)];\n}\n// Last occurrence needs a recursive walk (or lastIndexOf at runtime)\nfunction splitLast(s) {\n  const i = s.lastIndexOf(\".\");\n  return i === -1 ? [s] : [s.slice(0, i), s.slice(i + 1)];\n}\nconsole.log(\"first split:\", splitFirst(\"a.b.c\"));\nconsole.log(\"last split :\", splitLast(\"a.b.c\"));\n"
+   },
+   "followUps": [
+    "<p>Use a recursive conditional that peels one segment at a time, so the remainder is what is left after the last separator.</p><p><code>infer</code> takes the shortest match for the first hole, so one pattern matches the first dot. For the last one, recurse: </p><pre><code>type Last&lt;S&gt; = S extends `${string}.${infer R}`\n  ? Last&lt;R&gt; : S;\n// Last&lt;\"a.b.c\"&gt; = \"c\"</code></pre>Each step drops the text up to the next dot until none remains. The prefix is the same with a mirrored loop that accumulates.",
+    "<p>Where the input is a huge or open-ended set of strings, or where a plain string plus runtime validation is simpler.</p><p>Avoid them for big cross products (3 unions of 50 members is 125,000 literals, over the limit), for deep recursive parsing of long strings, or when error messages become unreadable. Example: typing every CSS value like <code>`${number}px ${number}px`</code> is fine, but typing a full SQL grammar is not. Use string with a runtime parser and tests; cheaper compile time and easier errors.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use as when you know something the compiler cannot prove, such as after a runtime check or when handling untyped input.</p><p>Examples: <code>JSON.parse(text) as Config</code> (the parse returns any, and you have validated elsewhere), <code>document.getElementById(\"x\") as HTMLInputElement</code> (the DOM only returns HTMLElement), and narrowing inside an overloaded implementation. Keep it near the boundary and prefer a type guard or schema validator when the data comes from outside. Each as is a promise the compiler cannot check.</p>",
+    "<p>Readonly literal types for every property, plus a check that the value fits X, with no widening.</p><pre><code>const ROUTES = { home: \"/\", user: \"/u/:id\" } as const satisfies Record&lt;string, string&gt;;\n// type: { readonly home: \"/\"; readonly user: \"/u/:id\" }</code></pre>satisfies validates every value against X, and as const keeps the exact literals. So <code>typeof ROUTES.home</code> is <code>\"/\"</code>, not string, and <code>keyof typeof ROUTES</code> is the key union. A typo such as a number value fails right at the definition."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>TS7016 means an import has no type information; the proper fix is to install the matching @types package or write a small declaration.</p><p>The error appears when a JS package has no types and noImplicitAny is on. First try <code>npm i -D @types/pkg</code>. If none exists, add a <code>declare module \"pkg\" { export function f(x: string): number; }</code> in a .d.ts with only what you use. Avoid the quick fix <code>declare module \"pkg\";</code>, which makes everything any and hides bugs.</p>",
+    "<p>skipLibCheck skips type checking of all .d.ts files, yours and from node_modules, not your own .ts source.</p><p>With <code>skipLibCheck: true</code> the compiler does not report errors inside declaration files, which speeds builds and avoids conflicts between two libraries' type versions. It still uses those types when checking your code. The risk: a broken declaration in your own library goes unnoticed until consumers hit it. A common choice is to turn it on in apps and turn it off in CI for libraries you publish.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Interfaces can merge across declarations, while type aliases cannot, so users could not extend a type alias.</p><p>A library exposes <code>interface EventMap {}</code> and a user writes <code>declare module \"lib\" { interface EventMap { login: User } }</code>; both merge into one. With <code>type EventMap = {}</code> a second declaration is a duplicate identifier error. Interfaces are therefore the extension point, and aliases are for closed shapes.</p>",
+    "<p>TypeScript reports an error: subsequent property declarations must have the same type.</p><p>If one declaration says <code>id: string</code> and another says <code>id: number</code>, you get error TS2717. Identical types are fine and simply merge. Methods are different: same-named methods become overloads, and later declarations take priority. So merging is safe for adding new properties and dangerous when two modules disagree about an existing one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the Equal trick compares two deferred conditional types, which forces exact identity rather than loose assignability.</p><p>A simple <code>X extends Y</code> check passes for <code>any</code> and treats <code>{a: 1}</code> and <code>{readonly a: 1}</code> as equal. Comparing <code>(&lt;T&gt;() =&gt; T extends X ? 1 : 2)</code> with the same shape using Y makes the compiler ask whether the two are identical types. So Equal&lt;any, 1&gt; is false and readonly differences show up. It is a well-known trick, not a documented feature, so test it itself.</p>",
+    "<p>Keep type tests in separate files, run only those with tsc --noEmit, and avoid heavy generics inside the tests.</p><p>Put tests in <code>*.test-d.ts</code> and a small tsconfig that includes only them, so the app build does not pay. Use incremental builds, cache the result in CI, and run type tests only when type files change. Keep each test narrow: a few representative inputs, not a loop over thousands of members. If a test takes seconds, the type itself is too expensive.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Interfaces are named and cached by identity, so the compiler checks them once, while an intersection is rebuilt and re-compared at every use.</p><p>With <code>type A = B &amp; C</code> the checker must flatten and compare the members of B and C each time it meets A, and reports confusing errors on conflicts. An <code>interface A extends B, C</code> creates a single object type once, and detects property conflicts immediately. In big codebases with many extended shapes, switching to interfaces can cut check time noticeably.</p>",
+    "<p>A compiler option that requires every exported declaration to have an explicit type, so a .d.ts can be generated from one file alone.</p><p>With <code>isolatedDeclarations: true</code> you must write annotations like <code>export function f(): number</code> instead of relying on inference. Tools such as esbuild or swc can then emit .d.ts per file in parallel without a full type check, which makes builds faster. Cost: more annotations to write. It fits libraries, and monorepos with many packages.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Write a test that asserts the type is not any, because any passes most extends checks.</p><p>Add <code>type IsAny&lt;T&gt; = 0 extends 1 &amp; T ? true : false;</code> and <code>Expect&lt;Equal&lt;IsAny&lt;Result&gt;, false&gt;&gt;</code>. Also hover in the editor, turn on <code>noImplicitAny</code> and a lint rule banning explicit any, and add Equal tests with concrete expected types, for example Equal&lt;Result, string[]&gt;, not extends checks. A generated type that quietly becomes any will fail these.</p>",
+    "<p>Check that each declaration matches how the library really behaves at runtime, then run it against real usage.</p><p>My checklist: (1) compare each function signature with the library docs or source, (2) check for null and undefined returns, optional parameters, and async versus sync, (3) no <code>any</code> or blanket <code>declare module \"x\";</code>, (4) write a small file that imports and uses it, with <code>@ts-expect-error</code> on misuse, (5) run tsc --noEmit, and (6) review default versus named exports. Declarations are promises, so wrong ones crash at runtime.</p>"
+   ]
+  }
+ ]
+}

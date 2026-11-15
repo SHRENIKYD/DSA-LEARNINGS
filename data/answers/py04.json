@@ -1,0 +1,141 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "self is passed automatically (Class.method(obj))",
+    "python": "class Dog:\n    def __init__(self, name):\n        self.name = name              # self.name is an instance attribute\n\n    def speak(self, times):\n        return (self.name + \" \") * times\n\nd = Dog(\"Rex\")\nprint(d.speak(2))                     # normal call\nprint(Dog.speak(d, 2))                # what Python really runs: self passed by hand\nbound = d.speak                       # a bound method remembers d\nprint(bound.__self__ is d, bound(1))\ntry:\n    class Bad:\n        def hello():                  # forgot self\n            return \"hi\"\n    Bad().hello()\nexcept TypeError as e:\n    print(\"TypeError:\", e)\n"
+   },
+   "followUps": [
+    "<p>You get a <code>TypeError</code> at call time, not at definition time. Python still passes the instance as the first argument, so a method defined as <code>def hello():</code> receives one argument it has no slot for.</p><p>Example: <code>Bad().hello()</code> raises <code>TypeError: Bad.hello() takes 0 positional arguments but 1 was given</code>. The message counts the hidden instance, which confuses beginners who passed nothing. Defining the function is fine; calling it through the class, <code>Bad.hello()</code>, would even work.</p>",
+    "<p>Yes, you could, because <code>self</code> is only a convention and the first parameter can have any name. You should not, because every Python tool, linter and reader expects <code>self</code>.</p><p>Example: <code>def speak(this): return this.name</code> runs perfectly. But reviewers will stumble, and linters such as pylint flag it (the first-argument naming check). The one accepted exception is <code>cls</code> in class methods and metaclasses, where the first argument is a class, not an instance.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "__new__ vs __init__: uppercase str and a singleton",
+    "python": "class Upper(str):\n    def __new__(cls, text):\n        print(\"__new__ creates the object\")\n        return super().__new__(cls, text.upper())   # value fixed at creation\n\n    def __init__(self, text):\n        print(\"__init__ initialises it, text arg was\", repr(text))\n\nu = Upper(\"hello\")\nprint(u, type(u).__name__, isinstance(u, str))\n\nclass Single:\n    _inst = None\n    def __new__(cls):\n        if cls._inst is None:         # singleton: reuse one object\n            cls._inst = super().__new__(cls)\n        return cls._inst\n\nprint(Single() is Single())\n"
+   },
+   "followUps": [
+    "<p>Override <code>__new__</code>, because a <code>str</code> is immutable and its value is fixed when the object is created, so changing it in <code>__init__</code> is too late.</p><pre><code>class Upper(str):\n    def __new__(cls, text):\n        return super().__new__(cls, text.upper())\n\nUpper(\"abc\")  # 'ABC'</code></pre><p>The same applies to <code>int</code> and <code>tuple</code>. Cost is O(n) for the copy of the text; no extra state is kept.</p>",
+    "<p>Python skips <code>__init__</code> entirely, because it only runs <code>__init__</code> when the returned object is an instance of the class being called.</p><p>Example: if <code>Cls.__new__</code> returns the integer 5, then <code>Cls()</code> evaluates to 5 and <code>Cls.__init__</code> never runs. If it returns an instance of a subclass of <code>Cls</code>, <code>__init__</code> does run. This is used by factories and caches, but it surprises readers, so use it sparingly and document it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Shared class attribute bug and a correct counter",
+    "python": "class Bag:\n    items = []                        # BUG: one list shared by all\n    count = 0\n    def add(self, x):\n        self.items.append(x)\n    def bump(self):\n        self.count += 1               # creates instance attribute\n\na, b = Bag(), Bag()\na.add(\"apple\")\nprint(\"b.items:\", b.items)            # b sees apple too\na.bump()\nprint(\"a.count:\", a.count, \"Bag.count:\", Bag.count)\nprint(\"a.__dict__:\", a.__dict__)\n\nclass Counted:\n    total = 0\n    def __init__(self):\n        type(self).total += 1         # per-class counter (own copy on first use)\nclass Sub(Counted):\n    total = 0\nCounted(); Sub(); Sub()\nprint(Counted.total, Sub.total)\n"
+   },
+   "followUps": [
+    "<p>Keep the counter on the class and bump it through <code>type(self)</code> (or in <code>__init_subclass__</code>), never through <code>self</code>.</p><pre><code>class Base:\n    total = 0\n    def __init__(self):\n        type(self).total += 1\nclass Sub(Base):\n    total = 0   # own counter</code></pre><p>With <code>Base(); Sub(); Sub()</code> you get <code>Base.total == 1</code> and <code>Sub.total == 2</code>. Without <code>total = 0</code> in <code>Sub</code>, the first <code>+= 1</code> reads Base's value and writes a new Sub attribute that starts from Base's count, so give each subclass its own zero. Each increment is O(1).</p>",
+    "<p>A constant is never mutated, so sharing one value among all instances is exactly what you want and it saves memory.</p><p>Example: <code>MAX_SIZE = 100</code> on the class is stored once, whether you create 1 or 1,000,000 objects, and you can change it for all by editing one line. The traps only appear when the shared value is mutable (a list) or when code assigns through an instance. Use an immutable value (number, string, tuple, frozenset) and an UPPER_CASE name to signal it is a constant.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Attribute lookup order: data descriptor, instance dict, __getattr__",
+    "python": "class Data:\n    def __get__(self, obj, owner): return \"data descriptor\"\n    def __set__(self, obj, v): pass\nclass NonData:\n    def __get__(self, obj, owner): return \"non-data descriptor\"\n\nclass A:\n    d = Data()\n    n = NonData()\n    def __getattr__(self, name):      # only called when normal lookup fails\n        return \"fallback for \" + name\n\na = A()\na.__dict__[\"d\"] = \"instance d\"\na.__dict__[\"n\"] = \"instance n\"\nprint(a.d)                            # data descriptor wins over instance dict\nprint(a.n)                            # instance dict wins over non-data\nprint(a.missing)                      # __getattr__ last\nA.plain = 5\nprint(a.plain)                        # class attribute as is\n"
+   },
+   "followUps": [
+    "<p>An instance attribute can shadow a method because a function is a non-data descriptor, which loses to the instance dict. A property is a data descriptor (it defines <code>__set__</code>), which wins over the instance dict.</p><p>Example: <code>obj.__dict__['hi'] = 5</code> makes <code>obj.hi</code> return 5, hiding the method <code>hi</code>. But if <code>hi</code> is a property, <code>obj.hi</code> still calls the property, and <code>obj.hi = 5</code> goes to its setter (or raises <code>AttributeError</code> if there is none).</p>",
+    "<p><code>__getattribute__</code> runs on every attribute access; <code>__getattr__</code> runs only as a fallback when normal lookup raised <code>AttributeError</code>.</p><p>Example: with <code>__getattr__(self, name)</code> returning a default, <code>obj.x</code> for an existing x never touches it, but <code>obj.missing</code> does. Overriding <code>__getattribute__</code> is risky: reading <code>self.anything</code> inside it recurses forever, so delegate with <code>object.__getattribute__(self, name)</code>. Prefer <code>__getattr__</code> for proxies and lazy attributes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "super() follows the MRO in a diamond",
+    "python": "class A:\n    def hi(self): return [\"A\"]\nclass B(A):\n    def hi(self): return [\"B\"] + super().hi()\nclass C(A):\n    def hi(self): return [\"C\"] + super().hi()\nclass D(B, C):\n    def hi(self): return [\"D\"] + super().hi()\n\nprint([k.__name__ for k in D.__mro__])\nprint(D().hi())                       # each class runs exactly once\nprint(B().hi())                       # for a plain B, super() is A\n"
+   },
+   "followUps": [
+    "<p>It breaks the cooperative chain: <code>Parent.__init__(self)</code> always calls that one class, ignoring the MRO, so a shared base can run twice or a sibling can be skipped.</p><p>Example: D(B, C), both calling <code>A.__init__(self)</code> directly. Creating D runs A's init twice (once from B, once from C) and C's own init may be skipped by B's direct call. With <code>super().__init__()</code> everywhere, the MRO D, B, C, A runs each class exactly once.</p>",
+    "<p>Have each class take the keywords it knows by name, and forward the rest with <code>**kwargs</code> to <code>super().__init__</code>.</p><pre><code>class B(A):\n    def __init__(self, b=0, **kw):\n        super().__init__(**kw)\n        self.b = b\n# D(a=1, b=2) -> B takes b, A takes a</code></pre><p>The last class before <code>object</code> must not forward unknown keywords, otherwise <code>object.__init__</code> raises <code>TypeError</code> and you see the mistake early. Cost is one dict copy per call, O(k).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Computing the C3 MRO by hand and a failing case",
+    "python": "def c3(cls):\n    # merge parents' MROs and the parent list (C3 linearization)\n    lists = [c3(p) for p in cls.__bases__] + [list(cls.__bases__)]\n    result = [cls]\n    while any(lists):\n        for l in lists:\n            if not l: continue\n            head = l[0]\n            if not any(head in o[1:] for o in lists):   # head not in any tail\n                break\n        else:\n            raise TypeError(\"no consistent MRO\")\n        result.append(head)\n        lists = [[x for x in l if x is not head] for l in lists]\n    return result\n\nclass A: pass\nclass B(A): pass\nclass C(A): pass\nclass D(B, C): pass\nprint([k.__name__ for k in c3(D)])\nprint([k.__name__ for k in D.__mro__])\ntry:\n    class Q1(A, B): pass\nexcept TypeError as e:\n    print(\"TypeError:\", e)\n"
+   },
+   "followUps": [
+    "<p>The MRO is D, B, C, A, object.</p><p>Steps by C3: start with D, then merge [B, A, object], [C, A, object] and [B, C]. B is the head of the first list and appears in no tail, so take it. Next A is a head, but it is in the tail of [C, A, object], so skip it and take C. Then A, then object. Check with <code>D.__mro__</code>. A comes after both B and C, which is why <code>super()</code> in B can reach C before A.</p>",
+    "<p>Depth-first lookup visits a shared base too early and can bypass a more specific override in another branch, so it is wrong for diamonds.</p><p>Example: D(B, C) with A as the common base, and C overrides a method of A. Depth-first goes D, B, A and finds A's version, never seeing C's override. C3 puts A after both B and C, so the more specific C wins. C3 also guarantees monotonic order and makes <code>super()</code> cooperative.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "classmethod factory vs staticmethod",
+    "python": "class Date:\n    def __init__(self, y, m, d):\n        self.y, self.m, self.d = y, m, d\n\n    @classmethod\n    def from_string(cls, s):          # alternate constructor\n        y, m, d = map(int, s.split(\"-\"))\n        return cls(y, m, d)           # cls, so subclasses get themselves\n\n    @staticmethod\n    def is_valid(s):                  # plain helper, no self or cls\n        return len(s.split(\"-\")) == 3\n\n    def __str__(self):\n        return f\"{self.y:04d}-{self.m:02d}-{self.d:02d}\"\n\nclass MyDate(Date):\n    pass\n\nx = MyDate.from_string(\"2024-3-9\")\nprint(type(x).__name__, x)\nprint(Date.is_valid(\"2024-3-9\"), Date.is_valid(\"hello\"))\n"
+   },
+   "followUps": [
+    "<p>Because <code>Date(...)</code> is hard-coded, a subclass calling the factory gets a plain <code>Date</code> back, not itself.</p><p>Example: <code>MyDate.from_string('2024-3-9')</code> returns a <code>Date</code> if the body says <code>return Date(...)</code>, so any methods added by <code>MyDate</code> are missing. Writing <code>return cls(...)</code> with <code>@classmethod</code> returns a <code>MyDate</code> automatically. It is a quiet bug because the code still runs.</p>",
+    "<p>Return <code>Self</code> from <code>typing</code> (Python 3.11 and newer) so type checkers know a subclass call returns the subclass.</p><pre><code>from typing import Self\n\nclass Date:\n    @classmethod\n    def from_string(cls, s: str) -> Self:\n        return cls(*map(int, s.split('-')))</code></pre><p>Before 3.11, use a bound TypeVar: <code>T = TypeVar('T', bound='Date')</code> with <code>cls: type[T]</code> and <code>-&gt; T</code>. Annotations have no runtime cost.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Duck typing with a Protocol, EAFP vs LBYL",
+    "python": "import io\nfrom typing import Protocol\n\nclass Readable(Protocol):             # structural type: anything with read()\n    def read(self) -> str: ...\n\ndef shout(src: Readable) -> str:\n    return src.read().upper()\n\nclass FakeFile:                       # no base class needed\n    def read(self): return \"fake data\"\n\nprint(shout(io.StringIO(\"from stringio\")))\nprint(shout(FakeFile()))\ntry:\n    shout(42)                         # runtime failure, found only when called\nexcept AttributeError as e:\n    print(\"AttributeError:\", e)\n\nd = {\"k\": 1}\nprint(d.get(\"missing\"))               # LBYL style\ntry:\n    d[\"missing\"]                      # EAFP style\nexcept KeyError:\n    print(\"KeyError caught\")\n"
+   },
+   "followUps": [
+    "<p>EAFP means \"easier to ask forgiveness than permission\": just try the operation and catch the exception. LBYL means \"look before you leap\": check first with an <code>if</code>.</p><p>EAFP is the Python default and avoids races, e.g. <code>try: v = d[k] except KeyError</code>. LBYL is better when the failure is common and the check is cheap, when a failure would have side effects half-way through, or when the check is the whole point, like validating user input before a file write.</p>",
+    "<p>It checks only that the required attribute names exist on the object; it does not check signatures, argument counts, types or return values.</p><p>Example: a class with <code>area = 5</code> (a number, not a method) still passes <code>isinstance(x, HasArea)</code> when the protocol declares <code>area()</code>. The check is also slower than a normal <code>isinstance</code>, because it scans attributes. Use static checkers (mypy, pyright) for the real signature check.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Composition with a swappable engine; Square breaks Rectangle",
+    "python": "class PetrolEngine:\n    def start(self): return \"vroom\"\nclass FakeEngine:\n    def start(self): return \"fake start\"\n\nclass Car:\n    def __init__(self, engine):       # has-a: engine is injected\n        self.engine = engine\n    def drive(self):\n        return \"Car says \" + self.engine.start()\n\nprint(Car(PetrolEngine()).drive())\nprint(Car(FakeEngine()).drive())      # swap part, e.g. in a test\nc = Car(PetrolEngine())\nc.engine = FakeEngine()               # even at runtime\nprint(c.drive())\n\nclass Rect:\n    def __init__(self, w, h): self.w, self.h = w, h\nclass Square(Rect):\n    def __init__(self, s): super().__init__(s, s)\n    def set_w(self, w): self.w = self.h = w\nr = Square(2); r.set_w(5)\nprint(\"Square breaks Rect expectation:\", r.w, r.h)\n"
+   },
+   "followUps": [
+    "<p>Square inheriting Rectangle breaks Liskov because code written for rectangles assumes width and height change independently, and a square cannot honour that.</p><p>Example: a function does <code>r.w = 5; r.h = 2</code> and expects area 10. If Square keeps both sides equal, setting <code>w</code> also changes <code>h</code>, so you get 4 or 25, not 10. The fix is to not make Square a subtype of a mutable Rectangle: use a common <code>Shape</code> with <code>area()</code>, or make both immutable.</p>",
+    "<p>A mixin is a small class that adds one reusable behaviour and is meant to be combined with others by multiple inheritance, not used alone.</p><p>Example: <code>class JsonMixin: def to_json(self): return json.dumps(self.__dict__)</code> then <code>class User(JsonMixin, Base)</code>. It is a middle road: you share code without a deep tree. Keep mixins stateless, give them no <code>__init__</code> of their own, put them before the main base in the bases list, and use <code>super()</code> if they override anything.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Name mangling and a property for encapsulation",
+    "python": "class Account:\n    def __init__(self, balance):\n        self.__balance = balance      # mangled to _Account__balance\n\n    @property\n    def balance(self):\n        return self.__balance\n\n    def withdraw(self, amount):\n        if amount <= 0 or amount > self.__balance:   # keep invariant\n            raise ValueError(\"bad amount\")\n        self.__balance -= amount\n\na = Account(100)\na.withdraw(30)\nprint(a.balance)\ntry:\n    print(a.__balance)\nexcept AttributeError as e:\n    print(\"AttributeError:\", e)\nprint(a._Account__balance)            # still reachable: not security\ntry:\n    a.balance = 5                     # read-only property\nexcept AttributeError as e:\n    print(\"AttributeError:\", e)\nprint(sorted(k for k in vars(a)))\n"
+   },
+   "followUps": [
+    "<p>It raises <code>AttributeError</code>, because Python rewrote the stored name to <code>_ClassName__balance</code> when the class was built.</p><p>You can still read it as <code>obj._Account__balance</code> (assuming the class is named Account), or find it in <code>vars(obj)</code>. This shows mangling prevents accidental clashes in subclasses, not deliberate access. Inside the class body, <code>self.__balance</code> works because the compiler applies the same rewrite there.</p>",
+    "<p>Switch when you need to add validation, computation or logging on access without changing how callers use it (<code>obj.x</code> stays the same).</p><p>Example: start with <code>self.age = age</code>. Later you need age to be non-negative: rename the stored value to <code>_age</code> and add a <code>@property</code> with a setter that raises <code>ValueError</code> for negatives. No caller changes. So do not write getters and setters up front; start plain and upgrade only when a rule appears.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "MinStack with O(1) push, pop, top and min",
+    "python": "class MinStack:\n    def __init__(self):\n        self.items = []\n        self.mins = []                # mins[-1] is the true minimum\n\n    def push(self, v):\n        self.items.append(v)\n        if not self.mins or v <= self.mins[-1]:   # <= handles duplicates\n            self.mins.append(v)\n\n    def pop(self):\n        v = self.items.pop()\n        if v == self.mins[-1]:\n            self.mins.pop()\n        return v\n\n    def top(self): return self.items[-1]\n    def get_min(self): return self.mins[-1]\n\ns = MinStack()\nfor v in [5, 3, 7, 3, 1]:\n    s.push(v)\n    print(\"push\", v, \"min\", s.get_min())\nfor _ in range(3):\n    print(\"pop\", s.pop(), \"min\", s.get_min())   # all O(1)\n"
+   },
+   "followUps": [
+    "<p>Yes, store only the differences from the current minimum, so one stack of numbers plus one <code>min</code> variable is enough, giving O(1) extra space.</p><pre><code>push(v): if empty: min=v; push(0)\n  else: push(v-min); if v&lt;min: min=v\npop(): d=pop(); if d&lt;0: min=min-d\n  # top: d&gt;=0 ? min+d : min</code></pre><p>Example: push 5, 3: stack stores 0, -2 and min is 3. Pop: d=-2 is negative, so the old min is 3-(-2)=5. Every operation is O(1). In Python the numbers are unbounded, so there is no overflow.</p>",
+    "<p>Protect every operation with one lock, because push and pop each touch two lists and another thread could see them half-updated.</p><pre><code>import threading\nself._lock = threading.Lock()\ndef push(self, v):\n    with self._lock:\n        ...  # update items and mins</code></pre><p>All methods, including <code>get_min</code>, take the same lock, so the invariant holds whenever the lock is free. Operations stay O(1), plus a small lock cost. A single lock is simple; use a lock-free design only if you measure contention.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Monkey-patching a method and the super() cell error",
+    "python": "class P:\n    def hi(self): return \"P\"\nclass C(P):\n    def hi(self): return \"C\" + super().hi()\n\nprint(C().hi())\nC.hi = lambda self: \"X\"               # replace entry in C.__dict__\nprint(C().hi())\n\nP.hi = lambda self: \"P2\"              # parent change\nclass E(P): pass\nprint(E().hi(), C().hi())             # C still shadows with X\n\ndef bad(self):\n    return super().hi()               # defined outside a class body\nC.hi = bad\ntry:\n    C().hi()\nexcept RuntimeError as e:\n    print(\"RuntimeError:\", e)\n"
+   },
+   "followUps": [
+    "<p>Changing <code>P.hi</code> does nothing to <code>C</code> objects that already have their own <code>hi</code> in <code>C.__dict__</code>; they still use C's version, which is now the lambda.</p><p>Example: after <code>P.hi = lambda self: 'P2'</code>, <code>P().hi()</code> and any subclass without its own <code>hi</code> return 'P2', but <code>C().hi()</code> still returns 'X'. If you instead delete C's entry (<code>del C.hi</code>), the lookup falls through to P and returns 'P2'. Lookup stops at the first class in the MRO that defines the name.</p>",
+    "<p>Zero-argument <code>super()</code> relies on a hidden <code>__class__</code> cell that the compiler creates only for functions written inside a class body that use <code>super</code> or <code>__class__</code>. A function defined elsewhere has no such cell.</p><p>Example: <code>def f(self): return super().hi()</code> at module level, then <code>C.hi = f</code>, raises <code>RuntimeError: super(): __class__ cell not found</code> when called. Fix it by writing <code>super(C, self).hi()</code> explicitly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ABC vs Protocol vs register",
+    "python": "from abc import ABC, abstractmethod\nfrom typing import Protocol, runtime_checkable\n\nclass Shape(ABC):\n    @abstractmethod\n    def area(self): ...\n    def describe(self):               # shared behaviour\n        return f\"{type(self).__name__} area {self.area()}\"\n\nclass Sq(Shape):\n    def area(self): return 4\n\ntry:\n    Shape()\nexcept TypeError as e:\n    print(\"TypeError:\", e)\nprint(Sq().describe())\n\n@runtime_checkable\nclass HasArea(Protocol):\n    def area(self): ...\n\nclass Duck:                           # no inheritance at all\n    def area(self): return 1\nprint(isinstance(Duck(), HasArea), isinstance(Duck(), Shape))\nShape.register(Duck)                  # virtual subclass\nprint(isinstance(Duck(), Shape))\n"
+   },
+   "followUps": [
+    "<p>Yes. An abstract method may have a body, and subclasses reach it with <code>super()</code>, so the abstract part forces an override while the base still offers default logic.</p><pre><code>class Base(ABC):\n    @abstractmethod\n    def run(self):\n        return \"setup\"\nclass Job(Base):\n    def run(self):\n        return super().run() + \" job\"</code></pre><p><code>Job().run()</code> gives <code>'setup job'</code>. The subclass must still define <code>run</code>, or instantiating it raises <code>TypeError</code>.</p>",
+    "<p>Through <code>__subclasshook__</code>, a class method on the ABC that <code>isinstance</code> and <code>issubclass</code> call to decide membership by checking for methods, so inheritance is not needed.</p><p>Example: <code>Iterable.__subclasshook__</code> returns <code>True</code> when the class defines <code>__iter__</code>. So <code>isinstance(MyClass(), Iterable)</code> is True with no inheritance. You can also add classes explicitly with <code>ABC.register(cls)</code>. It only checks names, not signatures.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Static linters catch some of these, and the rest need tests. Ruff <code>RUF012</code> flags mutable class attributes without <code>ClassVar</code>, <code>B006</code> flags mutable default arguments, and <code>PLR0913</code> flags too many arguments.</p><p>Mypy and pyright catch missing <code>super().__init__</code> arguments, wrong override signatures (with <code>--strict</code> or the override checks), and abstract classes being instantiated. They cannot judge whether an is-a relation is right or whether invariants hold, so those still need human review and tests.</p>",
+    "<p>Explain the refactor with a concrete failing example, not a rule, and keep it kind: the aim is to show the risk, not to blame the teammate or the AI.</p><p>Example: \"This subclass shares a list between all instances: I created two objects, appended to one, and the other changed too. Here is the 5-line test.\" Then show the smaller design (a function, dataclass or composition), say what it removes (two classes, one risk), and offer to pair on it. A failing test persuades better than a style opinion.</p>"
+   ]
+  }
+ ]
+}

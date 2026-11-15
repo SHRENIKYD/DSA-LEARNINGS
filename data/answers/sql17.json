@@ -1,0 +1,116 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Usually a requirement nobody wrote down, most often the need for ad-hoc queries or reporting. Teams pick a key-value store for the feature, then product asks for \"orders by region last week\", and the store cannot answer without a scan. Other flips: a need for multi-record transactions, a retention or GDPR delete across copies, and cost growth at higher traffic. Example: a DynamoDB table at 100 reads/s is cheap, but at 50 000 reads/s with big items the bill dominates. Ask these questions early and write the answers down.</p>",
+    "<p>Pick one store as the source of truth and treat the other as a derived copy that is rebuilt from it. Write to the source first, then publish the change through change data capture or a transactional outbox, and let an idempotent consumer update the second store. Example: PostgreSQL holds orders; a consumer upserts each order into Redis with a version check. Do not write both from the app, because if the second write fails the stores disagree. Add a reconciliation job and accept a stated lag, for example under one minute.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Embedded lines in one document vs referenced lines in a child table",
+    "python": "import sqlite3, json\n\ndb = sqlite3.connect(\":memory:\")\n# Embedded: the order and its (bounded) lines live in ONE row, like a Mongo document\ndb.execute(\"CREATE TABLE order_doc (id INTEGER PRIMARY KEY, doc TEXT)\")\ndoc = {\"customer\": \"Asha\", \"lines\": [{\"sku\": \"A1\", \"qty\": 2}, {\"sku\": \"B7\", \"qty\": 1}]}\ndb.execute(\"INSERT INTO order_doc VALUES (1, ?)\", (json.dumps(doc),))\n# One read returns the whole order\nrow = db.execute(\"SELECT doc FROM order_doc WHERE id = 1\").fetchone()\nprint(\"embedded read:\", json.loads(row[0]))\n\n# Referenced: unbounded children (comments) live in their own table with the parent id indexed\ndb.execute(\"CREATE TABLE comment (id INTEGER PRIMARY KEY, post_id INT, body TEXT)\")\ndb.execute(\"CREATE INDEX ix_comment_post ON comment(post_id)\")\nfor i in range(1, 6):\n    db.execute(\"INSERT INTO comment (post_id, body) VALUES (7, ?)\", (\"c%d\" % i,))\n# Subset pattern: fetch only the newest 2 comments plus a count\nnewest = db.execute(\"SELECT body FROM comment WHERE post_id=7 ORDER BY id DESC LIMIT 2\").fetchall()\ntotal = db.execute(\"SELECT COUNT(*) FROM comment WHERE post_id=7\").fetchone()[0]\nprint(\"referenced newest 2:\", [r[0] for r in newest], \"of\", total)\n"
+   },
+   "followUps": [
+    "<p>Do it in batches, because one huge update is slow and hard to retry. Update the source customer document first, then run <code>updateMany({customerId: 42}, {$set: {customerName: \"New\"}})</code> in chunks of, say, 1 000 ids, or drive it from a change stream so it is resumable. With an index on customerId, 5 million orders at 10 000 updates/s takes about 8 minutes. Make the update idempotent and keep the name version so a retry is harmless. Readers may see old names briefly, so decide if that is acceptable. If not, do not copy the name; look it up.</p>",
+    "<p>Use a transaction when several documents must change together or not at all and embedding them in one document is not possible, such as moving money between two account documents. Single-document updates are already atomic, so prefer a design where each business action touches one document. Transactions cost more: they hold locks, have a 60 second default limit and add latency. Example: debit account A by 50 and credit account B by 50 inside one transaction, so a crash cannot lose the 50.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>ESR stands for Equality, Sort, Range: order the fields of a compound index in that order. Equality fields come first so the index narrows to an exact slice, then the sort field so results come out already ordered with no in-memory sort, then range fields. Example: for <code>{status: \"A\", created: {$gt: d}}</code> sorted by score, index <code>{status:1, score:1, created:1}</code>. Putting the range before the sort forces a blocking sort over every matching entry, which can spill to disk at 100 MB.</p>",
+    "<p>Each shard runs the early stages (the $match, $project and a partial $group) on its own data in parallel, then sends results to one place that merges them. The merge runs on a chosen shard or on mongos, and stages like $sort, $limit and the final $group combine the partial results. Example: summing sales per region, each of 4 shards returns its own per-region totals (say 20 rows each) and the merger adds them. Put the shard key in the first $match so only the shards that hold the data take part.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Leaderboard ranking with a tie-break encoded into the score",
+    "python": "import sqlite3\n\nMAX_TS = 1000\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE board (player TEXT PRIMARY KEY, points INT, ts INT, enc INT)\")\nevents = [(\"ana\", 50, 10), (\"bo\", 70, 20), (\"cy\", 70, 15), (\"di\", 40, 5)]\nprint(\"events (player, points, time):\", events)\nfor player, points, ts in events:\n    # earlier time must win a tie, so a smaller ts gives a larger encoded score\n    enc = points * 10**10 + (MAX_TS - ts)\n    db.execute(\"INSERT INTO board VALUES (?,?,?,?)\", (player, points, ts, enc))\n\n# Top 3, like ZREVRANGE 0 2: sort by the encoded score descending\ntop = db.execute(\"SELECT player, points FROM board ORDER BY enc DESC LIMIT 3\").fetchall()\nprint(\"top 3:\", top)\n# \"My rank\", like ZREVRANK: count players with a higher encoded score\nrank = db.execute(\"SELECT COUNT(*) + 1 FROM board WHERE enc > (SELECT enc FROM board WHERE player='ana')\").fetchone()[0]\nprint(\"rank of ana:\", rank)\n"
+   },
+   "followUps": [
+    "<p>Keep a small sorted set per user that holds only their friends' scores, or compute it on read from the global scores. For a user with 200 friends, fetch each friend's score with ZSCORE in one pipeline and sort the 200 results in the app, which is fast. If friend lists are huge, use ZUNIONSTORE of per-friend keys into a temporary key with a short TTL. Fan-out on write (update every friend's board) costs 200 writes per score event, so it only pays when reads are far more frequent than writes.</p>",
+    "<p>Reload from the durable store, then replay recent events. Scores live in PostgreSQL or DynamoDB, so a job reads rows in pages and issues ZADD in batches of 1 000 into a new key, then renames it over the live one. Example: 10 million players at 100 000 ZADD/s is about 100 seconds. Events that arrived during the rebuild are replayed from a log offset noted at the start. With AOF everysec and a replica, a full rebuild is rare, but it should be tested.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>noeviction makes Redis refuse writes with an error once memory is full, instead of deleting keys. It is the right default when every key matters, such as a queue, a job store or permanent configuration, because silent deletion would be data loss. Reads still work. Example: at maxmemory 2 GB, the 2 GB + 1 byte write fails, and the app can alert and scale up. For a cache, this is wrong, as it would turn a full cache into an outage; use allkeys-lfu there.</p>",
+    "<p>Because the snapshot is taken by a forked child process that shares memory pages with the parent using copy-on-write. While the child writes the file, every page the parent modifies must be copied. Example: a 10 GB dataset with heavy writes can copy most pages, so memory peaks near 20 GB and the OS may kill Redis. Leave headroom, such as 50 percent of RAM free, and watch fork latency. Transparent huge pages make this worse.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Split the hot sensor's partition further, because one partition per sensor per day would hold 86 400 000 rows. Add a bucket to the key: <code>PRIMARY KEY ((sensor_id, day, bucket), ts)</code> where bucket = hour or ts mod N. At 1 000 readings/s, 3.6 million rows per hour; hourly buckets give 3.6 million rows, about 180 MB, still too large, so use 10-minute buckets (600 000 rows, 30 MB). Readers query the known buckets in parallel. Keep the normal design for other sensors, and only bucket the few that need it.</p>",
+    "<p>Not on the Cassandra cluster; copy the data out. Cassandra serves known queries by key, and full scans hurt the live traffic. Stream readings through Kafka into a column store such as ClickHouse or a data lake with Parquet files, and run Spark or SQL there. Example: a daily average over 1 million sensors reads 86 billion rows, which belongs on an analytics engine. Spark on Cassandra is possible but should run against a separate analytics datacenter.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Cassandra 5 adds Accord-based transactions, which give multi-partition ACID transactions without needing a separate Paxos round per key. Unlike lightweight transactions, which only work on a single partition, Accord can read and write several partitions atomically. You write a <code>BEGIN TRANSACTION ... COMMIT TRANSACTION</code> block in CQL. This removes many cases where you had to design around the lack of transactions, although it costs more latency than a plain write. Check the exact release and feature flag before you rely on it.</p>",
+    "<p>Because an odd number gives the same fault tolerance as the next even number with less cost. RF 3 needs a quorum of 2 and survives 1 node down. RF 4 needs a quorum of 3 and still survives only 1 node down, while storing 33 percent more data and doing more writes. RF 5 is chosen when you need to survive 2 failures. So 3 is the cheapest value that tolerates a node failure, and one copy per rack across 3 racks fits well.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Single-table design: one key query returns a customer and their orders",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\n# Generic keys: pk groups items that are read together, sk encodes type and order\ndb.execute(\"CREATE TABLE t (pk TEXT, sk TEXT, data TEXT, PRIMARY KEY (pk, sk))\")\nrows = [\n    (\"CUST#1\", \"PROFILE\", \"Asha\"),\n    (\"CUST#1\", \"ORDER#2026-01-05#o1\", \"total=30\"),\n    (\"CUST#1\", \"ORDER#2026-02-11#o2\", \"total=45\"),\n    (\"CUST#2\", \"PROFILE\", \"Ben\"),\n]\ndb.executemany(\"INSERT INTO t VALUES (?,?,?)\", rows)\n\n# One query on the partition key returns the whole customer page\npage = db.execute(\"SELECT sk, data FROM t WHERE pk = 'CUST#1' ORDER BY sk\").fetchall()\nprint(\"customer page:\", page)\n# begins_with on the sort key picks only the orders, already sorted by date\norders = db.execute(\"SELECT sk FROM t WHERE pk='CUST#1' AND sk LIKE 'ORDER#%' ORDER BY sk\").fetchall()\nprint(\"orders:\", [o[0] for o in orders])\n# BETWEEN on the sort key gives a date range\nrng = db.execute(\"SELECT sk FROM t WHERE pk='CUST#1' AND sk BETWEEN 'ORDER#2026-02' AND 'ORDER#2026-02~'\").fetchall()\nprint(\"February orders:\", [o[0] for o in rng])\n"
+   },
+   "followUps": [
+    "<p>Store one item per edge, and a second item for the reverse direction, then use a GSI that swaps the keys. Example: students and courses. Items: PK=STUDENT#1, SK=COURSE#10 and PK=COURSE#10, SK=STUDENT#1 (or a GSI with SK as its partition key). Query PK=STUDENT#1 with begins_with(SK, \"COURSE#\") to list a student's courses, and the inverted GSI query to list a course's students. A write to both edges should use TransactWriteItems so they stay in step.</p>",
+    "<p>First try to serve it with an existing key by choosing a better sort-key prefix. Otherwise add a GSI online, which DynamoDB backfills from existing items without downtime. If the new pattern needs a new attribute (say GSI2PK), write it on new items and run a one-off backfill script that scans and updates old items, throttled so it does not use up capacity. Example: backfilling 10 million items at 1 000 writes/s takes about 3 hours. Watch the GSI's own write capacity during the backfill.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A sparse index only contains items that have the key attribute",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE items (id TEXT PRIMARY KEY, status TEXT)\")\nitems = [(\"a\", \"PENDING\"), (\"b\", None), (\"c\", \"PENDING\"), (\"d\", None), (\"e\", \"DONE\")]\ndb.executemany(\"INSERT INTO items VALUES (?,?)\", items)\nprint(\"base table:\", items)\n\n# Model of a sparse GSI: only rows that HAVE the index key are copied into it\ndb.execute(\"CREATE TABLE gsi_status (status TEXT, id TEXT, PRIMARY KEY (status, id))\")\ndb.execute(\"INSERT INTO gsi_status SELECT status, id FROM items WHERE status IS NOT NULL\")\nsize = db.execute(\"SELECT COUNT(*) FROM gsi_status\").fetchone()[0]\nprint(\"index entries:\", size, \"of\", len(items), \"items\")\nqueue = db.execute(\"SELECT id FROM gsi_status WHERE status='PENDING' ORDER BY id\").fetchall()\nprint(\"pending queue:\", [q[0] for q in queue])\n"
+   },
+   "followUps": [
+    "<p>Choose KEYS_ONLY if the caller will fetch the item afterward or needs only ids, INCLUDE with the few attributes your query returns, and ALL only when items are small. Every projected attribute is stored twice and costs write throughput, and an attribute not projected forces a second read of the base table. Example: a status queue index that returns order id and created date only needs INCLUDE (created). Never project big blobs, because a 10 KB item written to a GSI costs 10 WCU twice.</p>",
+    "<p>The write to the base table gets throttled too. DynamoDB copies each change into the index asynchronously, but if the index lacks write capacity its internal queue fills and it pushes back on base-table writes with throttling errors. Example: the base table has 1 000 WCU but the GSI has only 100 WCU and every write touches it; at 300 writes/s the GSI limit is exceeded and the table throttles even though it looks idle. Give the GSI at least the capacity of the writes it receives, or use on-demand mode.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Write-sharding a hot counter key",
+    "python": "import sqlite3\n\nSHARDS = 4\nWRITES = 4000\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE counter (key TEXT, shard INT, n INT, PRIMARY KEY (key, shard))\")\n\nfor i in range(WRITES):\n    shard = i % SHARDS  # real code would use a random shard; round robin keeps output fixed\n    db.execute(\"INSERT INTO counter VALUES ('likes', ?, 1) \"\n               \"ON CONFLICT(key, shard) DO UPDATE SET n = n + 1\", (shard,))\n\nper = db.execute(\"SELECT shard, n FROM counter ORDER BY shard\").fetchall()\nprint(\"writes:\", WRITES, \"per shard:\", per)\nprint(\"hottest key now gets\", max(n for _, n in per), \"writes instead of\", WRITES)\n# Reading the counter means summing all shards (SHARDS reads)\ntotal = db.execute(\"SELECT SUM(n) FROM counter WHERE key='likes'\").fetchone()[0]\nprint(\"total on read:\", total)\n"
+   },
+   "followUps": [
+    "<p>At least 4 shards, and in practice 8 for safety. One item can take about 1 000 writes/s, so 4 000 writes/s needs at least 4 shards, which would put each at its limit. With 8 shards (key~0 to key~7), each gets about 500 writes/s, 50 percent of the ceiling, leaving room for bursts. Reads then need 8 GetItems, or a background job sums them into one total. More shards mean cheaper writes but pricier reads, so pick the smallest count with headroom.</p>",
+    "<p>Because DynamoDB must apply every base-table write to the index, and if the index cannot absorb it the write waits and fails. The pressure travels up. A GSI keyed by a low-cardinality value, for example status = PENDING, concentrates all index writes into one index partition, which hits its per-partition limit of 1 000 WCU even if the base table is spread out evenly. Fix by choosing a high-cardinality GSI key or adding a shard suffix like PENDING#3.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Outbox: change and event in one transaction, idempotent consumer",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.executescript(\"\"\"\nCREATE TABLE users (id INT PRIMARY KEY, name TEXT, version INT);\nCREATE TABLE outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT, name TEXT, version INT);\nCREATE TABLE copy (user_id INT PRIMARY KEY, name TEXT, version INT);\nINSERT INTO users VALUES (1, 'Asha', 1);\n\"\"\")\n# The source row and the outbox event commit together, so neither can be lost alone\nwith db:\n    db.execute(\"UPDATE users SET name='Asha K', version=2 WHERE id=1\")\n    db.execute(\"INSERT INTO outbox (user_id, name, version) VALUES (1, 'Asha K', 2)\")\n\ndef consume():\n    for _, uid, name, ver in db.execute(\"SELECT * FROM outbox ORDER BY seq\").fetchall():\n        # Versioned upsert: replays and old events change nothing\n        db.execute(\"INSERT INTO copy VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE \"\n                   \"SET name=excluded.name, version=excluded.version WHERE excluded.version > copy.version\",\n                   (uid, name, ver))\n\nconsume()\nprint(\"copy after first run:\", db.execute(\"SELECT * FROM copy\").fetchall())\nconsume()  # delivered again: harmless\nprint(\"copy after replay:   \", db.execute(\"SELECT * FROM copy\").fetchall())\n"
+   },
+   "followUps": [
+    "<p>It is a pattern where the service writes its data change and an event row into the same database transaction, and a separate process publishes the event row to the broker. It fixes the dual-write problem: without it, you might commit the database and then crash before sending the message, so the message is lost. Example: insert the order and an OrderPlaced row in an outbox table together; a relay reads unsent rows, publishes, and marks them sent. Delivery is at least once, so consumers must be idempotent.</p>",
+    "<p>List every place the user's data lives, and delete or anonymise it in each, driven by one deletion request id. Keep a data map: the main database, caches, search index, analytics warehouse and backups. Publish a UserDeleted event so each consumer removes its own copy and confirms. Backups cannot be edited easily, so keep them short-lived (for example 30 days) or record a deletion list to re-apply after a restore. Track completion and finish within the legal deadline, usually one month.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Test it against the written access patterns, one by one. For each pattern, check that a single Query on a known key returns it, with no Scan and no FilterExpression doing the real work. Then do the numbers: item size, items per partition (under 10 GB for an LSI collection), peak writes per key against the 1 000 WCU ceiling, and the number of GSIs times write cost. Finally ask what happens when a pattern changes. If the AI could not state sizes and rates, the design is guesswork.</p>",
+    "<p>Start with the operational store if the data is small and you already run it, because it avoids another system. For example, MongoDB Atlas vector search over 1 million embeddings of 768 dimensions (about 3 GB) is fine. Move to a dedicated vector database when you need very large collections (hundreds of millions), tight latency at high query rates, or tuning of the index type. A separate store also keeps heavy vector queries from slowing normal traffic. Measure recall and latency with your own data first.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fixed window allows a boundary burst; sliding log does not",
+    "python": "import sqlite3\n\nLIMIT, WINDOW = 3, 10\nrequests = [8, 9, 9.5, 10, 10.5, 11]  # seconds; 3 just before and 3 just after t=10\nprint(\"limit\", LIMIT, \"per\", WINDOW, \"s; request times:\", requests)\n\n# Fixed window: one counter per window number\nfixed = {}\nallowed_fixed = []\nfor t in requests:\n    w = int(t // WINDOW)\n    if fixed.get(w, 0) < LIMIT:\n        fixed[w] = fixed.get(w, 0) + 1\n        allowed_fixed.append(t)\nprint(\"fixed window allowed:\", allowed_fixed)\n\n# Sliding log: keep timestamps, count those in the last WINDOW seconds\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE log (ts REAL)\")\nallowed_log = []\nfor t in requests:\n    n = db.execute(\"SELECT COUNT(*) FROM log WHERE ts > ?\", (t - WINDOW,)).fetchone()[0]\n    if n < LIMIT:\n        db.execute(\"INSERT INTO log VALUES (?)\", (t,))\n        allowed_log.append(t)\nprint(\"sliding log allowed: \", allowed_log)\n"
+   },
+   "followUps": [
+    "<p>Keep the decision local and make the global limit approximate. Give each region a share, for example a 1 000/min limit split as 500 per region, enforced locally in Redis with no cross-region call. Regions periodically (every second or so) exchange usage and rebalance shares. A strict global counter needs a cross-region round trip of 100 ms or more per request, which hurts latency. Accept small overshoot, say 5 percent, in exchange for speed, and say so in the design.</p>",
+    "<p>Store two values per user, the token count and the last refill time, and refill by the elapsed time on each request. On request: tokens = min(capacity, tokens + (now - last) * rate); if tokens >= 1, subtract 1 and allow, otherwise reject. Run it in a Lua script so the read and write are atomic. Example: capacity 10, rate 2 tokens/s; after 3 idle seconds a user with 0 tokens has 6. It allows bursts up to the capacity while holding the long-run average at the rate.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,123 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Runtime validation: types are erased",
+    "js": "// Types are erased at runtime: data from outside must be checked by hand.\nfunction isUser(x) {\n  // A runtime guard, like a type predicate \"x is User\" in TypeScript\n  return typeof x === \"object\" && x !== null &&\n    typeof x.id === \"number\" && typeof x.name === \"string\";\n}\n\nfunction parseUser(text) {\n  const data = JSON.parse(text); // unknown shape: could be anything\n  if (!isUser(data)) throw new Error(\"bad user payload\");\n  return data;\n}\n\nconst inputs = [\n  '{\"id\": 1, \"name\": \"Asha\"}',\n  '{\"id\": \"1\", \"name\": \"Asha\"}', // id is a string: a type annotation alone would not catch this\n  'null',\n];\nfor (const text of inputs) {\n  try {\n    console.log(text, \"->\", JSON.stringify(parseUser(text)));\n  } catch (e) {\n    console.log(text, \"-> rejected:\", e.message);\n  }\n}\n"
+   },
+   "followUps": [
+    "<p>Validate at every place where data enters your program from outside, because types are erased and the compiler cannot see it. That means HTTP request bodies, responses from other services, <code>JSON.parse</code> results, <code>localStorage</code>, environment variables, URL/query parameters, form input and LLM output.</p><p>Validate once at the edge, then trust the inferred type inside. Example: a <code>POST /users</code> body checked with a schema gives a typed <code>User</code>; deeper functions never re-check it.</p>",
+    "<p>You measure it by looking at bugs and effort, not by feeling. Track production errors of the \"undefined is not a function / cannot read property of undefined\" kind before and after adoption, the share of code covered by strict mode, and how many <code>any</code>, <code>as</code> and <code>@ts-ignore</code> remain.</p><p>Also watch review and refactor time: if renaming a field used to take a day of grepping and now takes minutes, it pays off. Example: 40 type-related incidents per quarter falling to 10 is a clear signal.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Narrowing an unknown value before use",
+    "js": "// \"unknown\" idea: you must narrow a value before using it.\nfunction describe(value) {\n  // Each check narrows the value, like typeof narrowing in TypeScript\n  if (typeof value === \"string\") return \"string of length \" + value.length;\n  if (typeof value === \"number\") return \"number, doubled is \" + value * 2;\n  if (Array.isArray(value)) return \"array with \" + value.length + \" items\";\n  if (value === null) return \"null\";\n  return \"something else: \" + typeof value;\n}\n\nconst samples = [\"hello\", 21, [1, 2, 3], null, { a: 1 }, undefined];\nfor (const s of samples) {\n  console.log(JSON.stringify(s), \"=>\", describe(s));\n}\n\n// Without narrowing (the \"any\" way) mistakes only show up at runtime:\ntry {\n  const anything = 42;\n  console.log(anything.toUpperCase());\n} catch (e) {\n  console.log(\"any-style bug:\", e.message);\n}\n"
+   },
+   "followUps": [
+    "<p>It returns <code>any</code> because the parser cannot know the shape of the text, and historically there was no better type. The risk is that the result then skips all checking. Treat it as untrusted: assign it to <code>unknown</code> and narrow it.</p><pre><code>const data: unknown = JSON.parse(text);\nif (!isUser(data)) throw new Error(\"bad\");\n// data is User here\nreturn data;</code></pre><p>Better still, parse with a schema library so the check and the type come from one source.</p>",
+    "<p>Switch on the shared tag, and in the <code>default</code> branch pass the leftover value to a function that takes <code>never</code>.</p><pre><code>type Shape = { kind: \"circle\" } | { kind: \"rect\" };\nfunction assertNever(x: never): never { throw new Error(\"bad\"); }\nfunction f(s: Shape) {\n  switch (s.kind) {\n    case \"circle\": return 1;\n    case \"rect\": return 2;\n    default: return assertNever(s);\n  }\n}</code></pre><p>Add <code>{ kind: \"tri\" }</code> to the union and the <code>assertNever(s)</code> line stops compiling.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Contextual typing means TypeScript works out a type from where an expression appears, instead of from the expression alone. In <code>[1, 2, 3].map(n =&gt; n * 2)</code> you never write the type of <code>n</code>; the compiler knows <code>map</code> expects a callback taking a <code>number</code>, so <code>n</code> is <code>number</code>.</p><p>It also works for object literals assigned to a typed variable, event handlers (<code>onClick</code> gives you the event type) and return values. That is why callback parameters usually need no annotation.</p>",
+    "<p><code>satisfies</code> is better when you want the compiler to check a value against a type but keep the more precise type it already has. An annotation replaces the precise type with the wide one.</p><pre><code>type Colors = Record&lt;string, string | number[]&gt;;\nconst a: Colors = { red: [255, 0, 0] };   // a.red is string | number[]\nconst b = { red: [255, 0, 0] } satisfies Colors; // b.red is number[]</code></pre><p>With <code>b</code> you can call <code>b.red.map(...)</code> directly, and a typo like <code>{ rd: 1 }</code> is still caught.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Declare an interface with the same name as the library's one, in a module augmentation block, and add the property; declaration merging combines them.</p><pre><code>import \"some-lib\";\ndeclare module \"some-lib\" {\n  interface Options { retries?: number }\n}</code></pre><p>The same trick adds fields to <code>Window</code> or Express's <code>Request</code>. It only works with <code>interface</code>, not <code>type</code>, which is the main practical reason library authors export interfaces. Put the file where tsconfig includes it.</p>",
+    "<p>It is a compile error: \"Subsequent property declarations must have the same type\". Declaration merging only combines members that do not clash. Merging is by name, so two interfaces <code>A</code> with <code>id: string</code> and <code>id: number</code> cannot coexist.</p><p>Methods are different: repeated method declarations become overloads, with later declarations having higher priority. So the clash rule applies to properties, while functions simply accumulate signatures.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Duck typing and a validating brand",
+    "js": "// Structural (\"duck\") typing: only the shape matters, not the declared class.\nclass Dog { constructor() { this.name = \"Rex\"; } speak() { return \"woof\"; } }\nconst robot = { name: \"R2\", speak() { return \"beep\"; }, battery: 90 }; // extra field is fine\n\nfunction greet(animal) {\n  // Works for anything that has name and speak()\n  return animal.name + \" says \" + animal.speak();\n}\nconsole.log(greet(new Dog()));\nconsole.log(greet(robot));\n\n// Look-alike values mix freely, which is the downside of shapes:\nconst userId = \"u-1\";\nconst orderId = \"o-9\";\nfunction findUser(id) { return \"user \" + id; }\nconsole.log(findUser(orderId)); // wrong id kind, nothing complains\n\n// A \"brand\" via a validating constructor makes the kinds distinct at runtime\nfunction makeUserId(s) {\n  if (!s.startsWith(\"u-\")) throw new Error(\"not a user id: \" + s);\n  return s;\n}\nconsole.log(findUser(makeUserId(userId)));\ntry { makeUserId(orderId); } catch (e) { console.log(e.message); }\n"
+   },
+   "followUps": [
+    "<p>Because assignability only asks \"does it have the required members?\", not \"was it declared as this type?\". Extra fields are fine for a class instance or any variable, since they do not harm code that only reads the required ones.</p><p>Example: a <code>Dog</code> with <code>name</code>, <code>speak()</code> and <code>tail</code> can be passed where <code>{ name: string; speak(): string }</code> is expected. The one exception is a fresh object literal written directly at the call site, where extra properties are flagged as probable typos (excess property check).</p>",
+    "<p>Brands are common in validation and ORM libraries. Zod has <code>.brand&lt;\"UserId\"&gt;()</code>, which produces a type tagged so plain strings are rejected. Libraries for money, units and IDs (and Effect's <code>Brand</code> module) use the same idea.</p><p>The pattern is always: a type like <code>string &amp; { __brand: \"X\" }</code> that exists only at compile time, plus a function that checks the value and returns it with that type. At runtime it is still an ordinary string, so there is no cost.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a call on a union must be valid for every member, so the arguments have to satisfy all of them at once. For <code>((a: string) =&gt; void) | ((a: number) =&gt; void)</code> the parameter becomes <code>string &amp; number</code>, which is <code>never</code>, so nothing can be passed.</p><p>It is fine when the signatures are compatible, such as both taking <code>string</code>. Fix it by narrowing first to know which function you have, or by redesigning so both functions accept the same wide parameter type.</p>",
+    "<p><code>(string | number)[]</code> is one array whose items can each be either type, so <code>[1, \"a\", 2]</code> is allowed. <code>string[] | number[]</code> is either an all-string array or an all-number array, so <code>[1, \"a\"]</code> is rejected.</p><p>The second is stricter and harder to use: calling <code>arr.map</code> or <code>arr.push(x)</code> may be an error because TypeScript does not know which array you have. Narrow with a check like <code>typeof arr[0]</code> or <code>Array.isArray</code> plus a guard before using it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It makes the array readonly and gives it the exact literal types, producing a tuple. <code>[\"a\", \"b\"]</code> normally has type <code>string[]</code>; with <code>as const</code> it becomes <code>readonly [\"a\", \"b\"]</code>.</p><pre><code>const dirs = [\"left\", \"right\"] as const;\ntype Dir = typeof dirs[number]; // \"left\" | \"right\"\ndirs.push(\"up\"); // error: readonly</code></pre><p>The length is fixed at 2 and each position has its literal type. Nothing changes at runtime; it is a compile-time promise only.</p>",
+    "<p>Define the array once with <code>as const</code> and take the type of its elements, so the list and the type can never drift apart.</p><pre><code>const roles = [\"admin\", \"editor\", \"viewer\"] as const;\ntype Role = (typeof roles)[number];\n// \"admin\" | \"editor\" | \"viewer\"\nconst isRole = (s: string): s is Role =&gt; (roles as readonly string[]).includes(s);</code></pre><p>The same works for objects with <code>keyof typeof</code> or <code>(typeof obj)[keyof typeof obj]</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Discriminated union and narrowing checks",
+    "js": "// Discriminated union: a shared \"kind\" field tells the shapes apart.\nfunction area(shape) {\n  switch (shape.kind) {\n    case \"circle\": return Math.PI * shape.radius ** 2;\n    case \"rect\": return shape.w * shape.h;\n    default: throw new Error(\"unknown kind: \" + shape.kind);\n  }\n}\n\n// \"in\" narrowing: check for a property when there is no tag\nfunction label(x) {\n  if (\"radius\" in x) return \"round thing\";\n  return \"boxy thing\";\n}\n\n// Truthiness narrowing also drops 0 and \"\" (a classic trap)\nfunction show(n) {\n  return n ? \"got \" + n : \"nothing\";\n}\n\nconst shapes = [\n  { kind: \"circle\", radius: 2 },\n  { kind: \"rect\", w: 3, h: 4 },\n];\nfor (const s of shapes) {\n  console.log(s.kind, area(s).toFixed(2), label(s));\n}\nconsole.log(show(5), \"|\", show(0), \"<- 0 was treated as missing\");\nconsole.log(show(undefined));\n"
+   },
+   "followUps": [
+    "<p>Narrowing can be lost inside a callback because TypeScript cannot be sure the variable has not changed by the time the callback runs. If the variable is a <code>let</code> or a mutable property that is reassigned later, the narrowing is dropped inside the function.</p><pre><code>let x: string | undefined = get();\nif (x) { setTimeout(() =&gt; x.length, 0); } // error for let\nconst y = x; // copy to a const first, then use y</code></pre><p>Use a <code>const</code>, or copy the narrowed value into one. TypeScript 5.4 keeps narrowing in closures created after the last assignment.</p>",
+    "<p>The compiler trusts your guard without checking it, so a wrong guard silently produces wrong types. <code>function isCat(x: any): x is Cat { return true; }</code> compiles and lies everywhere it is used.</p><p>Common mistakes: checking only one field of several, testing <code>truthy</code> so <code>0</code> counts as missing, or returning the inverse. Keep guards small, test them with both passing and failing samples, and prefer discriminated unions or schema parsing, where the check and type are generated together.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "assertNever exhaustiveness at runtime",
+    "js": "// assertNever: the runtime half of an exhaustiveness check.\nfunction assertNever(x) {\n  throw new Error(\"Unhandled case: \" + JSON.stringify(x));\n}\n\nfunction handle(event) {\n  switch (event.type) {\n    case \"login\": return \"welcome \" + event.user;\n    case \"logout\": return \"bye \" + event.user;\n    // In TypeScript, event is 'never' here only if every case is handled above.\n    default: return assertNever(event);\n  }\n}\n\nconst events = [\n  { type: \"login\", user: \"ann\" },\n  { type: \"logout\", user: \"ann\" },\n  { type: \"purchase\", user: \"ann\" }, // a newer server sent a kind we do not know\n];\nfor (const e of events) {\n  try {\n    console.log(handle(e));\n  } catch (err) {\n    console.log(\"error:\", err.message);\n  }\n}\n\n// Alternative: a handler table; missing keys are easy to detect\nconst handlers = { login: () => \"in\", logout: () => \"out\" };\nconsole.log(Object.keys(handlers).join(\",\"));\n"
+   },
+   "followUps": [
+    "<p>A generated change that adds a new event type breaks the build at every <code>switch</code> that forgot it, so the gap is found by the compiler instead of by a user. The AI (or a reviewer) cannot merge a half-handled union.</p><p>Example: the AI adds <code>{ type: \"refund\" }</code> to <code>Event</code>; <code>assertNever(e)</code> in 6 reducers now fails to compile, giving an exact to-do list of 6 places. Without it, the new event would fall into a <code>default</code> and be ignored silently.</p>",
+    "<p>A <code>default: break</code> (or any default that quietly does something) removes the check, because after that branch the leftover value is no longer required to be <code>never</code>. A new union member just falls into <code>default</code> and nothing fails.</p><p>Fix by making the default call <code>assertNever(x)</code> or <code>x satisfies never</code>. For extra safety, turn on the lint rule <code>@typescript-eslint/switch-exhaustiveness-check</code>, which flags a switch missing a case even when a default exists.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Enum-like frozen object",
+    "js": "// \"as const object\" pattern: enum-like, iterable, and plain JavaScript.\nconst Role = Object.freeze({ Admin: \"admin\", Editor: \"editor\", Viewer: \"viewer\" });\n\n// Dot access like an enum\nconsole.log(\"Role.Admin =\", Role.Admin);\n\n// Iterable values (a TypeScript numeric enum would also yield names)\nconsole.log(\"all roles:\", Object.values(Role).join(\", \"));\n\n// Runtime check that a string is a valid role\nfunction isRole(s) {\n  return Object.values(Role).includes(s);\n}\nconsole.log(isRole(\"editor\"), isRole(\"root\"));\n\n// Frozen: changes are ignored, much like readonly\nRole.Admin = \"hacked\";\nconsole.log(\"after attempt:\", Role.Admin);\n\n// Reverse mapping that a numeric enum would create automatically\nconst Level = { Low: 0, High: 1 };\nconst reverse = {};\nfor (const [k, v] of Object.entries(Level)) reverse[v] = k;\nconsole.log(\"reverse of 1:\", reverse[1]);\n"
+   },
+   "followUps": [
+    "<p>Numeric enums fit when the numbers themselves matter: bit flags combined with <code>|</code>, values that must match a wire protocol or database column, or ordered levels you compare with <code>&lt;</code> and <code>&gt;</code>.</p><pre><code>enum Perm { Read = 1, Write = 2, Exec = 4 }\nconst p = Perm.Read | Perm.Write; // 3\nconst canWrite = (p &amp; Perm.Write) !== 0;</code></pre><p>The reverse mapping (<code>Perm[2]</code> gives \"Write\") is also handy for logging. For plain labels, a string union is simpler.</p>",
+    "<p>Migrate in small, safe steps, one enum at a time, with the compiler as the guide. For each enum: replace it with an <code>as const</code> object plus a derived type of the same name, then fix the errors that appear. Usages like <code>Role.Admin</code> keep working unchanged.</p><p>Do the easy string enums first, handle numeric ones with reverse lookups carefully, and add a lint rule to stop new enums. A codemod (ts-morph) can do the bulk; 200 enums at 10 per pull request is 20 reviewable PRs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Generic types do not exist at runtime, so <code>T</code> is erased and there is nothing to construct. <code>new T()</code> would need the actual class at runtime, which TypeScript does not have.</p><p>Pass the constructor in instead:</p><pre><code>function make&lt;T&gt;(ctor: new () =&gt; T): T {\n  return new ctor();\n}\nconst d = make(Date); // d is Date</code></pre><p>The same applies to <code>typeof T</code> and <code>T instanceof</code>: both need a real value, so pass one.</p>",
+    "<p>A <code>const</code> type parameter makes the compiler infer the most precise, readonly literal type for the argument, as if the caller had written <code>as const</code>.</p><pre><code>function pick&lt;const T extends readonly string[]&gt;(xs: T): T { return xs; }\nconst r = pick([\"a\", \"b\"]);\n// r is readonly [\"a\", \"b\"], not string[]</code></pre><p>It is useful for configuration helpers and route tables where callers should not need to write <code>as const</code> themselves (TypeScript 5.0+).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Return a copy of the input with the change applied, so the result still carries everything <code>T</code> had.</p><pre><code>function withId&lt;T extends { id: string }&gt;(obj: T): T {\n  return { ...obj, id: \"x\" }; // type: T &amp; { id: string }\n}\nconst r = withId({ id: \"a\", role: \"admin\" }); // keeps role</code></pre><p>The spread type is <code>T &amp; { id: string }</code>, which is assignable to <code>T</code>. Returning only <code>{ id: \"x\" }</code> would drop <code>role</code>, which is exactly what the error is warning about.</p>",
+    "<p>Variance describes whether a type can be replaced by its subtypes or supertypes. A function returning <code>T</code> is covariant: callers must be able to rely on getting any subtype of the constraint, with all its extra members, back. A fresh object only built from the constraint is a supertype, so it is not safe.</p><p>Same idea for inputs: a function accepting <code>Dog</code> cannot stand in for one accepting <code>Animal</code> (parameters are contravariant). Both rules protect against code receiving a value that lacks members it needs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do it gradually and keep the build green at every step. First rename files <code>.js</code> to <code>.ts</code> (or use <code>allowJs</code> and <code>checkJs</code>) with the loosest config, then turn on one strict flag at a time, starting with <code>noImplicitAny</code> and <code>strictNullChecks</code>.</p><p>Fix errors by folder, and ratchet: CI fails if a folder's error count increases. A per-directory tsconfig with strict on for finished code lets 500k lines move in slices of, say, 5k lines per week.</p>",
+    "<p><code>skipLibCheck</code> skips type-checking of all declaration files (<code>.d.ts</code>), including those in <code>node_modules</code> and your own. It does not skip checking your <code>.ts</code> source files, and it does not stop the types from being used.</p><p>It speeds up builds and hides conflicts between libraries whose type definitions disagree. The cost is that real errors inside a bad <code>.d.ts</code> go unreported, which is why it is usually on for apps and worth turning off when publishing a library.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Validate LLM JSON output before use",
+    "js": "// Validate LLM output at the trust boundary before using it.\n// Schema: { action: \"refund\" | \"ignore\", amount: number >= 0 }\nfunction validate(raw) {\n  let data;\n  try { data = JSON.parse(raw); } catch (e) { return { ok: false, error: \"not JSON\" }; }\n  if (typeof data !== \"object\" || data === null) return { ok: false, error: \"not an object\" };\n  if (data.action !== \"refund\" && data.action !== \"ignore\") {\n    return { ok: false, error: \"bad action\" };\n  }\n  if (typeof data.amount !== \"number\" || !(data.amount >= 0)) {\n    return { ok: false, error: \"bad amount\" };\n  }\n  return { ok: true, value: { action: data.action, amount: data.amount } };\n}\n\nconst outputs = [\n  '{\"action\":\"refund\",\"amount\":12.5}',\n  '{\"action\":\"delete_all\",\"amount\":1}',\n  '{\"action\":\"refund\",\"amount\":\"lots\"}',\n  'Sure! Here is the JSON: {...}',\n];\nfor (const o of outputs) {\n  const r = validate(o);\n  console.log(o, \"=>\", r.ok ? \"OK \" + JSON.stringify(r.value) : \"REJECT \" + r.error);\n}\n"
+   },
+   "followUps": [
+    "<p>Treat the model's reply as untrusted text. Parse it, check it against a schema, and only then use it; if it fails, retry or fall back.</p><pre><code>const raw = JSON.parse(reply);\nconst result = Schema.safeParse(raw);\nif (!result.success) return retry(result.error);\nuse(result.data); // typed</code></pre><p>Many providers also offer a structured-output (JSON schema) mode, which reduces failures but is not a guarantee, so keep the check. Log rejection rates; a rate of 5% rejects tells you the prompt needs work.</p>",
+    "<p>Track counts that should go down over time: occurrences of <code>any</code>, <code>as</code> casts, non-null <code>!</code> and <code>@ts-ignore</code> per 1,000 lines, plus the percentage of files under strict config.</p><p>On the outcome side, watch runtime type errors in production and bugs found after review. For example, going from 300 <code>any</code> to 120 in a quarter while production \"undefined\" errors fall is a clear sign. Report the numbers in CI so a rise is visible in the pull request.</p>"
+   ]
+  }
+ ]
+}

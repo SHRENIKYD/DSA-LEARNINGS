@@ -1,0 +1,131 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Contiguous raw values vs boxed list items",
+    "python": "import sys\nfrom array import array\n\nn = 1000\nvalues = [float(i) for i in range(n)]\npacked = array('d', values)   # one contiguous buffer of raw 8-byte doubles\n\n# list = pointer array + one separate float object per element\nlist_bytes = sys.getsizeof(values) + sum(sys.getsizeof(v) for v in values)\npacked_bytes = packed.itemsize * len(packed)\nprint(\"elements:\", n)\nprint(\"list bytes  :\", list_bytes)\nprint(\"packed bytes:\", packed_bytes)\nprint(\"list uses %.1fx more memory\" % (list_bytes / packed_bytes))\n\n# fixed stride: element i lives at offset i * itemsize, no pointer chasing\nmv = memoryview(packed)\nprint(\"itemsize:\", mv.itemsize, \"offset of element 10:\", 10 * mv.itemsize)\n\n# the 'dtype=object' trap: a list of boxed numbers is what object arrays store\nprint(\"same sum:\", sum(values) == sum(packed))\n"
+   },
+   "followUps": [
+    "<p>A list is better when the items are mixed types, strings or objects, or when you grow it one item at a time. NumPy needs one dtype and a fixed size, so appending is costly: each append may copy the whole array.</p><p>For small data (say under a few dozen items) the setup cost of creating an array also outweighs the gain. Appending 1,000 items to a list is amortized O(1) each; doing the same with np.append is O(N) each, so O(N^2) in total.</p>",
+    "<p>A ufunc (universal function) is a compiled function that applies one operation to every element of arrays, such as np.add, np.sin or np.maximum.</p><p>It handles broadcasting, type casting and output allocation for you, and runs a tight C loop over the buffer. np.add(a, b) is what a + b calls. Ufuncs also offer methods like reduce (np.add.reduce(a) is a.sum()), accumulate (running totals) and outer. Example: np.add.accumulate([1,2,3,4]) gives [1,3,6,10].</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Broadcasting shape rule",
+    "python": "def broadcast(a, b):\n    \"\"\"Compare shapes from the right; return result shape or None.\"\"\"\n    out = []\n    for x, y in zip(reversed(a), reversed(b)):\n        if x != y and x != 1 and y != 1:\n            return None            # incompatible pair\n        out.append(max(x, y))      # the size-1 side is virtually repeated\n    longer = a if len(a) > len(b) else b\n    extra = abs(len(a) - len(b))\n    out.extend(reversed(longer[:extra]))   # missing leading dims count as 1\n    return tuple(reversed(out))\n\ncases = [\n    ((100, 3), (3,)),\n    ((100, 3), (100,)),\n    ((100, 3), (100, 1)),\n    ((10000, 1), (1, 10000)),\n]\nfor a, b in cases:\n    r = broadcast(a, b)\n    print(a, \"with\", b, \"->\", r)\n\nr = broadcast((10000, 1), (1, 10000))\ncells = r[0] * r[1]\nprint(\"result cells:\", cells, \"float64 bytes:\", cells * 8)\n"
+   },
+   "followUps": [
+    "<p>About 800 MB. The result has shape (10000, 10000), which is 100 million float64 cells at 8 bytes each.</p><p>The two inputs are tiny (80 KB each), but broadcasting does not make the output smaller: the result array is fully allocated. Example: 10,000 x 10,000 = 100,000,000 cells, times 8 bytes = 800,000,000 bytes. A pairwise-distance matrix built this way is a classic out-of-memory cause. Fix it by working in blocks of rows, or using a smaller dtype such as float32 (400 MB).</p>",
+    "<p>keepdims=True keeps the reduced axis as a dimension of size 1 instead of dropping it, so the result can still broadcast against the original array.</p><p>For X of shape (100, 3), X.sum(axis=1) has shape (100,) and cannot be divided into X directly, but X.sum(axis=1, keepdims=True) has shape (100, 1) and works. Example: row normalisation is X / X.sum(axis=1, keepdims=True). It is the same as writing [:, None] by hand.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "View shares memory, slice copy does not",
+    "python": "from array import array\n\na = array('i', [1, 2, 3, 4, 5, 6])\nview = memoryview(a)[1:4]   # like a NumPy basic slice: shares the buffer\ncopy = a[1:4]               # array slicing copies, like fancy indexing\nprint(\"original:\", list(a))\nprint(\"view    :\", list(view))\nprint(\"copy    :\", list(copy))\n\nview[0] = 99                # writes through to the original\nprint(\"after view[0] = 99 -> original:\", list(a))\n\ncopy[0] = 77                # only the copy changes\nprint(\"after copy[0] = 77 -> original:\", list(a), \"copy:\", list(copy))\n\n# a tiny view keeps the whole buffer alive\nprint(\"view still points at the base buffer:\", view.obj is a)\n"
+   },
+   "followUps": [
+    "<p>Yes, sometimes. reshape returns a view when the memory layout allows the new shape, and silently makes a copy when it does not.</p><p>For a normal contiguous array, a.reshape(2, 3) is a view. After a transpose (a.T), the data is no longer contiguous in the order you want, so a.T.reshape(-1) must copy. You can test with np.shares_memory(a, b) or check b.base is a. If you need to be sure it never copies, assign to a.shape (it raises if a copy is needed) or use ravel only when a copy is acceptable.</p>",
+    "<p>Copy-on-Write (CoW) gives pandas the same safe behaviour NumPy users want: every derived object acts like a copy, but memory is only really copied when someone writes.</p><p>Without CoW, df2 = df[cols] might or might not share data with df, which is why chained assignment is ambiguous. With CoW, writing to df2 never changes df and vice versa. Example: s2 = s.iloc[:3]; s2[0] = 9 leaves s unchanged, with the copy happening lazily at that write. NumPy views stay views; CoW is a pandas rule only.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Labels vs positions after filtering",
+    "python": "labels = [0, 1, 2, 3, 4]\nx = [-1, 5, -2, 7, 9]\n\n# filter keeps old labels, positions shift (like df = df[df.x > 0])\nkeep = [i for i in range(len(x)) if x[i] > 0]\nlabels = [labels[i] for i in keep]\nx = [x[i] for i in keep]\nprint(\"labels:\", labels, \"values:\", x)\n\ndef loc(label):\n    return x[labels.index(label)]        # by label\n\ndef iloc(pos):\n    return x[pos]                        # by position\n\ntry:\n    print(\"loc[0] =\", loc(0))\nexcept ValueError:\n    print(\"loc[0] -> KeyError (label 0 was filtered out)\")\nprint(\"iloc[0] =\", iloc(0))\n\n# loc slices include both ends, iloc slices exclude the stop\nlo, hi = labels.index(1), labels.index(3)\nprint(\"loc[1:3]  =\", x[lo:hi + 1])\nprint(\"iloc[1:3] =\", x[1:3])\n"
+   },
+   "followUps": [
+    "<p>loc accepts a boolean Series or array and returns the rows where it is True. That is the standard way to filter: df.loc[df.x > 0].</p><p>If you pass a Series, pandas aligns it on the index labels, so the labels must match the DataFrame (a plain NumPy boolean array is matched by position instead). You can also assign with it: df.loc[df.x < 0, 'x'] = 0 sets the negative values to zero in one step, with no chained indexing. The mask must have the same length as the rows, otherwise you get an error.</p>",
+    "<p>loc slices include the stop label because labels do not have an obvious 'next' value, so excluding the end would be awkward.</p><p>With a string index ['a','b','c','d'], you cannot say 'up to but not including c' without knowing what comes after b. So df.loc['a':'c'] returns a, b and c. By contrast iloc follows Python, where positions are integers and stop is excluded: df.iloc[0:2] gives two rows. Remember that on an integer index loc[1:3] returns 3 rows, iloc[1:3] returns 2.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Chained assignment writes into a temporary copy",
+    "python": "df = [{\"a\": 1, \"b\": 0}, {\"a\": -1, \"b\": 0}, {\"a\": 2, \"b\": 0}]\nprint(\"start:\", df)\n\n# chained: df[df.a > 0][\"b\"] = 1 -> the first [] builds a NEW object\ntemp = [dict(row) for row in df if row[\"a\"] > 0]\nfor row in temp:\n    row[\"b\"] = 1\nprint(\"after chained write:\", df)        # unchanged, the write was lost\n\n# single step: df.loc[mask, \"b\"] = 1 writes into the original\nfor row in df:\n    if row[\"a\"] > 0:\n        row[\"b\"] = 1\nprint(\"after loc-style write:\", df)\n\n# explicit independent subset, like .copy(): safe to modify on its own\nsubset = [dict(row) for row in df if row[\"a\"] > 0]\nsubset[0][\"b\"] = 42\nprint(\"subset:\", subset)\nprint(\"original untouched:\", df)\n"
+   },
+   "followUps": [
+    "<p>In pandas 2.x you turn it on with pd.options.mode.copy_on_write = True, or with pd.set_option('mode.copy_on_write', True). Do this at the top of your program, before you create DataFrames.</p><pre><code>import pandas as pd\npd.options.mode.copy_on_write = True</code></pre><p>In pandas 3.0 it is already the default and the option is no longer needed. Turning it on in 2.x is a good way to test an old code base: code that relied on chained assignment working will now stop modifying the parent, which shows you the bugs early.</p>",
+    "<p>Usually only a little, and often it is faster, because it avoids many defensive copies. Data is shared until one side writes, and only then is it copied.</p><p>Example: df2 = df.rename(columns=...) used to copy all the data, now it shares it for free. The cost shows up when you modify a shared object: the first write copies that column or block once (O(N) for that column). Code that updates a view repeatedly pays only on the first write. Inplace tricks like chained assignment stop working, which is the point.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Groupby: factorize keys then one-pass aggregate",
+    "python": "keys = [\"b\", \"a\", \"b\", \"c\", \"a\", \"b\"]\nvals = [10, 1, 20, 5, 2, 30]\nprint(\"keys:\", keys)\nprint(\"vals:\", vals)\n\n# split: map each key to an integer group code with a hash table\ncodes = {}\nids = [codes.setdefault(k, len(codes)) for k in keys]\nprint(\"codes:\", codes, \"ids:\", ids)\n\n# apply: one pass over the data, accumulating into arrays indexed by code\nsums = [0] * len(codes)\ncounts = [0] * len(codes)\nfor c, v in zip(ids, vals):\n    sums[c] += v\n    counts[c] += 1\n\n# combine: sorted group keys become the index (O(n) + sort of groups)\nfor k in sorted(codes):\n    c = codes[k]\n    print(k, \"sum =\", sums[c], \"count =\", counts[c], \"mean =\", sums[c] / counts[c])\n"
+   },
+   "followUps": [
+    "<p>dropna controls whether rows with a missing key are kept; observed controls whether unused categories appear in the output.</p><p>By default groupby drops rows whose key is NaN (dropna=True); with dropna=False they form their own group. For categorical keys, observed=False (the older default) outputs every category, even one with no rows, giving count 0 or NaN. With keys ['a','b'] and categories a, b, c, observed=False gives 3 groups, observed=True gives 2. Use observed=True for speed on multi-key categorical groupby, since the full cross product can be huge.</p>",
+    "<p>agg returns one value per group, transform returns one value per original row (same shape as input), and apply is the flexible one that can return anything.</p><p>Example with groups a: [1,3], b: [10]: sum via agg gives a=4, b=10; sum via transform gives [4,4,10] aligned to the rows, handy for a share-of-group column like x / x.groupby(key).transform('sum'). apply runs a Python function per group, so it is the slowest; use it only when agg and transform cannot express the logic.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Top 3 products by revenue per category",
+    "python": "rows = [\n    (\"toys\", \"car\", 5, 10), (\"toys\", \"doll\", 8, 3), (\"toys\", \"ball\", 2, 40),\n    (\"toys\", \"kite\", 9, 4), (\"food\", \"tea\", 3, 20), (\"food\", \"jam\", 4, 5),\n    (\"food\", \"rice\", 2, 50),\n]\n# revenue = price * qty\ndata = [(cat, name, price * qty) for cat, name, price, qty in rows]\n\n# sort by category, then revenue descending\ndata.sort(key=lambda r: (r[0], -r[2]))\n\n# head(3) per group: count rows seen for the current category\nseen = {}\nfor cat, name, rev in data:\n    seen[cat] = seen.get(cat, 0) + 1\n    if seen[cat] <= 3:\n        print(cat, name, rev)\n# O(n log n) for the sort, O(n) for the scan\n"
+   },
+   "followUps": [
+    "<p>Do not sort everything. Keep a small heap of the best 3 per category while reading the stream, or aggregate in chunks and merge.</p><p>For each category keep a min-heap of size 3: push the new revenue, and pop the smallest if the size passes 3. That is O(N log 3), about O(N), and memory is O(categories x 3). With chunks in pandas, compute the top 3 per category in each chunk, concat those small results, and take the top 3 again. This works because the global top 3 are always within some chunk's top 3.</p>",
+    "<p>Decide the rule first: 'first' (exactly 3 rows, ties broken by order), or 'dense/min' (keep every row tied with 3rd place, so you may get more than 3).</p><p>Revenues 50, 40, 40, 40, 30: head(3) after sort gives 50, 40, 40 and drops one 40, which can be unfair. rank(method='min', ascending=False) &lt;= 3 gives ranks 1, 2, 2, 2 so all three 40s stay. To make 'first' deterministic, add a tie-break column such as product name in sort_values.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Duplicate right keys inflate a left join",
+    "python": "left = [(\"u1\", \"A\"), (\"u2\", \"B\"), (\"u3\", \"C\")]\nright = [(\"u1\", 10), (\"u1\", 20), (\"u2\", 30)]   # u1 appears twice\n\nindex = {}\nfor k, v in right:\n    index.setdefault(k, []).append(v)\n\ndef left_join(validate=False):\n    out = []\n    for k, name in left:\n        matches = index.get(k, [None])        # no match -> keep row with None\n        if validate and len(matches) > 1:\n            raise ValueError(\"not many_to_one: duplicate key \" + k)\n        for m in matches:\n            out.append((k, name, m))\n    return out\n\nres = left_join()\nprint(\"left rows:\", len(left), \"result rows:\", len(res))\nfor r in res:\n    print(r)\n\ntry:\n    left_join(validate=True)\nexcept ValueError as e:\n    print(\"validate caught:\", e)\n"
+   },
+   "followUps": [
+    "<p>An anti-join keeps left rows that have no match in the right table. Use merge with indicator=True and keep the rows marked left_only.</p><pre><code>m = left.merge(right, on='key', how='left', indicator=True)\nanti = m[m['_merge'] == 'left_only']\n# or: left[~left.key.isin(right.key)]</code></pre><p>The isin form is shorter and avoids the row blow-up from duplicate keys. Example: left keys 1,2,3, right keys 2,3 gives key 1 only.</p>",
+    "<p>pandas treats NaN keys as equal to each other when merging, so a left row with a NaN key matches every right row with a NaN key. This is different from SQL, where NULL never equals NULL.</p><p>Example: left has two NaN keys and right has three; the merge returns 2 x 3 = 6 rows for them. Usually that is a surprise, so drop or fill missing keys first: left.dropna(subset=['key']). Check with left.key.isna().sum() before merging.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "pivot, pivot_table and melt by hand",
+    "python": "long = [(\"mon\", \"A\", 5), (\"mon\", \"B\", 7), (\"tue\", \"A\", 6),\n        (\"tue\", \"A\", 4), (\"tue\", \"B\", 1)]   # tue/A appears twice\nprint(\"long:\", long)\n\n# pivot needs unique (index, column) pairs\ndef pivot(rows):\n    table = {}\n    for day, store, v in rows:\n        if store in table.setdefault(day, {}):\n            raise ValueError(\"duplicate entries for \" + day + \"/\" + store)\n        table[day][store] = v\n    return table\n\ntry:\n    pivot(long)\nexcept ValueError as e:\n    print(\"pivot fails:\", e)\n\n# pivot_table aggregates duplicates (here: sum)\npt = {}\nfor day, store, v in long:\n    pt.setdefault(day, {})\n    pt[day][store] = pt[day].get(store, 0) + v\nprint(\"pivot_table sum:\", pt)\n\n# melt: wide back to long\nmelted = [(d, s, v) for d, row in pt.items() for s, v in row.items()]\nprint(\"melt:\", melted)\n"
+   },
+   "followUps": [
+    "<p>stack moves column labels into the row index (wide to long, as a MultiIndex), and unstack moves an index level back into columns (long to wide).</p><p>Example: a table with rows a, b and columns x, y holding [[1,2],[3,4]]. stack() gives a Series with index (a,x)=1, (a,y)=2, (b,x)=3, (b,y)=4. unstack() reverses it. unstack leaves NaN where a combination is missing, and stack drops NaN by default. pivot_table is groupby followed by unstack.</p>",
+    "<p>Join the levels of each column tuple into one string, or use droplevel if one level is enough.</p><pre><code>df.columns = ['_'.join(map(str, c)).strip('_')\n              for c in df.columns]\n# or: df.columns = df.columns.get_level_values(0)</code></pre><p>Example: columns ('sales','sum') and ('sales','mean') become 'sales_sum' and 'sales_mean'. Do this after pivot_table or agg with several functions so you can select columns simply, then call reset_index() to turn index levels into normal columns.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Handling missing values",
+    "python": "prices = [10.0, None, None, 13.0, None, 15.0]\nprint(\"data   :\", prices)\nprint(\"missing:\", sum(p is None for p in prices))\n\n# dropna: simple but loses rows\nprint(\"dropna :\", [p for p in prices if p is not None])\n\n# fillna with the mean: keeps rows but changes the statistics\nknown = [p for p in prices if p is not None]\nmean = sum(known) / len(known)\nprint(\"fill mean:\", [mean if p is None else p for p in prices])\n\n# ffill: carry the last known value forward (data must be sorted by time)\nout, last = [], None\nfor p in prices:\n    last = p if p is not None else last\n    out.append(last)\nprint(\"ffill  :\", out)\n\n# NaN is never equal to itself, so use a special check\nnan = float(\"nan\")\nprint(\"nan == nan:\", nan == nan, \"| nan != nan:\", nan != nan)\n"
+   },
+   "followUps": [
+    "<p>NaN follows the IEEE 754 floating-point rule that NaN is not equal to anything, including itself. It means 'not a number', an unknown value, and two unknowns are not known to be equal.</p><p>So np.nan == np.nan is False and np.nan != np.nan is True. That is why df[df.x == np.nan] returns nothing: use df.x.isna() instead. A handy side effect: x != x is True only for NaN. Also note that float('nan') in a Python list matches by identity for the 'in' operator, which can mislead you.</p>",
+    "<p>pd.NA is pandas' single missing-value marker for the nullable dtypes (Int64, boolean, string). Unlike NaN it works for integers and strings without turning them into floats or objects.</p><p>It uses three-valued logic: pd.NA == 1 gives NA, not False, and True | pd.NA is True but False | pd.NA is NA. So you cannot use it directly in an if statement; use pd.isna(x). Example: pd.Series([1, None], dtype='Int64') stays integer, while pd.Series([1, None]) becomes float64 [1.0, NaN].</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "rolling window vs resample bins",
+    "python": "days = [1, 2, 4, 8, 9, 10]          # day numbers (sparse)\nvals = [10, 20, 30, 40, 50, 60]\nprint(\"days:\", days)\n\n# rolling(\"3D\"): one row per input, window (t - 3, t] includes current row\nprint(\"rolling 3D sum:\")\nfor t, v in zip(days, vals):\n    window = [x for d, x in zip(days, vals) if t - 3 < d <= t]\n    print(\"  day\", t, \"->\", sum(window))\n\n# resample every 5 days: one row per bin, empty bins included\nprint(\"resample 5D sum:\")\nlast_bin = (days[-1] - 1) // 5\nfor b in range(last_bin + 1):\n    inside = [x for d, x in zip(days, vals) if (d - 1) // 5 == b]\n    print(\"  days\", b * 5 + 1, \"-\", b * 5 + 5, \"->\", sum(inside))\n# shift(1) before using rolling as an ML feature avoids look-ahead\n"
+   },
+   "followUps": [
+    "<p>min_periods is the minimum number of non-missing values a window must contain to give a result; otherwise the output is NaN.</p><p>With rolling(3) the default min_periods is 3, so the first two rows are NaN. Set min_periods=1 to get a result from the first row using whatever is available: values [1,2,3] give means 1.0, 1.5, 2.0. For time windows such as rolling('7D'), the default is 1 observation. Use a larger value when a mean of one or two points would be too noisy to trust.</p>",
+    "<p>Only use information that was known at the prediction time. Because rolling includes the current row, shift the result by one row before you use it as a feature.</p><pre><code>df['feat'] = df.x.rolling(7).mean().shift(1)\n# or: df.x.shift(1).rolling(7).mean()</code></pre><p>Example: for predicting day 10's value, the feature must use days 3 to 9, not 4 to 10. Without the shift the target leaks into its own feature and the validation score looks too good. Also split train and test by time, not randomly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Category-style encoding saves memory",
+    "python": "import sys\nfrom array import array\n\nn = 30000\ncities = [\"paris\", \"tokyo\", \"lima\"]\n# build separate string objects, like text read from a file\ncol = [\"\".join(cities[i % 3]) + \"\" for i in range(n)]\ncol = [str(c) + \"\" for c in col]\n\nobj_bytes = sys.getsizeof(col) + sum(sys.getsizeof(s) for s in col)\n\n# category: store each distinct string once + small integer codes\ncategories = sorted(set(col))\nlookup = {c: i for i, c in enumerate(categories)}\ncodes = array(\"B\", [lookup[s] for s in col])   # 1 byte per row\ncat_bytes = sum(sys.getsizeof(c) for c in categories) + len(codes)\nprint(\"categories:\", categories)\nprint(\"object column bytes  :\", obj_bytes)\nprint(\"category column bytes:\", cat_bytes)\nprint(\"smaller by %.0fx\" % (obj_bytes / cat_bytes))\n\n# chunked processing: never hold everything at once\ntotal, chunk = 0, 10000\nfor start in range(0, n, chunk):\n    total += sum(codes[start:start + chunk])\nprint(\"sum of codes via chunks:\", total, \"check:\", sum(codes))\n"
+   },
+   "followUps": [
+    "<p>category hurts when most values are unique, so the lookup table is as large as the data, and when you do many operations that need the real strings or combine different columns.</p><p>Example: a column of 1,000,000 distinct user IDs gets 1,000,000 categories plus 1,000,000 codes, which is larger than plain strings. Concatenating two categorical columns with different category sets falls back to object. Group-by with observed=False can also create huge cross products. Rule of thumb: use it when distinct values are under about 50% of the rows, ideally far below.</p>",
+    "<p>Polars runs queries across all CPU cores, uses a columnar Apache Arrow memory format, and has a lazy mode that plans the whole query before running it.</p><p>With scan_csv(...).filter(...).select(...).collect(), it pushes the filter and column choice down so only the needed rows and columns are read, and can stream data larger than memory. pandas runs each step eagerly on one thread and keeps the full intermediate results. Example: a 50M-row group-by that takes minutes in pandas often takes seconds in Polars.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Upgrade in small steps, with tests and warnings turned into errors, so each breaking change shows up on its own.</p><ol><li>Pin and freeze the current versions and make the tests green.</li><li>Move to the last minor of the old line (such as pandas 1.5, then 2.0) and run with warnings as errors: python -W error::FutureWarning.</li><li>Fix deprecations (fillna(method=), 'M' aliases, np.float_).</li><li>Run NumPy's ruff NPY201 check to find removed names.</li><li>Upgrade one major at a time in CI, then roll out gradually.</li></ol>",
+    "<p>An ABI (application binary interface) break means that compiled extension modules built against the old NumPy no longer work with the new one, so they crash or fail to import.</p><p>Many packages (SciPy, pandas, scikit-learn) contain C code that reads NumPy's internal structures directly. When those structures change in NumPy 2, wheels built for 1.x must be rebuilt. Example: importing an old compiled package with NumPy 2 can raise 'module compiled using NumPy 1.x cannot run in NumPy 2'. Fix it by upgrading the package, or pinning numpy&lt;2 until it is released.</p>"
+   ]
+  }
+ ]
+}

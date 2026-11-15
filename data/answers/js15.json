@@ -1,0 +1,142 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "A blocked thread delays timers",
+    "js": "// A synchronous loop blocks the single JS thread, even for timers.\nconst start = Date.now();\nsetTimeout(() => {\n  const late = Date.now() - start;\n  // The timer wanted 0 ms but had to wait for the loop below to finish.\n  console.log(\"timer ran after >= 50 ms:\", late >= 50);\n}, 0);\nconsole.log(\"start\");\n// Busy loop: the call stack is occupied, so nothing else can run.\nwhile (Date.now() - start < 50) {}\nconsole.log(\"blocking loop done\");\nconsole.log(\"end of main script\");\n"
+   },
+   "followUps": [
+    "<p>Four kinds of work go to the libuv thread pool: file system calls (<code>fs.*</code> except the sync ones and watchers), <code>dns.lookup</code>, some crypto (<code>pbkdf2</code>, <code>scrypt</code>, <code>randomBytes</code>) and zlib compression.</p><p>Network sockets, pipes and timers do not use it; the kernel notifies the loop directly. With the default 4 threads, 10 simultaneous <code>pbkdf2</code> calls run in rounds of 4, 4 and 2.</p>",
+    "<p>Use <code>worker_threads</code> for CPU work, or <code>cluster</code> / several processes to use more cores for a server. Each worker gets its own V8 isolate, call stack and event loop, so JavaScript really runs in parallel.</p><p>Example: on an 8-core machine, split a 1,000,000-item job into 8 chunks of 125,000 and send each to a worker. The cost is message passing and start-up time (tens of milliseconds), so reuse workers from a pool.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Event loop phase order inside an I/O callback",
+    "js": "const fs = require(\"fs\");\n// Inside an I/O callback we are in the poll phase.\nfs.readFile(__filename, () => {\n  console.log(\"1 poll phase: readFile callback\");\n  setTimeout(() => console.log(\"5 timers phase (next loop turn)\"), 0);\n  // check phase comes right after poll, so this always beats the timer here\n  setImmediate(() => console.log(\"4 check phase: setImmediate\"));\n  process.nextTick(() => console.log(\"2 nextTick (drained after this callback)\"));\n  Promise.resolve().then(() => console.log(\"3 promise microtask\"));\n});\nconsole.log(\"0 main script finished\");\n"
+   },
+   "followUps": [
+    "<p>It blocks in the poll phase, waiting for I/O to become ready, but only when there is nothing else to do. Node asks the OS to wait (epoll, kqueue or IOCP) with a timeout equal to the time until the next timer.</p><p>If a timer is due in 30 ms and no I/O arrives, the thread sleeps about 30 ms and then wakes for the timers phase. If a <code>setImmediate</code> is pending, the timeout is 0 and the loop does not sleep at all.</p>",
+    "<p>Active, referenced handles and pending requests keep it alive: open servers, sockets, intervals and timers, child processes, file watchers and in-flight fs or DNS requests.</p><p>When the count drops to zero the loop exits. A one-shot <code>setTimeout(fn, 5000)</code> keeps Node running for 5 seconds; call <code>unref()</code> on it and the process exits immediately. <code>process.getActiveResourcesInfo()</code> lists what is holding it.</p>",
+    "<p>Because the loop start-up time and the clock decide which comes first. <code>setTimeout(0)</code> really means at least 1 ms, and whether 1 ms has passed when the loop first reaches the timers phase depends on how busy the machine is.</p><p>So at top level the order can be timeout then immediate, or the reverse, from run to run. Inside an I/O callback the order is fixed: <code>setImmediate</code> always runs first, because the check phase follows poll.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "nextTick, microtasks and setImmediate order",
+    "js": "// Run as CommonJS: nextTick queue is drained before promise microtasks.\nsetImmediate(() => console.log(\"5 setImmediate (check phase)\"));\nPromise.resolve().then(() => console.log(\"3 Promise.then\"));\nqueueMicrotask(() => console.log(\"4 queueMicrotask\"));\nprocess.nextTick(() => console.log(\"2 process.nextTick\"));\nconsole.log(\"1 synchronous code\");\n\n// Starvation: a recursive nextTick would never let the loop move on:\n//   function loop() { process.nextTick(loop); }   // I/O never runs\n// A recursive setImmediate lets I/O and timers run between iterations.\nlet n = 0;\nfunction yieldy() {\n  if (++n < 3) setImmediate(yieldy);\n  else console.log(\"6 recursive setImmediate finished after\", n, \"turns\");\n}\nsetImmediate(yieldy);\n"
+   },
+   "followUps": [
+    "<p>Yes: a function that schedules itself with <code>process.nextTick</code> never lets the loop reach the next phase, so timers and I/O wait forever.</p><pre><code>function spin() { process.nextTick(spin); }\nspin();\nsetTimeout(() =&gt; console.log('never printed'), 10);</code></pre><p>The tick queue is drained completely after each operation, and each run adds another entry, so the queue is never empty. Replace <code>nextTick</code> with <code>setImmediate</code> and the timer fires, because each immediate yields to the loop.</p>",
+    "<p>Because <code>queueMicrotask</code> is the standard, portable way to run something after the current code, and <code>nextTick</code> has a Node-only quirk: it jumps ahead of promises and can starve I/O.</p><p>Both run before any I/O, but ordering between <code>nextTick</code> and promises differs between CommonJS (tick first) and ES module top level (promises first). Code that uses <code>queueMicrotask</code> behaves the same in browsers and Node, so it is easier to reason about.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Thread pool saturation model",
+    "js": "// Virtual-time model of libuv's thread pool: 4 workers, FIFO queue.\nfunction simulate(poolSize, jobs) {\n  const free = new Array(poolSize).fill(0); // time each worker becomes free\n  const done = {};\n  for (const j of jobs.sort((a, b) => a.arrive - b.arrive)) {\n    free.sort((a, b) => a - b);\n    const begin = Math.max(free[0], j.arrive); // wait for a free worker\n    free[0] = begin + j.cost;\n    done[j.name] = free[0] - j.arrive; // latency seen by the caller\n  }\n  return done;\n}\nconst jobs = [];\nfor (let i = 1; i <= 8; i++) jobs.push({ name: \"bcrypt\" + i, arrive: 0, cost: 100 });\njobs.push({ name: \"fs.readFile (1 ms)\", arrive: 1, cost: 1 });\nfor (const size of [4, 8]) {\n  const r = simulate(size, jobs.map((j) => ({ ...j })));\n  console.log(\"pool size\", size, \"-> readFile latency:\", r[\"fs.readFile (1 ms)\"], \"ms\");\n}\n// Pool 4: the 1 ms read queues behind two rounds of hashes (~200 ms). Pool 8: ~100 ms (it still waits for a free worker, but only one round).\n"
+   },
+   "followUps": [
+    "<p>More threads do not add CPU cores: 256 threads on 4 cores just fight for time, and each thread costs memory (about 1 MB of stack reserved) plus context-switch overhead. The hard maximum is 1024 in libuv.</p><p>Hashing is CPU-bound, so a pool near the core count (say 8 on an 8-core box) is best. A huge pool lets 256 bcrypt jobs all run at once, each taking 32 times longer, so every login gets slower and latency becomes less predictable.</p>",
+    "<p>Measure the thread-pool queue directly and show that fs and DNS latency rises exactly when the hashes run. Then change one thing and see the effect.</p><ol><li>Time a cheap <code>fs.stat</code> (or <code>dns.lookup</code>) every 100 ms and log its latency next to the event-loop delay.</li><li>Run a burst of 20 <code>bcrypt.hash</code> calls: fs latency jumps from about 1 ms to hundreds of ms while loop delay stays low.</li><li>Set <code>UV_THREADPOOL_SIZE=8</code> and repeat; latency should shrink.</li></ol>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Backpressure with write() and drain",
+    "js": "const { Writable } = require(\"stream\");\nlet received = 0;\n// Slow consumer: finishes each chunk on a later turn of the loop.\nconst slow = new Writable({\n  highWaterMark: 16, // bytes\n  write(chunk, enc, cb) { received++; setImmediate(cb); },\n});\nlet sent = 0, paused = 0;\nfunction produce() {\n  while (sent < 20) {\n    sent++;\n    // write() returns false once the internal buffer reaches highWaterMark\n    if (!slow.write(Buffer.alloc(8))) {\n      paused++;\n      console.log(\"buffer full after chunk\", sent, \"- waiting for drain\");\n      slow.once(\"drain\", produce); // resume only when the consumer caught up\n      return;\n    }\n  }\n  slow.end();\n}\nslow.on(\"finish\", () => console.log(\"sent\", sent, \"received\", received, \"pauses\", paused));\nproduce();\n"
+   },
+   "followUps": [
+    "<p>For byte streams the default <code>highWaterMark</code> is 64 KiB in current Node (it was 16 KiB before Node 22); for file read streams it was already 64 KiB.</p><p>It is a threshold, not a hard limit: <code>write()</code> returns <code>false</code> once the buffered size reaches it, but the data is still accepted. Check <code>stream.writableHighWaterMark</code> on your own runtime, because the default changed between versions.</p>",
+    "<p>In object mode <code>highWaterMark</code> counts objects, not bytes, and the default is 16 objects. A writable buffering 16 objects of any size will signal backpressure.</p><p>This means size is ignored: 16 small ids and 16 objects of 5 MB each both reach the limit. If objects are large, set a smaller number such as 2 or 4, so you do not hold 80 MB of them in memory before the producer is told to pause.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "pipe() vs pipeline() error handling",
+    "js": "const { Readable, Writable, pipeline } = require(\"stream\");\nfunction makeSource() { return Readable.from([\"a\", \"b\", \"c\", \"d\"]); }\nfunction makeBadDest() {\n  let n = 0;\n  return new Writable({\n    objectMode: true,\n    write(chunk, enc, cb) { cb(++n === 2 ? new Error(\"disk full\") : null); },\n  });\n}\n// 1) pipe(): the error is NOT forwarded; the source is left open.\nconst src1 = makeSource();\nconst dst1 = makeBadDest();\ndst1.on(\"error\", (e) => console.log(\"pipe: dest error:\", e.message));\nsrc1.pipe(dst1);\nsetTimeout(() => {\n  console.log(\"pipe: source destroyed?\", src1.destroyed); // false -> leak\n  // 2) pipeline(): one callback, every stream destroyed.\n  const src2 = makeSource();\n  pipeline(src2, makeBadDest(), (err) => {\n    console.log(\"pipeline: callback error:\", err.message);\n    console.log(\"pipeline: source destroyed?\", src2.destroyed);\n  });\n}, 50);\n"
+   },
+   "followUps": [
+    "<p>Pass an <code>AbortSignal</code> to <code>pipeline</code>; when you call <code>controller.abort()</code> every stream is destroyed and the callback or promise gets an <code>AbortError</code>.</p><pre><code>const ac = new AbortController();\nsetTimeout(() =&gt; ac.abort(), 5000);\nawait pipeline(src, gzip, dst, { signal: ac.signal });</code></pre><p>This is the standard way to add a timeout to a copy. You can also destroy any one stream with an error, and <code>pipeline</code> tears down the rest.</p>",
+    "<p><code>stream.finished()</code> tells you when one stream is done, either finished normally or failed, and calls back once. It is useful when you manage streams by hand.</p><p>It fires for end, finish, error and premature close (for example a client disconnecting mid-response). For a single stream, <code>finished(res, cb)</code> is safer than listening to <code>'end'</code> and <code>'error'</code> separately, because it covers all the ways a stream can stop.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A small EventEmitter with once and off",
+    "js": "class Emitter {\n  constructor() { this.map = new Map(); }\n  on(name, fn) {\n    if (!this.map.has(name)) this.map.set(name, []);\n    this.map.get(name).push(fn);\n    return this;\n  }\n  once(name, fn) {\n    const wrapper = (...args) => { this.off(name, wrapper); fn.apply(this, args); };\n    wrapper.listener = fn; // lets off(fn) find the wrapper\n    return this.on(name, wrapper);\n  }\n  off(name, fn) {\n    const list = this.map.get(name) || [];\n    for (let i = list.length - 1; i >= 0; i--) { // newest match first\n      if (list[i] === fn || list[i].listener === fn) { list.splice(i, 1); break; }\n    }\n    return this;\n  }\n  emit(name, ...args) {\n    const list = this.map.get(name);\n    if (!list || list.length === 0) {\n      if (name === \"error\") throw args[0] instanceof Error ? args[0] : new Error(\"Unhandled error\");\n      return false;\n    }\n    for (const fn of [...list]) fn.apply(this, args); // copy: safe if listeners change\n    return true;\n  }\n}\nconst e = new Emitter();\nconst hi = (x) => console.log(\"hi\", x);\ne.on(\"greet\", hi).once(\"greet\", (x) => console.log(\"once\", x));\nconsole.log(\"emit 1:\", e.emit(\"greet\", \"A\"));\ne.off(\"greet\", hi);\nconsole.log(\"emit 2:\", e.emit(\"greet\", \"B\"));\ntry { e.emit(\"error\", new Error(\"boom\")); } catch (err) { console.log(\"thrown:\", err.message); }\n"
+   },
+   "followUps": [
+    "<p>Synchronous emit is the contract: when <code>emit()</code> returns, every listener has run. That makes order predictable and lets the emitter use return values, like the boolean for \"had listeners\".</p><p>It also means a slow listener delays the emitter, and a thrown error propagates to the caller of <code>emit</code>. If you need async delivery, listeners can defer their own work with <code>setImmediate</code> or <code>queueMicrotask</code>. Emitting inside a constructor is a trap: no one can attach listeners yet, so defer with <code>nextTick</code>.</p>",
+    "<p><code>events.once(emitter, 'x')</code> returns a promise that resolves with the argument array when the event fires, and rejects if <code>'error'</code> is emitted first.</p><pre><code>try {\n  const [data] = await once(socket, 'ready');\n} catch (err) { /* 'error' event */ }</code></pre><p>When it settles it removes its listeners, so there is no leak. If you wait on the <code>'error'</code> event itself, it resolves instead of rejecting. Pass a <code>signal</code> option to cancel the wait.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "worker_threads with SharedArrayBuffer",
+    "js": "const { Worker, isMainThread, workerData, parentPort } = require(\"worker_threads\");\nif (isMainThread) {\n  const N = 1000;\n  // SharedArrayBuffer is shared, not copied, between threads.\n  const shared = new Int32Array(new SharedArrayBuffer(4));\n  const parts = [[1, 500], [501, 1000]];\n  let finished = 0;\n  const sums = [];\n  console.log(\"main: summing 1..\" + N + \" with 2 workers\");\n  for (const [from, to] of parts) {\n    const w = new Worker(__filename, { workerData: { from, to, shared } });\n    w.on(\"message\", (m) => sums.push(m));\n    w.on(\"exit\", () => {\n      if (++finished === parts.length) {\n        console.log(\"partial sums:\", sums.sort((a, b) => a - b).join(\", \"));\n        console.log(\"shared total:\", shared[0]);\n      }\n    });\n  }\n} else {\n  const { from, to, shared } = workerData;\n  let sum = 0;\n  for (let i = from; i <= to; i++) sum += i; // CPU work off the main thread\n  Atomics.add(shared, 0, sum); // safe concurrent update of shared memory\n  parentPort.postMessage(sum);\n}\n"
+   },
+   "followUps": [
+    "<p>A worker shares the process (same PID, same OS memory space) but not JavaScript state: each worker has its own V8 heap, globals and event loop. Data is copied with <code>postMessage</code> (structured clone) unless you transfer or share it.</p><p>Shareable things: <code>SharedArrayBuffer</code> (use <code>Atomics</code> to avoid races), transferred <code>ArrayBuffer</code>s (moved, the sender loses them), and <code>process.env</code> copies. Objects, closures and module variables are never shared.</p>",
+    "<p>Have the primary listen for <code>'exit'</code> and fork a replacement, with a limit on restart rate, and drain the old worker instead of killing it where possible.</p><ol><li>On <code>SIGTERM</code> the worker stops accepting (<code>server.close()</code>), finishes in-flight requests, then exits.</li><li>The primary on <code>'exit'</code> forks a new worker unless it is shutting down.</li><li>Add backoff, for example at most 5 restarts per minute, so a crash loop does not spin the CPU.</li></ol>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Module cache and circular require",
+    "js": "// A tiny model of CommonJS: cache the module BEFORE running it.\nconst sources = {\n  a: function (module, exports, require) {\n    exports.early = \"a-early\";\n    const b = require(\"b\");\n    console.log(\"a sees b.done =\", b.done);\n    exports.late = \"a-late\";\n  },\n  b: function (module, exports, require) {\n    const a = require(\"a\"); // cycle: a is only partly finished\n    console.log(\"b sees a.early =\", a.early, \"| a.late =\", a.late);\n    exports.done = true;\n  },\n};\nconst cache = {};\nfunction myRequire(name) {\n  if (cache[name]) return cache[name].exports; // second request: cached, maybe partial\n  const module = { exports: {} };\n  cache[name] = module; // cached before executing\n  sources[name](module, module.exports, myRequire);\n  return module.exports;\n}\nmyRequire(\"a\");\nconsole.log(\"final a:\", JSON.stringify(cache.a.exports));\n"
+   },
+   "followUps": [
+    "<p>Delete its entry from <code>require.cache</code> and require it again; the file is then read and executed afresh.</p><pre><code>const id = require.resolve('./config');\ndelete require.cache[id];\nconst cfg = require('./config');</code></pre><p>Caveats: anyone who already holds the old exports keeps the old object, modules that required it stay cached, and open resources are not closed. Hot reload tools restart the process instead. ESM has no cache you can delete; a query string on the specifier (<code>import('./a.mjs?v=2')</code>) creates a new instance but leaks the old one.</p>",
+    "<p>ESM cycles work through live bindings, so a cycle partner sees the value once it is assigned, not a frozen copy. But reading a <code>let</code>, <code>const</code> or class binding before its module has run throws a <code>ReferenceError</code> (temporal dead zone).</p><p>Function declarations are hoisted and safe to call early. So in CJS you see <code>undefined</code> for a missing property, while in ESM you may see an error, but a later read gives the right value without any workaround.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Live bindings vs copied values",
+    "js": "// Same shape as an ES module, loaded from a data: URL (no files needed).\nconst src = \"export let count = 0; export function inc() { count++; }\";\n(async () => {\n  const ns = await import(\"data:text/javascript,\" + encodeURIComponent(src));\n  const copy = ns.count; // a plain copy, like a CommonJS require result\n  console.log(\"before: ns.count =\", ns.count, \"copy =\", copy);\n  ns.inc();\n  // ESM exports are live bindings: ns.count follows the module's variable.\n  console.log(\"after:  ns.count =\", ns.count, \"copy =\", copy);\n})();\n"
+   },
+   "followUps": [
+    "<p>It is when one package gets loaded twice, once as CJS and once as ESM, giving two separate copies with separate state.</p><p>Example: a library keeps a singleton cache. An app imports it with <code>import</code>, a plugin loads it with <code>require</code>, and now there are two caches and <code>instanceof</code> checks fail between them. Fixes: ship ESM only, make the CJS entry a thin wrapper that re-exports the ESM build, or keep state in a separate file used by both.</p>",
+    "<p>Because Node picks the first condition that matches, in the order the keys are written, and stops. A broad key listed first hides everything after it.</p><pre><code>\"exports\": {\n  \".\": { \"default\": \"./a.js\",\n         \"import\": \"./a.mjs\" }   // never reached\n}</code></pre><p>Here <code>default</code> matches first for every importer, so the ESM build is never used. Put specific conditions (<code>types</code>, <code>import</code>, <code>require</code>) first and <code>default</code> last.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Measuring event-loop delay and utilization",
+    "js": "const { monitorEventLoopDelay, performance } = require(\"perf_hooks\");\nconst h = monitorEventLoopDelay({ resolution: 10 }); // samples every 10 ms\nh.enable();\nconst t0 = performance.now();\nconst loop0 = performance.eventLoopUtilization();\nfunction block(ms) { const s = Date.now(); while (Date.now() - s < ms) {} }\n// An occasional synchronous job, like a huge JSON.parse or a slow regex.\nsetTimeout(() => block(200), 50);\nsetTimeout(() => {\n  h.disable();\n  const elu = performance.eventLoopUtilization(loop0).utilization;\n  console.log(\"max delay > 150 ms:\", h.max / 1e6 > 150);\n  console.log(\"p50 delay < 50 ms:\", h.percentile(50) / 1e6 < 50);\n  console.log(\"loop was busy for a large share:\", elu > 0.3);\n  console.log(\"elapsed >= 400 ms:\", performance.now() - t0 >= 400);\n}, 400);\n"
+   },
+   "followUps": [
+    "<p>CPU % says how busy the whole machine is, while ELU (event-loop utilization) says how much of the time the single JS thread was busy, from 0 to 1. A Node process can be at 100% ELU and only 12% CPU on an 8-core machine, since the other cores sit idle.</p><p>That is why the average CPU of 35% hides the problem: one thread running flat out looks small when averaged across cores. Read ELU with <code>performance.eventLoopUtilization()</code>; sustained values above about 0.8 mean requests queue.</p>",
+    "<p>Avoid vulnerable patterns, bound the input, and move risky matching off the main thread. ReDoS comes from nested or overlapping quantifiers like <code>(a+)+$</code>, where 30 characters can take billions of steps.</p><ol><li>Limit input length (for example 1,000 chars) before matching.</li><li>Rewrite with unambiguous patterns, or use a linear-time engine such as RE2.</li><li>Run untrusted patterns in a worker with a timeout, and lint patterns with a tool like safe-regex.</li></ol>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Unbounded cache leak vs bounded cache",
+    "js": "// Classic leak: an unbounded Map used as a cache, never evicted.\nconst leaky = new Map();\nfunction handleLeaky(id) { leaky.set(\"req-\" + id, Buffer.alloc(1024)); }\n\n// Fix: bound the cache size (simple LRU using Map insertion order).\nconst MAX = 100;\nconst bounded = new Map();\nfunction handleBounded(id) {\n  bounded.set(\"req-\" + id, Buffer.alloc(1024));\n  if (bounded.size > MAX) bounded.delete(bounded.keys().next().value); // evict oldest\n}\nfor (let id = 1; id <= 5000; id++) { handleLeaky(id); handleBounded(id); }\nconsole.log(\"requests served: 5000\");\nconsole.log(\"leaky cache entries:\", leaky.size, \"~\", (leaky.size / 1024).toFixed(1), \"MB retained\");\nconsole.log(\"bounded cache entries:\", bounded.size);\n// Heap snapshots would show leaky Map -> 5000 Buffers as the retainer chain.\n"
+   },
+   "followUps": [
+    "<p>Writing a snapshot has to walk the whole heap and build a copy of its graph in memory, and V8 pauses JavaScript while it does. A 1.5 GB heap can need roughly as much again, so a process near its limit may run out of memory.</p><p>It also freezes the process for seconds, long enough for health checks to fail and the orchestrator to kill it. That is why you take snapshots on an instance drained from the load balancer, with spare memory.</p>",
+    "<p>It tells you that more than 10 listeners (the default) were added for one event on the same emitter, which almost always means listeners are added repeatedly and never removed.</p><p>Typical cause: calling <code>socket.on('data', ...)</code> inside a per-request handler on a long-lived socket. Each request adds one more listener, and each listener keeps its closure alive. The warning shows the event name and emitter; fix the registration, rather than raising the limit with <code>setMaxListeners</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Ref'd vs unref'd timers keep the process alive",
+    "js": "// The loop runs while a referenced handle exists.\nlet ticks = 0;\nconst worker = setInterval(() => {\n  console.log(\"tick\", ++ticks);\n  if (ticks === 3) {\n    clearInterval(worker); // closing the last ref'd handle lets Node exit\n    console.log(\"cleared the referenced interval\");\n  }\n}, 20);\n// An unref'd timer does NOT keep the process alive (good for metrics/heartbeats).\nconst heartbeat = setInterval(() => console.log(\"heartbeat\"), 1000);\nheartbeat.unref();\nconsole.log(\"worker hasRef:\", worker.hasRef(), \"| heartbeat hasRef:\", heartbeat.hasRef());\nprocess.on(\"exit\", () => console.log(\"process exits by itself; the 1 s heartbeat never fired\"));\n"
+   },
+   "followUps": [
+    "<p><code>unref()</code> marks a timer or handle so that it no longer counts as a reason to keep the loop alive. It still fires if the process is running for other reasons.</p><p>Example: a metrics <code>setInterval</code> every 10 s with <code>unref()</code>. If the server closes and nothing else is pending, Node exits at once instead of waiting for the next tick. <code>ref()</code> reverses it. It does not cancel anything; use <code>clearInterval</code> for that.</p>",
+    "<p>On <code>SIGTERM</code>, stop taking new work, wait for in-flight work with a deadline, close resources, then exit.</p><pre><code>process.on('SIGTERM', async () =&gt; {\n  server.close();           // stop new connections\n  await db.end();           // release the pool\n  setTimeout(() =&gt; process.exit(1), 10000).unref();\n});</code></pre><p>The unref'd timer is a safety net, so a stuck request cannot block shutdown forever. Make the deadline shorter than the orchestrator's kill grace period (30 s in Kubernetes by default).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Always verify claims about ordering, defaults and versions by running them on your Node version, since these are exactly where models are confidently wrong.</p><ul><li>The order of <code>nextTick</code>, promises, <code>setTimeout</code> and <code>setImmediate</code>, in both CJS and ESM.</li><li>Default values such as <code>highWaterMark</code> and the pool size.</li><li>Which operations use the thread pool.</li><li>Whether <code>require()</code> of ESM works.</li></ul><p>A one-minute experiment beats a paragraph of explanation.</p>",
+    "<p>Block the loop on purpose in a test and assert that your lag metric notices, and that a normal run stays below a threshold.</p><ol><li>Start <code>monitorEventLoopDelay()</code> and run the code path under a realistic load.</li><li>Fail the test if p99 exceeds a budget, say 50 ms.</li><li>Add a control case that runs a 200 ms synchronous loop and expects p99 above 150 ms, proving the monitor works.</li></ol><p>Use generous thresholds in CI, since shared runners are noisy.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,155 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Java passes copies: primitive, mutate, reassign",
+    "java": "import java.util.*;\n\npublic class Main {\n    static void bump(int x) { x = x + 1; }              // changes only the copy\n    static void mutate(int[] a) { a[0] = 99; }          // copy of address, same array\n    static void reassign(int[] a) { a = new int[]{7, 7, 7}; } // only the copy changes\n    public static void main(String[] args) {\n        int n = 5;\n        bump(n);\n        System.out.println(\"int after bump: \" + n);\n        int[] arr = {1, 2, 3};\n        System.out.println(\"before: \" + Arrays.toString(arr));\n        mutate(arr);\n        System.out.println(\"after mutate: \" + Arrays.toString(arr));\n        reassign(arr);\n        System.out.println(\"after reassign: \" + Arrays.toString(arr));\n        // Output shows: values copied, arrays changed through the copy only\n    }\n}"
+   },
+   "followUps": [
+    "<p>Pack them into one object: a small array, a record, or a tiny class. Java returns exactly one value, so you wrap several. Example: <code>return new int[]{min, max};</code> or <code>record MinMax(int min, int max) {}</code> and <code>return new MinMax(2, 9);</code>.</p><p>Arrays only suit values of one type; a record gives names and types, so prefer it. Another option is passing a mutable holder in, but that hides the output and is harder to read.</p>",
+    "<p>Nothing the caller can see: the caller's String is unchanged. <code>s += \"x\"</code> builds a new String and points the local parameter at it, and the parameter is only a copy of the reference.</p><p>Example: caller has <code>t = \"hi\"</code>, method does <code>s += \"x\"</code>, so inside s is \"hix\" but t is still \"hi\". Strings are also immutable, so there is no way to change the original object. Use the return value (<code>t = add(t)</code>) or a StringBuilder, which is mutable.</p>",
+    "<p>C++ <code>int&amp;</code> is a true alias of the caller's variable, so assigning to it changes the caller's variable. Java has no such thing; a Java parameter is always its own copy.</p><p>In C++ <code>void inc(int&amp; x){ x++; }</code> turns a caller's 5 into 6. In Java <code>void inc(int x){ x++; }</code> leaves the caller at 5. Likewise a C++ swap with references works, while a Java swap of two parameters cannot.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "while versus do-while on the input 0",
+    "java": "public class Main {\n    // Count digits with while: 0 gives 0 digits (wrong for 0)\n    static int digitsWhile(int n) {\n        int c = 0;\n        while (n > 0) { c++; n /= 10; }\n        return c;\n    }\n    // do-while runs the body once first, so 0 has 1 digit\n    static int digitsDo(int n) {\n        int c = 0;\n        do { c++; n /= 10; } while (n > 0);\n        return c;\n    }\n    public static void main(String[] args) {\n        int[] tests = {0, 7, 12345};\n        for (int t : tests) {   // for-each reads every element\n            System.out.println(t + \": while=\" + digitsWhile(t) + \" do-while=\" + digitsDo(t));\n        }\n        // for(;;) with no condition loops until break\n        int k = 0;\n        for (;;) { if (++k == 3) break; }\n        System.out.println(\"for(;;) stopped at \" + k);\n    }\n}"
+   },
+   "followUps": [
+    "<p>It is an infinite loop with no init, no condition and no update. A missing condition means true, so it repeats forever until a <code>break</code>, <code>return</code> or exception leaves it.</p><p>It is equivalent to <code>while (true)</code>. Example: <code>for (;;) { if (read() == -1) break; }</code> keeps reading until the end marker. Without an exit the program never finishes, so always make sure one path can leave the loop.</p>",
+    "<p>Because for-each uses an iterator, and the list notices if it was structurally changed (add or remove) behind the iterator's back. The iterator then throws on its next step instead of giving wrong results.</p><p>Example: list [1,2,3], and inside <code>for (int x : list)</code> you call <code>list.remove(...)</code>; the next iteration throws ConcurrentModificationException. The list keeps a modification counter and the iterator compares it. Fix it with <code>iterator.remove()</code> or <code>list.removeIf(...)</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fall-through versus arrow switch",
+    "java": "public class Main {\n    static String oldStyle(int x) {\n        String s = \"\";\n        switch (x) {\n            case 1: s += \"one \";      // no break: falls into case 2\n            case 2: s += \"two \";\n                break;\n            case 4: case 6: s += \"grouped \"; // deliberate grouping\n                break;\n            default: s += \"other \";\n        }\n        return s.trim();\n    }\n    static String arrow(int x) {\n        switch (x) {\n            case 1 -> { return \"one\"; }        // never falls through\n            case 2 -> { return \"two\"; }\n            case 4, 6 -> { return \"grouped\"; } // several labels in one branch\n            default -> { return \"other\"; }\n        }\n    }\n    public static void main(String[] args) {\n        for (int x : new int[]{1, 2, 4, 9}) {\n            System.out.println(x + \" old=[\" + oldStyle(x) + \"] arrow=[\" + arrow(x) + \"]\");\n        }\n    }\n}"
+   },
+   "followUps": [
+    "<p>No, one switch must use one style. Mixing <code>case 1:</code> and <code>case 2 -&gt;</code> in the same switch is a compile error.</p><p>Pick colon form (with fall-through and <code>break</code>) or arrow form (no fall-through). You can have a colon-style switch in one place and an arrow-style switch in another, just not both inside the same braces. Arrow form is usually safer, so prefer it on Java 14 and later.</p>",
+    "<p><code>yield</code> hands back the result of a block branch in a switch expression, much like <code>return</code> does for a method.</p><p>Example: <code>int n = switch (s) { case \"a\" -&gt; 1; default -&gt; { int t = s.length(); yield t * 2; } };</code>. A single-expression arrow branch gives its value directly; only a braced block needs <code>yield</code>. It also works in colon-style switch expressions (<code>case 1: yield 5;</code>).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Switch expression and pattern matching (Java 21)",
+    "java": "public class Main {\n    static int days(int m) {\n        // switch expression: yields a value, no fall-through\n        return switch (m) {\n            case 2 -> 28;\n            case 4, 6, 9, 11 -> 30;\n            default -> 31;\n        };\n    }\n    static String describe(Object o) {\n        // pattern matching for switch, with null handled explicitly\n        return switch (o) {\n            case null -> \"null\";\n            case Integer i when i > 10 -> \"big int \" + i;\n            case Integer i -> \"int \" + i;\n            case String s -> \"string of length \" + s.length();\n            default -> \"something else\";\n        };\n    }\n    public static void main(String[] args) {\n        System.out.println(\"days(2)=\" + days(2) + \" days(6)=\" + days(6) + \" days(7)=\" + days(7));\n        Object[] items = {5, 42, \"hello\", null, 3.5};\n        for (Object o : items) System.out.println(o + \" -> \" + describe(o));\n    }\n}"
+   },
+   "followUps": [
+    "<p>Because then the compiler checks that you handled every constant. If someone adds a new enum value later, the switch expression stops compiling and shows you the places to fix.</p><p>With <code>default</code>, the new constant would silently fall into it and may do the wrong thing. Example: enum Color {RED, GREEN} gets BLUE added; a switch expression over RED and GREEN without default fails to compile until you add BLUE. (Java inserts a runtime error for separately compiled code.)</p>",
+    "<p>It throws NullPointerException, even if there is a <code>default</code> label. Only Java 21 pattern switches can accept null, through an explicit <code>case null</code>.</p><p>The classic String switch calls <code>s.hashCode()</code> first, and calling a method on null fails. Guard with <code>if (s == null)</code> before switching, or in Java 21 write <code>case null -&gt; ...</code> yourself.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "String switch: hashing and the null NullPointerException",
+    "java": "public class Main {\n    static int code(String s) {\n        switch (s) {              // compiled as hashCode() switch, then equals()\n            case \"red\": return 1;\n            case \"green\": return 2;\n            default: return 0;\n        }\n    }\n    public static void main(String[] args) {\n        System.out.println(\"red -> \" + code(\"red\"));\n        System.out.println(\"blue -> \" + code(\"blue\"));\n        char c = 'b';             // char widens to int, so it is allowed\n        switch (c) {\n            case 'a': System.out.println(\"a\"); break;\n            case 'b': System.out.println(\"char b matched\"); break;\n        }\n        try {\n            code(null);\n        } catch (NullPointerException e) {\n            System.out.println(\"null String in classic switch -> NullPointerException\");\n        }\n    }\n}"
+   },
+   "followUps": [
+    "<p>Both are bytecode jump tables chosen by the compiler. <code>tableswitch</code> is used when the case values are dense (like 1,2,3,4), and indexes straight into a table in O(1). <code>lookupswitch</code> is used for sparse values (like 1, 100, 5000) and searches sorted key/target pairs, usually with binary search in O(log n).</p><p>You do not choose; the compiler picks whichever is smaller or faster. Either way, the source code is the same.</p>",
+    "<p>Yes, if it is a <code>final</code> variable initialised with a constant expression, because it is then a compile-time constant. A normal non-final local, or a final one set from a method call, is not allowed.</p><p>Example: <code>final int LIMIT = 10; switch (x) { case LIMIT: ... }</code> compiles; <code>final int v = read();</code> then <code>case v:</code> does not. Case labels must also be unique, so two constants of the same value fail.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Labelled break and continue in a grid",
+    "java": "public class Main {\n    public static void main(String[] args) {\n        int[][] g = {{1, 2, 3}, {4, 0, 6}, {7, 8, 9}};\n        int target = 6;\n        // break outer leaves BOTH loops at the first hit\n        search:\n        for (int r = 0; r < g.length; r++) {\n            for (int c = 0; c < g[r].length; c++) {\n                if (g[r][c] == target) {\n                    System.out.println(\"found \" + target + \" at (\" + r + \",\" + c + \")\");\n                    break search;\n                }\n            }\n        }\n        // continue outer skips the rest of a row once a 0 is seen\n        int sum = 0;\n        rows:\n        for (int[] row : g) {\n            for (int v : row) {\n                if (v == 0) continue rows; // next row, running the outer update\n                sum += v;\n            }\n        }\n        System.out.println(\"sum of rows without zeros partial = \" + sum);\n    }\n}"
+   },
+   "followUps": [
+    "<p>In a <code>while</code> loop, <code>continue</code> jumps straight to the condition check. In a <code>for</code> loop it jumps to the update step (like <code>i++</code>) and then the condition.</p><p>This is why a <code>continue</code> in a while loop whose increment sits at the bottom can loop forever: <code>while (i &lt; 5) { if (i == 2) continue; i++; }</code> never moves past 2. In a for loop <code>for (i = 0; i &lt; 5; i++)</code> the update still runs, so it is safe.</p>",
+    "<p>No, a plain <code>break</code> or <code>continue</code> cannot jump out of a switch expression. The compiler rejects it, since an expression must produce a value. Use <code>yield</code> for the value, or throw an exception.</p><p>A classic switch <i>statement</i> allows <code>break</code>, and the arrow-style statement does too. If you need to leave an enclosing loop from inside a switch statement, use a labelled break such as <code>break outer;</code> or restructure into a method with <code>return</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Overloading picks by static type, overriding by real object",
+    "java": "public class Main {\n    static class Animal { String sound() { return \"...\"; } }\n    static class Dog extends Animal { @Override String sound() { return \"woof\"; } }\n    static void print(Object o) { System.out.println(\"print(Object)\"); }\n    static void print(String s) { System.out.println(\"print(String)\"); }\n    public static void main(String[] args) {\n        Object o = \"hi\";\n        String s = \"hi\";\n        print(o);   // overload chosen at compile time from the static type Object\n        print(s);   // static type String\n        Animal a = new Dog();\n        System.out.println(a.sound()); // override chosen at run time: Dog's body\n        // int f() and long f() in one class would not compile (return type alone)\n    }\n}"
+   },
+   "followUps": [
+    "<p>Static methods can be overloaded, but not overridden. A subclass static method with the same signature only hides the parent's; the choice is made from the declared type, not the real object.</p><p>Example: <code>Animal a = new Dog();</code> with static <code>Animal.hello()</code> and <code>Dog.hello()</code>: <code>a.hello()</code> runs Animal's version. Instance methods would run Dog's. Overloads like <code>static int add(int,int)</code> and <code>static double add(double,double)</code> are fine.</p>",
+    "<p>It calls <code>print(Object)</code>, because overloads are picked at compile time from the declared type, and <code>o</code> is declared as Object even though it holds a String.</p><p>Only <code>print(Object)</code> is applicable for that static type, so the String version is never considered. To reach the String overload cast: <code>print((String) o)</code>. Overriding is different: that is decided at run time by the real object.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Overload resolution phases: widening beats boxing",
+    "java": "import java.util.*;\n\npublic class Main {\n    static void f(long x) { System.out.println(\"f(long)\"); }\n    static void f(Integer x) { System.out.println(\"f(Integer)\"); }\n    static void f(int... x) { System.out.println(\"f(int...)\"); }\n    public static void main(String[] args) {\n        f(5);   // phase 1 (widening) finds f(long) before boxing is tried\n        f(Integer.valueOf(5)); // exact match f(Integer)\n        f();    // only varargs applies\n        List<Integer> list = new ArrayList<>(List.of(10, 1, 5));\n        System.out.println(\"list: \" + list);\n        list.remove(1);                     // remove(int index) wins in phase 1\n        System.out.println(\"after remove(1): \" + list);\n        list.remove(Integer.valueOf(5));    // remove(Object) removes by value\n        System.out.println(\"after remove(Integer 5): \" + list);\n    }\n}"
+   },
+   "followUps": [
+    "<p>Because Java allows only one conversion step at a time in the strict and loose phases: widening then boxing is not a recognised pair. A <code>byte</code> can widen to long or box to Byte, but not become a <code>Long</code>.</p><p>Example: <code>void f(Long x)</code> called as <code>f((byte) 5)</code> fails to compile. Boxing yields Byte, and Byte is not a Long. By contrast boxing then widening (int to Integer to Object) is allowed. Fix with <code>f(5L)</code>.</p>",
+    "<p>Pass an Integer object: <code>list.remove(Integer.valueOf(1))</code> or <code>list.remove((Integer) 1)</code>. A plain <code>remove(1)</code> means index 1.</p><p>Example with [10, 1, 5]: <code>remove(1)</code> deletes the element at index 1 (the value 1), giving [10, 5], while <code>remove(Integer.valueOf(10))</code> deletes the value 10, giving [1, 5]. The primitive int exact match wins in the first phase, before boxing is tried.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Varargs: array inside, empty call, asList trap",
+    "java": "import java.util.*;\n\npublic class Main {\n    static int sum(int... xs) {          // xs is an int[]\n        int t = 0;\n        for (int x : xs) t += x;\n        return t;\n    }\n    static int max(int first, int... rest) { // forces at least one value\n        int m = first;\n        for (int x : rest) m = Math.max(m, x);\n        return m;\n    }\n    public static void main(String[] args) {\n        System.out.println(\"sum() = \" + sum());\n        System.out.println(\"sum(1,2,3) = \" + sum(1, 2, 3));\n        System.out.println(\"sum(array) = \" + sum(new int[]{4, 5}));\n        System.out.println(\"max(3,9,4) = \" + max(3, 9, 4));\n        int[] prim = {1, 2, 3};\n        System.out.println(\"asList(int[]).size() = \" + Arrays.asList(prim).size()); // 1\n        Integer[] boxed = {1, 2, 3};\n        System.out.println(\"asList(Integer[]).size() = \" + Arrays.asList(boxed).size()); // 3\n    }\n}"
+   },
+   "followUps": [
+    "<p>Because <code>format</code> needs to accept any number of arguments of any type, and every type is an Object. Primitives get boxed automatically into the Object array.</p><p>Example: <code>String.format(\"%s is %d\", \"Ann\", 30)</code> builds <code>new Object[]{\"Ann\", 30}</code>. That is flexible but allocates an array and boxes each number on every call, which is why hot paths avoid it.</p>",
+    "<p>It promises that the method only reads from the varargs array and does not store it or let it escape. The compiler then drops the unchecked \"heap pollution\" warning for generic varargs.</p><p>Example: <code>@SafeVarargs static &lt;T&gt; List&lt;T&gt; of(T... xs)</code> that copies the elements is safe. If it returned the array as <code>Object[]</code> or assigned a wrong type into it, a later ClassCastException could appear far from the cause. It is allowed only on static, final or private methods and constructors.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Jagged arrays, shallow clone and deepToString",
+    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        int[][] tri = new int[4][];            // rows not created yet are null\n        System.out.println(\"row 0 before: \" + tri[0]);\n        for (int i = 0; i < tri.length; i++) {\n            tri[i] = new int[i + 1];           // each row is its own array\n            Arrays.fill(tri[i], i);\n        }\n        System.out.println(Arrays.deepToString(tri));\n        int[][] shallow = tri.clone();         // copies row references only\n        shallow[1][0] = 99;\n        System.out.println(\"original sees change: \" + tri[1][0]);\n        int[][] deep = new int[tri.length][];\n        for (int i = 0; i < tri.length; i++) deep[i] = tri[i].clone();\n        deep[2][0] = -1;\n        System.out.println(\"deep copy isolated: \" + tri[2][0]);\n        System.out.println(\"toString: \" + Arrays.toString(tri).substring(0, 3) + \"...\");\n    }\n}"
+   },
+   "followUps": [
+    "<p>Copy every row, not just the outer array. A loop does it: <code>for (i...) copy[i] = grid[i].clone();</code>. Calling <code>grid.clone()</code> only copies the row references, so both grids share the same rows.</p><p>Short version: <code>int[][] copy = Arrays.stream(grid).map(int[]::clone).toArray(int[][]::new);</code>. Cost is O(rows * cols) time and the same extra space. Check: after a deep copy, setting <code>copy[0][0] = 9</code> leaves <code>grid[0][0]</code> unchanged.</p>",
+    "<p><code>Arrays.toString(grid)</code> prints row objects as unhelpful addresses like <code>[[I@1b6d3586, ...]</code>; <code>Arrays.deepToString(grid)</code> prints the real contents like <code>[[1, 2], [3, 4]]</code>.</p><p>toString is shallow, so it calls toString on each row, which is just the default Object text. deepToString walks nested arrays recursively. Use it for debug printing of 2D arrays; for loops or streams give custom layouts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Array covariance, boxing and conversions",
+    "java": "import java.util.*;\nimport java.util.stream.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Object[] objs = new String[2];         // arrays are covariant\n        try {\n            objs[0] = 42;                      // compiles, fails at run time\n        } catch (ArrayStoreException e) {\n            System.out.println(\"ArrayStoreException: \" + e.getMessage());\n        }\n        List<Integer> list = new ArrayList<>(); // grows automatically, boxes ints\n        for (int i = 1; i <= 5; i++) list.add(i * i);\n        System.out.println(\"list = \" + list);\n        int[] prim = list.stream().mapToInt(Integer::intValue).toArray();\n        System.out.println(\"int[] = \" + Arrays.toString(prim));\n        List<Integer> back = Arrays.stream(prim).boxed().collect(Collectors.toList());\n        System.out.println(\"back to list = \" + back);\n    }\n}"
+   },
+   "followUps": [
+    "<p>About 4 to 5 times more for the object array in the common case. <code>int[1000]</code> is about 4 KB of numbers (plus a small header). <code>Integer[1000]</code> holds 1000 references (4 to 8 bytes each) plus up to 1000 Integer objects of about 16 bytes each.</p><p>Roughly 4 KB versus 20 to 24 KB, and the Integer data is scattered in memory, so scans are slower. Small values from -128 to 127 are cached and shared, which saves objects there but not the references.</p>",
+    "<p>Use streams: <code>list.stream().mapToInt(Integer::intValue).toArray()</code> for List to int[], and <code>Arrays.stream(a).boxed().toList()</code> for int[] to List. A plain <code>Arrays.asList(intArray)</code> does not work: it gives a List of one int[].</p><p>Example: [3, 1, 2] as int[] becomes a List with elements 3, 1, 2 after boxed(). Each direction copies n elements, so it costs O(n) time and space, and boxing allocates objects for values outside the small cache.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "asList view, List.of immutable, ArrayList copy",
+    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        String[] arr = {\"a\", \"b\", \"c\"};\n        List<String> view = Arrays.asList(arr);    // view backed by the array\n        view.set(0, \"X\");\n        System.out.println(\"array after set: \" + Arrays.toString(arr));\n        try { view.add(\"d\"); } catch (UnsupportedOperationException e) {\n            System.out.println(\"asList add -> UnsupportedOperationException\");\n        }\n        List<String> imm = List.of(\"a\", \"b\");      // immutable, no nulls\n        try { imm.add(\"z\"); } catch (UnsupportedOperationException e) {\n            System.out.println(\"List.of add -> UnsupportedOperationException\");\n        }\n        try { List.of(\"a\", null); } catch (NullPointerException e) {\n            System.out.println(\"List.of with null -> NullPointerException\");\n        }\n        List<String> copy = new ArrayList<>(view); // independent and mutable\n        copy.add(\"d\");\n        arr[1] = \"Y\";\n        System.out.println(\"copy = \" + copy + \", view = \" + view);\n    }\n}"
+   },
+   "followUps": [
+    "<p>Because List.of does not allow null elements at all, it rejects them immediately with a NullPointerException. This is a design choice: nulls in collections cause surprise failures later.</p><p>The immutable collections (List.of, Set.of, Map.of) all reject null, and Set.of also rejects duplicates. If you truly need nulls use <code>Arrays.asList(1, null)</code> or an ArrayList. Many people consider \"no nulls\" a feature, since <code>contains(null)</code> on List.of also throws.</p>",
+    "<p>It gives a read-only view of another list, but it does not make the data immutable. Whoever holds the original list can still change it, and the view shows those changes.</p><p>Example: <code>List&lt;Integer&gt; v = Collections.unmodifiableList(orig); orig.add(4);</code> now v has the 4 too, while <code>v.add(5)</code> throws UnsupportedOperationException. For a real snapshot use <code>List.copyOf(orig)</code>, which copies the elements into an immutable list.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stable sort and the subtraction comparator bug",
+    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        String[] words = {\"pear\", \"fig\", \"apple\", \"kiwi\", \"plum\"};\n        // TimSort for objects is stable: equal lengths keep input order\n        Arrays.sort(words, Comparator.comparingInt(String::length));\n        System.out.println(\"by length (stable): \" + Arrays.toString(words));\n        Integer[] nums = {3, 1, 2};\n        Arrays.sort(nums, Collections.reverseOrder()); // descending needs Integer[]\n        System.out.println(\"descending: \" + Arrays.toString(nums));\n        int a = Integer.MAX_VALUE, b = -1;\n        System.out.println(\"a - b = \" + (a - b) + \" (overflow, wrong sign)\");\n        System.out.println(\"Integer.compare = \" + Integer.compare(a, b)); // correct\n        int[] prim = {5, 2, 9, 1};\n        Arrays.sort(prim);                             // dual-pivot quicksort\n        System.out.println(\"primitives: \" + Arrays.toString(prim));\n    }\n}"
+   },
+   "followUps": [
+    "<p>Pass a reversed comparator and use an <code>Integer[]</code>: <code>Arrays.sort(a, Collections.reverseOrder());</code>. Comparators do not work on primitive <code>int[]</code>.</p><p>For an int[], either sort ascending then reverse in place (swap a[i] with a[n-1-i]) or use <code>Arrays.stream(a).boxed().sorted(Comparator.reverseOrder()).mapToInt(Integer::intValue).toArray()</code>. Example: [3,1,2] sorts to [1,2,3] and reverses to [3,2,1]. Cost O(n log n) time.</p>",
+    "<p>Because subtraction can overflow and flip the sign, so the sort order becomes wrong or inconsistent. Use <code>Integer.compare(a, b)</code> instead.</p><p>Example: a = 2,000,000,000 and b = -2,000,000,000. The true difference 4,000,000,000 does not fit in an int, so <code>a - b</code> wraps to a negative number, claiming a is smaller. TimSort may then also throw \"Comparison method violates its general contract\".</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Strings are immutable: result must be assigned",
+    "java": "public class Main {\n    public static void main(String[] args) {\n        String s = \"hello\";\n        s.toUpperCase();                    // result thrown away\n        System.out.println(\"after toUpperCase(): \" + s);\n        s = s.toUpperCase();                // keep the new String\n        System.out.println(\"after assignment: \" + s);\n        System.out.println(\"substring(1,3) = \" + \"abcdef\".substring(1, 3)); // end excluded\n        System.out.println(\"indexOf missing = \" + \"abc\".indexOf('z'));\n        System.out.println(\"split(\\\".\\\") length = \" + \"a.b\".split(\".\").length);\n        System.out.println(\"split(\\\"\\\\\\\\.\\\") length = \" + \"a.b\".split(\"\\\\.\").length);\n        // += in a loop copies the text each time: O(n^2); StringBuilder is O(n)\n        StringBuilder sb = new StringBuilder();\n        for (int i = 0; i < 5; i++) sb.append(i);\n        System.out.println(\"StringBuilder = \" + sb);\n    }\n}"
+   },
+   "followUps": [
+    "<p>Because <code>split</code> takes a regular expression, and an unescaped dot means \"any character\". Every character is a separator, so all the pieces are empty strings and trailing empties are dropped, leaving a length-0 array.</p><p>Escape it: <code>\"a.b\".split(\"\\\\.\")</code> gives [a, b], and <code>Pattern.quote(\".\")</code> also works. Same trap for <code>|</code>, <code>*</code>, <code>+</code>, <code>$</code> and <code>?</code>.</p>",
+    "<p>It returns 2, because <code>length()</code> counts UTF-16 chars, not what you see as one symbol. The emoji needs two chars (a surrogate pair).</p><p>Use <code>s.codePointCount(0, s.length())</code> to get 1. Likewise <code>charAt</code> may return half of a symbol. For loops over real characters use <code>s.codePoints()</code>. This only matters for characters beyond the basic range, such as emoji and some rare scripts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "equals, ==, compareTo and case-insensitive sorting",
+    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        String a = \"java\";\n        String b = new String(\"java\");      // different object, same text\n        System.out.println(\"a == b: \" + (a == b));\n        System.out.println(\"a.equals(b): \" + a.equals(b));\n        String n = null;\n        System.out.println(\"\\\"java\\\".equals(null var): \" + \"java\".equals(n)); // safe\n        System.out.println(\"abc vs abd: \" + \"abc\".compareTo(\"abd\"));\n        System.out.println(\"apple vs app: \" + \"apple\".compareTo(\"app\"));\n        System.out.println(\"B vs a: \" + \"B\".compareTo(\"a\"));\n        String[] w = {\"banana\", \"Apple\", \"cherry\"};\n        Arrays.sort(w);\n        System.out.println(\"default: \" + Arrays.toString(w));\n        Arrays.sort(w, String.CASE_INSENSITIVE_ORDER);\n        System.out.println(\"ignore case: \" + Arrays.toString(w));\n    }\n}"
+   },
+   "followUps": [
+    "<p>Because <code>toLowerCase()</code> uses the machine's default locale, and in Turkish uppercase I becomes dotless lowercase i, not the plain i. Comparisons like <code>\"TITLE\".toLowerCase().equals(\"title\")</code> then fail on that machine.</p><p>Pass an explicit locale for technical text: <code>s.toLowerCase(Locale.ROOT)</code>, or use <code>equalsIgnoreCase</code>. Use the user's locale only when showing text to a person.</p>",
+    "<p>Use the built-in comparator: <code>Arrays.sort(words, String.CASE_INSENSITIVE_ORDER);</code> or <code>list.sort(String::compareToIgnoreCase)</code>.</p><p>Example: [b, A, c] sorts plainly to [A, b, c] because uppercase letters have smaller codes, but [apple, Banana] stays wrong-looking as [Banana, apple] without it; with it you get [apple, Banana]. For language-aware ordering with accents use <code>Collator.getInstance(locale)</code>. Cost is O(n log n) comparisons.</p>"
+   ]
+  }
+ ]
+}

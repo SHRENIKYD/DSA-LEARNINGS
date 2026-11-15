@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.45] — 2026-11-15 · Programs and follow-up answers for SQL, Python and Java interview questions
+
+### Added
+- **SQL, Python, Java and JavaScript interview questions (all 66 places) and the first 3 C++ places:** 971 questions now have 884 runnable programs and all 2,170 of their follow-up questions open to a written answer. Python, Java, JavaScript and C++ programs are in that language, SQL programs run on an in-memory SQLite database through Python, and language-neutral ideas also come in other languages. Questions about products and tools that cannot be shown in a small program, and process questions, have written answers only.
+
 ## [1.10.44] — 2026-11-12 · Programs and follow-up answers for the Tech Lead interview questions
 
 ### Added

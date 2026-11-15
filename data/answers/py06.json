@@ -1,0 +1,134 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Functions as first-class objects",
+    "python": "def square(x):\n    return x * x\n\n# A function is a value: bind it to another name\nalias = square\nprint(\"alias(4) =\", alias(4), \"| same object:\", alias is square)\n\n# Store functions in a dict (dispatch table)\nOPS = {\"sq\": square, \"neg\": lambda x: -x}\nfor name in (\"sq\", \"neg\"):\n    print(name, \"->\", OPS[name](5))\n\n# Pass a function as an argument and return one\ndef twice(f):\n    def run(x):\n        return f(f(x))\n    return run\n\nprint(\"twice(square)(3) =\", twice(square)(3))\nprint(\"sorted by len:\", sorted([\"ccc\", \"a\", \"bb\"], key=len))\n\n# Functions carry attributes\ndef greet(name=\"world\"):\n    \"\"\"Say hello.\"\"\"\n    return \"hi \" + name\nprint(greet.__name__, greet.__doc__, greet.__defaults__)\nprint(\"f vs f():\", square, \"vs\", square(2))\n"
+   },
+   "followUps": [
+    "<p>Any object whose class defines <code>__call__</code> is callable, not just functions. Classes are callable (calling one builds an instance), bound methods, built-ins like <code>len</code>, <code>functools.partial</code> objects and instances of your own class with <code>__call__</code> all work. Use <code>callable(x)</code> to test. Example: <code>class Adder: def __init__(self, n): self.n = n; def __call__(self, x): return x + self.n</code>, so <code>Adder(3)(4)</code> returns 7. Lambdas are just anonymous functions.</p>",
+    "<p><code>__defaults__</code> is a tuple holding the default values of the parameters, and those values are evaluated once, when <code>def</code> runs, not on each call. That is why a mutable default such as <code>def f(x, acc=[])</code> is shared between calls: the same list lives in <code>f.__defaults__</code>. Calling <code>f(1)</code> then <code>f(2)</code> gives <code>[1]</code> then <code>[1, 2]</code>. Use <code>None</code> as the default and create the list inside the function.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "LEGB lookup and UnboundLocalError",
+    "python": "count = 10          # global\ndef broken():\n    try:\n        count += 1  # assignment makes count local for the whole function\n    except UnboundLocalError as e:\n        print(\"UnboundLocalError:\", e)\n\ndef fixed_global():\n    global count\n    count += 1\n    return count\n\ndef outer():\n    x = \"enclosing\"\n    def inner():\n        return x            # found in Enclosing scope (E in LEGB)\n    return inner()\n\nbroken()\nprint(\"global fix:\", fixed_global())\nprint(\"enclosing:\", outer())\nprint(\"builtin len:\", len(\"abc\"))   # B in LEGB\n# Better: pass in and return\ndef add_one(n):\n    return n + 1\nprint(\"pure version:\", add_one(count))\n"
+   },
+   "followUps": [
+    "<p>No. Only functions, classes and modules create scopes in Python; <code>if</code>, <code>for</code>, <code>while</code> and <code>with</code> blocks do not. A name assigned inside a loop or an <code>if</code> stays alive after the block ends. After <code>for i in range(3): pass</code>, <code>i</code> is 2. (Comprehensions are the exception: they have their own scope, so their loop variable does not leak.) If the loop never ran, reading <code>i</code> would raise <code>NameError</code>.</p>",
+    "<p>Because a class body is not an enclosing scope for the functions defined inside it. Name lookup skips the class namespace, so a method must write <code>self.rate</code> or <code>Cls.rate</code>. Example: with <code>class A: rate = 2; def f(self): return rate</code>, calling <code>f</code> raises <code>NameError</code> unless a global <code>rate</code> exists. The class body runs once as its own temporary namespace, and its names become attributes of the class, found through the instance or class.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Closure cells and late binding",
+    "python": "def make_counter():\n    n = 0\n    def inc():\n        nonlocal n\n        n += 1\n        return n\n    return inc\n\na, b = make_counter(), make_counter()\nprint(\"a:\", a(), a(), \"b:\", b())          # independent cells\nprint(\"freevars:\", a.__code__.co_freevars)\nprint(\"cell value:\", a.__closure__[0].cell_contents)\n\n# Late binding: closures capture variables, not values\nfuncs = [lambda: i for i in range(3)]\nprint(\"late binding:\", [f() for f in funcs])\n\n# Fix: bind the current value as a default argument\nfixed = [lambda i=i: i for i in range(3)]\nprint(\"fixed:\", [f() for f in fixed])\n"
+   },
+   "followUps": [
+    "<p>Bind the current value when the lambda is created, using a default argument (<code>lambda i=i: i</code>) or <code>functools.partial</code>. Without that, every lambda reads the same variable <code>i</code> after the loop ends, so <code>[lambda: i for i in range(3)]</code> returns <code>[2, 2, 2]</code>. With <code>lambda i=i: i</code> each function stores its own value and returns <code>[0, 1, 2]</code>. A factory function that takes <code>i</code> as a parameter also works, since each call makes a new cell.</p>",
+    "<p>Prefer a class when the state is more than one or two values, when you need several operations on that state (reset, get, set), when you want to inspect or test the state, or when it must be pickled. A closure is lighter for one small private piece of state, like a counter. Example: a counter that also needs <code>reset()</code> and <code>value</code> is clearer as a class with <code>self.n</code>. Closure state is hidden inside cells, which makes debugging harder.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "global vs nonlocal",
+    "python": "total = 0\ndef add_global(x):\n    global total          # rebind the module-level name\n    total += x\n\ndef counter():\n    count = 0\n    def bump():\n        nonlocal count    # rebind the enclosing function's name\n        count += 1\n        return count\n    return bump\n\nitems = []\ndef mutate(x):\n    items.append(x)       # mutation needs neither keyword\n\nadd_global(5); add_global(2)\nprint(\"total:\", total)\nc = counter()\nprint(\"counter:\", c(), c(), c())\nmutate(1); mutate(2)\nprint(\"items:\", items)\n\ndef level1():\n    x = \"level1\"\n    def level2():\n        x = \"level2\"\n        def level3():\n            nonlocal x\n            x = \"changed\"\n        level3()\n        return x\n    return level2(), x\nprint(\"nearest wins:\", level1())\n"
+   },
+   "followUps": [
+    "<p>It binds to the nearest enclosing function scope that defines x and ignores the outer one. If <code>f</code> sets x, and inside it <code>g</code> sets x, and inside <code>g</code> a function <code>h</code> uses <code>nonlocal x</code>, then <code>h</code> changes <code>g</code>'s x and <code>f</code>'s x stays the same. Lookup goes from the inside out and stops at the first match, so only one level is ever rebound.</p>",
+    "<p>Because any function can change it, so a test's result depends on what ran before it, and tests stop being independent. A function using a global <code>counter</code> returns 1 on the first test and 2 on the second. You must reset state between tests, and running tests in parallel or in random order can break them. Passing values as arguments and returning results (or injecting an object) keeps the function predictable and easy to test.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "*args, **kwargs and parameter order",
+    "python": "def show(a, b, /, c, *args, d, e=5, **kwargs):\n    print(\"a,b:\", a, b, \"| c:\", c, \"| args:\", args)\n    print(\"d,e:\", d, e, \"| kwargs:\", kwargs)\n\n# a,b positional-only; c normal; extras go to args; d is keyword-only\nshow(1, 2, 3, 4, 5, d=10, x=99)\n\n# Unpacking in a call\nnums = [1, 2, 3]\nopts = {\"d\": 7, \"e\": 8}\nshow(*nums, **opts)\n\n# Forwarding wrapper\ndef log_call(func, *args, **kwargs):\n    print(\"calling\", func.__name__, args, kwargs)\n    return func(*args, **kwargs)\n\nprint(log_call(pow, 2, 10))\nprint(log_call(sorted, [3, 1, 2], reverse=True))\ntry:\n    show(1, 2, 3, c=4, d=1)\nexcept TypeError as e:\n    print(\"TypeError:\", e)\n"
+   },
+   "followUps": [
+    "<p>They force callers to name the argument, which makes calls readable and lets you add parameters later without breaking old code. Compare <code>connect(host, 5432, True)</code> with <code>connect(host, port=5432, ssl=True)</code>: the second says what each value means. Put them after <code>*</code> or <code>*args</code>: <code>def connect(host, *, port=80, ssl=False)</code>. Passing <code>connect(h, 443)</code> then raises <code>TypeError</code>, which prevents swapped-argument bugs for flags.</p>",
+    "<p>It lets you name a parameter privately, so callers cannot pass it by keyword and you can rename it later without breaking anyone. Parameters before <code>/</code> are positional-only: <code>def f(x, /)</code>. It also lets <code>**kwargs</code> accept a key with the same name, such as <code>def f(self, /, **kw)</code> with <code>f(self=1)</code>. Built-ins use it: <code>len(obj=[])</code> fails because <code>len</code>'s argument is positional-only.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Writing a decorator: import time vs call time",
+    "python": "import functools\n\nregistry = []\n\ndef trace(func):\n    print(\"decorating\", func.__name__)          # runs at definition time\n    registry.append(func.__name__)\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        print(\"call\", func.__name__, args)      # runs on every call\n        result = func(*args, **kwargs)\n        return result                           # do not forget to return\n    return wrapper\n\nprint(\"-- defining --\")\n@trace\ndef add(a, b):\n    return a + b\n\n@trace\ndef mul(a, b):\n    return a * b\n\nprint(\"-- calling --\")\nprint(\"add:\", add(2, 3))\nprint(\"mul:\", mul(4, 5))\nprint(\"registry:\", registry)\n\n# Stacking: applied bottom-up, executed top-down\ndef tag(name):\n    def deco(f):\n        def w(*a):\n            print(\"enter\", name)\n            return f(*a)\n        return w\n    return deco\n\n@tag(\"outer\")\n@tag(\"inner\")\ndef hello():\n    return \"hello\"\nprint(hello())\n"
+   },
+   "followUps": [
+    "<p>The decorated function silently returns <code>None</code>, because the wrapper runs the original but throws away its result. With <code>wrapper</code> ending in <code>func(*args, **kwargs)</code> and no <code>return</code>, <code>add(2, 3)</code> prints nothing useful and gives <code>None</code>, and later code like <code>add(2, 3) + 1</code> raises <code>TypeError</code>. Always write <code>return func(*args, **kwargs)</code>. Also return <code>wrapper</code> from the decorator itself, or the name becomes <code>None</code>.</p>",
+    "<p>Make the wrapper an <code>async def</code> and <code>await</code> the original, otherwise you only get the coroutine object back without running the timing or logging around the real work. Example: <code>async def wrapper(*a, **k): start = time.time(); r = await func(*a, **k); log(time.time() - start); return r</code>. If you used a plain wrapper, the timer would stop immediately, measuring about 0 seconds instead of the real wait. Still apply <code>functools.wraps</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "What functools.wraps copies",
+    "python": "import functools, inspect\n\ndef plain(func):\n    def wrapper(*args, **kwargs):\n        return func(*args, **kwargs)\n    return wrapper\n\ndef good(func):\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        return func(*args, **kwargs)\n    return wrapper\n\n@plain\ndef a(x, y=1):\n    \"\"\"Add things.\"\"\"\n    return x + y\n\n@good\ndef b(x, y=1):\n    \"\"\"Add things.\"\"\"\n    return x + y\n\nprint(\"plain:\", a.__name__, repr(a.__doc__), inspect.signature(a))\nprint(\"wraps:\", b.__name__, repr(b.__doc__), inspect.signature(b))\nprint(\"has __wrapped__:\", hasattr(b, \"__wrapped__\"))\nprint(\"unwrap is original:\", inspect.unwrap(b) is b.__wrapped__)\nprint(\"b(2) =\", b(2), \"| original:\", b.__wrapped__(2))\n"
+   },
+   "followUps": [
+    "<p>Call the original through <code>__wrapped__</code>, which <code>wraps</code> sets on the wrapper: <code>func.__wrapped__(args)</code> or <code>inspect.unwrap(func)</code>. A test can then check the core logic without the decorator's retry, cache or logging. Example: if <code>@retry</code> wraps <code>fetch</code>, then <code>fetch.__wrapped__(url)</code> runs one plain attempt. This only works if the decorator used <code>functools.wraps</code>.</p>",
+    "<p>No. The wrapper runs exactly the same code; <code>wraps</code> only copies metadata (name, docstring, annotations, module, <code>__dict__</code>) and adds <code>__wrapped__</code> once at decoration time. Calling cost and results are unchanged. The one subtle effect is that tools that read metadata, such as <code>inspect.signature</code>, now report the original's signature, which can mislead you if the wrapper changes the arguments it accepts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Decorator factory with optional parentheses",
+    "python": "import functools\n\ndef retry(func=None, *, times=3):\n    if func is None:                         # used as @retry(times=2)\n        return functools.partial(retry, times=times)\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        for attempt in range(1, times + 1):\n            try:\n                return func(*args, **kwargs)\n            except ValueError as e:\n                print(\"  attempt\", attempt, \"failed:\", e)\n                if attempt == times:\n                    raise                    # keep the original exception\n    return wrapper\n\ncalls = {\"n\": 0}\n\n@retry(times=3)\ndef flaky():\n    calls[\"n\"] += 1\n    if calls[\"n\"] < 3:\n        raise ValueError(\"boom %d\" % calls[\"n\"])\n    return \"ok after %d calls\" % calls[\"n\"]\n\n@retry\ndef always_bad():\n    raise ValueError(\"never works\")\n\nprint(flaky())\ntry:\n    always_bad()\nexcept ValueError as e:\n    print(\"gave up:\", e)\n"
+   },
+   "followUps": [
+    "<p>With the three-level version, <code>@retry</code> without parentheses passes the function as <code>times</code>, so <code>retry(func)</code> returns the inner <code>decorator</code> function instead of a wrapped one. Your function name now refers to <code>decorator</code>, and calling <code>fetch()</code> fails with <code>TypeError</code> (missing the function argument). You must write <code>@retry()</code>. The optional-parentheses design fixes this by checking whether the first argument is callable or <code>None</code>.</p>",
+    "<p>A bare <code>raise</code> re-raises the same exception with its original traceback, so you can see where the real failure happened. Writing <code>raise Exception('failed')</code> loses the type (callers catching <code>ValueError</code> would miss it) and hides the cause. If you do need a new type, use <code>raise RetryError(...) from e</code>, which keeps the chain. A bare <code>raise</code> is only valid inside an <code>except</code> block.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "lru_cache: hits, misses, eviction, pitfalls",
+    "python": "import functools\n\n@functools.lru_cache(maxsize=2)\ndef square(n):\n    print(\"  computing\", n)\n    return n * n\n\nprint(square(2), square(3))\nprint(square(2))                 # hit, no \"computing\"\nprint(square(4))                 # evicts least recently used (3)\nprint(square(3))                 # miss again\nprint(square.cache_info())\n\n@functools.cache\ndef fib(n):\n    return n if n < 2 else fib(n - 1) + fib(n - 2)\nprint(\"fib(50) =\", fib(50))\n\ntry:\n    square([1, 2])               # list is unhashable\nexcept TypeError as e:\n    print(\"TypeError:\", e)\n\n# keyword order makes separate entries\n@functools.lru_cache(maxsize=None)\ndef f(a, b):\n    return a + b\nf(a=1, b=2); f(b=2, a=1)\nprint(\"entries:\", f.cache_info().currsize)\n"
+   },
+   "followUps": [
+    "<p>The standard <code>lru_cache</code> has no expiry, so add one yourself: store <code>(value, time)</code> in a dict and recompute if too old, or pass a changing extra argument such as <code>int(time.time() // 60)</code> as part of the key so each minute gets a fresh entry. Example: <code>get(x, now=int(time.time()//60))</code> caches for at most 60 seconds. Simpler still is calling <code>f.cache_clear()</code> on a timer. Remember that a TTL cache is no longer a pure function.</p>",
+    "<p>Use a dict plus a doubly linked list, so both lookup and move-to-front are O(1). On get, find the node in the dict, unlink it and put it at the head. On put, insert at the head; if size exceeds capacity, remove the tail node and its dict key. In Python, <code>collections.OrderedDict</code> does it: <code>d.move_to_end(k)</code> on a hit and <code>d.popitem(last=False)</code> on overflow. Space is O(capacity).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "partial vs lambda",
+    "python": "import functools, pickle\n\ndef power(base, exp):\n    return base ** exp\n\nsquare = functools.partial(power, exp=2)\ncube = functools.partial(power, exp=3)\nprint(\"square(5) =\", square(5), \"| cube(2) =\", cube(2))\nprint(\"introspect:\", square.func.__name__, square.args, square.keywords)\nprint(\"override:\", square(3, exp=4))        # call keyword wins\n\n# lambda in a loop: late binding bug\nlams = [lambda x: power(x, e) for e in (1, 2, 3)]\npars = [functools.partial(power, exp=e) for e in (1, 2, 3)]\nprint(\"lambdas:\", [f(2) for f in lams])\nprint(\"partials:\", [f(2) for f in pars])\n\n# partial pickles (function must be importable), lambda does not\nprint(\"pickle partial:\", len(pickle.dumps(square)) > 0)\ntry:\n    pickle.dumps(lambda x: x)\nexcept Exception as e:\n    print(\"lambda pickle fails:\", type(e).__name__)\n"
+   },
+   "followUps": [
+    "<p>Use a keyword for it, or a lambda. <code>partial</code> only fills positional arguments from the left, so for <code>def f(a, b, c)</code> use <code>partial(f, c=10)</code> only for the last, or write <code>lambda a, c: f(a, 5, c)</code> to fix the middle one. With <code>f(a, b)</code>, <code>partial(f, b=2)</code> freezes the second by name. That is the standard trick, and it works because keyword arguments can be frozen in any position.</p>",
+    "<p><code>partialmethod</code> is the same idea for methods in a class body: it makes a new method with some arguments frozen, and still receives <code>self</code> properly. Example: inside a class, <code>set_on = partialmethod(set_state, True)</code> creates <code>obj.set_on()</code> that calls <code>obj.set_state(True)</code>. A plain <code>partial</code> in a class body would not bind <code>self</code>, because <code>partial</code> objects are not descriptors.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "functools.reduce: use and avoid",
+    "python": "from functools import reduce\nfrom math import gcd\nimport operator\n\nnums = [12, 18, 24]\nprint(\"gcd of\", nums, \"=\", reduce(gcd, nums))\nprint(\"product:\", reduce(operator.mul, [1, 2, 3, 4], 1))\n\n# initial value protects the empty case\ntry:\n    reduce(operator.add, [])\nexcept TypeError as e:\n    print(\"empty without initial:\", e)\nprint(\"empty with initial:\", reduce(operator.add, [], 0))\n\n# merge dicts\ndicts = [{\"a\": 1}, {\"b\": 2}, {\"a\": 9}]\nprint(\"merged:\", reduce(lambda acc, d: {**acc, **d}, dicts, {}))\n\n# Better built-ins when they exist\nprint(\"sum is clearer:\", sum(nums), \"== reduce:\", reduce(operator.add, nums))\n\n# trace the accumulator\nsteps = []\nreduce(lambda acc, x: steps.append((acc, x)) or acc + x, [1, 2, 3])\nprint(\"acc, x pairs:\", steps)\n"
+   },
+   "followUps": [
+    "<p>Fold the list of functions into one, applying them right to left: <code>compose(f, g)(x)</code> means <code>f(g(x))</code>. Code: <code>def compose(*fns): return lambda x: reduce(lambda acc, f: f(acc), reversed(fns), x)</code>. With <code>compose(str, abs)(-5)</code> the value goes -5, then 5, then <code>'5'</code>. For left-to-right order drop <code>reversed</code>. Cost is O(n) calls for n functions.</p>",
+    "<p>No. <code>reduce</code> is eager: it consumes the whole iterable immediately and returns one final value, unlike <code>map</code> or <code>filter</code>, which return lazy iterators. If you want to see every intermediate result lazily, use <code>itertools.accumulate</code>: <code>list(accumulate([1, 2, 3, 4]))</code> gives <code>[1, 3, 6, 10]</code>, while <code>reduce(add, [1,2,3,4])</code> gives only 10.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Class-based decorator and the missing self",
+    "python": "import functools, types\n\nclass CountCalls:\n    def __init__(self, func):\n        functools.update_wrapper(self, func)\n        self.func = func\n        self.count = 0\n    def __call__(self, *args, **kwargs):\n        self.count += 1\n        return self.func(*args, **kwargs)\n    def __get__(self, instance, owner):          # makes methods work\n        if instance is None:\n            return self\n        return types.MethodType(self, instance)  # binds self\n\n@CountCalls\ndef hello(name):\n    return \"hello \" + name\n\nclass Greeter:\n    def __init__(self, who):\n        self.who = who\n    @CountCalls\n    def greet(self):\n        return \"hi \" + self.who\n\nprint(hello(\"a\"), hello(\"b\"), \"calls:\", hello.count)\nprint(Greeter(\"sam\").greet(), \"calls:\", Greeter.greet.count)\n\nclass NoGet:\n    def __init__(self, f):\n        self.f = f\n    def __call__(self, *a):\n        return self.f(*a)\nclass Bad:\n    @NoGet\n    def m(self):\n        return \"x\"\ntry:\n    Bad().m()\nexcept TypeError as e:\n    print(\"without __get__:\", e)\n"
+   },
+   "followUps": [
+    "<p>The descriptor protocol is how attribute access can run code: if a class attribute has a <code>__get__(self, instance, owner)</code> method, then <code>obj.attr</code> calls it and uses its result. Functions are descriptors, and that is how <code>obj.method</code> becomes a bound method with <code>obj</code> filled in as <code>self</code>. Adding <code>__set__</code> or <code>__delete__</code> makes it a data descriptor, which takes priority over the instance dict. <code>property</code> is built on it.</p>",
+    "<p>Put <code>@property</code> and <code>@staticmethod</code> on the outside, and your own decorator directly on the plain function, so each sees what it expects. Example: <code>@property</code> above <code>@my_deco</code> above <code>def x(self)</code> works. Reversed, <code>my_deco</code> receives a property object, not a function, and breaks (<code>functools.wraps</code> fails or you lose <code>self</code>). Decorators apply bottom-up, so the one closest to <code>def</code> sees the raw function.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Typing decorators with ParamSpec",
+    "python": "import functools\nimport time\nfrom typing import Callable, TypeVar, ParamSpec\n\nP = ParamSpec(\"P\")\nR = TypeVar(\"R\")\n\ndef timer(func: Callable[P, R]) -> Callable[P, R]:\n    @functools.wraps(func)\n    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:\n        start = time.perf_counter()\n        result = func(*args, **kwargs)\n        elapsed = time.perf_counter() - start\n        print(\"  %s took %s\" % (func.__name__, \"fast\" if elapsed < 1 else \"slow\"))\n        return result\n    return wrapper\n\n@timer\ndef add(a: int, b: int = 0) -> int:\n    return a + b\n\nprint(\"add(2, b=3) =\", add(2, b=3))\nprint(\"annotations kept:\", add.__annotations__)\nprint(\"P is\", type(P).__name__, \"| R is\", type(R).__name__)\n# A type checker now rejects add(\"x\", b=1.5) because P keeps (a: int, b: int)\nprint(\"wrapped name:\", add.__name__)\n"
+   },
+   "followUps": [
+    "<p><code>Concatenate</code> says that a decorator adds one or more fixed parameters in front of the original's parameters. <code>Callable[Concatenate[Request, P], R]</code> means the function takes a <code>Request</code> first, then whatever <code>P</code> is. Use it for decorators that inject something, like a database connection or request: the wrapper takes <code>(*args, **kwargs)</code> and passes the extra first argument itself, so callers see the shorter signature.</p>",
+    "<p>An untyped decorator returns something like <code>Callable[..., Any]</code> or <code>Any</code>, so the editor loses the real parameter names, types and return type of the function. You get no completion for arguments, no tooltips, and no error when you call <code>add('x')</code> wrongly. After the decorator, hover shows <code>(...) -&gt; Any</code>. Using <code>ParamSpec</code> keeps the original signature, so autocomplete and type checking continue to work.</p>"
+   ]
+  }
+ ]
+}

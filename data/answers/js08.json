@@ -1,0 +1,145 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Event loop order: sync, microtasks, then tasks",
+    "js": "// One call stack; callbacks wait in queues until the stack is empty.\nconst log = [];\nconst say = (s) => { log.push(s); console.log(s); };\n\nsay('1 sync: script start');\nsetTimeout(() => say('5 task: setTimeout 0'), 0);      // goes to the task queue\nPromise.resolve().then(() => say('3 microtask: promise then'));\nqueueMicrotask(() => say('4 microtask: queueMicrotask'));\nsay('2 sync: script end');\n\n// The loop only starts taking callbacks after the script (one task) ends:\n// all sync lines, then ALL microtasks, then the next task (the timer).\n// Time O(callbacks), space O(queued callbacks).\n"
+   },
+   "followUps": [
+    "<p>It waits in the timer machinery of the host, not on the call stack: the browser or Node keeps the timer, and only when it expires is the callback moved into the task queue. The JavaScript thread is not counting anything.</p><p>Example: <code>setTimeout(f, 100)</code> registers the timer and returns at once. After about 100 ms, <code>f</code> is queued, and it runs when the stack is empty, so the real delay can be 100 ms or more.</p>",
+    "<p>Run-to-completion means that once a function starts, it keeps the thread until it returns; nothing else, such as a timer, click or render, can interrupt it.</p><p>Example: if a click handler takes 200 ms, a timer due at 50 ms waits until the handler finishes. This makes shared variables safe inside one function, but long functions block everything.</p>",
+    "<p>Because JavaScript has one thread and the page needs that same thread to run events and paint, a long loop leaves no moment for the loop to handle clicks or draw frames.</p><p>Example: a loop that takes 3 seconds means about 180 skipped frames at 60 Hz, and clicks only register after it ends. Fix it by chunking work, using a worker, or yielding between slices.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Microtasks drain fully before the next task",
+    "js": "// Microtasks drain completely (even new ones) before the next task runs.\nconsole.log('start');\nsetTimeout(() => console.log('task: timeout A'), 0);\nsetTimeout(() => console.log('task: timeout B'), 0);\n\nPromise.resolve().then(() => {\n  console.log('microtask 1');\n  // queued DURING the drain: still runs before timeout A\n  queueMicrotask(() => console.log('microtask 3 (queued by microtask 1)'));\n});\nqueueMicrotask(() => console.log('microtask 2'));\n\n// Each timer is its own task; microtasks run after each task.\nsetTimeout(() => {\n  Promise.resolve().then(() => console.log('microtask after timeout B'));\n}, 0);\nconsole.log('end');\n"
+   },
+   "followUps": [
+    "<p>Yes: a microtask that keeps queueing another microtask means the queue never empties, so the loop never reaches the next task or paint.</p><p>Show it with a counter:</p><pre><code>setTimeout(() =&gt; console.log('timer'), 0);\nlet n = 0;\nfunction spin() { if (++n &lt; 1e6) queueMicrotask(spin); }\nspin(); // timer prints only after 1e6 microtasks</code></pre><p>With no limit the timer never runs.</p>",
+    "<p>requestAnimationFrame callbacks run in the render step, after the microtasks of the current task and just before the paint, so they are neither tasks nor microtasks.</p><p>With a 60 Hz display that step comes about every 16.7 ms. A rAF callback is the right place to read layout and write DOM changes once per frame, and it pauses in background tabs.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "The async1/async2 output puzzle",
+    "js": "// The classic async1/async2 puzzle on a modern engine (Node 12+).\nasync function async1() {\n  console.log('async1 start');\n  await async2();            // async2 runs NOW; the rest becomes a microtask\n  console.log('async1 end');\n}\nasync function async2() {\n  console.log('async2');\n}\n\nconsole.log('script start');\nsetTimeout(() => console.log('setTimeout'), 0);\nasync1();\nnew Promise((resolve) => {\n  console.log('promise1');   // the executor runs synchronously\n  resolve();\n}).then(() => console.log('promise2'));\nconsole.log('script end');\n// Expected: script start, async1 start, async2, promise1, script end,\n// async1 end, promise2, setTimeout\n"
+   },
+   "followUps": [
+    "<p>It changes nothing visible in modern engines for the plain case, because an already-resolved native promise returned from an async function is treated as a value, but the details follow the promise-resolve rules.</p><p>Awaiting <code>async2()</code> awaits the promise that the async function itself returns, so the continuation still takes one tick: <code>async1 end</code> still comes before <code>promise2</code>. Returning a promise from <code>.then</code> would add extra ticks, but inside an async function the await sees one native promise.</p>",
+    "<p>If async2 has its own <code>await</code>, its promise is not fulfilled yet when async1 awaits it, so async1 end moves later.</p><p>Say async2 does <code>await null</code>. Then async2's remainder is queued first, and its promise resolves in a later microtask. async1's continuation is only queued once that promise resolves, so <code>promise1</code> and <code>promise2</code> may print before <code>async1 end</code>. Count the microtask queue after each job to be sure.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A generator-based async/await driver",
+    "js": "// A tiny async/await driver built from a generator.\nfunction run(genFn) {\n  return new Promise((resolve, reject) => {\n    const it = genFn();\n    function step(method, arg) {\n      let r;\n      try { r = it[method](arg); }          // resume the paused function\n      catch (e) { return reject(e); }       // body threw -> reject\n      if (r.done) return resolve(r.value);  // return v -> resolve\n      // \"await\": wrap the yielded value, resume in a microtask later\n      Promise.resolve(r.value).then(\n        (v) => step('next', v),\n        (e) => step('throw', e));           // rejection throws at the yield\n    }\n    step('next');\n  });\n}\n\nconst delay = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));\n\nrun(function* () {\n  console.log('before');\n  const a = yield delay(10, 20);\n  let b;\n  try { yield Promise.reject(new Error('boom')); }\n  catch (e) { b = e.message; }              // try/catch works across yield\n  return a + ' ' + b;\n}).then((v) => console.log('result:', v));\nconsole.log('caller continues (stack freed)');\n"
+   },
+   "followUps": [
+    "<p>Write a function that steps through a generator and, for each yielded value, waits on a promise and resumes the generator with the result.</p><pre><code>function run(g) {\n  const it = g();\n  return new Promise((res, rej) =&gt; {\n    const step = (m, v) =&gt; { let r; try { r = it[m](v); } catch (e) { return rej(e); }\n      if (r.done) return res(r.value);\n      Promise.resolve(r.value).then(x =&gt; step('next', x), e =&gt; step('throw', e)); };\n    step('next');\n  });\n}</code></pre><p>Rejections are thrown back into the generator, so try/catch works.</p>",
+    "<p>A paused async function lives on the heap as a small object, not on the call stack: the engine saves its local variables and position, then pops the frame.</p><p>So 10,000 pending awaits cost 10,000 small heap objects, not 10,000 stack frames, and no stack overflow occurs. When the promise settles, the engine restores the saved state and continues on a fresh stack.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "setTimeout vs then vs queueMicrotask order",
+    "js": "// Where do setTimeout 0, then() and queueMicrotask run?\nconst order = [];\nsetTimeout(() => order.push('setTimeout 0 (task)'), 0);\nPromise.resolve().then(() => order.push('promise.then (microtask)'));\nqueueMicrotask(() => order.push('queueMicrotask (microtask)'));\norder.push('sync code');\n\n// Exceptions differ: then() turns a throw into a rejected promise,\n// queueMicrotask lets it surface as an uncaught error.\nconst p = Promise.resolve().then(() => { throw new Error('in then'); });\np.catch((e) => order.push('caught from then: ' + e.message));\n\nsetTimeout(() => {\n  console.log(order.join('\\n'));\n}, 5);\n"
+   },
+   "followUps": [
+    "<p>It moves <code>promise2</code> before <code>async1 end</code>: returning a promise from an async function makes the order slower by about two ticks.</p><p>With <code>return Promise.resolve()</code> in async2, its own promise must adopt the returned one, which takes extra microtasks, so async1's continuation is queued late. The queue then holds promise2 first: <code>promise1, script end, promise2, async1 end</code>. Without the explicit return, async1 end comes first.</p>",
+    "<p>If async2 has its own <code>await</code>, its promise is not fulfilled yet when async1 awaits it, so <code>async1 end</code> moves later and <code>promise2</code> prints first.</p><p>Say async2 does <code>await null</code>. After script end the microtask queue is [async2 resume, promise2]. async2 resumes and resolves its promise, and only then is async1's continuation queued, behind promise2. Count the queue after each job to be sure.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "try/catch misses timer errors; three fixes",
+    "js": "// try/catch only covers the current call stack.\ntry {\n  setTimeout(() => { throw new Error('late'); }, 0);\n  console.log('try block finished');\n} catch (e) {\n  console.log('never printed');\n}\n\n// Fix 1: catch inside the callback.\nsetTimeout(() => {\n  try { throw new Error('inside callback'); }\n  catch (e) { console.log('caught:', e.message); }\n}, 0);\n\n// Fix 2: wrap in a promise so errors become rejections.\nconst later = (ms) => new Promise((res, rej) =>\n  setTimeout(() => rej(new Error('promisified')), ms));\n(async () => {\n  try { await later(5); }\n  catch (e) { console.log('caught with await:', e.message); }\n})();\n\n// The first timer's error would crash Node, so we report it instead.\nprocess.on('uncaughtException', (e) => console.log('global handler:', e.message));\n"
+   },
+   "followUps": [
+    "<p>Since Node 15, an unhandled promise rejection throws like an uncaught exception, so the process exits with a non-zero code unless a handler is registered.</p><p>Before that, Node 14 and older only printed a warning. Register <code>process.on('unhandledRejection', fn)</code> for logging, but treat it as a bug report: add a <code>.catch</code> or try/catch where the promise is created. Example: <code>Promise.reject(new Error('x'))</code> with no handler now crashes the script.</p>",
+    "<p>Pass the original error as the <code>cause</code> option when you throw a new one, so both messages and stack traces stay available.</p><pre><code>try { await load(); }\ncatch (e) {\n  throw new Error('Could not load profile', { cause: e });\n}</code></pre><p>Callers read <code>err.cause</code> to see the underlying error, such as a network failure. This is better than just concatenating messages, which loses the original stack.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "return vs return await in try/catch/finally",
+    "js": "// return vs return await inside try/catch/finally.\nconst fail = () => new Promise((_, rej) => setTimeout(() => rej(new Error('bad')), 5));\n\nasync function noAwait() {\n  try { return fail(); }            // leaves try immediately\n  catch (e) { return 'local catch'; }\n  finally { console.log('noAwait finally (runs too early)'); }\n}\nasync function withAwait() {\n  try { return await fail(); }      // waits inside try\n  catch (e) { return 'local catch'; }\n  finally { console.log('withAwait finally (after settle)'); }\n}\n\n(async () => {\n  try { console.log('noAwait ->', await noAwait()); }\n  catch (e) { console.log('noAwait ->', 'caller got', e.message); }\n  console.log('withAwait ->', await withAwait());\n})();\n"
+   },
+   "followUps": [
+    "<p>Without await, <code>return promise</code> leaves the try block at once, so <code>finally</code> runs before the promise settles and a later rejection skips the local catch.</p><p>In the program, <code>noAwait</code> prints its finally line first, and the caller gets the error instead of the local catch. Adding <code>await</code> keeps the function inside the try until the promise settles, so finally runs afterwards. Cleanup such as closing a connection is a typical case where this bug hurts.</p>",
+    "<p>Roughly <code>return await p</code> costs 1 tick for the await when p is a native promise, while <code>return p</code> costs about 3 ticks in total for the caller, since the async function's own promise must adopt p.</p><p>These numbers are tiny: in practice you notice them only in ordering puzzles. Choose by semantics, and use <code>return await</code> inside try/catch because correctness matters more than 2 microtasks.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Node ordering: nextTick, promise, immediate, timeout",
+    "js": "// Node ordering: nextTick > promise microtasks > next phase.\nsetTimeout(() => {\n  // inside a timer callback, setImmediate (check phase) beats setTimeout 0\n  setTimeout(() => console.log('  timeout 0 (next loop, timers phase)'), 0);\n  setImmediate(() => console.log('  setImmediate (check phase)'));\n  process.nextTick(() => console.log('  nextTick'));\n  Promise.resolve().then(() => console.log('  promise microtask'));\n  console.log('  timer callback body');\n}, 0);\n\nsetTimeout(() => {\n  console.log('--- results above: body, nextTick, promise, immediate, timeout ---');\n}, 30);\n// Order printed: timer callback body, nextTick, promise microtask,\n// setImmediate, timeout 0.\n"
+   },
+   "followUps": [
+    "<p>Because nextTick callbacks run right after the current operation and before the loop moves on, a nextTick that schedules another nextTick keeps the nextTick queue non-empty forever, and the loop never reaches the poll phase where I/O callbacks run.</p><p>Example: <code>function f(){ process.nextTick(f); } f();</code> hangs while sockets and timers wait. Use setImmediate for recursion, because it lets I/O run between iterations.</p>",
+    "<p>Use setImmediate when you want to run after the current poll phase and I/O, and you want a consistent order; setTimeout(0) is subject to timer minimums and process load.</p><p>Inside an I/O callback, setImmediate always runs before any timer, which makes it predictable. It is also the right tool for splitting long work into slices because each slice lets pending I/O run.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Run-to-completion: busy loop blocks a timer",
+    "js": "// Run-to-completion: a timer cannot interrupt a running function.\nconst start = Date.now();\nsetTimeout(() => {\n  const waited = Date.now() - start;\n  console.log('timer (asked for 10ms) delayed beyond 100ms?', waited >= 100);\n}, 10);\n\n// Busy loop for ~100 ms: nothing else can run meanwhile.\nwhile (Date.now() - start < 100) { /* blocked */ }\nconsole.log('busy loop done, timer has not run yet');\n\n// Safe shared counter: next++ cannot interleave with another worker's code.\nlet next = 0;\nconst worker = async (name) => {\n  while (next < 4) {\n    const i = next++;                 // atomic between awaits\n    await null;\n    console.log(name, 'took item', i);\n  }\n};\nPromise.all([worker('A'), worker('B')]);\n"
+   },
+   "followUps": [
+    "<p>No, an await is not completion of the whole task: the function pauses and lets other callbacks run, so anything shared can change across an await.</p><p>Example: <code>if (balance &gt;= 10) { await save(); balance -= 10; }</code> is wrong because another call may spend the balance while save is pending. Re-check the state after the await, or do the update before it, or serialize calls with a queue.</p>",
+    "<p>Use the Long Animation Frames API (and the older Long Tasks API) through a PerformanceObserver, and report the results to your monitoring.</p><pre><code>new PerformanceObserver(list =&gt; {\n  for (const e of list.getEntries()) report(e.duration, e.scripts);\n}).observe({ type: 'long-animation-frame', buffered: true });</code></pre><p>A frame longer than 50 ms is considered long; the entries name the scripts involved, so you can see which function blocked the thread.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Microtask starvation and chunked yielding",
+    "js": "// A microtask loop starves timers; a budget plus a task-yield fixes it.\nlet timerRan = false;\nsetTimeout(() => { timerRan = true; console.log('timer finally ran'); }, 0);\n\n// Unbounded version would be: const spin = () => queueMicrotask(spin);\nlet count = 0;\nfunction spin() {\n  if (++count < 100000) queueMicrotask(spin); // bounded so the demo ends\n}\nspin();\nqueueMicrotask(() => console.log('after 100000 microtasks, timer ran?', timerRan));\n\n// Fix: process in slices and yield to the task queue between them.\nlet done = 0;\nfunction chunked() {\n  const end = done + 25000;\n  while (done < end) done++;                 // one slice of work\n  if (done < 100000) setTimeout(chunked, 0); // yield: other tasks may run\n  else console.log('chunked work finished:', done);\n}\nchunked();\n"
+   },
+   "followUps": [
+    "<p>Because Node's nextTick queue runs to exhaustion after each operation, recursion keeps it from ever being empty, so I/O callbacks and timers are starved, and the docs warn about this.</p><p>The warning also exists because the code looks asynchronous yet is not fair. Prefer <code>setImmediate</code> for recursive work: each call goes to the check phase, and I/O gets a turn between iterations.</p>",
+    "<p>React splits rendering into small units of work and checks whether it should yield, handing control back to the browser about every 5 ms so input can run.</p><p>Its scheduler uses a MessageChannel task (not a microtask) to continue after yielding, and gives high priority to user input. So a render of 1,000 components can be paused after 5 ms, a click handled, and the render resumed, instead of one 200 ms block.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Steps of await fetch with a fake fetch",
+    "js": "// What await fetch() does, with a fake fetch so it runs offline.\nfunction fakeFetch(url) {\n  console.log('  fetch called, request started:', url);\n  return new Promise((resolve) => setTimeout(() => resolve({\n    ok: url.endsWith('missing'),   // pretend the second URL gives 404\n    status: url.endsWith('missing') ? 404 : 200,\n    json: async () => ({ url }),\n  }), 10));\n}\n// swap: ok true when status 200\nconst f = async (u) => { const r = await fakeFetch(u); r.ok = r.status === 200; return r; };\n\nasync function load(url) {\n  console.log('1 before await');\n  const res = await f(url);            // function suspends, stack unwinds\n  console.log('3 resumed, status', res.status);\n  if (!res.ok) return 'HTTP error ' + res.status;   // 404 does NOT reject\n  return (await res.json()).url;\n}\nload('/data').then((r) => console.log('4 result:', r))\n  .then(() => load('/missing')).then((r) => console.log('4 result:', r));\nconsole.log('2 caller keeps running');\n"
+   },
+   "followUps": [
+    "<p>Call <code>abort()</code> on an AbortController and pass its <code>signal</code> to fetch; the request stops and the awaiting code receives an AbortError.</p><pre><code>const ac = new AbortController();\nsetTimeout(() =&gt; ac.abort(), 2000);\ntry { await fetch(url, { signal: ac.signal }); }\ncatch (e) { if (e.name !== 'AbortError') throw e; }</code></pre><p>This also gives a timeout after 2 seconds. Ignoring the result without aborting still wastes the network.</p>",
+    "<p>Start all three requests first and await them together with <code>Promise.all</code>, rather than awaiting one after another.</p><pre><code>const [a, b, c] = await Promise.all([get(1), get(2), get(3)]);</code></pre><p>If each takes 100 ms, sequential awaits take about 300 ms, while Promise.all takes about 100 ms. Use <code>Promise.allSettled</code> if one failure must not discard the other results.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "rAF vs setTimeout on a virtual clock",
+    "js": "// Virtual clock model: rAF callbacks run only at a frame boundary (every 16 ms).\nlet now = 0;\nconst tasks = [];           // {time, name}\nconst rafQueue = [];\nconst log = [];\n\nfunction setTimeout0(name, at) { tasks.push({ time: at, name }); }\nfunction raf(name) { rafQueue.push(name); }\n\nfunction simulate(label, timeoutAt, taskStart) {\n  tasks.length = 0; rafQueue.length = 0; log.length = 0;\n  now = taskStart;                  // the current task ends at this time\n  raf('rAF');\n  setTimeout0('timeout 0', timeoutAt);\n  // loop: run due timers, and at each 16 ms boundary run rAF before painting\n  while (tasks.length || rafQueue.length) {\n    const nextFrame = Math.ceil((now + 0.001) / 16) * 16;\n    const t = tasks.length ? tasks[0].time : Infinity;\n    if (t <= nextFrame && tasks.length) { now = t; log.push(tasks.shift().name); }\n    else { now = nextFrame; while (rafQueue.length) log.push(rafQueue.shift()); }\n  }\n  console.log(label + ': ' + log.join(' -> '));\n}\nsimulate('task ends at 2ms, timer at 3ms', 3, 2);\nsimulate('task ends at 15ms, timer at 17ms', 17, 15);\n"
+   },
+   "followUps": [
+    "<p>Use a rAF callback to wait for the frame, then a task inside it so the code runs after the paint: <code>requestAnimationFrame(() =&gt; setTimeout(fn))</code>.</p><p>The rAF callback runs just before the paint, so work in it still delays the frame. The timer or MessageChannel message queued inside it becomes a task that runs after that frame has been painted. This is used to measure first paint or to start non-urgent work.</p>",
+    "<p>In a background tab the browser pauses rAF callbacks completely, so they never run until the tab is visible again; timers are throttled, often to once per second or less.</p><p>So do not use rAF for logic that must continue, such as polling or a game clock. Use timers, workers or the server for that, and use rAF only for drawing.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Concurrency-limited runner with shared index",
+    "js": "// Concurrency-limited runner: workers share an index; next++ is atomic.\nfunction runLimited(tasks, limit) {\n  const results = new Array(tasks.length);\n  let next = 0, running = 0, maxRunning = 0;\n  const worker = async () => {\n    while (next < tasks.length) {\n      const i = next++;                 // no lock needed: run-to-completion\n      running++; maxRunning = Math.max(maxRunning, running);\n      results[i] = await tasks[i]();    // write at index keeps input order\n      running--;\n    }\n  };\n  const workers = Array.from({ length: limit }, worker);\n  return Promise.all(workers).then(() => ({ results, maxRunning }));\n}\n\nconst delay = (ms, v) => () => new Promise((r) => setTimeout(() => r(v), ms));\nconst tasks = [delay(30, 'a'), delay(10, 'b'), delay(20, 'c'), delay(5, 'd'), delay(15, 'e')];\nconsole.log('5 tasks, limit 2');\nrunLimited(tasks, 2).then(({ results, maxRunning }) => {\n  console.log('results in input order:', results.join(','));\n  console.log('max running at once:', maxRunning);\n});\n"
+   },
+   "followUps": [
+    "<p>Add a shared <code>AbortController</code> and pass its signal to every task, then call <code>abort()</code> in the first failure handler.</p><pre><code>const ac = new AbortController();\nconst run = t =&gt; t(ac.signal).catch(e =&gt; { ac.abort(); throw e; });\nawait Promise.all(tasks.map(run));</code></pre><p>Each task must honour the signal, for example by passing it to <code>fetch</code>. Also set a flag so that workers stop picking up new tasks from the queue.</p>",
+    "<p>Races can still happen when state changes across an <code>await</code>, because other workers run while one is paused.</p><p>Example: two workers each do <code>const n = count; await save(); count = n + 1;</code>. Both read 0, and the final count is 1, not 2. The fix is to update shared state in the same synchronous step as the read, with no await in between, or to serialize the section with a queue.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Ticks: modern await vs legacy-style await",
+    "js": "// Count ticks: modern await on a native promise vs the pre-2019 algorithm.\nasync function modern(log) {\n  await Promise.resolve();            // 1 tick (PromiseResolve reuses it)\n  log('modern await resumed');\n}\nasync function legacy(log) {\n  // old behaviour: wrap in a new promise first (about 3 ticks)\n  await new Promise((resolve) => resolve(Promise.resolve()));\n  log('legacy-style await resumed');\n}\n\nconst out = [];\nconst log = (s) => out.push(s);\nmodern(log);\nlegacy(log);\nlet p = Promise.resolve();\nfor (let i = 1; i <= 4; i++) {       // a chain of ticks to compare against\n  const n = i;\n  p = p.then(() => log('tick ' + n));\n}\np.then(() => console.log(out.join('\\n')));\n"
+   },
+   "followUps": [
+    "<p>Write the explanation as a count of microtask ticks and run it in the target runtime; the answer was different in old versions.</p><p>Example of the oldest change: in Node 10 and older, <code>await</code> on a native promise took 3 ticks, which is why <code>promise2</code> printed first. Other changes include microtask draining between timers in Node 11, and the V8 7.2 await optimization in Node 12. Always name the version when you quote an order.</p>",
+    "<p>Write a test that records the order of events in an array and compares it with the expected array, and run it in CI on every supported Node and browser version.</p><pre><code>const log = [];\nqueueMicrotask(() =&gt; log.push('micro'));\nsetTimeout(() =&gt; { log.push('task');\n  assert.deepEqual(log, ['sync','micro','task']); }, 0);\nlog.push('sync');</code></pre><p>Keep tests for documented guarantees (microtasks before tasks), not for exact tick counts that engines may change.</p>"
+   ]
+  }
+ ]
+}

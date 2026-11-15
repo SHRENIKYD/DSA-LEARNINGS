@@ -1,0 +1,144 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Immutable strings: every change makes a new object",
+    "python": "import time\n\ns = \"hello\"\nt = s.upper()                      # a new object; s is untouched\nprint(s, t, s is t)\n\nparts = [str(i) for i in range(20000)]\n\nstart = time.perf_counter()\nout = \"\"\nfor p in parts:\n    out += p                       # may copy the growing string each time\nslow = time.perf_counter() - start\n\nstart = time.perf_counter()\njoined = \"\".join(parts)            # one pass, O(n) total\nfast = time.perf_counter() - start\n\nprint(\"same result:\", out == joined, \"length:\", len(joined))\nprint(\"join is not slower:\", fast <= slow * 5)\n"
+   },
+   "followUps": [
+    "<p>Collect the small pieces in a list and call <code>\"\".join(parts)</code> once at the end. That takes one pass over the data, so it is O(n) time, and the list plus the final string are the only memory.</p><p>For example, 100,000 pieces of 10 bytes make 1 MB: append each piece to a list (100,000 cheap appends), then one join allocates 1 MB and copies each piece once. Using <code>s += piece</code> in a loop can copy the growing string every time, which is O(n&sup2;) in the worst case.</p>",
+    "<p><code>io.StringIO</code> is an in-memory text file: you can <code>write()</code> to it and later read everything with <code>getvalue()</code>. It is useful when code expects a file object, for example <code>csv.writer</code>, <code>print(..., file=buf)</code> or a test that needs fake input.</p><p>It is also an alternative to list plus join for building big strings: <code>buf.write(piece)</code> repeatedly, then <code>buf.getvalue()</code>. Writes are amortised O(1), so the total is O(n). <code>io.BytesIO</code> is the bytes version.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Slicing with negative values and clamping",
+    "python": "s = \"abcdef\"\nprint(\"s          :\", s)\nprint(\"s[1:4]     :\", s[1:4])        # start included, stop excluded\nprint(\"s[-3:]     :\", s[-3:])        # last three characters\nprint(\"s[::2]     :\", s[::2])        # every second character\nprint(\"s[::-1]    :\", s[::-1])       # reversed\nprint(\"s[-2:-5:-1]:\", s[-2:-5:-1])  # walk backwards from index -2\nprint(\"s[2:1000]  :\", s[2:1000])    # out of range is clamped\nprint(\"s[10:]     :\", repr(s[10:])) # empty string, no error\n\ntry:\n    print(s[1000])                  # indexing is strict\nexcept IndexError as e:\n    print(\"IndexError:\", e)\n\ntry:\n    print(s[::0])                   # step 0 makes no sense\nexcept ValueError as e:\n    print(\"ValueError:\", e)\n\nprint(slice(1, 5, 2).indices(len(s)))\n"
+   },
+   "followUps": [
+    "<p>It is <code>\"edc\"</code>. Start -2 means index 4 (<code>'e'</code>), the step -1 walks left, and stop -5 means index 1, which is excluded. So we collect indexes 4, 3, 2: <code>'e'</code>, <code>'d'</code>, <code>'c'</code>.</p><p>The rule: with a negative step, the slice runs from start leftwards until it reaches stop without including it. If start were to the left of stop with a negative step, the result would be empty.</p>",
+    "<p><code>slice(1, 5, 2).indices(n)</code> turns the slice into three concrete non-negative numbers (start, stop, step) for a sequence of length n, after applying defaults, negative indexes and clamping.</p><p>Example: <code>slice(-3, None, None).indices(6)</code> returns <code>(3, 6, 1)</code>, and <code>slice(2, 1000).indices(6)</code> returns <code>(2, 6, 1)</code>. It helps when you write your own <code>__getitem__</code> for a custom sequence: use <code>range(*key.indices(len(self)))</code> to get the exact indexes to visit.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "str versus bytes and the Unicode sandwich",
+    "python": "text = \"caf\\u00e9 \\U0001F600\"\ndata = text.encode(\"utf-8\")        # str -> bytes (exit of the sandwich)\nprint(\"text :\", text, \"len\", len(text))\nprint(\"bytes:\", data, \"len\", len(data))\n\nback = data.decode(\"utf-8\")        # bytes -> str (entry of the sandwich)\nprint(\"round trip ok:\", back == text)\n\ntry:\n    text + data                    # mixing the two is an error\nexcept TypeError as e:\n    print(\"TypeError:\", e)\n\nbad = b\"caf\\xe9\"                   # latin-1 bytes are not valid UTF-8\ntry:\n    bad.decode(\"utf-8\")\nexcept UnicodeDecodeError as e:\n    print(\"UnicodeDecodeError:\", e.reason)\nprint(\"replace:\", bad.decode(\"utf-8\", errors=\"replace\"))\nprint(\"latin-1:\", bad.decode(\"latin-1\"))\n"
+   },
+   "followUps": [
+    "<p>Python counts code points, JavaScript counts UTF-16 code units. The emoji U+1F600 is one code point, so Python says 1. It lies outside the 16-bit range, so UTF-16 stores it as a surrogate pair (two units), and JavaScript's <code>length</code> says 2.</p><p>In JavaScript, <code>[...\"😀\"].length</code> gives 1 because the iterator walks code points. Neither counts what a user sees as one character (grapheme), e.g. a flag or an emoji with skin tone is several code points.</p>",
+    "<p>Mojibake is garbled text such as <code>cafÃ©</code> instead of <code>café</code>. It happens when bytes were encoded with one codec but decoded with another, typically UTF-8 bytes read as Latin-1 or cp1252.</p><p>To repair, reverse the mistake: <code>bad.encode(\"latin-1\").decode(\"utf-8\")</code> turns <code>cafÃ©</code> back into <code>café</code>. The real fix is to decode with the right codec at input; the library <code>ftfy</code> can guess repairs for existing damaged data.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "UTF-8 byte lengths and safe truncation",
+    "python": "def truncate(s, limit):\n    b = s.encode(\"utf-8\")\n    if len(b) <= limit:\n        return s\n    cut = limit\n    # continuation bytes look like 10xxxxxx; back up until we are not on one\n    while cut > 0 and (b[cut] & 0b11000000) == 0b10000000:\n        cut -= 1\n    return b[:cut].decode(\"utf-8\")\n\nfor ch in [\"A\", \"\\u00e9\", \"\\u20ac\", \"\\U0001F600\"]:\n    b = ch.encode(\"utf-8\")\n    print(repr(ch), len(b), \"bytes\", \" \".join(format(x, \"08b\") for x in b))\n\ns = \"ab\\u20acd\"                    # bytes: a b E2 82 AC d  (6 bytes)\nprint(\"full:\", s, len(s.encode()))\nfor limit in (3, 4, 5):\n    t = truncate(s, limit)\n    print(\"limit\", limit, \"->\", repr(t), len(t.encode()), \"bytes\")\n"
+   },
+   "followUps": [
+    "<p>Encode to bytes, cut at 255, then move the cut left while the byte at the cut position is a continuation byte (it starts with bits <code>10</code>). Then decode the prefix.</p><pre><code>b = s.encode(\"utf-8\")\ncut = 255\nwhile cut &gt; 0 and (b[cut] &amp; 0xC0) == 0x80:\n    cut -= 1\nresult = b[:cut].decode(\"utf-8\")</code></pre><p>At most 3 steps back are needed, since a character has at most 4 bytes. Cost is O(n) for the encode and O(1) for the search.</p>",
+    "<p><code>utf-8-sig</code> reads and writes UTF-8 with a byte order mark (BOM), the three bytes <code>EF BB BF</code> at the start of a file. Windows tools such as Notepad and Excel often add it to mark the file as UTF-8.</p><p>Decoding with plain <code>utf-8</code> leaves an invisible <code>\\ufeff</code> at the start of the first string, which breaks things like the first CSV column name. Decoding with <code>utf-8-sig</code> strips it. Encoding with it adds the BOM, which helps Excel open the file correctly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Four ways to format a string",
+    "python": "from string import Template\n\nname, score = \"Asha\", 91.456\n\nprint(f\"f-string : {name} scored {score:.1f}\")\nprint(f\"debug    : {score=}\")\nprint(\"format   : {} scored {:.1f}\".format(name, score))\nprint(\"percent  : %s scored %.1f\" % (name, score))\nprint(Template(\"template : $who scored $pts\").substitute(who=name, pts=score))\n\nclass Money:\n    def __init__(self, cents):\n        self.cents = cents\n    def __format__(self, spec):    # f\"{obj:spec}\" lands here\n        if spec == \"usd\":\n            return \"$%d.%02d\" % divmod(self.cents, 100)\n        return str(self.cents)\n\nprint(f\"custom   : {Money(1999):usd} or {Money(1999)}\")\n\n# format() with user text can reach attributes; Template cannot\nprint(\"unsafe   :\", \"{0.__class__.__name__}\".format(name))\n"
+   },
+   "followUps": [
+    "<p>With <code>logging.info(f\"user {u}\")</code> the string is built every time, even when INFO is disabled. With <code>logging.info(\"user %s\", u)</code> the logger only formats the message if the record is actually emitted.</p><p>If a debug call sits in a hot loop of 1,000,000 iterations and debug logging is off, the f-string version still pays 1,000,000 formatting costs; the lazy version pays almost nothing. Linters flag it (rule G004) for that reason, and because structured logging backends can group messages by the unformatted template.</p>",
+    "<p>It defines the method <code>__format__(self, spec)</code>. The text after the colon is passed to it as a string, and it returns the final text.</p><pre><code>class Temp:\n    def __init__(self, c): self.c = c\n    def __format__(self, spec):\n        return f\"{self.c * 9/5 + 32:.1f}F\" if spec == \"f\" else str(self.c)</code></pre><p>Then <code>f\"{Temp(100):f}\"</code> gives <code>\"212.0F\"</code>. If you do not define it, <code>object.__format__</code> accepts only an empty spec and raises TypeError otherwise. Built-ins like datetime define their own specs.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "What with does: __enter__ and __exit__",
+    "python": "class Resource:\n    def __init__(self, name):\n        self.name = name\n    def __enter__(self):\n        print(\"enter\", self.name)\n        return self                # bound to the name after 'as'\n    def __exit__(self, exc_type, exc, tb):\n        print(\"exit \", self.name, \"exception:\", exc_type.__name__ if exc_type else None)\n        return False               # falsy: do not swallow the exception\n\ndef early():\n    with Resource(\"A\"):\n        return \"returned\"          # __exit__ still runs\n\nprint(early())\n\ntry:\n    with Resource(\"B\"):\n        raise ValueError(\"boom\")\nexcept ValueError as e:\n    print(\"caught\", e)\n\nfrom contextlib import ExitStack\nwith ExitStack() as stack:         # a variable number of resources\n    rs = [stack.enter_context(Resource(n)) for n in \"xyz\"]\n    print(\"inside\", [r.name for r in rs])\n"
+   },
+   "followUps": [
+    "<p>When the process dies without running Python code: <code>os._exit()</code>, a hard kill (SIGKILL), a power cut or a crash of the interpreter. Also if <code>__enter__</code> itself raises, because the block was never entered, so <code>__exit__</code> is not called.</p><p>Ordinary exceptions, <code>return</code>, <code>break</code> and <code>sys.exit()</code> (which raises SystemExit) all do run <code>__exit__</code>. Example: if the process is killed after writing 10 KB, the unflushed buffer is lost, so critical data needs flush plus fsync.</p>",
+    "<p>Use <code>contextlib.ExitStack</code>. It collects context managers at run time and closes all of them, in reverse order, even if one fails.</p><pre><code>with ExitStack() as stack:\n    files = [stack.enter_context(open(p)) for p in paths]\n    # use files; all are closed on exit</code></pre><p>If opening the 3rd of 5 files fails, the first two are still closed. A plain list of <code>open()</code> calls without it would leak those handles.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stream a big file: constant memory",
+    "python": "import io\nfrom collections import deque, Counter\n\n# stand-in for a huge log file; real code would use open(\"big.log\")\nlog = io.StringIO(\"\".join(\"10.0.0.%d GET /p%d\\n\" % (i % 4, i) for i in range(1, 11)))\n\ntail = deque(maxlen=3)             # keeps only the last 3 lines\nips = Counter()\ncount = 0\nfor line in log:                   # one line at a time, O(longest line) memory\n    count += 1\n    tail.append(line.rstrip())\n    ips[line.split()[0]] += 1\n\nprint(\"lines:\", count)\nprint(\"last 3:\", list(tail))\nprint(\"hits per ip:\", dict(ips))\n\n# binary files: fixed-size chunks with the walrus operator\ndata = io.BytesIO(b\"x\" * 2500)\ntotal = 0\nwhile chunk := data.read(1000):\n    total += len(chunk)\nprint(\"bytes read in chunks:\", total)\n"
+   },
+   "followUps": [
+    "<p>Open it in binary mode, seek to the end, and read backwards in blocks until you have seen 10 newlines. This touches only the last few KB, so it is O(size of the tail) rather than O(100 GB).</p><pre><code>f.seek(0, 2); pos = f.tell(); data = b\"\"\nwhile pos &gt; 0 and data.count(b\"\\n\") &lt;= 10:\n    step = min(4096, pos); pos -= step\n    f.seek(pos); data = f.read(step) + data</code></pre><p>Then split on newlines and take the last 10. The simple alternative, <code>deque(f, maxlen=10)</code>, is also constant memory but must read all 100 GB.</p>",
+    "<p>Use a fixed-size summary or split the work. An exact set of 1 billion IPv4 addresses is too big (several GB), but IPv4 fits a bitmap: 2^32 bits is 512 MB, one bit per possible address.</p><p>If even that is too much, hash each IP into 16 partition files, then count unique values per partition one at a time (each fits in RAM) and add the counts. For an approximate answer, HyperLogLog counts billions of distinct items with about 12 KB and roughly 1 percent error.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Open modes and an atomic rewrite",
+    "python": "import os, tempfile\n\nwith tempfile.TemporaryDirectory() as d:\n    path = os.path.join(d, \"f.txt\")\n\n    with open(path, \"w\", encoding=\"utf-8\") as f:\n        f.write(\"one\\n\")\n    with open(path, \"a\", encoding=\"utf-8\") as f:       # append keeps old data\n        f.write(\"two\\n\")\n    print(\"after a:\", open(path, encoding=\"utf-8\").read().split())\n\n    try:\n        open(path, \"x\")                                # exclusive create\n    except FileExistsError:\n        print(\"x refused: file exists\")\n\n    with open(path, \"w\", encoding=\"utf-8\"):            # w truncates on open\n        pass\n    print(\"after w:\", os.path.getsize(path), \"bytes\")\n\n    # safe rewrite: temp file in the same folder, then atomic replace\n    tmp = path + \".tmp\"\n    with open(tmp, \"w\", encoding=\"utf-8\") as f:\n        f.write(\"new content\\n\")\n        f.flush()\n        os.fsync(f.fileno())                           # force it to disk\n    os.replace(tmp, path)\n    print(\"after replace:\", open(path, encoding=\"utf-8\").read().strip())\n"
+   },
+   "followUps": [
+    "<p>The csv module handles line endings itself, including newlines inside quoted fields. If the file is opened without <code>newline=\"\"</code>, Python's own newline translation also acts, so on Windows <code>\\r\\n</code> can become <code>\\r\\r\\n</code> (blank rows) and an embedded newline in a quoted cell can be altered on reading.</p><p>With <code>newline=\"\"</code>, Python passes the text through untouched and csv sees the exact bytes. The csv docs say to always open csv files this way.</p>",
+    "<p><code>flush()</code> moves Python's buffered data to the operating system, which is enough for another program to read it. <code>os.fsync(fd)</code> asks the OS to push its own cache to the physical disk, which is what survives a power failure.</p><p>Example: after <code>f.write(\"x\")</code>, the byte may sit in Python's buffer; after <code>flush()</code> it is in the OS cache; only after <code>os.fsync(f.fileno())</code> is it safely on disk. Fsync is slow (milliseconds), so use it only for data you cannot lose.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "What import does: sys.modules, finders, loaders",
+    "python": "import sys, importlib.abc, importlib.util\n\nSOURCE = \"print('  running mymod body')\\nvalue = 42\\n\"\n\nclass DemoFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n    def find_spec(self, name, path, target=None):\n        if name == \"mymod\":\n            print(\"  finder asked for\", name)\n            return importlib.util.spec_from_loader(name, self)\n    def create_module(self, spec):\n        return None                       # use the default module object\n    def exec_module(self, module):\n        print(\"  in sys.modules before exec:\", \"mymod\" in sys.modules)\n        exec(SOURCE, module.__dict__)     # run the module's code\n\nsys.meta_path.insert(0, DemoFinder())\n\nprint(\"first import:\")\nimport mymod\nprint(\"second import (cached):\")\nimport mymod as again\nprint(\"same object:\", mymod is again, \"value:\", mymod.value)\n\ndel sys.modules[\"mymod\"]                  # forces a fresh import\nprint(\"after del:\")\nimport mymod as third\nprint(\"new object:\", third is not mymod)\ntry:\n    import does_not_exist\nexcept ModuleNotFoundError as e:\n    print(\"ModuleNotFoundError:\", e.name)\n"
+   },
+   "followUps": [
+    "<p>Because it lets a module that is only half run still be found by others. If A imports B and B imports A, the second request finds A already in <code>sys.modules</code> and receives the partial module instead of starting an endless loop of imports.</p><p>So <code>import A</code> inside B works (you get the module object, filled in later), while <code>from A import X</code> fails if X is defined after A's import of B. If execution fails, Python removes the entry again so the next import retries.</p>",
+    "<p>Because <code>sys.path[0]</code> is the script's folder and is searched before the standard library. A file named <code>random.py</code> or <code>json.py</code> next to your script wins, so <code>import random</code> loads your file instead.</p><p>Typical symptoms: <code>AttributeError: partially initialized module 'random' has no attribute 'randint'</code>. Fix by renaming your file and deleting its <code>__pycache__</code>. <code>python -c \"import random; print(random.__file__)\"</code> shows which file was loaded.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Circular import failure and the fix",
+    "python": "import sys, importlib.abc, importlib.util\n\nSOURCES = {\"a\": \"import b\\nX = 1\\ndef f(): return b.Y + X\\n\"}\nB_VARIANTS = {\n    \"from-import\": \"from a import X\\nY = X + 1\\n\",\n    \"module-import\": \"import a\\nY = 2\\n\",\n}\n\nclass Finder(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n    def find_spec(self, name, path, target=None):\n        if name in SOURCES:\n            return importlib.util.spec_from_loader(name, self)\n    def create_module(self, spec):\n        return None\n    def exec_module(self, module):\n        exec(SOURCES[module.__name__], module.__dict__)\n\nsys.meta_path.insert(0, Finder())\n\nfor variant, src in B_VARIANTS.items():\n    SOURCES[\"b\"] = src\n    for n in (\"a\", \"b\"):\n        sys.modules.pop(n, None)       # start fresh each time\n    try:\n        import a                       # a -> b -> a (a is only half run)\n        print(variant, \"-> works, f() =\", a.f())\n    except ImportError as e:\n        print(variant, \"-> ImportError:\", e)\n"
+   },
+   "followUps": [
+    "<p>Run an import-graph tool in CI and fail the build when it finds a cycle. Tools such as <code>import-linter</code>, <code>pydeps</code> or <code>pylint</code> (rule R0401, cyclic-import) read the imports and report loops.</p><p>You can also build it yourself: parse each file with <code>ast</code>, collect module-level imports as edges, and run a depth-first search for a cycle. For a project with 500 modules and 3,000 edges that takes well under a second. Add a test that imports every module in a fresh interpreter, which exposes most load-time cycles.</p>",
+    "<p><code>import A</code> only needs the module object, which already exists in <code>sys.modules</code> (partly filled). The name <code>A.X</code> is looked up later, when the code runs and A has finished loading.</p><p><code>from A import X</code> must fetch the attribute X right now, while A is still at its import line. If X is defined below that line, it does not exist yet and you get \"cannot import name X from partially initialized module\". Example: A line 1 imports B, X defined on line 2; B does <code>from A import X</code> and fails, but <code>import A</code> then <code>A.X</code> inside a function works.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "__name__ guard and running a file as a module",
+    "python": "import types\n\nSOURCE = \"\"\"\ndef main():\n    print(\"  main() running\")\nprint(\"  module body, __name__ =\", __name__)\nif __name__ == \"__main__\":\n    main()\n\"\"\"\n\nprint(\"run as a script (__name__ == '__main__'):\")\nexec(SOURCE, {\"__name__\": \"__main__\"})\n\nprint(\"imported as a library (__name__ == 'mylib'):\")\nmod = types.ModuleType(\"mylib\")\nexec(SOURCE, mod.__dict__)         # body runs, main() does not\nprint(\"calling it explicitly:\")\nmod.main()\n\nprint(\"this file's own __name__:\", __name__)\nprint(\"this file's __package__ :\", repr(__package__))\n"
+   },
+   "followUps": [
+    "<p>It is when a file ends up imported twice under two names: once as <code>__main__</code> (because you ran it) and again by its real name when another module imports it. You then get two separate copies of its classes and globals, so <code>isinstance</code> checks fail and module state is duplicated.</p><p>Example: you run <code>python pkg/app.py</code>, and <code>pkg/util.py</code> does <code>import pkg.app</code>. The file runs twice, once as <code>__main__</code>, once as <code>pkg.app</code>. Avoid it by running <code>python -m pkg.app</code> and keeping entry points thin.</p>",
+    "<p>A <code>console_scripts</code> entry point in <code>pyproject.toml</code>, such as <code>mytool = \"pkg.cli:main\"</code>, makes the installer create an executable called <code>mytool</code>. That small launcher imports <code>pkg.cli</code> by name (like <code>-m</code>) and calls <code>main()</code>.</p><p>So the code runs as an imported module, with proper package context and relative imports, and <code>__name__</code> is <code>pkg.cli</code>, not <code>__main__</code>. The <code>if __name__ == \"__main__\"</code> block is not used on that path, so keep logic in <code>main()</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Packages, __init__ and __all__",
+    "python": "import sys, types\n\n# build a tiny package in memory: pkg, with submodule pkg.tools\npkg = types.ModuleType(\"pkg\")\npkg.__path__ = []                         # marks it as a package\nsys.modules[\"pkg\"] = pkg\n\nexec(\"\"\"\nprint(\"  pkg/__init__ runs once\")\n__all__ = [\"public\"]\ndef public(): return \"public API\"\ndef helper(): return \"internal\"\n\"\"\", pkg.__dict__)\n\ntools = types.ModuleType(\"pkg.tools\")\ntools.__package__ = \"pkg\"\nsys.modules[\"pkg.tools\"] = tools\npkg.tools = tools\nexec(\"def double(x): return x * 2\", tools.__dict__)\n\nns = {}\nexec(\"from pkg import *\", ns)             # __all__ limits what star exports\nprint(\"star import gives:\", sorted(k for k in ns if not k.startswith(\"__\")))\nprint(\"pkg.helper() still reachable:\", pkg.helper())\nprint(\"submodule call:\", sys.modules[\"pkg.tools\"].double(21))\nprint(\"is a package:\", hasattr(pkg, \"__path__\"), \"| tools is:\", hasattr(tools, \"__path__\"))\n"
+   },
+   "followUps": [
+    "<p><code>__all__</code> is a list of names that <code>from package import *</code> exports. Without it, star-import takes every public name (no leading underscore) in the module namespace.</p><p>Example: a module defines <code>public</code> and <code>helper</code> with <code>__all__ = [\"public\"]</code>; <code>from m import *</code> gives only <code>public</code>. It does not make names private, since <code>m.helper</code> still works. It also documents the intended public API for tools and readers.</p>",
+    "<p>To make <code>import bigpkg</code> fast. If <code>__init__.py</code> imported every heavy submodule (numpy-backed code, for example), every user would pay that cost, even when they use one function.</p><p>Module-level <code>__getattr__</code> (PEP 562) loads a submodule only when first accessed:</p><pre><code>def __getattr__(name):\n    if name == \"plot\":\n        import importlib\n        return importlib.import_module(\".plot\", __name__)\n    raise AttributeError(name)</code></pre><p>If importing takes 800 ms eagerly, lazy loading can cut start-up to a few ms.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Peek inside a virtual environment",
+    "python": "import venv, os, sys, tempfile\n\nprint(\"outside a venv:\", sys.prefix == sys.base_prefix)\n\nwith tempfile.TemporaryDirectory() as d:\n    env = os.path.join(d, \".venv\")\n    venv.create(env, with_pip=False)          # no network needed\n    print(\"top level:\", sorted(os.listdir(env)))\n    with open(os.path.join(env, \"pyvenv.cfg\")) as f:\n        for line in f:\n            key = line.split(\"=\")[0].strip()\n            if key in (\"include-system-site-packages\", \"version\"):\n                print(\"pyvenv.cfg:\", line.strip())\n    bindir = \"Scripts\" if os.name == \"nt\" else \"bin\"\n    print(bindir + \"/ has python:\", any(n.startswith(\"python\") for n in os.listdir(os.path.join(env, bindir))))\n    # a venv is just a folder, so deleting it removes the whole environment\nprint(\"deleted with the temp folder\")\n"
+   },
+   "followUps": [
+    "<p>Because it is large, machine-specific and fully rebuildable. It holds absolute paths and links to the Python on your machine, so it does not work on another computer or OS.</p><p>A typical environment is 50 to 500 MB of third-party files, which bloats the repository forever once committed. Commit instead <code>pyproject.toml</code> and a lock file (<code>uv.lock</code>, requirements with pinned versions), add <code>.venv/</code> to <code>.gitignore</code>, and recreate it with one command.</p>",
+    "<p>uv is written in Rust, resolves dependencies in parallel, and reuses a global cache of downloaded wheels. It also installs files by hard-linking or copying them from that cache rather than unpacking and compiling again, and it does not start Python or pip to create the venv.</p><p>So a cached install of 50 packages can take well under a second, compared with many seconds for pip. Creating an empty venv takes milliseconds because it only writes <code>pyvenv.cfg</code> and a launcher.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Verifying artifacts with pinned hashes",
+    "python": "import hashlib\n\n# A lock file records an exact version and the expected hash of each file.\nartifact = b\"pretend this is the bytes of requests-2.31.0.whl\"\nLOCK = {\n    \"requests==2.31.0\": hashlib.sha256(artifact).hexdigest(),\n}\n\ndef install(name, blob):\n    digest = hashlib.sha256(blob).hexdigest()\n    if digest != LOCK[name]:\n        return name + \": REJECTED (hash mismatch)\"\n    return name + \": ok (\" + digest[:12] + \"...)\"\n\nprint(\"lock:\", {k: v[:12] + \"...\" for k, v in LOCK.items()})\nprint(install(\"requests==2.31.0\", artifact))\ntampered = artifact + b\" plus malware\"\nprint(install(\"requests==2.31.0\", tampered))\n\n# a range allows many versions; a lock fixes exactly one\ndef satisfies(version, low, high):\n    to_t = lambda v: tuple(int(x) for x in v.split(\".\"))\n    return to_t(low) <= to_t(version) < to_t(high)\n\nfor v in (\"2.30.0\", \"2.31.0\", \"2.32.3\", \"3.0.0\"):\n    print(\"range >=2.31,<3 allows\", v, \":\", satisfies(v, \"2.31\", \"3\"))\n"
+   },
+   "followUps": [
+    "<p><code>~=</code> is the compatible release operator: <code>~=2.31</code> means <code>&gt;=2.31, ==2.*</code>, and <code>~=2.31.1</code> means <code>&gt;=2.31.1, ==2.31.*</code>. It allows newer fixes but not the next major (or minor) version.</p><p>Use it when a project follows semantic versioning and you want bug fixes automatically but fear breaking changes. Example: <code>~=1.4.2</code> accepts 1.4.9 but not 1.5.0. Note <code>~=2</code> is invalid; it needs at least two parts.</p>",
+    "<p>Because a library is installed together with other libraries in someone else's environment. If your library requires <code>requests==2.31.0</code> exactly and another one needs <code>2.32.0</code>, the resolver cannot satisfy both and installation fails.</p><p>Libraries should declare wide ranges such as <code>requests&gt;=2.31,&lt;3</code>, the lowest version you test plus a cap at the next major. Applications own the final environment, so they pin exact versions in a lock file for reproducible deployments.</p>"
+   ]
+  }
+ ]
+}

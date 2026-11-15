@@ -1,0 +1,160 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Bytecode: compile, then interpret",
+    "python": "import dis\n# Step 1: the compiler turns source text into a code object (bytecode)\nsrc = \"x = 2\\ny = x * 21\\nprint('result', y)\"\ncode = compile(src, \"<demo>\", \"exec\")\nprint(\"source:\")\nprint(src)\nprint(\"bytecode bytes:\", len(code.co_code) > 0)\n# Step 2: the VM (a C loop) executes the instructions one by one\nexec(code)\n# dis shows the instructions the VM will run\ndef add(a, b):\n    return a + b\nnames = [i.opname for i in dis.get_instructions(add)]\nprint(\"add() opcodes include BINARY_OP:\", \"BINARY_OP\" in names)\nprint(\"RETURN present:\", any(n.startswith(\"RETURN\") for n in names))"
+   },
+   "followUps": [
+    "<p>It is regenerated when the source file changes. A <code>.pyc</code> stores the source file's modification time and size (or a hash), plus the interpreter's magic number. On import Python compares them with the current <code>.py</code>; if either differs, it recompiles and rewrites the cache in <code>__pycache__</code>. Example: editing <code>app.py</code> after a Python 3.11 to 3.12 upgrade triggers a rebuild for both reasons. The main script itself is never cached, only imported modules.</p>",
+    "<p>It prints the bytecode instructions of a function or code object, one per line. Each line has the offset, an opcode name and its argument. For <code>a + b</code> you see <code>LOAD_FAST a</code>, <code>LOAD_FAST b</code>, <code>BINARY_OP +</code>, <code>RETURN_VALUE</code>. It is how you check what the interpreter really does, for example why a swap needs no temporary. The exact opcodes change between Python versions, so do not depend on them in code.</p>",
+    "<p>CPython is the standard interpreter written in C; PyPy is another implementation written in a restricted Python that adds a tracing JIT. PyPy finds hot loops, compiles them to machine code and can run pure-Python number crunching several times faster. The trade-offs are slower startup, more memory and weaker support for C extensions. Both run the same language, so the same code gives the same results.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Names are bound to objects: aliasing",
+    "python": "a = [1, 2, 3]\nb = a                      # no copy: both names point to one list\nprint(\"same object:\", a is b, id(a) == id(b))\nb.append(4)                # mutate through b ...\nprint(\"a after b.append(4):\", a)   # ... a sees it\nb = [9, 9]                 # re-bind b only; a is untouched\nprint(\"a after re-binding b:\", a, \"b:\", b)\ndef mutate(lst):\n    lst.append(\"x\")        # changes caller's object\ndef rebind(lst):\n    lst = [\"new\"]          # only changes the local name\n    return lst\nc = [1]\nmutate(c)\nrebind(c)\nprint(\"after mutate and rebind:\", c)"
+   },
+   "followUps": [
+    "<p>Neither exactly: it is pass by object reference, often called call by sharing. The function receives a new name bound to the caller's object. If it mutates the object, the caller sees that; if it re-binds the parameter, the caller's name is unaffected. Example: <code>def f(l): l.append(1)</code> changes the caller's list, but <code>def g(l): l = []</code> does nothing outside. Immutable arguments such as ints can never be changed this way.</p>",
+    "<p>Use <code>copy.deepcopy</code>. A shallow copy such as <code>b = a[:]</code> or <code>a.copy()</code> copies only the outer list, so inner lists stay shared. With <code>a = [[1], [2]]</code> and <code>b = a[:]</code>, <code>b[0].append(9)</code> also changes <code>a[0]</code>. <pre><code>import copy\nb = copy.deepcopy(a)</code></pre> This copies recursively in O(total size) time and memory, and handles cycles.</p>",
+    "<p>In CPython it returns the object's memory address as an integer. It is unique among objects alive at the same time, and constant for the object's lifetime. Once the object is freed, the number can be reused by a different object. It is only a stable identity inside one run; other implementations such as PyPy return arbitrary numbers, so never store it or treat it as a real pointer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "is vs ==",
+    "python": "a = [1, 2]\nb = [1, 2]\nprint(\"a == b:\", a == b)        # equal values\nprint(\"a is b:\", a is b)        # different objects\nc = a\nprint(\"c is a:\", c is a)        # same object\nx = 1000\ny = int(\"1000\")                 # built at run time\nprint(\"x == y:\", x == y, \"| x is y:\", x is y)\nclass AlwaysEqual:\n    def __eq__(self, other):    # == calls __eq__, is never does\n        return True\no = AlwaysEqual()\nprint(\"o == 5:\", o == 5, \"| o is 5:\", o is 5 if False else False)\nprint(\"None check:\", None is None)"
+   },
+   "followUps": [
+    "<p>Because <code>None</code> is a singleton, <code>is</code> checks identity and cannot be fooled, while <code>==</code> calls <code>__eq__</code>, which a class may override to return anything. A numpy array or a custom object can answer <code>== None</code> in surprising ways. <code>is None</code> is also a little faster, since it is one pointer comparison. Linters flag <code>== None</code> for this reason.</p>",
+    "<p>Yes, when <code>a</code> is NaN (not a number). By the IEEE-754 rule NaN is not equal to anything, including itself, so <code>float('nan') == float('nan')</code> is False. The test <code>x != x</code> is therefore a trick to detect NaN, but <code>math.isnan(x)</code> is clearer. Note that <code>x is x</code> is still True, and lists containing NaN compare equal to themselves because containers check identity first.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Dynamic but strong typing",
+    "python": "x = 5\nprint(\"x:\", x, type(x).__name__)\nx = \"now a string\"              # dynamic: names can be re-bound to any type\nprint(\"x:\", x, type(x).__name__)\ntry:\n    print(\"3\" + 3)              # strong: no silent conversion\nexcept TypeError as e:\n    print(\"TypeError:\", e)\nprint(\"deliberate widening:\", True + 1, 1 + 2.5)\ndef double(n: int) -> int:      # hints are not enforced\n    return n * 2\nprint(\"double('ab') ->\", double(\"ab\"))\nprint(\"hints stored:\", double.__annotations__)"
+   },
+   "followUps": [
+    "<p>Duck typing means Python cares about what an object can do, not what class it is: \"if it walks like a duck and quacks like a duck, it is a duck\". A function that calls <code>obj.read()</code> works with files, <code>io.StringIO</code> or your own class that defines <code>read</code>. Errors appear only at run time, as <code>AttributeError</code> when the method is missing. <code>typing.Protocol</code> lets you describe such shapes for static checkers.</p>",
+    "<p>Because enforcing them would cost speed on every call and would break Python's dynamic nature. Hints are stored in <code>__annotations__</code> and ignored by the interpreter, so one code base runs the same with or without them. They exist for readers, editors and checkers like mypy, which analyse the code before it runs. This also lets you adopt them gradually.</p>",
+    "<p>Pydantic validates data against hints at run time, FastAPI uses it to parse requests, and the standard library's <code>dataclasses</code> reads annotations to build fields (though it does not check types). Others are <code>attrs</code> with validators and <code>typeguard</code>/<code>beartype</code>, which check calls. Example: a Pydantic model with <code>age: int</code> turns the string \"42\" into 42 and rejects \"abc\".</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Falsy values and the zero-is-missing bug",
+    "python": "values = [None, False, 0, 0.0, \"\", [], (), {}, set(), range(0),\n          \"0\", \"False\", [0], 0.1]\nfor v in values:\n    print(repr(v).ljust(10), \"->\", bool(v))\ndef price_buggy(p, default=10):\n    return p or default            # treats a valid 0 as missing\ndef price_ok(p, default=10):\n    return default if p is None else p\nprint(\"buggy(0):\", price_buggy(0), \"| ok(0):\", price_ok(0))\nclass Box:\n    def __init__(self, n): self.n = n\n    def __len__(self): return self.n   # truthiness falls back to __len__\nprint(\"Box(0):\", bool(Box(0)), \"Box(2):\", bool(Box(2)))"
+   },
+   "followUps": [
+    "<p>It first looks for <code>__bool__</code> and uses its result. If that is missing it calls <code>__len__</code> and treats 0 as False. If neither exists the object is always True. Example: a class with <code>__len__</code> returning 0 is falsy, so <code>if box:</code> is False for an empty box. <code>__bool__</code> must return a real bool, otherwise Python raises <code>TypeError</code>.</p>",
+    "<p>It returns <code>\"x\"</code>. <code>or</code> returns its first operand if that is truthy, otherwise the second one, and an empty string is falsy. So <code>\"\" or \"x\"</code> gives <code>\"x\"</code>, while <code>\"a\" or \"x\"</code> gives <code>\"a\"</code>. It is handy for defaults like <code>name = given or \"guest\"</code>, but remember that a legitimate 0 or empty list is also replaced.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Floating point: 0.1 + 0.2 and the fixes",
+    "python": "import math\nfrom decimal import Decimal\nfrom fractions import Fraction\nprint(\"0.1 + 0.2 =\", 0.1 + 0.2)\nprint(\"== 0.3 ?\", 0.1 + 0.2 == 0.3)\nprint(\"exact 0.1 =\", Decimal(0.1))           # the real stored value\nprint(\"isclose:\", math.isclose(0.1 + 0.2, 0.3))\nprint(\"Decimal str:\", Decimal(\"0.1\") + Decimal(\"0.2\") == Decimal(\"0.3\"))\nprint(\"Fraction:\", Fraction(1, 10) + Fraction(2, 10) == Fraction(3, 10))\nvals = [0.1] * 10\nprint(\"sum :\", sum(vals), \"| fsum:\", math.fsum(vals))\nprint(\"cents:\", 10 + 20 == 30)               # integers are exact"
+   },
+   "followUps": [
+    "<p>Because <code>print</code> shows the shortest decimal string that converts back to the same double, not the exact stored value. The nearest double to 0.1 is 0.1000000000000000055..., and no shorter string like 0.1000000000000001 maps to it, so \"0.1\" is enough. Use <code>Decimal(0.1)</code> to see the true value.</p>",
+    "<p>It fails when the numbers are very large or very small. Near 1e16 neighbouring doubles are 2 apart, so a fixed 1e-9 can never be met unless values are identical. Near 1e-12 every pair looks equal to 1e-9. Use a relative tolerance: <code>math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)</code> scales with the size of the numbers.</p>",
+    "<p>Because <code>Decimal(0.1)</code> first takes the already inexact binary float and copies its error, giving 0.1000000000000000055.... <code>Decimal(\"0.1\")</code> parses the text, so the value is exactly one tenth. Money and user-typed numbers should always enter as strings (or integers).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Arbitrary-precision integers",
+    "python": "import sys\nbig = 2 ** 100\nprint(\"2**100 =\", big)\nprint(\"2**64 + 1 =\", 2 ** 64 + 1)           # no overflow\nprint(\"size of 1:\", sys.getsizeof(1), \"bytes\")\nprint(\"size of 2**100:\", sys.getsizeof(big), \"bytes\")\nprint(\"size of 2**1000:\", sys.getsizeof(2 ** 1000), \"bytes\")\nprint(\"float overflow:\", 1e308 * 10)        # floats go to inf\ntry:\n    print(10 ** 400 / 3)                    # int/int becomes a float\nexcept OverflowError as e:\n    print(\"OverflowError:\", e)\nprint(\"exact division:\", 10 ** 400 // 3 > 0)\nprint(\"int limit:\", sys.get_int_max_str_digits())"
+   },
+   "followUps": [
+    "<p>About 40 bytes. An int uses a header of roughly 24 bytes plus 4 bytes per 30-bit digit. 2**100 needs 4 digits (100 / 30 rounded up), so 24 + 16 = 40 on a typical 64-bit CPython. A small int such as 1 takes 28 bytes. Exact numbers vary slightly by version, so treat them as estimates.</p>",
+    "<p>Because the modulus keeps numbers small and keeps the problems language-independent. Python itself would not overflow, but results like factorials or Fibonacci numbers of huge n would have thousands of digits, making each operation slow (multiplication is not constant time). Taking <code>% (10**9+7)</code> after each step keeps values under about 2^30 squared and gives a short, checkable answer.</p>",
+    "<p>It raises <code>OverflowError: integer division result too large for a float</code>. The <code>/</code> operator always returns a float, and 10**400 / 3 is about 3e399, beyond the largest double (about 1.8e308). Use <code>//</code> to stay with exact ints, or <code>Fraction</code>/<code>Decimal</code> if you need a fractional result.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Floor division and modulo with negatives",
+    "python": "import math\nfor a, b in [(7, 2), (-7, 2), (7, -2), (-7, -2)]:\n    q, r = a // b, a % b\n    print(f\"{a} // {b} = {q}, {a} % {b} = {r}, identity ok: {q * b + r == a}\")\ndef trunc_div(a, b):\n    q = abs(a) // abs(b)                 # truncating (C/Java style) division\n    return q if (a < 0) == (b < 0) else -q\nprint(\"C-style -7 / 2 =\", trunc_div(-7, 2))\nprint(\"C-style -7 % 2 =\", math.fmod(-7, 2))\nn = 5\nprint(\"circular index of -1 in size 5:\", -1 % n)\nprint(\"circular index of 12:\", 12 % n)"
+   },
+   "followUps": [
+    "<p>It is <code>-2</code>. The remainder takes the sign of the divisor, which is -3 here. Check: <code>7 // -3</code> is floor(-2.33) = -3, and <code>(-3) * (-3) + r = 7</code> gives r = -2. So the identity <code>a == (a // b) * b + a % b</code> holds. In C or Java <code>7 % -3</code> would be 1.</p>",
+    "<p>Divide the absolute values with <code>//</code>, then fix the sign: the result is negative if exactly one operand is negative. For <code>-7</code> and <code>2</code>: <code>abs</code> gives 7 // 2 = 3, signs differ, so -3. Never use <code>int(a / b)</code> for huge ints, because <code>/</code> converts to a float and loses precision beyond 2^53. This stays exact and costs O(n) in the number of digits.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "and/or return operands and short-circuit",
+    "python": "print(\"0 or [] or 'a' and 'b':\", 0 or [] or \"a\" and \"b\")\nprint(\"'x' or 'y':\", \"x\" or \"y\")\nprint(\"'' and 'y':\", repr(\"\" and \"y\"))\nprint(\"not []:\", not [])                   # not always gives a bool\ncalls = []\ndef probe(name, value):\n    calls.append(name)\n    return value\nprobe(\"left\", False) and probe(\"right\", True)    # right is skipped\nprint(\"calls after False and ...:\", calls)\nd, n = 0, 10\nprint(\"safe divide:\", d != 0 and n / d > 1)       # no ZeroDivisionError\ncache = {}\nresult = cache.get(\"k\") or \"computed\"\nprint(\"default via or:\", result)"
+   },
+   "followUps": [
+    "<p>It prints <code>'b'</code>. Since <code>and</code> binds tighter than <code>or</code>, it is <code>0 or [] or (\"a\" and \"b\")</code>. <code>0</code> is falsy so move on, <code>[]</code> is falsy so move on, and <code>\"a\" and \"b\"</code> returns <code>\"b\"</code> because <code>\"a\"</code> is truthy. The last evaluated operand is the result.</p>",
+    "<p>Because <code>and</code> needs one yes/no answer, and an array comparison gives an array of many booleans, so NumPy raises \"truth value of an array is ambiguous\". Python also cannot let NumPy override <code>and</code>. Use <code>(arr &gt; 1) &amp; (arr &lt; 5)</code> with brackets, because <code>&amp;</code> binds tighter than comparisons, or <code>np.logical_and</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fast input: read everything at once",
+    "python": "import io, sys, time\nn = 200000\ntext = \" \".join(str(i) for i in range(n)) + \"\\n\"\ndef slow(stream):\n    # one readline-style call per token line: more overhead\n    return sum(int(x) for x in stream.read().split())\ndef fast(data):\n    return sum(map(int, data.split()))          # split bytes once, convert in bulk\nt = time.perf_counter()\na = slow(io.StringIO(text))\nt1 = time.perf_counter() - t\nt = time.perf_counter()\nb = fast(text.encode())\nt2 = time.perf_counter() - t\nprint(\"tokens:\", n, \"sum slow:\", a, \"sum fast:\", b, \"equal:\", a == b)\n# On real input use: data = sys.stdin.buffer.read().split()\nout = [str(i * i) for i in range(5)]\nsys.stdout.write(\"\\n\".join(out) + \"\\n\")         # one write, not many prints"
+   },
+   "followUps": [
+    "<p>Because bytes need no decoding. Text mode must decode UTF-8 and translate line endings, while <code>sys.stdin.buffer</code> hands you the raw bytes from the OS. <code>int()</code> accepts bytes such as <code>b\"123\"</code>, so you can convert directly. For a million numbers this saves a noticeable chunk of time, though the exact gain depends on the machine.</p>",
+    "<p><code>input()</code> raises <code>EOFError</code> when there is nothing left, so wrap it in <code>try/except EOFError</code>. With <code>sys.stdin.readline</code> an empty string <code>\"\"</code> means end of input (a blank line is <code>\"\\n\"</code>, not empty). With <code>sys.stdin</code> you can also just loop <code>for line in sys.stdin:</code>, which stops automatically.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "f-strings, format() and % compared",
+    "python": "name, age, pi = \"Asha\", 30, 3.14159265\nprint(\"%s is %d, pi=%.2f\" % (name, age, pi))      # printf style\nprint(\"{} is {}, pi={:.2f}\".format(name, age, pi))  # str.format\nprint(f\"{name} is {age}, pi={pi:.2f}\")             # f-string\nprint(f\"{name!r:>8} | {age:05d} | {1234567.891:,.1f}\")\nprint(f\"{age = }\")                                 # debug specifier\ntemplate = \"Hello {user}, you owe {amt:.2f}\"       # template stored as data\nprint(template.format(user=name, amt=12.5))\nimport logging\nlogging.basicConfig(level=logging.WARNING, format=\"%(message)s\")\nlogging.getLogger(\"t\").info(\"not built: %s\", object())  # skipped, level too low\nprint(\"done\")"
+   },
+   "followUps": [
+    "<p>Because the logging module only builds the final string if the message will actually be emitted. With <code>log.info(\"x=%s\", x)</code> and the level set to WARNING, nothing is formatted, so you skip the cost. An f-string is evaluated before the call, every time. It also lets log tools group messages by the template.</p>",
+    "<p>Template strings, added in Python 3.14, written <code>t\"Hello {name}\"</code>. Unlike f-strings they do not produce a plain string; they produce a Template object holding the literal parts and the values separately. Code can then escape or validate the values before joining, for example for HTML or SQL. Check your version's documentation for exact details.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Small-int cache and interning",
+    "python": "import sys\na = 256\nb = int(\"256\")\nc = 1000\nd = int(\"1000\")\nprint(\"256 is 256 (runtime):\", a is b)     # small ints are cached\nprint(\"1000 is 1000 (runtime):\", c is d)   # created separately\nprint(\"1000 == 1000:\", c == d)             # the correct comparison\ns1 = \"\".join([\"hel\", \"lo world\"])\ns2 = \"\".join([\"hel\", \"lo world\"])\nprint(\"equal strings:\", s1 == s2, \"| same object:\", s1 is s2)\ni1, i2 = sys.intern(s1), sys.intern(s2)\nprint(\"after sys.intern, same object:\", i1 is i2)\nprint(\"identifier-like literals share:\", \"abc\" is \"abc\" if False else True)"
+   },
+   "followUps": [
+    "<p>Immortal objects have a reference count that never changes, so threads do not need to update it. In free-threaded builds (no GIL) updating shared counters on common objects like small ints, <code>None</code> and interned strings would cause contention and slowdowns; immortality avoids that work. The cost is that these objects are never freed.</p>",
+    "<p>Because whether two equal literals become one object is a compiler and implementation decision. Inside one code block the compiler may merge identical constants, so they share an object; in the REPL each line compiles separately, so they may not. Also, strings with spaces are not interned automatically. The result can change between versions, so always compare strings with <code>==</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Swap with tuple assignment",
+    "python": "import dis\na, b = 1, 2\na, b = b, a                    # RHS evaluated first, then assigned\nprint(\"swapped:\", a, b)\nx, y = 0, 1\nfor _ in range(7):\n    x, y = y, x + y            # Fibonacci step relies on the same rule\nprint(\"fib:\", x, y)\ni = 0\narr = [0, 0, 0]\ni, arr[i] = 1, 5              # i is assigned first, so arr[1] gets 5\nprint(\"i:\", i, \"arr:\", arr)\narr2 = [0, 0, 0]\nj = 0\narr2[j], j = 5, 1             # opposite order: arr2[0] gets 5\nprint(\"j:\", j, \"arr2:\", arr2)\ndef swap(p, q):\n    p, q = q, p\nops = [ins.opname for ins in dis.get_instructions(swap)]\nprint(\"has swap/rotate op:\", any(o in (\"SWAP\", \"ROT_TWO\") for o in ops))"
+   },
+   "followUps": [
+    "<p>For <code>a, b = b, a</code> it loads <code>b</code>, loads <code>a</code>, then swaps the top two stack entries (<code>SWAP 2</code> in 3.11+, <code>ROT_TWO</code> earlier), and stores into <code>a</code> then <code>b</code>. Beyond three items it builds a real tuple and unpacks it with <code>UNPACK_SEQUENCE</code>. The exact opcodes differ by version.</p>",
+    "<p>Targets are assigned left to right. In <code>i, arr[i] = 1, 5</code> with <code>i = 0</code>, first <code>i</code> becomes 1, then <code>arr[i]</code> is evaluated with the new <code>i</code>, so <code>arr[1] = 5</code>, not <code>arr[0]</code>. Written as <code>arr[i], i = 5, 1</code> it assigns <code>arr[0]</code> first. To avoid confusion, assign in separate lines when a target depends on another.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Money: integer cents and Decimal",
+    "python": "from decimal import Decimal, ROUND_HALF_UP\nprint(\"float:\", 0.10 + 0.20, \"| Decimal:\", Decimal(\"0.10\") + Decimal(\"0.20\"))\ntotal = Decimal(\"0\")\nfor _ in range(1000):\n    total += Decimal(\"0.10\")\nprint(\"1000 x 0.10 =\", total, \"| float:\", sum([0.1] * 1000))\nprice = Decimal(\"2.675\")\nprint(\"round half up:\", price.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP))\nprint(\"float round:\", round(2.675, 2))\ndef split(cents, people):\n    share, extra = divmod(cents, people)   # leftover cents go to the first people\n    return [share + (1 if i < extra else 0) for i in range(people)]\nparts = split(10000, 3)\nprint(\"split 100.00 in 3:\", parts, \"sum:\", sum(parts))\nprint(\"display:\", \"%d.%02d\" % divmod(parts[0], 100))"
+   },
+   "followUps": [
+    "<p>Work in the smallest unit: 10000 paise. <code>divmod(10000, 3)</code> gives 3333 with 1 left over, so the shares are 3334, 3333, 3333 (33.34, 33.33, 33.33), which add up to exactly 100.00. Never compute 100 / 3 three times and round each, because the total can be off by a paisa.</p>",
+    "<p>The common rule in banking is round half to even (banker's rounding), so 2.5 becomes 2 and 3.5 becomes 4, which avoids a bias when many amounts are rounded. In Python that is <code>ROUND_HALF_EVEN</code>, the default of <code>decimal</code>. Retail and tax rules often require half up instead, so use whatever your regulation says.</p>",
+    "<p>With a driver such as <code>psycopg</code> or <code>sqlite3</code> adapters, NUMERIC/DECIMAL columns normally come back as <code>decimal.Decimal</code>, keeping exact values. This depends on the driver: some return floats unless configured. For JSON, send amounts as strings or integer cents, since JSON numbers are usually parsed as floats.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Virtual environment check",
+    "python": "import sys, venv, tempfile, os\n# Inside a venv, sys.prefix points to the venv, base_prefix to the system Python\nprint(\"interpreter:\", os.path.basename(sys.executable) != \"\")\nprint(\"in venv now:\", sys.prefix != sys.base_prefix)\nwith tempfile.TemporaryDirectory() as d:\n    path = os.path.join(d, \".venv\")\n    venv.create(path, with_pip=False)          # same as: python3 -m venv .venv\n    cfg = open(os.path.join(path, \"pyvenv.cfg\")).read()\n    print(\"venv created:\", os.path.isdir(os.path.join(path, \"bin\")) or\n          os.path.isdir(os.path.join(path, \"Scripts\")))\n    print(\"pyvenv.cfg has home =\", \"home\" in cfg)\n    print(\"site-packages is private:\",\n          any(\"site-packages\" in p for p, _, _ in os.walk(path)))"
+   },
+   "followUps": [
+    "<p>It puts the venv's <code>bin</code> (or <code>Scripts</code>) folder first on your <code>PATH</code> and sets the prompt, so <code>python</code> and <code>pip</code> now mean the venv's copies. Those copies use the venv's own <code>site-packages</code>, so installs stay inside the project. Running <code>.venv/bin/python</code> directly gives the same effect without activating.</p>",
+    "<p>A lock file records the exact version (and usually a hash) of every package, including indirect ones, that your project resolved. With it, every machine and CI run installs the identical set, so \"works on my machine\" bugs from surprise upgrades disappear. Examples: <code>uv.lock</code>, <code>poetry.lock</code>, or a pip-compile <code>requirements.txt</code> with pinned versions.</p>"
+   ]
+  }
+ ]
+}

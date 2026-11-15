@@ -1,0 +1,155 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "try/except/else/finally order for three cases",
+    "python": "def demo(kind):\n    print(\"-- case:\", kind)\n    try:\n        print(\"try: start\")\n        if kind == \"error\":\n            int(\"abc\")              # raises ValueError\n        elif kind == \"return\":\n            return \"returned from try\"\n        print(\"try: finished\")\n    except ValueError as e:         # runs only when ValueError was raised\n        print(\"except: caught\", e)\n    else:                           # runs only when try had no exception\n        print(\"else: no exception\")\n    finally:                        # always runs, even after return\n        print(\"finally: always runs\")\n    return \"end of function\"\n\nfor k in [\"ok\", \"error\", \"return\"]:\n    print(\"result:\", demo(k))\n"
+   },
+   "followUps": [
+    "<p>The return in <code>finally</code> wins: it overrides any earlier return and silently swallows any exception that was in flight. Python lets it happen, but it hides real errors, so avoid it (linters flag it).</p><pre><code>def f():\n    try:\n        raise ValueError(\"lost\")\n    finally:\n        return 42   # f() returns 42, the error vanishes</code></pre><p>Python 3.14 even warns about this.</p>",
+    "<p>No. <code>os._exit()</code> ends the process immediately, without running <code>finally</code>, cleanup handlers or <code>atexit</code>. A SIGKILL (or power loss) kills the process from outside, so no Python code runs at all.</p><p>By contrast <code>sys.exit()</code> only raises SystemExit, so <code>finally</code> does run. Never rely on <code>finally</code> alone for durability; for example write to a temp file and rename it atomically.</p>",
+    "<p>A small try block makes it clear which line you expect to fail, so <code>except</code> cannot accidentally catch an error from some other line and hide a bug.</p><p>Example: if <code>try:</code> wraps both <code>int(s)</code> and <code>process(n)</code>, a ValueError deep inside <code>process</code> is reported as \"bad input\". Keep only <code>int(s)</code> in the try and put the rest in <code>else</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Exception vs BaseException and the bare except trap",
+    "python": "for exc in (ValueError, SystemExit, KeyboardInterrupt):\n    print(exc.__name__, \"is an Exception subclass:\", issubclass(exc, Exception))\n\ndef task(exc):\n    raise exc()\n\nfor exc in (ValueError, SystemExit, KeyboardInterrupt):\n    try:\n        try:\n            task(exc)\n        except Exception:                 # catches normal errors only\n            print(\"except Exception caught\", exc.__name__)\n    except BaseException as e:            # outer net, to keep the demo running\n        print(\"escaped except Exception:\", type(e).__name__)\n\ntry:\n    task(KeyboardInterrupt)\nexcept:                                   # bare except = BaseException\n    print(\"bare except swallowed Ctrl+C\")  # the program could not be stopped\n"
+   },
+   "followUps": [
+    "<p>LookupError is the parent of <code>KeyError</code> and <code>IndexError</code>, so <code>except LookupError</code> handles both a missing dict key and a bad list index. OSError (alias IOError, EnvironmentError) is the parent of <code>FileNotFoundError</code>, <code>PermissionError</code>, <code>ConnectionError</code> (and its children such as <code>BrokenPipeError</code>), <code>TimeoutError</code> and <code>IsADirectoryError</code>.</p><p>Catch the parent when you treat all children the same, the child when you need a different reaction.</p>",
+    "<p>Because cancellation is a signal to stop, not a failure. In 3.8 CancelledError moved from Exception to BaseException so a normal <code>except Exception</code> in your code no longer swallows it and leaves a task that refuses to cancel.</p><p>If you must catch it for cleanup, do it in <code>finally</code> or catch it and re-raise. Swallowing it breaks <code>asyncio.timeout()</code>, <code>TaskGroup</code> and shutdown.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Custom exception hierarchy with pickling and base class",
+    "python": "import pickle\n\nclass PaymentError(Exception):\n    \"\"\"Base class: callers can catch everything from this package.\"\"\"\n\nclass InvalidAmountError(PaymentError, ValueError):   # fits both families\n    pass\n\nclass CardDeclinedError(PaymentError):\n    def __init__(self, amount, reason):\n        super().__init__(amount, reason)    # keep args == constructor args\n        self.amount = amount\n        self.reason = reason\n    def __str__(self):\n        return f\"card declined for {self.amount}: {self.reason}\"\n\nclass BadPickle(Exception):\n    def __init__(self, amount, reason):\n        super().__init__(f\"{amount} {reason}\")   # args no longer match\n\ndef pay(amount):\n    if amount <= 0:\n        raise InvalidAmountError(\"amount must be positive\")\n    raise CardDeclinedError(amount, \"insufficient funds\")\n\nfor amt in (-5, 30):\n    try:\n        pay(amt)\n    except PaymentError as e:                 # one clause for the package\n        print(type(e).__name__, \"->\", e, \"| is ValueError:\", isinstance(e, ValueError))\n\ncopy = pickle.loads(pickle.dumps(CardDeclinedError(30, \"limit\")))\nprint(\"pickle round trip:\", copy, copy.amount)\ntry:\n    pickle.loads(pickle.dumps(BadPickle(1, \"x\")))\nexcept TypeError as e:\n    print(\"unpickling failed:\", type(e).__name__)\n"
+   },
+   "followUps": [
+    "<p>Few. Add a class only when a caller would handle that case differently (retry, show a message, abort). If every caller just logs and fails, a single base error with a clear message is enough.</p><p>A good test: can you write a distinct <code>except</code> clause for it that does something useful? Carry the variation in attributes (<code>e.code</code>) rather than in dozens of near-identical classes. A handful (3 to 10) per package is typical.</p>",
+    "<p>Pickle rebuilds an exception by calling <code>cls(*self.args)</code>. If your <code>__init__</code> takes two parameters but passes one formatted message to <code>super().__init__</code>, then <code>args</code> has 1 item and unpickling raises TypeError (the program above shows it).</p><p>This matters in <code>multiprocessing</code> and <code>concurrent.futures</code>, which pickle errors across processes. Fix it by passing the original arguments to <code>super().__init__</code>, or define <code>__reduce__</code>.</p>",
+    "<p>Subclass <code>Exception</code>. RuntimeError means \"an error that fits no other category\", and catching it would also catch unrelated runtime errors such as RecursionError and NotImplementedError, which are its subclasses.</p><p>A dedicated base such as <code>class PaymentError(Exception)</code> keeps your hierarchy separate, so <code>except PaymentError</code> catches only your errors. Use RuntimeError as an extra parent only if it truly fits.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Exception chaining: context, cause, from None",
+    "python": "def low():\n    return {}[\"k\"]                      # raises KeyError\n\ndef implicit():\n    try:\n        low()\n    except KeyError:\n        raise RuntimeError(\"looks like a bug in the handler\")\n\ndef explicit():\n    try:\n        low()\n    except KeyError as e:\n        raise RuntimeError(\"deliberate translation\") from e\n\ndef hidden():\n    try:\n        low()\n    except KeyError:\n        raise RuntimeError(\"low-level noise hidden\") from None\n\nfor f in (implicit, explicit, hidden):\n    try:\n        f()\n    except RuntimeError as e:\n        print(f.__name__)\n        print(\"  cause:   \", repr(e.__cause__))\n        print(\"  context: \", repr(e.__context__))\n        print(\"  suppress:\", e.__suppress_context__)\n\ntry:\n    try:\n        low()\n    except KeyError as e:\n        e.add_note(\"while loading config\")   # Python 3.11+\n        raise\nexcept KeyError as e:\n    print(\"notes:\", e.__notes__)\n"
+   },
+   "followUps": [
+    "<p>Use it when the original error is an implementation detail that would only confuse the caller. The classic case is <code>__getattr__</code>: you look up a key in a dict, get KeyError, and want to raise AttributeError without showing the KeyError.</p><pre><code>def __getattr__(self, name):\n    try:\n        return self._data[name]\n    except KeyError:\n        raise AttributeError(name) from None</code></pre><p>Do not use it when the cause helps debugging.</p>",
+    "<p>The original (root) exception is printed first, then the line \"The above exception was the direct cause of the following exception\" (or \"During handling of the above exception, another exception occurred\"), then the newer exception last.</p><p>So the traceback reads in time order: oldest error at the top, the one that finally escaped at the bottom. When debugging, look at the first block for the real root cause.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "EAFP vs LBYL: isdigit is not int()",
+    "python": "def lbyl(s):\n    if s.isdigit():                # look before you leap\n        return int(s)\n    return None\n\ndef eafp(s):\n    try:\n        return int(s)              # the real operation is the check\n    except ValueError:\n        return None\n\nfor s in [\"42\", \"-7\", \"abc\", \"²\"]:   # last one is superscript two\n    try:\n        a = lbyl(s)\n    except ValueError as e:\n        a = \"CRASH \" + str(e)\n    print(repr(s), \"LBYL:\", a, \"| EAFP:\", eafp(s))\n\n# the best answer is often neither: use a built-in that handles it\ncounts = {}\nfor w in \"a b a c a\".split():\n    counts[w] = counts.get(w, 0) + 1     # no check and no try\nprint(counts)\n"
+   },
+   "followUps": [
+    "<p>Classic bug: check then use. The file can be deleted between the check and the open.</p><pre><code>if os.path.exists(p):      # check passes\n    f = open(p)            # file removed here: FileNotFoundError</code></pre><p>Fix: skip the check and try the operation.</p><pre><code>try:\n    f = open(p)\nexcept FileNotFoundError:\n    f = None</code></pre><p>The open itself is atomic with respect to the check, so there is no gap another process can use.</p>",
+    "<p><code>hasattr(o, \"x\")</code> calls the attribute lookup, and in older Python it caught every exception, so a property that raised a real bug (say ZeroDivisionError) made hasattr report False and the bug looked like \"missing attribute\". Since Python 3 it only swallows AttributeError, but an AttributeError raised inside a property still hides the real fault.</p><p>Safer: <code>getattr(o, \"x\", None)</code> or a try/except AttributeError around the actual use.</p>",
+    "<p>No. <code>d[k] += 1</code> compiles to several steps: read d[k], add 1, store d[k]. A thread switch can happen between read and store, so two threads can both read 5 and both write 6, losing one increment.</p><p>Fix it with a <code>threading.Lock</code> around the update, or use per-thread counters and merge, or <code>queue</code>/<code>collections.Counter</code> inside one owner thread. The GIL does not make compound operations atomic.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Type hints are not enforced at runtime",
+    "python": "from dataclasses import dataclass, fields\n\ndef add(a: int, b: int) -> int:\n    return a + b\n\nprint(add(\"x\", \"y\"))             # no error: hints are not checked\nprint(add.__annotations__)       # stored, but only for tools to read\n\ntry:\n    isinstance([1], list[int])   # runtime cannot check generics\nexcept TypeError as e:\n    print(\"isinstance with list[int]:\", type(e).__name__)\n\n@dataclass\nclass User:                      # dataclass reads the annotations on purpose\n    name: str\n    age: int = 0\n\nprint([f.name + \":\" + f.type.__name__ for f in fields(User)])\nprint(User(\"Ada\", \"not a number\"))   # still no validation\n"
+   },
+   "followUps": [
+    "<p>It stops Python from evaluating annotations when the function is defined; they are kept as plain strings instead. That allows forward references (using a class before it is defined) and avoids import-time cost and circular imports.</p><p>Type checkers work the same. The catch: tools that need real types at runtime (pydantic, dataclass internals) must resolve the strings with <code>typing.get_type_hints()</code>. In Python 3.14, lazy annotations (PEP 649) make this the default behaviour.</p>",
+    "<p>FastAPI reads the annotations of your endpoint function at startup. For <code>def get(item_id: int, q: str | None = None)</code> it sees that item_id is an int and q is optional text, then parses the URL parts, converts \"5\" to 5, returns a 422 error if conversion fails, and builds the OpenAPI docs.</p><p>So the hints do real work at runtime, because the library (via pydantic) chose to read and enforce them.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Any hides bugs, object forces a check",
+    "python": "from typing import Any\n\ndef shout_any(x: Any):\n    return x.upper()              # checker allows anything on Any\n\ndef shout_obj(x: object):\n    # a checker rejects x.upper() here until x is narrowed\n    if isinstance(x, str):\n        return x.upper()          # narrowed to str: allowed\n    return str(x)                 # str() works on every object\n\nfor v in [\"hi\", 5]:\n    print(repr(v), \"->\", shout_obj(v))\n\ntry:\n    shout_any(5)                  # the checker said nothing\nexcept AttributeError as e:\n    print(\"Any hid the bug until runtime:\", e)\n"
+   },
+   "followUps": [
+    "<p>Mostly through code with no annotations (an unannotated parameter or return is implicitly Any), through <code>json.loads()</code> (returns Any), <code>dict.get</code> on an untyped dict, <code>**kwargs</code> without a type, untyped third-party libraries, and <code>from x import *</code> of untyped modules.</p><p>Any then flows onward: <code>y = json.loads(s)[\"a\"]</code> is Any, so everything computed from y goes unchecked. Use <code>--strict</code> and <code>warn_return_any</code> to see where it leaks.</p>",
+    "<p>Treat the result as untrusted and validate it right away. Light option: annotate as <code>object</code> and narrow with isinstance.</p><pre><code>data: object = json.loads(s)\nif isinstance(data, dict) and isinstance(data.get(\"n\"), int):\n    n = data[\"n\"]</code></pre><p>Heavier but safer: a TypedDict or pydantic model that parses the JSON and raises on a wrong shape, giving typed objects for all later code.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why list[int] is not list[float]",
+    "python": "from typing import Sequence\n\ndef add_half(xs: list[float]) -> None:\n    xs.append(0.5)                 # legal for list[float]\n\nints: list[int] = [1, 2]\nadd_half(ints)                     # a type checker rejects this call\nprint(\"list of ints is now:\", ints)   # a float sneaked in\n\ndef total(xs: Sequence[float]) -> float:\n    return sum(xs)                 # read-only, so int is safe\n\nprint(total([1, 2, 3]))            # list[int] accepted as Sequence[float]\nprint(total((1, 2, 3)))            # tuple[int, ...] accepted too\nprint(total([1.5, 2]))\n"
+   },
+   "followUps": [
+    "<p>With <code>covariant=True</code>, or in Python 3.12+ simply by using the new syntax, where the checker infers variance.</p><pre><code>T_co = TypeVar(\"T_co\", covariant=True)\nclass Box(Generic[T_co]):\n    def get(self) -&gt; T_co: ...\n\nclass Box2[T]:   # 3.12: variance inferred\n    def get(self) -&gt; T: ...</code></pre><p>Covariant is allowed only if T is used in outputs (returns), never as a method parameter.</p>",
+    "<p>Keys are used to look values up and must be hashable and comparable. A <code>dict[int, str]</code> can be passed where <code>dict[float, str]</code> is expected only if nothing writes through the reference. A writer could insert key 3.14 into your int-keyed dict.</p><p>So the key type is invariant. The value type is invariant too for <code>dict</code> because it is mutable; <code>Mapping[K, V]</code> is covariant in V (read-only) but still invariant in K.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Both are fine; pick one and run it in CI so everyone sees the same results. mypy is the reference checker, with a large plugin ecosystem (Django, pydantic) and incremental caching. pyright is faster on big codebases, has stricter inference, and powers Pylance in VS Code.</p><p>They can disagree on edge cases, so do not run both with different configs. Many teams use pyright in the editor and the same tool in CI, or mypy in both.</p>",
+    "<p>Options, from cheapest to most work: (1) install a published stub package (<code>types-requests</code>); (2) per-module <code>ignore_missing_imports = true</code> in config, which makes the library Any; (3) write a small <code>.pyi</code> stub file for only the functions you use; (4) wrap the library in one typed adapter module, so the untyped part lives in a single place.</p><p>Avoid a global ignore; it silences real typos too.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "unittest: subTest and assertRaisesRegex",
+    "python": "import sys\nimport unittest\n\ndef parse_age(s):\n    n = int(s)\n    if n < 0:\n        raise ValueError(\"age must not be negative\")\n    return n\n\nclass ParseAgeTests(unittest.TestCase):\n    def test_valid(self):\n        for text, want in [(\"0\", 0), (\"41\", 41), (\"120\", 120)]:\n            with self.subTest(text=text):          # each case reported alone\n                self.assertEqual(parse_age(text), want)\n\n    def test_negative_message(self):\n        with self.assertRaisesRegex(ValueError, \"must not be negative\"):\n            parse_age(\"-1\")                        # checks type and message\n\n    def test_not_a_number(self):\n        with self.assertRaises(ValueError):\n            parse_age(\"abc\")\n\nsuite = unittest.defaultTestLoader.loadTestsFromTestCase(ParseAgeTests)\nresult = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)\nprint(\"all passed:\", result.wasSuccessful())\n"
+   },
+   "followUps": [
+    "<p>pytest rewrites the <code>assert</code> statement when it imports your test module, so it keeps the value of each sub-expression and prints them if the assert fails.</p><pre><code>assert add(2, 2) == 5\n# E assert 4 == 5\n# E  + where 4 = add(2, 2)</code></pre><p>With plain unittest you would need <code>assertEqual(a, b)</code> to get a similar message. Lists and dicts also get a readable diff of the differing items.</p>",
+    "<p>Use <code>pytest.raises</code> with <code>match</code>, which runs a regular-expression search on the message.</p><pre><code>with pytest.raises(ValueError, match=\"must not be negative\"):\n    parse_age(\"-1\")</code></pre><p>To inspect more, use <code>as excinfo</code> and check <code>excinfo.value.args</code>. In unittest the equivalent is <code>assertRaisesRegex</code>, as in the program above. Escape regex characters (<code>re.escape</code>) when the message contains brackets or dots.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fixture setup and teardown order (simulated)",
+    "python": "import contextlib\n\ndef db():                               # like a session/module fixture\n    print(\"setup db\")\n    yield \"db-conn\"\n    print(\"teardown db\")\n\ndef txn(conn):                          # like a function-scoped fixture\n    print(\"  setup txn on\", conn)\n    yield \"txn\"\n    print(\"  teardown txn\")\n\ndef use(stack, gen):\n    value = next(gen)                   # code before yield = setup\n    def teardown():\n        for _ in gen:                   # code after yield = teardown\n            pass\n    stack.callback(teardown)            # ExitStack runs these in reverse\n    return value\n\ndef run_test(name, test):\n    print(\"test\", name)\n    try:\n        with contextlib.ExitStack() as stack:\n            conn = use(stack, db())\n            t = use(stack, txn(conn))\n            test(t)\n    except AssertionError:\n        print(\"  test failed, teardown still ran\")\n\nrun_test(\"passes\", lambda t: print(\"  running with\", t))\ndef failing(t):\n    assert False\nrun_test(\"fails\", failing)\n"
+   },
+   "followUps": [
+    "<p><code>autouse=True</code> makes a fixture run for every test in its scope without being requested by name. Useful for things every test needs: resetting a global, freezing the clock, blocking network access.</p><p>Danger: it is invisible. A reader of the test cannot see it, it adds cost to tests that do not need it, and an autouse fixture in a high-level <code>conftest.py</code> affects hundreds of tests. Use it sparingly and name it clearly.</p>",
+    "<p>Pass <code>params</code> to the decorator and read <code>request.param</code>; every test using the fixture then runs once per value.</p><pre><code>@pytest.fixture(params=[\"sqlite\", \"postgres\"])\ndef backend(request):\n    return make_backend(request.param)</code></pre><p>With 2 params and 3 tests using it you get 6 test runs. For parametrizing one test only, <code>@pytest.mark.parametrize</code> is simpler.</p>",
+    "<p>xdist runs tests in several worker processes. Each worker has its own session, so a \"session\" fixture runs once per worker, not once per run: a session fixture that creates a database would try to create it N times and clash.</p><p>Fix: give each worker its own resource (use the <code>worker_id</code> fixture to name the database, e.g. <code>test_gw0</code>) or guard shared setup with a file lock. Tests must not depend on ordering or shared state.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Patch the name where it is looked up",
+    "python": "import sys\nimport types\nfrom unittest import mock\n\nweather = types.ModuleType(\"weather\")        # the module that defines fetch\nweather.fetch = lambda: \"real\"\nsys.modules[\"weather\"] = weather\n\napp = types.ModuleType(\"app\")                # the module under test\nexec(\"\"\"\nfrom weather import fetch    # app gets its own name 'fetch'\nimport weather\ndef via_from():  return fetch()\ndef via_module(): return weather.fetch()\n\"\"\", app.__dict__)\nsys.modules[\"app\"] = app\n\nwith mock.patch(\"weather.fetch\", return_value=\"fake\"):\n    print(\"patched weather.fetch ->\", app.via_from(), app.via_module())\nwith mock.patch(\"app.fetch\", return_value=\"fake\"):\n    print(\"patched app.fetch     ->\", app.via_from(), app.via_module())\n"
+   },
+   "followUps": [
+    "<p>Patch the attribute on the class itself, not on an instance. Every instance looks the method up on the class, so all see the mock.</p><pre><code>with mock.patch.object(Client, \"send\", autospec=True) as send:\n    Client().send(\"x\")\n    send.assert_called_once()</code></pre><p>With <code>autospec=True</code> the mock receives <code>self</code> like a real method. To patch one instance only, use <code>mock.patch.object(obj, \"send\")</code>.</p>",
+    "<p>Patch the name where the code under test looks it up, i.e. <code>builtins.open</code>, ideally with <code>mock_open</code>.</p><pre><code>m = mock.mock_open(read_data=\"a,b\\n\")\nwith mock.patch(\"builtins.open\", m):\n    text = read_config(\"x.cfg\")\nm.assert_called_once_with(\"x.cfg\")</code></pre><p>Better still, use pytest's <code>tmp_path</code> and write a real file; it needs no mock and tests real behaviour.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fake vs autospec mock",
+    "python": "from unittest import mock\n\nclass Repo:\n    def save(self, name, email):\n        raise NotImplementedError\n\nclass FakeRepo:                          # in-memory fake: real behaviour\n    def __init__(self):\n        self.rows = {}\n    def save(self, name, email):\n        self.rows[name] = email\n\ndef register(repo, name, email):\n    repo.save(name, email)\n    return \"registered \" + name\n\n# Style 1: fake. The test checks the outcome, so a refactor does not break it.\nfake = FakeRepo()\nprint(register(fake, \"ada\", \"ada@example.com\"), fake.rows)\n\n# Style 2: autospec mock. It only checks that the call was made.\nspy = mock.create_autospec(Repo, instance=True)\nregister(spy, \"bob\", \"bob@example.com\")\nspy.save.assert_called_once_with(\"bob\", \"bob@example.com\")\nprint(\"mock saw the call:\", spy.save.call_args)\n\n# autospec rejects calls that do not match the real signature\ntry:\n    spy.save(\"only-one-argument\")\nexcept TypeError as e:\n    print(\"autospec caught a wrong call:\", type(e).__name__)\n"
+   },
+   "followUps": [
+    "<p>A <b>stub</b> returns canned answers. A <b>fake</b> is a working but simplified implementation (in-memory repository). A <b>spy</b> wraps or records real calls so you can check them afterwards. A <b>mock</b> is pre-programmed with expectations and fails if calls differ.</p><p>Example: a stub clock always returns 10:00; a fake repo stores rows in a dict; a spy counts how often <code>send_email</code> was called. In Python <code>unittest.mock.Mock</code> can play any of these roles.</p>",
+    "<p>Never call the real API in unit tests: it is slow, costs money and gives different answers each time. Put the call behind a small function or class (<code>llm.complete(prompt)</code>) and in tests replace it with a fake that returns fixed text, including error cases such as timeouts and malformed output.</p><p>Then test your parsing, retries and prompt building against those fixed replies. Keep a few clearly marked integration or evaluation tests against the real model, run occasionally rather than on every commit.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Deterministic retry test: inject sleep, clock and Random",
+    "python": "import random\n\ndef retry(fn, attempts, sleep, rng):\n    delay = 0.1\n    for i in range(attempts):\n        try:\n            return fn()\n        except ConnectionError:\n            if i == attempts - 1:\n                raise\n            sleep(delay + rng.random() * 0.01)   # jitter from injected rng\n            delay *= 2                           # exponential backoff\n\ndef make_flaky(failures):\n    state = {\"calls\": 0}\n    def fn():\n        state[\"calls\"] += 1\n        if state[\"calls\"] <= failures:\n            raise ConnectionError(\"down\")\n        return \"ok after %d calls\" % state[\"calls\"]\n    return fn\n\ndef run(seed):\n    slept = []\n    result = retry(make_flaky(2), 5, slept.append, random.Random(seed))\n    return result, [round(s, 4) for s in slept]   # fake sleep records delays\n\nfirst = run(42)\nprint(\"result and delays:\", first)\nprint(\"same seed, same run:\", run(42) == first)   # deterministic and instant\n"
+   },
+   "followUps": [
+    "<p>Inject the sleep function and replace it with one that records the delays instead of waiting. The test then runs in microseconds and can assert the exact schedule.</p><pre><code>slept = []\nretry(flaky, attempts=4, sleep=slept.append)\nassert slept == [0.1, 0.2, 0.4]</code></pre><p>If the code reads the clock, inject that as well, or patch <code>time.sleep</code> and <code>time.monotonic</code> with fakes that advance a counter.</p>",
+    "<p>Run the suite in random order (<code>pytest-randomly</code>) and see which order fails. To locate the leaker, bisect: run the failing test with half of the tests that ran before it, then halve again until one remains (pytest-find-dependencies and <code>--lf</code> help).</p><p>Typical leaks are module-level globals, caches, environment variables, a changed working directory, and un-restored patches. Fix by using fixtures that undo their changes (<code>monkeypatch</code>, <code>tmp_path</code>).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ExceptionGroup and except*",
+    "python": "def validate(order):\n    errors = []\n    if order[\"qty\"] <= 0:\n        errors.append(ValueError(\"qty must be positive\"))\n    if not order[\"email\"]:\n        errors.append(KeyError(\"email\"))\n    if order[\"qty\"] > 100:\n        errors.append(ValueError(\"qty too large\"))\n    if errors:\n        raise ExceptionGroup(\"invalid order\", errors)   # report every problem\n\norder = {\"qty\": 0, \"email\": \"\"}\nprint(\"order:\", order)\ntry:\n    validate(order)\nexcept* ValueError as eg:           # gets a sub-group of the ValueErrors\n    print(\"ValueErrors:\", [str(e) for e in eg.exceptions])\nexcept* KeyError as eg:             # the remaining ones go here\n    print(\"KeyErrors:\", [repr(e) for e in eg.exceptions])\n\ntry:\n    validate(order)\nexcept ValueError:                  # plain except does not match a group\n    print(\"never printed\")\nexcept Exception as e:\n    print(\"plain except sees:\", type(e).__name__, len(e.exceptions), \"errors\")\n"
+   },
+   "followUps": [
+    "<p><code>ExceptionGroup</code> can hold only Exception subclasses. <code>BaseExceptionGroup</code> can also hold BaseException types such as KeyboardInterrupt or CancelledError.</p><p>If you create a <code>BaseExceptionGroup</code> whose members are all plain Exceptions, Python automatically gives you an <code>ExceptionGroup</code>. This is why <code>except* Exception</code> works on task failures but must be used carefully with cancellation.</p>",
+    "<p>Walk the tree recursively: a group has <code>.exceptions</code>, which may contain more groups.</p><pre><code>def log_all(e):\n    if isinstance(e, BaseExceptionGroup):\n        for sub in e.exceptions:\n            log_all(sub)\n    else:\n        logger.error(\"failed\", exc_info=e)</code></pre><p>Alternatively <code>traceback.print_exception(eg)</code> or <code>logger.exception</code> prints the whole nested tree already, with indentation, for a quick answer.</p>"
+   ]
+  }
+ ]
+}
