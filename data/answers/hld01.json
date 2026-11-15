@@ -1,0 +1,118 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>HTTP/3 runs over QUIC (on UDP) instead of TCP, so it removes one handshake round trip and head-of-line blocking. QUIC combines the transport and TLS 1.3 handshakes, so a new connection needs 1 RTT instead of 2 (TCP + TLS), and a returning client can send data in 0-RTT. Streams are independent: one lost packet stalls only its own stream, not every file on the connection. Connections are identified by an ID, so they survive a phone switching from Wi-Fi to mobile data. Cost: UDP is sometimes blocked, so browsers fall back to HTTP/2.</p>",
+    "<p>Add a cache at every hop where data is reused. <b>Browser cache</b> (Cache-Control) avoids the request entirely; the <b>DNS cache</b> in the OS and resolver skips lookups; a <b>CDN</b> serves static files and cacheable pages near the user; an <b>application cache</b> such as Redis holds hot database reads; the database has its own buffer pool. Each layer cuts latency and load on the next one, but adds a staleness risk, so every cache needs a TTL or an invalidation rule. Example: with a 90% CDN hit ratio, the origin sees only 10% of traffic, so 1,000 req/s becomes 100 req/s.</p>",
+    "<p>On a second visit most of the work is skipped because the browser reuses what it already has. DNS is answered from cache, an existing connection may be reused (or TLS resumed to save a round trip), and static files such as CSS, JS and images come from the browser cache with no request at all while their Cache-Control max-age has not expired. For expired files, the browser sends a conditional request with If-None-Match and the server replies 304 Not Modified with no body. So only the HTML and API calls travel, and a cold ~3 RTT start can drop to 0 to 1.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Usually latency against consistency, and availability against consistency or cost. Strong consistency needs coordination between replicas, which adds latency and blocks writes during a network partition (the CAP trade-off). High availability needs spare replicas and multiple regions, which costs money. Low latency conflicts with durability, since waiting for data to be written to several disks or regions is slow. Example: a synchronous write to 3 regions might take 150 ms but never lose data; writing to one region takes 5 ms but can lose recent writes on failure. I rank the NFRs first, then choose per feature, for example strong consistency for payments, eventual for likes.</p>",
+    "<p>An NFR becomes an SLO when you pick a measurable indicator (SLI), a target and a time window, then monitor it. \"The feed should be fast\" becomes the SLI \"fraction of feed requests answered in under 300 ms\" with the SLO \"99% over 30 days\". Alerts fire when the error budget burns too quickly, for example at 10 times the allowed rate. The NFR then guides production decisions: if the budget is spent, pause risky releases. Availability of 99.95% over 30 days gives about 21.6 minutes of allowed failure.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then I state my own assumptions out loud, with numbers, and ask the interviewer to correct me. \"You decide\" usually means they want to see judgement, not that anything goes. For example: \"I will assume 10M daily users, 100:1 read to write, p99 under 300 ms, 99.9% availability, and eventual consistency for the feed but strong for payments.\" I then do a quick estimate (10M users with 10 requests each is 100M per day, about 1,200 req/s average, perhaps 4,000 at peak) and note that I will revisit the design if they change an assumption.</p>",
+    "<p>I rank requirements by what the business cannot live without, then make the trade-off visible and per feature, not global. First list which NFRs conflict (for example low latency against strong consistency). Then ask which failure hurts more: a stale like count is harmless, but a lost payment is not. So payments get strong consistency and accept extra latency, while the feed gets caching and eventual consistency to stay fast. I state the choice and its cost aloud, for example \"we may show a 5 second old count\", and confirm it with the interviewer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Latency grows sharply as utilisation approaches 100%",
+    "python": "# Latency vs throughput: queueing makes latency explode near full utilisation.\nservice_ms = 100.0          # time one request needs on one server\ncapacity = 1000.0 / service_ms   # requests per second one server can finish\nprint(\"capacity = %.0f req/s, service time = %.0f ms\" % (capacity, service_ms))\nfor util in [0.5, 0.7, 0.9, 0.95, 0.99]:\n    arrival = util * capacity\n    # Simple M/M/1 queue: latency = service / (1 - utilisation)\n    latency = service_ms / (1.0 - util)\n    # Little's Law: requests in flight L = arrival rate * latency (seconds)\n    in_flight = arrival * latency / 1000.0\n    print(\"util %3.0f%%  arrival %5.2f req/s  latency %7.1f ms  in flight %6.2f\"\n          % (util * 100, arrival, latency, in_flight))\n# Time O(1) per row, space O(1)\n"
+   },
+   "followUps": [
+    "<p>Because a queue forms whenever requests arrive faster than they can briefly be served, and waiting time grows without limit as utilisation approaches 100%. In the simple model, latency = service time / (1 - utilisation). With a 100 ms service time, 50% utilisation gives 200 ms, 90% gives 1,000 ms and 99% gives 10,000 ms. Real traffic is bursty, so queues build even below 100% average. That is why I keep headroom and aim for 50 to 70% utilisation, and why autoscaling should trigger before saturation.</p>",
+    "<p>Batching is the classic example: a database or message broker that writes 1,000 rows in one commit is far faster overall than 1,000 separate commits, but the first row waits for the batch to fill. If rows arrive at 1,000 per second and you wait 50 ms, each row is delayed up to 50 ms, yet throughput may rise 10 times. I would do this for logging, analytics events, bulk emails and Kafka producers, and never for a user-facing checkout. Kafka's linger.ms setting is exactly this trade.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Percentiles vs mean and fan-out tail amplification",
+    "js": "// Tail latency: the average hides slow requests, and fan-out amplifies them.\nconst samples = [];\nfor (let i = 0; i < 98; i++) samples.push(50);   // 98 fast requests\nsamples.push(2000, 3000);                        // 2 very slow ones\nsamples.sort((a, b) => a - b);\n\nfunction percentile(sorted, p) {\n  // nearest-rank method: smallest value covering p percent of samples\n  const rank = Math.ceil((p / 100) * sorted.length);\n  return sorted[rank - 1];\n}\nconst mean = samples.reduce((a, b) => a + b, 0) / samples.length;\nconsole.log(\"samples: 98 x 50 ms, 1 x 2000 ms, 1 x 3000 ms\");\nconsole.log(\"mean = \" + mean.toFixed(1) + \" ms (nobody actually sees this)\");\nconsole.log(\"p50  = \" + percentile(samples, 50) + \" ms\");\nconsole.log(\"p99  = \" + percentile(samples, 99) + \" ms\");\n\n// Fan-out: a page needs n calls, each slow 1% of the time.\nfor (const n of [1, 10, 100]) {\n  const pSlow = 1 - Math.pow(0.99, n);\n  console.log(\"fan-out \" + n + \": page is slow \" + (pSlow * 100).toFixed(1) + \"% of the time\");\n}\n"
+   },
+   "followUps": [
+    "<p>Coordinated omission is a load-testing mistake where the test tool stops sending requests while it waits for a slow response, so the slow period is under-recorded and latencies look better than they are. Example: the plan is 10 requests per second and the server freezes for 5 seconds. A tool that waits records 1 very slow request instead of the 50 that should have been sent and were delayed. Fix it by sending on a fixed schedule independent of responses (open-loop load) and measuring each request from its intended start time, as tools like wrk2 and HdrHistogram do.</p>",
+    "<p>A hedged request means sending the same request to a second replica if the first has not answered within a short delay, normally the p95 latency, and using whichever reply arrives first (then cancelling the other). It cuts tail latency for a small cost: if the delay is p95, only about 5% of requests are duplicated. It is unsafe for non-idempotent operations such as payments or sending emails, because both copies might run, and it can add load during an overload, so combine it with a retry budget. Safe uses: reads, searches, idempotent writes with an idempotency key.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Availability in series, in parallel, and downtime per month",
+    "python": "# Availability of components in series and in parallel.\ndef series(parts):\n    a = 1.0\n    for p in parts:\n        a *= p          # every part must work, so multiply\n    return a\n\ndef parallel(a, n):\n    return 1 - (1 - a) ** n   # fails only if all n replicas fail\n\nMIN_PER_MONTH = 30 * 24 * 60\ndef downtime(a):\n    return (1 - a) * MIN_PER_MONTH\n\nchain = [0.999, 0.999, 0.999]\nprint(\"three 99.9%% in series:   %.4f%%\" % (series(chain) * 100))\nprint(\"two 99%% in parallel:     %.4f%%\" % (parallel(0.99, 2) * 100))\n# MTBF / (MTBF + MTTR): faster recovery raises availability\nmtbf = 1000.0\nfor mttr in [10.0, 1.0]:\n    print(\"MTBF 1000h, MTTR %4.1fh -> %.3f%%\" % (mttr, mtbf / (mtbf + mttr) * 100))\nfor a in [0.999, 0.9995, 0.9999]:\n    print(\"%.2f%% allows %.1f min down per 30 days\" % (a * 100, downtime(a)))\n# Time O(n), space O(1)\n"
+   },
+   "followUps": [
+    "<p>About 21.6 minutes. A 30-day month has 43,200 minutes, and 99.95% availability allows 0.05% of that to be down: 43,200 x 0.0005 = 21.6 minutes. For comparison, 99.9% allows 43.2 minutes, and 99.99% allows 4.3 minutes. Each extra nine cuts the allowance by 10 times, and cost and complexity grow quickly, because 4 minutes is shorter than the time a human needs to notice and respond, so recovery must be automatic.</p>",
+    "<p>Make the call optional and give it a fallback, so its failure degrades the feature instead of failing the request. Steps: put a short timeout on the call, use a cached or default value when it fails, and use a circuit breaker so a dead dependency is not hammered. Example: a product page calls a recommendation service. If it times out after 100 ms, show a static \"popular items\" list. Availability maths improves: the page no longer multiplies by the recommendation service's 99.9%. Hard dependencies are only the things without which the page truly cannot work, such as the product database.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, a single load balancer is a SPOF, so run at least two. In the cloud, the provider's managed load balancer is already spread across several machines and zones. On-premises, use an active-passive pair sharing a virtual IP (for example with VRRP and keepalived) so the standby takes over in seconds, or run several active load balancers behind DNS or anycast routing. Health checks detect failure, and a failover that has never been tested is not trustworthy. The load balancer layer is usually stateless or light on state, so replacing one is quick.</p>",
+    "<p>Any writes the old primary accepted but had not yet copied to the replica. With asynchronous replication the primary confirms a write before the replica has it, so if the primary dies, the promoted replica is slightly behind. Example: if replication lag is 2 seconds and the primary handles 500 writes/s, up to about 1,000 acknowledged writes may be missing. Those are lost or must be reconciled later. Synchronous replication avoids the loss, but each write waits for the replica, which adds latency and blocks if the replica is down. Semi-synchronous (wait for one of several replicas) is a common compromise.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A distributed monolith is a system split into many services that still must be deployed, changed and released together, so you get the costs of microservices with none of the benefits. Signs: one change needs edits in five services, services share one database, they call each other in long synchronous chains, and a failure in one brings down the rest. It usually comes from splitting by technical layer rather than by business capability. The fix is clear ownership of data and boundaries, asynchronous events, and merging services that always change together.</p>",
+    "<p>Pick a part with clear boundaries and a measured pain, then use the strangler pattern. Steps: (1) make it a well-isolated module inside the monolith, with its own tables; (2) put a thin API in front of it; (3) deploy it as a service and route a small share of traffic to it (for example 1%, then 10%) using a router or feature flag; (4) compare results and keep the old path as a rollback; (5) move the data and delete the old code. Start with something low risk, such as notifications or search, not the payments core.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a CNAME means \"this name is an alias for another name, and nothing else\", and the zone apex (example.com) must already hold other records such as SOA and NS. A CNAME cannot coexist with them. So you cannot point example.com directly to a load balancer's hostname with a CNAME. Workarounds: ALIAS or ANAME records (provider-specific, the provider resolves the target and returns IPs), CNAME flattening, or plain A records with the load balancer's IPs. A www subdomain can use a normal CNAME.</p>",
+    "<p>Anycast announces the same IP address from many locations, and internet routing sends each client to the nearest one. A public resolver such as a large provider's 8.8.8.8-style service answers from the closest data centre, so the round trip to the resolver might be 10 ms instead of 150 ms. Authoritative DNS providers also use anycast, so lookups hit a nearby server, and it spreads attack traffic across many sites. It also gives automatic failover: if one site fails, routes withdraw and traffic flows to the next closest.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put sessions in a shared store that every app server can reach, normally Redis or another fast key-value store, and keep only a session ID in a cookie. Any instance then looks up the user by ID. Alternative: a signed token such as a JWT held entirely by the client, which needs no server store but is harder to revoke. Example: Redis with a 30 minute TTL, key session:abc123 and a user ID value. Replicate Redis or use a managed service so the session store is not a single point of failure. Avoid keeping sessions in an app server's memory.</p>",
+    "<p>Sticky sessions (the load balancer always sends a client to the same server) help when state is expensive to rebuild or must live in memory: WebSocket and long-lived connections, in-memory caches that are warm per user, large uploads processed in several steps, or a legacy app that cannot be changed. They cost you even load balancing, because a few heavy users can overload one server, and a crash loses that server's sessions. Treat them as an optimisation, never as the only place the data exists.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use Little's Law: connections in use = requests per second x time each request holds a connection. If the service handles 500 req/s and each database call takes 20 ms, then 500 x 0.02 = 10 connections are busy on average. Add headroom for bursts and slow queries, so a pool of 20 to 30 is sensible. If the database slows to 200 ms, the same traffic needs 100 connections, which shows why a slow dependency exhausts the pool. Do not just make the pool huge: the database also has a limit, so queue briefly and fail fast with a timeout.</p>",
+    "<p>A bulkhead isolates resources so a failure in one part cannot sink the rest, like the watertight compartments of a ship. In software, give each dependency its own thread pool or connection limit. Example: allow at most 20 concurrent calls to the recommendation service. If it hangs, those 20 slots fill and further calls fail fast, but the other threads still serve checkout and search. Without the bulkhead, the slow dependency would use up every thread and the whole service would stall. It is usually paired with timeouts and circuit breakers.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Token bucket admission control during a traffic spike",
+    "python": "# Admission control with a token bucket: protect the core during a spike.\nclass TokenBucket:\n    def __init__(self, rate, burst):\n        self.rate = rate        # tokens added per second\n        self.capacity = burst   # maximum stored tokens\n        self.tokens = burst\n        self.last = 0.0\n\n    def allow(self, now):\n        # refill based on elapsed time, never above capacity\n        self.tokens = min(self.capacity, self.tokens + (now - self.last) * self.rate)\n        self.last = now\n        if self.tokens >= 1:\n            self.tokens -= 1    # spend one token for this request\n            return True\n        return False\n\nbucket = TokenBucket(rate=5, burst=5)   # core is sized for 5 req/s\naccepted = rejected = 0\n# 50 requests arrive within 1 second (a 10x spike over steady 5/s)\nfor i in range(50):\n    t = i * 0.02\n    if bucket.allow(t):\n        accepted += 1\n    else:\n        rejected += 1\nprint(\"arrivals: 50 in 1.0 s, limit 5/s with burst 5\")\nprint(\"accepted:\", accepted, \"rejected (sent to waiting room):\", rejected)\n# Time O(1) per request, space O(1)\n"
+   },
+   "followUps": [
+    "<p>Because autoscaling reacts after load arrives and new instances take time, often 2 to 10 minutes to start, warm caches and pass health checks. A flash sale can go from 1x to 50x in seconds, so the first minutes would fail. Pre-scaling means raising capacity before the known event, for example the evening before, with extra headroom of 2x expected peak, and warming caches and connection pools. Keep autoscaling on as a safety net for surprises. Also ask the cloud provider to raise quotas ahead of time, since limits on instances or load balancer capacity can block a late scale-out.</p>",
+    "<p>Use a first-come-first-served queue with a random or token-based entry, and make it hard to cheat. Steps: give each arriving user a queue position or a signed ticket, let users in at a steady rate the core can handle (for example 500 per minute), and hold their place in line if they refresh. Stop bots with CAPTCHA, one ticket per account and rate limits per IP. If everyone arrives at the same second, a random draw among those who arrived in the first minute is fairer than raw arrival order, which favours fast networks.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Error budget spent by incidents",
+    "python": "# Error budget: SLO of 99.9% over 30 days, spent by incidents.\nwindow_min = 30 * 24 * 60\nslo = 0.999\nbudget = (1 - slo) * window_min\nprint(\"window = %d min, SLO = %.1f%%, budget = %.1f min\" % (window_min, slo * 100, budget))\nincidents = [(\"bad deploy\", 12.0), (\"db failover\", 8.5), (\"dns issue\", 15.0)]\nspent = 0.0\nfor name, mins in incidents:\n    spent += mins\n    print(\"%-12s %5.1f min  -> remaining %5.1f min\" % (name, mins, budget - spent))\nif spent > budget:\n    print(\"budget exhausted: freeze launches, do reliability work\")\nelse:\n    print(\"budget left: %.1f%% - safe to ship risky changes\" % ((budget - spent) / budget * 100))\n# Time O(k) for k incidents, space O(1)\n"
+   },
+   "followUps": [
+    "<p>Because you want to notice and fix problems before you have broken the promise you made to customers. If the SLO and SLA are both 99.9%, the first time you miss the target you have already owed credits. A common setup: SLA 99.9% to customers, internal SLO 99.95%. The gap of about 21 minutes per month is a safety margin that gives teams time to react. The SLO also drives day-to-day decisions, while the SLA is a legal limit that you should rarely come close to.</p>",
+    "<p>Count good and bad events instead of just \"up or down\", and weight by user impact. A request-based SLI is the simplest: successful requests divided by total requests. If a partial outage fails 20% of requests for 30 minutes out of a day with a steady rate, that counts as 6 minutes of full downtime, since 0.2 x 30 = 6. You can also measure per region, per feature or per customer, and use synthetic probes that test key user journeys from outside. Count slow responses as failures if the SLI includes a latency threshold.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Combine several signals, because no single number captures quality. Build an offline evaluation set of real, anonymised examples with expected answers or a scoring rubric, and rerun it on every prompt or model change. Online, track user feedback (thumbs up or down), edit rate and task completion, plus automatic checks such as refusal rate, hallucination checks against source documents, and LLM-as-judge scores sampled on production traffic. Watch for drift: if the provider updates the model, scores can change silently. Alert when a score drops below an agreed threshold, for example 90% of answers rated acceptable.</p>",
+    "<p>Prompt caching stores the processed form of a long, repeated prompt prefix (system instructions, documents, tool definitions), so the model need not reprocess it on each call. It saves both time to first token and money, since cached input tokens are billed at a lower rate. Put the stable part of the prompt first and the changing user text last, because only an exact matching prefix can be reused. Separately, an application-level cache can store whole answers for identical or semantically similar questions, saving the model call entirely, but only where an old answer is still valid.</p>"
+   ]
+  }
+ ]
+}

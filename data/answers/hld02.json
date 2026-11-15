@@ -1,0 +1,114 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Amdahl's law: why more cores give less than 2x",
+    "python": "# Amdahl's law: speedup = 1 / ((1 - p) + p / n)\n# p = fraction of work that can run in parallel, n = number of cores\np = 0.90\nprint(\"parallel fraction p =\", p)\nfor n in [1, 2, 4, 8, 16, 1000]:\n    # the serial part (1 - p) never gets faster\n    speedup = 1 / ((1 - p) + p / n)\n    print(\"cores =\", n, \" speedup =\", round(speedup, 2))\n# Even with endless cores the limit is 1 / (1 - p) = 10x\nprint(\"limit =\", round(1 / (1 - p), 2))\n"
+   },
+   "followUps": [
+    "<p>Diagonal scaling means mixing both: first grow a machine up to a sensible size, then add more machines of that size when it stops being economical.</p><p>Example: run the database on a 16-core box, upgrade it to 32 cores when busy, and once that costs too much add read replicas. You get simple operations early and no hard ceiling later. Most real systems end up here.</p>",
+    "<p>Because part of the work is serial and cores also fight over shared resources. Amdahl's law: speedup = 1 / ((1 - p) + p / n). If 90% of the work is parallel (p = 0.9), 8 cores give 1 / (0.1 + 0.1125) = 4.7x, and even endless cores cap at 10x.</p><p>On top of that, locks, memory bandwidth, cache misses and the network add contention. Measure the real curve before buying bigger machines.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Not by default: a WebSocket connection is a long-lived link to one specific server, so that server holds connection state. The server can still be made nearly stateless by keeping everything else outside.</p><p>Keep only the socket in memory; store user data in a database or Redis; route messages between servers with pub/sub so any server can deliver to any user; and let clients reconnect with a resume token. Then losing a server only drops sockets, not data.</p>",
+    "<p>Put it in a shared store keyed by user or cart id, usually Redis with a TTL, or the database for carts that must survive for days.</p><p>Why: any app server can then handle the next request, a crash loses nothing, and scaling out needs no sticky sessions. A cookie-only cart works for tiny carts but can be edited by the user and is limited to about 4 KB. For a logged-out user, use an anonymous id and merge the cart after login.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It depends on where the session lives, which is exactly what decides how hard logout-everywhere is.</p><ul><li>Sticky sessions: sessions sit in each server's memory, so you must tell every server to delete that user's sessions. It is very hard in practice.</li><li>Central store: delete all keys for the user (keep an index user to session ids). Instant.</li><li>JWT: nothing to delete, so keep a per-user token-version or revocation list, or wait for short expiry. Bump the version and reject older tokens.</li></ul>",
+    "<p>The safest place is an HttpOnly, Secure, SameSite cookie, because JavaScript cannot read it, which limits theft through XSS.</p><p>localStorage is easy but any injected script can steal the token. If you need a header token, keep the access token in memory only, short-lived, and keep the refresh token in an HttpOnly cookie. With cookies, add SameSite or a CSRF token to stop cross-site requests.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Round robin vs least connections with uneven requests",
+    "python": "# 3 servers, requests arrive one per second; some take 30 s, most take 1 s\ndurations = [30, 1, 1, 30, 1, 1, 30, 1, 1, 30, 1, 1]\nN = 3\n\ndef simulate(choose):\n    finish = [[] for _ in range(N)]      # finish times of in-flight requests\n    handled = [0] * N\n    peak = [0] * N\n    for t, d in enumerate(durations):\n        for f in finish:                  # drop finished requests\n            f[:] = [x for x in f if x > t]\n        s = choose(t, finish)\n        finish[s].append(t + d)\n        handled[s] += 1\n        peak[s] = max(peak[s], len(finish[s]))\n    return handled, peak\n\nrr = lambda t, finish: t % N                                   # fixed rotation\nlc = lambda t, finish: min(range(N), key=lambda i: len(finish[i]))  # fewest in-flight\n\nprint(\"durations:\", durations)\nprint(\"round robin       (handled, peak in-flight):\", simulate(rr))\nprint(\"least connections (handled, peak in-flight):\", simulate(lc))\n# Round robin sends every 30 s request to server 0; least connections avoids it.\n"
+   },
+   "followUps": [
+    "<p>Pick two random servers and send the request to the one with fewer active connections. It gets most of the benefit of least connections without needing a global view.</p><p>With N servers, random choice leaves the busiest one with about log N / log log N times the average load, but two choices drops this to about log log N, an exponential improvement. It also avoids every balancer picking the same single least-loaded server at once, which is useful when many load balancers act independently.</p>",
+    "<p>It becomes misleading, because one HTTP/2 connection carries many requests at once. A server with one connection might be handling 100 streams while another with three connections handles 3.</p><p>Better to count in-flight requests (active streams) per server, not connections, or use latency-based balancing such as peak EWMA. Also, long-lived multiplexed connections stay pinned to one server, so spread them with a max connection age so new connections can rebalance.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Liveness asks \"is the process alive or stuck?\" and readiness asks \"can it serve traffic right now?\". They trigger different actions.</p><p>A failed liveness check means restart the instance. A failed readiness check means keep it running but take it out of the load balancer (warming up, draining, or its dependency is down). Never make liveness depend on the database: a DB outage would then restart every healthy app server and make things worse.</p>",
+    "<p>Keep serving, do not give up: use fail-open (panic mode) and send traffic to all targets anyway.</p><p>If every server is marked down, the checks are more likely wrong (a shared dependency blip, a bad health endpoint) than every server really dead. Returning errors to 100% of users guarantees an outage, while trying the servers might work. Envoy calls this panic threshold: below e.g. 50% healthy hosts it ignores health status. Also alert loudly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put the load balancer in a redundant pair or managed fleet, and the thing that finds it in a redundant layer too: DNS.</p><p>Common answers: a managed cloud LB (already spread over zones), an active-passive pair sharing a floating IP via keepalived/VRRP, or many LB nodes behind anycast or ECMP routing. The chain ends at DNS, which is itself replicated by many providers' name servers, so you have to accept that something sits at the top and make it very reliable.</p>",
+    "<p>Examples: an expired TLS certificate (every request fails at once), one shared secret or config service, a single DNS provider, one availability zone, or one person who knows how to deploy.</p><p>Fix by automating certificate renewal with alerts 30 days ahead, caching the last good config locally, using two DNS providers or zones, and writing runbooks so anyone on call can act. These are found by asking \"what if this disappears?\" for every item in the request path.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Availability of parallel and series components",
+    "python": "# Parallel: all copies must fail.  Series: every tier must be up.\ndef parallel(a, n):\n    return 1 - (1 - a) ** n\n\nlb = parallel(0.999, 2)    # 2 load balancers\napp = parallel(0.99, 3)    # 3 app servers\ndb = 0.9995                # 1 database\ntotal = lb * app * db      # tiers in series: multiply\nprint(\"LB tier  =\", round(lb, 6))\nprint(\"App tier =\", round(app, 6))\nprint(\"DB       =\", db)\nprint(\"Total    =\", round(total, 6))\nprint(\"Downtime hours/year =\", round((1 - total) * 8760, 2))\n# With a standby DB the weakest link improves a lot\ntotal2 = lb * app * parallel(0.9995, 2)\nprint(\"With DB standby =\", round(total2, 6), \" hours/year =\", round((1 - total2) * 8760, 2))\n",
+    "js": "// Parallel: all copies must fail.  Series: every tier must be up.\nfunction parallel(a, n) { return 1 - Math.pow(1 - a, n); }\nfunction r(x, d) { return Number(x.toFixed(d)); }\n\nconst lb = parallel(0.999, 2);   // 2 load balancers\nconst app = parallel(0.99, 3);   // 3 app servers\nconst db = 0.9995;               // 1 database\nconst total = lb * app * db;     // tiers in series: multiply\nconsole.log(\"LB tier  =\", r(lb, 6));\nconsole.log(\"App tier =\", r(app, 6));\nconsole.log(\"DB       =\", db);\nconsole.log(\"Total    =\", r(total, 6));\nconsole.log(\"Downtime hours/year =\", r((1 - total) * 8760, 2));\n// With a standby DB the weakest link improves a lot\nconst total2 = lb * app * parallel(0.9995, 2);\nconsole.log(\"With DB standby =\", r(total2, 6), \" hours/year =\", r((1 - total2) * 8760, 2));\n",
+    "java": "public class Main {\n    // Parallel: all copies must fail.  Series: every tier must be up.\n    static double parallel(double a, int n) { return 1 - Math.pow(1 - a, n); }\n    static String r(double x, int d) { return String.format(\"%.\" + d + \"f\", x); }\n\n    public static void main(String[] args) {\n        double lb = parallel(0.999, 2);   // 2 load balancers\n        double app = parallel(0.99, 3);   // 3 app servers\n        double db = 0.9995;               // 1 database\n        double total = lb * app * db;     // tiers in series: multiply\n        System.out.println(\"LB tier  = \" + r(lb, 6));\n        System.out.println(\"App tier = \" + r(app, 6));\n        System.out.println(\"DB       = \" + db);\n        System.out.println(\"Total    = \" + r(total, 6));\n        System.out.println(\"Downtime hours/year = \" + r((1 - total) * 8760, 2));\n        // With a standby DB the weakest link improves a lot\n        double total2 = lb * app * parallel(0.9995, 2);\n        System.out.println(\"With DB standby = \" + r(total2, 6) + \"  hours/year = \" + r((1 - total2) * 8760, 2));\n    }\n}\n",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// Parallel: all copies must fail.  Series: every tier must be up.\ndouble parallel(double a, int n) { return 1 - pow(1 - a, n); }\nstring r(double x, int d) {\n    char buf[64];\n    snprintf(buf, sizeof buf, \"%.*f\", d, x);\n    return buf;\n}\n\nint main() {\n    double lb = parallel(0.999, 2);   // 2 load balancers\n    double app = parallel(0.99, 3);   // 3 app servers\n    double db = 0.9995;               // 1 database\n    double total = lb * app * db;     // tiers in series: multiply\n    cout << \"LB tier  = \" << r(lb, 6) << \"\\n\";\n    cout << \"App tier = \" << r(app, 6) << \"\\n\";\n    cout << \"DB       = \" << db << \"\\n\";\n    cout << \"Total    = \" << r(total, 6) << \"\\n\";\n    cout << \"Downtime hours/year = \" << r((1 - total) * 8760, 2) << \"\\n\";\n    // With a standby DB the weakest link improves a lot\n    double total2 = lb * app * parallel(0.9995, 2);\n    cout << \"With DB standby = \" << r(total2, 6) << \"  hours/year = \" << r((1 - total2) * 8760, 2) << \"\\n\";\n}\n",
+    "csharp": "using System;\nusing System.Globalization;\n\nclass Program\n{\n    // Parallel: all copies must fail.  Series: every tier must be up.\n    static double Parallel(double a, int n) { return 1 - Math.Pow(1 - a, n); }\n    static string R(double x, int d) { return x.ToString(\"F\" + d, CultureInfo.InvariantCulture); }\n\n    static void Main()\n    {\n        double lb = Parallel(0.999, 2);   // 2 load balancers\n        double app = Parallel(0.99, 3);   // 3 app servers\n        double db = 0.9995;               // 1 database\n        double total = lb * app * db;     // tiers in series: multiply\n        Console.WriteLine(\"LB tier  = \" + R(lb, 6));\n        Console.WriteLine(\"App tier = \" + R(app, 6));\n        Console.WriteLine(\"DB       = \" + db.ToString(CultureInfo.InvariantCulture));\n        Console.WriteLine(\"Total    = \" + R(total, 6));\n        Console.WriteLine(\"Downtime hours/year = \" + R((1 - total) * 8760, 2));\n        // With a standby DB the weakest link improves a lot\n        double total2 = lb * app * Parallel(0.9995, 2);\n        Console.WriteLine(\"With DB standby = \" + R(total2, 6) + \"  hours/year = \" + R((1 - total2) * 8760, 2));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>99.99% is about 52.6 minutes of downtime per year, or roughly 4.4 minutes a month.</p><p>Calculation: 0.0001 x 365 x 24 x 60 = 52.56 minutes. For comparison, 99.9% is 8.76 hours and 99.999% is 5.26 minutes a year. At four nines there is no time for a human to wake up and fix things, so recovery must be automatic.</p>",
+    "<p>Because the formula assumes independent failures, and real failures are correlated, plus it ignores failover time and planned work.</p><ul><li>One bad deploy or config push hits all copies at once.</li><li>A zone or power outage kills several \"independent\" servers together.</li><li>Failover takes time (say 30 s), which counts as downtime even with a standby.</li><li>Shared dependencies (DNS, auth, certificates) appear as hidden single points.</li></ul><p>So measure with real uptime data and keep an error budget.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Async read replica lag and read-your-writes routing",
+    "python": "# Primary applies writes at once; the replica applies them LAG ticks later\nLAG = 2\nprimary, replica = {}, {}\nlog = []                      # (apply_at_tick, key, value)\n\ndef write(tick, k, v):\n    primary[k] = v\n    log.append((tick + LAG, k, v))\n\ndef tick_replica(tick):\n    for e in [e for e in log if e[0] <= tick]:\n        replica[e[1]] = e[2]\n        log.remove(e)\n\nwrite(0, \"name\", \"Asha\")\nlast_write_tick = 0\nfor t in range(0, 4):\n    tick_replica(t)\n    naive = replica.get(\"name\")                       # always read the replica\n    # read-your-writes: if I wrote recently, read the primary instead\n    smart = primary[\"name\"] if t - last_write_tick < LAG else replica.get(\"name\")\n    print(\"tick\", t, \"naive read =\", naive, \" read-your-writes =\", smart)\n# Naive reads show None at ticks 0 and 1 (stale); the smart reader sees Asha.\n"
+   },
+   "followUps": [
+    "<p>Synchronous replication waits for the replica to confirm before the write succeeds, so no acknowledged data is lost but every write is slower and blocks if the replica is down. Asynchronous acknowledges immediately, so it is fast but a crash can lose the last few writes and replicas serve stale data.</p><p>Common compromise: semi-synchronous, one sync replica in another zone plus async ones. Example: sync adds a cross-zone round trip of about 1 to 2 ms to every commit.</p>",
+    "<p>Use a proxy or driver that sends writes (and read-your-writes cases) to the primary and plain reads to replicas, based on the statement type or an explicit read-only flag.</p><p>Examples: ProxySQL, PgBouncer with a router, or application-level read/write data sources. Add rules: reads inside a transaction go to the primary; after a write, pin the user to the primary for a few seconds, or compare the replica's log position to the one returned by the write. Drop replicas whose lag exceeds a threshold, e.g. 5 seconds.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>First measure where the time goes, then take pressure off the database in cheapest-first order.</p><ol><li>Find slow queries; add missing indexes and fix N+1 queries.</li><li>Cache hot reads in Redis (a 90% hit rate cuts reads 10x).</li><li>Add read replicas for the rest of the reads.</li><li>Batch or queue writes.</li><li>Only then consider scaling the primary up or sharding.</li></ol><p>Most DB bottlenecks at this size are bad queries, not hardware.</p>",
+    "<p>Split only when the team or deployment cadence, not the user count, becomes the bottleneck. Typical triggers: many teams blocking each other on one release, one part needing very different scaling (video encoding vs login), or a failure in one area taking everything down.</p><p>Before 10M users a modular monolith behind a load balancer often works fine. Microservices add network calls, versioning, tracing and data-consistency problems, so extract the one clearly painful piece first.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Autoscale on a metric that actually rises as the servers get busy and that you can scale out of: CPU utilisation for compute-bound services, or requests per second per instance, or queue depth for workers.</p><p>Example: target 60% average CPU so a spike has headroom while new instances take 2 to 3 minutes to start. Use latency (p95) as an alert, not the trigger, since latency can also be high because of a slow database where more servers will not help.</p>",
+    "<p>Cap the number of connections per server and put a pooler in front of the DB, so more app servers do not mean more DB connections.</p><p>Example: 50 servers x 20 connections = 1000, which can exceed what Postgres handles well (a few hundred), so use PgBouncer or smaller pools. Also add a cache for reads, add rate limiting, and scale servers gradually with a queue between app and database for heavy writes, watching DB CPU as you go.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Anycast means many servers in different places announce the same IP address, and the network routes each client to the nearest one.</p><p>The same IP serves everyone, so there is no single machine to fail: if a site dies it stops announcing the address and traffic flows to the next-nearest site within seconds. CDNs and public DNS (like 8.8.8.8) use it. It suits short, stateless connections; long TCP connections can break if routing shifts mid-session.</p>",
+    "<p>Split brain is when both load balancers think they are the active one and both take the floating IP, so traffic goes to two places or neither works properly.</p><p>It happens when the heartbeat link between them breaks even though both are alive. Reduce the risk with redundant heartbeat paths (two networks), a quorum or third witness node, and fencing or STONITH (power off the other node). The rule is that a node that cannot confirm it holds the majority must not take the address.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Reconnect delays: no jitter vs full jitter",
+    "python": "import random\n\nrandom.seed(7)\nBASE, CAP = 1.0, 60.0\nclients = 8\n\ndef delay(attempt, jitter):\n    d = min(CAP, BASE * 2 ** attempt)        # exponential backoff, capped\n    return random.uniform(0, d) if jitter else d   # full jitter = random in [0, d]\n\nfor attempt in [1, 3]:\n    plain = [delay(attempt, False) for _ in range(clients)]\n    jit = sorted(round(delay(attempt, True), 1) for _ in range(clients))\n    print(\"attempt\", attempt)\n    print(\"  no jitter  :\", plain, \"-> all clients return at the same moment\")\n    print(\"  full jitter:\", jit, \"-> spread over the window\")\n"
+   },
+   "followUps": [
+    "<p>Spread the reconnects over time and let connected servers shed the load in controlled steps. Slowly rebalance by asking some clients to reconnect.</p><p>Steps: have each overloaded server send a \"reconnect in X seconds\" message to a small random fraction of clients, with jitter; move a few percent per minute. Newly added servers get a slow-start weight. Aim for even counts, e.g. 100k connections over 5 servers = 20k each, and stop when within about 10%.</p>",
+    "<p>Deploy a few servers at a time and drain each gently, so only a small share of clients reconnect at once and the rest can absorb them.</p><p>Before stopping a server, mark it not-ready, then send clients a polite close with a random reconnect delay (for example 0 to 60 s) and a resume token. Roll out 5 to 10% of the fleet per batch, wait until connection counts recover, and keep spare capacity so a batch never pushes the others past their limit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Blue-green swaps all traffic between two full environments and gives instant rollback; canary sends a small share of traffic to the new version first and catches problems with fewer users hurt.</p><p>Pick blue-green when you want an atomic switch and can afford double capacity, e.g. a risky migration with a quick fallback. Pick canary when real traffic is the best test: start at 1%, then 10%, 50%, 100%, watching error rate and latency at each step. Canary is cheaper and safer for gradual rollouts.</p>",
+    "<p>Use the expand and contract pattern so old and new code both work against the schema during the overlap.</p><ol><li>Expand: add the new column (nullable), deploy code that writes both.</li><li>Backfill old rows in small batches.</li><li>Deploy code that reads the new column.</li><li>Contract: drop the old column later.</li></ol><p>Never rename or drop in the same release as the code change, because for several minutes old servers still run.</p>"
+   ]
+  }
+ ]
+}
