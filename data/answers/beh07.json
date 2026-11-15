@@ -38,15 +38,8 @@
   {
    "code": null,
    "followUps": [
-    "<p>I use the <b>\"one more layer\"</b> rule: for each story I write down the next three questions someone would ask and answer them aloud. Example for a latency story: \"How did you measure it? What did you try that failed? What would you do with double the time?\" If I run out of facts, I do not invent them. I pick a different story where I have the detail, because they will compare notes.</p>",
-    "<p>Say so plainly, then give the <b>closest honest example</b>. For instance: \"I haven't had exactly that, but the nearest is a time I...\" and name how it differs. If nothing is close, I ask a clarifying question to find the angle. Inventing a story is far riskier than a short pause. A pause of five seconds to think reads as thoughtful. A made-up story that falls apart at the second \"why?\" reads as dishonest.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>The usual failure is <b>vagueness about my personal role</b>. The first answer sounds fine, the second adds a general reason, and by the third follow-up (\"what exactly did you write?\") I only have \"we decided\" and no numbers. Example: I say \"we cut latency by 40%\", but cannot explain what I changed or how I measured it. Fix: for every story know the one thing I did, one metric with before and after, and one thing that failed.</p>",
-    "<p>Use <b>one story, told twice with different spotlights</b>. Example: a rushed release with a crash. For Microsoft I stretch the mistake and the lesson: I skipped old-device testing, then added it to CI. For Apple I stretch the craft: I traced the memory spike and simplified an animation. The facts never change, only what I expand. This lets me prepare fewer, deeper stories and handle either company's follow-ups.</p>"
+    "<p>Say so plainly, then give the <b>closest honest example</b>. For instance: \"I haven't had exactly that, but the nearest is a time I...\" and name how it differs. If nothing is close, I ask a clarifying question to find the angle. Inventing a story is far riskier than a short pause. A pause of five seconds to think reads as thoughtful. A made-up story that falls apart at the second \"why?\" reads as dishonest.</p>",
+    "<p>The usual failure is <b>vagueness about my personal role</b>. The first answer sounds fine, the second adds a general reason, and by the third follow-up (\"what exactly did you write?\") I only have \"we decided\" and no numbers. Example: I say \"we cut latency by 40%\", but cannot explain what I changed or how I measured it. Fix: for every story know the one thing I did, one metric with before and after, and one thing that failed.</p>"
    ]
   },
   {
