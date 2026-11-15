@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The integration layer: a real PostgreSQL test catches it, because only a real database enforces a <code>UNIQUE</code> constraint. A unit test with a fake repository will happily store two equal emails.</p><p>Write a test that creates the same email twice through the endpoint and expects 409. That proves both the migration contains the constraint and the code maps <code>IntegrityError</code> to a clean error instead of a 500.</p>",
+    "<p>Keep the fast checks first and run everything else in parallel, so the slowest single job sets the total time, not the sum.</p><ul><li>Static checks (ruff, mypy) run in about a minute and fail early.</li><li>Split tests across workers with xdist or CI shards.</li><li>Cache the dependency install and the Docker layers.</li><li>Cancel outdated runs; move fuzzing and mutation to nightly.</li></ul><p>Example: 24 minutes of tests on 4 shards is about 6 minutes plus setup.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>autouse=True</code> makes pytest run a fixture for every test in its scope without the test asking for it. It is handy for things that must always happen, such as clearing <code>dependency_overrides</code> after each test or blocking network access.</p><p>It is dangerous when it hides work: an autouse fixture that starts a database slows every test, including pure unit tests, and readers cannot see why a test behaves as it does. Keep autouse for cheap, safety-only fixtures and request everything else by name.</p>",
+    "<p>pytest reorders tests so each parameter value of a module-scoped fixture is used by all its tests together, then moves on. That way the fixture is built once per parameter instead of once per test.</p><p>Example: a module fixture parametrized with <code>[\"sqlite\", \"postgres\"]</code> and four tests runs all four against sqlite, tears sqlite down, then runs all four against postgres: 2 setups, not 8. The cost is that the run order differs from file order, so tests must not depend on it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Set the loop scope of the async engine fixture and of the tests to the same value, <code>session</code>, so they share one event loop. A connection pool created in one loop cannot be used from another.</p><pre><code># pytest.ini\nasyncio_default_fixture_loop_scope = session\nasyncio_default_test_loop_scope = session\n# or per test: @pytest.mark.asyncio(loop_scope=\"session\")</code></pre><p>These option names exist in recent pytest-asyncio versions; check the one you pin. Without matching scopes you get \"attached to a different loop\" errors.</p>",
+    "<p>Use <code>AsyncClient</code> and stream the body instead of reading it all at once, then assert on the chunks as they arrive.</p><pre><code>async with client.stream(\"GET\", \"/events\") as r:\n    assert r.status_code == 200\n    lines = [l async for l in r.aiter_lines() if l]\nassert lines[0] == \"data: 1\"</code></pre><p>Make the stream finite in the test (a fake source that yields 3 items) or it never ends. Also test that a client disconnect stops the producer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Rolled-back test isolation with savepoints",
+    "python": "import sqlite3\n\n# isolation_level=None: we control BEGIN/SAVEPOINT ourselves\nconn = sqlite3.connect(\":memory:\", isolation_level=None)\nconn.execute(\"CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE)\")\n\ndef run_test(name, body):\n    conn.execute(\"BEGIN\")                 # outer transaction owned by the fixture\n    conn.execute(\"SAVEPOINT app\")         # the app's \"transaction\" becomes a savepoint\n    body()\n    conn.execute(\"RELEASE app\")           # the app's commit only releases the savepoint\n    n = conn.execute(\"SELECT COUNT(*) FROM users\").fetchone()[0]\n    print(name, \"- rows seen inside test:\", n)\n    conn.execute(\"ROLLBACK\")              # fixture teardown: everything disappears\n\ndef test_a():\n    conn.execute(\"INSERT INTO users (email) VALUES ('a@example.com')\")\n\ndef test_b():\n    # same email as test_a: passes only because test_a was rolled back\n    conn.execute(\"INSERT INTO users (email) VALUES ('a@example.com')\")\n\nrun_test(\"test_a\", test_a)\nrun_test(\"test_b\", test_b)\nprint(\"rows left after all tests:\", conn.execute(\"SELECT COUNT(*) FROM users\").fetchone()[0])\n# Limit: a second connection would never see the uncommitted rows.\n"
+   },
+   "followUps": [
+    "<p>Give every xdist worker its own database, otherwise workers see each other's data and tests fail at random. A transaction per test is not enough because migrations and shared tables are common to all.</p><p>Use the <code>worker_id</code> fixture (\"gw0\", \"gw1\") to name a database such as <code>test_gw0</code>, create it from a migrated template, and drop it at the end. Four workers means four databases, so the session fixture runs four times in total, once per worker.</p>",
+    "<p>Open two real transactions on two connections, start both requests at the same time, and assert exactly one wins. The rolled-back single-transaction setup cannot do this, so use real commits and TRUNCATE cleanup.</p><pre><code>r = await asyncio.gather(post(), post())\nassert sorted(x.status_code for x in r) == [201, 409]</code></pre><p>The defence is a unique constraint or <code>SELECT ... FOR UPDATE</code>; the test proves it holds. Repeat the race 20 to 50 times to make a flaky pass unlikely.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You end up testing that your code calls your other code in a certain way, not that it works. Mocking your own internals copies the implementation into the test, so a harmless refactor breaks the tests, and a real bug can pass because the mock behaves as you imagined.</p><p>Example: you mock <code>repo.save</code>, rename it to <code>repo.add</code>, and every test fails although behaviour is the same. Worse, with a bare <code>Mock</code> the typo <code>repo.sav()</code> silently passes. Use a fake and assert on results instead.</p>",
+    "<p>Run the same contract test suite against both the fake and the real implementation. If a behaviour differs, one of the two runs fails.</p><p>Example: a test says \"saving a second charge with the same idempotency key returns the first charge\". The in-memory fake passes, but the real sandbox returns an error, so the suite shows the fake is wrong. Run the real-side suite nightly and the fake-side suite on every pull request. Also use <code>autospec</code> so mocks follow the real signatures.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Retry client tested with scripted failures",
+    "python": "# A retry client tested with a scripted provider and a fake sleep.\nclass GiveUp(Exception):\n    pass\n\ndef call_with_retry(send, sleep, max_attempts=4, base=0.5):\n    key = \"idem-123\"                       # same key on every attempt\n    for attempt in range(1, max_attempts + 1):\n        status = send(key)\n        if status == 201:\n            return attempt\n        if status in (400, 402):           # client errors are never retried\n            raise GiveUp(\"client error %d\" % status)\n        sleep(base * 2 ** (attempt - 1))   # exponential backoff\n    raise GiveUp(\"max attempts reached\")\n\ndef scripted(results, log):\n    it = iter(results)\n    def send(key):\n        log.append(key)\n        r = next(it)\n        if r == \"timeout\":\n            return 503                     # treat timeout like a retryable failure\n        return r\n    return send\n\nlog, delays = [], []\nattempts = call_with_retry(scripted([\"timeout\", 503, 429, 201], log), delays.append)\nprint(\"script: timeout, 503, 429, 201\")\nprint(\"attempts:\", attempts, \"| delays:\", delays, \"| same key:\", len(set(log)) == 1)\n\nlog, delays = [], []\ntry:\n    call_with_retry(scripted([402, 201], log), delays.append)\nexcept GiveUp as e:\n    print(\"402 ->\", e, \"| calls:\", len(log), \"| delays:\", delays)\n"
+   },
+   "followUps": [
+    "<p>Make the random source injectable and either seed it or replace it with a fixed function. Then the delay is a known number, not a range you cannot assert.</p><pre><code>delay = base * 2**n + jitter(0, base)\n# test: jitter = lambda a, b: b  -&gt; exactly 1.0 + 0.5\n# or random.Random(42) and assert 0 &lt;= delay &lt;= cap</code></pre><p>Also add one test that checks the bounds over many calls (never negative, never above the cap), since a fixed jitter cannot catch an out-of-range formula.</p>",
+    "<p>A circuit breaker wraps the retrying client: after N consecutive failures it opens and rejects calls immediately for a cool-down, then lets one trial call through. Retries handle a blip; the breaker protects you from a long outage.</p><p>Test it with a fake clock, no real sleeping: 5 failures open it, a call at +1 s is rejected without touching the provider, a call at +31 s is allowed (half-open), success closes it, failure reopens it. Assert provider call counts at each step.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Property test: keyset pagination ties",
+    "python": "import random\n\n# Property: walking all pages returns every item exactly once.\n# Items sorted by (ts, id). Page after a cursor, then check a property.\ndef page_after(items, cursor, size, key):\n    rest = [x for x in sorted(items, key=lambda x: (x[0], x[1])) if cursor is None or key(x) > cursor]\n    return rest[:size]\n\ndef walk(items, size, key):\n    seen, cursor = [], None   # follow the last row of each page\n    while True:\n        page = page_after(items, cursor, size, key)\n        if not page:\n            return seen\n        seen += page\n        cursor = key(page[-1])\n\nrng = random.Random(7)\nfor name, key in ((\"cursor=ts only   \", lambda x: x[0]),\n                  (\"cursor=(ts, id)  \", lambda x: (x[0], x[1]))):\n    bad = None\n    for trial in range(200):\n        n = rng.randint(0, 8)\n        # tiny timestamp set forces ties, the risky region\n        items = [(rng.choice([1, 2]), i) for i in range(n)]\n        got = walk(items, rng.randint(1, 3), key)\n        # a ts-only cursor skips rows that tie on ts\n        if sorted(got) != sorted(items):   # property: every item exactly once\n            bad = (items, got)\n            break\n    print(name, \"property holds\" if bad is None else \"FAILS on %s -> got %d of %d items\" % (bad[0], len(bad[1]), len(bad[0])))\n"
+   },
+   "followUps": [
+    "<p>Cut the number of examples and the cost of each. Hypothesis defaults to 100 examples, which is too slow for heavy tests, so set a lower <code>max_examples</code> on pull requests and a high one nightly via a settings profile.</p><ul><li>Test pure functions, not the database or network.</li><li>Keep strategies small (bounded lists and text).</li><li>Use a stored example database so past failures replay first.</li><li>Set a <code>deadline</code> to catch slow cases.</li></ul><p>Example: 25 examples on PRs, 2000 nightly.</p>",
+    "<p>It lets Hypothesis test a sequence of operations on a stateful object, not just one input. You describe rules (actions) and invariants, and it generates random sequences and shrinks a failure to the shortest failing sequence.</p><pre><code>class CartMachine(RuleBasedStateMachine):\n    @rule(sku=skus)\n    def add(self, sku): ...\n    @invariant()\n    def total_matches(self): ...</code></pre><p>Example: add, remove, add, apply coupon, then total goes negative. It finds order-dependent bugs example tests miss.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because both sides can be changed without anyone noticing, an added enum value can break a consumer. The server has not removed anything, but a client with a strict enum, a <code>switch</code> without a default, or generated code that rejects unknown values will crash on the new value.</p><p>Example: you add status <code>\"refunded\"</code> to <code>[\"paid\", \"failed\"]</code>; an old mobile app throws while parsing. Mitigate by telling clients to treat unknown values as a fallback, or by adding new values only behind a version or a request flag.</p>",
+    "<p>Pact is worth its cost when you have many internal consumers and you need to know exactly which fields each one uses. OpenAPI diffing only knows what the document says, so it must flag every possible break, even ones nobody uses.</p><p>Use OpenAPI diffing for public APIs and few consumers. Use Pact when 10 teams consume your service and you want to remove a field safely: if no published pact uses it, you can. The price is a broker and consumer teams keeping their pacts up to date.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why coverage is not enough: mutants",
+    "python": "# Coverage vs mutation testing on a tiny function.\ndef can_order_correct(age):  return age >= 18\ndef can_order_mutant1(age):  return age > 18      # boundary mutant\ndef can_order_mutant2(age):  return age >= 19     # boundary mutant\ndef can_order_mutant3(age):  return age <= 18     # inverted mutant\n\ndef weak_tests(f):\n    # runs every line (100% coverage) but never checks the boundary\n    return f(30) is True and f(5) is False\n\ndef strong_tests(f):\n    return f(30) is True and f(5) is False and f(18) is True and f(17) is False\n\nmutants = [can_order_mutant1, can_order_mutant2, can_order_mutant3]\nfor name, suite in ((\"weak  \", weak_tests), (\"strong\", strong_tests)):\n    assert suite(can_order_correct)        # both suites pass on real code\n    killed = sum(1 for m in mutants if not suite(m))\n    print(name, \"suite: killed %d of %d mutants\" % (killed, len(mutants)))\n# Surviving mutants point at missing assertions (here: age 18).\n"
+   },
+   "followUps": [
+    "<p>Make it cheap by running it only where it matters and only on what changed. A full run mutates every line and reruns the tests each time, which can take hours.</p><ul><li>Run it nightly or weekly on critical modules, not on every PR.</li><li>On PRs, mutate only the changed files or lines.</li><li>Run only the tests that cover the mutated code, in parallel.</li><li>Stop a mutant at its first failing test.</li></ul><p>Example: 400 mutants on 3 changed files, 12 s each, on 8 workers is about 10 minutes.</p>",
+    "<p>Track what shows whether tests catch real problems, not just run code.</p><ul><li>Mutation score on critical modules.</li><li>Diff coverage on each pull request.</li><li>Escaped defects: bugs found in production per release.</li><li>Flaky-test rate and time to fix a failure.</li><li>Share of bug fixes that include a regression test.</li></ul><p>Example target: escaped defects falling from 6 to 2 per quarter says more than coverage moving from 92% to 94%.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a rerun hides a real problem and teaches the team to ignore red builds. A test that passes on retry is still telling you something is wrong: shared state, a race, or a time dependency that can also bite users.</p><p>Reruns also cost time: a 10-minute suite with a 5% flaky rate and two retries wastes hours per week across the team. Allow reruns only as a short-term measure with a recorded failure and an owner, and quarantine tests that keep flapping so main stays trustworthy.</p>",
+    "<p>Run the suite in random order and compare, or check state after each test. If a test fails only after another, something leaked.</p><ul><li>Use pytest-randomly and replay the failing seed.</li><li>Add an autouse fixture that asserts after each test that <code>dependency_overrides</code> is empty and the tables are empty.</li><li>Run each test alone and as a pair to bisect the polluter.</li></ul><p>Example: the check fails right after <code>test_login</code>, so that test leaked an override.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Choose by the toolchain you already have and how strict you need to be. mypy is the default and has a good Pydantic and SQLAlchemy plugin story; Pyright is faster, has strong inference, and powers the Pylance editor, so developers see the same errors they get in CI.</p><p>Use mypy if your team relies on its plugins; use Pyright if speed and editor consistency matter. Pick one for CI, because the two disagree in places. Example: a 1-minute mypy run versus about 10 seconds with Pyright on the same code.</p>",
+    "<p>SQLAlchemy 2.0 typed models make the checker understand columns without a plugin. Declaring <code>Mapped[int]</code> and <code>mapped_column()</code> lets mypy know that <code>user.id</code> is an <code>int</code> and that <code>session.scalars(select(User))</code> yields <code>User</code>.</p><pre><code>class User(Base):\n    id: Mapped[int] = mapped_column(primary_key=True)\n    name: Mapped[str | None]</code></pre><p>The old mypy plugin is no longer needed, and wrong attribute types are caught at check time instead of at run time.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run migrations as a separate step before the new code starts, and make them backward compatible so the old and new versions both work while the rollout happens. A migration that drops a column the old version still reads breaks live traffic.</p><p>Use expand then contract: first add the nullable column, deploy the code, backfill, and only later drop the old column in a second release. Run <code>alembic upgrade head</code> as a one-off job and fail the deploy if it fails. Test the migration on a copy of production data first.</p>",
+    "<p>Split by measured test time so every shard takes about the same, not by file count. Use a tool such as pytest-split or the CI's timing data to balance them.</p><p>Example: 20 minutes of tests on 5 shards is about 4 minutes each plus 1 minute of setup, so 5 minutes total. Each shard needs its own database, and a final job merges the coverage files. Stop adding shards when setup time starts to dominate, since 20 shards of 1-minute tests still pay setup 20 times.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run the same recorded or sandbox examples against the fake and the real client, and fail when the shapes differ. The fake must not be hand-written from memory of the docs.</p><ul><li>Store a few real responses (keys removed) and validate both the fake and your parser against them.</li><li>Run a small nightly test against the provider sandbox.</li><li>Pin the provider SDK version and read its changelog on upgrades.</li></ul><p>When the nightly test fails, the format changed; update the fixture and the fake together.</p>",
+    "<p>Treat a prompt change like a code change: run a fixed evaluation set before merging and block the merge if the score drops. Unit tests cannot judge model quality, so the gate is a scored evaluation job.</p><p>Example: 50 saved questions with expected facts, scored by exact checks or a grader, run on the old and new prompt. Fail if accuracy falls from 90% to below 88%, or if the format check (valid JSON) fails on even one case. Keep the set small on PRs and larger nightly because each run costs money.</p>"
+   ]
+  }
+ ]
+}

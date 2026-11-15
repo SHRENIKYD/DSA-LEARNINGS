@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Same key, same partition: ordering per order id",
+    "python": "import zlib\n\nPARTITIONS = 3\nlog = {p: [] for p in range(PARTITIONS)}  # each partition is an append-only list\n\ndef partition_for(key):\n    # Kafka uses murmur2(key) % partitions; crc32 stands in for the idea\n    return zlib.crc32(key.encode()) % PARTITIONS\n\nevents = [(\"order-1\", \"created\"), (\"order-2\", \"created\"), (\"order-1\", \"paid\"),\n          (\"order-3\", \"created\"), (\"order-2\", \"paid\"), (\"order-1\", \"shipped\")]\n\nfor key, what in events:\n    p = partition_for(key)\n    log[p].append((key, what))  # offset = index in the list\n\nfor p, records in log.items():\n    print(\"partition\", p, records)\n\n# Ordering holds per key because one key always lands in one partition\nfor key in (\"order-1\", \"order-2\", \"order-3\"):\n    seq = [w for recs in log.values() for k, w in recs if k == key]\n    print(key, \"->\", seq, \"in partition\", partition_for(key))\n\n# Changing the partition count remaps keys: ordering breaks at the switch\nPARTITIONS = 4\nprint(\"after growing to 4 partitions, order-1 ->\", partition_for(\"order-1\"))\n"
+   },
+   "followUps": [
+    "<p>Ordering is lost unless you keep the key: a retry topic is a different topic, so the record gets a new offset and sits behind other records. Produce to the retry topic with the same key, so every retry of one order lands in one partition of that topic. Even so, order <code>created</code> fails and goes to retry while <code>paid</code> succeeds on the main topic: <code>paid</code> is now processed first. To stay ordered, either block the key until the earlier event succeeds, or make handlers tolerate out-of-order events using version numbers.</p>",
+    "<p>A hot key is one key that gets far more traffic than the rest, so its single partition becomes the bottleneck. First check whether you truly need order for that key. If not, add a salt such as <code>key + \"-\" + (n % 8)</code> to spread it over 8 partitions. If you do, keep one partition but make the consumer fast: batch work, or hand records to a per-key queue. Example: 10,000 msgs/s on one key with 1 ms of work each needs about 10 s of work per second, so one thread cannot keep up without batching.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Besides crashes, a rebalance happens when a member joins or leaves cleanly, when a consumer misses <code>max.poll.interval.ms</code> or the session timeout, when the subscription changes (a regex pattern matches a new topic), or when partitions are added to a subscribed topic. A rolling deploy of 6 pods can cause 6 or more rebalances unless you use static membership or cooperative assignment. Each one pauses at least part of the group, so lag spikes.</p>",
+    "<p>The generation id numbers each version of the group's membership; it goes up by one on every rebalance. Requests such as commits and heartbeats carry it, and the coordinator rejects any with an old generation. This fences a slow consumer: if it was removed in generation 7 and still tries to commit under generation 6, the commit fails (<code>CommitFailedException</code>), so it cannot overwrite offsets that the new owner now controls.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A transaction only covers writes to Kafka, because Kafka can abort and roll back its own records but cannot unsend an email. If the producer sends the email and then the transaction aborts, the email is already gone and the retry sends it again. The usual fix is to treat the email as an at-least-once side effect: use a dedupe key such as the order id, send it through an idempotent provider, or write an outbox row and let a separate sender mark it done.</p>",
+    "<p>Zombie fencing stops an old instance of a producer, which the cluster thinks is dead but is still running, from writing alongside its replacement. Each transactional producer has a stable <code>transactional.id</code> and an epoch. When a new instance starts with the same id, the epoch rises, and the broker rejects writes from the older epoch with <code>ProducerFencedException</code>. Without this, a paused instance could wake up and commit duplicates of work the new one already did.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Log compaction keeps the latest value per key",
+    "python": "# A compacted topic keeps the latest value per key; None is a tombstone\nlog = [(\"u1\", \"alice\"), (\"u2\", \"bob\"), (\"u1\", \"alice-v2\"),\n       (\"u3\", \"carol\"), (\"u2\", None), (\"u1\", \"alice-v3\")]\n\nprint(\"original log (offset, key, value):\")\nfor off, (k, v) in enumerate(log):\n    print(\" \", off, k, v)\n\ndef compact(records):\n    latest = {}\n    for off, (k, v) in enumerate(records):\n        latest[k] = (off, v)  # a later record replaces the earlier one\n    # keep original offsets, drop tombstones (after delete.retention.ms)\n    kept = [(off, k, v) for k, (off, v) in latest.items() if v is not None]\n    return sorted(kept)\n\nprint(\"after compaction (offsets unchanged):\")\nfor off, k, v in compact(log):\n    print(\" \", off, k, v)\n\n# A new consumer rebuilds current state from the compacted log\nstate = {k: v for _, k, v in compact(log)}\nprint(\"rebuilt state:\", state)\n"
+   },
+   "followUps": [
+    "<p>You write a tombstone: a record with the user's key and a null value. After compaction runs and <code>delete.retention.ms</code> passes, the old values and the tombstone are removed. This is not instant, so GDPR deadlines need a tuned <code>min.cleanable.dirty.ratio</code> and segment roll time. Also, copies live in backups, downstream topics and consumer caches, and active segments are never compacted. Safer designs encrypt each user's data with a per-user key and delete the key (crypto-shredding).</p>",
+    "<p>It is compacted because it only needs the latest committed offset for each (group, topic, partition) key, and an unbounded history of every commit would grow forever. Compaction keeps one record per key, so loading a coordinator on startup reads a small log. Example: a group commits offset 100, 200, then 300 for one partition; after compaction only 300 remains. Without compaction, a busy cluster would accumulate billions of commit records.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Publish to a fanout exchange and give each instance its own queue. Each service instance declares an exclusive, auto-delete (or server-named) queue and binds it to the exchange. The fanout copies every message to every bound queue, so all instances receive it. If instead they shared one queue, the messages would be split between them as competing consumers. A topic exchange works as well when instances only want some messages. Cost: one copy per instance, so 20 instances means 20 copies of each message.</p>",
+    "<p>RabbitMQ 4.0 removed classic mirrored queues and made quorum queues the recommended replicated type, so high availability now means a Raft-based quorum queue. Quorum queues gained priorities and a configurable <code>delivery-limit</code> (default 20) for poison messages, and non-durable or exclusive classic queues were reworked. Global QoS prefetch was dropped, and AMQP 1.0 became a core protocol. If you still used mirrored classic queues, plan a migration to quorum queues.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With <code>autoAck=true</code> the broker treats a message as done the moment it is written to the socket, so you get at-most-once delivery. It is fast and needs no ack bookkeeping, but if the consumer crashes after receiving and before finishing, the message is lost, because nothing is left unacked to redeliver. Also, prefetch does not limit it, so a slow consumer can be flooded with messages and run out of memory. Use it only for data you can afford to lose, such as live metrics.</p>",
+    "<p>Prefetch decides how much work one consumer holds. With prefetch 1, a consumer only gets a new message after it acks the previous one, so a slow worker takes less work and fast workers get more: fair by speed. With prefetch 100 and 2 workers, the broker may hand 100 messages to the first one that connects, and the second sits idle. For uneven task times (1 s versus 1 minute), use a low prefetch such as 1 to 5 for fairness.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>To replay safely, first fix the cause of the failure, then replay a few messages while watching for new failures. Make the consumer idempotent so repeats do no harm, and keep the original id and headers. Send replays to the original topic or queue at a controlled rate so they do not crowd out live traffic. Let humans review and drop messages that are no longer valid. Track which messages were replayed so a poison one cannot loop back to the DLQ endlessly. Example: replay 10, check, then 1,000.</p>",
+    "<p>Schema evolution causes poison messages when producers and consumers disagree about the format. A producer adds a required field or changes a type from int to string, and old consumers cannot deserialize the record, so they fail every time on the same record. Because retrying never helps, it is a permanent error. A schema registry with compatibility checks (backward or full) blocks incompatible changes before they ship, and consumers should catch deserialization errors and route the raw bytes to a DLQ.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Exponential backoff with full jitter, then DLQ",
+    "python": "import random\n\nrandom.seed(7)  # fixed seed so the output is repeatable\nBASE, CAP, MAX_ATTEMPTS = 1.0, 30.0, 6\n\ndef full_jitter(attempt):\n    # wait = random(0, min(cap, base * 2^attempt))\n    return random.uniform(0, min(CAP, BASE * 2 ** attempt))\n\ndef call_downstream(attempt):\n    return attempt >= 4  # pretend it recovers on the 5th try\n\ndef handle(message):\n    for attempt in range(MAX_ATTEMPTS):\n        if call_downstream(attempt):\n            print(message, \"succeeded on attempt\", attempt + 1)\n            return\n        wait = full_jitter(attempt)\n        ceiling = min(CAP, BASE * 2 ** attempt)\n        print(\"attempt\", attempt + 1, \"failed; wait %.2fs (ceiling %.0fs)\" % (wait, ceiling))\n    print(message, \"-> dead-letter queue\")\n\nhandle(\"msg-42\")\n"
+   },
+   "followUps": [
+    "<p>Jitter spreads retries out randomly so that many clients do not retry at the same moment. Without it, 1,000 consumers that fail together at 12:00:00 all wait 2 s, then all retry together and hit the recovering service as one wave, which can knock it down again. With full jitter each waits a random time between 0 and the ceiling (for example 0 to 2 s), so the load arrives smoothly. It trades a slightly longer average wait for a much lower peak.</p>",
+    "<p>Retrying in place is better when order must be kept and the failure is brief, for example a database deadlock that clears in milliseconds. You hold the partition for 2 or 3 attempts of a few hundred milliseconds, and nothing else for that key can overtake. A retry topic is better for long outages, since blocking would build lag for every key on the partition. Rule of thumb: in place for waits under a few seconds, retry topics beyond that, and accept reordering.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Outbox and inbox give an exactly-once effect",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.executescript(\"\"\"\nCREATE TABLE orders(id INTEGER PRIMARY KEY, status TEXT);\nCREATE TABLE outbox(id INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT, sent INTEGER DEFAULT 0);\nCREATE TABLE inbox(message_id TEXT PRIMARY KEY);\nCREATE TABLE shipments(order_id INTEGER);\n\"\"\")\n\n# Outbox: business change and event are written in ONE transaction\nwith db:\n    db.execute(\"INSERT INTO orders VALUES (1, 'PAID')\")\n    db.execute(\"INSERT INTO outbox(payload) VALUES ('order-1-paid')\")\n\nbroker = []  # stands in for Kafka/RabbitMQ\n\ndef relay(crash_before_mark):\n    for row_id, payload in db.execute(\"SELECT id, payload FROM outbox WHERE sent=0\").fetchall():\n        broker.append((str(row_id), payload))  # publish\n        if crash_before_mark:\n            return  # crash: row stays unsent, so it will be published again\n        with db:\n            db.execute(\"UPDATE outbox SET sent=1 WHERE id=?\", (row_id,))\n\nrelay(True)   # first run publishes but dies before marking\nrelay(False)  # second run publishes again (at-least-once)\nprint(\"broker received:\", broker)\n\ndef consume(message_id, payload):\n    try:\n        with db:  # inbox insert and effect share one transaction\n            db.execute(\"INSERT INTO inbox VALUES (?)\", (message_id,))\n            db.execute(\"INSERT INTO shipments VALUES (1)\")\n    except sqlite3.IntegrityError:\n        print(\"duplicate\", message_id, \"skipped\")\n\nfor mid, payload in broker:\n    consume(mid, payload)\nprint(\"shipments created:\", db.execute(\"SELECT COUNT(*) FROM shipments\").fetchone()[0])\n"
+   },
+   "followUps": [
+    "<p>Polling is simpler: a job reads unsent outbox rows every second or so and publishes them. It needs no extra infrastructure, but it adds latency (up to the poll interval), puts steady load on the database, and needs care with multiple relay instances (use <code>FOR UPDATE SKIP LOCKED</code>). CDC such as Debezium reads the database log: low latency, no polling load, and strict commit order, but it needs connectors, log access and monitoring. Start with polling; move to CDC when volume or latency requires.</p>",
+    "<p>Keep inbox rows at least as long as the longest period in which a duplicate could still arrive: the broker retention, plus the longest time a message may wait in retries or a DLQ, plus a safety margin. For example, with 7-day retention and 3 days of DLQ replay, keep ids about 10 to 14 days and delete older rows with a scheduled job. Delete too early and a late redelivery runs the effect twice; delete never and the table grows without bound.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>For 50 messages a second of background jobs, choose RabbitMQ (or a managed queue such as SQS). That load is small, and what you need is a work queue: competing consumers, per-message ack, retry, delay and a DLQ, all built in. Kafka can do it, but you would build retry and per-message handling yourself, and parallelism is capped by partition count. Choose Kafka instead if other teams must read the same events or replay them later.</p>",
+    "<p>In Kafka, parallelism is capped by the partition count: a group has at most one consumer per partition, so 12 partitions means at most 12 active consumers, and you must plan the count ahead. In RabbitMQ, any number of consumers can attach to one queue, and each takes the next message, so you scale by just starting more workers. The price is that RabbitMQ does not guarantee order across competing consumers, while Kafka keeps order within each partition.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>session.timeout.ms</code> is about liveness of the process: the broker declares a consumer dead if it receives no heartbeat for that long (default 45 s), and heartbeats come from a background thread. <code>max.poll.interval.ms</code> is about progress: the maximum gap between two <code>poll()</code> calls (default 5 min). A consumer can be alive, heartbeating fine, and still be removed because its processing loop is stuck. So the first detects crashes, and the second detects a hung or too-slow handler.</p>",
+    "<p>Static membership gives each consumer a fixed <code>group.instance.id</code>. If it restarts within <code>session.timeout.ms</code>, it gets its old partitions back without a rebalance, so a quick deploy or crash does not disturb the rest of the group. It does not fix this problem, though: a consumer that exceeds <code>max.poll.interval.ms</code> is still removed. It only helps with restart churn, not slow processing, so fix the per-poll work first.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The high watermark is the offset up to which a record has been copied to all in-sync replicas. Consumers can only read below it, so they never see data that a leader failure could erase. Example: the leader has records up to offset 10, but the slowest in-sync follower has only 8, so the high watermark is 9 (the next offset to be committed) and offsets 9 and 10 stay invisible until the follower catches up. This is how Kafka avoids showing readers data that later disappears.</p>",
+    "<p>With <code>acks=1</code> the leader acknowledges after writing to its own log without waiting for followers. Latency is lower and throughput higher, but if the leader crashes right after acknowledging and before a follower copies the record, a new leader is elected without it and that acknowledged write is lost. For example, with 3 replicas you can lose it on a single broker failure. With <code>acks=all</code> and <code>min.insync.replicas=2</code>, the record exists on two brokers before you are told it is safe.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Confirms are asynchronous by default in the sense that you choose: you can wait for each one (simple, slow, roughly one network round trip per message) or publish a batch and handle confirmations as they arrive through a callback, which is much faster. Each message gets a sequence number, and the broker answers with ack or nack for that number, possibly covering several at once. For high throughput, use async confirms and keep unconfirmed messages in memory so you can republish a nacked one.</p>",
+    "<p>A classic non-replicated queue lives on one node. If that node dies or its disk is lost, the messages in the queue are unavailable until it returns, or gone for good if the disk fails. Even durable messages do not survive a lost node. Classic queues also fsync lazily, so a crash can lose the latest messages that were confirmed. Quorum queues store each message on a majority of nodes (2 of 3), so a single node failure loses nothing and the queue keeps serving.</p>"
+   ]
+  }
+ ]
+}
