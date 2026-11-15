@@ -1,0 +1,124 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Salted, slow password hashing with PBKDF2",
+    "python": "import hashlib, hmac, os\n\ndef hash_password(pw, iterations=200_000):\n    salt = os.urandom(16)                      # unique random salt per user\n    dk = hashlib.pbkdf2_hmac(\"sha256\", pw.encode(), salt, iterations)\n    return f\"pbkdf2${iterations}${salt.hex()}${dk.hex()}\"   # params travel with the hash\n\ndef verify(pw, stored):\n    _, it, salt, want = stored.split(\"$\")\n    dk = hashlib.pbkdf2_hmac(\"sha256\", pw.encode(), bytes.fromhex(salt), int(it))\n    return hmac.compare_digest(dk.hex(), want)  # constant-time compare\n\na = hash_password(\"correct horse\")\nb = hash_password(\"correct horse\")\nprint(\"stored:\", a[:40] + \"...\")\nprint(\"same password, two hashes equal?\", a == b)   # False: salts differ\nprint(\"right password:\", verify(\"correct horse\", a))\nprint(\"wrong password:\", verify(\"wrong guess\", a))\n# Plain SHA-256 is deterministic and fast, so one table serves every user:\nprint(\"sha256 equal for equal passwords?\",\n      hashlib.sha256(b\"abc\").digest() == hashlib.sha256(b\"abc\").digest())\n# Cost: 200,000 iterations make each guess 200,000x slower for an attacker.\n"
+   },
+   "followUps": [
+    "<p>SHA-256 is built to be fast, and fast is the wrong property for passwords. A single GPU can try billions of SHA-256 guesses per second, so a leaked table of plain SHA-256 hashes falls to a dictionary attack in hours.</p><p>Without a salt, equal passwords give equal hashes, so one precomputed table cracks every user at once. A password hash like argon2id or bcrypt is deliberately slow (about 100-500 ms) and memory-hard, which cuts an attacker from billions of guesses per second to a few thousand.</p>",
+    "<p>A salt is random, unique per user and stored next to the hash; a pepper is one secret shared by all users and kept outside the database.</p><p>The salt stops precomputed tables and makes equal passwords hash differently, but it is not secret. The pepper (for example a key in a secrets manager or HSM, applied with HMAC) means a stolen database alone is not enough to crack hashes. If the pepper leaks you lose that extra layer only, but rotating it is awkward, so store a pepper version with each hash.</p>",
+    "<p>Wrap the old hashes instead of waiting for users to log in: compute <code>bcrypt(md5_hash)</code> for every row now, mark the row as version 1, and the weak hashes are gone from the database at once.</p><ol><li>At login, compute md5(password), feed it into the wrapped hash, and compare.</li><li>On success, rehash the plain password with argon2id and save it as version 2.</li><li>After a few months, force a reset for users still on version 1.</li></ol><p>Also log out sessions if you suspect the old table was leaked.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You cannot simply delete a JWT, because it is valid until it expires, so you combine short expiry with server-side state.</p><p>Logout deletes the refresh token on the server and the client drops its tokens, so no new access token can be minted. Access tokens live only 5-15 minutes, so the gap is small. If you need instant effect, store the token's <code>jti</code> in a Redis deny-list with a TTL equal to its remaining life, and have the API check it on each request.</p>",
+    "<p>The safest place is not in JavaScript-readable storage at all: let a backend-for-frontend keep the tokens and give the browser an HttpOnly, Secure, SameSite cookie.</p><p><code>localStorage</code> is readable by any injected script, so one XSS bug leaks the token. A cookie that JavaScript cannot read removes that theft path, but then you need CSRF protection (SameSite plus a token). If tokens must live in the page, keep the access token in memory only and use a short life with a rotating refresh cookie.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Build and verify an HS256 JWT",
+    "python": "import base64, hashlib, hmac, json\n\ndef b64(b): return base64.urlsafe_b64encode(b).rstrip(b\"=\").decode()\ndef unb64(s): return base64.urlsafe_b64decode(s + \"=\" * (-len(s) % 4))\n\ndef sign(payload, key):\n    h = b64(json.dumps({\"alg\": \"HS256\", \"typ\": \"JWT\"}).encode())\n    p = b64(json.dumps(payload).encode())\n    sig = hmac.new(key, f\"{h}.{p}\".encode(), hashlib.sha256).digest()\n    return f\"{h}.{p}.{b64(sig)}\"\n\ndef verify(token, key, now):\n    parts = token.split(\".\")\n    if len(parts) != 3: return \"reject: not 3 parts\"\n    h, p, s = parts\n    if json.loads(unb64(h)).get(\"alg\") != \"HS256\":   # own allow-list, never trust header\n        return \"reject: algorithm not allowed\"\n    good = hmac.new(key, f\"{h}.{p}\".encode(), hashlib.sha256).digest()\n    if not hmac.compare_digest(good, unb64(s)): return \"reject: bad signature\"\n    c = json.loads(unb64(p))                          # claims only after signature\n    if c[\"exp\"] <= now: return \"reject: expired\"\n    if c[\"aud\"] != \"orders-api\": return \"reject: wrong audience\"\n    return \"ok, user \" + c[\"sub\"]\n\nkey = b\"demo-secret-key\"\nt = sign({\"sub\": \"u42\", \"aud\": \"orders-api\", \"exp\": 1000}, key)\nprint(\"token:\", t[:30] + \"...\")\nprint(\"valid at t=500   :\", verify(t, key, 500))\nprint(\"expired at t=1500:\", verify(t, key, 1500))\nbad = t.split(\".\")\nbad[1] = b64(json.dumps({\"sub\": \"admin\", \"aud\": \"orders-api\", \"exp\": 9999}).encode())\nprint(\"tampered payload :\", verify(\".\".join(bad), key, 500))\nnone = b64(b'{\"alg\":\"none\"}') + \".\" + bad[1] + \".\"\nprint(\"alg none         :\", verify(none, key, 500))\nother = sign({\"sub\": \"u42\", \"aud\": \"billing\", \"exp\": 1000}, key)\nprint(\"wrong audience   :\", verify(other, key, 500))\n"
+   },
+   "followUps": [
+    "<p>Algorithm confusion is when an attacker changes the token's <code>alg</code> header so the server verifies with the wrong method.</p><p>Classic case: the server expects RS256 and has a public key, which is public. The attacker signs a token with HS256 using that public key as the HMAC secret and sets <code>alg: HS256</code>. A naive library that trusts the header verifies it successfully. The same trick works with <code>alg: none</code>. The fix is to pin the allowed algorithm per key in your own configuration and never take it from the token.</p>",
+    "<p>HS256 uses one shared secret to sign and verify, RS256 uses a private key to sign and a public key to verify.</p><p>With HS256 every service that can verify can also forge tokens, so it suits a single app that issues and checks its own tokens. With RS256 only the identity provider holds the private key; any number of services verify with the public key from a JWKS endpoint, and you rotate keys via <code>kid</code>. RS256 tokens are larger and signing is slower, but it is the normal choice across services or third parties.</p>",
+    "<p>Skipping <code>aud</code> lets a token meant for one service be accepted by another, which is a confused-deputy attack.</p><p>Example: the same identity provider issues a token for the reports API with the scope <code>read</code>. If the payments API only checks signature and expiry, that token works there too, and anyone who can get any valid token can call every service. Each API must check that <code>aud</code> contains its own identifier and reject everything else. Check <code>iss</code> the same way.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If Redis is down you must choose: fail open (accept tokens, risking revoked ones) or fail closed (reject, causing an outage), and the choice depends on the endpoint.</p><p>For low-risk reads, fail open for a short time and rely on the 5-15 minute token expiry as the safety net. For money movement or admin actions, fail closed. Run Redis with replicas and failover, alert on it, and keep a local in-memory cache of recent entries to shorten the window.</p>",
+    "<p>The deny-list only needs tokens that are revoked and not yet expired, so it stays small: entries vanish by TTL.</p><p>Example: 10,000 forced logouts per day with 15-minute tokens means at most 10,000 entries live at once, and about 100 bytes each is 1 MB. Store only the <code>jti</code> with <code>EXPIRE</code> set to the token's remaining seconds. A per-user token version claim needs one small counter per user instead of one entry per token.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Refresh token rotation with reuse detection",
+    "python": "import hashlib, itertools\n\nstore = {}                       # hash(token) -> {family, used}\nrevoked = set()\ncounter = itertools.count(1)\n\ndef h(t): return hashlib.sha256(t.encode()).hexdigest()\n\ndef issue(family):\n    t = f\"rt{next(counter)}\"\n    store[h(t)] = {\"family\": family, \"used\": False}\n    return t\n\ndef refresh(t):\n    rec = store.get(h(t))\n    if rec is None or rec[\"family\"] in revoked:\n        return None, \"rejected: unknown or revoked\"\n    if rec[\"used\"]:                              # reuse: someone holds a stale copy\n        revoked.add(rec[\"family\"])\n        return None, \"REUSE detected: family revoked\"\n    rec[\"used\"] = True                           # real code: atomic compare-and-set\n    return issue(rec[\"family\"]), \"ok: rotated\"\n\nt1 = issue(\"login-A\")\nprint(\"login gives\", t1)\nt2, msg = refresh(t1); print(\"refresh\", t1, \"->\", t2, msg)\nt3, msg = refresh(t2); print(\"refresh\", t2, \"->\", t3, msg)\n_, msg = refresh(t1);  print(\"thief replays\", t1, \"->\", msg)\n_, msg = refresh(t3);  print(\"legit client uses\", t3, \"->\", msg)\n"
+   },
+   "followUps": [
+    "<p>Two tabs refreshing at once will both send the same old refresh token, and the second request looks like a stolen token being reused unless you plan for it.</p><p>Best fix on the client: one tab (or a shared lock via <code>BroadcastChannel</code> or a service worker) does the refresh and shares the new token. On the server, add a short grace window (about 10-30 seconds) where a just-rotated token returns the same successor instead of triggering revocation.</p>",
+    "<p>DPoP (Demonstrating Proof of Possession) binds a token to a key held by the client, so a stolen token is useless on its own.</p><p>The client creates a key pair and, with every request, sends a small signed proof JWT containing the HTTP method, URL, a timestamp and a unique id. The server issues tokens bound to the public key's thumbprint and checks the proof each time. A thief who copies the refresh or access token cannot produce valid proofs without the private key, which can be non-extractable in the browser.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "PKCE verifier and challenge check",
+    "python": "import base64, hashlib, hmac\n\ndef b64(b): return base64.urlsafe_b64encode(b).rstrip(b\"=\").decode()\ndef challenge(verifier): return b64(hashlib.sha256(verifier.encode()).digest())\n\n# RFC 7636 example values\nverifier = \"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\"\nch = challenge(verifier)\nprint(\"code_verifier :\", verifier)\nprint(\"code_challenge:\", ch)\nprint(\"matches RFC   :\", ch == \"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM\")\n\n# Authorization server remembers the challenge with the single-use code\ncodes = {\"code123\": ch}\n\ndef token_endpoint(code, v):\n    want = codes.pop(code, None)                 # single use: removed on first try\n    if want is None: return \"invalid_grant (unknown or used code)\"\n    if not hmac.compare_digest(challenge(v), want): return \"invalid_grant (bad verifier)\"\n    return \"access_token issued\"\n\nprint(\"thief with code only:\", token_endpoint(\"code123\", \"guess\"))\ncodes[\"code123\"] = ch                            # new attempt for the demo\nprint(\"real client          :\", token_endpoint(\"code123\", verifier))\nprint(\"replay of the code   :\", token_endpoint(\"code123\", verifier))\n"
+   },
+   "followUps": [
+    "<p><code>state</code> protects the client against login CSRF: an attacker making your browser finish a login flow that the attacker started.</p><p>The client stores a random value before redirecting and checks that the same value returns with the code. If an attacker tricks you into opening a callback URL carrying the attacker's code, the values do not match and the client refuses, so the attacker's account is not linked to your session. With PKCE some servers also accept it as CSRF protection, but keeping <code>state</code> is cheap and standard.</p>",
+    "<p>The implicit flow returns the access token directly in the redirect URL, which is easy to leak and cannot prove who received it.</p><p>URL fragments end up in browser history, logs, referrer headers and extensions, and a malicious page can inject a stolen token. There is also no client authentication and no way to bind the token to the client that asked. The code flow with PKCE keeps tokens off the URL: only a one-time code is in the redirect and it needs the verifier.</p>",
+    "<p>A confidential client can keep a secret (a server-side web app), so it authenticates to the token endpoint, while a public client (SPA, mobile app) cannot.</p><p>The confidential client sends its client secret, a private-key JWT or uses mTLS when exchanging the code. PKCE is still recommended for all clients now. Public clients rely on PKCE alone, must use exact redirect URIs, and should use short-lived tokens with rotating refresh tokens.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put the secret in a secrets manager and fetch it at startup, and rotate by running two valid secrets at the same time so nothing breaks.</p><ol><li>Create a second secret for the client while the old one still works.</li><li>Deploy the new secret to the service from the secrets manager.</li><li>Watch the logs until the old secret is no longer used.</li><li>Delete the old secret.</li></ol><p>Automate this every 60-90 days, and move to private-key JWT or mTLS so there is no shared secret to rotate.</p>",
+    "<p>Prefer workload identity: Kubernetes issues each pod a short-lived signed service account token, so no long-lived secret exists.</p><p>The pod presents the projected token (with a specific audience, rotated automatically) to the identity provider or API, which validates it against the cluster's public keys and exchanges it for access. Service meshes such as SPIFFE/SPIRE give each workload a short-lived certificate for mTLS. Compared with a static client secret in a Kubernetes Secret, nothing durable can be copied out of a leaked manifest.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Validate the ID token like a signed document made for your app, in this order: signature, issuer, audience, expiry, nonce.</p><ol><li>Verify the signature with the provider's key from its JWKS, algorithm from your own allow-list.</li><li><code>iss</code> must equal the expected issuer.</li><li><code>aud</code> must contain your client id.</li><li><code>exp</code> is in the future (allow small clock skew).</li><li><code>nonce</code> equals the value you sent.</li></ol>",
+    "<p>Because <code>sub</code> is only unique within one issuer, two providers can both have a user with <code>sub = 123</code>, so the pair <code>(iss, sub)</code> is the real identity.</p><p>Do not key accounts on email: emails change, get reused, and some providers do not verify them, which allows account takeover. Store <code>(iss, sub)</code> as the stable key and keep email as an editable attribute.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>SAML is an older XML-based protocol common in enterprise web apps, while OIDC is JSON/JWT on top of OAuth2 and fits APIs, mobile apps and SPAs.</p><p>SAML sends signed XML assertions through browser POST redirects; it works well for workforce SSO with older vendor apps but is verbose and hard to use from mobile. OIDC is lighter, has discovery and JWKS endpoints, and gets more libraries. For new apps choose OIDC and support SAML only when a customer's IdP requires it.</p>",
+    "<p>Disable the user at the identity provider first, then make sure each app's sessions and tokens die quickly.</p><p>Use SCIM provisioning so the IdP automatically deactivates the account in every app. Revoke refresh tokens and end sessions through back-channel logout. Keep access tokens short (5-15 minutes) so the remaining window is small. Finally revoke API keys and personal tokens the person owned, and audit what they accessed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>List endpoints are hard with ReBAC because you must return only objects the user can see without checking every row one by one.</p><p>Two approaches: ask the permission system for the list (SpiceDB <code>LookupResources</code>, which returns the allowed ids) and query the database with <code>WHERE id IN (...)</code>, or fetch candidates from the database and filter with a bulk check. For big sets, denormalize a precomputed access index, and paginate by checking page by page so one page stays fast.</p>",
+    "<p>Test a policy set like code: unit tests for each rule plus a large table of allow/deny cases, including the negative ones.</p><p>Build a matrix of roles, resources and actions with the expected result (for example: a viewer can read but not delete; a user from tenant B cannot read tenant A). Run it in CI on every policy change, add property tests for \"deny by default\", and replay real logged decisions against the new policy to see what would change before deploying it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "BOLA: unscoped vs tenant-scoped lookup",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"create table invoices(id integer primary key, tenant_id int, amount int)\")\ndb.executemany(\"insert into invoices values(?,?,?)\",\n               [(1, 10, 500), (2, 10, 70), (3, 20, 9000)])\n\ndef get_vulnerable(invoice_id):\n    # authenticated, but never asks WHOSE invoice it is\n    return db.execute(\"select * from invoices where id=?\", (invoice_id,)).fetchone()\n\ndef get_safe(invoice_id, tenant_id):\n    # the principal's tenant is part of every query\n    return db.execute(\"select * from invoices where id=? and tenant_id=?\",\n                      (invoice_id, tenant_id)).fetchone()\n\nme = 10                                   # logged-in user belongs to tenant 10\nprint(\"my invoice 1, vulnerable :\", get_vulnerable(1))\nprint(\"other tenant's id 3, vulnerable:\", get_vulnerable(3))   # data leak (BOLA)\nprint(\"my invoice 1, safe       :\", get_safe(1, me))\nprint(\"other tenant's id 3, safe:\", get_safe(3, me))           # None -> return 404\n"
+   },
+   "followUps": [
+    "<p>Put the real check as close to the data as practical in a shared service or repository layer, with the database as a second layer, and never only in the controller.</p><p>Controllers are easy to forget, and a new route can skip the check. A service method that takes the user and the object id and always applies <code>tenant_id</code> cannot be bypassed by accident. Row-level security in the database then stops any query that forgets the filter.</p>",
+    "<p>In review, look for any place where an id from the request is used to load data without the current user or tenant also appearing in the query.</p><ul><li><code>findById(id)</code> with no owner or tenant argument.</li><li>Updates and deletes that trust a body or URL id.</li><li>Missing tests for another user's or tenant's id.</li></ul><p>A helpful rule: every repository method takes the principal as a parameter, so a missing one is visible.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Plain SHA-256 is fine because API keys are 256 random bits, not human-chosen passwords, so there is nothing to guess.</p><p>An attacker cannot run a dictionary against a random 256-bit value: there are about 10^77 possibilities. Slow hashing exists to protect weak, guessable secrets; with high-entropy keys it only adds latency to every API call. A fast hash also lets you look up and verify keys cheaply at high request rates.</p>",
+    "<p>Move to OAuth when third parties act for end users, or when you need scopes, consent, short-lived tokens and revocation per user.</p><p>API keys identify the customer's own server and are long-lived. If an app needs access to another person's data, an OAuth access token with narrow scopes and an expiry is safer than asking users to paste keys. For server-to-server use the client credentials grant gives you the same simplicity with short-lived tokens.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "TOTP (RFC 6238) with replay protection",
+    "python": "import hashlib, hmac, struct\n\ndef hotp(secret, counter, digits=6):\n    mac = hmac.new(secret, struct.pack(\">Q\", counter), hashlib.sha1).digest()\n    off = mac[-1] & 0x0F                          # dynamic truncation: last nibble\n    num = struct.unpack(\">I\", mac[off:off + 4])[0] & 0x7FFFFFFF   # 31-bit integer\n    return str(num % 10 ** digits).zfill(digits)\n\ndef totp(secret, unix_time, step=30):\n    return hotp(secret, unix_time // step)\n\nsecret = b\"12345678901234567890\"                 # RFC 6238 test secret\nprint(\"code at t=59 :\", totp(secret, 59), \"(RFC 6238 vector: ...287082)\")\nprint(\"code at t=1111111109:\", totp(secret, 1111111109))\n\nlast_accepted = -1\ndef check(code, now):\n    global last_accepted\n    for step in (now // 30 - 1, now // 30, now // 30 + 1):   # +/-1 for clock drift\n        if step > last_accepted and hmac.compare_digest(hotp(secret, step), code):\n            last_accepted = step                  # block replay of the same step\n            return \"accepted\"\n    return \"rejected\"\n\nc = totp(secret, 100)\nprint(\"first use      :\", check(c, 100))\nprint(\"replay same    :\", check(c, 105))\nprint(\"wrong code     :\", check(\"000000\", 110))\n"
+   },
+   "followUps": [
+    "<p>TOTP is phishable because the six-digit code is just a number the user types, so a fake site can ask for it and forward it to the real site within the 30-second window.</p><p>An attacker running a lookalike login page relays the username, password and code to the real service in real time and gets a valid session. Nothing in the code ties it to the real website. That is why high-risk accounts should move to passkeys.</p>",
+    "<p>WebAuthn avoids it because the browser signs the login challenge with a key that is bound to the website's real domain.</p><p>During registration the authenticator creates a key pair for that exact origin. At login the browser includes the origin in the signed data, so a lookalike domain gets no valid signature, and the user has no code to be tricked into typing. The private key never leaves the device and there is no shared secret on the server, only a public key.</p>",
+    "<p>Account recovery should be as strong as login, otherwise attackers use it as the back door.</p><p>Give users single-use recovery codes at enrolment (store only their hashes), allow a second registered passkey, and make email/SMS recovery slow: send a notification to all channels, add a delay of 24-72 hours and allow the real owner to cancel. Require extra proof for high-value accounts, rate limit attempts, and log every recovery.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Detect misuse by watching how each token behaves against its normal pattern, and alert on differences automatically.</p><p>Signals: new IP ranges or countries, a sudden spike in calls (for example 50x normal volume), calls to endpoints the token never used, and bulk data reads. Feed audit logs into alerts and auto-disable tokens that cross a threshold. Also register with GitHub secret scanning so leaked tokens of your format are reported and revoked.</p>",
+    "<p>Use OIDC federation: the CI system issues a short-lived signed identity token for each job and the cloud trusts it in exchange for temporary credentials.</p><ol><li>Create a trust rule in the cloud: accept tokens from the CI issuer for one repository and branch.</li><li>The job requests its ID token.</li><li>It swaps the token for credentials valid for about an hour.</li></ol><p>No static key is stored in CI secrets, so there is nothing long-lived to leak.</p>"
+   ]
+  }
+ ]
+}
