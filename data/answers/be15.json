@@ -1,0 +1,120 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "IDOR: scope every lookup to the caller",
+    "python": "# IDOR: authentication succeeded, authorization is the missing check\nORDERS = {1: {\"owner\": \"alice\", \"item\": \"book\"},\n          2: {\"owner\": \"bob\", \"item\": \"laptop\"}}\n\ndef get_order_vulnerable(user, order_id):\n    # BUG: any logged-in user can read any id\n    return ORDERS.get(order_id)\n\ndef get_order_safe(user, order_id):\n    order = ORDERS.get(order_id)\n    # Scope the lookup to the caller; 404 for foreign objects\n    if order is None or order[\"owner\"] != user:\n        return \"404 not found\"\n    return order\n\nprint(\"alice asks for order 2 (bob's):\")\nprint(\"  vulnerable:\", get_order_vulnerable(\"alice\", 2))\nprint(\"  safe      :\", get_order_safe(\"alice\", 2))\nprint(\"alice asks for order 1 (hers):\")\nprint(\"  safe      :\", get_order_safe(\"alice\", 1))\n# Negative test with two users: the safe version must never leak\nassert get_order_safe(\"bob\", 1) == \"404 not found\"\nprint(\"negative test passed\")\n"
+   },
+   "followUps": [
+    "<p>Because UUIDs only make IDs hard to guess, not hard to use. Security by obscurity is not an access check. A UUID leaks through URLs, logs, emails, referrer headers, shared links and API list responses, and anyone who sees one can replay it. Example: Bob forwards a link containing his order UUID; Alice opens it and the server happily returns it because it never asked who owns it. Use UUIDs to avoid enumeration, but still check ownership on every request.</p>",
+    "<p>In one place that every data access must go through, not scattered in each controller. Good spots: a repository or query layer that always adds <code>WHERE tenant_id = :t AND owner_id = :u</code>, a policy engine (OPA, Cedar) called from middleware, or database row-level security. Central checks mean a new endpoint is protected by default and you review one piece of code. Keep a thin per-endpoint check for business rules (for example only managers can refund), and test with two users.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SQL injection: string-built vs parameterized",
+    "python": "import sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE users (name TEXT, secret TEXT)\")\ndb.executemany(\"INSERT INTO users VALUES (?, ?)\",\n               [(\"alice\", \"a-secret\"), (\"bob\", \"b-secret\")])\n\nattack = \"nobody' OR '1'='1\"\nprint(\"input:\", attack)\n\n# Vulnerable: input becomes part of the SQL text\nsql = \"SELECT name, secret FROM users WHERE name = '\" + attack + \"'\"\nprint(\"string-built rows:\", db.execute(sql).fetchall())\n\n# Safe: the value travels separately and is never parsed as SQL\nrows = db.execute(\"SELECT name, secret FROM users WHERE name = ?\", (attack,)).fetchall()\nprint(\"parameterized rows:\", rows)\n\n# Things that cannot be parameters (column names) use an allow-list\nALLOWED = {\"name\", \"secret\"}\ncol = \"name; DROP TABLE users\"\nprint(\"sort column ok?\", col in ALLOWED)\n# Time O(n) scan, space O(rows returned)\n"
+   },
+   "followUps": [
+    "<p>Yes. An ORM only protects you when you pass values as parameters. Raw fragments such as <code>filter(\"name = '\" + x + \"'\")</code>, string-built HQL/JPQL, <code>order_by(user_input)</code>, <code>raw()</code> or <code>nativeQuery</code> with concatenation are all injectable. Even JSON operators in NoSQL ORMs can be abused. Rule: if any user text is joined into a query string, it is injectable. Review every raw or native call and let static analysis flag them.</p>",
+    "<p>Never put the user's text into the SQL; map it to a fixed choice. Keep an allow-list such as <code>{\"name\": \"name\", \"date\": \"created_at\"}</code>, look up the requested key, fall back to a default if it is missing, and allow only <code>ASC</code> or <code>DESC</code> for direction. Identifiers cannot be bound as parameters, so this mapping is the defence. Example: <code>sort=price;DROP</code> is not in the map, so the query uses the default column and the attack does nothing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Treat it as compromised: revoke or rotate it first, then investigate. Steps: 1) rotate the secret and deploy the new one so the old stops working; 2) check audit logs for use of the old one since the leak time; 3) remove it from the code, but know that deleting the commit does not help because clones and forks keep it; 4) find the root cause (missing scanning, wrong repo) and fix it; 5) write a short post-mortem. Speed matters: bots scan public repos within minutes.</p>",
+    "<p>They are acceptable, not ideal. They are easy and keep secrets out of code, but they leak through crash dumps, debug pages, <code>docker inspect</code>, <code>/proc/&lt;pid&gt;/environ</code>, child processes and logs that print the environment. Safer: mounted files with tight permissions, or fetching from a secrets manager at start-up into memory, ideally with short-lived credentials via workload identity. If you use env vars, never log them and give each service only the secrets it needs.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SSRF: validate the resolved IP, not the string",
+    "python": "import ipaddress\nfrom urllib.parse import urlparse\n\nFAKE_DNS = {\"evil.example\": \"10.0.0.5\", \"example.org\": \"93.184.216.34\"}\n\ndef naive_ok(url):\n    # String blocklist: easy to bypass\n    return \"127.0.0.1\" not in url and \"localhost\" not in url\n\ndef to_ip(host):\n    try:\n        return ipaddress.ip_address(int(host, 0))   # 2130706433, 0x7f000001\n    except ValueError:\n        pass\n    try:\n        return ipaddress.ip_address(host)\n    except ValueError:\n        return ipaddress.ip_address(FAKE_DNS[host])  # pretend DNS lookup\n\ndef safe_ok(url):\n    p = urlparse(url)\n    if p.scheme not in (\"http\", \"https\"):\n        return False\n    ip = to_ip(p.hostname)\n    # Reject loopback, private, link-local (169.254.x.x) and similar\n    return ip.is_global\n\nurls = [\"http://example.org/x\", \"http://127.0.0.1/admin\",\n        \"http://2130706433/admin\", \"http://0x7f000001/admin\",\n        \"http://169.254.169.254/latest/meta-data\", \"http://evil.example/\",\n        \"file:///etc/passwd\"]\nfor u in urls:\n    print(f\"{u:42} naive={naive_ok(u)!s:5} safe={safe_ok(u)}\")\n"
+   },
+   "followUps": [
+    "<p>The attacker gets you to resolve the name twice with different answers. Your check resolves <code>evil.example</code> and sees a public IP such as 93.184.216.34, which passes. The DNS record has a TTL of 0, so when the HTTP client resolves it again it now gets 169.254.169.254 and hits the metadata service. Fix: resolve once, validate that IP, and connect to that exact IP (sending the original Host header), then re-validate on every redirect.</p>",
+    "<p>Because there are too many ways to write the same address, and the blocklist only knows the spellings you thought of. <code>127.0.0.1</code> can also be <code>2130706433</code>, <code>0x7f000001</code>, <code>127.1</code>, <code>[::1]</code>, <code>[::ffff:127.0.0.1]</code> or a hostname that resolves to it. Redirects and DNS tricks add more. The robust way is to parse the URL, resolve to an IP object, and check its category (loopback, private, link-local) rather than comparing strings.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is a way to agree on a fresh secret key with a stranger while an eavesdropper watches. Forward secrecy means that stealing the server's long-term private key later does not let anyone decrypt recorded old traffic. TLS 1.3 gets it by using a new ephemeral ECDHE key pair for every connection, used only to derive the session key and then thrown away. The certificate key only signs the handshake. So an attacker who recorded 1 million sessions and later steals the key still cannot read them.</p>",
+    "<p>Overlap the old and new certificates so there is never a moment with none valid. Issue the new certificate well before expiry (for example at 2/3 of its lifetime, with 90-day certs renewed at day 60), load it without a restart (reload the proxy, or let the service watch the file), and keep both trusted during the switch. For mTLS client certs and internal CAs, also distribute the new CA bundle first, then switch leaf certificates. Automate it (ACME, cert-manager, SPIFFE) and alert at 14 days before expiry.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The central service becomes a single point of failure and a latency cost, so the choice is what to do when it is down. Fail-closed denies everything and causes an outage; fail-open lets everything through and is a security hole. The usual answer is local enforcement with cached policy: each service keeps the last known good policy (OPA sidecar, signed bundles), refuses stale policy beyond a time limit for sensitive actions, and the control plane is replicated. Distribution is central, decisions are local.</p>",
+    "<p>Put them behind something that adds the missing security instead of rewriting them. Typical steps: place a sidecar or gateway proxy in front that terminates mTLS and checks identity, restrict their network access with firewall or network policy, put secrets in a vault rather than config files, add central logging, and list them in the inventory with an owner. Then migrate by risk: internet-facing and high-data services first. Document exceptions with an expiry date so they do not stay forever.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Token bucket rate limiter with a fake clock",
+    "python": "class TokenBucket:\n    def __init__(self, capacity, refill_per_sec):\n        self.capacity = capacity\n        self.rate = refill_per_sec\n        self.tokens = capacity\n        self.last = 0.0\n\n    def allow(self, now, cost=1):\n        # Refill by elapsed time, capped at capacity: O(1) time and space\n        self.tokens = min(self.capacity, self.tokens + (now - self.last) * self.rate)\n        self.last = now\n        if self.tokens >= cost:\n            self.tokens -= cost\n            return True\n        return False          # caller returns 429 + Retry-After\n\nb = TokenBucket(capacity=3, refill_per_sec=1)   # burst 3, 1 per second average\n# (time in seconds, label): a burst at t=0, then steady requests\ntimes = [0, 0, 0, 0, 0.5, 1.0, 2.0, 2.1, 10.0, 10.0, 10.0, 10.0]\nfor t in times:\n    print(f\"t={t:<4} ->\", \"allowed\" if b.allow(t) else \"429 too many\")\n"
+   },
+   "followUps": [
+    "<p>Use a shared store, but fall back to local limits. A common method: give each of N nodes a local bucket sized at limit/N and sync counts periodically (gossip or batch updates); the total can overshoot slightly, which is usually fine. Example: 100 requests per minute across 4 nodes gives each 25 locally, and you accept a small error. Other options are consistent hashing so one node owns each key, or sticky routing. Exact global limits need a central atomic counter.</p>",
+    "<p>Do not rely on IP alone. Limit by the thing the attacker must reuse: the target account (for logins, 5 failures per account per 15 minutes), the API key or session, the device fingerprint, and also by network ranges (ASN, /24). Add proof-of-work or CAPTCHA after suspicious volume, use bot detection at the edge, and apply progressive delays. Credential stuffing from 10,000 IPs still hits one account many times, so a per-account limit stops it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Slow salted hash vs fast SHA-256",
+    "python": "import hashlib, hmac, time\n\npw = b\"correct horse\"\nsalt = bytes.fromhex(\"00112233445566778899aabbccddeeff\")  # random per user in real life\n\n# Fast hash: attacker tries guesses at this speed\nt = time.perf_counter()\nfor _ in range(20000):\n    hashlib.sha256(salt + pw).digest()\nfast = (time.perf_counter() - t) / 20000\n\n# Slow, salted hash: PBKDF2 here (Argon2id is preferred but not in stdlib)\niters = 200_000\nt = time.perf_counter()\nstored = hashlib.pbkdf2_hmac(\"sha256\", pw, salt, iters)\nslow = time.perf_counter() - t\n\nprint(\"stored record: pbkdf2-sha256$%d$%s$%s\" % (iters, salt.hex()[:8] + \"...\", stored.hex()[:16] + \"...\"))\nprint(\"slow hash is much slower per guess:\", slow > 1000 * fast)\n\ndef verify(candidate):\n    h = hashlib.pbkdf2_hmac(\"sha256\", candidate, salt, iters)\n    return hmac.compare_digest(h, stored)    # constant-time compare\n\nprint(\"right password:\", verify(b\"correct horse\"))\nprint(\"wrong password:\", verify(b\"wrong horse\"))\n"
+   },
+   "followUps": [
+    "<p>A pepper is a secret value added to every password hash, stored outside the database. A salt is random, unique per user and stored next to the hash; a pepper is the same for all (or a few) and kept in a KMS, HSM or secret store. If an attacker steals only the database, the pepper makes cracking impossible without it. Use it as an HMAC key: <code>hash = argon2(HMAC(pepper, password), salt)</code>. Support rotation by storing a pepper version id. It is an extra layer, not a replacement for a slow hash.</p>",
+    "<p>Wrap the old hashes instead of waiting for users to log in. Step 1: immediately compute <code>argon2(old_md5_hash)</code> for every row and store it with a flag, so the database is strong now. Step 2: at login, compute MD5 of the typed password, feed it through the same wrapper to verify, then on success rehash the plain password with Argon2id and clear the flag. Step 3: after some months, force a reset for accounts that never logged in. Cost: one extra hash per migrated login.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You may have to mitigate instead of patch. Options: disable or block the vulnerable feature, add a WAF or virtual patch rule, restrict network access to it, pin to a patched fork or apply a local patch, or replace the library. Check that the CVE is actually reachable in your code before panicking. If nothing helps, record a risk acceptance with an owner and review date, add detection for exploit attempts, and plan a migration. Contact the maintainers and check whether a fix is in progress.</p>",
+    "<p>Reachability analysis checks whether your code can actually call the vulnerable function, not just whether the library is installed. A scanner may flag 200 findings, but if the bug sits in an XML parser method your code never invokes, the real risk is low. Tools build a call graph from your code through dependencies and mark findings as reachable or not. It reduces noise and helps prioritize, but it is not proof of safety: reflection and dynamic loading can hide calls, so still patch when convenient.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Tamper-evident hash chain with signed checkpoint",
+    "python": "import hashlib, hmac, json\n\nKEY = b\"kms-held-key\"          # in real life the app cannot read this\n\ndef link(prev_hash, seq, event):\n    body = json.dumps({\"seq\": seq, \"event\": event}, sort_keys=True)\n    return hashlib.sha256((prev_hash + body).encode()).hexdigest()\n\nlog, prev = [], \"0\" * 64\nfor seq, ev in enumerate([\"login alice\", \"grant admin bob\", \"delete invoice 7\"]):\n    prev = link(prev, seq, ev)\n    log.append({\"seq\": seq, \"event\": ev, \"hash\": prev})\ncheckpoint = hmac.new(KEY, log[-1][\"hash\"].encode(), \"sha256\").hexdigest()  # stored elsewhere (WORM)\n\ndef verify(entries, cp):\n    prev = \"0\" * 64\n    for e in entries:\n        prev = link(prev, e[\"seq\"], e[\"event\"])\n        if prev != e[\"hash\"]:\n            return \"TAMPERED at seq %d\" % e[\"seq\"]\n    good = hmac.new(KEY, prev.encode(), \"sha256\").hexdigest()\n    return \"ok\" if hmac.compare_digest(good, cp) else \"TRUNCATED or head replaced\"\n\nprint(\"original  :\", verify(log, checkpoint))\nedited = [dict(e) for e in log]; edited[1][\"event\"] = \"grant admin eve\"\nprint(\"edited    :\", verify(edited, checkpoint))\nprint(\"truncated :\", verify(log[:2], checkpoint))\n"
+   },
+   "followUps": [
+    "<p>A bare hash chain only detects tampering if you trust the final hash, and an admin who controls the log can simply recompute the whole chain after editing it. Every hash is public math, so a new valid chain is easy. They can also delete the tail or replace everything. You need something the attacker cannot forge: an HMAC or signature with a key outside their reach, and checkpoints stored in a separate account with write-once retention. Then a rewritten chain no longer matches the published head.</p>",
+    "<p>A Merkle tree lets you prove a single entry is in the log without sending the whole log. Entries are leaves, each parent is the hash of its two children, and the root commits to everything. For 1 million entries, an inclusion proof is only about 20 hashes (log2 of 1 million). It also allows consistency proofs that today's log extends yesterday's, so history was not rewritten. This is how Certificate Transparency works, and it lets outside auditors check cheaply.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Typosquatting is publishing a package with a name that is a small mistake away from a popular one, like <code>reqeusts</code> instead of <code>requests</code>, hoping developers mistype it. Dependency confusion needs no typo: it relies on your build picking the attacker's public package over your private one. Defences for typosquatting: copy names from official docs, review new dependencies before adding them, use an allow-list proxy registry, and check download counts, age and maintainers. Install scripts make a typo run code instantly.</p>",
+    "<p>Provenance means a signed record of who built an artifact, from which source, with which steps. Build in an isolated, ephemeral CI environment, produce an attestation (for example SLSA provenance or in-toto) that lists the source commit and builder, sign it with short-lived keys (Sigstore/cosign), and store it with the image. At deploy time an admission policy checks the signature and that the commit comes from your protected branch; unsigned images are refused. Also record an SBOM and use reproducible builds where possible.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>STRIDE is a checklist of threat types applied to each part of a diagram, while an attack tree starts from one attacker goal and breaks it down. Example: STRIDE asks of the login flow, can someone spoof, tamper, deny service? An attack tree starts at the goal 'steal admin session' and branches: phish the password OR steal the cookie OR exploit XSS, each with cost and difficulty. STRIDE is broad and quick for coverage; trees are deep and good for ranking the cheapest attack path. Teams often use STRIDE first, then trees for the scariest goals.</p>",
+    "<p>Draw the flow: browser, upload endpoint, scanner, storage, then the readers. Apply STRIDE: spoofing (who uploads), tampering (a file swapped after the scan), information disclosure (guessable URLs, other users' files), denial of service (a 10 GB file or a zip bomb), elevation (a web shell or polyglot file executed on the server, SVG with script, path traversal in the filename). Mitigations: size limit, allow-listed types checked by content not extension, random storage names, store outside the web root on a separate domain, antivirus scan, no execution rights, and signed download URLs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Slopsquatting is when attackers register package names that an AI model tends to invent. LLMs sometimes hallucinate a plausible library name; if the same fake name appears often, an attacker publishes a malicious package under it, and a developer or an agent running <code>pip install</code> from the model's suggestion installs it. Defence: do not let agents install dependencies freely, verify that the package exists and is established, use an allow-list or proxy registry, and review every new dependency in a pull request.</p>",
+    "<p>Cut off each step of the exfiltration chain. An injected instruction usually needs to read private data and then send it out, so: limit what the agent can read to the current user's data, block or allow-list outbound domains, do not render markdown images or links from model output automatically (they can carry data in the URL), require approval before sending email or making external calls, and scan outputs for secrets and PII. Separate agents that read untrusted content from agents that hold sensitive tools, and log every tool call.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a small set of outcome metrics and coverage numbers, reviewed monthly. Examples: mean time to patch for critical vulnerabilities (target under 7 days), percent of services with MFA, secret scanning and SBOMs (for example 120 of 200 = 60 percent), number of internet-exposed services, open critical findings by age, mean time to detect and respond in drills, and percent of services on the paved road. Track trends rather than a single score, and watch for numbers that look good because nobody is measuring honestly.</p>",
+    "<p>Make the secure option the easiest option and show the value. Provide a ready-made library, template or pipeline step so adopting costs a day, not a quarter; give teams a clear priority list instead of 500 findings; embed security champions in teams; and report time saved and incidents avoided. Use gates only for the few serious risks, with a fast exception process, and agree deadlines with product managers so security work sits in the roadmap. Celebrate teams that adopt early, and do not shame the others.</p>"
+   ]
+  }
+ ]
+}
