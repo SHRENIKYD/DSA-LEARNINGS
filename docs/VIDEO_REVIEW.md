@@ -11,3 +11,7 @@ The review compares lesson titles and intended scope against video titles, avail
 `data/video-review.json` records each concept, previous and selected IDs, decision, source and evidence. Full playback, transcripts, regional availability and every embed have not been independently verified; `playbackVerified` is false throughout. Availability can change after review.
 
 Run `npm run test:videos` to validate mappings against the actual syllabus, review records, safe URLs, chapter ranges and curated-choice retention. Run `node tools/video-test.js <build-directory>` after web and mobile builds to verify the generated catalogs. The existing theme is unchanged.
+
+## Later additions
+
+`data/video-review.json` also records hand-picked videos added after this review (action `added`): 29 earlier and 122 on 2026-11-15. Those were found by search and checked for existence and embeddability only (`playbackVerified: false`); see [VIDEOS.md](VIDEOS.md#current-coverage-release-11048) for the current numbers.

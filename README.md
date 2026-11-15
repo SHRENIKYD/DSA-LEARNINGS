@@ -35,10 +35,10 @@ Every module has the same layout:
 - 🧩 **Guided problems**: brute force → "What would you do?" question → 3 progressive hints → full solution, dry run and complexity.
 - 🟣 **Expert deep dives**.
 - 🤖 **Working alongside AI**: how AI changes each topic and how to use it well.
-- 📝 **Quiz** and 🎤 **interview Q&A bank**.
+- 📝 **Quiz** and 🎤 **interview Q&A bank**: every question has a model answer, a runnable program where one helps (in your chosen language first) and a written answer to each likely follow-up question. See [docs/INTERVIEW_ANSWERS.md](docs/INTERVIEW_ANSWERS.md).
 - 🏟 **Practice Arena** with 12–20 graded problems.
 
-The site is styled as a story journey: the home page is a world map of 7 regions, each track is a land, each module is a place and each topic is a landmark. Progress earns 17 rubber-stamp badges on the Passport page (`passport.html`); lesson videos are collected on the Watchtower page (`videos.html`). A daily bot finds new lesson videos, redeploys the website and releases a new app version when any are added.
+The site is styled as a story journey: the home page is a world map of 7 regions, each track is a land, each module is a place and each topic is a landmark. Progress earns 17 rubber-stamp badges on the Passport page (`passport.html`); lesson videos are collected on the Watchtower page (`videos.html`) and every interview question is searchable on the Interview handbook page (`handbook.html`), which follows the learner's route and language and has a level filter and a rapid-fire mode. 2,214 of 2,228 lesson topics have a video; a daily bot looks for the rest, redeploys the website and releases a new app version when any are added (status in [docs/VIDEOS.md](docs/VIDEOS.md#current-coverage-release-11048)).
 
 SQL snippets run live in the browser (sql.js), and JavaScript/Python snippets run in a sandbox.
 
@@ -75,7 +75,7 @@ Google sign-in in the app opens Google in the system browser. Google returns to 
 
 iPhone and iPad: install the website from Safari (Share → Add to Home Screen) or build the native app on a Mac; see [docs/IOS.md](docs/IOS.md).
 
-Publishing on Google Play: see [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md). Lesson videos: see [docs/VIDEOS.md](docs/VIDEOS.md).
+Publishing on Google Play: see [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md). Lesson videos: see [docs/VIDEOS.md](docs/VIDEOS.md). Interview programs and follow-up answers: see [docs/INTERVIEW_ANSWERS.md](docs/INTERVIEW_ANSWERS.md).
 
 XP and badges are worked out from the progress the website already saves, so they sync with your account. Streaks, quests and game wins are kept on the device for now.
 

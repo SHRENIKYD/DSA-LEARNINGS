@@ -54,7 +54,7 @@
   {
    "code": null,
    "followUps": [
-    "<p>Autogenerate compares your models to the live database, so it misses anything it cannot see in metadata. It does not detect table or column renames (it sees a drop plus an add, which loses data), changes to server defaults and some type changes unless you enable <code>compare_type</code>, and it ignores things like triggers, views, stored procedures and sometimes CHECK constraints or sequences.</p><p>Always read the generated file. A rename needs <code>op.alter_column(..., new_column_name=...)</code> written by hand.</p>",
+    "<p>Autogenerate compares your models to the live database, so it misses anything it cannot see in metadata. It does not detect table or column renames (it sees a drop plus an add, which loses data), changes to server defaults unless you enable <code>compare_server_default</code> (type changes are compared by default since Alembic 1.12), and it ignores things like triggers, views, stored procedures and sometimes CHECK constraints or sequences.</p><p>Always read the generated file. A rename needs <code>op.alter_column(..., new_column_name=...)</code> written by hand.</p>",
     "<p>Parallel work creates two revisions with the same parent, which gives two heads, and <code>alembic upgrade head</code> fails with \"multiple heads\". Fix it after merging branches with <code>alembic merge -m \"merge\" heads</code>, which creates an empty revision that has both as parents.</p><p>Better, have CI run <code>alembic heads</code> and fail if more than one appears, so the second developer rebases and re-points <code>down_revision</code> to the new head. Keep migrations independent where you can.</p>"
    ]
   },

@@ -55,7 +55,7 @@
    "code": null,
    "followUps": [
     "<p>Test it with <code>amtool config routes test --config.file=alertmanager.yml severity=page team=payments</code>, which prints the receiver that the labels would reach. Keep a list of label sets for each team and severity in CI, and fail the build when a route changes unexpectedly. Also send a real test alert with <code>amtool alert add</code> to a staging receiver and run a game day, so you find a bad webhook before the incident.</p>",
-    "<p><code>send_resolved: true</code> makes Alertmanager send a second notification when the alert stops firing, so the channel or paging tool can close the incident. Without it, the page stays open until a person closes it. It is on by default for some receivers (Slack, email) and off for others (PagerDuty resolves via its own event). Leave it on for chat, since the all-clear message saves people checking dashboards.</p>"
+    "<p><code>send_resolved: true</code> makes Alertmanager send a second notification when the alert stops firing, so the channel or paging tool can close the incident. Without it, the page stays open until a person closes it. The default differs by receiver: on for PagerDuty and webhook, off for Slack and email, so set it explicitly. Leave it on for chat, since the all-clear message saves people checking dashboards.</p>"
    ]
   },
   {

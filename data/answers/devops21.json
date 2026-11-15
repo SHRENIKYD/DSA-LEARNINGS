@@ -4,7 +4,7 @@
    "code": null,
    "followUps": [
     "<p>Already-running Pods keep working, but new Pods may start without a fresh certificate. The data plane keeps its last configuration, so existing traffic flows.</p><p>A new sidecar or ztunnel needs istiod to get its certificate and config. With injection, the injector webhook lives in istiod too, so with a fail-open webhook the Pod starts <b>without</b> a sidecar (a security gap), and with fail-closed it is not created. Run istiod with 2 or more replicas and a PodDisruptionBudget so this is rare.</p>",
-    "<p>Skip a mesh when you have few services, a single team, or no need for mTLS, traffic shifting or uniform telemetry.</p><p>A mesh adds CPU and memory, extra hops (latency of about a millisecond per proxy), upgrade work and a new thing to debug. With 5 services, a library or an ingress controller plus NetworkPolicies is often enough. It pays off when dozens of services in several languages need the same identity, policy and metrics without changing code.</p>"
+    "<p>Skip a mesh when you have few services, a single team, or no need for mTLS, traffic shifting or uniform telemetry.</p><p>A mesh adds CPU and memory, extra hops (a little added latency per proxy hop), upgrade work and a new thing to debug. With 5 services, a library or an ingress controller plus NetworkPolicies is often enough. It pays off when dozens of services in several languages need the same identity, policy and metrics without changing code.</p>"
    ]
   },
   {
@@ -101,7 +101,7 @@
   {
    "code": null,
    "followUps": [
-    "<p>Namespace isolation is not enough when tenants are untrusted, need a different kernel-level boundary, or need their own cluster-wide resources.</p><p>All pods share one kernel, so a container escape reaches the node and its neighbours. Use separate clusters for regulated data (PCI) or hostile code, and sandboxed runtimes (gVisor, Kata) when you run customer-supplied code on shared nodes at the cost of 10 to 30 percent CPU or slower startup. Teams that need CRDs, custom admission or different Kubernetes versions also need their own cluster (or virtual clusters).</p>",
+    "<p>Namespace isolation is not enough when tenants are untrusted, need a different kernel-level boundary, or need their own cluster-wide resources.</p><p>All pods share one kernel, so a container escape reaches the node and its neighbours. Use separate clusters for regulated data (PCI) or hostile code, and sandboxed runtimes (gVisor, Kata) when you run customer-supplied code on shared nodes at the cost of some CPU overhead and slower startup. Teams that need CRDs, custom admission or different Kubernetes versions also need their own cluster (or virtual clusters).</p>",
     "<p>Give teams guardrails they cannot edit, plus self-service inside them.</p><ul><li>Platform owns policies (Kyverno/VAP, PSA labels, quotas) in a separate repo and namespace; teams only get <code>edit</code> in theirs.</li><li>Teams request namespaces through a pull request or portal; the pipeline creates them with defaults.</li><li>Policies cannot be removed by tenants because RBAC excludes policy kinds and namespace labels.</li><li>Exceptions are time-limited objects reviewed by the platform team.</li></ul>"
    ]
   },
