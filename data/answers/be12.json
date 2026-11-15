@@ -1,0 +1,116 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Stop profiling the whole service and change the question: the time is probably spent <em>waiting</em>, not computing. Switch to a wall-clock profile or traces, and look at the gaps between spans.</p><p>Also check the hidden places: GC pauses, lock waits, connection-pool waits, DNS, TLS handshakes, and queues before the app (load balancer, accept queue). If one request is 300 ms and the profile explains only 40 ms, the other 260 ms is waiting somewhere. Measure each suspect with a counter or timer, one at a time.</p>",
+    "<p>Use low-overhead, sampling tools and keep the cost small and temporary. A sampling profiler (async-profiler, perf, py-spy, eBPF) at about 100 Hz usually costs 1 to 3 percent CPU, unlike instrumenting profilers that slow every call.</p><ul><li>Profile one instance, not the fleet, and drain it from the load balancer if unsure.</li><li>Limit the duration (30 to 60 seconds) and set a kill switch.</li><li>Prefer always-on continuous profiling so no one has to attach to a live process.</li></ul>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Little's law checked by simulation",
+    "python": "# Little's law: L = lambda * W, checked by a tiny simulation.\n# Time O(N) for N requests, space O(N).\nimport random\nrandom.seed(7)\n\nrate = 500        # arrivals per second\nservice = 0.2     # seconds each request stays in the system\nn = 20000\n\nt = 0.0\nevents = []\nfor _ in range(n):\n    t += random.expovariate(rate)          # random gaps between arrivals\n    events.append((t, 1))                  # +1 when request arrives\n    events.append((t + service, -1))       # -1 when it leaves\nevents.sort()\n\n# average number in system = area under the \"in flight\" curve / duration\ninflight, last, area = 0, 0.0, 0.0\nfor time, d in events:\n    area += inflight * (time - last)\n    inflight += d\n    last = time\navg_inflight = area / last\n\nprint(\"arrival rate  :\", rate, \"req/s\")\nprint(\"time in system:\", service, \"s\")\nprint(\"Little L = rate * W =\", rate * service)\nprint(\"simulated average in flight =\", round(avg_inflight, 1))\nprint(\"pool slots needed (about)  :\", round(rate * service))\n"
+   },
+   "followUps": [
+    "<p>No. Little's law holds for any stable system whatever the arrival or service-time distribution, which is why it is so useful. It only needs long-run averages and a system that does not grow without limit.</p><p>Example: 40 requests arrive per second on average, each stays 0.5 s on average, so the average number in the system is 20, whether arrivals are steady or bursty. What changes with the distribution is the <em>variance</em>: bursty arrivals mean the peak is far above 20, so size with headroom.</p>",
+    "<p>Time in the system W is waiting time plus service time, so queueing is already inside the formula. If a request waits 150 ms in a queue and runs 50 ms, W is 200 ms.</p><p>You can apply the law to a part: to the queue only (L<sub>q</sub> = \u03bb \u00d7 W<sub>q</sub>) or to the servers only (busy servers = \u03bb \u00d7 service time). At 100 req/s with 50 ms service you keep 5 servers busy; the extra people you see in the queue come from burstiness and high utilisation, where waiting grows sharply as utilisation nears 100 percent.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because threads are not free and more of them rarely means more work done. Each one needs stack memory (about 1 MB reserved), and the scheduler spends time switching between them. With 8 cores and CPU-bound work, 1000 threads just take turns and add context-switch cost.</p><p>Worse, they can all hit the database at once: 1000 threads against a pool of 20 connections means 980 waiting, and memory use jumps. If the work is mostly waiting on I/O, virtual threads or async I/O give you high concurrency without paying that price, as long as downstream limits still cap the real parallelism.</p>",
+    "<p>A bulkhead is a separate, fixed-size resource slice per dependency, so a failure in one cannot use up everything. The name comes from the sealed compartments of a ship.</p><p>Example: a service has 100 threads. Give 30 to the payment API, 30 to search and 40 to everything else. If search hangs, it can block at most its 30, and checkout still works with its own 30. You implement it with separate thread pools, semaphores or connection pools, each with its own queue limit and timeouts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ThreadPoolExecutor: core, queue, extra threads, reject",
+    "java": "import java.util.concurrent.*;\n\npublic class Main {\n    static void run(String name, BlockingQueue<Runnable> queue) throws Exception {\n        CountDownLatch hold = new CountDownLatch(1);\n        // core=2, max=4; tasks block until the latch opens so the pool stays busy\n        ThreadPoolExecutor pool = new ThreadPoolExecutor(\n            2, 4, 1, TimeUnit.SECONDS, queue, new ThreadPoolExecutor.AbortPolicy());\n        System.out.println(name);\n        for (int i = 1; i <= 7; i++) {\n            try {\n                pool.execute(() -> {\n                    try { hold.await(); } catch (InterruptedException e) { }\n                });\n                System.out.println(\"task \" + i + \": threads=\" + pool.getPoolSize()\n                    + \" queued=\" + pool.getQueue().size());\n            } catch (RejectedExecutionException e) {\n                System.out.println(\"task \" + i + \": REJECTED\");\n            }\n        }\n        hold.countDown();\n        pool.shutdown();\n        pool.awaitTermination(2, TimeUnit.SECONDS);\n    }\n\n    public static void main(String[] args) throws Exception {\n        // bounded queue of 2: core fills, then queue, then extra threads, then reject\n        run(\"bounded queue (capacity 2)\", new ArrayBlockingQueue<>(2));\n        // unbounded queue never fills, so the pool never grows past core\n        run(\"unbounded queue\", new LinkedBlockingQueue<>());\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Because the pool only creates threads above core size when the queue refuses a task, and an unbounded queue never refuses. Tasks just pile up in the queue.</p><p>Example: core 2, max 10, unbounded queue. Submit 100 slow tasks: 2 run, 98 wait, and the pool stays at 2 threads (the program above shows this). So maximumPoolSize is ignored, and a backlog can grow until memory runs out. Use a bounded queue if you want the pool to grow, and pick a rejection policy to decide what to do when it is full.</p>",
+    "<p>Use SynchronousQueue for a direct hand-off: it holds no tasks, so each submit needs a free thread right now or the pool creates a new one (up to the max). Executors.newCachedThreadPool uses it.</p><p>It is good for short, bursty tasks where you do not want any task to wait in a queue. The risk is that with an unlimited maximum the thread count can explode under load, so set a sensible maximum and a rejection policy: <code>new ThreadPoolExecutor(0, 50, 60, SECONDS, new SynchronousQueue&lt;&gt;())</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pinning is when a virtual thread cannot unmount from its carrier (OS) thread while blocked, so the carrier is stuck too and you lose the benefit.</p><p>In Java 21 this happens when you block inside a <code>synchronized</code> block or while running a native method. If 8 carrier threads are each pinned by a virtual thread waiting 1 s on I/O inside synchronized, the 9th virtual thread cannot run at all. Fix it by replacing synchronized with <code>ReentrantLock</code> around blocking calls; you can find it with <code>-Djdk.tracePinnedThreads</code>.</p>",
+    "<p>Choose reactive when you need streaming with real backpressure, or very high connection counts with tiny memory. Examples: server-sent events to 100k clients, gateways, and pipelines that combine many async sources with operators like merge, window and retry.</p><p>It also fits when your whole stack is already non-blocking (Netty, R2DBC) or you are on a Java version without virtual threads. For ordinary request-and-response CRUD services, virtual threads give similar scale with code that is far easier to read and debug.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Backpressure with a bounded queue",
+    "python": "# Backpressure: a bounded buffer makes a fast producer wait for a slow consumer.\n# Compare with an unbounded buffer that just grows.\nimport queue, threading, time\n\ndef run(limit):\n    q = queue.Queue(maxsize=limit)        # 0 means unbounded\n    peak = 0\n    def consumer():\n        for _ in range(30):\n            q.get()\n            time.sleep(0.002)             # slow consumer\n    t = threading.Thread(target=consumer)\n    t.start()\n    for i in range(30):\n        q.put(i)                          # blocks when the queue is full\n        peak = max(peak, q.qsize())\n    t.join()\n    return peak\n\nprint(\"producer sends 30 items quickly, consumer is slow\")\nprint(\"unbounded queue grows past 5 waiting:\", run(0) > 5)\nprint(\"bounded queue (5), peak items waiting:\", run(5))\n"
+   },
+   "followUps": [
+    "<p>Drop the item whose value is lowest, and that depends on the data. For live data such as prices or sensor readings, drop the <em>oldest</em>, because the newest value replaces it anyway. For work that must be processed in order, or when old items are still valuable, drop the <em>newest</em> (reject at the door) so what is already accepted still finishes.</p><p>Example: a queue holds 1000 location updates; keep the latest per user. A queue of payment orders should reject new ones with a clear error, never silently drop old ones.</p>",
+    "<p>Kafka uses a pull model: consumers ask for records when ready, so a slow consumer simply falls behind instead of being flooded. The broker stores the backlog on disk.</p><p>You see this as consumer <em>lag</em> (latest offset minus committed offset). To react: alert when lag grows, add consumers up to the partition count, tune <code>max.poll.records</code> and processing time, and rate-limit or reject at the producer side if the backlog must stay bounded. Retention limits how long a lagging consumer can be behind before data is lost.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Average vs percentiles and tail odds",
+    "python": "# Why tail latency matters: averages hide slow requests.\nimport random\nrandom.seed(1)\n\n# 98 fast requests (50 ms) and 2 slow ones (2000 ms)\nlat = [50] * 98 + [2000] * 2\nlat.sort()\n\ndef pct(data, p):\n    return data[min(len(data) - 1, int(p / 100 * len(data)))]\n\nprint(\"latencies: 98 x 50 ms, 2 x 2000 ms\")\nprint(\"average:\", sum(lat) / len(lat), \"ms\")\nprint(\"p50:\", pct(lat, 50), \"ms  p95:\", pct(lat, 95), \"ms  p99:\", pct(lat, 99), \"ms\")\n\n# a page that makes N calls, each slow with probability 1%\nfor n in (1, 10, 50, 100):\n    print(\"calls =\", n, \" chance of at least one slow call =\",\n          round(1 - 0.99 ** n, 3))\n"
+   },
+   "followUps": [
+    "<p>You need about 100 times the count at the percentile you want to measure, and more for stable results. For p99.9 only 1 in 1000 samples is in the tail, so with 10,000 samples you see only 10 tail points, which is too noisy.</p><p>A practical rule: at least 100,000 samples for a steady p99.9, and compute it over a long enough window. Short windows and low traffic give jumpy numbers, so many teams use p99 for alerts and p99.9 only on busy services or long windows.</p>",
+    "<p>Prometheus uses histograms with fixed buckets and estimates the quantile with <code>histogram_quantile()</code>. It finds the bucket holding the target rank and assumes values are spread evenly inside it.</p><p>Example: buckets at 100 ms and 200 ms hold 90 and 99 requests of 100. The p95 falls in the 100 to 200 ms bucket, and the estimate is 100 + (95-90)/(99-90) &times; 100, about 156 ms. So accuracy depends on your bucket choice. Histograms can be summed across servers, which is why you use them rather than averaging per-server quantiles.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Coordinated omission: closed loop vs honest timing",
+    "python": "# Coordinated omission: a closed-loop test hides stall time.\n# Server: 5 ms per request, except one 1000 ms stall at request 50.\n# Intended rate: one request every 10 ms (100 req/s). 200 requests.\nN, GAP = 200, 10\n\ndef service(i):\n    return 1000 if i == 50 else 5\n\n# Naive closed loop: send next request only after previous reply\nnaive = [service(i) for i in range(N)]\n\n# Open model: request i is meant to start at i*GAP; latency counts from then\nopen_lat, free = [], 0\nfor i in range(N):\n    intended = i * GAP\n    start = max(intended, free)\n    free = start + service(i)\n    open_lat.append(free - intended)\n\ndef p(data, q):\n    s = sorted(data)\n    return s[int(q / 100 * (len(s) - 1))]\n\nprint(\"naive  p50/p99/max:\", p(naive, 50), p(naive, 99), max(naive), \"ms\")\nprint(\"honest p50/p99/max:\", p(open_lat, 50), p(open_lat, 99), max(open_lat), \"ms\")\nprint(\"slow (>100ms) samples naive:\", sum(x > 100 for x in naive),\n      \" honest:\", sum(x > 100 for x in open_lat))\n"
+   },
+   "followUps": [
+    "<p>A closed model is right when the real users are a fixed group who wait for each reply before acting again, like 50 call-centre agents using an internal tool, or a batch job with a fixed number of workers.</p><p>Example: 20 workers each fetch, process and fetch again. Throughput there really does fall when the server slows down. It is wrong for public web or API traffic, where new users arrive on their own schedule no matter how slow you are. If unsure, use an open model, or run both.</p>",
+    "<p>Look for signs that the client slowed down when the server did. Check whether the achieved request rate dropped during the bad period, whether the maximum latency is about as long as the stall but there are only a few samples near it, and whether the p99 is suspiciously close to the median.</p><p>Example: 100 req/s planned for 60 s should give 6000 samples; if the report has 5400, then 600 requests were never sent. Compare the total count to rate &times; duration, and check whether the tool states it corrects for coordinated omission.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A bigger pool can be slower because the database has a limited number of cores and disks, and extra concurrent queries just compete for them. Past the saturation point, throughput stays flat or falls while latency rises.</p><p>Example: a database with 8 cores handles 50 queries per second per connection-sized slice well with about 16 connections; with 200 connections each query gets a sliver of CPU, adds lock contention and memory use, and every request takes longer. A common starting point is about 2 &times; cores + disk spindles, then measure.</p>",
+    "<p>Move everything that is not the database out of the transaction, and do the least work inside it.</p><ol><li>Make remote calls (HTTP, queue publishing) before opening or after committing.</li><li>Read and prepare data first, then write in one short block.</li><li>Add the missing index so statements finish in milliseconds.</li><li>Batch many small statements into a few.</li></ol><pre><code>data = callApi();       // outside\nbegin();\nupdate(data);\ncommit();</code></pre><p>A 2 s transaction becomes 20 ms, so one connection serves 100 times more requests.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Load shedding with a concurrency limit",
+    "js": "// Load shedding with a concurrency limit: reject instantly when full.\n// Capacity: 3 requests in flight; the 4th..6th get a fast \"503\".\nconst LIMIT = 3;\nlet inFlight = 0;\nlet served = 0, shed = 0;\n\nfunction handle(id) {\n  if (inFlight >= LIMIT) {            // cheap check before any real work\n    shed++;\n    console.log(`request ${id}: 503 Service Unavailable (Retry-After: 1)`);\n    return Promise.resolve();\n  }\n  inFlight++;                         // take a slot\n  console.log(`request ${id}: accepted (in flight ${inFlight})`);\n  return new Promise(res => setTimeout(res, 50)).then(() => {\n    inFlight--;                       // free the slot\n    served++;\n  });\n}\n\nasync function main() {\n  const batch = [];\n  for (let i = 1; i <= 6; i++) batch.push(handle(i));   // burst of 6\n  await Promise.all(batch);\n  console.log(`burst 1: served=${served} shed=${shed}`);\n  await handle(7);                    // after the burst slots are free again\n  console.log(`later request served, total served=${served}`);\n}\nmain();\n"
+   },
+   "followUps": [
+    "<p>429 means the caller sent too much (their fault, slow down), and 503 means the service is overloaded or unavailable (our fault, try later). Use 429 when you can tie it to a client or key quota, such as a rate limit of 100 requests per minute.</p><p>Use 503 when you shed load because the whole system is full, regardless of who asked. Both should carry a <code>Retry-After</code> header so well-behaved clients wait, and clients should add jitter to avoid retrying in lockstep.</p>",
+    "<p>Share the counter in a fast common store, or split the limit so nodes do not need to talk on every request.</p><ul><li>Central: Redis with an atomic increment or Lua script per client and window; simple and exact, but adds a network call and a dependency.</li><li>Local share: with 4 nodes and a 100/s limit, give each 25/s; cheap but uneven if load is skewed.</li><li>Hybrid: nodes take batches of tokens (say 10) from the central store and refill when empty.</li></ul><p>Decide what to do if Redis is down: usually allow traffic (fail open) with local limits.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Half-open is the trial state between open and closed: after the cool-down the breaker lets a few probe calls through to test whether the dependency has recovered.</p><p>If the probes succeed, it closes and normal traffic resumes. If one fails, it goes straight back to open for another cool-down. Example: open for 30 s, then allow 3 trial calls; 3 successes close it, 1 failure reopens it. Without half-open, you would either never recover or flood a service that is still sick.</p>",
+    "<p>Retry multiplication: each layer retries independently, so the calls multiply. If 3 layers each try 3 times, one user request can become 3 &times; 3 &times; 3 = 27 calls to the failing service, which turns a small problem into an outage (a retry storm).</p><p>Fix it by retrying at one layer only (usually the closest to the failing call), using a retry budget (for example at most 10 percent extra traffic), exponential backoff with jitter, and respecting deadlines so nobody retries after the caller has given up.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Circuit breaker state machine",
+    "js": "// Circuit breaker: closed -> open -> half-open -> closed.\nclass Breaker {\n  constructor(threshold, coolDown) {\n    this.threshold = threshold; this.coolDown = coolDown;\n    this.state = \"CLOSED\"; this.failures = 0; this.openedAt = 0;\n  }\n  call(fn, now) {\n    if (this.state === \"OPEN\") {\n      if (now - this.openedAt < this.coolDown) return \"rejected fast\";\n      this.state = \"HALF_OPEN\";               // cool-down over: probe once\n    }\n    try {\n      const r = fn();\n      this.state = \"CLOSED\"; this.failures = 0;  // success closes it\n      return r;\n    } catch (e) {\n      this.failures++;\n      if (this.state === \"HALF_OPEN\" || this.failures >= this.threshold) {\n        this.state = \"OPEN\"; this.openedAt = now;  // trip\n      }\n      return \"failed\";\n    }\n  }\n}\n\nlet dependencyUp = false;\nconst dep = () => { if (!dependencyUp) throw new Error(\"down\"); return \"ok\"; };\nconst b = new Breaker(3, 100);\nfor (const t of [0, 10, 20, 30, 40, 50]) {\n  console.log(`t=${t} -> ${b.call(dep, t)} [${b.state}]`);\n}\ndependencyUp = true;                       // dependency recovers\nfor (const t of [120, 130]) {\n  console.log(`t=${t} -> ${b.call(dep, t)} [${b.state}]`);\n}\n"
+   },
+   "followUps": [
+    "<p>A CPU profile counts only time when a thread is running on a core. A wall-clock profile samples threads whatever they are doing, including sleeping or blocked, so it shows where time passes in real life.</p><p>Example: a request takes 1 s, 50 ms computing and 950 ms waiting on a database. The CPU profile shows only the 50 ms of computing; the wall-clock profile shows 950 ms in the socket read. For a slow service with low CPU, wall-clock is the one that points at the cause.</p>",
+    "<p>You would see most worker threads in the same waiting state, parked in the code that takes a resource, with few or none doing real work.</p><p>Example: 200 threads all in <code>HikariPool.getConnection</code> (or <code>queue.take</code>, or <code>Semaphore.acquire</code>) and a small number holding connections inside a slow query. Take 3 dumps 5 seconds apart: if the same pattern repeats, it is saturation and not a one-off. Cross-check with pool metrics: active equals max and pending is above zero.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Scale your numbers with care, and do not trust a straight multiplication. Start by testing in staging to find the shape of the behaviour, then do a small, controlled test in production (a canary instance or a shadow of real traffic) to calibrate.</p><p>Example: if staging has one quarter of production's database size, the query plans and cache hit rates differ, so staging says little about the database. Compare per-instance results (requests per second per core) with production, and use the production number for the final plan.</p>",
+    "<p>Prepare ahead and protect the system when it hits. Before a known event, pre-scale, warm caches, and load test at 1.5 times forecast. For surprises, rely on autoscaling with headroom, caching or a CDN for read-heavy pages, and load shedding with priority classes so checkout survives while less important traffic is dropped.</p><p>Example: a link goes viral and traffic jumps 10 times in 2 minutes. Autoscaling needs maybe 3 minutes, so the first minutes depend on queues, shed rules, a static fallback page and a waiting room.</p>"
+   ]
+  }
+ ]
+}
