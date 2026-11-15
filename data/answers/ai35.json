@@ -1,0 +1,100 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Assistant: a marketing person pastes a rough announcement into a chat tool and asks for a friendlier version, then edits it herself. Automation: every time a customer fills in the contact form, a row is added to a sheet and an AI step writes a one-line summary. Agent: you tell it \"find three suppliers for printer paper and draft a comparison\", and it searches, reads pages and builds the table, choosing its own steps.</p><p>Notice who starts the work and who decides the steps in each case.</p>",
+    "<p>I would trust a plain assistant first, because a person reads every draft before anything is sent. Next comes an automation that only drafts replies into a folder for approval. An agent that sends emails by itself comes last, if ever.</p><p>Customer emails reach people outside the company and cannot be unsent, and wrong or rude text harms trust. For example, 200 emails a day with a 2% error rate is 4 bad emails every day if nobody checks.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give it an owner and a schedule. Put a named person in charge, and review the files every month (or whenever a policy changes) so old documents are replaced rather than piled up. Keep a fixed list of 10 to 20 test questions with known good answers and re-run them after every change.</p><p>For example, if 2 of 20 answers are wrong after an update, you know exactly which new file caused it. Also add a feedback button so users can report bad answers quickly.</p>",
+    "<p>First check the files: the wrong answer usually comes from an out-of-date file, a missing file or unclear instructions. Fix that root cause, not just the one answer. Then add the failing question to your test list so it can never quietly return.</p><p>If the assistant guessed when the answer was not in the files, tighten the rule to say \"I do not know, contact X\". Tell users what was fixed. If the same kind of error keeps appearing, restrict what it covers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Plan for each place where the flow could go wrong: the AI returns UNSURE or a value outside the list, the input is empty or in another language, the same item arrives twice (duplicate), an app is down or a login expired, a person never approves, or the data is much longer than usual.</p><p>For each one decide the outcome in advance: retry, skip, or send to a named person with an alert. For example, if 3 attempts fail, post the item to a \"needs attention\" channel, not silently drop it.</p>",
+    "<p>Test it on old, real examples first, with the output going to a test sheet and nothing sent. Run 30 to 50 past cases including odd ones: blank input, duplicates, a very long message and a trick instruction. Compare the result with what a person did.</p><p>For example, if 47 of 50 match, the error rate is about 6%, and you can judge whether that is acceptable. Then run it live for a week in draft-only mode before giving it any power.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Reviewer audit: edit rate and speed",
+    "python": "# Spot a rubber-stamp reviewer: look at how often drafts are edited and how fast\n# Time O(R), space O(1) per reviewer\nreviews = {\n    \"reviewer_a\": [(False, 40), (True, 55), (False, 35), (True, 62), (False, 48)],\n    \"reviewer_b\": [(False, 3), (False, 2), (False, 3), (False, 2), (False, 4)],\n}\nfor name, rows in reviews.items():\n    n = len(rows)\n    edits = sum(1 for edited, _ in rows if edited)\n    avg_sec = sum(sec for _, sec in rows) / n\n    edit_rate = edits / n\n    # never editing AND reading very fast is the warning sign\n    suspicious = edit_rate < 0.1 and avg_sec < 10\n    print(name, \"edit rate\", edit_rate, \"avg seconds\", avg_sec,\n          \"-> audit a sample\" if suspicious else \"-> looks engaged\")\n"
+   },
+   "followUps": [
+    "<p>Remove the check only when a mistake is cheap, easy to undo and rare, and you have measured that. For example, labelling internal tickets with a topic, where a wrong label only means a re-route.</p><p>Do it in steps: first spot checks of, say, 30 items per week, and only drop to less if the error rate stays low for several weeks. Keep an alert and a switch-off. Never remove it for payments, legal or HR decisions, or messages to outside people.</p>",
+    "<p>Measure it, do not assume it. Mix in a few planted errors (a known wrong draft) and see whether reviewers catch them. Track the edit rate and the time spent per item: 0% edits and 2 seconds per item is a warning sign.</p><p>For example, if you plant 10 wrong drafts and the reviewer fixes only 3, the check is not real. Also ask reviewers to tick the checklist items or give a short reason when they approve.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Score tasks for automation",
+    "python": "# Score tasks for automation: time saved vs harm of a mistake\n# Time O(T) for T tasks, space O(1)\ntasks = [\n    # name, runs per month, minutes each, harm if wrong (1 low .. 5 high), same steps every time\n    (\"tag support tickets\", 400, 2, 1, True),\n    (\"write redundancy letters\", 6, 45, 5, False),\n    (\"copy invoice data\", 150, 4, 2, True),\n    (\"plan yearly offsite\", 1, 120, 2, False),\n]\nfor name, runs, minutes, harm, repeatable in tasks:\n    hours = runs * minutes / 60  # total hours per month\n    if harm >= 4 or not repeatable:\n        verdict = \"keep human (assistant may help)\"\n    elif hours >= 5:\n        verdict = \"automate\"\n    else:\n        verdict = \"not worth building\"\n    print(name, \"| hours/month:\", round(hours, 1), \"| harm:\", harm, \"->\", verdict)\n"
+   },
+   "followUps": [
+    "<p>I would refuse to automate telling a staff member they are being made redundant, or deciding who gets a loan or a job. These affect a person's life, need empathy and explanation, and one error is serious or unfair.</p><p>An assistant can help a human prepare notes or check the wording, but the human decides and speaks. Rare tasks I also refuse to automate: if something happens twice a year, the build time is more than the saving.</p>",
+    "<p>Add the maintenance time to the cost side. As a rule of thumb, estimate a few hours per month for fixing broken connections, updating prompts and reviewing samples, plus the owner's time. Subtract this from the time saved.</p><p>For example, saving 12 hours a month but spending 4 hours maintaining it nets 8 hours. If the build took 20 hours, payback is 20 / 8 = 2.5 months. If the net is near zero, do not build it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "UNSURE threshold sends doubtful cases to a person",
+    "python": "# Route low-confidence AI answers to a person (UNSURE) and count mistakes\n# Time O(N), space O(1)\n# (AI label, true label, AI confidence) for 10 tickets\nresults = [\n    (\"billing\", \"billing\", 0.95), (\"bug\", \"bug\", 0.90), (\"billing\", \"bug\", 0.55),\n    (\"other\", \"other\", 0.85), (\"bug\", \"billing\", 0.60), (\"bug\", \"bug\", 0.92),\n    (\"billing\", \"billing\", 0.88), (\"other\", \"bug\", 0.50), (\"bug\", \"bug\", 0.97),\n    (\"billing\", \"billing\", 0.91),\n]\ndef run(threshold):\n    wrong = unsure = 0\n    for label, truth, conf in results:\n        if conf < threshold:\n            unsure += 1       # a person handles it\n        elif label != truth:\n            wrong += 1        # a mistake slips through\n    return wrong, unsure\nprint(\"tickets:\", len(results))\nfor t in (0.0, 0.7):\n    wrong, unsure = run(t)\n    print(\"threshold\", t, \"-> wrong passed on:\", wrong, \"sent to person:\", unsure)\n"
+   },
+   "followUps": [
+    "<p>Compute it in four steps: take a random sample of past runs (say 100), have a person decide the right answer, count the runs where the AI differed, and divide. If 7 of 100 differ, the error rate is about 7%.</p><p>Do this for each type of input, not only overall, because errors often cluster. Repeat each week on a fresh sample after launch, since inputs change. Keep the sampled cases in a sheet so the numbers are traceable.</p>",
+    "<p>The number of mistakes grows by ten times, even though the rate is the same: 1,000 runs at 5% is 50 errors, while 10,000 runs is 500. So a manual review of every UNSURE or sampled item may no longer be possible.</p><p>I would re-check costs and plan limits, raise the confidence threshold carefully, add queues and alerts, and sample a fixed percentage rather than a fixed count. Also check that rate limits do not cause failures.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Self-hosting is worth it when data must stay on your own servers, for example for legal, health or client-confidential reasons, or when volume is high and you have someone who can run it. The cost is real work: installing, updating, backing up, securing and fixing it.</p><p>If nobody on the team can do that, a hosted plan with a proper data agreement is usually safer. Ask: who will be called when it is down at 2 a.m.?</p>",
+    "<p>Check what counts as one billable unit (a run, a task or a step), what is included in each plan, and what happens when you go over: a hard stop, a cost per extra unit, or an upgrade. Check whether AI usage, agent steps and failed or retried runs count.</p><p>Also look at the limits on number of workflows, users, history kept and approval features. Do the maths with your own volume, for example 2,000 runs times 6 steps is 12,000 steps a month.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not touch it, and do not shame the colleague. First find out what data it handles and which accounts and companies are involved. Then pause the workflow if it uses client or personal data, since free personal accounts often lack the right data terms.</p><p>Next, help them rebuild it on the approved business account with the right owner, and add it to the automation register. Delete the old copy and any stored data. Make the approved route easy so it does not happen again.</p>",
+    "<p>Use plain words and follow the data: \"When you send us a request, it goes into our system. A short part of your message is sent to our AI provider to sort it, and a person reads anything sensitive. We keep it for X days.\" Say what is not done, such as not using your data to train models, only if it is true and set up.</p><p>Offer a contact for questions and a way to opt out of the AI step.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Shut it down at once, then investigate. Reasons include: it sends or changes something it should not, it acts on instructions found inside an email or web page, it loops and burns usage, accuracy drops below the agreed level, or the owner leaves with no replacement.</p><p>Set these triggers in advance with numbers, such as \"more than 2 serious errors in a week\", and a clear off switch anyone on the team can use. Revoke its access tokens afterwards, not just pause it.</p>",
+    "<p>Use the intern comparison: you would not give a new intern the company bank login on day one. Show the cost of one bad action, for example one wrong email sent to 5,000 customers, next to the time saved by skipping approval.</p><p>Offer a path to more autonomy: read-only first, then drafts, then approved actions, then limited sending after weeks of good results. Managers usually accept \"earned trust, backed by numbers\" better than a flat no.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Estimate monthly usage before building",
+    "python": "# Estimate monthly usage of an automation (units, not prices)\n# Time O(1), space O(1)\nruns_per_month = 2000\nsteps_per_run = 6\nai_calls_per_run = 2\nwords_per_call = 500\nplatform_units = runs_per_month * steps_per_run\nai_words = runs_per_month * ai_calls_per_run * words_per_call\nprint(\"platform steps/month:\", platform_units)\nprint(\"AI words/month:\", ai_words)\n# trimming input to 200 words and filtering out half the runs early\nruns2 = runs_per_month // 2\nprint(\"after filtering+trimming steps:\", runs2 * steps_per_run,\n      \"AI words:\", runs2 * ai_calls_per_run * 200)\n# an agent that takes up to 10 steps per job and loops once in a while\nprint(\"agent worst case steps:\", runs2 * 10)\n"
+   },
+   "followUps": [
+    "<p>Through repeated triggers. For example, a workflow that fires on \"row updated in sheet\" and then updates that same row. Each update triggers the next run, forever. Another: an email auto-reply sent to an address that auto-replies too.</p><p>An AI step that makes the loop costly can burn thousands of calls in an hour. Prevent it with a filter on the trigger (skip changes made by the automation itself), a run limit, and a usage alert.</p>",
+    "<p>An agent is worth it when the steps genuinely differ each time and a fixed flow would need too many branches, such as researching a different supplier every time. If the steps repeat, a plain automation is cheaper and more predictable.</p><p>Compare: a fixed flow uses about 6 steps per run, an agent might use 6 to 20. Count the time saved against the extra usage, the review needed and the extra risk. Start with the cheaper option.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Never put passwords, API keys, customer personal data, salary or HR files, unreleased financials, or anything a user is not allowed to read elsewhere. Users can often coax an assistant into revealing its files and instructions.</p><p>A good test: if you would not be comfortable with every person who has access reading the file, it does not belong in the assistant. Store a link to the proper system and let access rules there decide.</p>",
+    "<p>Say no to \"public\" by default, then offer a safer route. Ask why: usually people want customers to get answers. Public means anyone, including attackers, can try to extract the files and misuse the assistant, and the company is responsible for its answers.</p><p>If there is a real need, build a separate version with only public information, have security, legal and the owner approve it, add limits and monitoring, and review it regularly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It depends on what the numbers show. If triage worked, a natural next step is a first-draft reply for common questions, with a person approving, because it reuses the same ticket data and the team already trusts the labels.</p><p>I would pick the task by saving and risk, like before: high volume, low harm, repeatable steps. Avoid starting a second big project before the first has an owner, a register entry and a month of stable results.</p>",
+    "<p>Use a one-page story with three numbers: time to first response before and after, the misrouting rate before and after, and the monthly cost against the plan limits. For example, response time from 4 hours to 2.5 hours and misrouting from 12% to 5%.</p><p>Add one real example, the UNSURE share, what you learned and the proposed next step. Be honest about limits and ask for a clear decision, such as approval to extend it to one more team.</p>"
+   ]
+  }
+ ]
+}

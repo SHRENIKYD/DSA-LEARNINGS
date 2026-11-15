@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "No. The shell (bash, PowerShell) is an ordinary user-mode program that reads your commands and asks the kernel to run things through system calls. It is a <b>user interface</b> to the OS, not the kernel. You can replace it freely: <code>chsh</code> swaps bash for zsh without touching the kernel. Some people loosely say 'the OS' to include shells and utilities, but the core is the kernel.",
+    "Security or accounting is one: the OS checks who may open a file, tracks user IDs and limits, and logs usage. None of that touches hardware directly. Other examples are process scheduling policy, the file-permission model, and inter-process communication such as pipes. Example: <code>chmod 600 notes.txt</code> only changes a permission record in the file system metadata, yet it controls who can read the file."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "The CPU raises an exception (a general protection fault on x86) and jumps to the kernel's handler. The kernel does not run the instruction. It usually sends the process a signal (SIGILL or SIGSEGV on Linux), which kills it by default and may write a core dump. Example: running <code>hlt</code> from a normal program ends that program only; the machine keeps running. That is exactly the protection the mode bit gives.",
+    "On x86, rings 1 and 2 were meant for device drivers and OS services with intermediate privilege, between kernel (0) and applications (3). In practice almost no mainstream OS uses them: Linux and Windows run only rings 0 and 3. Reason: paging protects only 'user' and 'supervisor' pages, so the middle rings add little. Virtualization later added a root/non-root mode (VT-x), sometimes called 'ring -1', for hypervisors."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "It can block in three places: waiting for data from a slow device (disk, network, pipe) that is not in the page cache; waiting for a lock the kernel needs; or a page fault while copying into your buffer. A blocked thread sleeps and the scheduler runs something else until an interrupt wakes it. Example: reading from an empty pipe sleeps until a writer sends bytes. Non-blocking mode (<code>O_NONBLOCK</code>) returns EAGAIN instead.",
+    "Because user memory cannot be trusted. The user could change the buffer after the kernel checked it, unmap it, or pass an address pointing into kernel memory. <code>copy_to_user</code> checks each address belongs to the caller and handles faults safely. Pointing would also keep kernel data tied to a user page that could vanish. Example: with a 4096-byte read, the kernel copies 4096 bytes from the page cache; one extra copy is the price of safety."
+   ]
+  },
+  {
+   "code": {
+    "title": "Function call versus system call timing",
+    "cpp": "#include <bits/stdc++.h>\n#include <unistd.h>\n#include <sys/syscall.h>\nusing namespace std;\n\n// A plain function call stays in user mode: a few nanoseconds.\n__attribute__((noinline)) long plain(long x) { asm volatile(\"\"); return x + 1; }\n\nint main() {\n    const int N = 1000000;\n    using clk = chrono::steady_clock;\n    long s = 0;\n    auto t0 = clk::now();\n    for (int i = 0; i < N; i++) s += plain(i);\n    auto t1 = clk::now();\n    // syscall(SYS_getpid) really enters the kernel (not cached by libc)\n    for (int i = 0; i < N; i++) s += syscall(SYS_getpid) & 1;\n    auto t2 = clk::now();\n    double fn = chrono::duration<double, nano>(t1 - t0).count() / N;\n    double sc = chrono::duration<double, nano>(t2 - t1).count() / N;\n    printf(\"calls: %d (checksum %ld)\\n\", N, s > 0);\n    printf(\"function call: %.1f ns each\\n\", fn);\n    printf(\"system call:   %.1f ns each\\n\", sc);\n    printf(\"syscall is %s than a function call\\n\", sc > fn ? \"slower\" : \"not slower\");\n    // Cost: O(1) per call, but the syscall adds a mode switch and cache/TLB pollution.\n}\n"
+   },
+   "followUps": [
+    "The vDSO (virtual dynamic shared object) is a small library the kernel maps into every process. It lets some calls, like <code>gettimeofday</code> and <code>clock_gettime</code>, run in user mode by reading a kernel-updated memory page. No mode switch happens, so the call costs about 20 ns instead of 200 ns. Only calls that just read data the kernel already publishes can work this way; anything that changes state still needs a real syscall.",
+    "io_uring gives the process two ring buffers shared with the kernel: a submission queue and a completion queue. The program writes many requests (reads, writes, accepts) into the ring and makes one syscall, or none in polling mode, to submit them all. Example: 100 reads need 100 syscalls normally but about 1 with io_uring. Results are picked up from the completion ring without further syscalls, and work proceeds asynchronously."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "Not exactly, but it uses the same machinery. A syscall is a <b>trap</b>: a synchronous exception triggered on purpose by the program (the <code>syscall</code> or <code>int 0x80</code> instruction). A true interrupt is asynchronous and comes from hardware, such as a timer or network card. Both switch to kernel mode through the vector table, but a trap happens at a known instruction and returns to the next one.",
+    "Only hardware interrupts can be masked, and only to a degree. <code>cli</code> on x86 (or an interrupt controller mask) delays maskable interrupts such as timer and keyboard. Non-maskable interrupts (NMI) for critical hardware errors cannot be blocked. Exceptions like page faults and traps cannot be masked, since the CPU needs them to continue the current instruction. Kernels mask interrupts only briefly inside critical sections."
+   ]
+  },
+  {
+   "code": {
+    "title": "Interrupt vector table dispatch",
+    "python": "# Interrupt vector table: the CPU indexes an array with the vector number.\nlog = []\n\ndef divide_error():  log.append(\"handler 0: divide error (fault)\")\ndef page_fault():    log.append(\"handler 14: page fault (fault)\")\ndef timer():         log.append(\"handler 32: timer tick (interrupt)\")\ndef keyboard():      log.append(\"handler 33: keyboard (interrupt)\")\ndef syscall():       log.append(\"handler 128: system call (trap)\")\ndef spurious():      log.append(\"unhandled vector\")\n\nidt = [spurious] * 256          # the table the OS fills at boot\nidt[0], idt[14], idt[32], idt[33], idt[128] = divide_error, page_fault, timer, keyboard, syscall\n\ndef cpu_deliver(vector):\n    # real CPU: push old state, switch to kernel mode, jump to idt[vector], iret\n    saved_state = \"saved\"\n    idt[vector]()               # O(1) lookup, no searching\n    return saved_state\n\nevents = [32, 14, 33, 128, 0, 200]\nprint(\"incoming vectors:\", events)\nfor v in events:\n    cpu_deliver(v)\nprint(\"\\n\".join(log))\n"
+   },
+   "followUps": [
+    "The APIC (Advanced Programmable Interrupt Controller) is hardware that collects interrupt signals from devices and delivers them to CPU cores. Each core has a local APIC, and an I/O APIC routes device lines to chosen cores. It lets the OS assign priorities, mask lines and spread interrupts across cores, plus send inter-processor interrupts. Without it, a single CPU would have to poll every device or take all interrupts on one core.",
+    "The <b>top half</b> is the minimal handler that runs right when the interrupt arrives, with interrupts often masked: it acknowledges the device and records what happened. The <b>bottom half</b> (softirq, tasklet, workqueue in Linux) does the long work later with interrupts enabled. Example: a network card interrupt copies nothing in the top half; the bottom half processes the packets. This keeps interrupt latency low."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "The initramfs is a small temporary root file system loaded into RAM with the kernel. It holds the drivers and tools needed to reach the real root file system, for example disk, RAID, LVM or encryption modules, and a script that unlocks and mounts the real root. Then it switches to it (<code>switch_root</code>) and is discarded. Without it, the kernel would need every storage driver built in.",
+    "Secure Boot makes firmware check a digital signature on each boot component before running it. Firmware holds trusted public keys; the bootloader and kernel must be signed by a matching key, otherwise they are refused. This blocks boot-time malware such as rootkits that replace the bootloader. Chain: firmware checks bootloader, bootloader checks kernel. Users can enroll their own keys, and it does not protect after the OS has started."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "The ESP is the EFI System Partition, a small FAT32 partition (often 100 MB to 1 GB) where UEFI looks for boot programs. It holds <code>.efi</code> files such as the bootloader, for example <code>/EFI/ubuntu/grubx64.efi</code> and the Windows boot manager. Firmware reads FAT, so it can load these files directly, with no hidden boot sector. It is mounted at <code>/boot/efi</code> on Linux. Several OSes can share one ESP.",
+    "It protects against unsigned or tampered code running before the OS: bootkits, malicious bootloaders and modified kernels. Firmware refuses anything whose signature does not chain to a trusted key. It does not stop attacks after boot, nor a signed but vulnerable component. Example: replacing <code>grubx64.efi</code> with a malicious file fails the check, so the machine will not boot it. Revocation lists (dbx) block known-bad signed binaries."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "No. Linux is a monolithic kernel: scheduler, memory manager, file systems, network stack and most drivers all run in kernel mode in one address space. It is modular, since drivers can be loaded as modules (<code>modprobe</code>), but a loaded module still runs with full kernel privilege. A faulty module can crash the whole system. Some parts, like FUSE file systems, run in user space, but that is an add-on, not a microkernel design.",
+    "Speed and simplicity won. Calls between kernel parts are plain function calls, while a microkernel pays for message passing and context switches on each request. Early microkernels like Mach were measurably slower, and drivers for huge hardware variety were easier to write inside one kernel with shared data. Reliability is helped by testing and drivers from the vendor. Modern CPUs make IPC cheaper, so microkernels do well in embedded and safety-critical systems."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "DriverKit is Apple's framework for writing drivers that run in user space on macOS and iPadOS, replacing kernel extensions (kexts). A driver crash then kills only that driver process, not the whole system, and the driver has fewer privileges. It covers USB, PCI, networking and HID devices. Example: a faulty USB driver written with DriverKit can be restarted while the OS keeps running; a kext could cause a kernel panic.",
+    "Windows drivers mostly run in kernel mode with full privilege, so one bad driver can cause a blue screen. That is why most crashes historically came from third-party drivers. Microsoft responds with driver signing, the WHQL certification, Driver Verifier testing, and frameworks like UMDF that run drivers in user mode. Graphics drivers are also restartable: Windows can reset a hung GPU driver without a reboot (TDR)."
+   ]
+  },
+  {
+   "code": {
+    "title": "Batching writes to cut syscalls",
+    "python": "# Syscall counting: many tiny writes versus one buffered write.\nclass CountingFile:\n    def __init__(self): self.syscalls = 0; self.bytes = 0\n    def write(self, data):          # stands for one write() system call\n        self.syscalls += 1; self.bytes += len(data)\n\nlines = [\"line %d\\n\" % i for i in range(1000)]\nprint(\"lines to write:\", len(lines))\n\nslow = CountingFile()\nfor ln in lines:                     # one syscall per line: 1000 mode switches\n    slow.write(ln)\n\nfast = CountingFile()\nbuf = []; size = 0\nfor ln in lines:                     # collect in a user-space buffer\n    buf.append(ln); size += len(ln)\n    if size >= 4096:                 # flush when the buffer is full\n        fast.write(\"\".join(buf)); buf = []; size = 0\nif buf: fast.write(\"\".join(buf))     # final flush\n\nprint(\"unbuffered: %d syscalls, %d bytes\" % (slow.syscalls, slow.bytes))\nprint(\"buffered:   %d syscalls, %d bytes\" % (fast.syscalls, fast.bytes))\n# Same data, far fewer kernel crossings. Time O(n), buffer space O(4096).\n"
+   },
+   "followUps": [
+    "strace uses <code>ptrace</code>, which stops the program at every syscall, once on entry and once on exit, and switches to the tracer process each time. That is at least two extra context switches per syscall. A program doing 100000 syscalls per second can slow down by 10x or more. Use <code>strace -c</code> for counts, or low-overhead options such as <code>perf trace</code> or eBPF, which watch events inside the kernel without stopping the target.",
+    "<code>perf trace</code> is a Linux tool that shows syscalls like strace does, but uses the kernel's tracing events (perf events) instead of stopping the process with ptrace. Overhead is typically a few percent. Example: <code>perf trace -s ./app</code> prints a per-syscall summary with counts and time. It can also show page faults and scheduling events. It needs permissions (root or perf_event_paranoid settings)."
+   ]
+  },
+  {
+   "code": {
+    "title": "Demand paging and page faults with LRU",
+    "python": "# Demand paging: a page fault is a normal event, not always an error.\nfrom collections import OrderedDict\n\nclass Process:\n    def __init__(self, valid_pages, frames):\n        self.valid = set(valid_pages)       # pages inside the process's regions\n        self.frames = frames                # physical frames available\n        self.mem = OrderedDict()            # resident pages in LRU order\n        self.minor = 0; self.major = 0\n\n    def access(self, page):\n        if page in self.mem:                # TLB/page-table hit, no fault\n            self.mem.move_to_end(page); return \"hit\"\n        if page not in self.valid:          # address not in any region\n            return \"SIGSEGV (invalid access)\"\n        if len(self.mem) >= self.frames:    # evict least recently used\n            self.mem.popitem(last=False)\n        self.mem[page] = True               # handler maps page, then retries\n        self.major += 1\n        return \"page fault: page loaded\"\n\np = Process(valid_pages=range(8), frames=3)\nrefs = [0, 1, 0, 2, 3, 0, 1, 99]\nprint(\"references:\", refs)\nfor r in refs:\n    print(\"page %2d -> %s\" % (r, p.access(r)))\nprint(\"faults handled:\", p.major, \"resident:\", list(p.mem))\n"
+   },
+   "followUps": [
+    "Copy-on-write (COW) lets two processes share the same physical page until one writes to it. After <code>fork()</code>, parent and child map the same pages, marked read-only. When one writes, a page fault occurs; the kernel copies that single page, maps the copy writable for the writer and continues. Example: forking a 1 GB process copies almost nothing at first; only pages actually modified are copied. This makes fork and exec cheap.",
+    "Thrashing happens when memory is so overcommitted that the system spends most of its time swapping pages in and out rather than running programs. Each access causes a major page fault, so the CPU waits on disk. Example: 8 GB of RAM with programs needing 12 GB of active memory. Throughput collapses and latency explodes. Fixes: add RAM, reduce the working set, limit processes, or kill some programs (the OOM killer)."
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "PCID (Process-Context Identifier) is an x86 feature that tags TLB entries with an address-space ID. On a CR3 write, the CPU can keep entries belonging to other IDs instead of flushing the entire TLB. With KPTI, each syscall switches between a user and a kernel page table; PCID lets both stay cached, so the switch costs a few dozen cycles rather than a full flush followed by many TLB misses. Linux uses PCID where available.",
+    "Retpoline replaces indirect jumps with a return-based sequence so the CPU cannot be tricked by a poisoned branch predictor (Spectre v2); it adds a little cost to indirect calls. IBRS/IBPB/STIBP are CPU controls that restrict or flush branch prediction state, usually written via MSRs on kernel entry or context switch, which can cost hundreds of cycles per transition. Together they make syscalls and context switches slower, so newer CPUs include hardware fixes (eIBRS) with lower cost."
+   ]
+  }
+ ]
+}

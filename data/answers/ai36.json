@@ -1,0 +1,100 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The best-known case is <i>Mata v. Avianca</i> (US federal court, New York, 2023): lawyers filed a brief citing court cases that ChatGPT had invented, complete with believable names and quotes. The judge fined the lawyers and their firm $5,000. The cases looked real, so nobody checked until the other side could not find them. A smaller everyday version: a chatbot gives a statistic with a source link that opens a different page.</p>",
+    "<p>Look at the specifics and check those first: exact numbers, dates, names, quotes and citations. Open the source yourself; if you cannot find it in two minutes, treat it as unproven. Ask the same question again in a new chat: a fact that changes each time was a guess. For a summary, compare it with the original document. Example: if a report says a company grew 12%, find that number in the annual report. It takes a minute and catches most problems.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Data traffic light: classify what you want to paste",
+    "python": "# Classify text by what it contains: red (never), amber (approved tool), green.\nRED = [\"password\", \"api key\", \"card number\", \"passport\", \"diagnosis\", \"nda\"]\nAMBER = [\"customer\", \"email\", \"contract\", \"unreleased\", \"salary\", \"internal\"]\n\ndef light(text):\n    t = text.lower()\n    if any(w in t for w in RED):    # check the worst case first\n        return \"RED\"\n    if any(w in t for w in AMBER):\n        return \"AMBER\"\n    return \"GREEN\"\n\nitems = [\n    \"Blog draft with public product facts\",\n    \"Customer complaint with name and email\",\n    \"Admin password for the billing system\",\n    \"Unreleased sales forecast\",\n    \"Made-up example for a training slide\",\n]\nfor s in items:\n    print(light(s).ljust(6), s)\n# Cost: O(items x keywords), tiny. The rule order matters: RED wins.\n"
+   },
+   "followUps": [
+    "<p>Do not let people work around the rules: ask what is missing, then fix the tool or the rule. Collect concrete gaps (for example, it cannot handle long documents), take them to the owner of the policy and review quickly. Meanwhile the red items stay banned everywhere, and amber work goes in a de-identified form or waits. Most shadow use starts when the approved option is slow or weak, so a fast request route for better tools matters as much as the ban.</p>",
+    "<p>Because once text is sent, you cannot be sure every copy is gone. The company may keep logs and backups, staff may review chats for safety, and some products use chats for training unless you turn that off. Deleting removes your view, not necessarily those copies. Example: a password pasted at 10:00 and deleted at 10:05 must still be changed, because it may have been stored. So think before pressing Enter, and report mistakes quickly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Swap test: change one word, compare the scores",
+    "python": "# A toy CV scorer that \"learned\" word weights from biased history.\n# The swap test changes ONE detail and compares the scores.\nlearned = {\"python\": 3, \"leader\": 2, \"chess\": 1, \"women's\": -2}  # -2 is the bias\n\ndef score(cv):\n    # add up the weight of every known word in the CV\n    return sum(learned.get(w, 0) for w in cv.lower().split())\n\nbase = \"python leader captain of the chess club\"\nswapped = \"python leader captain of the women's chess club\"\n\na, b = score(base), score(swapped)\nprint(\"CV A:\", base, \"->\", a)\nprint(\"CV B:\", swapped, \"->\", b)\nif a != b:\n    print(\"Scores differ by\", a - b, \"after changing one detail: possible bias\")\nelse:\n    print(\"Same score: no difference found in this one test\")\n# One test is a warning sign, not proof; real audits use many examples.\n"
+   },
+   "followUps": [
+    "<p>A swap test asks the same question twice, changing only one detail such as a name or gender, and compares the answers. If the details that matter are identical, the answers should be too. Example: ask for a reference letter for James and again for Aisha with the same facts. If James is called a leader and Aisha helpful, that difference is a bias signal. One test proves nothing, so repeat it with many examples and keep the results.</p>",
+    "<p>Three well-documented ones. The Gender Shades study (2018) found commercial face-analysis products erred up to about 35% for darker-skinned women against under 1% for lighter-skinned men. In Detroit in 2020, Robert Williams was wrongly arrested after a face-recognition mismatch. In the Dutch childcare benefits scandal, risk scoring that used nationality led to thousands of families being wrongly accused of fraud, and the government resigned in 2021.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Copyright protects a creative work such as a drawing or text. A trademark protects a sign that identifies who sells something, such as a brand name or logo. So an AI-made logo may get weak or no copyright if no human shaped it, yet can still work as a trademark if it is distinctive and not confusingly similar to someone else's mark. They are separate systems with separate rules and offices, so check both.</p>",
+    "<p>Style alone is generally not owned, but the request can still cause trouble. If the output copies recognisable characters, logos or large parts of a specific work, it may infringe copyright or trademark. Asking for a named living artist's look also raises fairness and reputation concerns, and some tool terms forbid it. Safer: describe the look in your own words (warm colours, rough brush strokes) instead of naming a person or brand.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is a duty, in force since 2 February 2025, for providers and deployers of AI systems to take measures so their staff have a sufficient level of AI literacy. There is no single certificate. In practice that means role-based training on what the tools can and cannot do, their risks, and company rules, with records of who was trained. A receptionist and a data scientist need different content, matched to their tools and context.</p>",
+    "<p>A provider makes an AI system or sells it under its own name; a deployer is the organisation that uses it in its work. A company that builds a CV-ranking tool is the provider, and the firm that buys it for hiring is the deployer. Providers carry most of the build duties such as documentation and testing. Deployers must use the system as instructed, assign human oversight, keep logs and inform affected workers. A firm that rebrands or substantially changes a system can become a provider.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Payment rules that do not depend on spotting fakes",
+    "python": "# A process check: the decision never depends on how real the video looked.\ndef review(req):\n    reasons = []\n    if req[\"new_payee\"] and not req[\"callback_done\"]:\n        reasons.append(\"new payee not verified by call-back on a known number\")\n    if req[\"amount\"] >= 10000 and req[\"approvers\"] < 2:\n        reasons.append(\"needs two approvers above 10000\")\n    if req[\"urgent_secret\"]:\n        reasons.append(\"urgency/secrecy: extra check, not a shortcut\")\n    return reasons or [\"OK to pay\"]\n\nrequests = [\n    {\"name\": \"CEO video call\", \"amount\": 400000, \"new_payee\": True,\n     \"callback_done\": False, \"approvers\": 1, \"urgent_secret\": True},\n    {\"name\": \"Usual supplier\", \"amount\": 2500, \"new_payee\": False,\n     \"callback_done\": False, \"approvers\": 1, \"urgent_secret\": False},\n]\nfor r in requests:\n    print(r[\"name\"], \"amount\", r[\"amount\"])\n    for why in review(r):\n        print(\"   -\", why)\n# Cost: O(1) per request. The rules ignore how convincing the caller was.\n"
+   },
+   "followUps": [
+    "<p>Run drills and look at what people actually do. Send a harmless, approved fake urgent request, for example a test email asking for a new payee, and measure how many staff call back on a known number. Sample past payments each month to check that the second approver and call-back records exist. Track time to approve urgent payments to see the safe path is usable. Fix the steps where people skip checks, and do not punish those who fail the drill.</p>",
+    "<p>Treat it as impersonation and act on three fronts. Report the fake to the platform for takedown and keep evidence. Publish a statement through official channels so staff, customers and journalists know it is false. Brief staff that real instructions never arrive via social media. Prepare in advance: a named contact, a communications template and legal advice. Some companies also publish content credentials on genuine videos, which helps but is not proof.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>One example: \"This summary was drafted with an AI tool and reviewed and edited by our analyst team, who are responsible for its content.\" It says what AI did, what people did and who owns it. For a chatbot: \"You are chatting with an AI assistant; ask for a person at any time.\" Keep it plain, specific and near the content, not buried in small print.</p>",
+    "<p>Yes. If every email carries an AI label, readers stop noticing, and the labels that matter (a realistic AI image of a person, a chatbot) get lost. Minor help such as spelling or formatting usually needs none. A good test: would a reasonable reader feel misled on finding out? If yes, disclose. Label what matters, say what humans checked, and remember that a label never replaces responsibility for errors.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look at what people do, not just whether the document exists. Useful measures: the share of staff who finished training; how much AI work happens in approved tools versus personal accounts; how many problems were reported and how fast they were closed; results of spot checks on outputs; and a short survey asking whether the rules are clear and workable. Example: if 3 of 10 staff still use personal accounts after six months, the approved tool or the rules need fixing.</p>",
+    "<p>Shadow AI means staff using AI tools that the organisation has not approved or does not know about, such as a personal chatbot account for work documents. It is risky because company data may leave without the safeguards of a business contract. It usually grows when the approved tool is missing, slow or weak. Reduce it by providing a good approved tool, explaining the rules, and making it easy and blame-free to ask or report.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "AI energy: small per request, large in total",
+    "python": "# Simple arithmetic with published figures (a median Gemini text prompt\n# was reported at about 0.24 Wh; IEA: data centres 415 TWh in 2024).\nwh_per_prompt = 0.24\nprompts = 1_000_000\nkwh = wh_per_prompt * prompts / 1000      # Wh -> kWh\nprint(\"One prompt:\", wh_per_prompt, \"Wh\")\nprint(prompts, \"prompts:\", kwh, \"kWh\")   # 240 kWh, a few homes for a day\n\ntwh_2024, twh_2030, years = 415, 945, 6\ngrowth = (twh_2030 / twh_2024) ** (1 / years) - 1   # compound yearly growth\nprint(\"Data centres 2024:\", twh_2024, \"TWh; 2030 projection:\", twh_2030, \"TWh\")\nprint(\"Implied growth per year: %.1f%%\" % (growth * 100))\n# Lesson: a tiny number times billions of requests is a big number.\n"
+   },
+   "followUps": [
+    "<p>Published figures vary because they measure different things. Some count only the chip running a median text prompt; others add cooling, idle servers and networking, or the energy to train the model. Prompt length matters, and so does the model size, the task (an image or video costs far more than a short text answer) and the electricity mix (coal or solar) behind the data centre. Compare figures only when their scope and date match.</p>",
+    "<p>It can, in some uses, but it is not automatic. AI helps with weather forecasting, grid balancing, finding faster industrial routes and designing materials, and these can save more energy than they use. But lower cost can increase total use (the rebound effect), and many uses save nothing. Judge each use by measured benefit against its energy cost, not by assumption.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Apply the ten questions in short. Purpose: answer product questions; harm: wrong refund or medical advice. Data: no personal data beyond what is needed, approved tool. Accuracy: answers come only from our help pages, with a human handover. Fairness: test in each language we serve. Rules: tell users it is AI. Security: log it, with an incident contact. Cost: is a simple FAQ page enough? Review: owner and a date three months out.</p>",
+    "<p>A named business owner is accountable for the decision, with sign-off from privacy or legal, security, and the people who run the process (such as HR or customer support). Technical staff alone should not decide, since many issues are about law and people, not code. Higher-risk uses (decisions about people, health, money) need more senior approval and a record. A written sign-off with the date lets you show later who decided what.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Advisory does not mean harmless. People tend to trust a score, so the manager may approve it nearly every time, and the tool then decides in practice. Under EU rules, what counts is real influence, not the label. If you keep it advisory, make the human able and expected to disagree: show reasons, record why they follow or override, and check how often they differ. If they agree 98 times out of 100, treat it as a decision tool.</p>",
+    "<p>Compare outcomes between groups. Example: if 50 of 100 men but 30 of 100 women get a bonus, the rates are 50% and 30%, and 30/50 = 0.6. A common US screen, the four-fifths rule, flags a ratio below 0.8 for a closer look. Then ask whether a fair reason explains it. Add swap tests (same achievements, different name), check that different groups were in the test data, and repeat after each update.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The official primary sources: the EU's Official Journal for the AI Act text, the European Commission's AI Act pages, and your national regulators and data-protection authorities. Law-firm and news summaries are quicker to read but can be out of date or slanted, so use them to find the primary source, not replace it. For anything decision-critical, ask a qualified lawyer, and note the date you last checked.</p>",
+    "<p>At least every six months, plus whenever something changes: a new law or amendment, a new tool or use case, or an incident. Put a review date and a named owner in the policy itself. AI rules and tools move fast; the EU already shifted its high-risk dates in 2026. A short quarterly check of official sources, with a full review twice a year, is a sensible rhythm for most organisations.</p>"
+   ]
+  }
+ ]
+}
