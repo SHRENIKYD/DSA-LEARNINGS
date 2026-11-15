@@ -1,0 +1,103 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would be convinced by a held-out set of real, labelled tasks scored the same way for every option. Build about 200 examples from real traffic, split by customer so nothing leaks, and fix the metric first (exact match, rubric score or human win-rate).</p><p>Run the best prompt, prompt plus RAG and the tuned model. Example: prompt 71%, RAG 78%, tuned 90% on format-sensitive cases is a clear win. Also report cost and latency per request.</p>",
+    "<p>Yes, and that is the usual production setup: each tool fixes a different gap. RAG supplies fresh facts, fine-tuning fixes behaviour such as tone, output format or tool calling, and the prompt carries task rules.</p><p>Example: a support bot uses RAG to fetch the refund policy, a small LoRA-tuned model to answer in strict JSON, and a short prompt for the current user. Evaluate the combined system, not each part alone, because the tuned model must learn to use retrieved context.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Masking prompt tokens in the SFT loss",
+    "python": "import math\n\n# One training example: prompt tokens + assistant tokens\nprompt = [\"<user>\", \"capital\", \"of\", \"France\", \"?\", \"<assistant>\"]\nanswer = [\"Paris\", \"<end>\"]\ntokens = prompt + answer\n\n# Label -100 means \"ignore\": the prompt is masked out of the loss\nlabels = [-100] * len(prompt) + answer\nprint(\"tokens:\", tokens)\nprint(\"labels:\", labels)\n\n# Pretend the model gave these probabilities to the correct next token\np_correct = [0.30, 0.20, 0.50, 0.25, 0.40, 0.10, 0.80, 0.90]\n\ndef mean_loss(use_mask):\n    total, count = 0.0, 0\n    for lab, p in zip(labels, p_correct):\n        if use_mask and lab == -100:\n            continue  # skip prompt positions\n        total += -math.log(p)  # cross-entropy for one token\n        count += 1\n    return total / count, count\n\nfor flag in (False, True):\n    loss, n = mean_loss(flag)\n    print(\"mask prompt =\", flag, \"| tokens counted =\", n, \"| loss = %.4f\" % loss)\n# Time O(T), space O(1) for T tokens\n"
+   },
+   "followUps": [
+    "<p>We mask the prompt so the model is trained only on what it should produce, not on what the user typed. Otherwise the loss spends effort learning to predict user text and system prompts.</p><p>In the demo, 8 tokens give a mean loss of 1.055, but counting only the 2 answer tokens gives 0.164, a much cleaner signal. Without masking, long prompts also dominate the average and can teach the model to imitate users. Implementation: set prompt labels to -100 so cross-entropy skips them.</p>",
+    "<p>A template mismatch means training used one chat format and serving uses another, and quality quietly drops. The model learned specific special tokens and role markers, so different ones look like unfamiliar text.</p><p>Typical symptoms: the model ignores the system prompt, never stops (the end token is missing), or repeats role headers. Example: training with <code>&lt;|user|&gt;</code> but serving with <code>[INST]</code>. Fix it by using the tokenizer's own chat template in both places and testing a few rendered prompts by eye.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "LoRA update and parameter count",
+    "python": "# LoRA: y = W x + (alpha/r) * B (A x), with W frozen\ndef matvec(M, v):\n    return [sum(m * x for m, x in zip(row, v)) for row in M]\n\nd, r, alpha = 4, 1, 2\nW = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]  # frozen\nA = [[1, 1, 0, 0]]            # r x d, small random in practice\nB0 = [[0], [0], [0], [0]]     # d x r, starts at zero\nB1 = [[1], [0], [0], [2]]     # after some training\nx = [1, 2, 3, 4]\n\ndef lora(B):\n    base = matvec(W, x)\n    delta = matvec(B, matvec(A, x))\n    return [b + (alpha / r) * dl for b, dl in zip(base, delta)]\n\nprint(\"x =\", x)\nprint(\"B = 0   ->\", lora(B0), \"(same as base model)\")\nprint(\"trained ->\", lora(B1))\n\n# Parameter counts for a 4096 x 4096 layer at r = 8\nd_in = d_out = 4096\nrr = 8\nfull = d_in * d_out\nlora_p = rr * (d_in + d_out)\nprint(\"full:\", full, \"lora:\", lora_p, \"ratio: %.2f%%\" % (100 * lora_p / full))\n# Memory for gradients/optimizer states covers only r*(d_in+d_out) numbers\n"
+   },
+   "followUps": [
+    "<p>Start with a small rank such as 8 or 16 and raise it only if the eval stops improving. Rank is the capacity of the update: higher r can learn more but costs more memory and overfits small data.</p><p>Try r = 4, 8, 16, 64 on the same data and plot eval score against trainable parameters. For a 4096 by 4096 layer, r=8 trains 65,536 weights and r=64 trains 524,288. Narrow style tasks usually plateau at low r; new skills may need more.</p>",
+    "<p>Alpha scales how strongly the adapter changes the output. The update is multiplied by alpha/r, so alpha acts like a volume knob on the learned change.</p><p>Example: with r=8 and alpha=16 the scale is 2; with alpha=8 it is 1. In the demo, scale 2 turned a delta of 3.5 into 7. A common habit is alpha = r or 2r, then tune the learning rate. Changing alpha is roughly like changing the learning rate of the adapters, so change only one of them at a time.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Memory estimate for 4-bit base plus adapters",
+    "python": "# Rough memory for weights and LoRA training state (GB)\ndef gb(b):\n    return b / 1e9\n\nparams = 70e9\nbytes_per = {\"fp16 weights\": 2.0, \"int8 weights\": 1.0, \"NF4 weights\": 0.5}\nfor name, b in bytes_per.items():\n    print(\"%-13s 70B -> %6.1f GB\" % (name, gb(params * b)))\n\n# LoRA adapters: assume 0.5% of the base parameters are trainable\nadapters = params * 0.005\n# fp16 adapter weights + fp16 grads + fp32 Adam m and v\ntrain_bytes = adapters * (2 + 2 + 4 + 4)\nprint(\"adapter params: %.2f B\" % (adapters / 1e9))\nprint(\"adapter training state: %.1f GB\" % gb(train_bytes))\nprint(\"QLoRA total (NF4 + adapters, no activations): %.1f GB\"\n      % gb(params * 0.5 + train_bytes))\n# Activations and the KV cache add more, so plan for headroom\n"
+   },
+   "followUps": [
+    "<p>A 70B model needs about 35 GB for the 4-bit weights, versus 140 GB in 16-bit. That is only the weights; training adds more.</p><p>Adapters at about 0.5% of parameters (0.35B) add roughly 4 GB for weights, gradients and Adam states, giving about 39 GB in the demo. Activations and the batch's KV memory add several more GB, so a single 48 GB or 80 GB GPU is realistic, and a 24 GB card is not. Gradient checkpointing and short sequences reduce the extra.</p>",
+    "<p>You merge by adding the scaled low-rank update into the base weights, W' = W + (alpha/r)·B·A, so serving needs no extra layers and no extra latency.</p><p>With QLoRA, load the base in 16-bit, apply the adapter and merge there; merging into rounded 4-bit weights would lose precision. Then save the merged model and re-run your eval, because merging can shift outputs slightly. If you serve many tasks, keep adapters separate and swap them per request instead.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Reward hacking is when the model finds answers that score high with the reward model but are not actually good. The reward model is only a proxy for human opinion, and optimisation pressure exploits its flaws.</p><p>Examples: very long confident answers, flattery, or repeating phrases the reward model likes. The reward climbs while human ratings fall. Defences are the KL penalty, better and more varied preference data, periodic human checks, and stopping early when a held-out measure turns down.</p>",
+    "<p>The KL penalty keeps the policy close to the SFT model so it does not drift into strange text that fools the reward model. It subtracts a cost for each step away from the reference.</p><p>The objective is reward - β·KL(policy || reference). With β too small the model hacks the reward; too large and it barely learns. It also protects fluency and general skills the reward model never measured. In practice β is tuned and KL is watched during training.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "DPO loss on one preference pair",
+    "python": "import math\n\ndef sigmoid(z):\n    return 1 / (1 + math.exp(-z))\n\ndef dpo_loss(pi_c, pi_r, ref_c, ref_r, beta):\n    # implicit reward = beta * (log pi - log pi_ref)\n    margin = beta * ((pi_c - ref_c) - (pi_r - ref_r))\n    return -math.log(sigmoid(margin)), margin\n\n# Sequence log-probs (sum of token log-probs) for one preference pair\nref_c, ref_r = -20.0, -22.0      # frozen reference model\ncases = {\n    \"policy = reference\": (-20.0, -22.0),\n    \"prefers chosen\":     (-18.0, -25.0),\n    \"prefers rejected\":   (-23.0, -20.0),\n}\nfor beta in (0.1, 0.5):\n    print(\"beta =\", beta)\n    for name, (pc, pr) in cases.items():\n        loss, m = dpo_loss(pc, pr, ref_c, ref_r, beta)\n        print(\"  %-18s margin=%6.2f loss=%.4f\" % (name, m, loss))\n# At margin 0 the loss is log 2 = 0.6931; it falls as the margin grows\n"
+   },
+   "followUps": [
+    "<p>Beta sets how strongly the policy is held to the reference model; it is the same idea as the KL strength in RLHF. Small beta lets the policy move far; large beta keeps it close.</p><p>The demo shows this: with the same log-prob shift, margin 0.5 at beta 0.1 gives loss 0.474, while beta 0.5 gives margin 2.5 and loss 0.079. Typical values are 0.1 to 0.5. Too small can overfit pairs and hurt fluency; too large barely changes the model.</p>",
+    "<p>KTO is a preference method that needs only a thumbs-up or thumbs-down per answer, not a ranked pair. That makes data much easier to collect, because production feedback is usually single-answer ratings.</p><p>It is based on prospect theory: it raises the implicit reward of good answers and lowers it for bad ones relative to a reference point, weighting losses more than gains. Example: 10,000 logged answers with like or dislike can be used directly, with no pairing step. Quality still depends on label quality and balance.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Exact and near duplicate removal",
+    "python": "import re\n\ndocs = [\n    \"How do I reset my password?\",\n    \"how do i reset my   password\",\n    \"How can I reset my account password?\",\n    \"What is your refund policy for annual plans?\",\n]\n\ndef normalize(t):\n    return re.sub(r\"[^a-z0-9 ]\", \"\", t.lower()).split()\n\ndef shingles(words, k=2):\n    return {\" \".join(words[i:i + k]) for i in range(len(words) - k + 1)}\n\ndef jaccard(a, b):\n    return len(a & b) / len(a | b)\n\nkept, seen = [], set()\nfor d in docs:\n    words = normalize(d)\n    key = hash(\" \".join(words))   # exact dedup after normalizing\n    if key in seen:\n        print(\"exact duplicate:\", d)\n        continue\n    seen.add(key)\n    sh = shingles(words)\n    # near-dup check against kept docs (MinHash/LSH replaces this at scale)\n    near = [j for j, (_, s) in enumerate(kept) if jaccard(sh, s) >= 0.4]\n    if near:\n        print(\"near duplicate of #%d: %s\" % (near[0], d))\n        continue\n    kept.append((d, sh))\n\nprint(\"kept:\")\nfor d, _ in kept:\n    print(\" -\", d)\n"
+   },
+   "followUps": [
+    "<p>You dedup at scale by hashing first and comparing similar items only within buckets. Exact copies are removed by hashing normalised text, which is O(N).</p><p>For near-duplicates use MinHash with locality-sensitive hashing: each document gets a short signature of its shingles, and documents sharing a band of the signature fall in the same bucket. Only bucket members are compared, so cost stays near linear instead of N² pairs. Alternatively cluster embeddings and keep one per tight cluster. The demo's Jaccard check is what MinHash approximates.</p>",
+    "<p>Make the eval big enough that a real improvement shows above noise: usually 200 to 500 examples for a narrow task, more if you need per-segment results. The test is whether the confidence interval is smaller than the gain you care about.</p><p>With 100 examples and 80% accuracy the 95% margin is about plus or minus 8 points; with 400 it is about 4. Split by group, keep it fixed, and never train on it. Add a smaller hand-written gold set for hard cases.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Include the things you want to protect: reasoning, maths, coding, the other languages you serve, instruction following, and safety or refusal prompts. Use a fixed set that is never trained on.</p><p>For example, 100 questions each from a public benchmark, your own non-task prompts, and 50 safety prompts. Score the base model first as the reference and set a drop budget, say no more than 2 points per area. Check each area separately and keep the set stable across runs.</p>",
+    "<p>An average can hide forgetting because a large unchanged area outweighs a collapsed small one. The mean says the model is fine while one skill is broken.</p><p>Example: 9 areas stay at 80% and safety falls from 95% to 20%; the average drops only from 82% to 74%, which looks tolerable. So report per-area scores and apply a separate threshold to safety and other critical areas, not one global number.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Build the gold set from real user inputs, labelled by domain experts with a written rubric. It should be small, fixed, and never used for training or tuning.</p><p>Sample across customers, topics and difficulty, include rare and hard cases, and have two people label a subset to measure agreement. Example: 150 real tickets, with 30 double-labelled and agreement around 90% or higher. Refresh it from new traffic regularly, with the version number recorded, so scores stay comparable.</p>",
+    "<p>Monitor the same things you measured offline, on live traffic: quality, safety, cost and latency. Offline scores alone failed here, so sample real conversations.</p><p>Track thumbs-up rate, retries, escalations to humans, format errors and refusal rate by day. Score a random 1% of outputs with a judge plus weekly human review. Alert when a metric moves beyond a threshold, keep a canary rollout and a one-click rollback, and add failures to the eval set so they never recur.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>AI judges are biased in predictable ways, so you must test and correct for them. The main ones are position bias (favouring the first answer), length bias (favouring longer ones) and self-preference (favouring their own style).</p><p>Swap answer order and keep only verdicts that agree both times; compare win-rate against answer length; and measure agreement with human labels on 100 pairs. If the judge agrees with humans 85% of the time, use it for volume and keep humans for audits.</p>",
+    "<p>It depends on the goal, but a few thousand clean pairs usually gives a visible gain, and hundreds can be enough for a narrow behaviour such as tone. Quality counts more than count.</p><p>Start with 500 to 1,000 pairs, train, and check win-rate on a held-out set against the SFT model. If it rises, say from 50% to 62%, and then flattens as you add data, you have enough. If the labels disagree often, fix the rubric before collecting more.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not bake personal data into model weights if you can avoid it: keep it in retrieval stores, where deletion means removing a record. Then a request is handled by deleting the document and its index entries.</p><p>For data already used in training, log which dataset version each adapter used, remove the records, and retrain the adapter without them on the next scheduled release. Because adapters are small, retraining is cheap. Record the request, the date and the new version for the audit trail, and tell the legal team that exact removal from past weights is not instant.</p>",
+    "<p>You audit it by keeping evidence for every release: what data went in, what tests it passed, who approved it and what it did in production.</p><p>Concretely, version the dataset, code, base model and adapter; store eval reports including bias and safety results; record the human review sign-off; and log prompts, retrieved sources and answers (with sensitive fields scrubbed). An auditor can then pick any answer and trace it to the policy document and the model version that produced it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would change my mind if the data showed the question is about behaviour, not facts. For example, if the wiki is stable, small, and the model must write in an exact house style, a tuned model may win.</p><p>The evidence would be the 100-question test: if the tuned model matches or beats RAG on accuracy and passes a check that its answers are right for the right reasons, and the wiki changes less than once a quarter, fine-tuning is reasonable. Even then I would keep RAG for citations and permissions.</p>",
+    "<p>Groundedness means every claim in the answer is supported by the retrieved text. Measure it by checking each claim against the sources, not by judging fluency.</p><p>Split answers into claims, then have a judge or person mark each as supported, unsupported or contradicted. Example: 18 of 20 claims supported gives 90% groundedness. Also check that cited passages really contain the claim, and test questions whose answer is absent, where the right output is that it does not know.</p>"
+   ]
+  }
+ ]
+}
