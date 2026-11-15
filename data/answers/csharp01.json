@@ -1,0 +1,129 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>ReadyToRun precompiles IL to native code ahead of time but still uses the JIT for tuning; Native AOT compiles everything to a native executable and drops the JIT.</p><p>ReadyToRun code is not fully optimised, so hot methods are later re-JITted at tier 1. It cuts startup time and needs the runtime installed. Native AOT gives the fastest start and least memory, but no <code>Assembly.Load</code>, no <code>Reflection.Emit</code>, limited reflection, and larger per-platform builds.</p>",
+    "<p>The first request pays one-time costs that later requests do not: JIT compiling the code paths, loading assemblies, building the DI container and route tables, opening connections and warming caches.</p><p>Example: the first call might take 300 ms because 2,000 methods are compiled at tier 0, while the hundredth takes 5 ms. Fixes: ReadyToRun, a warm-up request at startup, and tiered PGO. Native AOT removes the JIT cost entirely.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>.NET Standard was a versioned contract of APIs that several runtimes (Framework, Core, Xamarin) all implemented, so one library could be shared among them. Today it is mostly not needed.</p><p>Since .NET 5 there is one runtime family, so a library should simply target <code>net8.0</code> (or <code>net8.0;net48</code> if Framework consumers remain). Only use <code>netstandard2.0</code> when you must support old Framework apps and cannot multi-target. Version 2.1 never ran on Framework at all.</p>",
+    "<p>Migrate in small steps, starting with the libraries nothing else depends on, and keep tests green at each step.</p><ol><li>Run the .NET Upgrade Assistant and the API analyser to find unsupported APIs.</li><li>Convert the old <code>.csproj</code> to SDK style and <code>PackageReference</code>.</li><li>Multi-target <code>net48;net8.0</code> so both old and new apps can consume it.</li><li>Replace Windows-only pieces (registry, WCF client, System.Web) or use compatibility packages.</li><li>Drop <code>net48</code> when the last consumer has moved.</li></ol>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Value types copy, reference types share",
+    "csharp": "using System;\n\nclass Box { public int N; }\n\nclass Program\n{\n    static void Main()\n    {\n        int a = 5;\n        int b = a;            // value type: b is an independent copy\n        b = 99;\n        Console.WriteLine(\"a=\" + a + \" b=\" + b);\n\n        Box x = new Box { N = 5 };\n        Box y = x;            // reference type: y points to the SAME object\n        y.N = 99;\n        Console.WriteLine(\"x.N=\" + x.N + \" y.N=\" + y.N);\n\n        int? maybe = null;    // a value type needs ? to hold null\n        Console.WriteLine(\"maybe has value: \" + maybe.HasValue);\n\n        string s = \"hi\";\n        string t = s;\n        t += \"!\";             // strings are immutable: t gets a NEW string\n        Console.WriteLine(\"s=\" + s + \" t=\" + t);\n        Console.WriteLine(\"== compares contents: \" + (new string('a', 3) == \"aaa\"));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>It lives on the heap, not the stack, because the compiler hoists captured variables into a hidden class (a closure object).</p><p>For <code>int n = 0; Action a = () =&gt; n++;</code> the compiler generates a class with a field <code>n</code> and your method uses that field. The closure object is allocated once per scope entry and kept alive as long as the delegate is. In a hot loop this costs an allocation; <code>static</code> lambdas or passing state explicitly avoid it.</p>",
+    "<p>Because strings can be large and have a variable length, so they must be stored as an object on the heap with a reference to it, not copied whole on every assignment.</p><p>Copying a 1 MB string by value on each method call would be very slow, while copying an 8-byte reference is cheap. Immutability makes this safe: nobody can change the shared text, so strings can be shared, cached (interning) and used as dictionary keys. The price is that <code>s += x</code> in a loop creates a new string each time, so use <code>StringBuilder</code> there.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "decimal is exact, double drifts",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        double d = 0;\n        decimal m = 0;\n        for (int i = 0; i < 10; i++)\n        {\n            d += 0.1;     // 0.1 is not exactly representable in binary\n            m += 0.1m;    // decimal stores digits and a power-of-ten scale\n        }\n        Console.WriteLine(\"double sum  == 1.0 ? \" + (d == 1.0) + \"  (\" + d.ToString(\"R\") + \")\");\n        Console.WriteLine(\"decimal sum == 1.0 ? \" + (m == 1.0m) + \"  (\" + m + \")\");\n\n        // Cost: decimal is 16 bytes and slower; time a loop of each\n        var sw = System.Diagnostics.Stopwatch.StartNew();\n        double x = 0; for (int i = 0; i < 5000000; i++) x += i * 0.5;\n        long t1 = sw.ElapsedTicks; sw.Restart();\n        decimal y = 0; for (int i = 0; i < 5000000; i++) y += i * 0.5m;\n        long t2 = sw.ElapsedTicks;\n        Console.WriteLine(\"decimal slower than double: \" + (t2 > t1));\n        Console.WriteLine(\"sizes: double=8 bytes, decimal=\" + sizeof(decimal) + \" bytes\");\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>By default <code>Math.Round</code> on a decimal uses banker's rounding: a value exactly halfway goes to the nearest even digit. Pass a <code>MidpointRounding</code> mode to choose something else.</p><p><code>Math.Round(2.5m)</code> is 2, <code>Math.Round(3.5m)</code> is 4, but <code>Math.Round(2.5m, MidpointRounding.AwayFromZero)</code> is 3. Most invoices and tax rules want <code>AwayFromZero</code>. Also round once at the end, not on every step, or small errors add up.</p>",
+    "<p>Use decimal (for example <code>DECIMAL(19,4)</code> or <code>NUMERIC(12,2)</code>), never float, because float is binary and stores 0.1 only approximately.</p><p>Summing 0.10 ten thousand times in float gives something like 999.9999999 and the cents will not match a ledger. A fixed-scale decimal column stores exact digits, makes <code>SUM</code> exact, and maps cleanly to C# <code>decimal</code>. Another option is storing integer cents in a <code>bigint</code>, which is also exact.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Unchecked wraps, checked throws",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        int max = int.MaxValue;\n        Console.WriteLine(\"max = \" + max);\n\n        int wrapped = unchecked(max + 1);     // default behaviour: wraps silently\n        Console.WriteLine(\"unchecked max+1 = \" + wrapped);\n\n        try\n        {\n            int boom = checked(max + 1);      // checked: throws instead of wrapping\n            Console.WriteLine(boom);\n        }\n        catch (OverflowException)\n        {\n            Console.WriteLine(\"checked max+1 -> OverflowException\");\n        }\n\n        try\n        {\n            Console.WriteLine(Math.Abs(int.MinValue));  // throws even when unchecked\n        }\n        catch (OverflowException)\n        {\n            Console.WriteLine(\"Math.Abs(int.MinValue) -> OverflowException\");\n        }\n\n        // Hashing is a good use for unchecked: wrap-around is wanted\n        int h = 17;\n        foreach (char c in \"hello\") h = unchecked(h * 31 + c);\n        Console.WriteLine(\"hash(hello) = \" + h);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Very little in the usual case: a <code>checked</code> add compiles to a normal add plus a jump-on-overflow check, so it costs about a branch that is almost never taken.</p><p>Measured in tight loops it is typically a few percent slower, because it can stop the JIT from vectorising or reordering. For business code it is negligible, so using <code>checked</code> for money or sizes is a cheap safety net. Profile first before turning it off in hot numeric kernels.</p>",
+    "<p>No. <code>checked</code> and <code>unchecked</code> affect only the arithmetic written lexically inside the block or expression, not the methods it calls.</p><pre><code>int F(int a) =&gt; a + 1;   // uses the project default\nchecked { int x = F(int.MaxValue); }  // F still wraps</code></pre><p>To make a whole method checked, put the operations inside <code>checked(...)</code> there, or set <code>CheckForOverflowUnderflow</code> for the whole project.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "const vs readonly vs static readonly",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Config\n{\n    public const int DaysInWeek = 7;                         // compile-time, copied into callers\n    public static readonly DateTime Started = DateTime.Now;  // one per type, set at run time\n    public readonly int Id;                                  // one per instance, set in ctor\n    public readonly List<string> Tags = new List<string>();  // readonly is shallow\n\n    public Config(int id) { Id = id; }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        Config a = new Config(1);\n        Config b = new Config(2);\n        Console.WriteLine(\"const: \" + Config.DaysInWeek);\n        Console.WriteLine(\"ids: \" + a.Id + \", \" + b.Id);\n        Console.WriteLine(\"same static for both: \" + (Config.Started == Config.Started));\n\n        // a.Id = 5;   // compile error: cannot assign a readonly field\n        a.Tags.Add(\"mutated\");   // allowed: the reference is fixed, the list is not\n        Console.WriteLine(\"readonly list now has \" + a.Tags.Count + \" item(s)\");\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Expose it through an immutable or read-only type, because <code>readonly</code> alone only stops reassigning the field.</p><p>Options: <code>ImmutableArray&lt;T&gt;</code> or <code>ImmutableList&lt;T&gt;</code> (cannot change at all), <code>IReadOnlyList&lt;T&gt;</code> or <code>ReadOnlyCollection&lt;T&gt;</code> (a read-only view; the owner can still change the inner list), or <code>FrozenDictionary</code> for lookups. Return copies or views from public members, not the raw mutable collection.</p>",
+    "<p>Yes, in most cases: reflection can write a <code>readonly</code> instance field, though it is a bad idea and the behaviour is not guaranteed.</p><p>Static readonly fields of primitives may already have been inlined by the JIT as constants, so your change is silently ignored. <code>const</code> cannot be changed because it is baked into the caller code. Treat it as unsupported; use a mutable field or a settings object if a value must change.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "var is static typing, not dynamic",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static void Main()\n    {\n        var n = 42;                       // compiler infers int\n        var price = 19.99;                // infers double\n        var money = 19.99m;               // infers decimal\n        var list = new List<string>();    // type is obvious: good use of var\n        var anon = new { Name = \"Ada\", Age = 36 };  // unspeakable type: var is required\n\n        Console.WriteLine(n.GetType().Name + \" \" + price.GetType().Name + \" \" + money.GetType().Name);\n        Console.WriteLine(list.GetType().Name + \" \" + anon.Name + \" \" + anon.Age);\n\n        // n = \"text\";   // compile error: var is fixed once inferred\n\n        dynamic d = 42;                   // dynamic: binding happens at run time\n        d = \"now a string\";\n        Console.WriteLine(\"dynamic holds: \" + d.GetType().Name + \" / \" + d.Length);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Target-typed <code>new</code> (C# 9) lets you leave out the type on the right when the left side already states it: <code>List&lt;int&gt; xs = new();</code>.</p><p>It is the mirror image of <code>var</code>: with <code>var</code> the type is on the right, with <code>new()</code> it is on the left. It is nice for fields (<code>private readonly Dictionary&lt;string,int&gt; _map = new();</code>) and arguments. It does not work with <code>var</code> because there is nothing to infer from.</p>",
+    "<p>Since C# 10 the compiler infers a delegate type for a lambda, usually <code>Func&lt;...&gt;</code> or <code>Action&lt;...&gt;</code>, when the types are clear; before that it was an error.</p><pre><code>var add = (int a, int b) =&gt; a + b;   // Func&lt;int,int,int&gt;\nvar hi = () =&gt; Console.WriteLine(\"hi\"); // Action\nvar bad = x =&gt; x + 1;  // error: x has no type</code></pre><p>Parameter types must be written, because there is nothing else to infer them from.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Culture changes number parsing and output",
+    "csharp": "using System;\nusing System.Globalization;\n\nclass Program\n{\n    static void Main()\n    {\n        CultureInfo de = new CultureInfo(\"de-DE\");\n        CultureInfo inv = CultureInfo.InvariantCulture;\n        double x = 1234.5;\n\n        Console.WriteLine(\"de-DE format:    \" + x.ToString(de));     // 1234,5\n        Console.WriteLine(\"invariant format:\" + \" \" + x.ToString(inv)); // 1234.5\n\n        // Parsing \"1.5\": under de-DE the dot is a thousands separator\n        double bad = double.Parse(\"1.5\", de);\n        double good = double.Parse(\"1.5\", inv);\n        Console.WriteLine(\"Parse(\\\"1.5\\\") with de-DE     = \" + bad);\n        Console.WriteLine(\"Parse(\\\"1.5\\\") with invariant = \" + good.ToString(inv));\n\n        // Rule: machine-readable data (files, JSON, logs) always uses InvariantCulture\n        double ok;\n        bool parsed = double.TryParse(\"1,5\", NumberStyles.Float, inv, out ok);\n        Console.WriteLine(\"TryParse(\\\"1,5\\\", invariant) worked: \" + parsed);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>It is a runtime setting (<code>InvariantGlobalization=true</code>) that turns off ICU/NLS culture data, so all cultures behave like the invariant culture and no ICU library is needed.</p><p>It makes Docker images smaller (no libicu) and startup slightly faster. The catch: culture-specific formatting, sorting and casing (for example Turkish <code>I</code>) no longer happens, and creating some cultures can throw. Good for backend services using only invariant formats; wrong for apps that show localised text.</p>",
+    "<p>Pass a <code>StringComparison</code> to every comparison: <code>Ordinal</code> or <code>OrdinalIgnoreCase</code> for identifiers, paths and protocols.</p><pre><code>string.Equals(a, b, StringComparison.OrdinalIgnoreCase);\na.StartsWith(\"http\", StringComparison.Ordinal);</code></pre><p>Ordinal compares raw char values, so it is fast and gives the same result on every machine. Use <code>InvariantCulture</code> only for sorting that must be linguistic yet stable, and <code>CurrentCulture</code> for text a user sees.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fast integer input with a byte buffer",
+    "csharp": "using System;\nusing System.IO;\nusing System.Text;\n\nclass Program\n{\n    // Reads all non-negative/negative ints from a stream using a manual byte parser.\n    static int[] ReadInts(Stream s, int count)\n    {\n        byte[] buf = new byte[1 << 16];      // read 64 KB chunks\n        int[] res = new int[count];\n        int n = 0, len = 0, pos = 0;\n        while (n < count)\n        {\n            int v = 0; bool neg = false, any = false;\n            while (true)\n            {\n                if (pos == len) { len = s.Read(buf, 0, buf.Length); pos = 0; if (len <= 0) break; }\n                byte b = buf[pos++];\n                if (b == '-') { neg = true; any = true; }\n                else if (b > ' ') { v = v * 10 + (b - '0'); any = true; }   // digit\n                else if (any) break;                                         // whitespace ends a token\n            }\n            if (!any) break;\n            res[n++] = neg ? -v : v;\n        }\n        return res;\n    }\n\n    static void Main()\n    {\n        string text = \"3 -14 15\\r\\n92 -6\\r\\n\";   // CRLF is just whitespace here\n        Console.WriteLine(\"input: \" + text.Replace(\"\\r\\n\", \"\\\\r\\\\n\"));\n        Stream s = new MemoryStream(Encoding.ASCII.GetBytes(text));\n        int[] a = ReadInts(s, 5);\n        StringBuilder sb = new StringBuilder();   // build output, write once\n        long sum = 0;\n        foreach (int x in a) { sb.Append(x).Append(' '); sum += x; }\n        sb.Append(\"| sum=\").Append(sum);\n        Console.WriteLine(sb.ToString());         // O(total bytes), one buffer, no Split\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Handle a leading minus sign by setting a flag and negating at the end, and treat both <code>\\r</code> and <code>\\n</code> as separators because every byte at or below a space is whitespace.</p><pre><code>if (b == '-') neg = true;\nelse if (b &gt; ' ') v = v * 10 + (b - '0');\nelse if (any) break;   // \\r, \\n, ' ', tab end a number\nresult = neg ? -v : v;</code></pre><p>So \"-14\\r\\n15\" gives -14 and 15 with no special CRLF code.</p>",
+    "<p>Output written to a buffered <code>StreamWriter</code> may never appear, or only partly, because the data is still sitting in memory when the program exits.</p><p>With <code>AutoFlush = false</code> you must call <code>Flush()</code> or dispose the writer (<code>using</code>) before exit. A typical bug: the first 64 KB show up and the rest is lost, or on a judge the answer is empty. <code>Console.Out</code> itself auto-flushes, which is why it is slower with 10<sup>6</sup> lines.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put the public entry-point logic in a type the test can reach, or make the generated <code>Program</code> class visible to the test project.</p><p>Top-level statements generate an <code>internal</code> <code>Program</code> class. Add <code>public partial class Program { }</code> at the bottom of the file (or <code>InternalsVisibleTo</code>), then use <code>WebApplicationFactory&lt;Program&gt;</code> from <code>Microsoft.AspNetCore.Mvc.Testing</code> to start the app in memory and call it with an <code>HttpClient</code>.</p>",
+    "<p>The compiler reports an error, because it cannot tell which one is the entry point, unless you choose one explicitly.</p><p>Set <code>&lt;StartupObject&gt;MyApp.Tools.Program&lt;/StartupObject&gt;</code> in the project file (or the <code>/main</code> compiler option) to name the class. Without that, error CS0017 \"more than one entry point\" is raised. Overloads of <code>Main</code> with other signatures are ignored; only valid entry-point signatures count.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Logging needs a constant message template so that the message can be grouped and searched, and so that formatting is skipped if the level is off.</p><p><code>logger.LogInformation(\"User {Id} paid {Amount}\", id, amt)</code> keeps <code>Id</code> and <code>Amount</code> as separate fields and the template as one stable key. An interpolated string builds a different text every time, so you cannot group by it, and it may allocate before the level check. Use the logger's templates or source-generated <code>[LoggerMessage]</code>.</p>",
+    "<p><code>string.Create</code> builds a string of a known length directly in its final memory, avoiding temporary strings, and the interpolated overload also takes a culture.</p><pre><code>string s = string.Create(CultureInfo.InvariantCulture,\n    $\"{price:F2} USD\");</code></pre><p>The <code>IFormatProvider</code> parameter makes numbers and dates format with a chosen culture instead of the current one, so the same code is safe for files and protocols. It also writes into a pooled buffer, so there is one final allocation.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Casts truncate, Round uses banker's rounding",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        Console.WriteLine(\"(int)3.7   = \" + (int)3.7);      // truncates toward zero\n        Console.WriteLine(\"(int)-3.7  = \" + (int)-3.7);\n        Console.WriteLine(\"Floor(-3.7)= \" + Math.Floor(-3.7));\n\n        // Half-to-even (\"banker's\") rounding is the default\n        Console.WriteLine(\"Convert.ToInt32(2.5) = \" + Convert.ToInt32(2.5));\n        Console.WriteLine(\"Math.Round(2.5m) = \" + Math.Round(2.5m));\n        Console.WriteLine(\"Math.Round(3.5m) = \" + Math.Round(3.5m));\n\n        // School rounding must be asked for explicitly\n        Console.WriteLine(\"AwayFromZero(2.5m) = \" + Math.Round(2.5m, MidpointRounding.AwayFromZero));\n\n        // decimal keeps 2.675 exact, so it is a true midpoint: 2.68 (even digit 8)\n        Console.WriteLine(\"Round(2.675m, 2) = \" + Math.Round(2.675m, 2));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p><code>Math.Floor(-3.7)</code> is -4, because floor rounds toward negative infinity, the next whole number below.</p><p>Compare the four ways to round -3.7: truncate (<code>(int)</code>) gives -3, <code>Floor</code> gives -4, <code>Ceiling</code> gives -3, <code>Round</code> gives -4. For positive numbers truncate and floor are the same, which is why the difference surprises people only with negatives. Note that <code>Floor</code> returns a <code>double</code>, so a cast is needed to get an int.</p>",
+    "<p>They are extra <code>MidpointRounding</code> options (added in .NET Core 3.0) for exact halves: <code>ToZero</code> drops the half toward zero, <code>ToNegativeInfinity</code> rounds down, and <code>ToPositiveInfinity</code> rounds up.</p><pre><code>Math.Round(2.5, MidpointRounding.ToZero);             // 2\nMath.Round(-2.5, MidpointRounding.ToNegativeInfinity); // -3\nMath.Round(-2.5, MidpointRounding.ToPositiveInfinity); // -2</code></pre><p>They only matter for exact midpoints; all other values round to the nearest.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Overflow-safe int multiply without long",
+    "csharp": "using System;\n\nclass Program\n{\n    // True if a * b would overflow int. Uses only division and comparisons.\n    static bool MulOverflows(int a, int b)\n    {\n        if (a == 0 || b == 0) return false;\n        if (a > 0 && b > 0) return a > int.MaxValue / b;\n        if (a < 0 && b < 0) return a < int.MaxValue / b;   // product is positive\n        if (a > 0) return b < int.MinValue / a;            // a > 0, b < 0\n        return a < int.MinValue / b;                       // a < 0, b > 0\n    }\n\n    static void Main()\n    {\n        int[][] tests = {\n            new int[] { 46340, 46340 }, new int[] { 46341, 46341 },\n            new int[] { -46341, 46341 }, new int[] { -46341, -46341 },\n            new int[] { int.MinValue, -1 }, new int[] { 0, int.MaxValue }\n        };\n        foreach (int[] t in tests)\n        {\n            bool mine = MulOverflows(t[0], t[1]);\n            bool truth = (long)t[0] * t[1] > int.MaxValue || (long)t[0] * t[1] < int.MinValue;\n            Console.WriteLine(t[0] + \" * \" + t[1] + \" overflows: \" + mine + \" (long check: \" + truth + \")\");\n        }\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>The CPU sets an overflow flag (OF) in its status register when a signed add or multiply result does not fit; the carry flag does the same for unsigned.</p><p>Example with 8 bits: 100 + 100 = 200 does not fit in -128..127, so the result wraps to -56 and OF is set. C# <code>checked</code> code emits a jump-on-overflow (<code>jo</code>) after the operation; unchecked code ignores the flag. For multiplication, x86 <code>imul</code> sets the same flag.</p>",
+    "<p>They convert one numeric type to another with a chosen policy for values that do not fit: <code>CreateChecked</code> throws, <code>CreateSaturating</code> clamps to the limit, and <code>CreateTruncating</code> wraps like a plain cast.</p><pre><code>int.CreateChecked(300L);         // 300\nbyte.CreateSaturating(300);      // 255\nbyte.CreateTruncating(300);      // 44\nbyte.CreateChecked(300);         // OverflowException</code></pre><p>They come from generic math (.NET 7) and work in generic code via <code>INumberBase&lt;T&gt;</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Anything that uses reflection to find types at run time, because trimming and AOT remove code that nothing refers to statically.</p><p>Typical breakages: reflection-based JSON serialisers (use source-generated <code>System.Text.Json</code>), older DI containers, ORMs that build queries by reflection, and <code>Assembly.Load</code> plugin systems. The linker cannot see <code>Type.GetType(\"Foo\")</code> so it deletes <code>Foo</code>, causing a crash only at run time. Use the analyser warnings (IL2026, IL3050) and <code>[DynamicallyAccessedMembers]</code>.</p>",
+    "<p>Dynamic PGO is a runtime that learns from the running program, while AOT decides everything before it starts, so for long-running services PGO usually reaches higher peak speed.</p><p>The JIT instruments hot methods, then recompiles them using what it saw: the real hot paths, inlining of the most common virtual call target, and fast paths for likely types. AOT cannot see real traffic. The trade is warm-up: JIT is slow for the first seconds, AOT is fast immediately. Use AOT for short-lived tools, JIT for steady servers.</p>"
+   ]
+  }
+ ]
+}
