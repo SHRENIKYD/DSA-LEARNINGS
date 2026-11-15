@@ -1,0 +1,111 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a majority of nodes always overlaps with any other majority, so two decisions can never be made by disjoint groups. Waiting for all nodes would let one crashed machine stop the whole cluster.</p><p>Example: with 5 nodes, a majority is 3. Any two groups of 3 share at least 1 node, so a later group always sees the earlier decision, and the cluster still works with 2 nodes down. Requiring all 5 would tolerate 0 failures.</p>",
+    "<p>FLP says that in a fully asynchronous network, no deterministic algorithm can guarantee consensus will always finish if even one node may crash. You cannot tell a slow node from a dead one.</p><p>Real systems get around it with timeouts and randomness. Raft and Paxos never break safety (nobody agrees on two values), but they may lose liveness for a while, for example during repeated split votes, until timing settles down.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>PreVote stops a node that was cut off from inflating terms and disrupting a healthy leader when it returns. CheckQuorum makes a leader step down if it cannot hear from a majority.</p><p>With PreVote, a node first asks peers 'would you vote for me?' without raising its term; only if a majority says yes does it start a real election. A partitioned node therefore never bumps its term to 40 and forces the stable leader down on reconnect. With CheckQuorum, a leader isolated for one election timeout stops serving, so stale leaders do not answer reads.</p>",
+    "<p>Because a node could otherwise vote twice in the same term after a restart, letting two candidates each reach a majority and become leaders in one term.</p><p>Example: node C votes for X in term 7, crashes, restarts with an empty votedFor, then votes for Y in term 7. X and Y might both get 3 of 5 votes. Raft writes currentTerm and votedFor to disk (fsync) before replying, so one vote per term holds across crashes.</p>",
+    "<p>Set the election timeout well above the typical heartbeat and round trip time, with a random spread, so that heartbeats are not missed and split votes are rare.</p><p>A rule of thumb: heartbeat about 0.5 to 1 times the one-way latency to the farthest quorum member, election timeout 10 times the heartbeat or more. Across regions with 80 ms round trips, use heartbeat 100 ms and election timeout 1 to 2 seconds, randomised for example 1.0 to 2.0 s. Too short causes needless elections; too long slows failover.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Figure 8 shows that a leader must not commit an old-term entry just because it is on a majority, since a later leader can still overwrite it.</p><p>Steps: S1 (term 2) writes entry at index 2 to S2 only, then crashes. S5 wins term 3 and writes a different entry at index 2 locally, then crashes. S1 returns as leader of term 4 and copies its term-2 entry to a majority. If S1 crashes now, S5 can win with its term-3 entry and overwrite it. So a leader commits only entries of its own term (counting older ones along with them).</p>",
+    "<p>A no-op entry in the new leader's own term lets it commit right away, which also commits all earlier entries and tells it what the true commit point is.</p><p>Because of the current-term commit rule, a fresh leader cannot know that old entries are committed until one entry from its own term reaches a majority. Without traffic that could wait forever, so the leader appends a no-op. It also makes linearizable reads safe: reads wait until this no-op commits.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>EPaxos is good for geo-distributed systems that want low latency without a single leader. Commands that do not conflict commit in one round trip from any replica.</p><p>Each replica can propose its own commands; only commands touching the same keys need ordering relative to each other. With replicas in 3 regions, a client in Asia commits locally with the nearest quorum instead of travelling to a leader in the US. The price is a much more complex protocol with dependency tracking, and conflicts need a slower second round.</p>",
+    "<p>Dueling proposers means two proposers keep raising their proposal numbers and cancel each other's prepare phase, so nobody ever gets a value accepted.</p><p>Example: P1 prepares n=1; P2 prepares n=2, so acceptors reject P1's accept; P1 retries with n=3, which makes P2's accept fail, and so on forever. The cure is electing a stable leader (Multi-Paxos) or using randomised backoff, which is exactly what Raft's leader and random timeouts provide.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>ZooKeeper watches are one-shot: after firing you must re-register, so you may miss changes in between. etcd watches are streams that continue from a given revision and replay history.</p><p>In ZooKeeper you read a znode with a watch, get one notification, then read again and re-set the watch; a change between the two is seen only by re-reading. In etcd you watch from revision R and receive every event after R in order, until compaction removes old history. This makes etcd watchers easier to write without missing events.</p>",
+    "<p>Kafka removed ZooKeeper to simplify operations and scale: one system instead of two, and metadata kept as a Kafka log managed by Raft (KRaft).</p><p>Reasons: running and securing two clusters was costly; controller failover had to reload all metadata from ZooKeeper, which took long with many partitions; with KRaft the controller quorum already holds the metadata log, so failover is fast and clusters can reach millions of partitions rather than a few hundred thousand.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fencing tokens reject a stale lock holder",
+    "python": "# Fencing tokens: a storage rejects writes carrying an older token.\nclass Lock:\n    def __init__(self): self.token = 0\n    def acquire(self):\n        self.token += 1          # monotonically increasing token per grant\n        return self.token\n\nclass Storage:\n    def __init__(self): self.highest = 0; self.value = None\n    def write(self, token, value):\n        if token < self.highest:  # stale holder: reject\n            print(f\"  REJECT write {value!r} with token {token} (highest {self.highest})\")\n            return False\n        self.highest = token\n        self.value = value\n        print(f\"  ACCEPT write {value!r} with token {token}\")\n        return True\n\nlock, store = Lock(), Storage()\na = lock.acquire()\nprint(\"client A got token\", a, \"then pauses (GC) past its lease\")\nb = lock.acquire()\nprint(\"client B got token\", b)\nstore.write(b, \"from-B\")\nprint(\"client A wakes up and writes\")\nstore.write(a, \"from-A-stale\")\nprint(\"final value:\", store.value)\n"
+   },
+   "followUps": [
+    "<p>If the resource cannot check tokens, the lock alone is unsafe, so move the check somewhere that can: a conditional write, a version number, or a single writer in front of the resource.</p><p>Options: wrap the resource behind a small service that rejects old tokens; use compare-and-set on a version column (<code>UPDATE ... WHERE version = 7</code>); or make the operation idempotent so a duplicate is harmless. If none is possible, accept the lock is only an efficiency hint and keep the lease long with a safety margin.</p>",
+    "<p>Kleppmann argued Redlock is unsafe because it relies on timing and has no fencing tokens; antirez replied that clocks are reasonably well behaved and the algorithm suits most uses.</p><p>The core points: Kleppmann says a process can pause after getting the lock, so a lease can expire unnoticed, and only fencing helps. Antirez says Redlock is fine for efficiency locks and that the resource can also check validity time. A practical conclusion: Redis locks for efficiency, consensus plus fencing for correctness.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Two-phase commit: commit only if all vote yes",
+    "python": "# Two-phase commit: all participants must vote YES, else abort.\nclass Participant:\n    def __init__(self, name, can_commit):\n        self.name, self.can_commit, self.state = name, can_commit, \"INIT\"\n    def prepare(self):\n        # a real participant would make work durable and hold locks here\n        self.state = \"PREPARED\" if self.can_commit else \"ABORTED\"\n        return self.can_commit\n    def finish(self, commit):\n        self.state = \"COMMITTED\" if commit else \"ABORTED\"\n\ndef two_phase_commit(parts):\n    votes = [p.prepare() for p in parts]          # phase 1: collect votes\n    decision = all(votes)                         # commit point\n    for p in parts:                               # phase 2: apply decision\n        p.finish(decision)\n    return decision\n\nfor case in ([True, True, True], [True, False, True]):\n    parts = [Participant(n, ok) for n, ok in zip(\"ABC\", case)]\n    print(\"votes:\", case)\n    d = two_phase_commit(parts)\n    print(\"  decision:\", \"COMMIT\" if d else \"ABORT\",\n          [(p.name, p.state) for p in parts])\n# Weakness: if the coordinator dies between phases, PREPARED nodes block.\n"
+   },
+   "followUps": [
+    "<p>Presumed abort means the coordinator does not durably log abort decisions: if a participant asks and there is no commit record, the answer is simply abort.</p><p>This saves writes and fsyncs, because aborts are rare and need no forced log record, and a coordinator that crashed before deciding can forget the transaction. A participant in doubt asks 'what happened to tx 42?'; no record means ABORT. Only commits are forced to disk, which makes the common path cheaper.</p>",
+    "<p>Three-phase commit adds a pre-commit phase so participants can decide by timeout if the coordinator dies, but under a network partition two groups can decide differently.</p><p>Example: after pre-commit, nodes A and B are cut off from the coordinator and commit on timeout, while C, which never saw pre-commit, aborts on timeout. The result is a split outcome. 3PC only works when the network is reliable and failures are crashes, so real systems use consensus-replicated 2PC instead.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Saga with reverse compensation",
+    "js": "// Saga: run steps in order; on failure run compensations in reverse.\nconst steps = [\n  { name: \"reserve stock\",     run: () => true,  undo: () => \"release stock\" },\n  { name: \"authorize payment\", run: () => true,  undo: () => \"void authorization\" },\n  { name: \"book shipment\",     run: () => false, undo: () => \"cancel shipment\" }, // fails\n];\n\nfunction runSaga(steps) {\n  const done = [];\n  for (const s of steps) {\n    if (s.run()) {\n      console.log(\"ok:    \" + s.name);\n      done.push(s);\n    } else {\n      console.log(\"FAIL:  \" + s.name + \" -> compensating\");\n      // compensate completed steps in reverse order\n      for (const d of done.reverse()) console.log(\"undo:  \" + d.undo());\n      return \"ABORTED\";\n    }\n  }\n  return \"COMPLETED\";\n}\nconsole.log(\"result:\", runSaga(steps));\n"
+   },
+   "followUps": [
+    "<p>A pivot transaction is the step after which the saga can no longer be rolled back, and it must succeed for the saga to finish. Everything before it is compensatable, everything after it is retried until it succeeds.</p><p>In checkout, capturing the payment is a good pivot: steps before it (reserve stock, authorize card) can be undone, but once the money is taken we go forward with shipping and confirmation emails, retrying until done. Put the hardest to reverse step as the pivot and keep later steps simple and idempotent.</p>",
+    "<p>Retry it, since compensations must be idempotent and eventually succeed; if it keeps failing, raise an alert and let a person fix it.</p><p>A compensation such as 'refund payment' is retried with backoff using the same idempotency key, so a repeat never refunds twice. The saga stays in a COMPENSATING state, visible in the orchestrator. After N attempts it goes to a dead-letter queue with an alert for manual action. Compensations are designed to be simple and unlikely to fail, and they must never be skipped.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give every reservation an expiry (a TTL) and run a sweeper that releases expired holds, so a crashed or abandoned checkout cannot keep stock forever.</p><p>Example: reserve 2 units with <code>expires_at = now + 15 min</code>. If payment succeeds the reservation is confirmed; otherwise a job every minute releases reservations past expiry and adds the units back. The saga's compensation also releases early on failure. Release is idempotent, so the sweeper and compensation can both run safely.</p>",
+    "<p>Show the order's status from the saga state and update the page with polling or push, so the user sees steps such as 'confirming payment' instead of a blank wait.</p><p>The order has a status (PENDING, PAID, SHIPPED or FAILED) stored with the saga. After submit, return 202 Accepted with an order id; the page polls <code>GET /orders/42</code> every few seconds or listens on a websocket or server-sent events. On failure show a clear message and that any charge is released.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Transactional outbox with idempotent consumer",
+    "python": "# Transactional outbox with at-least-once relay and idempotent consumer.\nimport sqlite3\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"create table orders(id integer primary key, status text)\")\ndb.execute(\"create table outbox(id integer primary key autoincrement, event text, sent int default 0)\")\n\nwith db:  # one local transaction: business row + event row commit together\n    db.execute(\"insert into orders values(1,'PLACED')\")\n    db.execute(\"insert into outbox(event) values('OrderPlaced:1')\")\n\nbroker, processed = [], set()\ndef relay(crash_before_mark=False):\n    for oid, ev in db.execute(\"select id,event from outbox where sent=0\").fetchall():\n        broker.append((oid, ev))            # publish\n        if crash_before_mark: return        # crash: row stays unsent\n        db.execute(\"update outbox set sent=1 where id=?\", (oid,))\nrelay(crash_before_mark=True)\nrelay()                                     # restart: publishes again\nprint(\"broker got:\", broker)\nfor oid, ev in broker:                      # consumer dedupes by id\n    if oid in processed: print(\"skip duplicate\", ev)\n    else: processed.add(oid); print(\"handle\", ev)\n"
+   },
+   "followUps": [
+    "<p>Polling is simpler but slower and loads the database; CDC reads the log, is near real time and keeps the order of commits, but needs more infrastructure.</p><p>Polling: a loop runs <code>SELECT ... WHERE sent=false ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED</code> every 100 ms; easy, works anywhere, adds read load and latency. CDC such as Debezium tails the WAL or binlog: events arrive in milliseconds with no polling queries, but you must run connectors, handle schema changes and keep the log retained.</p>",
+    "<p>Use the aggregate id as the broker partition key, and publish outbox rows for the same aggregate in commit order from a single relay path.</p><p>Example: all events of order 42 use key '42', so they land in one Kafka partition in order. With polling, read by increasing id and do not run parallel relays on the same aggregate; with CDC the log already gives commit order. Consumers can also check a per-aggregate sequence number to spot gaps or old duplicates.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Kafka gives each producer an id and an epoch; when a new instance starts with the same transactional id it gets a higher epoch, and the broker rejects writes from the old one.</p><p>Example: instance A has epoch 5 and hangs. Instance B calls initTransactions, the coordinator bumps the epoch to 6 and aborts A's open transaction. When A wakes and writes with epoch 5, the broker answers with a ProducerFenced error. This is the same idea as fencing tokens in locks.</p>",
+    "<p>Flink takes consistent snapshots (checkpoints) of operator state and source offsets, and uses two-phase commit sinks so output becomes visible only after the checkpoint completes.</p><p>Steps: sources record offsets, a barrier flows through the job, every operator saves its state; the sink writes to a transaction pre-committed on the barrier, then commits when the whole checkpoint succeeds. After a crash, Flink restores the last checkpoint, rewinds the sources and aborts uncommitted transactions, so results appear exactly once if the sink supports transactions or idempotent writes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Majority size and failures by cluster size",
+    "python": "# Majority size and fault tolerance for cluster sizes.\nprint(\"nodes majority tolerated_failures\")\nfor n in range(1, 11):\n    majority = n // 2 + 1\n    print(f\"{n:5d} {majority:8d} {n - majority:18d}\")\n\n# 4 nodes split 2/2: neither side has a majority of 3\nn, side = 4, 2\nprint(\"4-node 2/2 partition: side has majority?\", side >= n // 2 + 1)\nn, side = 5, 3\nprint(\"5-node 3/2 partition: bigger side has majority?\", side >= n // 2 + 1)\n"
+   },
+   "followUps": [
+    "<p>Spread them so that losing any one zone still leaves a majority of 3: place 2 nodes in zone A, 2 in zone B and 1 in zone C.</p><p>With 2-2-1, losing any single zone leaves at least 3 of 5 nodes, so the cluster still works. A 3-1-1 split would be bad: losing the zone with 3 nodes leaves 2, which is not a majority. Remember that every write needs 3 acks, so the leader should be in a zone with low latency to the others.</p>",
+    "<p>A learner in etcd is a non-voting member that receives the log but does not count toward the majority, so it can catch up safely or serve extra reads.</p><p>Adding a new voter directly can hurt: a 3-node cluster becomes 4 nodes with a majority of 3 while the new node is still empty, so one failure could stall writes. Adding it first as a learner lets it copy the data; once caught up it is promoted to a voting member. Learners also help add read capacity without slowing writes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep keys at least as long as the longest possible retry or redelivery window for the task, usually days, and then expire them with a TTL.</p><p>Example: if tasks can be retried for up to 24 hours and queues may redeliver for 3 days, keep keys 7 days to leave margin. Store the key with the result in the same transaction as the effect. Payment providers do the same, typically accepting keys for at least 24 hours. Longer retention costs storage, shorter risks duplicates.</p>",
+    "<p>Put approval before the pivot, that is before the first irreversible or high-risk action such as charging a card or sending a message to a customer.</p><p>The workflow pauses in a WAITING_APPROVAL state, shows the human the planned action with its arguments, and resumes only on approve or reject, with a timeout that fails safe. Low-risk, reversible steps (draft, search, create a draft ticket) run automatically. Store who approved and when, and tie the approval to the exact action so the agent cannot change it afterwards.</p>"
+   ]
+  }
+ ]
+}
