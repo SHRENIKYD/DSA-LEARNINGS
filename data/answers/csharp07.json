@@ -1,0 +1,143 @@
+{
+ "interview": [
+  {
+   "followUps": [
+    "<p>The filter runs during the first pass, before any frame is unwound, so the stack is still exactly as it was at the <code>throw</code>. That lets a debugger or a logging call see every local variable and the full call chain.</p><p>A normal catch only runs after unwinding, when inner frames and their <code>finally</code> blocks are already gone. Example: if <code>Work()</code> calls <code>Parse()</code> and Parse throws, a filter in Main still sees Parse and Work on the stack.</p>",
+    "<p>A first-chance exception is the notification that an exception has just been thrown, before the runtime knows whether anything will handle it. Debuggers can break on it, and <code>AppDomain.FirstChanceException</code> fires for it.</p><p>Most first-chance exceptions are caught later and are harmless, for example a parse that fails inside a library and is handled. A second-chance (unhandled) exception means no handler was found and the process is about to terminate. Many first-chance exceptions in a hot loop are a performance warning sign.</p>"
+   ],
+   "code": {
+    "title": "Handler search: filter first, finally second",
+    "csharp": "using System;\n\nclass Program\n{\n    static bool Check(string who)\n    {\n        // Filters run during pass one, before any finally block\n        Console.WriteLine(\"  filter evaluated (\" + who + \")\");\n        return true;\n    }\n\n    static void Inner()\n    {\n        try { throw new InvalidOperationException(\"boom\"); }\n        finally { Console.WriteLine(\"  inner finally runs (pass two)\"); }\n    }\n\n    static void Middle()\n    {\n        try { Inner(); }\n        catch (ArgumentException) { Console.WriteLine(\"  never: wrong type\"); }\n    }\n\n    static void Main()\n    {\n        Console.WriteLine(\"Throwing InvalidOperationException:\");\n        try { Middle(); }\n        catch (InvalidOperationException e) when (Check(\"outer\"))\n        {\n            // Pass 1 found this handler; pass 2 ran inner finally first\n            Console.WriteLine(\"  catch body runs last: \" + e.Message);\n        }\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Not any more for ordinary custom exceptions: binary serialization of exceptions is obsolete, and in .NET 8 the protected serialization constructor is no longer needed. <code>BinaryFormatter</code> is disabled by default and flagged as unsafe.</p><p>Keep the three usual constructors (none, message, message plus inner exception) and your own data constructor. You only keep the <code>SerializationInfo</code> constructor if you must support old .NET Framework remoting or a library that still serializes exceptions with it.</p>",
+    "<p>Usually yes, seal it unless you really want others to derive from it. A sealed type is simpler to reason about, and callers catching it know exactly what they get.</p><p>Leave it unsealed only for a deliberate base type of a family, for example <code>PaymentException</code> with <code>CardDeclinedException</code> and <code>InsufficientFundsException</code> below it. Then callers can catch the base to handle the whole family, or a derived type for one case. Do not add depth just in case.</p>"
+   ],
+   "code": {
+    "title": "Custom exception carrying retry data",
+    "csharp": "using System;\n\n// Custom exception: carries data a handler needs\nclass RateLimitException : Exception\n{\n    public int RetryAfterSeconds { get; private set; }\n\n    public RateLimitException(string message, int retryAfter) : base(message)\n    {\n        RetryAfterSeconds = retryAfter;\n    }\n\n    public RateLimitException(string message, int retryAfter, Exception inner)\n        : base(message, inner)\n    {\n        RetryAfterSeconds = retryAfter;\n    }\n}\n\nclass Program\n{\n    static void Call(int attempt)\n    {\n        if (attempt < 3) throw new RateLimitException(\"Too many requests\", 2 * attempt);\n        Console.WriteLine(\"attempt \" + attempt + \" succeeded\");\n    }\n\n    static void Main()\n    {\n        for (int attempt = 1; attempt <= 3; attempt++)\n        {\n            try { Call(attempt); }\n            catch (RateLimitException e)\n            {\n                // The handler reacts using the data on the exception\n                Console.WriteLine(\"attempt \" + attempt + \" failed: \" + e.Message\n                    + \", retry after \" + e.RetryAfterSeconds + \"s\");\n            }\n        }\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>It captures an exception together with its stack trace so you can rethrow it later, even on a different thread, without losing the original trace. Plain <code>throw ex;</code> would reset the trace to the rethrow line.</p><p>Example: a worker thread stores <code>ExceptionDispatchInfo.Capture(e)</code>; the caller thread later calls <code>edi.Throw();</code>. The new trace shows the original frames, then a marker line such as 'End of stack trace from previous location', then the rethrow site. Task and await use this idea internally.</p>"
+   ],
+   "code": {
+    "title": "throw vs throw ex vs wrapping",
+    "csharp": "using System;\n\nclass Program\n{\n    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]\n    static void Fail() { throw new Exception(\"original\"); }\n\n    static void WithThrow()   { try { Fail(); } catch (Exception) { throw; } }\n    static void WithThrowEx() { try { Fail(); } catch (Exception ex) { throw ex; } }\n    static void Wrapped()\n    {\n        try { Fail(); }\n        catch (Exception ex) { throw new InvalidOperationException(\"wrapped\", ex); }\n    }\n\n    static void Show(string label, Action a)\n    {\n        try { a(); }\n        catch (Exception e)\n        {\n            // Does the trace still mention Fail (where it really failed)?\n            bool hasFail = e.StackTrace.Contains(\"Fail\");\n            Console.WriteLine(label + \": mentions Fail = \" + hasFail\n                + \", inner = \" + (e.InnerException == null ? \"none\" : e.InnerException.Message));\n        }\n    }\n\n    static void Main()\n    {\n        Show(\"throw;       \", WithThrow);\n        Show(\"throw ex;    \", WithThrowEx);\n        Show(\"throw new(ex)\", Wrapped);\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>If the filter throws, the exception it throws is swallowed and the filter counts as returning false. The search then continues to the next catch clause as if the condition had not matched.</p><p>The original exception keeps flying and the filter's own exception is lost, so a bug inside a filter is silent. Example: <code>when (Lookup(e.Message) == 1)</code> where Lookup throws on null means this clause is skipped. Keep filters small and side-effect light, and wrap risky calls in their own try.</p>"
+   ],
+   "code": {
+    "title": "Filter that logs without unwinding",
+    "csharp": "using System;\n\nclass Program\n{\n    static bool Log(Exception e)\n    {\n        Console.WriteLine(\"  logged: \" + e.Message);\n        return false; // never handles, so nothing is unwound here\n    }\n\n    static void Work()\n    {\n        try { throw new InvalidOperationException(\"db down\"); }\n        finally { Console.WriteLine(\"  Work finally\"); }\n    }\n\n    static void Main()\n    {\n        Console.WriteLine(\"Filter that logs and returns false:\");\n        try\n        {\n            try { Work(); }\n            catch (Exception e) when (Log(e)) { Console.WriteLine(\"  not reached\"); }\n        }\n        catch (InvalidOperationException)\n        {\n            Console.WriteLine(\"  outer handler got it\");\n        }\n        // Order shows: logged first (stack intact), then Work finally, then outer catch\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p><code>await using</code> calls <code>DisposeAsync()</code> and awaits it, instead of calling <code>Dispose()</code> synchronously. It is for types implementing <code>IAsyncDisposable</code>, such as ones that flush a buffer over the network.</p><pre><code>await using (var w = new AsyncWriter())\n{\n    await w.WriteAsync(\"x\");\n}   // awaits w.DisposeAsync() here</code></pre><p>The method must be async. The disposal order is still reverse acquisition, and a class can implement both interfaces.</p>",
+    "<p>The exception from <code>Dispose</code> replaces the one already in flight, so the original error is lost. That is a known trap, since the first exception is usually the real cause.</p><p>Example: the body throws A, <code>finally</code> runs Dispose, Dispose throws B, and the caller sees only B. So Dispose should avoid throwing: swallow or log cleanup errors, and never make Close or Dispose do work that commonly fails. Some APIs do this on purpose, for example by catching in their Dispose.</p>"
+   ],
+   "code": {
+    "title": "using disposes in reverse order",
+    "csharp": "using System;\n\nclass Res : IDisposable\n{\n    private string name;\n    public Res(string name) { this.name = name; Console.WriteLine(\"open \" + name); }\n    public void Dispose() { Console.WriteLine(\"dispose \" + name); }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        // using (...) expands to try/finally\n        using (Res stream = new Res(\"stream\"))\n        using (Res writer = new Res(\"writer\"))\n        {\n            Console.WriteLine(\"work with both\");\n        }\n        Console.WriteLine(\"--- same thing written by hand ---\");\n        Res a = new Res(\"A\");\n        try\n        {\n            Res b = new Res(\"B\");\n            try { Console.WriteLine(\"work with both\"); }\n            finally { if (b != null) b.Dispose(); }\n        }\n        finally { if (a != null) a.Dispose(); }\n        // Reverse order of acquisition: last opened, first disposed\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Because by the time a finalizer runs, the garbage collector may already have finalized or reclaimed the other objects, and their finalization order is not defined. Touching them could use a dead or half-released object.</p><p>That is why <code>Dispose(false)</code> only frees your own unmanaged resource, such as one native handle, and skips managed fields. Those fields have their own finalizers if they need them. Example: a field holding a <code>FileStream</code> might already be finalized, so call its Dispose only when <code>disposing</code> is true.</p>"
+   ],
+   "code": {
+    "title": "Dispose pattern with SuppressFinalize",
+    "csharp": "using System;\n\nclass Holder : IDisposable\n{\n    private bool disposed;\n\n    public void Dispose()\n    {\n        Dispose(true);\n        GC.SuppressFinalize(this); // finalizer no longer needed\n    }\n\n    protected virtual void Dispose(bool disposing)\n    {\n        if (disposed) return; // idempotent\n        if (disposing)\n            Console.WriteLine(\"  releasing managed fields\");\n        Console.WriteLine(\"  releasing native handle\");\n        disposed = true;\n    }\n\n    ~Holder()\n    {\n        Console.WriteLine(\"  finalizer ran\");\n        Dispose(false); // never touch other managed objects here\n    }\n}\n\nclass Program\n{\n    static void Main()\n    {\n        Holder h = new Holder();\n        Console.WriteLine(\"first Dispose:\");\n        h.Dispose();\n        Console.WriteLine(\"second Dispose (no-op):\");\n        h.Dispose();\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>They are attributes that teach the compiler's null analysis about what your method really does, so callers see fewer false warnings. They only affect warnings, not runtime behaviour.</p><p><code>[NotNullWhen(true)]</code> on an out parameter says it is not null when the method returns true, so <code>if (dict.TryGetValue(k, out var v)) v.Length</code> is clean. <code>[MemberNotNull(nameof(Name))]</code> on a method says that after it runs the field is set, so a constructor calling <code>Init()</code> no longer warns about an uninitialised non-nullable field.</p>",
+    "<p>Migrate in small steps: turn the feature on per project or per file, fix warnings, then tighten. Trying to fix everything in one go is slow and risky.</p><ol><li>Add <code>&lt;Nullable&gt;annotations&lt;/Nullable&gt;</code> or <code>#nullable enable</code> to leaf libraries first.</li><li>Annotate public APIs, since callers depend on them.</li><li>Switch to <code>enable</code> and fix the warnings.</li><li>Finally treat nullable warnings as errors.</li></ol><p>Avoid sprinkling <code>!</code>; it hides real bugs.</p>"
+   ],
+   "code": {
+    "title": "Nullable annotations do not enforce at runtime",
+    "csharp": "using System;\n\nclass Program\n{\n    // Even with nullable annotations in a real project, the runtime does not\n    // enforce them. A public API must validate its own arguments.\n    static int Length(string s)\n    {\n        if (s == null) throw new ArgumentNullException(\"s\");\n        return s.Length;\n    }\n\n    static int Unsafe(string s)\n    {\n        return s.Length; // compiler cannot stop a caller passing null at runtime\n    }\n\n    static void Main()\n    {\n        string ok = \"hello\";\n        string bad = null;\n        Console.WriteLine(\"Length(\\\"hello\\\") = \" + Length(ok));\n        try { Length(bad); }\n        catch (ArgumentNullException e) { Console.WriteLine(\"checked API: \" + e.GetType().Name); }\n        try { Unsafe(bad); }\n        catch (NullReferenceException e) { Console.WriteLine(\"unchecked API: \" + e.GetType().Name); }\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>It tells the compiler the type argument must be a non-nullable type: a value type, or a reference type that is not marked nullable. Passing <code>string?</code> to <code>where T : notnull</code> produces a warning.</p><pre><code>class Cache&lt;TKey&gt; where TKey : notnull\n{\n    Dictionary&lt;TKey, int&gt; map = new();\n}</code></pre><p>That matches <code>Dictionary</code>, which cannot use null as a key. It is checked at compile time only, and warns rather than errors.</p>"
+   ],
+   "code": {
+    "title": "Unconstrained T? and default values",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    // Models \"T?\" on an unconstrained T: returns default(T) when not found\n    static T FindOrDefault<T>(List<T> items, Predicate<T> match)\n    {\n        foreach (T x in items) if (match(x)) return x;\n        return default(T);\n    }\n\n    // With where T : struct we can return a real Nullable<T>\n    static T? FindStruct<T>(List<T> items, Predicate<T> match) where T : struct\n    {\n        foreach (T x in items) if (match(x)) return x;\n        return null;\n    }\n\n    static void Main()\n    {\n        List<int> nums = new List<int> { 0, 5, 9 };\n        List<string> words = new List<string> { \"a\", \"bb\" };\n\n        int found0 = FindOrDefault(nums, n => n == 0);\n        int missing = FindOrDefault(nums, n => n == 7);\n        Console.WriteLine(\"int found 0 -> \" + found0 + \", missing -> \" + missing + \" (same!)\");\n\n        string w = FindOrDefault(words, s => s.Length == 9);\n        Console.WriteLine(\"string missing -> \" + (w == null ? \"null\" : w));\n\n        int? r = FindStruct(nums, n => n == 7);\n        Console.WriteLine(\"struct-constrained missing -> \" + (r.HasValue ? \"value\" : \"null\"));\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Lifted operators mean that comparisons with a null <code>int?</code> do not behave like ordinary numbers. <code>null &lt; 5</code>, <code>null &gt; 5</code> and <code>null == 5</code> are all false, and <code>null != 5</code> is true.</p><p>So <code>!(a &lt; b)</code> is not the same as <code>a &gt;= b</code> when either is null. With a = null, b = 5: <code>a &lt; b</code> is false, and <code>a &gt;= b</code> is false too, so the two checks are both false. Also <code>null + 1</code> is null. Check <code>HasValue</code> or use <code>??</code> before comparing.</p>"
+   ],
+   "code": {
+    "title": "Sentinel vs int? vs TryFind",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static int FindSentinel(int[] a, int x)\n    {\n        for (int i = 0; i < a.Length; i++) if (a[i] == x) return i;\n        return -1; // caller must remember to check\n    }\n\n    static int? FindNullable(int[] a, int x)\n    {\n        for (int i = 0; i < a.Length; i++) if (a[i] == x) return i;\n        return null;\n    }\n\n    static bool TryFind(int[] a, int x, out int index)\n    {\n        for (int i = 0; i < a.Length; i++) if (a[i] == x) { index = i; return true; }\n        index = 0;\n        return false;\n    }\n\n    static void Main()\n    {\n        int[] data = { 4, 8, 15, 16 };\n        Console.WriteLine(\"data = 4 8 15 16, looking for 99\");\n        Console.WriteLine(\"sentinel: \" + FindSentinel(data, 99));\n        int? n = FindNullable(data, 99);\n        Console.WriteLine(\"nullable: \" + (n ?? -1) + \" (HasValue=\" + n.HasValue + \")\");\n        int idx;\n        if (TryFind(data, 15, out idx)) Console.WriteLine(\"Try: found 15 at \" + idx);\n        if (!TryFind(data, 99, out idx)) Console.WriteLine(\"Try: 99 not found\");\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>For a simple switch on integers or strings, the compiler picks a lookup strategy instead of testing arms one by one. With a few arms it emits an if chain, with a dense range of integers it emits a jump table, and with many string arms it computes a hash and jumps.</p><p>For patterns it builds a decision tree that never tests the same thing twice: if three arms check the same property, it reads it once. So order matters mostly for readability, apart from arms with guards, which run in order.</p>"
+   ],
+   "code": {
+    "title": "Switch statement features: goto case, guards",
+    "csharp": "using System;\n\nclass Program\n{\n    // Statement form: sections, break/return, goto case, when guards\n    static string Classify(int n)\n    {\n        switch (n)\n        {\n            case 0: return \"zero\";\n            case 1:\n                Console.Write(\"(1 falls to 2 via goto) \");\n                goto case 2;\n            case 2: return \"small\";\n            default: return n < 0 ? \"negative\" : \"big\"; // C# 7 mcs has no 'when' in case\n        }\n    }\n\n    // Expression-style equivalent in C# 7: a method that returns the value\n    // (C# 8 would write:  n switch { 0 => \"zero\", < 0 => \"negative\", _ => \"other\" })\n    static string Short(int n)\n    {\n        if (n == 0) return \"zero\";\n        if (n < 0) return \"negative\";\n        return \"other\";\n    }\n\n    static void Main()\n    {\n        int[] inputs = { 0, 1, 2, -5, 50 };\n        foreach (int n in inputs)\n            Console.WriteLine(n + \" -> \" + Classify(n) + \" | short: \" + Short(n));\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Constant, relational and the parts of logical patterns built from them need compile-time constants. Type, var, discard, property, positional and list patterns do not need constants themselves.</p><p>Example: <code>x is 5</code> and <code>x is &gt; 10 and &lt; 20</code> are fine, but <code>x is &gt; limit</code> fails if <code>limit</code> is a normal variable, since the right side must be a constant (<code>const int limit = 5</code> works). When you need a runtime value, use a <code>when</code> guard: <code>case int n when n &gt; limit</code>.</p>"
+   ],
+   "code": {
+    "title": "Pattern kinds via is and as",
+    "csharp": "using System;\n\nclass Circle { public double R = 2; }\nclass Square { public double Side = 3; }\n\nclass Program\n{\n    // Same idea as a pattern switch, written with is/as (works on older compilers)\n    static string Describe(object o)\n    {\n        if (o == null) return \"null pattern\";\n        if (o is int)\n        {\n            int n = (int)o;\n            if (n == 0) return \"constant pattern 0\";\n            if (n > 100) return \"type pattern + guard: big int \" + n;\n            return \"type pattern: int \" + n;\n        }\n        string s = o as string;\n        if (s != null) return s.Length == 0 ? \"empty string\" : \"string of length \" + s.Length;\n        Circle c = o as Circle;\n        if (c != null) return \"circle r=\" + c.R;\n        if (o is Square) return \"square (type only, no variable)\";\n        return \"something else\";\n    }\n\n    static void Main()\n    {\n        object[] items = { null, 0, 7, 500, \"\", \"hello\", new Circle(), new Square(), 3.5 };\n        foreach (object o in items) Console.WriteLine(Describe(o));\n        // C# 8+ would write: o switch { null => ..., 0 => ..., int n when n > 100 => ..., _ => ... }\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>You build a closed set of cases yourself, using either a sealed base class with private constructor and sealed nested types, or records plus a switch with a throwing discard arm.</p><pre><code>abstract record Result;\nsealed record Ok(int V) : Result;\nsealed record Err(string Msg) : Result;\nstring Show(Result r) =&gt; r switch {\n  Ok o =&gt; $\"ok {o.V}\", Err e =&gt; e.Msg,\n  _ =&gt; throw new InvalidOperationException() };</code></pre><p>The compiler cannot prove completeness without the discard arm, so add tests for each case.</p>"
+   ],
+   "code": {
+    "title": "Type switch over a closed set of shapes",
+    "csharp": "using System;\n\n// Closed set of \"records\": operations live in functions with a type switch\nabstract class Shape { }\nclass Circle : Shape { public double R; public Circle(double r) { R = r; } }\nclass Rect : Shape { public double W, H; public Rect(double w, double h) { W = w; H = h; } }\n\nclass Program\n{\n    // Adding a new operation = one new function; adding a type = edit every switch\n    static double Area(Shape s)\n    {\n        Circle c = s as Circle;\n        if (c != null) return 3.14 * c.R * c.R;\n        Rect r = s as Rect;\n        if (r != null) return r.W * r.H;\n        throw new ArgumentException(\"unknown shape\"); // catches missing cases\n    }\n\n    static string Name(Shape s)\n    {\n        if (s is Circle) return \"circle\";\n        if (s is Rect) return \"rect\";\n        throw new ArgumentException(\"unknown shape\");\n    }\n\n    static void Main()\n    {\n        Shape[] shapes = { new Circle(1), new Rect(2, 3) };\n        foreach (Shape s in shapes)\n            Console.WriteLine(Name(s) + \" area = \" + Area(s));\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Both are special: the runtime usually cannot be trusted to continue after them, so you normally do not catch them. A StackOverflowException cannot be caught at all and ends the process immediately.</p><p>OutOfMemoryException can be caught, but memory may still be tight and state may be half-built, so the safe move is to fail fast, or, for a single large request that failed to allocate, reject that request. A broad <code>catch (Exception)</code> does catch OOM, which is another reason to keep it at the outermost boundary, where you log and shut down cleanly.</p>"
+   ],
+   "code": {
+    "title": "Narrow catches inside, broad catch at the boundary",
+    "csharp": "using System;\n\nclass Program\n{\n    static void Parse(string s) { int.Parse(s); }\n\n    static void Service(string s)\n    {\n        try { Parse(s); }\n        catch (FormatException) // narrow: we know how to handle this one\n        {\n            Console.WriteLine(\"  service: bad number '\" + s + \"', using default 0\");\n        }\n    }\n\n    static void Boundary(string label, Action work)\n    {\n        try { work(); Console.WriteLine(label + \": ok\"); }\n        catch (Exception e) // broad catch only here: log once, keep process alive\n        {\n            Console.WriteLine(label + \": logged \" + e.GetType().Name + \", returning error response\");\n        }\n    }\n\n    static void Main()\n    {\n        Boundary(\"request 1\", () => Service(\"12\"));\n        Boundary(\"request 2\", () => Service(\"abc\"));      // handled inside\n        Boundary(\"request 3\", () => { string x = null; Console.WriteLine(x.Length); }); // bug surfaces\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Create a benchmark class with one method that throws and catches, and one that uses TryXxx, and let the tool run them many times. Single Stopwatch timings are noisy because of JIT and warm-up, so a benchmark library is better.</p><pre><code>[MemoryDiagnoser]\npublic class Bench {\n  [Benchmark] public int Throw() { try { return int.Parse(\"x\"); } catch { return -1; } }\n  [Benchmark] public int TryIt() =&gt; int.TryParse(\"x\", out var v) ? v : -1;\n}</code></pre><p>Run in Release mode. Expect the throwing version to be microseconds and allocate memory, while TryParse takes nanoseconds.</p>"
+   ],
+   "code": {
+    "title": "Exception path vs TryParse cost",
+    "csharp": "using System;\nusing System.Diagnostics;\n\nclass Program\n{\n    static int ParseThrow(string s)\n    {\n        try { return int.Parse(s); }\n        catch (FormatException) { return -1; }\n    }\n\n    static int ParseTry(string s)\n    {\n        int v;\n        return int.TryParse(s, out v) ? v : -1;\n    }\n\n    static void Main()\n    {\n        int n = 20000;\n        string bad = \"not a number\";\n        long sink = 0;\n\n        Stopwatch sw = Stopwatch.StartNew();\n        for (int i = 0; i < n; i++) sink += ParseThrow(bad);\n        long throwTicks = sw.ElapsedTicks;\n\n        sw.Restart();\n        for (int i = 0; i < n; i++) sink += ParseTry(bad);\n        long tryTicks = sw.ElapsedTicks;\n\n        Console.WriteLine(n + \" failed parses each, result sum \" + sink);\n        Console.WriteLine(\"exception path slower than TryParse: \" + (throwTicks > tryTicks));\n        Console.WriteLine(\"at least 10x slower: \" + (throwTicks > 10 * tryTicks));\n    }\n}\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Because <code>finally</code> must always complete, and a return would silently cancel an exception or an earlier return that is already on its way. The compiler rejects it with error CS0157: control cannot leave the body of a finally clause.</p><p>Example: if the try body threw an exception and finally said <code>return 0;</code>, the exception would disappear without any trace. The same applies to <code>break</code>, <code>continue</code> and <code>goto</code> that jump out of the block. Use finally only for cleanup.</p>"
+   ],
+   "code": {
+    "title": "try/finally: value vs reference return",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static int F()\n    {\n        int x = 1;\n        try { return x; }       // value 1 is stored here\n        finally { x = 2; }      // changing x afterwards does not change it\n    }\n\n    static List<int> G()\n    {\n        List<int> list = new List<int> { 1 };\n        try { return list; }    // the reference is stored\n        finally { list.Add(2); } // mutation through the reference IS visible\n    }\n\n    static List<int> H()\n    {\n        List<int> list = new List<int> { 1 };\n        try { return list; }\n        finally { list = new List<int> { 99 }; } // reassigning is NOT visible\n    }\n\n    static void Main()\n    {\n        Console.WriteLine(\"F() = \" + F());\n        Console.WriteLine(\"G() = \" + string.Join(\",\", G()));\n        Console.WriteLine(\"H() = \" + string.Join(\",\", H()));\n    }\n}\n"
+   }
+  }
+ ]
+}
