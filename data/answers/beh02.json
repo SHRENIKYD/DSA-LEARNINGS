@@ -1,0 +1,95 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>For 30 seconds I keep only the present and one proof point, and cut the past and most of the future. Example: \"I am a backend engineer with five years of experience owning a payments API that serves two million requests a day. Last year I cut its p99 latency from 900 ms to 300 ms. I am looking for a bigger platform challenge, and I would love to go deeper on that latency work.\"</p><p>That is about 75 words: role, scale, one number, one hook.</p>",
+    "<p>I swap the proof point and the vocabulary, not the structure. For a front-end role, the present line mentions the UI I own and its scale, such as a checkout flow used by 200,000 people a week. The past highlights a result users could feel: I reduced Largest Contentful Paint from 4 s to 1.8 s and lifted conversion by 6 percent. The future says I want to work on design systems and accessibility, which the job post emphasises. The hook points to the performance story.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then I say so calmly and try again in a different way, and I do not force it. First I ask once, privately: \"I feel we are stuck; can we find 20 minutes?\" If they stay silent, I write down my view and the shared goal in a short message so it is easy to answer later. I try a neutral third party, such as a tech lead, to help us talk, not to decide. Only if the issue blocks delivery or is serious do I tell my manager, and I say I tried first.</p>",
+    "<p>Situation: I proposed caching user profiles for an hour to cut database load. A teammate warned about stale data, and I waved it off. After release, 3 percent of users saw old addresses for up to an hour and support got 40 tickets in two days. I was partly wrong: the load goal was right, but I ignored a real risk. I thanked the teammate, shortened the cache to five minutes with explicit invalidation on update, and the tickets stopped. The lesson: I now ask for the strongest objection before shipping.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I slow down, move to a call, and keep the message short. Text strips tone, so a tense thread often gets worse with every reply. I wait at least ten minutes before answering. Then I write: \"I think we want the same thing here. Can we hop on a 15-minute call?\" On the call I follow my usual steps: listen, repeat back, name the shared goal. Afterwards I post a short summary in the thread, for example \"We agreed to release Thursday with the flag off\", so the decision is written down and nobody is surprised.</p>",
+    "<p>I lower my own volume and the temperature, and I do not match their energy. I say something like \"I can see this matters a lot to you; I want to get it right\" and I stay quiet while they finish. Interrupting makes it worse. If it keeps rising, I offer a short break: \"Let us pause ten minutes and come back.\" Emotion usually peaks and falls within a few minutes. If there is shouting or personal attacks, I end the conversation politely and, if it repeats, I involve my manager or HR. Safety and respect come before the argument.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>On a migration I disagreed with moving all traffic at once, but the owner chose a single cutover. I committed and added a tripwire: if the error rate stayed above 1 percent for ten minutes, or p99 latency passed 800 ms, we would roll back using the prepared script. At cutover the error rate hit 1.8 percent for 12 minutes, we rolled back in four minutes, fixed a connection pool setting, and retried successfully the next day. The tripwire turned an argument into a pre-agreed rule, so nobody had to be blamed.</p>",
+    "<p>Obeying means I stay silent, even when I see a problem. Disagree and commit means I speak first, with evidence, and only then back the decision fully. Example: I said a launch date left only two days for testing, and showed the last three releases needed five. The owner still kept the date. I then worked extra to add automated checks and ran the risk list daily. If I had obeyed without speaking, I would have hidden what I knew. Committing is a choice made with open eyes, and I can still raise new facts later.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I stay calm and make it about the problem, not their pride. I might say \"I am not sure my view is right, and you have more context. Could you help me see what I am missing?\" This invites explanation. I check my tone and stay curious. If they dismiss it, I offer a small test: \"Could we try it on one service for a week and measure?\" Defensive reactions often soften after a day, so I also follow up in private the next morning. The goal is a better outcome, not winning, so I let them keep their dignity.</p>",
+    "<p>I go above them only for serious reasons: a legal, ethical or safety problem, or a risk that could cause major customer or financial harm, and only after I raised it with them directly and got no real answer. Even then I tell them first: \"I am going to share this with the director because I think it needs another view.\" Then I present facts, not complaints. For ordinary disagreements about design or priorities, I commit to their decision, because an escalation would damage trust for little gain.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Situation: I ran a database migration script during business hours without a dry run, and it locked a table for eleven minutes, blocking about 1,500 checkouts. Task: restore service and own the cause. I rolled back, posted in the incident channel within three minutes, and told my manager myself. I found the root cause: the script took a full table lock. I added a rule that migrations run in staging first, a CI check that flags locking statements, and a deploy window. In the next year we ran 30 migrations with no incident.</p>",
+    "<p>An earlier alert told me, not a customer. Situation: a report I built showed weekly revenue, and I noticed that one week looked 12 percent too high. I traced it and found my query counted refunded orders because of a join I wrote. I had sent it to finance two days before. I told them immediately, sent the corrected figures with an explanation, and added a test that compares totals with the ledger. Finding it myself and saying so quickly kept the trust.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Situation: a reviewer told me my design docs were hard to follow and I buried the key decision. I felt defensive, because I had worked hard. I asked for an example, and she showed a doc where the decision was on page four. In truth, I disagreed that docs were slow to read; two others had praised them. But the impact was real. I calmly said that, then moved the decision to a summary at the top. Next review, the same reviewer said it was clear, and we approved in one meeting instead of two.</p>",
+    "<p>I ask specific, regular questions rather than \"any feedback?\". For example, after a presentation I ask two people: \"What is one thing I should do differently next time?\" In one-on-ones with my manager I ask every month: \"What is one thing I could improve in the next quarter?\" I choose people who see my work closely and will be honest. When I get feedback I thank them and later share what I changed, which makes people more willing to tell me again. Asking early beats waiting for a review.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I make it easier for them to listen by staying calm and specific, and I do not argue back. If they react angrily, I say: \"I can see this landed badly. My goal is to help us work well together.\" I repeat the one fact, for example \"In Tuesday's review you interrupted Priya three times\", and ask what they saw. I may stop and offer to continue the next day. Anger often fades once the person feels respected. Afterwards I follow up with a friendly message and check in again in two weeks. I do not escalate unless it is serious.</p>",
+    "<p>With a more senior peer I keep the same steps but frame it more as a question and use extra care with evidence. I might say \"I noticed in the review that the decision was made before the team spoke. How did you see it?\" I choose a private moment, acknowledge their experience, and speak about impact on the project rather than on them. I avoid sounding like I am correcting them. If they brush it off, I do not push further in the moment, and I may bring it up through a trusted mentor.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I respect that and step back, but I leave the door open. People may fear looking weak, or feel that they can manage. I say: \"No problem. I am around if you want a second pair of eyes.\" Then I watch for facts, not feelings: a task late by two days, or a review stuck for a week. If the impact on the team grows, I mention it kindly to them first, then to their lead. Respecting their choice, while staying honest about the deadline, keeps trust and avoids taking over.</p>",
+    "<p>I give help in small, planned blocks so my own work stays safe. For example, I set a fixed one-hour pairing slot on Tuesday and a 10-minute check-in on Thursday, rather than answering every question at once. If my deadline is tight, I tell them honestly: \"I can pair tomorrow at 2 pm, and until then here is a guide.\" Writing a short guide helps them and the next person. If both of us are overloaded, I tell our lead early so priorities can change instead of someone silently missing a date.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I prepare six to eight stories, which cover the usual themes between them. A story can serve two or three themes, so eight stories give coverage for conflict, failure, feedback, leadership, ambiguity, ownership, teamwork and a technical win. Fewer than five leaves gaps, and more than ten is hard to remember well. For each I write a five-bullet skeleton with a number, and I practise each aloud until I can tell it in about two minutes. I also keep one or two backups for follow-ups like \"another example\".</p>",
+    "<p>I keep the facts the same and change the angle. One story about a late launch can answer \"tell me about a deadline\", \"a time you handled pressure\" or \"a mistake\". For the deadline question I stress planning and trade-offs; for the mistake question I stress what I missed and the fix. I listen for the skill being asked, then choose which two or three bullets to expand. The numbers never change, because interviewers may compare notes. If I use the same story twice in one loop, I admit it and add a new detail.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>An AI-polished answer sounds smooth but generic, and a good interviewer notices quickly. Signs are perfect sentences, no hesitation, vague words such as \"leveraged\" and \"synergy\", and missing small details like a name of a bug, a number or a feeling. When they ask \"what did you personally do at that step?\", a polished answer falls apart. I use AI to find holes and then tell the story in my own words, with real details, rough edges and honest pauses. Authentic detail beats polish.</p>",
+    "<p>Never ask it to invent stories or achievements for you, because you may be asked to defend them and one false detail ends the interview. Do not ask it to write a full script to memorise, since scripts break on interruptions. Do not paste confidential company data, customer names or code. And do not treat its feedback on tone as final, because it cannot hear your voice. Use it for questions, probing follow-ups and rubric feedback. The stories and facts must come from your real experience.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I ask them the same question the other way: \"What would a teammate say?\" I would expect something like: \"He caught the data race that three of us missed, and wrote the test that proved it.\" Then I give specifics: I ran the debugging session, proposed the fix, and reviewed the final change. I also credit others, such as \"Mina wrote the migration\". Honest, specific credit sounds more believable than a flattering line. I can also mention written evidence, like the design doc or pull request I authored.</p>",
+    "<p>I answer honestly, without inflating it. Maybe the project would still have shipped, but later or with more risk. For instance: \"We would likely still have launched, but probably two weeks later, because the caching approach would not have been tested.\" Saying this shows I understand my real contribution and the team's strength. Claiming that nothing would have worked without me sounds arrogant and is rarely true. I point to a concrete decision I made at a fork, and what the other option would have cost.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I say honestly that I do not have an exact match, and then use the closest story or a smaller example. For example: \"I have not led a layoff, but I have delivered bad news to a team when we cut scope. Here is what I did.\" I pause for ten seconds to think; that is fine. I can also describe a hypothetical approach clearly, labelled as such: \"I have not faced this, but I would do X, because of what I learned in a similar case.\" Never make up a story, because follow-ups will expose it.</p>",
+    "<p>I keep a simple log of which stories I used with which interviewer and round, and I plan before the loop: one main story per theme, one backup. If the same person asks again, I choose the backup. If interviewers compare notes, they should see range, not repetition. If I must reuse a story, I say so, \"I used this one earlier; may I give a different example?\" This shows self-awareness. Having eight stories makes it possible to cover five rounds without repeats.</p>"
+   ]
+  }
+ ]
+}
