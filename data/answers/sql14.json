@@ -1,0 +1,141 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Replication and sharding in SQLite shards",
+    "python": "import sqlite3, zlib\n\n# 4 shards, each shard has a leader and a replica (all in-memory SQLite)\ndef mk():\n    d = sqlite3.connect(\":memory:\")\n    d.execute(\"CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)\")\n    return d\nshards = [{\"leader\": mk(), \"replica\": mk()} for _ in range(4)]\n\ndef shard_of(uid):\n    return zlib.crc32(str(uid).encode()) % len(shards)   # sharding: pick ONE shard\n\nfor uid in range(1, 9):\n    s = shards[shard_of(uid)]\n    for role in (\"leader\", \"replica\"):                    # replication: copy to both nodes\n        s[role].execute(\"INSERT INTO users VALUES(?,?)\", (uid, \"user%d\" % uid))\n\nfor i, s in enumerate(shards):\n    ids = [r[0] for r in s[\"leader\"].execute(\"SELECT id FROM users ORDER BY id\")]\n    rep = [r[0] for r in s[\"replica\"].execute(\"SELECT id FROM users ORDER BY id\")]\n    print(\"shard\", i, \"leader ids\", ids, \"replica ids\", rep)\n# Sharding splits rows (each id lives on one shard); replication duplicates them\n# (leader and replica hold the same ids). Losing one node loses nothing.\n"
+   },
+   "followUps": [
+    "<p>Replication fixes too many reads. Every replica holds the full data, so you can send reads to any of them. With 1 leader and 3 replicas, 40,000 reads per second becomes about 10,000 per node.</p><p>Caveat: replicas lag, so reads that must be fresh still go to the leader. A cache in front is the cheaper first step.</p>",
+    "<p>Sharding fixes too many writes. Each shard has its own leader, so writes are divided between machines. With 4 shards, 20,000 writes per second becomes about 5,000 per leader.</p><p>Replication does not help here: every replica must still apply every write, so a single leader stays the limit. Sharding only helps if the key spreads load evenly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sync vs async replication and lost writes",
+    "python": "import sqlite3\n\ndef mk():\n    d = sqlite3.connect(\":memory:\")\n    d.execute(\"CREATE TABLE t(v INTEGER)\")\n    return d\n\ndef write(leader, follower, v, sync, backlog):\n    leader.execute(\"INSERT INTO t VALUES(?)\", (v,))\n    if sync:\n        follower.execute(\"INSERT INTO t VALUES(?)\", (v,))  # wait for follower before ack\n    else:\n        backlog.append(v)                                  # ack now, ship later\n\nfor sync in (True, False):\n    leader, follower, backlog = mk(), mk(), []\n    for v in (1, 2, 3):\n        write(leader, follower, v, sync, backlog)\n    # leader crashes right now: the follower is promoted\n    lost = 3 - follower.execute(\"SELECT COUNT(*) FROM t\").fetchone()[0]\n    print(\"sync\" if sync else \"async\", \"-> acknowledged 3 writes, lost on failover:\", lost)\n# Sync: no loss (RPO 0) but each write waits for the follower.\n# Async: fast acks, but unshipped writes vanish if the leader dies.\n"
+   },
+   "followUps": [
+    "<p>RPO (recovery point objective) is how much data you can afford to lose, measured in time. RTO (recovery time objective) is how long you can afford to be down.</p><p>Example: async replication with 2 s of lag gives an RPO of about 2 s. Promoting a standby and repointing clients in 45 s gives an RTO of 45 s. Synchronous replication gives RPO 0, but RTO depends on detection and failover speed, not on replication mode.</p>",
+    "<p>Aurora does not copy whole database pages between nodes. The database sends only redo log records to a shared storage layer that keeps 6 copies across 3 availability zones, and a write is acknowledged once 4 of 6 storage nodes confirm it.</p><p>So durability is quorum-based (no single slow follower blocks you, no loss on a node failure), while replicas read from the same storage with low lag, avoiding the usual sync vs async choice.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Read-your-writes with an LSN token",
+    "python": "import sqlite3\n\ndef mk():\n    d = sqlite3.connect(\":memory:\")\n    d.execute(\"CREATE TABLE comments(id INTEGER PRIMARY KEY, body TEXT)\")\n    return d\nleader, replica = mk(), mk()\napplied = 0            # replica has applied log up to this position (LSN)\nlog = []\n\ndef post(body):\n    leader.execute(\"INSERT INTO comments(body) VALUES(?)\", (body,))\n    log.append(body)\n    return len(log)    # the write's LSN, handed back to the client as a token\n\ndef replicate():\n    global applied\n    while applied < len(log):\n        replica.execute(\"INSERT INTO comments(body) VALUES(?)\", (log[applied],))\n        applied += 1\n\ndef read(token):\n    # read-your-writes: use the replica only if it has caught up to the token\n    db = replica if applied >= token else leader\n    return (\"replica\" if db is replica else \"leader\"), [r[0] for r in db.execute(\"SELECT body FROM comments\")]\n\ntoken = post(\"hello\")\nprint(\"naive replica read :\", [r[0] for r in replica.execute(\"SELECT body FROM comments\")])\nprint(\"token-aware read   :\", read(token))\nreplicate()\nprint(\"after replication  :\", read(token))\n"
+   },
+   "followUps": [
+    "<p>Across devices a cookie does not follow the user, so keep the freshness token on the server side, keyed by user id. Store the last write position (LSN or timestamp) per user in a small fast store.</p><p>Any device then asks: has the replica reached this user's position? If yes read from it, otherwise read from the leader. A simpler version is routing all reads for that user to the leader for 5 seconds after any write. Cost: one extra key lookup per request.</p>",
+    "<p>If the leader is in another region, sending the user's reads there costs a cross-region round trip, maybe 80 to 150 ms. Prefer the token approach: read from the nearby replica only when it has caught up, otherwise wait a short time (say 200 ms) for it to catch up, then fall back to the leader.</p><p>Another option is to show the new comment locally in the browser right away (optimistic UI) so the user never notices lag.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Quorum read and write overlap",
+    "python": "import itertools\nN = 3\n# each replica: (version, value). Replica 2 missed the latest write.\nreplicas = [(1, \"old\"), (1, \"old\"), (1, \"old\")]\n\ndef write(value, version, reach):\n    for i in reach:                      # write only reaches these replicas\n        replicas[i] = (version, value)\n    return len(reach)\n\ndef read(nodes):\n    return max(replicas[i] for i in nodes)   # newest version among R answers\n\nW, R = 2, 2                              # R + W = 4 > N = 3\nwrite(\"new\", 2, [0, 1])                  # succeeded on W=2 nodes\nprint(\"replicas:\", replicas, \"R+W>N:\", R + W > N)\nfor nodes in itertools.combinations(range(N), R):\n    print(\"read from\", nodes, \"->\", read(nodes)[1])\n# Overlap guarantees at least one fresh replica, so every read sees \"new\".\n# Failure case: a write that reached only 1 node (below W) is not guaranteed visible.\nwrite(\"newer\", 3, [0])\nprint(\"after partial write, read from (1, 2) ->\", read((1, 2))[1])\n"
+   },
+   "followUps": [
+    "<p>Read repair: when a read contacts several replicas and sees different versions, it sends the newest value back to the stale ones. Hinted handoff: when a replica is down during a write, another node stores a hint (the missed write) and replays it when the replica returns.</p><p>Example: write to nodes A, B, C while C is down; B keeps a hint for C. When C is back, B delivers it. Both only repair eventually; neither gives a guarantee on its own.</p>",
+    "<p>LOCAL_QUORUM needs a majority of replicas in the client's own data centre. With replication factor 3 per DC that is 2 of 3 locally, so no cross-region latency. EACH_QUORUM needs a majority in every data centre, so it is slow and fails if any region is unreachable.</p><p>Typical use: LOCAL_QUORUM for reads and writes for speed; EACH_QUORUM only for rare writes that must be everywhere.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Shard key skew: tenant vs tenant+day vs day",
+    "python": "import sqlite3, zlib\nfrom collections import Counter\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE ev(tenant INTEGER, day INTEGER)\")\n# tenant 1 is a whale (80 rows); tenants 2..9 have 5 rows each\nrows = [(1, d % 30) for d in range(80)] + [(t, d) for t in range(2, 10) for d in range(5)]\ndb.executemany(\"INSERT INTO ev VALUES(?,?)\", rows)\n\ndef load(keyfn):\n    c = Counter()\n    for t, d in db.execute(\"SELECT tenant, day FROM ev\"):\n        c[zlib.crc32(keyfn(t, d).encode()) % 4] += 1\n    return [c[i] for i in range(4)]\n\nfor name, fn in ((\"tenant\", lambda t, d: str(t)), (\"tenant+day\", lambda t, d: \"%d-%d\" % (t, d)),\n                 (\"day only\", lambda t, d: str(d))):\n    l = load(fn)\n    print(\"%-10s rows per shard %s  max/avg %.2f\" % (name, l, max(l) / (sum(l) / 4)))\n# A good key keeps max/avg near 1. Tenant alone puts the whale on one shard.\n"
+   },
+   "followUps": [
+    "<p>Sharding by created_at puts all new writes on the newest range, one hot shard, while old shards sit idle. The key is monotonic, so load is not even.</p><p>Example: 4 shards split by month; this month 100 percent of inserts go to one shard. Also, queries by user or id have to ask every shard. Better: hash of a user or tenant id, optionally with time buckets inside each shard.</p>",
+    "<p>Use a secondary lookup: a separate table or index mapping email to the shard key (email to user_id), then query that shard. It costs two hops and must be kept in sync, for example through the same transaction or change events.</p><p>The alternative is a scatter-gather query across all shards, which costs N requests and is slow. Global secondary indexes (DynamoDB, Vitess lookup vindexes) do the first approach for you.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Consistent hashing vs mod N with vnodes",
+    "python": "import bisect, hashlib\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest(), 16) % 2**32\n\ndef build(nodes, vnodes):\n    return sorted((h(\"%s#%d\" % (n, i)), n) for n in nodes for i in range(vnodes))\n\ndef owner(ring, key):\n    i = bisect.bisect(ring, (h(key), \"\")) % len(ring)   # first point clockwise\n    return ring[i][1]\n\nkeys = [\"key%d\" % i for i in range(2000)]\nfor vn in (1, 100):\n    r3 = build([\"A\", \"B\", \"C\"], vn)\n    r4 = build([\"A\", \"B\", \"C\", \"D\"], vn)\n    moved = sum(owner(r3, k) != owner(r4, k) for k in keys)\n    counts = {n: sum(owner(r4, k) == n for k in keys) for n in \"ABCD\"}\n    print(\"vnodes\", vn, \"keys moved on adding D:\", moved, \"of 2000\", \"load:\", counts)\nmod_moved = sum(h(k) % 3 != h(k) % 4 for k in keys)\nprint(\"mod N keys moved:\", mod_moved, \"of 2000\")\n# Ring moves about 1/N of keys; mod N moves most. More vnodes even out the load.\n"
+   },
+   "followUps": [
+    "<p>Each vnode adds work: more ranges to stream, repair and compact, and more overlap between nodes. With 256 vnodes per node, one node failure touches almost every other node, and repairs get slow and expensive.</p><p>Cassandra 4 defaults to 16 vnodes (and a smarter allocator, <code>allocate_tokens_for_local_replication_factor</code>) which still balances load but keeps repair and streaming cheaper. The trade-off is slightly less even balance.</p>",
+    "<p>Each server gets a capacity cap, for example 1.25 times the average load. A key walks clockwise from its hash position and skips any server already at its cap, going to the next one.</p><p>With 100 keys and 4 servers, average 25, cap is about 31. A hot server stops accepting after 31 keys and the extras overflow. Cost: a few extra steps per lookup, and slightly more keys move when topology changes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Hot key: salted counters",
+    "python": "import sqlite3, random\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE likes(post TEXT, slot INTEGER, n INTEGER, PRIMARY KEY(post, slot))\")\nK = 8                                    # number of sub-keys (salt)\nrandom.seed(1)\nfor _ in range(1000):                    # 1000 likes on one viral post\n    slot = random.randrange(K)           # spread writes over K sub-keys\n    db.execute(\"INSERT INTO likes VALUES('post42', ?, 1) \"\n               \"ON CONFLICT(post, slot) DO UPDATE SET n = n + 1\", (slot,))\nrows = db.execute(\"SELECT slot, n FROM likes WHERE post='post42' ORDER BY slot\").fetchall()\nprint(\"writes per sub-key:\", [n for _, n in rows])\ntotal = db.execute(\"SELECT SUM(n) FROM likes WHERE post='post42'\").fetchone()[0]\nprint(\"read = sum of\", len(rows), \"rows =\", total)\n# Each write hits one of K rows (about 1000/8 each); a read costs K lookups.\n"
+   },
+   "followUps": [
+    "<p>A salted key reading costs K lookups instead of 1, and you must add the results. With K = 16, reading the counter hits 16 sub-keys, usually in parallel, so latency is that of the slowest one.</p><p>That is fine for rare reads. If reads are frequent, keep a cached total refreshed every second so readers do 1 lookup. Writes still go to 1 of K random sub-keys.</p>",
+    "<p>Start with K = 1 for normal keys and raise it only for keys detected as hot, for example when one key exceeds 1,000 writes per second (measure per-key rates with sampling). Store K in a small config table, so readers know how many sub-keys to sum.</p><p>Example: 1,000 writes per second per sub-key limit, 8,000 per second total, so K = 8. Never reduce K without folding the sub-keys back together.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Document aggregate vs relational join",
+    "python": "import sqlite3, json\ndb = sqlite3.connect(\":memory:\")\ndb.executescript(\"\"\"\nCREATE TABLE orders(id INTEGER PRIMARY KEY, customer TEXT);\nCREATE TABLE items(order_id INTEGER, sku TEXT, qty INTEGER);\nCREATE TABLE doc_orders(id INTEGER PRIMARY KEY, doc TEXT);\n\"\"\")\ndb.execute(\"INSERT INTO orders VALUES(1,'ann')\")\ndb.executemany(\"INSERT INTO items VALUES(1,?,?)\", [(\"pen\", 2), (\"ink\", 1)])\ndoc = {\"customer\": \"ann\", \"items\": [{\"sku\": \"pen\", \"qty\": 2}, {\"sku\": \"ink\", \"qty\": 1}]}\ndb.execute(\"INSERT INTO doc_orders VALUES(1, ?)\", (json.dumps(doc),))\n\n# Relational: join to rebuild the order; easy to ask \"total qty per sku\" across orders\nprint(\"relational:\", db.execute(\"SELECT o.customer, i.sku, i.qty FROM orders o \"\n                                \"JOIN items i ON i.order_id=o.id\").fetchall())\n# Document: one read returns the whole aggregate\nprint(\"document  :\", json.loads(db.execute(\"SELECT doc FROM doc_orders WHERE id=1\").fetchone()[0]))\n# Cross-order reporting on documents means parsing every document\ntot = {}\nfor (d,) in db.execute(\"SELECT doc FROM doc_orders\"):\n    for it in json.loads(d)[\"items\"]:\n        tot[it[\"sku\"]] = tot.get(it[\"sku\"], 0) + it[\"qty\"]\nprint(\"qty per sku from documents:\", tot)\n"
+   },
+   "followUps": [
+    "<p>Put reviews in their own collection, one document per review with a product_id field and an index on (product_id, created_at), instead of embedding them in the product document.</p><p>Embedding millions of reviews makes the document grow without limit, and MongoDB caps documents at 16 MB. Keep summary fields (rating average, count) in the product document, and page reviews with a range query on the index, 20 at a time.</p>",
+    "<p>Use schema validation: a <code>$jsonSchema</code> validator on the collection, with required fields, types and enums. Set <code>validationLevel</code> and <code>validationAction</code> (error or warn) to control strictness.</p><pre><code>db.createCollection(\"users\", {validator: {$jsonSchema: {required: [\"email\"], properties: {email: {bsonType: \"string\"}}}}})</code></pre><p>It does not give foreign keys or cross-document constraints; those stay in app code.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Cassandra-style table per query",
+    "python": "import sqlite3\ndb = sqlite3.connect(\":memory:\")\n# One table per query: partition key = equality filter, clustering = sort order\ndb.execute(\"CREATE TABLE posts_by_user(user TEXT, ts INTEGER, post TEXT, PRIMARY KEY(user, ts))\")\ndb.execute(\"CREATE TABLE posts_by_tag(tag TEXT, ts INTEGER, post TEXT, PRIMARY KEY(tag, ts))\")\n\ndef add_post(user, ts, post, tags):\n    # denormalise: the same post is written to every query table\n    db.execute(\"INSERT INTO posts_by_user VALUES(?,?,?)\", (user, ts, post))\n    for t in tags:\n        db.execute(\"INSERT INTO posts_by_tag VALUES(?,?,?)\", (t, ts, post))\n\nadd_post(\"ann\", 1, \"hello\", [\"intro\"])\nadd_post(\"bob\", 2, \"sql tips\", [\"sql\", \"intro\"])\nadd_post(\"ann\", 3, \"more sql\", [\"sql\"])\n\nprint(\"Q1 posts by ann (newest first):\",\n      db.execute(\"SELECT ts, post FROM posts_by_user WHERE user='ann' ORDER BY ts DESC\").fetchall())\nprint(\"Q2 posts tagged sql:\",\n      db.execute(\"SELECT ts, post FROM posts_by_tag WHERE tag='sql' ORDER BY ts\").fetchall())\n# Each query reads a single partition by key: no joins, no scans.\n"
+   },
+   "followUps": [
+    "<p>You must delete from every table that holds the row, so the delete is several separate writes and could partly fail. Make them idempotent and retry until all succeed.</p><p>Steps: delete from table 1, delete from table 2; on failure, retry (deleting a missing row is harmless). Use a logged batch for atomicity of the writes (it guarantees all or none eventually, at some cost), or an outbox of pending deletes processed by a worker. Readers may briefly see the row in one table only.</p>",
+    "<p>A tombstone is a marker Cassandra writes for a delete, because it cannot just erase data that other replicas may still hold. gc_grace_seconds (default 10 days) is how long tombstones are kept before compaction removes them.</p><p>If a replica is down longer than that and returns without a repair, it can still hold the old value and the delete is lost: deleted data comes back (zombie). So run repair at least once per gc_grace period.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "CAP during a partition: CP vs AP reads",
+    "python": "# Three replicas of one value; the network splits {A} from {B, C}.\nclass Node:\n    def __init__(self): self.val, self.ver = \"v1\", 1\nnodes = {\"A\": Node(), \"B\": Node(), \"C\": Node()}\npartition = [{\"A\"}, {\"B\", \"C\"}]\n\ndef reach(client_side):\n    return [n for n in nodes if n in client_side]\n\ndef write(side, val, ver, need):\n    up = reach(side)\n    if len(up) < need:\n        return \"REFUSED (CP: not enough nodes)\"\n    for n in up: nodes[n].val, nodes[n].ver = val, ver\n    return \"ok on \" + str(up)\n\ndef read(side, need):\n    up = reach(side)\n    if len(up) < need:\n        return \"REFUSED\"\n    return max((nodes[n].ver, nodes[n].val) for n in up)[1]\n\nprint(\"majority side write (needs 2):\", write(partition[1], \"v2\", 2, 2))\nprint(\"minority side write (needs 2):\", write(partition[0], \"v3\", 3, 2))\nprint(\"minority CP read   (needs 2):\", read(partition[0], 2))\nprint(\"minority AP read   (needs 1):\", read(partition[0], 1), \"<- stale but available\")\nprint(\"majority read      (needs 2):\", read(partition[1], 2))\n# During the partition: refuse (consistent) or answer stale (available), never both.\n"
+   },
+   "followUps": [
+    "<p>Spanner is usually described as CP in CAP: during a partition the minority side cannot get a quorum and refuses. Under PACELC it is PC/EC, since it pays latency (commit wait, cross-region Paxos) for consistency even without a partition.</p><p>DynamoDB defaults to PA/EL (eventually consistent reads, fast), with an option of strongly consistent reads. MongoDB, with majority concerns, is PC/EC; with weaker settings it moves toward EL.</p>",
+    "<p>Harvest is how complete an answer is (how much of the data it covers); yield is the fraction of requests that get an answer. When parts of a system fail you can lower harvest instead of yield: return partial results rather than errors.</p><p>Example: a search spread over 10 shards with 1 shard down returns 90 percent harvest at 100 percent yield. It makes CAP a sliding choice rather than all or nothing.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "TrueTime commit wait",
+    "python": "EPS = 7  # clock uncertainty in ms (TrueTime-style)\ndef tt_now(real):\n    return (real - EPS, real + EPS)   # true time is somewhere in this interval\n\nreal = 1000\n# Transaction 1 commits: pick s >= latest, then wait until earliest > s\ns1 = tt_now(real)[1]\nwait = 0\nwhile tt_now(real + wait)[0] <= s1:\n    wait += 1\nvisible1 = real + wait\nprint(\"T1 commit timestamp\", s1, \"commit wait\", wait, \"ms, visible at\", visible1)\n\n# T2 starts after T1 became visible, so its timestamp must be larger\ns2 = tt_now(visible1 + 1)[1]\nprint(\"T2 timestamp\", s2, \"> T1 timestamp\", s1, \":\", s2 > s1)\nprint(\"commit wait is about 2*EPS =\", 2 * EPS, \"ms; bigger EPS means slower writes\")\n"
+   },
+   "followUps": [
+    "<p>Spanner's commit wait is about 2 times the error bound \u03b5, so if \u03b5 grows, every read-write transaction commits slower by that amount. Correctness is kept, only latency goes up.</p><p>Example: \u03b5 of 7 ms means about 14 ms wait per commit; if clocks degrade to \u03b5 of 50 ms, the wait is about 100 ms and write throughput on hot rows drops. Spanner keeps \u03b5 small with GPS and atomic clock references in each datacentre.</p>",
+    "<p>A follower read is a read served by a nearby replica (not the leader) at a timestamp slightly in the past, for example 5 to 10 seconds ago, when that replica is already known to be up to date. The data is slightly stale but consistent.</p><p>It avoids a cross-region trip to the leader, so latency drops from, say, 100 ms to a few ms. Both Spanner (stale reads) and CockroachDB (<code>AS OF SYSTEM TIME follower_read_timestamp()</code>) offer it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Two-range commit with intents and a record",
+    "python": "import sqlite3\ndb = sqlite3.connect(\":memory:\")\ndb.executescript(\"\"\"\nCREATE TABLE range1(k TEXT PRIMARY KEY, v INT, intent INT);\nCREATE TABLE range2(k TEXT PRIMARY KEY, v INT, intent INT);\nCREATE TABLE txn_record(id INT PRIMARY KEY, status TEXT);\nINSERT INTO range1 VALUES('alice', 100, 0);\nINSERT INTO range2 VALUES('bob', 50, 0);\n\"\"\")\n# Step 1: write provisional intents on both ranges, record is PENDING\ndb.execute(\"INSERT INTO txn_record VALUES(1,'PENDING')\")\ndb.execute(\"UPDATE range1 SET v=v-30, intent=1 WHERE k='alice'\")\ndb.execute(\"UPDATE range2 SET v=v+30, intent=1 WHERE k='bob'\")\nprint(\"with intents:\", db.execute(\"SELECT k, v, intent FROM range1 UNION ALL SELECT k, v, intent FROM range2\").fetchall())\n# Step 2: commit point = ONE row flips to COMMITTED\ndb.execute(\"UPDATE txn_record SET status='COMMITTED' WHERE id=1\")\n# Step 3 (can be done by anyone, even after a crash): resolve intents by reading the record\nif db.execute(\"SELECT status FROM txn_record WHERE id=1\").fetchone()[0] == \"COMMITTED\":\n    db.execute(\"UPDATE range1 SET intent=0 WHERE intent=1\")\n    db.execute(\"UPDATE range2 SET intent=0 WHERE intent=1\")\nprint(\"resolved    :\", db.execute(\"SELECT k, v, intent FROM range1 UNION ALL SELECT k, v, intent FROM range2\").fetchall())\n"
+   },
+   "followUps": [
+    "<p>A multi-range transaction needs several consensus rounds: intents on each range, then a commit record, then cleanup. That adds latency (often 2 or more cross-node round trips) and more chances to conflict and retry.</p><p>Example: a single-range write takes one Raft round (about 1 ms in a datacentre); a write touching 2 ranges in different regions may take 100 ms or more. So design keys to keep related rows in the same range, for example by prefixing them with the tenant id.</p>",
+    "<p>Percolator (used by TiDB) also uses 2PC but stores everything in a single-version store: pick one key as the primary lock, write locks on all keys (prewrite), then commit the primary, and secondaries are committed lazily. The commit point is the primary key.</p><p>It needs a central timestamp oracle for start and commit timestamps, which adds a round trip. CockroachDB uses hybrid clocks and no central oracle.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Don't add a cache when the data is small and the database already answers fast, when hit rate would be low (data rarely repeated), or when stale data is not acceptable.</p><p>Example: 200 reads per second at 3 ms each does not need Redis. Each cache adds invalidation bugs, another system to run and a cold-start problem. Measure first: add it only when the database is the bottleneck and the same keys are read many times.</p>",
+    "<p>Use change data capture or an outbox: the application writes to the database only, and a CDC tool (such as Debezium reading the write-ahead log) or an outbox table publishes each change to a queue that updates the search index.</p><p>This avoids dual writes, where one of two writes can fail. The index is eventually consistent, so lag is typically seconds. Make indexing idempotent (upsert by id and version) and keep a way to rebuild it from the database.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fencing tokens stop a zombie leader",
+    "python": "class Storage:\n    def __init__(self): self.max_token, self.data = 0, []\n    def write(self, token, val):\n        if token < self.max_token:           # fencing: reject stale leaders\n            return \"REJECTED token %d (seen %d)\" % (token, self.max_token)\n        self.max_token = token\n        self.data.append(val)\n        return \"ok token %d\" % token\n\nstore = Storage()\ntoken = 0\ndef elect():\n    global token\n    token += 1          # each election bumps the epoch/term\n    return token\n\nold = elect()\nprint(\"old leader:\", store.write(old, \"w1\"))\n# old leader pauses (GC, network); a new leader is elected\nnew = elect()\nprint(\"new leader:\", store.write(new, \"w2\"))\n# old leader wakes up still believing it is leader\nprint(\"old leader:\", store.write(old, \"w3-zombie\"))\nprint(\"stored:\", store.data)\n"
+   },
+   "followUps": [
+    "<p>A fencing token is a number that rises with each new leader (like a term or epoch). The leader sends it with every write and the storage rejects any token lower than the highest it has seen.</p><p>Example: leader A has token 33 and pauses; leader B gets 34 and writes. When A wakes and writes with 33, storage sees 33 below 34 and refuses. It protects against a zombie leader even when A thinks it still holds the lease.</p>",
+    "<p>In Raft each leader has a term number, and a leader needs votes from a majority to win a term. A node gives only one vote per term, and a commit needs acknowledgment from a majority.</p><p>Two leaders in the same term would each need a majority, but majorities overlap in at least one node that voted once. An old leader with a lower term is rejected by anyone who has seen the higher term, so it cannot commit. With 5 nodes, 3 votes decide.</p>"
+   ]
+  }
+ ]
+}
