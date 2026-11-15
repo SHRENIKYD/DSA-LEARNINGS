@@ -1,0 +1,121 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>RTO is how long you can be down; RPO is how much recent data you can afford to lose.</b> I choose them from business impact: ask what an hour of downtime or a minute of lost orders costs, then pick the cheapest design that stays under that. Example: payments need RPO near 0 (synchronous replica, RTO 1 minute); an analytics dashboard can accept RPO 1 hour and RTO 4 hours (nightly backup restore). Tighter numbers cost much more (standby capacity, cross-region sync), so I agree them with the product owner and then prove them in a drill.</p>",
+    "<p><b>I treat the shared change itself as the failure domain and limit how far any change can spread.</b> Roll out config like code: validate it against a schema, canary it to 1% of one cell, watch SLO signals, and only then widen in waves (1%, 10%, 50%, 100%) with automatic rollback. Keep a last-known-good copy so services keep running if the new config is rejected, and have a fast kill switch. Cell-based architecture means one bad push hurts one cell, not everyone. Example: a bad flag reaching 2% of traffic is a small incident; the same flag on 100% is an outage.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Make both sides agree on a single winner per item, or use data types that merge automatically.</b> Common choices: last-write-wins using a timestamp (simple but can silently drop an update), version vectors that detect concurrent writes so the app or user resolves them, CRDTs (counters, sets) that always merge, or avoiding conflicts by giving each key a home region. Example: two regions both add 1 to a counter; a plain overwrite loses one, a CRDT counter gives 2. Most teams prefer routing each user's writes to one region.</p>",
+    "<p><b>A warm standby costs roughly the price of the idle machines plus replication traffic, often 50-100% extra for the standby tier.</b> You pay for compute you are not using, storage for a full copy, and cross-zone or cross-region data transfer. What you buy is a much shorter RTO (seconds to minutes instead of hours for rebuilding from backup). Example: a database costing 1000 a month with a same-size standby costs about 2000; a smaller standby is cheaper but may struggle right after failover. Pilot-light and cold standbys cost less but recover slower.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Retry spike: backoff without and with jitter",
+    "python": "import random\n\n# Simulate 1000 clients that all failed at t=0 and retry with backoff.\n# Count when each client's 4th retry fires, in 100 ms buckets: a spike = thundering herd.\nBASE, CAP, ATTEMPTS, CLIENTS = 100, 3200, 4, 1000\nrandom.seed(7)\n\ndef delay(attempt, mode):\n    ceiling = min(CAP, BASE * 2 ** attempt)    # exponential backoff ceiling\n    if mode == \"none\":\n        return ceiling                          # no jitter: everyone waits the same\n    return random.uniform(0, ceiling)           # full jitter: random in [0, ceiling]\n\nfor mode in (\"none\", \"full jitter\"):\n    buckets = {}\n    for _ in range(CLIENTS):\n        t = 0\n        for a in range(ATTEMPTS):\n            t += delay(a, mode)\n        b = int(t // 100)                       # only the last retry\n        buckets[b] = buckets.get(b, 0) + 1\n    peak = max(buckets.values())\n    print(f\"{mode:12s} peak 4th-retries in one 100ms bucket: {peak}\")\n# Typical result: 1000 for no jitter, about 140 with jitter.\n# Cost: O(clients * attempts) time, O(buckets) space.\n"
+   },
+   "followUps": [
+    "<p><b>I pick full jitter by default because it spreads load best and is simplest.</b> With delay = random(0, min(cap, base x 2^attempt)), a crowd of clients ends up spread evenly over time, and AWS measurements show it finishes the total work with the least contention. Equal jitter keeps a guaranteed minimum wait (half fixed, half random), which is useful if you must not retry too quickly. Decorrelated jitter, sleep = random(base, previous x 3), needs a stored previous value but behaves similarly. Example: attempt 3 with base 100 ms gives a random wait of 0 to 800 ms.</p>",
+    "<p><b>Retries must fit inside the timeout budget, and the breaker should stop retries when a dependency is clearly down.</b> If each attempt has a 1 s timeout and you allow 3 tries with backoff, the caller needs about 3.5 s overall, so the outer deadline must be larger or retries get cut off. A circuit breaker counts each failed attempt; once it opens, retries are rejected immediately instead of piling on. Retry only idempotent calls, at one layer only: 3 layers each retrying 3 times means 27 calls per request.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Many healthy requests will time out and fail, and the retries then add load.</b> Example: if p99 is 400 ms and the timeout is 300 ms, about 1 request in 100 fails even when nothing is wrong, and each retry adds more work, so the error rate rises. That is why timeouts sit above p99 (about 1.5 to 3 times), so only truly stuck calls are cut. A timeout below the median would fail half your calls. Check the latency histogram before choosing, and alert when timeouts exceed a small share of calls.</p>",
+    "<p><b>Send the remaining time with each call and have every hop subtract what it has used.</b> In gRPC the client sets a deadline and the library sends it as the grpc-timeout header, and servers see it in the context and cancel when it passes. In HTTP there is no standard, so teams pass a header such as X-Request-Deadline (an absolute time) or remaining milliseconds. Example: the user call has 800 ms; the edge uses 100 ms, so it tells the next service 700 ms. Each service should stop work when the deadline expires.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Circuit breaker: closed, open, half-open",
+    "python": "import time\n\nclass CircuitBreaker:\n    def __init__(self, threshold=3, cooldown=0.2):\n        self.threshold, self.cooldown = threshold, cooldown\n        self.state, self.fails, self.opened_at = \"CLOSED\", 0, 0.0\n\n    def call(self, fn):\n        if self.state == \"OPEN\":\n            if time.time() - self.opened_at < self.cooldown:\n                return \"rejected (fallback)\"      # fail fast, no call made\n            self.state = \"HALF_OPEN\"              # cool-down over: allow one probe\n        try:\n            r = fn()\n        except Exception:\n            self.fails += 1\n            if self.state == \"HALF_OPEN\" or self.fails >= self.threshold:\n                self.state, self.opened_at = \"OPEN\", time.time()\n            return \"error\"\n        self.state, self.fails = \"CLOSED\", 0      # success closes the circuit\n        return r\n\nhealthy = {\"up\": False}\ndef dependency():\n    if not healthy[\"up\"]:\n        raise RuntimeError(\"down\")\n    return \"ok\"\n\ncb = CircuitBreaker()\nfor i in range(6):\n    print(i, cb.call(dependency), cb.state)\ntime.sleep(0.25)\nhealthy[\"up\"] = True\nprint(\"after cooldown\", cb.call(dependency), cb.state)\n# Each call is O(1) time and space.\n"
+   },
+   "followUps": [
+    "<p><b>Add random jitter to the open duration, so instances reopen at different times.</b> If every instance opened at the same moment and waits exactly 30 s, they all probe together and a recovering service gets a burst. Use 30 s plus or minus up to 20% random, and allow only one or a few probe calls in HALF_OPEN, with the rest still rejected. Opening times also naturally differ because each instance sees failures at different moments. Example: 100 instances with a 24 to 36 s window spread probes over 12 seconds.</p>",
+    "<p><b>Usually no: keep it local per instance, because it is simple and has no extra dependency.</b> Each instance judges failures from its own calls, which is quick and cannot fail due to a shared store. The drawback is that each instance must learn separately that the dependency is down, so the first few failures per instance still happen. A shared state (Redis, or a mesh controller) reacts faster across the fleet but adds latency and a new failure point, so it should fail open to local behaviour. Most libraries use per-instance breakers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Yes: a breaker only helps once failures are detected, and it does nothing about a dependency that is slow but still succeeding.</b> Example: a recommendations service answers in 8 s instead of 50 ms, but never errors. Threads pile up waiting, the thread pool fills, and the whole API stalls before any breaker trips. You also need timeouts, a bulkhead (for example max 20 concurrent calls to it), and slow-call counting in the breaker. Another case: overload from many clients needs rate limits or load shedding, not a breaker.</p>",
+    "<p><b>Layer them in a fixed order around each call, so each one handles a different problem.</b> A typical wrapper from outside in: bulkhead (limit concurrency), circuit breaker (reject when failing), retry with backoff and a budget, then the timeout around each attempt. Example in pseudocode:</p><pre><code>bulkhead.acquire();\nif (breaker.isOpen()) return fallback();\nretry(3, () -&gt; withTimeout(300ms, call));\n</code></pre><p>Libraries such as Resilience4j or Polly let you stack these. Rate limiting and shedding live on the server side.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Error budget and burn rate",
+    "python": "# Error budget and burn rate for a 99.9% SLO over 30 days.\nSLO = 0.999\nWINDOW_MIN = 30 * 24 * 60\nbudget_min = (1 - SLO) * WINDOW_MIN         # allowed full-outage minutes\nprint(f\"SLO {SLO:.1%} over 30 days -> budget {budget_min:.1f} minutes\")\n\ndef burn_rate(bad, total):\n    # burn rate 1.0 = spending the budget exactly as fast as allowed\n    return (bad / total) / (1 - SLO)\n\n# (label, bad requests, total requests) in the last hour\nfor label, bad, total in [(\"normal\", 50, 100000), (\"incident\", 1500, 100000)]:\n    br = burn_rate(bad, total)\n    verdict = \"PAGE\" if br >= 14.4 else \"ok\"\n    print(f\"{label:9s} error rate {bad/total:.2%} burn {br:.1f}x -> {verdict}\")\n\n# At 14.4x burn, a 30-day budget lasts 30/14.4 days:\nprint(f\"budget gone in {30 / 14.4 * 24:.1f} hours at 14.4x\")\n# O(1) time and space.\n"
+   },
+   "followUps": [
+    "<p><b>Start from what users need and what you can measure today, then set it slightly below current performance.</b> Look at past data (say last 30 days show 99.95%), consider what users notice, and the dependencies' own SLOs, since you cannot beat them. For a new service with no history, begin at 99.5% or 99.9%, review after a quarter, and tighten once you see real numbers. Remember each extra nine costs about 10 times more: 99.9% allows 43 minutes a month, 99.99% only 4.3 minutes.</p>",
+    "<p><b>Then the SLO is probably too loose or you are too cautious, and the spare budget should be used.</b> Spend it on faster releases, riskier experiments, chaos tests or less costly infrastructure. Or tighten the SLO if users really notice problems before it is breached. Example: a 99.9% SLO that is met at 99.99% every month means 90% of the budget is unused, so deploy more often. If users are happy at a looser target, keep it; an over-strict SLO makes you spend money for nothing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Context propagation means passing the trace ID (and similar context) along with every request, so all spans join into one trace.</b> It is usually a header such as W3C traceparent in HTTP and metadata in gRPC. It commonly breaks at message queues (the ID is not put in message headers), async jobs and thread pools (context lost when switching threads), third-party proxies that drop headers, and services that do not use the instrumented client. Result: the trace shows two separate pieces. Fix by testing traces in CI and copying the ID into message headers.</p>",
+    "<p><b>Keep what is valuable and drop or shrink the rest.</b> Sample traces: keep all errors and slow requests, and about 1% of normal ones (tail-based sampling). Limit metric labels, because a label like user_id with a million values creates a million time series. Log at INFO sparingly, use shorter retention for debug logs, drop noisy health-check logs, and store old data in cheap storage. Example: cutting a 10 GB per day log by sampling success logs 1 in 20 saves about 90%. Track telemetry cost per request.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Averages hide the slow requests that real users feel, while percentiles show them.</b> Example: 99 requests take 100 ms and 1 takes 10 s; the average is about 199 ms and looks fine, but p99 is 10 s... and the slowest users see it. At scale a page making 50 calls will hit the p99 on almost every page view (1 - 0.99^50 is about 40%). Use p50, p95 and p99 from histograms, and never average percentiles across servers; merge the histograms instead.</p>",
+    "<p><b>Watch the queue and the active workers: saturation is work waiting to run.</b> Measure the queue length, the wait time before a task starts, and the share of busy threads. Example: a pool of 50 threads with 50 busy and 30 tasks waiting is saturated, even though CPU may look low. Alert when queue depth stays above zero or wait time exceeds a few percent of the latency target. Also track rejected tasks if the queue is bounded. Utilisation alone can stay at 100% without saturation, so the queue is the signal.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Use the SLO's error budget only for symptoms, and make low-traffic services judge by time or use synthetic checks.</b> With 10 requests an hour, a single failure is 10% errors and would page falsely. Options: run synthetic probes every minute to create steady traffic, use longer windows (6 to 24 hours), alert on absolute counts (for example 5 failures in 30 minutes), or merge several small services into one SLO. Example: a service with 100 requests a day cannot show 99.9% with confidence, so aim a ticket rather than a page.</p>",
+    "<p><b>Compare to the same time in past weeks, or alert on a ratio, not a raw count.</b> Error percentage and burn rate are naturally independent of traffic volume, so they need no seasonal adjustment. For traffic-drop alerts, use a baseline of the same hour last week (or a forecast model) and alert on a large gap, such as less than 50% of expected. Mark known events such as sales and holidays. Example: 2,000 requests per minute is normal at noon on Monday but alarming at 3 am only if the baseline says otherwise.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>One example: we injected 300 ms latency into a payment dependency and the checkout service froze, because it had no timeout.</b> Hypothesis: checkout stays up with slower payments. Result: threads piled up and checkout errors rose to 40% in two minutes, so the automatic abort stopped the test. Fixes: a 500 ms timeout, a bulkhead of 30 calls and a fallback message to retry later. We re-ran the same experiment, saw errors under 1%, and kept it in the game-day list as a regression test.</p>",
+    "<p><b>Show business risk in money and time, and begin small and visible.</b> Use past incidents: 'the last outage cost 2 hours and about 40,000 in sales; this test finds that kind of problem before customers do.' Offer low-risk beginnings (staging, one cell, working hours, abort button) and share the findings after the first game day as fixes, not blame. Example: one test that found a missing timeout is usually enough to win support. Report outcomes such as fewer incidents and faster recovery.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Watch for the first signs: hit rate falling, database latency rising and retries growing together.</b> Alert on cache hit ratio dropping sharply, DB connection pool saturation, queue wait time, and the retry rate (retries per original request above about 10%). A key sign of the loop is that load stays high after the trigger has cleared: latency rises while incoming user traffic is flat. Example: traffic 1,000 requests per second but DB calls 3,000 per second means retries and misses are feeding it. Load tests that kill a cache node can reveal it earlier.</p>",
+    "<p><b>Size it for the worst plausible case, or protect it so it cannot be overrun, since a full cache outage can send 100% of reads to it.</b> Example: with 95% hit rate and 10,000 reads per second the DB sees 500 per second; a cache loss makes it 10,000, which is 20 times more. Buying for 20x is rarely sensible, so combine partial capacity with controls: request coalescing, rate limits on the DB, load shedding of low-priority reads, stale data fallbacks and replicas for the cache. Test with a cold cache to learn the real limit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Synchronous replication adds the network round trip to every commit, and cross-region it is usually too slow for most workloads.</b> Example: if regions are 70 ms apart, each write waits at least 70 ms, so a single connection manages about 14 commits per second, and a failed link can block writes. Cost also includes inter-region data transfer and a replica. Same region, different AZ, costs only 1 to 2 ms, which is why that is the usual choice. For cross-region, use async replication (accept small data loss) or a quorum system.</p>",
+    "<p><b>Rehearse it in staging first, then in production in a planned game day with a rollback plan.</b> Steps: confirm backups and replica lag are fine, announce the window, kill or isolate the primary, measure how long until a new leader accepts writes (real RTO), and count lost transactions (real RPO). Check that the old primary is fenced and that the app reconnects with no duplicate writes. Example: a target of 30 seconds with a measured 75 seconds means tuning the detection timeout. Repeat every few months, since the setup changes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Availability of serial dependencies",
+    "python": "# Serial hard dependencies multiply availability; fallbacks change that.\nown = 0.9999\ndeps = [0.999, 0.999, 0.999]\n\nserial = own\nfor d in deps:\n    serial *= d                              # all must be up\nprint(f\"all 3 hard deps: {serial:.4%}\")\n\n# Make dependency 3 optional: with a fallback that works 99% of the time\n# when it is down, the effective availability of that dependency improves.\nd3_eff = 0.999 + (1 - 0.999) * 0.99\nwith_fallback = own * deps[0] * deps[1] * d3_eff\nprint(f\"dep 3 has fallback: {with_fallback:.4%}\")\n\n# Downtime per year in minutes\nfor name, a in ((\"serial\", serial), (\"fallback\", with_fallback)):\n    print(f\"{name:9s} downtime/year: {(1 - a) * 365 * 24 * 60:.0f} min\")\n# O(1) time and space.\n"
+   },
+   "followUps": [
+    "<p><b>Not as a simple chain, since the availability of serial dependencies multiplies.</b> 0.999 x 0.999 x 0.999 is about 0.997, so even with a perfect own service you reach only 99.7%, which is about 26 hours of downtime a year against 53 minutes for 99.99%. The only way up is to cut hard dependencies. A fallback that works 99% of the time when its dependency is down turns a 0.1% failure into a 0.001% one. Quantify it as (1 - dependency availability) x (1 - fallback success rate), and test that the fallback actually works.</p>",
+    "<p><b>Improve the dependency when many teams need it or when it sits on your critical path with no acceptable fallback.</b> A workaround costs engineering time and adds complexity and stale data, and you maintain it forever; fixing the root helps every consumer. Example: if 10 services all call one 99.9% auth service, lifting it to 99.99% beats 10 separate caches. Work around it when the fix is slow or outside your control, or when the fallback is cheap, such as a cached default. Compare costs per nine gained.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><b>Offer a wrapper or sidecar that adds the protections without code changes, and push the remaining items through ownership and incentives.</b> A service mesh or proxy can supply timeouts, retries, breakers and tracing headers for any language. For logs and metrics, an agent can scrape and forward them. Put legacy services on a scorecard so the gaps are seen, and schedule changes next to other work, starting with those causing the most incidents. Example: put a proxy in front of an old service with a 2 s timeout and a bounded retry, with no change inside it.</p>",
+    "<p><b>Make SLOs drive decisions, and review them with the teams regularly.</b> Tie them to real user journeys, not internal numbers, and require an error-budget policy that is actually used (for example a release freeze at 0% budget). Check in quarterly: was the SLO met, did a breach match user pain, was an alert useful. Example: a team met its 99.9% target but users complained about slow search, so a latency SLO was added. Also show the budget on a shared dashboard so leadership sees trade-offs and uses it.</p>"
+   ]
+  }
+ ]
+}
