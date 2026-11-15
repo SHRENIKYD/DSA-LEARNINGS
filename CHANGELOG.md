@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.47] — 2026-11-15 · Lesson videos for 122 more topics
+
+### Added
+- **Watch it explained, for 122 topics that had no video:** lessons across AI, Back end, C++, C#, DevOps, Front end, Java, JavaScript, Low-level design, Python, SQL, Tech Lead and more now have a hand-picked, embeddable YouTube video. Where a video covers only part of a lesson, the note under it says what the lesson adds. 2,214 of 2,228 lesson topics now have a video.
+
 ## [1.10.46] — 2026-11-15 · Programs and follow-up answers for every remaining interview track
 
 ### Added

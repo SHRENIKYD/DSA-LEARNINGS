@@ -324,9 +324,15 @@
   },
   "ai07-t4": {
    "t": "Delimiters, XML Tags and Prompt Templates",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "zrp3Lr5eeFc",
+   "title": "XML Tags, Delimiters & Complex Prompt Structure",
+   "channel": "Fortivance Academy",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers XML tags and delimiters for structuring complex prompts; lesson adds prompt templates.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.683Z"
   },
   "ai07-t5": {
    "t": "Self-Consistency: Ask Several Times, Take the Majority",
@@ -903,9 +909,15 @@
   },
   "ai18-t8": {
    "t": "Linear Algebra Inside Embeddings, Vector Search and Attention",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-13"
+   "id": "rw1YfQQttfo",
+   "title": "Embeddings & Vector Databases Explained",
+   "channel": "LearnThatStack",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains embeddings and vector databases; covers embeddings and vector search, lesson adds attention linear algebra.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.106Z"
   },
   "ai19-t0": {
    "t": "Probability Basics, Random Variables & the Law of Large Numbers",
@@ -1063,9 +1075,15 @@
   },
   "ai21-t6": {
    "t": "Cross-Validation, Hyper-parameter Tuning and Fighting Overfitting",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "MOLSOIVVS6c",
+   "title": "WEEK 7 - LECTURE 2 - CROSS VALIDATION AND HYPERPARAMETER TUNING  IN MACHINE LEARNING",
+   "channel": "Dr S Ajitha",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "University lecture on cross-validation and hyperparameter tuning; lesson adds fighting overfitting.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.726Z"
   },
   "ai22-t0": {
    "t": "The ML Lifecycle in Production and Data/Feature Pipelines",
@@ -1174,9 +1192,15 @@
   },
   "ai24-t2": {
    "t": "Just-in-Time Retrieval vs Pre-Loading",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "o5_Vo1kQRA4",
+   "title": "RAG vs Long Context: Head-to-Head Comparison",
+   "channel": "Standarity",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Compares RAG with long-context loading; only partial match to just-in-time retrieval vs pre-loading.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.782Z"
   },
   "ai24-t3": {
    "t": "Compaction, Summarisation and Clearing Old Tool Results",
@@ -1187,9 +1211,15 @@
   },
   "ai24-t4": {
    "t": "Structured Notes, External Memory and Sub-Agents to Isolate Context",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "TwSeuobsL7c",
+   "title": "Anthropic: Context Engineering & Autonomous Memory for AI Agents | Lamis Mukta (AI DevCon)",
+   "channel": "Mo",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Talk on context engineering and autonomous memory for agents; lesson adds sub-agent isolation in detail.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.740Z"
   },
   "ai24-t5": {
    "t": "Progressive Disclosure: Skills and Context Files (CLAUDE.md, AGENTS.md, GEMINI.md)",
@@ -1200,9 +1230,15 @@
   },
   "ai24-t6": {
    "t": "Ordering Context for Prompt-Cache Hits",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "u57EnkQaUTY",
+   "title": "What is Prompt Caching? Optimize LLM Latency with AI Transformers",
+   "channel": "IBM Technology",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains how prompt caching reuses the computed state of a repeated prompt prefix; the lesson adds how to order context (stable content first) to get cache hits.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.631Z"
   },
   "ai24-t7": {
    "t": "Reasoning Models, Thinking Budgets and Measuring Context Quality",
@@ -1359,9 +1395,15 @@
   },
   "ai27-t6": {
    "t": "Checkpoints, Transfer Learning and Fine-Tuning With Hugging Face",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "GsveHUpNFs8",
+   "title": "How to Fine-Tune Transformer Models | Hugging Face Tutorial",
+   "channel": "Code With Yasir Nawaz",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Hands-on fine-tuning of transformer models with Hugging Face; lesson adds checkpoints and transfer learning framing.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.828Z"
   },
   "ai27-t7": {
    "t": "Debugging Training and Reproducibility",
@@ -1470,9 +1512,15 @@
   },
   "ai29-t7": {
    "t": "Context and Cost, a Safe Git/Test/Review Workflow, and Common Pitfalls",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-13"
+   "id": "xJQuF02NAK8",
+   "title": "The Explore → Plan → Code → Commit workflow in Claude Code",
+   "channel": "Claude",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Official Claude Code Explore-Plan-Code-Commit workflow; covers workflow part only, lesson adds cost and pitfalls.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.894Z"
   },
   "ai30-t0": {
    "t": "What Codex Is, and Getting the CLI Running",
@@ -1497,9 +1545,15 @@
   },
   "ai30-t3": {
    "t": "Configuration: config.toml, Profiles, Models, Reasoning and MCP",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "A6ec1qpOlFg",
+   "title": "Codex CLI Setup & Configuration: Which Setting Wins?",
+   "channel": "Coding With Chuck",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Codex CLI setup and configuration precedence; lesson adds profiles, reasoning and MCP detail.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.877Z"
   },
   "ai30-t4": {
    "t": "The IDE Extension, Codex Cloud Tasks and Working in Parallel",
@@ -1580,9 +1634,15 @@
   },
   "ai32-t1": {
    "t": "Terminal vs IDE vs Cloud Agents, and Synchronous vs Asynchronous Work",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "PNnFai6qUyY",
+   "title": "Yang Mou - Mixing AI Coding in IDEs, CLIs, and Cloud | DevCon Fall 2025",
+   "channel": "AI Native Dev",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Talk on mixing AI coding in IDEs, CLIs and cloud; lesson adds sync vs async framing.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.943Z"
   },
   "ai32-t2": {
    "t": "Cost Models: Seats, Included Usage, Credits and Overage",
@@ -1593,9 +1653,15 @@
   },
   "ai32-t3": {
    "t": "Privacy, Data Retention, Enterprise Controls and Model Choice",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "SgyZGCzktMM",
+   "title": "How can my company use AI if we have proprietary data that can't be shared with 3rd parties?",
+   "channel": "SOLVD cloud",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Using AI with proprietary data that cannot be shared; partial coverage of privacy/enterprise controls, lesson adds retention and model choice.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:41.989Z"
   },
   "ai32-t4": {
    "t": "Choosing a Tool for Yourself and for a Team: The Weighted Decision Matrix",
@@ -1606,9 +1672,15 @@
   },
   "ai32-t5": {
    "t": "A Daily Workflow From Spec to Merged PR, Across Tools",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "VUJxJGpaDEs",
+   "title": "How to Work with AI Coding Agents: Spec-Driven Development, Context and Loop Engineering, Workflows",
+   "channel": "DataTalksClub ⬛",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Workshop on working with AI coding agents with spec-driven development and workflows; lesson adds the daily spec-to-merged-PR routine.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.125Z"
   },
   "ai32-t6": {
    "t": "Measuring Real Productivity, the Evidence, and What Is Allowed in Interviews",
@@ -1640,9 +1712,15 @@
   },
   "ai33-t3": {
    "t": "Spreadsheets and Data Questions in Plain Words",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "MoPIkfscD3A",
+   "title": "Analyze Excel Data with ChatGPT: A Complete Tutorial",
+   "channel": "Sandip Banerjee",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Tutorial on analyzing Excel data with ChatGPT in plain language; lesson generalizes to spreadsheets and data questions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.032Z"
   },
   "ai33-t4": {
    "t": "Presentations, Translation and Brainstorming",
@@ -1723,9 +1801,15 @@
   },
   "ai34-t7": {
    "t": "Long Conversations, Drift, Starting Fresh and Checking Against Your Sources",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-13"
+   "id": "xxhzfyvP0Xc",
+   "title": "This Is Why ChatGPT, Claude & Gemini Fall Apart During Long Chats [CONTEXT ROT Explained]",
+   "channel": "Craig Does AI",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains context rot and why long chats degrade; lesson adds starting fresh and checking against sources.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.074Z"
   },
   "ai35-t0": {
    "t": "Assistants, Automations and Agents: The Big Picture",
@@ -1880,9 +1964,15 @@
   },
   "ai37-t6": {
    "t": "Case Interview Frameworks, Common Questions and a Portfolio Without a Tech Background",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "5IVWUYZj6mI",
+   "title": "Case Interview Frameworks: 4 Starter Frameworks to Know",
+   "channel": "Management Consulted",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers starter case interview frameworks; the lesson adds common questions and building a portfolio without a tech background.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.174Z"
   },
   "be01-t0": {
    "t": "Client–Server & What a Backend Actually Does",
@@ -2012,9 +2102,15 @@
   },
   "be03-t4": {
    "t": "Repositories: CRUD, Naming-Convention Queries and Spring Data / Prisma Clients",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "WF2ToVjuHjQ",
+   "title": "Spring Data JPA Derived Query Methods",
+   "channel": "Easy 2 Excel",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers naming-convention derived queries in Spring Data JPA; CRUD basics and Prisma are left to the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.208Z"
   },
   "be03-t5": {
    "t": "Transactions from Code: Commit, Rollback and the Money Transfer",
@@ -2207,15 +2303,27 @@
   },
   "be07-t1": {
    "t": "process.nextTick, Microtasks and Starvation",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "-Goez7q4Yu4",
+   "title": "icrotasks Queue Explained: process.nextTick() vs Promise.resolve() | Node.js 🛠️✨",
+   "channel": "Web Coding  With Ankur ",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains nextTick versus promise microtask queues; starvation is only partly covered, so the lesson adds it.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.238Z"
   },
   "be07-t2": {
    "t": "libuv Thread Pool & Why a CPU Loop Blocks Everything",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "gMtchRodC2I",
+   "title": "When is NodeJS Single-Threaded and when is it Multi-Threaded?",
+   "channel": "Hussein Nasser",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains the libuv thread pool versus the single JS thread; why a CPU loop blocks everything is the main implied idea.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.272Z"
   },
   "be07-t3": {
    "t": "Streams and Backpressure",
@@ -2366,9 +2474,15 @@
   },
   "be09-t9": {
    "t": "Scheduled Jobs and Avoiding Double Runs Across Instances",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-13"
+   "id": "L6hYN21AV2U",
+   "title": "Spring Boot ShedLock in Action! 🚀 Prevent Duplicate Scheduled Jobs| @Javatechie",
+   "channel": "Java Techie",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Shows ShedLock preventing duplicate scheduled runs across instances in Spring Boot; the lesson generalizes beyond that tool.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.286Z"
   },
   "be10-t0": {
    "t": "Why Microservices? Decomposition by Business Capability & Subdomain",
@@ -2561,9 +2675,15 @@
   },
   "be13-t3": {
    "t": "ConfigMaps, Secrets, Probes and Rolling Updates",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "c8LBjmFPjM4",
+   "title": "ConfigMaps and Secrets in Kubernetes",
+   "channel": "Pavan Elthepu",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers ConfigMaps and Secrets only; probes and rolling updates are left to the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.316Z"
   },
   "be13-t4": {
    "t": "Autoscaling: HPA, the Replica Formula and Friends",
@@ -2742,9 +2862,15 @@
   },
   "be16-t5": {
    "t": "Incident Response and Blameless Postmortems",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "Wv4loyVa048",
+   "title": "Incident Postmortems: Creating a Blameless SRE Culture | Blameless Retrospectives",
+   "channel": "Simple Thinker",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers blameless postmortems; incident response steps are lighter and added by the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.352Z"
   },
   "be16-t6": {
    "t": "SRE Practices: Toil, Error Budgets and On-Call",
@@ -2818,9 +2944,15 @@
   },
   "be18-t0": {
    "t": "Engine, Sessions and the Unit of Work",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "uAtaKr5HOdA",
+   "title": "The SQLAlchemy Session - In Depth",
+   "channel": "Next Day Video",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Mike Bayer's talk on the Session as a unit of work; the engine is covered only briefly.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.378Z"
   },
   "be18-t1": {
    "t": "ORM Models and Relationships (DeclarativeBase, Mapped, relationship)",
@@ -2866,9 +2998,15 @@
   },
   "be18-t7": {
    "t": "Repository Pattern, Service Layer and a Unit-of-Work Wrapper",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-13"
+   "id": "l_7ZpHE4EEY",
+   "title": "Using the Repository Pattern for better data access encapsulation (in Python)",
+   "channel": "microapis",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers the repository pattern in Python; service layer and unit-of-work wrapper are added by the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.419Z"
   },
   "be18-t8": {
    "t": "Async Database Access: AsyncEngine, AsyncSession and async_sessionmaker",
@@ -2998,9 +3136,15 @@
   },
   "be21-t2": {
    "t": "Retries, Backoff with Jitter and Idempotent Jobs: Safe to Run Twice",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "NByH-cau97A",
+   "title": "Retry Strategies: Exponential Backoff & Jitter Explained",
+   "channel": "CodeLucky",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers retries, backoff and jitter; idempotent jobs are only touched on, so the lesson adds that.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.440Z"
   },
   "be21-t3": {
    "t": "Redis Caching Patterns in Python: redis.asyncio, Cache-Aside, Stampede Locks, Write-Through and Write-Behind",
@@ -3011,9 +3155,15 @@
   },
   "be21-t4": {
    "t": "In-Process Caches: functools.lru_cache, a Hand-Made LRU and Two-Level (L1 + Redis) Caching",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "W6b6J1svbj8",
+   "title": "How “lru_cache” Can Make Your Functions Over 100X FASTER In Python",
+   "channel": "Indently",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers functools.lru_cache; hand-made LRU and L1+Redis two-level caching are left to the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.476Z"
   },
   "be21-t5": {
    "t": "Docker Images for Python Services: Multi-Stage, Slim, Non-Root, Locked and Health-Checked",
@@ -3059,9 +3209,15 @@
   },
   "be22-t2": {
    "t": "Offsets, Commits, Retention and Log Compaction",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "9o5LAbPNc28",
+   "title": "How do Kafka Consumer Groups and Consumer Offsets work in Apache Kafka?",
+   "channel": "Conduktor",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers offsets and commits; retention and log compaction are left to the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.516Z"
   },
   "be22-t3": {
    "t": "Delivery Semantics: Idempotent and Transactional Producers (Exactly-Once)",
@@ -3502,9 +3658,15 @@
   },
   "beh06-t6": {
    "t": "Staying Relevant with AI & a Continuous Learning Plan",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "h-lXV9D1D7k",
+   "title": "How to Stay Relevant in Tech (25+ Years of Lessons)",
+   "channel": "Beyond Coding",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "General advice on staying relevant in tech; AI-specific points and the learning plan come from the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.537Z"
   },
   "beh07-t0": {
    "t": "Amazon: 16 Leadership Principles, the Loop and the Bar Raiser",
@@ -4111,9 +4273,15 @@
   },
   "cpp08-t3": {
    "t": "accumulate & the <numeric> Toolbox (and the init-type Trap)",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "NTr1sB6KSFM",
+   "title": "C++ Numeric Algorithms for Beginners: Accumulate, Inner Product, Partial Sum & More!",
+   "channel": "CodeLucky",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Tours the <numeric> algorithms including accumulate; the lesson adds the init-type trap.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.565Z"
   },
   "cpp08-t4": {
    "t": "next_permutation: Walking Through Every Arrangement in Order",
@@ -4173,9 +4341,15 @@
   },
   "cpp09-t4": {
    "t": "SFINAE, enable_if & the Detection Idiom",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "rniLtqMcVRI",
+   "title": "Graph in C++ #12: function overloading using SFINAE, and std::enable_if_t",
+   "channel": "IQ95 The Homo Siliconiens",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers SFINAE and enable_if_t for overloading; partial coverage, the lesson adds the detection idiom.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.588Z"
   },
   "cpp09-t5": {
    "t": "C++20 Concepts & requires Clauses",
@@ -4249,9 +4423,15 @@
   },
   "cpp11-t1": {
    "t": "Data Races, Race Conditions & Why \"It Worked on My Machine\" Means Nothing",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "3ZxZPeXPaM4",
+   "title": "C++ Threading #3:  Data Race and Mutex",
+   "channel": "Bo Qian",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains data races and fixing them with a mutex; the lesson adds the race-condition distinction.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.619Z"
   },
   "cpp11-t2": {
    "t": "Mutexes: lock_guard, unique_lock, scoped_lock & Avoiding Deadlock",
@@ -4318,9 +4498,15 @@
   },
   "cpp12-t4": {
    "t": "The Undefined Behavior Catalogue: Spot the UB",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "uHCLkb1vKaY",
+   "title": "Undefined Behavior in C++: What is it, and why do you care?",
+   "channel": "CppNow",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Conference talk on what UB is and why it matters; the lesson adds the spot-the-UB catalogue.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.655Z"
   },
   "cpp12-t5": {
    "t": "Sanitizers: ASan, UBSan, TSan, MSan & Friends",
@@ -4401,15 +4587,27 @@
   },
   "cpp14-t1": {
    "t": "Static vs Shared Libraries, Symbol Resolution, the ODR and Linker Errors",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "aM4KYo84mpQ",
+   "title": "C/C++ Libraries Explained: Create Static & Dynamic Libraries | GCC Tutorial",
+   "channel": "Nilesh Ghule",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Builds static and shared libraries with GCC; partial on ODR and linker error diagnosis.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.688Z"
   },
   "cpp14-t2": {
    "t": "Header Dependencies, Include Guards and Incremental Rebuilds",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "CHv-K94TKdE",
+   "title": "C++ Header Files and Compile Times Explained",
+   "channel": "Suboptimal Engineer",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains how headers drive compile times; partial coverage of include guards and incremental rebuilds.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.715Z"
   },
   "cpp14-t3": {
    "t": "Modern CMake: Targets, target_link_libraries and PUBLIC / PRIVATE / INTERFACE",
@@ -4420,9 +4618,15 @@
   },
   "cpp14-t4": {
    "t": "Build Types, Compiler Flags, Presets and Generator Expressions",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "NFbnm1t6Mc4",
+   "title": "An Introduction to CMakePresets.json",
+   "channel": "Microsoft Developer",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers CMake presets only; the lesson adds build types, flags and generator expressions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.745Z"
   },
   "cpp14-t5": {
    "t": "Dependencies: find_package, vcpkg, Conan 2 and FetchContent",
@@ -4433,9 +4637,15 @@
   },
   "cpp14-t6": {
    "t": "Cross-Compiling, Build Speed (ccache, PCH, Unity Builds) and C++20 Modules",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "cKedzwAWBC0",
+   "title": "Compiling (Part1)- Speeding Up Compilation Using CCache, Ninja and Clang + Integration in Qt Creator",
+   "channel": "KDAB",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers ccache-based build speedups; does not cover PCH, unity builds, cross-compiling or modules.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.772Z"
   },
   "cpp15-t0": {
    "t": "Unit Tests with GoogleTest & Catch2: How a Test Framework Really Works",
@@ -4446,9 +4656,15 @@
   },
   "cpp15-t1": {
    "t": "Fixtures, Parameterised, Typed & Death Tests",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "KA42Dz6TqKI",
+   "title": "Parameterized testing with GTest - Sandor Dargo - CPPP 2021",
+   "channel": "CPPP Conference",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers GoogleTest parameterized tests; the lesson adds fixtures, typed and death tests.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.801Z"
   },
   "cpp15-t2": {
    "t": "Mocking with GoogleMock: Seams, Expectations and Matchers",
@@ -4480,15 +4696,27 @@
   },
   "cpp15-t6": {
    "t": "Code Coverage & Google Benchmark: Measuring Tests and Speed",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "eKODykkIZTE",
+   "title": "C++ Crash Course: Google Benchmark",
+   "channel": "Nick",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Introduces Google Benchmark; code coverage is not covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.830Z"
   },
   "cpp15-t7": {
    "t": "Debugging with gdb/lldb, Core Dumps & CI for C++ Projects",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "Rudz-uSdWHM",
+   "title": "Advanced Debugging with GDB",
+   "channel": "Write your own Operating System",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers gdb including post-mortem core dump debugging; CI is not covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.864Z"
   },
   "cs01-t0": {
    "t": "What an OS Is For: Resource Manager + Abstraction (and its Services)",
@@ -4870,9 +5098,15 @@
   },
   "cs07-t8": {
    "t": "DMA, Interrupts & the Life of a Disk Read",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-13"
+   "id": "ebXJpYr1h3w",
+   "title": "What is Direct Memory Access (DMA)?  How disk controllers and memory communicate",
+   "channel": "Coding Coach",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains DMA between disk controller and memory with completion interrupt, the core of a disk read.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.899Z"
   },
   "cs08-t0": {
    "t": "Processes and Signals: kill, trap, SIGTERM vs SIGKILL",
@@ -4890,9 +5124,15 @@
   },
   "cs08-t2": {
    "t": "File Descriptors 0/1/2, Redirection and Here-docs",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "9FuWfNdOnsY",
+   "title": "Linux Standard Streams Explained: stdin, stdout, & stderr for Beginners",
+   "channel": "CodeLucky",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers fds 0/1/2 and redirection; here-docs likely not covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.928Z"
   },
   "cs08-t3": {
    "t": "Pipes and the Essential Toolbox: grep, sed, awk, find, xargs, sort, uniq, cut, tar, curl",
@@ -5141,9 +5381,15 @@
   },
   "cs13-t1": {
    "t": "Keep-Alive, Head-of-Line Blocking & Counting Round Trips",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "jJmj6v0i5cM",
+   "title": "HTTP 1 v/s HTTP 2  v/s HTTP 3 | Evolution of HTTP Communication",
+   "channel": "Code And Joy",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers persistent connections and head-of-line blocking across HTTP versions; lesson adds round-trip counting.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.959Z"
   },
   "cs13-t2": {
    "t": "TLS 1.2 vs 1.3, Key Exchange & Certificate Chains",
@@ -5455,9 +5701,15 @@
   },
   "csharp02-t3": {
    "t": "Optional & Named Arguments, params Arrays and Overload Resolution",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "e_epLPMeNmI",
+   "title": "C# Tutorial | Optional Parameters Named Arguments and Params",
+   "channel": "BestITCourses",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers optional and named arguments and params; overload resolution rules left to the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:42.987Z"
   },
   "csharp02-t4": {
    "t": "Arrays: 1-D, Multidimensional [,] vs Jagged [][], Indices & Ranges",
@@ -5741,9 +5993,15 @@
   },
   "csharp08-t2": {
    "t": "The Generational GC, Gen 0/1/2 & the Large Object Heap",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "x8olNsMWT4w",
+   "title": "Garbage Collection in .NET Explained ♻️  Generations & Memory Management in C#",
+   "channel": "LogicUnboxed",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains .NET GC generations; LOH coverage uncertain.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.026Z"
   },
   "csharp08-t3": {
    "t": "Finalizers vs Dispose: the Dispose Pattern & SafeHandle",
@@ -5761,15 +6019,27 @@
   },
   "csharp08-t5": {
    "t": "stackalloc, Memory & the ref struct Rules",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "pcHu7-SEsug",
+   "title": "Stackalloc and Spans",
+   "channel": "Coding Tutorials",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers stackalloc with Span; ref struct rules left to the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.059Z"
   },
   "csharp08-t6": {
    "t": "ArrayPool & Allocation-Free Techniques",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "bw7ljmvbrr0",
+   "title": "Deep .NET: Let's Build Our Own ArrayPool  with Stephen Toub and Scott Hanselman",
+   "channel": "dotnet",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Stephen Toub builds an ArrayPool from scratch, covering pooled-array rent/return; the lesson adds wider allocation-free techniques.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.092Z"
   },
   "csharp09-t0": {
    "t": "Task & Task: Promises of Future Results",
@@ -5836,15 +6106,27 @@
   },
   "csharp10-t2": {
    "t": "Interlocked, volatile & the .NET Memory Model",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "dtUrG--oMLo",
+   "title": "A Gentle Introduction To Low-Level Concurrency In .NET",
+   "channel": "JetBrains",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Introduces low-level .NET concurrency including volatile and Interlocked; lesson adds detail on the memory model.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.132Z"
   },
   "csharp10-t3": {
    "t": "SemaphoreSlim & ReaderWriterLockSlim",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "A7EUGpyO6Cw",
+   "title": "How To Achieve Synchronization In C# While Doing Async Await Multithreaded Programming - .NET Core",
+   "channel": "SECourses",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Compares Mutex, SemaphoreSlim and ReaderWriterLockSlim in async code; partial on ReaderWriterLockSlim depth.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.160Z"
   },
   "csharp10-t4": {
    "t": "Concurrent Collections",
@@ -5918,9 +6200,15 @@
   },
   "csharp11-t7": {
    "t": "Advanced Constraints, Generic Caches and Source Generators",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "IUMZH5Z4r00",
+   "title": "C# Source Generators Tutorial",
+   "channel": "Raw Coding",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Full source generators tutorial; covers only the source generator part of the compound topic, not generic caches or advanced constraints.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.187Z"
   },
   "csharp12-t0": {
    "t": "IL: What the C# Compiler Really Emits",
@@ -5959,9 +6247,15 @@
   },
   "csharp12-t5": {
    "t": "Measuring Correctly: BenchmarkDotNet and Benchmark Hygiene",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "a3isYrQWVcE",
+   "title": "Make Your C# Code BLAZING Fast with BenchmarkDotNet!",
+   "channel": "Nick Proud",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Introduces BenchmarkDotNet for measuring C# performance; lesson adds benchmark hygiene details.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.228Z"
   },
   "csharp12-t6": {
    "t": "Allocation Profiling: Finding Hidden Allocations and Removing Them",
@@ -6041,9 +6335,15 @@
   },
   "csharp14-t1": {
    "t": "The Built-in DI Container and Service Lifetimes",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "QloQ5H4i9yA",
+   "title": "How to use lifetimes in ASP.NET Core dependency injection",
+   "channel": "Round The Code",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains registering services with singleton, scoped and transient lifetimes in ASP.NET Core DI.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.256Z"
   },
   "csharp14-t2": {
    "t": "Minimal APIs vs Controllers",
@@ -6215,9 +6515,15 @@
   },
   "devops01-t4": {
    "t": "Text Tools for Log Detective Work: grep, cut, awk, sort, uniq and sed",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "sGO9wAsAW4c",
+   "title": "Text Manipulation in Linux - Parsing logs with sed, awk, and grep",
+   "channel": "Robert Cowher - AI & Robotics Tinkerer",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Shows parsing logs with sed, awk and grep; cut/sort/uniq only lightly covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.293Z"
   },
   "devops01-t5": {
    "t": "Package Managers: apt, dnf and Keeping Servers Patched",
@@ -6263,9 +6569,15 @@
   },
   "devops02-t4": {
    "t": "set -euo pipefail and trap: Scripts That Fail Loudly and Clean Up After Themselves",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "uFJiDD1B5I4",
+   "title": "Shell Script Error Handling: Master Bash Scripting for Robust Code 🛡️",
+   "channel": "CodeLucky",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Bash error handling with set -e/-u/-o pipefail and trap cleanup.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.323Z"
   },
   "devops02-t5": {
    "t": "Cron Jobs and Log Rotation: Scheduled Work That Runs at 3 a.m. Without You",
@@ -6577,9 +6889,15 @@
   },
   "devops08-t4": {
    "t": "Small and Secure Images: Base Choice, Non-Root, Scanning, and Never Baking Secrets",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "6LXoAjelmN0",
+   "title": "Docker Security & Build Best Practices",
+   "channel": "The BioDev Network",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Docker security and build best practices incl. multi-stage and scanning; non-root and secrets coverage is partial.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.340Z"
   },
   "devops08-t5": {
    "t": "Volumes and Networks: Keeping Data and Talking to Each Other",
@@ -6751,9 +7069,15 @@
   },
   "devops11-t4": {
    "t": "Environments, Approvals, Secrets, OIDC and Build Once, Deploy Many",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "k2Tv-EJl7V4",
+   "title": "E6 - GitHub Actions: Learn OpenID Connect (OIDC) and deploy securely to AWS || Full Tutorial",
+   "channel": "glich.stream",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "GitHub Actions OIDC to AWS deploy tutorial; covers the OIDC part, lesson adds environments, approvals and build-once.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.376Z"
   },
   "devops11-t5": {
    "t": "Deployment Strategies, Rollbacks, Feature Flags and Database Migrations",
@@ -6911,9 +7235,15 @@
   },
   "devops14-t6": {
    "t": "Cluster Upgrades, Drain and Day-2 Troubleshooting",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "XHZhxbyjtyo",
+   "title": "How to Do Maintenance on a Kubernetes Node | Step-by-Step Guide",
+   "channel": "Manmeet Singh",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Kubernetes node maintenance with cordon, drain and uncordon; upgrade and day-2 troubleshooting covered by lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.410Z"
   },
   "devops15-t0": {
    "t": "Metrics, Logs and Traces: Seeing Inside a Running System",
@@ -7001,9 +7331,15 @@
   },
   "devops16-t2": {
    "t": "Dynamic Secrets, Leases and TTLs, Rotation, and Envelope Encryption with KMS",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "4IlDblY64tU",
+   "title": "HashiCorp Vault: Secrets That Actually Expire (2026)",
+   "channel": "Thetips4you",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Vault dynamic secrets with expiring leases and TTLs; envelope encryption and KMS not covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.438Z"
   },
   "devops16-t3": {
    "t": "Software Supply Chain: SBOMs, Image Signing with cosign, SLSA, Dependabot and CodeQL",
@@ -7035,9 +7371,15 @@
   },
   "devops16-t7": {
    "t": "Compliance in Plain Words (CIS, SOC 2, ISO 27001, PCI) and Incident Response for a Leaked Key",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-13"
+   "id": "BXLUYeCuOEY",
+   "title": "ISO 27001 versus SOC 2: What’s the Difference?",
+   "channel": "Scytale",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains SOC 2 vs ISO 27001 in plain terms; PCI, CIS and key-leak incident response not covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.448Z"
   },
   "devops17-t0": {
    "t": "Microservices on the Cloud: Boundaries, the Distributed Monolith, Sync vs Async and Safe Retries",
@@ -7118,9 +7460,15 @@
   },
   "devops18-t5": {
    "t": "SRE vs DevOps vs Platform Engineering, Healthy On-Call and Runbooks",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "fIUiy21IRM0",
+   "title": "DevOps vs SRE vs Platform Engineering: Who Does What?",
+   "channel": "Anton Putra",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Compares DevOps, SRE and platform engineering roles; on-call and runbooks are added by lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.458Z"
   },
   "devops18-t6": {
    "t": "Capstone: Provision, Ship and Operate a Three-Tier App End to End",
@@ -7145,15 +7493,27 @@
   },
   "devops19-t1": {
    "t": "Global VPCs, Regional Subnets and Firewall Rules: Priorities, Tags, Service Accounts and Hierarchical Policies",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "Q1CLITgu2u4",
+   "title": "Advanced Firewalls (NGFW, Hierarchical, Policies,...) on GCP",
+   "channel": "Nodematic Tutorials",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "GCP firewall policies including hierarchical and NGFW; lesson adds VPC and rule priority detail.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.492Z"
   },
   "devops19-t2": {
    "t": "Cloud NAT, Global Load Balancers and Hybrid Connectivity: Anycast IPs, Private Access and Non-Overlapping IP Plans",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "0xb3OutkSvk",
+   "title": "GCP Cloud NAT Tutorial: Internet Access for Private VMs Without External IP | How to access VM",
+   "channel": "LbisTech",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Cloud NAT tutorial for private VMs; global load balancers and hybrid connectivity are not covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.534Z"
   },
   "devops19-t3": {
    "t": "Compute on GCP: Compute Engine and MIGs, GKE Standard vs Autopilot, Cloud Run and Cloud Run Functions",
@@ -15042,8 +15402,7 @@
   },
   "dsa24-t4": {
    "t": "Polynomial Hashing, Double Hashing & Anti-Hash Tests",
-   "id": null,
-   "at": "2026-11-14",
+   "id": "eeiSPXCzUiE",
    "byLang": {
     "cpp": {
      "id": null,
@@ -15066,7 +15425,14 @@
      "at": "2026-11-14"
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "L03 : Polynomial Rolling Hash | String Algorithms | CodeNCode",
+   "channel": "CodeNCode",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers polynomial rolling hash; lesson adds double hashing and anti-hash tests.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.571Z"
   },
   "dsa24-t5": {
    "t": "Suffix Automaton (Intro): A Tiny Machine That Knows Every Substring",
@@ -16944,9 +17310,15 @@
   },
   "fe11-t1": {
    "t": "Style, Layout, Paint & Composite: Where Every Frame Goes",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "fwVcbzFSnEw",
+   "title": "How Browsers Render HTML — The Full Rendering Pipeline (Zero to Pro)",
+   "channel": "Code with Pushpa",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers the full browser rendering pipeline including layout, paint and compositing; lesson focuses on per-frame cost.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.605Z"
   },
   "fe11-t2": {
    "t": "Reflow vs Repaint, Forced Layout & Layout Thrashing",
@@ -16985,9 +17357,15 @@
   },
   "fe11-t7": {
    "t": "Taming Scroll & Input Events: Throttle, Debounce, rAF, Passive Listeners",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "cjIswDCKgu0",
+   "title": "Learn Debounce And Throttle In 16 Minutes",
+   "channel": "Web Dev Simplified",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers debounce and throttle; lesson adds rAF and passive listeners.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.641Z"
   },
   "fe12-t0": {
    "t": "Virtual DOM & Reconciliation: How React Decides What to Change",
@@ -17110,9 +17488,15 @@
   },
   "fe14-t2": {
    "t": "Transpiling, Polyfills & Tree Shaking",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "qFVZBrdBxms",
+   "title": "Using Polyfills and Transpilers in JavaScript",
+   "channel": "CoderU",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers polyfills and transpilers; lesson adds tree shaking.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.668Z"
   },
   "fe14-t3": {
    "t": "TypeScript in the Frontend: Props, Generics & Config",
@@ -17151,9 +17535,15 @@
   },
   "fe14-t8": {
    "t": "Continuous Integration: Pipelines, Caching & Quality Gates",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-13"
+   "id": "MIWH2CpVyXs",
+   "title": "The ONLY Continuous Integration (CI) Tutorial you need as an Engineer",
+   "channel": "TechWorld with Nana",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "General CI pipeline tutorial; lesson adds caching and quality gates detail.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.681Z"
   },
   "fe15-t0": {
    "t": "Micro-Frontends: Splitting One Big App Into Team-Owned Pieces",
@@ -17339,15 +17729,27 @@
   },
   "fe18-t2": {
    "t": "The Injector Tree: Element vs Environment Injectors",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "qw4ShdkpfeA",
+   "title": "The Hierarchy of Injectors in Angular (and Why You Should Care)",
+   "channel": "Hrom Maksym",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers Angular injector hierarchy; element vs environment split only partly.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.715Z"
   },
   "fe18-t3": {
    "t": "Provider Recipes: useClass, useValue, useFactory, useExisting, multi",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "7NxSufeIlXY",
+   "title": "Dependency Injection Providers in Angular 13",
+   "channel": "JS Frameworks",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers useClass, useExisting, useValue, useFactory and multi providers.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.745Z"
   },
   "fe18-t4": {
    "t": "InjectionToken: DI for Things That Are Not Classes",
@@ -17365,9 +17767,15 @@
   },
   "fe18-t6": {
    "t": "Testing DI with TestBed and HttpTestingController",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "EKUvyIwojOI",
+   "title": "192.  Angular HTTP Testing with HttpTestingController. How to setup using TestBed - Angular 19",
+   "channel": "Leela Web Dev",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers setting up HttpTestingController with TestBed; lesson adds broader DI testing.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.772Z"
   },
   "fe19-t0": {
    "t": "Observables vs Promises: Subscribe, Values Over Time, Teardown",
@@ -17553,21 +17961,39 @@
   },
   "fe22-t4": {
    "t": "Who Triggers Change Detection? zone.js Patching, NgZone and Zoneless Scheduling",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "IG6jjgEaiDQ",
+   "title": "Zoneless Change Detection (Part 1) | How to remove zone.js",
+   "channel": "FED Learning",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers zone.js role and zoneless change detection; lesson adds NgZone details.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.812Z"
   },
   "fe22-t5": {
    "t": "Bundle Size, Lazy Chunks, the esbuild Application Builder, Build Analysis & Budgets",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "5pXkss0hcPM",
+   "title": "Smaller Bundles with Angular CLI Bundle Budgets",
+   "channel": "Digital Fluency",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers Angular bundle budgets; lesson adds lazy chunks and esbuild builder.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.858Z"
   },
   "fe22-t6": {
    "t": "Runtime Profiling with Angular DevTools & the Chrome Performance Panel, and Hunting Memory Leaks",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "FjyX_hkscII",
+   "title": "Profiling Angular Applications",
+   "channel": "Angular",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Official talk on profiling Angular apps; lesson adds memory leak hunting.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.893Z"
   },
   "fe23-t0": {
    "t": "Structuring Large Angular Apps: Feature, UI, Data-Access & Util Libraries, Smart vs Presentational, Facades",
@@ -17634,9 +18060,15 @@
   },
   "fe24-t1": {
    "t": "Nested Layouts, Templates, Loading, Error & Not-Found Boundaries",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "-ucobnxYxVE",
+   "title": "Next.js 13 Crash Course #5 - Loading, Error and Not Found States",
+   "channel": "Programming with Umair",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers loading, error and not-found files in the App Router (Next 13); lesson adds nested layouts and templates.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.921Z"
   },
   "fe24-t2": {
    "t": "The Server/Client Boundary: Directives, Imports & Serializable Props",
@@ -17668,9 +18100,15 @@
   },
   "fe24-t6": {
    "t": "Middleware (Proxy in Next 16), Matchers & the Edge Runtime",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "NlBSheYPKkg",
+   "title": "Next.js 12 - Middleware & Edge functions explained",
+   "channel": "Tuomo Kankaanpää",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers Next.js middleware and edge functions (v12); lesson adds matchers and Next 16 proxy naming.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.947Z"
   },
   "fe24-t7": {
    "t": "Metadata, Images, Fonts, Performance & Deployment (and Pages vs App Router)",
@@ -17828,9 +18266,15 @@
   },
   "hld03-t6": {
    "t": "Phases 1–4 in Practice: Requirements, Estimates, API & Data Model",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "iUU4O1sWtJA",
+   "title": "Beginner System Design Interview: Design Bitly w/ a Ex-Meta Staff Engineer",
+   "channel": "Hello Interview",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Worked system design interview showing requirements, API and entities; estimation only lightly covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.960Z"
   },
   "hld03-t7": {
    "t": "Phases 5–7 in Practice: High-Level Design, Deep Dives & Trade-offs",
@@ -17995,9 +18439,15 @@
   },
   "hld07-t0": {
    "t": "Why hash(key) % N Breaks When Servers Change",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "_N32HzO6-mM",
+   "title": "Consistent Hashing: Adding a Server Moves K/N Keys Instead of All",
+   "channel": "DataMListic",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains why modulo hashing remaps nearly all keys and how consistent hashing fixes it.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:43.992Z"
   },
   "hld07-t1": {
    "t": "The Hash Ring: Walk Clockwise to Your Server",
@@ -18190,9 +18640,15 @@
   },
   "hld11-t1": {
    "t": "Raft Log Replication, Commit Index & Repairing Followers",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "EgKmNEM40R0",
+   "title": "Raft Consensus Algorithm Explained | Leader Election & Log Replication Made Simple",
+   "channel": "SystemDR - Scalable System Design ",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Raft intro covering leader election and log replication; commit index and follower repair lightly.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.029Z"
   },
   "hld11-t2": {
    "t": "Paxos Intuition: Prepare, Promise, Accept",
@@ -18936,9 +19392,15 @@
   },
   "java06-t3": {
    "t": "Custom Exceptions, Chaining, Translation and Best Practices",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "OIozDnGYqIU",
+   "title": "Java Custom Exceptions Tutorial - It's Way Easier Than You Think",
+   "channel": "Coding with John",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers creating custom exceptions; lesson adds chaining, translation and best practices.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.059Z"
   },
   "java06-t4": {
    "t": "java.io vs java.nio: Streams, Readers, Charsets, Buffers and Channels",
@@ -19362,9 +19824,15 @@
   },
   "java14-t3": {
    "t": "Text Blocks & the Small Modern Wins (var, Helpful NPEs, Sequenced Collections)",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "i_fQxLpi6DI",
+   "title": "Java 14 New Features : Text Blocks & Helpfull NullPointerExceptions",
+   "channel": "Programmatic DIB",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers text blocks and helpful NPEs only; the lesson adds var and sequenced collections.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.106Z"
   },
   "java14-t4": {
    "t": "Reflection: Inspecting & Invoking Code at Runtime",
@@ -19431,9 +19899,15 @@
   },
   "java15-t4": {
    "t": "Parameterized Tests & Fluent Assertions with AssertJ",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "ZNlCZC6hIUo",
+   "title": "JUnit 5 - How to Write Parameterized Tests",
+   "channel": "ProgrammingKnowledge",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers JUnit 5 parameterized tests; the lesson adds AssertJ fluent assertions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.137Z"
   },
   "java15-t5": {
    "t": "Test Doubles & Mockito: Mocks, Stubs, Spies, Argument Captors & Verification",
@@ -19465,9 +19939,15 @@
   },
   "java16-t2": {
    "t": "Lazy Loading, Proxies and the N+1 Cures: Fetch Joins, Entity Graphs, Batch Fetching",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "QAaTLLYdHJ0",
+   "title": "JOIN FETCH with Hibernate - The end of n+1 select issues",
+   "channel": "Thorben Janssen",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers JOIN FETCH as the N+1 cure; the lesson adds entity graphs, proxies and batch fetching.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.167Z"
   },
   "java16-t3": {
    "t": "First-Level, Second-Level and Query Caches",
@@ -19520,9 +20000,15 @@
   },
   "java17-t3": {
    "t": "Scopes, Scoped Proxies & @Configuration Full vs Lite Mode",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "VoK6-OiSPu4",
+   "title": "Spring @Configuration Annotation - What are Proxy Bean Methods?",
+   "channel": "Dan Vega",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers @Configuration proxyBeanMethods (full vs lite mode); the lesson adds bean scopes and scoped proxies.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.216Z"
   },
   "java17-t4": {
    "t": "AOP Proxy Internals: Advisors, the Interceptor Chain, JDK vs CGLIB & Self-Invocation",
@@ -19792,9 +20278,15 @@
   },
   "js05-t3": {
    "t": "new Binding and the Precedence of the Four Rules",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-12"
+   "id": "NV9sHLX-jZU",
+   "title": "Javascript this keyword explained | in Gloable Scope, Object, Function, Prototype, Method, Class",
+   "channel": "techsith",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "General explainer of this binding including constructors; precedence of the four rules is only partly covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.262Z"
   },
   "js05-t4": {
    "t": "Arrow Functions and Lexical this",
@@ -20141,9 +20633,15 @@
   },
   "js12-t1": {
    "t": "Ignition, Sparkplug, Maglev & TurboFan: How Hot Code Gets Faster",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-12"
+   "id": "pzMj_r8jFdk",
+   "title": "How Does JavaScript Work ? : The V8 JavaScript Engine, Ignition, Sparkplug and Turbofan.",
+   "channel": "WebDevSphere",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Overview of V8 tiers Ignition, Sparkplug and TurboFan; Maglev not necessarily covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.292Z"
   },
   "js12-t2": {
    "t": "Hidden Classes (Shapes/Maps), Inline Caches & Elements Kinds",
@@ -20357,9 +20855,15 @@
   },
   "js15-t7": {
    "t": "Diagnosing a Blocked Event Loop, Memory Leaks and Profiling in Production",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-12"
+   "id": "hliOMEQRqf8",
+   "title": "Understanding and Debugging Memory Leaks in Your Node.js Applications [I]",
+   "channel": "node.js",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers debugging Node.js memory leaks; the lesson adds blocked event loop diagnosis and production profiling.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.322Z"
   },
   "js16-t0": {
    "t": "expect() and Matchers: What \"Equal\" Really Means",
@@ -20405,14 +20909,19 @@
   },
   "js16-t6": {
    "t": "Coverage and Its Limits, Flaky Tests, and TDD in Interviews",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-12"
+   "id": "Jv2uxzhPFl4",
+   "title": "Test-Driven Development // Fun TDD Introduction with JavaScript",
+   "channel": "Fireship",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Introduces TDD in JavaScript; coverage limits and flaky tests are added by the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.344Z"
   },
   "lld01-t0": {
    "t": "Thinking in Objects: Classes, Objects, State & Behaviour",
-   "id": null,
-   "at": "2026-11-13",
+   "id": "kHNhm4UL0Sg",
    "byLang": {
     "cpp": {
      "id": "5LK2nA_p1DU",
@@ -20441,12 +20950,18 @@
      "at": "2026-11-10"
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "Object-Oriented Programming: Objects and Classes",
+   "channel": "MrBrownCS",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Intro to classes and objects with attributes and behaviours.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.386Z"
   },
   "lld01-t1": {
    "t": "From Requirements to Entities, Attributes & Behaviours (Noun-Verb Analysis)",
-   "id": null,
-   "at": "2026-11-13",
+   "id": "RZntqQgi0gM",
    "byLang": {
     "cpp": {
      "id": null,
@@ -20469,7 +20984,14 @@
      "at": "2026-11-10"
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "Designing a Python Class from a Specification (Verbs, Nouns & UML)",
+   "channel": "John Philip Jones",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Noun-verb analysis from a spec to a class design (Python example; method is language-agnostic).",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.422Z"
   },
   "lld01-t2": {
    "t": "Has-a Relationships: Association, Aggregation, Composition & Dependency",
@@ -20638,8 +21160,7 @@
   },
   "lld02-t0": {
    "t": "Why SOLID? Design Smells and the Ripple of Change",
-   "id": null,
-   "at": "2026-11-13",
+   "id": "_jDNAf3CzeY",
    "byLang": {
     "cpp": {
      "id": null,
@@ -20662,7 +21183,14 @@
      "at": "2026-11-10"
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "Learn SOLID Principles with CLEAN CODE Examples",
+   "channel": "Amigoscode",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "SOLID principles with clean code examples; design-smell framing is added by the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.459Z"
   },
   "lld02-t1": {
    "t": "S — Single Responsibility Principle (SRP)",
@@ -21067,8 +21595,7 @@
   },
   "lld03-t5": {
    "t": "Naming & Small Functions (code that reads like a story)",
-   "id": null,
-   "at": "2026-11-14",
+   "id": "NgPcXyNFRIc",
    "byLang": {
     "cpp": {
      "id": "6SnxFx9aRps",
@@ -21101,12 +21628,18 @@
      "secs": 734
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "Clean Code Tutorial: How to Name Variables, Functions and Classes - Beginner Friendly",
+   "channel": "Seho Lim",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Naming variables, functions and classes per Clean Code; small functions only partly covered.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.488Z"
   },
   "lld03-t6": {
    "t": "Code Smells & Safe Refactoring (spot it, name it, fix it in small steps)",
-   "id": null,
-   "at": "2026-11-15",
+   "id": "8dLg2ed6o9w",
    "byLang": {
     "cpp": {
      "id": "f_tLQl0wLUM",
@@ -21135,7 +21668,14 @@
      "at": "2026-11-15"
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "Object-Oriented Code Smells and Refactoring",
+   "channel": "David Whitlock",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "OO code smells and how to refactor them.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.516Z"
   },
   "lld04-t0": {
    "t": "Why Creational Patterns? The Trouble with \"new\" Everywhere",
@@ -21587,8 +22127,7 @@
   },
   "lld05-t7": {
    "t": "Choosing the Right Structural Pattern",
-   "id": null,
-   "at": "2026-11-10",
+   "id": "hTC3rmRBIxs",
    "byLang": {
     "cpp": {
      "id": "sFi1kTkSFeM",
@@ -21617,7 +22156,14 @@
      "secs": 186
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "Proxy vs Adapter vs Facade Pattern | Code Walks 012",
+   "channel": "Christopher Okhravi",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Compares Proxy, Adapter and Facade; covers part of the structural pattern choice.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.555Z"
   },
   "lld06-t0": {
    "t": "Strategy: Swap the Algorithm, Keep the Code",
@@ -22864,8 +23410,7 @@
   },
   "lld11-t5": {
    "t": "DDD Building Blocks II: Aggregates, Boundaries and Repositories",
-   "id": null,
-   "at": "2026-11-14",
+   "id": "xFl-QQZJFTA",
    "byLang": {
     "cpp": {
      "id": null,
@@ -22888,7 +23433,14 @@
      "at": "2026-11-15"
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "DDD Building Blocks",
+   "channel": "Drawing Boxes",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "DDD building blocks overview including aggregates and repositories; lesson goes deeper on boundaries.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.568Z"
   },
   "lld11-t6": {
    "t": "Domain Events: \"Something Happened\" — Decoupling Side Effects Safely",
@@ -23248,8 +23800,7 @@
   },
   "lld13-t6": {
    "t": "Follow-ups Across All Four Designs: Thread Safety, Extensibility and What Interviewers Ask Next",
-   "id": null,
-   "at": "2026-11-15",
+   "id": "d8rmosXttTE",
    "byLang": {
     "csharp": {
      "id": null,
@@ -23272,7 +23823,14 @@
      "at": "2026-11-15"
     }
    },
-   "broadAt": "2026-11-12"
+   "title": "Concurrency in Low-level Design Interviews w/ Staff Engineer",
+   "channel": "Hello Interview",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers the thread-safety follow-up in LLD interviews; the lesson adds extensibility and other follow-ups across four designs.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.582Z"
   },
   "py01-t0": {
    "t": "Installing Python, Running Code & the REPL",
@@ -23444,9 +24002,15 @@
   },
   "py04-t1": {
    "t": "Instance vs Class Attributes and the Attribute Lookup Chain",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "GQyjhUKll7M",
+   "title": "Class Attributes vs Instance Attributes in Python",
+   "channel": "mecademie",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains class vs instance attributes; the lesson adds the full attribute lookup chain.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.620Z"
   },
   "py04-t2": {
    "t": "Methods: Instance Methods, Bound Methods and Methods Calling Methods",
@@ -23687,9 +24251,15 @@
   },
   "py09-t2": {
    "t": "Raising Exceptions, Custom Exception Classes, Chaining (raise from) and ExceptionGroup",
-   "id": null,
-   "at": "2026-11-13",
-   "broadAt": "2026-11-12"
+   "id": "Vf1qkBTrp5U",
+   "title": "How to Build Better Custom Exceptions in Python",
+   "channel": "Dr Pi",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers custom exception classes; raise from and ExceptionGroup are only partly covered, lesson adds them.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.650Z"
   },
   "py09-t3": {
    "t": "EAFP vs LBYL: \"Just Try It\" vs \"Check First\"",
@@ -23763,9 +24333,15 @@
   },
   "py10-t5": {
    "t": "Tasks, gather, TaskGroup, Timeouts, Cancellation and Rate Limiting",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "zrA9WpSXrQE",
+   "title": "Async TaskGroups are brand new and INSANELY USEFUL",
+   "channel": "Carberra",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers asyncio TaskGroup; the lesson adds gather, timeouts, cancellation and rate limiting.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.679Z"
   },
   "py10-t6": {
    "t": "Async Pitfalls: Blocking the Loop, Forgotten Awaits, Lost Tasks and Races Across await",
@@ -23776,9 +24352,15 @@
   },
   "py10-t7": {
    "t": "Choosing the Right Model and Designing Concurrent Systems in Python",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "QlkXji08lno",
+   "title": "AsyncIO VS Threading VS Multiprocessing in Python",
+   "channel": "Indently",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Compares the three concurrency models and when to use each; the lesson adds system design.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.690Z"
   },
   "py11-t0": {
    "t": "Counter & defaultdict: Hash Maps with Superpowers",
@@ -23838,9 +24420,15 @@
   },
   "py11-t8": {
    "t": "Pythonic DSA Templates: Graphs, Union-Find, Tries & Gotchas",
-   "id": null,
-   "at": "2026-11-11",
-   "broadAt": "2026-11-13"
+   "id": "PGZ64ob440I",
+   "title": "Disjoint Set Data Structure - Union Find Tutorial",
+   "channel": "Stable Sort",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers union-find only; the lesson also covers graph and trie templates.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.731Z"
   },
   "py12-t0": {
    "t": "Bytecode & dis: What Your Code Turns Into",
@@ -23879,9 +24467,15 @@
   },
   "py12-t5": {
    "t": "Small-Int Cache, String Interning & Why \"is\" Lies to You",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "-U7jcsZLG1g",
+   "title": "Python Integer caching || Integer interning",
+   "channel": "A Binary Code",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers small-int caching and interning behind is vs ==; lesson adds more on strings.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.741Z"
   },
   "py12-t6": {
    "t": "Descriptors: How obj.attr Really Works",
@@ -23948,9 +24542,15 @@
   },
   "py13-t6": {
    "t": "Mutable Default Arguments, Aliasing & Late Binding: \"When Is This Evaluated?\"",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "aGgG77Ix0ok",
+   "title": "The Mutable Default Argument In Python",
+   "channel": "Finxter AI Nuggets",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers mutable default arguments; aliasing and late binding are only touched on.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.772Z"
   },
   "py13-t7": {
    "t": "The Gotchas Bank: Predict-the-Output Questions and How to Crack Them",
@@ -23968,15 +24568,27 @@
   },
   "py14-t1": {
    "t": "pip, PEP 440 Versions and Dependency Resolution",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "uZtVq2Isy5o",
+   "title": "Resolving Package Dependencies With the New Version of Pip | Real Python Podcast #29",
+   "channel": "Real Python",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Discusses pip's dependency resolver; PEP 440 versions are covered in the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.784Z"
   },
   "py14-t2": {
    "t": "pyproject.toml, Build Backends, Wheels vs sdists",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "m2EAQk4Qlew",
+   "title": "The Anatomy of Python Packages and pyproject.toml",
+   "channel": "theurbanpenguin",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers pyproject.toml and package building; wheels vs sdists only partly.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.818Z"
   },
   "py14-t3": {
    "t": "Poetry, uv, Pinning and Lock Files",
@@ -23987,9 +24599,15 @@
   },
   "py14-t4": {
    "t": "src Layout, Editable Installs and Import Resolution",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "gYYi7varbmE",
+   "title": "how do editable pip installs work? (intermediate) anthony explains #124",
+   "channel": "anthonywritescode",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains editable installs; src layout and import resolution are lesson additions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.856Z"
   },
   "py14-t5": {
    "t": "Linting, Formatting and Type Checking: Ruff, mypy, pre-commit",
@@ -24000,9 +24618,15 @@
   },
   "py14-t6": {
    "t": "Publishing to PyPI and Reproducible Builds in CI and Docker",
-   "id": null,
-   "at": "2026-11-15",
-   "broadAt": "2026-11-12"
+   "id": "Kz6IlDCyOUY",
+   "title": "How to Publish a Python Package to PyPI (pip)",
+   "channel": "pixegami",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Walks through publishing to PyPI; reproducible builds in CI and Docker are lesson additions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.888Z"
   },
   "py15-t0": {
    "t": "NumPy Arrays: One Block of Memory, One dtype, Vectorized Math",
@@ -24013,9 +24637,15 @@
   },
   "py15-t1": {
    "t": "Broadcasting, Reshaping, and Views vs Copies",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "FQ-IhRHZ_fA",
+   "title": "4.4 NumPy Broadcasting (L04: Scientific Computing in Python)",
+   "channel": "Sebastian Raschka",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers NumPy broadcasting; reshaping and views vs copies are lesson additions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.915Z"
   },
   "py15-t2": {
    "t": "pandas Series & DataFrame: Labels, loc vs iloc, and Filtering",
@@ -24054,15 +24684,27 @@
   },
   "py15-t7": {
    "t": "apply vs Vectorized, Categoricals, Memory and Performance Pitfalls",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-12"
+   "id": "nxWginnBklU",
+   "title": "1000x faster data manipulation: vectorizing with Pandas and Numpy",
+   "channel": "PyGotham 2019",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers vectorizing versus slow apply/loops; categoricals and memory pitfalls are lesson additions.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.951Z"
   },
   "py16-t0": {
    "t": "Projects, Apps, MTV and URL Routing with Path Converters",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "oQTQBNRn0LY",
+   "title": "URL Routing - Python Django Tutorial 3",
+   "channel": "Turtle Code",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers Django URL routing; projects/apps/MTV and path converters only partly.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:44.982Z"
   },
   "py16-t1": {
    "t": "Views: Function-Based, Class-Based, Generic Views and Mixins",
@@ -24940,9 +25582,15 @@
   },
   "sql16-t4": {
    "t": "Isolation Defaults, Locking Reads and InnoDB Gap Locks",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "CFNEF-Rc9T8",
+   "title": "Master MySQL Locks: Record Lock, Next-Key Lock, Gap Lock, and More Explained",
+   "channel": "Stockoverflow",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Covers InnoDB record, gap and next-key locks; the lesson adds isolation defaults and locking-read syntax.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.018Z"
   },
   "sql16-t5": {
    "t": "Replication and Failover: WAL Streaming vs Binlog, Sync Modes and Promotion",
@@ -24988,9 +25636,15 @@
   },
   "sql17-t4": {
    "t": "Redis Persistence, TTLs and Eviction Policies",
-   "id": null,
-   "at": "2026-11-14",
-   "broadAt": "2026-11-12"
+   "id": "MTVcScW423w",
+   "title": "Operator Workshop: Redis Persistence Explained",
+   "channel": "Redis",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Official Redis walkthrough of RDB and AOF persistence; TTLs and eviction are covered in the lesson.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.050Z"
   },
   "sql17-t5": {
    "t": "Cassandra: Query-First Tables, Partition & Clustering Keys, Tunable Consistency",
@@ -25008,9 +25662,15 @@
   },
   "sql17-t7": {
    "t": "Hot Partitions, Hot Keys and Access-Pattern-Driven Fixes",
-   "id": null,
-   "at": "2026-11-10",
-   "broadAt": "2026-11-13"
+   "id": "bJuI6xgkC14",
+   "title": "How DynamoDB stores your Table,Hot Partitioning,DAX",
+   "channel": "BTECH Spark",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "DynamoDB storage and hot partitioning with DAX; hot keys and access-pattern fixes are mostly lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.453Z"
   },
   "tl01-t0": {
    "t": "The Type System: Values, References, Strings and Null",
@@ -25091,9 +25751,15 @@
   },
   "tl03-t0": {
    "t": ".NET History, Versions and Support",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "RbbPLCyHTts",
+   "title": "How did we get from .NET Framework to just .NET?",
+   "channel": "dotnet",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Official dotnet video on the path from .NET Framework to unified .NET; versions and support dates are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.227Z"
   },
   "tl03-t1": {
    "t": "ASP.NET Core Fundamentals: Host, Pipeline, DI and Configuration",
@@ -25118,9 +25784,15 @@
   },
   "tl03-t4": {
    "t": "Features by Version and the Production Toolbox",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "Ci-FTnC-j84",
+   "title": "Let’s catch up with C#! Exciting new features in C# 9, 10, 11 and 12! | .NET Conf 2023",
+   "channel": "dotnet",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Official .NET Conf tour of new features in C# 9 to 12; the production toolbox is lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.262Z"
   },
   "tl04-t0": {
    "t": "REST and HTTP Basics: Resources, Methods and Status Codes",
@@ -25166,9 +25838,15 @@
   },
   "tl05-t1": {
    "t": "The Flows: Authorization Code with PKCE, Client Credentials, On-Behalf-Of",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "tpIXmmV4ib4",
+   "title": "Exploring OAuth 2.0: Must-Know Flows Explained",
+   "channel": "Code and Stuff",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Overview of the main OAuth 2.0 flows; On-Behalf-Of is lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.088Z"
   },
   "tl05-t2": {
    "t": "End to End: A Stateless API, Token Storage, Renewal and Revocation",
@@ -25193,15 +25871,27 @@
   },
   "tl05-t5": {
    "t": "Troubleshooting 401 and 403, and Saying It Well in the Interview",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "TFAWOf0W6vg",
+   "title": "401 Unauthorized vs 403 Forbidden",
+   "channel": "NimblePros",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Explains 401 vs 403; ASP.NET Core troubleshooting steps and interview phrasing are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.307Z"
   },
   "tl06-t0": {
    "t": "Azure Fundamentals and Choosing Where Code Runs",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "A0w_3DvOf6M",
+   "title": "AKS vs App Service vs Container Apps: Which Service Should You Choose?",
+   "channel": "Brayan Ortiz",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Compares Azure compute options (App Service, Container Apps, AKS) for choosing where code runs; Azure fundamentals are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.114Z"
   },
   "tl06-t1": {
    "t": "Azure Functions in Depth: Triggers, Plans, Scaling and Reliability",
@@ -25212,9 +25902,15 @@
   },
   "tl06-t2": {
    "t": "Storage, Messaging, Secrets and Network Security",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "OeYx4vUs1vw",
+   "title": "Use Azure Managed Identities and Azure Key Vault to Protect Your .NET API Secrets!",
+   "channel": "Israel Quiroz",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Managed identity plus Key Vault for .NET secrets; storage, messaging and network security are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.348Z"
   },
   "tl06-t3": {
    "t": "Monitoring, High Availability and Azure OpenAI in Production",
@@ -25232,9 +25928,15 @@
   },
   "tl07-t0": {
    "t": "Tables, Normalization, Indexes and Execution Plans",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "rBPQ5fg_kiY",
+   "title": "Complete guide to Database Normalization in SQL",
+   "channel": "techTFQ",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Database normalization (1NF to 3NF); indexes and execution plans are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.126Z"
   },
   "tl07-t1": {
    "t": "Transactions, Isolation Levels, Locks and Deadlocks",
@@ -25293,9 +25995,15 @@
   },
   "tl08-t4": {
    "t": "Calling AI Services from .NET and Leading with AI-Assisted Development",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "zrPtp00aUX0",
+   "title": "Build .NET AI Apps using Microsoft.Extensions.AI - the future of .NET AI!",
+   "channel": "The Code Wolf",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Building .NET AI apps with Microsoft.Extensions.AI; AI-assisted development leadership is lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.374Z"
   },
   "tl09-t0": {
    "t": "TypeScript: Types, Generics and Narrowing",
@@ -25341,9 +26049,15 @@
   },
   "tl10-t1": {
    "t": "Data Across Services: Messaging, Consistency, Saga, Outbox, CQRS",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "TJMkz4sZRdQ",
+   "title": "Saga Pattern Explained: Orchestration vs Choreography with Real Microservices Examples",
+   "channel": "Kartikeya Sharma",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Saga pattern with orchestration vs choreography; outbox, CQRS and messaging are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.157Z"
   },
   "tl10-t2": {
    "t": "Staying Up Under Load: Resilience, Caching, Scale, Observability, Security",
@@ -25388,9 +26102,15 @@
   },
   "tl11-t3": {
    "t": "Matrix Problems: Rotate, Spiral, Search and Grid Walks",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "fcn8qkRcFVM",
+   "title": "Spiral Matrix - Leetcode 54 - Arrays & Strings (Python)",
+   "channel": "Greg Hogg",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Spiral Matrix walkthrough; rotate and search grid problems are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.168Z"
   },
   "tl12-t0": {
    "t": "Linked Lists, Stacks and Queues",
@@ -25408,9 +26128,15 @@
   },
   "tl12-t2": {
    "t": "Hash Maps and Designed Structures: LRU Cache, Heap, Trie, Union-Find",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "WMs5kTk3__k",
+   "title": "Implement LRU Cache - LeetCode 146 | Least Recently Used Cache | Algorithm Explained - Java Solution",
+   "channel": "Java2Novice",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "LRU Cache via hash map plus doubly linked list; heap, trie and union-find are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.198Z"
   },
   "tl12-t3": {
    "t": "Recursion, Backtracking and Dynamic Programming",
@@ -25421,9 +26147,15 @@
   },
   "tl12-t4": {
    "t": "Bits, Maths and the Small Programs Interviewers Still Ask",
-   "id": null,
-   "at": "2026-11-12",
-   "broadAt": "2026-11-12"
+   "id": "igOP7wL1N08",
+   "title": "Kernighan's Algorithm | Count Set Bits in an Integer | Bit Manipulation | CodeBaker",
+   "channel": "CodeBaker",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-15",
+   "note": "Kernighan's algorithm for counting set bits; other bit tricks, maths and small programs are lesson-only.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-15T06:08:45.420Z"
   }
  }
 }
