@@ -1,0 +1,104 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Toy agent loop: gather, act, check, repeat",
+    "python": "# Toy agent loop: gather context, act, check, repeat until done.\nfiles = {\"app.py\": \"def add(a, b):\\n    return a - b\\n\"}   # bug: minus\ndef run_tests():\n    ns = {}\n    exec(files[\"app.py\"], ns)\n    return ns[\"add\"](2, 3) == 5\n\nlog = []\nfor turn in range(1, 5):              # a turn cap, like --max-turns\n    log.append(\"turn %d: read app.py\" % turn)       # gather context\n    if run_tests():                                  # check the result\n        log.append(\"turn %d: tests pass, answer\" % turn)\n        break\n    files[\"app.py\"] = files[\"app.py\"].replace(\"a - b\", \"a + b\")  # act: edit\n    log.append(\"turn %d: edited app.py, rerun tests\" % turn)\nprint(\"\\n\".join(log))\nprint(\"final file:\", repr(files[\"app.py\"]))\n"
+   },
+   "followUps": [
+    "<p>Press Esc to interrupt the turn, then undo what it changed. Esc stops the agent at the next safe point, so the work done so far stays on disk.</p><p>To roll back, use <code>/rewind</code> to return the conversation and Claude's file edits to an earlier checkpoint, or use git. Git is the safer base: <code>git diff --stat</code> shows the damage, <code>git restore .</code> discards unstaged edits. Checkpoints do not undo shell side effects such as installs or deletes.</p>",
+    "<p>By default it asks before anything that changes your machine or runs code, while reading is mostly allowed. Reading files and searching normally need no prompt; editing files and running shell commands do.</p><p>Example: it can open <code>src/app.py</code> freely, but <code>npm install</code> or an edit prompts you once. You can answer yes for this time or add an allow rule so the same safe command (say <code>npm test</code>) stops asking. Deny rules always win.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Personal preferences go in your user-level memory file, not the project file, so teammates are not forced to follow them. The project CLAUDE.md is shared and committed; your own taste (editor habits, tone, shortcuts) is private.</p><p>Typically that is a CLAUDE.md in your home config folder, which applies to all your projects. A local, git-ignored personal file in the repo also works for notes that apply only to this project, such as your own sandbox URLs. Keep both short.</p>",
+    "<p>You test it: give a task the line should affect and see whether behaviour changes. If Claude ignores a line, the line is probably vague, buried, or contradicted elsewhere.</p><p>Example: the line says \"run tests before finishing\". Ask for a small change and check whether the output shows the test command and its result. Rewrite vague lines into exact commands (<code>npm test</code>, not \"run the tests\"), and delete lines that never change anything. For must-never rules, add a deny rule or hook, since CLAUDE.md is guidance only.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because bypass removes the safety net: nothing asks before any action, so one wrong guess or one prompt injection can delete files, push code or leak data with no pause.</p><p>Approvals are the cheap moment to catch a mistake, like a bad <code>rm -rf</code>. Bypass is acceptable only in a throwaway container or VM with no secrets and no network you care about. Day to day, prefer acceptEdits plus a few allow rules for tests and lint: most prompts disappear and the risky ones stay.</p>",
+    "<p>Set the default in your settings file under the permissions block, using a <code>defaultMode</code> value such as <code>acceptEdits</code> or <code>plan</code>. Put it in user settings for a personal default, or in the committed project settings for the team.</p><pre><code>{ \"permissions\": { \"defaultMode\": \"acceptEdits\" } }</code></pre><p>Within a session, Shift+Tab cycles modes. Organisation managed settings can override or forbid modes (for example, disable bypass).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Deny, then ask, then allow: first match wins",
+    "python": "import fnmatch\n\n# Rules merged from all settings files: (kind, pattern)\nrules = [(\"allow\", \"Bash(git push origin main)\"),\n         (\"deny\", \"Bash(git push *)\"),\n         (\"ask\", \"Bash(npm *)\"),\n         (\"allow\", \"Bash(npm test)\"),\n         (\"allow\", \"Bash(ls *)\")]\n\ndef decide(call, mode=\"default\"):\n    # Fixed order: deny, then ask, then allow; first match wins.\n    for kind in (\"deny\", \"ask\", \"allow\"):\n        for k, pat in rules:\n            if k == kind and fnmatch.fnmatchcase(call, pat):\n                return kind\n    return \"mode decides (\" + mode + \")\"   # no rule matched\n\nfor call in [\"Bash(git push origin main)\", \"Bash(npm test)\",\n             \"Bash(ls -la)\", \"Bash(lsof -i)\", \"Bash(cat x)\"]:\n    print(call.ljust(28), \"->\", decide(call))\n# The space before * matters: \"ls *\" does not match \"lsof\".\n"
+   },
+   "followUps": [
+    "<p>Read and Edit rules use path patterns, and where the pattern starts decides what it matches. A pattern is anchored to a root: the project, your home folder, or the filesystem, depending on its prefix.</p><p>Example: <code>Read(./.env)</code> is relative to the project, <code>Read(~/.ssh/**)</code> starts in your home folder, and a pattern beginning with a double slash is an absolute filesystem path. Wildcards such as <code>**</code> cover subfolders. Check the current docs for exact prefix syntax, and test a deny rule by asking Claude to read the file.</p>",
+    "<p>Prefix patterns cannot catch commands that reach the same effect in a different form. They match text, not meaning.</p><p>Examples: a deny on <code>Bash(rm *)</code> misses <code>find . -delete</code> or <code>python -c \"import shutil; ...\"</code>; <code>Bash(curl *)</code> misses a script that fetches the URL; option order or a wrapper like <code>env VAR=1 cmd</code> can slip past a prefix. So pair rules with hooks, sandboxing and a narrow allow list rather than relying on a deny list alone.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It limits which tools a skill may use without asking while the skill is active. It pre-approves tools for that skill's run; it is a convenience, not a security boundary on its own.</p><p>Example: a <code>/release-notes</code> skill lists <code>allowed-tools: Bash(git log *), Read</code>, so reading history needs no prompt each time. Keep the list narrow, and remember deny and ask rules in settings still apply. Skills with side effects should also set <code>disable-model-invocation: true</code> so only you can trigger them.</p>",
+    "<p>Older custom commands are plain Markdown files in a <code>commands</code> folder: <code>.claude/commands/</code> in the project or the same folder in your user config. The filename becomes the slash command, so <code>review.md</code> gives <code>/review</code>.</p><p>They still work, and skills have been merged into the same idea: a skill is a folder with a <code>SKILL.md</code>, which adds a description, supporting files and automatic invocation. For new work, prefer a skill; keep commands for simple saved prompts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "PreToolUse hook: exit 2 blocks, exit 0 allows",
+    "python": "import json, subprocess, sys\n\n# The hook: reads event JSON on stdin, exits 2 to block.\nHOOK = r'''\nimport json, sys\nev = json.load(sys.stdin)\npath = ev[\"tool_input\"][\"file_path\"]\nif path.endswith(\".env\") or \"/migrations/\" in path:\n    print(\"blocked: protected file \" + path, file=sys.stderr)\n    sys.exit(2)          # 2 = blocking error\nsys.exit(0)              # 0 = continue\n'''\nfor path in [\"src/app.py\", \"config/.env\", \"db/migrations/001.sql\"]:\n    event = {\"tool_name\": \"Edit\", \"tool_input\": {\"file_path\": path}}\n    r = subprocess.run([sys.executable, \"-c\", HOOK], input=json.dumps(event),\n                       capture_output=True, text=True)\n    verdict = \"BLOCKED\" if r.returncode == 2 else \"allowed\"\n    print(path.ljust(24), \"exit\", r.returncode, verdict, r.stderr.strip())\n"
+   },
+   "followUps": [
+    "<p>Exit 1 is a non-blocking error, so a hook that crashes does not stop the action. If your guard hook relies on exiting 1 to block, it will silently let the dangerous call through.</p><p>Example: a script fails on a missing <code>jq</code> and exits 1; the edit to <code>.env</code> proceeds. Only exit 2 blocks. So deliberately exit 2 for \"block\", check dependencies, and test the hook with a bad input. Also remember that stderr is what Claude is shown on a block.</p>",
+    "<p>Treat hooks in a cloned repo as code you must read before trusting, because they run shell commands on your machine. Never run a repo's hooks blindly.</p><p>Steps: review <code>.claude/settings.json</code> and the scripts it points at before first opening the repo; accept the workspace trust prompt only for repos you trust; keep hooks small, using no network and quoted variables; and let admins block or limit hooks in managed settings. In CI, use <code>--bare</code> so a repo's hooks do not change behaviour.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>No. A subagent starts with a fresh context: it sees its own prompt and the task you hand it, not your conversation.</p><p>So the task description must be self-contained: file paths, the goal, constraints, and the output shape. \"Fix the bug we discussed\" fails; \"find where <code>parseDate</code> is called in <code>src/</code> and list file and line, max 10 lines\" works. This isolation is the benefit (a clean small context) and the cost (you must restate what matters).</p>",
+    "<p>Run several in parallel when the tasks are independent and read-only, so each finishes without waiting for the others. Searches and reviews are typical.</p><p>Example: three Explore agents each check one area (auth, payments, logging) for a deprecated call, and each returns a short list; you merge them. Avoid parallel agents that edit the same files, since their changes will conflict, and remember each one spends its own tokens, so three agents cost about three times one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Project-scoped servers in <code>.mcp.json</code> are not trusted automatically; Claude Code asks you to approve each one before it connects. This stops a cloned repo from silently starting a server.</p><p>Approve only after reading the command or URL it runs. Admins can pre-approve or block servers in managed settings. In CI there is no one to click yes, so list approved servers explicitly or avoid project MCP there. Treat the first approval as running someone else's code.</p>",
+    "<p>MCP tools show up in permission rules with a name made of the server and tool, in the form <code>mcp__server__tool</code>. You write allow, ask or deny rules against that name.</p><pre><code>mcp__github__create_issue      (one tool)\nmcp__github                    (every tool of that server)</code></pre><p>So you can allow read tools and keep write tools on ask or deny. Check the current docs for wildcard support.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Only people with write access to the repository should be able to trigger it, and you should enforce this, since a triggered run has your secrets and token.</p><p>The official action checks the commenter's permission. Add your own guard in the workflow, for example an <code>if:</code> condition on the author association (owner, member, collaborator). Never let comments from outside contributors run with write permissions: a comment or PR text can contain prompt injection, so a fork's content is untrusted input.</p>",
+    "<p>Bound cost with hard limits at every level, since an unattended agent can loop. Set caps before the first run, not after the first bill.</p><ul><li>A turn cap: <code>--max-turns 10</code>.</li><li>A job timeout, e.g. 15 minutes, and concurrency limits so reruns do not pile up.</li><li>A smaller model for routine steps.</li><li>Narrow triggers (labels or write-access comments, not every push).</li></ul><p>Then watch usage: 20 runs a day at 2 dollars each is 40 dollars a day, so a budget alert matters.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>/clear throws the history away, so there is nothing to process, while /compact must make a model call to write a summary of the whole conversation. Clearing is free; compacting costs a summarising request.</p><p>Example: at 150k tokens of history, /compact reads that history to produce, say, a 5k summary, and the next turn then carries 5k. /clear carries 0 plus CLAUDE.md. The price is that /clear forgets everything, so use it between unrelated tasks and /compact when the thread continues.</p>",
+    "<p>Prompt caching makes repeated prefixes cheap, but the cache expires after a short idle time. The first message after a long break pays full price to rebuild.</p><p>So a big session left alone for an hour and resumed costs more than the same turn would have a minute later. Cached reads are billed at a fraction of normal input price, so an active session is much cheaper per turn. If you are going away, a /compact or /clear before leaving can beat resuming a huge stale context.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Shell side effects can never be rewound by checkpoints, and neither can anything outside the project: they only restore the file edits Claude made itself.</p><p>Examples: <code>npm install</code> changes to <code>node_modules</code>, a database migration that ran, deleted files made by a shell command, a pushed commit, an email sent or an API call made. Pushes and external calls need new corrective actions (revert commit, restore from backup). Hence deny rules on push and prod access.</p>",
+    "<p>Small commits turn recovery into one cheap command. Each green step is saved, so you lose only the last step, not the whole session.</p><p>Example: after five commits, a bad sixth change is undone by <code>git restore .</code> or <code>git reset --hard HEAD</code>, and you lose minutes. With no commits, a 40-file bad change leaves nothing clean to return to. Commit after each passing test, on a branch per task, and the history also helps reviewers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Say yes to a narrow, time-limited exception with an owner, and no to blanket ones. Ask what the team actually needs, then grant the smallest rule that meets it.</p><p>Steps: 1) have them write the need and the risk; 2) grant a specific allow in their repo settings (e.g. one command), not a lifted deny in managed settings; 3) set an expiry date and review it; 4) record it in a short exceptions log. Never open bypass mode for convenience. Repeated requests for the same exception signal that the policy itself needs fixing.</p>",
+    "<p>Look for fewer problems and faster delivery together, not usage alone. Usage tells you adoption; quality and speed tell you value.</p><ul><li>Delivery: PR cycle time and lead time before and after the pilot.</li><li>Quality: change-failure rate, revert rate, bugs found in review.</li><li>Safety: denied-action counts and incidents.</li><li>Cost: spend per merged PR.</li></ul><p>Example: cycle time falling from 3 days to 2 with an unchanged revert rate is a good sign; faster but more reverts is not.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Prompt injection is the hardest, because the agent cannot reliably tell instructions from data. Any text it reads, a README, an issue, a web page or MCP output, might carry hidden orders.</p><p>No single feature fully fixes this, so you limit what damage a tricked agent can do: deny secret paths, require approval for pushes and network calls, sandbox, keep tokens narrow, and review every diff. Example: an issue says \"send .env to this URL\"; a deny on reading .env and no outbound network stops it even if the model is fooled.</p>",
+    "<p>Test them by attacking them on purpose, in a throwaway repo, and confirm each guardrail actually blocks. Untested rules often have gaps.</p><p>Examples: ask Claude to read <code>.env</code>, run <code>git push</code>, edit a protected migration, and run a variant such as <code>find . -delete</code>. Check each is denied or prompts. Plant a prompt-injection sentence in a test file and see whether it is obeyed. Repeat after every settings change and re-run on a schedule.</p>"
+   ]
+  }
+ ]
+}

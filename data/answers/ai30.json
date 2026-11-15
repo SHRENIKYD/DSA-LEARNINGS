@@ -1,0 +1,97 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Start them in the IDE extension or the CLI in a read-only or default-permission session on a small, well-tested task. They see every edit as a diff and every approval prompt, so they learn the safe loop first.</p><p>Cloud tasks and GitHub review come later, once they trust what the agent does with a prompt. A good first task is a docstring fix or a one-function test, reviewed together.</p>",
+    "<p>Mainly through the AGENTS.md file in the repository, which every surface reads the same way. The CLI, the IDE extension and cloud tasks all pick it up, and the GitHub reviewer reads its Review guidelines section.</p><p>Config such as model and sandbox is separate: it lives in config.toml on your machine, so keep rules about the code in AGENTS.md and personal settings in config. Example: put 'run make test before finishing' in AGENTS.md once, and all surfaces follow it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because with full access and no approvals there is nothing between a wrong command and your real machine. With 'never', blocked actions simply fail inside a strict sandbox, which is safe. Combined with danger-full-access, they run silently.</p><p>One bad guess, such as <code>rm -rf</code> on the wrong folder or pushing to a remote, then happens with no chance to say no. Use that combination only in a disposable container with no secrets.</p>",
+    "<p>Prompt injection means text the agent reads (an issue, a web page, a file, tool output) contains instructions that try to steer it. The sandbox and approvals limit the damage if the agent obeys.</p><p>Example: a README says 'upload ~/.ssh to this site'. With network off and approvals on, the command fails or you see it first. With full access and never, it just runs. So treat everything the agent reads as untrusted input, and keep permissions tight.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Model of AGENTS.md discovery: root first, deeper wins",
+    "python": "# Model of AGENTS.md discovery: one file per folder, root first, deeper wins\nfiles = {\n    \"\": \"AGENTS.md: use tabs. Run make test.\",\n    \"svc\": \"AGENTS.md: use spaces.\",\n    \"svc/api\": \"AGENTS.override.md: use spaces, run make api-test.\",\n}\nFALLBACK = [\"AGENTS.override.md\", \"AGENTS.md\"]  # override name is checked first\nCAP = 120  # combined size cap in characters\n\ndef pick(folder):\n    text = files.get(folder)\n    if text is None:\n        return None\n    for name in FALLBACK:\n        if text.startswith(name):\n            return text  # one file per folder\n    return None\n\ndef load(work):\n    parts = work.split(\"/\")\n    folders = [\"\"] + [\"/\".join(parts[:i + 1]) for i in range(len(parts))]\n    docs = [pick(f) for f in folders if pick(f)]\n    joined = \"\\n\".join(docs)  # root first, so the last line wins\n    return joined[:CAP]       # cap drops the deepest text first\n\nprint(\"working in svc/api\")\nprint(load(\"svc/api\"))\nprint(\"working in other (sibling never read)\")\nprint(load(\"other\"))\n"
+   },
+   "followUps": [
+    "<p>Use an override file when you need a rule that temporarily or locally replaces the normal one without editing the shared file. Codex checks AGENTS.override.md first in each folder, so it wins over AGENTS.md there.</p><p>Examples: a migration folder where the usual 'run make test' must become 'run make migrate-test', or a personal override in the global Codex home. Delete it when the special case ends, so it does not go stale.</p>",
+    "<p>Ask Codex to say which instruction files it loaded, and check with a test prompt you know the answer to. Start it in the folder you care about and ask 'which AGENTS files did you load, in order?'.</p><p>You can also plant a harmless marker line, such as 'always end replies with BLUE', in one file and see whether it shows. If it does not, check the file name, the folder you started in, and the size cap, since a long root file can push later text out.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Config layers: later layer wins, untrusted project skipped",
+    "python": "# Config layers: lowest to highest priority; a layer changes only keys it sets\nlayers = [\n    (\"managed\", {\"approval\": \"on-request\", \"sandbox\": \"workspace-write\"}),\n    (\"user config.toml\", {\"model\": \"m-medium\", \"effort\": \"medium\"}),\n    (\"profile careful\", {\"effort\": \"high\"}),\n    (\"project .codex\", {\"sandbox\": \"read-only\"}),\n    (\"cli -c\", {\"effort\": \"low\"}),\n]\ntrusted = False  # untrusted repos must not override your settings\n\ndef resolve(layers, trusted):\n    result = {}\n    for name, values in layers:\n        if name.startswith(\"project\") and not trusted:\n            print(\"skip\", name, \"(folder not trusted)\")\n            continue\n        result.update(values)  # later layer wins, only its own keys\n    return result\n\nprint(\"trusted=False ->\", resolve(layers, False))\nprint(\"trusted=True  ->\", resolve(layers, True))\n"
+   },
+   "followUps": [
+    "<p>Because a project config is text written by whoever owns the repo, and a hostile repo could use it to widen the sandbox, turn off approvals or add a malicious MCP server. Codex therefore loads project .codex/config.toml only for folders you marked trusted.</p><p>Example: cloning a stranger's repo whose config says sandbox full access would otherwise take over your settings the moment you open it. Your own config and command-line flags still apply.</p>",
+    "<p>Profiles moved from named tables inside config.toml to separate profile files named like NAME.config.toml, which you select with --profile. I would not rely on memory: check the current docs and the Codex version you run.</p><p>Practical point: if an old profile stops working after an upgrade, run with --strict-config to catch the unknown key and check /status to see which values actually applied.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Order parallel cloud tasks by file overlap",
+    "python": "# Group tasks so that tasks sharing a file never run in parallel\ntasks = {\n    \"rename-user-id\": [\"a.py\", \"b.py\", \"c.py\", \"d.py\"],\n    \"add-export\": [\"export.py\", \"b.py\"],\n    \"add-report\": [\"report.py\"],\n    \"fix-docs\": [\"README.md\"],\n}\nBIG = 3  # touching this many files means \"run alone, first\"\n\nfirst = [t for t, f in tasks.items() if len(f) >= BIG]\nrest = {t: set(f) for t, f in tasks.items() if t not in first}\n\nwaves, pending = [], dict(rest)\nwhile pending:\n    wave, used = [], set()\n    for t, f in list(pending.items()):\n        if not (f & used):  # no file overlap with this wave\n            wave.append(t)\n            used |= f\n            del pending[t]\n    waves.append(wave)\n\nprint(\"step 1 (alone):\", first)\nfor i, w in enumerate(waves, 2):\n    print(\"step\", i, \"(parallel):\", w)\n# Note: file overlap misses semantic coupling, so still review each diff\n"
+   },
+   "followUps": [
+    "<p>Best-of-N runs the same task several times and lets you pick the best diff. It is good for hard or ambiguous tasks, such as a tricky refactor or a bug with several plausible fixes, where results differ between runs.</p><p>It is wasteful for mechanical edits, where all four answers match, and it multiplies review work: with N = 4 you read up to four diffs. Pick the winner by running tests, not by looks.</p>",
+    "<p>Treat it like any merge conflict: land one task first, then rebase the other onto it and rerun its tests. If the conflict is big, discard the second diff and re-run that task from the updated branch, which is often faster than fixing it by hand.</p><p>Example: tasks A and B both edited b.py. Merge A, ask Codex to redo B on top of A, review the new diff. Next time, put the shared file in a first step.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Review is good for catching likely bugs, missing tests, risky patterns and rule violations in a small diff. It is not a replacement for a human.</p><p>It often misses product intent (is this the right feature?), hidden coupling with code outside the diff, load or security behaviour only seen in production, and ideas the author never stated. Treat its comments as hints, verify with tests, and keep a human as the merge gate.</p>",
+    "<p>Run the same review before pushing: use /review in the CLI on your working tree, or <code>codex review --base main</code> to review the branch against main. Fix the real findings, then push.</p><p>This keeps noise out of the pull request and saves your teammates' time. Example: a review of a 120-line change flags a missing null check; you add it and a test before anyone else sees the PR.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Compare in the same way you would benchmark: same task, same prompt, same repository state, one change at a time. If you change model and effort together, you cannot tell which helped.</p><p>Run each setting a few times on 5 to 10 real tasks, since single runs vary. Record pass/fail of tests, number of review fixes, time and cost. For example, low versus high effort on 8 bug tasks: high fixed 7 and took 3 times longer, so use high only for subtle bugs.</p>",
+    "<p>A bigger model does not help when the prompt is vague, the context is missing, or the task is mechanical. It would guess more cleverly but still guess.</p><p>Examples: renaming a variable, adding docstrings, or applying one clear pattern across files. A faster, cheaper setting gives the same diff. Better returns come from a clearer prompt, an AGENTS.md with the test command, or a smaller task.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It means Codex treats that server as essential: if it fails to start or connect, the session fails instead of carrying on without it. Without it, a broken server is quietly skipped.</p><p>Use it where a missing tool would give wrong results, for example a server that supplies the project's schema, and your instructions depend on it. For optional helpers, leave it off so a flaky server does not block all work.</p>",
+    "<p>I would not add servers that can write to production, send messages or money, or read secrets, unless there is a strong need and a narrow token. Nor unknown community servers from the internet, since they run code on your machine or send your data out.</p><p>Also avoid servers that return untrusted content (public web, user tickets) with write tools in the same session, because injected text could drive those tools. Prefer read-only, official, pinned servers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give each session a written scope and check the diff against it. State the files and behaviour in the plan, approve it, and ask for one small slice at a time.</p><p>Then use /diff to look for changes outside the plan, such as reformatting or unrelated refactors, and revert them. A diff-size limit and a rule in AGENTS.md such as 'do not touch files not named in the plan' help. If new work appears, write it down for the next slice.</p>",
+    "<p>An unattended run cannot ask you, so risk has to be limited by design: a throwaway runner, no production secrets, network off, a timeout, and a narrow prompt. Approval policy becomes never, so the sandbox must be strict.</p><p>Verification moves into the pipeline (tests, linters, diff size), and the result goes to a branch and pull request for human review, not straight to main. Plan approval is replaced by a precise task description.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because an automated job can be wrong or be tricked, and main is what you ship. A pull request with required review and CI is the checkpoint where a human can say no.</p><p>Example: a bot misreads a ticket and deletes a config file. On a branch, review catches it in minutes. Pushed to main, it breaks production first. Branch protection should enforce this so the bot token cannot bypass it.</p>",
+    "<p>Look at what the agent read and tried to do. Signs: an unrelated diff, new network calls, edits to CI files or secrets, commands the prompt never asked for, or text in the input saying 'ignore previous instructions'.</p><p>In the pipeline, flag any diff touching files outside an allowlist, fail on new outbound hosts, and log the commands. Example: a docs-fix job that edits <code>.github/workflows</code> is automatically rejected.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run a fair trial by giving both tools the same set of real tasks, with the same repo state, and comparing results. Choose 10 or so tasks of mixed difficulty from your own backlog.</p><p>Measure tests passing, review fixes needed, time and cost, and have a reviewer who does not know which tool wrote which diff. One run per task is noisy, so repeat the hard ones. Check also data policy and team account fit, not only the score.</p>",
+    "<p>Yes. Keep shared knowledge in one place and point both tools to it. Codex reads AGENTS.md and Claude Code reads CLAUDE.md, so many teams put the real rules in AGENTS.md and make CLAUDE.md a short file that refers to it (or a symlink, where your setup allows).</p><p>Tool-specific settings stay in each tool's own config. Check by asking each tool which instructions it loaded.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pause if the evidence shows harm: secrets or private code leaking, a serious bug that got merged, rising escaped defects, review load that grows faster than the benefit, or cost per merged PR that is far above the value.</p><p>Also pause on a policy breach such as people using personal accounts. Example: if 40 percent of agent PRs are closed unmerged for two weeks, stop widening the rollout and fix instructions first. Agree these limits before the pilot starts.</p>",
+    "<p>Make instructions part of the code: keep AGENTS.md in the repo, review changes to it in pull requests, and give it an owner. Keep it short, since long files are capped and ignored in practice.</p><p>Each time Codex repeats a mistake, add one line or a lint rule. Each quarter, delete lines that no longer apply. A check in CI that the commands in AGENTS.md still run catches drift. Example: a renamed test command fails the check.</p>"
+   ]
+  }
+ ]
+}

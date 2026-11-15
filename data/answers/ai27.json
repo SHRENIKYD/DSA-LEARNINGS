@@ -1,0 +1,127 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Gradient accumulation changes when you call <code>optimizer.step()</code> and <code>zero_grad()</code>; mixed precision wraps the forward pass and the backward pass. Accumulation: divide the loss by the number of micro-batches <code>k</code>, call <code>backward()</code> every micro-batch, but step and zero only every <code>k</code>-th one. With micro-batch 8 and k=4 the effective batch is 32.</p><pre><code>with torch.autocast('cuda', dtype=torch.bfloat16):\n    loss = loss_fn(model(xb), yb) / k\nloss.backward()\nif (i + 1) % k == 0:\n    optimizer.step(); optimizer.zero_grad()</code></pre><p>With fp16 you also use <code>scaler.scale(loss).backward()</code> and <code>scaler.step(optimizer)</code>.</p>",
+    "<p>Because <code>loss</code> is a tensor that still holds the whole autograd graph, while <code>loss.item()</code> is a plain Python number. If you keep appending <code>loss</code> to a list (or add it to a running total), every graph stays alive, so GPU memory grows each step until you run out. Example: 1,000 steps whose graphs use 2 GB each cannot be kept. <code>.item()</code> also copies the value to the CPU, which waits for the GPU to finish that step, so call it only when you really log (say every 50 steps) or use <code>loss.detach()</code> and read it later.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Mini reverse-mode autograd with summed gradients",
+    "python": "# Tiny reverse-mode autograd: each node remembers its inputs and local derivatives.\nclass Val:\n    def __init__(self, data, parents=()):\n        self.data = data\n        self.grad = 0.0\n        self.parents = parents          # list of (parent, local_derivative)\n\n    def __add__(self, o):\n        return Val(self.data + o.data, [(self, 1.0), (o, 1.0)])\n\n    def __mul__(self, o):\n        # saves both inputs: d(xy)/dx = y, d(xy)/dy = x\n        return Val(self.data * o.data, [(self, o.data), (o, self.data)])\n\n    def backward(self):\n        order, seen = [], set()\n        def topo(v):\n            if id(v) not in seen:\n                seen.add(id(v))\n                for p, _ in v.parents:\n                    topo(p)\n                order.append(v)\n        topo(self)\n        self.grad = 1.0                  # seed dL/dL = 1\n        for v in reversed(order):        # reverse topological order\n            for p, local in v.parents:\n                p.grad += v.grad * local  # += : sum over every path\n\nx = Val(3.0)\ny = Val(2.0)\nz = x * y + x                            # x is used twice\nprint(\"z = x*y + x with x=3, y=2 ->\", z.data)\nz.backward()\nprint(\"dz/dx =\", x.grad, \"(y + 1 = 3, two paths summed)\")\nprint(\"dz/dy =\", y.grad, \"(x = 3)\")\nz.backward()                             # second backward without zeroing\nprint(\"after 2nd backward, dz/dx =\", x.grad, \"(accumulated, hence zero_grad)\")\n"
+   },
+   "followUps": [
+    "<p>Reverse mode gives all gradients in one backward pass, forward mode needs one pass per input. A network has millions of inputs (parameters) but a single scalar output (the loss). Forward mode propagates the derivative with respect to one input at a time, so 100 million parameters would mean 100 million passes. Reverse mode costs roughly 2 to 3 times one forward pass, whatever the number of parameters. Forward mode wins only in the opposite shape: few inputs, many outputs. The price of reverse mode is memory, since the forward activations must be stored for the backward pass.</p>",
+    "<p><code>no_grad()</code> turns off graph recording inside its block, so results have <code>requires_grad=False</code>; use it for evaluation. <code>detach()</code> returns a tensor sharing the same data but cut off from the graph, so no gradient flows through it (used for targets or logging). <code>inference_mode()</code> is a stricter, faster version of no_grad: tensors created inside also skip version counting, and cannot later be used in autograd, so use it only for pure inference. Example: <code>y = model(x).detach()</code> keeps the model's graph out of your metric code.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Usually eval mode for the BatchNorm layers, even while the rest is trained. With a small fine-tuning batch (say 8 images) the batch statistics are noisy and differ from the large-batch statistics the backbone was pretrained with, so updating them can hurt. Freezing means calling <code>backbone.eval()</code> (or setting <code>momentum=0</code>) and <code>requires_grad_(False)</code> on its parameters. Remember that <code>model.train()</code> flips every submodule back, so re-apply the freeze after it each epoch. If your batch is large (64 or more) and the new data is very different, training the statistics can help.</p>",
+    "<p>Loop over the modules and print each one's <code>training</code> flag. Example: <code>for n, m in model.named_modules(): print(n, type(m).__name__, m.training)</code>. For a quick check use <code>model.training</code> for the top module, or count the exceptions: <code>[n for n, m in model.named_modules() if m.training != model.training]</code> lists layers that differ from the parent, which is exactly what you want after freezing a backbone. Also compare outputs: in eval mode, running the same input twice must give identical results; if it does not, Dropout is still active.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give each GPU its own slice of the data with <code>DistributedSampler</code>. Create it with the dataset, the world size and the rank, pass it to the DataLoader instead of <code>shuffle=True</code>, and call <code>sampler.set_epoch(epoch)</code> at the start of each epoch so the shuffle differs between epochs. With 8 GPUs and 80,000 examples each rank sees 10,000 per epoch, and the per-GPU batch of 32 gives a global batch of 256. If the data is not divisible, the sampler pads by repeating a few examples (or use <code>drop_last</code>). For iterable or streaming datasets, shard files across ranks and workers instead.</p>",
+    "<p>Seed each worker separately, because every worker process gets its own copy of random generators. Pass a <code>generator=g</code> (with <code>g.manual_seed(0)</code>) to the DataLoader for the shuffle order, and a <code>worker_init_fn</code> that seeds <code>random</code> and NumPy from <code>torch.initial_seed() % 2**32</code>. PyTorch already derives a distinct torch seed per worker from the base seed, but NumPy and Python random are not reseeded, which causes identical augmentations in different workers if you forget. Example: 4 workers all producing the same random crop is that bug.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "fp16 underflow and loss scaling",
+    "python": "import struct\n\ndef to_fp16(x):\n    # round-trip through IEEE half precision; overflow is reported as inf\n    try:\n        return struct.unpack('<e', struct.pack('<e', x))[0]\n    except OverflowError:\n        return float('inf')\n\ngrad = 1e-8                              # a small but real gradient\nprint(\"fp16 max is 65504; 70000 ->\", to_fp16(70000.0))\nprint(\"true grad:\", grad, \"-> fp16:\", to_fp16(grad), \"(underflow to 0)\")\n\nscale = 65536.0                          # GradScaler-style loss scale (2**16)\nscaled = to_fp16(grad * scale)           # backward runs on the scaled loss\nprint(\"scaled grad in fp16:\", scaled)\nprint(\"unscaled in fp32:\", scaled / scale, \"(close to the true value)\")\n\nbig = 1.0                                # a larger gradient overflows when scaled\ns = to_fp16(big * scale)\nprint(\"grad 1.0 scaled ->\", s, \"-> overflow: skip step, halve scale to\", scale / 2)\nprint(\"retry:\", to_fp16(big * scale / 2))\n"
+   },
+   "followUps": [
+    "<p>Because the optimizer must see the true gradient, and clipping compares the gradient norm against a limit. With GradScaler the gradients are multiplied by the scale (for example 65,536), so a norm of 0.5 looks like 32,768 and would be clipped wrongly. Call <code>scaler.unscale_(optimizer)</code>, then <code>clip_grad_norm_(params, 1.0)</code>, then <code>scaler.step(optimizer)</code>. Skipping the unscale makes clipping nearly always trigger and effectively shrinks every update to almost nothing.</p>",
+    "<p>FP8 stores values in 8 bits, in two formats: E4M3 (more precision, range up to about 448) for weights and activations, and E5M2 (more range) for gradients. With so few bits it needs extra care: a separate scale factor per tensor (or per block) chosen from the recent maximum absolute value (\"amax\"), master weights and optimizer state kept in higher precision, and a few sensitive operations (norms, softmax, the first and last layers) left in bf16. Libraries such as Transformer Engine handle the scaling. It needs hardware support (Hopper or newer) and can roughly double matmul throughput versus bf16.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Training memory for a 7B model",
+    "python": "# Rough training-memory estimate for full fine-tuning with AdamW (no activations).\nparams = 7_000_000_000\nGB = 1e9\n\ndef gb(nbytes):\n    return nbytes / GB\n\nweights = params * 4                     # fp32 weights: 4 bytes each\ngrads = params * 4                       # one gradient per weight\nadam = params * 8                        # AdamW keeps m and v: 2 x 4 bytes\ntotal = weights + grads + adam           # 16 bytes per parameter\nprint(\"params: 7B, fp32 AdamW\")\nprint(\"weights  :\", gb(weights), \"GB\")\nprint(\"gradients:\", gb(grads), \"GB\")\nprint(\"optimizer:\", gb(adam), \"GB\")\nprint(\"total    :\", gb(total), \"GB (before activations)\")\n\n# LoRA: freeze base in bf16 (2 bytes), train ~0.5% of the parameters\nlora = int(params * 0.005)\nlora_total = params * 2 + lora * 16\nprint(\"LoRA (bf16 base + 0.5% trainable):\", gb(lora_total), \"GB\")\n\n# FSDP / ZeRO-3 over 8 GPUs shards the 16 bytes per parameter\nprint(\"sharded over 8 GPUs:\", gb(total / 8), \"GB per GPU\")\n"
+   },
+   "followUps": [
+    "<p>About 112 GB for the states alone, plus activations, so it does not fit on one 80 GB GPU. Per parameter in fp32 with AdamW: weights 4 bytes, gradients 4, Adam moments m and v 8, which is 16 bytes. 7 billion x 16 = 112 GB. With bf16 weights and gradients plus fp32 master weights and moments it is about 2 + 2 + 4 + 8 = 16 bytes again, so the same. Add several GB to tens of GB of activations. Hence you shard (8 GPUs gives 14 GB each for the states), or use LoRA, which needs roughly 15 GB.</p>",
+    "<p>FSDP (fully sharded data parallel) shards the three big per-parameter states across GPUs: the parameters, the gradients and the optimizer state. Each GPU permanently holds only 1/N of each. Just before a layer runs, an all-gather collects its full weights from all GPUs, the layer computes, and the full weights are freed again; in backward, gradients are reduce-scattered so each GPU keeps only its shard. Activations are not sharded (each GPU still processes its own batch), so you combine it with activation checkpointing. This is the same idea as DeepSpeed ZeRO stage 3, at the cost of extra communication.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>L2 in the loss adds <code>lambda * w</code> to the gradient, and Adam then divides that gradient by the square root of its running average of squared gradients, so weights with large gradient history get less decay and others more. The decay no longer acts the same on every weight. Weight decay done properly (AdamW) subtracts <code>lr * wd * w</code> directly from the weight after the Adam step, outside the adaptive scaling, so every weight shrinks by the same fraction. With plain SGD the two are equivalent; with Adam they are not, which is why AdamW exists.</p>",
+    "<p>Label smoothing replaces the one-hot target (1, 0, 0) with a softer one such as (0.9, 0.05, 0.05) for smoothing 0.1 over 3 classes. The model can then no longer reduce the loss by pushing one logit toward infinity, so it stops being overconfident, the logit gaps stay bounded, and predictions are usually better calibrated. It also tolerates a few wrong labels better. In PyTorch: <code>CrossEntropyLoss(label_smoothing=0.1)</code>. A side effect is that the loss can never reach exactly zero, and it can hurt knowledge distillation, which needs the sharp teacher probabilities.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Warm-up then cosine learning-rate schedule",
+    "python": "import math\n\ndef lr_at(step, total, warmup, peak):\n    if step < warmup:                    # linear warm-up from 0 to peak\n        return peak * (step + 1) / warmup\n    progress = (step - warmup) / (total - warmup)\n    return peak * 0.5 * (1 + math.cos(math.pi * progress))  # cosine to 0\n\n# total steps must count optimizer steps: batches / accumulation / etc.\nbatches, accum = 1000, 4\ntotal = batches // accum                 # 250 optimizer steps\nwarmup = int(total * 0.1)                # 10% warm-up = 25 steps\npeak = 2e-5\nprint(\"total optimizer steps:\", total, \"warmup:\", warmup)\nfor s in [0, 12, 24, 25, 100, 137, 200, 249]:\n    print(\"step\", s, \"lr\", format(lr_at(s, total, warmup, peak), \".2e\"))\n\n# bug: counting micro-batches as steps ends the schedule too late\nwrong = lr_at(total - 1, batches, int(batches * 0.1), peak)\nprint(\"last real step with wrong total (1000):\", format(wrong, \".2e\"), \"-> not decayed\")\n"
+   },
+   "followUps": [
+    "<p>The learning rate follows the wrong curve. Stepping per epoch with a schedule built for per-step counts means warm-up and decay are stretched by the number of batches per epoch. Example: 10 epochs of 500 steps with 100 warm-up steps: if you call <code>scheduler.step()</code> once per epoch, the learning rate is still in warm-up after 100 epochs, i.e. the whole run, and training uses a tiny rate and never reaches the peak. The reverse bug (a per-epoch schedule stepped per batch) decays to zero after the first couple of epochs. Match the unit of <code>total_steps</code> to the place you call step().</p>",
+    "<p>Run a learning-rate range test: start at a tiny value (1e-7) and increase it exponentially every step for a few hundred steps while logging the loss; pick a value about 10 times below where the loss starts to rise or explode. For fine-tuning transformers the usual ranges are known: 1e-5 to 5e-5 for full fine-tuning, 1e-4 to 3e-4 for LoRA. Then do a small sweep over 2 or 3 values (for example 1e-5, 2e-5, 5e-5) with the same seed. Larger batch sizes generally allow a larger rate (scale it up roughly with the square root of the batch ratio).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Shard the checkpoint: each rank saves its own part, in parallel, instead of gathering 64 shards onto one machine. PyTorch distributed checkpoint (<code>torch.distributed.checkpoint</code>) writes the sharded model and optimizer state as several files plus metadata. This is fast and avoids running out of CPU memory, and it can reload onto a different number of GPUs (resharding). For release you separately gather a full state_dict (or use safetensors shards) on one process. Write to a temporary folder first and rename when all ranks finish, so a crash never leaves half a checkpoint.</p>",
+    "<p>Train a few steps, save, and continue; then reload the checkpoint in a fresh process and run the same steps. Compare the loss values and a hash of the weights: they should match exactly (with deterministic algorithms on and the same hardware). Example: run steps 1 to 200 straight, and separately steps 1 to 100 then save, load and 101 to 200. The loss at step 200 and the parameter checksum must be identical. If they differ, something is missing from the checkpoint: the optimizer moments, scheduler, scaler, RNG states or the data position.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Full fine-tuning can be worse than a linear probe when you have very little data or the pretrained features already fit the task. With 200 examples, updating 25 million backbone weights lets the model memorize them and destroys general features (\"catastrophic forgetting\"), while a linear probe trains only a few thousand parameters and keeps the features intact. It is also worse when the learning rate is too high, or when the target domain is close to the pretraining data. As data grows (tens of thousands of examples) or the domain differs a lot (medical scans), full fine-tuning usually overtakes the probe.</p>",
+    "<p>The steps are the same, with text pieces swapped in. Use a pretrained text encoder such as BERT or a small LLM, its own tokenizer (never mix tokenizers), and <code>AutoModelForSequenceClassification</code> with <code>num_labels=5</code>. Augmentation is harder (back-translation, synonym swaps), so lean on regularisation and early stopping instead. With 2,000 examples, fine-tune the full small model at 2e-5 for 3 to 5 epochs, or use LoRA. Also try embeddings from a sentence encoder plus logistic regression as a fast baseline, and compare per-class F1 on a stratified split.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Write a custom loop when you need behaviour the Trainer does not support easily: unusual losses or multiple losses (for example contrastive plus classification), custom sampling such as reinforcement learning rollouts, several models training together (GAN, distillation), research code where you must control every step, or unusual parallelism. Example: DPO-style training with a reference model needs a custom forward pass. If you only need a different loss, subclass Trainer and override <code>compute_loss</code>. The cost of a custom loop is that you re-implement checkpointing, mixed precision and logging yourself, though Accelerate removes most of that.</p>",
+    "<p>With LoRA you freeze the base model and train small low-rank matrices added to some layers (for example the attention projections). The code change is a few lines: <code>config = LoraConfig(r=8, lora_alpha=16, target_modules=[...], task_type='SEQ_CLS')</code> and <code>model = get_peft_model(model, config)</code>. The Trainer then works unchanged. The classification head must stay trainable (it is listed in <code>modules_to_save</code> for sequence classification). Trainable parameters drop to roughly 0.1 to 1 percent, memory falls a lot, and the learning rate is higher, around 1e-4 to 3e-4. Checkpoints are just the small adapter.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A loss stuck at ln(C) means the model predicts the same uniform probability for every class: it has learned nothing. For C=5 classes ln(5) = 1.609; for 10 classes 2.303; for 1,000 classes 6.908. Typical causes are dead gradients (a learning rate that is far too small or too large, ReLUs that died), the optimizer not being given the parameters, labels shuffled independently from inputs so there is nothing to learn, or inputs that are all identical or zeroed. The model has settled on the best constant answer, so first try overfitting a single batch.</p>",
+    "<p>Log, every step: the loss, the learning rate, the global gradient norm (before clipping), and the fraction of clipped steps. Every few hundred steps also log the validation loss, the weight norm, throughput and GPU memory. Also record the batch ids or data indices so a bad step can be replayed, plus the loss scale if you use fp16. Example: a gradient norm that climbs from 1 to 50 over 200 steps warns you of a NaN well before it happens. Also log a few sample inputs and predictions at intervals so you can see the data with your own eyes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Unsafe vs stable log-softmax and NaN sources",
+    "python": "import math\n\ndef naive_log_softmax(z):\n    # exp overflows for large logits -> inf/inf = nan\n    try:\n        e = [math.exp(v) for v in z]\n    except OverflowError:\n        return \"OverflowError (in torch: inf, then nan)\"\n    s = sum(e)\n    return [math.log(v / s) for v in e]\n\ndef stable_log_softmax(z):\n    m = max(z)                           # subtract the max: exponents are <= 0\n    lse = m + math.log(sum(math.exp(v - m) for v in z))\n    return [v - lse for v in z]          # log_softmax = z - logsumexp\n\nlogits = [1000.0, 990.0, 5.0]\nprint(\"logits:\", logits)\nprint(\"naive :\", naive_log_softmax(logits))\nprint(\"stable:\", [round(v, 4) for v in stable_log_softmax(logits)])\n\nprint(\"log(0) ->\", \"-inf (0 * -inf = nan later)\")\np = 0.0\nprint(\"log(p + eps) with eps 1e-8:\", round(math.log(p + 1e-8), 3))\n\nx = float(\"nan\")\nw = 0.5\nprint(\"one NaN in the loss -> every gradient is NaN; weight after step:\", w - 0.1 * x)\n"
+   },
+   "followUps": [
+    "<p>Because the NaN spreads through the arithmetic. Any number combined with NaN gives NaN, so a NaN in the loss makes the gradient of every parameter that feeds it NaN, and one optimizer step then writes NaN into all those weights (<code>w - lr * nan = nan</code>). Adam's moving averages become NaN too, so even after you fix the data the optimizer state is poisoned. All later outputs are NaN. That is why you check for non-finite loss or gradients before stepping, and reload the last good checkpoint.</p>",
+    "<p>GradScaler checks the gradients for inf or NaN after unscaling. It cannot tell the cause, so it treats any non-finite value as an overflow: it skips the step and halves the scale. If the NaN comes from a real bug (a log of zero, bad data), it recurs every step, so the scale halves again and again toward 1 and eventually 0, and training silently makes no progress while no weights change. So a scale that keeps dropping, or a long run of skipped steps, is a signal to look for a true numerical bug rather than lowering the scale further.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Float addition order and seeds",
+    "python": "import random\n\n# same three numbers, two addition orders (like two GPU thread schedules)\na = (1e16 + 1.0) + -1e16\nb = (1e16 + -1e16) + 1.0\nprint(\"(1e16 + 1) + -1e16 =\", a)\nprint(\"(1e16 + -1e16) + 1 =\", b)\nprint(\"equal?\", a == b, \"(float addition is not associative)\")\n\n# the same effect on a long list: sum in two orders\nrandom.seed(0)\nvals = [random.random() * 10 ** random.randint(-8, 8) for _ in range(1000)]\nfwd = 0.0\nfor v in vals:\n    fwd += v\nrev = 0.0\nfor v in reversed(vals):\n    rev += v\nprint(\"forward sum == reverse sum?\", fwd == rev, \"| difference is tiny:\", abs(fwd - rev) < 1e-3)\n\n# why seeds matter: same seed -> same stream, different seed -> different\nrandom.seed(42); x = [random.random() for _ in range(3)]\nrandom.seed(42); y = [random.random() for _ in range(3)]\nrandom.seed(7);  z = [random.random() for _ in range(3)]\nprint(\"seed 42 twice equal:\", x == y, \"| seed 7 equal:\", x == z)\n"
+   },
+   "followUps": [
+    "<p>Because GPUs add numbers in parallel, and floating-point addition is not associative. <code>atomicAdd</code> lets many threads add into one memory location, and the order in which the threads arrive varies between runs. Example: (1e16 + 1) - 1e16 = 0 but (1e16 - 1e16) + 1 = 1. Different orders give slightly different rounding, so results differ in the last bits, and over thousands of steps this can grow. Operations such as <code>index_add_</code>, scatter and some backward passes use atomics; deterministic mode switches to slower, ordered algorithms.</p>",
+    "<p>The checkpoint must hold everything that decides the next batch: the epoch, the global step, the sampler's state (its seed and how many samples were consumed in this epoch, or the shuffled index order), and the RNG states for Python, NumPy, torch CPU and CUDA, plus the DataLoader worker seeds. If you use a seeded generator with <code>set_epoch</code>, you can recompute the permutation and skip the first n batches. Example: resuming at step 3,000 with 500 batches per epoch means epoch 6, batch 0, with the epoch-6 shuffle. Without this, resumed training repeats or skips examples.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would automate the cheap, high-value ones as tests that run on a tiny batch in CI: (1) the model can overfit one batch to near-zero loss; (2) the initial loss is close to ln(C); (3) every trainable parameter gets a non-None, non-zero gradient after one backward pass; (4) output shapes and dtypes are as expected; (5) eval mode is deterministic (same input twice, same output); (6) train and validation indices do not overlap; (7) a save and load round trip reproduces the same outputs. These run in seconds and catch most of the bugs an AI-written script tends to contain.</p>",
+    "<p>Check overlap directly and then check indirectly. Directly: compare unique ids, file hashes or normalised text between the splits; any intersection is a leak. Example: hashing 10,000 images exposes 120 duplicates that appear in both train and test. Indirectly: look for near-duplicates (embedding similarity above 0.95), group leakage (the same patient, user or document split across sets: split by group instead), time leakage (future data in training), and features computed on the full dataset before splitting (scaling, target encoding). A validation score that is suspiciously high, or a much worse score on fresh data, is the usual warning sign.</p>"
+   ]
+  }
+ ]
+}
