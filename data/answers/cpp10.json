@@ -28,7 +28,7 @@
    },
    "followUps": [
     "<p>Copy-and-swap takes the argument <b>by value</b> and swaps it with <code>*this</code>, so the copy constructor does the hard work and the old data is freed by the temporary's destructor.</p><pre><code>Buf&amp; operator=(Buf o) noexcept {\n  std::swap(p_, o.p_);\n  std::swap(n_, o.n_);\n  return *this;\n}</code></pre><p>It is exception safe (if the copy throws, <code>*this</code> is untouched) and handles self-assignment correctly. One signature also covers copy and move assignment, at the price of one extra move for rvalues.</p>",
-    "<p>Declaring a <b>destructor</b> (even <code>= default</code>) suppresses the implicit <b>move constructor and move assignment</b>. The implicit copies are still generated, but deprecated, so moves silently turn into copies.</p><p>Declaring a copy operation also suppresses moves, and declaring a move operation deletes the implicit copies. Example: <code>struct S { std::vector&lt;int&gt; v; ~S() {} };</code> copies a 1000 element vector when you write <code>S b(std::move(a));</code>. Fix by following Rule of 0, or by defaulting all five."
+    "<p>Declaring a <b>destructor</b> (even <code>= default</code>) suppresses the implicit <b>move constructor and move assignment</b>. The implicit copies are still generated, but deprecated, so moves silently turn into copies.</p><p>Declaring a copy operation also suppresses moves, and declaring a move operation deletes the implicit copies. Example: <code>struct S { std::vector&lt;int&gt; v; ~S() {} };</code> copies a 1000 element vector when you write <code>S b(std::move(a));</code>. Fix by following Rule of 0, or by defaulting all five.</p>"
    ]
   },
   {
