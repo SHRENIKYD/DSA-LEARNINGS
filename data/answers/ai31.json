@@ -1,0 +1,100 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Cascade routing: cheap tier first, escalate only when needed",
+    "python": "# Tier router: cheap model first, escalate only when the answer looks weak\nPRICE = {\"flash-lite\": 1, \"flash\": 4, \"pro\": 20}  # made-up cost units per call\n\ndef fake_model(tier, task):\n    # Pretend each tier only solves tasks up to a given difficulty\n    skill = {\"flash-lite\": 1, \"flash\": 2, \"pro\": 3}[tier]\n    ok = task[\"difficulty\"] <= skill\n    return {\"answer\": \"good\" if ok else \"\", \"confident\": ok}\n\ndef route(task, ladder):\n    spent = 0\n    for tier in ladder:\n        spent += PRICE[tier]\n        r = fake_model(tier, task)\n        if r[\"confident\"]:      # a real system would use a validator or eval check\n            return tier, spent\n    return ladder[-1], spent\n\ntasks = [{\"id\": i, \"difficulty\": d} for i, d in enumerate([1, 1, 1, 2, 1, 3, 1, 1])]\nprint(\"difficulties:\", [t[\"difficulty\"] for t in tasks])\ncascade = sum(route(t, [\"flash-lite\", \"flash\", \"pro\"])[1] for t in tasks)\nall_pro = PRICE[\"pro\"] * len(tasks)\nprint(\"cascade cost:\", cascade)   # 6 easy*1 + 1+4 + 1+4+20 = 36\nprint(\"always-pro cost:\", all_pro)\n"
+   },
+   "followUps": [
+    "<p>Watch quality on live traffic, not only at launch. Send a small sample (say 2 percent) of each tier's requests to a stronger model or a human grader and track the agreement rate over time.</p><p>Also track cheap signals: schema-validation failures, retry rate, empty answers and user thumbs-down. If agreement falls from 95 to 88 percent after a model update, alert and re-run your fixed evaluation set. Keep that set versioned so a drop is clearly the model, not the data.</p>",
+    "<p>Your system breaks at the call site unless you planned for it: the API starts returning errors for the retired model name. Google publishes retirement dates, so the fix is to act before the date.</p><p>Keep the model name in config, subscribe to release notes, and run your evaluation set on the successor before switching. Roll out gradually (5, then 50, then 100 percent) and keep the old setting as a rollback until the cut-off. Prompts tuned for one model may behave differently, so never swap the name blindly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Grounded answers go wrong because the model still writes text that merely sounds like the source. It can pick the wrong passage, merge two sources or over-generalise one sentence.</p><p>Example: a notebook says 'refunds within 30 days for annual plans' and the answer drops 'annual plans'. The citation exists but the claim is wider than the source. Bad scans, tables and conflicting documents make it worse. For important facts, click the citation and read the original passage.</p>",
+    "<p>Do not upload anything you are not allowed to share with a third party under the account's terms: customer personal data, secrets, credentials, unreleased financials, confidential client contracts or regulated records such as health data.</p><p>Personal accounts have consumer terms and no company admin control or audit trail. Use an approved business edition, and ask security or legal first. A safe rule: if you would not paste it into a public forum, do not put it in a personal account.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use function calling when the model must decide to act or fetch something; use structured output when you only want the answer in a fixed shape.</p><p>Example: extracting an invoice into JSON with fields total and date is structured output. 'What is the weather in Pune?' needs a get_weather(city) call whose result you send back so the model can reply. With function calling, your code runs the function, and you validate the arguments the model proposes. Cost: one extra round trip per call.</p>",
+    "<p>Treat prompts like code: change one thing, run a fixed evaluation set, compare scores, and only then ship. Keep the set versioned in the repo and run it in CI.</p><p>Example: 50 labelled invoices; the old prompt gets 44 right (88 percent), the new one 47 (94 percent), but fails a case that used to pass. Look at those regressions as well as the average. Re-run when the model version changes, and keep production samples flowing into the set so it does not go stale.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Move when you need controls a key cannot give: company IAM, audit logs, data residency, private networking or a contract your legal team requires.</p><p>Other triggers: a customer asks where data is processed, you need higher quotas with a support agreement, or you want to use other Cloud services (storage, pipelines) with the model. Because the Gen AI SDK supports both, the code change is mostly the client setup (project, region, credentials). Plan a test pass, as quotas and model availability can differ.</p>",
+    "<p>Service accounts give a program its own identity with narrow permissions, where an API key is just a password that works for anyone holding it.</p><p>With a service account you grant a specific role (for example, only calling models), and every call appears in audit logs under that identity. Credentials can be short-lived and rotated, or avoided entirely by attaching the account to the running service. If a key leaks in a repo, anyone can bill you; a leaked token expires and its damage is limited by its role.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Redact personal data before sending text out",
+    "python": "import re\n\n# Replace obvious personal data with placeholders before sending text out\nPATTERNS = [\n    (\"EMAIL\", re.compile(r\"[\\w.+-]+@[\\w-]+\\.[\\w.]+\")),\n    (\"PHONE\", re.compile(r\"\\+?\\d[\\d -]{7,}\\d\")),\n    (\"CARD\", re.compile(r\"\\b(?:\\d{4}[ -]?){3}\\d{4}\\b\")),\n]\n\ndef redact(text):\n    # Run card first so its digits are not taken as a phone number\n    for name, rx in sorted(PATTERNS, key=lambda p: p[0] != \"CARD\"):\n        text = rx.sub(\"[\" + name + \"]\", text)\n    return text\n\nmsg = \"Mail ana.k@example.com or call +44 7700 900123. Card 4111 1111 1111 1111.\"\nprint(\"before:\", msg)\nprint(\"after: \", redact(msg))\n# Regex catches formats, not names or free-text addresses: pair with an NER tool for those.\n"
+   },
+   "followUps": [
+    "<p>Run a redaction step on your own side before the text leaves your system, replacing personal data with placeholders such as [EMAIL].</p><p>Use patterns for structured data (emails, phone numbers, card numbers) and a named-entity tool for names and addresses. Keep a private mapping if you need to restore values later: 'Ana' becomes [PERSON_1], and you swap it back in the reply. Test on real samples, since regexes miss free-form text. Redaction lowers risk but is not a guarantee.</p>",
+    "<p>The main difference is legal: the EU's GDPR applies, so you need a lawful basis, data minimisation and often a data-processing agreement with the provider.</p><p>Ask where data is processed and stored (EU regions are offered on cloud platforms), whether data leaves the EU, and how deletion requests are handled. Terms and model availability can differ by region and by free or paid tier. Involve your data-protection officer; I would not rely on memory for the current terms.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "How GEMINI.md files stack from general to specific",
+    "python": "# Model how GEMINI.md files are combined: general to specific\nfiles = {\n    \"~/.gemini/GEMINI.md\": \"Be concise.\",\n    \"/repo/GEMINI.md\": \"Use pytest. Never edit migrations.\",\n    \"/repo/api/GEMINI.md\": \"Use FastAPI. Run make api-test.\",\n}\n\ndef load_context(workdir):\n    parts = [\"~/.gemini/GEMINI.md\"]          # global file first\n    path = \"\"\n    for seg in workdir.strip(\"/\").split(\"/\"):  # walk down: /repo, /repo/api\n        path += \"/\" + seg\n        if path + \"/GEMINI.md\" in files:\n            parts.append(path + \"/GEMINI.md\")\n    return parts\n\norder = load_context(\"/repo/api\")\nprint(\"working in /repo/api\")\nfor p in order:\n    print(\"load\", p, \"->\", files[p])\nprint(\"combined:\", \" \".join(files[p] for p in order))\n# Later (more specific) text comes last, so it can refine the general rules.\n"
+   },
+   "followUps": [
+    "<p>Put personal habits and cross-project preferences in the global file, and repository-specific facts in the project file.</p><p>Global (~/.gemini/GEMINI.md): 'be concise', preferred language for explanations, 'never print secrets'. Project: build and test commands (<code>make test</code>), code style, folder layout, and things not to touch such as migrations. The project file is shared via git so the whole team gets the same behaviour; the global one is private to you.</p>",
+    "<p>A very long context file wastes tokens on every prompt and dilutes the rules that matter, so the model follows them less reliably.</p><p>If the file is 6,000 tokens and you send 200 prompts, that is 1.2 million tokens of repeated text, costing money and leaving less room for the code and task. Contradictory or stale lines are worse. Keep it to short, checkable rules, link to docs with imports instead of pasting them, and prune it regularly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Agent command approval: deny, allow, ask",
+    "python": "# Approval policy for an agent's shell commands: deny > allow > ask\nALLOW = {\"ls\", \"cat\", \"pytest\", \"git status\", \"git diff\"}\nDENY_WORDS = [\"rm -rf\", \"curl\", \"sudo\", \"git push\"]\n\ndef decide(cmd):\n    if any(w in cmd for w in DENY_WORDS):\n        return \"DENY\"\n    if cmd in ALLOW or cmd.split()[0] in ALLOW:\n        return \"ALLOW\"\n    return \"ASK\"        # default mode: a human must approve\n\ncmds = [\"ls\", \"pytest -q\", \"git diff\", \"rm -rf /tmp/x\", \"curl http://host/x.sh\",\n        \"pip install foo\", \"git push origin main\"]\nfor c in cmds:\n    print(c.ljust(24), decide(c))\n# Allowlists are strict by default: anything unknown falls to a human.\n"
+   },
+   "followUps": [
+    "<p>A malicious MCP server can do whatever its tools allow, and it can also lie to the model through tool descriptions and results.</p><p>It could read files the agent can read, send them out over the network, return text that hides instructions (prompt injection) telling the agent to run harmful commands, or change what a tool does after you approved it. Defences: use only trusted servers, pin versions, restrict which tools are allowed, keep secrets out of the environment, and run inside a sandbox.</p>",
+    "<p>In CI there is no human to approve, so isolation and tight permissions must replace the prompts.</p><p>Run it in a throwaway container with no production secrets, a read-only checkout or a scoped token that can only open pull requests, and an allowlist of tools. Use non-interactive mode with a timeout and step limit, and have tests decide success. Never let it push to main; a human reviews the PR. Treat issue text as untrusted input.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The plan review catches a wrong approach before the agent spends time and makes a large diff.</p><p>Reading a 6-line plan takes a minute; reviewing a 500-line wrong diff takes much longer. You can fix scope ('do not touch the billing module'), point to existing helpers, or add a test requirement. It also shows whether Jules understood the task: if the plan misses the reproducing test, the ticket was unclear. It is the cheapest correction point in an async workflow.</p>",
+    "<p>The limit is your review capacity, plus quotas, not the agent count. Every task ends in a diff a human must read.</p><p>If each review takes 15 minutes, ten tasks need about two and a half hours, and parallel tasks touching the same files create merge conflicts. Plan quotas also cap daily tasks. A sensible number is the amount you can review carefully the same day; start with 2 to 3 and keep tasks independent.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Turn it into a short brief with a clear goal, the files involved, how to reproduce, and a test that says when it is done.</p><p>Vague: 'make search faster'. Ready: 'In search.py the query on the orders table takes 2 s for 10,000 rows; add an index and keep tests in test_search.py passing; target under 200 ms in the benchmark script'. Also list what not to touch and link relevant docs. If you cannot write the success check, it is not ready.</p>",
+    "<p>Review in order of risk, and let automation do the first pass: CI results, linting, and tests must be green before you read any code.</p><p>Then skim each PR's summary and file list, and read closely only the risky parts (security, data, config). Keep PRs small and single-purpose so each review takes minutes. Reject and re-prompt rather than hand-fix a weak PR. If ten PRs take 10 minutes each that is still nearly two hours, so limit the batch size.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Measure it on the team's own history: run the bot on 30 to 50 past pull requests whose real bugs you already know.</p><p>Count true catches, false alarms and misses. If it flags 20 comments and 12 are useful, precision is 60 percent; if reviewers start ignoring it, the noise is too high. Then trial it on live PRs for a few weeks, track whether reviewers act on its comments, and make sure it supplements, not replaces, human review.</p>",
+    "<p>Companies want control over who can use it, what data it sees and what it can do.</p><p>Typical list: single sign-on and user management, per-repository enable or exclude (keep sensitive code out), no training on company data, audit logs, usage and seat reporting, content filters for code that matches public licences, and policy for agent and MCP tools. Ask which of these exist in the edition you are buying.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Parallel agents create a bigger review queue, and the reviewer, not the agent, becomes the bottleneck.</p><p>Four agents each producing a 200-line change means 800 lines to understand, often with overlapping edits and decisions you did not make. Artifacts such as plans, test results and screenshots help, but you still need to check that each change is correct and does not conflict. Give agents separate files or areas and limit how many run at once.</p>",
+    "<p>Treat it as a small migration project: list what the scripts rely on, check the new tool's docs for each, change one script at a time and keep the old one until the new one is proven.</p><p>Look at flags, output format, auth method, config and context files (for example GEMINI.md versus AGENTS.md), and non-interactive behaviour. Wrap the call in one function so only one place changes, and run the same task in both tools to compare results. Never assume flags carry over.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Wrap the tool call behind your own thin script or interface so the CLI is a replaceable detail, and pin versions.</p><p>Keep prompts, rules (AGENTS.md) and tests in the repo, and make success depend on tests, not the CLI's output. Add a scheduled job that runs one small task daily, so a removed flag or retired CLI fails quickly instead of at release. Watch the vendor's release notes, and keep a documented fallback tool.</p>",
+    "<p>Skills that rely on how work is done carry across vendors; skills tied to a product name do not.</p><p>Portable: writing clear task briefs, designing evaluation sets, structured output and tool use, reviewing diffs, writing tests as acceptance checks, sandboxing and least privilege, and MCP. Not portable: exact flags, model names and menus. I practise the first group and look up the second in current docs.</p>"
+   ]
+  }
+ ]
+}

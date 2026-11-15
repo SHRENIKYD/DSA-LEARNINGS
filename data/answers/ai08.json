@@ -1,0 +1,121 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>It shows that directions in embedding space carry meaning. <code>king − man</code> removes the \"male\" part, and adding <code>woman</code> puts \"female\" in, so you land next to <i>queen</i>. In 2D: king (0.2, 0.8) − man (0.2, 0.2) + woman (0.6, 0.2) = (0.6, 0.8), which is almost exactly queen. It only works roughly in real models, and you must exclude the three input words from the answer list, otherwise <i>king</i> itself is often the nearest.</p>",
+    "<p>Embeddings blur exact details. They are weak on identifiers (order 4471 and 4472 look almost identical), numbers, negation (\"not allergic\" sits near \"allergic\") and facts the model never saw. They also copy bias from their training text, and vectors from two different models cannot be compared. Fix these by combining vectors with keyword search (hybrid), adding metadata filters, and testing retrieval on your own real queries.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Cosine vs dot vs Euclidean: rankings on raw and unit vectors",
+    "python": "import math\n\n# Query and three documents; B points the same way as the query but is short.\nq = [1.0, 1.0]\ndocs = {\"A\": [10.0, 0.0], \"B\": [1.0, 1.2], \"C\": [0.0, 2.0]}\n\ndef dot(a, b): return sum(x * y for x, y in zip(a, b))\ndef norm(a): return math.sqrt(dot(a, a))\ndef cos(a, b): return dot(a, b) / (norm(a) * norm(b))\ndef euc(a, b): return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))\ndef unit(a):\n    n = norm(a)\n    return [x / n for x in a]\n\ndef show(title, qv, dv):\n    print(title)\n    # Cosine and dot: bigger is better. Euclidean: smaller is better.\n    print(\"  cosine :\", sorted(dv, key=lambda k: -cos(qv, dv[k])))\n    print(\"  dot    :\", sorted(dv, key=lambda k: -dot(qv, dv[k])))\n    print(\"  euclid :\", sorted(dv, key=lambda k: euc(qv, dv[k])))\n\nprint(\"query:\", q, \"docs:\", docs)\nshow(\"RAW vectors (lengths differ): rankings disagree\", q, docs)\nnd = {k: unit(v) for k, v in docs.items()}\nshow(\"UNIT vectors: all three agree\", unit(q), nd)\n\n# For unit vectors: euclid^2 == 2 - 2*cosine\na, b = nd[\"A\"], nd[\"B\"]\nprint(\"euclid^2 =\", round(euc(a, b) ** 2, 4), \" 2-2*cos =\", round(2 - 2 * cos(a, b), 4))\n"
+   },
+   "followUps": [
+    "<p>The query still runs, but the index cannot help, so you get a slow scan or the wrong ordering. In pgvector an HNSW index built with <code>vector_l2_ops</code> is only used for <code>ORDER BY embedding &lt;-&gt; q</code>. Ordering by the cosine operator <code>&lt;=&gt;</code> makes the planner fall back to a sequential scan: correct but slow on millions of rows. Always create the index with the operator class that matches the query, such as <code>vector_cosine_ops</code> for cosine.</p>",
+    "<p>pgvector's <code>&lt;#&gt;</code> operator returns the <i>negative</i> inner product, so that ascending order still puts the best match first, just like a distance. For a=[1, 0] and b=[0.6, 0.8] the dot product is 0.6, so the operator returns −0.6. To show the real score, multiply by −1:<pre><code>SELECT id, (embedding &lt;#&gt; $1) * -1 AS dot\nFROM docs ORDER BY embedding &lt;#&gt; $1 LIMIT 5;</code></pre>For unit vectors, cosine distance <code>&lt;=&gt;</code> equals 1 − dot.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Results become meaningless. Each model builds its own space, so the same coordinates mean different things. If the dimensions differ (768 vs 1536) the database raises an error; if they happen to match you get silently wrong neighbours with plausible scores, which is worse. Prevent it by storing the model name and version next to every vector, pinning the model in config, and re-embedding everything when you upgrade.</p>",
+    "<p>Treat the index as a copy of the source of truth and update it on change. Use change events, or a periodic diff by content hash, to find new, edited and deleted documents. Re-chunk and re-embed only those, upsert by a stable chunk id, and delete the old chunks of an edited document. A 1,000-page wiki with 20 edits a day re-embeds about 20 pages, not 1,000. Monitor the lag between an edit and its visibility, and run a nightly job that compares ids on both sides.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>There is no magic number: switch when brute force breaks your latency or cost budget. One scan of 100,000 vectors with 768 dims is about 77 million multiply-adds, which is often tens of milliseconds, so up to roughly 100k to 1M vectors an exact scan (ideally a matrix multiply) is usually fine. At 10M+ vectors or high QPS, move to HNSW or IVF. Measure p95 latency and CPU cost at your real traffic and switch when the budget fails.</p>",
+    "<p>You cannot afford exact answers for every query, so compute them once for a sample of a few thousand queries. Run the brute-force scan as a batch job, ideally on GPUs: multiply a block of queries against each shard of vectors, keep the top-k per shard, and merge. For 1,000 queries over 1 billion 128-d vectors that is about 1.3 × 10<sup>14</sup> operations, a feasible one-off job. Save the answers and reuse them as ground truth for every index experiment.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because it keeps every vector plus a list of neighbour links per node in RAM, and a graph walk jumps around randomly, so it cannot be read from disk quickly. For 10M vectors of 768 float32 values the vectors alone take 10M × 768 × 4 B ≈ 30.7 GB. Layer 0 adds about 2·M links per node, so with M = 16 that is roughly 10M × 32 × 4 B ≈ 1.3 GB. To shrink it, quantise the vectors (float16 or int8), truncate dimensions (Matryoshka), or lower M.</p>",
+    "<p>Most HNSW implementations cannot cleanly remove a node, because other nodes' links route through it and deleting it could break the paths. They mark it with a tombstone: it stays in the graph for routing but is skipped in results. Space is not freed and quality can slowly drop as tombstones pile up. The fix is a periodic vacuum or rebuild, often in the background followed by a swap. An update is usually a delete plus an insert.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "IVF: nprobe trades recall against vectors scanned",
+    "python": "import random\n\nrandom.seed(5)\nN, NLIST, K = 2000, 16, 5\npts = [(random.uniform(0, 100), random.uniform(0, 100)) for _ in range(N)]\n\ndef d2(a, b): return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2\n\n# \"Training\": a few rounds of k-means to find NLIST centroids\ncent = random.sample(pts, NLIST)\nfor _ in range(8):\n    cells = [[] for _ in range(NLIST)]\n    for p in pts:\n        cells[min(range(NLIST), key=lambda c: d2(p, cent[c]))].append(p)\n    cent = [(sum(x for x, _ in c) / len(c), sum(y for _, y in c) / len(c)) if c else cent[i]\n            for i, c in enumerate(cells)]\n\n# Inverted lists: each point is stored under its nearest centroid\nlists = [[] for _ in range(NLIST)]\nfor i, p in enumerate(pts):\n    lists[min(range(NLIST), key=lambda c: d2(p, cent[c]))].append(i)\n\ndef search(q, nprobe):\n    near = sorted(range(NLIST), key=lambda c: d2(q, cent[c]))[:nprobe]  # pick cells\n    cand = [i for c in near for i in lists[c]]                          # scan only them\n    return sorted(cand, key=lambda i: d2(q, pts[i]))[:K], len(cand)\n\nqueries = [(random.uniform(0, 100), random.uniform(0, 100)) for _ in range(50)]\nprint(f\"N={N} points, nlist={NLIST}, k={K}\")\nfor nprobe in (1, 2, 4, 8, 16):\n    hit = scanned = 0\n    for q in queries:\n        truth = set(sorted(range(N), key=lambda i: d2(q, pts[i]))[:K])\n        found, n = search(q, nprobe)\n        hit += len(truth & set(found)); scanned += n\n    print(f\"nprobe={nprobe:2d} recall@{K}={hit / (K * len(queries)):.2f} avg scanned={scanned / len(queries):7.1f}\")\n"
+   },
+   "followUps": [
+    "<p>Product quantisation compresses a vector by cutting it into pieces and storing each piece as the id of its nearest entry in a small codebook. Example: a 128-dim float vector (512 bytes) is cut into 16 pieces of 8 dims; each piece picks one of 256 centroids learned by k-means, so it costs 1 byte. The vector becomes 16 bytes, 32 times smaller. Distances are approximated from lookup tables, so recall drops a bit; often the top candidates are reranked with the original vectors.</p>",
+    "<p>Choose it by measurement. Take a sample of real queries with exact answers, try nprobe = 1, 2, 4, 8, 16, plot recall@k against latency, and pick the smallest value that meets your recall target, for instance 95%. As a starting point use 1% to 10% of nlist. With nlist = 1024 and nprobe = 16 you scan about 1.6% of the data, around 64 times less than brute force. Re-check after the data grows or drifts.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It keeps the HNSW graph but stores compressed vectors (int8, float16, binary or PQ codes), cutting RAM by 2 to 32 times. Search walks the graph using cheap approximate distances, then optionally reranks the best candidates with full-precision vectors kept on disk. For 10M × 768 float32 (30.7 GB), int8 needs about 7.7 GB. The price is a small recall loss, usually recovered by fetching more candidates before reranking. It is a good middle path when you want HNSW quality but RAM is tight.</p>",
+    "<p>Strong filters hurt graph indexes: many nodes on the search path fail the filter, so the walk wanders and may return fewer than k results. IVF can apply the filter while scanning a few cells, and a partition per tenant helps both. Decide by selectivity. If the filter keeps under about 1% of rows, an exact scan of just those rows is often faster and more accurate. If it keeps half the rows, HNSW with filter-aware traversal works well. Test with your real filter values.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Metadata filter: post-filter vs filter-aware vs exact scan",
+    "python": "import random\n\nrandom.seed(11)\nN, K = 1000, 5\nvecs = [(random.random(), random.random()) for _ in range(N)]\ntenant = [\"big\" if random.random() < 0.97 else \"small\" for _ in range(N)]  # ~3% are \"small\"\n\ndef d2(a, b): return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2\nq = (0.5, 0.5)\nranked = sorted(range(N), key=lambda i: d2(q, vecs[i]))   # exact order for the whole index\n\nwant = \"small\"\nprint(f\"{N} vectors, tenant '{want}' owns {tenant.count(want)} of them, k={K}\")\n\n# 1) Post-filter: take the top-K, THEN drop other tenants' rows\npost = [i for i in ranked[:K] if tenant[i] == want]\nprint(\"post-filter, top-K first   ->\", len(post), \"results\")\n\n# 2) Over-fetch: take top-50, then filter. Better, but still no promise of K\nover = [i for i in ranked[:50] if tenant[i] == want][:K]\nprint(\"post-filter, over-fetch 50 ->\", len(over), \"results\")\n\n# 3) Filter-aware search: keep walking the ranking until K valid rows are found\nwalked, good = 0, []\nfor i in ranked:\n    walked += 1\n    if tenant[i] == want:\n        good.append(i)\n        if len(good) == K: break\nprint(\"filter-aware (iterative)   ->\", len(good), \"results after examining\", walked, \"candidates\")\n\n# 4) Very selective filter: exact scan of just the matching rows\nrows = [i for i in range(N) if tenant[i] == want]\nexact = sorted(rows, key=lambda i: d2(q, vecs[i]))[:K]\nprint(\"exact scan of matching rows->\", len(exact), \"results, distance calls:\", len(rows))\nprint(\"filter-aware == exact:\", good == exact)\n"
+   },
+   "followUps": [
+    "<p>Put small tenants together and give big ones their own index. Route by tenant id so a query touches one shard, not all of them. Example: 10,000 tenants where 10 hold 80% of the data. Give those 10 dedicated indexes, and hash the other 9,990 into 16 shared shards with a tenant_id filter or namespace. This gives isolation, easy per-tenant deletion and cheap queries. Watch for hot shards, rebalance when a tenant grows, and test recall for the smallest tenant.</p>",
+    "<p>For a very selective filter a good planner skips the vector index and does an exact scan of the few matching rows, which is cheap and perfectly accurate. Example: a filter keeps 200 of 10M rows, so computing 200 distances beats walking an HNSW graph that mostly meets rejected nodes. In Postgres the planner weighs a btree on the filter column against the vector index using cost estimates, and pgvector's iterative scans can keep scanning until enough valid rows are found. Check the choice with <code>EXPLAIN</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep the pipeline decoupled: raw text and metadata stay in Postgres, and embeddings can be exported or regenerated. Steps: export ids, vectors and metadata in batches; bulk-load the new store; dual-write new changes; compare both stores on a golden query set (recall@k, result overlap); switch reads with a flag and keep the old table for rollback. Hide the store behind a small interface (upsert, search, delete) so application code does not change. If the embedding model stays the same there is no re-embedding cost.</p>",
+    "<p>I would reject it if data cannot leave my network or region, if cost at my scale beats running it myself, if I need joins or transactions with other data, or if lock-in and missing features (custom filters, hybrid search, export) are a risk. For example, 500M vectors under constant high QPS can cost far more than a few self-hosted nodes. I would compare cost, compliance and export options with real numbers before deciding.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Reciprocal rank fusion of BM25 and vector rankings",
+    "python": "K = 60  # damping constant\n\nbm25 = [\"doc_error_E4471\", \"doc_billing\", \"doc_login\", \"doc_refund\", \"doc_api\"]\nvector = [\"doc_login\", \"doc_sso\", \"doc_error_E4471\", \"doc_api\", \"doc_pricing\"]\n\ndef rrf(lists, k=K):\n    score = {}\n    for ranking in lists:\n        for rank, doc in enumerate(ranking, start=1):  # rank starts at 1\n            score[doc] = score.get(doc, 0.0) + 1.0 / (k + rank)\n    return sorted(score.items(), key=lambda kv: -kv[1])\n\nprint(\"BM25  :\", bm25)\nprint(\"vector:\", vector)\nfor doc, s in rrf([bm25, vector]):\n    print(f\"{doc:16s} {s:.4f}\")\n# A doc ranked high by BOTH lists beats one ranked first by only one list.\nprint(\"small k=1 top:\", rrf([bm25, vector], k=1)[0][0])\n",
+    "js": "const K = 60; // damping constant\n\nconst bm25 = [\"doc_error_E4471\", \"doc_billing\", \"doc_login\", \"doc_refund\", \"doc_api\"];\nconst vector = [\"doc_login\", \"doc_sso\", \"doc_error_E4471\", \"doc_api\", \"doc_pricing\"];\n\nfunction rrf(lists, k = K) {\n  const score = new Map();\n  for (const ranking of lists) {\n    ranking.forEach((doc, i) => {\n      // rank starts at 1, so rank = i + 1\n      score.set(doc, (score.get(doc) || 0) + 1 / (k + i + 1));\n    });\n  }\n  return [...score.entries()].sort((a, b) => b[1] - a[1]);\n}\n\nconsole.log(\"BM25  :\", \"[\" + bm25.map((d) => \"'\" + d + \"'\").join(\", \") + \"]\");\nconsole.log(\"vector:\", \"[\" + vector.map((d) => \"'\" + d + \"'\").join(\", \") + \"]\");\nfor (const [doc, s] of rrf([bm25, vector])) {\n  console.log(doc.padEnd(16) + \" \" + s.toFixed(4));\n}\n// A doc ranked high by BOTH lists beats one ranked first by only one list.\nconsole.log(\"small k=1 top:\", rrf([bm25, vector], 1)[0][0]);\n"
+   },
+   "followUps": [
+    "<p>The scores live on different scales, so the bigger scale dominates. BM25 may return values from 0 to 40 while cosine is between 0 and 1. A BM25 of 18.0 plus a cosine of 0.80 gives 18.8, and the vector signal barely matters. You would have to normalise per query, and score distributions shift from query to query. RRF uses only ranks, which are always comparable, so it needs no calibration.</p>",
+    "<p>k is a damping constant that controls how much top ranks matter compared with lower ones. With k = 60, rank 1 scores 1/61 = 0.0164 and rank 10 scores 1/70 = 0.0143, a gentle drop, so appearing in both lists matters more than being first in one. With a tiny k such as 1, rank 1 gets 1/2 = 0.5 against 1/11 = 0.09 for rank 10, so the top spot dominates. 60 is a sound default; tune it on a labelled set.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "BM25: rare terms, saturation and length normalisation",
+    "python": "import math, re\n\ndocs = [\n    \"error E4471 when saving the invoice\",\n    \"how to save an invoice as a PDF\",\n    \"invoice invoice invoice invoice invoice invoice list view\",\n    \"reset your password from the settings page, a long page about many settings and options and more text\",\n]\nK1, B = 1.2, 0.75\ntoks = [re.findall(r\"[a-z0-9]+\", d.lower()) for d in docs]\nN = len(docs)\navgdl = sum(len(t) for t in toks) / N\n\ndef idf(term):\n    n = sum(1 for t in toks if term in t)            # documents containing the term\n    return math.log(1 + (N - n + 0.5) / (n + 0.5))   # rare term -> big weight\n\ndef bm25(query, t):\n    score = 0.0\n    for term in re.findall(r\"[a-z0-9]+\", query.lower()):\n        f = t.count(term)\n        # saturating term frequency with length normalisation\n        score += idf(term) * f * (K1 + 1) / (f + K1 * (1 - B + B * len(t) / avgdl))\n    return score\n\nfor query in [\"e4471\", \"invoice\"]:\n    print(\"query:\", query)\n    for s, i in sorted(((bm25(query, t), i) for i, t in enumerate(toks)), reverse=True):\n        print(f\"  {s:6.3f}  doc{i}: {docs[i][:40]}\")\n"
+   },
+   "followUps": [
+    "<p>k1 controls term-frequency saturation: how fast repeating a word stops adding score (typical 1.2 to 2.0). b controls length normalisation from 0 (ignore length) to 1 (full), typically 0.75. Example with k1 = 1.2 and b = 0: a word seen once gives 1 × 2.2 / (1 + 1.2) = 1.0, but seen 10 times gives 10 × 2.2 / (10 + 1.2) ≈ 1.96, not 10. With a high b, long documents are penalised more.</p>",
+    "<p>SPLADE is a learned sparse model: a transformer turns text into a weighted bag of vocabulary words and expands it with related terms (a document about \"car\" may also get \"vehicle\"). It is searched with an inverted index just like BM25, so it keeps BM25's speed and explainability while learning the term weights and adding synonyms, which closes part of the vocabulary-mismatch gap. The costs are running a model at indexing time and larger posting lists.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Rehearse it before cutover, not during an incident. Keep the old index live and dual-written through the rollback window, then in staging flip the alias back and verify. Check that queries are embedded with the old model again, that the golden set matches its earlier baseline, that caches are cleared, and that no writes were lost. Run a game day: switch to new, switch back, time it. The flip should take seconds via an alias or feature flag, and an alert on a recall drop should trigger it.</p>",
+    "<p>Then the provider sets the deadline, so start at once. Re-embedding is unavoidable, but you can prioritise: embed new queries and documents with the replacement and backfill the most-used chunks first. Vectors from the old and new models cannot be mixed, and once the old API stops you can no longer embed queries for the old index. Consider a self-hosted open model that cannot be deprecated under you. Estimate cost first: 40M chunks × 300 tokens = 12B tokens.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Separate slow-changing content from fast-changing permissions. Do not bake a user's access into the vectors. Store group ids on each chunk and resolve the user's groups at query time, so a group change takes effect on the next query. A document-level ACL change updates only metadata, with no re-embedding. Removing a user from the finance group needs no index work at all. Use a short cache TTL (seconds) for group lookups, and recheck access against the source of truth before showing final chunks.</p>",
+    "<p>Build tests that try to break isolation. Create two synthetic tenants with unique marker strings such as CANARY-A-123, query as tenant B for tenant A's markers using exact and paraphrased queries, and assert that zero of A's chunks come back. Run this in CI on every index or filter change, including the smallest tenants, users with many groups and edge cases such as empty groups or deleted users. In production, log the tenant of each returned chunk and alert on any mismatch.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Recall@k, MRR and nDCG on a golden set",
+    "python": "import math\n\n# Golden set: query -> relevant doc ids. \"results\" = ranked ids a system returned.\ngolden = {\n    \"q1\": {\"a\", \"b\"},\n    \"q2\": {\"c\"},\n    \"q3\": {\"d\", \"e\"},\n}\nresults = {\n    \"q1\": [\"a\", \"x\", \"b\", \"y\", \"z\"],\n    \"q2\": [\"x\", \"y\", \"c\", \"z\", \"w\"],\n    \"q3\": [\"x\", \"y\", \"z\", \"w\", \"v\"],\n}\n\ndef recall_at_k(rel, ranked, k):\n    return len(rel & set(ranked[:k])) / len(rel)\n\ndef mrr(rel, ranked):\n    for pos, d in enumerate(ranked, start=1):\n        if d in rel: return 1.0 / pos       # reciprocal rank of first hit\n    return 0.0\n\ndef ndcg_at_k(rel, ranked, k):\n    dcg = sum(1 / math.log2(i + 2) for i, d in enumerate(ranked[:k]) if d in rel)\n    ideal = sum(1 / math.log2(i + 2) for i in range(min(len(rel), k)))\n    return dcg / ideal\n\nfor k in (1, 3, 5):\n    r = sum(recall_at_k(golden[q], results[q], k) for q in golden) / len(golden)\n    print(f\"recall@{k} = {r:.3f}\")\nprint(\"MRR      =\", round(sum(mrr(golden[q], results[q]) for q in golden) / len(golden), 3))\nprint(\"nDCG@5   =\", round(sum(ndcg_at_k(golden[q], results[q], 5) for q in golden) / len(golden), 3))\nfor q in golden:   # per-query view shows which queries fail\n    print(q, \"recall@5 =\", recall_at_k(golden[q], results[q], 5))\n"
+   },
+   "followUps": [
+    "<p>Keep a held-out set that you never tune on, and refresh the golden set with new real queries regularly. Split into dev (tune on it) and test (check once per release). With 500 queries, use 350 for dev and 150 for test: if dev improves by 5 points but test by 0, you overfit. Stratify by query type and report confidence intervals, so +0.5 points on 100 queries is treated as noise. Confirm winners with an online A/B test.</p>",
+    "<p>Log enough to replay and judge every search: the query text (under your privacy rules), embedding model and index version, filters, returned chunk ids with scores and ranks, latency per stage, a zero-result flag, and user signals such as clicks, reformulations and thumbs. A reformulated query within 30 seconds suggests a miss. With this you can turn failures into new golden-set queries. Redact personal data and follow retention rules.</p>"
+   ]
+  }
+ ]
+}

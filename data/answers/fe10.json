@@ -1,0 +1,120 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep it in <b>localStorage</b> (or a persisted store), because it is per-user client data that must survive a reload and the server does not need it. Example: a Zustand store with persist middleware holding the last 10 product ids, newest first, de-duplicated when a product is viewed again.</p><p>Store ids only, not whole products, and read the product details through the server cache so prices stay fresh. If the user is logged in and wants the list on other devices, save it on the server instead.</p>",
+    "<p>A common one is a product-list filter such as <code>sortBy</code> that was first put in a global store. Only the list page used it, and it stayed set when the user left and came back, so stale filters confused them.</p><p>I moved it into the list component's <code>useState</code> (or into the URL if it should be shareable). The result: no other component re-rendered when it changed, the state reset naturally on unmount, and the global store shrank. Rule of thumb: if one component tree uses it, it should not be global.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Context re-renders everyone, a store with selectors does not",
+    "js": "// Context-style delivery: every consumer re-renders when the value changes.\n// Store-style delivery: each subscriber has a selector and re-renders only if its slice changed.\nlet state = { cart: 1, search: \"a\" };\nconst renders = { contextConsumer: 0, selectorCart: 0, selectorSearch: 0 };\n\nconst subs = [];\nfunction subscribe(selector, onChange) {\n  let last = selector(state);\n  subs.push(() => {\n    const next = selector(state);\n    if (!Object.is(next, last)) { last = next; onChange(); } // compare slice with ===\n  });\n}\nfunction setState(patch) {\n  state = { ...state, ...patch };      // new object identity, like a new Provider value\n  renders.contextConsumer++;           // context: all consumers re-render on any change\n  subs.forEach(fn => fn());            // store: only changed slices notify\n}\nsubscribe(s => s.cart, () => renders.selectorCart++);\nsubscribe(s => s.search, () => renders.selectorSearch++);\n\nfor (const t of [\"an\", \"ann\", \"anna\"]) setState({ search: t }); // 3 keystrokes, cart untouched\nconsole.log(\"keystrokes: 3, cart never changed\");\nconsole.log(\"context consumer of cart re-rendered:\", renders.contextConsumer);\nconsole.log(\"selector on cart re-rendered:\", renders.selectorCart);\nconsole.log(\"selector on search re-rendered:\", renders.selectorSearch);\n"
+   },
+   "followUps": [
+    "<p>Split it into two contexts, one for cart and one for search text, so a keystroke only re-renders components that read search. Better, move the fast-changing search text into local state or a store with selectors.</p><p>Example: with one context, 3 keystrokes re-render every cart consumer 3 times for nothing. After the split, cart consumers render 0 extra times.</p><pre><code>&lt;CartCtx.Provider value={cart}&gt;\n  &lt;SearchCtx.Provider value={search}&gt;...</code></pre><p>Memoize each provider value so it changes only when its data does.</p>",
+    "<p>No, not by itself. <code>React.memo</code> only skips re-renders caused by a parent passing the same props. A component that calls <code>useContext</code> is subscribed directly to the context, so when the value changes it re-renders even if memo says its props are equal.</p><p>To avoid it, split the context, or have a memoized inner component receive only the slice it needs as props, with a thin outer component reading the context. Then the inner one skips when the slice is unchanged.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Redux dispatch flow: middleware, reducer, subscribers",
+    "js": "// A tiny Redux: dispatch -> middleware -> reducer -> notify subscribers.\nfunction createStore(reducer, middlewares) {\n  let state = reducer(undefined, { type: \"@@init\" });\n  const listeners = [];\n  let dispatch = action => {\n    const next = reducer(state, action);      // reducer is pure, returns new state\n    if (next !== state) { state = next; listeners.forEach(l => l()); }\n  };\n  for (const mw of [...middlewares].reverse()) {\n    const inner = dispatch;\n    dispatch = mw(() => state)(inner);        // wrap dispatch in order\n  }\n  return { dispatch: a => dispatch(a), getState: () => state, subscribe: l => listeners.push(l) };\n}\nfunction cart(state = { items: [] }, action) {\n  if (action.type === \"cart/added\") return { items: [...state.items, action.payload] };\n  return state;                                // unknown action: same reference\n}\nconst logger = getState => next => action => {\n  console.log(\"middleware saw:\", action.type);\n  next(action);\n  console.log(\"state after:\", JSON.stringify(getState()));\n};\nconst store = createStore(cart, [logger]);\nstore.subscribe(() => console.log(\"subscriber notified\"));\nstore.dispatch({ type: \"cart/added\", payload: \"book\" });\nconst before = store.getState();\nstore.dispatch({ type: \"unknown\" });\nconsole.log(\"same ref after unknown action:\", store.getState() === before);\n"
+   },
+   "followUps": [
+    "<p>The state is silently wrong: Redux compares references with <code>===</code>, so a reducer that changes the old object and returns it looks like \"nothing changed\". Subscribers and <code>useSelector</code> see the same reference and components do not re-render.</p><p>Example: <code>state.items.push(x); return state;</code> adds the item in memory but the screen still shows the old list. It also breaks time-travel and devtools history. Fix: return a copy, <code>{ ...state, items: [...state.items, x] }</code>, or use Redux Toolkit where Immer does it safely.</p>",
+    "<p>Async calls go in <b>middleware</b>, before the reducer, because reducers must be pure and instant. With thunk, you dispatch a function instead of an object; it runs the request and then dispatches plain actions.</p><pre><code>dispatch(loadUser(id));  // thunk\n// inside: dispatch({type:'user/pending'});\n// await api(id);\n// dispatch({type:'user/fulfilled', payload});</code></pre><p>The reducer only ever sees the plain pending, fulfilled and rejected actions. Redux Toolkit's <code>createAsyncThunk</code> generates these three for you.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Avoid it when the app has little shared client state, or when most of your state is really server data. In that case React Query plus local state or Context is simpler and has less ceremony.</p><p>Example: a dashboard where 90 percent of state is API results needs a cache with staleness and refetching, not reducers. A small team with a small app also gains little from Redux's conventions. Pick it when you need strict, auditable state transitions, middleware, or time-travel debugging across a big team.</p>",
+    "<p>Both cache server data with query keys, but RTK Query is part of Redux Toolkit and stores its cache inside the Redux store, while React Query has its own independent cache and needs no Redux.</p><p>RTK Query generates hooks from an API definition and invalidates by <b>tags</b>; React Query invalidates by <b>query key</b>. If you already use Redux, RTK Query avoids a second library and shows requests in the same devtools. If you do not, React Query is lighter and more widely used. Features like staleness, dedupe and refetching are similar.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, and it is a common setup: React Query for data fetched from the API and Redux for genuine client state such as UI workflow or a cart. They do not overlap if you keep a rule: server data is never copied into Redux.</p><p>Example: <code>useQuery(['products'])</code> supplies the list, while a Redux slice holds the selected filters and cart. A mutation's <code>onSuccess</code> can dispatch a Redux action and also invalidate queries. Copying API results into Redux creates two sources of truth that drift apart.</p>",
+    "<p>Migrate when most of your Redux code is hand-written loading, error and caching logic around API calls. React Query gives you that for free, so thunks, <code>isLoading</code> flags and manual refetch code can be deleted.</p><p>Signals: the same data is fetched in many places, stale screens after mutations, many <code>pending/fulfilled/rejected</code> reducers. Do it one endpoint at a time: replace a thunk with <code>useQuery</code>, delete its slice, and keep Redux for the state that is truly client-only. Typical result is a big drop in lines of code.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stale-while-revalidate with a staleTime cache",
+    "js": "// Stale-while-revalidate with staleTime, like React Query in miniature.\nlet now = 0;                       // fake clock in seconds\nconst cache = new Map();           // key -> { data, at }\nconst staleTime = 10;\nlet serverVersion = 1;\nconst fetchFromServer = () => \"v\" + serverVersion;\n\nfunction useQuery(key) {\n  const entry = cache.get(key);\n  if (!entry) {                    // nothing cached: the user must wait\n    const data = fetchFromServer();\n    cache.set(key, { data, at: now });\n    console.log(`t=${now} miss  -> fetched ${data}`);\n    return data;\n  }\n  if (now - entry.at < staleTime) {  // fresh: no request at all\n    console.log(`t=${now} fresh -> ${entry.data}, no request`);\n    return entry.data;\n  }\n  console.log(`t=${now} stale -> show ${entry.data} now, refetch in background`);\n  const data = fetchFromServer();    // background refresh, then swap in\n  cache.set(key, { data, at: now });\n  console.log(`t=${now} background refetch done -> ${data}`);\n  return entry.data;                 // this render shows the old value instantly\n}\nuseQuery(\"product:1\");\nnow = 5; useQuery(\"product:1\");\nserverVersion = 2; now = 12; useQuery(\"product:1\");\nnow = 13; useQuery(\"product:1\");\n"
+   },
+   "followUps": [
+    "<p>The default <code>staleTime</code> is <b>0</b>, so data is treated as stale immediately and refetched whenever a new component mounts, the window refocuses, or the network reconnects.</p><p>Raise it for data that changes rarely, such as a product catalog or country list. Example: with <code>staleTime: 60_000</code>, opening the same page 5 times in one minute makes 1 request instead of 5, and users see no refetch flicker. Keep it low for fast-changing data like stock levels.</p>",
+    "<p>The HTTP directive is applied by the browser or a CDN on the raw HTTP response, per URL, and the app code never sees it. React Query works in JavaScript memory, per query key, and the app decides when to refetch.</p><p>Example: <code>Cache-Control: max-age=60, stale-while-revalidate=30</code> lets a CDN serve a response up to 90 seconds old while refreshing it. React Query can additionally refetch on window focus, dedupe requests and update the UI when new data arrives. They can be used together, and the idea is the same: show old data now, refresh behind the scenes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pages that are not on screen are marked <b>stale</b> but are not refetched right away. With <code>invalidateQueries</code>, only <em>active</em> queries (with a mounted observer) refetch immediately; the inactive ones refetch the next time someone uses them.</p><p>Example: you edit a product while looking at list page 1. Pages 2 and 3 stay cached but flagged stale. When you open page 2, the old data shows instantly and a background refetch swaps in the new data. So nothing is wasted on screens nobody is viewing.</p>",
+    "<p>Use <code>removeQueries</code> when the cached data is no longer valid to show at all, so a refetch would be pointless or wrong. The classic case is deleting an item or logging out.</p><p>Example: after deleting product 42, <code>removeQueries({ queryKey: ['products','detail',42] })</code> drops that entry so it can never flash on screen, while you still <code>invalidateQueries</code> the lists to refetch them. On logout, remove everything private so the next user cannot see the previous user's data. Invalidate means \"refresh it\"; remove means \"forget it\".</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Optimistic like with rollback",
+    "js": "// Optimistic like: snapshot, write expected value, roll back on error.\nlet cache = { post: { liked: false, count: 10 } };\nconst serverOk = { value: false };\nconst sleep = ms => new Promise(r => setTimeout(r, ms));\n\nasync function likeMutation() {\n  const snapshot = cache;                              // onMutate: keep old value\n  cache = { post: { liked: true, count: snapshot.post.count + 1 } }; // new object, no mutation\n  console.log(\"optimistic:\", JSON.stringify(cache.post));\n  try {\n    await sleep(10);\n    if (!serverOk.value) throw new Error(\"500\");\n    console.log(\"server confirmed\");\n  } catch (e) {\n    cache = snapshot;                                  // onError: roll back\n    console.log(\"error\", e.message, \"-> rolled back:\", JSON.stringify(cache.post));\n  } finally {\n    console.log(\"onSettled: refetch to match the server\");\n  }\n}\n(async () => {\n  console.log(\"before:\", JSON.stringify(cache.post));\n  await likeMutation();       // fails\n  serverOk.value = true;\n  await likeMutation();       // succeeds\n  console.log(\"final:\", JSON.stringify(cache.post));\n})();\n"
+   },
+   "followUps": [
+    "<p>Ignore the second tap while the first is pending, or send the latest intended state only. The key point is that each tap should set a target value (liked true or false), not flip a toggle.</p><p>Example: tap 1 sets liked true and count 11; tap 2 sets liked false and count 10. If requests are sent as <code>PUT liked=true</code> then <code>PUT liked=false</code>, the server ends in the right state even if retried. Cancel in-flight queries first, and only let the last request's result settle the cache. Disabling the button while pending is the simplest fix.</p>",
+    "<p><code>useOptimistic</code> shows a temporary value only while an action is running, then reverts to the real state automatically. React Query's approach edits the shared cache, so the change stays visible on every screen until you roll back or refetch.</p><p>With <code>useOptimistic</code> you write <code>const [liked, setLiked] = useOptimistic(serverLiked)</code>, set it inside a transition, and when the action ends React drops the temporary value and uses the real prop. It is local to one component tree and needs no manual snapshot or rollback. Use the cache approach when many screens show the same data.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>onTouched</code> means validation first runs when the user leaves a field (blur), and after that it re-validates on every change. So you do not show an error while the user is still typing the first time.</p><p>Example: the user types \"ab\" in an email field; no error shows. They tab out; the error \"invalid email\" appears. As they go back and fix it, the error clears on each keystroke. Compare <code>onSubmit</code> (first check at submit) and <code>onChange</code> (check every keystroke, noisy).</p>",
+    "<p>Wrap it with <code>Controller</code> (or <code>useController</code>), which connects a controlled component to the form's store through its <code>value</code> and <code>onChange</code>.</p><pre><code>&lt;Controller name=\"date\" control={control}\n  render={({ field }) =&gt;\n    &lt;DatePicker value={field.value}\n      onChange={field.onChange} /&gt;} /&gt;</code></pre><p>Give it a default value, validate through the schema, and make sure it passes <code>onBlur</code> so touched state works. The rest of the form stays uncontrolled.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Debounce the check and cancel old requests, so the API is only called after the user pauses. Example: wait 400 ms after the last keystroke; typing \"anna\" quickly makes 1 request instead of 4.</p><p>Also skip the check until the value passes the cheap local rules (length, allowed characters), cache results per name, and abort the previous request with <code>AbortController</code>. Remember the server must still enforce uniqueness on submit, because someone else can take the name after your check.</p>",
+    "<p>Show it in a form-level banner near the submit button (or a toast) and keep the user's input intact. Not every error belongs to one field: a 500, a network failure, or \"too many attempts\" apply to the whole form.</p><p>With React Hook Form use <code>setError('root.server', { message })</code> and render <code>errors.root?.server</code>. Say what happened and what to do next, for example \"We could not save. Please try again.\" Log the details, but do not show raw server messages to users.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Search race condition and a latest-request guard",
+    "js": "// Out-of-order responses: naive vs latest-request-id guard.\nconst delays = { a: 30, an: 20, ann: 10 };   // older requests are slower\nconst fakeFetch = q => new Promise(r => setTimeout(() => r(\"results for \" + q), delays[q]));\n\nasync function run(guarded) {\n  let shown = \"\";\n  let latest = 0;\n  const search = async q => {\n    const id = ++latest;\n    const res = await fakeFetch(q);\n    if (guarded && id !== latest) { console.log(\"  ignored stale:\", res); return; }\n    shown = res;                                // naive version always overwrites\n  };\n  const all = [\"a\", \"an\", \"ann\"].map(search);   // three keystrokes in a row\n  await Promise.all(all);\n  console.log(guarded ? \"guarded shows:\" : \"naive shows:  \", shown);\n}\n(async () => { await run(false); await run(true); })();\n"
+   },
+   "followUps": [
+    "<p>Because aborting only cancels the network request, it does not guarantee the old response's code never runs. A response may already have arrived, or the server may ignore the cancel, and an error from the abort itself must be handled.</p><p>Example: request \"a\" completes at the same moment you abort it; its <code>then</code> still runs and writes old results. So you also need a guard such as a request id or an <code>ignore</code> flag set in the effect cleanup. Abort saves bandwidth; the guard guarantees correctness.</p>",
+    "<p><code>keepPreviousData</code> (called <code>placeholderData: keepPreviousData</code> in v5) keeps showing the last results while the new key loads, instead of dropping to an empty loading state. The list stays on screen and updates when the new response arrives.</p><p>Example: results for \"an\" remain visible while \"ann\" loads, so the page does not flash blank on each keystroke. Use <code>isPlaceholderData</code> to dim the list slightly so the user knows it is refreshing.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Store with subscribe/getSnapshot and selector re-renders",
+    "js": "// A store with subscribe/getSnapshot, the shape useSyncExternalStore expects.\nfunction createStore(initial) {\n  let state = initial;\n  const listeners = new Set();\n  return {\n    getSnapshot: () => state,\n    subscribe: l => { listeners.add(l); return () => listeners.delete(l); },\n    set(patch) { state = { ...state, ...patch }; listeners.forEach(l => l()); },\n  };\n}\n// Like a Zustand selector hook: re-render only when the selected slice changes (Object.is).\nfunction useSelector(store, selector, label) {\n  let last = selector(store.getSnapshot());\n  console.log(label, \"initial render:\", last);\n  store.subscribe(() => {\n    const next = selector(store.getSnapshot());\n    if (!Object.is(next, last)) { last = next; console.log(label, \"re-render:\", next); }\n  });\n}\nconst store = createStore({ count: 0, theme: \"light\" });\nuseSelector(store, s => s.count, \"[count view]\");\nuseSelector(store, s => s.theme, \"[theme view]\");\nstore.set({ count: 1 });\nstore.set({ theme: \"dark\" });\nstore.set({ count: 1 });   // same value: nobody re-renders\n"
+   },
+   "followUps": [
+    "<p>Because React can call <code>getSnapshot</code> several times and compares results with <code>Object.is</code>. A new object each time always looks \"changed\", so React thinks the store changed on every check and re-renders in an endless loop (it warns about this in development).</p><pre><code>// bad: new array every call\ngetSnapshot = () =&gt; state.items.filter(x =&gt; x.on);\n// good: return the stored reference\ngetSnapshot = () =&gt; state;</code></pre><p>Derive the slice with a memoized selector instead.</p>",
+    "<p>Because a module-level store is shared by every request on the server. If two users load pages at the same time, they would read and write the same object, and one user's data could leak into the other's HTML.</p><p>Example: user A's cart is set in the global store; user B's request renders before it is cleared and receives A's cart. Creating the store inside a function per request, and passing it down through context, isolates each render. The server snapshot then matches what the client hydrates with.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Merge them at login, then make the server cart the source of truth. Send the guest cart's items to a merge endpoint, which adds them to the account's cart and returns the combined result.</p><p>Example: guest cart has 2 shoes (SKU A) and the account cart already has 1 shoe (SKU A) plus 1 hat. Policy options: sum quantities (3 shoes) or take the larger (2 shoes). Pick one, tell the user, check stock and price changes on the server, then clear the local guest cart. Make the merge idempotent so a retry does not double items.</p>",
+    "<p>Fetch them once at startup from a flag service (or from the server with the first page), keep them in a small Context or store, and make them stable for the session. Components read flags, they do not decide them.</p><p>Example: <code>useFlag('newCheckout')</code> reads from a context loaded before first render. Assignment to an A/B variant must be sticky: the server hashes the user id (hash % 100 &lt; 50 means variant B) so the same user always sees the same variant. Log the exposure once, and do not let flags change mid-session.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>useDeferredValue</code> is better when the slow part is <em>rendering</em> and not the request. It keeps the input instant, and React renders the heavy list at lower priority and can interrupt it if you keep typing.</p><p>Debounce delays work by a fixed time (for example 300 ms), even for a fast device, and does nothing to make rendering cheaper. Use debounce to reduce network calls, and <code>useDeferredValue</code> to keep a heavy filtered list from blocking typing. You can combine both: debounce the request, defer the list.</p>",
+    "<p>Use the React DevTools Profiler with \"Record why each component rendered\" enabled. If a component rendered but its props, state and context were the same, the cause shows as \"parent rendered\" and the work was wasted.</p><p>You can also count renders: <code>console.count('ProductRow')</code> or a render counter in a ref. Example: typing 5 characters should render the input 5 times; if a 200-row list also renders 5 times, that is 1000 unnecessary renders. Measure before and after a fix to confirm it helped.</p>"
+   ]
+  }
+ ]
+}

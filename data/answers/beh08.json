@@ -1,0 +1,102 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>I picked it because I made the key decisions, it had a clear number attached, and it had real tension. Situation: checkout was slow and costing sales. Task: I volunteered to lead the fix. Action: I chose it over a flashier platform project where I only owned one module. Result: I can answer three levels of why from memory, and the 820 to 210 ms story is easy to verify.</p>",
+    "<p>The hardest part was cache invalidation, not the cache itself. Situation: promotions changed prices at any minute. Task: keep prices fresh without losing the speed gain. Action: I sketched four invalidation schemes, tested two under a replayed promo, and chose events plus versioned keys. Result: stale-price complaints stayed flat after the fix. Technical difficulty here was correctness under races, and I say so plainly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would choose differently if the facts behind my criteria changed. If promotions were rare, precomputing cart prices would be simpler and good enough. If the deadline were six months instead of 10 weeks, I would have scaled the database and reworked fan-out properly. If traffic stayed under 500 QPS, I would skip event invalidation and use a plain short TTL. Naming these triggers shows the choice was reasoned, not tribal.</p>",
+    "<p>A senior engineer on the payments side disagreed; he wanted precomputation because it was simpler to reason about. Situation: we had a design review with a hard deadline. Action: I did not argue opinions; I replayed one week of real promo events against both designs and showed precompute was stale on 14 percent of carts. Result: he agreed, reviewed my invalidation code carefully, and found a real bug. Disagreement improved the design.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I learned to treat a slow dependency as an architecture question, not a tuning question. My teammate traced fraud scoring at 300 ms and built it async with a provisional order state and a reconcile job. Reviewing it taught me to design for the late negative answer: the order may need cancelling after we said yes. I now ask what the compensation step is whenever I move work off the hot path.</p>",
+    "<p>I lost the argument about the rollout schedule. Situation: I wanted a full week at 10 percent traffic; the manager, under launch pressure, allowed three days. Action: I disagreed once with data, then committed and added extra alerts and a one-click flag rollback. Result: the three days were enough, and I learned my week was overcautious. I also learned that a safety net can substitute for a long soak.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I used p95 because it reflects what a typical unlucky customer feels without being dominated by rare outliers. Example: with 1,000 requests a day per shop, p99 is decided by about 10 requests, mostly GC pauses and cold starts, which made the number jumpy. I still watched p99 as a guardrail and it improved too, from 1.9 s to 640 ms. Pick the percentile you can act on and stay stable across weeks.</p>",
+    "<p>About 410,000 sessions per arm over two weeks, roughly 820,000 total. Conversion was near 3.1 percent, so a 1.8 percent relative lift (about 3.16 versus 3.10) was detectable; a quick power check before launch showed we needed about 300,000 per arm for that size at 95 percent confidence. I would say that number out loud, and also admit the interval was wide, about plus 0.4 to plus 3.2 percent.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>We had no promo-pricing scenario because our test data was a static price list copied from staging, and I assumed price updates were the cache team's concern. That was my gap: I owned the cache, so I owned its write path. Action afterwards: I added a replayable promo event stream to the load tests and a rule that every cache change needs a stale-read test. The cause was a wrong assumption, not carelessness.</p>",
+    "<p>I told them within 15 minutes, before they asked, in a short message: what happened, how many orders, that the cache was off, and when I would update next. Situation: support was already getting angry calls. Action: I gave the 600-order, four-minute, $3K figures, then a written postmortem in two days. Result: the finance lead thanked me for the numbers, and trust held because I never softened facts.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Load testing was late because we treated it as a final check, and the environment needed for it took three weeks to get approved. I should have escalated that on day one. Situation: design was frozen in week 3 without realistic data. Result: we found the 12-call fan-out in week 8. Now I request the test environment in the first week and run a thin load test on a skeleton before design lock.</p>",
+    "<p>I would cut the admin dashboard and the second cache tier, both nice to have. Situation: ten weeks, four people. Action: I rank features by risk to the main goal, which was p95 under 300 ms. A dashboard does not move p95, and a second tier adds invalidation surface. Saving about two weeks let me do load tests early. I would never cut the rollback flag or the promo test.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would run a load test that scales traffic in steps, 2x, 5x and 10x, in a test environment with production-sized data. Example: replay a peak hour at 2x and watch inventory CPU; if my model says it saturates near 2x and it hits 90 percent at 2.1x, the prediction holds. Also run a short spike test. Where I cannot test, such as the payment rate limit, I read the contract and call the vendor.</p>",
+    "<p>I would watch saturation per dependency, not just averages. Inventory: CPU and DB connection pool use, alert at 70 percent. Payments: requests per second against the contract limit, alert at 80 percent. Cache: memory, evictions and hit rate. User-facing: p95 and error rate by endpoint. Each alert should have a named owner and a runbook step, such as add nodes or turn on the queueing page.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes. Early in my career I confidently said a service used two-phase commit, and the interviewer asked how it handled a coordinator crash; I could not say, and the guess was wrong. Result: the whole round lost trust. Since then I say what I know, what I infer and how I would check. A calm honest gap costs a little; a bluff caught costs the rest of the interview.</p>",
+    "<p>I write a one-page cheat sheet per project listing owners, numbers, and three decisions with their alternatives, then practise with a friend who asks why five times. I specifically hunt gaps: configs I did not set, vendor limits, failure modes. For each gap I either learn the answer or prepare an honest line such as the team X owned that, and I would check the client config. Preparing the not-knowing is part of preparing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would pick a different project, or describe it at a level that hides nothing confidential. Situation: a bank project under NDA. Action: I drop names, customers and exact figures, keep the structure, and use ranges like roughly 5K QPS. I tell the interviewer upfront what I cannot share. If that leaves the story thin, I use the backup project so I am not forced into awkward gaps.</p>",
+    "<p>Yes, if it shows real engineering and you can show it. A side project can work for less experience: for example a booking app I built that handled 200 concurrent users, with load test results and one outage I debugged. Weak points are scale and teamwork, so I add what I learned from code reviews by others. At senior levels, work with users and trade-offs counts more.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I show influence through the outcome of getting people to agree, not through title. Situation: three teams each had their own retry logic. Action: I measured the incident cost, wrote a short proposal with two options, met each team lead one-to-one to hear their constraints, and ran a pilot with the team most doubtful. Result: all three adopted the shared library in a quarter, and I credit the pilot team publicly.</p>",
+    "<p>I follow their lead and go deep. I keep a small set of detailed decisions ready, with data, alternatives and what broke, and I pivot after one sentence of org context: the problem was messy, here is the design. If asked about the cache, I draw it and talk through invalidation, failure modes and numbers. Staff-level means I can do both, so I read the room and say shall I go deeper here.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would hold my position politely and agree on what evidence would settle it. Example: that is a fair difference of view; if we disagree, what scale would make you comfortable? I would say my design cost two extra weeks and I accepted that for the contract. Then I move on, because winning is not the goal. If they still prefer simple, I explain the migration path I would take if growth did not come.</p>",
+    "<p>Yes, partly. The second region onboarded in month seven and traffic reached about 4K QPS by month ten, so the design needed no rewrite. The extra two weeks paid off. The third region slipped, though, so some capacity sat idle for a few months, which cost money. I would say both facts: the bet mostly paid, but the unused capacity was a real cost.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The cache is on the critical path, so a down cache must degrade, not break checkout. The gateway uses a 50 ms timeout, then falls back to reading prices from the price database directly. That is slower, around 400 ms p95, and the database could be overloaded, so we also limit fallback concurrency and shed load with a friendly retry message. We tested this by turning the cache off in staging and it stayed up.</p>",
+    "<p>At current load the bottleneck is the inventory service, which does a synchronous database read for each item, about 3 per order. At peak it ran at 45 percent CPU, which projects to saturation near 2x traffic. I know this from tracing: inventory took 38 percent of remaining latency after the cache change. Next I would batch the reads or add a reservation cache. Say the bottleneck with the measurement behind it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>We stopped after a four-week online test showed no engagement lift, with a confidence interval comfortably around zero. Situation: we had spent a quarter. Action: I presented the result with the offline metric that misled us, three options (iterate, narrow to one surface, stop), and my recommendation to stop. The director agreed within a day. The rule was set beforehand: no lift at the planned sample, we stop.</p>",
+    "<p>Mixed at first: disappointment, then relief that the decision was made on data. Situation: two engineers felt their work was wasted. Action: I held a short retrospective, pointed out the feature store reuse for search, and made clear the miss was my judgement about skipping an early online test, not their code. Result: both joined the search work and one wrote the online-proxy test checklist we still use.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It got the happy path right but missed concurrency. Example: it wrote a counter update as read, add one, write, which loses updates when two threads run; with 1,000 concurrent calls we saw 940. It also swallowed exceptions in a retry loop and suggested a library call that did not exist. I caught these by reading each line and writing tests it had not proposed. Treat its output as a fast but junior draft.</p>",
+    "<p>I review it like a pull request from a stranger. Steps: read every line and ask why it exists; run it against tests I wrote from the requirement, not from its output; try failure cases such as timeouts, nulls and concurrency; check imports and APIs are real; and run a static analyser. Short example: if it adds a retry, I check the limit, backoff and whether the call is idempotent. If I cannot explain a line, I rewrite it.</p>"
+   ]
+  }
+ ]
+}

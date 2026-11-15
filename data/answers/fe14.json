@@ -1,0 +1,134 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Caret and tilde ranges against a version list",
+    "js": "// Semver range check: ^ allows minor+patch, ~ allows patch only\nfunction parse(v) { return v.split('-')[0].split('.').map(Number); }\nfunction cmp(a, b) {\n  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];\n  return 0;\n}\n// Upper bound (exclusive) for each range kind\nfunction upper(kind, v) {\n  const [maj, min, pat] = parse(v);\n  if (kind === '~') return [maj, min + 1, 0];\n  if (maj > 0) return [maj + 1, 0, 0];      // ^1.4.2 -> <2.0.0\n  if (min > 0) return [0, min + 1, 0];      // ^0.4.2 -> <0.5.0\n  return [0, 0, pat + 1];\n}\nfunction best(range, versions) {\n  const kind = range[0], base = range.slice(1), hi = upper(kind, base);\n  const ok = versions.filter(v => cmp(parse(v), parse(base)) >= 0 && cmp(parse(v), hi) < 0);\n  ok.sort((a, b) => cmp(parse(a), parse(b)));\n  return ok[ok.length - 1];   // npm picks the highest match\n}\nconst published = ['1.4.2', '1.4.9', '1.5.0', '1.9.3', '2.0.0', '0.4.2', '0.4.7', '0.5.0'];\nconsole.log('published:', published.join(' '));\nfor (const r of ['^1.4.2', '~1.4.2', '^0.4.2', '~0.4.2']) {\n  console.log(r.padEnd(7), '->', best(r, published));\n}\n"
+   },
+   "followUps": [
+    "<p>A prerelease such as 1.5.0-beta.1 is treated as <b>lower</b> than 1.5.0 and is skipped by ranges unless the range itself names a prerelease on the same MAJOR.MINOR.PATCH.</p><p>So <code>^1.4.2</code> will never install 1.5.0-beta.1, even though 1.5.0-beta.1 is numerically inside the range. Ordering: 1.5.0-alpha &lt; 1.5.0-beta.1 &lt; 1.5.0. To opt in, write <code>^1.5.0-beta.0</code> or install with a tag such as <code>next</code>.</p>",
+    "<p>Teams pin TypeScript exactly because it does not follow semver strictly: a minor release can make the type checker stricter and turn a green build red with no code change.</p><p>Example: you have <code>^5.3.0</code>, 5.4 improves narrowing and now reports 12 new errors on the same code. Pinning <code>5.3.3</code> (or using the lockfile plus a bot PR) lets you upgrade on purpose, fix the errors in one reviewed change, and keep CI stable meanwhile.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Lockfile integrity hash detects a changed package",
+    "js": "// A lockfile stores an exact version and a hash of each package's contents\nconst crypto = require('crypto');\nconst sha = s => 'sha256-' + crypto.createHash('sha256').update(s).digest('hex').slice(0, 12);\n\n// What the registry served when the lockfile was created\nconst original = { 'left-pad@1.3.0': 'function pad(){ /* real code */ }' };\nconst lockfile = {};\nfor (const k in original) lockfile[k] = sha(original[k]);\nconsole.log('lockfile:', JSON.stringify(lockfile));\n\n// Install step: recompute the hash and compare with the lockfile\nfunction install(name, served) {\n  const ok = sha(served) === lockfile[name];\n  console.log(name, ok ? 'OK, hash matches' : 'FAIL, content differs from lockfile');\n}\ninstall('left-pad@1.3.0', original['left-pad@1.3.0']);              // same bytes\ninstall('left-pad@1.3.0', 'function pad(){ steal(process.env) }');  // tampered bytes\n\n// npm ci style check: package.json range must agree with the locked version\nconst range = '^1.2.0', locked = '1.3.0';\nconst inRange = locked.split('.')[0] === range.slice(1).split('.')[0];\nconsole.log('locked', locked, 'satisfies', range + '?', inRange);\n"
+   },
+   "followUps": [
+    "<p>Upgrade in small, separate, tested steps instead of one big <code>update</code>.</p><ol><li>Run <code>npm outdated</code> and read the changelogs for major bumps.</li><li>Upgrade patches and minors together, majors one at a time.</li><li>Run lint, types, tests and the build; commit the lockfile diff.</li><li>Let a bot (Renovate, Dependabot) open one PR per update so CI checks each and a revert is easy.</li></ol><p>Check <code>npm audit</code> but judge each warning on whether the code path is reachable.</p>",
+    "<p>It protects against getting different or malicious bytes than the ones you reviewed, for example a compromised registry, a man in the middle, or a version republished with different content.</p><p>The lockfile stores a hash such as <code>sha512-...</code> of each tarball. On install npm hashes the downloaded file and refuses it if one bit differs. It does not prove the package is safe, only that it is the same as when the lockfile was written.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A phantom dependency is a package your code imports but never lists in package.json; it only works because another package pulled it in and the flat layout hoisted it.</p><p>It is dangerous because the import breaks when the parent drops it or the version changes, and nobody owns its version. Example: you import <code>lodash</code> through a hoisted copy at 4.17; a dependency update removes it and production crashes with 'module not found'. pnpm's strict layout makes this fail on your machine first.</p>",
+    "<p>Workspaces let several packages live in one repo and share a single install, so local packages link to each other instead of being published.</p><p>With pnpm, <code>\"@acme/ui\": \"workspace:*\"</code> links the local folder. One lockfile keeps versions consistent, shared dependencies are stored once, and <code>pnpm -r build</code> or <code>--filter</code> runs commands in dependency order or only on changed packages. A change to the UI package is visible to the app immediately, with no publish step.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A tiny bundler: module graph, order and chunks",
+    "js": "// Build a module graph from an entry, like a bundler does\nconst files = {\n  'main.js':   { imports: ['app.js', 'util.js'], lazy: ['chart.js'] },\n  'app.js':    { imports: ['util.js'], lazy: [] },\n  'util.js':   { imports: [], lazy: [] },\n  'chart.js':  { imports: ['util.js', 'd3.js'], lazy: [] },\n  'd3.js':     { imports: [], lazy: [] },\n  'unused.js': { imports: [], lazy: [] },\n};\n// Walk static imports depth first; dependencies are emitted before users\nfunction chunkFrom(entry, skip) {\n  const out = [], seen = new Set(skip);\n  (function visit(f) {\n    if (seen.has(f)) return;\n    seen.add(f);\n    files[f].imports.forEach(visit);\n    out.push(f);\n  })(entry);\n  return out;\n}\nconst main = chunkFrom('main.js', []);\nconsole.log('main chunk :', main.join(' '));\n// import() creates a new chunk; modules already in main are not repeated\nconst chart = chunkFrom('chart.js', main);\nconsole.log('chart chunk:', chart.join(' '), '(loaded on demand)');\nconst all = new Set([...main, ...chart]);\nconsole.log('dropped    :', Object.keys(files).filter(f => !all.has(f)).join(' '));\n"
+   },
+   "followUps": [
+    "<p>Writing <code>import('./chart.js')</code> tells the bundler to put that module and its own dependencies in a separate file that is downloaded only when the line runs.</p><p>It returns a Promise: <code>const { draw } = await import('./chart.js')</code>. With React, <code>React.lazy(() =&gt; import('./Chart'))</code> inside <code>Suspense</code> shows a fallback while loading. Typical use is one chunk per route, so a 400 KB main bundle might become 150 KB plus lazy pieces. Preload hints can hide the delay.</p>",
+    "<p>A content hash puts a fingerprint of the file in its name, so the name changes exactly when the content changes and old files can be cached forever.</p><p>Example: <code>app.3f9a1c.js</code> is served with <code>Cache-Control: max-age=31536000, immutable</code>. After a deploy the HTML points to <code>app.b72e04.js</code>, a new URL, so users never get a stale mix. Unchanged chunks keep their hash and stay cached, which saves repeat downloads.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Rspack and Turbopack are bundlers written in Rust that aim to be much faster than webpack.</p><p>Rspack is designed to be mostly webpack-compatible: the same loaders, plugins and config shape work, so a large webpack project can migrate with a small change and often a several-fold faster build. Turbopack is made by the Next.js team, is built around incremental caching, and is used mainly through Next.js rather than as a general-purpose tool.</p>",
+    "<p>In development Vite serves your source as separate ES modules and pre-bundles dependencies with esbuild, while production runs a full bundler, so the two paths are different code paths.</p><p>Bugs that show up only in one include: CommonJS packages handled differently, import order and side effects, environment variables, CSS ordering, and code splitting. The fix is simple: run <code>vite build</code> plus <code>vite preview</code> locally and in CI E2E tests, not only the dev server.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Stop regressions by making size a failing check, not a one-time cleanup.</p><ul><li>Set a budget, for example main JS under 170 KB gzipped, and fail CI when it is exceeded (size-limit, bundlesize).</li><li>Post the size diff on every pull request.</li><li>Run the analyser periodically and review new large dependencies in code review.</li></ul><p>Add a note: a 20 KB library looks small until ten of them are added.</p>",
+    "<p>Too many small chunks cost more in network round trips and lost compression than they save in bytes.</p><p>Each request has latency, and a route that needs 40 tiny files can load slower than one 100 KB file, especially on mobile or without HTTP/2. Small files also compress worse and repeat shared code. Aim for a few chunks per route: a shared vendor chunk, a route chunk, and lazy chunks only for heavy, rarely used features. Measure real load time to decide.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Tree shaking: keep only reachable exports",
+    "js": "// Modules with exports; each export may use other exports\nconst mods = {\n  math: { exports: { add: [], mul: ['add'], pow: ['mul'] }, sideEffects: false },\n  css:  { exports: {}, sideEffects: true },       // import 'x.css' only for its effect\n  lib:  { exports: { big: [] }, sideEffects: false },\n};\n// What the app imports: [module, exportName]\nconst used = [['math', 'mul']];\nconst imported = new Set(['math', 'css']);        // modules that appear in imports\nconst keep = new Set();\nfunction mark(m, name) {                           // follow usage inside the module\n  const key = m + '.' + name;\n  if (keep.has(key)) return;\n  keep.add(key);\n  mods[m].exports[name].forEach(dep => mark(m, dep));\n}\nused.forEach(([m, n]) => mark(m, n));\nfor (const m in mods) {\n  for (const e in mods[m].exports) {\n    console.log((m + '.' + e).padEnd(9), keep.has(m + '.' + e) ? 'kept' : 'removed');\n  }\n  // sideEffects: false means an unused module can be dropped whole\n  if (!imported.has(m)) console.log(m.padEnd(9), 'module dropped');\n  else if (mods[m].sideEffects) console.log(m.padEnd(9), 'module kept for side effects');\n}\n"
+   },
+   "followUps": [
+    "<p>Work from the bundle outward: find where the code ends up, then ask why the bundler kept it.</p><ol><li>Open the bundle analyser and find the library.</li><li>Check its package.json for <code>module</code>/<code>exports</code> (ES build) and <code>sideEffects</code>.</li><li>Look for named imports versus <code>import *</code>, and for a barrel file.</li><li>Run the build in production mode with usedExports reporting (webpack <code>--stats-used-exports</code>) to see what was marked unused.</li></ol><p>Often the fix is a deep import or a different build of the library.</p>",
+    "<p>Tree shaking decides at the module level which exports are unused and leaves them out of the module graph, while dead-code elimination in the minifier removes unreachable code inside a file after that.</p><p>Example: <code>if (false) { heavy() }</code> is dead code removed by the minifier, but an exported function <code>unusedHelper</code> is removed only because the bundler saw nobody imports it. They work together: shaking marks, then the minifier deletes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Types are erased: validate data at the boundary",
+    "js": "// TypeScript says User = { name: string, age: number }, but at runtime\n// JSON from the network can be anything. Validate at the edge.\nfunction parseUser(data) {\n  if (typeof data !== 'object' || data === null) return { ok: false, error: 'not an object' };\n  if (typeof data.name !== 'string') return { ok: false, error: 'name must be string' };\n  if (typeof data.age !== 'number') return { ok: false, error: 'age must be number' };\n  return { ok: true, value: { name: data.name, age: data.age } };\n}\nconst responses = [\n  '{\"name\":\"Asha\",\"age\":30}',\n  '{\"name\":\"Ben\",\"age\":\"31\"}',     // server bug: age is a string\n  'null',\n];\nfor (const text of responses) {\n  const r = parseUser(JSON.parse(text));\n  console.log(text.padEnd(28), r.ok ? 'valid ' + r.value.age + 1 : 'rejected: ' + r.error);\n}\n// Without the check, \"31\" + 1 silently becomes \"311\"\nconsole.log('unchecked:', JSON.parse(responses[1]).age + 1);\n"
+   },
+   "followUps": [
+    "<p><code>any</code> turns off type checking for a value; <code>unknown</code> accepts any value but forces you to check it before use.</p><pre><code>let a: any = JSON.parse(s);\na.foo.bar();          // compiles, may crash\nlet u: unknown = JSON.parse(s);\nif (typeof u === 'string') u.length; // checked first</code></pre><p>Prefer <code>unknown</code> for data from outside, such as API results and caught errors, and narrow it with checks or a schema validator.</p>",
+    "<p>Migrate in small steps while the app keeps shipping.</p><ol><li>Add TypeScript with <code>allowJs</code> and <code>checkJs</code> off, so JS files still compile.</li><li>Rename files to .ts/.tsx one at a time, starting with leaf modules that have few imports.</li><li>Begin with lenient settings, then turn on strict flags (<code>noImplicitAny</code>, then <code>strictNullChecks</code>) one by one.</li><li>Type the boundaries first: API responses and shared models.</li></ol><p>Track the number of remaining JS files and <code>any</code> usages, and require new code to be typed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a discriminated union of props so that <code>onChange</code> is only present when the field is editable.</p><pre><code>type Props&lt;T&gt; =\n  | { readOnly: true; value: T }\n  | { readOnly?: false; value: T;\n      onChange: (v: T) =&gt; void };</code></pre><p>Now <code>&lt;Field readOnly value={1} /&gt;</code> compiles, while an editable field with no <code>onChange</code> is a compile error. The <code>readOnly</code> flag is the discriminant that TypeScript narrows on.</p>",
+    "<p>The difficulty is that <code>forwardRef</code> erases generics: it returns a plain component type, so the type parameter <code>T</code> is lost and callers get <code>unknown</code> or <code>any</code>.</p><p>Common fixes are to cast the result back to a generic call signature: <code>const Select = forwardRef(SelectInner) as &lt;T&gt;(p: Props&lt;T&gt; &amp; { ref?: Ref&lt;HTMLSelectElement&gt; }) =&gt; JSX.Element</code>, or in React 19 to take <code>ref</code> as an ordinary prop, which removes the problem.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>lint-staged runs your linters only on the files that are staged for the commit, which keeps the pre-commit hook fast.</p><p>Linting a whole repo might take 60 seconds, but a commit touching 3 files takes about 2. A config like <code>{ \"*.{ts,tsx}\": [\"eslint --fix\", \"prettier --write\"] }</code> runs on those files, and the fixed result is re-staged. husky is the part that installs the git hook that calls it.</p>",
+    "<p>Introduce a strict rule gradually so nobody has to fix thousands of errors at once.</p><ol><li>Turn it on as a <code>warn</code> and count the warnings.</li><li>Fix or auto-fix what is cheap, and use ESLint's suppression file or per-folder overrides for the rest.</li><li>Make it an <code>error</code> only for new or changed files, or per directory.</li><li>Lower the count over time, then switch to error everywhere.</li></ol><p>Always agree on the rule with the team first.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>They are all test doubles, differing in what they do: a stub returns canned answers, a spy records how it was called, and a mock also has expectations that fail the test.</p><pre><code>const getUser = vi.fn().mockReturnValue({ id: 1 }); // stub\nsave(); expect(log).toHaveBeenCalledWith('saved'); // spy\n</code></pre><p>In Jest and Vitest <code>fn()</code> plays all three roles. Prefer stubbing at boundaries (network, clock) and asserting on results, not on how many times internals were called.</p>",
+    "<p>Find the cause, because retrying only hides it; the usual causes are time, shared state, randomness, and async work that is not awaited.</p><ol><li>Run it 50 times in a loop and in random order to reproduce it.</li><li>Replace real timers with fake timers, seed random values, and await every promise.</li><li>Reset shared state and mocks in <code>beforeEach</code>.</li></ol><p>If it cannot be fixed quickly, quarantine it with a ticket so it stops blocking others.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put only a few complete user journeys in E2E, the ones where a failure would lose money or users, and test details lower down.</p><ul><li>Search, open a product, add to cart.</li><li>Sign in, check out with a test card, see the confirmation.</li><li>One smoke test that the home page loads.</li></ul><p>Things like coupon maths, form validation messages and sort order belong in unit or component tests, which run in milliseconds instead of 30 seconds each.</p>",
+    "<p>Visual regression tests sit beside the pyramid as a check on how things look: they take screenshots and compare them to approved images.</p><p>They are best on a component library (Storybook with Chromatic or Playwright snapshots) where each component is rendered in isolation, which keeps them stable and cheap. Use few full-page screenshots, mask dynamic data such as dates, and review diffs in the pull request, because every intentional design change needs an updated baseline.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>getBy</code> throws if nothing matches, <code>queryBy</code> returns null, and <code>findBy</code> waits and retries until the element appears or it times out.</p><pre><code>screen.getByRole('button')            // must exist now\nexpect(screen.queryByText('Error')).toBeNull() // absent\nawait screen.findByText('Saved')      // appears later\n</code></pre><p>Use <code>queryBy</code> only for asserting absence, because <code>getBy</code> gives a better error message when the element is missing.</p>",
+    "<p><code>userEvent</code> simulates a whole user action, while <code>fireEvent</code> dispatches just one DOM event.</p><p>Typing 'ab' with <code>userEvent.type</code> fires focus, keydown, keypress, input and keyup for each key, and respects disabled and read-only fields. <code>fireEvent.change</code> sets a value in one shot and can pass in situations where a real user could not interact. So <code>userEvent</code> catches more real bugs, and it is the recommended default, with <code>await</code> on each call.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Auto-waiting poll vs fixed sleep (fake clock)",
+    "js": "// Element appears at t=130ms. A fixed sleep guesses; polling waits just enough.\nconst appearsAt = 130;\nconst visible = t => t >= appearsAt;\n\nfunction fixedSleep(ms) {\n  // Wait ms once, then check once\n  return { passed: visible(ms), time: ms };\n}\nfunction pollUntil(intervalMs, timeoutMs) {\n  // Re-check on every tick until true or timeout (what web-first assertions do)\n  for (let t = 0; t <= timeoutMs; t += intervalMs) {\n    if (visible(t)) return { passed: true, time: t };\n  }\n  return { passed: false, time: timeoutMs };\n}\nconsole.log('element appears at', appearsAt, 'ms');\nconsole.log('sleep 100  :', JSON.stringify(fixedSleep(100)), '<- flaky, too short');\nconsole.log('sleep 5000 :', JSON.stringify(fixedSleep(5000)), '<- passes but always slow');\nconsole.log('poll 50/5000:', JSON.stringify(pollUntil(50, 5000)), '<- fast and reliable');\nconsole.log('never shows :', JSON.stringify(pollUntil(50, 1000)), '<- fails at timeout');\n"
+   },
+   "followUps": [
+    "<p>Do not read a real inbox in the test; point the app at a fake mail catcher and read the message from its API.</p><ol><li>In the test environment, send mail to a local catcher (MailHog, Mailpit) or a test inbox service.</li><li>Trigger the action in the UI.</li><li>Poll the catcher's API with a retry until the message arrives, then check the subject and extract the link.</li><li>Open the link with <code>page.goto</code> and continue.</li></ol><p>Use a unique address per test so runs do not mix up messages.</p>",
+    "<p>Run tests in parallel, split them across machines, and avoid repeating slow setup.</p><ul><li>Playwright runs files in parallel workers; add <code>--shard=1/4</code> across four CI jobs, so 20 minutes becomes about 5.</li><li>Log in once and reuse <code>storageState</code>; create data through the API.</li><li>Run only tests affected by the change on pull requests, and the full set on main.</li><li>Cache browsers and dependencies.</li></ul><p>Cut slow tests by moving checks down the pyramid.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Find where the time goes first, then cache, parallelise and skip work.</p><ol><li>Look at the timing per step; typically install, build and E2E dominate.</li><li>Cache dependencies (lockfile key) and build output.</li><li>Run lint, types and tests as parallel jobs; shard E2E across 4 runners.</li><li>In a monorepo, build and test only affected packages.</li><li>Put cheap checks first so a typo fails in 1 minute, not 30.</li></ol>",
+    "<p>Unblock the team first, then fix the test: quarantine it so it still runs but no longer fails the pipeline, and open a ticket with an owner and a deadline.</p><p>A short process helps: the failing test is tagged (skipped or non-blocking), the owner reproduces it with traces, and it is either fixed or deleted within a set time such as one week. Do not just add retries everywhere, because that teaches people to ignore red builds. Track the flake rate.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look for signs that the test would still pass if the code were wrong, and measure that directly with mutation testing.</p><p>A mutation tool changes the code (for example turns <code>&gt;</code> into <code>&gt;=</code>) and checks that a test fails; if none does, the tests are weak. Also review for tests that assert only that a function was called, mirror the implementation line by line, use <code>expect(true)</code>, or were edited in the same change as the code to match new output.</p>",
+    "<p>Give the agent narrow rights, make every change pass the same checks as a human's, and keep a person in the approval step.</p><ul><li>A separate bot account with write access only to branches, never main.</li><li>Required CI checks, branch protection and a human review before merge.</li><li>No access to production secrets; short-lived tokens.</li><li>Limits on PR size and rate, and an audit log.</li><li>Block edits to CI config, lint rules and test thresholds without owner approval.</li></ul>"
+   ]
+  }
+ ]
+}

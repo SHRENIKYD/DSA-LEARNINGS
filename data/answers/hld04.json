@@ -1,0 +1,131 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Simulated DNS resolution with a cache",
+    "python": "# Simulated DNS resolution: cache first, then root -> TLD -> authoritative\nROOT = {\"com\": \"tld-com\"}\nTLD = {\"example.com\": \"ns.example.com\"}\nAUTH = {\"www.example.com\": \"93.184.216.34\"}\ncache = {}  # name -> ip (TTL ignored here for brevity)\n\ndef resolve(name):\n    if name in cache:\n        return cache[name], [\"cache hit\"]\n    steps = []\n    tld = name.split(\".\")[-1]\n    steps.append(\"root says: ask \" + ROOT[tld])        # referral to .com\n    zone = \".\".join(name.split(\".\")[-2:])\n    steps.append(\".com says: ask \" + TLD[zone])        # referral to authoritative\n    ip = AUTH[name]\n    steps.append(\"authoritative answers \" + ip)        # final A record\n    cache[name] = ip                                   # resolver caches the answer\n    return ip, steps\n\nprint(\"lookup:\", \"www.example.com\")\nfor i in (1, 2):\n    ip, steps = resolve(\"www.example.com\")\n    print(\"query\", i, \"->\", ip, \"|\", \"; \".join(steps))\n"
+   },
+   "followUps": [
+    "<p>In a recursive query the client asks one resolver to do all the work and hand back the final answer; in an iterative query the asker gets a referral (\"ask that server instead\") and follows it itself.</p><p>Your laptop sends a recursive query to its resolver. The resolver then goes iteratively: root says \"ask .com\", .com says \"ask example.com's nameserver\", that server answers. That is 3 round trips for the resolver, 1 for you. Root and TLD servers refuse recursion because doing everyone's work would not scale.</p>",
+    "<p>Because the protocol needed the root list to fit in a single 512-byte UDP packet, which allows only 13 names (a.root-servers.net to m.root-servers.net).</p><p>Those 13 names are not 13 machines. Each name is an anycast address announced from many sites, so there are well over 1,000 physical instances worldwide. Queries reach the nearest one, which spreads load and absorbs DDoS. Modern DNS (EDNS0) allows bigger packets, but the 13 names stayed.</p>",
+    "<p>They encrypt the DNS question and answer between you and the resolver, so people on the network path cannot read or tamper with them. They do not make the lookup anonymous to the resolver itself.</p><p>DoT (DNS over TLS) uses its own port, 853, so it is easy for a network to spot and block. DoH (DNS over HTTPS) hides inside normal HTTPS on port 443, which resists blocking but makes it harder for enterprises to filter. Latency cost is small after the first connection.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "TTL cache with negative caching",
+    "python": "# TTL cache with negative caching (simulated clock)\nclass DnsCache:\n    def __init__(self):\n        self.items = {}  # name -> (value, expires_at); value None = \"does not exist\"\n    def put(self, name, value, ttl, now):\n        self.items[name] = (value, now + ttl)\n    def get(self, name, now):\n        if name in self.items:\n            value, exp = self.items[name]\n            if now < exp:                 # still fresh\n                return \"HIT\", value\n            del self.items[name]          # expired: drop it\n        return \"MISS\", None\n\nc = DnsCache()\nc.put(\"api.example.com\", \"10.0.0.5\", 300, now=0)     # normal record, TTL 300 s\nc.put(\"typo.example.com\", None, 60, now=0)           # negative answer cached 60 s\nfor t in (0, 59, 61, 299, 301):\n    print(\"t=%3d api:\" % t, c.get(\"api.example.com\", t),\n          \"| typo:\", c.get(\"typo.example.com\", t))\n"
+   },
+   "followUps": [
+    "<p>Negative caching means a resolver also remembers that a name does not exist (NXDOMAIN) or has no such record type, so it does not ask again right away.</p><p>How long is set by the SOA record's minimum field (capped by the SOA TTL itself). Example: if you query a typo name and the zone says 60, the resolver answers \"no such name\" from cache for 60 s. Side effect: if you create the record 10 s later, some users still see NXDOMAIN for up to 50 s more. See the program.</p>",
+    "<p>Many resolvers enforce a minimum (often 30 to 60 s) and a maximum (often 1 to 7 days), so a TTL of 1 second may be raised or ignored.</p><p>Reasons: tiny TTLs multiply query load and can be abused to hammer a resolver. So a TTL of 5 s does not guarantee a 5 s failover. Plan for your real worst case: the TTL floor of the biggest resolvers plus clients that cache longer.</p>",
+    "<p>Because a client with an open keep-alive connection never does a new DNS lookup while the connection lives, so the TTL is never consulted.</p><p>Example: a pool holds connections for 10 minutes, you change the A record with a 30 s TTL, and traffic still goes to the old IP for up to 10 minutes. Fix it by draining: send Connection: close or set a max connection lifetime (for example 60 s), and keep the old server alive until old connections end.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With push you upload content to the CDN yourself ahead of demand; with pull the CDN fetches it from your origin the first time someone asks.</p><p>Push CDN: you upload files to the CDN before anyone asks, and you manage expiry. Pull CDN: the edge fetches from your origin on the first miss and then caches. Choose push for a few large, predictable files (game patch on release day), pull for a big website with a long tail of pages and images.</p>",
+    "<p>An origin shield is one extra caching layer between all edge PoPs and your origin, so a miss in any edge goes to the shield first instead of straight to the origin.</p><p>Example: 100 edge PoPs each miss on a new image. Without a shield the origin gets 100 requests; with one shield it gets 1, because the other 99 are answered from the shield. It lowers origin load and egress cost, at the price of one extra hop on a miss.</p>",
+    "<p>Put a version or content hash in the file name (app.3f9c1a.js) and never change the file at that URL, so the new release simply uses new URLs.</p><p>Old URLs stay cached harmlessly and can have a 1-year TTL with immutable. Only the small HTML page that references the new names needs a short TTL (for example 60 s). Result: instant rollout, instant rollback, and no purge calls, which are slow and rate-limited.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is a mostly push-style system placed inside ISPs: the company ships its own cache boxes to ISPs and fills them overnight with the titles it predicts will be popular.</p><p>Content is pre-positioned during off-peak hours, so at peak time the video comes from a box one hop from the viewer and uses almost no transit. Rare titles are still pulled from upstream tiers on a miss. It is the \"push the head, pull the tail\" idea at full scale.</p>",
+    "<p>Request collapsing means that when many requests for the same missing object arrive together, the cache sends one request to the origin and makes the others wait for that single answer.</p><p>Example: 5,000 viewers ask for a new live segment in the same second. Without collapsing the origin sees 5,000 requests; with it, 1, and the other 4,999 get the cached copy when it arrives. This prevents a stampede after a purge or a new release.</p>",
+    "<p>Send the expected hot URLs to the edge yourself before launch, for example by requesting them from each PoP with a script or using the CDN's prefetch API.</p><p>Steps: list the top objects, request each through every region or PoP you care about, check for cache-status HIT headers, repeat shortly before the event. Warming 1,000 objects in 20 PoPs is 20,000 requests, which is cheap compared with a cold start on launch day.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The proxy adds the client's IP to a header, usually X-Forwarded-For, and the backend reads it, trusting it only when the request came from a known proxy.</p><p>Each proxy appends the address it saw, so the header grows: \"client, proxy1\". The backend sees the TCP peer (the last proxy) plus that list. A newer standard header is Forwarded. See the XFF program in question 9 for the safe way to pick the address.</p>",
+    "<p>PROXY protocol is a small text or binary header that a TCP load balancer sends first on each connection to pass along the original client IP and port.</p><p>It exists because an L4 balancer cannot edit HTTP headers. Example first line: PROXY TCP4 203.0.113.9 10.0.0.5 51234 443. The next hop must be set to expect it, otherwise it treats those bytes as garbage and the connection fails.</p>",
+    "<p>It is an attack where a front proxy and a backend disagree about where one HTTP request ends, so an attacker hides a second request inside the first.</p><p>Typical cause: conflicting Content-Length and Transfer-Encoding headers. The proxy sees one request, the backend sees two, and the second one can bypass auth checks or poison other users' responses. Defences: reject ambiguous requests, normalise at the edge, use HTTP/2 end to end, keep proxies updated.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>DSR (direct server return) means the load balancer handles only the incoming packets, and the backend sends its replies straight to the client, skipping the balancer.</p><p>Responses are usually much bigger than requests (a 1 KB request, a 1 MB video chunk), so the balancer carries maybe 1 percent of the bytes and can serve far more traffic. The cost: it works at L4 only, the backend needs the virtual IP configured, and the balancer cannot see responses.</p>",
+    "<p>Routers spread flows across many L4 balancer machines with ECMP, and each machine then uses consistent hashing (Maglev) to choose the backend.</p><p>ECMP hashes the 5-tuple (src IP, src port, dst IP, dst port, protocol) so all packets of one connection reach the same machine. If a machine dies, its flows are rehashed, and Maglev's shared lookup table makes the new machine choose the same backend as the old one in most cases, so few connections break.</p>",
+    "<p>Because gRPC runs over one long-lived HTTP/2 connection with many requests multiplexed inside it, an L4 balancer places the whole connection on one backend and never spreads the individual calls.</p><p>Example: one client opens 1 connection and sends 10,000 calls per second; all of them land on a single server while 9 others are idle. Fix it with an L7 proxy (Envoy) that balances per request, or client-side balancing where the client keeps connections to every backend.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Health check with fall/rise hysteresis",
+    "python": "# Health check hysteresis: fall=3 failures to mark down, rise=2 successes to mark up\nFALL, RISE = 3, 2\ninterval = 5  # seconds between probes\n\ndef run(results):\n    up, fails, oks = True, 0, 0\n    for i, ok in enumerate(results):\n        if ok:\n            oks += 1; fails = 0\n            if not up and oks >= RISE:\n                up = True\n        else:\n            fails += 1; oks = 0\n            if up and fails >= FALL:\n                up = False\n        print(\"probe %2d t=%3ds %-4s -> %s\" % (i, i * interval, \"ok\" if ok else \"FAIL\", \"UP\" if up else \"DOWN\"))\n\n# one blip (ignored), then a real outage, then recovery\nprobes = [True, False, True, True, False, False, False, True, False, True, True]\nprint(\"probes:\", probes)\nrun(probes)\nprint(\"detection time ~ interval * fall =\", interval * FALL, \"s\")\n"
+   },
+   "followUps": [
+    "<p>Liveness asks \"is this process stuck and should it be restarted?\"; readiness asks \"should this instance receive traffic right now?\".</p><p>A failed liveness probe makes Kubernetes restart the container. A failed readiness probe only removes the pod from the Service endpoints; it is not restarted. Example: a pod warming a cache is alive but not ready. Never tie liveness to a database check, or a DB outage makes every pod restart in a loop.</p>",
+    "<p>A gray failure is a partial failure that the health check does not notice but users do, such as a server that answers /healthz fast but is slow or wrong on real requests.</p><p>Example: 5 percent of requests time out because one disk is failing, yet probes pass. Catch it with passive checks: track real error rates and latency per backend and eject outliers (for example, the worst 10 percent of backends, never more).</p>",
+    "<p>Make each health check cheap, spread probes with random jitter, and have a small number of checker nodes probe and share the result instead of every node probing every backend.</p><p>The math: 1,000 LB nodes times 500 backends times one probe every 2 s is 250,000 probes per second, and the backend feels it. With 5 dedicated checkers it is 1,250 per second. Also cache the health response for a second inside the backend.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Consistent hashing ring vs hash modulo N",
+    "python": "# Consistent hashing ring with virtual nodes: how many keys move when a server is added?\nimport bisect, hashlib\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest(), 16)\n\ndef build(servers, vnodes=100):\n    ring = sorted((h(s + \"#\" + str(i)), s) for s in servers for i in range(vnodes))\n    return ring, [p for p, _ in ring]\n\ndef lookup(ring, points, key):\n    i = bisect.bisect(points, h(key)) % len(ring)   # next point clockwise\n    return ring[i][1]\n\nkeys = [\"user%d\" % i for i in range(1000)]\nring3, pts3 = build([\"A\", \"B\", \"C\"])\nring4, pts4 = build([\"A\", \"B\", \"C\", \"D\"])\nbefore = {k: lookup(ring3, pts3, k) for k in keys}\nafter = {k: lookup(ring4, pts4, k) for k in keys}\nmoved = sum(1 for k in keys if before[k] != after[k])\nprint(\"keys:\", len(keys), \"servers 3 -> 4\")\nprint(\"moved with consistent hashing:\", moved, \"(ideal ~250)\")\nmod = sum(1 for k in keys if h(k) % 3 != h(k) % 4)\nprint(\"moved with hash % N:\", mod)\n"
+   },
+   "followUps": [
+    "<p>First make the migration invisible by putting the session data in a shared store while the old servers still keep working, then remove the affinity step by step.</p><p>Steps: 1) the app writes sessions to Redis and also reads from local memory; 2) once Redis holds all active sessions (about one session lifetime), read from Redis first; 3) drop local memory; 4) turn off sticky cookies. Users keep their session cookie ID the whole time, so nobody logs in again.</p>",
+    "<p>It is consistent hashing where each server has a capacity cap (for example 1.25 times the average load), and a key that maps to a full server moves on to the next one on the ring.</p><p>Plain consistent hashing can overload a server that gets a popular key. With 10 servers and 1,000 requests, the cap is 125 each; once a server holds 125, new keys spill to the next server. You keep most cache locality and avoid hot spots.</p>",
+    "<p>Because a WebSocket is one long-lived TCP connection, and every message of that connection must reach the server that holds its state, so the connection itself pins the client to one backend.</p><p>It lasts hours, so when that server restarts, all its clients disconnect at once and reconnect together (a thundering herd). Mitigate with graceful drain, reconnect backoff with jitter, and keeping the real state in a shared store or a pub/sub layer.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>EDNS Client Subnet (ECS) lets a resolver pass a truncated prefix of the user's IP (for example /24) to the authoritative DNS server, so it can pick a location close to the user rather than close to the resolver.</p><p>This matters when someone in Paris uses a resolver in the US: without ECS they may be sent to a US site. Downsides: it leaks some location data, and cache entries multiply because answers are stored per prefix.</p>",
+    "<p>Use DNS or L7 rules that list allowed regions per user, and let failover choose only among those, even if it means degraded capacity.</p><p>Example: EU users have the order EU-West, then EU-Central, and no US fallback. If both fail, show a maintenance page rather than send data abroad. Also make sure replicas and logs for EU data stay in the EU, otherwise failover is legal but data copies are not.</p>",
+    "<p>Because compute can be copied to any region in minutes, but data has to stay consistent across regions, and the speed of light limits how fast it can.</p><p>A round trip between Europe and the US is about 80 ms. Synchronous writes across regions add that to every write; asynchronous replication is fast but can lose the last seconds on failover or give stale reads. You must choose per dataset: single writer region, per-user home region, or conflict-resolving multi-writer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Real client IP from X-Forwarded-For",
+    "python": "# Pick the real client IP from X-Forwarded-For: walk from the right, skip trusted proxies\nTRUSTED = {\"10.0.0.1\", \"10.0.0.2\"}  # our own CDN/LB/proxy addresses\n\ndef client_ip(peer, xff):\n    chain = [x.strip() for x in xff.split(\",\") if x.strip()] + [peer]\n    for ip in reversed(chain):          # right-most first\n        if ip not in TRUSTED:\n            return ip                   # first address we do not trust = the client\n    return peer\n\npeer = \"10.0.0.2\"\nhonest = \"203.0.113.9, 10.0.0.1\"\nforged = \"1.2.3.4, 203.0.113.9, 10.0.0.1\"   # attacker pre-filled \"1.2.3.4\"\nprint(\"honest XFF:\", honest, \"->\", client_ip(peer, honest))\nprint(\"forged XFF:\", forged, \"->\", client_ip(peer, forged))\nprint(\"naive left-most would give:\", forged.split(\",\")[0])\n"
+   },
+   "followUps": [
+    "<p>It is unsafe because the left-most entry in X-Forwarded-For is whatever the client sent, and any client can write any value there.</p><p>Each proxy only appends. If an attacker sends \"X-Forwarded-For: 1.2.3.4\", the header reaching you is \"1.2.3.4, real-attacker-ip, proxy\". Taking the left-most gives 1.2.3.4. Walking from the right and stopping at the first IP that is not one of your own proxies gives the real-attacker-ip. The program shows it.</p>",
+    "<p>The connection fails, because one side sends or expects a PROXY header that the other side does not understand.</p><p>If the LB sends PROXY but the next hop does not expect it, the server reads \"PROXY TCP4 ...\" as an invalid HTTP request and returns 400 or closes the connection. If the next hop expects it but the LB does not send it, the server waits for a header that never comes and times out. Enable both ends together and test in staging.</p>",
+    "<p>If the app sees the proxy's IP instead of the client's, every user shares one rate limit bucket, and a single busy user blocks all others, or the limit never triggers per user.</p><p>Fix: apply the limit to the safely derived client IP (or better, user ID or API key). Remember that many users share one NAT address, so an IP limit of 100 requests per minute may punish a whole office; combine IP limits with account-level limits.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You avoid a false failover by requiring several signals and several minutes of evidence before moving traffic, and by capping how much can move at once.</p><p>Example rule: fail over only if probes from at least 3 vantage points fail and real error rate stays above 20 percent for 3 minutes. Move 25 percent of traffic at a time and check that the target region has spare capacity first. A bad failover can overload the healthy region and turn one outage into two.</p>",
+    "<p>A synthetic canary is a fake user that runs a real, important transaction on a schedule, such as login then add to cart, and reports success or failure.</p><p>Run it every minute from several locations and several regions. If the login path breaks while /healthz stays green, the canary notices within a minute. Use test accounts, mark the traffic so it does not pollute metrics or orders, and alert on 2 or 3 failures in a row.</p>",
+    "<p>Because moving traffic changes the error rate itself: when you shift users away from a region, the other region gets overloaded and starts failing, and traffic gets shifted back, and so on.</p><p>Example: region A has 30 percent errors, so you move all traffic to B, B overloads, and then A looks better. Dampen it with hysteresis (different thresholds for leaving and returning), minimum hold times (10 minutes), small step sizes, and capacity checks before moving.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Estimate peak bandwidth, divide by what one server can push, then add headroom for failures.</p><p>Example: 25M viewers at 5 Mbps is 125 Tbps. If one server pushes 100 Gbps, you need 1,250 servers. About 70 percent of that is served from ISP-embedded caches and other CDNs, so your own share is perhaps 400 servers. Add 30 percent spare for failures and hot spots: roughly 520.</p>",
+    "<p>Use short-lived signed URLs, tied to the user, device or IP range and an expiry time, so a shared link stops working quickly.</p><p>Example: the manifest contains segment URLs valid for 5 minutes with an HMAC token. A shared link dies after expiry. Keep the token out of the cache key (the cache stores the segment once) and check it at the edge. For stronger protection add DRM, which encrypts the video itself.</p>",
+    "<p>Segments become tiny (about 1 second or part-segments of 200 ms), and viewers sit right at the live edge, so almost every request is for something published a moment ago.</p><p>Consequences: manifests need TTLs of about 1 second or blocking playlist reload (the request waits until the new part exists), request collapsing becomes essential, and the origin must push segments to the cache as they are produced. Cache hit ratio is still high because thousands of viewers want the same part.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a flow is spread by ECMP, if one LB box dies, the router rehashes its flows to the other boxes, and those boxes must know where to send them.</p><p>With consistent hashing (Maglev), most of those flows land on the same backend as before and survive. Without it, the new box picks a backend at random and the TCP connection breaks (reset). Connection sharing between boxes can also help. Clients should retry, since a few connections will always be lost.</p>",
+    "<p>Because LB config changes apply to every request, one bad change deployed everywhere at once can break all traffic in seconds.</p><p>Stage it: validate syntax and test it against recorded traffic, then roll out to 1 box, then 5 percent, then 50 percent, then all, with a wait and health check between steps and automatic rollback on error spikes. Rolling out over 30 minutes costs little against a global outage.</p>",
+    "<p>With DSR the balancer only sees incoming packets, which are usually small, so one balancer can carry far more traffic and you need fewer of them.</p><p>Example: a video service with 100 Gbps of responses but 2 Gbps of requests. Without DSR the LB must carry 102 Gbps, so you need about 2 to 3 boxes with 40 Gbps each; with DSR it carries 2 Gbps, and one box is enough. Cost: backends must be on the same L2 network and accept the virtual IP.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You enforce fairness by counting tokens, not requests, and giving each tenant a token budget per time window, for example a token bucket refilled per minute.</p><p>Example: tenant A may use 100,000 tokens per minute. A request with a 2,000 token prompt and a 500 token reply is charged about 2,500. Estimate output tokens at admission (the max_tokens setting), and correct the account when the real count is known. Also queue per tenant with weighted fair scheduling so one tenant cannot fill the GPU queue.</p>",
+    "<p>An AI gateway adds the things specific to model calls: token-based limits and billing, provider failover, prompt and response logging with redaction, and central key management.</p><p>A normal API gateway sees requests, auth and routing. An AI gateway also knows the model, counts tokens, caches responses, applies safety filters, and can switch a request from provider X to provider Y when X is slow or down, without changing client code.</p>",
+    "<p>Cache only when the same input should give the same output and the answer is safe to share, and put everything that changes the answer into the cache key.</p><p>Key = hash of model name and version, system prompt, full prompt, and parameters such as temperature (cache only at temperature 0). Never share across tenants or across users when the prompt includes private data, set a short TTL, and skip anything with personal data. Even then, hit rates are often low for free-form chat but good for repeated FAQs.</p>"
+   ]
+  }
+ ]
+}

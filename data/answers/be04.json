@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Model it as a resource that records the action, not as a verb in the URL. To recalculate, <code>POST /invoices/42/recalculations</code> creates a Recalculation resource, returns 201 (or 202 if slow) and can be fetched later, so there is history and a status.</p><p>If the action is quick and leaves no record, a sub-resource verb such as <code>POST /invoices/42:recalculate</code> is acceptable, but document it. Avoid <code>GET</code> for anything that changes state.</p>",
+    "<p>Use singular nouns only for a resource that exists exactly once in its context, such as <code>/me</code>, <code>/orders/42/shipping-address</code> or <code>/config</code>. There is no collection to list, so a plural would be misleading.</p><p>Everything with many members stays plural: <code>/books</code> and <code>/books/7</code>. Pick one rule and apply it everywhere, because clients guess URLs from patterns, and mixing <code>/book/7</code> with <code>/books</code> forces them to read the docs for every call.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Safe means the client did not ask for a state change and is not responsible for one, but the server may still do harmless bookkeeping. Writing an access log line, updating a cache or bumping a metric is not a change to the resource the client cares about.</p><p>The rule is about the resource's visible state. If <code>GET /articles/5</code> also incremented a stored view counter the user can see change, that would break the contract: crawlers and prefetchers call GET freely and would inflate it.</p>",
+    "<p>Make the client send a unique <code>Idempotency-Key</code> and let the server remember the result for that key. The first call does the work and stores the response; any retry with the same key returns the stored response instead of repeating the work.</p><p>Example: a timed-out <code>POST /orders</code> is retried three times with key <code>k-9</code>; one order is created, the other two calls replay the first answer. The key is generated once per user action, not once per attempt, and is kept for about a day.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotency-Key: a retry replays the stored result",
+    "python": "# Idempotency key store: claim, charge once, replay on retry\nimport threading\n\nstore = {}                 # key -> {\"state\", \"fp\", \"resp\"}\nlock = threading.Lock()    # stands in for a unique constraint / SET NX\ncharges = []               # what the card network really saw\n\ndef post_payment(key, body):\n    fp = repr(sorted(body.items()))   # fingerprint of the request\n    with lock:                        # atomic claim of the key\n        rec = store.get(key)\n        if rec is None:\n            store[key] = {\"state\": \"IN_PROGRESS\", \"fp\": fp, \"resp\": None}\n        elif rec[\"fp\"] != fp:\n            return 422, \"key reused with a different body\"\n        elif rec[\"state\"] == \"IN_PROGRESS\":\n            return 409, \"still in progress\"\n        else:\n            return rec[\"resp\"]        # replay the stored response\n    charges.append(body[\"amount\"])    # the real charge happens once\n    resp = (201, \"charged \" + str(body[\"amount\"]))\n    store[key][\"state\"], store[key][\"resp\"] = \"COMPLETED\", resp\n    return resp\n\nbody = {\"amount\": 50, \"to\": \"acc1\"}\nprint(\"first :\", post_payment(\"k-1\", body))\nprint(\"retry :\", post_payment(\"k-1\", body))\nprint(\"other :\", post_payment(\"k-1\", {\"amount\": 99, \"to\": \"acc1\"}))\nprint(\"charges made:\", charges)   # [50], not [50, 50]\n# Time O(1) per call, space O(number of live keys)\n"
+   },
+   "followUps": [
+    "<p>It depends on the risk, so decide the failure mode in advance. For money, fail closed: return 503 and ask the client to retry later, because charging twice is worse than a short outage. For low-risk creates, you may proceed without the check and accept rare duplicates.</p><p>A safer design relies on a second layer: pass the same key to the payment provider, which deduplicates on its side, or enforce a unique constraint such as (account, order id) in the main database. Then the key store is an optimization, not the only guard.</p>",
+    "<p>Cache the result of the business decision, but not temporary failures. A completed success, and a definite client error like 422 (the same body will always be invalid), can be stored and replayed. Errors like 500, 503 or a timeout should release the key so the client can retry for real.</p><p>Example: a card declined with <code>insufficient_funds</code> is final for that key, so replay it; a network error talking to the bank is not final, so delete the IN_PROGRESS record and let the next attempt run.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>JSON Merge Patch sends a partial document shaped like the target; JSON Patch sends a list of explicit operations. Merge patch is shorter and easy to read. JSON Patch is more powerful and precise.</p><p>Merge: <code>{\"city\":\"Rome\"}</code>. JSON Patch: <code>[{\"op\":\"replace\",\"path\":\"/city\",\"value\":\"Rome\"}]</code>. Only JSON Patch can change a single array element, append with <code>/tags/-</code>, move a field or add a <code>test</code> guard. Use merge patch for simple forms, JSON Patch when you need arrays or conditions.</p>",
+    "<p>With PUT you clear a field by sending the full document without it (or with an explicit empty value if the API defines one), because PUT replaces everything. With JSON Merge Patch you send the field as <code>null</code>, which means delete.</p><p>Example: to remove a nickname, PUT the whole user without <code>nickname</code>, or PATCH <code>{\"nickname\":null}</code>. With JSON Patch use <code>{\"op\":\"remove\",\"path\":\"/nickname\"}</code>. If the API must store a real null, merge patch cannot express it and you need JSON Patch or a documented sentinel.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "JSON Merge Patch (RFC 7396) applied recursively",
+    "python": "# RFC 7396 merge patch: null deletes, object merges, anything else replaces\nimport json\n\ndef merge_patch(target, patch):\n    if not isinstance(patch, dict):\n        return patch                      # non-object replaces the target\n    if not isinstance(target, dict):\n        target = {}                       # start from an empty object\n    result = dict(target)\n    for key, value in patch.items():\n        if value is None:\n            result.pop(key, None)         # null means delete the key\n        else:\n            result[key] = merge_patch(result.get(key), value)\n    return result\n\ndoc = {\"name\": \"Ann\", \"tags\": [\"a\", \"b\"], \"address\": {\"city\": \"Oslo\", \"zip\": \"0150\"}}\npatch = {\"name\": None, \"tags\": [\"c\"], \"address\": {\"zip\": \"0151\"}}\n\nprint(\"doc   :\", json.dumps(doc))\nprint(\"patch :\", json.dumps(patch))\nonce = merge_patch(doc, patch)\nprint(\"result:\", json.dumps(once))\n# Idempotent: applying the same patch again changes nothing\nprint(\"again :\", json.dumps(merge_patch(once, patch)))\n# tags became [\"c\"]: arrays are replaced, never edited element by element\n# Time O(size of patch), space O(size of result)\n"
+   },
+   "followUps": [
+    "<p>Never let attacker-controlled keys reach the object prototype. Skip the keys <code>__proto__</code>, <code>constructor</code> and <code>prototype</code> while merging, or build results on objects created with <code>Object.create(null)</code> or a <code>Map</code>.</p><pre><code>if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;\nresult[key] = mergePatch(result[key], value);</code></pre><p>Without this, the patch <code>{\"__proto__\":{\"admin\":true}}</code> can make every object in the process appear to have <code>admin</code> set. Also validate the merged result against the schema.</p>",
+    "<p>Walk both documents together and emit only the differences. For each key in the new document that is missing or different in the old one, put the new value in the patch (recursing into objects). For each key present in the old document but missing in the new one, put <code>null</code>.</p><pre><code>diff(a, b):\n  for k in b: if a[k] != b[k] -> p[k] = both objects ? diff(a[k], b[k]) : b[k]\n  for k in a not in b: p[k] = null</code></pre><p>Example: a={x:1,y:2}, b={x:1,z:3} gives {y:null, z:3}. Arrays are copied whole. Cost is O(size of both documents).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, because they say different things, but many teams merge them for simplicity. 400 means the request cannot be understood (broken JSON, wrong type, missing required body). 422 means it was understood but the values break rules.</p><p>Example: <code>{\"age\": \"abc\"}</code> is a type error (400), while <code>{\"age\": -5}</code> is well formed but invalid (422). If you use only 400, keep one consistent error body listing the failing fields, so clients can still tell parse problems from rule problems.</p>",
+    "<p>Use 429 Too Many Requests for rate limits, with a <code>Retry-After</code> header giving seconds to wait. Use 503 Service Unavailable for maintenance or overload, also with <code>Retry-After</code>.</p><p>Example: a client allowed 100 requests per minute that sends the 101st gets <code>429</code> and <code>Retry-After: 23</code>. During a planned database migration every endpoint returns <code>503</code> with a problem+json body and <code>Retry-After: 600</code>. Well behaved clients wait that long instead of hammering.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Offset paging repeats a row after an insert; cursor does not",
+    "python": "# Feed sorted newest first. A new row arrives between page 1 and page 2.\nrows = list(range(10, 0, -1))      # ids 10..1, newest first\nSIZE = 3\n\ndef offset_page(data, page):\n    return data[page * SIZE:(page + 1) * SIZE]   # DB reads and discards the skipped rows\n\ndef cursor_page(data, after_id):\n    # keyset: \"rows with id < after_id\", which an index answers directly\n    return [r for r in data if after_id is None or r < after_id][:SIZE]\n\np1_off = offset_page(rows, 0)\np1_cur = cursor_page(rows, None)\nprint(\"page 1 (offset):\", p1_off)\nprint(\"page 1 (cursor):\", p1_cur)\n\nrows.insert(0, 11)                 # a new item is posted\nprint(\"new row 11 inserted\")\n\nprint(\"page 2 (offset):\", offset_page(rows, 1), \"<- 8 is repeated\")\nprint(\"page 2 (cursor):\", cursor_page(rows, p1_cur[-1]), \"<- continues cleanly\")\n# Offset cost grows with depth: O(offset + size). Cursor with index: O(log N + size).\n"
+   },
+   "followUps": [
+    "<p>Reverse the comparison and the sort order, query, then reverse the result. A cursor for \"the page before id 100\" runs <code>WHERE id &lt; 100 ORDER BY id DESC LIMIT 3</code> on the forward-ascending list, and you flip the rows back before returning them.</p><pre><code>-- forward: WHERE id &gt; ? ORDER BY id ASC LIMIT 3\n-- backward: WHERE id &lt; ? ORDER BY id DESC LIMIT 3\n-- then reverse the 3 rows in code</code></pre><p>Return both a <code>next</code> and a <code>prev</code> cursor. Cost stays O(log N + page size) using the index.</p>",
+    "<p>Avoid counting everything on every request, because <code>COUNT(*)</code> on a big table scans a lot of data. Options: return no total and only a <code>hasMore</code> flag (fetch size+1 rows to know), return an approximate count from table statistics, or keep a cached counter updated periodically.</p><p>Example: with page size 20, query 21 rows; if 21 come back there is a next page, and you return 20. Offer an exact count only on request, for small or filtered sets, or label it \"about 1.2M\".</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Allowlisted sort parameter turned into safe ORDER BY",
+    "python": "# Map public sort names to real columns; reject anything else\nimport sqlite3\n\nALLOWED = {\"rating\": \"rating\", \"title\": \"title\"}   # allowlist, never raw input\n\ndef order_by(sort):\n    parts = []\n    for item in sort.split(\",\"):\n        desc = item.startswith(\"-\")\n        name = item.lstrip(\"-\")\n        if name not in ALLOWED:\n            raise ValueError(\"400: cannot sort by \" + repr(name))\n        parts.append(ALLOWED[name] + (\" DESC\" if desc else \" ASC\"))\n    parts.append(\"id ASC\")             # unique tie-breaker keeps paging stable\n    return \"ORDER BY \" + \", \".join(parts)\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, rating INT)\")\ndb.executemany(\"INSERT INTO books VALUES (?,?,?)\",\n               [(1, \"Zen\", 4), (2, \"Alps\", 5), (3, \"Bees\", 4), (4, \"Moss\", 5)])\n\nsort = \"-rating,title\"\nclause = order_by(sort)\nprint(\"sort=\" + sort, \"->\", clause)\nfor row in db.execute(\"SELECT id, title, rating FROM books \" + clause + \" LIMIT ?\", (4,)):\n    print(row)                         # values are bound parameters, not pasted in\ntry:\n    order_by(\"price; DROP TABLE books\")\nexcept ValueError as e:\n    print(e)\n"
+   },
+   "followUps": [
+    "<p>Define a small filter grammar and translate it into parameterized SQL yourself. Ranges can use pairs such as <code>price_gte=10&amp;price_lte=50</code> (AND between different filters). For OR on one field, accept a list: <code>status=open,paused</code> becomes <code>status IN (?, ?)</code>.</p><p>General OR across fields needs a structured filter (a JSON body or a documented expression language) turned into a tree of AND/OR nodes, with limits on depth and size. Every combination still needs an index, so keep the supported set small.</p>",
+    "<p>Free-text search is a different feature and needs a different engine: a full-text index (Postgres tsvector, or a search service such as Elasticsearch/OpenSearch), not <code>LIKE '%word%'</code>, which cannot use a normal index and scans the table.</p><p>Results are ranked by relevance, not by a simple column, so cursor paging uses (score, id) or a search-after token from the engine. Expose it as <code>q=</code>, keep the structured filters combined with it, and cap query length and result size.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Date-based versioning pins each client to the API behaviour that existed on the date it first used the API, instead of numbers like v1 and v2. Stripe, for example, sends a header such as <code>Stripe-Version: 2024-06-20</code>.</p><p>Behind it, the server has one core model plus a chain of small transformers, one per breaking change, each applied to the response to turn it back into an older shape. A client on an old date gets the old shape, and can move forward by changing the date after testing. Cost: you must keep all those transformers tested.</p>",
+    "<p>Keep an old version until measured usage is near zero or a published deadline passes, not by guesswork. A common public policy is 12 to 24 months from the deprecation announcement; internal APIs may be 3 to 6 months.</p><p>Steps: announce with <code>Deprecation</code> and <code>Sunset</code> headers, email owners found in usage metrics per API key, warn again at 90, 30 and 7 days, then return 410 Gone after the date. Longer support costs real money, so charge or limit it for large legacy clients.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>They are two formats for the same idea: put links and related data inside JSON. HAL is minimal: <code>_links</code> and <code>_embedded</code> sections added to your own fields. JSON:API is a full specification with fixed rules for structure, relationships, sparse fields, includes, sorting, paging and errors.</p><p>Pick HAL when you want light links and freedom in the rest. Pick JSON:API when many teams need a strict shared convention and ready-made client libraries, accepting a more verbose document.</p>",
+    "<p>Not necessarily. A missing link usually means the action is not available now (for example no <code>refund</code> link on an unpaid order), but it does not by itself prove the user lacks permission, and a present link does not prove they have it.</p><p>The server must still check authorization on every request and reply 403 or 409 when needed. Treat links as a convenience for the UI to show or hide buttons, never as the security check. Clients must also not infer rules beyond what the documentation promises.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the spec a checked artifact, not a document someone remembers to update. Contract-first: generate server interfaces from the spec so code cannot differ. Code-first: generate the spec in the build and fail CI if the committed copy differs.</p><p>Also run contract tests that call a running instance and validate every response against the schema, plus an OpenAPI diff that blocks breaking changes. Example: renaming <code>fullName</code> to <code>name</code> fails the pipeline until you add the new field and keep the old one. Drift is found in minutes, not by an angry client.</p>",
+    "<p>OpenAPI 3.1 aligns its schemas fully with JSON Schema 2020-12, which 3.0 only partly did. The practical effects are cleaner and more standard typing.</p><p>Main changes: <code>nullable: true</code> is replaced by <code>type: [\"string\", \"null\"]</code>; <code>exclusiveMinimum</code> becomes a number, not a boolean; <code>examples</code> becomes an array; the spec can describe webhooks at the top level; and a <code>$ref</code> can sit beside other keywords. Tools must support 3.1 explicitly, so check your generators and linters first.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A strong ETag says the two bodies are byte-for-byte identical; a weak ETag (written <code>W/\"v7\"</code>) says they are semantically the same but may differ in bytes, for example after compression or whitespace changes.</p><p>Use strong tags for byte ranges and for <code>If-Match</code> updates, where exactness matters. Weak tags are fine for ordinary conditional GETs. A tag from the row's version column is simple and cheap: version 7 gives <code>\"v7\"</code>, with no need to hash the body.</p>",
+    "<p>Use short-lived caching plus an explicit purge, and make URLs that never need purging when possible. Fingerprint static files (<code>app.3f9a.js</code>) and cache them for a year with <code>immutable</code>.</p><p>For API responses, after the database write call the CDN's purge API for that URL or for a surrogate-key/tag group (for example every response tagged <code>product-42</code>), or just keep <code>s-maxage</code> to 30 to 60 seconds and accept slight staleness. Always purge after the commit, not before, or a cache can refill with old data.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "If-Match with a version: 200, 412 and 428",
+    "js": "// Optimistic concurrency with ETag / If-Match\nconst res = { value: \"draft\", version: 1 };      // server state\nconst etag = () => '\"v' + res.version + '\"';\n\nfunction put(ifMatch, newValue) {\n  if (!ifMatch) return 428;                      // Precondition Required\n  if (ifMatch !== etag()) return 412;            // someone else changed it\n  res.value = newValue;                          // check and write are one step\n  res.version += 1;                              // new ETag after every write\n  return 200;\n}\n\nconst aliceTag = etag();                         // both clients GET v1\nconst bobTag = etag();\nconsole.log(\"start:\", JSON.stringify(res), \"ETag\", aliceTag);\nconsole.log(\"no header   ->\", put(null, \"x\"));\nconsole.log(\"Alice PUT   ->\", put(aliceTag, \"alice\"));\nconsole.log(\"Bob PUT old ->\", put(bobTag, \"bob\"));   // stale tag\nconsole.log(\"end:\", JSON.stringify(res), \"ETag\", etag());\n// Bob must re-GET, merge, and retry with the new tag. O(1) per request.\n"
+   },
+   "followUps": [
+    "<p>Use 409 Conflict when there is no version token to compare, or when the clash is about business state rather than a failed precondition. Use 412 when the client sent an <code>If-Match</code> that no longer matches.</p><p>Example: two users book the same seat with no ETag involved: the second gets 409 because the seat is taken. A user saving a document with a stale <code>If-Match</code> gets 412. Some APIs use 409 for both, which is acceptable if documented, but 412 tells the client exactly what to do: re-read and retry.</p>",
+    "<p>Create a version. Add a <code>version</code> integer column or an <code>updated_at</code> timestamp that changes on every write, and derive the ETag from it. Update with <code>UPDATE t SET ..., version = version + 1 WHERE id = ? AND version = ?</code> and treat zero rows changed as a failed precondition.</p><p>If you cannot change the schema, hash the stored representation to make the tag. That works, but it costs a read and a hash each time and is only as accurate as the fields you hash. A real version column is cheaper and clearer.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Polling is the simplest and works everywhere: the client calls the job URL every few seconds, with backoff. It wastes some requests but needs no open connection. Webhooks push a signed callback to the client's server when the job ends; they are efficient but the client needs a public endpoint and you must handle retries and signature checks. SSE keeps one HTTP stream open and pushes live progress to a browser.</p><p>Offer polling as the baseline, add webhooks for server clients, and SSE for live progress screens.</p>",
+    "<p>Make the retry safe by giving every job an idempotent identity and making each step repeatable. Retry only failures that can pass later (timeouts, a worker crash), with exponential backoff and a maximum attempt count; send permanent failures (bad input) to a dead-letter queue.</p><p>Workers must tolerate running twice: write results to a path named by job id and attempt-independent content, and use checkpoints so a retry resumes from step 4 rather than step 1. Example: attempt 2 overwrites <code>reports/42.csv</code> with the same content, so no duplicate file appears. Expose a <code>POST /reports/42/retry</code> only for FAILED jobs.</p>"
+   ]
+  }
+ ]
+}

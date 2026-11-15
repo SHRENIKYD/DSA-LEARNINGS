@@ -1,0 +1,116 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Perceptron fails XOR, a 2-layer net solves it",
+    "python": "# Perceptron learns AND but never solves XOR; a 2-layer net does (hand-set weights)\ndef step(z): return 1 if z > 0 else 0\n\ndef train(data, epochs=50, lr=1):\n    w, b = [0, 0], 0\n    for _ in range(epochs):\n        for (x1, x2), t in data:\n            y = step(w[0]*x1 + w[1]*x2 + b)\n            err = t - y                  # update only when wrong\n            w[0] += lr*err*x1; w[1] += lr*err*x2; b += lr*err\n    return w, b\n\npts = [(0, 0), (0, 1), (1, 0), (1, 1)]\nfor name, f in [(\"AND\", lambda a, b: a & b), (\"XOR\", lambda a, b: a ^ b)]:\n    data = [(p, f(*p)) for p in pts]\n    w, b = train(data)\n    out = [step(w[0]*x1 + w[1]*x2 + b) for (x1, x2), _ in data]\n    print(name, \"targets\", [t for _, t in data], \"perceptron\", out)\n\n# Hidden layer: h1 = OR, h2 = NAND, output = AND(h1, h2) = XOR\ndef xor_net(x1, x2):\n    h1 = step(x1 + x2 - 0.5)\n    h2 = step(-x1 - x2 + 1.5)\n    return step(h1 + h2 - 1.5)\nprint(\"XOR 2-layer\", [xor_net(*p) for p in pts])\n"
+   },
+   "followUps": [
+    "<p>Suppose one line w1·x1 + w2·x2 + b &gt; 0 fires for the positive points. XOR needs four inequalities: (0,0)→0 gives b ≤ 0; (1,1)→0 gives w1 + w2 + b ≤ 0; (0,1)→1 gives w2 + b &gt; 0; (1,0)→1 gives w1 + b &gt; 0.</p><p>Add the last two: w1 + w2 + 2b &gt; 0. Subtract b ≤ 0 from the second one: w1 + w2 + 2b ≤ b ≤ 0. That contradicts it, so no weights exist.</p>",
+    "<p>It uses a hidden layer to build two helper features and then combines them. Hidden unit 1 is OR (fires if x1 + x2 &gt; 0.5), hidden unit 2 is NAND (fires if x1 + x2 &lt; 1.5). The output is AND of the two: it fires only when both are 1.</p><p>Check (1,1): OR=1, NAND=0, AND=0. Check (0,1): OR=1, NAND=1, AND=1. In the (OR, NAND) space the XOR classes are separable by one line. Two hidden units with a step or ReLU activation are enough; with no non-linearity the layers would collapse into one line again.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Forward pass of a 2-2-1 network",
+    "python": "# Forward pass of a 2-2-1 network: ReLU hidden layer, sigmoid output\nimport math\n\ndef matvec(W, x): return [sum(w*v for w, v in zip(row, x)) for row in W]\ndef relu(v): return [max(0.0, a) for a in v]\ndef sigmoid(z): return 1 / (1 + math.exp(-z))\n\nW1 = [[0.5, -1.0], [1.5, 2.0]]   # shape (2 out, 2 in)\nb1 = [0.1, -0.5]\nW2 = [[1.0, -2.0]]               # shape (1 out, 2 in)\nb2 = [0.2]\n\nx = [1.0, 2.0]\nz1 = [a + b for a, b in zip(matvec(W1, x), b1)]   # W1.x + b1\nh = relu(z1)                                      # activation\nz2 = matvec(W2, h)[0] + b2[0]\ny = sigmoid(z2)\nprint(\"input\", x)\nprint(\"z1\", z1, \"-> h\", h)\nprint(\"z2 %.3f -> y %.4f\" % (z2, y))\n# Cost: one multiply-add per weight, O(total weights); activations h are kept for backprop\n"
+   },
+   "followUps": [
+    "<p>Training keeps extra state and randomness; inference is just the forward pass with fixed weights. In training you store each layer's activations for backprop, use dropout (random zeroing) and BatchNorm with batch statistics, and then update the weights.</p><p>At inference dropout is switched off, BatchNorm uses the running averages saved during training, no activations need to be kept, and you can batch, quantise or fuse layers. In PyTorch this is model.train() versus model.eval() with torch.no_grad(). Forgetting eval() is a classic cause of noisy predictions.</p>",
+    "<p>The output must mean what the loss expects. A binary probability needs a value in (0,1), so sigmoid; one class out of K needs numbers that sum to 1, so softmax; a price or temperature can be any real number, so no activation (linear).</p><p>Example: logits [2, 1, 0] through softmax give about [0.67, 0.24, 0.09]. Using ReLU there would clip negative scores and make probabilities impossible. The activation plus the matching loss (cross-entropy, MSE) form a pair chosen together.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A dead ReLU is a unit whose input is negative for every example, so its output and its gradient are always 0 and it never recovers. It usually happens after a large update (too high a learning rate) or a bad bias.</p><p>Fixes: lower the learning rate, use He initialisation, add normalisation, or switch to Leaky ReLU (small slope like 0.01 for negatives), ELU or GELU, which keep a non-zero gradient. You can detect it by measuring the share of units that output 0 on a whole batch.</p>",
+    "<p>Because computing sigmoid or softmax first and then the log can overflow or lose precision, while a fused loss does it stably. For logits [1000, 0], exp(1000) overflows to infinity and gives NaN.</p><p>The fused version uses the log-sum-exp trick: subtract the max logit first, so log_softmax = z - max - log(sum(exp(z - max))). Every exponent is then ≤ 0 and safe. That is why PyTorch has CrossEntropyLoss and BCEWithLogitsLoss taking raw logits. Apply sigmoid or softmax separately only when you need probabilities for display.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Backprop chain rule vs numerical gradient",
+    "python": "# Backprop by the chain rule for one neuron, checked against a numerical gradient\nimport math\n\ndef sigmoid(z): return 1 / (1 + math.exp(-z))\nx, t, w = 1.5, 1.0, 0.4\n\ndef loss(w):\n    y = sigmoid(w * x)\n    return 0.5 * (y - t) ** 2\n\n# forward pass, keep intermediates\nz = w * x\ny = sigmoid(z)\n# backward pass: multiply local derivatives from the loss back to w\ndL_dy = y - t\ndy_dz = y * (1 - y)\ndz_dw = x\ngrad = dL_dy * dy_dz * dz_dw\n\neps = 1e-6                       # central difference check\nnum = (loss(w + eps) - loss(w - eps)) / (2 * eps)\nprint(\"backprop grad  %.8f\" % grad)\nprint(\"numerical grad %.8f\" % num)\nlr = 0.5\nprint(\"w %.4f -> %.4f, loss %.5f -> %.5f\" % (w, w - lr*grad, loss(w), loss(w - lr*grad)))\n"
+   },
+   "followUps": [
+    "<p>Reverse mode gives all gradients in one backward sweep, while forward mode needs one sweep per input. A network has millions of inputs (weights) and one output (the loss), so reverse mode is far cheaper.</p><p>Cost: reverse mode is about 2-3 times one forward pass for the whole gradient. Forward mode for P = 10 million weights would cost about P forward passes. The price of reverse mode is memory: it must keep the intermediate activations. Forward mode wins only when there are few inputs and many outputs.</p>",
+    "<p>Compare the backprop gradient with a numerical one using central differences: (L(w + e) - L(w - e)) / (2e) with e around 1e-5 or 1e-6, one weight at a time on a tiny model.</p><p>Compute the relative error |a - n| / max(|a|, |n|, 1e-12). Below about 1e-6 (in float64) is good; around 1e-2 or worse means a bug. Example: analytic -0.12160238 versus numerical -0.12160238 passes. Turn off dropout and use float64 for the check, since it costs two forward passes per weight and is only for debugging.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Gradients shrink or blow up with depth",
+    "python": "# Vanishing vs exploding gradients: product of one local factor per layer\nimport math\n\ndef sig_slope(z):\n    s = 1 / (1 + math.exp(-z))\n    return s * (1 - s)          # at most 0.25\n\nlayers = [5, 10, 20, 40]\nprint(\"layers  sigmoid(slope<=0.25, w=1)  relu(slope=1, w=0.9)  w=1.5\")\nfor n in layers:\n    sig = (sig_slope(0.0) * 1.0) ** n     # best case for sigmoid\n    relu = (1.0 * 0.9) ** n\n    big = (1.0 * 1.5) ** n\n    print(\"%6d  %24.3e  %20.3e  %8.3e\" % (n, sig, relu, big))\n\n# Gradient clipping caps the size of an exploding gradient\ng, limit = big, 5.0\nprint(\"clipped:\", min(g, limit))\n"
+   },
+   "followUps": [
+    "<p>Residual connections give the gradient a direct path, so it does not have to pass through every layer's multiplication. Since y = x + F(x), dy/dx = 1 + F'(x): even if F' is tiny, the 1 keeps the signal alive.</p><p>Example: 50 layers each with slope 0.5 give 0.5^50 ≈ 1e-15 (nothing). With residuals each layer contributes about (1 + 0.5), and the identity term alone keeps the gradient at 1. Layers can also learn to be near identity, so adding depth rarely hurts.</p>",
+    "<p>An LSTM keeps a separate cell state c and updates it additively: c_t = f_t * c_{t-1} + i_t * g_t. The gradient through time then flows along c with factor f_t instead of through a repeated matrix and squashing function.</p><p>If the forget gate f is near 1, information and gradient pass almost unchanged; for example 0.99^100 ≈ 0.37, whereas a plain RNN factor of 0.5 gives 0.5^100 ≈ 1e-30. The model learns when to keep, write or forget. It helps a lot but still cannot match attention over thousands of steps.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SGD, momentum and Adam on a stretched bowl",
+    "python": "# SGD vs momentum vs Adam minimising f(x, y) = 0.5*(x^2 + 25*y^2)\nimport math\n\ndef grad(p): return [p[0], 25 * p[1]]\ndef f(p): return 0.5 * (p[0]**2 + 25 * p[1]**2)\n\ndef sgd(p, lr=0.07, steps=60):\n    for _ in range(steps):\n        g = grad(p); p = [a - lr*b for a, b in zip(p, g)]\n    return p\n\ndef momentum(p, lr=0.03, beta=0.9, steps=60):\n    v = [0, 0]\n    for _ in range(steps):\n        g = grad(p)\n        v = [beta*a + b for a, b in zip(v, g)]      # accumulate velocity\n        p = [a - lr*b for a, b in zip(p, v)]\n    return p\n\ndef adam(p, lr=0.3, b1=0.9, b2=0.999, steps=60):\n    m, s = [0, 0], [0, 0]\n    for t in range(1, steps + 1):\n        g = grad(p)\n        m = [b1*a + (1-b1)*b for a, b in zip(m, g)]\n        s = [b2*a + (1-b2)*b*b for a, b in zip(s, g)]\n        mh = [a / (1 - b1**t) for a in m]            # bias correction\n        sh = [a / (1 - b2**t) for a in s]\n        p = [a - lr*u / (math.sqrt(v) + 1e-8) for a, u, v in zip(p, mh, sh)]\n    return p\n\nstart = [4.0, 1.0]\nprint(\"start\", start, \"loss\", f(start))\nfor name, fn in [(\"SGD\", sgd), (\"Momentum\", momentum), (\"Adam\", adam)]:\n    p = fn(list(start))\n    print(\"%-8s -> (%.4f, %.4f) loss %.6f\" % (name, p[0], p[1], f(p)))\n"
+   },
+   "followUps": [
+    "<p>The learning rate is the step size: how far you move against the gradient each update. Too small and training crawls; too large and the loss bounces or diverges.</p><p>On f(w) = w² with gradient 2w, lr = 0.1 shrinks w by 0.8 each step, lr = 1.0 flips w forever (1, -1, 1), and lr = 1.1 grows it. To choose: run a short learning-rate range test (increase it exponentially and pick a value a bit below where loss starts rising), then use warm-up and decay (cosine). Typical Adam values are 1e-4 to 1e-3.</p>",
+    "<p>Because the running averages start at zero, so early estimates are biased toward zero. With beta1 = 0.9 the first step has m = 0.1 * g, only a tenth of the true gradient.</p><p>Adam divides by (1 - beta^t): at t = 1, m / 0.1 gives back g. For the squared average with beta2 = 0.999 the first step would otherwise be about 1000 times too small in v, giving huge steps. The correction fades quickly as t grows. Without it, the first steps are badly scaled.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A static embedding gives each word one fixed vector, while a contextual embedding changes with the sentence. word2vec or GloVe give 'bank' a single vector mixing river bank and money bank.</p><p>BERT or LLM hidden states give a different vector for 'bank' in 'river bank' and 'bank loan', because each token's vector is computed from its surroundings by attention. Static is cheap and fine for simple search or features; contextual is better for meaning, ambiguity and downstream tasks but needs a forward pass of a large model.</p>",
+    "<p>Use an approximate nearest-neighbour (ANN) index instead of comparing against all of them. Brute force over 1 million vectors of 768 dimensions is about 768 million multiply-adds per query, which is slow at scale.</p><p>Options: HNSW (a layered graph, very fast and accurate), IVF (cluster the vectors and search only the nearest few clusters) and product quantisation (compress vectors). Normalise vectors so cosine equals dot product. Trade recall for speed, usually 95-99% recall in a few milliseconds. Libraries like FAISS or a vector database provide these.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Convolution, output size and parameter count",
+    "python": "# 2D convolution (valid, stride s) and the output-size / parameter formulas\nimg = [[1, 2, 0, 1, 3],\n       [0, 1, 3, 1, 0],\n       [2, 1, 0, 2, 1],\n       [1, 0, 1, 3, 2],\n       [0, 2, 1, 0, 1]]\nkernel = [[1, 0, -1],\n          [1, 0, -1],\n          [1, 0, -1]]          # vertical edge detector, same weights everywhere\n\ndef conv(img, k, stride=1):\n    n, kk = len(img), len(k)\n    out_n = (n - kk) // stride + 1\n    out = []\n    for i in range(out_n):\n        row = []\n        for j in range(out_n):\n            s = 0\n            for a in range(kk):\n                for b in range(kk):\n                    s += img[i*stride + a][j*stride + b] * k[a][b]\n            row.append(s)\n        out.append(row)\n    return out\n\nfor r in conv(img, kernel): print(r)\nn, k, p, s = 5, 3, 0, 1\nprint(\"output size\", (n - k + 2*p)//s + 1)\nc_in, c_out = 3, 16\nprint(\"params for 3x3, 3->16 channels:\", c_out * (k*k*c_in + 1))\n# Cost: O(out^2 * k^2) multiply-adds\n"
+   },
+   "followUps": [
+    "<p>Padding adds border pixels, stride is how far the kernel jumps, and pooling shrinks the map by summarising small windows. They control output size and how much each unit sees.</p><p>With n = 32, k = 3: no padding gives 30; padding 1 keeps 32 (same size); stride 2 with padding 1 gives floor((32 - 3 + 2) / 2) + 1 = 16. Max pooling 2x2 with stride 2 halves 32 to 16 and keeps the strongest response, adding a little shift tolerance and reducing compute. Strided convolutions can replace pooling.</p>",
+    "<p>The receptive field is the region of the original input that can influence one output unit. One 3x3 layer sees 3x3; each extra 3x3 stride-1 layer adds 2 to the width.</p><p>Two stacked 3x3 layers see 5x5, three see 7x7, with fewer parameters than one 7x7 (3 * 9 = 27 weights versus 49 per channel pair). Strides and pooling make it grow faster. Deep layers need a large receptive field to recognise whole objects, so you choose depth and strides to cover the object size.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>An LSTM has three gates, each a sigmoid between 0 and 1 that multiplies a signal: forget gate (how much old memory to keep), input gate (how much new information to write) and output gate (how much memory to expose).</p><p>The cell state updates as c_t = f * c_{t-1} + i * g, where g is a tanh candidate. If f = 1 and i = 0 the cell remembers perfectly; if f = 0 it resets. The hidden state is h_t = o * tanh(c_t). A GRU merges these into two gates (update, reset) with fewer parameters and similar results.</p>",
+    "<p>Truncated BPTT trains an RNN on a long sequence by cutting it into windows and backpropagating only within each window. The hidden state is carried forward but its gradient is cut at the window boundary.</p><p>Example: a 10,000-step sequence with a window of 100 gives 100 updates, each costing 100 steps of memory instead of 10,000. It saves memory and limits explosion, but dependencies longer than the window are not learned by gradient, only passed in the state.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Choose a CNN or state-space model when the input is long, local or must be cheap. Attention costs O(n²) in time and the KV cache grows with n, so very long signals (audio samples, genomes, sensor streams) get expensive.</p><p>CNNs are strong on small image datasets and on-device models because locality is built in and they need less data. SSMs (such as Mamba) process in O(n) with a constant-size state, which suits streaming and long context. Transformers still win on in-context recall and general quality at scale, so many systems mix them.</p>",
+    "<p>It stores the keys and values computed for every previous token in every layer, so during generation they are not recomputed. Each new token only computes its own query, key and value, and attends to the cached ones.</p><p>Size per token = 2 * layers * kv_heads * head_dim * bytes. For 32 layers, 8 KV heads, head_dim 128 in bf16: 2 * 32 * 8 * 128 * 2 = 131 KB per token, so 8,000 tokens take about 1 GB per sequence. Grouped-query attention reduces kv_heads to shrink it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Check the loss from step 1 but count what reaches the weights: print gradient norms. Dead ReLUs show as units that output 0 for every example in a batch.</p><p>Run a batch through the layer and compute the fraction of activations equal to 0 per unit; a unit at 100% over a few thousand examples is dead. A whole layer at 90% or more means a problem (large learning rate, bad init, negative bias). Fix with a smaller learning rate, He initialisation, normalisation or Leaky ReLU, then recheck the fractions.</p>",
+    "<p>A plateau at ln(K) means the model predicts uniform probabilities and has learned nothing. With K classes, cross-entropy of 1/K for every class equals -ln(1/K) = ln(K).</p><p>For 10 classes that is ln(10) ≈ 2.303; for 2 classes 0.693; for a vocabulary of 50,000 about 10.8. Seeing exactly that value means the output ignores the input: frozen weights, a broken data pipeline, dead units, a zero learning rate or labels unrelated to inputs. A healthy start is near ln(K) too, so what matters is that it never drops.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pre-LN normalises inside the residual branch (x + F(LN(x))), while post-LN normalises after the addition (LN(x + F(x))). Pre-LN keeps a clean identity path, so gradients reach early layers and training is stable with little warm-up.</p><p>Post-LN (the original transformer) can give slightly better final quality but is fragile in deep stacks and needs careful warm-up. Most large modern models use pre-LN or RMSNorm in that position, accepting a tiny quality cost for much safer training of 50 to 100+ layers.</p>",
+    "<p>So that every block starts as an identity function, which makes a very deep network start out behaving like a shallow one. If the last layer's weights are zero, F(x) = 0 and y = x + 0 = x at the beginning.</p><p>Example: 100 blocks each adding noise of size 1 would make the output variance grow about 100 times; with zeros it stays 1. The branches then learn small corrections as training proceeds. Alternatives are scaling the residual branch by 1/sqrt(2L) or a learnable scale starting near 0.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Training vs inference memory and FLOPs",
+    "python": "# Rough memory and compute for training vs inference of a dense model\nP = 7e9                # parameters\nGB = 1e9\ninfer_bf16 = 2 * P\ntrain_mixed = (2 + 2 + 4 + 4 + 4) * P   # bf16 w + bf16 g + fp32 master + Adam m + Adam v\ntokens = 1e12\nflops_train = 6 * P * tokens\nflops_infer_tok = 2 * P\n\nprint(\"params: %.0e\" % P)\nprint(\"inference weights (bf16): %.0f GB\" % (infer_bf16 / GB))\nprint(\"training state (Adam mixed, no activations): %.0f GB\" % (train_mixed / GB))\nprint(\"bytes per param in training:\", train_mixed / P)\nprint(\"training FLOPs for 1e12 tokens: %.2e\" % flops_train)\nprint(\"inference FLOPs per token: %.2e\" % flops_infer_tok)\n# Activations come on top and scale with batch size x depth\n"
+   },
+   "followUps": [
+    "<p>Gradient checkpointing trades extra compute for less memory: it stores activations only at some layers and recomputes the rest during the backward pass.</p><p>With L layers you keep about sqrt(L) checkpoints, so activation memory falls from O(L) to O(sqrt(L)), for about one extra forward pass (roughly 30% more time). For example, a 64-layer model could keep around 8 checkpoints instead of 64 stored activations. It lets you use bigger batches or longer sequences on the same GPU.</p>",
+    "<p>LoRA freezes the original weights and trains only two small matrices per layer, so the gradients and Adam state exist only for them. A weight W (d x d) gets an update B*A with B (d x r) and A (r x d), rank r such as 8.</p><p>For d = 4096: the full matrix has 16.8 million parameters, LoRA has 2 * 4096 * 8 = 65,536 (0.4%). Gradients plus Adam's two states for 16.8M parameters cost about 12 bytes each in fp32 versus a tiny fraction for LoRA. The frozen weights still need memory (QLoRA also quantises them to 4 bits).</p>"
+   ]
+  }
+ ]
+}

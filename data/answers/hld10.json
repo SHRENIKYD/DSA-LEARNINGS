@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes: choose by what a wrong answer costs. In a shop, the <b>last unit of stock</b> and the payment must be correct, so they refuse during a partition (CP). The <b>product page, reviews and recommendations</b> can be a bit stale, so they keep answering (AP).</p><p>Example: during a split, a user still sees a review count of 41 instead of 42 (harmless), but checkout says 'try again' rather than selling the same item twice.</p>",
+    "<p>Technically yes, but the label is mostly meaningless. CAP is about a network partition <i>between replicas</i>, and a single node has no replicas, so it cannot be partitioned from itself and gets C and A trivially.</p><p>But the node can still crash, or the link between client and node can fail, and then the system is simply unavailable. You get no fault tolerance. 'CA' is not a real choice for a distributed system, because partitions will happen and you must pick C or A when they do.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Roughly 70 ms added to every write, against 1 to 2 ms inside one region. A write needs a majority, which is 2 of 3 regions, so you wait for the nearest other region to answer, one round trip of about 70 ms.</p><p>If you wait for all 3 regions, you wait for the slowest one, so with equal 70 ms links it is still about 70 ms. Protocols with extra phases (a leader far from the client, or two-phase commit on top of Paxos) can reach 140 ms or more. A read served from the local replica stays fast only if you accept it may be stale.</p>",
+    "<p>Yes. PA/EC means: during a partition favour availability, but when the network is healthy favour consistency over latency. It sounds odd but it is coherent: partitions are rare, so you accept stale or divergent data only in those short periods, while normal operation pays for quorum or synchronous reads.</p><p>It fits a system that wants strong guarantees day to day, but would rather keep serving degraded results than go down in an outage. Many real systems can be configured this way per operation.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>No. Snapshot isolation (SI) allows <b>write skew</b>, which a serial order would not allow.</p><p>Example: a rule says at least one of two doctors must stay on call, and both are on call. Doctor A and Doctor B each read 'two on call' in their own snapshot, then A sets herself off and B sets himself off. They write different rows, so SI sees no write conflict and both commit, leaving zero on call. No serial order gives that. Fixes: serializable snapshot isolation (SSI), locking the read rows, or a constraint.</p>",
+    "<p>Spanner uses <b>TrueTime</b>, a clock API that returns an interval [earliest, latest] guaranteed to contain real time. A transaction picks a commit timestamp s at or after 'latest', then performs <b>commit wait</b>: it holds the commit visible until the clock's earliest is past s.</p><p>So any transaction that starts after this one finishes gets a later timestamp, and timestamp order matches real-time order. The uncertainty is a few milliseconds, so commit wait costs only a few ms per write. Reads at a timestamp need no locks.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Quorum overlap: which reads see the latest write",
+    "python": "from itertools import combinations\n\nN = 5  # number of replicas\n\ndef run(W, R):\n    # a write of version 2 reached only W replicas; the rest still hold version 1\n    reps = [(1, \"old\")] * N\n    for i in range(W):\n        reps[i] = (2, \"new\")\n    stale = total = 0\n    # try every possible set of R replicas a reader could contact\n    for subset in combinations(range(N), R):\n        total += 1\n        best = max(reps[i] for i in subset)  # reader keeps the highest version\n        if best[0] != 2:\n            stale += 1\n    return stale, total\n\nfor W, R in [(3, 3), (3, 2), (2, 2), (1, 1)]:\n    stale, total = run(W, R)\n    # R + W > N guarantees every read set overlaps the write set\n    print(\"N=%d W=%d R=%d R+W>N=%s stale reads: %d/%d\" % (N, W, R, R + W > N, stale, total))\n"
+   },
+   "followUps": [
+    "<p>No, not by itself. R + W &gt; N only guarantees a read set overlaps the <i>acknowledged</i> write set; it does not order operations in real time.</p><p>Example with N=3, W=2, R=2: a write has reached only replica A so far (still in flight). Reader 1 asks A and B and sees the new value. Reader 2 starts later, asks B and C, and sees the old value. The value went new, then old, which linearizability forbids. Sloppy quorums, last-write-wins clocks and partial failed writes cause more cases. Fixes: read repair before returning, or consensus.</p>",
+    "<p>A sloppy quorum lets a write succeed using <b>any</b> W healthy nodes, even if they are not the key's home replicas, when some home replicas are unreachable. The stand-in node stores the write with a hint and passes it back to the real owner when that comes back (hinted handoff).</p><p>It raises write availability, but the nodes that hold the write may not be the ones a reader contacts, so R + W &gt; N no longer guarantees a fresh read. It trades consistency for availability during failures.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It runs a Paxos round per key, so a conditional write (compare-and-set) is decided by a majority, not by whichever replicas happen to answer. The steps are: prepare and promise, read the current value, propose and accept, then commit.</p><p>That is about 4 round trips, so a lightweight transaction costs several times a normal write. In return, conditional writes on one partition are linearizable, and a SERIAL read sees the latest committed value. Use it for rare uniqueness or state-machine steps, not for every write.</p>",
+    "<p>PBS is a way to predict <b>how stale</b> reads of an eventually consistent store really are. Given measured delays for write propagation, acks, reads and responses, it estimates the probability that a read made t milliseconds after a write returns the latest value, or one of the last k versions.</p><p>Example: with N=3, R=W=1, you may find about 99% of reads are fresh a few tens of milliseconds after the write. This lets you justify a weak setting with numbers rather than fear. It is a model, so check it against your own latencies.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Vector clocks: ancestor, concurrent siblings, merge",
+    "python": "def compare(a, b):\n    keys = set(a) | set(b)\n    a_le = all(a.get(k, 0) <= b.get(k, 0) for k in keys)\n    b_le = all(b.get(k, 0) <= a.get(k, 0) for k in keys)\n    if a_le and b_le:\n        return \"equal\"\n    if a_le:\n        return \"A is ancestor of B\"\n    if b_le:\n        return \"B is ancestor of A\"\n    return \"concurrent (keep both siblings)\"\n\ndef write(ctx, node):\n    # coordinator copies the client's context and bumps its own counter\n    v = dict(ctx)\n    v[node] = v.get(node, 0) + 1\n    return v\n\nv1 = write({}, \"A\")                 # first write at node A\nv2 = write(v1, \"A\")                 # client 1 reads v1, writes via A\nv3 = write(v1, \"B\")                 # client 2 reads v1, writes via B\nprint(\"v1\", v1, \"v2\", v2, \"v3\", v3)\nprint(\"v1 vs v2:\", compare(v1, v2))\nprint(\"v2 vs v3:\", compare(v2, v3))\n# client merges both siblings: take element-wise max, then write via A\nmerged = {k: max(v2.get(k, 0), v3.get(k, 0)) for k in set(v2) | set(v3)}\nv4 = write(merged, \"A\")\nprint(\"v4\", v4)\nprint(\"v2 vs v4:\", compare(v2, v4))\nprint(\"v3 vs v4:\", compare(v3, v4))\n"
+   },
+   "followUps": [
+    "<p>Because the number of servers is small and fixed, while clients are many and unbounded. A vector with one entry per client would grow without limit; one entry per server stays at most N.</p><p>The cost is precision: two clients writing through the same server with the same context get counters that look ordered, so one write can silently overwrite the other instead of becoming siblings. Dotted version vectors fix that gap. Systems also prune old entries to bound size, at a small risk of false conflicts.</p>",
+    "<p>A dotted version vector is a normal version vector plus one extra pair, the <b>dot</b>: (node, counter) naming exactly the single write event that created this version.</p><p>It separates 'what this write had seen' (the vector) from 'which event this write is' (the dot). So two clients writing through the same node with the same context get different dots, and both are kept as siblings instead of one wrongly overwriting the other. Sibling count then stays tied to real concurrency, not to the number of clients, and metadata stays bounded by the number of servers (Riak uses this).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Every node that receives its timestamp takes the maximum of its own clock and the incoming one, so the wrong time spreads and the cluster's HLC runs ahead of real time. The logical counter then increments to keep ordering, so causality is still right, but timestamps no longer match wall time.</p><p>Real systems cap the damage: they set a maximum allowed offset (for example 500 ms), and a node rejects or halts when a peer's time is further ahead than that. Always monitor clock skew. A jump backwards is harmless, since HLC never goes backwards.</p>",
+    "<p>Because commit wait has to cover the clock's uncertainty, and the uncertainty must be small to keep writes fast. With plain NTP the error may be tens or hundreds of milliseconds, so every commit would wait that long.</p><p>Spanner puts GPS receivers and atomic clocks in each data centre and syncs often, which keeps the uncertainty to a few milliseconds (about 1 to 7 ms). So each commit waits only that long, which is the price of global external consistency.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Delete a dependency once it is known to be <b>visible everywhere</b>, because nobody can then read a state that lacks it. Replicas exchange 'applied up to here' information, and the minimum across all data centres is the stable point.</p><p>Also, a session's dependency list can shrink after each acknowledged write: the new write implicitly depends on everything before it, so only the latest write (the nearest dependency) needs tracking. Example: after a write is applied in all 3 regions, later writes need not mention it any more.</p>",
+    "<p>Causal+ is causal consistency plus <b>convergence</b>: if no new writes arrive, all replicas end with the same value, even for concurrent writes.</p><p>Plain causal consistency lets two replicas keep different winners for concurrent writes to the same key forever, since concurrent writes may be seen in any order. Causal+ adds a deterministic conflict handler, such as last-writer-wins by (timestamp, node id) or a merge function like a CRDT, so every replica resolves the conflict the same way.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Gossip: rounds to inform 1,000 nodes (push vs push-pull)",
+    "python": "import math\nimport random\n\ndef rounds(n, mode, seed):\n    rnd = random.Random(seed)\n    informed = {0}          # node 0 starts with the rumour\n    r = 0\n    while len(informed) < n:\n        new = set()\n        for i in range(n):\n            j = rnd.randrange(n)   # each node picks one random peer per round\n            if mode in (\"push\", \"pushpull\") and i in informed:\n                new.add(j)         # push: informed node tells the peer\n            if mode in (\"pull\", \"pushpull\") and j in informed:\n                new.add(i)         # pull: node learns from an informed peer\n        informed |= new\n        r += 1\n    return r\n\nn = 1000\nprint(\"nodes:\", n, \"log2(n) =\", round(math.log2(n), 1))\nfor mode in (\"push\", \"pull\", \"pushpull\"):\n    results = [rounds(n, mode, s) for s in range(5)]\n    print(\"%-8s rounds to reach everyone over 5 runs: %s\" % (mode, results))\n# Each round costs O(1) messages per node; total spread is O(log N) rounds.\n"
+   },
+   "followUps": [
+    "<p>Because the two methods are weak in opposite phases. Early on, few nodes know the rumour, so <b>push</b> spreads it well. Late, most nodes know it, so a push hits an already informed node and the last few uninformed nodes are rarely picked.</p><p>In <b>pull</b>, an uninformed node asks a random peer, who is probably informed. If the uninformed fraction is p, one pull round makes it about p², which collapses fast (0.1 becomes 0.01), whereas push only shrinks it by a constant factor (about p/e). Push-pull gets both, finishing in about log2(N) rounds.</p>",
+    "<p>Use a stop rule so nodes lose interest. In rumour mongering, a node stops spreading a rumour after it contacts a few peers that already know it (for example, it stops with probability 1/k after each such contact).</p><p>Other tools: a time-to-live or hop count on each message, version numbers so old news is ignored, and periodic anti-entropy (comparing Merkle trees) to repair the few nodes missed. Deletes need tombstones, or a deleted item would be revived by gossip.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>About 1.6 protocol periods, and it does not depend on cluster size. Each period, every live node picks one random target, so a given dead node is picked by each of the other N−1 nodes with probability about 1/N.</p><p>The chance it is picked by at least one node in a period is 1 − (1 − 1/(N−1))^(N−1), about 1 − 1/e, which is roughly 0.63. The expected wait for the first ping is then about 1/0.63, or 1.58 periods. With a 1 s period, first detection takes about 1.6 s on average, plus the suspect timeout before declaring dead.</p>",
+    "<p>An asymmetric partition means A can reach B, but B cannot reach A (or A cannot reach one node while others can). One-way probes then give wrong answers.</p><p>SWIM's indirect ping-req helps: A asks k other members to probe B and relay the answer, so a single bad link does not mark B dead. Add a suspect stage where B can refute with a higher incarnation number, and require several independent witnesses before acting. Lifeguard-style health scores make a node that is itself overloaded distrust its own timeouts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Phi accrual: suspicion grows with silence, adapts to the link",
+    "python": "import math\n\ndef phi(silence, mean):\n    # exponential model: P(still waiting after t) = exp(-t/mean)\n    # phi = -log10 of that probability\n    return silence / mean * math.log10(math.e)\n\nfast = [1.0, 1.1, 0.9, 1.0, 1.2, 0.8, 1.0, 1.0]   # stable LAN, about 1 s apart\nslow = [5.0, 6.0, 4.0, 5.5, 4.5, 5.0, 7.0, 3.0]   # jittery cross-region link\nTHRESHOLD = 8\n\nfor name, beats in [(\"lan\", fast), (\"wan\", slow)]:\n    mean = sum(beats) / len(beats)\n    print(name, \"mean interval %.2fs\" % mean)\n    for t in [1, 2, 5, 10, 20, 40, 100]:\n        p = phi(t, mean)\n        print(\"  silence %5.1fs phi=%6.2f %s\" % (t, p, \"DEAD\" if p >= THRESHOLD else \"alive\"))\n    # silence needed to cross the threshold\n    print(\"  declared dead after about %.1fs\" % (THRESHOLD * mean / math.log10(math.e)))\n"
+   },
+   "followUps": [
+    "<p>Akka's detector assumes a normal distribution of heartbeat gaps (mean and standard deviation), while Cassandra assumes an exponential distribution (only the mean).</p><p>The exponential choice is simpler and fits Cassandra's gossip. There, φ = (silence / mean) × 0.434, so with threshold 8 a node is declared dead after about 18.4 times the mean interval. With a 1 s mean that is about 18 s. The normal model reacts more sharply when heartbeats are very regular, but is more sensitive to outliers.</p>",
+    "<p>Pick it from the cost of a false alarm versus the cost of slow detection. φ is −log10 of the chance of being wrong: φ=1 is about a 10% chance, 2 is 1%, 3 is 0.1%, and 8 is one in a hundred million.</p><p>A low value (1 to 3) detects fast but flags healthy nodes during GC or network jitter. A high value is safe but slow. Cassandra defaults to 8, and cloud setups with noisy networks often raise it to 10 to 12. Measure real false positives in your environment, and use different thresholds for different jobs (a low one to stop routing traffic, a high one to remove the node).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fencing tokens: a paused old leader is rejected",
+    "python": "class Storage:\n    def __init__(self):\n        self.max_epoch = 0\n        self.log = []\n\n    def write(self, epoch, value):\n        # reject any writer whose epoch is older than one already seen\n        if epoch < self.max_epoch:\n            print(\"  REJECTED %s (epoch %d < %d)\" % (value, epoch, self.max_epoch))\n            return False\n        self.max_epoch = epoch\n        self.log.append(value)\n        print(\"  accepted %s (epoch %d)\" % (value, epoch))\n        return True\n\nstore = Storage()\nprint(\"leader A (epoch 1) writes\")\nstore.write(1, \"a1\")\nprint(\"A freezes in a 30 s GC pause; B is elected with epoch 2\")\nstore.write(2, \"b1\")\nprint(\"A wakes up, still believes it is leader\")\nstore.write(1, \"a2-stale\")\nstore.write(2, \"b2\")\nprint(\"final log:\", store.log)\n"
+   },
+   "followUps": [
+    "<p>Because a lease depends on every machine agreeing about elapsed time, and nothing bounds a pause. If the holder's clock runs slow, it believes it has 2 s left when the lock service already expired it.</p><p>Worse, the holder can check 'lease valid' and then freeze in a GC pause for 30 s, then write with no further check. Example: a 10 s lease checked at second 9, then a pause until second 40, and the write lands when another leader holds the lock. So bounded drift is needed for correctness, and fencing tokens checked by the storage are needed for safety.</p>",
+    "<p>Check-quorum makes a leader step down if it has not heard from a majority of followers within an election timeout. That stops a leader that is <b>cut off by the network</b> from serving reads or believing it is still leader, so it cannot keep acting alone.</p><p>It does not help a leader that is merely <b>paused</b>: when it wakes up it acts before the next check runs. That case is covered by terms: followers reject the old term, and an entry needs a majority acknowledging the current term, so the stale leader cannot commit anything.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give the user a fast, non-authoritative answer, and make the real decision with one atomic step. A cache, a Bloom filter or a read replica can say 'taken' instantly, and 'taken' is almost always correct because names are rarely freed.</p><p>If the quick check says 'available', treat it only as a hint. On submit, run a linearizable insert-if-absent on the username key (for example a unique index on the primary). If it fails, show 'sorry, just taken' and offer suggestions. Cost: one CP write per signup, and no stale answer can create a duplicate.</p>",
+    "<p>Keep DMs available: accept the message locally, show it as 'sending', and deliver it when the partition heals. Giving up availability would be worse for a chat product.</p><p>Give each message a client-generated id, so retries are idempotent, and attach causal metadata (the previous message id or a per-conversation counter) so a reply is never shown before the message it answers. If a conversation has a home shard that assigns sequence numbers, the far side queues messages and the order is fixed once the link returns. Ordering is per conversation, so no global coordination is needed.</p>"
+   ]
+  }
+ ]
+}

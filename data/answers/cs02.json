@@ -1,0 +1,118 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Text and read-only data come from the executable file; the heap and stack are created by the OS at run time. The loader maps the <b>text</b> (machine code) and <b>data</b> (initialised globals) sections straight from the file, <b>bss</b> (uninitialised globals) is zero-filled pages, the <b>heap</b> grows upward on malloc/brk/mmap, and the <b>stack</b> grows downward as functions are called.</p><p>Example: <code>int x = 5;</code> as a global lives in data; <code>static char buf[4096];</code> lives in bss.</p>",
+    "<p>Yes, and the OS does it on purpose. Code pages are read-only, so the kernel keeps one copy in physical memory and maps it into every process running that program (or shared library). Ten shells running <code>bash</code> use one physical copy of its machine code, while each has its own private heap and stack. This saves memory and is the same trick used for shared libraries such as libc. Writable pages are never shared unless you ask for it with shared memory or after fork, where they are shared only until someone writes (copy-on-write).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Ready means the process could run right now but no CPU is free; blocked (waiting) means it cannot run even if a CPU were free, because it needs something first. A ready process is waiting for the <b>scheduler</b>; a blocked one is waiting for an <b>event</b> such as a disk read finishing or a lock being released. Example: with 1 CPU and 3 runnable processes, 1 is running and 2 are ready; a process that called <code>read()</code> on a slow disk is blocked and is not in the run queue at all, so it costs no CPU while it waits.</p>",
+    "<p>Suspended states mean the process has been swapped out of RAM to disk, so it is not competing for memory or CPU for now. There are two: <b>ready-suspended</b> (could run if brought back) and <b>blocked-suspended</b> (swapped out and still waiting for an event). When memory is tight the OS picks a blocked process, writes its pages to swap and frees the RAM; when the event arrives it becomes ready-suspended and is swapped back in when there is room. Modern systems page individual pages instead of swapping whole processes, but the idea shows in Ctrl+Z (SIGTSTP stop) and in swapped-out idle processes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The registers, program counter and stack pointer (plus the flags register and floating-point/vector state) are saved, and the memory-management pointer is switched. These are the values the CPU needs to continue exactly where the task stopped. Things like the open-file table, PID or credentials are not copied on a switch; they stay in the PCB and are simply looked up through the pointer to the new task. Example: switching from A to B stores A's 16 general registers and rip/rsp into A's PCB, then loads B's. If B is a different process the page-table base register (CR3 on x86) is also changed, which flushes or tags the TLB.</p>",
+    "<p>In Linux, yes: every thread has its own <code>task_struct</code>, since Linux treats threads as tasks that happen to share resources. Threads of one process have the same address space, file table and signal handlers (pointers to the same shared objects), but each has its own PID-like thread id (TID), state, saved registers, stack pointer and scheduling data. The shared <code>tgid</code> field is what <code>getpid()</code> reports, so a process is a group of tasks. In textbook terms this is a per-thread control block (TCB) inside a shared process control block.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "fork, exec and wait: how a shell runs echo",
+    "python": "import os, sys\n\n# fork() clones this process; the child gets 0, the parent gets the child's PID\npid = os.fork()\nif pid == 0:\n    print(\"child: replacing myself with echo\", flush=True)\n    # exec swaps the program image; it only returns if it fails\n    os.execvp(\"echo\", [\"echo\", \"hello from the new program\"])\n    os._exit(127)\n# wait blocks until the child ends and reaps it (no zombie left behind)\n_, status = os.waitpid(pid, 0)\nprint(\"parent: child pid was positive:\", pid > 0)\nprint(\"parent: child exited normally:\", os.WIFEXITED(status))\nprint(\"parent: exit code:\", os.WEXITSTATUS(status))\n"
+   },
+   "followUps": [
+    "<p>Because fork and exec do two separate jobs, splitting them lets the child change its own setup before the new program starts. Between the two calls the child can redirect files with <code>dup2</code>, close descriptors, change directory, drop privileges or set environment variables, all using ordinary code. Example: for <code>ls &gt; out.txt</code> the child opens out.txt, <code>dup2</code>s it onto fd 1, then execs ls, which writes to the file without knowing. A single spawn call would need a huge list of options, which is what <code>posix_spawn</code> has to provide. Fork is cheap thanks to copy-on-write, so the split costs little.</p>",
+    "<p>Copy-on-write (COW) means two owners share the same memory until one of them writes, and only then is a private copy made. After <code>fork()</code> the parent and child page tables point to the same physical pages, all marked read-only. When either one writes to a page, the CPU raises a page fault, the kernel copies that one 4 KB page, gives the writer its own copy and marks it writable. Example: a 1 GB parent that forks and execs immediately copies almost nothing, because the child throws its memory away. Pages never written are never copied.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A zombie process until the parent waits",
+    "python": "import os, time\n\ndef state(pid):\n    # /proc/<pid>/stat looks like: \"123 (name) S ...\"; the state letter follows \")\"\n    with open(f\"/proc/{pid}/stat\") as f:\n        return f.read().rsplit(\")\", 1)[1].split()[0]\n\npid = os.fork()\nif pid == 0:\n    os._exit(7)                      # child exits at once; parent has not waited yet\ntime.sleep(0.3)\nprint(\"state before wait:\", state(pid), \"(Z = zombie)\")\n_, status = os.waitpid(pid, 0)       # reaping removes the PCB entry\nprint(\"exit code read by parent:\", os.WEXITSTATUS(status))\nprint(\"still in /proc after wait:\", os.path.exists(f\"/proc/{pid}\"))\n"
+   },
+   "followUps": [
+    "<p>Run <code>ps</code> and look for state <code>Z</code> (shown as &lt;defunct&gt;). For example <code>ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'</code> lists every zombie with its parent PID in column 2, and <code>top</code> shows a zombie count in its header. The zombie itself cannot be killed because it is already dead, so you look at the <b>parent</b> (the PPID) and find out why it never calls wait: a bug, a stuck parent, or a missing SIGCHLD handler. Restarting or fixing the parent makes init adopt and reap the zombies. A handful is normal and short-lived; a growing number points to a leaking parent.</p>",
+    "<p>The daemon is orphaned when your shell exits, and the kernel gives it to init (PID 1) or the nearest subreaper, which will reap it when it ends. <code>nohup</code> makes the process ignore SIGHUP, the hang-up signal that a terminal sends to its jobs when it closes, so the process keeps running. Output goes to <code>nohup.out</code> if stdout was a terminal. Example: <code>nohup ./server &amp;</code> survives closing your SSH session. Proper daemons also detach from the terminal with setsid, close inherited descriptors and log to a file or syslog. Under systemd you would use a service unit instead.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Processes created by a loop of n fork() calls",
+    "java": "public class Main {\n    // each process in iteration i becomes two: parent and child both keep looping\n    static int everyProcessForks(int i, int n) {\n        return i == n ? 1 : 2 * everyProcessForks(i + 1, n);\n    }\n\n    // the child leaves the loop right away, only the parent keeps forking\n    static int onlyParentForks(int i, int n) {\n        return i == n ? 1 : 1 + onlyParentForks(i + 1, n);\n    }\n\n    public static void main(String[] args) {\n        for (int n = 1; n <= 4; n++) {\n            System.out.println(\"n=\" + n + \"  everyone forks: \" + everyProcessForks(0, n)\n                + \" processes, only parent forks: \" + onlyParentForks(0, n) + \" processes\");\n        }\n        // fork() && fork(): the child of the first fork gets 0, so it skips the second\n        System.out.println(\"fork() && fork(): 3 processes\");\n    }\n}\n",
+    "python": "def every_process_forks(i, n):\n    # each process in iteration i becomes two: parent and child both keep looping\n    return 1 if i == n else 2 * every_process_forks(i + 1, n)\n\ndef only_parent_forks(i, n):\n    # the child leaves the loop right away, only the parent keeps forking\n    return 1 if i == n else 1 + only_parent_forks(i + 1, n)\n\nfor n in range(1, 5):\n    print(\"n=%d  everyone forks: %d processes, only parent forks: %d processes\"\n          % (n, every_process_forks(0, n), only_parent_forks(0, n)))\n# fork() && fork(): the child of the first fork gets 0, so it skips the second\nprint(\"fork() && fork(): 3 processes\")\n",
+    "js": "// each process in iteration i becomes two: parent and child both keep looping\nfunction everyProcessForks(i, n) { return i === n ? 1 : 2 * everyProcessForks(i + 1, n); }\n// the child leaves the loop right away, only the parent keeps forking\nfunction onlyParentForks(i, n) { return i === n ? 1 : 1 + onlyParentForks(i + 1, n); }\n\nfor (let n = 1; n <= 4; n++) {\n  console.log(`n=${n}  everyone forks: ${everyProcessForks(0, n)} processes, only parent forks: ${onlyParentForks(0, n)} processes`);\n}\n// fork() && fork(): the child of the first fork gets 0, so it skips the second\nconsole.log(\"fork() && fork(): 3 processes\");\n",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// each process in iteration i becomes two: parent and child both keep looping\nint everyProcessForks(int i, int n) { return i == n ? 1 : 2 * everyProcessForks(i + 1, n); }\n\n// the child leaves the loop right away, only the parent keeps forking\nint onlyParentForks(int i, int n) { return i == n ? 1 : 1 + onlyParentForks(i + 1, n); }\n\nint main() {\n    for (int n = 1; n <= 4; n++) {\n        cout << \"n=\" << n << \"  everyone forks: \" << everyProcessForks(0, n)\n             << \" processes, only parent forks: \" << onlyParentForks(0, n) << \" processes\\n\";\n    }\n    // fork() && fork(): the child of the first fork gets 0, so it skips the second\n    cout << \"fork() && fork(): 3 processes\\n\";\n    return 0;\n}\n",
+    "csharp": "using System;\n\nclass Program\n{\n    // each process in iteration i becomes two: parent and child both keep looping\n    static int EveryProcessForks(int i, int n)\n    {\n        return i == n ? 1 : 2 * EveryProcessForks(i + 1, n);\n    }\n\n    // the child leaves the loop right away, only the parent keeps forking\n    static int OnlyParentForks(int i, int n)\n    {\n        return i == n ? 1 : 1 + OnlyParentForks(i + 1, n);\n    }\n\n    static void Main()\n    {\n        for (int n = 1; n <= 4; n++)\n        {\n            Console.WriteLine(\"n=\" + n + \"  everyone forks: \" + EveryProcessForks(0, n)\n                + \" processes, only parent forks: \" + OnlyParentForks(0, n) + \" processes\");\n        }\n        // fork() && fork(): the child of the first fork gets 0, so it skips the second\n        Console.WriteLine(\"fork() && fork(): 3 processes\");\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Same rule: every process that reaches a fork() doubles the count, so count the fork() calls executed on one path and take 2 to that power. Example: <code>for(i=0;i&lt;2;i++) for(j=0;j&lt;3;j++) fork();</code> executes 2*3 = 6 forks along each path, giving 2<sup>6</sup> = 64 processes, not 2<sup>2</sup>+2<sup>3</sup>. If a branch exits or breaks early, count that path only up to its exit. When unsure, draw the tree with each node labelled by the iteration it reached.</p>",
+    "<p>A fork bomb is the same doubling with no stop: <code>while(1) fork();</code> or the shell form <code>:(){ :|:&amp; };:</code>. Process counts grow like 2<sup>n</sup>, so within seconds the PID table and memory are full and the machine is unusable. The defence is a per-user process limit (<code>ulimit -u</code>, RLIMIT_NPROC, or cgroup <code>pids.max</code> for containers), which makes fork fail with EAGAIN once the cap is hit. That is why container runtimes should set a pids limit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Linux creates a thread with the <code>clone()</code> system call, which makes a new task that shares chosen resources with its creator. Flags such as CLONE_VM (memory), CLONE_FILES (file table), CLONE_FS and CLONE_SIGHAND say what is shared; fork uses none of them, so it copies instead. Every thread has its own <code>task_struct</code> and is scheduled like any process, so pthreads (NPTL) are 1:1 kernel threads, with futexes for locks. Creating one costs a few microseconds because only a stack and a task struct are new.</p>",
+    "<p>The whole process dies, not just that thread. A segmentation fault raises SIGSEGV, and the default action terminates the entire process, because all threads share one address space and the kernel cannot know that other threads are still safe. Example: a worker thread that dereferences a null pointer takes down the web server and all 50 other workers. If isolation is needed, use separate processes (as browsers do per tab). A signal handler can catch SIGSEGV, but continuing afterwards is rarely safe because shared memory may now be corrupt.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Go's runtime moves the other goroutines away so only the blocked one is stuck. When a goroutine enters a blocking system call, its OS thread (M) blocks with it; the runtime detaches the processor (P, which holds the run queue) from that thread and gives it to another or a new thread, so the remaining goroutines keep running. When the call returns, the goroutine goes back on a queue. Network I/O avoids this by using a non-blocking poller (epoll), so goroutines park cheaply without holding any thread. Example: 10,000 goroutines waiting on sockets can run on just a few threads.</p>",
+    "<p>Linux chose 1:1 because it is simple, uses all cores, and lets the kernel scheduler handle blocking calls correctly. In N:1 or M:N designs the runtime and kernel scheduler can disagree: a blocking call stalls many user threads, and signals and priorities become awkward. Early Linux threads (LinuxThreads) and the later NPTL both moved toward 1:1 once clone() and futexes made kernel threads cheap, so creation takes microseconds and a process can have tens of thousands. Languages that want millions of tasks add their own M:N layer on top, as Go and Java virtual threads do.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Read the counters the kernel keeps, with <code>vmstat 1</code> (column <code>cs</code> is switches per second) or <code>pidstat -w</code> (voluntary and involuntary per process). Per-process totals also appear in <code>/proc/&lt;pid&gt;/status</code> as <code>voluntary_ctxt_switches</code> and <code>nonvoluntary_ctxt_switches</code>, and <code>perf stat -e context-switches</code> counts for one command. Voluntary means the task blocked on I/O or a lock; involuntary means it was pre-empted, which points to CPU contention. For example 50,000 cs/s on 4 cores with mostly involuntary switches suggests too many runnable threads.</p>",
+    "<p>A mode switch changes the CPU between user mode and kernel mode for the same task, while a context switch changes which task is running. A system call such as <code>getpid()</code> is only a mode switch: registers are saved briefly, the kernel runs, and the same process continues, costing roughly 0.1 microsecond. A context switch happens inside the kernel when the scheduler picks a different task, so it needs a mode switch and also swaps task state and possibly page tables. A mode switch does not imply a context switch, but a context switch always involves the kernel.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a mutex or semaphore that lives in the shared memory itself, or one the OS provides, so that only one process touches the data at a time. With POSIX you put a <code>pthread_mutex_t</code> in the shared region with the PTHREAD_PROCESS_SHARED attribute, or use named semaphores (<code>sem_open</code>). Example: two processes incrementing a shared counter 1,000 times each without a lock can end below 2,000 because the read-add-write steps interleave; with the lock it is always 2,000. For a single producer and consumer, a ring buffer with atomic head and tail indexes needs no lock at all.</p>",
+    "<p>A pipe is a fixed-size kernel buffer, so a writer must wait when the reader is slower, which gives automatic backpressure. On Linux the buffer holds 64 KB by default, so a writer that sends 1 MB to a reader that has not started reading blocks after about 64 KB. If the reader never reads, or two processes each wait on the other's pipe, you get a deadlock. A write also fails with EPIPE or SIGPIPE if no reader is left. Fixes are to read promptly, use non-blocking writes with poll, or use a bigger buffer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Pipes: EPIPE with no reader and a full buffer",
+    "python": "import os, fcntl\n\n# 1) A write with no reader left fails with EPIPE (SIGPIPE if not ignored)\nr, w = os.pipe()\nos.close(r)                          # close the only read end\ntry:\n    os.write(w, b\"hello\")\nexcept BrokenPipeError:\n    print(\"write to a pipe with no reader -> BrokenPipeError (EPIPE)\")\nos.close(w)\n\n# 2) A pipe is a bounded buffer: make it non-blocking and fill it\nr, w = os.pipe()\nflags = fcntl.fcntl(w, fcntl.F_GETFL)\nfcntl.fcntl(w, fcntl.F_SETFL, flags | os.O_NONBLOCK)\ntotal = 0\ntry:\n    while True:\n        total += os.write(w, b\"x\" * 1024)\nexcept BlockingIOError:\n    print(\"buffer full, a blocking writer would sleep here\")\nprint(\"bytes accepted before full is at least 4096:\", total >= 4096)\nos.read(r, 65536)                    # reader drains the buffer ...\nprint(\"after a read, a write succeeds again:\", os.write(w, b\"y\") == 1)\n"
+   },
+   "followUps": [
+    "<p>Set the O_NONBLOCK flag on the pipe's file descriptor, so reads and writes return immediately with EAGAIN instead of sleeping. Either create the pipe with <code>pipe2(fds, O_NONBLOCK)</code> or call <code>fcntl(fd, F_SETFL, flags | O_NONBLOCK)</code>. Then wait for readiness with poll or epoll and handle partial writes. In Python this is exactly what the program above does: the full pipe raises <code>BlockingIOError</code> instead of hanging. Non-blocking is the normal way to drive many pipes from one thread.</p>",
+    "<p>Linux lets you resize it with <code>fcntl(fd, F_SETPIPE_SZ, bytes)</code>; the default is 64 KB (16 pages) and the unprivileged maximum is in <code>/proc/sys/fs/pipe-max-size</code>, usually 1 MB. Pick the size from burst size and consumer speed: if a producer emits bursts of 200 KB and the consumer drains slowly, 256 KB avoids stalling it. A bigger buffer only hides a slow consumer for a while; sustained overload still blocks the writer, which is usually what you want as backpressure. Memory used grows with pipe size for each pipe.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>After a failed exec, the child's copy of the stdio buffer still holds the parent's unflushed text, and a normal <code>exit()</code> would flush it, printing it a second time. <code>_exit()</code> ends the process immediately without running atexit handlers or flushing stdio, so only the parent prints that data. Example: the parent buffered \"start\" (no newline, output to a file), forks, exec fails, and the child calls exit(1): \"start\" appears twice. With _exit(127) it appears once. 127 is the conventional exit code for command not found.</p>",
+    "<p>It is a separate effect: copy-on-write copies memory pages, but stdio's buffer is just ordinary memory in the process. At fork the child's page tables point to the parent's pages, so the buffered bytes are logically duplicated in the child (physically shared until written). Both processes later flush their own view of the buffer, so the text is written twice. COW makes the copy cheap; it does not remove the duplication. The fix is to flush with <code>fflush(stdout)</code> before fork so the buffer is empty when copied.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A minor fault is cheap and solved without disk, a major fault needs disk I/O. A <b>minor</b> fault happens when the page is already in RAM but not yet mapped for this process, for example the first write to a COW page after fork, or a zero page on first touch; the kernel fixes the page table in about a microsecond or less. A <b>major</b> fault means the page must be read from disk (swap or a file), which takes milliseconds, thousands of times slower. Count them with <code>/usr/bin/time -v</code> or <code>ps -o min_flt,maj_flt</code>. After fork the many faults you see are minor.</p>",
+    "<p>Redis cannot stop the growth, but it keeps it small by making the snapshot short and by tuning the system. The child writes the dump while the parent keeps serving, so each key the parent modifies forces a copy of its 4 KB page; heavy writes during a long save push memory towards double. Redis recommends spare RAM, <code>vm.overcommit_memory=1</code> so fork does not fail, disabling Transparent Huge Pages (a write to a 2 MB huge page copies 2 MB), and scheduling snapshots at quiet times. Replicas can take the snapshot instead of the primary.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It registers three functions that run around every fork: <code>prepare</code> in the parent just before the fork, <code>parent</code> in the parent after, and <code>child</code> in the child after. A library uses prepare to lock its own mutexes so none is held mid-operation by another thread, then unlocks them in both parent and child handlers, leaving the child in a consistent state. Example: a logging library locks its mutex in prepare and unlocks it in both, so the child can safely log. It is a workaround; the safest approach is still to exec right after fork.</p>",
+    "<p>Because fork copies the state of threads and locks wrongly, spawn starts a clean new process and avoids this. Python's <code>multiprocessing</code> default on Linux was fork, which can hang if a thread held a lock at that moment; <code>spawn</code> starts a fresh interpreter and passes arguments by pickling (the default on macOS and Windows; Linux moved to forkserver in Python 3.14). CUDA cannot survive fork because the GPU driver state and its threads are not valid in the child, so the child fails when it touches the GPU. The cost of spawn is slower start and the need for picklable arguments.</p>"
+   ]
+  }
+ ]
+}

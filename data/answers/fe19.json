@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Promise runs eagerly; Observable is lazy and cancellable",
+    "js": "// Promise is eager and one-shot; a tiny Observable is lazy and cancellable.\nlet log = [];\nconst p = new Promise(res => { log.push('promise work started'); res(1); });\nlog.push('promise created');\n\nfunction Observable(producer) { this.producer = producer; }\nObservable.prototype.subscribe = function (next) {\n  return this.producer({ next }) || (() => {}); // returns teardown\n};\nconst obs = new Observable(o => {\n  log.push('observable work started');\n  let n = 0;\n  const id = setInterval(() => o.next(++n), 10);\n  return () => { clearInterval(id); log.push('teardown ran'); };\n});\nlog.push('observable created (nothing started yet)');\n\nconst seen = [];\nconst unsub = obs.subscribe(v => seen.push(v)); // lazy: starts now\nsetTimeout(() => {\n  unsub(); // cancel: Promise cannot do this\n  p.then(v => seen.push('promise:' + v));\n  setTimeout(() => {\n    console.log(log.join('\\n'));\n    console.log('values seen:', seen.length > 0 ? 'several ticks, then promise:1' : 'none');\n    console.log(seen[seen.length - 1]);\n  }, 20);\n}, 55);"
+   },
+   "followUps": [
+    "<p>A cold Observable creates a fresh producer for every subscriber; a hot one shares a producer that is already running.</p><p>Cold: <code>http.get(url)</code> fires a new request per subscribe, like pressing play on your own copy of a video. Hot: a click stream or WebSocket keeps going whether or not anyone listens, like live TV; late subscribers miss earlier values. Turn cold into hot with <code>share()</code> or <code>shareReplay()</code>. Two subscribers to a cold request mean two HTTP calls.</p>",
+    "<p>It returned a Promise of the <em>last</em> value but silently hid what happens when the stream is empty or never completes, so it was deprecated in RxJS 7 and removed in 8.</p><p>Use <code>firstValueFrom(obs$)</code> when you want the first value (it unsubscribes right away) or <code>lastValueFrom(obs$)</code> for the last one on completion. Both make the choice explicit, and both reject with <code>EmptyError</code> on an empty stream unless you pass <code>{ defaultValue }</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because switchMap cancels the previous inner request when a new value arrives, so an earlier write can be dropped from the view of your app even though the server may already have processed it.</p><p>A POST that already reached the server may still be saved, yet your app never sees its response. Click Save twice quickly: the first save may succeed unnoticed and the UI shows only the second. For writes use <code>concatMap</code> (ordered) or <code>exhaustMap</code> (ignore repeats).</p>",
+    "<p><code>concatMap(fn)</code> is the same as <code>mergeMap(fn, 1)</code>: a concurrency limit of one means each inner Observable must finish before the next starts, so values queue in order.</p><p>Example: source emits A, B, C quickly and each inner takes 100 ms. With <code>mergeMap(fn, 1)</code> the results arrive at 100, 200, 300 ms, in order A, B, C. With <code>mergeMap(fn, 2)</code> A and B run together and C waits for a free slot.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because operators after it would not be cleaned up: <code>takeUntilDestroyed</code> completes the stream at the point where it sits, and an operator placed after it can still hold a subscription to another stream.</p><p>For example <code>takeUntilDestroyed()</code> before <code>switchMap(...)</code> stops the outer source, but the inner request created by switchMap keeps running. Put it last and the complete signal reaches every inner stream. Linting rules (e.g. rxjs-no-unsafe-takeuntil) enforce this.</p>",
+    "<p>Usually no: HttpClient Observables emit once and then complete, and completion releases the subscription, so nothing leaks.</p><p>You still unsubscribe (or use <code>takeUntilDestroyed</code>) when you want to <em>cancel</em> a slow request that is no longer needed, for instance when the user leaves the page, which aborts the XHR or fetch. Note that a response arriving after the component is destroyed can still run your callback and touch dead state, so cancelling is a good habit.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Subject, BehaviorSubject and ReplaySubject for late subscribers",
+    "js": "// Subject vs BehaviorSubject vs ReplaySubject, built from scratch.\nclass Subject {\n  constructor() { this.subs = []; }\n  subscribe(fn) { this.subs.push(fn); }\n  next(v) { this.subs.forEach(f => f(v)); }\n}\nclass BehaviorSubject extends Subject {\n  constructor(init) { super(); this.value = init; }\n  subscribe(fn) { fn(this.value); super.subscribe(fn); } // current value first\n  next(v) { this.value = v; super.next(v); }\n}\nclass ReplaySubject extends Subject {\n  constructor(n) { super(); this.n = n; this.buf = []; }\n  subscribe(fn) { this.buf.forEach(fn); super.subscribe(fn); } // replay last n\n  next(v) { this.buf.push(v); if (this.buf.length > this.n) this.buf.shift(); super.next(v); }\n}\nconst subjects = {\n  Subject: new Subject(),\n  BehaviorSubject: new BehaviorSubject(0),\n  ReplaySubject: new ReplaySubject(2),\n};\nfor (const name in subjects) {\n  const s = subjects[name];\n  [1, 2, 3].forEach(v => s.next(v));      // emitted before anyone subscribes late\n  const got = [];\n  s.subscribe(v => got.push(v));          // late subscriber\n  s.next(4);\n  console.log(name.padEnd(16), 'late subscriber got', JSON.stringify(got));\n}"
+   },
+   "followUps": [
+    "<p>After <code>complete()</code> a plain Subject gives a late subscriber only the complete notification; a BehaviorSubject does the same (it does not replay its value once completed); a ReplaySubject replays its buffered values and then completes.</p><p>Example: values 1,2,3 then complete, new subscriber: Subject gets just complete, BehaviorSubject gets just complete, ReplaySubject(2) gets 2, 3, complete. That is why ReplaySubject suits caches and BehaviorSubject does not survive completion.</p>",
+    "<p>So outsiders can only read, not push values; the service stays the single owner of state changes.</p><p>If a component receives the Subject itself it can call <code>next()</code> with anything and break invariants, which makes bugs hard to trace. Keep <code>private _user$ = new BehaviorSubject(null)</code> and expose <code>user$ = this._user$.asObservable()</code>. The type has no <code>next</code>, and with signals the same idea is <code>asReadonly()</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "A tiny signal, computed and effect with tracking",
+    "js": "// A tiny signal / computed / effect with automatic dependency tracking.\nlet current = null;\nfunction signal(v) {\n  const subs = new Set();\n  const read = () => { if (current) subs.add(current); return v; };\n  read.set = nv => { if (Object.is(nv, v)) return; v = nv; [...subs].forEach(s => s()); };\n  return read;\n}\nfunction effect(fn) {\n  const run = () => { const prev = current; current = run; try { fn(); } finally { current = prev; } };\n  run();\n}\nfunction computed(fn) {\n  let cache, dirty = true; const out = signal();\n  const mark = () => { dirty = true; out.set(Symbol()); }; // tell readers\n  const read = () => {\n    if (dirty) { const prev = current; current = mark; cache = fn(); current = prev; dirty = false; }\n    out(); // register the reader as a dependent\n    return cache;\n  };\n  return read;\n}\nconst price = signal(10);\nconst qty = signal(2);\nlet computeCount = 0;\nconst total = computed(() => { computeCount++; return price() * qty(); });\neffect(() => console.log('effect: total =', total()));\nprice.set(20);\nprice.set(20); // same value: skipped\nqty.set(3);\nconsole.log('total read again:', total(), '| computed ran', computeCount, 'times');"
+   },
+   "followUps": [
+    "<p>Because an effect that writes a signal creates a second, hidden update step, which risks loops and extra change detection; derived state is what computed is for.</p><p>With <code>effect(() =&gt; this.full.set(first() + last()))</code> the value is stale until the effect flushes, and it can run extra times. Writing <code>full = computed(() =&gt; first() + last())</code> is synchronous, memoized and never needs a write. Angular forbids signal writes in effects by default for this reason.</p>",
+    "<p><code>untracked(() =&gt; ...)</code> reads signals without registering them as dependencies, so a change in them does not re-run the effect or computed.</p><p>Example: <code>effect(() =&gt; { log(user().id, untracked(() =&gt; theme())); })</code> re-runs when the user changes but not when the theme changes. Use it for context values you need to read but not react to.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because toObservable uses an effect, so it only emits the latest value when the effect flushes, not every intermediate write.</p><p>If you do <code>s.set(1); s.set(2); s.set(3)</code> in one tick, the Observable emits only 3. This is right for state but wrong for events, where every occurrence matters. For event streams keep a Subject. Also, emission is asynchronous, so a synchronous read right after <code>set</code> sees nothing yet.</p>",
+    "<p>Choose a Subject when each occurrence matters, not just the current state: clicks, \"save requested\", WebSocket messages, or a destroy notifier.</p><p>Signals coalesce writes and skip equal values, so three identical \"refresh\" commands become one. A Subject delivers all three, supports operators like debounce and switchMap, and has no required current value. Rule of thumb: state is a signal, events are Subjects.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because debouncing the input stops the keystrokes from becoming requests at all, while debouncing the HTTP call would still send each request first.</p><p>Typing \"angular\" fast produces 7 values. Debounce on the input with 300 ms waits for a pause and sends 1 request. Without it, 7 requests start and switchMap cancels 6, still wasting work and sometimes server load. Apply <code>debounceTime</code> before <code>switchMap</code>.</p>",
+    "<p>Use a fake clock so no real time passes, and assert what was emitted at each virtual moment.</p><p>With Jasmine <code>fakeAsync</code> call <code>tick(299)</code> and expect no request, then <code>tick(1)</code> and expect exactly one request with the latest text. RxJS also offers <code>TestScheduler</code> with marble diagrams. Also test that quick typing sends one call and that a new term cancels the old one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The async pipe calls <code>markForCheck()</code> on every emission, which tells Angular this OnPush view needs checking; a plain field assignment inside <code>subscribe</code> does not.</p><p>An OnPush component re-renders only on input change, DOM events from its template, or when marked dirty. A subscribe callback that does <code>this.items = x</code> changes data but marks nothing, so the screen stays stale (under zone.js it may still look fine when another event triggers a check). Fix by using async pipe, signals, or calling <code>cdr.markForCheck()</code>.</p>",
+    "<p>It still works, because it calls markForCheck on each emission and Angular schedules a check from that notification, with no zone.js needed.</p><p>That is why async pipe and signals are the safe choices for zoneless apps. A manual <code>subscribe</code> that sets a plain field fails there: nothing schedules change detection. Setting a signal inside the callback does work.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "retry with backoff, only for transient errors",
+    "js": "// retry with exponential backoff and jitter; only transient errors are retried.\nlet calls = 0;\nfunction flaky() {\n  calls++;\n  if (calls < 3) { const e = new Error('503 unavailable'); e.status = 503; throw e; }\n  return 'ok after ' + calls + ' calls';\n}\nfunction delayFor(attempt) {\n  const base = 100 * 2 ** (attempt - 1);        // 100, 200, 400 ...\n  return Math.round(base * 0.5);                // fixed \"jitter\" factor so output is stable\n}\nfunction retry(fn, max) {\n  for (let attempt = 1; ; attempt++) {\n    try { return fn(); }\n    catch (e) {\n      const transient = e.status >= 500;        // never retry 4xx\n      if (!transient || attempt > max) throw e;\n      console.log('attempt', attempt, 'failed (' + e.message + '), wait', delayFor(attempt), 'ms');\n    }\n  }\n}\nconsole.log(retry(flaky, 3));\ntry { retry(() => { const e = new Error('400 bad input'); e.status = 400; throw e; }, 3); }\ncatch (e) { console.log('not retried:', e.message); }"
+   },
+   "followUps": [
+    "<p>The second argument is <code>caught</code>, the source Observable itself, so returning it re-subscribes and effectively retries.</p><p>Example: <code>catchError((err, caught) =&gt; attempts++ &lt; 3 ? caught : throwError(() =&gt; err))</code> retries up to three times. It is handy but easy to loop forever without a counter, so <code>retry({ count, delay })</code> is usually clearer.</p>",
+    "<p>Jitter adds a small random amount to each wait so that many clients do not all retry at the same instant after an outage.</p><p>Without it, 1000 clients that failed together all retry at 1 s, then all at 2 s, creating repeated load spikes on a recovering server. With delay = base * 2^n * random(0.5..1) the retries spread out. Cap the maximum delay and the attempt count.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Version-based push-pull: no glitch, equality cutoff",
+    "js": "// Push-pull with versions: diamond graph a -> b,c -> d recomputes d once, no glitch.\nclass Node {\n  constructor(fn, deps) { this.fn = fn; this.deps = deps; this.version = 0; this.seen = deps.map(() => -1); this.value = undefined; this.runs = 0; }\n  get() {\n    let changed = this.version === 0;\n    this.deps.forEach((d, i) => { d.get(); if (d.version !== this.seen[i]) { changed = true; this.seen[i] = d.version; } });\n    if (changed) { // pull: recompute only if an input version moved\n      const nv = this.fn(...this.deps.map(d => d.value)); this.runs++;\n      if (!Object.is(nv, this.value)) { this.value = nv; this.version++; } // equality cutoff\n    }\n    return this.value;\n  }\n}\nconst a = { value: 1, version: 1, get() { return this.value; }, set(v) { this.value = v; this.version++; } };\nconst b = new Node(x => x * 2, [a]);\nconst c = new Node(x => x * 3, [a]);\nconst d = new Node((x, y) => x + y, [b, c]);\nconst parity = new Node(x => x % 2, [a]);\nconsole.log('d =', d.get(), 'parity =', parity.get());\na.set(3);\nconsole.log('d =', d.get(), '(b=6, c=9, never a mix)');\na.set(5); // parity stays 1: cutoff\nconsole.log('d =', d.get(), 'parity =', parity.get(), '| d ran', d.runs, 'times, parity ran', parity.runs);"
+   },
+   "followUps": [
+    "<p>Because most derived values are never read, and laziness means you pay only for what is actually used and only at the moment it is needed.</p><p>If a computed does a costly filter of 10,000 items and the template hides it, a lazy computed never runs. It also lets the framework read dependencies in order and avoid computing from half-updated inputs. An eager design would recompute on every write.</p>",
+    "<p>The error is cached and rethrown on every read until a dependency changes, then it tries again.</p><p>For example <code>computed(() =&gt; JSON.parse(text()))</code> throws on bad text; reading it again does not re-run the parse, it rethrows the same error. When <code>text</code> becomes valid, the next read recomputes. An effect reading it will throw too, so guard or catch inside the computed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With <code>refCount: true</code> the source is unsubscribed when the last subscriber leaves; with <code>false</code> it stays subscribed forever and keeps the cached value.</p><p>Use <code>true</code> for streams that should stop when unused (polling, sockets). Use <code>false</code> for one-shot HTTP caches you want to keep. With <code>true</code>, a new subscriber after everyone left starts the source again, causing a fresh request.</p>",
+    "<p>Yes: <code>httpResource</code> or <code>resource</code> is created once as a field, and the template reads its signals, so reading them many times never restarts the request.</p><p>The request reruns only when the signals it depends on change, and it tracks <code>value()</code>, <code>isLoading()</code> and <code>error()</code> for you. That removes the multiple-subscribe class of bug, since there is no cold Observable to subscribe to repeatedly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>onCleanup</code> registers a function that runs before the effect re-runs and when it is destroyed, so you can undo what the last run started.</p><p>Example: <code>effect((onCleanup) =&gt; { const id = setInterval(tick, query()); onCleanup(() =&gt; clearInterval(id)); })</code>. When <code>query</code> changes, the old interval is cleared first, then a new one starts; without it you would stack timers.</p>",
+    "<p>Create the component or service in the TestBed, change signals, and then call <code>TestBed.tick()</code> (or <code>fixture.detectChanges()</code>) to flush effects, then assert.</p><p>Effects are asynchronous, so asserting straight after <code>set</code> sees the old result. In older versions use <code>TestBed.flushEffects()</code>. Prefer testing the observable outcome (what was written to storage) rather than the effect function itself.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>When you need strict, auditable event flow: every change is a named action, reducers are pure, and tools can replay or time-travel through history.</p><p>That pays off for large teams, complex cross-feature workflows, and apps needing devtools or action logging. For a medium app it adds boilerplate (actions, reducers, effects, selectors) that a signal store avoids. NgRx SignalStore gives a lighter middle ground.</p>",
+    "<p>Keep the same public API while swapping the internals, and move consumers over one at a time.</p><p>Step 1: hold the state in a private signal and keep <code>user$ = toObservable(this.user)</code> so old callers still work. Step 2: add a readonly <code>user</code> signal for new code. Step 3: convert components, then drop the Observable. Watch that toObservable emits asynchronously and only the latest value, which can differ from BehaviorSubject.</p>"
+   ]
+  }
+ ]
+}

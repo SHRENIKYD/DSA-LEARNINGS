@@ -1,0 +1,128 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Lost updates: unsafe ++ versus Interlocked",
+    "csharp": "using System;\nusing System.Threading;\n\nclass Program\n{\n    static int unsafeCount = 0, safeCount = 0;\n\n    static void Main()\n    {\n        Thread[] ts = new Thread[4];\n        for (int t = 0; t < 4; t++)\n        {\n            ts[t] = new Thread(() =>\n            {\n                for (int i = 0; i < 50000; i++)\n                {\n                    unsafeCount++;                        // read-modify-write: updates can be lost\n                    Interlocked.Increment(ref safeCount); // atomic: never loses an update\n                }\n            });\n            ts[t].Start();\n        }\n        foreach (Thread t in ts) t.Join();\n        Console.WriteLine(\"expected: 200000\");\n        Console.WriteLine(\"safe count: \" + safeCount);\n        // the unsafe total varies from run to run, but it can never exceed the expected value\n        Console.WriteLine(\"unsafe count <= expected: \" + (unsafeCount <= 200000));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Run it many times under stress and look for wrong results, because a race is a timing bug that hides on a single try. Hammer the code with many threads and iterations, compare against the expected answer, and repeat thousands of times. Example: 8 threads each add 100000 times; the total must be 800000, and any smaller number proves lost updates.</p><p>Help it along with <code>Thread.Yield()</code> or random sleeps to shake out interleavings, run on ARM and with many cores, and use tools such as a thread sanitizer or Coyote. A passing test never proves safety; it only raises confidence.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "lock is Monitor.Enter/Exit in a finally block",
+    "csharp": "using System;\nusing System.Threading;\n\nclass Program\n{\n    static readonly object gate = new object(); // private lock object\n    static int total = 0;\n\n    static void AddWithLock(int n)\n    {\n        lock (gate) { total += n; }\n    }\n\n    // what the compiler generates for lock(gate) { ... }\n    static void AddWithMonitor(int n)\n    {\n        bool taken = false;\n        try\n        {\n            Monitor.Enter(gate, ref taken);\n            total += n;\n        }\n        finally\n        {\n            if (taken) Monitor.Exit(gate); // always released, even on exception\n        }\n    }\n\n    static void Main()\n    {\n        Thread a = new Thread(() => { for (int i = 0; i < 10000; i++) AddWithLock(1); });\n        Thread b = new Thread(() => { for (int i = 0; i < 10000; i++) AddWithMonitor(1); });\n        a.Start(); b.Start(); a.Join(); b.Join();\n        Console.WriteLine(\"total = \" + total + \" (expected 20000)\");\n        lock (gate) { lock (gate) { Console.WriteLine(\"reentrant: same thread locked twice\"); } }\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>A lock convoy is a pile-up where many threads queue for one hot lock and each hand-off costs a context switch, so throughput collapses. Threads wake, find the lock taken again, and sleep again, so the lock is busy but little real work gets done.</p><p>It appears when a lock is held briefly but requested very often, or when the holder gets preempted inside the critical section. Fixes: shrink the critical section, split the lock (per shard), use Interlocked or thread-local data, or reduce how often threads touch the shared state.</p>",
+    "<p>.NET 9 adds a dedicated <code>System.Threading.Lock</code> type, and <code>lock</code> on a variable of that type uses its own <code>EnterScope</code> method instead of Monitor. It is a little faster and states the intent clearly.</p><pre><code>private readonly Lock gate = new();\nlock (gate) { total++; }   // uses gate.EnterScope()</code></pre><p>Rules stay the same: short sections, no await inside. Caution: locking a Lock object through Monitor directly, or casting it to object, does not use the new path.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Deadlock prevention with a global lock order",
+    "csharp": "using System;\nusing System.Threading;\n\nclass Account\n{\n    public readonly int Id;\n    public int Balance;\n    public Account(int id, int bal) { Id = id; Balance = bal; }\n}\n\nclass Program\n{\n    // Always lock the lower Id first: a global order makes circular wait impossible.\n    static void Transfer(Account from, Account to, int amount)\n    {\n        Account first = from.Id < to.Id ? from : to;\n        Account second = from.Id < to.Id ? to : from;\n        lock (first)\n        {\n            lock (second)\n            {\n                from.Balance -= amount;\n                to.Balance += amount;\n            }\n        }\n    }\n\n    static void Main()\n    {\n        Account a = new Account(1, 1000), b = new Account(2, 1000);\n        Console.WriteLine(\"before: \" + a.Balance + \", \" + b.Balance);\n        Thread t1 = new Thread(() => { for (int i = 0; i < 1000; i++) Transfer(a, b, 1); });\n        Thread t2 = new Thread(() => { for (int i = 0; i < 1000; i++) Transfer(b, a, 2); });\n        t1.Start(); t2.Start(); t1.Join(); t2.Join();\n        Console.WriteLine(\"after:  \" + a.Balance + \", \" + b.Balance); // no deadlock; total stays 2000\n        // Timeout alternative: Monitor.TryEnter(obj, 100) returns false instead of waiting forever.\n        object x = new object();\n        Console.WriteLine(\"TryEnter free lock: \" + Monitor.TryEnter(x, 100));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Livelock is when threads are not blocked but keep reacting to each other and make no progress. Two people in a corridor who both step aside the same way forever are the picture.</p><p>In code, two threads each take a lock, fail to get the second via <code>TryEnter</code>, release the first, and retry in perfect step, forever. CPU is busy while nothing completes. Fix by adding random backoff (jitter), a fixed lock order, or a priority so that one side always wins. Deadlock burns no CPU; livelock does.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Interlocked CAS loop, and a lock for two variables",
+    "csharp": "using System;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nclass Program\n{\n    static int maxSeen = 0;\n    static int balance = 100, historyCount = 0;\n    static readonly object gate = new object();\n\n    // CAS loop: lock-free \"store the maximum\" on ONE variable\n    static void UpdateMax(int value)\n    {\n        int cur = Volatile.Read(ref maxSeen);\n        while (value > cur)\n        {\n            int seen = Interlocked.CompareExchange(ref maxSeen, value, cur);\n            if (seen == cur) break; // our swap won\n            cur = seen;             // someone changed it; retry\n        }\n    }\n\n    static void Main()\n    {\n        int[] data = { 5, 42, 7, 99, 13, 64, 8, 77 };\n        Parallel.ForEach(data, v => UpdateMax(v));\n        Console.WriteLine(\"max = \" + maxSeen);\n\n        // Two variables must change together, so a lock is needed\n        Parallel.For(0, 1000, i =>\n        {\n            lock (gate) { balance += 1; historyCount += 1; }\n        });\n        Console.WriteLine(\"balance=\" + balance + \" history=\" + historyCount);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Push builds a new node and uses compare-and-swap on the head, retrying if another thread changed the head first. No lock is held, so a stalled thread cannot block others.</p><pre><code>do {\n  old = Volatile.Read(ref head);\n  node.Next = old;\n} while (Interlocked.CompareExchange(ref head, node, old) != old);</code></pre><p>Example: head is A; two threads push B and C. One CAS wins (head becomes B), the other sees head changed, relinks to B and retries. Cost is O(1) amortized, O(1) space per push. Pop is harder because of the ABA problem; .NET's GC makes the push/pop pair safe because a node cannot be reused while referenced.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "volatile stop flag and Volatile.Read/Write",
+    "csharp": "using System;\nusing System.Threading;\n\nclass Program\n{\n    // Without volatile the JIT may read 'running' once and loop forever.\n    static volatile bool running = true;\n    static long iterations = 0;\n\n    static void Main()\n    {\n        Thread worker = new Thread(() =>\n        {\n            long n = 0;\n            while (running) n++;           // volatile read: sees the update from main\n            Interlocked.Exchange(ref iterations, n);\n        });\n        worker.Start();\n        Thread.Sleep(100);\n        running = false;                   // volatile write: published to the worker\n        worker.Join();\n        Console.WriteLine(\"worker stopped: \" + (iterations > 0));\n\n        // Volatile.Read / Write give the same acquire/release guarantees on any field\n        int data = 0; bool ready = false;\n        Thread producer = new Thread(() => { data = 42; Volatile.Write(ref ready, true); });\n        producer.Start();\n        while (!Volatile.Read(ref ready)) { }\n        Console.WriteLine(\"data = \" + data);  // guaranteed 42\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Because the compiler or CPU could reorder the writes, another thread could see the object reference before its fields were fully set. The classic pattern checks <code>if (instance == null)</code>, locks, checks again and assigns, but the assignment could become visible before the constructor finished.</p><p>Another thread then skips the lock because the reference is non-null and uses a half-built object. Making the field <code>volatile</code> gives the write release semantics, so construction completes first. In modern C#, just use <code>Lazy&lt;T&gt;</code> or a static initialiser, which are correct and simpler.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SemaphoreSlim.WaitAsync throttling to 3 at a time",
+    "csharp": "using System;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nclass Program\n{\n    static SemaphoreSlim slots = new SemaphoreSlim(3); // at most 3 at once\n    static int running = 0, maxRunning = 0;\n\n    static async Task Work(int id)\n    {\n        await slots.WaitAsync();            // does not block a thread while waiting\n        try\n        {\n            int now = Interlocked.Increment(ref running);\n            int m;\n            while (now > (m = Volatile.Read(ref maxRunning)))\n                Interlocked.CompareExchange(ref maxRunning, now, m);\n            await Task.Delay(30);           // await is allowed while holding a semaphore\n            Interlocked.Decrement(ref running);\n        }\n        finally { slots.Release(); }\n    }\n\n    static void Main()\n    {\n        Task[] tasks = new Task[10];\n        for (int i = 0; i < 10; i++) tasks[i] = Work(i);\n        Task.WaitAll(tasks);\n        Console.WriteLine(\"tasks run: 10\");\n        Console.WriteLine(\"max concurrent: \" + maxRunning + \" (limit 3)\");\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>SemaphoreSlim does not remember which thread holds it, so a method that waits on it and then calls itself (or another method that waits) blocks on its own permit and deadlocks. With a count of 1, the second <code>Wait</code> from the same thread simply waits forever for a release that only that same thread can make.</p><pre><code>await sem.WaitAsync();\nawait Recurse();   // calls WaitAsync again: stuck</code></pre><p>Fixes: restructure so only the outer method takes the semaphore and inner helpers assume it is held, pass a flag, or use a reentrant <code>Monitor</code> when no await is involved.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "ConcurrentDictionary.AddOrUpdate counting",
+    "csharp": "using System;\nusing System.Collections.Concurrent;\nusing System.Linq;\nusing System.Threading.Tasks;\n\nclass Program\n{\n    static void Main()\n    {\n        string[] words = { \"a\", \"b\", \"a\", \"c\", \"b\", \"a\", \"a\", \"c\", \"d\", \"a\" };\n        Console.WriteLine(\"words: \" + string.Join(\" \", words));\n\n        ConcurrentDictionary<string, int> counts = new ConcurrentDictionary<string, int>();\n        Parallel.ForEach(words, w =>\n        {\n            // atomic: no ContainsKey-then-indexer race. The delegate may run more than once,\n            // so keep it pure.\n            counts.AddOrUpdate(w, 1, (key, old) => old + 1);\n        });\n        foreach (var kv in counts.OrderBy(k => k.Key))\n            Console.WriteLine(kv.Key + \" = \" + kv.Value);\n\n        // GetOrAdd: the value factory can run twice under a race; Lazy makes creation run once\n        ConcurrentDictionary<string, Lazy<string>> cache = new ConcurrentDictionary<string, Lazy<string>>();\n        string v = cache.GetOrAdd(\"k\", k => new Lazy<string>(() => \"expensive-\" + k)).Value;\n        Console.WriteLine(\"cached: \" + v);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Use ImmutableDictionary when reads vastly outnumber writes and you want consistent snapshots without locks. A reader grabs the reference and enjoys a frozen, unchanging view, so enumeration and multi-key reads are always consistent.</p><p>Writes create a new version sharing most structure, costing O(log n) each and extra allocation, and concurrent writers need a CAS loop or <code>ImmutableInterlocked.AddOrUpdate</code>. For write-heavy or hot-path counters, ConcurrentDictionary is faster. Example: a config table updated once a minute and read a million times a second fits the immutable one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Complete the writer, let the readers drain what is left, and wait for the reader tasks to finish. <code>Complete()</code> tells the channel no more items will come; readers using <code>ReadAllAsync</code> keep receiving queued items and then exit their loop on their own.</p><pre><code>writer.Complete();           // producers done\nawait Task.WhenAll(consumers); // drain\nawait reader.Completion;     // fully finished</code></pre><p>For a faulted pipeline call <code>Complete(exception)</code> so readers see the error. For cancellation, pass a CancellationToken to the reads and still complete the writer so nothing waits forever. Multi-stage pipelines complete each stage's writer when the previous stage's readers finish.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Parallel.For with thread-local sums",
+    "csharp": "using System;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nclass Program\n{\n    static void Main()\n    {\n        int[] data = new int[1000000];\n        for (int i = 0; i < data.Length; i++) data[i] = i % 10;\n\n        long seq = 0;\n        foreach (int x in data) seq += x;\n\n        // Each thread sums into its own local variable; merge once at the end (no lock per item)\n        long total = 0;\n        Parallel.For(0, data.Length,\n            () => 0L,                                   // thread-local start value\n            (i, state, local) => local + data[i],       // no shared writes here\n            local => Interlocked.Add(ref total, local)); // merge: once per thread\n\n        Console.WriteLine(\"sequential: \" + seq);\n        Console.WriteLine(\"parallel:   \" + total);\n        Console.WriteLine(\"same: \" + (seq == total));\n        // Tiny bodies like this gain little: scheduling cost rivals the work. Range\n        // partitioning (Partitioner.Create) or a plain loop is often as fast.\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Partitioner.Create splits the range into chunks so each worker gets a block of indexes instead of one at a time, which cuts scheduling overhead for tiny loop bodies. Without it, Parallel.For with a trivial body spends more time handing out work than doing it.</p><pre><code>Parallel.ForEach(Partitioner.Create(0, n, 10000), range =&gt; {\n  for (int i = range.Item1; i &lt; range.Item2; i++) Work(i);\n});</code></pre><p>With n = 1,000,000 and chunk 10,000 there are only 100 delegate calls instead of a million. Too large a chunk hurts load balancing when iterations vary in cost.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Thread vs pool Task vs LongRunning task",
+    "csharp": "using System;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nclass Program\n{\n    static void Main()\n    {\n        bool onPoolThread = false, onPoolTask = false, onLongRunning = false;\n\n        Thread t = new Thread(() => { onPoolThread = Thread.CurrentThread.IsThreadPoolThread; });\n        t.Start(); t.Join();\n\n        Task.Run(() => { onPoolTask = Thread.CurrentThread.IsThreadPoolThread; }).Wait();\n\n        Task.Factory.StartNew(() => { onLongRunning = Thread.CurrentThread.IsThreadPoolThread; },\n            TaskCreationOptions.LongRunning).Wait();\n\n        Console.WriteLine(\"new Thread      on pool: \" + onPoolThread);   // dedicated thread\n        Console.WriteLine(\"Task.Run        on pool: \" + onPoolTask);     // shared pool thread\n        Console.WriteLine(\"LongRunning     on pool: \" + onLongRunning);  // dedicated thread too\n\n        // Tasks return values and carry exceptions, which a raw Thread cannot\n        Task<int> sum = Task.Run(() => 40 + 2);\n        Console.WriteLine(\"task result: \" + sum.Result);\n        try { Task.Run(() => { throw new InvalidOperationException(\"boom\"); }).Wait(); }\n        catch (AggregateException e) { Console.WriteLine(\"caught: \" + e.InnerException.Message); }\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>The pool slowly runs out of threads, queued work waits, and the whole app looks frozen (thread-pool starvation). The pool starts with about one thread per core and adds new ones only slowly (roughly one or two per second) when all are busy.</p><p>Example: 100 requests each block a pool thread for 5 seconds with 8 cores; most requests wait for new threads to be injected, so latency spikes far beyond 5 seconds, and even timers and continuations are delayed. Fix: make the blocking work async, use a dedicated thread or LongRunning task, limit concurrency, and never block on <code>.Result</code> inside the pool.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Print foo/bar alternately with two semaphores",
+    "csharp": "using System;\nusing System.Text;\nusing System.Threading;\n\nclass Program\n{\n    static SemaphoreSlim fooTurn = new SemaphoreSlim(1); // one permit: Foo goes first\n    static SemaphoreSlim barTurn = new SemaphoreSlim(0);\n    static StringBuilder output = new StringBuilder();\n\n    static void Main()\n    {\n        int n = 5;\n        Thread bar = new Thread(() =>   // started first on purpose: order of start must not matter\n        {\n            for (int i = 0; i < n; i++)\n            {\n                barTurn.Wait();           // wait until Foo has printed\n                output.Append(\"bar \");\n                fooTurn.Release();        // hand the turn back\n            }\n        });\n        Thread foo = new Thread(() =>\n        {\n            for (int i = 0; i < n; i++)\n            {\n                fooTurn.Wait();\n                output.Append(\"foo\");\n                output.Append(' ');\n                barTurn.Release();\n            }\n        });\n        bar.Start(); foo.Start();\n        foo.Join(); bar.Join();\n        Console.WriteLine(output.ToString().Trim());\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Use a Monitor with a shared turn variable and call Wait until it is your turn, then PulseAll to wake the other thread. PulseAll is safer than Pulse because only one thread can be waiting here and you recheck the condition anyway.</p><pre><code>lock (g) {\n  while (!fooTurn) Monitor.Wait(g);\n  Print(\"foo\"); fooTurn = false;\n  Monitor.PulseAll(g);\n}</code></pre><p>Bar mirrors it with <code>while (fooTurn)</code> and sets <code>fooTurn = true</code>. The <code>while</code> loop (not <code>if</code>) guards against spurious or early wakeups. Cost is O(n) time for n prints and O(1) space.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "False sharing: adjacent vs padded counters",
+    "csharp": "using System;\nusing System.Threading;\n\nclass Program\n{\n    const int Iter = 2000000;\n\n    static long Run(int stride)\n    {\n        // stride 1: counters adjacent in memory (same cache line); stride 16: 128 bytes apart\n        long[] slots = new long[2 * stride];\n        Thread a = new Thread(() => { for (int i = 0; i < Iter; i++) slots[0]++; });\n        Thread b = new Thread(() => { for (int i = 0; i < Iter; i++) slots[stride]++; });\n        a.Start(); b.Start(); a.Join(); b.Join();\n        return slots[0] + slots[stride];\n    }\n\n    static void Main()\n    {\n        long near = Run(1);\n        long padded = Run(16);\n        Console.WriteLine(\"adjacent total: \" + near);\n        Console.WriteLine(\"padded total:   \" + padded);\n        // Same result either way; the adjacent version is usually several times slower\n        // because both cores keep invalidating one 64-byte cache line.\n        // Best fix: each thread uses a local variable and writes it back once at the end.\n        long local = 0;\n        for (int i = 0; i < Iter; i++) local++;\n        Console.WriteLine(\"local accumulator: \" + local);\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Measure it: the same work runs much slower with several threads than with one, even though they share no data. Compare timings of adjacent per-thread slots against padded ones; a large gap (often 2x to 10x) points at false sharing.</p><p>Tools help: hardware counters such as cache-miss and cache-line contention (perf c2c on Linux, VTune on Intel) show lines bouncing between cores. In this module's program, 2 threads with 2,000,000 increments each get the same total (4,000,000) either way; only the time differs. Confirm by padding the data to 128 bytes and re-measuring.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Copy-on-write immutable snapshot",
+    "csharp": "using System;\nusing System.Collections.Generic;\nusing System.Threading;\nusing System.Threading.Tasks;\n\n// Immutable snapshot: once built, never changed, so any thread can read it freely.\nclass Config\n{\n    public readonly IReadOnlyList<string> Items;\n    public Config(IReadOnlyList<string> items) { Items = items; }\n}\n\nclass Program\n{\n    static Config current = new Config(new List<string> { \"a\" });\n\n    // Copy-on-write: build a new object, then publish it with one atomic reference swap.\n    static void Add(string item)\n    {\n        while (true)\n        {\n            Config old = Volatile.Read(ref current);\n            List<string> copy = new List<string>(old.Items);\n            copy.Add(item);\n            Config next = new Config(copy);\n            if (Interlocked.CompareExchange(ref current, next, old) == old) return; // else retry\n        }\n    }\n\n    static void Main()\n    {\n        Config before = current;                       // a reader holds a snapshot\n        Parallel.For(0, 100, i => Add(\"x\" + i));\n        Console.WriteLine(\"snapshot kept by reader: \" + before.Items.Count + \" item(s)\");\n        Console.WriteLine(\"latest config: \" + current.Items.Count + \" item(s)\");\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>For an iterator it means that enumerating while another thread changes the collection must not crash or return corrupt data. Most ordinary collections are not safe: changing a List while enumerating it throws <code>InvalidOperationException</code>.</p><p>Thread-safe collections choose different promises. ConcurrentDictionary enumeration never throws, but it is not a snapshot, so you may see some updates made during the loop and miss others. Immutable collections enumerate a true frozen snapshot. Example: copy with <code>ToArray()</code> (a consistent snapshot under all locks) before a long iteration if you need a stable view.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Simulating the 2-out-of-2000 interleaving",
+    "csharp": "using System;\n\n// Simulates the unlucky interleaving: each step is one machine-level action of count++\nclass Program\n{\n    static void Main()\n    {\n        int count = 0;\n        int regA = 0, regB = 0;\n        Console.WriteLine(\"start count = \" + count);\n\n        regA = count;                                   // A reads 0\n        for (int i = 0; i < 999; i++) { regB = count; regB++; count = regB; } // B runs 999 times\n        Console.WriteLine(\"after B x999: count = \" + count);\n        regA++; count = regA;                           // A writes 1 (overwrites 999)\n        Console.WriteLine(\"A wrote its stale value: count = \" + count);\n\n        regB = count;                                   // B reads 1 for its last iteration\n        for (int i = 0; i < 999; i++) { regA = count; regA++; count = regA; } // A runs 999 times\n        Console.WriteLine(\"after A x999: count = \" + count);\n        regB++; count = regB;                           // B writes 2\n        Console.WriteLine(\"final count = \" + count + \" (not 2000)\");\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>volatile would not change the answer: count can still be anywhere from 2 to 2000. Volatile only guarantees that each read sees the latest write and that reads and writes are not reordered across it. It does not make <code>count++</code> atomic, which is still a read, an add and a write.</p><p>Both threads can volatile-read 5, add 1 and both volatile-write 6, losing one increment. The fix is <code>Interlocked.Increment(ref count)</code>, which gives exactly 2000, or a lock. Use volatile for flags and published references, not counters.</p>"
+   ]
+  }
+ ]
+}

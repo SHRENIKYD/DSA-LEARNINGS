@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the kernel retries the SYN several times with growing waits before giving up. <b>Linux sends SYN retries with exponential back-off</b>: tcp_syn_retries defaults to 6, so waits of 1, 2, 4, 8, 16, 32 and 64 seconds add up to about 127 seconds. The client sees nothing in that time because nothing answers. Tools cut it short: <code>nc -w 3</code> or <code>curl --connect-timeout 5</code> give up after seconds, and apps should always set a connect timeout. Lowering tcp_syn_retries globally is rarely wise, because real packet loss needs those retries.</p>",
+    "<p>It usually means the sender's network stack or a router could not find any path to that IP, so the failure is about routing or the local network, not the app. Typical causes: the host is on the same subnet but off or unplugged (ARP gets no answer, shown as EHOSTUNREACH), a router returns ICMP host-unreachable, or a route is missing. Check <code>ip route get IP</code>, <code>ip neigh</code> for FAILED entries, and whether the instance exists and the subnet is right. It differs from refused: there the host answered; here nobody could even be reached.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Caching happens at almost every step. <b>The browser, the OS, the router, the ISP resolver, the CDN and the server all keep copies.</b> DNS answers are cached for their TTL (browser, OS, recursive resolver). TLS sessions can be resumed so the next visit skips a full handshake. HTTP responses are cached by the browser and by CDN edges based on Cache-Control headers. Connections themselves are reused (keep-alive). Example: a 300 s DNS TTL means a changed IP can take up to 5 minutes to reach clients that cached it. When debugging, ask which cache is serving the answer.</p>",
+    "<p>HTTP/3 runs over QUIC, which uses UDP instead of TCP, and builds TLS 1.3 into the transport. <b>The TCP handshake and TLS handshake merge into one</b>, so a new connection needs about one round trip instead of two to three, and a resumed one can send data immediately. A lost packet only stalls its own stream, not the whole connection (no head-of-line blocking at the transport level). Connections survive a change of network, such as Wi-Fi to mobile, through connection IDs. Operationally, firewalls must allow UDP 443, and some networks block it, so browsers fall back to HTTP/2 over TCP.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Usable IPs: classic vs AWS",
+    "python": "# Usable IPs per prefix: classic vs AWS reservations\n# Time O(1), space O(1)\ndef sizes(prefix):\n    total = 2 ** (32 - prefix)      # host bits give the block size\n    classic = total - 2             # minus network and broadcast\n    aws = total - 5                 # AWS reserves five per subnet\n    return total, classic, aws\n\nfor p in (24, 26, 28):\n    t, cl, aws = sizes(p)\n    print(\"/%d: total=%d classic=%d aws=%d\" % (p, t, cl, aws))\n"
+   },
+   "followUps": [
+    "<p>A /26 mask is 255.255.255.192. <b>26 ones followed by 6 zeros</b>: the first three octets are all ones (255.255.255) and the last octet is 11000000 in binary, which is 128 + 64 = 192. The block size in the last octet is 256 - 192 = 64, so /26 subnets in 10.0.0.0 start at .0, .64, .128 and .192, each with 64 addresses (62 classic usable, 59 in AWS).</p>",
+    "<p>A /28 has only 16 addresses and 11 usable in AWS, which leaves very little room. <b>Load balancers need spare IPs in every subnet they use</b>: AWS recommends at least 8 free addresses, and an ALB adds nodes (one IP each) as it scales, and may need more during scaling or deploys. Example: 11 usable minus a few existing nodes leaves almost none, so scaling fails. Use /24 or larger for load balancer subnets, and remember that other things in the same subnet use addresses too.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "TTL cache and negative caching",
+    "python": "# TTL cache with negative caching (simulated clock)\nclass Resolver:\n    def __init__(self):\n        self.cache = {}          # name -> (answer, expires_at)\n        self.now = 0\n    def lookup(self, name, zone):\n        hit = self.cache.get(name)\n        if hit and hit[1] > self.now:      # cached and not expired\n            return hit[0] + \" (cached, %ds left)\" % (hit[1] - self.now)\n        answer, ttl = zone.get(name, (\"NXDOMAIN\", 30))  # 30 = SOA minimum\n        self.cache[name] = (answer, self.now + ttl)\n        return answer + \" (fresh)\"\n\nzone = {}\nr = Resolver()\nprint(\"t=0  \", r.lookup(\"app.test\", zone))\nzone[\"app.test\"] = (\"203.0.113.5\", 60)    # record is created at t=5\nr.now = 10\nprint(\"t=10 \", r.lookup(\"app.test\", zone))  # negative answer still cached\nr.now = 31\nprint(\"t=31 \", r.lookup(\"app.test\", zone))  # negative TTL over\nr.now = 60\nprint(\"t=60 \", r.lookup(\"app.test\", zone))\n"
+   },
+   "followUps": [
+    "<p>You ask the resolver and read the TTL column in the answer. <b>Run <code>dig example.com</code> twice</b>: the number after the name is the seconds left in the resolver's cache, and it counts down, for example 300, then 240 a minute later. Asking the authoritative server directly with <code>dig @ns1.example.com example.com</code> shows the full TTL (for instance 300), because that server does not count down. Comparing both tells you how long a stale answer can still live.</p>",
+    "<p>Negative caching means resolvers also remember that a name does <em>not</em> exist. <b>An NXDOMAIN answer is cached for the SOA record's negative TTL</b> (the smaller of the SOA TTL and its minimum field). Example: someone queries a record before it exists, gets NXDOMAIN, and with a 300 s negative TTL it still looks missing for up to 5 minutes after you create it. So create records before announcing them, and keep the SOA minimum low (such as 60 to 300 s).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the NAT gateway itself must reach the internet, and only a public subnet has a route to the internet gateway. <b>The NAT gateway needs a public path outward</b>: it holds an Elastic IP, and its own traffic goes 0.0.0.0/0 to the IGW. Private instances send their traffic to the NAT, which rewrites the source to its public IP and forwards it via the IGW. Placing it in a private subnet gives it no IGW route, so everything times out, which is a classic mistake.</p>",
+    "<p>Use a gateway VPC endpoint for S3. <b>It adds a route to the S3 prefix list in the route table</b>, so traffic stays on the AWS network and needs no NAT or internet. It is free of hourly charges, which also avoids NAT data processing fees (about a few cents per GB), and you can attach an endpoint policy to limit which buckets are reachable. Interface endpoints (PrivateLink) do the same for most other AWS services but cost per hour per AZ plus per GB.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is the number of connections waiting in the accept queue that the app has not yet picked up. <b>On a listening socket, Recv-Q is the current backlog and Send-Q is the maximum backlog</b>. Example: Recv-Q 120 with Send-Q 128 means the app is slow to call accept() and the queue is nearly full, so new connections may be dropped and clients see timeouts. On an established socket, Recv-Q is bytes received but not yet read by the app, and Send-Q is bytes sent but not yet acknowledged.</p>",
+    "<p>Because UDP has no handshake, so a successful send proves nothing. <b>A UDP port check can only conclude 'closed' if an ICMP port-unreachable comes back</b>, and firewalls often drop that ICMP, or the service ignores packets that do not look right. Then nc sees silence and reports success (open or filtered). Reliable tests use the real protocol: <code>dig @server name</code> for DNS, or an application-level request for the service, and check the response.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Split-horizon DNS serves different answers depending on who asks, so the customer's resolver may simply be in a different 'view'. <b>A private hosted zone only answers inside the VPC or on the corporate network</b>. Example: app.example.com resolves to 10.0.1.5 inside the VPC but to a public load balancer outside, or not at all. A customer on a home network gets the public view, and a VPN user with split DNS may use the wrong resolver. Compare <code>dig NAME</code> from both places and look for a private zone, VPN DNS settings or conditional forwarders.</p>",
+    "<p>Check that the domain is current and points to the right name servers. <b>The registrar holds the NS (delegation) records for the domain</b>, so if they are wrong, expired or still at the old DNS provider, public resolvers get different answers. Look for: the domain not expired or on hold (clientHold), the NS list matching the provider that holds your zone, DS records matching your DNSSEC state (a stale DS breaks validation and causes SERVFAIL), and any registrar lock or pending transfer. <code>dig NS example.com</code> shows what is delegated.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SAN match with wildcards",
+    "python": "# Does a certificate name (SAN) match the host? Wildcard covers ONE label\ndef matches(san, host):\n    if san.startswith(\"*.\"):\n        rest = san[2:]\n        first, _, tail = host.partition(\".\")\n        return bool(first) and tail == rest   # exactly one label\n    return san == host\n\nsans = [\"*.example.com\", \"example.com\"]\nfor host in [\"www.example.com\", \"a.b.example.com\", \"example.com\", \"shop.other.com\"]:\n    ok = any(matches(s, host) for s in sans)\n    print(\"%-18s %s\" % (host, \"OK\" if ok else \"NAME MISMATCH\"))\nsans = [\"*.example.com\"]\nprint(\"apex with wildcard only:\", any(matches(s, \"example.com\") for s in sans))\n"
+   },
+   "followUps": [
+    "<p>Because the validity period limits the damage when a key leaks or a certificate is mis-issued, and because revocation checking is unreliable. <b>The maximum public certificate lifetime is being reduced (to 200 days, then 100, then 47 days)</b>, so a stolen key is useful for a short time only. It also pushes teams to automate renewal (ACME) instead of renewing by hand, which removes the common outage of a forgotten expiry. Practical consequence: with 47-day certificates, renew at about 2/3 of the life and alert if renewal fails.</p>",
+    "<p>SNI lets one IP address serve many certificates by having the client send the host name in the TLS ClientHello. <b>Without SNI, the server cannot know which certificate to present</b>, so it returns a default one and the client reports a name mismatch. Example: curl by IP address, or an old client or script without SNI, hits a shared load balancer and sees the wrong certificate. Test with <code>openssl s_client -connect IP:443 -servername host</code> to send the name explicitly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Nothing happens to connections that are already open, in most cases. <b>Security groups track connections, so an established flow keeps working</b> even after the rule that allowed it is removed, until the connection ends or is idle past the tracking timeout. New connections are blocked straight away. Example: you remove the SSH rule, the open session keeps running, but a new login times out. To cut existing sessions, restart the app or the sessions, or use a NACL deny rule (stateless, it applies immediately). Note some traffic types are 'untracked' and follow the rules directly.</p>",
+    "<p>Azure NSGs look similar but have differences. <b>NSG rules have priorities (100 to 4096), with allow and deny, and the lowest number wins</b>, whereas AWS security groups only allow and are evaluated together. NSGs are stateful, and attach to a subnet or a network interface (or both), so one NSG does the job of both SG and NACL. They use service tags such as Internet or VirtualNetwork, and default rules allow VNet-internal traffic and outbound internet. So an NSG is closer to SG plus NACL combined.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Carve a /16 into zones and tiers",
+    "python": "# Carve a /16 into /18 zones, then /20 tiers (uses ipaddress)\nimport ipaddress\nvpc = ipaddress.ip_network(\"10.0.0.0/16\")\nzones = list(vpc.subnets(new_prefix=18))      # +2 bits -> 4 blocks\nprint(\"VPC\", vpc, \"->\", [str(z) for z in zones])\nnames = [\"public\", \"private-app\", \"private-data\", \"spare\"]\nfor label, zone in ((\"zone-a\", zones[0]), (\"zone-b\", zones[1])):\n    tiers = list(zone.subnets(new_prefix=20))  # 4 blocks of 4096\n    for name, net in zip(names, tiers):\n        print(\"%s %-12s %-15s aws-usable=%d\" % (label, name, net, net.num_addresses - 5))\n"
+   },
+   "followUps": [
+    "<p>Pods take addresses from the VPC subnet itself, so subnets must be far larger. <b>Each pod gets a VPC IP</b>, and with the AWS VPC CNI a node reserves addresses per network interface. Example: 50 nodes with 30 pods each need about 1,500 pod IPs plus node IPs, so a /24 (251) would run out quickly while a /20 (4,091) fits. So I give node or pod subnets /19 to /20, keep spare room for scaling and rolling updates, or use a secondary CIDR (such as 100.64.0.0/16) just for pods.</p>",
+    "<p><code>cidrsubnet(prefix, newbits, netnum)</code> returns the netnum-th subnet after adding newbits to the prefix. <b>cidrsubnet('10.0.0.0/16', 2, 1) gives 10.0.64.0/18</b>, since 2 extra bits make /18 and number 1 starts at 64 in the third octet. Here: <code>cidrsubnet(var.vpc, 2, 0)</code> for zone a, then <code>cidrsubnet(zone_a, 4, 0)</code> for 10.0.0.0/20 and so on. The result is computed, not typed, so it cannot overlap by typo.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If that zone's NAT gateway fails, the private subnets routing to it lose internet access, while other zones keep working. <b>A NAT gateway lives in one availability zone</b>, with no automatic cross-zone failover. Example: three private subnets all route to the NAT in zone a, and zone a fails, so all three lose outbound access. The fix is one NAT per zone, with each private subnet's route table pointing to its own zone's NAT. This also avoids cross-zone data charges, at the cost of paying the hourly fee three times.</p>",
+    "<p>Because the NAT bills per hour plus per GB processed, so heavy traffic is expensive. <b>Data processing is charged on every GB through the NAT, at around 4.5 cents</b>, so 10 TB a month is about $450 on top of hourly fees. Common causes: pulling S3, ECR or DynamoDB traffic through NAT instead of VPC endpoints, large image pulls, logs shipped out, and cross-zone traffic. Use VPC endpoints, and flow logs or Cost Explorer to see which instance generates the traffic.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a tool that lists networks across all accounts instead of asking each team. <b>AWS IPAM or a script over every account can list all VPC CIDRs, subnets and secondary CIDRs</b>. Example: loop over the organization's accounts with an assumed role, call <code>describe-vpcs</code> in each region, and write account, region and CIDR to one table, then check overlaps with Python's ipaddress module (<code>a.overlaps(b)</code>). Add on-prem ranges and peering partners, and run it on a schedule so new overlaps are caught early.</p>",
+    "<p>NAT hides the real source address, so logs on the receiving side show the NAT address instead of the real client. <b>Many different clients appear as one IP</b>, which makes tracing a request, rate limiting by IP and security investigations hard. Example: 200 workloads appear as 10.200.0.7 in the other VPC's logs. Mitigations: log the NAT translation table, add a request ID or a trace header that crosses the boundary, use X-Forwarded-For where the protocol allows it, and keep flow logs on both sides to match connections by time and port.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Time out later, in the TCP connect phase of the timeline, and it shows up as a connect time that jumps. <b>A retransmission appears as a step of about 1 s, then 3 s, then 7 s</b> in the connect time, because the client resends the SYN after 1 s, then 2 s, then 4 s. Example: normal connect is 20 ms, but some requests show 1.02 s: one SYN was lost and the retry worked. In tcpdump the same SYN appears more than once with the same sequence number. Wireshark marks them as retransmissions.</p>",
+    "<p>Pass a trace or request ID through every hop, then search both systems for the same ID. <b>Log the curl timing together with the trace ID</b> (send a header such as X-Request-Id), and find the same ID in load balancer logs and in the traces. Example: a slow request at 3 s shows 2.9 s inside one span, so the network is fine and the app or its database is slow. If the trace is short but the client saw a long time, the delay was before the app, in DNS, connect or the load balancer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Admin ports open to the world",
+    "python": "# Guard rail: reject rules that open admin ports to the whole world\nADMIN = {22, 3389, 5432, 3306}\nrules = [\n    {\"port\": 443, \"cidr\": \"0.0.0.0/0\"},\n    {\"port\": 22, \"cidr\": \"0.0.0.0/0\"},\n    {\"port\": 22, \"cidr\": \"10.0.0.0/8\"},\n    {\"port\": 3306, \"cidr\": \"::/0\"},\n]\ndef violation(rule):\n    world = rule[\"cidr\"] in (\"0.0.0.0/0\", \"::/0\")\n    return world and rule[\"port\"] in ADMIN   # public web ports are fine\n\nfor r in rules:\n    print(r, \"-> DENY\" if violation(r) else \"-> allow\")\nbad = [r for r in rules if violation(r)]\nprint(\"violations:\", len(bad))\n"
+   },
+   "followUps": [
+    "<p>Add an automatic policy check that runs before any change is applied and blocks it. <b>Check every rule in code review or the pipeline with policy-as-code</b> (OPA/Conftest, Sentinel, or a custom script over the Terraform plan JSON), fail if a rule has 0.0.0.0/0 or ::/0 on ports such as 22, 3389 or a database. Back it with a cloud-side control, such as an organization policy or a detective rule with auto-remediation, so console changes are also caught. Allow exceptions only with an owner and an expiry, and run the same check on AI-written code.</p>",
+    "<p>Remove anything that identifies a person or gives access. <b>Redact passwords, tokens, session cookies and authorization headers</b>, cookies, personal data in payloads (names, emails, card numbers) and internal host names or IPs where not needed. Never share private keys. Safer: capture only the needed packets with a filter (such as one host and port) and headers only (<code>-s 96</code>), or export a text summary. Example: for a TLS issue, the handshake is enough; the encrypted body is not needed. Check the policy before uploading anywhere.</p>"
+   ]
+  }
+ ]
+}

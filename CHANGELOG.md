@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.46] — 2026-11-15 · Programs and follow-up answers for every remaining interview track
+
+### Added
+- **C++ (places 4 to 15), C#, Low-level design, System design, Front end, Back end, AI, CS Core, DevOps and Behavioral interview questions:** 2,574 more questions now have written answers to all 5,412 of their follow-up questions, and 1,244 of them have a runnable program. Together with the earlier releases, every interview question in all 16 tracks now has its follow-up answers, and 2,918 questions have programs. C++ and C# programs are in that language, low-level design programs run in Java, Python, JavaScript, C++ and C#, front-end programs run in plain JavaScript, and the back-end, AI, CS Core and DevOps demos are mostly small Python models of the idea (caches, queues, schedulers, retries, scoring). Questions about products, tools and process, and every Behavioral question, have written answers only.
+
 ## [1.10.45] — 2026-11-15 · Programs and follow-up answers for SQL, Python and Java interview questions
 
 ### Added

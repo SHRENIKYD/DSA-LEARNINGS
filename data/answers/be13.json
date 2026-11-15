@@ -1,0 +1,124 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>A namespace limits what a process can <b>see</b>; a cgroup limits how much it can <b>use</b>. Linux has separate namespaces for process IDs, network interfaces, mounts, hostname, users and more, so inside a container the app sees itself as PID 1 with its own network and file system. Cgroups (control groups) cap and account for CPU, memory, disk I/O and process count.</p><p>Example: a memory limit of 512 MiB is a cgroup setting; going over it gets the process OOM-killed. Together they make a normal process behave like a small machine.</p>",
+    "<p>Not a different kernel, but a different distribution, yes. A container shares the host kernel, so a Linux container needs a Linux kernel; an Ubuntu host can run an Alpine or Debian container because they differ only in user-space files such as libraries and tools.</p><p>Windows or macOS cannot run Linux containers natively. Docker Desktop quietly starts a small Linux VM and runs the containers inside it. Windows containers need a Windows kernel. To run a truly different OS or kernel version you need a VM.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Layer cache: file order decides what is rebuilt",
+    "python": "import hashlib\n\ndef build(steps, cache):\n    # Each layer key depends on the parent layer, the instruction and its inputs\n    parent, rebuilt = \"\", 0\n    for ins, inp in steps:\n        key = hashlib.sha256((parent + ins + inp).encode()).hexdigest()[:8]\n        if key in cache:\n            tag = \"CACHED\"\n        else:\n            cache.add(key)\n            tag = \"BUILT \"\n            rebuilt += 1\n        print(\"  \" + tag, key, ins)\n        parent = key  # a changed layer changes every layer after it\n    return rebuilt\n\ndef scenario(name, make_steps):\n    cache = set()\n    print(name)\n    print(\" first build (src v1):\")\n    build(make_steps(\"v1\"), cache)\n    print(\" after editing source (src v2):\")\n    n = build(make_steps(\"v2\"), cache)\n    print(\" layers rebuilt:\", n)\n\n# Bad order: copy everything first, so any code change busts the install layer\nscenario(\"Bad order\", lambda v: [\n    (\"COPY . .\", \"pom1+src\" + v),\n    (\"RUN mvn dependency:resolve\", \"\"),\n    (\"RUN mvn package\", \"\")])\n# Good order: manifest first, install, then the frequently changing source\nscenario(\"Good order\", lambda v: [\n    (\"COPY pom.xml .\", \"pom1\"),\n    (\"RUN mvn dependency:resolve\", \"\"),\n    (\"COPY src src\", \"src\" + v),\n    (\"RUN mvn package\", \"\")])\n"
+   },
+   "followUps": [
+    "<p>Copy-on-write means a container reads the shared image layers directly and only copies a file into its own thin writable layer when it first changes it. Reads cost nothing extra, but the first write to a large file copies the whole file, which is slow.</p><p>Example: editing a 200 MB database file that lives in the image copies 200 MB first. Everything in the writable layer disappears when the container is removed, so heavy or lasting writes belong in a volume, which bypasses the copy-on-write layer.</p>",
+    "<p>A tag is a movable name; a digest is a fixed fingerprint of the exact content. <code>myapp:1.4</code> can be re-pushed to point at a different image tomorrow, while <code>myapp@sha256:ab12...</code> always means the same bytes, because the digest is a hash of the image manifest.</p><p>For reproducible and safe deployments, pin production to a digest (or an immutable tag set by CI, such as the commit SHA) and never rely on <code>latest</code>. Digests also let you verify signatures and know exactly what is running.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Alpine is a bad choice when your software needs glibc or a wide set of native libraries. Alpine uses musl instead of glibc, so some prebuilt binaries, Python wheels and JNI libraries fail or must be compiled from source, which can make builds slower and the image bigger.</p><p>Other pains: subtle DNS and locale differences, performance differences in some workloads, and harder debugging. A <code>-slim</code> Debian or a distroless image is usually safer when you want small but compatible. Measure before choosing; 5 MB saved rarely matters.</p>",
+    "<p>A BuildKit cache mount gives one RUN step a persistent folder that survives between builds but is not stored in the image. It speeds up repeat builds without adding size.</p><pre><code>RUN --mount=type=cache,target=/root/.m2 \\\n    mvn -q package</code></pre><p>Here Maven's downloaded jars stay in the cache, so a changed source file does not re-download hundreds of MB, even though that layer is rebuilt. The cache is a build-time helper only; do not depend on it being present, and it is separate from layer caching.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because layers can always be inspected. Deleting a file in a later layer only hides it; the earlier layer still holds the bytes, and anyone who can pull the image can run <code>docker history</code> or unpack the layers and read it.</p><p>Example: <code>COPY key.pem .</code> then <code>RUN rm key.pem</code> leaves the key in layer 1. Once an image is pushed, assume the secret is leaked: rotate it. Use BuildKit secret mounts (<code>--mount=type=secret</code>) for build-time needs and inject runtime secrets from a secret store.</p>",
+    "<p>A distroless image contains only your app and its runtime dependencies, with no shell, package manager or common tools. That cuts the attack surface and the number of CVEs to patch, and shrinks the image.</p><p>The trade-off is debugging: you cannot <code>exec</code> into it and run <code>sh</code>, <code>curl</code> or <code>ls</code>. You debug with logs, metrics, an ephemeral debug container (<code>kubectl debug</code>), or a separate debug variant of the image. It also needs a multi-stage build and careful handling of CA certificates and time zones.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a StatefulSet when each pod needs a stable identity and its own disk, and a DaemonSet when you need exactly one pod on every node (or a chosen set of nodes).</p><p>StatefulSet: databases, Kafka or ZooKeeper nodes get stable names (<code>db-0</code>, <code>db-1</code>), ordered start-up and a dedicated PersistentVolume that follows the pod. DaemonSet: log collectors, monitoring agents and network plugins, which must run per node and appear automatically when a node joins. A stateless web API stays a Deployment.</p>",
+    "<p>Pod IPs change because pods are disposable: when a pod is rescheduled, restarted on another node or replaced in a rollout, it gets a new IP from the network. A Service hides this by giving a stable virtual IP and DNS name (<code>orders.default.svc</code>).</p><p>The Service's selector matches pod labels, and the control plane keeps a list of the IPs of Ready pods (endpoints). kube-proxy or the network layer sends traffic to one of them. Clients talk to the Service name, so pods can come and go without changes. Pods that fail readiness are removed from the list.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a debug container that shares the target pod: <code>kubectl debug -it POD --image=busybox --target=app</code>. It attaches an ephemeral container with a shell and tools, and with <code>--target</code> it shares the process namespace so you can see the app's processes and files.</p><p>Other options: read <code>kubectl logs --previous</code> and <code>describe</code> events first; <code>kubectl debug POD --copy-to=copy --container=app --image=app:debug</code> to run a copy with a debug image; or run the same image locally. Exit codes and events often answer the question without a shell.</p>",
+    "<p>The kubelet waits longer after each crash, doubling the delay: 10 s, 20 s, 40 s, 80 s, 160 s, then capped at 5 minutes. The delay resets after the container has run successfully for 10 minutes.</p><p>Example: a pod that exits right after start shows restarts at about 10 s, 30 s, 70 s, 150 s and so on, with status flipping between <code>Error</code> and <code>CrashLoopBackOff</code>. So a long gap between restarts means the pod has been failing for a while, and a fix will only be tried at the next retry (or delete the pod to restart at once).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The pods would leave and join the Service together whenever the database is slow, so a short database problem can take your whole service out. If every pod fails readiness at once, the Service has no endpoints and all requests fail, even those that could be served from cache or do not need the database.</p><p>Better: keep readiness about this pod's own ability to serve, and handle a dependency problem with timeouts, circuit breakers and fallbacks. If a dependency is truly required for every request, a failing readiness is acceptable, but use a tolerant threshold and never use it for liveness.</p>",
+    "<p>During a rolling update, a new pod receives traffic only after its readiness probe passes, and it counts as available only then, so the rollout waits for it before removing old pods. A bad readiness probe therefore either stalls a healthy rollout (probe too strict) or sends traffic to unready pods (probe too weak).</p><p>The startup probe protects slow boots, and graceful shutdown covers old pods: on termination the pod fails readiness, drains in-flight requests and exits. Example: <code>maxUnavailable: 0</code> plus a correct readiness probe means capacity never dips below the desired replicas.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Rolling update keeps Ready pods at the minimum",
+    "python": "# Rolling update: 4 replicas, maxSurge=1, maxUnavailable=0\nreplicas, surge, unavail = 4, 1, 0\nold, new_ready, new_start = replicas, 0, 0\nmin_ready = replicas\ntick = 0\nprint(\"tick old new_ready new_starting ready\")\nwhile old > 0 or new_ready < replicas:\n    tick += 1\n    # starting pods pass their readiness probe\n    new_ready += new_start\n    new_start = 0\n    # remove old pods only while enough Ready pods remain\n    while old > 0 and old + new_ready - 1 >= replicas - unavail:\n        old -= 1\n    # start new pods within the surge limit\n    while new_ready + new_start < replicas and old + new_ready + new_start < replicas + surge:\n        new_start += 1\n    ready = old + new_ready\n    min_ready = min(min_ready, ready)\n    print(f\"{tick:4} {old:3} {new_ready:9} {new_start:12} {ready:5}\")\n    if tick > 20:\n        break\nprint(\"lowest Ready count during rollout:\", min_ready, \"(never below\", replicas - unavail, \")\")\n"
+   },
+   "followUps": [
+    "<p><code>minReadySeconds</code> is how long a new pod must stay Ready, without any container crashing, before the Deployment counts it as available. It stops a rollout from moving on because a pod was Ready for one lucky second.</p><p>Example: with <code>minReadySeconds: 30</code>, a pod that becomes Ready and crashes at second 20 never counts, so the rollout stalls instead of replacing the next old pod. It is a cheap safety net for apps that fail shortly after start-up; the default of 0 trusts the first successful readiness probe.</p>",
+    "<p>Run <code>kubectl rollout undo deployment/NAME</code>, which restores the previous ReplicaSet's pod template, or <code>--to-revision=N</code> for an older one. Check with <code>kubectl rollout status</code> and <code>kubectl rollout history</code>.</p><p>Better in a pipeline: redeploy the previous image SHA, or git revert in the GitOps repository so the repo still matches the cluster (otherwise the sync tool may redeploy the bad version). Rollback only helps if the database change is backward compatible. Kubernetes keeps <code>revisionHistoryLimit</code> (default 10) old ReplicaSets.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "HPA replica formula with tolerance and clamp",
+    "python": "import math\n\ndef desired(current, metric, target, lo, hi, tolerance=0.1):\n    ratio = metric / target\n    if abs(ratio - 1) <= tolerance:      # close enough: do nothing (avoids flapping)\n        return current\n    want = math.ceil(current * metric / target)\n    return max(lo, min(hi, want))        # clamp to min and max replicas\n\n# (current replicas, current CPU %, target CPU %)\ncases = [(4, 90, 60), (4, 63, 60), (10, 20, 60), (6, 150, 60), (1, 10, 60)]\nfor cur, metric, target in cases:\n    new = desired(cur, metric, target, lo=2, hi=8)\n    print(f\"replicas={cur} cpu={metric}% target={target}% -> {new}\")\n"
+   },
+   "followUps": [
+    "<p>HPA scales one deployment's pod count, VPA changes the CPU and memory requests of each pod, and the Cluster Autoscaler adds or removes nodes. They solve different layers and are used together carefully.</p><p>Example: traffic doubles. HPA goes from 4 to 8 pods; if the nodes are full, those pods stay Pending, so the Cluster Autoscaler adds a node. VPA suits right-sizing requests; do not let VPA and HPA both act on CPU for the same workload, because they fight. Use HPA on CPU or RPS and VPA in recommendation mode.</p>",
+    "<p>Scale on consumer lag, not CPU, and cap replicas at the number of partitions. Within one consumer group each partition is read by only one consumer, so with 12 partitions the 13th consumer would sit idle.</p><p>Use KEDA, or HPA with an external metric, driven by lag per consumer. Example: if lag is 120,000 messages and one consumer handles 10,000 per minute, 6 consumers clear it in about 2 minutes. Also watch rebalances, which pause consumption when pods join, and make processing idempotent.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give a flaky test a quarantine and a deadline, then fix the cause. A flaky test passes and fails on the same code, so it teaches people to ignore red builds.</p><p>Steps: detect it (rerun failures, track failure rate per test); move it to a non-blocking quarantine suite with a ticket and an owner; find the cause, which is usually timing, shared state, test order, real network or clock use; fix with proper waits, isolated data and fakes. Do not just add blind retries, because they hide real bugs. Delete tests that nobody will fix.</p>",
+    "<p>Put manual approvals only where a human judgment is really needed, usually before production for high-risk or regulated changes, and keep everything else automatic. Approvals should be rare because they slow delivery and tend to become a rubber stamp.</p><p>Good places: a gate before a production deploy for a risky service, before a database migration with data loss risk, or before infrastructure changes (reviewing a Terraform plan). Better than a gate: automated checks plus canary with auto-abort, with the approver seeing the evidence (tests, scan, plan diff).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the best fix is not to rebuild everything: use sticky routing for a user, so one user sees one version for the whole experiment. Hash a stable key such as a user ID or session cookie, and send the same hash range to the canary every time.</p><p>Example: <code>hash(userId) % 100 &lt; 5</code> routes the same 5% of users to the canary on every request. Random per-request splitting makes a user bounce between versions, which breaks sessions, confuses debugging and corrupts the metrics. It can be done with a header, cookie or the service mesh or ingress weight with affinity.</p>",
+    "<p>Gate on the golden signals compared with the baseline, measured at the same time: error rate, latency (p95 and p99, not the average), saturation (CPU, memory, GC, connection pool) and traffic. Add business metrics such as checkout success or conversion.</p><p>Write the thresholds before release, for example: abort if error rate is above baseline by 0.5 points, or p95 above 1.3x baseline, or checkout success drops by 1 point. Require a minimum sample size before judging, otherwise 20 requests prove nothing.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Terraform plan from config versus state",
+    "python": "def plan(config, state):\n    # Compare desired config with what state says exists\n    actions = []\n    for name, attrs in config.items():\n        if name not in state:\n            actions.append(\"create  \" + name)\n        elif state[name] != attrs:\n            actions.append(\"update  \" + name)\n    for name in state:\n        if name not in config:\n            actions.append(\"destroy \" + name)\n    return actions or [\"no changes\"]\n\nconfig = {\"web\": {\"size\": \"small\"}, \"db\": {\"size\": \"large\"}}\nstate = {\"web\": {\"size\": \"small\"}, \"db\": {\"size\": \"medium\"}, \"old_cache\": {\"size\": \"small\"}}\nprint(\"config:\", config)\nprint(\"state: \", state)\nprint(\"plan with normal state:\")\nfor a in plan(config, state):\n    print(\"  \", a)\nprint(\"plan after state is lost (empty state):\")\nfor a in plan(config, {}):\n    print(\"  \", a, \"<- would duplicate a resource that already exists\")\n"
+   },
+   "followUps": [
+    "<p>Drift is when the real infrastructure no longer matches the Terraform state or configuration, usually because someone changed it by hand in the console or another tool changed it.</p><p>Detect it with <code>terraform plan</code> (or <code>plan -refresh-only</code>), which reads the real objects and shows differences. Run it on a schedule in CI and alert when the plan is not empty. Fix it by reverting the manual change or by updating the code to match, then applying. Limiting console write access prevents most drift.</p>",
+    "<p>Both create several copies of a resource, but they track them by different keys. <code>count</code> uses a numeric index; <code>for_each</code> uses a stable map or set key. That difference decides what happens when the list changes.</p><p>Example: with <code>count</code> over <code>[\"a\",\"b\",\"c\"]</code>, removing \"a\" shifts \"b\" to index 0 and \"c\" to index 1, so Terraform plans to modify or destroy two resources and the last index. With <code>for_each</code>, state keys are \"a\", \"b\", \"c\" and only \"a\" is destroyed. Prefer <code>for_each</code> for anything that is not identical copies.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Treat it as compromised right away: revoke or rotate the key first, then clean up git. Deleting the commit is not enough, because the key may already be copied or scraped within minutes.</p><p>Steps: 1) revoke and issue a new key; 2) check logs for use of the old key; 3) remove it from history (<code>git filter-repo</code>) and force-push if needed, knowing forks and clones keep it; 4) find how it got there and add secret scanning and a pre-commit hook; 5) write a short incident note. Rotation is the real fix.</p>",
+    "<p>Environment variables leak easily because many things read or print them. Crash dumps, debug pages, <code>docker inspect</code>, <code>/proc/PID/environ</code>, logs from an error handler and child processes all see them, and they are inherited by every process the app starts.</p><p>A mounted file (a Kubernetes Secret volume or a CSI-mounted secret) has file permissions, is not copied into child processes by default, and can be updated without a restart so rotation is easier. It is still not magic: the app must not log it, and the file should be readable only by the app's user.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Canary gate: promote, hold or abort",
+    "python": "def decide(n, base_p95, canary_p95, min_n=1000, ok=1.10, bad=1.50):\n    if n < min_n:\n        return \"HOLD (too few requests)\"\n    ratio = canary_p95 / base_p95\n    if ratio <= ok:\n        return f\"PROMOTE (ratio {ratio:.2f})\"\n    if ratio >= bad:\n        return f\"ABORT (ratio {ratio:.2f})\"\n    return f\"HOLD and gather more data (ratio {ratio:.2f})\"\n\n# (requests seen by canary, baseline p95 ms, canary p95 ms)\ncases = [(300, 120, 180), (5000, 120, 126), (5000, 120, 138), (5000, 120, 200)]\nfor n, b, c in cases:\n    print(f\"n={n} baseline={b}ms canary={c}ms -> {decide(n, b, c)}\")\n"
+   },
+   "followUps": [
+    "<p>Hold long enough to collect a statistically useful sample and cover at least one full traffic cycle of the slow things, not a fixed number of minutes. A typical rule is a minimum number of requests (for example 1,000 at the canary) and a minimum time (10 to 30 minutes per step).</p><p>Example: 5% for 15 minutes, 25% for 15, 50% for 30, then 100%. Hold longer for problems that grow slowly, such as memory leaks, cache effects or a nightly batch job. Write the durations down before the release, so nobody decides under pressure.</p>",
+    "<p>Compare the canary with a baseline measured at the same time, then look at how the difference changes. Warm-up effects (JIT compilation, cold caches, connection pools filling) are large at the start and shrink; a real regression stays or grows.</p><p>Practical steps: wait out a warm-up period before judging; run baseline pods that were also freshly started (a fair comparison); plot latency over time per pod; and look at traces and a profile. If the gap closes after 5 minutes it was warm-up; if the p95 stays 30% higher after 30 minutes it is real.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Least privilege: read-only by default, and write access only through a reviewed pipeline. An agent that explores can have a Kubernetes role limited to <code>get</code>, <code>list</code> and <code>watch</code> on pods, logs, events and deployments in a few namespaces.</p><p>No access to Secrets, no <code>exec</code>, no cluster-admin, no delete. For changes, let it open a pull request or run a <code>--dry-run=server</code>, and a human approves the apply. Use a short-lived credential, a separate service account, and audit logs, so every action can be traced and revoked. Production writes need human approval.</p>",
+    "<p>Never trust it unread: run the standard tools, then read the plan. The steps are <code>terraform fmt</code> and <code>validate</code>, a linter and a policy or security scanner, then <code>terraform plan</code> and read every line of the diff.</p><p>Look for surprises: resources to be destroyed or replaced (shown as <code>-/+</code>), public access, wide IAM roles, open security groups, missing encryption and hard-coded values. Example: a plan that says \"1 to add, 0 to change, 0 to destroy\" for a new bucket is what you expected; \"3 to destroy\" is a stop. Apply first in a test environment, via CI only.</p>"
+   ]
+  }
+ ]
+}

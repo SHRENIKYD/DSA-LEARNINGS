@@ -1,0 +1,111 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run containers inside VMs when you need both strong isolation between tenants and the speed and packaging of containers. A cloud sells you a VM (the hard boundary between customers), and inside it your own containers share that VM's kernel.</p><p>Example: one 16 GB VM runs 40 containers of one team. A kernel bug can only hurt that team's VM, not other customers. It also lets the provider bill, patch and live-migrate at VM level.</p>",
+    "<p>A microVM is a very small virtual machine that boots in about 100 to 150 ms and uses only a few MB of overhead. It keeps the hardware-enforced VM boundary but drops most emulated devices (no BIOS, USB, graphics).</p><p>Firecracker, used for serverless functions, gives each function its own guest kernel with only virtio network and block devices. You get container-like density (thousands per host) with VM-like isolation. Kata Containers runs a pod this way.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Each piece is visible through /proc and /sys on the host. The container is just a process, so <code>ps</code> shows it with a host PID, and <code>/proc/&lt;pid&gt;/ns/</code> lists its namespaces (compare the inode numbers with your shell's).</p><p>Limits live under <code>/sys/fs/cgroup/&lt;path&gt;/</code> as files like <code>memory.max</code>. The overlay mount appears in <code>mount | grep overlay</code>, the veth in <code>ip link</code>, and NAT rules in <code>iptables -t nat -S</code>. <code>lsns</code> lists all namespaces.</p>",
+    "<p>Rootless mode runs the container runtime as a normal user, so even root inside the container maps to an unprivileged host UID through a user namespace. An escape then lands as that user, not as host root.</p><p>Costs: you cannot create a real veth bridge, so networking uses a user-space helper (slirp4netns or pasta), which is slower; overlay may need fuse-overlayfs on older kernels; binding ports below 1024 and some cgroup limits need extra setup (cgroup v2 delegation by systemd).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The cgroup does. A pids controller (<code>pids.max</code>) caps how many processes the group may create, so a fork bomb hits the limit and further <code>fork()</code> calls fail with EAGAIN.</p><p>Example: <code>pids.max = 100</code> means the 101st process is refused and the host stays healthy. A pid namespace alone only hides other processes; it does not limit how many you may start.</p>",
+    "<p>Yes, they are independent. You can run a process in a new namespace with no cgroup (for example <code>unshare --pid --fork --mount-proc bash</code>) and get isolation without limits. You can also put any ordinary process in a cgroup and cap it with no namespace at all, which is exactly what systemd does for services.</p><p>A container needs both (plus a root filesystem and security filters) to be a safe, bounded environment.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The page cache holds file data in RAM and the kernel charges those pages to the cgroup that first touched them, so reading a 500 MB file can add 500 MB to the container's usage.</p><p>This is usually fine because clean cache is reclaimable: when the limit is reached the kernel drops cache before it kills anything. That is why you alert on working set (usage minus inactive file), not raw usage. Dirty or mmapped pages are harder to reclaim and can cause OOM.</p>",
+    "<p>PSI (Pressure Stall Information) tells you how much time tasks spent waiting because a resource was short. Files <code>cpu.pressure</code>, <code>memory.pressure</code> and <code>io.pressure</code> show lines like <code>some avg10=4.20</code>, meaning that in the last 10 s tasks stalled on memory 4.2% of the time.</p><p>It warns you before an OOM kill, when usage graphs still look normal, and is what tools such as oomd use to act early.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "CFS quota throttling: one burst, 4 threads, 50 ms quota",
+    "python": "# Simulate CFS bandwidth throttling: quota 50ms per 100ms period, 4 threads\nPERIOD, QUOTA, THREADS = 100, 50, 4   # ms\nwork = 40                              # CPU ms of work each thread needs per request burst\ntotal = work * THREADS                 # 160 ms of CPU consumed by the burst\n# Threads run in parallel on 4 cores: quota is burned at 4 ms per wall ms\nburn_rate = THREADS\nt_quota_gone = QUOTA / burn_rate       # wall ms until quota is exhausted\nprint(\"burst needs\", total, \"CPU-ms, quota per period\", QUOTA)\nprint(\"quota exhausted after %.1f wall-ms\" % t_quota_gone)\nremaining = total - QUOTA              # CPU-ms still to do\nperiods_waited = 0\nwall = t_quota_gone\nwhile remaining > 0:\n    wall = (periods_waited + 1) * PERIOD   # frozen until next period starts\n    periods_waited += 1\n    done = min(QUOTA, remaining)           # next period grants another quota\n    remaining -= done\n    wall += done / burn_rate\nprint(\"burst finished at %.1f wall-ms (no limit would be %.1f)\" % (wall, work))\nprint(\"average CPU use over 300 wall-ms on 4 cores: %.0f%%\" % (100 * total / (300 * THREADS)))\n"
+   },
+   "followUps": [
+    "<p>Latency spikes because the quota counts CPU time summed over all threads, so a multi-threaded process drains it faster than wall time passes.</p><p>Example: quota 50 ms per 100 ms period with 4 busy threads spends the whole quota in 12.5 ms of wall time, then every thread sleeps for the remaining 87.5 ms. A node with 64 cores lets the runtime start 64 threads, so the quota burns even sooner. Match thread counts to the limit.</p>",
+    "<p><code>cpu.weight</code> (shares on cgroup v1) sets a relative priority instead of a hard cap. When the node is busy, a group with weight 200 gets twice the CPU of one with weight 100; when the node is idle, it can use everything.</p><p>So you never pause a pod that has CPU available, which removes throttling latency, yet it still gets its fair share under contention. This is why many teams set CPU requests but no CPU limits.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "OverlayFS model: copy-up and whiteouts",
+    "python": "# Tiny OverlayFS model: read-only lower layers, one writable upper, whiteouts\nlower = [{\"/etc/conf\": \"v1\", \"/bin/app\": \"binary\"}, {\"/etc/conf\": \"base\", \"/lib/x\": \"lib\"}]\nupper = {}\nWHITEOUT = object()\n\ndef read(path):\n    if path in upper:                       # upper wins\n        return None if upper[path] is WHITEOUT else upper[path]\n    for layer in lower:                     # then lowers, top-down\n        if path in layer:\n            return layer[path]\n    return None\n\ndef write(path, data):\n    if path not in upper and read(path) is not None:\n        print(\"copy-up:\", path, \"(copied\", len(read(path)), \"bytes to upper)\")\n        upper[path] = read(path)\n    upper[path] = data\n\ndef delete(path):\n    upper[path] = WHITEOUT                  # lower file stays, but is hidden\n\nprint(\"read /etc/conf ->\", read(\"/etc/conf\"))\nwrite(\"/etc/conf\", \"v2\")\nprint(\"read /etc/conf ->\", read(\"/etc/conf\"), \"| lower still\", lower[0][\"/etc/conf\"])\ndelete(\"/lib/x\")\nprint(\"read /lib/x ->\", read(\"/lib/x\"), \"| lower still has it:\", \"/lib/x\" in lower[1])\n"
+   },
+   "followUps": [
+    "<p>Newer kernels and some snapshotters (stargz/eStargz, Nydus, SOCI) start a container before the whole image is downloaded. They fetch only the file chunks that are actually read, on demand, over the network.</p><p>A 2 GB image whose startup touches 100 MB can start in a couple of seconds instead of a minute. The cost is slower first reads and a dependency on the registry staying reachable while the container runs.</p>",
+    "<p>Because renaming a directory that exists in a lower layer would require moving every file under it, which overlayfs does not do. By default the kernel returns EXDEV (cross-device link), the same error as renaming across filesystems.</p><p>Programs like <code>mv</code> then fall back to copy and delete. With the option <code>redirect_dir=on</code> the rename is recorded as a redirect and succeeds. So a rename inside a lower directory may behave differently from a plain disk.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because regular files are always reported as ready, so epoll has nothing useful to tell you. Reading a file may block on the disk, but poll-style readiness does not describe that, and <code>epoll_ctl</code> returns EPERM for them.</p><p>Sockets, pipes and ttys work because they have a wait queue that wakes the kernel when data arrives. For files use a thread pool for blocking reads or io_uring, which can do real asynchronous file I/O.</p>",
+    "<p>EPOLLEXCLUSIVE solves the thundering herd: when many threads each wait on the same listening socket, a new connection would normally wake all of them and only one would win.</p><p>With this flag the kernel wakes one (or a few) waiting epoll instances. Example: 16 worker threads sharing one listen fd now cost 1 wake-up per connection instead of 16. SO_REUSEPORT, with one listen socket per thread, is the other common fix.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Edge-triggered epoll: drain until EAGAIN",
+    "python": "# Edge-triggered epoll: must drain until EAGAIN (Linux only)\nimport select, socket\ndef run(drain):\n    a, b = socket.socketpair()\n    a.setblocking(False)\n    ep = select.epoll()\n    ep.register(a.fileno(), select.EPOLLIN | select.EPOLLET)   # edge-triggered\n    b.send(b\"x\" * 10)\n    got = b\"\"\n    for round_no in range(2):\n        events = ep.poll(0.1)\n        if not events:\n            print(\"  round\", round_no, \": no new event, remaining data is stuck\")\n            break\n        if drain:\n            while True:                      # read until EAGAIN\n                try:\n                    got += a.recv(4)\n                except BlockingIOError:\n                    break\n            break                            # fully drained, nothing more to do\n        else:\n            got += a.recv(4)                 # one partial read only\n    left = len(b\"x\" * 10) - len(got)\n    print(\"  read\", len(got), \"bytes, left unread\", left)\n    ep.close(); a.close(); b.close()\nprint(\"ET without drain loop:\"); run(False)\nprint(\"ET with drain loop:\"); run(True)\n"
+   },
+   "followUps": [
+    "<p>Give each fd a work budget per loop pass, then move on and come back. Do not read forever from a fast sender.</p><ol><li>Read at most N bytes (say 64 KB) per ready event.</li><li>If you stopped before EAGAIN, put the fd on a ready queue.</li><li>Service the queue round-robin after epoll_wait returns.</li></ol><pre><code>int n = 0;\nwhile (n++ &lt; 16 &amp;&amp; (r = read(fd, buf, 4096)) &gt; 0) handle(buf, r);\nif (r &gt; 0) readyQueue.add(fd); // more left</code></pre>",
+    "<p>With ET, EPOLLOUT fires once when the socket buffer changes from full to having space, not continuously. So write until EAGAIN, keep the unsent bytes in a per-connection queue, and wait for the next EPOLLOUT edge to continue.</p><p>If you register EPOLLOUT permanently with LT, it fires on every loop (sockets are almost always writable) and burns CPU, so with LT you enable it only while data is queued. With ET you can leave it on, since it only fires on transitions.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>SQPOLL starts a kernel thread that keeps polling the submission ring, so the application submits work by writing to shared memory with no syscall at all.</p><p>The cost is a CPU core spinning at 100% even when idle (it sleeps after an idle timeout and must be woken by a syscall). It pays off at very high IOPS, such as 1M operations per second, and is wasteful for a low-traffic service.</p>",
+    "<p>The completion queue (CQ) must be large enough to hold results that the kernel posts before you read them, or entries are dropped and the overflow flag is set.</p><p>Rule of thumb: CQ size at least equal to the maximum number of in-flight operations. By default the CQ is twice the submission queue size (256 SQ entries gives 512 CQ entries). Multishot operations such as multishot accept or recv post many completions per submission, so size generously or reap often.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Kafka serves consumers by sending log segment files straight from the page cache to the socket with sendfile, so the broker's JVM never touches the bytes.</p><p>Example: serving 1 GB per second would otherwise need 2 GB per second of CPU memory copies plus garbage-collection pressure for the buffers. With sendfile it avoids both, which is why brokers can saturate a NIC with modest CPU. It works only without user-space TLS, as the next answer covers.</p>",
+    "<p>With user-space TLS the plaintext must be encrypted before it hits the wire, so sendfile cannot be used and each record is copied into user memory, encrypted, then written.</p><p>kTLS fixes this: after the handshake, the library gives the session keys to the kernel with <code>setsockopt(TCP_ULP, \"tls\")</code>. The kernel then encrypts records itself as it sends file pages, so sendfile works again, with one in-kernel pass over the data.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>HTTP/3 runs over QUIC in user space on UDP, and QUIC encrypts every packet itself, so the sendfile path does not apply. Data must be read, encrypted and sent through <code>sendmsg</code>.</p><p>Mitigations: batch many packets per syscall (GSO with <code>UDP_SEGMENT</code> sends up to 64 datagrams in one call, <code>recvmmsg</code> for receive), use io_uring, or offload crypto to the NIC. This is a main reason QUIC servers use more CPU than TCP+kTLS.</p>",
+    "<p>Compressed responses cannot be zero-copy because the bytes sent differ from the bytes on disk, so the CPU must read and transform them.</p><p>Best option: compress once ahead of time and store both versions (for example <code>app.js</code> and <code>app.js.br</code>), then send the right file with sendfile based on the Accept-Encoding header. Dynamic content must be compressed on the fly, which costs CPU (roughly tens of MB/s per core at high compression levels).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>virtio is a standard paravirtual interface: the guest knows it is virtual and uses shared-memory rings to talk to the host, which is much faster than emulating a real network card or disk. SR-IOV lets one physical NIC present many virtual functions (VFs), each given directly to a VM.</p><p>With a VF the VM's packets bypass the hypervisor, giving near line rate and low latency, but live migration is harder because the VM is tied to real hardware.</p>",
+    "<p>Nested virtualization means running a hypervisor inside a VM, for example KVM inside a cloud instance. The inner guest's privileged operations are intercepted twice, first by the inner hypervisor, then by the outer one.</p><p>It is useful for CI that runs emulators or Kata containers on rented VMs, and for testing hypervisors. It costs speed (often 10 to 30% extra overhead on exits) and needs host support, which clouds enable only on some instance types.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because io_uring lets a process submit a wide range of kernel operations through a very large and fast-moving interface, which has had many privilege-escalation bugs. A sandbox wants a small, well-reviewed syscall surface, so it denies it.</p><p>Seccomp cannot easily filter what happens inside a ring, since operations are queued in shared memory, not made as separate syscalls. Docker's default seccomp profile and Google's gVisor-based services block <code>io_uring_setup</code>.</p>",
+    "<p>A warm pool is faster per request but costs idle memory; one microVM per request is safest but pays boot time on every call.</p><p>Example: a microVM boots in about 125 ms and uses 5 MB idle. A pool of 1000 warm VMs costs about 5 GB and answers in under 10 ms, but you must reset or discard each VM after use so nothing leaks between users. Use a pool for latency-sensitive traffic, with a restore-from-snapshot step, and per-request boot for rare or highly sensitive jobs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Shard by a hash of the user ID, using consistent hashing, so each user always lands on the same machine and adding a machine moves only a small share of users.</p><p>Example: 1M connections at about 1M per box means 10 boxes for 10M users, each owning 1/10 of the hash ring. A thin routing tier (or DNS plus a lookup service) maps user to node. Keep a shared pub/sub or message bus so a message for user X reaches the node that holds X's socket.</p>",
+    "<p>Memory and CPU for the burst of work, not the idle sockets. If 2% of 1M connections become active, that is 20,000 sockets sending at once, and the cost is parsing, TLS records, application logic and fan-out writes.</p><p>Example: 20,000 active clients at 10 messages per second is 200,000 messages per second to handle, so check per-core event-loop lag and the p99 latency, and make sure buffers grow only for active sockets so memory does not jump past the cgroup limit.</p>"
+   ]
+  }
+ ]
+}

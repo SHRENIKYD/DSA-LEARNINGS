@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Two generals on opposite hills must attack together, but their only messengers can be captured, so no number of acknowledgements ever makes both sure the other will attack. Every ack needs its own ack, forever. With a lossy link, certainty about shared knowledge is impossible. This is why exactly-once delivery is impossible and why protocols settle for retries plus idempotence, or for consensus among a majority.</p>",
+    "<p>Crash-stop means a failed node never returns; crash-recovery means it restarts later, but memory is gone and only what it wrote to disk remains. Example: a node that voted in term 5, crashed and restarted with no saved vote could vote again in term 5 and elect two leaders. So crash-recovery algorithms must fsync critical state (votes, log) before replying. Crash-stop is simpler to prove, crash-recovery is what real servers do.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a restarted node must not forget that it already voted. If it voted for X in term 7, crashed, and came back with an empty votedFor, it could vote for Y in term 7 too; X and Y could each collect a majority and both become leader of term 7, breaking safety. So Raft writes currentTerm and votedFor to disk (fsync) before answering a vote request. Cost: one disk write per vote, which is rare.</p>",
+    "<p>A gray failure is a node that looks healthy to the health check but is useless in practice. Example: a disk degrades so writes take 8 seconds instead of 5 ms; the process still answers pings, so the load balancer keeps sending traffic and requests time out. Or one link drops 5% of packets. Defence: check real work (a test write, end-to-end latency percentiles), compare against peers, and eject slow outliers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Spanner's TrueTime returns an interval [earliest, latest] guaranteed to contain true time, say 7 ms wide. A transaction picks commit timestamp s = latest, then waits until TrueTime says s has definitely passed (about 7 ms) before releasing locks and acknowledging. Any later transaction therefore gets a larger timestamp, so timestamp order matches real-time order. The price is commit latency equal to the clock uncertainty, which is why Google invests in GPS and atomic clocks to shrink it.</p>",
+    "<p>A hybrid logical clock (HLC) is a timestamp pair (physical time, logical counter). It uses the wall clock when it moves forward, and bumps the counter when the wall clock is behind or equal to the last seen value. On receive it takes the max of local, message and wall time. So it stays close to real time (useful for humans and queries) yet still respects causality like a Lamport clock. Example: wall 100, message stamp (105,0) gives (105,1). Used by CockroachDB and MongoDB.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Lamport clocks: ordering and the concurrency blind spot",
+    "python": "# Lamport clocks: counter rules and the \"converse is false\" limit\nclass Proc:\n    def __init__(self, name):\n        self.name, self.t = name, 0\n    def local(self):            # increment before every local event\n        self.t += 1\n        return self.t\n    def send(self):             # stamp the outgoing message\n        self.t += 1\n        return self.t\n    def recv(self, ts):         # max(local, received) + 1\n        self.t = max(self.t, ts) + 1\n        return self.t\n\na, b, c = Proc(\"A\"), Proc(\"B\"), Proc(\"C\")\na1 = a.local()\nm = a.send()                    # A sends to B\nb1 = b.recv(m)                  # B receives: causally after A's send\nc1 = c.local()                  # C acts alone: concurrent with A and B\nprint(\"A local:\", a1, \" A send:\", m, \" B recv:\", b1, \" C local:\", c1)\nprint(\"send < recv (causal order kept):\", m < b1)\n# Converse is false: L(c1) < L(b1) but C's event did not happen-before B's\nprint(\"L(C)=%d < L(B)=%d yet they are concurrent\" % (c1, b1))\n"
+   },
+   "followUps": [
+    "<p>Use induction on the chain of events. Within one process, the counter increases before every event, so consecutive events a then b on the same process satisfy L(a) &lt; L(b). For a message, the receive sets the counter to max(local, ts) + 1, which is greater than the send stamp ts, so L(send) &lt; L(receive). Any happened-before relation is a chain of these two steps, and each step strictly increases L, so by transitivity L(a) &lt; L(b).</p>",
+    "<p>Lamport's algorithm: to enter, a process stamps a request (L, id), sends it to all, and queues it. Every other process queues the request and replies. A process enters when its request is first in its queue, ordered by (L, id), and it has a reply with a later stamp from everyone. On exit it broadcasts a release. Example with 3 nodes: (4,A) beats (4,B) by id. Cost: 3(N-1) messages per entry. It needs reliable FIFO channels and no crashes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Vector clocks: newer, concurrent and merged versions",
+    "python": "# Vector clocks: compare two versions and merge siblings (Dynamo style)\ndef dominates(x, y):\n    # x >= y entry-wise and x != y\n    keys = set(x) | set(y)\n    return all(x.get(k, 0) >= y.get(k, 0) for k in keys) and x != y\n\ndef compare(x, y):\n    if x == y: return \"equal\"\n    if dominates(x, y): return \"first is newer\"\n    if dominates(y, x): return \"second is newer\"\n    return \"concurrent (siblings)\"\n\ndef merge(x, y, node):\n    m = {k: max(x.get(k, 0), y.get(k, 0)) for k in set(x) | set(y)}\n    m[node] = m.get(node, 0) + 1     # merged write dominates both\n    return m\n\nv1 = {\"A\": 1}                         # first write on replica A\nv2 = {\"A\": 2}                         # A updates again\nv3 = {\"A\": 1, \"B\": 1}                 # B updates from v1 independently\nprint(v1, \"vs\", v2, \"->\", compare(v1, v2))\nprint(v2, \"vs\", v3, \"->\", compare(v2, v3))\ncart_a, cart_b = {\"book\"}, {\"pen\"}\nmerged = merge(v2, v3, \"A\")\nprint(\"merged cart:\", sorted(cart_a | cart_b), \"clock:\", merged)\nprint(\"merged vs v2:\", compare(merged, v2), \"| vs v3:\", compare(merged, v3))\n"
+   },
+   "followUps": [
+    "<p>Plain version vectors flag false conflicts when one coordinator handles many clients: two writes through the same node look concurrent although the second happened after the first was read. Dotted version vectors add a single \"dot\" (node, counter) that identifies exactly the new write, kept apart from the causal history the client saw. That lets a replica tell \"this write supersedes what you read\" from \"this is truly concurrent\", avoiding sibling explosion with many clients.</p>",
+    "<p>Because each independent writer can create updates that nobody else has seen, and the only way to tell \"concurrent\" from \"earlier\" is to remember each writer's count. Example: with 3 writers, (1,0,0) and (0,1,0) are concurrent; merging them into a single number such as 1 and 1 cannot show that. Any compact encoding confuses some concurrent pair with an ordered pair. Stores prune old entries (Dynamo) and accept some risk of false conflicts.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With asynchronous followers, a user writes to the leader, then reads from a follower that has not yet received the write, so their own update seems lost. Example: you post a comment at t=0, replication takes 300 ms, you refresh at 100 ms and it is missing. Fixes: read your own recent data from the leader, route the user to the same replica, or have the client send the last write version and wait until the replica has caught up to it.</p>",
+    "<p>Chain replication arranges replicas in a line: writes go to the head and flow down to the tail; the write is acknowledged when the tail has it, and reads are served only by the tail. Because the tail has only committed writes, reads are strongly consistent, and the load is spread since the head and tail do different work. A failure is handled by a master that reconnects the chain. Weakness: write latency grows with chain length (3 nodes means 3 hops).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "R + W > N: quorum overlap and a stale-read case",
+    "python": "# R + W > N: every read set overlaps every write set\nfrom itertools import combinations\ndef always_overlaps(n, w, r):\n    nodes = range(n)\n    for ws in combinations(nodes, w):\n        for rs in combinations(nodes, r):\n            if not set(ws) & set(rs):\n                return False\n    return True\n\nfor n, w, r in [(5, 3, 3), (5, 2, 3), (5, 3, 2), (3, 2, 2), (3, 1, 1)]:\n    print(\"N=%d W=%d R=%d  R+W>N=%-5s  overlap guaranteed=%s\"\n          % (n, w, r, r + w > n, always_overlaps(n, w, r)))\n\n# A stale read: write reached only W replicas, read hits R replicas\nstore = [(\"v1\", 1)] * 5           # (value, version) on 5 replicas\nfor i in (0, 1, 2):               # write v2 acked by W=3\n    store[i] = (\"v2\", 2)\nread = [store[i] for i in (2, 3, 4)]   # R=3 includes replica 2\nprint(\"read picks:\", max(read, key=lambda p: p[1]))\n"
+   },
+   "followUps": [
+    "<p>Two failures at most. With N=5 and W=3, writes still succeed with 2 nodes down (3 remain), and R=3 reads also succeed with 2 down. A third failure leaves 2 nodes, below both W and R, so operations fail. Overlap holds because 3 + 3 = 6 &gt; 5: any read set shares at least one node with the latest write set. Generally you tolerate N - W write failures and N - R read failures.</p>",
+    "<p>Hinted handoff: when a replica is down, another node accepts the write and stores a hint, then forwards it when the replica returns. Read repair: during a read, the coordinator sees replicas returning different versions, returns the newest to the client and writes it back to the stale ones. Example: replicas hold v2, v2, v1; the read returns v2 and updates the third to v2. Both speed convergence but do not replace background anti-entropy.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes. Linearizability is local (composable): if every object in a system is linearizable on its own, the whole system, taking all objects together, is linearizable. So you can reason and test per key or per queue without checking their interactions. Serializability is not like this and needs a global order. It matters because a sharded store can offer linearizable keys by running a linearizable protocol in each shard, with no cross-shard coordination.</p>",
+    "<p>Strict serializability = serializability plus linearizability: transactions behave as if executed one at a time in some serial order, and that order respects real time (if T1 commits before T2 starts, T1 comes first). Example: after you commit a transfer, a later transaction by anyone must see it. Plain serializability allows an order that ignores real time. Spanner and FoundationDB offer it; the cost is coordination and latency.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Brute-force linearizability check of a register history",
+    "python": "# Brute-force linearizability check for one register (Wing & Gong idea)\nfrom itertools import permutations\n# op = (kind, value, invoke, response)\ndef linearizable(ops, init=0):\n    for order in permutations(range(len(ops))):\n        ok = True\n        for i, a in enumerate(order):          # real-time order respected?\n            for b in order[i + 1:]:\n                if ops[b][3] < ops[a][2]:      # b finished before a began\n                    ok = False\n        if not ok:\n            continue\n        cur = init\n        for i in order:                        # replay sequentially\n            kind, val = ops[i][0], ops[i][1]\n            if kind == \"w\": cur = val\n            elif val != cur: ok = False; break\n        if ok:\n            return [ops[i] for i in order]\n    return None\n\ngood = [(\"w\", 1, 0, 4), (\"r\", 1, 2, 3), (\"r\", 0, 1, 2)]  # overlaps allowed\nbad = [(\"w\", 1, 0, 1), (\"r\", 1, 2, 3), (\"r\", 0, 4, 5)]   # stale read after\nfor name, h in ((\"good\", good), (\"bad\", bad)):\n    res = linearizable(h)\n    print(name, h, \"->\", \"linearizable\" if res else \"NOT linearizable\")\n"
+   },
+   "followUps": [
+    "<p>Because the operation takes effect at some instant between its invocation and response, and an observer outside cannot tell which. If a read runs from t=2 to t=5 and a write of 7 runs from t=3 to t=4, the write may have taken effect before or after the read's linearization point, so both the old and the new value are legal. A read that starts after the write has responded has no such freedom and must see the new value.</p>",
+    "<p>Run concurrent clients doing reads, writes and compare-and-set on a few keys while injecting faults (partitions, kills, clock skew, pauses). Record each operation's invoke time, response time and result, with unknown outcomes marked as maybe-applied. Then feed the history to a checker such as Knossos or Porcupine, which searches for a valid order. Keep histories short (a few hundred ops) because checking is expensive. This is what Jepsen does.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>CAP availability means every non-failed node must answer every request, with no time bound, even during a partition. An SLA is a business number such as 99.95% of requests succeed within 200 ms, measured on the whole service. A system can meet its SLA while being CP (the minority side rejects a few requests) and a CAP-available system can still be too slow to meet an SLA. They are different questions.</p>",
+    "<p>In a shopping app, the product catalogue and browsing counters can be AP: a slightly stale price page is harmless and must stay up. Checkout stock reservation and payment must be CP: selling the last item twice or charging twice is costly, so it is better to return an error during a partition. Choose per operation, with the stronger guarantee only where an invariant (stock cannot go below 0) would break.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Without it, a node with a stale log could win and overwrite committed entries. Example: entry 5 is stored on 3 of 5 nodes and committed; a node that only has up to entry 3 wins an election and replaces entry 4 and 5. By granting a vote only to a candidate whose last log term and index are at least as new, Raft makes sure that any winner has all committed entries, since the winner's majority overlaps the majority that stored them.</p>",
+    "<p>ReadIndex: when a read arrives, the leader records its current commit index, sends a heartbeat round and confirms it still has a majority (so no newer leader exists). It then waits until its state machine has applied up to that recorded index and answers from local state. The read sees every write committed before it started, without writing a log entry. Cost: one heartbeat round per read (or batch). Lease reads skip the round but trust bounded clock drift.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The message is processed again after restart, because the offset was not saved, so it runs twice. This is at-least-once delivery. If the processing is idempotent (set balance to 50) nothing is wrong; if not (add 10) the effect doubles. Fixes: commit the offset in the same transaction as the output, or record the message id in a dedup table with a unique constraint, so the second run is skipped.</p>",
+    "<p>The outbox solves the dual-write problem: updating a database and publishing an event are two separate systems and one can fail. Instead, in one local transaction, write the business row and an outbox row. A separate relay reads the outbox and publishes to the broker, marking rows sent. A crash after publish but before marking sends a duplicate, so consumers must deduplicate by event id. Result: no lost events, at-least-once delivery.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotency key: replay, in-flight and misuse",
+    "python": "# Idempotency keys: unique key + request hash + stored response\nimport hashlib, json\nstore = {}          # key -> {\"hash\":..., \"status\":..., \"response\":...}\nbalance = {\"acct\": 100}\n\ndef pay(key, amount):\n    h = hashlib.sha256(json.dumps(amount).encode()).hexdigest()[:8]\n    rec = store.get(key)\n    if rec:\n        if rec[\"hash\"] != h:\n            return \"422 key reused with different request\"\n        if rec[\"status\"] == \"STARTED\":\n            return \"409 in flight, retry later\"\n        return \"200 replay: \" + rec[\"response\"]       # same answer again\n    store[key] = {\"hash\": h, \"status\": \"STARTED\", \"response\": \"\"}\n    balance[\"acct\"] -= amount                          # the real effect, once\n    resp = \"charged %d, balance %d\" % (amount, balance[\"acct\"])\n    store[key].update(status=\"COMPLETED\", response=resp)\n    return \"200 \" + resp\n\nprint(pay(\"k1\", 30))\nprint(pay(\"k1\", 30))       # client retry after timeout\nprint(pay(\"k1\", 50))       # misuse of same key\nprint(pay(\"k2\", 20))\nprint(\"final balance:\", balance[\"acct\"])\n"
+   },
+   "followUps": [
+    "<p>Keep them longer than the longest realistic client retry window, commonly 24 hours to 7 days (Stripe uses 24 hours). Too short, and a late retry is treated as a new payment and charges twice. Too long, and the table grows: 1 million requests a day at 1 KB is about 7 GB a week. Choose a window, index by creation time, and delete expired rows with a background job, ideally partitioned by day.</p>",
+    "<p>After expiry the server cannot tell it is a retry, so it would run the payment again. Mitigations: reject requests with keys older than the window (the key embeds a timestamp, or the client sends a request time), so the client gets a clear error instead of a double charge; and add a business-level unique constraint such as order id plus payment attempt. Also tell clients not to retry beyond the window and to look up the payment status instead.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Deduplication breaks: each retry looks like a new request, so the tool executes the side effect again and again, which is exactly the bug you wanted to prevent. Keys must come from stable data, such as workflow id plus step number or a hash of the planned arguments, and be saved in the durable log before the call. Then a crash and re-plan reuses the saved key. A model-made random key is only safe if it is persisted first.</p>",
+    "<p>Inject faults at each step boundary: kill the worker after the tool call but before saving the result, drop the response, and duplicate the request. Run the workflow many times and assert the invariants: each side effect happened exactly once (count payments or emails in a fake tool), and the final state matches a fault-free run. Use deterministic seeds so failures replay. Also test key reuse with different arguments, which must be rejected.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,122 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "BPE: merge the most frequent pair",
+    "python": "from collections import Counter\n\n# Training text: each word is a tuple of characters, with its frequency\nwords = {tuple(\"low\"): 3, tuple(\"lower\"): 1, tuple(\"lowest\"): 1}\nprint(\"words:\", {\"\".join(w): n for w, n in words.items()})\n\ndef merge(word, pair):\n    out, i = [], 0\n    while i < len(word):\n        if i + 1 < len(word) and (word[i], word[i + 1]) == pair:\n            out.append(word[i] + word[i + 1])  # glue the pair into one symbol\n            i += 2\n        else:\n            out.append(word[i])\n            i += 1\n    return tuple(out)\n\nfor step in range(1, 5):\n    pairs = Counter()\n    for w, n in words.items():\n        for a, b in zip(w, w[1:]):\n            pairs[(a, b)] += n          # count adjacent pairs, weighted by frequency\n    best = pairs.most_common(1)[0][0]   # most frequent pair becomes a new token\n    words = {merge(w, best): n for w, n in words.items()}\n    print(\"merge\", step, best, \"->\", [list(w) for w in words])\n# Each round is O(total symbols); vocabulary grows by one token per merge\n"
+   },
+   "followUps": [
+    "<p>It repeatedly merges the most frequent adjacent pair of symbols in the training text. Start with single characters (or bytes), count every neighbouring pair weighted by word frequency, glue the top pair into a new token, and repeat until the vocabulary reaches the target size, such as 50,000.</p><p>Example: in \"low low low lower\" the pair (l,o) occurs 4 times, so \"lo\" is created, then \"low\". The ordered merge list is saved and replayed at encode time. Ties are broken by a fixed rule so results are reproducible.</p>",
+    "<p>Because the merges are learned mostly from English-heavy text, other languages end up split into many small pieces, so the same meaning needs more tokens. Few merges exist for their character sequences, so words fall back to short fragments or even single bytes.</p><p>Example: a short English sentence might be 8 tokens while the same sentence in a rarer script is 25. That means higher cost, less room in the context window and sometimes worse quality. Check with the real tokenizer before estimating costs for a multilingual product.</p>",
+    "<p>It works on raw bytes (values 0 to 255) instead of Unicode characters, so every possible string can be encoded and nothing is ever \"unknown\". The base vocabulary is just the 256 bytes, and BPE merges are learned on top of them.</p><p>Example: the emoji is 4 UTF-8 bytes, so with no merge it becomes 4 tokens; a common word like \"the\" becomes 1. The trade-off is that rare characters cost several tokens, and the model may see odd partial characters at token boundaries.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Generation loop with and without a KV cache",
+    "python": "# Toy \"model\": a lookup table giving the next token (greedy decoding)\nNEXT = {\"the\": \"cat\", \"cat\": \"sat\", \"sat\": \"on\", \"on\": \"the\", \"<s>\": \"the\"}\n\ndef generate(prompt, steps, use_cache):\n    tokens = list(prompt)\n    cache = []        # stands in for the KV cache: one entry per processed token\n    work = 0          # how many token positions we had to process\n    if use_cache:\n        cache = list(tokens); work += len(tokens)      # prefill: whole prompt at once\n    for _ in range(steps):\n        if use_cache:\n            nxt = NEXT[tokens[-1]]\n            work += 1                                   # only the new token is processed\n        else:\n            work += len(tokens)                         # reprocess everything each step\n            nxt = NEXT[tokens[-1]]\n        tokens.append(nxt)                              # output feeds back as input\n        if use_cache:\n            cache.append(nxt)\n    return tokens, work\n\nprompt = [\"<s>\", \"the\", \"cat\", \"sat\"]\nfor flag in (False, True):\n    toks, work = generate(prompt, 6, flag)\n    print(\"cache\" if flag else \"no cache\", \"->\", \" \".join(toks), \"| positions processed:\", work)\n# Without cache work grows ~ n^2 over the run; with cache it is ~ n\n"
+   },
+   "followUps": [
+    "<p>The first token needs the whole prompt processed before anything can be produced, while later tokens only process one new token using the saved cache. This first phase is called prefill, and its time grows with prompt length.</p><p>Example: a 4,000-token prompt means 4,000 positions pass through every layer (done in parallel, but still a lot of compute), whereas each later step handles 1 position. This is why \"time to first token\" rises with long prompts and then streaming is fast and steady.</p>",
+    "<p>It is a trick where a small, cheap draft model guesses several next tokens and the big model checks them all in one parallel pass, keeping the ones that match what it would have chosen itself. The output is the same as normal decoding, only faster.</p><p>Example: the draft proposes 4 tokens, the big model accepts 3 and corrects the 4th, so one big-model pass produced 4 tokens instead of 1. The gain depends on how often the draft is right, and it needs extra memory for the second model.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Subword ids hide the letters",
+    "python": "# A tiny subword vocabulary: the model sees ids, never letters\nVOCAB = {\"straw\": 101, \"berry\": 102, \"s\": 1, \"t\": 2, \"r\": 3, \"a\": 4, \"w\": 5, \"b\": 6, \"e\": 7, \"y\": 8}\nPIECES = sorted(VOCAB, key=len, reverse=True)\n\ndef encode(word):\n    ids, i = [], 0\n    while i < len(word):\n        for p in PIECES:                  # greedy longest match\n            if word.startswith(p, i):\n                ids.append(VOCAB[p]); i += len(p); break\n    return ids\n\nword = \"strawberry\"\nprint(\"word:\", word)\nprint(\"what the model receives:\", encode(word))   # [101, 102] - no letters visible\nprint(\"letters inside id 101 are not in the input; the model must recall them\")\n\n# Deterministic code sees the characters, so it counts exactly\nprint(\"count of 'r' by code:\", word.count(\"r\"))\n# Spelling it out first makes each letter its own token\nprint(\"spelled out:\", \" \".join(word), \"->\", len(word), \"single-letter tokens\")\n"
+   },
+   "followUps": [
+    "<p>Anything that depends on individual characters or exact digits: spelling, reversing or sorting letters, anagrams, rhymes, counting words in a long text, column-aligned output, and precise arithmetic on long numbers.</p><p>Example: a number like 1234567 may be split into pieces such as \"123\", \"456\", \"7\", so digit-by-digit addition has to be learned across uneven chunks. Code, URLs and unusual names also split unpredictably. Use code tools for exact work.</p>",
+    "<p>Yes, a character-level model would see every letter, but it pays for it with much longer sequences, so training and serving cost far more. Since attention grows with length squared, the price rises quickly.</p><p>Example: a 1,000-word text is about 1,300 subword tokens but roughly 6,000 characters, so attention work is about (6,000/1,300)^2, around 21 times larger. Models also need more layers to build word meaning from letters. Subwords are the practical compromise, and tools cover the exact tasks.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Self-attention scaling by sqrt(d)",
+    "python": "import math\n\nd = 16\ndef vec(seed):                       # deterministic pseudo-vectors for 3 tokens\n    return [math.sin(seed * (j + 1)) * 2 for j in range(d)]\n\nQ = [vec(1), vec(2), vec(3)]\nK = [vec(1.1), vec(2.2), vec(3.3)]\nV = [[1, 0], [0, 1], [1, 1]]         # small value vectors\n\ndef softmax(xs):\n    m = max(xs); e = [math.exp(x - m) for x in xs]\n    s = sum(e); return [x / s for x in e]\n\ndef attend(i, scale):\n    scores = [sum(a * b for a, b in zip(Q[i], k)) / scale for k in K]\n    w = softmax(scores)              # weights sum to 1\n    out = [sum(w[j] * V[j][c] for j in range(3)) for c in range(2)]\n    return scores, w, out\n\nfor name, scale in ((\"no scaling\", 1.0), (\"divide by sqrt(d)\", math.sqrt(d))):\n    scores, w, out = attend(0, scale)\n    print(name)\n    print(\"  scores :\", [round(s, 2) for s in scores])\n    print(\"  weights:\", [round(x, 3) for x in w])\n    print(\"  output :\", [round(x, 3) for x in out])\n# Cost: scores for n tokens = n*n dot products of size d -> O(n^2 * d)\n"
+   },
+   "followUps": [
+    "<p>Time is O(n^2 * d) and the naive attention matrix takes O(n^2) memory per head, where n is the sequence length and d the head width. Every token is scored against every other token.</p><p>Example: n = 8,000 gives 64 million scores per head per layer, and doubling n gives 4 times as many. FlashAttention keeps the compute but avoids storing the full matrix, so memory drops to O(n). The MLP part is only linear in n.</p>",
+    "<p>It stores the key and value vectors of every earlier token, for every layer, so they are not recomputed at each decoding step. Queries are not cached, because only the newest token's query is needed.</p><p>Size per token is 2 (K and V) x layers x width x bytes. For 32 layers, width 4096 and fp16 that is 2 x 32 x 4096 x 2 = 524,288 bytes, about 0.5 MB per token. It turns per-step cost from recomputing everything into one new row, at the price of memory that grows with context.</p>",
+    "<p>GQA lets several query heads share one set of key and value heads, which shrinks the KV cache without changing the number of query heads much. Multi-head attention has one K/V per query head, multi-query has only one in total, and GQA sits in between.</p><p>Example: 32 query heads sharing 8 K/V heads makes the cache 4 times smaller, so about 4 times more chats fit on the same GPU, with a very small quality loss. Many recent open models use it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Post-norm applies the normalisation after the residual add, pre-norm applies it before attention or the MLP inside the residual branch. Pre-norm is the common choice today because it trains more stably in deep stacks.</p><p>Reason: in pre-norm the residual path stays a clean identity route, so gradients flow straight back through 80 layers without being rescaled each time. Post-norm can give slightly better final quality but needs careful warm-up and learning rates, and often diverges when very deep.</p>",
+    "<p>A mixture of experts replaces the one big MLP with many smaller MLPs (experts) plus a router that sends each token to only a few of them, for example 2 out of 8. Attention is unchanged.</p><p>Example: a model with 8 experts has about 8 times the MLP parameters, but each token uses only 2 of them, so compute per token stays near that of a smaller model. The costs are that all experts must sit in memory, routing must be load-balanced, and batching is harder.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Reward hacking is when the model learns to get a high score from the reward model without actually being better, because the score is only an imperfect stand-in for what people want.</p><p>Examples: longer answers, flattering tone or confident wording often score higher, so the model becomes verbose or sycophantic. Defences are a penalty for drifting from the SFT model (KL term), better and more varied preference data, and periodic human audits of real outputs.</p>",
+    "<p>Fine-tune to change how the model behaves (format, tone, domain style, skills) and use RAG to give it facts that change or must be cited. A good rule: knowledge goes in retrieval, behaviour goes in tuning.</p><p>Example: product prices change daily, so fetch them; a strict JSON output style used in every call is better trained in. Fine-tuned facts go stale, are hard to audit and are hard to delete, while RAG adds latency and needs good search. Often a company uses both.</p>",
+    "<p>LoRA (low-rank adaptation) fine-tunes a model by freezing the original weights and training two small matrices per layer whose product is added to the big weight matrix. Only those small matrices are updated.</p><p>Example: a 4096 x 4096 matrix has 16.8 million values, while rank-8 adapters have 2 x 4096 x 8 = 65,536, under 0.4 percent. Training needs far less memory, adapters are small files, and you can swap them per customer on one base model.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Temperature, top-k and top-p on a small distribution",
+    "python": "import math\n\nlogits = {\"the\": 4.0, \"a\": 3.0, \"cat\": 2.0, \"dog\": 1.0, \"xylophone\": -1.0}\n\ndef softmax(lg, temp):\n    exps = {t: math.exp(v / temp) for t, v in lg.items()}  # temperature divides logits\n    s = sum(exps.values())\n    return {t: e / s for t, e in exps.items()}\n\ndef show(title, p):\n    print(title.ljust(18), {t: round(x, 3) for t, x in p.items()})\n\ndef top_k(p, k):\n    keep = dict(sorted(p.items(), key=lambda kv: -kv[1])[:k])   # keep k best\n    s = sum(keep.values()); return {t: x / s for t, x in keep.items()}\n\ndef top_p(p, mass):\n    keep, total = {}, 0.0\n    for t, x in sorted(p.items(), key=lambda kv: -kv[1]):\n        keep[t] = x; total += x\n        if total >= mass: break            # smallest set reaching the mass\n    s = sum(keep.values()); return {t: x / s for t, x in keep.items()}\n\nshow(\"temp 0.5\", softmax(logits, 0.5))\nshow(\"temp 1.0\", softmax(logits, 1.0))\nshow(\"temp 2.0\", softmax(logits, 2.0))\nbase = softmax(logits, 1.0)\nshow(\"top-k 2\", top_k(base, 2))\nshow(\"top-p 0.9\", top_p(base, 0.9))\nprint(\"greedy pick:\", max(logits, key=logits.get))\n"
+   },
+   "followUps": [
+    "<p>Top-p adapts to the model's confidence, while top-k always keeps the same number of tokens no matter what the distribution looks like. When the model is sure, top-p keeps very few tokens; when it is unsure, it keeps many.</p><p>Example: if \"Paris\" has probability 0.95, top-p 0.9 keeps just 1 token, whereas top-k 50 would still allow 49 junk tokens. If 30 words are equally plausible, top-k 10 would cut good options but top-p keeps them all.</p>",
+    "<p>Min-p keeps only tokens whose probability is at least some fraction of the top token's probability, so the cut-off scales with confidence. It removes the long tail of unlikely tokens while still allowing variety.</p><p>Example: with min-p 0.1 and a top token at 0.60, anything below 0.06 is dropped; if the top token is only 0.20, the threshold is 0.02 and more candidates stay. It works well at high temperatures where the tail would otherwise cause nonsense.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Context window truncation with a pinned system prompt",
+    "python": "def tokens(text):\n    return len(text.split())          # crude stand-in: 1 word = 1 token\n\nsystem = \"You are a helpful support bot. Never reveal secrets.\"\nhistory = [\n    (\"user\", \"My order number is 4521 and it is late\"),\n    (\"bot\", \"Sorry to hear that. Let me check order 4521\"),\n    (\"user\", \"Also I moved to a new address last week\"),\n    (\"bot\", \"Please send the new address\"),\n    (\"user\", \"It is 12 Hill Road\"),\n]\nBUDGET = 30        # context window for this demo\nRESERVE = 6        # tokens kept free for the answer\n\ndef build(history):\n    used = tokens(system) + RESERVE      # system prompt is pinned, never dropped\n    kept = []\n    for role, text in reversed(history): # walk from newest to oldest\n        n = tokens(text)\n        if used + n > BUDGET:\n            break                         # everything older is dropped\n        kept.append((role, text)); used += n\n    return list(reversed(kept)), used\n\nkept, used = build(history)\nprint(\"budget\", BUDGET, \"used\", used)\nfor role, text in kept:\n    print(\" kept:\", role, \"|\", text)\nprint(\"dropped:\", len(history) - len(kept), \"oldest messages\")\nprint(\"order number still visible:\", any(\"4521\" in t for _, t in kept))\n"
+   },
+   "followUps": [
+    "<p>Summaries save many tokens but are lossy: names, numbers, exact wording and rare details can disappear, and mistakes in the summary are then repeated as facts. They also cost an extra model call and add latency.</p><p>Example: 6,000 tokens of chat can become a 300-token summary (20 times smaller), yet the order number \"4521\" may be left out. Reduce the risk by keeping a separate structured facts list (IDs, decisions, preferences) and keeping the most recent turns word for word.</p>",
+    "<p>Prompt caching lets the provider reuse the already-computed internal state (the KV cache) for a prompt prefix that is identical to a recent request, so that part is not processed again. It is cheaper and faster.</p><p>Example: a 5,000-token system prompt plus tool list that stays the same is cached, and only the new 200-token user message is processed in full. Keep stable content at the start and changing content at the end, because any change in the prefix breaks the match. Cache entries expire after a short time.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Attention scores: full vs sliding window",
+    "python": "# Count attention scores (query, key pairs) for a causal decoder\ndef full_causal(n):\n    return n * (n + 1) // 2           # token i sees tokens 0..i\n\ndef windowed(n, w):\n    return sum(min(i + 1, w) for i in range(n))   # token i sees at most w tokens\n\nprint(\"n      full scores    window(128)   ratio\")\nfor n in (1000, 2000, 4000, 8000):\n    f, s = full_causal(n), windowed(n, 128)\n    print(str(n).ljust(6), str(f).ljust(14), str(s).ljust(13), round(f / s, 1))\n\n# Doubling n multiplies the full cost by about 4, the windowed cost by about 2\na, b = full_causal(2000) / full_causal(1000), windowed(2000, 128) / windowed(1000, 128)\nprint(\"doubling n: full x\", round(a, 2), \" windowed x\", round(b, 2))\n"
+   },
+   "followUps": [
+    "<p>About 52 GB for the cache alone if it uses standard multi-head attention in fp16, and the sizing is 2 x 32 layers x 4096 x 2 bytes x 100,000 tokens. Per token that is 524,288 bytes, so 100,000 tokens is roughly 52 GB, far more than the 14 GB of weights.</p><p>With grouped-query attention using 8 K/V heads it falls to about 13 GB, and 8-bit cache quantisation halves it again. This is why long context is limited by memory rather than compute.</p>",
+    "<p>Prefill processes the entire prompt in one parallel pass and is limited by compute; decode generates one token per step and is limited by how fast memory can be read. They need different tuning.</p><p>Example: a 2,000-token prompt is one big matrix job (fast per token), while 500 output tokens are 500 separate steps, each reading all the weights and the cache. Servers often batch decode steps together and sometimes run prefill on separate machines so long prompts do not stall other users.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You measure it by checking whether each claim in the answer is supported by the retrieved sources. Split the answer into claims, then check each one against the source text, using human review or a judge model, and report the share that are supported.</p><p>Example: 18 of 20 claims supported gives 90 percent groundedness. Also track citation validity (does the quoted passage exist?) and keep a labelled test set with unanswerable questions. A judge model must itself be calibrated against human labels.</p>",
+    "<p>The main downside is that the model becomes too cautious and refuses questions it could have answered, which makes the product less useful and annoys users. Pushing for \"I do not know\" trades missed answers for fewer wrong ones.</p><p>Example: if abstention rises from 5 to 30 percent of questions while errors fall from 10 to 4 percent, that may be bad for a casual assistant but good for medical or legal use. Measure both answered accuracy and the refusal rate, and offer a next step such as escalating to a human.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Memory estimate for serving a 7B model",
+    "python": "# Back-of-envelope memory estimate for serving a 7B model\nparams = 7e9\nlayers, d_model = 32, 4096\nGB = 1e9\n\nweights_fp16 = params * 2 / GB          # 2 bytes per parameter\nweights_int4 = params * 0.5 / GB        # 4 bits = 0.5 byte\nprint(\"weights fp16:\", round(weights_fp16, 1), \"GB | 4-bit:\", round(weights_int4, 1), \"GB\")\n\nkv_per_token = 2 * layers * d_model * 2  # K and V, every layer, 2 bytes each\nprint(\"KV cache per token:\", kv_per_token, \"bytes =\", round(kv_per_token / 1e6, 2), \"MB\")\n\nfor ctx in (8000, 100000):\n    print(\"chat of\", ctx, \"tokens:\", round(ctx * kv_per_token / GB, 1), \"GB\")\n\ngpu = 80\nfree = gpu - weights_fp16\nper_chat = 8000 * kv_per_token / GB\nprint(\"80 GB GPU, free after weights:\", round(free, 1), \"GB\")\nprint(\"concurrent 8k chats:\", int(free // per_chat))\n# Grouped-query attention with 8 KV heads instead of 32 cuts the cache 4x\nprint(\"with GQA (4x smaller):\", int(free // (per_chat / 4)), \"chats\")\n"
+   },
+   "followUps": [
+    "<p>Larger batches raise throughput (tokens per second across all users) but also raise latency for each user, because each step now does more work. The model reads its weights once per step regardless of batch size, so extra users are almost free until compute becomes the limit.</p><p>Example: a step may take 25 ms at batch 1 and 40 ms at batch 32. Throughput goes from 40 to 800 tokens/s while each user waits 60 percent longer per token. Pick the batch size from your latency target.</p>",
+    "<p>Quantisation lowers precision (for example fp16 to 8-bit or 4-bit) to save memory and speed up decoding, and the quality loss is small for 8-bit and usually modest for good 4-bit methods. It is larger for small models and on hard tasks such as maths or code.</p><p>Example: 4-bit shrinks 14 GB of weights to about 3.5 GB. Always compare on your own evaluation set before shipping, and quantise the KV cache separately because it can hurt long-context accuracy.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a regression suite that scores properties of the answer instead of comparing exact text, and run each case several times. Keep a fixed set of real prompts with expected facts, format rules and forbidden content.</p><p>Example: 200 cases, each run 5 times, with checks such as valid JSON, required fields present, key facts found, and a judge model for tone. Release only if the pass rate stays within a set tolerance, say not below 95 percent, and pin the model version so changes are caused by you.</p>",
+    "<p>Use it when you want the most repeatable answer and variety has no value: extraction, classification, code generation, structured output, and tests where you compare runs.</p><p>Example: pulling an invoice number from text should always give the same result. It is a poor choice for brainstorming or writing, where it makes answers bland and may repeat loops. Remember it improves repeatability only and does not prevent wrong answers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pin an exact model version, run your evaluation suite whenever the provider announces a new one, and keep adapters and prompts versioned alongside the base model. A LoRA adapter is tied to the exact base weights it was trained on, so it must be retrained for a new base.</p><p>Example: keep the training data and script so retraining takes hours, not weeks. Roll out by shadow-testing the new version on real traffic and switching only if scores match or improve.</p>",
+    "<p>A release should be blocked by any failure in a set of agreed thresholds, because one average score can hide serious problems. Typical blockers are groundedness below target, security or permission leaks, invalid output format and regressions in the refusal rate.</p><p>Example: block if groundedness falls from 94 to 88 percent, if any test makes the bot reveal another user's data, or if p95 latency exceeds 4 seconds. Include a set of adversarial prompts, and require human sign-off for the failures that are borderline.</p>"
+   ]
+  }
+ ]
+}

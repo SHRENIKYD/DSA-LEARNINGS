@@ -1,0 +1,120 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Push means the control node connects to the hosts and runs the work when you tell it to. Puppet and Chef use pull: an agent on every host wakes up (often every 30 minutes), fetches its configuration from a server and applies it. Push is simpler to start and gives you control over timing and order. Pull scales to huge fleets and corrects drift without anyone running a command, but you must install, patch and secure the agents.</p>",
+    "<p>Each managed host needs an SSH server you can log in to, and Python (usually Python 3) so modules can run. Nothing else is installed permanently. For hosts without Python, such as some network devices, the <code>raw</code> module sends plain commands, and network modules run on the control node instead. Windows hosts use WinRM or SSH with PowerShell, so Python is not needed there.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotent modules: second run changes nothing",
+    "python": "# Model of an idempotent \"module\": check current state, act only if it differs.\nstate = {\"packages\": set(), \"files\": {}}\n\ndef package(name):\n    if name in state[\"packages\"]:\n        return \"ok\"\n    state[\"packages\"].add(name)\n    return \"changed\"\n\ndef file_content(path, text):\n    if state[\"files\"].get(path) == text:\n        return \"ok\"\n    state[\"files\"][path] = text\n    return \"changed\"\n\ndef run_play(label):\n    results = [package(\"nginx\"), package(\"git\"),\n               file_content(\"/etc/app.conf\", \"port=80\")]\n    print(label, results, \"changed =\", results.count(\"changed\"))\n\nprint(\"start state:\", state)\nrun_play(\"run 1:\")\nrun_play(\"run 2:\")   # a healthy playbook reports changed = 0 here\n# Cost: O(tasks) per run, O(1) extra space per task.\n"
+   },
+   "followUps": [
+    "<p>A timestamp changes on every run, so the rendered file differs each time and the template task reports <code>changed</code> every time. That also notifies handlers, so a service gets reloaded on every run for nothing. Example: <code>Generated at 10:01</code> becomes <code>Generated at 10:07</code>. Remove the timestamp, or use a stable value such as <code>{{ ansible_managed }}</code> without a date.</p>",
+    "<p>It depends on the module. Modules that support check mode report what they would change without doing it. A <code>shell</code> or <code>command</code> task cannot predict anything, so by default it is skipped in check mode and shows as skipped. You can add <code>check_mode: false</code> to force it to run for read-only commands whose result later tasks need. Never do that for commands that change things.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Host patterns as set algebra",
+    "python": "# Host patterns as set algebra: web:&prod:!canary\ninventory = {\n    \"web\":    {\"web1\", \"web2\", \"web3\", \"web4\"},\n    \"db\":     {\"db1\", \"db2\"},\n    \"prod\":   {\"web1\", \"web2\", \"web3\", \"db1\"},\n    \"canary\": {\"web1\"},\n}\n\ndef match(pattern):\n    result = None\n    for part in pattern.split(\":\"):   # read left to right\n        if part.startswith(\"&\"):\n            result = result & inventory[part[1:]]\n        elif part.startswith(\"!\"):\n            result = result - inventory[part[1:]]\n        elif result is None:\n            result = set(inventory[part])\n        else:\n            result = result | inventory[part]   # plain name = union\n    return sorted(result)\n\nfor p in [\"web:db\", \"web:&prod\", \"web:!canary\", \"web:&prod:!canary\"]:\n    print(p.ljust(20), match(p))\nprint(\"empty match:\", match(\"db:&canary\"))   # just an empty list, not an error\n"
+   },
+   "followUps": [
+    "<p>The AWS inventory plugin (amazon.aws.aws_ec2) calls the AWS API for instances in chosen regions and turns them into hosts. <code>keyed_groups</code> builds groups from tags, for example tag <code>Role=web</code> becomes group <code>role_web</code>, and <code>filters</code> limits it to running instances. The inventory is rebuilt on each run, so new servers appear without editing files. Credentials come from the usual AWS environment or role, never from the inventory file.</p>",
+    "<p>If a pattern matches no hosts, Ansible prints a warning such as <code>Could not match supplied host pattern</code> or reports that no hosts matched, and exits with success for that play. Nothing runs, so a typo in a group name can look like a green pipeline. In CI, run <code>--list-hosts</code> first and fail if the count is 0, or assert in the playbook that the group is not empty.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Handlers fire only on change, once, at the end",
+    "python": "# Handlers: queued only by changed tasks, run once at the end of the play.\ndef play(tasks, handlers, fail_at=None):\n    queue = []\n    for i, (name, changed, notify) in enumerate(tasks):\n        if fail_at == i:\n            print(\"  task\", name, \"FAILED -> queue dropped:\", queue)\n            return\n        print(\"  task\", name, \"changed\" if changed else \"ok\")\n        if changed and notify and notify not in queue:\n            queue.append(notify)   # notified once, however many times\n    for h in handlers:             # run in definition order\n        if h in queue:\n            print(\"  handler:\", h)\n\nhandlers = [\"reload nginx\"]\nprint(\"run A: config changed, two tasks notify\")\nplay([(\"write conf\", True, \"reload nginx\"), (\"write vhost\", True, \"reload nginx\")], handlers)\nprint(\"run B: nothing changed\")\nplay([(\"write conf\", False, \"reload nginx\")], handlers)\nprint(\"run C: config written, later task fails\")\nplay([(\"write conf\", True, \"reload nginx\"), (\"start app\", True, None)], handlers, fail_at=1)\n"
+   },
+   "followUps": [
+    "<p><code>listen</code> lets a handler subscribe to a topic name instead of its own name. Tasks then notify the topic, and every handler listening to it runs. Example: tasks notify <code>restart web stack</code>, while handlers for nginx and php-fpm both have <code>listen: restart web stack</code>. This decouples tasks from handler names, so you can add or swap handlers without editing every task.</p>",
+    "<p>No. When a task fails on a host, Ansible stops that host and skips its pending handlers, which is why a half-applied change may never be reloaded. Set <code>force_handlers: true</code> on the play (or <code>--force-handlers</code>) to run notified handlers even after a failure. Handlers still do not run on hosts that were unreachable.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Variable precedence: strongest layer wins",
+    "python": "# Variable precedence: later (stronger) layers override earlier ones.\nlayers = [\n    (\"role defaults\", {\"port\": 80, \"workers\": 2, \"env\": \"none\"}),\n    (\"group_vars/all\", {\"env\": \"prod\"}),\n    (\"group_vars/web\", {\"workers\": 4}),\n    (\"host_vars/web1\", {\"workers\": 8}),\n    (\"play vars\", {\"port\": 8080}),\n    (\"extra vars -e\", {\"workers\": 16}),\n]\n\nfinal, source = {}, {}\nfor name, values in layers:\n    for key, value in values.items():\n        final[key] = value\n        source[key] = name   # remember who set it last\n\nfor key in sorted(final):\n    print(key, \"=\", final[key], \" <- from\", source[key])\n# Debugging = finding the last layer that defines the name.\n"
+   },
+   "followUps": [
+    "<p>Play <code>vars:</code> is stronger than <code>host_vars</code>. Host_vars are inventory variables, while play vars sit in the playbook, which ranks higher. Example: <code>host_vars/web1</code> sets <code>workers: 8</code> and the play sets <code>workers: 4</code>, so the host runs with 4. That surprises people who expect the most specific host to win, so keep environment values in inventory and avoid the same name in play vars.</p>",
+    "<p>By default a higher-precedence dictionary replaces a lower one completely. To merge, use the <code>combine</code> filter, optionally with <code>recursive=True</code> for nested keys. Example: defaults <code>{a: 1, b: 2}</code> and override <code>{b: 3}</code> give <code>{a: 1, b: 3}</code>.</p><pre><code>app_cfg: \"{{ app_defaults | combine(app_overrides, recursive=True) }}\"</code></pre>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run <code>ansible-vault rekey</code> on every vaulted file with the old and a new password, then update the stored password in CI and the password manager. Encrypted strings made with <code>encrypt_string</code> must be re-created, because rekey works on whole files. Example: <code>ansible-vault rekey group_vars/prod/vault.yml --new-vault-password-file new.txt</code>. Do it when a person leaves, and commit all files together.</p>",
+    "<p>Everyone who can decrypt shares one password per vault ID, so you cannot revoke one person alone and there is no per-secret audit. Once a play runs, the secret is decrypted on the control node and written in plain form to the managed host, where root users can read it. Old Git versions stay encrypted with the old password, so after leaks you must rotate the secret, not just rekey. For audit and short-lived credentials, use a secret manager.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A role packages tasks for one job and is reused inside playbooks. A collection is a larger distribution unit that can hold many roles, modules, plugins and playbooks under one namespace and version, for example <code>community.general</code>. Use a role for your own reusable setup, and publish a collection when you want to ship modules or plugins, or several related roles, with versions and dependencies.</p>",
+    "<p><code>import_role</code> is static: Ansible reads it when the playbook is parsed, so tags and conditions apply to every task inside, and errors show up early. <code>include_role</code> is dynamic: it loads when reached at runtime, so it works in loops and with variable role names, but tags on it do not reach the inner tasks unless you apply them. Default to import, use include when you need a loop or runtime choice.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Rolling update in batches with stop on failure",
+    "python": "# Rolling update with serial batches and rollback on failed health check.\nhosts = [\"h%d\" % i for i in range(1, 21)]\nserial = [1, 5, 14]          # canary, then bigger batches\nbad_host = \"h9\"              # this host fails its health check\n\ndef update(host):\n    print(\"   drain\", host, \"-> apply -> health check\")\n    return host != bad_host\n\ndef rollout():\n    done = 0\n    for size in serial:\n        batch = hosts[done:done + size]\n        print(\"batch of\", len(batch), batch[0], \"..\", batch[-1])\n        for h in batch:\n            if not update(h):\n                print(\"   FAIL\", h, \"-> restore backup, stop rollout\")\n                return done      # hosts after this batch are untouched\n        done += len(batch)\n        print(\"   batch healthy, updated so far:\", done)\n    return done\n\nprint(\"updated\", rollout(), \"of\", len(hosts))\n# Blast radius = size of the failing batch, not the fleet.\n"
+   },
+   "followUps": [
+    "<p>If the rescue block completes without error, the host is no longer counted as failed, so the play continues for it. Ansible still shows the failure in the recap as <code>rescued</code>. That is why a rollback should end with an explicit <code>fail</code> task: otherwise the rollout carries on to the next batch with a broken change. With <code>max_fail_percentage: 0</code>, that final fail stops the whole run.</p>",
+    "<p>With immutable images you do not edit servers. You build a new image, start new instances and shift traffic, then delete the old ones. Rolling, health gates and rollback are handled by the platform, such as an auto scaling group or a Kubernetes Deployment with <code>maxUnavailable</code>. Rollback means pointing back to the old image, which is faster and safer than reversing file edits. Ansible's role shrinks to building the image.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Remove a resource from Terraform code and the next plan shows it will be destroyed, because Terraform compares code with its state file. Remove a host from the inventory and Ansible simply stops touching it; the server keeps running and keeps its configuration. Ansible has no state to say it was once managed. So deletion belongs to Terraform, and Ansible needs an explicit decommission play if cleanup is wanted.</p>",
+    "<p>Packer builds machine images, for example an AMI, by launching a temporary machine, configuring it (often with the Ansible provisioner) and saving the image. Terraform then launches instances from that image. This moves slow configuration to build time: instances boot fast and identical, and Ansible runs once per image instead of on every server. It fits the immutable pattern.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Molecule's containers share the host kernel and often lack systemd, so it cannot test kernel parameters, sysctl effects, reboots, disk partitioning, firewall rules at kernel level or real service managers well. For those, use VM-based drivers (Vagrant, cloud instances) or a staging host. Containers are still great for fast checks of files, packages and users.</p>",
+    "<p>Check mode cannot run modules that lack support, and it skips <code>shell</code> and <code>command</code> tasks. It also cannot see failures that appear only at runtime: a later task depends on a file an earlier task would have created, a package repository is down, a service fails to start, or permissions are wrong. Tasks using <code>register</code> results from skipped tasks may fail. So check mode is a preview, not a proof.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Shell task fails on re-run, module does not",
+    "python": "# Why a run passes once and fails twice: shell-style vs module-style.\ndirs = set()\n\ndef shell_mkdir(path):            # like: shell: mkdir /data\n    if path in dirs:\n        raise RuntimeError(\"mkdir: cannot create directory: File exists\")\n    dirs.add(path)\n    return \"changed\"\n\ndef file_directory(path):         # like: file: state=directory\n    if path in dirs:\n        return \"ok\"\n    dirs.add(path)\n    return \"changed\"\n\nfor name, fn in [(\"shell mkdir\", shell_mkdir), (\"file module\", file_directory)]:\n    dirs.clear()\n    for n in (1, 2):\n        try:\n            print(name, \"run\", n, \"->\", fn(\"/data\"))\n        except RuntimeError as e:\n            print(name, \"run\", n, \"-> FAILED:\", e)\n"
+   },
+   "followUps": [
+    "<p>Enable the <code>profile_tasks</code> callback (for example <code>callbacks_enabled = ansible.posix.profile_tasks</code> in <code>ansible.cfg</code>). It prints the time of each task and a sorted list of the slowest ones at the end of the run. Example: a package update taking 94 s stands out against ten tasks of under 2 s. Pair it with <code>timer</code> for total play time.</p>",
+    "<p><code>--start-at-task \"task name\"</code> begins the play at the named task and skips those before it. It saves time when you fixed a failure near the end of a long play and want to rerun from there. It is for debugging only, because earlier tasks may have set facts or registered variables that later tasks need. A clean full run is still required before you trust the result.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use <code>hostvars</code>: <code>hostvars['db1']['ansible_facts']['default_ipv4']['address']</code>. It only works if db1's facts were gathered earlier in the same run (a play that targeted db1) or are stored in a fact cache. If the host was never contacted, the key is undefined and the task fails. A common fix is a first play on all hosts that only gathers facts.</p>",
+    "<p><code>set_fact</code> creates or changes a variable for a host during the run, using a computed value. It ranks very high in precedence, above inventory and play vars and below only extra vars (<code>-e</code>) for most cases. Example: <code>set_fact: workers=\"{{ ansible_facts['processor_vcpus'] * 2 }}\"</code> gives 8 on a 4-CPU host. It lasts for the run (or longer with caching), so name it clearly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look at the system that holds the password, not at Git. Database audit logs show logins by account, source address and time, and you compare them with known app and admin addresses. Unfamiliar addresses or odd hours after the commit date are suspicious. Also review VPN or access logs and who cloned the repository. If logs were not kept, assume it was used and treat the incident as a breach.</p>",
+    "<p>Store the vault password as a masked secret in the CI system, and at job start write it to a temporary file with restricted permissions (<code>chmod 600</code>), pass it with <code>--vault-password-file</code>, and delete it at the end. Better, use a small script that fetches it from a secret manager with a short-lived token. Never echo it, never put it in the repo, and use separate vault IDs for dev and prod so a test job cannot decrypt production.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>ansible-pull</code> reverses the model: each host runs it (often from cron), fetches the playbook from a Git repository and applies it to itself. It needs Git, Python and Ansible on every host, so it gives up the agentless benefit. In return it scales well, corrects drift on a schedule, and works for machines behind NAT that you cannot reach by SSH, such as laptops or edge devices.</p>",
+    "<p>Raise <code>forks</code> (default 5) so more hosts run in parallel, turn on SSH <code>pipelining</code> and ControlPersist to cut connection cost, disable fact gathering where possible, and use <code>strategy: free</code> when order does not matter. Split the fleet into groups with <code>serial</code>. Use execution environments for consistent tooling and AWX or Automation Platform for scheduling, scale-out workers and audit. Example: 2000 hosts at 50 forks is 40 rounds of hosts.</p>"
+   ]
+  }
+ ]
+}

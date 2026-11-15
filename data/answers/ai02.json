@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Example: an assistant wrote a function to remove duplicates with <code>list(set(items))</code>. It passed the sample, but I noticed the original order was lost, which our report relied on. I caught it by adding a test with input <code>[3, 1, 2, 1]</code> that expected <code>[3, 1, 2]</code>. The fix was a loop with a <code>seen</code> set. Lesson: the sample input passes, the edge you did not state fails, so write the edge test first.</p>",
+    "<p>I never use AI to decide something I cannot check, and I never give it data I am not allowed to share. That means no secrets or customer data in prompts, no unapproved tool for work code, and no blind merging of security-sensitive code such as authentication or payment logic. I also do not use it to avoid learning a core concept I will be tested on. For those areas I may ask it to review my work, but I write the first version myself.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Prompt checklist scorer: how many of the six parts are present",
+    "python": "import re\n\n# Each check: (part name, regex that suggests the part is present)\nCHECKS = [\n    (\"Goal\",        r\"\\b(review|explain|write|find|debug|refactor)\\b\"),\n    (\"Context\",     r\"\\b(python|java|version|\\d+)\\b\"),\n    (\"Input\",       r\"(\\\"\\\"\\\"|'''|input:|code:)\"),\n    (\"Constraints\", r\"\\b(do not|must|only|without|keep)\\b\"),\n    (\"Format\",      r\"\\b(table|bullet|json|steps?|list)\\b\"),\n    (\"Success\",     r\"\\b(test|tests|expected|verify)\\b\"),\n]\n\ndef score(prompt):\n    text = prompt.lower()\n    missing = [name for name, pat in CHECKS if not re.search(pat, text)]\n    return len(CHECKS) - len(missing), missing   # score, parts to add\n\nprompts = [\n    \"fix my code\",\n    \"Explain why my python function is slow.\",\n    \"Review this Python 3.12 function. Input: '''def f(a): ...''' \"\n    \"Do not change the signature. Answer as a table and give 3 tests.\",\n]\nfor p in prompts:\n    n, missing = score(p)\n    print(repr(p))\n    print(\"  score\", n, \"/ 6, missing:\", \", \".join(missing) or \"nothing\")\n"
+   },
+   "followUps": [
+    "<p>I list my assumptions and either ask the AI to ask me questions or choose the safest reading and say so. For example: \"Assume lists are never empty. If you disagree, ask before answering.\" If the ambiguity is a product decision, such as what <code>average([])</code> should return, I decide it myself or ask the owner, because a model will only guess. Writing the choice into the prompt also gives you a test to check the answer.</p>",
+    "<p>Bad: <code>make this faster</code>. Fix: \"Optimise the Python 3.12 function between triple quotes. It checks for duplicates in lists of up to 200,000 ints, so O(n<sup>2</sup>) is too slow. Keep the name and return type, no libraries. Give the code, then one sentence on complexity, then 3 test inputs including an empty list.\" The fix adds goal, context, input, constraints, format and a success check, so the AI has far less to guess.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Property test: AI-written max-subarray vs a brute-force oracle",
+    "java": "import java.util.*;\n\npublic class Main {\n    static long seed = 7;\n    // tiny LCG so every language gets the same \"random\" inputs\n    static int nxt() { seed = (seed * 1103515245L + 12345L) % 2147483648L; return (int) (seed >> 8); }\n\n    static int aiMax(int[] a) {\n        int best = 0;                 // BUG: should start at a[0]\n        int cur = 0;\n        for (int x : a) { cur = Math.max(x, cur + x); best = Math.max(best, cur); }\n        return best;\n    }\n\n    static int oracleMax(int[] a) {   // tries every slice: O(n^2) but easy to trust\n        int best = a[0];\n        for (int i = 0; i < a.length; i++) {\n            int total = 0;\n            for (int j = i; j < a.length; j++) { total += a[j]; best = Math.max(best, total); }\n        }\n        return best;\n    }\n\n    public static void main(String[] args) {\n        int mismatches = 0;\n        int[] first = null;\n        for (int t = 0; t < 300; t++) {\n            int n = 1 + nxt() % 6;\n            int[] c = new int[n];\n            for (int k = 0; k < n; k++) c[k] = nxt() % 11 - 5;\n            if (aiMax(c) != oracleMax(c)) { mismatches++; if (first == null) first = c; }\n        }\n        System.out.println(\"trials: 300, mismatches: \" + mismatches);\n        StringBuilder sb = new StringBuilder();\n        for (int k = 0; k < first.length; k++) sb.append(k > 0 ? \", \" : \"\").append(first[k]);\n        System.out.println(\"first failing input: [\" + sb + \"]\");\n        System.out.println(\"ai: \" + aiMax(first) + \" oracle: \" + oracleMax(first));\n    }\n}\n",
+    "python": "# Compare an \"AI-written\" function with a slow, obviously correct oracle.\ndef ai_max(nums):\n    best = 0              # BUG: should start at nums[0]\n    cur = 0\n    for x in nums:\n        cur = max(x, cur + x)\n        best = max(best, cur)\n    return best\n\ndef oracle_max(nums):     # tries every slice: O(n^2) but easy to trust\n    best = nums[0]\n    for i in range(len(nums)):\n        total = 0\n        for j in range(i, len(nums)):\n            total += nums[j]\n            best = max(best, total)\n    return best\n\nseed = 7\ndef nxt():                # tiny LCG so every language gets the same \"random\" inputs\n    global seed\n    seed = (seed * 1103515245 + 12345) % 2147483648\n    return seed >> 8\n\nmismatches = 0\nfirst = None\nfor t in range(300):\n    n = 1 + nxt() % 6\n    case = [nxt() % 11 - 5 for _ in range(n)]\n    if ai_max(case) != oracle_max(case):\n        mismatches += 1\n        if first is None:\n            first = case\nprint(\"trials: 300, mismatches:\", mismatches)\nprint(\"first failing input:\", first)\nprint(\"ai:\", ai_max(first), \"oracle:\", oracle_max(first))\n",
+    "js": "// Compare an \"AI-written\" function with a slow, obviously correct oracle.\nfunction aiMax(nums) {\n  let best = 0;            // BUG: should start at nums[0]\n  let cur = 0;\n  for (const x of nums) {\n    cur = Math.max(x, cur + x);\n    best = Math.max(best, cur);\n  }\n  return best;\n}\nfunction oracleMax(nums) { // tries every slice: O(n^2) but easy to trust\n  let best = nums[0];\n  for (let i = 0; i < nums.length; i++) {\n    let total = 0;\n    for (let j = i; j < nums.length; j++) {\n      total += nums[j];\n      best = Math.max(best, total);\n    }\n  }\n  return best;\n}\nlet seed = 7n;\nfunction nxt() {           // tiny LCG so every language gets the same \"random\" inputs\n  seed = (seed * 1103515245n + 12345n) % 2147483648n;\n  return Number(seed >> 8n);\n}\nlet mismatches = 0, first = null;\nfor (let t = 0; t < 300; t++) {\n  const n = 1 + nxt() % 6;\n  const c = [];\n  for (let k = 0; k < n; k++) c.push(nxt() % 11 - 5);\n  if (aiMax(c) !== oracleMax(c)) {\n    mismatches++;\n    if (first === null) first = c;\n  }\n}\nconsole.log(\"trials: 300, mismatches: \" + mismatches);\nconsole.log(\"first failing input: [\" + first.join(\", \") + \"]\");\nconsole.log(\"ai: \" + aiMax(first) + \" oracle: \" + oracleMax(first));\n",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nlong long seed = 7;\n// tiny LCG so every language gets the same \"random\" inputs\nint nxt() { seed = (seed * 1103515245LL + 12345LL) % 2147483648LL; return (int)(seed >> 8); }\n\nint aiMax(const vector<int>& a) {\n    int best = 0;                 // BUG: should start at a[0]\n    int cur = 0;\n    for (int x : a) { cur = max(x, cur + x); best = max(best, cur); }\n    return best;\n}\n\nint oracleMax(const vector<int>& a) {   // tries every slice: O(n^2) but easy to trust\n    int best = a[0];\n    for (size_t i = 0; i < a.size(); i++) {\n        int total = 0;\n        for (size_t j = i; j < a.size(); j++) { total += a[j]; best = max(best, total); }\n    }\n    return best;\n}\n\nint main() {\n    int mismatches = 0;\n    vector<int> first;\n    for (int t = 0; t < 300; t++) {\n        int n = 1 + nxt() % 6;\n        vector<int> c;\n        for (int k = 0; k < n; k++) c.push_back(nxt() % 11 - 5);\n        if (aiMax(c) != oracleMax(c)) { mismatches++; if (first.empty()) first = c; }\n    }\n    cout << \"trials: 300, mismatches: \" << mismatches << \"\\n\";\n    cout << \"first failing input: [\";\n    for (size_t k = 0; k < first.size(); k++) cout << (k ? \", \" : \"\") << first[k];\n    cout << \"]\\n\";\n    cout << \"ai: \" << aiMax(first) << \" oracle: \" << oracleMax(first) << \"\\n\";\n}\n",
+    "csharp": "using System;\nusing System.Collections.Generic;\n\nclass Program\n{\n    static long seed = 7;\n    // tiny LCG so every language gets the same \"random\" inputs\n    static int Nxt() { seed = (seed * 1103515245L + 12345L) % 2147483648L; return (int)(seed >> 8); }\n\n    static int AiMax(int[] a)\n    {\n        int best = 0;                 // BUG: should start at a[0]\n        int cur = 0;\n        foreach (int x in a) { cur = Math.Max(x, cur + x); best = Math.Max(best, cur); }\n        return best;\n    }\n\n    static int OracleMax(int[] a)     // tries every slice: O(n^2) but easy to trust\n    {\n        int best = a[0];\n        for (int i = 0; i < a.Length; i++)\n        {\n            int total = 0;\n            for (int j = i; j < a.Length; j++) { total += a[j]; best = Math.Max(best, total); }\n        }\n        return best;\n    }\n\n    static void Main()\n    {\n        int mismatches = 0;\n        int[] first = null;\n        for (int t = 0; t < 300; t++)\n        {\n            int n = 1 + Nxt() % 6;\n            int[] c = new int[n];\n            for (int k = 0; k < n; k++) c[k] = Nxt() % 11 - 5;\n            if (AiMax(c) != OracleMax(c)) { mismatches++; if (first == null) first = c; }\n        }\n        Console.WriteLine(\"trials: 300, mismatches: \" + mismatches);\n        Console.WriteLine(\"first failing input: [\" + string.Join(\", \", first) + \"]\");\n        Console.WriteLine(\"ai: \" + AiMax(first) + \" oracle: \" + OracleMax(first));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>Property-based testing means you state a rule that must always hold and let the computer try it on many random inputs. Example rule: a fast max-subarray function must equal a slow, obviously correct version. The tool generates thousands of small lists, compares both, and on a mismatch shrinks the input, for instance to <code>[-1]</code>. Tools include Hypothesis for Python and fast-check for JavaScript. The demo does it by hand with a seeded random generator.</p>",
+    "<p>Without a reference answer, test relations that must hold (metamorphic testing) and general properties. Examples: adding 10 to every element must add 10 to the max; shuffling the input must not change a sum; sorting twice equals sorting once; output length never exceeds input length. Also check invariants, such as a result being sorted, and add hand-computed cases for small inputs. These do not prove correctness but catch many bugs cheaply.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Binary search that returns any match, not the first",
+    "python": "# A typical AI-written binary search: finds A match, not the FIRST match.\ndef ai_search(a, target):\n    lo, hi = 0, len(a) - 1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if a[mid] == target:\n            return mid                  # BUG: stops at any match\n        if a[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid - 1\n    return -1\n\ndef first_search(a, target):\n    lo, hi, ans = 0, len(a) - 1, -1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if a[mid] == target:\n            ans = mid                   # remember it, keep looking left\n            hi = mid - 1\n        elif a[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid - 1\n    return ans\n\ndef oracle(a, target):                  # simple scan: obviously correct\n    return a.index(target) if target in a else -1\n\ndata = [1, 2, 2, 2, 2, 3, 4]\nprint(\"input:\", data)\nfor t in (2, 4, 9):\n    print(\"target\", t, \"-> ai:\", ai_search(data, t),\n          \"fixed:\", first_search(data, t), \"oracle:\", oracle(data, t))\n# Both searches are O(log n) time, O(1) space; the oracle is O(n).\n"
+   },
+   "followUps": [
+    "<p>Write a slow brute-force oracle, generate many small random lists with a fixed seed, and compare. Steps: (1) oracle tries every slice and keeps the best sum; (2) generate 2000 lists of length 1 to 6 with values from -5 to 5; (3) assert equal results; (4) on failure, remove elements while the failure stays, to get a tiny case such as <code>[-1]</code>. Negative-only lists show up quickly because about one list in 30 is all negative at these sizes. Cost is O(n<sup>2</sup>) per case, trivial for tiny n.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Redact emails, tokens, phones and connection strings before prompting",
+    "python": "import re\n\n# Redact common secrets and personal data before text goes into an AI prompt.\nRULES = [\n    (\"TOKEN\",  r\"\\b(?:sk|tok|key)[-_][A-Za-z0-9]{8,}\\b\"),\n    (\"PHONE\",  r\"\\b\\d{3}[-. ]\\d{3}[-. ]\\d{4}\\b\"),\n    (\"CONN\",   r\"\\b\\w+://[^\\s:]+:[^\\s@]+@[^\\s]+\"),   # first, so the email rule cannot cut it\n    (\"EMAIL\",  r\"[\\w.+-]+@[\\w-]+\\.[\\w.]+\"),\n]\n\ndef redact(text):\n    for label, pattern in RULES:\n        text = re.sub(pattern, \"<\" + label + \">\", text)\n    return text\n\nlog = (\"2024-05-01 ERROR user ana@example.com phone 555-123-4567 \"\n       \"failed with key_abc12345XYZ via postgres://admin:hunter2@db.internal/app\")\nprint(\"before:\", log)\nprint(\"after :\", redact(log))\n# One pass per rule: O(len(text) * rules). Patterns are a safety net, not a guarantee.\n"
+   },
+   "followUps": [
+    "<p>Treat it as a leak: revoke or rotate the key immediately, before anything else. Then check logs for use of the old key, replace it everywhere it was used, and report it to the security team so they can judge exposure. Do not just delete the chat, since the provider may already have stored it. Afterwards, find how it got into the paste (a config file, a log) and fix that, for example with environment variables and redaction. Quick, honest reporting is valued; hiding it is not.</p>",
+    "<p>Use layers. First, keep secrets out of source and logs (a secrets manager, environment variables). Second, add a redaction step in the team's tooling or proxy that replaces emails, tokens, phone numbers and connection strings with placeholders such as <code>&lt;TOKEN&gt;</code>, as the demo does. Third, add a secret scanner in the pre-commit hook and CI. Fourth, approve specific AI tools and write a one-page policy with examples. Pattern rules miss things, so training matters as much as tooling.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I get suspicious when the answer is very confident but gives no source, names a function I do not recognise, matches my example too perfectly, or ignores a constraint I stated. Other signs: version-specific syntax that looks old, round numbers with no working shown, and a different answer when I ask again. Any one of these means I look it up in official docs or run a test before using the answer.</p>",
+    "<p>I treat every citation as unverified until I open it. Check that the paper, page or function exists, that the quote appears in it, and that it really supports the claim. Fake references that look real are common, so I ask for exact titles or quotes I can search for. For library features I go to the official docs for my version. If I cannot find the source, I do not repeat the claim.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I track things I can count, not how good it feels. Examples: how many problems I solve alone within 30 minutes, how many of last week's problems I re-solve from a blank page, and how many mistakes repeat in my notes. If a topic's solo success rate rises from 2 of 10 to 6 of 10 over a month, it works. If I solve fast with hints but fail the blank-page retry, I am leaning on the tool and need to cut hints.</p>",
+    "<p>I cross-check it. I run its code on my own tests, compare its complexity claims with a textbook or documentation, and ask it to show the reasoning, then check one step by hand. For a surprising claim I search a second source. I also try the opposite question: \"Give a counterexample to your solution.\" If it contradicts itself, I trust it less. A teacher that is sometimes wrong is fine if you always verify.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I check requirements and scale first, because everything else depends on them. If the design never says how many requests per second or how much data, every later choice is a guess. Next I look at the data model and bottlenecks. A design with no numbers or failure story cannot be judged, so asking for those two things usually exposes the weakest part fastest.</p>",
+    "<p>Recompute them myself in a few lines. Example: 10 million daily users with 20 requests each is 200 million requests a day; divided by about 86,400 seconds that is roughly 2,300 per second on average, and peaks may be 3 to 5 times higher. Storage: 100 bytes per record times 1 billion records is 100 GB. If the AI's figure is off by 10 times, its choices (one database or sharding) may be wrong too.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>An agent can act, so a successful injection does more than produce bad text. It can read files, run commands, send messages or open links. If it reads a poisoned issue or web page while holding access to your repo and email, the page's hidden instruction can leak data or change code. Risk grows with three things together: untrusted input, access to private data, and the ability to send data out. Remove at least one of them.</p>",
+    "<p>Least privilege means giving a tool only the access its task needs, and nothing more. For a code-review agent: read-only access to one repo, no network, no production credentials, no permission to push. If a task needs write access, grant it for that branch only and require human approval for risky steps such as deleting files or sending email. Then even a successful injection can do little damage.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the model re-reads the whole conversation every turn, and the earlier wrong attempts are part of that text. It can copy them or be anchored by them. A new chat holding only the goal, the constraints and the failing test removes that noise, so the model starts from a clean, accurate picture. Often the first reply in the new chat is correct. It also forces me to restate the problem clearly, which sometimes reveals my own mistake.</p>",
+    "<p>I set a budget before starting, for example three rounds or 15 minutes. If it is used up and the problem is still open, I switch: write the hard part myself, simplify the task, or ask a colleague. The test is whether another round has a new idea. If I am only rewording the same request, stop. Writing the tricky function by hand often takes 10 minutes, less than a fourth round plus review.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Ask for smaller, single-purpose changes from the start. Break the work into steps: first a mechanical rename in one PR, then a behaviour change in another, then tests. Give the agent a limited file list and tell it not to touch anything else. Merge each step when it is green. A 40-file change becomes four PRs of about 10 files each, and each one can be reviewed in 20 minutes instead of being skimmed.</p>",
+    "<p>I would reject it if tests were deleted or weakened to pass, if unrelated files changed, if a new dependency or permission appeared without a reason, if I cannot explain a part of the diff, or if the full suite or security scan fails. A diff that is too large to review is also a reason: send it back split into smaller steps. Reviewing is my signature on the change.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I ask the person who owns the rule (a manager, project maintainer or interviewer) before using the tool. If I cannot get an answer, I choose the stricter reading: do not use AI for that task, or use it only for things that are not hidden, such as explaining a concept, and mention it. The risk of asking is small; the risk of breaking a rule silently is a lost job or a failed assessment. I then write the answer down so the team shares it.</p>",
+    "<p>I say so in the PR description: what the tool produced, what I changed, and how I checked it (tests run, docs read). I stay ready to explain each line in my own words. If part of the code came from a tool and I am less sure of it, I flag that spot for the reviewer. This is honest and also makes the review better, because the reviewer knows where to look hardest.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Accepted suggestions measures how often people press Tab, not whether the code was good. People can accept a line and rewrite it later, and tools can be tuned to offer easy lines. It also rewards volume over quality. Pair it with outcomes like defect rate and review time. A team with 60 percent accepted suggestions but more production bugs has not improved.</p>",
+    "<p>Compare similar work, not people. Group by task type (tests, bug fixes, new features) and see cycle time and defects for users and non-users. Offer training and shared prompts so early adopters help the rest, and find out why some avoid it, since reasons may be valid, like unclear policy or poor results on their codebase. Do not tie performance reviews to usage; that pushes people to game the numbers.</p>"
+   ]
+  }
+ ]
+}

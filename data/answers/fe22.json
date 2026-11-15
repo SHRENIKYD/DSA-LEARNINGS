@@ -1,0 +1,116 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Incremental DOM: write only when a binding changed",
+    "js": "// Incremental DOM: per-binding compare, write only if changed\nconst dom = { text: \"\", writes: 0 };            // fake DOM text node\nconst lView = [];                                // per-instance array: stores previous binding values\nconst BIND = 0;                                  // slot index of the binding\n\n// update block of a template function: \"Hello {{name}}\"\nfunction update(ctx) {\n  if (lView[BIND] !== ctx.name) {                // compare new value with stored one\n    lView[BIND] = ctx.name;\n    dom.text = \"Hello \" + ctx.name;              // touch the DOM only on change\n    dom.writes++;\n  }\n}\n\nconst ctx = { name: \"Ann\" };\nconst steps = [\"Ann\", \"Ann\", \"Bob\", \"Bob\", \"Bob\", \"Cy\"];\nfor (const n of steps) {\n  ctx.name = n;\n  update(ctx);                                   // one change detection pass\n  console.log(\"name=\" + n + \" -> dom='\" + dom.text + \"' writes=\" + dom.writes);\n}\n// Cost: O(bindings) per pass, memory O(bindings); no tree diff.\n"
+   },
+   "followUps": [
+    "<p><b>decls</b> is how many slots the template needs for static things (DOM nodes, containers, text), and <b>vars</b> is how many slots it needs for binding values. Angular uses them to size the LView array once, so no resizing happens later.</p><p>Example: <code>&lt;p&gt;{{a}} {{b}}&lt;/p&gt;</code> has about 1 decl for the element plus text nodes, and vars = 2 because two previous values must be remembered for comparison. Cost: the array is O(decls + vars) per instance.</p>",
+    "<p>Both compile to template instructions, not to runtime interpretation. <code>@if</code> becomes a <code>conditional</code> instruction that creates or destroys one embedded view in a container, depending on the value of the expression. <code>@for</code> becomes a <code>repeater</code> instruction that diffs the collection by the track expression and creates, moves or destroys row views.</p><p>Each block body is its own small template function with its own create and update blocks, so a block you never render costs nothing at run time.</p>",
+    "<p>JIT ships the whole compiler to the browser and compiles templates at start-up, so the user downloads more code and waits longer. AOT does that work at build time.</p><p>AOT also gives better tree-shaking, reports template type errors at build time instead of in production, and is required by SSR and hydration. Example: the compiler is a few hundred kB of JavaScript that AOT keeps out of the bundle entirely.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>An LContainer is an array-like slot in an LView that holds a list of child LViews, one for every embedded view created at that point, such as each <code>@for</code> row or an <code>@if</code> branch.</p><p>It stores the host anchor node, the views in order and a link back to the parent. Inserting, moving or removing a row only edits this list and the DOM nodes between anchors. A list of 100 rows is one LContainer holding 100 LViews that all share one TView.</p>",
+    "<p>In dev mode, call <code>ng.getComponent(element)</code> in the console after selecting an element, and use <code>ng.getOwningComponent</code> or <code>ng.getDirectives</code> for related info. The Angular DevTools extension shows the component tree, inputs, signals and injectors visually.</p><p>The internal LView is reachable through the <code>__ngContext__</code> property on DOM nodes, but it is private and may change between versions, so use it only for exploring.</p>",
+    "<p>The first instance of a component has to build the TView: match directives, create TNodes and set up hooks and queries. Later instances reuse that static data and only allocate a new LView and DOM.</p><p>Example: creating 1 row costs, say, 10 units of static work plus 1 unit of instance work; the next 999 rows cost only 1 each. This is why the first render of a list item is slower than the rest, and why a warm-up cost appears in profiles.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>An OnPush view is marked dirty when one of its inputs changes by reference, when an event handler bound in its own template fires, when <code>markForCheck()</code> is called (the async pipe does this), or when a signal read in its template changes.</p><p>Mutating an object that was passed in does <b>not</b> mark it, because the reference is the same. Example: <code>list.push(x)</code> in the parent leaves the child stale; <code>list = [...list, x]</code> marks it.</p>",
+    "<p>NG0100 means a binding in a view that was already checked has a different value on the verification pass. The usual causes are a child or <code>ngAfterViewInit</code> changing parent state, or a getter or method returning a new object every time.</p><p>The proper fix is to remove the backward data flow: compute the value earlier (a <code>computed</code>), move the write into an event or an effect, or let the parent own the state and pass it down. Wrapping in <code>setTimeout</code> only hides it and costs an extra cycle.</p>",
+    "<p><code>detectChanges()</code> runs change detection right now on that view and its children, synchronously. <code>markForCheck()</code> only flags the view and its ancestors as dirty so the next normal tick will refresh them; it does nothing immediately.</p><p>Use <code>markForCheck</code> from async callbacks in OnPush components. Use <code>detectChanges</code> sparingly, for example after manually creating a view, because calling it in a loop runs a full refresh for every call.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Signal graph: dirty push, version pull, equality cutoff",
+    "js": "// Tiny signal graph: push \"dirty\", pull with version check and equality cutoff\nfunction signal(v) {\n  const s = { v, version: 0, consumers: [] };\n  s.get = () => { if (active) { s.consumers.push(active); active.deps.push(s); } return s.v; };\n  s.set = (nv) => {\n    if (nv === s.v) return;                      // equal value: nothing happens\n    s.v = nv; s.version++;\n    s.consumers.forEach(c => c.markDirty());     // push only the dirty flag\n  };\n  return s;\n}\nlet active = null;\nfunction computed(fn, name) {\n  const c = { v: undefined, version: 0, dirty: true, deps: [], seen: [], consumers: [], recomputes: 0 };\n  c.markDirty = () => { if (!c.dirty) { c.dirty = true; c.consumers.forEach(x => x.markDirty()); } };\n  c.get = () => {\n    if (active) { c.consumers.push(active); active.deps.push(c); }\n    if (c.dirty && c.seen.length) {              // pull: first check producers' versions\n      c.deps.forEach(d => d.get && d.get());\n      if (c.deps.every((d, i) => d.version === c.seen[i])) c.dirty = false;\n    }\n    if (c.dirty) {                               // recompute lazily\n      const prev = active; active = c; c.deps = [];\n      const nv = fn(); active = prev; c.recomputes++; c.seen = c.deps.map(d => d.version);\n      c.dirty = false;\n      if (nv !== c.v) { c.v = nv; c.version++; } // same result: keep version\n    }\n    return c.v;\n  };\n  return c;\n}\nconst n = signal(3);\nconst parity = computed(() => n.get() % 2 === 0 ? \"even\" : \"odd\");\nconst label = computed(() => \"n is \" + parity.get());\nconsole.log(label.get(), \"| recomputes:\", parity.recomputes, label.recomputes);\nn.set(5);                                        // 3 -> 5 still odd\nconsole.log(label.get(), \"| recomputes:\", parity.recomputes, label.recomputes);\nn.set(6);                                        // parity changes\nconsole.log(label.get(), \"| recomputes:\", parity.recomputes, label.recomputes);\n"
+   },
+   "followUps": [
+    "<p>A live consumer is one whose result is still needed, such as a template currently on screen or a running effect. Only live consumers are registered in the producers' consumer lists.</p><p>This matters for memory: a computed that nobody reads holds no edges from its producers, so it can be garbage collected, and a destroyed component stops being notified. If a long-lived signal kept a reference to a dead view, that view could never be freed, which is exactly the leak this design avoids.</p>",
+    "<p>By default a signal uses <code>Object.is</code>, so mutating an object and setting the same reference is treated as no change and consumers are not notified. That is why signal state should be updated immutably.</p><p>Example: <code>s.set(obj)</code> after <code>obj.n++</code> does nothing. You can pass a custom <code>equal</code> function, e.g. comparing ids, to cut off recomputation when values are structurally the same, but a lax comparison can hide real changes.</p>",
+    "<p>Use <code>untracked()</code> when you want to read a signal inside a computed or effect without making it a dependency, so changes to it do not re-run the code.</p><p>Example: an effect that logs <code>user()</code> whenever it changes but reads <code>config()</code> only as extra info: wrap <code>untracked(() =&gt; config())</code>. Also use it around calls that read signals internally, such as a service method, to avoid hidden dependencies and loops.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Anything that relied on zone.js to trigger a check silently stops updating. Typical cases are plain fields changed in a <code>setTimeout</code>, a third-party callback or a Promise, with no signal and no <code>markForCheck</code>.</p><p>Migration steps: use OnPush everywhere first, move state into signals, use the async pipe or <code>toSignal</code>, and remove the zone.js polyfill last. Tests that rely on <code>fakeAsync</code> and zone helpers also need rewriting.</p>",
+    "<p>Without zones, Angular tracks stability itself: it counts pending tasks through an internal service (for example HTTP requests and router navigation register one) and the app is stable when that count is zero and no tick is scheduled.</p><p>Server rendering waits for that signal before serializing the HTML. If your own async work should delay rendering, wrap it with the pending-tasks API so the server does not respond too early.</p>",
+    "<p>Hybrid scheduling means zoneless notifications work even while zone.js is still present. Angular schedules a tick from signal changes, <code>markForCheck</code> and similar triggers, as well as from zone events, and merges them into one.</p><p>It is the stepping stone for migration: you can make components zoneless-safe one at a time, with zone.js still covering the rest, and then remove the zone polyfill at the end.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Count change detection ticks before and after: Angular DevTools Profiler shows how many cycles ran during the interaction, and a scroll that previously caused hundreds should cause none.</p><p>Also check in the Chrome Performance panel that scripting time drops, and that the UI still updates when it should. Example: a mousemove handler going from 60 ticks per second to 0 while the visible position label still updates by setting one signal only when it changes.</p>",
+    "<p>Event coalescing makes several events in the same browser frame share one change detection run instead of one each. With zone.js you enable it with <code>provideZoneChangeDetection({ eventCoalescing: true })</code>.</p><p>Example: a bubbling click handled in a child and a parent would trigger 2 ticks; coalesced it triggers 1. It lowers cost but does not remove ticks for irrelevant events, so <code>runOutsideAngular</code> is still better for noisy listeners.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Compressed (gzip or brotli) size is what travels over the network, so it decides download time. Raw size matters too, because the browser still has to parse and run all of it, which dominates on slow phones.</p><p>Example: 1.8 MB raw may be about 450 kB brotli. Download is fine on fast Wi-Fi, but the 1.8 MB of JavaScript still costs CPU time. Track both: budgets on compressed transfer size, and watch scripting time in profiles.</p>",
+    "<p>Put a budget on the initial bundle in <code>angular.json</code> with an error threshold so the CI build fails when a pull request grows it. Add a bundle analysis report to each pull request so reviewers see the difference.</p><p>Also review new dependencies before adding them (check their size first), and keep lazy boundaries in place. Raising the limit should need an explicit review, so the number cannot creep up unnoticed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The most common blockers are custom webpack configuration, such as the custom-webpack builder and its plugins, and libraries that expect webpack-only features like some loaders or <code>require.context</code>.</p><p>Other things to check are CommonJS dependencies, which get warnings, and build scripts that read webpack stats files. Replace plugins with builder options or esbuild plugins, and run the automatic migration schematic on a branch to see what breaks.</p>",
+    "<p>The application builder can write esbuild metafiles with the <code>stats-json</code> option, and you can load that file into the esbuild bundle analyzer web tool to see which packages and modules make up each chunk.</p><p>Alternatively, build with source maps and run <code>source-map-explorer</code>. The old webpack-bundle-analyzer does not read these stats, so it will not work with the new builder.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Dev mode is not representative: it has extra checks (a second change detection pass), unminified code, source maps and no tree-shaking, so timings are often several times slower and the hot spots can be different.</p><p>Example: a 40 ms interaction in production may look like 150 ms in dev, and the extra time is spent in checks that do not exist for users. Profile a production build, with CPU throttling set to 4x to approximate a mid-range phone.</p>",
+    "<p>The Angular DevTools flame graph shows, for each change detection cycle, which components were checked and how long each took, as nested bars from the root down. Wide bars are expensive components.</p><p>It also shows what triggered the cycle (for example an event or a timer) and helps you see components that are checked when they do not need to be. A tall stack of equal narrow bars usually means many views are checked on every tick.</p>",
+    "<p>Use real user monitoring: collect INP, LCP and CLS with the <code>web-vitals</code> library and send them to your analytics with the page and build version. Look at the 75th percentile, not the average.</p><p>Example: if p75 INP is 320 ms on one route after a release, you know where to profile. Add attribution data (the slow element and event type) so you can reproduce the exact interaction.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Memory leak: listeners that are never removed",
+    "js": "// Leak: a long-lived target keeps listeners (and their components) alive\nconst windowTarget = { listeners: new Set() };   // stands in for window\nconst on = (fn) => { windowTarget.listeners.add(fn); return () => windowTarget.listeners.delete(fn); };\n\nfunction openComponent(cleanup) {\n  const big = new Array(1000).fill(\"row\");       // component state\n  const off = on(() => big.length);              // closure retains `big`\n  const destroyCbs = [];\n  if (cleanup) destroyCbs.push(off);             // like DestroyRef.onDestroy(off)\n  return { destroy() { destroyCbs.forEach(f => f()); } };\n}\n\nfor (const cleanup of [false, true]) {\n  windowTarget.listeners.clear();\n  const counts = [];\n  for (let i = 0; i < 4; i++) {                  // open and close the route 4 times\n    openComponent(cleanup).destroy();\n    counts.push(windowTarget.listeners.size);\n  }\n  console.log((cleanup ? \"with cleanup:    \" : \"without cleanup: \") + \"listeners after each cycle = \" + counts.join(\",\"));\n}\n// Growth per cycle means a leak; flat counts mean it returns to baseline.\n"
+   },
+   "followUps": [
+    "<p>Usually no: <code>HttpClient</code> observables emit once and then complete, and completion releases the subscription, so there is nothing to clean up in the normal case.</p><p>Exceptions: if you use a pattern that keeps them open, such as retry with a repeating timer, or a request that hangs, an early unsubscribe cancels the request. Using <code>toSignal</code>, the async pipe or <code>takeUntilDestroyed</code> is a safe habit anyway.</p>",
+    "<p>Take a heap snapshot after a warm-up (snapshot 1), repeat the suspect action N times, take snapshot 2, repeat the action N times again, and take snapshot 3. Then look at objects allocated between snapshots 1 and 2 that are still alive in 3.</p><p>If a class count grows by N each round, that is a leak. Example: 10 route visits adding 10 component instances each round. The warm-up avoids counting one-time caches as leaks.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Component styles are shipped inside the JavaScript and applied at run time, so a single huge style block, or a pasted copy of a whole theme into a component, grows the bundle and slows first render without being obvious.</p><p>An <code>anyComponentStyle</code> budget, for example warning at 4 kB and error at 8 kB, catches this per component. Example: a component with 30 kB of copied CSS fails the build and gets fixed before it ships.</p>",
+    "<p>First find out why: run the bundle analysis before and after to see what grew. Often the library is imported in a way that prevents tree-shaking, or a new version added a dependency.</p><p>Options: import only the pieces you need, lazy-load the feature that uses it, replace the library, or pin the old version. Raise the budget only as a last resort, with a written reason in the pull request.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why NG0100 appears: the verification pass",
+    "js": "// Dev-mode double pass: second pass detects a binding that changed (NG0100)\nconst parent = { title: \"Home\" };\nconst child = {\n  afterViewInit() { parent.title = \"Child loaded\"; }  // child writes parent state\n};\n\nfunction bindings() { return { title: parent.title }; }\n\nfunction tick(devMode) {\n  const first = bindings();                      // parent checked first\n  console.log(\"pass 1 rendered:\", first.title);\n  child.afterViewInit();                         // hook runs after parent was checked\n  if (devMode) {\n    const second = bindings();                   // checkNoChanges pass\n    if (second.title !== first.title) {\n      throw new Error(\"NG0100: '\" + first.title + \"' -> '\" + second.title + \"'\");\n    }\n  }\n}\n\ntry { tick(true); } catch (e) { console.log(\"dev mode:\", e.message); }\nparent.title = \"Home\";\ntick(false);\nconsole.log(\"prod mode: screen shows stale 'Home' but model is '\" + parent.title + \"'\");\ntick(false);                                     // next cycle finally shows it\n"
+   },
+   "followUps": [
+    "<p>Only dev mode runs the second verification pass, which re-reads every binding and compares it with what was just rendered. Production skips it for speed.</p><p>That means production never throws, but the bug is still there: the screen may show an old value until the next change detection cycle. Example: a title set in <code>ngAfterViewInit</code> would show the old text in production until some later event triggers a tick.</p>",
+    "<p>When a child updates a signal that the parent template reads, Angular marks the parent view for refresh and schedules another pass, instead of failing silently. The framework can handle the backward flow because dependencies are tracked explicitly.</p><p>In practice, signals plus <code>computed</code> remove most NG0100 cases: derived values are calculated from their sources on read, so there is no stale copy. Writing signals during a template check is still discouraged, because it causes extra cycles.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Tracking rows by id versus by index",
+    "js": "// @for track: by id keeps each row's view with its data; by index rebinds rows\nconst before = [1, 2, 3, 4, 5].map(id => ({ id }));\nconst after = [{ id: 0 }].concat(before);        // new row inserted at the top\nconsole.log(\"before ids:\", before.map(r => r.id).join(\",\"));\nconsole.log(\"after  ids:\", after.map(r => r.id).join(\",\"));\n\nfunction diff(oldRows, newRows, key) {\n  let created = 0, rebound = 0;\n  newRows.forEach((r, i) => {\n    const k = key(r, i);\n    const old = oldRows.find((o, j) => key(o, j) === k);\n    if (!old) created++;                         // no view with this key: create\n    else if (old !== r) rebound++;               // view reused but its data changed\n  });\n  return \"created \" + created + \", rebound \" + rebound;\n}\nconsole.log(\"track r.id   ->\", diff(before, after, r => r.id));\nconsole.log(\"track $index ->\", diff(before, after, (r, i) => i));\n// With id keys, existing rows are only moved. With index keys, every row\n// view is rebound to a different item. Matching here is O(N^2); real code uses a Map, O(N).\n"
+   },
+   "followUps": [
+    "<p>Keep the rows in a store as a map from id to a signal (or a computed per id), and have each row component read only its own signal. When one cell changes, only that row's signal is set, so only that row's view is refreshed.</p><p>Example: 5,000 rows, one edit: 1 row updates, not 5,000. A list-level signal holds just the ordered ids. Memory cost is one signal object per row, which is small compared with the DOM.</p>",
+    "<p>Virtual scroll only keeps the visible rows in the DOM, so the browser's find-in-page cannot see rows outside the window, and screen readers cannot jump to or count the missing rows. Keyboard focus is lost when a focused row scrolls out and is destroyed.</p><p>Mitigations: set <code>aria-rowcount</code> and <code>aria-rowindex</code>, offer your own search box, keep focus management in code, or use plain pagination when accessibility and search matter more than a huge scroll list.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,102 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The hardest ones for me are <b>Frugality</b>, <b>Invent and Simplify</b> and the two newer principles, because everyday work rarely labels itself that way. My method is to scan old projects for a constraint. Example: we had a 3-day deadline and no budget for a new service, so I reused an existing queue and a cron job instead of building a pipeline. That became my Frugality story: cost avoided, delivery on time, nothing new to maintain.</p>",
+    "<p>I keep a grid with one row per story and one column per principle, and I record <b>which interviewer</b> heard which story. With 8 to 10 stories and two per common principle, I can give each round a fresh one. Example: Dive Deep goes to story A (a billing bug) in the phone screen and story B (a miscounted dashboard) in the loop. I also note the opening headline, so the same story never starts the same way twice.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes. <b>I once defended a caching design until a load test proved me wrong.</b> Situation: I proposed caching search results for 10 minutes to cut database load. A teammate argued users would see stale prices. I ran a test: 6% of sessions saw a wrong price. I dropped my design, credited her, and we cached only static fields with a 30-second price refresh. Load fell 35% and wrong prices went to zero. Lesson: I now ask for the data that would disprove my idea first.</p>",
+    "<p>Googleyness is about <b>how you behave</b> (humility, collaboration, comfort with ambiguity), while leadership is about <b>when you step up</b> to move something forward. They overlap but are not the same. Example: in an outage, leading means taking the incident commander role. Googleyness means handing it over when the owning team lead arrives and crediting the teammate who found the cause. Good leaders at that company show both: they take charge, then step back.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The difference is mostly <b>scope and ambiguity</b>. An E4 story is a well-defined task I delivered well: for example, fixing a slow query and cutting load time from 4 s to 1 s. An E5 story is one where I chose the problem, aligned two or three people, and the result reached beyond my own code: for example, I noticed three teams each built their own retry logic, proposed a shared library, and 5 services adopted it. Same skills, bigger field.</p>",
+    "<p>I show it by being <b>fast and safe at once</b>. Example: we had to ship a checkout change before a sale in 5 days. I put it behind a feature flag, released to 5% of users, watched error rate and conversion for a day, then went to 100%. If errors had risen above 1%, flipping the flag would have rolled it back in seconds. Speed came from small steps, and safety came from metrics and a quick rollback.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would turn it down if the <b>work or the people</b> did not match what I learned in the process. Concretely: the team could not tell me what I would own in the first 90 days, the manager dismissed questions about on-call and learning, or the role was mostly maintenance when I want growth. I would also decline if the numbers did not meet my minimum. Saying this honestly shows I am choosing, not just collecting offers.</p>",
+    "<p>Be honest and specific. Example: <b>I was surprised that the team's public post described a failed migration</b>, including what they rolled back and why. I had assumed the company only wrote success stories. It told me the team values candid learning, which is exactly how I work. I then asked a follow-up question about how they decide when to roll back, which led to a good conversation.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Aim for <b>about two minutes</b>, which is roughly 250 to 300 spoken words, then stop and let them dig. A rough split: 15 seconds situation, 15 seconds task, 60 seconds on what I did and why, 20 seconds result with a number, 10 seconds lesson. Under one minute usually lacks detail. Over four minutes loses the listener and uses up time they need for follow-ups. I check in with \"shall I go deeper on the design or the rollout?\"</p>",
+    "<p>I <b>stop, answer their question, and then offer to return</b>. Interruptions are a signal they want a different detail. Example: I am describing the context and they ask \"what was your part?\". I say \"I owned the migration plan and the rollout; the schema design was my teammate's\", then continue from there. I never insist on finishing my script. A story that bends to the conversation sounds natural, and the facts stay the same.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Say so plainly, then give the <b>closest honest example</b>. For instance: \"I haven't had exactly that, but the nearest is a time I...\" and name how it differs. If nothing is close, I ask a clarifying question to find the angle. Inventing a story is far riskier than a short pause. A pause of five seconds to think reads as thoughtful. A made-up story that falls apart at the second \"why?\" reads as dishonest.</p>",
+    "<p>The usual failure is <b>vagueness about my personal role</b>. The first answer sounds fine, the second adds a general reason, and by the third follow-up (\"what exactly did you write?\") I only have \"we decided\" and no numbers. Example: I say \"we cut latency by 40%\", but cannot explain what I changed or how I measured it. Fix: for every story know the one thing I did, one metric with before and after, and one thing that failed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I describe it at the <b>right level of abstraction</b>. Instead of \"the payments feature for Company X\", I say \"a payments feature for a large retailer\". I share my decisions, trade-offs and results, but not customer names, unreleased plans, internal numbers or code. If I am unsure, I ask: \"I can describe the design in general terms; is that fine?\" Interviewers read careful handling as trustworthiness, and leaking secrets is worse than a less detailed story.</p>",
+    "<p>It is a <b>real failure that cost someone, owned without excuses, with a changed behaviour</b>. Example: I estimated a migration at 2 weeks without asking the data team. It needed a backfill, so we slipped 3 weeks. I told my PM the day I knew, shipped the 70% that did not depend on the backfill, and now check every team a change touches before estimating. My last four estimates landed within 20%.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I'd say <b>one thing I did with direct feedback</b>. Example: a peer's pull requests kept skipping tests. In a private chat I said, \"Your last three PRs had no tests, and the last one caused a rollback; can I pair with you on one?\" We wrote a test template together. Within a month his PRs had tests and rollbacks from his code dropped from 2 to 0. I focus on specific behaviour, impact, and an offer to help, never on his character.</p>",
+    "<p>When there is <b>no shared context or safety net</b>. Freedom works when people know the goals and can recover from mistakes. Without them it produces duplicated work or risky changes. Example: a teammate with full deploy access pushed a config change on Friday evening and caused a 2-hour outage. Our fix was not more approvals but context: a short deploy checklist, automatic rollback, and a rule to avoid risky Friday changes. Process should be minimal, but never zero.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would <b>stay calm and give a reasoned story</b>, not a disguised complaint. Example: \"In the last two years I joined a company that was then cut by 40% and moved into another that ran out of funding. Both ended for reasons outside my work, and in each I shipped something measurable. I am looking for a team where I can stay at least three years, and here's why this one fits.\" Show a pattern of results, not of escape.</p>",
+    "<p>Be <b>honest and practical</b>. First check the contract: many have a 60 to 90 day notice, sometimes with a buyout option. Then propose: \"I can start in 45 days if my current employer agrees to a shorter handover; I will confirm in writing.\" Show you care about the handover: documenting my work, training a successor. Never promise a date you cannot meet, since backing out later damages trust with both employers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>My <b>red flags</b> are: no clear answer on runway (under 12 months with no plan), founders who cannot say how decisions are made, high turnover in the first year, vague answers about on-call or working hours, and unwillingness to share the product's real numbers. Example: if I ask \"what did the last engineer who left say?\" and get blame instead of facts, that is a signal. One red flag may be fine, but three together means decline.</p>",
+    "<p>I compare <b>total value and risk</b>. Equity at an early startup is usually worth zero or very little, so I treat it as a lottery ticket and don't count it as income. Example: a salary 20% lower with 0.1% equity may only make sense if I'd still cover my living costs and I believe in the product. I ask about the strike price, vesting schedule (typically 4 years), and what happens if the company is sold. I never accept pay I couldn't live on.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Between <b>8 and 10 stories</b> is the usual target, as long as they cover different types: conflict, failure, ambiguity, ownership, impact, influence, helping others. With 8, a typical loop of 4 to 5 interviews with 2 questions each still has backups. More than 12 is hard to keep detailed. Better to know 8 stories to the third follow-up than 15 stories at headline level.</p>",
+    "<p>First <b>search for a real memory</b> in places I forgot: side projects, volunteer work, school, a small team task. Example: I had no \"frugality\" story at work, but I had once reused an old laptop as a test server for a hackathon, saving about 3 hours of setup and a cloud bill. If nothing real exists, I say I don't have a direct example and share the nearest one honestly. Stretching a story to claim something I didn't do is the worst option.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I have used it for <b>drafts and checks, never for unreviewed output</b>. Example: I used an assistant to generate a first version of unit tests for a date-parsing function; it saved about 30 minutes. I reviewed each test, ran them, and added 3 edge cases it missed. I measure the benefit by time saved versus time spent verifying. I always say clearly what I checked, because a result I can't defend isn't mine.</p>",
+    "<p>It <b>invented a library function that didn't exist</b>. It suggested a method on a date class that looked plausible, but the code failed at compile time. A worse case is when it compiles and is subtly wrong: once it produced a time-zone conversion that was off by an hour during daylight saving changes. I caught it because I wrote a test with a real example. Lesson: ask for reasoning, test with known inputs, and never trust a confident tone.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I pick backups by <b>what the first story lacked</b>. If the first had small scope, my backup has bigger scope; if it lacked failure, I take a story where something went wrong. I keep the matrix with a lead and a backup per principle, and the backup is deliberately different in type. Example: lead for Ownership is a project I shipped alone; backup is a time I took over a failing team task I wasn't assigned. Different shapes give different signals.</p>",
+    "<p>Say so briefly and offer the <b>nearest honest alternative</b>: \"I don't have a bigger one, but here is a smaller case with the same decision.\" Then be specific about what I did and the result. Ask what signal they need so I can tailor the detail. Example: if they want cross-team scope and mine was within my team, I explain how I coordinated with two other people. Honesty about size is better than inflating scope.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The main way is to <b>show scope beyond my own task</b>. Interviewers use the story's size to place me. For example, if I applied for a senior role, I need cross-team influence, a technical decision I drove, and someone I grew. A good fix is to open each story with the scale: \"this affected 4 teams and 2 million users\". If my best examples are smaller, I should say how I would handle larger scope.</p>",
+    "<p>It is <b>change that outlasts my own work and reaches several teams</b>. Examples: a shared library adopted by 5 services, a runbook that cut on-call pages by 40% across the group, a hiring rubric that other managers reused, or mentoring two engineers to promotion. The test is: if I left tomorrow, would the benefit remain? A personal win such as \"I closed 30 tickets\" is not org-level; a process others now follow is.</p>"
+   ]
+  }
+ ]
+}

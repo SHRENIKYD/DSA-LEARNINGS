@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because <code>gcc</code> does not add the C++ standard library to the link line, so symbols like <code>std::cout</code> or <code>operator new</code> stay undefined. <code>g++</code> is the same compiler driver but it also passes <code>-lstdc++</code> (and <code>-lm</code>) when linking. Compiling works with either, since the language is picked by file extension. You can fix a <code>gcc</code> link by adding <code>-lstdc++</code> by hand, but using <code>g++</code> (or CMake, which chooses the linker language) is simpler.</p>",
+    "<p>Compiling each .cpp into its own object file is the part a build system runs in parallel, because the translation units do not depend on each other. With 2 files and 2 cores, both compile at once. Linking is a single step that needs all objects, so it runs alone at the end. Preprocessing and assembling happen inside each compile job. So total time is roughly the slowest compile plus the link, not the sum of all compiles.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>-fPIC</code> makes the compiler emit position-independent code, which can run at any address in memory. It is required for code that goes into a shared library, because the loader maps the <code>.so</code> at a different address in each process. It is also needed for a static library that will later be linked into a shared one. Without it the linker fails with relocation errors. It costs a little speed on some CPUs (mostly 32-bit x86); on x86-64 the cost is small. A plain executable does not need it.</p>",
+    "<p>A soname is the library's name as recorded inside the file, such as <code>libfoo.so.2</code>, and the number is the ABI version. Programs record that soname when linked and the loader looks for exactly it. If you change the ABI in a breaking way, you bump the number to <code>libfoo.so.3</code>, so old programs keep loading version 2 and are not broken. Compatible changes (new functions only) keep the soname. Example: the file <code>libfoo.so.2.5.1</code> has soname <code>libfoo.so.2</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>GNU <code>ld</code> reads archives once, left to right, and only pulls members that satisfy symbols already undefined, so an archive must come after the objects that need it. <code>lld</code> is more forgiving: it remembers undefined symbols and pulls archive members regardless of order, so a link that fails with <code>ld</code> may pass with <code>lld</code>. Example: <code>ld main.o -lutil</code> works but <code>ld -lutil main.o</code> fails. Do not rely on lld's leniency; keep the order correct or use <code>--start-group</code>/<code>--end-group</code> for cycles.</p>",
+    "<p>Run <code>nm -C --defined-only libfoo.a</code> and search the output, since <code>nm</code> prints the member (object file) name above its symbols. For example <code>nm -A -C libfoo.a | grep 'Parser::parse'</code> prints <code>libfoo.a:parser.cpp.o:... T Parser::parse(...)</code> using <code>-A</code> to show the file. For shared libraries use <code>nm -D</code>. Adding <code>-Wl,-Map=out.map</code> or <code>-Wl,--trace-symbol=NAME</code> at link time also shows where the linker found it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Inline functions are allowed to appear in many translation units, so the compiler emits them as weak (COMDAT) symbols and the linker keeps just one copy instead of reporting a clash. A normal function emits a strong symbol, and two of those give a multiple-definition error. This is why a function defined in a header must be <code>inline</code> (or in a class body, or a template). The rule only holds if every copy is token-for-token identical; if they differ the linker silently picks one, which is an ODR violation.</p>",
+    "<p>Yes, by bringing in two versions of one library without anyone noticing. Say your app needs <code>zlib 1.2</code> directly, and a prebuilt dependency was compiled against <code>1.3</code> where a struct has an extra field. Both link in, the headers disagree on layout, and the program reads the wrong offsets. Pinning one version per package (lockfile, baseline) and using one binary cache keyed by ABI-relevant settings prevents this. Different compiler flags or macros for the same package between recipes cause the same problem.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "PUBLIC vs PRIVATE propagation in a dependency graph",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// Models CMake usage-requirement propagation: PUBLIC/INTERFACE reach consumers.\nenum Kind { PUBLIC, PRIVATE, INTERFACE };\nstruct Edge { string to; Kind kind; };\nmap<string, vector<Edge>> deps;\n\n// Compile requirements a target \"sees\" from dependency d: its own PUBLIC/INTERFACE\n// edges propagate onward; PRIVATE edges stop here.\nvoid collect(const string& t, set<string>& out) {\n    for (auto& e : deps[t]) {\n        out.insert(e.to);\n        for (auto& e2 : deps[e.to])\n            if (e2.kind != PRIVATE) { out.insert(e2.to); collect(e2.to, out); }\n    }\n}\n\nint main() {\n    deps[\"app\"]   = {{\"net\", PRIVATE}};\n    deps[\"net\"]   = {{\"fmt\", PUBLIC}, {\"zlib\", PRIVATE}};\n    deps[\"fmt\"]   = {};\n    deps[\"zlib\"]  = {};\n    cout << \"net -> fmt (PUBLIC), net -> zlib (PRIVATE), app -> net (PRIVATE)\\n\";\n    set<string> seen;\n    collect(\"app\", seen);\n    cout << \"app compiles with headers of:\";\n    for (auto& s : seen) cout << ' ' << s;\n    cout << \"\\n\";\n    cout << \"zlib visible to app? \" << (seen.count(\"zlib\") ? \"yes\" : \"no\") << \"\\n\";\n}\n"
+   },
+   "followUps": [
+    "<p>An INTERFACE library is a target with no files of its own to build; it only carries usage requirements that consumers receive. The typical case is a header-only library: <code>add_library(hdr INTERFACE)</code>, then <code>target_include_directories(hdr INTERFACE include)</code>. Anyone who links <code>hdr</code> gets the include path, but there is nothing to compile for <code>hdr</code> itself. It is also used to bundle shared flags, for example a <code>warnings</code> target that many targets link to.</p>",
+    "<p>An imported target such as <code>fmt::fmt</code> is created by the package's config file when you call <code>find_package(fmt)</code>. That file calls <code>add_library(fmt::fmt ... IMPORTED)</code> and sets properties on it, like <code>INTERFACE_INCLUDE_DIRECTORIES</code>, the library file location, and compile definitions. When you write <code>target_link_libraries(app PRIVATE fmt::fmt)</code> those properties flow to <code>app</code> automatically, so you never write include paths or <code>-lfmt</code> by hand. The <code>::</code> in the name also makes CMake error if the target is missing instead of treating it as a plain library name.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You install the library with <code>install(TARGETS ... EXPORT MyLibTargets)</code>, then <code>install(EXPORT MyLibTargets NAMESPACE MyLib:: ...)</code> to write a targets file. Next you generate a <code>MyLibConfig.cmake</code> (with <code>CMakePackageConfigHelpers</code>) that includes it, plus a <code>ConfigVersion.cmake</code> for version checks. Consumers then write <code>find_package(MyLib 1.2 REQUIRED)</code> and link <code>MyLib::MyLib</code>. Use <code>$&lt;BUILD_INTERFACE:...&gt;</code> and <code>$&lt;INSTALL_INTERFACE:...&gt;</code> for include paths so they are right both in-tree and after install.</p>",
+    "<p>Presets are a <code>CMakePresets.json</code> file that stores configure, build and test settings (generator, build directory, toolchain file, cache variables) under names. Instead of remembering <code>cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=...</code>, you run <code>cmake --preset release</code>. They are checked into git, so developers, IDEs and CI use identical settings. A <code>CMakeUserPresets.json</code> holds personal overrides that are not committed.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Timestamp check an incremental build performs",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// Decide whether an object file must be rebuilt, like Make/Ninja do.\nstruct File { int mtime; };  // pretend modification time\n\nint main() {\n    map<string, File> files = {\n        {\"main.cpp\", {10}}, {\"util.h\", {30}}, {\"main.o\", {20}}, {\"util.o\", {35}}, {\"util.cpp\", {5}}\n    };\n    // object -> inputs (source plus headers from the .d dependency file)\n    map<string, vector<string>> inputs = {\n        {\"main.o\", {\"main.cpp\", \"util.h\"}},\n        {\"util.o\", {\"util.cpp\", \"util.h\"}},\n    };\n    for (auto& [obj, ins] : inputs) {\n        bool rebuild = false;\n        for (auto& in : ins)\n            if (files[in].mtime > files[obj].mtime) {  // newer input => stale\n                cout << obj << \": \" << in << \" (\" << files[in].mtime\n                     << \") is newer than \" << obj << \" (\" << files[obj].mtime << \")\\n\";\n                rebuild = true;\n            }\n        cout << obj << (rebuild ? \" -> REBUILD\" : \" -> up to date\") << \"\\n\";\n    }\n    // If util.h were missing from the .d file, main.o would never be rebuilt on a header edit.\n}\n"
+   },
+   "followUps": [
+    "<p>It rebuilds files whose recorded inputs have a newer timestamp than the output. The compiler lists every header it opened in a dependency file, and the build tool compares each one's modification time against the object file's. Example: a header at time 30 and an object at time 20 means the object is stale and gets rebuilt, as the program above shows. Ninja only parses these files and does stat calls on already-known paths, with no recursive rule searching, which is why a no-op run takes milliseconds.</p>",
+    "<p>Reduce how many files include the changed header. Use forward declarations (<code>class Foo;</code>) instead of <code>#include</code> where only a pointer or reference is needed, hide private members behind a pimpl, and split a big catch-all header into smaller ones. Tools like include-what-you-use remove unneeded includes. Example: if 300 files include <code>config.h</code> which includes <code>big.h</code>, a one-line change in <code>big.h</code> rebuilds all 300; after trimming, maybe only 5 do.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the root of trust is the lockfile (or baseline commit), not the version range. In vcpkg you set a <code>builtin-baseline</code> commit in <code>vcpkg.json</code>, which fixes every port's version, plus optional <code>overrides</code>. In Conan you run <code>conan lock create</code> to record exact versions and recipe revisions and use the lockfile in CI. FetchContent has no registry, so you pin a git tag or, better, a commit hash or archive hash (<code>URL_HASH</code>). Commit those files so two machines resolve the same thing.</p>",
+    "<p>In most systems you get a conflict error, because only one copy of a library can safely be in one program. vcpkg lets you force a version with <code>overrides</code>, and Conan lets you pick with <code>override=True</code> or fails and asks you to resolve. FetchContent just uses whichever is declared first, silently. Example: if A needs <code>fmt 9</code> and B needs <code>fmt 10</code>, you pick <code>10</code> and test that A still works. Two copies at once risk ODR violations, so avoid them.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Critical path limits how much cores help",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// Build graph: each job has a duration (seconds) and prerequisites.\n// Wall time with unlimited cores = critical path (longest chain).\nint main() {\n    vector<string> name = {\"gen\", \"a.o\", \"b.o\", \"c.o\", \"d.o\", \"lib\", \"link\"};\n    vector<int> cost    = {  20,    10,    30,    10,    10,     5,     60};\n    vector<vector<int>> pre = {{}, {0}, {0}, {0}, {0}, {1, 2, 3, 4}, {5}};\n    int n = name.size(), total = 0;\n    vector<int> finish(n);\n    for (int i = 0; i < n; i++) {          // jobs are listed in dependency order\n        int start = 0;\n        for (int p : pre[i]) start = max(start, finish[p]);\n        finish[i] = start + cost[i];       // earliest finish time\n        total += cost[i];\n        cout << name[i] << \" finishes at \" << finish[i] << \"s\\n\";\n    }\n    cout << \"1 core: \" << total << \"s\\n\";\n    cout << \"infinite cores: \" << *max_element(finish.begin(), finish.end()) << \"s (critical path)\\n\";\n}\n"
+   },
+   "followUps": [
+    "<p>Because tasks that depend on each other must run one after another, so extra cores just sit idle. If the longest chain is generate (20s), compile (30s), library (5s), link (60s) = about 115s, then even 1000 cores cannot finish sooner, as the program shows. The way to speed it up is to shorten that chain: split the huge compile, make link faster (lld/mold), or remove an unneeded dependency edge so work can start earlier. Adding cores only helps while there is enough independent work to fill them.</p>",
+    "<p>A build is cache-friendly when the same inputs always give the same output. That means deterministic compilers and flags, no embedded timestamps (<code>__DATE__</code>, <code>__TIME__</code>), and no absolute build paths in the output (use <code>-ffile-prefix-map</code>). Inputs should be fully declared: all headers, flags and tool versions. When two machines compile the same source with the same command, the cache key (a hash of preprocessed source plus flags) matches and one reuses the other's object file.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The linker then picks wrong files: with a cross compile, CMake could find the host's <code>/usr/lib/libz.so</code> (x86-64) and try to link it into an ARM binary, which fails with an architecture error or, worse, builds something broken. <code>ONLY</code> tells CMake to search just inside the sysroot / find-root path, so libraries must be the target's. Programs are the opposite: set <code>NEVER</code> so <code>find_program</code> finds host tools you can run during the build, like <code>protoc</code>.</p>",
+    "<p>Conan uses two profiles: the host profile describes the machine that will run the result (for example Linux, aarch64), and the build profile describes the machine doing the compile (Linux, x86_64). Libraries your code links come from the host side; tools that must run during the build, like <code>protoc</code> or <code>cmake</code>, come from the build side as <code>tool_requires</code>. You pass both with <code>conan install . -pr:h=arm64 -pr:b=default</code>, so each package is built for the right machine.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The build then has to compile one module before it can compile anything that imports it, and it can only learn that by scanning the source first. Two modules that import each other form a cycle, which is an error: no order exists where each BMI is ready before the other. The fix is the same as for any cyclic dependency: move the shared part into a third module that both import, or merge them. Within one module, partitions can reference each other, but the partition graph must also be acyclic.</p>",
+    "<p>Ship the module interface source (<code>.cppm</code> or <code>.ixx</code>) with the installed library, not a BMI, because a BMI only works with the exact same compiler version and compatible flags. The consumer's build compiles the interface into its own BMI. In CMake you describe this with <code>target_sources(lib PUBLIC FILE_SET CXX_MODULES FILES ...)</code> so it is installed and found through <code>find_package</code>. The compiled library file is shipped as usual. Many projects also keep a normal header alongside for users on older compilers.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Pimpl keeps the exported size stable",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\n// Pimpl: callers only see one pointer, so the private layout can change freely.\nclass WidgetV1 {\n    struct Impl { int id = 7; };\n    unique_ptr<Impl> p = make_unique<Impl>();\npublic:\n    int id() const { return p->id; }\n};\nclass WidgetV2 {                 // new release adds private fields\n    struct Impl { int id = 7; double scale = 1.5; string label = \"x\"; };\n    unique_ptr<Impl> p = make_unique<Impl>();\npublic:\n    int id() const { return p->id; }\n};\n// Without pimpl, adding members changes sizeof and breaks compiled callers.\nstruct PlainV1 { int id; };\nstruct PlainV2 { int id; double scale; };\n\nint main() {\n    cout << \"pimpl  v1 size: \" << sizeof(WidgetV1) << \"\\n\";\n    cout << \"pimpl  v2 size: \" << sizeof(WidgetV2) << \"\\n\";\n    cout << \"plain  v1 size: \" << sizeof(PlainV1) << \"\\n\";\n    cout << \"plain  v2 size: \" << sizeof(PlainV2) << \"\\n\";\n    cout << \"pimpl ids: \" << WidgetV1().id() << \" \" << WidgetV2().id() << \"\\n\";\n}\n"
+   },
+   "followUps": [
+    "<p>Because the vtable is a table whose order is baked into callers. Say your class has virtuals <code>a</code> and <code>b</code> at slots 0 and 1. Adding <code>c</code> at the end puts it in slot 2, which looks safe, but the object of a derived class (written by a customer) has its own vtable and size computed against the old layout, so it lacks the new slot and calling <code>c</code> reads garbage. Also the base size may not change but derived members start at fixed offsets that can overlap. Any new virtual changes the vtable of every subclass built before.</p>",
+    "<p>Windows has no sonames; the DLL is found by filename (<code>foo.dll</code>) and a version in the name or side-by-side manifest is used only if you choose that. Breaking changes are usually handled by renaming the DLL (<code>foo2.dll</code>), by keeping a stable C interface or COM interfaces, or by manifests. Linking goes through a small import library (<code>foo.lib</code>) and symbols are exported explicitly with <code>__declspec(dllexport)</code>, so ordinals and export lists matter. In Linux each break bumps the soname number, and the dynamic loader enforces it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Build a dependency graph (from CMake, Bazel or Ninja <code>-t query</code>) and map each changed file to the targets that contain it. Then find every target that depends on those, directly or through the chain, and run only their tests. Example: a change in <code>net/</code> affects <code>net_test</code> and <code>app_test</code>, but not <code>ui_test</code>. Be conservative: if a build file, toolchain or global header changes, run everything. Run the full suite nightly as a safety net for missing edges.</p>",
+    "<p>Do it in small, reversible steps. First build and test with the new compiler in a separate non-blocking CI job and fix warnings and errors, one team or library at a time. Then make it the default for a small group of leaf targets, watch results and performance, and widen out. Keep the old compiler available until the last target passes. Pin the version in the toolchain files so every developer and CI machine upgrades together, and have a quick revert (change one version line) if something breaks in production.</p>"
+   ]
+  }
+ ]
+}

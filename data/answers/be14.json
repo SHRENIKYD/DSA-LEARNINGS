@@ -1,0 +1,114 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>They are usually allowed to finish. The ALB stops sending new requests to an unhealthy target and, with connection draining (deregistration delay, default 300 seconds), lets requests already running complete. If an AZ or instance dies abruptly, requests on it fail with a reset or timeout, so clients need retries with backoff and the API calls must be idempotent. Sessions kept in server memory are lost, so store them in Redis or DynamoDB, or use stateless tokens. For the database, a Multi-AZ failover drops existing connections for about 60 to 120 seconds, so the app must reconnect.</p>",
+    "<p>Test it by deliberately breaking things, in staging first and then in production with a small blast radius. Terminate instances in one AZ, or use AWS Fault Injection Service to simulate an AZ loss, and watch the dashboards. Check that the ASG replaces capacity, the ALB shows healthy targets, and the error rate and latency stay within the SLO. Force an RDS failover with a reboot and measure how long the app takes to reconnect. Run load tests at peak with one AZ removed, because capacity is the usual surprise: with 3 AZs each must be able to absorb 50 percent more traffic. Write down the measured recovery time.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Security group (stateful) vs NACL (stateless)",
+    "python": "# Stateful security group vs stateless NACL (model of the idea)\n# Client 203.0.113.5 (port 50000) calls a web server on port 443.\ndef sg_allows_request(port):\n    return port == 443            # SG: one inbound allow rule\n\ndef sg_allows_reply():\n    return True                   # stateful: replies to allowed requests pass automatically\n\ndef nacl_allows(direction, port, rules):\n    return (direction, port) in rules   # stateless: every packet is checked on its own\n\nnacl_missing = {(\"in\", 443)}\nnacl_full = {(\"in\", 443), (\"out\", 50000)}   # also allow the ephemeral reply port\n\nprint(\"request to 443 allowed by SG:\", sg_allows_request(443))\nprint(\"reply allowed by SG (no rule needed):\", sg_allows_reply())\nfor name, rules in ((\"NACL without return rule\", nacl_missing), (\"NACL with return rule\", nacl_full)):\n    req = nacl_allows(\"in\", 443, rules)\n    rep = nacl_allows(\"out\", 50000, rules)\n    print(name, \"-> request\", req, \", reply\", rep, \", works:\", req and rep)\n"
+   },
+   "followUps": [
+    "<p>Neither is evaluated 'first' in a way that you can choose: both must allow the packet. For traffic entering a subnet, the NACL is checked first at the subnet boundary, and then the security group at the network interface. For traffic leaving, the security group is checked first, then the NACL. If either one blocks, the packet is dropped. Inside the NACL, rules are evaluated by number from lowest to highest and the first match wins, so rule 100 allow beats rule 200 deny. Security group rules have no order; all are combined.</p>",
+    "<p>No. A security group only has allow rules, and anything not allowed is dropped by default. You cannot write 'deny 10.0.0.5' in it. To block a specific address or range, such as an abusive IP, use a NACL deny rule (or AWS WAF or Network Firewall at higher layers). A common trick is to simply not allow it: if the group allows only the load balancer's group on port 8080, everything else is already denied. Several allow rules in the same group simply add together.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "IAM decision: explicit deny, allow, implicit deny",
+    "python": "# Simplified IAM decision: explicit Deny > Allow > implicit deny\npolicies = [\n    {\"effect\": \"Allow\", \"action\": \"s3:GetObject\", \"resource\": \"reports/*\"},\n    {\"effect\": \"Allow\", \"action\": \"s3:PutObject\", \"resource\": \"reports/*\"},\n    {\"effect\": \"Deny\",  \"action\": \"s3:*\",         \"resource\": \"reports/secret/*\"},\n]\n\ndef matches(pattern, value):\n    # '*' at the end means \"anything that starts with this prefix\"\n    return value.startswith(pattern[:-1]) if pattern.endswith(\"*\") else pattern == value\n\ndef decide(action, resource):\n    allowed = False\n    for p in policies:                       # statement order does not matter\n        if matches(p[\"action\"], action) and matches(p[\"resource\"], resource):\n            if p[\"effect\"] == \"Deny\":\n                return \"DENY (explicit)\"     # a matching Deny always wins\n            allowed = True\n    return \"ALLOW\" if allowed else \"DENY (implicit)\"\n\nfor action, res in [(\"s3:GetObject\", \"reports/q1.csv\"),\n                    (\"s3:GetObject\", \"reports/secret/key.txt\"),\n                    (\"s3:DeleteObject\", \"reports/q1.csv\")]:\n    print(action, res, \"->\", decide(action, res))\n"
+   },
+   "followUps": [
+    "<p>A permission boundary is a ceiling you put on an IAM user or role: it limits the most the identity can ever do, but grants nothing by itself. The effective permissions are the overlap of the identity policy and the boundary. Example: a developer role has an identity policy allowing s3:* and ec2:*, but its boundary allows only s3:*. It can then use S3 but not EC2. Boundaries let you delegate role creation safely: developers may create roles only if they attach the boundary, so they cannot grant themselves more than the ceiling.</p>",
+    "<p>An IAM policy is attached to an identity (user, role, group) or a resource and grants or denies permissions to it. An SCP (service control policy) belongs to AWS Organizations, is attached to an organisation, OU or account, and only sets the maximum permissions available in those accounts; it grants nothing. Example: an SCP denying all actions outside eu-west-1 stops even an account administrator from creating resources in other regions. An action works only if both the SCP and an IAM policy allow it. SCPs do not affect the management account's own users in the same way, and they apply to every principal in the member account, including the root user.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>When a role is assumed, AWS STS returns an access key, a secret key and a session token that expire, from 15 minutes up to 12 hours depending on the role's maximum session duration (1 hour is the default for AssumeRole). Every request is signed with these three values, and AWS rejects them after expiry. On EC2, the SDK fetches fresh credentials from the instance metadata service and refreshes them automatically before they expire, so you never store keys. If credentials leak, the damage window is limited to the remaining lifetime, and you can also attach a policy to revoke older sessions.</p>",
+    "<p>iam:PassRole is the permission to hand a role to an AWS service, for example when launching an EC2 instance or Lambda with that role attached. It is dangerous because it is a way to get the role's power indirectly. If someone can pass an administrator role to a Lambda function they can create, they can run code as admin without having admin rights themselves. So grant PassRole narrowly, naming the exact role ARNs, and add the condition iam:PassedToService to limit which service may receive them. Reviews of privilege escalation paths always check it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Single-table design means storing several entity types, such as customers, orders and invoices, in one DynamoDB table with generic key names (PK, SK) and prefixed values like CUSTOMER#17 and ORDER#2024-05-01#9. Items that are read together share a partition key, so one Query returns a customer and their orders in one request instead of several joins. It cuts round trips and cost, but it is harder to read, hard to change later and needs the access patterns known up front. For a small or fast-changing app, separate tables are fine and simpler.</p>",
+    "<p>Use the Limit parameter and the LastEvaluatedKey. A Query or Scan returns at most 1 MB per call, or Limit items. If the response includes LastEvaluatedKey, pass it back as ExclusiveStartKey in the next call to continue from the next item; when it is absent you have reached the end. Return this value to your client as an opaque cursor, encoded and ideally signed, rather than page numbers, because DynamoDB has no offset. Example: Limit 25 returns 25 orders and a key like {PK, SK}; the next request resumes after it. Cost is one read of the page, not a re-read of earlier pages.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Hot partition: single key vs sharded key",
+    "python": "# Hot partition: one key vs a key with a shard suffix\nimport zlib\nfrom collections import Counter\n\nPARTITIONS = 4\ndef partition(key):\n    return zlib.crc32(key.encode()) % PARTITIONS   # stand-in for DynamoDB's key hashing\n\n# 1000 writes, all for the same celebrity user\nplain = Counter(partition(\"user#celeb\") for _ in range(1000))\nprint(\"single key  :\", dict(sorted(plain.items())))\n\n# Write sharding: append a suffix 0..7, so one logical key becomes 8 physical keys\nsharded = Counter(partition(\"user#celeb#\" + str(i % 8)) for i in range(1000))\nprint(\"8 shard keys:\", dict(sorted(sharded.items())))\n\n# Reads must now query all 8 suffixes and merge: the price of sharding\nprint(\"reads per lookup after sharding:\", 8)\n"
+   },
+   "followUps": [
+    "<p>No, on-demand mode removes the capacity planning but not the per-partition limit. A single partition still handles about 1,000 write units and 3,000 read units per second, so one very hot key can still be throttled. On-demand does adapt faster to a rising table total and spreads data across more partitions over time, and new tables can burst, but a design with one dominant key remains a problem. Fix the key design, cache the reads or shard the writes; treat on-demand as billing convenience, not as a cure.</p>",
+    "<p>Use CloudWatch Contributor Insights for DynamoDB, which lists the most accessed partition keys, and watch the ThrottledRequests, ReadThrottleEvents and WriteThrottleEvents metrics. The signature is throttling while ConsumedCapacity on the table is far below the provisioned total. Also log the key in your application and inspect the distribution. If 40 percent of requests hit one key value, that key is hot. Check against real traffic, not assumed averages, because skew often appears only at peak or after a viral event.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use FIFO when order matters or when duplicates must be suppressed. A FIFO queue delivers messages in order within a message group ID and offers exactly-once processing from the producer side using a deduplication ID, which blocks identical messages sent within 5 minutes. Example: updates to account 42 use group ID 42 so the debit comes before the credit. The cost is lower throughput (300 messages per second per API action, or 3,000 with batching, higher with high-throughput mode) and one slow message can hold up its group. Standard queues are much faster but may deliver out of order and more than once.</p>",
+    "<p>Assume every message can arrive more than once, and make the consumer idempotent: processing it twice has the same result as once. Give each message a unique ID, and before doing the work record the ID in a table with a conditional write (insert only if absent). If the insert fails, skip the message. Natural idempotency also works, for example 'set status to PAID' repeated is harmless, whereas 'add 10 to balance' is not. For SQS standard, SNS and Lambda retries this is required, as at-least-once delivery is the contract. FIFO deduplication helps only inside its 5 minute window.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, but only for the capacity you reserve. Provisioned concurrency keeps a set number of execution environments initialised and ready, and you pay an hourly charge for that capacity whether or not requests arrive, plus a lower per-request price when used. Example: 10 units kept for a month are billed for the whole month. It is worth it for latency-critical paths with steady traffic. You can schedule it with Application Auto Scaling to raise it in business hours and drop it at night, which avoids paying for idle capacity.</p>",
+    "<p>Key limits to remember: maximum run time of 15 minutes; memory 128 MB to 10,240 MB (CPU grows with memory); deployment package of 50 MB zipped and 250 MB unzipped, or container images up to 10 GB; 512 MB of default /tmp space, configurable up to 10 GB; synchronous payload of 6 MB; and an account concurrency default of 1,000 per region, which can be raised. These shape design decisions: long jobs belong in containers or Step Functions, large payloads go through S3, and a burst of traffic can exhaust concurrency for other functions unless you reserve some.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Multi-AZ-per-region does not help when the whole region is unavailable, which is rare but real. The common DR strategies, from cheapest to most expensive, are: backup and restore (data is copied to another region, everything else is rebuilt, hours of recovery); pilot light (data replicated and the core running, compute switched off, tens of minutes); warm standby (a scaled-down full copy running, minutes); and active-active (both regions serve traffic, near zero). Pick by the business RTO and RPO, and tier systems so only the critical ones pay for the top strategies.</p>",
+    "<p>Multi-AZ does not protect against regional outages, against logical errors such as a bad deployment, a deleted table or a corrupt write, because replication copies the mistake to the standby, nor against a compromised account or a wrong configuration shared by all AZs. It also does not help if capacity is too small to survive losing one AZ. For these you need backups with point-in-time recovery, deployment safeguards such as canaries and rollback, separate accounts, and cross-region copies where justified.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Test it with a scheduled game day in a non-production copy, or with a controlled failover in production if the design allows it. Restore the latest backup into a clean account or region and run smoke tests, measuring the actual time (RTO) and the age of the newest recovered data (RPO). For active setups, shift a small share of traffic, for example 5 percent, to the DR region using weighted DNS and watch errors. Automate the runbook, record the measured numbers, and repeat at least every few months, because a DR plan that has never been run is a guess.</p>",
+    "<p>DNS TTL is how long resolvers cache an answer, so it limits how fast traffic moves during a failover. If the record has a TTL of 3,600 seconds, some users keep going to the dead region for up to an hour after you switch. Use low TTLs, such as 30 to 60 seconds, on records you may fail over; Route 53 health checks with failover routing then switch automatically. Remember that some clients and resolvers ignore low TTLs, and that the lower the TTL, the more queries you pay for. Better still, use a global entry point such as Global Accelerator, which changes routing without waiting for caches.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The usual surprises are NAT gateway data processing fees (about 4.5 cents per GB, plus hourly), cross-AZ and internet egress data transfer, idle load balancers and unattached EBS volumes or old snapshots, CloudWatch Logs ingestion and retention, and DynamoDB or provisioned services sized for peak. Another is dev environments left on over weekends. Example: sending 10 TB per month through a NAT gateway costs roughly 450 dollars in processing alone, which S3 and DynamoDB gateway endpoints would avoid for free. Cost Explorer grouped by usage type finds these quickly.</p>",
+    "<p>Serverless costs more when traffic is high, steady and predictable, because you pay per request and per millisecond of compute, while a server is a flat price. For example, a function at 512 MB and 100 ms costs roughly a millionth of a dollar per request; at about 30 million requests a month, a 30 dollar container is cheaper and often has headroom to spare. Also watch for API Gateway fees, long-running or memory-heavy functions, and chatty workflows with many state transitions. Compute the break-even with your own numbers, and include the operations time saved.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Both the S3 uploads and the API stay protected if you use a short-lived presigned URL for each part. Multipart upload splits a large file into parts (5 MB to 5 GB each, up to 10,000 parts), uploaded in parallel and retried individually. The API calls CreateMultipartUpload, then returns one presigned URL per part; the client uploads each part and collects its ETag; finally the API calls CompleteMultipartUpload with the list. Add a lifecycle rule to abort incomplete uploads after a few days, otherwise orphaned parts are billed. A 2 GB file in 100 MB parts needs 20 URLs.</p>",
+    "<p>Keep the bucket private with Block Public Access on, and have the API authenticate the user, check authorisation, and return a presigned GET URL with a short expiry such as 5 minutes. The client downloads directly from S3. For heavy or global traffic, put CloudFront in front with an origin access control and use signed URLs or cookies. Set Content-Disposition so files download rather than render, and log access. Anyone holding the URL can use it until it expires, so keep the lifetime short and never put sensitive keys in the path.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Write the decision down in a short architecture decision record (ADR) kept in the repository next to the code. Each record has the context, the options considered, the decision, and the consequences, including the trade-off you accepted. Example: 'Single NAT gateway in dev to save about 65 dollars a month, accepting that an AZ failure stops outbound traffic in dev'. Number and date each one, never edit old ones but supersede them, and link them in design reviews. This lets later teams see why a choice was made and when it is safe to change.</p>",
+    "<p>A Well-Architected review is a structured conversation where a team answers the framework's questions for one workload, pillar by pillar, using the AWS Well-Architected Tool. It identifies risks, rated high or medium, and produces an improvement plan that you track as work items. It is not an audit with a pass or fail; it is a way to find gaps such as a single AZ database or missing backups. Run it before launch, after major changes and yearly, and fix the high risks first.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Serverless vs container break-even cost",
+    "python": "# Break-even: Lambda (pay per request) vs one always-on container\nLAMBDA_PER_MILLION_REQ = 0.20       # dollars, example price\nLAMBDA_PER_GB_SECOND = 0.0000166667 # dollars, example price\nMEMORY_GB = 0.5\nDURATION_S = 0.1\nCONTAINER_PER_MONTH = 30.0          # dollars, example flat cost\n\nper_request = LAMBDA_PER_MILLION_REQ / 1e6 + MEMORY_GB * DURATION_S * LAMBDA_PER_GB_SECOND\nprint(\"Lambda cost per request: $%.7f\" % per_request)\n\nfor millions in (1, 10, 30, 100):\n    lam = millions * 1e6 * per_request\n    cheaper = \"Lambda\" if lam < CONTAINER_PER_MONTH else \"container\"\n    print(\"%4dM req/month: Lambda $%7.2f vs container $%.2f -> %s\" % (millions, lam, CONTAINER_PER_MONTH, cheaper))\n\n# Break-even request count: fixed cost / cost per request\nprint(\"break-even: about %.1fM requests/month\" % (CONTAINER_PER_MONTH / per_request / 1e6))\n"
+   },
+   "followUps": [
+    "<p>Reserved concurrency sets both a guaranteed share and a hard cap for one function, taken from the account's pool. If the account limit is 1,000 and you reserve 100 for function A, A can never exceed 100 and always has 100 available, while others share the other 900. This limits the blast radius: a runaway or attacked function cannot use up all concurrency and starve the rest, and it protects downstream systems such as a database that handles only 50 connections. Extra requests are throttled, so pair it with a queue or retries. Reserved concurrency itself costs nothing.</p>",
+    "<p>Test layers separately. Unit test the handler as a normal function with fake events, keeping business logic outside the handler so most tests need no AWS. Use local emulators such as AWS SAM CLI (sam local invoke) or LocalStack for integration checks of the event shape and permissions, but know they do not copy every AWS behaviour. Then deploy to a real, isolated test account and run end-to-end tests there, since IAM, quotas, timeouts and retries only behave truly in the cloud. Use structured logs and tracing to debug.</p>"
+   ]
+  }
+ ]
+}

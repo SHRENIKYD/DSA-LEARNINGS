@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Computing flex-grow and flex-shrink widths",
+    "js": "// Resolve flex-grow / flex-shrink widths by hand (no min/max clamping)\nfunction resolve(container, items) {\n  const sumBasis = items.reduce((s, i) => s + i.basis, 0);\n  const free = container - sumBasis; // positive: grow, negative: shrink\n  let weights;\n  if (free >= 0) {\n    const g = items.reduce((s, i) => s + i.grow, 0);\n    const share = g < 1 ? g : 1; // grow sum below 1 hands out only a fraction\n    return items.map(i => i.basis + (g ? free * share * i.grow / g : 0));\n  }\n  // shrink is weighted by shrink * basis\n  weights = items.map(i => i.shrink * i.basis);\n  const wsum = weights.reduce((s, w) => s + w, 0);\n  return items.map((i, k) => i.basis + free * weights[k] / wsum);\n}\nconst grow = [{basis:200,grow:1,shrink:1},{basis:200,grow:2,shrink:1},{basis:200,grow:0,shrink:1}];\nconsole.log('container 700, bases 200/200/200, grow 1/2/0');\nconsole.log(resolve(700, grow).map(w => w.toFixed(2)).join(' / '));\nconst shrink = [{basis:300,grow:0,shrink:1},{basis:200,grow:0,shrink:1}];\nconsole.log('container 400, bases 300/200, shrink 1/1');\nconsole.log(resolve(400, shrink).map(w => w.toFixed(2)).join(' / '));\n"
+   },
+   "followUps": [
+    "<p>A long word stops shrinking because a flex item cannot go below its automatic minimum size, which is its min-content width.</p><p>The item has <code>min-width: auto</code>, so the shrink step is clamped. The algorithm freezes that item at its min-content width and redistributes the remaining overflow among the other items. Example: container 300px, two items of 200px, the first holds a 250px unbreakable word. Both want to shrink to 150px, but the first freezes at 250px and the second takes the rest: 50px. Fix with <code>min-width: 0</code> plus <code>overflow-wrap: anywhere</code>.</p>",
+    "<p>With <code>flex-basis: 0</code> every item starts from zero, so all of the container is free space and it is shared purely by flex-grow, regardless of content size.</p><p>With <code>auto</code> the item starts from its content width, so bigger content ends up bigger. Example: 600px container, items with content 100px and 300px, grow 1 each. Basis auto: free = 200, widths 200 and 400. Basis 0: free = 600, widths 300 and 300. This is why <code>flex: 1</code> (which means <code>1 1 0</code>) gives equal columns. Note that min-content still applies as a floor.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a grid with auto-fit and a minimum column size, and the browser decides how many columns fit.</p><pre><code>.cards {\n  display: grid;\n  gap: 16px;\n  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));\n}</code></pre><p>Each column is at least 220px and shares leftover space equally. At 700px wide you get floor((700+16)/(220+16)) = 3 columns; at 320px, 1 column. The <code>min(220px, 100%)</code> stops overflow on very narrow containers. No media queries are needed.</p>",
+    "<p>Subgrid lets a nested element reuse the rows or columns of its parent grid, so inner parts line up with things outside the component.</p><p>Without it, each card is its own grid and its title, body and button rows size independently, so a two-line title in one card pushes only that card. With <code>grid-template-rows: subgrid; grid-row: span 3</code> on each card, all cards share the same three row tracks, so titles, bodies and buttons align across cards. Gaps and line names are inherited too. It is supported in all current major browsers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use dynamic viewport units, because the plain <code>100vh</code> on mobile is the tallest possible viewport, including the area behind the collapsing toolbar.</p><pre><code>.hero {\n  min-height: 100vh;   /* fallback */\n  min-height: 100dvh;  /* follows the toolbars */\n  display: grid; place-items: center;\n}</code></pre><p>With a 800px screen and a 100px toolbar showing, 100vh is 800px so content is pushed 50px low, whereas 100dvh is 700px. Use <code>svh</code> for the smallest stable height, or centre inside a flex container sized by the layout instead of the viewport.</p>",
+    "<p>For a single line of text, a button already centres it vertically; for anything else, make the button a flex container.</p><p>Buttons centre their content by default, so setting <code>height: 48px</code> is usually enough. For an icon plus label use <code>display: inline-flex; align-items: center; gap: 8px</code>. Avoid the old trick of setting <code>line-height</code> equal to the height, since it breaks as soon as the text wraps. Example: height 48px, 16px text, padding 0 16px gives equal space above and below. Padding on all sides also works and grows with content.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why z-index 9999 loses inside a lower context",
+    "js": "// Which element wins? Compare z-index at the first shared stacking context.\nconst nodes = {\n  root:    { parent: null,     ctx: true,  z: 0 },\n  header:  { parent: 'root',   ctx: true,  z: 1 },    // e.g. has transform\n  modal:   { parent: 'header', ctx: true,  z: 9999 },\n  content: { parent: 'root',   ctx: true,  z: 5 },\n};\n// chain of context-creating nodes from the root down to the element\nfunction chain(name) {\n  const out = [];\n  for (let n = name; n; n = nodes[n].parent) if (nodes[n].ctx) out.unshift(n);\n  return out;\n}\nfunction winner(a, b) {\n  const ca = chain(a), cb = chain(b);\n  let i = 0;\n  while (ca[i] === cb[i]) i++; // first level where the chains differ\n  const x = ca[i], y = cb[i];\n  console.log(a + ' is represented by ' + x + ' (z=' + nodes[x].z + ')');\n  console.log(b + ' is represented by ' + y + ' (z=' + nodes[y].z + ')');\n  return nodes[x].z > nodes[y].z ? a : b;\n}\nconsole.log('modal z=9999 inside header z=1, content z=5');\nconsole.log('on top: ' + winner('modal', 'content'));\n"
+   },
+   "followUps": [
+    "<p>No, <code>z-index: auto</code> does not create a stacking context by itself; the element is painted in its parent's context as if it had level 0.</p><p>Example: a positioned div with <code>z-index: auto</code> has children with z-index 5 and 50. Both compete directly with siblings of the div in the parent context, since no new context was made. Change the div to <code>z-index: 0</code> and it becomes a context, so its children are trapped inside it. Non-positioned elements ignore z-index entirely (except flex and grid items).</p>",
+    "<p>The top layer renders above everything on the page, outside the normal stacking contexts, so no ancestor can trap it.</p><p>A modal <code>&lt;dialog&gt;</code> opened with <code>showModal()</code>, or an element with the <code>popover</code> attribute, is promoted to the top layer. It paints above all normal content even if its ancestors have transforms, opacity or low z-index, and it does not need any z-index. If several are open, the most recently added sits on top. Its <code>::backdrop</code> is painted just beneath it. This replaces the old habit of moving modals to the end of the body.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Paint order inside a stacking context",
+    "js": "// Paint order inside one stacking context: sort by phase, then z, then DOM order\nconst phases = ['', 'root bg/border', 'negative z', 'block (in flow)', 'float',\n                'inline text', 'positioned z auto/0', 'positioned z > 0'];\nconst layers = [\n  { name: 'tooltip',  phase: 7, z: 10, dom: 1 },\n  { name: 'text',     phase: 5, z: 0,  dom: 2 },\n  { name: 'badge',    phase: 6, z: 0,  dom: 3 },\n  { name: 'card',     phase: 3, z: 0,  dom: 4 },\n  { name: 'sidebar',  phase: 4, z: 0,  dom: 5 },\n  { name: 'backdrop', phase: 2, z: -1, dom: 6 },\n  { name: 'menu',     phase: 7, z: 2,  dom: 7 },\n  { name: 'page bg',  phase: 1, z: 0,  dom: 0 },\n];\nlayers.sort((a, b) => a.phase - b.phase || a.z - b.z || a.dom - b.dom);\nconsole.log('painted back to front:');\nlayers.forEach((l, i) => console.log((i + 1) + '. ' + l.name + ' (' + phases[l.phase] + ', z=' + l.z + ')'));\n"
+   },
+   "followUps": [
+    "<p>The float is painted in the float layer, above in-flow blocks and below positioned elements, but the negative-z sibling always goes behind it.</p><p>Order in one context: root background, negative z layers, blocks, floats, inline text, positioned auto/0, positive z. So a sibling with <code>z-index: -1</code> is painted before blocks and floats, and a float always covers it where they overlap. A float cannot be positioned, so it only has a z-level when it is also positioned.</p>",
+    "<p>Both paint positioned elements at the same level, but <code>z-index: 0</code> creates a new stacking context and <code>auto</code> does not.</p><p>For painting order in the parent, the two are treated alike: they go in DOM order after floats and inline content. The difference is what happens to the children. Under <code>auto</code>, a child with z-index 5 competes with the outside siblings. Under <code>0</code> it is trapped inside, and the whole box moves as one unit. Example: with auto, a child's z=5 can beat a neighbour's z=3; with 0 it cannot.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Sticky stops working because an ancestor with <code>overflow: hidden</code>, <code>auto</code> or <code>scroll</code> becomes the element's scroll container, and the element sticks relative to that, not to the page.</p><p>If that ancestor does not itself scroll (for example it has no fixed height), the sticky element never has anything to stick against. Fix by removing the overflow on the ancestor, or use <code>overflow: clip</code> which does not create a scroll container. Also check that the sticky element has a threshold such as <code>top: 0</code> and that its parent is taller than the element, since it cannot leave its parent.</p>",
+    "<p>Normally fixed uses the viewport, but a transformed ancestor becomes the containing block instead, so the element is positioned relative to that ancestor.</p><p>Ancestors with <code>transform</code>, <code>perspective</code> or <code>filter</code> (and <code>will-change</code> for those properties) do this. Example: a parent at <code>transform: translateX(0)</code> and a child with <code>position: fixed; top: 0; left: 0</code>: the child sits at the parent's top-left corner and scrolls with the parent, not pinned to the screen. This often breaks fixed headers and modals inside animated wrappers. Move the fixed element out of the transformed parent.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Combining max-width 768px with min-width 768px double-covers exactly 768px, so both rules apply at that width and the later one wins, which causes confusing overlaps.</p><p>Both queries are inclusive. At exactly 768px, both <code>(max-width: 768px)</code> and <code>(min-width: 768px)</code> match. Also, at fractional widths like 768.5px (zoom or high-density screens), neither might match in a pair like max 768 and min 769, leaving a gap. Mobile-first avoids this: use only <code>min-width</code> queries, so ranges never overlap, or use range syntax <code>(width &gt;= 768px)</code>.</p>",
+    "<p>Use container queries when a component's layout depends on the space it is given, not on the window size.</p><pre><code>.wrap { container-type: inline-size; }\n@container (min-width: 400px) {\n  .card { display: flex; }\n}</code></pre><p>Example: the same card sits in a 300px sidebar and in a 900px main area on the same screen. A media query sees one viewport width and treats both alike; a container query gives the card a row layout in the wide spot and a stack in the narrow one. This makes components reusable anywhere. Keep media queries for page-level structure.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Fill-mode <code>both</code> applies the first keyframe's styles during the delay and keeps the last keyframe's styles after the animation ends.</p><p>It combines <code>backwards</code> and <code>forwards</code>. Example: <code>animation: fade 1s 2s both</code> with <code>from {opacity:0} to {opacity:1}</code>. For the 2s delay the element stays at opacity 0 (otherwise it would flash visible first), and after 1s it stays at opacity 1 rather than snapping back to its normal style. Without fill-mode the element would be visible during the delay and revert at the end.</p>",
+    "<p>You cannot transition to <code>height: auto</code> directly, because auto is not a number, but there are a few good workarounds.</p><p>Options: (1) animate a grid track, <code>grid-template-rows: 0fr</code> to <code>1fr</code> with the child <code>overflow: hidden</code>, which works in all current browsers; (2) use <code>interpolate-size: allow-keywords</code> with <code>height: auto</code> in browsers that support it; (3) measure <code>scrollHeight</code> in JS and animate to that pixel value. The grid trick needs no JavaScript: collapsed row 0fr is 0px, expanded 1fr is the content height.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>FLIP is a technique for animating layout changes cheaply: First, Last, Invert, Play.</p><p>Steps: record the element's start rectangle (First), apply the change and record the end rectangle (Last), apply a transform that moves it back to the start (Invert), then remove the transform with a transition (Play). Example: an item moves 200px down; you set <code>translateY(-200px)</code> and animate to 0. Only transform runs per frame, so the browser does layout once instead of every frame.</p>",
+    "<p>Open the Performance panel, record the animation, and look at which parts of each frame the main thread spends time on.</p><p>Purple blocks are layout (Recalculate Style and Layout), green is paint and composite. If you see Layout in every frame, you are animating a geometry property. The Rendering tab has Paint flashing, which highlights repainted areas, and the Layers panel shows promoted layers and memory. Aim for frames under about 16ms for 60fps. A transform or opacity animation should show only compositing work.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Define the colours once as variables on the root and override them in a dark selector, so components never change.</p><pre><code>:root { --bg: #fff; --text: #111; }\n:root[data-theme=\"dark\"] {\n  --bg: #121212; --text: #eee;\n}\nbody { background: var(--bg); color: var(--text); }</code></pre><p>Toggling the <code>data-theme</code> attribute re-resolves every <code>var()</code> at once, with no recompiling. Add <code>@media (prefers-color-scheme: dark)</code> as the default when the user has made no choice.</p>",
+    "<p><code>@property</code> lets you register a custom property with a type, an initial value and whether it inherits.</p><pre><code>@property --angle {\n  syntax: '&lt;angle&gt;';\n  inherits: false;\n  initial-value: 0deg;\n}</code></pre><p>Because the browser then knows the value is an angle, it can animate it: a transition from <code>0deg</code> to <code>360deg</code> on <code>--angle</code> works in a gradient, where an unregistered variable would just flip at the midpoint. It also gives invalid values a safe fallback to the initial value.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A plain <code>1fr</code> track is really <code>minmax(auto, 1fr)</code>, so its minimum is the content's min-content size, just like a flex item's <code>min-width: auto</code>.</p><p>A long URL in one cell therefore forces the track wider than its share and pushes the grid past its container. Writing <code>minmax(0, 1fr)</code> lets the track shrink to zero, so the content overflows or wraps inside the cell instead. Example: two columns <code>1fr 1fr</code> in 400px with a 600px unbreakable word in the first gives widths of about 600 and 0 plus overflow; with <code>minmax(0, 1fr)</code> you get 200 and 200.</p>",
+    "<p>Yes: setting <code>overflow</code> to anything other than <code>visible</code> on a flex item changes its automatic minimum size to 0.</p><p>The auto minimum only applies when the item is not a scroll container, so <code>overflow: hidden</code>, <code>auto</code> or <code>scroll</code> on the item has the same effect as <code>min-width: 0</code>. Example: a flex item with a long URL and <code>overflow: hidden</code> shrinks to its share and clips the text. This is why scrollable panels work in flex layouts. Using the explicit <code>min-width: 0</code> is clearer, since it does not clip or create scrollbars by accident.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Auto-fit grid column count by width",
+    "js": "// How many columns does repeat(auto-fit, minmax(min(220px,100%), 1fr)) make?\nfunction columns(width, min, gap) {\n  const m = Math.min(min, width);            // min(220px, 100%)\n  const n = Math.max(1, Math.floor((width + gap) / (m + gap)));\n  const col = (width - (n - 1) * gap) / n;   // 1fr shares the leftover space\n  return { n, col };\n}\nconst min = 220, gap = 16;\n[200, 320, 600, 900, 1280].forEach(w => {\n  const r = columns(w, min, gap);\n  console.log('container ' + w + 'px -> ' + r.n + ' column(s) of ' + r.col.toFixed(1) + 'px');\n});\n// no media queries needed: the count falls out of floor((W + gap) / (min + gap))\n"
+   },
+   "followUps": [
+    "<p>With auto-fit, empty tracks collapse to zero so the two cards stretch to fill the row; with auto-fill, the empty tracks stay and the cards keep their column size.</p><p>Example: 1000px container, min 200px, gap 16, 2 cards. Both modes create floor(1016/216) = 4 tracks. Auto-fill leaves 2 empty columns, so each card is about 242px and the right half is blank. Auto-fit collapses the 2 empty tracks, so the cards grow to about 492px each. Choose auto-fit for stretched cards, auto-fill to keep a consistent column width.</p>",
+    "<p>Make the featured card span two columns only when two columns exist, so put the span inside a query or use a container condition.</p><pre><code>@media (min-width: 600px) {\n  .featured { grid-column: span 2; }\n}</code></pre><p>On a phone with one column, an unconditional <code>span 2</code> creates an extra implicit column and causes horizontal overflow. Use <code>grid-column: 1 / -1</code> for a full-width card at any column count, which is always safe. A container query on the grid wrapper works well for this decision.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Theme tokens: user choice beats OS preference",
+    "js": "// Theme resolution: explicit user choice beats the OS preference\nconst tokens = {\n  light: { '--color-bg': '#ffffff', '--color-text': '#111111' },\n  dark:  { '--color-bg': '#121212', '--color-text': '#eeeeee' },\n};\nfunction pickTheme(userChoice, osPrefersDark) {\n  // mirrors :root[data-theme] and @media guarded by :root:not([data-theme=\"light\"])\n  if (userChoice === 'light' || userChoice === 'dark') return userChoice;\n  return osPrefersDark ? 'dark' : 'light';\n}\n// semantic tokens: components only ever read var(--color-bg), never a hex\nfunction render(theme) {\n  const t = tokens[theme];\n  return 'background ' + t['--color-bg'] + ', text ' + t['--color-text'];\n}\nconst cases = [[null, false], [null, true], ['light', true], ['dark', false]];\ncases.forEach(c => {\n  const th = pickTheme(c[0], c[1]);\n  console.log('user=' + c[0] + ' os-dark=' + c[1] + ' -> ' + th + ': ' + render(th));\n});\n"
+   },
+   "followUps": [
+    "<p>Run a tiny inline script in the head, before the stylesheet paints, that reads the saved choice and sets the attribute on the root element.</p><pre><code>&lt;script&gt;\n  var t = localStorage.getItem('theme');\n  if (t) document.documentElement.dataset.theme = t;\n&lt;/script&gt;</code></pre><p>The flash happens when the page paints light first and JavaScript switches it later. Because the inline script is blocking, the attribute is set before first paint. Without a saved choice, the media query handles the OS preference with no script. Also set <code>color-scheme</code> so the default background matches.</p>",
+    "<p>Add a third set of tokens with higher contrast, selected by an attribute or by the <code>prefers-contrast: more</code> media query.</p><p>Because components only use semantic tokens, a new theme is just a new block of values: for example <code>:root[data-theme=\"hc\"] { --color-bg: #000; --color-text: #fff; --color-border: #fff; }</code>. Check that text contrast meets at least 7:1 (WCAG AAA) and borders are clearly visible, and use <code>forced-colors</code> for Windows high contrast mode, where the system colours replace yours. Test focus rings in every theme.</p>"
+   ]
+  }
+ ]
+}

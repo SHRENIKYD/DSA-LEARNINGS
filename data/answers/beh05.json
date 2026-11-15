@@ -1,0 +1,104 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>I lead with the problem's real weight and let the size follow, because scope is about leverage, not headcount. For a small project I say: \"It was one service, but it sat on the checkout path, so every failure cost revenue.\"</p><p>I then show the staff-level parts that still exist at small size: I defined the problem myself, I chose between options, and I left something reusable. For example, a two-week fix that became a runbook three teams used. Honest and small beats inflated.</p>",
+    "<p>Headcount is how many people report to you; scope is how many people and systems your technical decisions shape. I have shaped work for teams I never managed.</p><p>In a story I say: \"I had no reports, but my design was adopted by three teams, about 25 engineers.\" I name who followed my direction and why they did, which proves influence. A manager of ten with a single-team impact has less scope than an engineer whose standard is used by five teams.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If a team still says no after I have listened, I first check whether they are right. I ask them to write down what would break. Sometimes the objection is valid and my plan changes.</p><p>If it is a real disagreement, I disagree and commit through the decider named in the RFC, usually a director. I keep the relationship by making their risk part of the record and offering a review checkpoint after three months. I once let a team stay on their API for two quarters with a wrapper, and that cost us little.</p>",
+    "<p>I started with the people who would lose the most or know the most, not the loudest. In that case, the team with the largest migration cost went first, because their objection decided whether the plan worked.</p><p>My order was: (1) the most affected tech lead, (2) the owner of the shared data, (3) the sceptic, (4) the sponsor who would sign. Talking to the hardest case first meant the other conversations began with \"the biggest concern is already solved\". That saved about a week of review.</p>",
+    "<p>It was three pages with fixed headings: the problem with numbers (weekly broken finance reports), goals and non-goals, two options, my recommendation, risks, and open questions.</p><p>Option A was one shared money API with a migration of one quarter; option B was a thin adapter layer over the three existing APIs. I recommended A with an adapter window of two quarters, listed the rollback path, and named the decider and the decision date. Each tech lead had already seen their section before the review.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A stalled RFC usually has an unnamed blocker, so I find it by asking the quiet reviewers directly, in 1:1s. Then I split the decision: settle the parts everyone agrees on and park the one disputed point.</p><p>I set a deadline: \"If no new objection by Friday, the decider closes it.\" If the issue is lack of data, I propose a one-week spike with a clear pass/fail measure. A stall that lasts more than two weeks means the question is badly framed, so I rewrite it as a choice between two concrete options.</p>",
+    "<p>An RFC is overkill when the change is cheap to reverse and affects only your team. If you can undo it in a day, just do it and write a short note.</p><p>My rule of thumb: write an RFC if it is hard to reverse, touches other teams, costs more than about two engineer-weeks, or has security or data impact. Otherwise a one-paragraph design note in the ticket is enough. Using RFCs for everything teaches people to ignore them.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>My stop rule was: if the error rate of migrated services doubled for a full day, we pause new migrations and fix first. It was written in the plan before we started so nobody argued about it later.</p><p>We used it once. In Q2 shadow mode, a rounding bug made order totals differ by one cent in about 0.3% of cases, which tripped the dashboard. We paused for three weeks, fixed it, and resumed. Having the rule agreed in advance made the pause a plan, not a failure.</p>",
+    "<p>I would invest in the adoption dashboard and shadow mode in the first month instead of the second quarter. Finding the rounding bug earlier would have saved the month we lost.</p><p>I would also bring the finance team into the pilot from day one, not at the halfway point, and write the \"what we are not doing\" list into the first document. The strategy was right; the sequencing of risk was my mistake, and I now put the riskiest assumption first in every plan.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would build if the capability becomes core to our product, or if buying creates a limit we cannot work around. Two clear signals: the vendor price grows faster than our usage, or we need a feature they refuse to add.</p><p>Example: if the managed search bill passed roughly the cost of two engineers a year, or we needed custom ranking that the vendor could not do, I would reopen the decision. I write these triggers in the RFC so the review checkpoint has a measurable test.</p>",
+    "<p>I treat lock-in as a cost to price in, not a reason to avoid buying. I keep our own data model, put the vendor behind a thin interface, and make sure I can export all data in a standard format.</p><p>In the search example we kept one adapter class and a monthly export, and tested a switch to the second vendor in a two-day spike. That made the exit cost about three weeks, which we wrote into the decision record. Then lock-in was a known number.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I found hidden users from data, not from the list of known owners. We searched the scheduler logs for every distinct caller, grepped the code repositories for the client library, and checked the billing of service accounts.</p><p>That found two jobs nobody claimed. The brown-out was the best tool: a one-hour switch-off two weeks before the date showed a forgotten finance job, and the owner appeared within ten minutes. I now plan a brown-out for every deprecation.</p>",
+    "<p>I would separate a real blocker from a preference, and ask for evidence. If the team has a legitimate reason, such as a regulatory freeze, I move the date for them only, with a written new date and an owner.</p><p>I also reduce their cost: I offer to do part of the migration or keep a frozen read-only copy. I do not extend the date for everyone. One team got a six-week extension for an audit, and the hard date for the others stayed, which kept urgency alive.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then I work out whether the goal is to grow into the next level, or whether they are happy where they are. Both are valid, and I do not push promotion on someone who does not want it.</p><p>I then agree on what excellent work at their current level looks like, and give them stretch work they enjoy, like owning a component. I keep checking every quarter, because wishes change. Honest talk avoids the failure of mentoring someone toward a goal that is mine, not theirs.</p>",
+    "<p>Situation: I mentored an engineer for three months on writing design docs, and nothing changed. Their docs stayed list-like with no recommendation.</p><p>Action: I asked what was in the way. They feared being wrong in public. I switched to a smaller step, a one-page note shared only with me first, but progress was still slow. In the end I told their manager the plan was not working, and we moved to pair-writing with a different reviewer. Lesson: ask about the fear early, and do not carry it alone.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I held the bar by agreeing on it in writing before we were under pressure: no hire without at least two concrete pieces of evidence for each rubric area.</p><p>When we were three months behind on hiring, the manager proposed relaxing the system design round. I showed that the last two exceptions needed extra support for six months each, which cost more than the open seat. We widened the sourcing instead and the bar stayed. A written bar makes the cost of an exception visible.</p>",
+    "<p>I measure outcomes that the improvement should change, not activity. For the rubric: score spread between interviewers, the number of write-ups with evidence, and the 6-month performance of new hires.</p><p>In our case the spread of scores for the same candidate halved in two quarters, and the share of write-ups without evidence fell from about 40% to under 10%. I also check adoption: three other teams copying it counts as proof, a doc nobody opens does not.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If rollback failed, I would move to the next safest option: disable the new feature with its flag, or shift traffic to a healthy region, while keeping the on-call engineer on the fix.</p><p>I would tell the team out loud: \"Rollback failed, plan B is the flag, owner is Sam, check in five minutes.\" The cost of each plan and its time to recover are known in the runbook. If nothing works in 30 minutes, I escalate to the director and consider a maintenance page to protect data.</p>",
+    "<p>I rotate the IC when I am tired or too deep in the technical problem, usually after about two hours, or when the incident crosses a shift change.</p><p>The hand-off is spoken and written: current impact, what we tried, what is next, and who does what. I stay available for a few minutes. A fresh IC sees things that a tired one misses, and it protects the decision quality in a long incident.</p>",
+    "<p>I use impact, not cause: how many customers, how much money, and whether data is at risk. Checkout errors at 18% with revenue stopped matched our SEV-1 definition of a main path being mostly down.</p><p>If in doubt I choose the higher level because it is cheap to downgrade later but costly to escalate late. A short table helped: SEV-1 is a core flow down for most users, SEV-2 is a partial failure, SEV-3 is a minor effect with a workaround.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Blameless does not protect repeated, deliberate disregard of agreed rules. That is a performance matter, handled privately by the manager, not in the postmortem.</p><p>First I check the system: was the rule clear, was there time pressure, was the tool easy to misuse? In most cases the answer shows a system gap. If someone truly ignored a safety step they had been trained on, the postmortem still records what happened without naming them, and the manager has a separate conversation.</p>",
+    "<p>I give every action item one owner, a priority and a date, and put them in the same tracker as normal work, so they compete honestly with features.</p><p>I review open items monthly in the engineering meeting, and I report the share closed on time, for example 8 of 10 within 30 days. Items older than 60 days are either done, reprioritised with a reason, or dropped explicitly. The stale list is the real warning sign.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Decision quality is whether I used good information and reasoning at the time; outcome quality includes luck. I judge them apart by asking: given what I knew then, would a careful peer make the same choice?</p><p>For the feature-flag service, the call was reasonable (nothing fit), but the process was thin: no vendor spike or ownership estimate. So I kept the decision and fixed the process. A good decision can lose and a poor one can win, so I only learn from the reasoning.</p>",
+    "<p>The early signal was maintenance time. After the first quarter, I could see about a third of one engineer's week going to the service, and I did not track it.</p><p>A simple metric would have shown it: hours per month on the internal tool versus the vendor price. I now set a threshold in the RFC, for example \"if upkeep exceeds 0.2 engineer, we re-evaluate\", and put a six-month checkpoint in the calendar on day one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then I would tell her I was ready to do it, and show what it displaces. The truthful answer is: \"We can do the dashboard, and the reliability fix slips by about six weeks, with the risk of another incident.\"</p><p>If she still insisted, I would escalate the trade-off to the shared manager or exec who owns the priorities and record the decision. Then I would commit fully, perhaps with a smaller dashboard version. Disagree and commit works only when the cost is written down.</p>",
+    "<p>I keep it about shared goals and follow up quickly. After the no, I delivered the export a day early and sent a short note showing what the customer received.</p><p>I also offered something in return: a proper dashboard on the next quarter's plan with a real estimate. I avoided saying \"I told you so\" when the deal closed. A no with a better option and fast delivery usually builds trust, as shown by her inviting me into planning.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would tighten the policy after evidence of harm: a rise in escaped bugs, a security leak of data into prompts, or code nobody can explain.</p><p>In our pilot I set triggers beforehand: if escaped bugs per release grew by about 20%, or any customer data appeared in a prompt, we add mandatory review for the affected area and pause the tool there. I would loosen the rule the same way when the numbers stay good for a quarter.</p>",
+    "<p>I review a large generated diff by shrinking it first: ask for it to be split into pieces under about 300 lines, each with its own tests.</p><p>Then I read the tests before the code, because tests show the intent. I check the risky parts myself: input handling, permissions, error paths and anything touching money or data. I ask the author to explain one tricky function without the tool. If they cannot explain it, it does not merge.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then I create the problems instead of waiting for them, by looking across teams for repeated pain and writing the problem down. For example, three teams re-solving the same alerting trouble is a staff-level problem.</p><p>I also ask my manager and a sponsor to point me to cross-team work, and I volunteer for the incident reviews or RFCs that touch several teams. If nothing exists, I raise it honestly, and consider moving teams. Staff scope has to be real, not manufactured.</p>",
+    "<p>A sponsor is a senior person who speaks for you in rooms you are not in. I find one by doing visible, valuable work for their area, and then asking directly for feedback.</p><p>I ask: \"What gap do you see between my work and the next level?\" and I act on the answer within a month, so they see the result. I share outcomes with numbers, not effort. Sponsorship is earned by their trust in your judgement, so it grows slowly, over a few quarters.</p>"
+   ]
+  }
+ ]
+}

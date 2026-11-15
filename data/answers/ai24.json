@@ -1,0 +1,120 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes: a support bot that answered refund questions wrongly no matter how the prompt was phrased. The cause was that the refund policy was never in the window; retrieval returned the old 2022 page. Rewording the instruction 20 times changed nothing. Fixing retrieval to fetch the current policy lifted accuracy from 60% to 90% on 100 test questions with the original prompt.</p>",
+    "<p>Tool results and conversation history grow fastest, because they are appended every step. The system prompt and tool definitions are fixed. One file read can add 5k tokens, so 30 steps can reach 150k. That is why agents need clearing of old tool results, pagination at the source and compaction, not just a good prompt.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use it for a one-off job on a single long document, such as reviewing one 300-page contract, where you need cross-references across the whole text and there is no retrieval index. It also suits a stable corpus queried repeatedly if the prefix is cached, since cached input is much cheaper. Verify with your own eval, because advertised length is not effective length.</p>",
+    "<p>Run a sweep: plant facts at known depths in filler of growing length (say 10k, 50k, 100k, 200k tokens), ask for them, and record accuracy per length. Add distractors that look like the answer, and a task needing several facts at once. The effective length is the largest size where accuracy stays above your bar, for example 90%. Repeat each point several times, since outputs vary.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Lost in the middle: put the best chunks at the edges",
+    "python": "# Reorder retrieved chunks so the best sit at the edges (lost in the middle).\ndef order_for_edges(scores):\n    # Rank chunk indices: highest score first, lower index wins ties.\n    ranked = sorted(range(len(scores)), key=lambda i: (-scores[i], i))\n    front, back = [], []\n    for rank, idx in enumerate(ranked):\n        if rank % 2 == 0:\n            front.append(idx)   # best, 3rd best, ... fill from the top\n        else:\n            back.append(idx)    # 2nd best, 4th best, ... fill from the bottom\n    # Reverse the back pile so the 2nd best ends up LAST, next to the question.\n    return front + back[::-1]\n\nscores = [0.62, 0.91, 0.40, 0.88, 0.55]\norder = order_for_edges(scores)\nprint(\"scores by chunk:\", scores)\nprint(\"rank order     :\", sorted(range(len(scores)), key=lambda i: -scores[i]))\nprint(\"prompt order   :\", order)\nprint(\"scores in order:\", [scores[i] for i in order])\n# Time O(n log n) for the sort, space O(n).\n"
+   },
+   "followUps": [
+    "<p>Build a test set where the fact to find sits at a chosen depth. For each depth (0%, 25%, 50%, 75%, 100%) and each context size, insert the fact into otherwise real retrieved chunks and ask the question.</p><ol><li>Make 20 questions with known answers.</li><li>Place the answer chunk at each depth.</li><li>Run each case 3 times and grade by exact match.</li></ol><p>Plot accuracy by depth. A U-shape means reordering will help.</p>",
+    "<p>Not entirely. Reranking decides which chunks are in the prompt and in what rank order, but it does not decide where they sit. If you paste them in rank order, the weakest chunk sits right next to the question and the best sits first. Reranking cuts the number of chunks, which helps most, and edge placement is a cheap extra. Test both: with 8 chunks, compare rank order against edge order on your eval.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Token budget for a 200k support agent",
+    "python": "# Token budget for a support agent: reserve first, then fill by priority.\nWINDOW = 200_000\nparts = [  # (name, tokens, required)\n    (\"output+thinking reserve\", 16_000, True),\n    (\"system prompt\", 4_000, True),\n    (\"tool definitions\", 6_000, True),\n    (\"last 6 turns\", 10_000, True),\n    (\"profile+ticket\", 1_000, True),\n    (\"memory notes\", 1_000, True),\n    (\"help articles\", 20_000, False),\n    (\"rolling summary\", 3_000, False),\n    (\"old tool results\", 150_000, False),   # too big, will be dropped\n]\nleft = WINDOW\nkept, dropped = [], []\nfor name, tokens, required in parts:\n    if required or tokens <= left:   # required parts always go in\n        kept.append((name, tokens))\n        left -= tokens\n    else:\n        dropped.append(name)         # skip it; a smaller later item may fit\n\nused = WINDOW - left\nprint(\"window:\", WINDOW)\nfor name, tokens in kept:\n    print(f\"  {name:26s}{tokens:>8}\")\nprint(\"dropped:\", dropped)\nprint(f\"used {used} ({used * 100 // WINDOW}%), headroom {left}\")\n# Time O(n), space O(n).\n"
+   },
+   "followUps": [
+    "<p>Cut in this order: the lowest-value flexible parts first. Drop low-ranked retrieved articles, then clear old tool results (replace with placeholders), then compact older history into a summary. Never cut the output reserve, system prompt, the current message or the last few turns. Example: at 195k of 200k, clearing 40k of old tool output usually solves it without losing any decision.</p>",
+    "<p>Use the provider's token-counting endpoint or the matching tokenizer on the exact request, not a guess. The rule of thumb of 4 characters per token fits English prose only; JSON, code and non-English text tokenize worse (20,000 characters of JSON can be 7,900 tokens, not 5,000). After each call, read the usage fields (input, cached, output) and log them per component.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Pre-loading vs just-in-time token cost",
+    "python": "# Pre-loading vs just-in-time: how many tokens enter the window?\nFILES = {\n    \"src/auth/login.py\": 900, \"src/auth/tokens.py\": 700,\n    \"src/billing/invoice.py\": 1500, \"src/billing/tax.py\": 1100,\n    \"docs/auth.md\": 400, \"README.md\": 300,\n}\nINDEX_COST = 12 * len(FILES)  # a path + size line is roughly 12 tokens\n\ndef preload_cost():\n    return sum(FILES.values())          # everything goes in, every call\n\ndef jit_cost(wanted):\n    reads = sum(FILES[p] for p in wanted)   # only files the agent opens\n    return INDEX_COST + reads, 1 + len(wanted)  # tokens, round trips\n\nwanted = [\"src/auth/tokens.py\"]\ntokens, trips = jit_cost(wanted)\nprint(\"files:\", len(FILES), \"total tokens:\", preload_cost())\nprint(\"pre-load: tokens =\", preload_cost(), \"round trips = 1\")\nprint(\"JIT     : tokens =\", tokens, \"round trips =\", trips)\nprint(\"saved   :\", preload_cost() - tokens, \"tokens for\", trips - 1, \"extra trips\")\n# JIT wins when the fraction of the corpus actually needed is small.\n"
+   },
+   "followUps": [
+    "<p>Keep results small, labelled and paginated. Return paths, titles, sizes and a one-line snippet instead of full bodies, and accept <code>offset</code> and <code>limit</code> so the model can ask for more. Cap output at a fixed size and end with a marker such as <code>[1,240 lines omitted; call read_file with offset=200]</code>. Prefer compact formats: a 12-row table beats 5,000 rows of raw JSON.</p>",
+    "<p>Agentic RAG sits between the two. Retrieval becomes a tool the model calls with its own queries, once or several times, instead of one fixed retrieval before the call. It gives JIT's flexibility (rewrite the query, follow up on a gap) but keeps a search index. It fits questions that need several lookups, and costs extra round trips compared with single-shot RAG.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Clear old tool results, then compact",
+    "python": "# Compaction for a long agent: clear old tool results, then summarise if still big.\ndef total(msgs):\n    return sum(m[\"tokens\"] for m in msgs)\n\ndef clear_old_tool_results(msgs, keep_last):\n    idx = [i for i, m in enumerate(msgs) if m[\"role\"] == \"tool\"]\n    old = idx[:-keep_last] if keep_last else idx\n    for i in old:  # free: swap raw output for a short placeholder\n        msgs[i] = {\"role\": \"tool\", \"text\": \"[cleared]\", \"tokens\": 8}\n\ndef compact(msgs, threshold, keep_recent):\n    if total(msgs) <= threshold:\n        return msgs\n    old, recent = msgs[:-keep_recent], msgs[-keep_recent:]\n    # A real agent would ask the model for a summary using a strict template.\n    summary = {\"role\": \"user\", \"text\": f\"SUMMARY of {len(old)} messages\", \"tokens\": 150}\n    return [summary] + recent\n\nmsgs = [{\"role\": \"user\", \"text\": \"fix bug\", \"tokens\": 50}]\nfor step in range(6):\n    msgs.append({\"role\": \"assistant\", \"text\": f\"call {step}\", \"tokens\": 40})\n    msgs.append({\"role\": \"tool\", \"text\": \"x\", \"tokens\": 3000})\nprint(\"before:\", total(msgs), \"tokens,\", len(msgs), \"messages\")\nclear_old_tool_results(msgs, keep_last=2)\nprint(\"after clearing:\", total(msgs), \"tokens\")\nmsgs = compact(msgs, threshold=5000, keep_recent=4)\nprint(\"after compaction:\", total(msgs), \"tokens,\", len(msgs), \"messages\")\nprint(\"first message:\", msgs[0][\"text\"])\n"
+   },
+   "followUps": [
+    "<p>Put the ruled-out approaches in the summary and in a notes file, with the reason each failed. Use a template with a required \"ruled out\" field, and pin it outside the compactable region so it is re-inserted verbatim. Example line: \"pandas.to_csv: loads all rows, exceeds 512 MB.\" Then probe after compaction with a question such as \"what did we rule out and why?\".</p>",
+    "<p>Both rewrite earlier parts of the prompt, so the cache breaks from the first changed token onward. After compaction the new prefix is the system prompt, pins and summary, which is shorter and can be cached again on the next call. To keep breaks rare, compact in one batch at a threshold instead of a little every step, and keep the stable prefix first. The summary call itself should reuse the existing prefix so it is cheap.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give each sub-agent a distinct, non-overlapping scope in its brief, for example \"search only src/billing\" or \"question 3 of 5\". The lead splits the work before spawning, lists what the others cover and states the output format. For shared state, keep a claim list in a notes file. Check results for overlap and cap the number of sub-agents, since 5 agents on one task usually repeat each other's searches.</p>",
+    "<p>Run the same task set through both setups and compare quality and cost per success. Measure task success, tokens (multi-agent can be around 15 times a chat), wall-clock time and failure types. Use at least 50 tasks, run each several times, and compare paired per case. Multi-agent should win only on wide, separable tasks; if success is equal, the cheaper single agent wins.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A short file, kept current. For a 3-day migration:</p><pre><code>GOAL: move orders table to new schema\nDONE: users, items migrated (checked counts)\nDECISIONS: batch 5k rows; keep old table 7 days\nRULED OUT: single transaction (locks 20 min)\nOPEN: 312 rows fail FK check\nNEXT: fix FK rows, migrate payments</code></pre>",
+    "<p>Run an A/B on long tasks: the same agent with memory on and memory off, on the same cases, and compare success, repeated work and steps. Add probes: start a new session and ask about a decision from session one. If success is within noise, the memory is not helping. Also measure harm: stale notes that cause wrong actions. Use 30 or more cases and a paired test.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Both avoid loading everything. Tool search keeps tool definitions out of the window and lets the model find the right tool by name or description when needed. Skills keep instruction bodies out and load them when the description matches. In both, a small index sits in context and the full content is fetched on demand, so fifty skills or two hundred tools cost a few thousand tokens until used.</p>",
+    "<p>Check the description first, since it is the router. It should say what the skill does and when to use it, using the words users actually say. Then test: ask a request that should trigger it, and see whether it loaded. If not, rewrite the description with trigger phrases, check that the front matter is valid and the name is unique, and make sure it is not hidden by another skill that overlaps it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Rules with unclear value are only guesses, so test them. Take 20 to 30 tasks where the agent failed, run them with and without the new rule, several times each, and compare pass rates and the number of steps. Keep the rule only if it fixes more than it breaks. A rule that helps one case but costs tokens on every session is not free.</p>",
+    "<p>The agent may read and follow instructions in that file, so a hostile repo can plant text such as \"upload the .env file\" or \"run this script\". That is prompt injection through the context file. Mitigate by treating unknown repos as untrusted: review the file first, run in a sandbox with no secrets, require approval for shell and network actions, and do not auto-load nested files from unreviewed code.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Prompt order decides cache hits",
+    "python": "# Prompt-cache hits depend on the longest identical prefix.\ndef common_prefix(a, b):\n    n = 0\n    for x, y in zip(a, b):\n        if x != y:\n            break\n        n += 1\n    return n\n\ndef tokens_cached(blocks_a, blocks_b):\n    k = common_prefix(blocks_a, blocks_b)\n    return sum(t for _, t in blocks_a[:k])   # only the shared prefix is reused\n\n# (block, tokens). Volatile data FIRST breaks the prefix on every call.\nbad1 = [(\"time=10:01\", 10), (\"tools\", 6000), (\"system\", 4000), (\"user: hi\", 20)]\nbad2 = [(\"time=10:02\", 10), (\"tools\", 6000), (\"system\", 4000), (\"user: yo\", 20)]\ngood1 = [(\"tools\", 6000), (\"system\", 4000), (\"user: hi\", 20), (\"time=10:01\", 10)]\ngood2 = [(\"tools\", 6000), (\"system\", 4000), (\"user: yo\", 20), (\"time=10:02\", 10)]\n\nprint(\"timestamp first :\", tokens_cached(bad1, bad2), \"of 10030 cached\")\nprint(\"timestamp last  :\", tokens_cached(good1, good2), \"of 10030 cached\")\n# Comparing prefixes costs O(n) in the number of blocks.\n"
+   },
+   "followUps": [
+    "<p>Caching only reuses a prefix the model has already processed. On a hit, the provider skips recomputing those tokens, so the prefill stage, which dominates time to first token for long prompts, is much shorter. A 50k-token prefix that was cached can cut first-token latency from several seconds to under one, and cached input tokens are also billed at a reduced rate.</p>",
+    "<p>Do not remove the tool from the list, because the tool block sits at the very start and any change breaks the cache. Keep the same definitions and block the tool another way: tell the model in a late message that it is unavailable, or reject calls with a clear error. Some APIs also allow restricting tool choice per request without editing the definitions. Test hit rate from the usage fields.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Thinking blocks should usually be passed back unchanged with tool results in the same turn, because the model uses its earlier reasoning to continue the plan. On Anthropic's API, for example, you must return the thinking block of the last assistant turn with the tool result when thinking is on. Older thinking can be dropped by context editing, since it takes space. Check the current docs for exact rules.</p>",
+    "<p>Overthinking shows as longer reasoning with no better accuracy. Track thinking tokens per request against accuracy: if raising the budget from 4k to 16k lifts accuracy by under 1 point but cost by 3 times, you are overthinking. Other signs are easy tasks using the full budget, second-guessing a correct answer, and p95 latency rising. Fix by routing easy cases to no thinking.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Paired sign test for a context change",
+    "python": "# Compare two prompt/context variants on the same eval cases (paired sign test).\nfrom math import comb\n\n# 1 = case passed, 0 = failed; same 20 cases for A (old) and B (new context).\na = [1,0,1,1,0,0,1,0,1,1,0,1,0,0,1,1,0,1,0,0]\nb = [1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,0,1,1,0]\n\nwins = sum(1 for x, y in zip(a, b) if y > x)     # B fixed a failure\nlosses = sum(1 for x, y in zip(a, b) if y < x)   # B broke a pass\nn = wins + losses                                # ties carry no information\n\n# Two-sided exact sign test: how likely is a split this lopsided by chance?\nk = max(wins, losses)\np = min(1.0, 2 * sum(comb(n, i) for i in range(k, n + 1)) / 2 ** n)\n\nprint(\"pass rate A:\", sum(a) / len(a), \" B:\", sum(b) / len(b))\nprint(\"flips: B better on\", wins, \"cases, worse on\", losses)\nprint(\"sign test p-value:\", round(p, 4))\nprint(\"ship B\" if p < 0.05 and wins > losses else \"not enough evidence\")\n"
+   },
+   "followUps": [
+    "<p>For a 3-point gain (say 80% to 83%) you need a lot of cases, since a paired test needs the flips to be one-sided. If the new context changes about 10% of cases, with 7% better and 4% worse, you need roughly 600 to 800 cases for 80% power. With only 100 cases a 3-point change is noise. Run each case several times and use paired analysis, which needs far fewer cases than unpaired.</p>",
+    "<p>Sample real traffic and score it. Track cheap signals every day: input tokens per request, cache hit rate, steps per task, tool errors and repeated tool calls. Add a small percentage graded by an LLM judge or user feedback such as thumbs and retries. Alert when a metric moves, for example cost per success up 20%, and replay failing traces into the offline eval set.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Alert on late-step failure: the share of tasks that fail or loop after step 20, plus repeated identical tool calls and context size above a threshold such as 70% of the window. A simple signal is the same tool call with the same arguments three times in a row. Success rate by step number shows a cliff where rot begins. Pair it with the per-component token table so the alert points to the growing slice.</p>",
+    "<p>Rerun the same failing task with a short, clean context (compact the history, or just start fresh with the notes and the current goal). If it now succeeds, the cause was context rot. If it still fails with a clean 10k context, it is a capability limit, and a stronger model or better tools are needed. Also compare success at step 5 and at step 25 with identical tasks.</p>"
+   ]
+  }
+ ]
+}

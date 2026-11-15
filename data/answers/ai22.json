@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Usually the data steps, not the modelling: upstream schemas change, a source arrives late or a feature pipeline silently emits nulls. The model code still runs, so nothing errors while quality drops.</p><p>That is why validation at ingestion and freshness checks on features catch more real incidents than tuning. Example: a column renamed from <code>amt</code> to <code>amount</code> turns a key feature into all nulls overnight.</p>",
+    "<p>Level 1 adds an automated training pipeline, so the model is retrained continuously (CT) rather than by hand. Level 0 means a data scientist trains in a notebook and hands over a model to deploy manually.</p><p>Level 1 brings data and model validation steps, a feature store, metadata tracking and triggers (schedule or drift). The pipeline code, not the model file, is what gets deployed. Level 2 then adds CI/CD for the pipeline itself.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Detect training-serving skew by recomputing features",
+    "python": "# Detect training-serving skew: recompute features offline from raw events\n# and compare with what the server logged. O(N) over sampled rows.\nraw = {  # request id -> raw purchase amounts in the last 7 days\n    \"r1\": [10, 20, 30], \"r2\": [5, 5], \"r3\": [], \"r4\": [100, 50],\n}\nserved = {  # what the online path logged (bugs: empty -> -1, r4 uses stale data)\n    \"r1\": {\"avg\": 20.0}, \"r2\": {\"avg\": 5.0}, \"r3\": {\"avg\": -1.0}, \"r4\": {\"avg\": 70.0},\n}\n\ndef offline_avg(xs):\n    # training definition: empty history -> 0.0\n    return sum(xs) / len(xs) if xs else 0.0\n\nbad = 0\nfor rid, xs in raw.items():\n    want, got = offline_avg(xs), served[rid][\"avg\"]\n    ok = abs(want - got) < 1e-6      # tolerance for float noise\n    bad += not ok\n    print(f\"{rid} recomputed={want:6.1f} served={got:6.1f} {'ok' if ok else 'SKEW'}\")\nprint(f\"skew rate: {bad}/{len(raw)} = {bad/len(raw):.0%}\")\n"
+   },
+   "followUps": [
+    "<p>Recompute the features offline from raw data for a sample of served requests and compare them with the logged served values. Differences are skew.</p><p>Example: 1,000 sampled requests, 120 differ beyond a small tolerance, so the skew rate is 12%. Group the mismatches by feature to find the culprit (for instance null handling). Also compare the distributions of each feature in training and in serving logs with PSI. Cost is one batch job over the sample, O(N) for N sampled rows.</p>",
+    "<p>Not always. Logging every feature for every request can be expensive at high traffic, so sample instead.</p><p>Example: at 5,000 requests per second with 200 features of 8 bytes each, full logging is about 8 MB/s, roughly 690 GB per day. Logging 1 percent still gives enough rows to detect skew and to retrain on. Log only high-importance features fully, compress, set a short retention, and always log the model version and request id.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Point-in-time lookup instead of the latest value",
+    "python": "# Point-in-time join: a feature store's offline store answers \"what was known at time t\".\nimport bisect\n\nhistory = {\"u1\": [(1, 0), (5, 2), (9, 6)]}   # (timestamp, orders_7d), sorted by time\nlabels = [(\"u1\", 4), (\"u1\", 9)]               # (user, label time)\n\ndef as_of(user, t):\n    rows = history[user]\n    times = [ts for ts, _ in rows]\n    i = bisect.bisect_right(times, t) - 1     # last record with ts <= t\n    return rows[i][1] if i >= 0 else None\n\nfor user, t in labels:\n    print(f\"{user} label@t={t}: point-in-time={as_of(user, t)}  latest(leaky)={history[user][-1][1]}\")\n# Cost: O(log H) per lookup with binary search, O(H) memory per entity.\n"
+   },
+   "followUps": [
+    "<p>Both are usually ordinary databases picked for different jobs. The offline store holds history and is scanned in bulk; the online store holds only the latest value per entity and is read by key.</p><p>Offline: a data warehouse or lake (BigQuery, Snowflake, Parquet files on object storage) for point-in-time joins. Online: a key-value store such as Redis or DynamoDB for single-digit millisecond reads. Materialization jobs copy the latest values from offline to online. Streaming features are written to both.</p>",
+    "<p>Give every feature view a maximum age, measure the age of each write, and decide in advance what happens when it is exceeded.</p><p>Example: a feature last written 2 hours ago with a 1 hour limit is stale. If it has a safe default, serve the default and raise an alert. If not, fall back to a simpler model or block and page on-call. Also monitor the pipeline that writes it, so lateness is found before users are affected.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Stages (Staging, Production, Archived) are fixed labels; aliases are flexible named pointers such as <code>champion</code>. MLflow now favours aliases and tags and has deprecated stages.</p><p>An alias points to exactly one version, so promoting means moving <code>champion</code> from v3 to v4, and rollback means moving it back. Serving loads <code>models:/fraud@champion</code>. You can have as many aliases as you like (challenger, shadow), which stages cannot express.</p>",
+    "<p>You need the exact code commit, the data version, the parameters, the random seeds, the environment and the hardware details that affect numerics.</p><p>Example: git SHA, a dataset snapshot id or hash, a lock file of dependencies or a container digest, seed 42, and the framework version. GPU kernels can be non-deterministic, so exact bit-for-bit results may need deterministic flags. In practice aim for metrics within noise, and store all of this on the tracked run.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A new user has no row in the last batch output, so you need a fallback. Typical choices are a default score (such as a segment or global average), a rule-based answer, or calling an online model for cold-start users only.</p><p>Example: the nightly job scored 10 million existing users; a user who signed up at noon gets the default tier until the next run, or is scored on the fly by a small online model with request-time features. That hybrid is common.</p>",
+    "<p>Streaming prediction sits between batch and online: a model scores events as they flow through a stream processor, and results are written to a store or another topic. Nobody is waiting on a response, but results arrive in seconds, not hours.</p><p>Example: scoring each card transaction from Kafka within 2 seconds to flag accounts for review. It suits use cases that need fresh results but no synchronous reply.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sticky canary routing by hashing the user id",
+    "python": "# Sticky canary routing: hash the user id so the same user always sees the same model.\nimport hashlib\n\ndef bucket(user_id, salt=\"rollout-1\"):\n    h = hashlib.sha256((salt + user_id).encode()).hexdigest()\n    return int(h, 16) % 100                   # stable number 0..99\n\ndef model_for(user_id, canary_pct):\n    return \"new\" if bucket(user_id) < canary_pct else \"old\"\n\nusers = [f\"user{i}\" for i in range(1000)]\nfor pct in (5, 20):\n    share = sum(model_for(u, pct) == \"new\" for u in users) / len(users)\n    print(f\"canary {pct}%: actual share on new model = {share:.1%}\")\n# Stickiness: ramping 5% -> 20% only ADDS users, nobody flips back to old.\ns5 = {u for u in users if model_for(u, 5) == \"new\"}\ns20 = {u for u in users if model_for(u, 20) == \"new\"}\nprint(\"5% group is a subset of the 20% group:\", s5 <= s20)\nprint(\"same user twice:\", model_for(\"user7\", 20), model_for(\"user7\", 20))\n"
+   },
+   "followUps": [
+    "<p>Shadow mode cannot tell you about user behaviour or business impact, because users never see the new model's output.</p><p>It also misses feedback effects (the new model's choices change what users do next), and it cannot give outcome labels for decisions the old model blocked. What it does show is crashes, latency, and how often predictions differ. Example: the new model disagrees on 4% of requests; shadow says nothing about whether those 4% are better.</p>",
+    "<p>Pick the primary metric, the smallest effect worth detecting, and then compute the sample size per group. Run it for whole weeks to cover weekly cycles.</p><p>Rule of thumb for a conversion rate of 10% and a lift to 11% (alpha 0.05, power 0.8): about 15,000 users per arm. Smaller lifts need far more, as sample size grows with the inverse square of the effect. Do not stop early on a good-looking result, and add guardrail metrics such as latency.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Data drift versus concept drift on a toy rule",
+    "python": "# Data drift vs concept drift on a toy rule \"approve if income > 50\".\nimport random\nrandom.seed(1)\n\ndef label(income, cutoff):          # the true relationship P(y|X)\n    return income > cutoff\n\ndef accuracy(rows, cutoff_model=50, cutoff_truth=50):\n    return sum((x > cutoff_model) == label(x, cutoff_truth) for x in rows) / len(rows)\n\nref = [random.gauss(50, 10) for _ in range(2000)]\ndata_drift = [random.gauss(65, 10) for _ in range(2000)]    # inputs shift, rule unchanged\nconcept_drift = ref                                          # same inputs, rule changed to 58\n\nprint(f\"mean income ref={sum(ref)/len(ref):.1f}  data-drift={sum(data_drift)/len(data_drift):.1f}\")\nprint(\"reference accuracy      :\", accuracy(ref))\nprint(\"data drift accuracy     :\", accuracy(data_drift), \"(inputs moved, model still right)\")\nprint(\"concept drift accuracy  :\", round(accuracy(concept_drift, 50, 58), 3), \"(inputs same, model wrong)\")\n"
+   },
+   "followUps": [
+    "<p>Label drift (prior shift) is a change in how common each outcome is, P(y), such as fraud rising from 0.5% to 2% of payments.</p><p>It can happen even when P(X|y) is unchanged. Effects: the calibrated probabilities become wrong and a fixed threshold now flags the wrong number of cases. Detect it from the share of positive labels when they arrive, or from the shift in the average predicted score. Fixes include recalibration or reweighting, and retraining.</p>",
+    "<p>Use proxies now and the true metric later. Monitor input drift and score distribution immediately, then compute real performance on each cohort once its labels arrive.</p><p>Example: chargebacks take 60 days, so track decline rate and manual review outcomes weekly, and report AUC for the cohort from 60 days ago. Label a small sample early by human review. Always state the lag on dashboards so an old cohort is not mistaken for current quality.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Population Stability Index with quantile bins",
+    "python": "# PSI = sum((actual% - expected%) * ln(actual% / expected%)) over bins from the REFERENCE data.\nimport math, random\nrandom.seed(7)\n\ndef psi(ref, cur, bins=10, eps=1e-4):\n    s = sorted(ref)\n    edges = [s[int(len(s) * k / bins)] for k in range(1, bins)]   # quantile edges from reference\n    def shares(xs):\n        c = [0] * bins\n        for x in xs:\n            c[sum(x > e for e in edges)] += 1                    # which bin x falls into\n        return [max(v / len(xs), eps) for v in c]                # eps avoids log(0)\n    e, a = shares(ref), shares(cur)\n    return sum((ai - ei) * math.log(ai / ei) for ei, ai in zip(e, a))\n\nref = [random.gauss(0, 1) for _ in range(5000)]\nsame = [random.gauss(0, 1) for _ in range(5000)]\nshift = [random.gauss(0.5, 1) for _ in range(5000)]\nbig = [random.gauss(1.5, 1) for _ in range(5000)]\nfor name, d in ((\"same\", same), (\"shift +0.5\", shift), (\"shift +1.5\", big)):\n    v = psi(ref, d)\n    print(f\"{name:10s} PSI={v:.3f} ->\", \"stable\" if v < 0.1 else \"moderate\" if v < 0.25 else \"major\")\n# Cost: O(N log N) for sorting, O(N * bins) for counting.\n"
+   },
+   "followUps": [
+    "<p>Treat each category as a bin and compare its share in the reference and current data, using the same PSI formula.</p><p>Example: payment type was card 70%, wallet 30%, now card 50%, wallet 40%, new type 10%. Give unseen values their own bin or an <code>other</code> bin. Group very rare categories together, and add a small epsilon so an empty bin never gives ln(0).</p>",
+    "<p>With millions of rows, even a tiny and harmless shift gives a p-value near zero, so the test always alerts.</p><p>Statistical significance is not practical significance. Example: a mean change of 0.01 standard deviations is significant at 5 million rows but irrelevant to the model. Use an effect-size measure (PSI, or the KS statistic itself) with thresholds, and require the alert to persist across several windows.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pick the evaluation set from the most recent data, split by time, and use the same set for challenger and champion.</p><p>Example: train on weeks 1 to 10, evaluate on week 11 and 12, never a random split that leaks the future. Keep the set fixed long enough to compare models, refresh it on a schedule, and add slices such as new users. Use a held-out period of untouched data for the final check.</p>",
+    "<p>A feedback loop means the model's own decisions shape the data it is retrained on, which can reinforce its biases.</p><p>Example: a fraud model blocks transactions, so you never see whether blocked ones were really fraud, and the next model learns only from approved ones. Counter this by holding out a small random share (say 1%) that is scored but not acted upon, using exploration, and logging the model's decision with the outcome.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A behavioural test checks how the model should behave on controlled inputs, without needing labels. Two common kinds are invariance and directional tests.</p><p>Invariance: changing a name from Ann to Bob must not change a loan score. Directional: raising income by 10,000 with everything else fixed must not lower the approval probability. Run them in CI as a gate, with a threshold such as at most 1% of cases failing.</p>",
+    "<p>Put human approvals at the points where judgement or accountability matters: promoting a model to production, and changes to thresholds or sensitive features. Do not require them for routine steps.</p><p>Automated gates (metrics, slices, latency) run first, then a person reviews the model card and the gate report and approves the alias move. Retrains that pass all gates and look similar to the champion can be auto-promoted to a canary, with a person only alerted on exceptions.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Choose the threshold that minimises expected business cost, not the one that maximises accuracy.</p><p>Example: a missed fraud costs 100, a false decline costs 5. Score a validation set at each threshold and compute <code>100*FN + 5*FP</code>. Pick the minimum, then check the review team's capacity. Revisit when fraud rates change, since the best threshold moves with the base rate.</p>",
+    "<p>Adaptation means drift is expected, so the design needs fast feedback, frequent retraining and features that are hard to game.</p><p>Add streaming velocity features, rules that can be changed in minutes, weekly or daily retraining, a long holdout for true outcomes, and monitoring for sudden score shifts. Keep the model and rules layered so a quick rule patch can cover a new attack while a retrained model is prepared.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A GPU pays off when the model is large (deep nets, transformers) and you can batch enough requests to keep it busy. For small tree models a CPU is cheaper and just as fast.</p><p>Example: a GPU instance costing 4 times as much is worth it if it serves 20 times the throughput, but not if it sits at 10% utilisation. Measure cost per 1,000 predictions on both, using real batch sizes and the latency target.</p>",
+    "<p>Translate the metric gain into money, and compare it against the cost of the retrain.</p><p>Example: retraining raises recall from 80% to 84% on fraud worth 2 million a month, so about 80,000 more caught, against a 1,500 compute bill. Prove it with a holdout or A/B test rather than offline numbers, and report it with an interval. If the gain is within noise, retrain less often.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pickle can execute arbitrary code when loaded, so a malicious or tampered file can take over the machine.</p><p>It also breaks across Python and library versions, because it stores class paths and internal state. Prefer ONNX, the framework's native format or safetensors, load only artifacts you built and signed, and store a checksum with the registered version.</p>",
+    "<p>Make preprocessing part of the model artifact, so the same code runs in both places.</p><p>Example: a scikit-learn Pipeline or an ONNX graph that includes scaling and encoding, rather than a separate notebook step. Otherwise share one library, version it, and test with golden requests: fixed inputs with expected outputs, compared in training and serving. Any mismatch fails the build.</p>"
+   ]
+  }
+ ]
+}

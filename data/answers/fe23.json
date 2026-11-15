@@ -1,0 +1,115 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>In a domain-agnostic <code>shared/data-access</code> library, or better in an <code>auth</code> domain's data-access, exposed through its public <code>index.ts</code>. Almost every feature needs the user, so it is a legitimate cross-cutting dependency.</p><p>Keep it small: a signal <code>user()</code>, <code>isLoggedIn()</code> and roles. Do not put profile editing there; that belongs to the account domain. Providing it with <code>providedIn: 'root'</code> keeps one instance for the whole app.</p>",
+    "<p>By giving it strict rules: only code that at least two domains really use, and nothing with business logic. Everything else moves back into the domain that owns it.</p><p>Enforce it: shared is split into typed libraries (<code>shared-ui</code>, <code>shared-util</code>), each with a CODEOWNERS entry and a review rule that a new shared item needs two consuming teams. A thing used by one team stays in that team's library. Duplicating three lines is cheaper than a wrong shared abstraction.</p>",
+    "<p>Only when something must be built, deployed or scaled on its own: a separate audience (admin vs public site), a different release cadence, or different hosting such as SSR for marketing pages.</p><p>Until then one app with lazy routes into feature libraries is simpler, since libraries already give code isolation. Several apps in the same Nx workspace still share libraries, so the split costs little, but each app adds a pipeline to maintain.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It can be, as long as the state is only about how it looks. Open/closed, the month being viewed or a focused day are UI state and may live inside it.</p><p>It stops being presentational if it fetches holidays or writes to a store. The rule: the picked value comes in via <code>input()</code> or a model, and changes go out via <code>output()</code>. Internal state is fine; data fetching and app state are not.</p>",
+    "<p>Instantiate the class or use a light render helper, set inputs, and assert on outputs and the rendered result. Signal inputs can be set with <code>fixture.componentRef.setInput</code>, but pure logic can be tested with no TestBed at all.</p><p>Keep calculations in plain functions: <code>pageCount(95, 10) === 10</code> needs no Angular. Use TestBed only for template checks such as DOM text and emitted events, because it is the slowest part.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It makes tests simpler, because a component test fakes one small object instead of a whole store.</p><p>In the test you provide <code>{ provide: FlightsFacade, useValue: { flights: signal([f1]), loading: signal(false), search: jasmine.createSpy() } }</code>. No actions, selectors or HTTP mocks. The facade itself is tested once against the real store or an HTTP testing backend. Result: UI tests check rendering and calls, state tests check logic.</p>",
+    "<p>Signals for state the template reads, such as <code>flights</code>, <code>loading</code> and <code>error</code>. Templates and <code>computed</code> work with them directly and there is no subscription to manage.</p><p>Use Observables only for event streams, such as a search results stream you want to debounce or cancel. If a consumer needs RxJS it can use <code>toObservable()</code>. Mixing both in one facade confuses callers, so choose signals as the default.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Module-boundary check with tags",
+    "js": "// Module-boundary check: tags + allowed dependency rules (like Nx depConstraints)\nconst projects = {\n  'booking-feature': ['type:feature', 'scope:booking'],\n  'booking-ui': ['type:ui', 'scope:booking'],\n  'booking-data': ['type:data-access', 'scope:booking'],\n  'checkin-feature': ['type:feature', 'scope:checkin'],\n  'shared-util': ['type:util', 'scope:shared'],\n};\n// source tag -> tags the source may depend on\nconst rules = {\n  'type:feature': ['type:ui', 'type:data-access', 'type:util'],\n  'type:ui': ['type:ui', 'type:util'],\n  'type:data-access': ['type:data-access', 'type:util'],\n  'type:util': ['type:util'],\n  'scope:booking': ['scope:booking', 'scope:shared'],\n  'scope:checkin': ['scope:checkin', 'scope:shared'],\n  'scope:shared': ['scope:shared'],\n};\nconst imports = [\n  ['booking-feature', 'booking-ui'],\n  ['booking-ui', 'shared-util'],\n  ['booking-ui', 'booking-data'],      // ui must not use data-access\n  ['checkin-feature', 'booking-data'], // crosses domains\n];\nfor (const [from, to] of imports) {\n  const problems = [];\n  for (const st of projects[from]) {\n    // every rule of the source must be satisfied by the target's tags\n    const ok = projects[to].some(t => rules[st].includes(t));\n    if (!ok) problems.push(st + ' cannot depend on ' + projects[to].join('+'));\n  }\n  console.log(from + ' -> ' + to + ': ' + (problems.length ? 'ERROR ' + problems.join('; ') : 'ok'));\n}"
+   },
+   "followUps": [
+    "<p>Start in report-only mode, then fix by priority. Do not turn on all the rules at once; the build would fail with hundreds of errors.</p><ol><li>Add tags to every project and write the constraints.</li><li>Run the lint rule as a warning and count violations per rule.</li><li>Block new violations first (a ratchet), then fix the old ones team by team.</li><li>Use temporary <code>eslint-disable</code> with a ticket for the hard ones.</li></ol><p>Circular dependencies come first, since they block everything else.</p>",
+    "<p>Make the dependency explicit instead of bypassing the rule: expose a small contract through a shared library or the other domain's public API.</p><p>Example: checkin needs the booking reference type. Put <code>BookingRef</code> in a <code>shared-types</code> library tagged <code>scope:shared</code>, which both may import. If checkin needs behaviour, call it through an interface or an event, not by importing booking internals. Add a narrow exception to the constraints only after the owners agree.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>When two parts need to be released independently and the organisation cannot coordinate their release train: different vendors or companies, very different cadences, or a legacy app being replaced piece by piece.</p><p>Wanting faster builds is not enough, as Nx caching and affected builds fix that. Code ownership is not enough either; CODEOWNERS and tags fix that. Split only when the cost of waiting for another team's release is higher than running extra pipelines and shared-dependency rules.</p>",
+    "<p>Put them in the host as shared singletons, and let remotes read them from there. The remote never re-implements login, it just uses the shared service.</p><p>With Native Federation you list <code>auth</code> and <code>design-system</code> libraries in the shared config with <code>singleton: true</code>, so one instance exists on the page. Design tokens as CSS custom properties on <code>:root</code> pass through the page for free. Version the design system with semver and a strict range, so a remote cannot silently load an incompatible one.</p>",
+    "<p>First try to upgrade it, because a mismatch costs the most when it lives long. Federation tolerates one major difference only if you give up the shared singleton.</p><p>Options: the old remote brings its own Angular and is mounted as a Web Component or inside an iframe, which costs extra download and isolated change detection; or you set a deadline and upgrade it in the next release. Use a manifest with a version check and contract tests, so that the host knows which remote is lagging.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because <code>initFederation</code> must set up the import map before any Angular code is imported. Static imports are evaluated first, so they would load Angular before the map exists.</p><p><code>main.ts</code> is only <code>initFederation(manifest).then(() =&gt; import('./bootstrap'))</code>. All real imports sit in <code>bootstrap.ts</code>, which runs after the map is set. Without this split, <code>@angular/core</code> would resolve normally and the host and remote could each load their own copy.</p>",
+    "<p>Treat exposed modules as a public API: a small, typed surface (for example only the route array) that you version and test from the consumer side.</p><p>Publish the contract as a TypeScript type in a shared library, and run contract tests in the host's CI that load each remote's built <code>remoteEntry.json</code> and check the exposed names. Add a version field to the manifest, keep changes additive, and deprecate before removing. A breaking change means a new exposed name such as <code>./routes-v2</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Define every colour as a design token (CSS custom property), and override the set under a theme selector. Components then read tokens only, so they need no change.</p><pre><code>:root { --bg: #fff; --fg: #111; }\n[data-theme='dark'] { --bg: #121212; --fg: #eee; }</code></pre><p>Also respect <code>prefers-color-scheme</code> as the default, store the user's choice, and check contrast in both themes (4.5:1 for text). In Material 3 the same is done with <code>color-scheme</code> and <code>light-dark()</code> system tokens.</p>",
+    "<p>Make the shared component the easiest path, and the fork the harder one. People fork when the library is slow to change or too rigid.</p><p>Give a contribution path with a short review time, offer extension points (content projection, tokens, variants), publish a changelog, and track usage so you see who copied a component. Lint rules can flag imports of raw Material where a company wrapper exists. A design-system office hour helps more than a policy document.</p>",
+    "<p>A harness is a small test API for a component, so tests say <code>await button.click()</code> instead of querying CSS selectors. When the internal markup changes, only the harness changes, not every test.</p><p>Angular Material and CDK ship harnesses such as <code>MatButtonHarness</code>. For your own components you extend <code>ComponentHarness</code> with methods like <code>getText()</code> or <code>selectOption()</code>. They work in unit tests and in end-to-end runs, and they wait for async work automatically.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use the locale-aware APIs, not string formatting. In Angular the <code>date</code> and <code>currency</code> pipes use the active locale, and underneath it is <code>Intl</code>.</p><p>Example: 1234.5 EUR is <code>1,234.50 €</code> in en-US style but <code>1.234,50 €</code> in de-DE. Store dates as UTC ISO strings and format only at display, with the user's time zone. Never hard-code a currency symbol or a date pattern; for built-in i18n, register locale data with <code>registerLocaleData</code>.</p>",
+    "<p>Layout, direction-based CSS and icons break. Text must flow right-to-left, and anything built with <code>left</code>/<code>right</code> ends up mirrored wrongly.</p><p>Fixes: set <code>dir=\"rtl\"</code> on the root, use logical properties (<code>margin-inline-start</code>, <code>padding-inline-end</code>, <code>inset-inline</code>) instead of left/right, and flip directional icons such as arrows and back buttons. Numbers, phone numbers and code stay left-to-right. CDK <code>Directionality</code> tells components the current direction, and sliders and carousels need checking.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Escaping and sanitizing sinks",
+    "js": "// Why interpolation is safe: text is escaped; HTML sinks need a sanitizer\nfunction escapeText(s) {\n  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n// tiny allowlist \"sanitizer\": keep only <b> and <i> tags without attributes\nfunction sanitizeHtml(s) {\n  return s.replace(/<(\\/?)(\\w+)[^>]*>/g, (m, slash, tag) =>\n    ['b', 'i'].includes(tag.toLowerCase()) && m === '<' + slash + tag + '>' ? m : '');\n}\n// URL sink: neutralise javascript: links\nfunction sanitizeUrl(u) {\n  return /^(https?:|mailto:|\\/)/i.test(u.trim()) ? u : 'unsafe:' + u;\n}\nconst evil = '<b>hi</b><img src=x onerror=alert(1)><p>steal()</p>';\nconsole.log('input      :', evil);\nconsole.log('{{ text }} :', escapeText(evil));\nconsole.log('[innerHTML]:', sanitizeHtml(evil));\nconsole.log('href ok    :', sanitizeUrl('https://example.test/a'));\nconsole.log('href evil  :', sanitizeUrl('javascript:alert(1)'));\n// a bypass would skip all of the above: never feed it user input"
+   },
+   "followUps": [
+    "<p>Because a <code>href</code> can be cleaned: the dangerous part is the scheme, so <code>javascript:</code> is turned into <code>unsafe:</code> and the rest stays a normal link. A script or iframe <code>src</code> is different, since any URL loads and runs code from that origin, so no cleaning can make it safe.</p><p>That is why resource URLs throw unless you explicitly trust a value with <code>bypassSecurityTrustResourceUrl</code>, and you should do that only for constants or an allowlist of origins.</p>",
+    "<p>Trusted Types is a browser feature that makes dangerous DOM sinks (<code>innerHTML</code>, <code>script.src</code>) accept only special typed objects, not plain strings. A forgotten raw write then fails instead of running.</p><p>Angular can create these objects in its sanitizer, so framework code keeps working, while third-party or hand-written <code>innerHTML = userText</code> is blocked. You enable it with the CSP header <code>require-trusted-types-for 'script'</code> and name allowed policies. It is defence in depth, not a replacement for sanitizing.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "XSRF cookie-to-header check",
+    "js": "// Cookie-to-header XSRF check (double submit)\nconst serverSessions = { sess1: 'tok-abc123' };  // token the server issued\nfunction handle(req) {\n  if (['GET', 'HEAD'].includes(req.method)) return 'allowed (read only)';\n  const cookieTok = req.cookies['XSRF-TOKEN'];\n  const headerTok = req.headers['X-XSRF-TOKEN'];\n  // header must exist and match both the cookie and the server's record\n  if (headerTok && headerTok === cookieTok && headerTok === serverSessions[req.cookies.session])\n    return 'allowed';\n  return 'rejected 403';\n}\nconst cookies = { session: 'sess1', 'XSRF-TOKEN': 'tok-abc123' };\nconst reqs = [\n  { name: 'own page POST', method: 'POST', cookies, headers: { 'X-XSRF-TOKEN': 'tok-abc123' } },\n  { name: 'evil site POST', method: 'POST', cookies, headers: {} }, // browser sends cookies, cannot read token\n  { name: 'evil guess', method: 'POST', cookies, headers: { 'X-XSRF-TOKEN': 'guess' } },\n  { name: 'GET', method: 'GET', cookies, headers: {} },\n];\nfor (const r of reqs) console.log(r.name.padEnd(15), r.method.padEnd(5), handle(r));"
+   },
+   "followUps": [
+    "<p>Because GET requests should not change anything, so a forged GET cannot do harm, and adding the header to every read would be extra work with no gain.</p><p>The protection applies to mutating methods (POST, PUT, DELETE, PATCH). The rule only holds if your server really keeps GET read-only: an endpoint like <code>GET /delete?id=5</code> breaks the model and stays open to CSRF. Fix the endpoint, not the interceptor.</p>",
+    "<p>The Angular interceptor skips absolute URLs, so you need your own scheme. The usual choice is a bearer token or a custom header that the browser does not add automatically.</p><p>Options: send <code>Authorization: Bearer ...</code> from an interceptor you write (CSRF is then not an issue, XSS becomes the risk); or fetch a CSRF token from the API (<code>GET /csrf</code>) and send it in a header with <code>withCredentials</code>. The API must also set a strict CORS allowlist, never <code>*</code> with credentials.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Filter, sort and paginate pipeline",
+    "js": "// Table pipeline: filter -> sort (copy) -> paginate with clamping\nconst rows = [\n  { id: 1, name: 'Mia', age: 31 }, { id: 2, name: 'Omar', age: 25 },\n  { id: 3, name: 'Anna', age: 40 }, { id: 4, name: 'Ali', age: 25 },\n  { id: 5, name: 'Zoe', age: 19 }, { id: 6, name: 'Amy', age: 52 },\n];\nfunction view(state) {\n  const q = state.query.toLowerCase();\n  const filtered = rows.filter(r => r.name.toLowerCase().includes(q));\n  const dir = state.dir === 'asc' ? 1 : -1;\n  const sorted = [...filtered].sort((a, b) => {          // copy: never mutate source\n    const x = a[state.key], y = b[state.key];\n    const c = typeof x === 'number' ? x - y : String(x).localeCompare(y);\n    return c * dir || a.id - b.id;                       // id tie-break = stable\n  });\n  const pageCount = Math.max(1, Math.ceil(sorted.length / state.size));\n  const page = Math.min(state.page, pageCount);          // clamp\n  const start = (page - 1) * state.size;\n  return { pageCount, page, items: sorted.slice(start, start + state.size).map(r => r.name + ':' + r.age) };\n}\nconsole.log('rows:', rows.length);\nconsole.log(JSON.stringify(view({ query: '', key: 'age', dir: 'asc', size: 2, page: 1 })));\nconsole.log(JSON.stringify(view({ query: '', key: 'age', dir: 'asc', size: 2, page: 2 })));\nconsole.log(JSON.stringify(view({ query: 'a', key: 'name', dir: 'desc', size: 2, page: 9 })));"
+   },
+   "followUps": [
+    "<p>Make the URL the source of truth: read query params into signals, and write them back when the user changes something.</p><p>Use <code>ActivatedRoute.queryParamMap</code> with <code>toSignal</code> to read <code>sort=age&amp;dir=asc&amp;page=2</code>, and call <code>router.navigate([], { queryParams, queryParamsHandling: 'merge' })</code> on change. Use <code>replaceUrl: true</code> for typing in the filter so history does not fill up. Reset <code>page</code> to 1 when sort or filter changes. Reload then reproduces the exact view.</p>",
+    "<p>With 1M rows you cannot send or render everything, so move work to the server and render only visible rows.</p><p>Server side: the API takes <code>query, sort, page, size</code> and returns one page plus a total count; use debounce and <code>switchMap</code> to cancel stale requests. Rendering: CDK virtual scroll keeps about 20 DOM rows regardless of size. Sorting 1M rows in the browser would block for a second or more, and you would still download the whole data set first.</p>",
+    "<p>Use real buttons inside the column header and tell assistive technology the current sort with <code>aria-sort</code> on the <code>th</code>.</p><pre><code>&lt;th scope=\"col\" [attr.aria-sort]=\"dir()\"&gt;\n  &lt;button (click)=\"sortBy('age')\"&gt;Age&lt;/button&gt;\n&lt;/th&gt;</code></pre><p>Values are <code>ascending</code>, <code>descending</code> or <code>none</code>. The button gives keyboard and focus support for free. Announce result changes with a live region such as \"12 results\", and do not rely on an arrow icon alone to show the order.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>They make Next wait, so the button should show a pending state and block double clicks until the check finishes. An async validator (for example a username check) leaves the control in <code>PENDING</code>.</p><p>Implementation: on Next, call <code>markAllAsTouched()</code>, then wait for <code>group.statusChanges</code> to leave <code>PENDING</code> (RxJS <code>filter</code> and <code>take(1)</code>) before checking <code>valid</code>. Use <code>updateOn: 'blur'</code> or a debounce in the validator to avoid a request on every key. Always handle a failed request as an error state.</p>",
+    "<p>Yes for a simple linear wizard, since it gives the step header, keyboard support and per-step validity cheaply. No when steps need their own URLs or complex branching.</p><p><code>MatStepper</code> takes a <code>[stepControl]</code> per step and blocks Next when it is invalid with <code>linear</code> mode. It does not give browser Back support or route guards, and it keeps all step components in the DOM unless you use lazy content. For checkouts I prefer child routes and a route-scoped form service.</p>",
+    "<p>Signal Forms replace the reactive form object with a form model held in a signal, so values, validity and touched state are signals you can read in <code>computed</code>.</p><p>The wizard idea stays the same: one model for the whole flow, a sub-section per step, validation rules declared as schema functions, and a <code>step</code> signal. The gain is less boilerplate and no manual subscriptions to <code>valueChanges</code>. The API is still evolving, so check the current docs before relying on details.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Immutable kanban move with fractional rank",
+    "js": "// Kanban move: immutable update + fractional rank\nconst board = {\n  todo: [{ id: 'a', rank: 1 }, { id: 'b', rank: 2 }, { id: 'c', rank: 3 }],\n  done: [{ id: 'd', rank: 1 }, { id: 'e', rank: 2 }],\n};\nfunction move(b, from, to, id, index) {\n  const card = b[from].find(c => c.id === id);\n  const target = b[to].filter(c => c.id !== id);\n  const prev = target[index - 1], next = target[index];\n  // rank between neighbours: only this one card changes\n  const rank = prev && next ? (prev.rank + next.rank) / 2\n    : prev ? prev.rank + 1 : next ? next.rank - 1 : 1;\n  const moved = { ...card, rank };\n  target.splice(index, 0, moved);\n  return { ...b, [from]: b[from].filter(c => c.id !== id), [to]: target }; // new objects\n}\nconst show = b => Object.entries(b).map(([k, v]) => k + '=[' + v.map(c => c.id + '@' + c.rank).join(',') + ']').join(' ');\nconsole.log('before:', show(board));\nconst after = move(board, 'todo', 'done', 'b', 1);\nconsole.log('after :', show(after));\nconsole.log('original untouched:', show(board) === 'todo=[a@1,b@2,c@3] done=[d@1,e@2]');"
+   },
+   "followUps": [
+    "<p>Decide a rule, then make the loser see it. With plain last-write-wins, the second save silently overwrites the first, so it is best avoided.</p><p>Send a version number with each move; the server rejects a move based on an old version with 409 and returns the current board. The client rolls back, applies the new state and tells the user \"Sam moved this card\". Fractional ranks reduce conflicts, since two moves of different cards touch different rows. Real-time sync (WebSocket) makes conflicts rare.</p>",
+    "<p>Render only the cards in view, using <code>cdk-virtual-scroll-viewport</code> inside each column with a fixed <code>itemSize</code>. This keeps the DOM small when a column has thousands of cards.</p><p>Care is needed with drag and drop: the drop list index refers to the visible window, so convert it to a real index using the viewport's rendered range. Auto-scroll while dragging is limited. A common alternative is paging a column with \"load more\", which suits kanban better than infinite lists.</p>"
+   ]
+  }
+ ]
+}

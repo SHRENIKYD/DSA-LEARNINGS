@@ -1,0 +1,103 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>A decision tree is machine learning, and therefore also AI. It learns its if/else splits from labelled data instead of a human writing them. For example, from past loans it might learn \"income &lt; 30k and missed payments &gt; 2 means high risk\". It is not deep learning, because there are no neural-network layers, and it is not generative AI, because it only labels or predicts. A tree you wrote by hand without data would be rule-based AI, not ML.</p>",
+    "<p>No. A network with one hidden layer is a neural network, but it is usually not called deep learning. \"Deep\" loosely means several or many layers of neurons, where each layer builds on the one before (pixels, then edges, then shapes, then faces). Example: a logistic regression is a network with zero hidden layers, a 2-layer net is shallow, a 50-layer image network is deep. The word has no strict cut-off, so say \"a few or more hidden layers\" in an interview.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Self-supervised learning sits next to supervised learning: it uses labels, but the labels are made automatically from the raw data itself, so no human has to annotate anything. For an LLM, hide the next word of a sentence and ask the model to predict it: \"The cat sat on the ___\" has the answer \"mat\" already in the text. Billions of such free examples are the pre-training step. Its training loop is supervised, its data is unlabelled, which is why it is listed as a bonus style.</p>",
+    "<p>You must create labels whenever a model needs to predict something nobody has recorded. Example: you want to route support tickets into 5 categories, but the history has no category column. Steps: 1) define the categories clearly, 2) have two people label 300 tickets, 3) measure how often they agree (if only 60 percent, the categories are vague), 4) fix the guidelines, 5) label more, perhaps with an LLM drafting labels that humans check. Label quality caps model quality.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Train once, then run inference with frozen weights",
+    "python": "import json\n\n# TRAINING: slow, changes the weights (done once)\ndef train(data, steps=300, lr=0.02):\n    w, b = 0.0, 0.0\n    n = len(data)\n    for _ in range(steps):\n        dw = sum(2 * (w * x + b - y) * x for x, y in data) / n\n        db = sum(2 * (w * x + b - y) for x, y in data) / n\n        w -= lr * dw          # nudge weights downhill on the loss\n        b -= lr * db\n    return {\"w\": w, \"b\": b}\n\nhistory = [(1, 3), (2, 5), (3, 7), (4, 9)]\nsaved = json.dumps(train(history))   # the \"model artifact\" we would ship\nprint(\"training data:\", history)\nprint(\"saved model file:\", saved)\n\n# INFERENCE: fast, weights frozen, one forward pass per request\nmodel = json.loads(saved)            # load once at server start-up\ndef predict(x):\n    return model[\"w\"] * x + model[\"b\"]\n\nbefore = dict(model)\nfor x in [5, 10, 100]:\n    print(\"predict\", x, \"->\", round(predict(x), 2))\nprint(\"weights unchanged by inference:\", model == before)\n"
+   },
+   "followUps": [
+    "<p>No. During a chat the model's weights are frozen; it only reads your earlier messages again as part of its input (the context window). That is why it can \"remember\" what you said five turns ago but forgets it in a new chat. Providers may save conversations and use them to train a future version, but that is a separate offline training job, not live learning. Memory features work by storing notes and pasting them back into the prompt.</p>",
+    "<p>Training-serving skew means the data the model sees in production is prepared differently from the data it was trained on, so it performs worse than in testing. Example: in training, \"age\" was computed from the birth date in years, but the live service sends it in months, so every input is 12 times too large. Typical causes are two separate code paths for feature calculation, missing values handled differently, and changed units. Fix it by sharing one feature function and logging live inputs to compare their distributions with training.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Next-token sampling and temperature",
+    "python": "import math, random\n\n# Pretend the model scored 4 possible next tokens after \"The cat sat on the\"\ntokens = [\"mat\", \"sofa\", \"roof\", \"moon\"]\nlogits = [3.0, 2.0, 1.0, 0.0]        # raw scores (higher = more likely)\n\ndef softmax(scores, temperature):\n    # dividing by temperature sharpens (<1) or flattens (>1) the distribution\n    exps = [math.exp(s / temperature) for s in scores]\n    total = sum(exps)\n    return [e / total for e in exps]\n\nprint(\"prompt: The cat sat on the ...\")\nfor t in (0.5, 1.0, 2.0):\n    probs = softmax(logits, t)\n    print(\"temperature\", t, {k: round(p, 2) for k, p in zip(tokens, probs)})\n\nrng = random.Random(42)              # fixed seed so output repeats\nfor t in (0.5, 2.0):\n    probs = softmax(logits, t)\n    picks = [rng.choices(tokens, weights=probs)[0] for _ in range(10)]\n    print(\"10 samples at temperature\", t, \"->\", picks)\n\n# temperature 0 means: always take the highest score (greedy)\nprint(\"greedy (temperature 0):\", tokens[logits.index(max(logits))])\n"
+   },
+   "followUps": [
+    "<p>Temperature 0 makes the model always pick the single most likely next token (greedy decoding), so the same prompt gives nearly the same answer each time. In the demo, \"mat\" has the top score, so it wins every time. Higher temperature flattens the probabilities so less likely words get chosen more often: at 2.0 \"mat\" falls from 0.64 to 0.46. Output may still vary slightly in real systems because of floating-point and batching effects, so 0 means \"as repeatable as possible\", not a guarantee.</p>",
+    "<p>Each new token needs one full forward pass, and tokens are produced one after another, so 1,000 tokens take about 10 times longer than 100. Price also grows, because providers charge per output token (usually more than per input token), and every step must re-read the growing context, which adds memory and compute. Example: at a made-up price of $0.01 per 1K output tokens, a 2,000-token answer costs $0.02 and one of 200 tokens costs $0.002. Ask for concise answers to save both time and money.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Measure it on a fixed test set: collect real questions with known correct answers or trusted source documents, run the system, and count the share of answers containing a claim that is wrong or not supported by the sources. Steps: 1) sample 200 real questions, 2) have humans (or a checked LLM judge) mark each answer supported or not, 3) report the rate with its error margin. Example: 14 bad answers out of 200 is 7 percent. Re-run the same set after every prompt, model or data change to see whether it improved.</p>",
+    "<p>No. Bigger models usually know more facts and hallucinate less often on common topics, but they still make things up, and they can sound more convincing when they do. On rare facts, private data or recent events a large model still guesses. A small model with good retrieval of the right documents can beat a large model without it. Test your own use case: compare both on your evaluation set and weigh the hallucination rate against the higher cost and latency.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use only 200 labelled examples as a test, not as a reason to jump into ML. First write the best simple rules and measure them on those 200. Then try a small, simple model such as logistic regression with cross-validation (train on 160, check on 40, repeat 5 times), or an LLM prompt with a few examples. If the model beats the rules clearly (for example 92 percent against 80 percent) and stays stable across folds, use it. If the gain is small or noisy, keep the rules.</p>",
+    "<p>A good baseline is the simplest thing that could work, and your ML must beat it to justify its cost. Examples: always predict the most common class (if 95 percent of emails are not spam, that gets 95 percent accuracy), a hand-written rule, last month's value for forecasting, or sorting by popularity for recommendations. If a model scores 96 percent against that 95 percent baseline, the real gain is tiny. Baselines also show what \"good\" means for stakeholders.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Overfitting: memoriser vs simple line",
+    "python": "import random\nrng = random.Random(5)\n\n# True rule is y = 2x, but every measurement has noise.\ndef sample(n):\n    return [(x, 2 * x + rng.gauss(0, 3)) for x in (rng.uniform(0, 10) for _ in range(n))]\n\ntrain, valid = sample(8), sample(30)\n\ndef mse(pred, data):\n    return sum((pred(x) - y) ** 2 for x, y in data) / len(data)\n\n# Model A: memoriser - copies the answer of the nearest training point\ndef memoriser(x):\n    return min(train, key=lambda p: abs(p[0] - x))[1]\n\n# Model B: simple line y = w*x, fitted by least squares\nw = sum(x * y for x, y in train) / sum(x * x for x, _ in train)\ndef line(x):\n    return w * x\n\nprint(\"fitted slope w =\", round(w, 2), \"(truth 2)\")\nprint(\"model     train_error  valid_error\")\nfor name, f in ((\"memoriser\", memoriser), (\"line\", line)):\n    print(f\"{name:9s} {mse(f, train):10.2f} {mse(f, valid):12.2f}\")\nprint(\"A big gap (train near 0, valid large) is the sign of overfitting.\")\n"
+   },
+   "followUps": [
+    "<p>Underfitting is the opposite of overfitting: the model is too simple or too little trained to capture the real pattern, so it does badly on both training and new data. Example: fitting a straight line to data that curves like a U gives a large error everywhere. Sign: training error is high, not just validation error. Fixes: a more flexible model, better features, longer training, or less regularisation. Good models sit between underfitting and overfitting.</p>",
+    "<p>Because every time you look at the test score and change something, you leak a little knowledge of the test set into your choices, and the score becomes too optimistic. Use the validation set for all tuning and keep the test set for one final honest estimate. Example: if you try 50 settings and keep the best one on the same data, one may win by luck alone. Once you must repeat the test, collect a fresh test set.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Epsilon-greedy: exploration vs exploitation",
+    "python": "import random\n\ntrue_payout = [0.2, 0.5, 0.7]       # hidden win chance of 3 machines\n\ndef run(epsilon, seed, rounds=300):\n    rng = random.Random(seed)\n    pulls = [0, 0, 0]\n    value = [0.0, 0.0, 0.0]         # running average reward per machine\n    total = 0\n    for _ in range(rounds):\n        if rng.random() < epsilon:\n            arm = rng.randrange(3)                            # explore\n        else:\n            arm = max(range(3), key=lambda i: value[i])       # exploit\n        reward = 1 if rng.random() < true_payout[arm] else 0\n        total += reward\n        pulls[arm] += 1\n        value[arm] += (reward - value[arm]) / pulls[arm]\n    return total, pulls\n\nprint(\"true payouts:\", true_payout, \"| best possible about\", int(0.7 * 300))\nfor eps in (0.0, 0.1, 0.5):\n    results = [run(eps, s) for s in range(20)]\n    avg = sum(r[0] for r in results) / len(results)\n    print(f\"epsilon={eps}: average reward over 20 runs = {avg:.1f}\")\ntotal, pulls = run(0.1, 1)\nprint(\"one run with epsilon=0.1 -> reward\", total, \"pulls per machine\", pulls)\n"
+   },
+   "followUps": [
+    "<p>A bandit has one decision repeated again and again, and the choice does not change the situation you face next. Full reinforcement learning has states: today's action changes tomorrow's state, and rewards can arrive late. Example: choosing which of 3 headlines to show is a bandit; playing chess is full RL, because each move changes the board and you learn the result only at the end. A bandit is RL with a single state, so it is much easier and needs far less data.</p>",
+    "<p>Start small, such as 0.1, and tune it on a simulation or past logs. Smaller means less wasted reward but slower discovery of better options; larger means more learning but more losses. In the demo with 300 pulls, epsilon 0 averaged about 60 reward while 0.1 reached about 191. A common choice is to start high (0.3) and decay it toward 0.01 as estimates become reliable. If the world changes over time, keep a small floor so you keep checking.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Still train a small custom model when the task is narrow, you have enough labelled data, and you need speed, low cost, privacy or exact control. Example: classify 50 million transactions per day as fraud or not. A tiny gradient-boosted model answers in under a millisecond for almost nothing, while an LLM call would cost far more and be slower. Also choose it for on-device use without internet, or when you need stable, auditable, repeatable behaviour that you can test thoroughly.</p>",
+    "<p>An open-weight model gives you the weights file, so you can run it on your own servers, fine-tune it, and keep data inside your network, but you must operate the hardware. An API-only model is reached over the internet from the provider; it is easy to start and often the strongest, but you depend on its price, limits, updates and data policy. Choose open-weight for privacy or tight cost control at high volume, API-only for speed of building. Check each licence, since \"open weight\" is not always fully open source.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Attention weights and quadratic cost",
+    "python": "import math\n\n# Each token gets a tiny 2-number vector (a made-up embedding).\ntokens = [\"the\", \"bank\", \"river\", \"money\"]\nvec = {\"the\": (0.1, 0.1), \"bank\": (1.0, 1.0), \"river\": (1.0, 0.0), \"money\": (0.0, 1.0)}\n\ndef softmax(xs):\n    exps = [math.exp(x) for x in xs]\n    s = sum(exps)\n    return [e / s for e in exps]\n\ndef attention_weights(query_token, context):\n    q = vec[query_token]\n    # score = dot product between the query and every token (all pairs at once)\n    scores = [q[0] * vec[t][0] + q[1] * vec[t][1] for t in context]\n    return softmax(scores)\n\nprint(\"sentence tokens:\", tokens)\nfor q in (\"bank\", \"money\"):\n    w = attention_weights(q, tokens)\n    print(\"when reading\", repr(q), \"attention =\",\n          {t: round(x, 2) for t, x in zip(tokens, w)})\n\n# cost: n tokens attend to n tokens -> n*n scores, so long context is expensive\nfor n in (1000, 10000, 100000):\n    print(\"context\", n, \"tokens ->\", n * n, \"pair scores per layer\")\n"
+   },
+   "followUps": [
+    "<p>Attention compares every token with every other token, so the work grows with the square of the context length: 10,000 tokens means 100 million pair scores per layer, 100,000 tokens means 10 billion (see the demo). Memory for the cache grows too. In practice models also use long text unevenly: facts in the middle can be missed more than those at the start or end. Remedies are retrieval (send only the relevant parts), sparse or windowed attention, and summarising older text.</p>",
+    "<p>A scaling law is a measured rule that model error drops smoothly and predictably as you increase model size, training data and compute, usually following a power curve. Example: researchers train small models, plot loss against compute, and extend the line to forecast how a model 100 times larger would perform before paying for it. It turns progress into a budgeting decision. The curve has diminishing returns, so each extra gain costs more than the last, and data quality matters too.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Set expectations with a number from a real test, not a promise. Say: \"On 200 of our real tickets, the draft was acceptable 85 times out of 100, and the other 15 needed edits.\" Then show what an error costs for each use. Explain that accuracy will not reach 100 percent, that it differs per task, and that a human check lowers risk. Agree a target before launch (for example 90 percent on the test set) and a plan if it is not reached.</p>",
+    "<p>Report a few numbers that tie to business value and risk, the same every month. Quality: accuracy or acceptance rate on a fixed test set, plus the share of answers humans had to correct. Safety: number of flagged or escalated outputs and any incidents. Speed: time saved per task, response time. Cost: spend per request and per month. Adoption: weekly active users. Example: \"Acceptance 88 percent (up from 84), cost $0.012 per request, 1,900 hours saved.\" Trends matter more than single values.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Build the first set from real inputs, not invented ones. Steps: 1) pull 100 to 200 actual past requests, covering common cases, rare cases and a few awkward or hostile ones, 2) write the ideal answer or a pass/fail rule for each, with a domain expert, 3) keep it frozen and separate from prompt examples, 4) score every change against it. Example: 150 support emails, 120 typical, 20 edge cases, 10 attacks. Add every production failure to it afterwards so it grows.</p>",
+    "<p>Say no when the cost of a wrong answer is high and cannot be checked, when exact output is required, or when a simpler tool works. Examples: calculating tax or access rights (use code), a lookup that SQL answers exactly, regulated data that cannot leave the company, or a response time of 20 milliseconds that an LLM cannot meet. Also say no when nobody can define what \"good\" means or supply a test set. Offer the cheaper alternative and say what evidence would change your mind.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "followUps": [
+    "<p>Merge them when they always change and deploy together. If most features need edits in both, if one cannot be released without the other, or if they share one database, the boundary is in the wrong place and you pay network cost for nothing.</p><p>Example: two services touched by 8 of every 10 pull requests, each needing a coordinated release, become one service. Merging removes a network hop, a version-compatibility matrix and a distributed transaction. You can split again later along a real seam.</p>",
+    "<p>Move ownership step by step so nothing breaks: first decide which service owns the table, then make everyone else go through it instead of reading it directly.</p><ol><li>Name the owner; it alone writes the table.</li><li>Add an API or publish change events from the owner.</li><li>Move each reader to the API, or to its own copy fed by events.</li><li>Remove the other services' database grants.</li></ol><p>During the move, run old and new paths side by side and compare results. Only drop access when no query from other services is seen for a few weeks.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>A retry budget limits how many retries are allowed in total, while a circuit breaker stops calls to a dependency that is clearly failing. The budget is a ratio, the breaker is a state.</p><p>With a 10% budget and 1,000 requests per second, at most 100 retries per second are sent, so a failure can add at most 10% load. A breaker opens when, say, 50% of calls fail in 10 seconds, then rejects calls immediately for a cool-down and probes with a few requests. Use both: the budget caps amplification, the breaker gives the server room to recover.</p>",
+    "<p>Safe to retry are errors that are temporary and where repeating the call cannot do harm: timeouts on idempotent operations, 503 Service Unavailable, connection resets, and 429 after waiting for Retry-After.</p><p>Do not retry 400, 401, 403 or 404, because the same request fails again. Retrying a POST that creates something is only safe if it carries an idempotency key; otherwise a timeout may hide that the first call worked and you create two orders. Reads (GET) are normally safe; writes need the key.</p>"
+   ],
+   "code": {
+    "title": "Retry amplification across layers",
+    "python": "# Retry storm: retries at every layer multiply the load on the failing service.\ncalls = 0\n\ndef backend():\n    global calls\n    calls += 1\n    return False  # the dependency is down: every call fails\n\ndef call_layer(depth, retries_here):\n    # A layer calls the next one; it retries if the result is a failure.\n    for _ in range(retries_here + 1):\n        ok = backend() if depth == 0 else call_layer(depth - 1, retries_here)\n        if ok:\n            return True\n    return False\n\ndef run(label, layers, retries):\n    global calls\n    calls = 0\n    call_layer(layers - 1, retries)\n    print(f\"{label}: layers={layers} retries={retries} -> backend calls = {calls}\")\n\nrun(\"no retries      \", 3, 0)\nrun(\"retry in 1 layer\", 1, 2)\nrun(\"retry everywhere\", 3, 2)   # (2+1)^3 = 27\nrun(\"retry everywhere\", 4, 2)   # 3^4 = 81\n\n# Retry budget: allow retries only up to 10% of the first attempts.\nfirst_attempts, retries_used, budget = 0, 0, 0.10\nfor _ in range(1000):\n    first_attempts += 1\n    if retries_used < budget * first_attempts:  # budget left?\n        retries_used += 1\nprint(\"with 10% budget: 1000 requests ->\", first_attempts + retries_used, \"backend calls\")\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Make the effect of processing the same message twice identical to processing it once. The usual way is to give every message a unique id and record it in the same transaction as the work.</p><p>Example: before adding 50 to a balance, insert message id m1 into a processed table with a unique key; if the insert fails because m1 exists, skip. In the demo, five deliveries with two duplicates give 100 and not 170. Alternatives are natural idempotence (set status = paid instead of add 1) or a version check. Keep ids for longer than the broker can redeliver.</p>",
+    "<p>The outbox pattern solves the problem of saving to the database and publishing an event as two separate steps, where a crash between them loses or invents events.</p><p>You write the business row and an outbox row in one local transaction. A separate relay reads unsent outbox rows and publishes them to the broker, marking them sent after success. This gives at-least-once delivery without a distributed transaction, so consumers must be idempotent. Example: an order row and an OrderCreated row are committed together; if the relay crashes after publishing but before marking, the event is sent twice, never zero times.</p>"
+   ],
+   "code": {
+    "title": "Idempotent consumer drops duplicates",
+    "python": "# Idempotent consumer: remember processed message ids so duplicates do nothing.\nmessages = [\n    {\"id\": \"m1\", \"amount\": 50},\n    {\"id\": \"m2\", \"amount\": 20},\n    {\"id\": \"m1\", \"amount\": 50},   # duplicate delivery (at-least-once)\n    {\"id\": \"m3\", \"amount\": 30},\n    {\"id\": \"m2\", \"amount\": 20},   # another duplicate\n]\n\ndef naive(msgs):\n    total = 0\n    for m in msgs:\n        total += m[\"amount\"]\n    return total\n\ndef idempotent(msgs):\n    seen = set()   # in real systems: a table with a unique key on message id\n    total = 0\n    for m in msgs:\n        if m[\"id\"] in seen:\n            print(\"  skip duplicate\", m[\"id\"])\n            continue\n        seen.add(m[\"id\"])\n        total += m[\"amount\"]\n    return total\n\nprint(\"messages:\", [m[\"id\"] for m in messages])\nprint(\"naive total      :\", naive(messages))      # 170, wrong\nprint(\"idempotent total :\", idempotent(messages))  # 100, correct\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Pick Linkerd when you want mTLS, retries and metrics with the least operating effort, and ambient mode when you want mesh features without a sidecar in every pod.</p><p>Linkerd has a small, simple proxy and fewer features, so it is easy to run. Istio ambient moves L4 work (mTLS) to a per-node proxy and L7 work to optional waypoint proxies, so a 500-pod cluster avoids 500 sidecars of memory. Choose full sidecar Istio when you need the richest traffic rules per workload and accept the cost.</p>",
+    "<p>Running workloads keep working, but you cannot change anything. Sidecars hold their last configuration and keep routing, and existing certificates stay valid until they expire.</p><p>What stops is new configuration reaching proxies, new pods getting their config and certificate, and certificate renewal. With 24-hour workload certificates, an outage longer than about a day starts to cause failed connections. So run istiod with several replicas, spread across zones, alert on certificate age, and treat a long control-plane outage as an incident even though traffic looks fine at first.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>Use a header or cookie match, or a hash of the user id, so the same user always lands on the same version. A plain weight is applied per request, so one user could see v1 then v2.</p><p>In Istio, add a VirtualService rule that matches a header (for example x-canary: true) before the weighted rule, or use consistent-hash load balancing on a user header in the DestinationRule. The demo hashes the id to a bucket 0 to 99; a user in bucket 22 stays on v2 when the weight rises to 25 and never flips back between requests.</p>",
+    "<p>Callers that bypass the sidecar get no weighted split, so they hit whatever the plain Service routes to, and your 5% figure becomes wrong.</p><p>Examples are pods without injection, jobs using a node IP, or traffic from outside the mesh straight to pods. Fixes: send external traffic through the ingress gateway, enable injection in all namespaces that call the service, and use STRICT mTLS so bypassing callers fail visibly. Check the real split from the metrics of v1 and v2, not from the configured weights.</p>"
+   ],
+   "code": {
+    "title": "Weighted and sticky canary routing",
+    "js": "// Weighted canary: 5% of requests go to v2; a hash of the user keeps users sticky.\nfunction pickRandom(weightV2) {\n  return Math.random() * 100 < weightV2 ? \"v2\" : \"v1\";\n}\nfunction pickSticky(userId, weightV2) {\n  // same user id -> same bucket 0..99 every time (deterministic hash)\n  const bucket = (userId * 2654435761 >>> 0) % 100;\n  return bucket < weightV2 ? \"v2\" : \"v1\";\n}\nconst N = 10000;\nlet v2 = 0;\nfor (let i = 0; i < N; i++) if (pickRandom(5) === \"v2\") v2++;\nconsole.log(\"random split of\", N, \"requests: v2 share is about 5%, got\", v2 > 350 && v2 < 650 ? \"~5%\" : \"off\");\n\nlet stickyV2 = 0;\nfor (let u = 1; u <= N; u++) if (pickSticky(u, 5) === \"v2\") stickyV2++;\nconsole.log(\"sticky split of\", N, \"users: v2 users =\", stickyV2);\n\nconst user = 1234;\nconst seen = [];\nfor (let k = 0; k < 5; k++) seen.push(pickSticky(user, 5));\nconsole.log(\"user\", user, \"five requests ->\", seen.join(\",\"));\n// raise the weight to 25: users in buckets 0-4 stay on v2, more join\nconsole.log(\"user 1234 at 25%:\", pickSticky(user, 25), \" bucket =\", (user * 2654435761 >>> 0) % 100);\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Under STRICT mTLS the kubelet cannot present a mesh certificate, so plain HTTP probes would fail. Istio solves this by rewriting the probe so the sidecar agent receives it and forwards it to the app over local plain text.</p><p>This is on by default: the pod spec gets the probe pointed at the sidecar port, and the agent calls your app's original path. If you disable the rewrite you must exclude the probe port from mTLS with a port-level PeerAuthentication. Test one pod in each namespace before moving to STRICT.</p>",
+    "<p>The mesh certificate authority (istiod) issues short-lived certificates, and the sidecar agent renews them automatically before they expire.</p><p>Each workload proves its identity (its Kubernetes service account token) and gets a certificate, typically valid 24 hours, with renewal started at about half of the life. No pod restart is needed. The root certificate rotates less often and needs a plan: add the new root to the trust bundle, wait until everyone trusts both, then switch signing. Monitor the days left on the root and the age of workload certificates.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>Replication copies your mistakes immediately; a backup is a separate, point-in-time copy you can go back to.</p><p>If someone runs DELETE on a table or ransomware encrypts data at 10:00, a replica applies the same change within seconds, so both copies are bad. A backup taken at 09:00 still holds the good data, and you restore it and accept an RPO of 1 hour. Use replication for availability and low RPO after a hardware or zone failure, and backups, preferably immutable and in another account, for human error and attacks.</p>",
+    "<p>Decide in advance, in writing, a named role with a deputy, and a clear trigger, so nobody debates it during the outage.</p><p>A typical rule: the incident commander declares a disaster when the primary Region is unavailable and the estimated recovery is longer than the RTO, for example 30 minutes of failed health checks with no recovery estimate. Failing over has a cost and risk (data loss up to the RPO, and failing back later), so the rule balances waiting against acting. Keep the contact list and runbook outside the affected Region.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>A game-day plan says what you will break, how you will know it worked, and how to stop. The goal is to measure the real RTO and RPO and find gaps.</p><ul><li>Scope and hypothesis (we recover in 15 minutes with under 1 minute of data loss).</li><li>Roles: commander, operators, observers, scribe.</li><li>Steps of the failover and the success checks.</li><li>Abort conditions and a rollback.</li><li>Notes of timings, then action items with owners.</li></ul><p>Announce it to support and stakeholders beforehand.</p>",
+    "<p>Start small and reversible: test in a copy of production built from the same code, then in production on a low-risk slice, with a clear abort switch.</p><p>Steps: restore backups into an isolated account and verify the data, fail over a non-critical service, run during low traffic, and limit the blast radius (for example 1% of users or one internal tenant). Use synthetic traffic and feature flags. Keep everything as IaC so a clean DR environment can be created, tested and deleted, which also proves your infrastructure code works in the second Region.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>Each record has a conflict rule: DynamoDB global tables use last writer wins, based on the write timestamp.</p><p>If Region A and Region B update the same item within the replication window (usually about a second), the later timestamp survives and the other write is silently lost. So design to avoid conflicts: route each user to a home Region for writes, or use updates that merge (counters as separate items, add-only sets). Example: two Regions both set stock = 5 and stock = 4 at nearly the same time, and only one value wins even though both customers were told yes.</p>",
+    "<p>On an unplanned failover, you promote a secondary Region's cluster to be a new writer. Replication is asynchronous, so any writes not yet copied are lost; the lag at that moment is your RPO.</p><p>Aurora Global Database typically has under 1 second of lag and can promote a secondary in about a minute or so, then the app endpoints must point to the new writer. The old primary must not take writes again; rebuild it as a secondary. Monitor the replication lag metric and test the promotion before you need it.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>It means the record follows the health of the thing it points to, so Route 53 can stop returning a record when the target is unhealthy, without you creating a separate health check.</p><p>For an alias to an ALB, with Evaluate Target Health on, the record is treated as healthy only if the load balancer has healthy targets. This lets failover routing switch from primary to secondary when all targets behind the ALB fail. Without it, DNS keeps returning an ALB that has no working backend.</p>",
+    "<p>Some resolvers and clients cache longer than your TTL: they enforce a minimum, keep answers if the lookup fails, or an application caches the address forever (for example a Java process with a long JVM DNS cache).</p><p>So a 60 s TTL does not guarantee that all users move in 60 s; some may take 5 to 10 minutes. Plan for it: expect a tail of slow clients, set the app DNS cache low, and use Global Accelerator or an anycast address when you need seconds, because the IP stays the same while the backend changes.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>Cross-AZ traffic within a Region costs about 0.01 USD per GB in each direction, so about 0.02 USD per GB for data that goes both ways.</p><p>Example: a chatty service pair moving 50 TB a month across zones is 50,000 GB x 0.02 = about 1,000 USD a month, and it is easy to miss on the bill because it hides in DataTransfer-Regional-Bytes. Check current pricing. Reduce it with zone-aware routing, so a request stays in its zone when possible, and by keeping tightly coupled services in the same zone with failover to other zones.</p>",
+    "<p>Allocate by usage, not equally: measure how many bytes each team sends through the shared NAT and split the cost in that proportion.</p><p>Turn on VPC Flow Logs to the NAT interface and group by source subnet or pod IP, or use per-team subnets and tag them. Example: a NAT costs 400 USD a month plus 0.045 USD per GB; if team A sends 70% of bytes, it pays 70% of the data charge, plus a fixed share of the hourly cost. Better still, give each team its own endpoint for S3 so that traffic never reaches the NAT.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>The break-even utilisation is 1 minus the discount: with a 38% discount you must use at least 62% of the commitment to come out ahead.</p><p>You pay the committed amount every hour. If commitment covers 100 USD of on-demand value, you pay 62 USD whether you use it or not. At 62% use, the on-demand cost you avoid is 62 USD, which equals what you pay. Below that you lose money; at 90% use you save 100 x 0.9 - 62 = 28 USD per hour of that block. This is why you commit below the minimum, not the average.</p>",
+    "<p>Run Spot only for workloads that tolerate interruption, spread across many instance types and zones, and handle the 2-minute warning calmly.</p><ul><li>Keep a baseline of on-demand or Savings Plan nodes for critical pods.</li><li>Use several instance types in each node group so one pool running out does not stop you.</li><li>Run a node termination handler that drains the node on notice.</li><li>Use pod disruption budgets and replicas in multiple zones.</li></ul><p>Put stateful or single-replica pods on stable nodes.</p>"
+   ],
+   "code": {
+    "title": "Commit to the floor, not the average",
+    "python": "# Commit sizing: commit to a share of the MINIMUM hourly spend, not the average.\nhourly = [42, 40, 38, 36, 35, 36, 40, 55, 70, 80, 85, 90, 88, 86, 84, 82, 78, 70, 60, 52, 48, 45, 43, 41]\ndiscount = 0.30          # example Savings Plan discount\nlow, avg = min(hourly), sum(hourly) / len(hourly)\ncommit = round(low * 0.75, 2)   # 75% of the floor\nprint(\"hourly on-demand spend:\", hourly)\nprint(f\"min={low} avg={avg:.1f} commit(75% of min)={commit}\")\n\ndef cost(commit_rate):\n    # commit is paid at discounted price every hour whether used or not;\n    # usage beyond the covered amount costs full on-demand price.\n    total = 0.0\n    for spend in hourly:\n        covered = min(spend, commit_rate / (1 - discount))  # on-demand value covered\n        total += commit_rate + (spend - covered)\n    return total\n\nprint(f\"no commitment   : {sum(hourly):.2f} per day\")\nprint(f\"commit {commit}      : {cost(commit):.2f} per day\")\nover = round(avg * 0.75, 2)      # a commit based on the average is too large\nprint(f\"commit {over} (avg): {cost(over):.2f} per day\")\n"
+   }
+  },
+  {
+   "followUps": [
+    "<p>Keep it short, tied to a real decision, and produce a small list of actions with owners, instead of a long document.</p><p>Review one workload per session for about 60 minutes, with the engineers who built it. Pick the three or four highest risks, ask what would hurt most, and turn each into a ticket with a date. Revisit the same tickets next time. A review that ends with 50 findings and no owners becomes paperwork; one that ends with three fixed risks, such as a missing restore test, is working.</p>",
+    "<p>Cost and sustainability are neglected, and operational excellence often gets only lip service, because they produce no visible outage and nobody owns them.</p><p>Security and reliability get attention after an incident; cost gets attention when the bill doubles. Teams skip game days, runbooks and tagging because feature work is more urgent. Make it visible: put cost per team on a dashboard, add a budget alarm, and schedule a game day each quarter with an owner. What is measured and owned gets done.</p>"
+   ],
+   "code": null
+  },
+  {
+   "followUps": [
+    "<p>99.99% allows about 4.3 minutes of downtime in a 30-day month, or roughly 52 minutes per year.</p><p>The calculation: a 30-day month has 43,200 minutes, and 0.01% of that is 4.32 minutes. For comparison, 99.9% allows 43.2 minutes and 99.999% allows 0.43 minutes (about 26 seconds). A single failed deploy that takes 10 minutes to roll back already breaks a 99.99% monthly target. So the target forces fast detection, automatic failover and small, gradual releases.</p>",
+    "<p>A cell-based architecture splits the system into several independent copies (cells), each serving a fixed share of customers, with no shared state between cells. A failure then only affects that cell.</p><p>Example: 10 cells each serve 10% of users; a bad deploy or poison request takes down one cell, so the blast radius is 10%, not 100%. A thin router maps each customer to a cell. You deploy to one cell first, watch it, then continue. The cost is more infrastructure and a harder migration of customers between cells.</p>"
+   ],
+   "code": {
+    "title": "Parallel and series availability",
+    "python": "# Availability maths: parallel replicas help only if failures are independent.\ndef parallel(a, n):\n    return 1 - (1 - a) ** n\n\ndef series(*parts):\n    r = 1.0\n    for p in parts:\n        r *= p\n    return r\n\napp, db, minutes = 0.999, 0.9995, 30 * 24 * 60\ntwo_apps = parallel(app, 2)\nprint(f\"one app          : {app*100:.4f}%\")\nprint(f\"two apps (claim) : {two_apps*100:.4f}%\")\ntotal = series(two_apps, db)          # the single database is in series\nprint(f\"two apps + 1 db  : {total*100:.4f}%  (limited by the db)\")\nprint(f\"downtime per month: {(1-total)*minutes:.1f} min vs claimed {(1-two_apps)*minutes:.2f} min\")\n# Common-mode failure: a bad deploy hits both replicas at once.\np_bad_deploy = 0.0005\nwith_deploy = series(two_apps, db, 1 - p_bad_deploy)\nprint(f\"with shared bad deploys: {with_deploy*100:.4f}%\")\n"
+   }
+  }
+ ]
+}

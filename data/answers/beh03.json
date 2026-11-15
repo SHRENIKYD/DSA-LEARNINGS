@@ -1,0 +1,95 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>I treat a firm no as information, not a wall. <b>Situation:</b> I wanted a team that did not report to me to adopt a shared logging format. Their lead said no because migration would cost them two sprints. <b>Action:</b> I asked what a yes would need, then offered to write the migration script myself and pilot it on one service. <b>Result:</b> the pilot took one day, errors fell 30 percent, and they adopted it voluntarily. If they still refuse, I accept it and revisit when the data changes.</p>",
+    "<p>I escalate only when a real deadline or customer harm is at stake and direct talks have stalled. My test: did I explain the cost to the other person, offer options, and wait a fair time? <b>Example:</b> two teams disagreed on an API change that blocked a launch in ten days. After two failed talks I wrote a one-page trade-off and asked both leads to meet our shared manager together. I tell the other person before I escalate, so nobody is surprised.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I have enough information when the next step is reversible and the remaining unknowns would not change my choice. I list my top three risks and ask: if this assumption is wrong, how bad and how fast can I undo it? <b>Example:</b> for a new import feature I checked 20 real files and found 3 formats; the 4th format would only add a day later, so I started. If a wrong guess costs weeks, I keep investigating; if it costs a day, I ship.</p>",
+    "<p><b>Situation:</b> I assumed users uploaded files under 10 MB. <b>Action:</b> I built the feature around that and shared the assumption in the design note. A teammate checked the logs and found 8 percent of uploads were over 200 MB. <b>Result:</b> I changed to chunked uploads before launch, losing three days instead of a failed release. <b>Lesson:</b> I now check one real data sample for each key assumption before building on it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would accept it, because the owner knows context I may lack. First I ask why, since the reason is often a constraint such as a freeze or a planned rewrite. Then I record what I found in a ticket so the issue is visible and the decision is theirs. <b>Example:</b> an owner declined my retry patch because they were replacing the job in a month. I added a temporary alert instead and checked back at the date. I raise it further only if customers are being harmed.</p>",
+    "<p>I avoid overstepping by telling the owner first, keeping my change small, and letting them review and merge it. I never edit their code silently or ask for credit. A quick check: would the owner be surprised by my change? If yes, I talk first. <b>Example:</b> I sent a message with the log lines, a two-line proposed fix, and the question 'want me to open a PR?' before touching anything. Owners usually say yes, and trust grows.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I use impact times urgency, plus cost of delay: how much does each day of waiting cost, in money or customer harm? <b>Example:</b> a bug losing 50 orders a day at 40 dollars each costs 2,000 a day, while a dashboard tweak costs nothing to wait, so the bug goes first. I like it because it gives stakeholders numbers to argue with instead of volume. Where costs are unclear I use simple high, medium, low buckets, and I always show what slips.</p>",
+    "<p><b>Situation:</b> two requests arrived the same day; I ranked a loud reporting request above a quiet data-quality fix. <b>Result:</b> the bad data went into a customer export, and we spent three days correcting it. <b>What I learned:</b> loudness is not impact. I now ask 'what breaks, for whom, and by when?' for every request, and I make the data-quality risk visible in the ranking. I also told the stakeholders openly what I had got wrong.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If they insist after hearing the cost, I ask whether they want to make the call with full information. I write down the trade-off, name what will slip, and then commit to their decision. <b>Example:</b> a director wanted a feature in two weeks instead of six. I showed that it meant skipping tests on payments; they still chose to go. I built it, added a feature flag and a follow-up ticket for tests. I escalate only if it is unsafe or illegal.</p>",
+    "<p><b>Situation:</b> a senior manager asked for a quick change and I pushed back saying it was too risky. <b>Action:</b> they explained a contract date I had not known about. <b>Result:</b> I had been wrong about the urgency, and we did a reduced version in three days with a flag. <b>Lesson:</b> I now ask 'what is driving the date?' before I say no, and I thanked them for the context.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I gather insight from several sources so that I do not rely on one loud voice. I read support tickets (count top five themes), watch behaviour data like where users drop off, and talk to five to eight customers each quarter. <b>Example:</b> 40 percent of tickets mentioned the export button, and calls showed users wanted scheduled reports instead. Opinions tell me why, numbers tell me how many, and I need both.</p>",
+    "<p><b>Situation:</b> a large customer asked us to hard-code a custom field into our core model. <b>Action:</b> I asked what outcome they wanted, and found they needed a report. I declined the schema change because it would slow every other customer. <b>Result:</b> I offered a configurable export within two weeks; they accepted, and later two other customers used it. I explained the reason openly and followed through on the alternative.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Six to eight stories is enough, if each has several angles. One strong story can show ownership, dealing with conflict and delivering results depending on what you stress. I make a grid with stories as rows and the principles as columns, and check that every principle has at least two candidates. More than ten means I cannot remember details well enough for follow-ups, which matters more than coverage.</p>",
+    "<p>I pause, ask a clarifying question, and use the nearest story rather than inventing one. For example, if asked about 'a time you failed' I can say 'my closest example is a project where I missed a milestone', and tell it honestly. If there is truly none, I say so and describe how I would act, labelled clearly as hypothetical. Fabricating a story is risky because follow-up questions expose it quickly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would stop if a metric I defined in advance crossed a limit. <b>Example:</b> for a 5 percent rollout I set stop conditions: error rate above 1 percent, p95 latency up by 20 percent, or more than 10 support tickets in an hour. Any one triggers a flag-off within five minutes. Setting these before launch matters, because in the moment it is easy to explain bad numbers away.</p>",
+    "<p>Yes, honestly. <b>Situation:</b> the rollout worked, but I had not checked the mobile client, which cached the old response shape. <b>Result:</b> about 2 percent of users saw a blank screen for an hour until I flagged it off. <b>Lesson:</b> I added mobile checks to the launch checklist and started including older client versions in my test plan. Naming a miss with a concrete fix makes a risk story more believable.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I escalate when the decision would cause real harm, break a law or policy, or rests on facts the decision-maker could not have known. A matter of taste or preference is not enough. <b>Example:</b> a plan skipped a security review for a customer-data feature. I said so once, in writing, then asked the owner's manager to review. If it is only a different approach, I commit and note my concern for later.</p>",
+    "<p><b>Situation:</b> I argued for a gradual migration but the group chose a one-weekend cutover. I stated my concern once, then helped plan it, including a rollback plan. <b>Result:</b> the cutover hit a data issue and the rollback saved us two hours in; the team later adopted a phased approach for the next move. I did not say 'I told you so'; I shared my notes and focused on the next step.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If the owner does not answer, I try a second channel, then their manager, giving them a clear, short summary and a deadline. I wait a reasonable time based on severity: a day for a minor bug, an hour for an outage. <b>Example:</b> after two unanswered messages I posted in the team channel with the logs and a proposed fix, and the manager approved it the same day. I document what I did so the owner sees it later.</p>",
+    "<p>I avoid being pushy by making it easy and low-pressure: bring evidence, a small proposal, and an offer, not a demand. 'I noticed this fails on Mondays, here are three log lines, happy to open a PR if useful' sounds very different from 'you need to fix this'. I accept a no gracefully and I follow up once. People call me pushy when I skip the owner or keep repeating; I do neither.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I ask them to separate their own actions from the team's. Then I ask for evidence: a number, a ticket, a message. <b>Example:</b> a junior said 'I led the migration'; I asked 'what exactly did you decide?' and they admitted they wrote one module. I tell them that an honest small story beats an inflated one, because interviewers probe details. We rewrite the story with accurate 'I' statements.</p>",
+    "<p>I would look for stories in school projects, volunteering, open source, part-time jobs or personal projects. Teaching someone, organising an event or fixing a family business spreadsheet all show ownership. <b>Example:</b> a student ran a hackathon team of four and fixed a late integration. The STAR structure works the same: situation, their task, their actions, a result with a number. Stories need to be real and small, not impressive.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>AI helps least with the experience itself: your specific memories, numbers and feelings. It cannot know what you decided in a tense meeting or why. It also tends to smooth stories into generic text and sometimes adds results that never happened. I use it for structure and follow-up questions, but the facts must come from my own notes, which I write first, then ask AI to tighten wording only.</p>",
+    "<p>I probe for detail. A scripted or AI-generated answer is polished but vague on specifics, so I ask 'what was the exact number?', 'what did the other person say?', or 'what would you change?'. Real memory answers quickly with odd details and honest doubt; a scripted one repeats the same phrases or collapses. I do not treat AI preparation itself as a flaw. I look for ownership of the story.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The team was uneasy at first, since we dropped work they had nearly finished. I explained the reason openly with the customer data, named what we would stop and what we would still deliver, and asked for their concerns. After a day, most were relieved to have a clear target. <b>Example:</b> two people asked to finish their half-built feature, so we parked it with notes instead of deleting it. Morale improved because the reasoning was shared.</p>",
+    "<p>The signal was a number, not a feeling. <b>Situation:</b> halfway through a quarter, usage data showed 70 percent of users never reached the feature we were building, because they left at an earlier sign-up step. <b>Action:</b> I brought the funnel chart to my manager within two days and proposed switching to fixing sign-up. <b>Result:</b> conversion rose 12 percent in a month. I define in advance which metrics would make me change course.</p>"
+   ]
+  }
+ ]
+}

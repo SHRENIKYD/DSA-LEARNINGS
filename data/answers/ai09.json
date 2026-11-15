@@ -1,0 +1,103 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "A tiny RAG pipeline end to end",
+    "python": "# Tiny RAG: chunk -> retrieve by word overlap -> assemble a grounded prompt\ndocs = {\n    \"hr.md\": \"Employees get 25 days of annual leave. Unused days carry over until March.\",\n    \"it.md\": \"Reset your password from the portal. Passwords expire every 90 days.\",\n}\nquestion = \"How many days of annual leave do employees get\"\n\ndef words(text):\n    return set(text.lower().replace(\".\", \"\").split())\n\n# Ingest + chunk: one sentence per chunk, keep the source name\nchunks = []\nfor name, text in docs.items():\n    for sentence in text.split(\". \"):\n        chunks.append((name, sentence.strip(\". \")))\n\n# Retrieve: score = number of shared words (a stand-in for vector similarity)\nscored = sorted(chunks, key=lambda c: -len(words(question) & words(c[1])))\ntop = scored[:1]\n\n# Assemble: the model is told to answer only from the context and cite\ncontext = \"\\n\".join(\"[%s] %s\" % (n, t) for n, t in top)\nprint(\"Question:\", question)\nprint(\"Prompt context:\\n\" + context)\nprint(\"Cite:\", top[0][0])\n"
+   },
+   "followUps": [
+    "<p>Count the pages in tokens first: a 200-page manual is roughly 100k to 150k tokens, so it may fit, but fitting is not the same as working well. Use long context when the document is static, used rarely, and you can afford the tokens per query; use RAG when many questions hit the same manual and cost or speed matters.</p><p>Example: 120k tokens x 1,000 queries a day is 120M input tokens daily, while RAG sends about 3k per query, 3M in total. Also test accuracy: models can miss facts in the middle of very long inputs. Run both on 50 real questions and compare.</p>",
+    "<p>Cost per query is the sum of a few small parts, and the generation call usually dominates. Embedding the question is almost free, the vector search is cheap compute, a reranker adds a little, and the model reads the retrieved text plus the answer it writes.</p><p>Example with placeholder prices: 4 chunks x 500 tokens plus 300 tokens of instructions is 2,300 input tokens; at 3 dollars per million that is about 0.007 dollars, plus roughly 0.003 for a 200-token answer at 15 dollars per million output. Total near one cent. Multiply by daily queries, and add fixed index hosting.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I suspect retrieval first, because most missing-knowledge complaints are the right chunk never reaching the model. Check in order: is the text in the index at all (ingestion, parsing, permissions), then was it retrieved at all for that query.</p><p>Example: a policy PDF parsed as an image gives zero text, so no query can ever find it. A quick test is to search the raw chunk text for a unique phrase. Only when the chunk is retrieved at a good rank do I look at the prompt and the model.</p>",
+    "<p>Log enough to rebuild the exact request later. For every query store: the raw question, the rewritten query, the filters applied, the retrieved chunk IDs with scores and ranks, the reranked order, the final prompt (or a hash plus the template version), the model name and settings, the answer and the citations.</p><p>Also record the index version and chunker config, because the same query can behave differently after a re-index. Example: with these fields, a bad answer from last Tuesday can be replayed offline against the old index and compared with today's. Redact personal data in logs.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fixed-size chunking with overlap",
+    "python": "# Fixed-size chunking with overlap (size and overlap in words)\n# Time O(N), space O(N) for N words\ndef chunk(words, size, overlap):\n    step = size - overlap          # how far the window moves each time\n    out = []\n    for start in range(0, len(words), step):\n        out.append(words[start:start + size])\n        if start + size >= len(words):   # last window reached the end\n            break\n    return out\n\nwords = [\"w%d\" % i for i in range(1, 21)]\nprint(\"input:\", \" \".join(words))\nfor i, c in enumerate(chunk(words, 8, 2)):\n    print(\"chunk\", i, \":\", \" \".join(c))\n# Overlap repeats 2 words so an idea cut at a boundary appears whole in one chunk\n"
+   },
+   "followUps": [
+    "<p>For code, split along its structure instead of by a fixed number of tokens. A function or class is a natural unit, so parse the file (for example with a syntax tree) and make one chunk per function, with no overlap because the boundaries are already clean.</p><p>Add context that a lone function lacks: the file path, the class name and imports or the signature as a prefix. Very long functions are split at inner blocks. Example: a 40-line method becomes one chunk headed by its path and class; a 600-line one becomes several block chunks that each repeat the header.</p>",
+    "<p>A chunk is too big when it mixes several topics or when it is far over what the question needs. Signs: the matched chunk is relevant but only one small part answers the question, similarity scores look flat across many results, and prompts fill the token budget with few chunks.</p><p>Measure it: compute the token length distribution and flag chunks over the embedding model's input limit or above, say, the 95th percentile. Example: if the median is 350 tokens and some chunks are 2,000, those are likely whole pages that were never split. Read a sample by eye and compare recall with a smaller size.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Late interaction, as in ColBERT, keeps one vector per token instead of one per passage, then scores a query by matching each query token to its best passage token. It sits between a bi-encoder and a cross-encoder in both cost and quality.</p><p>Because passage token vectors are still pre-computed, search stays fast, but the matching is finer than a single dot product: score = sum over query tokens of the maximum similarity to any passage token. Example: a query with 5 tokens against a passage of 100 tokens does 5 x 100 small comparisons. The price is storage, since an index holds many vectors per passage.</p>",
+    "<p>Set the threshold from data, not from a guess. Take a labelled set of query and chunk pairs, run the cross-encoder, and plot scores for relevant versus irrelevant pairs. Pick the cut-off that keeps the recall you need, for example 95 percent of relevant chunks, and see how much noise passes.</p><p>Example: if relevant chunks score above 0.62 in 95 percent of cases and irrelevant ones above 0.62 in 10 percent, use 0.62. Scores are model specific and not comparable across models, so recalibrate after any change. Combine with a top-k cap so you never send too many.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Cluster the failures by where the gold chunk was lost, then fix the biggest bucket. Build a script that, for each failed question with a known gold chunk, runs the same checks you would do by hand and writes a label.</p><p>Steps: 1) is the text in the index, 2) what is its rank at k=50, 3) was it filtered out, 4) did it fit the budget, 5) otherwise mark as generation. Example result: 1,000 failures become 120 not indexed, 540 rank 11 to 50, 90 filtered, 40 trimmed, 210 generation. That points to a reranker and larger k first.</p>",
+    "<p>Then the problem is generation or the prompt, not retrieval, so inspect what the model actually saw. Check that the chunk really made it into the final prompt and was not truncated, and look at where it sits among other chunks.</p><p>Common causes: the prompt says to answer only if certain, the chunk uses different wording or a table the model misreads, a contradictory chunk ranks alongside it, or the evidence is split over two chunks. Fixes are a clearer instruction, better chunk formatting, reordering, or a faithfulness-style check. Test with a few runs to see how often it fails.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Recall@k and MRR on a golden set",
+    "python": "# Retrieval metrics: recall@k and MRR over a tiny golden set\n# Each entry: (ranked chunk ids returned, gold chunk id)\nruns = [\n    ([\"c4\", \"c1\", \"c9\"], \"c1\"),   # gold at rank 2\n    ([\"c7\", \"c2\", \"c3\"], \"c3\"),   # gold at rank 3\n    ([\"c5\", \"c6\", \"c8\"], \"c1\"),   # gold missing\n    ([\"c1\", \"c2\", \"c3\"], \"c1\"),   # gold at rank 1\n]\nk = 2\nhits = 0\nrr_total = 0.0\nfor ranked, gold in runs:\n    if gold in ranked[:k]:          # recall@k: gold inside the top k\n        hits += 1\n    if gold in ranked:              # reciprocal rank: 1 / position of gold\n        rr_total += 1.0 / (ranked.index(gold) + 1)\nprint(\"queries:\", len(runs))\nprint(\"recall@%d = %d/%d = %.2f\" % (k, hits, len(runs), hits / len(runs)))\nprint(\"MRR = %.3f\" % (rr_total / len(runs)))\n"
+   },
+   "followUps": [
+    "<p>Use the standard error formula for a proportion: it tells you how large a test set must be to see a difference beyond random noise. A 3-point change needs a few hundred questions, usually more than the 100 to 200 that are enough for rough work.</p><p>Example: at 80 percent accuracy, one run on N questions has a standard error of sqrt(0.8 x 0.2 / N). For N=200 that is about 2.8 points, so a 3-point change is within noise. With paired comparison (the same questions for both versions) the noise drops a lot; N=500 to 1,000 gives a reliable signal.</p>",
+    "<p>Keep a part of the data that you never look at while tuning, and only use it to confirm a final choice. Split the golden set into a dev set you inspect freely and a held-out test set used rarely, ideally once per release.</p><p>Also refresh it: add new questions from recent production logs, and treat any question you fixed by hand as moved into dev. Example: if the dev score rises from 70 to 85 but the held-out score stays at 71, you have been fitting dev. Record the number of times the test set was checked.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>That answer can be correct and still count as unfaithful, because faithfulness measures grounding in the retrieved text, not truth. In a closed-book setup that is a problem to flag, since the user cannot verify it and the knowledge may be stale.</p><p>Decide the policy up front. For a company assistant, unsupported claims usually should be removed or trigger a fallback, because the promise is that answers come from the documents. Example: the context says leave is 25 days, the model adds that the legal minimum is 20; that second claim is unsupported and is dropped or marked as general knowledge.</p>",
+    "<p>It can be large if done naively, since each answer needs an extra model call per claim or one call that lists them. Roughly it doubles the generation cost, so many teams check every answer only for high-risk uses and sample the rest.</p><p>Example: an answer with 6 claims checked in one judge call of 2,500 input tokens costs about as much as the answer call itself, and adds 300 to 800 ms. Cheaper options: a small NLI model, a smaller judge model, checking in parallel with streaming, or running it offline on 5 percent of traffic.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Multi-query results merged with RRF",
+    "python": "# Multi-query search fused with Reciprocal Rank Fusion (RRF)\n# score(doc) = sum over lists of 1 / (60 + rank)\nrankings = {\n    \"refund policy\":        [\"d3\", \"d1\", \"d7\"],\n    \"how to get money back\": [\"d5\", \"d3\", \"d2\"],\n    \"return an order\":      [\"d3\", \"d5\", \"d9\"],\n}\nK = 60\nscores = {}\nfor query, ranked in rankings.items():\n    print(query, \"->\", ranked)\n    for rank, doc in enumerate(ranked, start=1):\n        scores[doc] = scores.get(doc, 0.0) + 1.0 / (K + rank)\nfused = sorted(scores.items(), key=lambda kv: -kv[1])\nprint(\"fused:\")\nfor doc, s in fused[:4]:\n    print(\" \", doc, round(s, 4))\n# d3 appears in all three lists, so it wins even though it was not first everywhere\n"
+   },
+   "followUps": [
+    "<p>Put the constraints that must not change in a protected form, and verify them after the rewrite. Do not trust the model to keep everything; extract identifiers first, then check the rewritten query still contains them.</p><p>Example: the user asks about version 3.2 of the API. Pull out tokens such as numbers, product names and dates with a regex, tell the rewriter to keep them, and after rewriting confirm that 3.2 appears; if not, fall back to the original query. Also pass the same constraints as metadata filters (version = 3.2) so they apply no matter how the text changes.</p>",
+    "<p>Cache where the same work repeats and the inputs are stable. The cheapest wins are the embedding of a normalised query and the retrieval result for it; next the rewrite output keyed by query plus conversation summary.</p><p>Example: normalise text to lower case and trimmed, hash it, and store the embedding for a day; a hit saves about 50 ms and a call. Cache keys must include the user's permission group and the index version, or you may leak or serve stale results. Answers can be cached too, but only for non-personal questions.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Parent-child retrieval with dedupe",
+    "python": "# Parent-child chunking: match small children, return deduped parents\nparents = {\n    \"p1\": \"Returns: items can be returned within 30 days. Refunds go to the original card.\",\n    \"p2\": \"Shipping: orders ship in 2 days. Express costs extra.\",\n}\n# Children are single sentences that remember their parent id\nchildren = []\nfor pid, text in parents.items():\n    for s in text.split(\". \"):\n        children.append((pid, s.strip(\".\")))\n\nquery = set(\"refunds original card\".split())\ndef score(child):\n    return len(query & set(child[1].lower().replace(\":\", \"\").split()))\n\nranked = [c for c in sorted(children, key=lambda c: -score(c))[:3] if score(c) > 0]\nprint(\"top children:\", [(c[0], score(c)) for c in ranked])\nseen, result = set(), []\nfor pid, _ in ranked:               # dedupe: each parent returned once\n    if pid not in seen:\n        seen.add(pid)\n        result.append(pid)\nprint(\"parents sent to prompt:\", result)\nprint(parents[result[0]])\n"
+   },
+   "followUps": [
+    "<p>Keep a set of IDs while building the final list, and add a parent only the first time you see it. Because parents are ranked by their best-scoring child, the first time you meet a parent it is already at its best position.</p><p>Example: children c1 (parent A), c2 (parent A), c3 (parent B), c4 (parent A) give parents A, B and you skip the repeats. Complexity is O(h) for h hits with a hash set. Do this before filling the token budget, or duplicates waste space.</p>",
+    "<p>Do not send it whole; send the part that matters. A 5,000-token parent can crowd out other evidence, so fall back to a window around the matching child, such as the child plus its neighbours on each side.</p><p>Steps: if the parent is over a limit (say 1,500 tokens), take the matched child and the previous and next 1 or 2 children, or the sub-section it belongs to. Also consider a second, mid-sized level (child, section, document). Example: from a 5,000-token chapter you return a 600-token window centred on the hit and keep the heading.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look at the whole path of steps, not only the final answer, because a right answer can come from a wasteful or lucky path. Compare the sequence of tool calls with a reference path and score each step.</p><p>Useful checks: were the right tools called, in a sensible order, with correct arguments; was each retrieved result used; how many rounds and tokens did it take. Example: expected path is search then read ticket then answer (3 steps); a run that searched 7 times has the right answer but a poor efficiency score. Use step-level labels on a small set, plus automatic limits.</p>",
+    "<p>Hard limits in code, not in the prompt. Set a maximum number of rounds, a token budget and a wall-clock timeout, and stop with a best-effort answer or a clear failure message when any is hit.</p><p>Also detect repeats: if the agent issues the same tool call with the same arguments twice, stop or force a different action. Example: max 4 rounds and 15 s; on round 4 the loop ends and the answer says what was found so far. Log rounds per query, because a rising average is an early warning.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do it at both the source and the index so the change takes effect quickly. The safe approach is to store the allowed group IDs as metadata on each chunk and filter at query time, so a change is just a metadata update on that document's chunks.</p><p>Steps: an ACL-change event goes into the queue; a worker finds all chunks by document ID and updates their group list (no re-embedding needed); caches keyed by that document are cleared. Example: a document moves from Everyone to Finance only, and 40 chunks are updated within seconds. Until the update lands, also check access against the source system at answer time for sensitive content.</p>",
+    "<p>Work backwards from load and memory. Estimate vectors, bytes per vector, queries per second and the latency target, then add replicas for traffic and shards for memory.</p><p>Example: 100M documents at about 5 chunks each is 500M vectors; at 1024 floats (4 KB) that is 2 TB raw, or about 0.5 TB with 8-bit quantisation. With 64 GB usable per node that needs roughly 10 to 12 shards, and 2 replicas for 100 queries per second gives about 30 nodes. Add GPU nodes for the reranker sized by candidates per second, and load test before trusting the numbers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Prompt caching makes the repeated part of a long prompt much cheaper and faster, so long context becomes viable for a document that many queries share. The cached prefix must be identical and placed first, with the question at the end.</p><p>Example: a 120k-token manual with placeholder rates where cached input costs 10 percent of the normal price: the first call costs 120k units, later calls about 12k, a 10x saving. Caches expire after a short time, so it fits only steady traffic. It still cannot filter by permission, and the cost and latency per call remain far above RAG's 3k tokens.</p>",
+    "<p>Yes, but only after the simpler fixes, and only when you have the data. Fine-tuning the embedding model helps when the domain language is unusual (internal codes, medical or legal terms) and generic models miss matches. A fine-tuned reranker helps when ordering is the problem.</p><p>You need several thousand labelled query and passage pairs, often with hard negatives (similar but wrong chunks). Cost: you must re-embed the whole corpus after changing the embedding model. Example: recall@10 stays at 0.72 despite hybrid search and good chunks, then a tuned embedder lifts it to 0.81; check it with the held-out set.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,104 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Anything where the thinking or the facts are the point. I do not use it for decisions about people, for urgent work where checking would take longer than writing, or for tasks with sensitive data. Example: a short reply to a colleague takes me 30 seconds; prompting and checking would take longer, so I just write it.</p>",
+    "<p>I compare before and after on a few repeatable tasks. For a month I note the minutes a weekly report takes with and without the assistant, including checking time. If drafting drops from 60 minutes to 30 and checking adds 10, the saving is about 20 minutes, not 30. Real numbers beat a feeling of speed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Now I check numbers, names, dates and promises first, because errors cluster there. I ask the tool for clause or page references, open the original, and read the exact words. In the contract example, one clause lookup (about two minutes) caught a 2% monthly fee that the summary missed.</p>",
+    "<p>Yes. I told my manager and the colleague who would have used the summary, and I shared the fix: always ask for references and check them. Owning the mistake early is better than hiding it, and it helps the team improve its routine. I also noted it in our shared tips so others avoid the same trap.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Redacting personal data before using AI",
+    "python": "import re\n\n# Redact obvious personal data before pasting text into an AI tool.\ntext = \"Hi, Maria Lopez (maria.lopez@example.com, 555-123-4567) asked about card 4111 1111 1111 1111.\"\nnames = [\"Maria Lopez\"]  # known names, listed by hand\n\nrules = [\n    (r\"[\\w.+-]+@[\\w-]+\\.[\\w.]+\", \"[EMAIL]\"),        # emails\n    (r\"\\b\\d{3}-\\d{3}-\\d{4}\\b\", \"[PHONE]\"),          # phone numbers\n    (r\"\\b(?:\\d{4}[ -]?){3}\\d{4}\\b\", \"[CARD]\"),        # card numbers\n]\n\nout = text\nfor n in names:\n    out = out.replace(n, \"[NAME]\")\nfor pattern, tag in rules:\n    out = re.sub(pattern, tag, out)\n\nprint(\"Before:\", text)\nprint(\"After: \", out)\n# Cost: O(length * number of rules); always re-read the result yourself.\n"
+   },
+   "followUps": [
+    "<p>Approved does not mean unlimited. Even in an approved tool I share only what the task needs and I follow the policy for each data type. For example, if the tool is approved for internal documents, I still would not paste health records unless the policy says so. Ask first when unsure; the minimum necessary data is the rule.</p>",
+    "<p>I remove or replace anything that identifies a person before pasting: names, emails, phone numbers, ID and card numbers, addresses. I replace them with tags like [NAME] so the text still makes sense, then re-read the result myself, since automatic rules can miss things. The program shows a small version of this.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Check numbers in a summary against the source",
+    "python": "import re\n\n# Check numbers in an AI summary against the source text.\nsource = \"Revenue was 120 in Q1 and 150 in Q2. Late fee is 2% per month.\"\nsummary = \"Revenue grew from 120 to 180. Late fee is 2% per month.\"\n\ndef numbers(s):\n    return set(re.findall(r\"\\d+\", s))\n\nsrc = numbers(source)\nprint(\"Source nums :\", sorted(src, key=int))\nprint(\"Summary nums:\", sorted(numbers(summary), key=int))\nfor n in sorted(numbers(summary) - src, key=int):\n    # a number in the summary that the source never contains\n    print(\"CHECK THIS NUMBER:\", n)\n# Cost: O(length) time, O(distinct numbers) space.\n"
+   },
+   "followUps": [
+    "<p>If there is truly no time, I do not send unchecked claims as fact. I check the highest-risk items only (numbers, names, dates, promises, anything legal or financial), and label the rest clearly as unverified. For example, with 10 minutes I check the 5 figures that drive the decision and mark the rest as draft.</p>",
+    "<p>Not blindly. Citations can be invented or point to a real source that does not say what is claimed. I open each one and find the exact sentence. A quick routine: does the source exist, is the date right, does the text support the claim? If any answer is no, I drop the citation and the claim until I verify them.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Anything about refunds, compensation, deadlines, legal liability or policy exceptions that I have not confirmed. The AI cannot know what the company will honour, so a line like 'we will refund you in full' could create a promise we cannot keep. I give it the allowed options and delete any promise I did not supply.</p>",
+    "<p>I add specifics only I know: the customer's actual situation, one sentence in my own voice, and the real next step with a name and date. I also cut stock phrases such as 'we sincerely apologise for any inconvenience'. Reading the message aloud helps: if I would not say it to the customer's face, I rewrite it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would listen first, then offer something practical instead of reassurance. I might run a 20 minute session on one real task, such as turning meeting notes into action items, and let them judge the result. Seeing it needs their checking helps them see their role. I would not promise that jobs will not change.</p>",
+    "<p>Judgement, knowing customers, relationships, clear communication and the ability to check quality. When drafting is cheap, deciding what is right to say, and noticing when the output is wrong, matters more. Domain knowledge also gains value because only an expert can spot a subtle error in a fluent answer.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would measure time saved and quality before and after. For example, if weekly status emails took 40 minutes and now take 25 including checking, that is 15 minutes saved, or about 37%. For quality I count edits needed and errors caught in review. Also ask the team how confident they feel and whether the rules are followed.</p>",
+    "<p>Anything high stakes or hard to check: decisions about people, legal advice, sensitive data and final customer commitments. In the first month I would stay with drafts of routine text and summaries where every output is read by a person before it goes anywhere. Widen the scope only after the checks have worked.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I tell them truthfully, in line with our policy and what they ask. If a client asks directly whether AI was used, I say yes, describe what it did (for example a first draft or a summary) and what I checked myself. Hiding it would damage trust more than the answer would; and I would not claim more human work than there was.</p>",
+    "<p>Usually not, unless the policy or the context requires it. A short internal email drafted with help is normal, like using spellcheck. I would label it when readers might rely on it as my own expert analysis, such as a report with figures, or when the policy says so. My test is whether the reader would feel misled.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Spot-checking a computed rate by hand",
+    "python": "# Spot-check a no-show rate computed from a small table.\nrows = [(\"Mon\", 1), (\"Mon\", 0), (\"Mon\", 0), (\"Mon\", 1),\n        (\"Tue\", 0), (\"Tue\", 0), (\"Tue\", 1), (\"Tue\", 0)]\n# (weekday, no_show) with client names already removed\n\ndef rate(day):\n    flags = [f for d, f in rows if d == day]\n    return sum(flags) / len(flags)\n\nfor day in [\"Mon\", \"Tue\"]:\n    print(day, \"no-show rate:\", rate(day))\n\n# Spot check by hand: Mon has 4 rows, 2 no-shows -> 0.5\nassert rate(\"Mon\") == 0.5\nprint(\"Hand check for Mon passed\")\n# Cost: O(rows) per day.\n"
+   },
+   "followUps": [
+    "<p>Formulas that are wrong but plausible hide in them: a sum range that misses the last row, text stored as numbers, duplicated rows, blank cells treated as zero, or mixed date formats. Example: a total of 4,980 instead of 5,030 because row 51 was left out. Sanity checks (counts, totals, a recalculation by hand) catch these.</p>",
+    "<p>I did a sense-check: the weekday rates had to fall between 0 and 100%, the row counts had to add up to the total, and I recomputed two weekdays by hand. If Monday has 4 rows and 2 no-shows, the rate must be 0.5. When AI numbers disagree with a hand count, I trust the count and look for the cause.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A real example: a performance review for a named colleague. I would write it myself, because it affects a person's career and needs my own observations. AI could help me tidy the wording afterwards. Another is a condolence note: the personal care is the point, and a generic message would feel hollow.</p>",
+    "<p>I would be careful. I would use AI to explain terms or draft questions for a lawyer, but not to give final wording or advice on a contract without a qualified person reviewing it. Errors there can be costly, and I cannot check the result alone. I would also check whether the document is confidential before sharing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>This morning I read the release notes our IT team sent about a new summarising feature. I tried it on a low-risk meeting note, compared the output with my own notes, and found it missed an action item. I shared that finding with my team. Small trials like this teach more than reading headlines.</p>",
+    "<p>I ask four questions: is it approved and where does the data go, what task does it do better than what I have, can I check its output, and what does it cost in time and money? I trial it on a harmless task for a week, compare with my usual way, and read the provider's official help page before relying on a claim.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would cut breadth before accuracy: fewer sections, fewer comparisons, and optional background. The numbers and the recommendation must stay verified. I would put the cut items in a clear 'phase 2' list. A shorter report with correct figures serves the decision better than a long one with doubtful figures.</p>",
+    "<p>I mark each claim as verified, estimated or unverified, and say where it came from. For example: 'Revenue 150 (checked against the ledger); churn about 5% (AI estimate, not yet checked)'. Put these flags at the top, not in a footnote, so the manager sees what can be relied on before deciding.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look for details that are too neat or cannot be traced: exact statistics with no source, citations with odd titles, confident claims about our own policy, names or dates that differ from what I know. Then search for the source. Example: a 'study' with a precise 37.4% that I cannot find anywhere is a warning sign.</p>",
+    "<p>They reduce the problem but do not solve it. A tool that searches can still misread a page, quote an outdated source, or cite a link that does not say what is claimed. I still open the source and read the sentence. Good habit: treat search results as leads, not proof, and check anything important.</p>"
+   ]
+  }
+ ]
+}

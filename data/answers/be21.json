@@ -1,0 +1,116 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>They are lost or killed with the pod. BackgroundTasks run inside the web process, so when Kubernetes sends SIGTERM during a rolling update, any task still running only survives until the grace period ends; after that the process gets SIGKILL and the work vanishes with no retry.</p><p>Uvicorn does wait for in-flight requests, but you cannot rely on it for slow tasks. Example: a 40 s task started 5 s before a 30 s grace period ends dies half done. Keep such tasks tiny and optional, or move them to a queue.</p>",
+    "<p>Store the job in a table or Redis, return <code>202 Accepted</code> with a job id, and expose <code>GET /jobs/{id}</code> that reads the state.</p><ol><li>POST creates a row <code>(id, status='queued')</code> and enqueues the task with that id.</li><li>The worker sets <code>running</code>, then <code>done</code> with a result or <code>failed</code> with an error.</li><li>GET returns 200 with the status, 404 if unknown; add a <code>Location</code> header on the 202.</li></ol><p>Clients poll every few seconds, or you push via webhook or SSE. Delete old rows after a retention period.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Early ack vs late ack after a worker crash",
+    "python": "# Early ack vs late ack when a worker crashes mid-task.\nfrom collections import deque\n\ndef run(acks_late):\n    queue = deque([\"charge-42\"])      # the broker's message list\n    charged = []                      # side effects that really happened\n    crash_next = True                 # first run dies after the side effect\n    while queue:\n        msg = queue.popleft()         # worker receives the message\n        if not acks_late:\n            pass                      # early ack: message is already gone\n        else:\n            queue.appendleft(msg)     # late ack: broker keeps it until done\n        charged.append(msg)           # the side effect happens\n        if crash_next:\n            crash_next = False\n            print(\"  worker crashed after charging\", msg)\n            continue                  # late ack: message is still queued\n        if acks_late:\n            queue.popleft()           # ack after success\n    return charged\n\nfor late in (False, True):\n    result = run(late)\n    print(\"acks_late =\", late, \"-> charges:\", result)\n# Time O(messages), space O(messages).\n"
+   },
+   "followUps": [
+    "<p>With Redis, a prefetched message is delivered to a worker but not yet acknowledged, and Redis only redelivers by timer. If the prefetched message waits behind long tasks longer than the <code>visibility_timeout</code>, Redis assumes the worker died and hands it to another worker, so it runs twice.</p><p>Example: prefetch 4, tasks of 10 min, visibility timeout 1 h: the fourth message waits 30 min and is fine, but with 20 min tasks it waits 60 min and gets duplicated. Use <code>worker_prefetch_multiplier=1</code> and a timeout longer than the longest task or ETA.</p>",
+    "<p>Leave early ack for work where losing it is cheaper than running it twice, or where the task is naturally harmless to repeat. Examples: cache warm-ups, sending a non-critical metric, refreshing a thumbnail, a notification that is stale after a minute.</p><p>Also tasks that are not idempotent and cannot be made so, such as calling a provider with no idempotency key: a lost job (you notice and retry by hand) is often better than an automatic double action. Money and orders should use late ack plus idempotency.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because Celery tasks are synchronous functions, you run the coroutine to completion inside them with <code>asyncio.run()</code>: it creates a fresh event loop, runs the coroutine and closes the loop.</p><pre><code>@app.task\ndef fetch(url):\n    return asyncio.run(_fetch(url))</code></pre><p>Create clients inside the coroutine, because async clients and pools are bound to one loop and cannot be reused across calls. This costs a loop setup per task. If most jobs are async I/O, prefer arq or Taskiq, which run coroutines natively.</p>",
+    "<p>Use a workflow engine (Temporal, Step Functions, Airflow-like systems) when a process lasts minutes to months, has many steps, waits for humans or timers, and must resume exactly where it stopped after a crash. A queue only delivers single messages.</p><p>Example: an order saga (reserve stock, charge, ship, refund on failure). With a queue you hand-write state tables, retries, compensation and timers; an engine records every step durably, replays it after failure and gives you history and visibility. For one short idempotent job, a queue is simpler.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotency key stops a double charge",
+    "python": "# Idempotency key: a retry or duplicate delivery must not charge twice.\nimport sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE payments (idem_key TEXT PRIMARY KEY, amount INTEGER)\")\n\ndef charge(key, amount):\n    try:\n        with db:  # one transaction; the UNIQUE key claims the work\n            db.execute(\"INSERT INTO payments VALUES (?, ?)\", (key, amount))\n        return \"charged\"\n    except sqlite3.IntegrityError:\n        return \"skipped (duplicate)\"\n\n# the same message delivered three times\nfor attempt in range(1, 4):\n    print(\"delivery\", attempt, \"charge-order-42:\", charge(\"charge-order-42\", 100))\nprint(\"other order:\", charge(\"charge-order-43\", 50))\nrows = db.execute(\"SELECT idem_key, amount FROM payments ORDER BY idem_key\").fetchall()\nprint(\"rows in table:\", rows)\n# Each charge is one indexed insert: O(log n) time.\n"
+   },
+   "followUps": [
+    "<p>Keep them for as long as a duplicate could still arrive, which is the longest retry window plus a safety margin. For API retries that is often 24 hours to 7 days; Stripe-style keys last 24 hours.</p><p>For a unique row on a business action such as <code>charge-order-42</code>, keep it as long as the order record exists, since it is the same data. Example: queue redelivery happens within hours, but a customer retry after a timeout may come the next day, so 48 hours covers both. Expire keys with a TTL or a cleanup job to keep the table small, and index the key.</p>",
+    "<p>Build the idempotency yourself with state and a lookup before charging again. Record an intent row <code>(order, status='charging')</code> before the call, with a unique constraint. After a timeout or crash, do not retry blindly: query the provider by your own reference (order id in metadata or description) to see whether the charge exists.</p><ol><li>Found: mark paid, do not charge.</li><li>Not found: charge once more.</li></ol><p>If neither is possible, use a single worker per order (a lock) and reconcile daily against the provider's report to catch and refund duplicates.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Exponential backoff with full jitter",
+    "python": "# Retry with exponential backoff and full jitter (delays are computed, not slept).\nimport random\n\nrandom.seed(7)\nBASE, CAP, MAX_ATTEMPTS = 0.5, 8.0, 5\n\nclass Transient(Exception):\n    pass\n\ncalls = {\"n\": 0}\ndef flaky_api():\n    calls[\"n\"] += 1\n    if calls[\"n\"] < 4:                 # fails 3 times, then succeeds\n        raise Transient(\"503\")\n    return \"ok\"\n\ndef call_with_retry():\n    for attempt in range(MAX_ATTEMPTS):\n        try:\n            return flaky_api()\n        except Transient as e:\n            ceiling = min(CAP, BASE * 2 ** attempt)   # exponential, capped\n            delay = random.uniform(0, ceiling)        # full jitter\n            print(f\"attempt {attempt + 1} failed ({e}); ceiling {ceiling:.1f}s, wait {delay:.2f}s\")\n    raise RuntimeError(\"give up: send to dead-letter queue\")\n\nprint(\"result:\", call_with_retry(), \"after\", calls[\"n\"], \"calls\")\n# Worst case total wait is bounded by MAX_ATTEMPTS * CAP.\n"
+   },
+   "followUps": [
+    "<p>Because it spreads clients out randomly; a fixed delay makes every failed client retry at the same moment, creating a thundering herd that hits the recovering service together again and again.</p><p>Example: 1,000 clients fail at once. With a fixed 2 s delay all 1,000 return at t=2 s. With full jitter on a 2 s ceiling, about 500 return per second spread across 0 to 2 s, so the load is a gentle stream. Full jitter does <code>random(0, ceiling)</code>, which gave the lowest total work in AWS's well-known analysis.</p>",
+    "<p>They stack with yours and multiply attempts. If an SDK retries 2 times and your wrapper retries 3 times, one logical call can send 3 x 3 = 9 requests, and a rate-limited API gets worse. Their retries also have their own timeouts, so your total deadline can be blown.</p><p>Pick one layer: either set the SDK's <code>max_retries=0</code> and own the policy (with Retry-After, jitter, budget), or trust the SDK and do not wrap it. Log each attempt so you can see which layer retried.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a lock in Redis so only one pod rebuilds the value: <code>SET lock:key token NX EX 10</code>. The pod that gets the lock loads from the database and writes the cache; the others wait briefly and re-read the cache, or serve the stale value.</p><pre><code>if r.set(lk, tok, nx=True, ex=10):\n    v = load_db(); r.set(k, v, ex=300)\nelse:\n    sleep(0.05)  # then re-read k</code></pre><p>The lock expires on its own so a crashed pod cannot block forever. Release only if the token still matches. Result: one DB query instead of hundreds when a hot key expires.</p>",
+    "<p>Choose write-through when readers must see the new value immediately after a write and stale data is costly, and writes are not too frequent. With cache-aside you delete the key and the next reader pays a miss; with write-through the cache is updated in the same step.</p><p>Examples: exchange rates, a feature-flag service, user settings read on every request. The cost is that every write hits both stores, and you must handle a failure between the two writes (write the DB first, then the cache, and fall back to a miss if the cache write fails).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Write-behind counter buffer with batched flush",
+    "python": "# Write-behind: buffer counter updates, flush them to the \"database\" in batches.\ndb_writes = []          # each item is one UPDATE sent to the database\nbuffer = {}             # in-memory counters waiting to be flushed\n\ndef incr(key):\n    buffer[key] = buffer.get(key, 0) + 1   # cheap, no DB call\n\ndef flush():\n    global buffer\n    pending, buffer = buffer, {}           # swap first so new hits are not lost\n    for key, n in pending.items():\n        db_writes.append(f\"UPDATE views SET n = n + {n} WHERE page = '{key}'\")\n\nfor i in range(1000):\n    incr(\"home\" if i % 4 else \"pricing\")   # 750 home, 250 pricing\nprint(\"hits recorded: 1000, DB writes so far:\", len(db_writes))\nflush()\nprint(\"after flush, DB writes:\", len(db_writes))\nfor w in db_writes:\n    print(\" \", w)\nincr(\"home\")\nprint(\"unflushed (lost if we crash now):\", buffer)\n# 1000 increments become 2 writes: O(n) memory-light, O(k) writes for k keys.\n"
+   },
+   "followUps": [
+    "<p>Make the batch idempotent, so running it twice gives the same result, and only discard the buffer after the DB confirms. Swap the buffer atomically (Redis <code>GETDEL</code> or <code>RENAME</code> to a temp key), write the batch in one transaction, and delete the temp key last.</p><p>Increments are not idempotent on their own: <code>n = n + 750</code> run twice adds 1,500. Give each batch an id and record it in the same transaction (<code>INSERT batch_id</code> with a unique constraint), or write absolute values (<code>SET n = 4,200</code>). A crash then leaves the temp key to be replayed safely.</p>",
+    "<p>Readers see old data unless they also look at the buffer. A page that reads the DB shows a count that is up to one flush interval behind; for view counters that is acceptable.</p><p>If exact values matter, read the DB value plus the pending buffer value (<code>db + redis INCR total</code>), or read from the cache only. Example: the DB says 4,200, the buffer holds 37, so show 4,237. Tell users it may lag. If the process dies, the 37 are lost, which is why write-behind is only for counters and metrics.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "LRU cache with OrderedDict",
+    "python": "# LRU cache with OrderedDict: O(1) get and put.\nfrom collections import OrderedDict\n\nclass LRU:\n    def __init__(self, capacity):\n        self.cap = capacity\n        self.d = OrderedDict()          # hash map + doubly linked list\n\n    def get(self, key):\n        if key not in self.d:\n            return -1\n        self.d.move_to_end(key)         # mark as most recently used\n        return self.d[key]\n\n    def put(self, key, value):\n        self.d[key] = value\n        self.d.move_to_end(key)\n        if len(self.d) > self.cap:\n            old, _ = self.d.popitem(last=False)   # evict least recently used\n            print(\"  evicted\", old)\n\nc = LRU(2)\nc.put(\"a\", 1); c.put(\"b\", 2)\nprint(\"get a:\", c.get(\"a\"))             # a is now newest\nc.put(\"c\", 3)                           # evicts b\nprint(\"get b:\", c.get(\"b\"))\nprint(\"get c:\", c.get(\"c\"))\nprint(\"keys oldest->newest:\", list(c.d))\n# Time O(1) per operation, space O(capacity).\n"
+   },
+   "followUps": [
+    "<p>Store an expiry time with each value and treat expired entries as misses. Keep <code>(value, expires_at)</code>; in <code>get</code>, if <code>time.monotonic() &gt; expires_at</code> delete it and return -1.</p><pre><code>def put(self, k, v, ttl):\n    self.d[k] = (v, monotonic() + ttl)\n    self.d.move_to_end(k)\ndef get(self, k):\n    v, exp = self.d.get(k, (None, 0))\n    if monotonic() &gt; exp: self.d.pop(k, None); return -1</code></pre><p>Expired entries that are never read still use memory until evicted by LRU, so run a periodic sweep. Still O(1) per operation. Use <code>monotonic</code>, not wall-clock time.</p>",
+    "<p>Combine a dictionary with your own doubly linked list. The dict maps key to node; the list orders nodes from least to most recently used, with sentinel head and tail nodes.</p><ol><li>get: look up the node, unlink it, insert it before the tail, return the value.</li><li>put: update or create the node and move it to the tail; if size exceeds capacity, remove the node after the head and delete its key from the dict.</li></ol><p>Every step is a pointer change, so all operations are O(1) and space is O(capacity). This is exactly what OrderedDict does for you.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the image gets bigger and slower to build for Python. Alpine uses musl instead of glibc, so many prebuilt wheels (numpy, cryptography, psycopg) do not install, and pip compiles them from source: slow builds, large toolchains and rare runtime differences in DNS, locale and performance.</p><p>Example: a build that takes 20 s on <code>python:3.12-slim</code> can take 10 minutes on Alpine and end with a larger image after the compilers are added. Slim (Debian) keeps wheels working and images around 50 to 150 MB. Alpine is fine for static Go binaries, not for most Python stacks.</p>",
+    "<p>Do not copy them into the image; keep them in object storage or a volume and fetch them when the container starts, or mount them. Images with gigabytes of weights are slow to pull, build and scan, and every code change would rebuild layers.</p><ol><li>Store weights in S3 or a model registry, versioned and checksummed.</li><li>At startup, download to a mounted cache volume (once per node), then load.</li><li>Pin the version in config so deploys are reproducible.</li></ol><p>A readiness probe stays false until loading finishes, so no traffic arrives early.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sizing workers by CPU, memory and DB budget",
+    "python": "# Pick a worker count: CPU rule, memory cap and DB connection budget.\ncpus, mem_limit_mb, headroom_mb, rss_mb = 2, 1024, 256, 150\npods, pool_size, db_max_connections = 6, 5, 100\n\ncpu_workers = 2 * cpus + 1                    # classic sync rule: 5\nmem_workers = (mem_limit_mb - headroom_mb) // rss_mb   # 768 // 150 = 5\nworkers = min(cpu_workers, mem_workers)\n\n# the database budget: pods * workers * pool_size <= max_connections\nwhile pods * workers * pool_size > db_max_connections and workers > 1:\n    workers -= 1\n\nprint(\"cpu limit:\", cpu_workers, \"memory limit:\", mem_workers)\nprint(\"chosen workers per pod:\", workers)\nprint(\"db connections used:\", pods * workers * pool_size, \"of\", db_max_connections)\n# Constant time: this is arithmetic, not a loop over requests.\n"
+   },
+   "followUps": [
+    "<p>It loads your application code once in the Gunicorn master before forking workers, instead of separately in each worker. The workers then share that memory (copy-on-write), so startup is faster and memory use is lower.</p><p>The catch: anything created at import time, such as DB connections, thread pools or event loops, is inherited by every worker and can break (two workers sharing one socket). Create such resources after the fork, in a <code>post_fork</code> hook or in lifespan. Also, code changes need a full restart, as reload no longer works per worker.</p>",
+    "<p>It means the master did not hear from a worker for the timeout (30 s by default) and killed it. In an async app the usual cause is something blocking the event loop, for example a synchronous DB call, <code>requests.get</code>, <code>time.sleep</code> or heavy CPU work, so the worker cannot answer the heartbeat.</p><p>Find it with slow-callback debugging (<code>PYTHONASYNCIODEBUG=1</code>) or py-spy dump. Fix by using async clients, <code>run_in_executor</code> or a task queue. Raising the timeout only hides the problem.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Request id in a ContextVar across async tasks",
+    "python": "# A request id in a ContextVar stays separate for concurrent asyncio tasks.\nimport asyncio\nimport contextvars\nimport logging\nimport sys\n\nrequest_id = contextvars.ContextVar(\"request_id\", default=\"-\")\n\nclass IdFilter(logging.Filter):\n    def filter(self, record):\n        record.rid = request_id.get()     # copy the id onto every log record\n        return True\n\nhandler = logging.StreamHandler(sys.stdout)\nhandler.setFormatter(logging.Formatter(\"[%(rid)s] %(message)s\"))\nhandler.addFilter(IdFilter())\nlog = logging.getLogger(\"app\")\nlog.addHandler(handler)\nlog.setLevel(logging.INFO)\n\nasync def handle(rid, delay):\n    request_id.set(rid)                   # set once, per task\n    log.info(\"start\")\n    await asyncio.sleep(delay)            # other requests run meanwhile\n    log.info(\"finish\")\n\nasync def main():\n    await asyncio.gather(handle(\"req-A\", 0.02), handle(\"req-B\", 0.01))\n\nasyncio.run(main())\n# Each task has its own copy of the context: O(1) lookup.\n"
+   },
+   "followUps": [
+    "<p>Because thread-locals are tied to an operating system thread, and asyncio runs many requests on one thread. Each request would overwrite the same slot, so request A can log the id of request B.</p><p>Example: A sets <code>local.rid='A'</code>, then awaits; B runs on the same thread and sets <code>'B'</code>; when A resumes, it reads <code>'B'</code>. A <code>ContextVar</code> is stored per task, so each coroutine keeps its own value across awaits, as the program above shows. Thread-locals still work for sync code in a thread pool.</p>",
+    "<p>Decide after the request finishes, using tail-based sampling: always keep logs and traces for errors, slow requests and a flagged user, and keep only a small percentage (say 1 to 5 percent) of successful ones.</p><p>Practically, buffer a request's debug logs in memory and write them only if the response is 5xx or slower than a threshold; always emit info/warning/error lines. Sample consistently by hashing the request id, so a kept request has all its lines. Never drop errors, and count what you drop in a metric.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because an average hides the slow requests that users actually feel, and cannot be combined across servers. A histogram counts requests in buckets, so you can compute percentiles such as p99 and add histograms from many pods.</p><p>Example: 99 requests take 100 ms and one takes 10 s; the average is about 199 ms and looks healthy, but p99 is near 10 s for a real user. Choose buckets around the SLO (for example 0.05, 0.1, 0.25, 0.5, 1, 2.5 s) and use <code>histogram_quantile</code> in PromQL.</p>",
+    "<p>Record tokens and a price per call as counters, labelled by model and feature, and multiply to get cost. Read input and output token counts from the provider's response, never estimate them.</p><pre><code>TOKENS.labels(model, 'in').inc(u.input_tokens)\nTOKENS.labels(model, 'out').inc(u.output_tokens)\n# cost = in*price_in + out*price_out</code></pre><p>Keep labels low-cardinality (model, route), not user id; put per-user cost in logs or a database. Alert on spend per hour, plus latency and error rate per model.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Async Django is partial: views, middleware and the ORM's queryset methods have async versions (<code>aget</code>, <code>async for</code>), but the ORM still runs database work in a thread under the hood, and many third-party packages and the admin are sync.</p><p>So you get concurrency for outbound I/O and streaming, but not a truly async database driver path with the same maturity as SQLAlchemy async. Calling sync code from async needs <code>sync_to_async</code>, which costs a thread hop. Mixing carelessly can block the event loop or exhaust the thread pool.</p>",
+    "<p>Django has no built-in task system, so you add Celery (or Django-Q, Huey; Django 6 adds a basic tasks framework) and call tasks from views, often with <code>transaction.on_commit</code> so a task never runs before the data is committed.</p><p>FastAPI has BackgroundTasks built in for small after-response work, and uses Celery, arq or Taskiq for real jobs. The main difference: Django has an integrated pattern and signals; FastAPI is assembled by you. In both, anything important goes to a broker-backed queue.</p>"
+   ]
+  }
+ ]
+}

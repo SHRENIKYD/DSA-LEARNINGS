@@ -1,0 +1,95 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The question about input size and constraints matters most, because it decides which algorithm is even acceptable. <b>Situation:</b> in a practice round I was asked to find duplicates. I asked how big the array was; the answer was 10 million numbers, so a nested loop at O(N^2) was out and I went straight to a hash set at O(N) time. Second in value is the edge-case question (empty input, negatives), since it prevents bugs I would otherwise find late.</p>",
+    "<p>If the interviewer says \"you decide\", I pick a reasonable default, say it aloud, and move on. For example: \"I will assume integers, up to 100,000 elements, duplicates allowed, and I will return -1 if nothing is found. Tell me if any of that is wrong.\" That shows I can make a call under uncertainty, and it keeps the door open for a correction. I do not stall or ask the same question again; I write the assumptions at the top of the board so we both can see them.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I skip the brute force when it is so obvious or the problem is so standard that naming it wastes time. <b>Example:</b> in a round where the task was a simple binary search on a sorted array, I said in one sentence that a linear scan is O(N) and that sorted input allows O(log N), then coded the binary search. I also skip it when the interviewer says they want to focus on the optimal idea. The rule is: never skip the reasoning, only shorten it to one sentence.</p>",
+    "<p>Then I say so, and that is a good result, not a failure. I explain why nothing better exists, for example \"every element must be read at least once, so O(N) is a lower bound, and my solution does exactly one pass.\" Then I move to what is left: reduce the constant factor or space, handle edge cases, and test. In one round, summing a list was the whole problem; I stated the lower bound in two sentences, coded it in four lines, and used the remaining time on tests and variants like overflow.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>At about minute 3 I say exactly what I tried and where I am blocked, then ask a narrow question. I would say: \"I tried a hash map on the sample [2, 7, 11, 15] with target 9 and it works for pairs, but I do not see how to handle the case where the same number appears twice. I am thinking about sorting with two pointers. Is that direction reasonable, or am I missing a property of the input?\" This shows my process, saves time, and makes it easy for them to give a small nudge instead of the answer.</p>",
+    "<p>I keep calm by relying on a fixed routine, so I never have to improvise under stress. When my chest feels tight, I take one slow breath, write a tiny example on the board, and work through it by hand. <b>Situation:</b> in one mock round I froze for about 20 seconds; I said \"let me do a small example\", traced three numbers, and the pattern appeared. I also practised with a timer so the pressure felt familiar, and I remind myself that being stuck for a few minutes is normal and expected.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I say so politely and explain my reasoning, because blind agreement would hide my thinking. For example: \"I see your point about sorting first. It would make the pairs easy, but it costs O(N log N), and I think the hash map keeps us at O(N). Can I check that on the example, and if sorting looks better after that I will switch?\" Then I actually test both on the sample. If the interviewer is right, I say so and move on; if not, the test shows it without any argument.</p>",
+    "<p>I say that honestly and use it as a chance to go further, not to pretend it was a new idea. <b>Example:</b> when told \"think about a stack\", I replied: \"I had considered that. I rejected it at first because the order of elements is not nested, but you are right it fits the matching part.\" Being honest builds trust, and showing I had weighed it earlier is a good sign. I never claim the idea as brand new, and I never ignore it; I then explain which trade-off I want to compare.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Three or four well-chosen tests are enough, as long as each one targets a different kind of failure. My set is: the given sample, an empty or single-element input, a case with duplicates or negatives, and a case with no answer. <b>Example</b> for a function that finds the maximum: [3, 9, 2] (normal), [] (empty), [-5, -1] (all negative), [7] (single). Four tests, four different risks. If time remains I add one large input to think about performance. More than that usually repeats the same risk.</p>",
+    "<p>At scale, I test in layers and automate. <b>Steps:</b> 1) unit tests for each function with edge cases, 2) property-based or randomised tests that compare my fast code to a simple brute force on thousands of small random inputs, 3) load or performance tests on realistic data sizes, 4) monitoring in production for errors and latency. In a past project I compared a rewritten routine with the old one on 50,000 random cases and found an off-by-one that handwritten tests had missed. The brute-force oracle is cheap and catches many bugs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I keep going, politely steer the conversation, and trade a little talking time for a shorter code section. I say: \"I want to make sure we have time for testing, so may I start coding the agreed approach now?\" Usually an interviewer who talks a lot is giving hints or sharing context, so I listen, because it is useful. If time still runs short, I cut optional work such as polish, never the dry run. I also write my minute checkpoints at the top of the board so I notice drift early.</p>",
+    "<p>I scale each phase and use the extra 15 minutes where it earns the most points. For example: clarify 5, approach 9, code 20, testing 10, complexity and follow-ups 8, plus 3 for intro and 5 for my questions, which comes to 60. The extra time mostly goes to a second, harder follow-up or to deeper testing, not to slower coding. I still set checkpoints: approach agreed by about minute 18, code done by about minute 38, and I tell the interviewer so they know I am watching the clock.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With only 5 minutes left, I choose the smallest working fix and protect a short test. <b>Steps:</b> 1) say what is wrong with one failing input, 2) patch only that, for example adding a check for an empty list, 3) dry run the sample once, 4) state what I would improve with more time. If a patch is impossible, I explain the brute force clearly and give its complexity so I leave with a correct answer. A working, tested simple solution beats a half-written better one.</p>",
+    "<p>Yes, a rewrite is right when the approach is wrong at its core and a patch would only add special cases. <b>Example:</b> I started a greedy solution for coin change with coins [1, 3, 4] and amount 6; greedy gives 4+1+1 = 3 coins, but 3+3 = 2 coins is better. No small patch fixes that, so I switched to dynamic programming at O(amount x coins). I decide using time left: with 20 minutes I rewrite, with 5 I patch or present the brute force. I always say aloud why I am restarting.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If the interviewer is silent, I treat silence as permission to continue and keep checking in at section boundaries. I say: \"I will assume this is a design for 10 million daily users and move to the API; stop me if you want a different scale.\" Some interviewers stay quiet on purpose to see whether I can lead. I make assumptions explicit, ask a short question at each checkpoint, and read small cues such as a nod. I do not fill the quiet with rambling; I move to the next step of my plan.</p>",
+    "<p>I pick the deep dive on the riskiest component, the one where the main trade-offs live or where the numbers look hardest. <b>Example:</b> for a URL shortener at 100 million new links per month (about 40 writes per second), the reads are the harder part, so I would dive into the key generation and the cache. I also offer the interviewer a choice: \"I see two risky parts, ID generation and the read cache. Which one interests you more?\" That uses their hints and shows I know where the risk is.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I stay calm and keep to the facts, restating what I know and the cost. I might say: \"I understand the concern about consistency. With the numbers we set, 5,000 writes per second and one region, the single database handles it, and I would move to sharding past about 20,000.\" If they keep pushing, I ask what requirement they want me to weigh differently, because the disagreement is often about a hidden assumption. Then I either adjust the design under that new requirement or agree to disagree with a clear reason.</p>",
+    "<p>Then I admit it honestly and move to a better choice, instead of defending something weak. I say: \"You are right, I picked it from habit and cannot justify it against the requirements. Let me compare the alternatives.\" Then I list two options and pick one using the numbers. In an earlier round I chose a message queue without a need for asynchronous work and, when asked, simply removed it and simplified the design. Interviewers value honesty and fast correction far more than a stubborn defence.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would record myself and review it, so I have evidence rather than a feeling. <b>Steps:</b> 1) do a mock interview with a friend or a recorder, 2) count how often I code before asking questions and how long my silences last, 3) ask the mock interviewer to score communication on a short rubric, 4) repeat after two weeks to compare. In one review I found I had spoken for 10 seconds of every minute and was silent the rest, so I started narrating while writing. Evidence from three or four sessions is enough to see patterns.</p>",
+    "<p>Long silences and jumping into code are the most fixable, because they are habits, not talent. Fix them with a fixed opening script: restate, give an example, ask three questions, state the brute force, then ask \"may I code?\". For silence, I practise narrating small steps aloud, even simple ones like \"now I am updating the pointer\". Within a couple of weeks of daily practice both usually improve. Harder to fix are gaps in knowledge, such as not explaining complexity, which need real study.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would reject output that is wrong, unclear, or that I cannot explain. <b>Checks:</b> an invented API or method that does not exist, a loop that mutates a list while iterating it, a missing empty-input case, or the wrong complexity. Example: the assistant gave a solution that used a nested loop for finding duplicates, O(N^2), when I knew a set would give O(N), so I rejected it and asked for the set version. If I cannot trace the code on a small example, I do not keep it. Running it and adding my own test is the final gate.</p>",
+    "<p>I would not claim it as my own idea; I would explain it honestly by reading it as a reviewer. <b>Steps:</b> 1) state what the code is meant to do in one sentence, 2) walk through it on a tiny example, such as [1, 2, 2] with a duplicate check, 3) name the data structure and the complexity, 4) point out one risk or one thing I changed. If a part is unclear, I say so and either simplify it or ask the interviewer. Code that I cannot explain is code I should not submit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If I have no ideas, I use a short checklist so I still add value. I can talk about complexity and why it cannot be improved, test cases I have not run, how the code behaves with input too big for memory, or how I would make it readable and add logging. Example: after solving two-sum, I could say \"for a stream of numbers I would keep the set between calls\". If nothing comes, I simply ask: \"Is there an area you would like me to look at?\" Asking is better than silence or random code.</p>",
+    "<p>Not as a request, because it sounds like I want to stop. Instead I say \"I believe this is complete; let me summarise the complexity and what else I could check\", and let the interviewer end or extend the round. They know the schedule and may have a follow-up ready, so finishing early often just leads to a harder question, which is a chance to show more. I never end by saying \"that is all\" with 12 minutes left; I stay in the problem and keep showing depth.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If I notice only after the interview, I accept it, learn from it, and where it makes sense send a brief, honest follow-up. <b>Steps:</b> 1) write the mistake and the right answer down while it is fresh, 2) add it to my list of recurring errors, 3) if the recruiter allows, send a two-line note: \"After the call I realised my complexity claim for part 2 was wrong; it is O(N log N), not O(N).\" That is rare and optional but shows honesty. Mostly the value is the lesson for the next round, so I practise that exact case.</p>",
+    "<p>I keep a mistake log and turn each entry into a checklist item. For each error I note the cause (rushed, assumed, did not test) and a one-line rule. Example: after three off-by-one bugs I added \"check the loop bounds on a 1-element input\" to my final check. I review the list before mock interviews and re-do the same problem a week later without notes to confirm the fix. Repeating the problem under time pressure is what makes the habit stick, not just reading the note.</p>"
+   ]
+  }
+ ]
+}

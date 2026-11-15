@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Helm 3 keeps release state as Secrets in the release's namespace, one per revision, named like <code>sh.helm.release.v1.myapp.v3</code>. Tiller, the server-side component Helm 2 ran in the cluster with broad rights, was removed, so Helm now acts with the caller's own kubeconfig permissions.</p><p>This is why you need RBAC access to Secrets to run <code>helm history</code>, and why <code>helm list -n other</code> only shows that namespace.</p>",
+    "<p><code>helm install</code> fails if the release name already exists, while <code>helm upgrade --install</code> installs when it is missing and upgrades when it is present, so the same command works on a first run and every later run.</p><p>That idempotence is what a CI job wants: <code>helm upgrade --install web ./chart -f prod.yaml --atomic -n shop</code> needs no \"does it exist yet?\" branching. Plain <code>install</code> is fine for a one-off by hand.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Helm rollback appends a new revision",
+    "python": "# Helm rollback: history is append-only; rollback copies an old revision into a new one\nhistory = []  # each item: (revision, manifest, status)\n\ndef release(manifest):\n    rev = len(history) + 1  # revision numbers only grow\n    for i, (r, m, s) in enumerate(history):\n        if s == \"deployed\":\n            history[i] = (r, m, \"superseded\")\n    history.append((rev, manifest, \"deployed\"))\n\ndef rollback(to_rev):\n    old = history[to_rev - 1][1]\n    release(old)  # re-apply old manifest as a NEW revision, nothing deleted\n\nfor v in range(1, 9):\n    release(\"image:v%d\" % v)\nprint(\"before:\", history[-1])\nrollback(7)\nfor h in history[-3:]:\n    print(h)\nprint(\"revisions kept:\", len(history))  # 9, not 7\n"
+   },
+   "followUps": [
+    "<p><code>--atomic</code> makes Helm wait for the upgrade to become ready and, if it fails or times out, automatically run a rollback to the previous revision, so the release ends on the last good one.</p><p>Example: revision 5 is good, the upgrade creates revision 6, readiness times out after the default 5 minutes, Helm marks 6 failed and creates revision 7 as a copy of 5. It implies <code>--wait</code>, so pick a realistic <code>--timeout</code>. It does not undo database migrations.</p>",
+    "<p>A release stuck in <code>pending-upgrade</code> usually means a Helm process was killed mid-run, so Helm refuses new operations with \"another operation is in progress\". Look at <code>helm history web</code> to find the last <code>deployed</code> revision.</p><p>Then run <code>helm rollback web N</code> to that revision. If that is also refused, check no Helm job is really running, and as a last resort delete the stuck revision's Secret (<code>sh.helm.release.v1.web.vN</code>) after confirming the live objects are correct.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Helm values: deep merge, list replace, null delete",
+    "python": "# Helm values: maps merge key by key, lists are replaced, null deletes a key\ndef merge(base, over):\n    out = dict(base)\n    for k, v in over.items():\n        if v is None:\n            out.pop(k, None)  # null removes the default key\n        elif isinstance(v, dict) and isinstance(out.get(k), dict):\n            out[k] = merge(out[k], v)  # maps: recurse\n        else:\n            out[k] = v  # lists and scalars: replace as a whole\n    return out\n\ndefaults = {\"replicas\": 2, \"image\": {\"repo\": \"web\", \"tag\": \"1.0\"},\n            \"hosts\": [\"a.example\", \"b.example\"], \"debug\": True}\nprod = {\"image\": {\"tag\": \"2.0\"}, \"hosts\": [\"c.example\"], \"debug\": None}\nprint(\"defaults:\", defaults)\nprint(\"override:\", prod)\nprint(\"result  :\", merge(defaults, prod))\n# image.repo kept, hosts replaced (not appended), debug removed\n"
+   },
+   "followUps": [
+    "<p>Set the key to <code>null</code> in the environment's values file, and Helm removes it from the merged result instead of keeping the chart default.</p><p>Example: the chart default has <code>resources: {limits: {cpu: 500m}}</code>; the dev file says <code>resources: {limits: {cpu: null}}</code>. The merged values then have no CPU limit. Check with <code>helm template</code> or <code>helm get values RELEASE --all</code>. Setting a key to an empty value is not the same as deleting it.</p>",
+    "<p>Add a <code>values.schema.json</code> (JSON Schema) next to <code>values.yaml</code>. Helm validates the merged values against it on install, upgrade, lint and template, so a typo or wrong type stops the command with a clear error.</p><p>Example: with <code>\"replicas\": {\"type\":\"integer\",\"minimum\":1}</code> and <code>\"additionalProperties\": false</code>, passing <code>--set replicas=abc</code> or a misspelt <code>replicass</code> fails before anything reaches the cluster. Run <code>helm lint</code> in CI.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Base64 is only an encoding to carry arbitrary bytes as text. It has no key, so anyone who can read the Secret can decode it in one step.</p><p>Example: <code>cGFzc3dvcmQ=</code> decodes to <code>password</code> with <code>echo cGFzc3dvcmQ= | base64 -d</code>. Real protection comes from RBAC that limits who can read Secrets, encryption at rest in etcd (or a KMS), and keeping the plaintext out of Git, where encryption such as SOPS is what matters.</p>",
+    "<p>Change the value in the secret store, let the External Secrets Operator sync it into the Kubernetes Secret on its refresh interval, then restart Pods that cannot pick up changes live.</p><p>Steps: 1) write the new value in the store, 2) wait for the refresh (or force a sync), 3) Pods that mount the Secret as a volume see the file update after a short delay, but env vars are fixed at start, so run <code>kubectl rollout restart deployment/web</code>. For zero downtime, allow both old and new credentials for a while, then revoke the old one.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Rolling update with maxSurge and maxUnavailable",
+    "python": "import math\n# Rolling update simulation with maxSurge / maxUnavailable (replicas=4)\ndef rollout(replicas, surge, unavail):\n    old, new, min_ready = replicas, 0, replicas\n    while new < replicas:\n        # start new Pods while total stays <= replicas + surge\n        new += min(replicas + surge - (old + new), replicas - new)\n        # remove old Pods only while ready Pods stay >= replicas - unavail\n        # (new Pods are assumed ready after one step)\n        removable = max(0, old + new - (replicas - unavail))\n        old -= min(old, removable)\n        min_ready = min(min_ready, old + new)\n        print(\"old=%d new=%d total=%d\" % (old, new, old + new))\n    return min_ready\n\n# percentages: surge rounds up, unavailable rounds down\nprint(\"25% of 4 -> surge\", math.ceil(4 * .25), \"unavail\", math.floor(4 * .25))\nprint(\"zero-loss config (surge=1, unavail=0):\")\nprint(\"lowest ready:\", rollout(4, 1, 0))\n"
+   },
+   "followUps": [
+    "<p>A lenient readiness probe reports Pods as Ready before they can serve, so the Service sends them real traffic too early and users see errors during a rollout.</p><p>Example: the probe only checks that the port is open, but the app needs 20 more seconds to warm caches. With <code>maxUnavailable: 0</code> the rollout believes the new Pod is ready, removes an old one, and requests hit a cold Pod and fail. Make the probe check a real dependency-aware endpoint and add <code>minReadySeconds</code>.</p>",
+    "<p>Use <code>Recreate</code> when two versions must never run at the same time, so all old Pods stop before any new Pod starts, at the price of downtime.</p><p>Typical cases: a schema migration that old code cannot tolerate, an app holding an exclusive lock or a single-writer volume (ReadWriteOnce), or a licence limited to one instance. If you can avoid downtime by making the change backwards compatible, a rolling update is better.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "HPA replica formula, tolerance and clamping",
+    "python": "import math\n# HPA: desired = ceil(current * metric / target), 10% tolerance, clamped\ndef hpa(current, metric, target, lo, hi):\n    ratio = metric / target\n    if abs(ratio - 1) <= 0.10:  # inside tolerance: do nothing\n        return current\n    desired = math.ceil(current * ratio)\n    return max(lo, min(hi, desired))\n\ncases = [(4, 90, 60), (4, 64, 60), (4, 20, 60), (8, 200, 60)]\nfor cur, m, t in cases:\n    print(\"replicas=%d cpu=%d%% target=%d%% -> %d\" % (cur, m, t, hpa(cur, m, t, 2, 10)))\n# last case: ceil(8*3.33)=27 but clamped to maxReplicas 10\n# multiple metrics: take the largest desired value\nprint(\"two metrics:\", max(hpa(4, 90, 60, 2, 10), hpa(4, 30, 60, 2, 10)))\n"
+   },
+   "followUps": [
+    "<p>Memory is a poor metric because most programs do not give memory back when load drops or when work is spread across more Pods, so the average stays high and the HPA keeps scaling up.</p><p>Example: a JVM with a 1 GiB heap shows 900 MiB used at idle. Adding Pods does not reduce each Pod's usage, so the ratio never falls and the HPA climbs to <code>maxReplicas</code>. Prefer CPU, requests per second or queue length, which fall when capacity is added.</p>",
+    "<p>Use KEDA when scaling should follow events or external metrics such as queue depth, stream lag or a cron schedule, or when you want to scale to zero Pods, which the plain HPA cannot do.</p><p>Example: a worker reading a queue with 600 messages and a target of 100 per Pod gets 6 replicas, and when the queue is empty it drops to 0 and starts again on the next message. KEDA feeds these metrics to a normal HPA behind the scenes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "PDB allowed disruptions blocking a drain",
+    "python": "# PodDisruptionBudget: allowed disruptions = healthy - required minimum\ndef allowed(healthy, min_available):\n    return max(0, healthy - min_available)\n\ndef drain(name, total, healthy, min_available):\n    pods = healthy\n    evicted = 0\n    while evicted < total:\n        if allowed(pods, min_available) == 0:\n            print(name, \"-> eviction refused (429), drain waits after\", evicted, \"evictions\")\n            return\n        pods -= 1  # evict one Pod (a replacement would start elsewhere)\n        evicted += 1\n    print(name, \"-> drained\", evicted)\n\ndrain(\"3 replicas, minAvailable=2\", 1, 3, 2)\ndrain(\"1 replica,  minAvailable=1\", 1, 1, 1)\ndrain(\"3 replicas, minAvailable=3\", 1, 3, 3)\ndrain(\"3 replicas, 1 unhealthy, minAvailable=2\", 1, 2, 2)\n"
+   },
+   "followUps": [
+    "<p>No: <code>kubectl delete pod</code> deletes the Pod directly through the API, so a PodDisruptionBudget does not protect against it. Only the Eviction API, used by <code>kubectl drain</code>, the cluster autoscaler and node upgrades, checks the budget.</p><p>Example: with 3 replicas and <code>minAvailable: 3</code>, <code>kubectl drain</code> is refused with 429, but <code>kubectl delete pod web-1</code> succeeds at once. A PDB guards against polite, voluntary disruption, not against mistakes or crashes.</p>",
+    "<p><code>unhealthyPodEvictionPolicy: AlwaysAllow</code> lets Pods that are running but not Ready be evicted even when the budget would otherwise block, which stops a drain from hanging on a broken Pod.</p><p>Example: 3 replicas, <code>minAvailable: 3</code>, and one Pod is stuck not Ready. By default that Pod cannot be evicted and the drain waits forever; with <code>AlwaysAllow</code> the broken Pod is evicted and replaced. The default, <code>IfHealthyBudget</code>, is stricter.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>They stay. Deleting a StatefulSet does not delete its PersistentVolumeClaims by default, so the data survives and a new StatefulSet with the same name and claim template re-attaches the same volumes.</p><p>This protects data but also leaves cost behind, so clean up on purpose with <code>kubectl delete pvc -l app=db</code>. Since Kubernetes 1.27 you can set <code>persistentVolumeClaimRetentionPolicy</code> with <code>whenDeleted: Delete</code> and/or <code>whenScaled: Delete</code> to remove claims automatically.</p>",
+    "<p>An operator knows the database's own rules and runs the tasks a StatefulSet cannot: backups, failover, ordered upgrades, user and replica setup.</p><p>Example: when a primary dies, a StatefulSet only restarts <code>db-0</code>, but an operator promotes the most up-to-date replica, repoints the Service and rebuilds the old primary as a replica. Upgrades also go replicas first, primary last. Operators encode that knowledge as a Kubernetes custom resource you declare once.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Restore from a snapshot in a healthy zone, create a new PVC from it, and let the Pod schedule there, then catch up from replicas if you have them.</p><p>Steps: 1) find the latest VolumeSnapshot or cloud snapshot of the lost disk, 2) create a PVC with <code>dataSource</code> pointing to it in a surviving zone (use <code>WaitForFirstConsumer</code>), 3) point the StatefulSet Pod at the new claim, 4) let replication or WAL replay bring it up to date. Data written after the last snapshot is lost unless a replica has it.</p>",
+    "<p>No, a volume is tied to its zone, so you cannot move it. You can only copy the data through a snapshot into a new volume in another zone.</p><p>Example: a disk in <code>zone-a</code> is snapshotted, then a new disk is created from that snapshot in <code>zone-b</code> and bound to a new PVC. The old PV stays put. This is why replicas across zones and tested snapshots matter more than trying to move storage around.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A Role is limited to one namespace, while a ClusterRole is a reusable set of rules; binding a ClusterRole with a RoleBinding gives those rules only inside the RoleBinding's namespace.</p><p>Example: the built-in ClusterRole <code>edit</code> bound with a RoleBinding in namespace <code>team-a</code> lets a developer edit objects in <code>team-a</code> only. Bound with a ClusterRoleBinding, it would apply to every namespace. This avoids copying the same rules into each namespace.</p>",
+    "<p>No, RBAC is additive: it only grants permissions and has no deny rule. A user can do something if any binding allows it, and nothing removes an allowance given elsewhere.</p><p>So least privilege means granting less in the first place and auditing bindings, for example <code>kubectl auth can-i --list --as dev</code>. To block things you cannot grant away (such as privileged Pods), use admission controls like Pod Security Admission or a policy engine, not RBAC.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Separate dashes are OR; selectors inside one dash are AND. This is the usual trap when writing the <code>from:</code> list of a NetworkPolicy.</p><pre><code>from:\n- namespaceSelector: {matchLabels: {team: a}}\n- podSelector: {matchLabels: {app: api}}</code></pre><p>The two items above mean: any Pod in namespaces labelled team=a, OR Pods labelled app=api in the policy's own namespace. Remove the dash before <code>podSelector</code> to mean only app=api Pods in team=a namespaces.</p>",
+    "<p>Not in the core NetworkPolicy API, which matches only Pods, namespaces and IP ranges (CIDR blocks). Domain-based rules need a CNI extension.</p><p>Cilium (FQDN policies) and Calico (DNS policy, in its enterprise tier or via network sets) can allow egress to <code>api.example.com</code>. With plain policies, allow the IP ranges of the service, or route egress through a proxy or egress gateway that filters by name. Remember IPs behind a domain can change.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A kubelet may be up to three minor versions older than the API server, and never newer. This is the version skew policy (it was two minors before Kubernetes 1.28).</p><p>So with the control plane at 1.31, nodes on 1.28, 1.29, 1.30 and 1.31 are supported, but a 1.32 kubelet is not. That is what lets you upgrade the control plane first and the nodes later, in batches. Always check the current policy page for your version and also kube-proxy and kubectl skew.</p>",
+    "<p>A blue/green cluster is better when the jump is big, when add-ons are risky to change in place, or when you need an instant rollback.</p><p>You build a new cluster at the target version, deploy the workloads, test, then shift traffic (DNS or load balancer) in steps, keeping the old cluster until the new one is proven. Rolling back is a traffic switch. The costs are double infrastructure for a while, and moving state, certificates and external dependencies.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Beta APIs must stay available for at least three Kubernetes releases (about nine months) after deprecation is announced, so there is time to move. In practice, check the deprecation guide for the exact removal version.</p><p>Example: if a beta API is deprecated in 1.25, it can be removed no earlier than 1.28. Alpha APIs have no such promise. You should still migrate as soon as the stable version exists, because an upgrade is when removed versions finally break.</p>",
+    "<p>No, stable <code>v1</code> APIs are not removed within a major version of Kubernetes, and Kubernetes has stayed on major version 1. They can be marked deprecated, but they keep working.</p><p>That is why the migration work is about beta and alpha versions such as <code>extensions/v1beta1</code> or <code>policy/v1beta1</code>, not stable ones. A manifest using <code>apps/v1</code> Deployment will keep working across upgrades.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Automate a rendered-manifest check first, and then a post-deploy smoke test, because they catch the largest class of failures at the lowest cost.</p><p>Steps: 1) in CI run <code>helm lint</code> and <code>helm template</code>, 2) validate the output with a schema checker such as kubeconform and a deprecated-API scan, 3) after deploy, hit a health or key-journey endpoint and fail the pipeline (with <code>--atomic</code> rollback) if it does not answer. These are cheap and run on every change.</p>",
+    "<p>Roll back when the cause is unknown or the fix would take longer than the pain lasts, and roll forward when a small, tested fix is ready and rolling back is risky.</p><p>Compare: impact (how many users, how bad), whether the cause is known, and data risk. If the release ran a migration that is not backwards compatible, a rollback may break things, so a forward fix is safer. For a bad config or image with no migration, <code>helm rollback</code> in a couple of minutes is the default. State the decision and the reason in the incident channel.</p>"
+   ]
+  }
+ ]
+}

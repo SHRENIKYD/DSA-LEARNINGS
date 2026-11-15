@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pick the one your team already runs well, then break the tie with the access pattern. Example: a product catalogue works in PostgreSQL (with JSONB) or in MongoDB. If you also need joins to inventory and reporting, take PostgreSQL; if every read fetches one whole nested product document and the shape varies a lot, take the document store.</p><p>Other tie-breakers: transaction needs, expected growth (10x write volume favours a partitioned store), and operational cost. State what you give up.</p>",
+    "<p>It means the database does not enforce a schema, not that your data has none. The schema simply moves into application code, so every reader must cope with every shape ever written.</p><p>Example: a user document once stored <code>name</code> and later <code>first_name</code> and <code>last_name</code>; old rows still have the old form, so code needs both branches or a migration job. You gain easy evolution and lose constraints, so add validation and a version field to documents.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It depends on the setting, but by default MySQL semi-sync waits up to a timeout (rpl_semi_sync_master_timeout, commonly 10 s) and then silently falls back to asynchronous replication. Writes keep working, but commits made in that state are no longer guaranteed to exist on a replica.</p><p>So a crash right then can lose acknowledged writes. Monitor the fallback status counter and alert on it. Newer lossless semi-sync (AFTER_SYNC) avoids exposing unreplicated commits to readers, but the timeout fallback still exists.</p>",
+    "<p>RPO (recovery point objective) is how much data you can afford to lose; RTO (recovery time objective) is how long you can afford to be down. Synchronous replication gives RPO = 0; asynchronous gives RPO roughly equal to the lag, for example 2 s of writes.</p><p>RTO depends on failover automation, not on sync mode: manual promotion may take 20 minutes, automated fenced failover 30 seconds. A sync standby also makes failover faster to trust, since you know it has all the data.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Read-your-writes with LSN-based replica routing",
+    "python": "# Read-your-writes: route a read to a replica only if it has applied our write's LSN.\nleader_lsn = 0\nreplicas = {\"r1\": 0, \"r2\": 0}      # last LSN each replica has applied\n\ndef write():\n    global leader_lsn\n    leader_lsn += 1                 # leader assigns the next log sequence number\n    return leader_lsn\n\ndef read(min_lsn):\n    # choose any replica that has caught up to min_lsn, else fall back to the leader\n    for name, applied in sorted(replicas.items()):\n        if applied >= min_lsn:\n            return name\n    return \"leader\"\n\nmy_lsn = write()\nprint(\"user wrote at LSN\", my_lsn)\nprint(\"replicas applied:\", replicas)\nprint(\"read routed to:\", read(my_lsn))      # nobody caught up -> leader\nreplicas[\"r2\"] = 1                           # r2 replays the log\nprint(\"after r2 catches up:\", replicas)\nprint(\"read routed to:\", read(my_lsn))      # r2 is safe now\n"
+   },
+   "followUps": [
+    "<p>Because it is usually computed from the timestamp of the event the replica is applying right now, not from real freshness. If the replica is idle it can show 0 even while the network link is broken and nothing is arriving.</p><p>If a single huge transaction took 10 minutes on the leader, the replica shows lag jumping from 0 to 600 s only when it starts applying it. Better signals: heartbeat rows (leader writes the current time every second, you compare on the replica) and the byte or LSN gap between leader and replica.</p>",
+    "<p>Return the log position with each write, and only read from a replica that has applied at least that position. The client stores the token and sends it with later reads.</p><p>Steps: 1) leader returns LSN 5000 after the commit; 2) the router asks replicas for their applied LSN (cached from heartbeats); 3) it picks one with applied &gt;= 5000, else waits a few ms or uses the leader.</p><pre><code>for (Replica r : replicas)\n  if (r.appliedLsn() &gt;= token) return r;\nreturn leader;</code></pre><p>Cost: one number per session and a small lookup per read.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put a queue, a log or a cache in front of the database so spikes are smoothed and writes arrive in batches. Example: write events to Kafka, and a consumer inserts 500 rows per transaction instead of 500 separate commits.</p><p>Other places: an in-memory buffer or write-behind cache, aggregating counters before flushing (1000 likes become one +1000), and an LSM-based store that turns random writes into sequential ones. The trade-off is a window of delay and complexity around durability and ordering.</p>",
+    "<p>Shard when the write load or data size cannot be handled by the biggest sensible single leader even after cheaper fixes, and you have measured it. Example: sustained 80% of the disk IOPS or CPU on the leader at peak, with a growth forecast that doubles it within 6 to 12 months.</p><p>First try indexes trimmed, batching, bigger instance, archiving old data and caching. Sharding is hard to undo (joins, transactions, resharding), so start planning early but pull the trigger late. Also shard if the data will exceed what one node can store or back up in time.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Cassandra's primary key is <code>((partition_key), clustering_columns)</code>. The partition key is hashed to pick the node, and inside that partition rows are stored sorted by the clustering columns.</p><p>Example: <code>PRIMARY KEY ((user_id), sent_at)</code> hashes user 42 to one node, and that user's messages sit in sent_at order. A query for user 42 between two times is a fast range scan on one node, while a range across users still needs every node.</p>",
+    "<p>When the mapping needs to be arbitrary and changeable: a lookup table says which shard owns each tenant or key range. Example: a SaaS where one huge customer needs its own shard, while 1000 small ones share another.</p><p>You can move one tenant by updating one row in the directory, with no hash formula to break. The costs are an extra lookup (cache it) and the directory becoming a critical, highly available component. Hash is simpler when keys are uniform and you never need to move single keys.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because timestamps always increase, every new write lands on the newest shard, which becomes a hot spot while old shards sit idle. Example: with monthly range shards, 100% of writes this month go to one node.</p><p>It is also a poor choice for lookups, since most queries are by user or order id, not by time, so they scatter. Use created_at as a secondary clustering or partition-within-shard key for time windows, and shard on something high-cardinality such as customer_id or a hash of the id.</p>",
+    "<p>Pick the key of the most frequent or most critical query, and serve the other one with a secondary structure. Example: orders sharded by customer_id; the seller's query by seller_id uses a CDC-fed index or read model partitioned by seller_id.</p><p>You pay with write amplification (every order is written twice) and eventual consistency on the secondary copy. If both are equally hot, accept scatter-gather for one, or store the data twice with each key. Avoid trying to find one clever compound key; it rarely serves both.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Salting a hot key across sub-keys",
+    "python": "import random\nrandom.seed(1)\nSALTS = 4                                    # one hot key becomes 4 sub-keys\nstore = {}                                   # shard-level counters: \"key#salt\" -> count\n\ndef incr(key):\n    sub = key + \"#\" + str(random.randrange(SALTS))   # write picks a random suffix\n    store[sub] = store.get(sub, 0) + 1\n\ndef total(key):\n    # a read must add up every sub-key (cost: SALTS reads instead of 1)\n    return sum(store.get(key + \"#\" + str(i), 0) for i in range(SALTS))\n\nfor _ in range(1000):\n    incr(\"celebrity\")\nfor sub in sorted(store):\n    print(sub, store[sub])                   # load is spread over sub-keys\nprint(\"total reads needed:\", SALTS)\nprint(\"celebrity total =\", total(\"celebrity\"))\n"
+   },
+   "followUps": [
+    "<p>Use a small number, often a handful, because each salt multiplies read cost. Size it to the load: if the key gets 20,000 writes/s and one shard handles 5,000, you need at least 4 salts; add margin, so 8.</p><p>Better to salt only the keys proven hot (a hot-key list) than every key. You can also grow the count over time, since old totals still sum correctly if readers use the current maximum.</p>",
+    "<p>A read must query every salt and add up the results, so one read becomes N reads (N = number of salts) and latency is the slowest of them. In the demo, 4 salts mean 4 reads per total.</p><p>Hide it by: a background job that rolls the sub-keys into one summary every few seconds and a cache serving that summary; reading in parallel; and accepting slightly stale totals for things like like-counts. Hide the logic inside one data-access function so callers never see the salts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Keys moved: hash mod N vs consistent hashing",
+    "python": "import hashlib, bisect\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest(), 16)\n\nkeys = [\"key\" + str(i) for i in range(10000)]\n\n# naive: hash mod N\nmoved = sum(1 for k in keys if h(k) % 3 != h(k) % 4)\nprint(\"mod 3 -> mod 4: moved %.1f%%\" % (100 * moved / len(keys)))\n\n# consistent hashing with virtual nodes\ndef ring(nodes, vnodes=100):\n    return sorted((h(n + \"#\" + str(v)), n) for n in nodes for v in range(vnodes))\n\ndef owner(r, k):\n    i = bisect.bisect(r, (h(k), \"\")) % len(r)    # first point clockwise from the key\n    return r[i][1]\n\nr3 = ring([\"A\", \"B\", \"C\"])\nr4 = ring([\"A\", \"B\", \"C\", \"D\"])\nmoved = sum(1 for k in keys if owner(r3, k) != owner(r4, k))\nprint(\"ring 3 -> 4 nodes: moved %.1f%%\" % (100 * moved / len(keys)))\n"
+   },
+   "followUps": [
+    "<p>Choose a number much larger than today's node count, so the cluster can grow without ever changing the key-to-partition mapping. Example: 1024 or 4096 partitions for a cluster that has 8 nodes now and might reach 100.</p><p>Too few limits your maximum node count and makes partitions huge to move (with 16 partitions you cannot use more than 16 nodes); too many adds metadata and per-partition overhead. Aim for partitions in the 1 to 50 GB range, giving the system room to grow 10 to 100 times.</p>",
+    "<p>It places both nodes and keys on a circle (a hash ring), and each key belongs to the next node clockwise. Adding a node only takes over the arc just before it, so only about 1/(N+1) of keys move.</p><p>In the demo, going from 3 to 4 nodes moved about 25% of the keys with a ring, versus about 74% with mod N. Virtual nodes (many points per server) even out the load and spread the moved keys across all existing nodes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the database has two writers for a while (old and new), and changes can land in one place and not the other. Stream the change log instead: it is the single ordered truth of what committed.</p><p>With dual writes in the app, a crash between the two writes leaves them different, retries create duplicates, and two concurrent updates can be applied in opposite orders on each side. CDC reads committed changes in commit order, replays them idempotently, and needs no changes to application code.</p>",
+    "<p>The dangerous part is the moment when writes might go to both old and new shards, or to neither. Risks: a write accepted by the old shard after the final catch-up (lost), a stale router still sending writes to the old shard, and clients seeing the old map for a few seconds.</p><p>Defences: fence the old shard (it rejects writes for moved partitions by map version), pause writes briefly until lag = 0, publish the new map version, and keep reverse replication so you can roll back without losing changes made after cutover.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A local index lives with each shard's own data, so writes stay on one shard but a query by the indexed column must ask every shard. A global index is partitioned by the indexed column itself, so the query hits one shard but each write updates two places.</p><p>Example: orders by customer_id, queried by product_id. Local index: reads scatter to N shards. Global index: reads hit one shard, but writes become two writes (often async, so briefly stale). Choose local for rare queries and global for frequent ones.</p>",
+    "<p>Make the pipeline idempotent and check it. Apply each change keyed by primary key and version (only if the version is newer), so retries and duplicates are harmless; process the change stream per key in order.</p><p>Then run a reconciler: periodically compare counts and checksums of chunks between source and index, and repair differences. Alert on consumer lag. A failed message goes to a dead-letter queue, never dropped silently, and you can rebuild the index from a snapshot plus the log.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Saga transfer with a compensating action",
+    "python": "# Saga: debit A, credit B; if credit fails, compensate by refunding A.\naccounts = {\"A\": 100, \"B\": 50}\ndone = set()                                  # idempotency: transfer ids already applied\n\ndef debit(tid, acc, amt):\n    if (tid, \"debit\") in done:\n        return                                # retry-safe: second call is a no-op\n    accounts[acc] -= amt\n    done.add((tid, \"debit\"))\n\ndef credit(tid, acc, amt, fail=False):\n    if fail:\n        raise RuntimeError(\"shard B down\")\n    accounts[acc] += amt\n\ndef transfer(tid, src, dst, amt, fail_credit=False):\n    debit(tid, src, amt)                      # local transaction 1\n    try:\n        credit(tid, dst, amt, fail_credit)    # local transaction 2\n        print(tid, \"committed\")\n    except RuntimeError as e:\n        accounts[src] += amt                  # compensating action\n        print(tid, \"compensated:\", e)\n\nprint(\"start:\", accounts)\ntransfer(\"t1\", \"A\", \"B\", 30)\nprint(\"after t1:\", accounts)\ntransfer(\"t2\", \"A\", \"B\", 20, fail_credit=True)\nprint(\"after t2:\", accounts)\n"
+   },
+   "followUps": [
+    "<p>It is the state where a participant has voted yes in the prepare phase and holds locks, but has not heard whether to commit or abort. It cannot decide alone, because the other participants might have voted no.</p><p>If the coordinator crashes at that moment, the participant must wait, blocking every row it locked, maybe for minutes. Fixes: make the coordinator highly available (replicated through Raft), persist the decision before telling participants, and run a recovery process that asks others for the outcome.</p>",
+    "<p>Because a saga needs two things to happen together: commit the local change and send the message for the next step. Without an outbox, a crash between them either loses the message (saga stalls) or sends it without the commit (a ghost step).</p><p>With the outbox, the message is a row written in the same local transaction as the business change; a relay then publishes it, at-least-once. The consumers must be idempotent, using the transfer id, because duplicates will happen.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Tail latency amplification from fan-out",
+    "python": "import random\nrandom.seed(7)\nP_SLOW = 0.01                                 # each shard is slow 1% of the time\n\nfor n in (1, 10, 100):\n    formula = 1 - (1 - P_SLOW) ** n           # chance at least one shard is slow\n    trials = 20000\n    # a fan-out is slow if ANY of its n shard calls is slow (latency = max)\n    slow = sum(1 for _ in range(trials)\n               if any(random.random() < P_SLOW for _ in range(n)))\n    print(\"fan-out %3d: formula %.1f%%, simulated %.1f%%\"\n          % (n, 100 * formula, 100 * slow / trials))\n"
+   },
+   "followUps": [
+    "<p>Send a second copy of the request only after waiting longer than most requests take, for example at the p95 latency. Then only about 5% of requests get a duplicate, so load rises by around 5%, not 100%.</p><p>Extras: cancel the slower copy once one answers (tied requests), cap hedging with a budget (say 10% of traffic), and only hedge idempotent reads. This trims the tail a lot: with a 1% slow rate, the chance that both copies are slow drops to about 0.01%.</p>",
+    "<p>When an incomplete answer is still useful and clearly labelled: search results, recommendations, dashboards, autocomplete. If 1 of 20 shards times out, returning 95% of the results beats a 2-second error.</p><p>It is not acceptable where totals or correctness matter: money balances, inventory counts, compliance reports. Mark the response as partial so clients can retry or warn the user, and set per-shard timeouts so a slow shard costs a bounded delay.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With 2 regions, no majority can survive losing one: a quorum needs 2 of 2, so one region outage stops writes (or lets two sides both think they lead). With 3 regions, any 2 form a majority, so losing one leaves a working quorum.</p><p>Example: 5 replicas as 2+2+1 across 3 regions needs 3 votes to commit; if one region with 2 replicas dies, 3 remain and commits continue. The third region can be a small voting replica only, to save cost.</p>",
+    "<p>Serve reads locally from a replica near the user, and pay the cross-region cost only when freshness demands it. Options: follower reads that return data slightly in the past (for example 5 to 10 s old, consistent as of a timestamp); leader or lease-holder reads in the user's region; and caches for hot data.</p><p>For strong reads, place each range's leader in the region where it is used most, so a read is local and only the commit pays the inter-region round trip (say 80 ms). Let the client choose per query: strong or stale.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,95 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Early, honest feedback is the hardest, because it is uncomfortable and easy to postpone. <b>Situation:</b> a strong engineer kept merging code with weak tests, and I waited three weeks hoping it would fix itself. <b>Action:</b> I now write the feedback down the same day, using one specific example, the impact, and a clear ask, then deliver it in the next one-on-one. <b>Result:</b> the next case took two days to raise, the engineer fixed it in a sprint, and said they preferred hearing it early.</p>",
+    "<p>I would expect them to say I sometimes over-prepare and am slow to delegate the visible, high-stakes work. <b>Situation:</b> in a skip-level, two reports said I rewrote their design summaries before they went to leadership. <b>Action:</b> I stopped editing, gave comments only on request, and let them present directly. <b>Result:</b> both presented to the director within a month, and the next survey's autonomy question rose from 70% to 85%. I still ask every quarter what I should stop doing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The clearest case was a design review where I asked what happens if the queue consumer is down for an hour. <b>Situation:</b> the plan relied on at-most-once delivery for payment events. <b>Action:</b> I asked for the failure-mode walkthrough, and the team realized events would be silently lost. <b>Result:</b> they switched to at-least-once delivery with idempotency keys before launch. I did not propose the fix; I only asked the question that exposed the gap.</p>",
+    "<p>I treat learning as a small weekly habit rather than a big project. Each week I read one or two design docs outside my area, review a few PRs in an unfamiliar service, and spend an hour trying something new, such as a profiler on one of our slow endpoints. I also swap notes with the senior engineers in a monthly reading session. Roughly 3 hours a week keeps my judgment current without pulling me onto the critical path.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I move to a formal plan when informal coaching has had a fair chance and the gap is still clear against the level. <b>Rule of thumb:</b> if two or three rounds of specific feedback over 4 to 6 weeks, with real support, show no improvement on agreed goals, I involve HR. For example, three missed commitments with the same root cause after pairing and smaller tickets. The key is that the person has already heard the concern clearly, so a PIP is never a surprise, and it lists measurable goals and a review date.</p>",
+    "<p>I make sure the team does not silently absorb the work. <b>Action:</b> I reduce what the person owns on critical paths, so a missed commitment cannot block others, and I rebalance the sprint so nobody is covering for them unseen. I also tell the team, without details, that I am handling it, and I thank those who help. <b>Result:</b> in my example, sprint commitments stayed at 85% say/do during the plan, and nobody had to work late to cover.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I change the format, not the person. Some people simply do not know what belongs in a one-on-one. I seed the doc myself with two or three prompts, such as 'what slowed you down this week?' and 'what is one thing you would change on the team?' I also ask for a topic in advance by message. If it stays quiet for a month, I use the time for career conversation and feedback instead, and I check whether the silence signals low trust, which I then work on.</p>",
+    "<p>I stay calm, listen, and do not rush to fix it. <b>Action:</b> I offer a pause or tissues, say 'take your time', and ask whether they want to talk it through or just have space. I do not promise things I cannot deliver. Afterwards I write down any actions, follow up within a day, and, if it is personal, point to support options such as the employee assistance program. In one case an engineer was overwhelmed by on-call; we adjusted their rota the same week.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I reduce bias with structure: the same questions and a written rubric for every candidate. Each interviewer scores their competency before reading anyone else's feedback, so early opinions do not anchor the group. I use work-sample exercises rather than gut-feel chats, diversify the interviewer panel, and review pass-through rates by stage to spot unexplained drop-offs. For example, if one round fails 70% of candidates but passes 30% in others, I recalibrate that round.</p>",
+    "<p>An even split means the evidence is unclear, so I look at the rubric, not the votes. <b>Steps:</b> 1) ask each side to cite specific evidence for the competency, 2) check whether a missing signal can be cheaply gathered, for example a short extra call on the disputed area, 3) if still tied, I decide as hiring manager and say why. A hard 'no' on a core competency, like integrity or ownership, outweighs enthusiasm elsewhere. Hire only when I can name what the person does better than the team's needs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>More people would not have fixed it and could have made it worse. Brooks's law says adding people to a late project slows it down in the short term, because the new people need onboarding from the same engineers doing the critical work. In my case the delay came from an external API, not from our typing speed, so extra engineers could not shorten it. Cutting scope and re-sequencing the risky work moved the date far more than another hire would have.</p>",
+    "<p>I would plan with ranges and test the riskiest assumption first. We had assumed the partner API would handle our load and did not verify it for three months. <b>Next time:</b> a one-week spike in the first month against that API, a forecast shown as a range (for example 5 to 7 months), and a pre-agreed list of what to cut. That would have exposed the 7-week gap early, when more options were open and the cost of change was smaller.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I treat it as a trade-off and show it, not just absorb it. <b>Steps:</b> 1) ask what outcome the urgent item serves and how real the deadline is, 2) estimate cost, for example 3 engineer-weeks, 3) show the leader what moves out to make room, 4) let them choose. 'Yes, and here is what slips' keeps the relationship healthy and keeps the plan honest. If the item is truly critical, I swap it in; if not, it goes to the next planning cycle.</p>",
+    "<p>I base the share on data, then adjust. A start of about 20% is common; I raise it when signals worsen, such as deploys failing more than 15% of the time, or on-call load over two pages per person per week. For example, when change-fail rate hit 22% I moved to 30% for one quarter, and it fell to 9%, so we returned to 20%. I review the number each quarter with the team and share the reasoning with stakeholders.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would escalate jointly and with facts, not around them. <b>Steps:</b> 1) write a one-page summary: the data (31 pages a week, 60% from their deploys), the shared goal, and the options I proposed, 2) tell their EM I am taking it to both directors and invite them to add their view, 3) ask the directors for a decision, not a verdict on the person. That keeps it about the problem. Meanwhile I protect my team with temporary guardrails such as stricter alert routing.</p>",
+    "<p>I took their frustration seriously and gave them something to do with it. <b>Action:</b> at a team meeting I shared the data, explained that the Ads team was optimizing for a legitimate goal, and asked for two engineers to help design the contract tests. Naming the other side's constraints stopped the 'they don't care' story. <b>Result:</b> the team felt heard, volunteers joined the working group, and morale improved as pages dropped from 31 to 9 a week.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If I truly believed it was unsafe, I would not simply comply. I would raise it clearly, in writing, with evidence: what could go wrong, how likely, and the impact on users or data. Then I would offer an alternative and ask for an explicit decision. If she still chose to proceed, I would escalate to the next level or the risk owner, because safety and security are shared duties, not just preferences. I would never stay silent and then say 'I told you so' later.</p>",
+    "<p>In private I can be direct and exploratory; in public I support the decision or ask neutral, constructive questions. I raise disagreement before the meeting, one-on-one, so nobody is surprised in front of an audience. Once decided, I speak with one voice to my team and explain the reasoning, without blaming. For example, I disagreed privately about the 6-week date, then publicly presented the reduced scope as our plan. The exception is safety issues, which I escalate openly if private channels fail.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>One decision I regret: I let the team adopt a new message broker because it looked exciting, without a short design doc. <b>Situation:</b> it was a one-way door, but I treated it as a library choice. <b>Result:</b> nobody on call knew it well, and we spent about 6 engineer-weeks on incidents before migrating back. <b>Learning:</b> I now classify every decision as reversible or not up front, and any vendor or platform change gets a doc, an ADR, and an on-call readiness check.</p>",
+    "<p>I start with a private, curious conversation: why do you disagree, and what does the ADR miss? Sometimes they are right and the ADR needs an update. If their concern is not valid, I restate that the decision stands and why. If they still ignore it, I treat it as a performance expectation about working within agreed decisions, since one person's exceptions break everyone's assumptions. I make the path easy: a lightweight way to propose changing an ADR, such as a short PR with the new reasoning.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Rules I set: AI is welcome for boilerplate, tests and exploration, but the author must be able to explain and defend every line. We never paste secrets, customer data or private code into tools that are not approved. AI-generated code gets the same review standard, plus tests written or checked by a human. We tag significant AI-assisted changes in the PR description so reviewers know to look closely. We revisit the rules every quarter as tools change.</p>",
+    "<p>I assess understanding, not tool use. <b>Method:</b> ask them to walk through a recent diff without the assistant, explain why they chose it, and predict what breaks if one line changes. Watch debugging: can they form a hypothesis? A junior who uses AI and explains clearly is fine; one who cannot is a coaching case. I set a goal such as 'own one small bug from reproduction to fix, explained in review', and pair them with a senior for two weeks.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>First I look for it in the data and then I ask the team directly. If the survey shows manager-related items dropped, such as feedback or trust, I take that seriously and say so. <b>Action:</b> I share the finding, ask for specifics through a skip-level or an anonymous form, and commit to one or two visible changes. For example, if people felt decisions were unexplained, I start writing short decision notes. Owning it publicly and acting quickly is what rebuilds trust.</p>",
+    "<p>People tell the truth when it is safe and when it leads to action. I use anonymous surveys for sensitive topics, small-group retros with a neutral facilitator or a skip-level, and ask specific questions such as 'what is one thing that wasted your time this month?' rather than 'any concerns?'. I thank people for hard feedback, never argue with it, and show what changed afterwards. Honest answers usually arrive after the first time someone sees something change.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I earn trust by listening first and delivering small wins. In the first weeks I hold one-on-ones with everyone, asking what is working, what is frustrating and what they want from a manager. I avoid big changes early. I then fix one thing they named, for example a slow CI pipeline, and tell them I did it because they asked. I also acknowledge the internal candidate's disappointment respectfully and ask for their help; their knowledge of the team is valuable. Trust is built by consistency, not announcements.</p>",
+    "<p><b>Days 1 to 10:</b> one-on-ones with everyone, meet partner teams, read the roadmap, recent incidents and survey results. <b>Days 11 to 20:</b> write down what I heard, share a short summary with the team, and pick one quick improvement. <b>Days 21 to 30:</b> agree with my director on three priorities and success measures for the first 90 days, and draft growth goals with each person. I avoid reorganizing or changing process until I understand why things are as they are.</p>"
+   ]
+  }
+ ]
+}

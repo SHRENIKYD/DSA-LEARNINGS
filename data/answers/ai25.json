@@ -1,0 +1,113 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Estimate image tokens from size and patches",
+    "python": "import math\n\n# Toy model of a VLM image-token estimate (illustrative numbers only).\nPATCH = 28          # pixels per patch side\nMAX_SIDE = 1568     # assumed longest side before the image is downscaled\n\ndef image_tokens(w, h):\n    # Downscale (keeping aspect ratio) if the longest side is too big\n    scale = min(1.0, MAX_SIDE / max(w, h))\n    w2, h2 = round(w * scale), round(h * scale)\n    # One token per patch: cost grows with area, O(1) to compute\n    return w2, h2, math.ceil(w2 / PATCH) * math.ceil(h2 / PATCH)\n\nfor w, h in [(1920, 1080), (1024, 768), (400, 300)]:\n    w2, h2, t = image_tokens(w, h)\n    print(f\"input {w}x{h} -> used {w2}x{h2} -> {t} image tokens\")\n"
+   },
+   "followUps": [
+    "<p>Divide the pixel area by the patch area, after allowing for downscaling. A 1920×1080 screenshot is larger than a typical size limit (say 1568 px on the long side), so it is first shrunk to about 1568×882. With 28×28 patches that is 56 × 32 = 1,792 tokens. Without the shrink it would be about 69 × 39 = 2,691.</p><p>Always check your provider's own formula, because patch size, merging and limits differ. Cost is price per token times tokens, and it is computed in constant time.</p>",
+    "<p>In the projector design (LLaVA style) image tokens are simply placed in the LLM's input sequence, so they use context and every layer attends to them. In a cross-attention design (Flamingo style) the text layers stay the same and extra cross-attention layers read the image features, so image tokens do not take up sequence positions.</p><p>Cross-attention keeps the text context short and can handle many images, but it adds new layers to train. The projector design is simpler and is what most current models use.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Check the number against independent evidence instead of trusting the model. Ask the VLM to quote the text next to the total, then confirm that the quoted digits appear in the OCR output. Also check that line items add up to the total: 120.00 + 35.50 + 4.50 = 160.00, so a claimed 106.00 fails.</p><p>Run the two readers separately and compare, or ask twice and flag disagreement. Send any mismatch to a human review queue.</p>",
+    "<p>Handwriting breaks OCR assumptions, so the VLM does more of the work and the checks matter more. Use a model or OCR engine built for handwriting, ask for per-field confidence, and capture each field as a cropped image so the reviewer sees the evidence.</p><p>Expect lower accuracy, so lower the auto-accept rate. Digits are easy to confuse (1 and 7, 0 and 6), so cross-check amounts with arithmetic and require human review for large values. Build a separate labelled test set, because printed-invoice accuracy will not carry over.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "CLIP-style contrastive loss on a tiny batch",
+    "python": "import math\n\n# Tiny CLIP-style contrastive loss on 3 image/caption pairs (2-D embeddings).\nimages = [(1.0, 0.1), (0.1, 1.0), (0.7, 0.7)]\ntexts  = [(0.9, 0.2), (0.2, 0.9), (0.6, 0.8)]\nTEMP = 0.1  # temperature scales the similarities\n\ndef norm(v):\n    n = math.hypot(*v)\n    return (v[0] / n, v[1] / n)\n\nimages = [norm(v) for v in images]\ntexts = [norm(v) for v in texts]\n# N x N cosine similarity matrix; the diagonal holds the true pairs\nsim = [[(a[0]*b[0] + a[1]*b[1]) / TEMP for b in texts] for a in images]\n\ndef row_loss(row, i):\n    # cross-entropy: -log softmax(row)[i]\n    return -(row[i] - math.log(sum(math.exp(x) for x in row)))\n\ncols = list(zip(*sim))\nloss_i = sum(row_loss(sim[i], i) for i in range(3)) / 3\nloss_t = sum(row_loss(cols[i], i) for i in range(3)) / 3\nfor r in sim:\n    print([\"%.1f\" % x for x in r])\nprint(\"image->text loss %.4f, text->image loss %.4f\" % (loss_i, loss_t))\nprint(\"CLIP loss = %.4f\" % ((loss_i + loss_t) / 2))\n"
+   },
+   "followUps": [
+    "<p>SigLIP replaces the softmax over the whole batch with an independent yes or no loss on every image-text pair. In a batch of N pairs there are N positives (the diagonal) and N² − N negatives, each scored with a sigmoid and binary cross-entropy.</p><p>Because each pair is scored on its own, the loss needs no batch-wide normalisation. That makes very large or very small batches easier to use and cheaper to spread across devices, and it often matches or beats CLIP at smaller batch sizes.</p>",
+    "<p>Build a labelled test set from your real images and measure accuracy for each label, not just the average. Compare candidate prompt wordings such as \"a photo of a {label}\", because the wording changes the results.</p><p>Look at a confusion matrix to find labels that get mixed up, and set a score threshold that includes an \"unknown\" option. For example, if 200 test images give 180 correct, accuracy is 90%, but check the rare labels separately. Send low-margin predictions to humans.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not compare the raw scores. Each index uses a different scale, so a 0.31 from image search is not the same as a 0.31 from text search. Retrieve the top k from each, then merge with reciprocal rank fusion (RRF): each item scores the sum of 1/(60 + rank) over the lists it appears in.</p><p>A page ranked 1st in text and 3rd in images scores 1/61 + 1/63 = 0.0323. Alternatively, rerank the merged candidates with a single cross-encoder or VLM. Merge by page id so duplicates collapse.</p>",
+    "<p>Never let the model guess numbers from a caption. Pass the actual page image (or extracted chart data table) at answer time and ask it to quote the values and cite the page. Then check: the numbers must appear in the extracted data, or in a second independent reading.</p><p>Where possible, extract the chart's underlying table at ingestion into structured form, and compute totals with code instead of the model. If the checks fail, answer \"cannot read this reliably\" and show the page.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Forward diffusion: jump to any noise step",
+    "python": "import math, random\n\nrandom.seed(1)\nT = 10\nbetas = [0.02 * (i + 1) for i in range(T)]   # linear noise schedule\nabar, p = [], 1.0\nfor b in betas:\n    p *= (1 - b)          # alpha-bar_t = product of (1 - beta)\n    abar.append(p)\n\nx0 = [1.0, -1.0, 0.5, 0.0]   # a tiny \"image\"\nprint(\"clean x0:\", x0)\nfor t in (0, 4, 9):\n    # jump straight to step t: x_t = sqrt(abar)*x0 + sqrt(1-abar)*noise\n    eps = [random.gauss(0, 1) for _ in x0]\n    xt = [math.sqrt(abar[t]) * a + math.sqrt(1 - abar[t]) * e\n          for a, e in zip(x0, eps)]\n    print(f\"t={t+1:2d} signal={math.sqrt(abar[t]):.3f} \"\n          f\"noise={math.sqrt(1-abar[t]):.3f} x_t={[round(v, 2) for v in xt]}\")\n"
+   },
+   "followUps": [
+    "<p>The cosine schedule keeps more signal in the early and middle steps and destroys it more gradually. A linear schedule spends many steps almost entirely on noise, especially for small images, so those steps teach the model little.</p><p>With a cosine schedule ᾱ_t = cos²(((t/T) + s)/(1 + s)·π/2), the signal fraction falls smoothly toward zero near the end instead of reaching near zero early. This gives a more even use of steps and usually better samples at low resolution.</p>",
+    "<p>Flow matching trains a network to predict the velocity that moves a noise sample in a straight line toward a data sample, and sampling is solving that ODE.</p><p>With x_t = (1 − t)·x0 + t·noise, the target velocity is noise − x0. Straighter paths need fewer solver steps than the curved diffusion paths, which is why recent image models use it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Classifier-free guidance scale effect",
+    "python": "# Classifier-free guidance on a 2-number \"noise prediction\".\neps_uncond = [0.10, 0.20]   # prediction with the prompt dropped\neps_cond   = [0.30, 0.10]   # prediction with the prompt\n\ndef guided(w):\n    # eps_hat = eps_u + w * (eps_c - eps_u)\n    return [u + w * (c - u) for u, c in zip(eps_uncond, eps_cond)]\n\nprint(\"uncond:\", eps_uncond, \"cond:\", eps_cond)\nfor w in (0, 1, 5, 8, 20):\n    print(f\"w={w:2d} -> {[round(v, 2) for v in guided(w)]}\")\n# w=1 equals the conditional model; large w extrapolates far past it,\n# which is why very high scales over-saturate. Cost: 2 network passes/step.\n"
+   },
+   "followUps": [
+    "<p>Because the guided prediction is a way of sampling from a sharpened distribution. By Bayes, p(x|c) ∝ p(x)·p(c|x), so the gradient of log p(x|c) equals the gradient of log p(x) plus the gradient of log p(c|x).</p><p>Guidance adds the term (ε_cond − ε_uncond) with weight w, which is like multiplying the likelihood p(c|x) by a power. A bigger w makes the sample match the prompt more strongly, at the cost of diversity. This needs no separate classifier, hence \"classifier-free\".</p>",
+    "<p>They learn the guided output directly, so one pass gives the result of two. In guidance distillation, a student network takes the scale w as an extra input and is trained to match the teacher's guided prediction ε̂.</p><p>That halves the cost per step, and step distillation then cuts the number of steps as well: a teacher using 50 steps × 2 passes = 100 passes can become a student using 4 steps × 1 pass. The trade-off is less flexibility and some quality loss.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Check the signed manifest with a C2PA library or the official verification tool, and treat the outcome as one of three states: valid, invalid or tampered, or absent. Verify that the signature chains to a trusted certificate and that the hash still matches the image bytes.</p><p>A valid manifest says who signed what, not that the content is true. Absent is not proof of fakery, since screenshots strip it. Show the result to users and moderators as evidence, and combine with a watermark detector where available.</p>",
+    "<p>Treat a real person's image as sensitive. Common rules: no sexual or deceptive depictions, no impersonating someone to mislead, and consent for using a private person's likeness. Public figures get extra protection against fake endorsements and political deception.</p><p>Enforce this at both prompt and output stages: block named-person requests in risky categories, run face and likeness checks on uploads, and keep a fast takedown path. Laws differ by region (publicity rights, deepfake laws), so get legal review.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Word error rate by edit distance",
+    "python": "def wer(ref, hyp):\n    r, h = ref.split(), hyp.split()\n    # d[i][j] = word edit distance between first i ref and first j hyp words\n    d = [[0] * (len(h) + 1) for _ in range(len(r) + 1)]\n    for i in range(len(r) + 1):\n        d[i][0] = i\n    for j in range(len(h) + 1):\n        d[0][j] = j\n    for i in range(1, len(r) + 1):\n        for j in range(1, len(h) + 1):\n            cost = 0 if r[i-1] == h[j-1] else 1\n            d[i][j] = min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + cost)\n    return d[-1][-1] / len(r)     # errors divided by REFERENCE length\n\ntests = [\n    (\"my account number is 4417\", \"my account number is 4471\"),\n    (\"hello there\", \"hello there\"),\n    (\"yes\", \"uh yes please thank you\"),   # insertions can push WER above 100%\n]\nfor ref, hyp in tests:\n    print(f\"ref={ref!r} hyp={hyp!r} WER={wer(ref, hyp):.0%}\")\n# Time O(R*H), space O(R*H) for R and H words\n"
+   },
+   "followUps": [
+    "<p>WER is substitutions plus deletions plus insertions, divided by the number of words in the reference. The denominator is fixed, but the numerator is not capped, so many inserted words can push the total above 100%.</p><p>Example: the reference is \"yes\" (1 word) and the system outputs \"uh yes please thank you\" (5 words, 4 insertions). WER = 4/1 = 400%. This often happens when the model hallucinates text during silence or music, which is why you should also report insertions separately.</p>",
+    "<p>Use several tools together. Give the recogniser a custom vocabulary or phrase boosting list with the product names, and add pronunciation hints if supported. Fine-tune or adapt on real calls containing those names, if the vendor allows it.</p><p>A post-processing step can also fix near misses: compare each recognised word with the product list by phonetic or edit distance and replace when the match is close and the context fits. Measure entity error rate before and after, on calls the tuning never saw.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Choose cascaded when you need control: you can swap each part, use a strong text LLM with tools, read and log exact transcripts, apply guardrails to text, and meet compliance needs. It is easier to debug because every stage has a visible output.</p><p>Choose speech-to-speech when natural feel matters most, as it keeps tone and interruptions, and the latency is often lower with one model. The cost is less control, harder auditing and fewer tool and language options. Many teams start cascaded and switch only if the latency target is missed.</p>",
+    "<p>Measure the outcome and the experience together. Outcome: task success or resolution rate without a human, containment, and correct actions (checked by audits). Experience: p50 and p95 time to first audio, interruption rate, word error on key entities, call length and user satisfaction.</p><p>Add guardrail metrics: wrong-action rate, handoff rate, and complaints. For example, 70% containment is bad if 5% of those calls ended with a wrong refund. Review a sample of calls weekly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Turn-taking and barge-in state machine",
+    "python": "FRAME_MS = 100\nMIN_SPEECH = 2        # frames of speech needed to start a turn\nSILENCE_MS = 500      # silence that ends the turn\n\n# 1 = speech detected in this 100 ms frame, 0 = silence\nframes = [0,0,1,1,1,0,0,0,0,0,0, 1,1,0,0,0,1,0,0,0,0,0,0]\nstate, run, quiet, said = \"idle\", 0, 0, []\nfor i, f in enumerate(frames):\n    t = i * FRAME_MS\n    if state == \"idle\":\n        run = run + 1 if f else 0\n        if run >= MIN_SPEECH:\n            state, quiet = \"user_speaking\", 0\n            print(f\"{t:5d} ms user turn starts\")\n    elif state == \"user_speaking\":\n        quiet = 0 if f else quiet + FRAME_MS\n        if quiet >= SILENCE_MS:\n            state = \"agent_speaking\"\n            print(f\"{t:5d} ms silence {SILENCE_MS} ms -> agent starts talking\")\n    elif state == \"agent_speaking\" and f:\n        # barge-in: stop playback, cancel generation, keep only what was heard\n        print(f\"{t:5d} ms BARGE-IN: stop audio, truncate history, listen\")\n        state, run, quiet = \"user_speaking\", 0, 0\n"
+   },
+   "followUps": [
+    "<p>Tune it from real call data, not a guess. Log where users pause inside a turn and how often the agent cut them off, grouped by group (for example people reading out long numbers, older callers, non-native speakers). Longer pauses are normal in those groups.</p><p>Then use a longer timeout, or a semantic end-of-turn model, for those cases: 500 ms for short answers, 1,200 ms while the user is spelling digits. Compare the cut-off rate and the added delay before shipping.</p>",
+    "<p>Replay recorded audio against the agent with known timings. Build test clips where the user speaks over the agent at set offsets (for example 1.0 s into a reply) and assert that playback stops within about 300 ms, generation is cancelled, and the saved history ends at the words actually played.</p><p>Add negative cases: a cough, \"mm-hm\" and echo of the agent's own voice must not trigger an interruption. Run these in CI and track the time from user speech to silence as a metric.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Index the video as time-stamped pieces, then search those pieces. Sample frames (say one every 2 seconds), caption them with a VLM, add the transcript, and embed each segment with its start time. A query like \"when does the goal happen\" returns the best-matching segments with timestamps.</p><p>For precision, run a second pass: take the top few segments, sample frames densely around them, and ask the VLM to confirm and refine the time. A one-hour video at 1 frame per 2 s has 1,800 frames, so indexing once and caching is far cheaper than re-reading every query.</p>",
+    "<p>Check before processing and again on results. Before: file type and size limits, malware scanning, duration caps, and moderation of frames and audio for illegal or harmful content. Strip metadata that holds location.</p><p>Treat any text spoken or shown in the video as untrusted, since it can carry prompt injection. Limit what the summariser can do (no tools), keep the retention period short, and respect consent rules for faces and voices. Log rejections for review.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Attack it the way a user would, with a checklist of image-based tricks. Try hidden or tiny text with instructions, QR codes, screenshots of fake system messages, and images containing someone's private data. Include altered images that the model misreads, and files with unusual formats or metadata.</p><p>For each test record what the model did, especially any tool call or data leak. Pass only if tools never ran from image text alone. Repeat after every model or prompt change, and keep failing cases as regression tests.</p>",
+    "<p>Log what you need to investigate abuse and measure quality: a request id, user id, time, model version, moderation results, tool calls and decisions. Avoid storing raw images, audio or faces unless needed, and if you store them, encrypt and restrict access.</p><p>Keep short retention by default (for example 30 days for raw media, longer for metadata and aggregates), with a legal-hold exception. Follow local rules on biometrics and recording consent, and let users delete their data.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>FID compares the statistics of a set of generated images with real ones, so it can say that the overall look is similar while hiding that one image is wrong. It ignores whether a particular image follows its prompt, so a perfect-looking cat for the prompt \"a dog\" is not penalised.</p><p>It also needs thousands of samples, depends on the feature network used, and is unstable on small sets. Use it as a regression signal next to prompt-adherence checks and human preference comparisons.</p>",
+    "<p>Treat the judge as a noisy rater and check it against humans. Use a clear rubric with yes or no questions (\"is there a red cube?\"), not a vague 1 to 10 score. Randomise left and right order for pairwise comparisons, because judges favour position.</p><p>Calibrate: have humans label 200 images, and compare agreement with the judge. If agreement is below, say, 85%, do not rely on it. Keep the judge model separate from the generator to avoid self-preference, and use humans for safety decisions.</p>"
+   ]
+  }
+ ]
+}

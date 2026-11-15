@@ -1,0 +1,114 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Starlette is the ASGI toolkit that FastAPI is built on top of. It supplies routing, requests and responses, middleware, websockets, background tasks, static files and the test client; FastAPI adds type-hint driven parameters, Pydantic validation, dependency injection and OpenAPI generation. So <code>FastAPI</code> is a subclass of <code>Starlette</code>, and anything Starlette can do (mount another ASGI app, add <code>CORSMiddleware</code>) works in FastAPI too.</p>",
+    "<p>Async gives no benefit when the endpoint is CPU-bound or only calls blocking libraries, because the event loop can run nothing else while it waits. Example: hashing a password takes 200 ms of pure CPU, so an async endpoint still handles about 5 requests per second per worker. Async also adds little when traffic is low or each request does one fast local query. It pays off when requests spend most time waiting on network I/O.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The scope is a plain dict describing one connection, filled in by the server before the app runs. Key entries: <code>type</code> (<code>http</code>, <code>websocket</code> or <code>lifespan</code>), <code>method</code>, <code>path</code>, <code>query_string</code> (bytes), <code>headers</code> (list of byte pairs), <code>client</code>, <code>scheme</code> and <code>asgi</code> version. The body is not in it; you read it through <code>receive()</code>. Middleware may add keys, for example Starlette stores <code>path_params</code> there.</p>",
+    "<p>Lifespan events are the start-up and shut-down signals that an ASGI server sends to the app once per process, outside any request. The server sends <code>lifespan.startup</code>, waits for the app to answer complete, serves traffic, then sends <code>lifespan.shutdown</code>. You use them to open and close shared resources such as DB pools. With 4 Uvicorn workers, startup runs 4 times, once in each process.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Declare the parameter with <code>Query()</code> and a list type, then repeat the key in the URL. Without <code>Query()</code>, a <code>list[int]</code> would be treated as a body.</p><pre><code>def f(ids: Annotated[list[int], Query()] = []): ...\n# GET /items?ids=1&amp;ids=2&amp;ids=3  -> ids == [1, 2, 3]</code></pre><p>Each value is validated as an int, so <code>ids=x</code> gives a 422. Comma-separated values (<code>ids=1,2,3</code>) are not split automatically; you would parse them yourself.</p>",
+    "<p>With two Pydantic model parameters, FastAPI expects a JSON body with one key per parameter name, instead of the model fields at the top level. For <code>def f(item: Item, user: User)</code> the body must be <code>{\"item\": {...}, \"user\": {...}}</code>. With a single model the body is just the model's fields. You can force the nested form for one model with <code>Body(embed=True)</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use 422 when the request is well-formed but fails schema rules, and 400 for problems the schema cannot express or for older clients that expect it. 400 fits malformed JSON, a bad business rule found after parsing (end date before start date), or a client contract that predates FastAPI. Example: <code>amount=-5</code> fails <code>ge=0</code> so 422; a coupon that exists but expired is a 400 or 409 raised by the service. Pick one convention and document it.</p>",
+    "<p>A custom validator reports an error by raising <code>ValueError</code> (or <code>AssertionError</code>) inside it; Pydantic wraps the message and adds the location. For example a <code>@field_validator(\"qty\")</code> that raises <code>ValueError(\"must be even\")</code> produces <code>{\"type\": \"value_error\", \"loc\": [\"body\", \"qty\"], \"msg\": \"Value error, must be even\"}</code>. Use <code>PydanticCustomError</code> for your own error type code. A model validator reports under the model's loc, not one field.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>from_attributes=True</code> (formerly <code>orm_mode</code>) lets a Pydantic model be built from an object's attributes instead of only from a dict. Without it, <code>UserOut.model_validate(db_user)</code> fails because an ORM row has <code>.email</code>, not <code>['email']</code>. With it, Pydantic reads <code>db_user.id</code>, <code>db_user.email</code> and ignores the rest, such as <code>password_hash</code>. FastAPI does this for you when <code>response_model=UserOut</code> and the route returns an ORM object.</p>",
+    "<p>Write a test that fetches the user through the API and checks the response keys are exactly the allowed set. Example: <code>assert set(r.json()) == {\"id\", \"email\", \"name\", \"created_at\"}</code>. Using equality instead of <code>\"password\" not in body</code> also catches new fields added later by accident. Repeat for list endpoints and for error bodies, and add a schema test that no <code>UserOut</code> property name contains <code>password</code> or <code>hash</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Dependency tree resolved once per request",
+    "python": "import inspect\n\nclass Depends:\n    def __init__(self, fn):\n        self.fn = fn\n\ncalls = []  # records every time a dependency really runs\n\ndef get_settings():\n    calls.append(\"get_settings\")\n    return {\"db\": \"test.db\"}\n\ndef get_session(settings=Depends(get_settings)):\n    calls.append(\"get_session\")\n    return \"session@\" + settings[\"db\"]\n\ndef get_user(settings=Depends(get_settings), session=Depends(get_session)):\n    calls.append(\"get_user\")\n    return \"user via \" + session\n\ndef resolve(fn, cache):\n    # Walk the signature; build each Depends depth-first, once per request\n    kwargs = {}\n    for name, p in inspect.signature(fn).parameters.items():\n        if isinstance(p.default, Depends):\n            dep = p.default.fn\n            if dep not in cache:          # cache keyed on the function\n                cache[dep] = resolve(dep, cache)\n            kwargs[name] = cache[dep]\n    return fn(**kwargs)\n\ndef route(user=Depends(get_user), settings=Depends(get_settings)):\n    return user                           # a \"path operation\"\n\nfor i in (1, 2):\n    calls.clear()\n    cache = {}                        # fresh cache for every request\n    result = resolve(route, cache)\n    print(\"request\", i, \"->\", result)\n    print(\"  dependency runs:\", calls)\n"
+   },
+   "followUps": [
+    "<p>Create the client in lifespan, store it on <code>app.state</code>, and hand it out through a small dependency. That gives one client per process, with connection pooling, closed cleanly at shutdown.</p><pre><code>@asynccontextmanager\nasync def lifespan(app):\n    app.state.http = httpx.AsyncClient()\n    yield\n    await app.state.http.aclose()\ndef get_http(request: Request): return request.state.http  # or app.state.http</code></pre><p>Use <code>@lru_cache</code> only for cheap sync objects like settings.</p>",
+    "<p>The per-request cache is keyed on the dependency callable plus its security scopes, so the same function used twice in one request runs once. In the demo, <code>get_settings</code> is needed by two parents but runs a single time. A new request starts with an empty cache. Pass <code>use_cache=False</code> to <code>Depends</code> when you want a fresh value each time, for example a random id generator.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Blocking call inside async def freezes the loop",
+    "python": "import asyncio, time\n\nasync def good_call():\n    await asyncio.sleep(0.2)      # awaitable I/O: the loop can run others\n\nasync def bad_call():\n    time.sleep(0.2)               # blocking: nothing else runs meanwhile\n\ndef blocking_lib():\n    time.sleep(0.2)               # pretend this is requests.get(...)\n\nasync def fixed_call():\n    await asyncio.to_thread(blocking_lib)   # moved off the event loop\n\nasync def run(name, fn):\n    start = time.perf_counter()\n    await asyncio.gather(*(fn() for _ in range(3)))   # 3 \"requests\" at once\n    print(f\"{name:<22} 3 requests took ~{time.perf_counter() - start:.1f}s\")\n\nasync def main():\n    await run(\"await sleep\", good_call)\n    await run(\"blocking in async\", bad_call)\n    await run(\"to_thread\", fixed_call)\n\nasyncio.run(main())\n# Expected: 0.2s, 0.6s, 0.2s. One blocking call serialises the whole worker.\n"
+   },
+   "followUps": [
+    "<p>Find it by watching for latency that rises for every endpoint at once, not just one. Steps: turn on asyncio debug mode (<code>PYTHONASYNCIODEBUG=1</code>), which logs coroutines blocking the loop for more than 100 ms; run a loop-lag probe (schedule a task every 100 ms and log how late it fires); and profile with py-spy <code>dump</code> to see which function the loop thread sits in. A lag of 800 ms points to a blocking call.</p>",
+    "<p>The threadpool limit (40 by default) caps how many sync endpoints run at once per worker, so your DB pool should be sized to match. If 40 threads can each hold a connection but the pool has 5, 35 threads wait for a connection and requests queue. A sensible rule: pool size about equal to the threads that really hit the DB, times workers, and below the database's max connections. Example: 4 workers x pool 10 = 40 connections, so check the server allows that.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep headers by building the response yourself or by letting your handler read them from the exception. A domain error such as <code>RateLimited(retry_after=30)</code> is caught by its handler, which returns <code>JSONResponse(status_code=429, content=body, headers={\"Retry-After\": \"30\"})</code>. With <code>HTTPException</code> you can pass <code>headers=</code> directly. Error responses declared in <code>responses=</code> only document the header; they do not set it.</p>",
+    "<p>With a <code>yield</code> dependency that holds a transaction, an exception raised in the route reaches the code after <code>yield</code>, so you can roll back there. Put <code>try/except/else</code> around the yield: <code>except: rollback; raise</code>, and commit on success. Since modern FastAPI, exit code runs after the response is sent, so commit before returning if the client must see committed data. Exception handlers run first and turn the error into a response, but the rollback still happens.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Call <code>app.openapi()</code> from a script and dump it, no server needed. <code>json.dump(app.openapi(), open(\"openapi.json\", \"w\"), indent=2)</code>. Run it in CI after importing the app, and compare the file with the committed one. This works because the schema is built from routes and models in memory. Make sure importing the app does not open DB connections, which is why resources belong in lifespan.</p>",
+    "<p>Pydantic generates separate schemas for validation (input) and serialization (output) when they differ, so you see <code>Item-Input</code> and <code>Item-Output</code>. They differ when a field has a default or a computed field, because the input may omit it while the output always has it. Example: <code>tags: list[str] = []</code> is optional on input but required on output. Pass <code>separate_input_output_schemas=False</code> to <code>FastAPI()</code> to merge them if you prefer one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>In Kubernetes, one Uvicorn process per container is usually better, and you scale by adding pods. The orchestrator then sees real health per process, restarts only the broken one, and CPU/memory limits map cleanly onto one process. Several workers per container make sense on a plain VM or when memory is tight and you want shared preloaded code. Example: 8 pods of 1 worker each give the same capacity as 2 pods of 4 workers, with smoother rolling updates.</p>",
+    "<p>On SIGTERM, Uvicorn stops accepting new connections, waits for in-flight requests to finish (up to the graceful timeout), and only then sends <code>lifespan.shutdown</code>. That means the code after <code>yield</code> runs after requests are done, so closing pools there is safe. If the timeout expires first, requests are cancelled. In Kubernetes, set <code>terminationGracePeriodSeconds</code> above your timeout, for example 30 s against a 25 s Uvicorn timeout.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If startup code raises, the lifespan fails, the server logs the error and exits with a non-zero status, and no requests are served. That is what you want: a service that cannot reach its database should not report healthy. In Kubernetes the pod will crash-loop and show the error in logs. Resources opened before the failing line are not closed unless you wrap them in <code>try/finally</code> or an <code>AsyncExitStack</code>.</p>",
+    "<p>A client created per request throws away connection pooling and TLS sessions, so every call pays a new TCP and TLS handshake (often 50 to 150 ms). It also risks running out of sockets under load, and forgetting to close it leaks connections. One shared <code>AsyncClient</code> opened in lifespan reuses connections to the same host, which keeps latency low. Configure its timeouts and limits once there.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Route order: /users/me vs /users/{user_id}",
+    "python": "import re\n\ndef compile_routes(templates):\n    out = []\n    for t in templates:\n        regex = re.sub(r\"\\{(\\w+)\\}\", r\"(?P<\\1>[^/]+)\", t)  # {x} matches any text\n        out.append((t, re.compile(\"^\" + regex + \"$\")))\n    return out\n\ndef dispatch(routes, path):\n    for template, rx in routes:               # declaration order, first match wins\n        m = rx.match(path)\n        if m:\n            params = m.groupdict()\n            if \"user_id\" in params and not params[\"user_id\"].isdigit():\n                return f\"{template} -> 422 user_id: not a valid integer\"\n            return f\"{template} -> 200 {params}\"\n    return \"404\"\n\nbad = compile_routes([\"/users/{user_id}\", \"/users/me\"])\ngood = compile_routes([\"/users/me\", \"/users/{user_id}\"])\n\nfor path in (\"/users/me\", \"/users/42\"):\n    print(\"path\", path)\n    print(\"  wrong order:\", dispatch(bad, path))\n    print(\"  right order:\", dispatch(good, path))\n"
+   },
+   "followUps": [
+    "<p>Make the id path unambiguous by using a path converter or a type that cannot match the other route, or by moving the special route elsewhere. Examples: <code>/users/{user_id:int}</code> (Starlette's int converter) only matches digits, so <code>/users/me</code> falls through to the fixed route; or use <code>/me</code> as its own top-level route; or put the fixed routes in a router included first. The cleanest is a distinct path so no ordering rule is needed.</p>",
+    "<p>A 405 Method Not Allowed would tell you that the path matched a route but not for that HTTP method. For example <code>POST /users/me</code> when only <code>GET /users/{user_id}</code> exists. That confirms routing found the wrong or an incomplete route and that the problem is the verb, not validation. The <code>Allow</code> header in the 405 response lists the methods that route supports, which helps you see which route actually matched.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Offset vs keyset pagination when rows are inserted",
+    "python": "# Newest first: ids 10..1. Page size 3. A new row (11) arrives between page 1 and 2.\nrows = list(range(10, 0, -1))\nSIZE = 3\n\ndef offset_page(rows, offset):\n    return rows[offset:offset + SIZE]            # skips `offset` rows every time\n\ndef keyset_page(rows, after_id):\n    # like: WHERE id < :after ORDER BY id DESC LIMIT 3\n    out = [r for r in rows if after_id is None or r < after_id]\n    return out[:SIZE]\n\nprint(\"data:\", rows)\np1_off = offset_page(rows, 0)\np1_key = keyset_page(rows, None)\nprint(\"page 1 (both):\", p1_off)\n\nrows.insert(0, 11)                                # a new row is inserted\nprint(\"after insert:\", rows)\n\nprint(\"page 2 offset=3:      \", offset_page(rows, 3), \"<- 8 repeated\")\nprint(\"page 2 keyset after 8:\", keyset_page(rows, p1_key[-1]), \"<- no repeat\")\n# Offset cost grows with depth (O(offset + n)); keyset with an index is O(log N + n).\n"
+   },
+   "followUps": [
+    "<p>Add a unique tie-breaker column to the sort and put both in the cursor. Sorting by <code>created_at</code> alone is unsafe because two rows can share it. Sort by <code>(created_at, id)</code> and query <code>WHERE (created_at, id) &lt; (:ts, :id) ORDER BY created_at DESC, id DESC LIMIT :n</code>. The cursor stores the last row's two values, such as <code>\"2024-05-01T10:00:00|42\"</code>, encoded. Back it with a composite index on the same columns so it stays fast.</p>",
+    "<p>Describe the cursor as an opaque string in the schema, so clients treat it as a token and never build it. Add <code>next_cursor: str | None</code> to the response model with a description and an example, and a <code>cursor</code> query parameter with <code>Query(description=\"Opaque; copy next_cursor from the previous page\")</code>. Also document the limit range (<code>ge=1, le=100</code>) and the 422 for an invalid or expired cursor, using <code>responses=</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Entering <code>with TestClient(app)</code> as a context manager runs the lifespan startup and shutdown; plain <code>TestClient(app)</code> without <code>with</code> does not. So if your pools, caches or models are created in lifespan, endpoints would find them missing and fail with an AttributeError in tests. Use the <code>with</code> form, usually in a pytest fixture with <code>yield client</code>, so cleanup also runs after the tests.</p>",
+    "<p>To test the 500 handler, raise an unexpected exception from a test-only route or an overridden dependency and call it with <code>TestClient(app, raise_server_exceptions=False)</code>. By default the test client re-raises the error, so you never see the response. Then assert status 500, that the body is the neutral problem shape with a request id, and that <code>str(e)</code> text does not appear. Optionally check with <code>caplog</code> that the error was logged.</p>"
+   ]
+  }
+ ]
+}

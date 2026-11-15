@@ -1,0 +1,131 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Find the slow span: self time in a trace tree",
+    "python": "# Find where a slow request spent its time: self time = span time minus its children.\n# Each span: (name, start_ms, end_ms, children)\ntrace = (\"gateway\", 0, 1000, [\n    (\"orders\", 20, 980, [\n        (\"auth\", 30, 90, []),\n        (\"inventory\", 100, 940, [\n            (\"cache\", 110, 130, []),\n            (\"db\", 140, 900, []),\n        ]),\n    ]),\n])\n\nrows = []\n\ndef walk(span, depth):\n    name, start, end, kids = span\n    total = end - start\n    self_time = total - sum(k[2] - k[1] for k in kids)  # time not explained by children\n    rows.append((name, depth, total, self_time))\n    for k in kids:\n        walk(k, depth + 1)\n\nwalk(trace, 0)\nprint(\"span        total  self\")\nfor name, depth, total, self_time in rows:\n    print(\"%-11s %5d %5d\" % (\"  \" * depth + name, total, self_time))\nworst = max(rows, key=lambda r: r[3])\nprint(\"Biggest self time:\", worst[0], \"=\", worst[3], \"ms\")  # look here first\n"
+   },
+   "followUps": [
+    "<p>Fall back to logs and metrics, then reproduce. Search logs by user id, time window and route, or by the request id if the gateway logged it. Compare with metrics for that route (p95 by minute) to see if it was a blip or a trend. Then replay the same request on a sampled-in path, for example with a debug header that forces sampling. <b>Example:</b> the complaint is at 10:02; metrics show checkout p95 jumping from 300 ms to 2 s at 10:01, so you chase that window.</p>",
+    "<p>Treat the gap as the clue. If service C appears as a long empty gap under B, either C is not instrumented or the context was lost on that hop (a custom HTTP client, a queue, a new thread). Check C's own logs and metrics for the same time, then fix propagation. <b>Example:</b> B's span lasts 800 ms but its children total 100 ms; the 700 ms hole is C. Until it is fixed, use B's client-side span duration as the best estimate of C.</p>",
+    "<p>Compare the span's total time with its self time (total minus children). A slow dependency shows a long <i>client</i> span whose matching <i>server</i> span in the callee is short: the time went to network, queueing or connection pool. A slow self time means the service itself computed, waited on a lock or paused for GC. <b>Example:</b> client span 400 ms, server span 60 ms means 340 ms lost between them; client span 400 ms, server span 390 ms means the callee is slow.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Redact at the logger, not by hand. Keep a deny-list of field names (password, token, authorization, card) and replace their values with [REDACTED] before writing. Never log whole request bodies or headers by default, and mask patterns such as card numbers. Read secrets from a secret manager so they never sit in code. <b>Example:</b> {\"user_id\":42,\"password\":\"x\"} is written as {\"user_id\":42,\"password\":\"[REDACTED]\"}. Add a test that logs fake secrets and checks the output, and scan stored logs for key patterns.</p>",
+    "<p>Log fewer, better lines and keep each level on a budget. Emit one summary line per request instead of ten chatty ones, keep DEBUG off in production, sample noisy INFO events, and never log inside tight loops. Set short retention for debug data and long retention only for audit logs. <b>Example:</b> 10 lines of 300 bytes at 1,000 requests per second is 3 MB/s (about 260 GB a day); one 500-byte line is 0.5 MB/s, around 43 GB a day, six times less.</p>",
+    "<p>Carry the id in a context that follows the work, and copy it by hand where context cannot follow. In-process use thread-local storage (Java MDC), AsyncLocalStorage in Node or contextvars in Python, and wrap thread-pool tasks so they copy it. Across a queue, put it in message headers and restore it in the consumer before the first log call, then clear it afterwards. <b>Test:</b> publish with id X and assert the worker's log lines contain X.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because work waits in a queue before the resource is fully busy, and waiting is what users feel. Utilization can sit at 70% while a queue builds, and above about 80% latency climbs steeply. <b>Example:</b> a pool of 10 connections with 7 busy (70%) and 5 requests waiting means those 5 are already slow. Alerting on queue length or wait time fires before utilization reaches 100%, when users are already hurt.</p>",
+    "<p>Use RED for the consumer plus USE for the queue. Key signals: queue depth, age of the oldest message (the best single number), messages processed per second, failure and retry rate, dead-letter count, and processing duration percentiles. <b>Example:</b> arrival 100/s and processing 80/s means the backlog grows by 20/s, 1,200 a minute, so alert when the oldest message is older than your freshness target (say 5 minutes).</p>",
+    "<p>Add the signals of an LLM call on top of RED. Time to first token and total latency, tokens in and out, cost per request, tool-call error rate, refusal rate, retries and rate-limit responses, and a quality proxy such as thumbs-down rate or sampled eval score. USE applies to GPU memory and utilization if you self-host. <b>Example:</b> 2,000 tokens in and 500 out at a given per-token price becomes a cost per request you can graph and alert on.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Mean hides the tail; percentiles from histogram buckets",
+    "python": "# Mean vs percentiles, then a percentile estimated from histogram buckets.\ntimes = [100] * 98 + [2000, 30000]          # 98 fast requests, 2 slow ones\nsrt = sorted(times)\n\ndef nearest_rank(p):\n    return srt[max(0, -(-p * len(srt) // 100) - 1)]\n\nprint(\"requests:\", len(times))\nprint(\"mean =\", sum(times) / len(times), \"ms  (no user saw this)\")\nprint(\"p50 =\", nearest_rank(50), \" p99 =\", nearest_rank(99), \" p100 =\", nearest_rank(100))\n\n# Histogram: count per bucket (upper bounds in ms), the last bucket is \"everything slower\".\nbounds = [50, 100, 250, 500, 1000, 2500, 60000]\ncounts = [0 for _ in bounds]\nfor t in times:\n    for i, b in enumerate(bounds):\n        if t <= b:\n            counts[i] += 1\n            break\n\ndef quantile(q):\n    target = q * len(times)                  # the rank we are looking for\n    seen = 0\n    low = 0\n    for b, c in zip(bounds, counts):\n        if c and seen + c >= target:\n            return low + (b - low) * (target - seen) / c   # interpolate inside the bucket\n        seen += c\n        low = b\n\nprint(\"bucket counts:\", dict(zip(bounds, counts)))\nprint(\"estimated p50 =\", round(quantile(0.5), 1), \" p99 =\", round(quantile(0.99), 1))\n"
+   },
+   "followUps": [
+    "<p>Within a bucket you only know the count, not the exact values, so the estimate assumes values are spread evenly across that bucket. The error is at most the bucket width. <b>Example:</b> buckets at 100 and 250 ms, 98 requests at exactly 100 ms land in the 50-100 bucket and the estimated p50 comes out 75 ms, not 100. Wide buckets near your SLO give coarse answers, so put edges at the SLO value and use finer or exponential buckets where precision matters.</p>",
+    "<p>When one user request fans out to many backends, the slowest call decides the response, so rare slowness becomes common. If each call is slow 1% of the time and a request makes 100 calls, the chance that at least one is slow is 1 - 0.99<sup>100</sup>, about 63%. So per-service p99 hides user-visible pain. Fixes: cut fan-out, set timeouts, use hedged requests (send a backup after a short wait) and watch p99 of the whole request.</p>",
+    "<p>It is when the load tool or measurement waits for a slow response before sending the next request, so the stall hides the requests that should have been sent meanwhile. <b>Example:</b> one request normally every 10 ms, a 1-second stall: a closed-loop tool records one slow sample, but 100 real users would have waited. Percentiles look far better than reality. Fix: send on a fixed schedule and measure from the intended send time (open-loop tools do this).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "traceparent inject and extract across services",
+    "js": "// W3C traceparent: version-traceid-parentspanid-flags. Inject on call, extract on receive.\nvar counter = 0;\nfunction newSpanId() { counter += 1; return ('0000000000000000' + (0xabc000 + counter).toString(16)).slice(-16); }\n\nvar traces = 0;\nfunction newTraceId() { traces += 1; return ('00000000000000000000000000000000' + (0x4bf92f35 * 16 + traces).toString(16)).slice(-32); }\n\nfunction inject(ctx, headers) {\n  headers['traceparent'] = '00-' + ctx.traceId + '-' + ctx.spanId + '-' + (ctx.sampled ? '01' : '00');\n}\n\nfunction extract(headers) {\n  var p = (headers['traceparent'] || '').split('-');\n  if (p.length !== 4 || p[1].length !== 32) return null;     // missing or malformed: start a new trace\n  return { traceId: p[1], parentId: p[2], sampled: p[3] === '01' };\n}\n\nfunction startSpan(name, incoming) {\n  var parent = incoming ? extract(incoming) : null;\n  var traceId = parent ? parent.traceId : newTraceId();   // no header: a brand new trace\n  var span = { name: name, traceId: traceId, spanId: newSpanId(), parentId: parent ? parent.parentId : '-', sampled: parent ? parent.sampled : true };\n  console.log(name + ': trace=' + '..' + span.traceId.slice(-6) + ' span=' + span.spanId.slice(-6) + ' parent=' + span.parentId.slice(-6));\n  return span;\n}\n\nvar a = startSpan('service-A', null);          // the entry point creates the trace\nvar headers = {};\ninject(a, headers);                            // A writes the header on the outgoing call\nconsole.log('header:', headers.traceparent);\nvar b = startSpan('service-B', headers);       // B extracts it: same trace id, parent = A\nvar h2 = {};\ninject(b, h2);\nstartSpan('service-C', h2);\nstartSpan('lost-hop', {});                     // a hop that forgot the header starts a NEW trace\n"
+   },
+   "followUps": [
+    "<p>Baggage is key-value data (such as tenant id or experiment name) that travels with the trace context to every downstream service. It is handy for routing and tagging, but it is copied onto every call, so large or sensitive values add bytes and leak across trust boundaries, including to third parties. Keep it small, put no personal data or secrets in it, and drop or ignore baggage at the edge from untrusted callers.</p>",
+    "<p>Use span links, not a parent. A batch consumer reading 50 messages starts one span and adds a link to each producer's span context taken from the message headers. That records the causal relationship without forcing 50 parents onto one span. <b>Example:</b> the batch span has 50 links, so from any producer trace you can reach the batch, and the other way round. Keep the batch span in its own trace.</p>",
+    "<p>Put the trace and span id into the logging context when a span starts, and have the log formatter add them to every line. Most logging libraries and the OpenTelemetry SDK do this for you. <b>Example:</b> {\"msg\":\"charged\",\"trace_id\":\"4bf92f35...\",\"span_id\":\"00f067aa\"}. Then one click from a slow span opens exactly the log lines it wrote, and a search on trace_id returns every service's lines.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Head vs tail sampling: which keeps the errors",
+    "python": "# Head vs tail sampling on 1000 simulated traces (about 1% fail, about 2% are slow).\nseed = 12345\ndef rnd():                                   # tiny deterministic random generator\n    global seed\n    seed = (seed * 1103515245 + 12345) % 2147483648\n    return seed / 2147483648\n\ntraces = []\nfor i in range(1000):\n    error = rnd() < 0.01\n    slow = rnd() < 0.02\n    traces.append((i, error, slow))\n\n# Head: decided at the start, blind to the outcome. Keep 5% by trace id.\nhead = [t for t in traces if t[0] % 100 < 5]\n# Tail: decided after the trace ends. Keep all errors, all slow ones, 1% of the rest.\ntail = [t for t in traces if t[1] or t[2] or t[0] % 100 == 0]\n\ndef report(name, kept):\n    errs = sum(1 for t in kept if t[1])\n    slows = sum(1 for t in kept if t[2])\n    print(\"%-5s kept %3d traces, errors %2d, slow %2d\" % (name, len(kept), errs, slows))\n\nprint(\"total traces:\", len(traces), \" errors:\", sum(t[1] for t in traces), \" slow:\", sum(t[2] for t in traces))\nreport(\"head\", head)\nreport(\"tail\", tail)\n"
+   },
+   "followUps": [
+    "<p>Spans of one trace come from many services, so the collector tier must send all of them to the same collector. Use a load-balancing exporter that hashes the trace id (consistent hashing) to pick the collector, or send spans through a queue partitioned by trace id. <b>Example:</b> with 3 collectors, trace_id mod 3 chooses the target, so all spans of a trace meet in one buffer. Use consistent hashing so adding a collector moves only a few traces.</p>",
+    "<p>You lose the individual traces that were dropped, so rare problems may have no example, and any statistic computed from kept traces is biased. Do not compute rates from sampled traces: generate RED metrics before sampling so they stay exact. <b>Example:</b> at 5% sampling a one-in-1,000 error leaves about 1 error trace in 20,000 requests under head sampling. Tail sampling keeps all errors and slow traces to avoid this.</p>",
+    "<p>Choose it from your budget and the traffic you need to see. Count traces per second, average size and what you can afford to store, then keep every error and slow trace and a baseline of normal ones for comparison. <b>Example:</b> 1,000 traces per second at 20 KB each is 20 MB/s; storing about 1 MB/s means keeping roughly 5%. Start with 1 to 5% baseline, check that engineers can find examples for each route, and use a per-route rate limit for busy routes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Page when a human must act now, ticket when it can wait. Page if users are hurt or the error budget is burning fast (for example burn rate above 14.4), and the action is clear. Ticket for slow burns, a disk filling in a week, or a single failed batch with a retry. <b>Test:</b> if it fires at 3 a.m. and the right answer is \"look tomorrow\", it is a ticket. Every page needs a runbook and an owner.</p>",
+    "<p>Fix the cause of the flapping instead of muting it. Add a <code>for</code> duration so it must stay bad for several minutes, use hysteresis (fire at 5% errors, clear below 2%), and use a longer window or a burn-rate rule over a raw threshold. <b>Example:</b> a threshold at 1% crossed up and down every minute becomes one alert with <code>for: 10m</code>. If it is still noisy after that, delete or downgrade it.</p>",
+    "<p>Few requests make ratios jump, so one failure out of 4 requests is 25% errors. Use a longer window, alert on the count and the ratio together, or add synthetic probes that send steady test traffic. <b>Example:</b> alert only when errors exceed 1% and at least 10 failures occurred in 30 minutes. Or lower expectations: a ticket rather than a page for services with a handful of requests a day.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Error budget and burn rate for a 99.9% SLO",
+    "python": "# SLO, error budget and burn rate for a 99.9% / 30 day objective.\nSLO = 0.999\nWINDOW_DAYS = 30\nbudget = 1 - SLO                              # fraction of requests allowed to fail\nprint(\"budget = %.4f (%.1f%% of requests)\" % (budget, budget * 100))\n\nrequests_per_month = 10_000_000\nprint(\"allowed bad requests per month:\", int(requests_per_month * budget))\n\nprint(\"error%   burn   budget gone after\")\nfor error_ratio in [0.0005, 0.001, 0.005, 0.0144]:\n    burn = error_ratio / budget               # 1.0 = spending exactly the whole budget\n    days = WINDOW_DAYS / burn                 # how long until the budget hits zero\n    print(\"%5.2f%% %6.1f   %.1f days\" % (error_ratio * 100, burn, days))\n\n# Two-window page rule: both a long and a short window must burn fast (here > 14.4).\nlong_burn, short_burn = 15.0, 16.0\nprint(\"page?\", long_burn > 14.4 and short_burn > 14.4)\n"
+   },
+   "followUps": [
+    "<p>Start from what users need and from what you can measure today. Pick one or two SLIs on the critical path (availability and latency), look at the last 2 to 4 weeks of data, and set the SLO just under your current performance. <b>Example:</b> if 99.95% of requests succeeded last month, a first SLO of 99.9% is realistic. Agree it with product, publish it and review it after a quarter. It is easier to tighten later than to loosen.</p>",
+    "<p>Because the last few nines are very expensive and users cannot tell the difference: their own network or phone is less reliable than 99.999%. A 100% target also leaves zero error budget, so you could never deploy or change anything. <b>Example:</b> 99.99% over 30 days allows 4.3 minutes of downtime, 99.9% allows about 43 minutes. The extra nine costs far more redundancy and slows releases.</p>",
+    "<p>Your availability is at most the product of the dependencies on the critical path. <b>Example:</b> three hard dependencies at 99.9% each give about 0.999<sup>3</sup> = 99.7%, so promising 99.9% is not possible. To raise it, make dependencies soft (cache, fallback, degrade), add retries with timeouts, or use redundant providers. Set your SLO from the measured combined number, not from wishes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Slow down the wrong move and speed up the right one: stop the harm first, find the cause later. Work out how bad it is (users affected, data at risk, revenue), pick a severity, and use the pre-agreed roles. <b>Example:</b> if a deploy 10 minutes ago lines up with the error spike, roll it back before reading any stack trace. Keep a running timeline as you go, because memory fails after the stress.</p>",
+    "<p>Escalate early when the cost of waiting exceeds the cost of waking someone. Triggers: customer impact beyond your authority or runbook, no progress after 15 to 30 minutes, data loss or security risk, a dependency owned by another team, or a severity increase. <b>Example:</b> you cannot see a cause after 20 minutes of a major outage; page the owning team of the database as well. Escalating is not failing.</p>",
+    "<p>Use impact on users, not cause or effort. Typical scale: Sev1 means major outage or data loss for many users (all hands, executive update); Sev2 means a key feature is degraded for many; Sev3 means a minor issue with a workaround. <b>Example:</b> checkout failing for 30% of users is Sev1 because money is lost; a broken profile photo for a few users is Sev3. Raise severity when unsure and lower it later.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep the meeting about the system and the timeline, with a neutral facilitator who is not the main responder. Walk the timeline first, then ask \"what made this possible?\" for each step, using phrases like \"what did the alert tell us?\" instead of \"why did you do that?\". Capture what went well and where luck helped. End by agreeing the action items with owners and dates. Share the notes widely and time-box it to about an hour.</p>",
+    "<p>Make each item specific, small and owned: a named owner, a due date, a ticket in the normal backlog, and a type (prevent, detect or mitigate). Review progress in a fixed meeting, around 30 days later, and report the percentage completed. <b>Example:</b> \"Add alert on queue age above 5 minutes, owner A, due in 2 weeks\" beats \"improve monitoring\". Reserve capacity in planning so they compete fairly with features.</p>",
+    "<p>Explain that blame hides facts and repeats incidents. People who fear punishment stop reporting near misses, so the next failure is a surprise. Offer leadership what they actually need: what happened, why, what changes, and who is accountable for the fixes, which is the owners of action items. If an individual truly acted recklessly, handle that through a separate management process, not the postmortem.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then the SLO or the system is wrong, and the policy should say so. Either reliability work is not getting done, or the SLO is stricter than the system can deliver. Look at the biggest budget burners over a quarter and fix those first. If users are fine, loosen the SLO with product agreement. <b>Example:</b> repeated misses from the same flaky dependency should trigger a reliability project, not a permanent freeze.</p>",
+    "<p>Keep one budget per SLI and decide the policy trigger up front. Common choices: act when the worst SLI is below its threshold, or give the critical-user-journey SLI priority. Do not average them. <b>Example:</b> availability budget 80% left and latency budget 5% left means a latency problem, so reliability work targets latency. Keep the number of SLIs small (2 or 3) so the policy stays readable.</p>",
+    "<p>Make the freeze part of the normal pipeline and sponsored by leadership. Automate the gate: the CI/CD system checks the budget and blocks non-exempt deploys, with a listed exception path (security fixes, the reliability fix itself) approved by a named person. <b>Example:</b> the deploy tool refuses a feature release when the remaining budget is under 0% and shows a link to the policy. Social agreement alone does not survive deadline pressure.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use flags that have an owner and an expiry date. Create a ticket to remove each flag when it is created, track flag age on a dashboard, and make the build warn about flags older than a set limit (say 30 days after full rollout). Separate short-lived release flags from permanent ones (kill switches, entitlements). <b>Example:</b> a fully rolled out flag older than 30 days opens a cleanup ticket automatically. Each old flag doubles the code paths you must test.</p>",
+    "<p>Make data changes reversible by design: expand, migrate, contract. First add new columns or tables (backward compatible), write to both, migrate old rows, switch reads, and only drop the old structure in a later release once no rollback is needed. Take backups before destructive steps and test the restore. <b>Example:</b> renaming a column becomes add the new column, copy, switch, then drop after a week. Truly irreversible changes need a staged rollout and a rehearsal.</p>",
+    "<p>Compare the canary to the baseline running at the same time, not to history. Pick a few signals (error ratio, p95, saturation, a business metric) and set the allowed difference from your SLO and normal noise. Also require enough traffic before judging. <b>Example:</b> promote from 5% to 25% only if the canary error ratio is no more than 0.1 points above baseline and p95 is within 10%, after at least 500 requests and 10 minutes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give an example from your own work with numbers. <b>Example answer:</b> \"I noticed we spent about 4 hours a week restarting a stuck worker by hand. I traced the cause to a missing timeout, fixed it, and added an alert. Pages for that fell from 12 a month to 0, and the team got the 4 hours back for reliability work.\" Name what you measured before and after, and say what you chose not to automate.</p>",
+    "<p>When the work is rare, short, or about to disappear. Simple cost check: hours saved per year versus hours to build and maintain. <b>Example:</b> a task that takes 10 minutes twice a year saves 20 minutes; a script that takes 2 days to build and maintain never pays back. Also skip automation that needs human judgment each time, or for a system being retired next quarter. A clear runbook may be enough.</p>",
+    "<p>Speak in outcomes product cares about: fewer pages, faster releases, fewer customer incidents. Show the numbers, such as hours per week lost and incidents caused, then propose a small, time-boxed investment with a payback date. <b>Example:</b> \"Spending 3 days now frees 6 hours a week, so it pays back in about 4 weeks and cuts deploy delays.\" Reserve a fixed share of capacity (say 20%) so it does not need a fight each sprint.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Add quality signals that do not depend on exceptions, since a wrong answer returns HTTP 200. Sample a share of live conversations and score them with automated evals and human review, track thumbs-down rate, escalation to a human, refusal rate and answer-length drift, and keep a fixed test set that runs on every change. <b>Example:</b> alert when the sampled eval score drops 5 points over the 7-day baseline, or when thumbs-down doubles after a prompt change.</p>",
+    "<p>Measure cost per request and cap it at several layers. Set a token limit per request and per user, limit loop and tool-call depth, cache repeated answers, route easy questions to a smaller model, and set budget alerts on daily spend. <b>Example:</b> 1,000 requests a day at 5,000 tokens each is 5 million tokens; a runaway loop that triples the calls triples the bill, so alert at 150% of the usual daily total and keep a kill switch.</p>",
+    "<p>Test the new model on your own cases before users see it. Run the fixed eval set on both models and compare scores, cost and latency, then replay sampled production prompts (redacted) in shadow mode and compare the outputs. Roll out as a canary behind a flag with auto-rollback. <b>Example:</b> new model scores 91 versus 89 on 500 cases but costs 40% more and adds 300 ms; decide if the gain is worth it before any traffic moves.</p>"
+   ]
+  }
+ ]
+}

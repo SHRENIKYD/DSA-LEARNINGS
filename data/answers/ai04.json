@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Split by time, never randomly: train on the past, validate on the next block, test on the latest block. A random split lets the model see the future, which is leakage.</p><p>Use a rolling (walk-forward) scheme: train on months 1-6 and validate on 7, then train on 1-7 and validate on 8, and so on. Leave a gap between train and validation if features look back over a window. Example: 24 months gives train 1-18, validation 19-21, test 22-24. Cost: you retrain several times.</p>",
+    "<p>With 300 rows, use k-fold cross-validation instead of one fixed validation set, and keep a small test set aside (for example 60 rows) or use nested cross-validation.</p><p>Use stratified 5-fold so each fold keeps the class ratio: 240 rows train and 60 validate per fold, and you average the 5 scores and look at their spread. Keep the model simple, because a flexible model overfits 300 rows. Report a confidence interval, since one lucky split is just noise.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Scaler fitted on all data vs train only",
+    "python": "# Preprocessing leakage: the scaler must be fitted on the training rows only\nimport statistics as st\n\ndata = [10, 12, 11, 13, 12, 50]      # last row is the test row (an outlier)\ntrain, test = data[:5], data[5:]\n\ndef fit(xs):\n    return st.mean(xs), st.pstdev(xs)\n\ndef scale(xs, m, s):\n    return [round((x - m) / s, 2) for x in xs]\n\nprint(\"data:\", data, \"| test row:\", test)\nm, s = fit(data)                      # WRONG: statistics include the test row\nprint(\"leaky: mean %.2f std %.2f -> test z-score %s\" % (m, s, scale(test, m, s)))\nm, s = fit(train)                     # RIGHT: learn from train, apply to test\nprint(\"clean: mean %.2f std %.2f -> test z-score %s\" % (m, s, scale(test, m, s)))\n# The leaky scaler hides how unusual the test row is (z about 2.2 vs about 38)\n"
+   },
+   "followUps": [
+    "<p>Train/serve skew means a feature is computed differently in training than in production, while leakage means training used information that does not exist at prediction time. Skew hurts you even when there is no leak.</p><p>Example: training computes \"average spend\" in SQL over 30 days, but the live service uses a cached 7-day value. The model is fair offline and wrong online. Fix it by sharing one feature code path and logging live features to compare their distributions with training.</p>",
+    "<p>Make every feature point-in-time correct: when you build training rows, join each label to the feature values as they were at the prediction timestamp, not the latest values.</p><ul><li>Store feature values with event time and ingestion time.</li><li>Use as-of joins for training sets.</li><li>Serve online and offline from the same definition.</li><li>Add tests that fail if a feature uses data newer than the row's timestamp.</li></ul>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the softmax or sigmoid and the log loss cancel each other: the awkward derivative of the sigmoid disappears, and the gradient with respect to the logit z is simply p - y.</p><p>Loss L = -[y ln p + (1-y) ln(1-p)] with p = sigmoid(z). The chain rule gives dL/dp = -(y/p) + (1-y)/(1-p) and dp/dz = p(1-p), and multiplying them gives p - y. If y=1 and p=0.1 the gradient is -0.9: large when wrong, small when right.</p>",
+    "<p>Perplexity is how \"surprised\" a language model is by text; it is the exponential of the average cross-entropy per token. Lower is better.</p><p>Example: if the average loss is 2.0 nats per token, perplexity = e^2 = 7.39, which means the model is about as unsure as picking uniformly among 7.4 tokens. A model that gives every token probability 1/4 has perplexity exactly 4. Compare it only across models with the same tokenizer and test text.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Learning rate too low, good, edge and too high",
+    "python": "# Gradient descent on L(w) = w^2, gradient 2w, curvature c = 2\n# Converges only when lr < 2/c = 1.0\ndef run(lr, steps=8, w=5.0):\n    path = [round(w, 3)]\n    for _ in range(steps):\n        grad = 2 * w          # dL/dw\n        w = w - lr * grad     # step against the gradient\n        path.append(round(w, 3))\n    return path\n\nfor lr in (0.01, 0.4, 1.0, 1.1):\n    p = run(lr)\n    print(\"lr=%-4s loss after 8 steps=%-10.4g path=%s\" % (lr, p[-1] ** 2, p[:5]))\n# lr 0.01 barely moves, 0.4 converges fast, 1.0 bounces between 5 and -5,\n# 1.1 overshoots further each step and diverges\n"
+   },
+   "followUps": [
+    "<p>Mini-batches give a cheap, noisy estimate of the gradient, so you can take many more updates per pass over the data and still fit in memory.</p><p>With 1,000,000 rows and batch size 100, one epoch makes 10,000 updates instead of one full-batch update, and each step costs the work of only 100 rows. The noise helps escape sharp spots, and batches map well onto GPUs. Very small batches are noisy; very large ones need a larger learning rate.</p>",
+    "<p>Momentum keeps a running average of past gradients so steps keep moving in a consistent direction and damp zig-zags. Adam adds a per-weight scale that divides by the running size of the gradient.</p><pre><code>m = b1*m + (1-b1)*g\nv = b2*v + (1-b2)*g*g\nw -= lr * m / (sqrt(v) + eps)</code></pre><p>Plain SGD uses one lr for every weight. Adam adapts it, so rarely-updated weights take bigger steps. It converges quickly but costs two extra values per weight.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Bias is error from a model that is too simple; variance is error from a model that is too sensitive to the exact training sample. Lowering one usually raises the other.</p><p>Example: a straight line fitted to curved data is wrong in the same way on every sample (high bias). A degree-15 polynomial fitted to 20 points changes wildly with each sample (high variance). Aim for the capacity where validation error is lowest.</p>",
+    "<p>Double descent is the finding that test error can fall, rise near the point where the model just fits the training data exactly, and then fall again as the model keeps growing.</p><p>Example: error rises as parameters approach the number of rows (say 1,000 parameters for 1,000 rows), then drops for 100,000 parameters. It happens in deep nets and some linear models. Do not rely on it blindly: the dip is helped by implicit regularization and enough data, and you still validate.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The L1 penalty region has sharp corners on the axes, and the loss contour usually touches a corner first, where some weights are exactly zero. The L2 region is a smooth ball with no corners.</p><p>In two dimensions L1 is a diamond |w1|+|w2| &lt;= t. The optimum of an elliptical loss tends to land on a tip such as (t, 0). In an L1 update the pull toward zero is a constant lambda, so a small weight is pushed all the way to zero; L2 pulls proportionally (2*lambda*w), which shrinks but never zeroes it.</p>",
+    "<p>In plain SGD they are the same thing, but in Adam they are not: an L2 penalty is added to the gradient and then rescaled by Adam, while decoupled weight decay (AdamW) shrinks the weights directly.</p><pre><code>L2 in Adam:  g = g + lam*w ; step uses g/sqrt(v)\nAdamW:       w -= lr*lam*w  (separate from the Adam step)</code></pre><p>With L2 inside Adam, weights with large gradients get less regularization. AdamW applies the same decay everywhere and usually generalizes better.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Precision, recall and F1 from predictions",
+    "python": "# Precision, recall and F1 from raw predictions\ny_true = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0]\ny_pred = [1, 1, 0, 0, 1, 0, 0, 0, 0, 0]\nprint(\"true:\", y_true)\nprint(\"pred:\", y_pred)\n\npairs = list(zip(y_true, y_pred))\ntp = sum(1 for t, p in pairs if t == 1 and p == 1)   # flagged and real\nfp = sum(1 for t, p in pairs if t == 0 and p == 1)   # false alarm\nfn = sum(1 for t, p in pairs if t == 1 and p == 0)   # missed positive\n\nprecision = tp / (tp + fp)       # of flagged, how many were right\nrecall = tp / (tp + fn)          # of real positives, how many found\nf1 = 2 * precision * recall / (precision + recall)   # harmonic mean\nprint(\"TP=%d FP=%d FN=%d\" % (tp, fp, fn))\nprint(\"precision=%.3f recall=%.3f F1=%.3f\" % (precision, recall, f1))\n"
+   },
+   "followUps": [
+    "<p>F-beta is a weighted F-score where beta says how much more you care about recall than precision. F1 is the special case beta = 1.</p><p>F-beta = (1+b^2) * P * R / (b^2 * P + R). With P = 0.667 and R = 0.5 as in the program: F1 = 0.571, F2 (recall matters more) = 5*0.667*0.5 / (4*0.667+0.5) = 0.526, and F0.5 (precision matters more) = 1.25*0.667*0.5 / (0.25*0.667+0.5) = 0.625. Pick beta from the relative cost of misses and false alarms.</p>",
+    "<p>Macro averaging computes the metric for each class and averages the results, so every class counts equally. Micro averaging pools all the TP, FP and FN first, so big classes dominate.</p><p>Example: class A has 90 correct out of 100 (recall 0.9) and class B has 1 correct out of 10 (recall 0.1). Macro recall = (0.9+0.1)/2 = 0.50. Micro recall = 91/110 = 0.83. Use macro when small classes matter; micro for overall volume.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>SMOTE creates new minority examples by picking a minority point, picking one of its nearest minority neighbours, and placing a synthetic point somewhere on the line between them.</p><p>If a point is (2, 3) and its neighbour is (4, 5), a random factor 0.5 creates (3, 4). It can hurt when classes overlap (it makes points in noisy areas), with categorical or high-dimensional features, and if you apply it before the split: the synthetic copies then leak into validation. Apply it to the training fold only.</p>",
+    "<p>Because the test set is meant to estimate performance on real future data, and real data has the real class ratio. Rebalancing it gives numbers that do not match what you will see in production.</p><p>Example: at 1% fraud with a 5% false positive rate, 1,000 rows give about 10 frauds and 50 false alarms, so precision is low. On a 50/50 test set the same model looks like precision 90%+. Rebalance only the training data, and report test metrics at the natural ratio.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "AUC as pairwise ranking probability",
+    "python": "# AUC = chance that a random positive scores higher than a random negative\npos = [0.9, 0.8, 0.4]            # scores of true positives\nneg = [0.7, 0.4, 0.3, 0.2]       # scores of true negatives\nprint(\"positives:\", pos)\nprint(\"negatives:\", neg)\n\nwins = 0.0\nfor p in pos:\n    for n in neg:\n        if p > n:\n            wins += 1            # correctly ranked pair\n        elif p == n:\n            wins += 0.5          # a tie counts as half\npairs = len(pos) * len(neg)\nprint(\"ranked correctly: %.1f of %d pairs\" % (wins, pairs))\nprint(\"AUC = %.3f\" % (wins / pairs))\n# Time O(P*N); sorting the scores gives O(n log n)\n"
+   },
+   "followUps": [
+    "<p>Count how many (positive, negative) pairs the model ranks correctly: AUC = (correct pairs + 0.5 * ties) / (positives * negatives).</p><p>Example with positives {0.9, 0.8, 0.4} and negatives {0.7, 0.4, 0.3, 0.2}: there are 12 pairs; 0.9 wins 4, 0.8 wins 4, and 0.4 beats 0.3 and 0.2 and ties 0.4, so 2.5. Total 10.5/12 = 0.875. This is O(P*N); sorting scores and counting ranks does it in O(n log n).</p>",
+    "<p>The no-skill baseline is a horizontal line at the positive rate, since a random scorer's precision at any recall equals the share of positives in the data.</p><p>Example: with 2% positives, a useless model has precision about 0.02 at every recall, and its average precision is about 0.02, not 0.5 as the ROC diagonal might suggest. So a PR-AUC of 0.30 is 15 times better than chance there. Always draw the baseline on the plot.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Choosing a fraud threshold by total cost",
+    "python": "# Pick the fraud threshold that minimises total cost\nprobs  = [0.02, 0.03, 0.05, 0.08, 0.10, 0.30, 0.60, 0.90]\nlabels = [0, 0, 0, 1, 0, 1, 1, 1]       # 1 = fraud\nC_FP, C_FN = 5, 100                      # false decline vs missed fraud\nprint(\"probs :\", probs)\nprint(\"labels:\", labels)\n\ndef cost(t):\n    fp = sum(1 for p, y in zip(probs, labels) if p >= t and y == 0)\n    fn = sum(1 for p, y in zip(probs, labels) if p < t and y == 1)\n    return fp * C_FP + fn * C_FN\n\nfor t in (0.5, 0.2, 0.07, 0.04, 0.01):\n    print(\"threshold %.2f -> cost %d\" % (t, cost(t)))\nprint(\"theory for calibrated scores: C_FP/(C_FP+C_FN) = %.3f\" % (C_FP / (C_FP + C_FN)))\n"
+   },
+   "followUps": [
+    "<p>Delayed labels mean recent transactions have no label yet, so you must not treat them as non-fraud. Train and evaluate only on rows old enough for the label to be mostly known.</p><ul><li>Cut the training set at \"today minus 60 days\" (or model the label-arrival curve and weight young rows).</li><li>Use early proxy signals (customer disputes, manual reviews) for fast monitoring.</li><li>Report metrics by cohort and revise them as chargebacks arrive.</li></ul><p>Expect the newest fraud patterns to be seen about two months late.</p>",
+    "<p>If probabilities are not calibrated, the formula c_FP/(c_FP+c_FN) does not apply, so first calibrate or pick the threshold empirically.</p><p>Calibrate with Platt scaling (a sigmoid fitted on validation scores) or isotonic regression, then check a reliability plot: among scores near 0.3, about 30% should be fraud. Or skip calibration and sweep thresholds on held-out data, summing real costs as in the program. Calibrate on data that was not used for training.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You can monitor the inputs and the outputs, which need no labels. Compare live feature and score distributions against a training reference window.</p><p>Common checks: population stability index (PSI), where above about 0.25 signals a big shift; a KS test for numeric features; and share of missing values. Example: if the average transaction amount moves from 40 to 70, or the share of scores above 0.5 jumps from 1% to 6%, investigate. Drift is a warning, not proof of worse accuracy, so confirm once labels arrive.</p>",
+    "<p>A feedback loop happens when the model's output changes the data it is later trained on, so it reinforces itself. Recommenders only get clicks on items they chose to show.</p><p>Example: a model shows popular videos, they get more clicks, and the next model ranks them even higher while good unseen videos get no data. Mitigate it with exploration (show a random 5% of items), logging the shown positions to correct bias, and holding out a traffic slice that is not personalized.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Measure the judge against a human-labelled sample, exactly as you would test any classifier. Treat the judge's verdicts as predictions and humans as ground truth.</p><p>Have 2 or 3 people label about 200 outputs, check how often they agree (Cohen's kappa), then compute the judge's precision, recall and agreement with that majority label. Example: judge agrees on 170 of 200 = 85%. Also test for bias such as preferring longer answers, preferring its own style or the first option, by swapping order.</p>",
+    "<p>Keep the evaluation set private and separate, and treat any set that has been seen often as used up.</p><ul><li>Never paste eval items into prompts, few-shot examples or training data.</li><li>Keep a hidden holdout set that few people can access.</li><li>Add fresh items regularly, for instance 10% a month, and retire old ones.</li><li>Search training data for overlap with eval items (n-gram or hash match).</li></ul><p>If scores on old items rise but fresh items stay flat, suspect contamination.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Bagging trains many models on different bootstrap samples and averages them; averaging reduces variance but keeps bias about the same.</p><p>For n models with variance s^2 and pairwise correlation r, the variance of the average is r*s^2 + (1-r)*s^2/n. With independent models (r=0), 10 models cut the variance to a tenth. With r=0.5, s^2=1 and n=10 it is 0.5+0.05=0.55. That is why random forests also randomize features, to lower r.</p>",
+    "<p>Nobody fully knows, but the leading ideas are that SGD prefers simple solutions among the many that fit, and that the data has structure that large nets can capture.</p><p>Memorizing a training set does not stop the model from also learning general patterns, since many different weight settings give zero training error and some of them generalize. Implicit regularization from SGD, weight decay, early stopping and big data help pick a good one. Still, check on held-out data: some nets do memorize noisy labels and generalize poorly.</p>"
+   ]
+  }
+ ]
+}

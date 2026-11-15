@@ -1,0 +1,100 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, I handled it by separating the fact from the preference. Situation: an engineer wanted to ship a chatbot after a quick demo. Task: I needed evidence first. Action: I asked what would change his mind, we agreed a 100-question test set, and I shared the failures calmly. Result: we found 18 wrong answers, fixed the top causes, and launched two weeks later with fewer complaints. I kept the relationship by disagreeing about the evidence, not the person.</p>",
+    "<p>I learn by asking and by using the product, not by reading code. I ask engineers to explain one concept a week in plain words (latency, context limits, caching), keep a personal glossary, and read vendor docs and model cards for the limits that matter. I also run my own tests in a playground. The goal is to know enough to ask a sharp question, such as why a request takes 8 seconds, not to build it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I rank them by harm and decide in advance. If a quality metric rises but a guardrail falls, the guardrail wins. Example: answer accuracy goes from 80% to 85% but time to reach a human grows from 1 to 4 minutes, so we do not ship until that is fixed. I write the priority order in the PRD before launch, so we are not arguing in the moment, and I ask which user group is hurt.</p>",
+    "<p>I use what users get today as the baseline: current human agent accuracy, the FAQ page, or the old search. Measure it on the same golden set, for example humans answer 90% of fee questions correctly and the FAQ 60%. Then the AI target is relative, such as matching humans on 90% with fewer minutes. Without a baseline, 85% is just a number with no meaning.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Golden set: score two versions on fixed cases",
+    "python": "# Golden set: fixed cases, required facts, compare two versions\ngolden = [\n    {\"q\": \"Refund window?\", \"must\": [\"30 days\"]},\n    {\"q\": \"Fee for late payment?\", \"must\": [\"$15\"]},\n    {\"q\": \"Can I get a loan advice?\", \"must\": [\"cannot give\", \"advisor\"]},\n    {\"q\": \"Close my account?\", \"must\": [\"settings\", \"confirm\"]},\n]\nanswers_v1 = {\n    \"Refund window?\": \"You have 30 days to ask for a refund.\",\n    \"Fee for late payment?\": \"The late fee is $25.\",\n    \"Can I get a loan advice?\": \"Take the loan, it is a great idea.\",\n    \"Close my account?\": \"Go to settings and confirm.\",\n}\nanswers_v2 = dict(answers_v1)\nanswers_v2[\"Fee for late payment?\"] = \"The late fee is $15.\"\nanswers_v2[\"Can I get a loan advice?\"] = \"I cannot give advice; please talk to an advisor.\"\n\ndef score(answers):\n    passed = 0\n    for case in golden:\n        text = answers[case[\"q\"]].lower()\n        ok = all(f.lower() in text for f in case[\"must\"])  # all required facts present\n        passed += ok\n        print(\"  \", \"PASS\" if ok else \"FAIL\", case[\"q\"])\n    return passed / len(golden)\n\nfor name, ans in ((\"v1\", answers_v1), (\"v2\", answers_v2)):\n    print(name)\n    print(\"  score:\", score(ans))\n# Cost: O(cases * facts) per version\n"
+   },
+   "followUps": [
+    "<p>Start with a few hundred and grow it. A useful first set is 100 to 200 cases, with at least 20 per important category so a segment score is not noise. With 20 cases, one miss moves the score 5 points, so only big differences are believable. Add every real failure you find, and keep a larger hidden slice for final checks. Quality of coverage matters more than raw size.</p>",
+    "<p>A named product owner owns it, with domain experts as reviewers and engineers as users. The owner decides what counts as a good answer, approves new cases, and keeps a change log. If engineers alone own it, it drifts toward what the model already does well. Review it every month, and keep the hidden part restricted so it is not copied into prompts.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Calibrate an AI judge against human scores",
+    "python": "# Calibrate an AI judge against human scores before trusting it\nhuman = [1, 1, 0, 1, 0, 0, 1, 1, 0, 1]   # 1 = good answer, per human experts\njudge = [1, 1, 0, 1, 0, 0, 1, 1, 0, 1]   # AI judge on the same sample\ntopics = [\"faq\", \"faq\", \"faq\", \"faq\", \"faq\", \"faq\", \"legal\", \"legal\", \"legal\", \"legal\"]\njudge[6], judge[7], judge[8], judge[9] = 1, 1, 1, 0  # judge is weak on legal\n\ndef agreement(idx):\n    same = sum(1 for i in idx if human[i] == judge[i])\n    return same / len(idx)\n\nprint(\"human:\", human)\nprint(\"judge:\", judge)\nfor t in (\"faq\", \"legal\"):\n    idx = [i for i, x in enumerate(topics) if x == t]\n    a = agreement(idx)\n    # trust threshold chosen by the team; below it humans must review\n    verdict = \"trust judge\" if a >= 0.85 else \"send to human review\"\n    print(t, \"agreement\", round(a, 2), \"->\", verdict)\n# Time O(n), space O(n)\n"
+   },
+   "followUps": [
+    "<p>I treat the humans as right and investigate the judge. Read the 20 or so cases where they differ and find the pattern, such as the judge favoring long answers. Then fix the rubric, add examples to the judge prompt, or limit the judge to topics where agreement is high. If one topic stays below, say, 85% agreement, that topic goes back to human review. Do not average the two opinions.</p>",
+    "<p>Recheck on a schedule and on any change. A reasonable routine is a fresh sample of 50 to 100 human-scored cases each month, plus a recheck whenever the judge model, rubric or product changes. If agreement drops by a set margin, such as 5 points, pause automated scoring for that area. High-risk topics get a bigger sample than low-risk ones.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Spot rubber-stamping by review change rate",
+    "python": "# Rubber-stamp check: how often do reviewers change the AI output?\nreviews = [  # (risk_type, reviewer_changed_output)\n    (\"address_change\", False), (\"address_change\", False), (\"address_change\", False),\n    (\"address_change\", False), (\"address_change\", False), (\"address_change\", False),\n    (\"loan_denial\", True), (\"loan_denial\", False), (\"loan_denial\", True),\n    (\"loan_denial\", False),\n]\nby_type = {}\nfor kind, changed in reviews:\n    by_type.setdefault(kind, []).append(changed)\n\nprint(\"reviews:\", len(reviews))\nfor kind, flags in by_type.items():\n    rate = sum(flags) / len(flags)\n    # change rate near 0 for low-risk types -> candidate to auto-approve with audits\n    plan = \"auto-approve + sample audit\" if rate == 0 and kind != \"loan_denial\" else \"keep human review\"\n    print(f\"{kind}: change rate {rate:.0%} -> {plan}\")\n# A zero change rate over many reviews suggests rubber-stamping or a safe type\n"
+   },
+   "followUps": [
+    "<p>Look at how many reviews actually change the output. If reviewers approve 100 out of 100 in under five seconds, they are probably rubber-stamping. Plant known-bad items (seeded errors) and see how many get caught: if 2 of 10 seeded errors are caught, review is weak. Also track time per review and the change rate by reviewer. Real review shows some edits and some effort.</p>",
+    "<p>Add review back when the data says risk went up. Triggers: error rate on audits rises above the agreed limit (for example from 1% to 3%), a harmful failure appears, a new product or customer segment launches, the model or prompt changes, or regulation changes. I would make the rule automatic: if the sample audit finds more than the limit, the lowest-risk type returns to full review until fixed.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Estimate token cost and compare cost levers",
+    "python": "# Estimate token cost per request and compare cost levers\nPRICE_IN = 3.00 / 1_000_000    # placeholder price per input token\nPRICE_OUT = 15.00 / 1_000_000  # placeholder price per output token\n\ndef tokens(words):\n    return round(words / 0.75)  # about 0.75 words per token\n\ndef cost(in_words, out_words):\n    return tokens(in_words) * PRICE_IN + tokens(out_words) * PRICE_OUT\n\nrequests = 100_000\nbase = cost(3000, 400)       # long prompt + attached doc, long answer\ntrimmed = cost(1200, 400)    # lever 1: trim the input\ncapped = cost(3000, 150)     # lever 2: cap the answer length\nprint(\"tokens in/out:\", tokens(3000), tokens(400))\nfor name, c in ((\"baseline\", base), (\"trim input\", trimmed), (\"cap output\", capped)):\n    print(f\"{name:11s} ${c:.4f}/request  ${c*requests:,.0f} per 100k\")\n# Output tokens cost more per token, so check both sides\n"
+   },
+   "followUps": [
+    "<p>I try cutting input first, because it is safest and often biggest. Long instructions and attached documents are paid on every request. Example: trimming a 3,000-word prompt to 1,200 words cuts about 60% of the input cost. Next I would cap answer length, then route simple requests to a cheaper model. Each step is tested separately so I know what helped.</p>",
+    "<p>Run the golden set before and after each change and compare scores, not impressions. Example: baseline 90% pass; after trimming the prompt 89% pass, which I accept; after routing to a cheaper model 78% pass, which I reject for that request type. Also check segments, because an average can hide a drop in one group, and watch user satisfaction in a small live test.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Say what the company will tell them, honestly and early. Tell customers what happened, which cases were affected, what we are doing about it and how to reach a human. Example: \"Between Monday and Wednesday, some fee explanations were wrong. If you were charged based on one, we will correct it. Contact us here.\" Legal and support approve the message. Do not guess at causes or blame the vendor.</p>",
+    "<p>A named owner decides, using criteria agreed beforehand. For a serious incident the product owner makes the call with engineering, support and legal sign-off. Typical conditions: the cause is understood, the fix passes the golden set including the new failure cases, and re-enabling is gradual (for example 5%, then 25%, then 100%) with a quick way to turn it off again.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Usually the quality bar, because you must define good before the model exists. It is hard because people disagree about what a good answer is. Make it concrete with 20 example inputs and approved outputs, mark the must-never rules, and get a domain expert to sign off. A vague line like \"answers should be accurate\" cannot be tested, while \"fee amounts must match the fee table\" can.</p>",
+    "<p>As short as it can be while still testable, usually 3 to 6 pages plus an appendix of examples. The AI-specific parts (quality bar, red lines, data, risks, kill switch) matter most, so do not bury them. If nobody can use the document to decide whether a release is good enough, it is too vague; if nobody reads it, it is too long.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would politely decline and hand over, not answer. The assistant says it cannot give investment advice and offers a link to a licensed advisor or an educational page. I would test this with 20 or more investment-style questions in the golden set and require 100% refusal. Example: \"Should I buy this fund?\" gets a short refusal and the booking link, never a guess.</p>",
+    "<p>Compliance would ask what data is used and who sees it, how wrong or made-up answers are prevented, whether advice is excluded, how decisions are logged and explained, what happens when customers complain, and whether the vendor keeps their data. They will also want the test results, the kill switch and a named owner. Bring evidence from the golden set, not promises.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Start with a small, specific win. Ask the manager for their top two time-consuming tasks, try the tool on those with them, and measure before and after, for example report drafting from 90 minutes to 50. Respect the real concerns (accuracy, data, job fear) and show the one-page policy. A short pilot with their own team, not a mandate, is the best persuasion.</p>",
+    "<p>Show weekly active users by team and time saved on chosen tasks, not logins alone. Example: 60% of the support team uses it weekly and average ticket handling dropped from 12 to 9 minutes, with quality unchanged on the sample check. Add one concrete story and the cost. Leaders want outcomes, and usage alone can be curiosity.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the safe path the easy path. Use a risk tier: low-risk uses (summarizing public text) are pre-approved with a short form, while high-risk ones (customer decisions, personal data) get a full review. Set a target response time such as 5 working days, keep templates, and publish a list of approved tools. Slow reviews push people to unofficial tools, which is worse.</p>",
+    "<p>The ones that affect people or use sensitive data: decisions about hiring, credit, health or pay, anything customer-facing, anything sending personal or confidential data to an outside vendor, and anything automated without a human check. A tool that rewrites internal meeting notes needs far less scrutiny. I would ask who is affected, how wrong output is caught, and who is accountable.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The evaluation report, because it shows judgment with evidence. A hiring manager can see how you chose the questions, wrote the rubric, scored the tools and recommended a decision. Example: 40 real questions, three tools, a table of scores, and a clear recommendation with risks. Keep the others as support. One strong, honest report beats five thin pieces.</p>",
+    "<p>Use a simple story: the problem, what I did, the evidence, the decision, and what I would do next. Spend two minutes on one piece, name one thing that went wrong and what I learned, and show the table or the rubric on one page. Be ready to say what I do not know. Interviewers want to see how you think, not a polished deck.</p>"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Suspect caching first: the app is still talking to the old primary. Failover changes the endpoint's DNS record to the standby, so anything that cached the IP keeps failing until it expires.</p><p>Check the JVM or runtime DNS TTL (Java can cache forever by default; set it to about 30 s), and recycle connection pools, because pooled TCP connections still point at the dead host. Use a pool with validation queries and a max connection lifetime, and connect by the endpoint name, never an IP. Rebooting the app is the blunt fix; a retry with backoff on reconnect is the lasting one.</p>",
+    "<p>A Multi-AZ DB cluster is a different deployment with one writer and two readable standbys in three AZs, using semi-synchronous replication, instead of one hidden standby.</p><p>Differences: the two standbys can serve reads through a reader endpoint, commits wait for one standby to confirm, and failover is usually faster (often under 35 seconds, versus 60-120 s for the instance flavour). It is available for MySQL and PostgreSQL only and needs supported instance classes. Pick it when you want faster failover plus free read capacity; pick the instance flavour when you only need a cheap standby.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A read replica copies every change, including the DROP TABLE, so the table is gone there a moment after it vanished on the primary.</p><p>Replicas protect against load and instance loss, not against logical mistakes such as a bad DELETE or a dropped table. Promoting one would give you a database without the table. Only backups, snapshots and point-in-time restore keep older states. Note that a replica could be lagging and still hold the table briefly, but that is luck, not a plan: stop replication immediately if you want to try it, and still prefer PITR.</p>",
+    "<p>Expect a rough range, then measure it with a drill: restore time scales with data size and the amount of log to replay.</p><p>Example: a 1 TB restore from a snapshot can take around 1-3 hours if the volume is lazily loaded from S3 at roughly 100-300 MB/s effective; then add log replay, say 10-30 minutes for 20 minutes of changes. Then add the pg_dump and load of the table, e.g. a 5 GB table at 50 MB/s is about 2 minutes. Budget about 2-4 hours, and record the real figure from a quarterly drill so the RTO you promise is measured.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A cross-Region snapshot copy gives an RPO equal to the age of the last snapshot copied, so usually hours, up to 24 hours with daily snapshots.</p><p>Example: a snapshot taken at 02:00 and finished copying by 02:40 means a disaster at 01:30 next day loses about 23.5 hours of data. If you replicate automated backups (including transaction logs) to another Region, the RPO drops to about 5 minutes. Snapshot copies are cheap and simple, which makes them a fine disaster-recovery tier when the business accepts that loss; otherwise use a cross-Region replica.</p>",
+    "<p>Avoid restoring the whole 2 TB from scratch: keep a warm copy, or shrink what you must restore.</p><p>Options: a cross-Region or same-Region read replica that you promote (minutes instead of hours); a smaller database by archiving old data or splitting by service; restoring from a recent snapshot so less log needs replaying; using a faster instance and storage class during the restore; and rehearsing so scripts, DNS and app repointing are automatic. Example: moving from a 4-hour restore to a 5-minute promotion costs the price of one extra instance, so the saving has to be weighed against that monthly bill.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Compare the two status fields in the access log and the two CloudWatch metrics: if the target produced it, target_status_code matches the error; if the ALB made it, target_status_code is a dash.</p><p>Metrics: HTTPCode_Target_5XX_Count counts 5xx returned by your app, while HTTPCode_ELB_5XX_Count counts those the load balancer generated (502, 503, 504). Example: elb_status_code 502 with target_status_code - means no valid response came back, so look at connection resets or timeouts; 500 on both means your code threw the error. Also check target_processing_time to tell a slow target from a dropped one.</p>",
+    "<p>The deregistration delay keeps a target that is being removed alive for a while so in-flight requests can finish; it does not stop new requests from being sent elsewhere.</p><p>Default is 300 seconds. During a rolling deploy the target enters draining, the ALB stops routing new requests to it, and it is removed after the delay or when connections end. If the delay is too short, long requests are cut off and show up as 502s; if it is too long, deploys take longer (10 instances x 300 s in batches adds up). Set it a little above your longest normal request, e.g. 30 s for a fast API, and handle SIGTERM gracefully in the app.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>An ALB sees the client IP only in a header, because it ends the connection and opens a new one to your target; an NLB can pass the real client IP through.</p><p>Behind an ALB the target sees the ALB's address, and the client IP is in the X-Forwarded-For header (trust only the last hop it appended). An NLB with instance targets preserves the source IP by default; with IP targets you can enable client IP preservation, or use proxy protocol v2 to carry it. Example: log X-Forwarded-For 203.0.113.9 at the app for an ALB; read the TCP source address directly for an NLB.</p>",
+    "<p>Use weighted target groups: send a small share of traffic to the new version, watch the metrics, then raise the share or roll back.</p><p>Create two target groups (stable and canary) and a listener rule that forwards with weights, for example 95 and 5. Watch error rate and latency per target group, then move to 25, 50, 100 over time. Rolling back is a weight change taking seconds, with no instance replacement. Use stickiness at the target-group level if a user must stay on one version, and make database changes backward compatible so both versions can run together.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Health check: consecutive results flip state",
+    "python": "# Model of an ALB health check: a target flips state after N consecutive results.\ninterval, unhealthy_threshold, healthy_threshold = 10, 3, 2\n\ndef run(results):\n    state, fails, oks = \"healthy\", 0, 0\n    for i, ok in enumerate(results):\n        t = (i + 1) * interval            # one probe every `interval` seconds\n        if ok:\n            fails, oks = 0, oks + 1       # a success resets the failure streak\n        else:\n            oks, fails = 0, fails + 1\n        if state == \"healthy\" and fails >= unhealthy_threshold:\n            state = \"unhealthy\"\n            print(f\"t={t}s: marked UNHEALTHY after {fails} failures\")\n        elif state == \"unhealthy\" and oks >= healthy_threshold:\n            state = \"healthy\"\n            print(f\"t={t}s: marked HEALTHY after {oks} successes\")\n    return state\n\n# A blip of 2 failures is ignored; a real outage of 4 probes is caught.\nprobes = [True, False, False, True, True, False, False, False, False, True, True]\nprint(\"probes:\", [\"ok\" if p else \"fail\" for p in probes])\nprint(\"final state:\", run(probes))\n# Worst case to stop traffic: interval * unhealthy_threshold\nprint(\"worst-case detection:\", interval * unhealthy_threshold, \"seconds\")\n"
+   },
+   "followUps": [
+    "<p>When every target is unhealthy, the ALB fails open: it ignores health status and sends requests to all targets anyway.</p><p>The idea is that serving some traffic through broken-looking targets can be better than returning errors for everyone, and a bad health check (such as one that fails on a database blip) should not turn the whole site off. Example: three targets all fail the deep check for a minute; users still get responses from them, possibly errors. This is why shallow health checks and alarms on UnHealthyHostCount matter: fail-open hides the problem rather than fixing it.</p>",
+    "<p>Slow start is about new targets, while the health check is about all targets: slow start ramps traffic gradually to a target that has just turned healthy.</p><p>With slow start set to, say, 60 seconds, a new target receives a growing share of requests over that minute instead of its full share immediately, which gives caches and JIT compilers time to warm up. The health check only decides in or out. Without slow start, a freshly booted instance can get a flood of requests, run slowly and fail the check again. It works for round-robin or least-outstanding-requests routing, not for every algorithm.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Target tracking formula and scaling delay",
+    "python": "import math\n\n# Target tracking: desired = ceil(current * metric / target), clamped to min/max.\ndef desired(current, metric, target, lo=2, hi=20):\n    return max(lo, min(hi, math.ceil(current * metric / target)))\n\ntarget = 50.0\nfleet = 4\nprint(\"target CPU:\", target, \"%\")\n# Each step: the CPU the alarm sees, and the fleet size it asks for\nfor cpu in [45, 90, 90, 60, 40]:\n    want = desired(fleet, cpu, target)\n    print(f\"cpu={cpu}% fleet={fleet} -> desired={want}\")\n    fleet = want\n# Lateness: the pipeline delay while capacity is saturated\nmetric_period, alarm_eval, boot, warmup = 60, 120, 90, 60\nprint(\"seconds until new capacity helps:\", metric_period + alarm_eval + boot + warmup)\n"
+   },
+   "followUps": [
+    "<p>Instance warm-up tells the Auto Scaling group to ignore a new instance's metrics for a set time, so a booting instance does not distort the average and cause over-scaling.</p><p>Example: you launch 4 instances; each shows 5% CPU for the first 2 minutes while booting. Without warm-up the group averages them in and thinks it has too much capacity, so it may stop scaling out. With a 300-second warm-up the new instances are counted as capacity coming but their metrics are left out until warmed. Set it to your real boot-and-ready time: too short misleads, too long delays reacting to the next spike.</p>",
+    "<p>Scale workers on backlog per worker, not on CPU, because CPU says little about how much work is waiting.</p><p>Compute a target such as backlog per instance = ApproximateNumberOfMessages / running instances, and keep it near acceptable backlog = freshness seconds / seconds per message. Example: each message takes 2 s and you accept 60 s wait, so the target is 30 messages per instance; with 600 queued you need 20 instances. Publish that value as a custom metric and use target tracking on it. Also set a minimum for latency and a maximum to protect the downstream database.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because you pay per millisecond multiplied by memory, a bigger memory setting that makes the function run much faster can cost less in total.</p><p>Lambda gives CPU in proportion to memory. Example: at 512 MB a job takes 1000 ms, costing 0.5 GB x 1 s = 0.5 GB-s; at 1024 MB it takes 400 ms, costing 1 GB x 0.4 s = 0.4 GB-s, which is cheaper and faster. This only works for CPU-bound code; a function waiting on the network gains nothing. Test a few sizes (a power-tuning approach) and pick the lowest cost that meets the latency goal.</p>",
+    "<p>Provisioned concurrency costs money for the time it is configured, whether or not it is used, plus a lower per-invocation duration price.</p><p>You pay a rate per GB-second for each provisioned environment kept warm, so 10 environments of 1 GB for a month is a constant charge, around the price of a small always-on server. It is worth it for latency-critical user-facing functions with steady traffic, and wasteful for rare jobs. Use Application Auto Scaling to schedule it (e.g. up on working hours), and compare the monthly bill with simply optimizing init code or using SnapStart.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Concurrency = rate x duration, capped",
+    "python": "# Little's law for Lambda: concurrency = request rate * duration.\ndef concurrency(rate_per_s, duration_s):\n    return rate_per_s * duration_s\n\nrate = 200\nreserved_cap = 100          # reserved concurrency protects the database\nfor label, duration in [(\"healthy DB\", 0.1), (\"slow DB\", 2.0)]:\n    need = concurrency(rate, duration)\n    running = min(need, reserved_cap)       # excess invocations are throttled\n    throttled = max(0, need - reserved_cap)\n    print(f\"{label}: {rate}/s x {duration}s = {need:.0f} concurrent, \"\n          f\"running {running:.0f}, throttled-equivalent {throttled:.0f}\")\n# Capping at 100 means the database never sees more than 100 connections at once.\nprint(\"max DB connections from this function:\", reserved_cap)\n"
+   },
+   "followUps": [
+    "<p>Reserved concurrency is a limit and a guarantee for one function; provisioned concurrency is pre-warmed environments to avoid cold starts.</p><p>Reserved: set to 100, the function can never exceed 100 at once, and those 100 are taken out of the account pool for it alone. It is free. Provisioned: set to 20, then 20 environments are initialised and kept ready, you pay for them, and traffic beyond them still uses ordinary on-demand environments up to the cap. You can combine them: reserved 100 with provisioned 20.</p>",
+    "<p>Behaviour depends on how the function is called: synchronous callers get an error, asynchronous events are retried, and stream or queue sources back off.</p><p>Synchronous (API Gateway, SDK): HTTP 429 TooManyRequests immediately, so the client must retry. Asynchronous (S3, SNS, EventBridge): Lambda queues the event internally and retries for up to 6 hours, then sends it to a DLQ or on-failure destination if set. SQS event source: messages go back to the queue and become visible again, so they count against maxReceiveCount and can reach the DLQ; set maximum concurrency to avoid that.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Dead-letter queue after maxReceiveCount",
+    "python": "from collections import deque\n\nMAX_RECEIVE = 3\nqueue = deque([(\"m1\", \"ok\"), (\"m2\", \"poison\"), (\"m3\", \"ok\")])\nreceive_count = {}\ndlq = []\n\ndef process(body):\n    if body == \"poison\":\n        raise ValueError(\"cannot parse\")      # a bug that retrying never fixes\n    return \"done\"\n\nwhile queue:\n    mid, body = queue.popleft()\n    receive_count[mid] = receive_count.get(mid, 0) + 1\n    try:\n        print(mid, \"attempt\", receive_count[mid], process(body))\n    except ValueError:\n        if receive_count[mid] >= MAX_RECEIVE:   # moved to the DLQ, loop ends\n            dlq.append(mid)\n            print(mid, \"moved to DLQ after\", receive_count[mid], \"receives\")\n        else:\n            queue.append((mid, body))           # visibility timeout expires, it returns\n            print(mid, \"failed, will reappear\")\nprint(\"DLQ contents:\", dlq)\n"
+   },
+   "followUps": [
+    "<p>Partial batch responses let your function report only the messages that failed, so the successful ones in the same batch are not retried.</p><p>Without it, one bad message in a batch of 10 makes the whole batch fail and be reprocessed, which causes duplicates and pushes good messages toward the DLQ. With ReportBatchItemFailures enabled, your handler returns the IDs of the failures, such as {\"batchItemFailures\":[{\"itemIdentifier\":\"m7\"}]}; Lambda deletes the other 9 and only m7 returns to the queue. Still keep processing idempotent.</p>",
+    "<p>FIFO queues keep order and avoid duplicates, so a failing message can block others in the same group.</p><p>Messages with the same MessageGroupId are delivered in order, one at a time: while a poison message is retried, later messages of that group wait behind it. The DLQ for a FIFO queue must also be FIFO. Deduplication uses a message deduplication ID for 5 minutes. Throughput is lower than standard (300 messages per second per API action, 3,000 with batching, higher with high-throughput mode). Use many groups (per customer, say) so one bad message blocks only one group.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the handler safe to run twice: record a unique message or business ID and skip work you have already done.</p><p>Typical method: use a database insert with a unique key, or a conditional write. Example: INSERT INTO processed(id) VALUES (:order_id) ON CONFLICT DO NOTHING; if no row was inserted, return without repeating the side effect. Another way is to make the operation naturally repeatable, such as setting status = 'PAID' rather than adding 10 to a balance. Do it in the same transaction as the effect so a crash cannot leave one without the other.</p>",
+    "<p>SQS standard, SNS and EventBridge all provide at-least-once delivery, so duplicates can happen and consumers must cope.</p><p>SQS standard: at least once, order not guaranteed; SQS FIFO: exactly-once processing within the deduplication window and strict order per group. SNS standard: at least once with retries to endpoints; SNS FIFO exists for ordered fan-out to SQS FIFO. EventBridge: at least once delivery to targets, with retries up to 24 hours by default and no ordering guarantee. So in all cases design for duplicates with idempotent consumers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Choose self-hosting when you need something RDS lacks, or when scale and skills make the people cost smaller than the managed premium.</p><p>Hidden costs of managed services: per-hour premium over plain instances (often 20-40 percent), paid IOPS and storage, Multi-AZ doubling the instance cost, cross-AZ and cross-Region data transfer, backup storage beyond the free allowance, extended-support fees for old engine versions, and lock-in through features that do not move. Example: a Multi-AZ db.r6g.2xlarge with provisioned IOPS can cost more than three times its single-AZ base price. These must be compared honestly with engineer time.</p>",
+    "<p>Reduce the bill by matching the size to real usage and changing the purchase model, before thinking of leaving.</p><p>Steps: check CPU, memory and IOPS and downsize or move to Graviton instance classes (often 10-20 percent cheaper); buy Reserved Instances or a savings plan for steady production (up to about 30-60 percent off); change io1 to gp3 storage; stop dev databases overnight; cut backup retention and delete old snapshots; remove unused replicas; and fix expensive queries so a smaller instance suffices. Example: a steady 3-year commitment on a 2xlarge can halve its monthly cost.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Secrets in Lambda environment variables are stored with the function configuration, so anyone who can read the function configuration, a log line or a console view can see them.</p><p>They show in the console and in get-function-configuration output, may appear in deployment templates and CI logs, and are included in any dump an error handler prints. Encryption at rest with KMS helps but does not hide them from permitted readers. Rotation also needs a redeploy because the value is fixed at deploy time. Store only the secret's ARN as a variable and fetch the value at start-up, caching it for a few minutes.</p>",
+    "<p>Rotation without downtime works by keeping two valid credentials at the same time while clients move over.</p><p>Secrets Manager rotation uses a function in four steps: create a new password as AWSPENDING, set it in the database, test it, then promote it to AWSCURRENT. The alternating-users strategy keeps two database users so the old one still works during the switch. Applications must re-read the secret on authentication failure and refresh their connection pool; caching with a short TTL (5 minutes) makes this automatic. With IAM database authentication there is no password to rotate.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Queue absorbing a 100x burst",
+    "python": "import math\n\n# Burst absorbed by a queue: errors become backlog and delay.\nnormal_rate = 100           # uploads/s\nburst = normal_rate * 100   # 100x\nburst_seconds = 60\ncapacity = 800              # msgs/s the consumers/database can sustain\n\nbacklog = (burst - capacity) * burst_seconds   # messages left waiting after the burst\ndrain_time = backlog / (capacity - normal_rate) # arrivals fall back to normal rate\nprint(\"burst rate:\", burst, \"msgs/s for\", burst_seconds, \"s\")\nprint(\"backlog at end of burst:\", backlog)\nprint(\"drain time:\", math.ceil(drain_time), \"seconds\")\n# Workers needed to meet a 5-minute freshness target\nper_worker = 50\ntarget_seconds = 300\nworkers = math.ceil((backlog / target_seconds + normal_rate) / per_worker)\nprint(\"workers for freshness target:\", workers)\n"
+   },
+   "followUps": [
+    "<p>If results are needed within seconds, remove the queue delay: keep the queue only as a safety buffer and add enough capacity ahead of time that the backlog stays near zero.</p><p>Use pre-provisioned or provisioned concurrency, scale on backlog and on rate (not CPU), and keep consumers warm. Example: 10,000 jobs/s at 50 ms each needs about 500 concurrent workers, so provision that headroom (or shed load). Return an immediate acknowledgement and push the result to the client over a WebSocket or polling. Where capacity cannot be ensured, reject or degrade excess requests, e.g. lower image quality, rather than queue them for minutes.</p>",
+    "<p>Add rate limiting at the edge and at the entry to the processing path, so abusive or accidental floods are refused before they use capacity.</p><p>First level: API Gateway usage plans or WAF rate-based rules per client or IP (e.g. 100 requests per 5 minutes). Second level: a per-tenant limit on the upload endpoint so one customer cannot fill the queue. Third level: a concurrency cap on consumers to protect the database. Return HTTP 429 with a Retry-After header, and let well-behaved clients use exponential backoff with jitter. The queue absorbs honest bursts; limits stop dishonest or buggy ones.</p>"
+   ]
+  }
+ ]
+}

