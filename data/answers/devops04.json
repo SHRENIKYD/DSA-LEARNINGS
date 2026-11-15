@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Every developer has the whole history locally, so there is no single point of failure and most work needs no network. If the server dies, any clone can be pushed to a new one.</p><p>It also makes commits, diffs, branching and blame fast (they read local disk), and lets you work on a plane. Example: a 2 GB history is cloned once; after that <code>git log</code> takes milliseconds instead of a server round trip. The cost is that clones carry all history, so huge repos need shallow or partial clones.</p>",
+    "<p>Two good choices are branch protection (or rulesets) and required status checks. Others: CODEOWNERS and secret push protection.</p><p>Protection on <code>main</code> blocks force-push and deletion and requires a pull request with at least one approval. Required checks mean the tests and lint must pass before the merge button works. Example: with 2 approvals and a green CI required, a broken change cannot reach <code>main</code> even from an admin's habit of pushing directly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Commit ids chain: one change alters all later commits",
+    "python": "import hashlib\n\n# A commit id is a hash of its content AND its parent's id.\ndef commit(tree, parent, msg):\n    data = f\"{tree}|{parent}|{msg}\"\n    return hashlib.sha1(data.encode()).hexdigest()[:8]\n\ndef build(msgs):\n    ids, parent = [], \"none\"\n    for i, m in enumerate(msgs):\n        parent = commit(f\"tree{i}\", parent, m)\n        ids.append(parent)\n    return ids\n\noriginal = [\"init\", \"add login\", \"fix typo\"]\nedited = [\"init\", \"add LOGIN\", \"fix typo\"]  # change one old message\na, b = build(original), build(edited)\nprint(\"messages:\", original)\nfor i in range(3):\n    # one changed commit changes every later id (tamper-evident history)\n    print(i, a[i], b[i], \"same\" if a[i] == b[i] else \"CHANGED\")\n# Time O(n), space O(n) for n commits.\n"
+   },
+   "followUps": [
+    "<p>Use <code>git restore --staged FILE</code> (older: <code>git reset FILE</code>). It removes the file from the staging area but leaves your edits in the working tree.</p><p>Example: you ran <code>git add .</code> and staged <code>.env</code> by mistake; <code>git restore --staged .env</code> unstages it and the file still exists on disk. Nothing is lost, because add only copied content into the index. To also discard the edits you would use <code>git restore FILE</code>, which is destructive, so be sure first.</p>",
+    "<p>A good message has a short imperative subject (about 50 characters or fewer) saying what the change does, a blank line, then a body saying why.</p><p>Example: <code>Raise API timeout to 30s</code>, followed by \"Checkout calls to the payment provider timed out under load; p99 was 22s.\" The what is visible in the diff, but the why is not. Keep one logical change per commit so it can be reviewed, reverted or cherry-picked on its own. Ticket links help later searching.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Never rewrite commits that other people already have; rebase only your own unpublished commits.</p><p>Rebase creates new commits with new IDs. If a teammate based work on the old ones, their history and yours now disagree, and merging brings duplicates and conflicts. Example: you rebase a shared branch with 5 commits; each teammate now sees 5 old and 5 new commits. On your private feature branch it is safe, and you push it with <code>--force-with-lease</code>.</p>",
+    "<p>A squash merge turns the whole PR into one commit on main, so history reads as one line per feature and a revert is a single step.</p><p>Messy commits like \"wip\" or \"fix review comments\" disappear. Example: a PR with 12 commits becomes 1 commit titled with the PR title; <code>git revert</code> of that one commit undoes the feature. The cost is losing the detailed steps and making long-lived branches harder to stack, since squashed commits have new IDs.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Three-way merge: clean result and a conflict",
+    "python": "# Line-by-line three-way merge of equal-length files.\nbase   = [\"replicas: 2\", \"image: app:1\", \"port: 80\"]\nours   = [\"replicas: 3\", \"image: app:1\", \"port: 80\"]\ntheirs = [\"replicas: 2\", \"image: app:2\", \"port: 80\"]\nconflict_theirs = [\"replicas: 5\", \"image: app:2\", \"port: 80\"]\n\ndef merge(base, ours, theirs):\n    out = []\n    for b, o, t in zip(base, ours, theirs):\n        if o == t:\n            out.append(o)          # both sides agree\n        elif o == b:\n            out.append(t)          # only theirs changed this line\n        elif t == b:\n            out.append(o)          # only ours changed this line\n        else:                      # both changed it differently\n            out += [\"<<<<<<< ours\", o, \"=======\", t, \">>>>>>> theirs\"]\n    return out\n\nprint(\"clean merge:\")\nprint(\"\\n\".join(merge(base, ours, theirs)))\nprint(\"conflicting merge:\")\nprint(\"\\n\".join(merge(base, ours, conflict_theirs)))\n# Time O(n) lines, space O(n).\n"
+   },
+   "followUps": [
+    "<p>Yes. Git merges by text, not by meaning, so two clean changes can still break each other.</p><p>Example: branch A renames function <code>load()</code> to <code>read()</code> in one file; branch B adds a new call to <code>load()</code> in another file. No lines overlap, so Git merges silently, but the code no longer compiles. That is why CI must run on the merged result (a merge queue does this), not only on each branch.</p>",
+    "<p><code>rerere</code> means \"reuse recorded resolution\": Git remembers how you resolved a conflict and applies the same fix automatically the next time it sees it.</p><p>Enable it with <code>git config rerere.enabled true</code>. It helps when you rebase a long branch repeatedly or merge the same pair of branches several times: you fix a conflict once, not on every attempt. It stores a fingerprint of the conflict and your result in <code>.git/rr-cache</code>; check the result, it is still your decision.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Pre-commit secret scanner on a diff",
+    "python": "import re\n\n# Tiny secret scanner, like a pre-commit hook (placeholder values only).\nrules = {\n    \"cloud key\": re.compile(r\"AKIA[0-9A-Z]{16}\"),\n    \"password\": re.compile(r\"(?i)password\\s*=\\s*\\S+\"),\n    \"private key\": re.compile(r\"-----BEGIN [A-Z ]*PRIVATE KEY-----\"),\n}\ndiff = [\n    \"+db_host = example.internal\",\n    \"+aws_key = AKIAFAKEFAKEFAKE1234\",\n    \"+password = hunter2\",\n    \"+print('hello')\",\n]\nfound = 0\nfor n, line in enumerate(diff, 1):\n    for name, rx in rules.items():\n        if rx.search(line):\n            print(f\"line {n}: possible {name}: {line}\")\n            found += 1\nprint(\"scanned\", len(diff), \"lines, findings:\", found)\nprint(\"commit blocked\" if found else \"commit allowed\")\n# Time O(lines * rules), space O(1).\n"
+   },
+   "followUps": [
+    "<p>Both hide files from <code>git status</code>, but <code>.gitignore</code> is committed and shared with the team, while <code>.git/info/exclude</code> is local to your clone only.</p><p>Use <code>.gitignore</code> for project rules such as <code>node_modules/</code> and <code>.env</code>. Use the exclude file for personal things, for example your own editor folder <code>.idea/</code> or scratch notes. Neither affects files already tracked; those need <code>git rm --cached</code> first.</p>",
+    "<p>A short-lived credential expires on its own, so a leaked one is useful to an attacker for minutes instead of forever.</p><p>Example: a CI job exchanges an OIDC token for cloud access valid for 15 minutes. If it appears in a log, it is dead before most scrapers use it. A long-lived key leaked in a commit works until someone notices and rotates it, which may take days. There is also nothing stored to leak in the repo, and permissions can be scoped narrowly per job.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A clone's local history still contains the old commits, so a plain pull would merge the old history with the new one and bring everything back, including the secret.</p><p>The rewrite gives every commit a new ID. Git sees your old commits as different from the server's, so <code>git pull</code> creates a huge merge with duplicates, and a later push re-publishes the leaked data. A fresh clone starts from the clean history. Unpushed work can be moved with <code>git rebase --onto NEW OLD branch</code>.</p>",
+    "<p>Open PRs point at old commits, so each author must rebase their branch onto the rewritten main, or you recreate the PRs.</p><p>Steps: list the open PRs before the rewrite; ask authors to push, then freeze merges. After the rewrite each author runs <code>git rebase --onto origin/main OLD_BASE my-branch</code> and force-pushes with lease. Platforms may keep old PR refs, so ask the host to purge them. Example: 8 open PRs means 8 short rebases, which is why the window is announced in advance.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Revert the merge commit with <code>git revert -m 1 MERGE</code>, and to bring the feature back, first revert the revert (or re-merge after fixing).</p><p>The catch: Git thinks the original commits are already merged, so merging the same branch again brings nothing. Example: revert commit R undid the merge M; running <code>git revert R</code> recreates the changes. Alternatively create a new branch with fixes. Use the first method when the code was fine and you only paused it.</p>",
+    "<p><code>ORIG_HEAD</code> is a pointer to where HEAD was before a risky operation such as a merge, rebase or reset.</p><p>Example: you run <code>git reset --hard HEAD~3</code> by mistake; <code>git reset --hard ORIG_HEAD</code> puts the branch back. It is overwritten by the next such operation, so use it right away. For older positions, look in <code>git reflog</code>, which lists every earlier value of HEAD.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "--force-with-lease versus plain force push",
+    "js": "// Model of a remote branch and the push rules.\nconst remote = { main: \"c3\" };      // server tip\n\nfunction forcePush(branch, newTip) {\n  remote[branch] = newTip;          // blindly overwrites\n  return \"ok\";\n}\n// --force-with-lease: only push if the server tip is what I last saw.\nfunction forceWithLease(branch, newTip, expected) {\n  if (remote[branch] !== expected) {\n    return `REFUSED (server has ${remote[branch]}, I expected ${expected})`;\n  }\n  remote[branch] = newTip;\n  return \"ok\";\n}\n\nconsole.log(\"server main:\", remote.main, \"- I last fetched c3\");\nremote.main = \"c4\";                 // a teammate pushes c4 meanwhile\nconsole.log(\"lease push:\", forceWithLease(\"main\", \"x1\", \"c3\"));\nconsole.log(\"server main still:\", remote.main);\nconsole.log(\"plain force push:\", forcePush(\"main\", \"x1\"));\nconsole.log(\"server main now:\", remote.main, \"(teammate's c4 lost)\");\n"
+   },
+   "followUps": [
+    "<p>It refuses the push if the remote branch is not where you last fetched it, so it never overwrites work you have not seen.</p><p>Git compares the server's current tip with your remote-tracking ref (for example <code>origin/feature</code>). If a teammate pushed c4 after you fetched c3, they differ and the push is rejected. A plain <code>--force</code> skips that test. If a background tool auto-fetches, your ref moves forward silently and the lease becomes weak; <code>--force-if-includes</code> additionally checks that your branch contains that tip.</p>",
+    "<p>Then they may be gone for good, unless the platform kept them.</p><p>GitHub keeps activity-log entries and the old commits are usually still reachable by their SHA for some time, and the teammate's clone or CI checkout may hold them. Ask who last fetched, check CI caches, and look in the host's audit log for the previous tip. Example: the old tip <code>9f2c1ab</code> from the log can be pushed as a new branch. Without a copy anywhere, garbage collection removes it, so act quickly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>CODEOWNERS says who must review which paths, and branch protection makes that review and passing CI mandatory before merging.</p><p>Example: a line <code>/terraform/ @platform-team</code> means any PR touching that folder needs approval from that team. Protection then enforces required approvals, required checks (plan, tests), and blocks direct pushes. Together they put the right expert in the loop automatically instead of relying on reviewers to remember.</p>",
+    "<p>Ask the author to split it, because nobody can review 3,000 lines well.</p><p>If it cannot be split, review in layers: read the description and tests first, then the risky parts. Practical ways: separate pure moves or renames from logic changes, send the refactor first and the feature second, or stack small PRs. Example: 3,000 lines become 6 PRs of about 500, each reviewable in 20 minutes. Generated files and lockfiles can be skipped or checked by running the generator.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A feature flag lets you deploy code to production without turning it on, so \"deployed\" and \"released\" become two different events.</p><p>Example: code ships Monday behind <code>new_checkout=off</code>; on Wednesday you enable it for 5% of users, then 100%. If it misbehaves you switch it off in seconds without a redeploy. The price: old flags become clutter, so each flag needs an owner and a removal date, and both code paths must be tested.</p>",
+    "<p>Move in small steps and measure, rather than switching on one weekend.</p><p>1) Make CI fast and reliable. 2) Shorten branches: merge into develop daily. 3) Introduce feature flags for unfinished work. 4) Drop release branches and deploy from main with tags. Example: after 6 weeks, branches live under 2 days. Explain the benefits with real data (lead time, merge pain) and agree the rules with the team first.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Semantic version bump from commit types",
+    "python": "# Semantic Versioning: bump MAJOR.MINOR.PATCH from commit types.\ndef bump(version, commits):\n    major, minor, patch = map(int, version.split(\".\"))\n    level = \"patch\"\n    for c in commits:\n        if \"!\" in c.split(\":\")[0]:      # feat!: ... means breaking change\n            level = \"major\"\n        elif c.startswith(\"feat\") and level != \"major\":\n            level = \"minor\"\n    if level == \"major\":\n        return f\"{major + 1}.0.0\"       # reset lower numbers\n    if level == \"minor\":\n        return f\"{major}.{minor + 1}.0\"\n    return f\"{major}.{minor}.{patch + 1}\"\n\nstart = \"1.6.2\"\ncases = [\n    [\"fix: null check\"],\n    [\"fix: null check\", \"feat: add export\"],\n    [\"feat: add export\", \"feat!: drop v1 API\"],\n]\nfor commits in cases:\n    print(start, commits, \"->\", bump(start, commits))\n# Time O(n) for n commits, space O(1).\n"
+   },
+   "followUps": [
+    "<p>Because a tag is meant to identify one exact version, anyone who already fetched it keeps the old target, so people end up with different code under the same name.</p><p>Git does not update existing tags on fetch by default. Example: <code>v1.7.0</code> pointed to commit A, you move it to B; CI builds B, but a server that cached A still says 1.7.0. That makes bugs impossible to trace. If you made a mistake, release <code>v1.7.1</code> instead.</p>",
+    "<p>A lightweight tag is just a name pointing to a commit; an annotated tag is a full object with tagger, date and message, and can be signed.</p><p>Use annotated tags for releases: <code>git tag -a v1.7.0 -m \"Release 1.7.0\"</code> keeps who and when, and <code>git describe</code> prefers them by default. Lightweight tags suit private bookmarks. Example: <code>git show v1.7.0</code> displays the message and signature only for the annotated kind.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Run only what changed, in parallel, and cache aggressively.</p><p>Ways: split tests into shards (a 40 minute suite on 8 workers is about 5 minutes), use path filters so a docs change skips integration tests, cache dependencies and build outputs, and use remote build caches. Run the quick lint and unit checks first and fail fast. Track the slowest tests; remove or fix flaky ones, since reruns hide the real time.</p>",
+    "<p>It depends on how much the teams share; for a platform team that shares tooling and modules, a monorepo is usually simpler.</p><p>A monorepo gives atomic changes across modules, one set of CI rules and easy reuse. Many repos give clear ownership and smaller clones but need versioned releases and cross-repo changes to land in order. Example: renaming a shared module touches 10 services: one PR in a monorepo, 10 PRs plus a release in many repos. A monorepo needs path-based CI to stay fast.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because filter-repo is meant for a fresh clone, and removing the remote stops you pushing the rewritten history to the original server by accident.</p><p>The rewritten repo is a different history, so a normal push would be rejected or, worse, forced over the real one before you checked it. After verifying, you add the remote back deliberately with <code>git remote add origin URL</code> and push with an explicit command. This forced pause is a safety feature.</p>",
+    "<p>Use the host's push protection and a server-side hook or ruleset that rejects known bad commit IDs or secret patterns, plus periodic scans.</p><p>Examples: a secret scanner on every push catches the string again; a CI job checks that <code>git cat-file -e OLD_SHA</code> fails on a fresh clone, and the repo size stays near the new size. Someone with an old clone who runs <code>git push --force --all</code> is blocked by disabled force-push, so protection is turned back on after the rewrite.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Compare it to a baseline using a few measurable outcomes, not feelings.</p><p>Metrics: bugs found in review versus bugs found in production, change-failure rate, time to first review, review time, and how often humans accept or dismiss the AI comments. Example: if 30% of 200 AI comments lead to a code change and the change-failure rate stays flat, they help a little; a rise in escaped defects means the reviews give false confidence. Compare before and after over several weeks.</p>",
+    "<p>Log enough to reconstruct what the agent did, who authorised it, and what it saw, without storing secrets.</p><p>Record: agent identity and version, the task or ticket, the branch and commit IDs, the prompts and tool calls (redacted), files touched, test results, and the human approver. Add a commit trailer such as <code>Co-authored-by: agent</code>. Example: if a bad change appears, the log tells you which task and model produced it so you can fix the process.</p>"
+   ]
+  }
+ ]
+}

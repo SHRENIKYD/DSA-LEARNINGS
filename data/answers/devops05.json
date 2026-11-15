@@ -1,0 +1,124 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Spread instances across AZs and lose one",
+    "python": "# Model: spread instances over AZs, then lose one AZ and see what capacity is left.\ndef spread(count, azs):\n    placement = {az: 0 for az in azs}\n    for i in range(count):\n        placement[azs[i % len(azs)]] += 1   # round-robin like an Auto Scaling group\n    return placement\n\ndef survive(name, placement, failed, needed):\n    left = sum(n for az, n in placement.items() if az != failed)\n    status = \"OK\" if left >= needed else \"OUTAGE\"\n    print(f\"{name}: {placement} lose {failed} -> {left} left, need {needed}: {status}\")\n\nneeded = 4  # instances required to carry peak traffic\nsurvive(\"2 instances, one AZ   \", {\"a\": 2}, \"a\", 2)\nsurvive(\"2 instances, two AZs  \", spread(2, [\"a\", \"b\"]), \"a\", 1)\n# N+1 across 3 AZs: each AZ holds 2, losing one still leaves 4\nsurvive(\"6 instances, three AZs\", spread(6, [\"a\", \"b\", \"c\"]), \"a\", needed)\nsurvive(\"4 instances, two AZs  \", spread(4, [\"a\", \"b\"]), \"a\", needed)\n"
+   },
+   "followUps": [
+    "<p>The AZ name (like <code>eu-west-1a</code>) is a label that is mapped differently for each account, while the AZ ID (like <code>euw1-az1</code>) always points to the same physical zone.</p><p>AWS shuffles names so that not everyone piles into 'a'. So your <code>1a</code> may be my <code>1c</code>. If two accounts must share a zone (for example a shared VPC or lower cross-AZ latency between teams), compare AZ IDs, not names. Check with <code>aws ec2 describe-availability-zones</code>, which shows both.</p>",
+    "<p>Go multi-region when you must survive the loss of a whole region, meet a law that needs data in another place, or serve far-away users with lower latency.</p><p>Multi-AZ already covers a data-centre failure and costs little. Multi-region adds replication lag, data-transfer cost, duplicate infrastructure and harder failover (DNS or Global Accelerator routing, replicated databases). Example: a shop with a 4-hour recovery goal may only need backups copied to a second region (pilot light); a payment service needing seconds of downtime needs active-active, which costs roughly double.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A hypervisor flaw is AWS's responsibility; a leaked access key is the customer's.</p><p>The hypervisor is part of 'security of the cloud', so AWS patches and fixes it. A key is part of 'security in the cloud': you create, store and rotate it. Rule of thumb: if you cannot see or change it (hardware, hypervisor, managed-service code), it is AWS's; if you configure or hold it (keys, permissions, open ports, data), it is yours. AWS may warn you about a leaked key, but cleaning up remains your job.</p>",
+    "<p>Azure describes the same split: the provider always owns physical hosts, network and datacentres, the customer always owns data, identities and devices, and the middle layers shift with the service type.</p><p>Microsoft's diagram shows IaaS, PaaS and SaaS columns: on a VM you patch the OS, on a managed database Microsoft patches it, and on SaaS you mostly manage users and data. It is the same idea with different words: 'responsibility shifts by service model'.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>First check whether the instance ran the script at all by reading the cloud-init logs on the box; then fix the script and re-run it.</p><p>Steps: connect via Session Manager, run <code>sudo cat /var/log/cloud-init-output.log</code> and <code>/var/log/cloud-init.log</code>, then <code>cloud-init status --long</code>. Common causes: missing <code>#!/bin/bash</code> first line, Windows line endings, a command failing without <code>set -e</code> visibility, no internet to download packages, or you edited user data but it only runs on first boot (not on stop/start by default). To re-test, run it by hand with <code>sudo bash -x script.sh</code>.</p>",
+    "<p>The two checks separate AWS-side problems from your own: the system status check looks at the host, the instance status check looks at the guest OS.</p><p>System status fails for things like host power or network loss; the fix is usually stop then start so the instance moves to new hardware. Instance status fails for a full disk, kernel panic, bad network config or exhausted memory; the fix is on your side, such as rebooting or repairing the volume. Both passing (2/2) does not prove your app works, only that the machine is reachable.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Instance store is disk physically inside the host server; it is fast but disappears when the instance stops, terminates or the host fails, so use it only for data you can recreate.</p><p>Good uses: caches, temporary scratch files, buffers, replicated data that other nodes can rebuild (for example a node in a replicated database cluster). Never keep the only copy of anything there. It survives a reboot but not stop/terminate. Example: a video job writes 200 GB of temp frames to instance store at high speed, then uploads the final file to S3.</p>",
+    "<p>EBS is zonal because a volume is network-attached storage physically replicated inside one availability zone, which keeps latency low.</p><p>It is replicated within the AZ so one disk failing does not lose data, but the whole AZ going down makes the volume unavailable. To move data across AZs, take a snapshot (stored in S3, regional) and create a new volume from it in another AZ. For a shared disk across zones use EFS instead, which spans AZs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Attach an Elastic IP: it is a static public IPv4 address that stays with your account until you release it.</p><p>The normal auto-assigned public IP is released on stop. With an Elastic IP associated, stop and start keep the same address. In 2024 AWS began charging for all public IPv4 addresses, including Elastic IPs in use, so it is not free. Better design: put a load balancer or DNS name in front and let the instance IP change.</p>",
+    "<p>Hibernation saves the contents of RAM to the encrypted root EBS volume and stops the instance, so on start the processes resume where they left off.</p><p>It must be enabled at launch, needs an encrypted root volume large enough for the RAM, and works only on supported instance types and size limits. While hibernated you pay for EBS but not compute. Good for a developer environment with a slow warm-up. Compared with stop, memory state survives; compared with a reboot, it is much slower to resume than simply running.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>In 2025 AWS changed new accounts from the old 12-month free tier to a credit-based plan: new customers get a starting credit (up to about 200 USD in total) that expires, instead of fixed free hours per service.</p><p>The details have been updated several times, and plans differ between a free plan that closes when credits run out and a paid plan. Always read the current AWS Free Tier page before relying on it, and still set a budget alert; do not assume 750 free hours applies to your account.</p>",
+    "<p>Several things bill by existing, not by running: EBS volumes and snapshots, Elastic IPs and public IPv4 addresses, NAT gateways, load balancers, and S3 storage.</p><p>A stopped instance costs nothing for compute, but its 30 GB EBS volume still costs a few dollars a month. A forgotten NAT gateway costs about 33 USD a month (hourly price times 730) even with zero traffic. After a project, delete these, then check Cost Explorer a week later for anything still growing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Serve it through CloudFront with the bucket kept private, using Origin Access Control, so only CloudFront can read the objects.</p><p>Steps: keep Block Public Access on, create a CloudFront distribution with the bucket as origin and an OAC, then add a bucket policy that allows the <code>cloudfront.amazonaws.com</code> service principal when <code>AWS:SourceArn</code> equals your distribution. You get HTTPS, caching and a custom domain, and nobody can bypass CloudFront to hit the bucket directly.</p>",
+    "<p>Both control access, and a request is allowed if some policy allows it and nothing denies it; ACLs are the old, object-level mechanism and AWS recommends turning them off.</p><p>Setting Object Ownership to 'bucket owner enforced' disables ACLs so the bucket policy and IAM policies are the only rules. If ACLs are on, a public-read ACL can make an object public even if the policy seems private, which is how many leaks happen. Block Public Access overrides both for public grants.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>If the disk is full and the instance will not boot, stop it, detach the root volume, attach it to a healthy helper instance in the same AZ, and clean or grow it there.</p><p>Steps: snapshot first, stop the broken instance, detach the volume, attach it to a rescue instance as <code>/dev/sdf</code>, mount it, delete old logs (or grow the volume with <code>modify-volume</code> then <code>growpart</code> and <code>xfs_growfs</code>), unmount, reattach as the root device name and start. Alternatively use EC2 Rescue or Systems Manager automation runbooks.</p>",
+    "<p>On Nitro instances EBS volumes show up as <code>/dev/nvme*n1</code> in an order that is not guaranteed, so match them by volume ID, which is exposed as the device serial number.</p><p>Run <code>lsblk -o NAME,SERIAL,SIZE</code>; the serial is the volume id without the dash (for example <code>vol0abc123</code>). Amazon Linux also provides <code>/dev/disk/by-id/</code> links, and the <code>ebsnvme-id</code> tool prints the block device mapping. Use the id before you format or grow anything, so you do not touch the wrong disk.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>CPU credits are the 'fuel' a burstable (t-family) instance earns while idle and spends when it runs above its baseline; unlimited mode lets it keep bursting by paying extra when credits run out.</p><p>Example: a t3.micro earns credits at a baseline of 10% CPU. Running at 40% for long drains the balance; in standard mode it is then throttled to the baseline, in unlimited mode you keep full speed and pay a surplus-credit charge per vCPU-hour. If a t-instance is regularly in surplus, move to an m or c type, which is cheaper at constant load.</p>",
+    "<p>Bigger sizes often have higher EBS bandwidth and IOPS limits and a larger network share, so a disk-bound job can speed up even without needing more CPU.</p><p>Each instance size caps the throughput to EBS (for example a small size might allow a few hundred MB/s only for short bursts, while a larger size sustains much more). If CloudWatch shows the volume well below its limits but the instance is at its EBS ceiling, upsizing the instance helps; if the volume itself is at its limit, raise volume IOPS or throughput instead.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Lifecycle tiers and minimum-duration billing",
+    "python": "# Illustrative prices per GB-month (placeholders, not real quotes).\nPRICE = {\"STANDARD\": 0.023, \"STANDARD_IA\": 0.0125, \"GLACIER\": 0.0036}\nMIN_DAYS = {\"STANDARD\": 0, \"STANDARD_IA\": 30, \"GLACIER\": 90}\n\ndef cost(days_in_class, cls):\n    billed = max(days_in_class, MIN_DAYS[cls])   # minimum storage duration\n    return PRICE[cls] * billed / 30\n\n# Lifecycle for logs: 0-30 days Standard, 30-90 IA, 90-365 Glacier, then expire.\nplan = [(\"STANDARD\", 30), (\"STANDARD_IA\", 60), (\"GLACIER\", 275)]\ntotal = sum(cost(d, c) for c, d in plan)\nall_std = cost(365, \"STANDARD\")\nprint(\"Lifecycle plan for 1 GB of logs over 365 days\")\nfor c, d in plan:\n    print(f\"  {c:12s} {d:3d} days -> ${cost(d, c):.4f}\")\nprint(f\"tiered total ${total:.4f} vs all Standard ${all_std:.4f}\")\n# Minimum-duration trap: a file deleted after 5 days in IA is billed 30 days.\nprint(f\"5 days in IA billed as 30: ${cost(5, 'STANDARD_IA'):.4f} vs Standard ${cost(5, 'STANDARD'):.4f}\")\n"
+   },
+   "followUps": [
+    "<p>Intelligent-Tiering is better when you do not know or cannot predict how often objects will be read, since it moves objects between tiers for you based on real access.</p><p>It charges a small per-object monitoring fee, ignores objects under 128 KB for auto-tiering, and has no retrieval fee, so it suits large objects with unknown patterns. For logs you know are never read after 30 days, a fixed lifecycle rule is cheaper because there is no monitoring fee. Example: user-uploaded photos with random access: Intelligent-Tiering.</p>",
+    "<p>A minimum storage duration means you are billed for the full period, even if you delete the object earlier.</p><p>Standard-IA has 30 days, Glacier Instant and Flexible have 90 days, Deep Archive has 180. Delete a file after 5 days in Standard-IA and you still pay for 30 days. So for short-lived data such as temporary exports or 7-day logs, keep them in Standard and expire them there; do not transition them early. My program shows the 5-day case costing about 3 times more in IA.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Blending on-demand, commitment and spot",
+    "python": "# 10 instances run 24/7 (steady); 10 more run 6 hours a day (peak). 30-day month.\nOD = 0.10            # illustrative on-demand $/hour\nSP = OD * 0.6        # commitment rate (40% off)\nSPOT = OD * 0.3      # spot rate (70% off, can be reclaimed)\nsteady_h, peak_h = 10 * 24 * 30, 10 * 6 * 30\n\ndef month(commit_instances, peak_on_spot):\n    committed = commit_instances * 24 * 30 * SP          # paid every hour, used or not\n    uncovered = max(steady_h - commit_instances * 24 * 30, 0) * OD\n    peak = peak_h * (SPOT if peak_on_spot else OD)\n    return committed + uncovered + peak\n\nprint(\"All on-demand      : $%.2f\" % month(0, False))\nprint(\"Commit 10 + OD peak: $%.2f\" % month(10, False))\nprint(\"Commit 10 + spot   : $%.2f\" % month(10, True))\n# Over-commit: 14 committed but only 10 used -> 4 instances paid for nothing.\nprint(\"Commit 14 + spot   : $%.2f  (over-committed)\" % month(14, True))\n"
+   },
+   "followUps": [
+    "<p>Size the commitment to the baseline you are sure will run all year, not the average, because unused commitment is paid every hour and cannot be carried over.</p><p>Look at Cost Explorer's hourly usage for 1 to 3 months and find the minimum steady level (for example 10 instances always on, 20 at peak): commit only the 10. Start with 60 to 70 percent of that floor, add more later, and use Cost Explorer's recommendations as a starting point. Remember that migrations and shutdowns lower usage, so avoid committing for services you may retire.</p>",
+    "<p>A single database on Spot can disappear with only two minutes' notice, causing an outage and possible data loss.</p><p>Spot capacity is reclaimed when AWS needs it. A stateful single node has nowhere to fail over, local disk contents are gone, and a restart takes longer than two minutes of warning gives you. Spot fits stateless, restartable work: batch jobs, CI runners, web workers behind a load balancer. Keep databases on On-demand or reserved capacity.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Azure Blob blocks anonymous access with a switch on the storage account (and on each container), which plays the same role as S3 Block Public Access, though it is a different set of settings.</p><p>On the account, 'Allow Blob public access' set to Disabled prevents any container from being public. On S3, Block Public Access has four settings and can be applied to the account or bucket. In both clouds, the safe default for new resources is blocked, and sharing is done with short-lived signed links (SAS tokens on Azure, presigned URLs on S3).</p>",
+    "<p>Azure Hybrid Benefit lets you use your existing Windows Server or SQL Server licences (with Software Assurance) on Azure so you pay only the cheaper base compute rate.</p><p>It can cut the cost of Windows VMs significantly because the licence part of the price is removed. AWS has a similar idea called License Included versus bring your own licence, with more restrictions. Check your licence agreement before relying on it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Itemised monthly cost estimate",
+    "python": "HOURS = 730  # average hours in a month\n# (line, quantity, unit price, unit) - placeholder prices, label result as an estimate\nlines = [\n    (\"web EC2 x2\",        2 * HOURS, 0.0416, \"hour\"),\n    (\"app EC2 x2\",        2 * HOURS, 0.0832, \"hour\"),\n    (\"RDS Multi-AZ\",      HOURS,     0.136,  \"hour\"),\n    (\"RDS storage 100GB\", 100 * 2,   0.115,  \"GB-month (x2 Multi-AZ)\"),\n    (\"EBS 4 x 30GB\",      120,       0.08,   \"GB-month\"),\n    (\"Load balancer\",     HOURS,     0.0225, \"hour\"),\n    (\"NAT gateway\",       HOURS,     0.045,  \"hour\"),\n    (\"Data out 200GB\",    200,       0.09,   \"GB\"),\n    (\"Public IPv4 x3\",    3 * HOURS, 0.005,  \"hour\"),\n]\ntotal = 0\nfor name, qty, price, unit in lines:\n    cost = qty * price\n    total += cost\n    print(f\"{name:20s} {qty:8.0f} x ${price:<7} = ${cost:8.2f}  ({unit})\")\nprint(f\"{'ESTIMATED TOTAL':20s} {'':>22s} ${total:8.2f} / month\")\n# Forgotten lines (NAT, IPv4, data out) are about this share of the bill:\nhidden = sum(q * p for n, q, p, u in lines if n.split()[0] in (\"NAT\", \"Data\", \"Public\"))\nprint(f\"NAT + data out + IPv4 = {hidden / total:.0%} of the total\")\n"
+   },
+   "followUps": [
+    "<p>The lines most often forgotten are NAT gateways, data transfer, public IPv4 addresses, snapshots, and CloudWatch logs and metrics.</p><p>People list instances and the database but skip the small always-on items. Example: a NAT gateway is about 33 USD a month plus a per-GB processing fee, and cross-AZ traffic between app and database is billed in both directions. Also forgotten: Multi-AZ doubles database cost, backups beyond the free allowance, and support plan fees. My program shows these small lines add up to about one sixth of the bill.</p>",
+    "<p>Compare the estimate against the real bill line by line after the first full month, then correct the assumptions that were wrong.</p><p>Use Cost Explorer grouped by service and by cost-allocation tag, and match each estimated line to an actual line. If data transfer was estimated at 200 GB and the bill shows 600 GB, fix the traffic assumption, not just the total. Keep a budget alert at about 80 percent of the estimate, and repeat the review monthly for the first quarter.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Credential chain: first source wins",
+    "python": "# Simplified credential provider chain: the first source that has credentials wins.\ndef resolve(env, profile, role):\n    chain = [\n        (\"environment variables\", env.get(\"AWS_ACCESS_KEY_ID\")),\n        (\"SSO profile (short-lived)\", profile.get(\"sso_token\")),\n        (\"static keys in credentials file\", profile.get(\"static_key\")),\n        (\"instance/task role (auto-rotated)\", role),\n    ]\n    for name, cred in chain:\n        if cred:\n            return name\n    return \"no credentials found\"\n\ncases = {\n    \"laptop with SSO login\":      ({}, {\"sso_token\": \"t1\"}, None),\n    \"laptop with old static key\": ({}, {\"static_key\": \"AKIA-PLACEHOLDER\"}, None),\n    \"stray env var wins\":         ({\"AWS_ACCESS_KEY_ID\": \"x\"}, {\"sso_token\": \"t1\"}, None),\n    \"EC2 with instance role\":     ({}, {}, \"role-creds\"),\n    \"bare machine\":               ({}, {}, None),\n}\nfor label, (env, profile, role) in cases.items():\n    print(f\"{label:28s} -> {resolve(env, profile, role)}\")\n"
+   },
+   "followUps": [
+    "<p>The CLI checks sources in a fixed order and uses the first one it finds: command-line options, then environment variables, then profile-based sources (assume-role, SSO, credentials file), then container and instance-role credentials.</p><p>This is why a stray <code>AWS_ACCESS_KEY_ID</code> in your shell beats your SSO profile, causing confusing identity. Check who you are with <code>aws sts get-caller-identity</code> and see the source with <code>aws configure list</code>. My program models this: the first source with a value wins.</p>",
+    "<p>Deactivate the key immediately, then investigate and clean up; do not delete it before you have recorded it.</p><p>Minutes 0 to 15: in IAM set the key to Inactive (reversible), attach a deny-all policy to the user if needed, check CloudTrail for what the key did, and look for new users, roles, keys, instances and unusual regions. Then rotate any secrets it could read, remove the key from the repository history, create a replacement (preferably a role), and write the timeline for the incident report.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would reject a suggestion such as 'attach AdministratorAccess and open the security group to 0.0.0.0/0 to fix the error', because it fixes the symptom by removing all protection.</p><p>Other bad ones: a made-up CLI flag or instance type that does not exist, an outdated price, or a command that deletes resources without scoping. I check the output against the official docs, read each command before running it, and try it in a sandbox account first.</p>",
+    "<p>Give the agent a least-privilege role, limit it to read-only or a sandbox account, and require human approval before anything that changes or deletes.</p><p>Practical steps: run it with a short-lived role that has only the needed actions, add deny rules for destructive calls and for billing and IAM changes, use <code>--dry-run</code> or a plan step first, log everything to CloudTrail, and set a budget alarm. Never give it long-lived admin keys.</p>"
+   ]
+  }
+ ]
+}
