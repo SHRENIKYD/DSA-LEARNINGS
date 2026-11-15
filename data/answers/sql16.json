@@ -1,0 +1,116 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "MVCC: new tuple in heap vs undo chain",
+    "python": "# Two ways to keep old row versions, modelled in plain Python.\n# Postgres style: every UPDATE appends a new tuple; the old one stays until VACUUM.\n# InnoDB style: the row is changed in place; the old value goes to an undo chain.\n\n# --- Postgres-like heap: list of (xmin, xmax, value); xmax=None means live\nheap = [(1, None, \"balance=100\")]\ndef pg_update(xid, new):\n    for i, (xmin, xmax, v) in enumerate(heap):\n        if xmax is None:\n            heap[i] = (xmin, xid, v)      # stamp old tuple's xmax\n    heap.append((xid, None, new))         # write new tuple\ndef pg_read(snapshot_xid):\n    # visible if created at or before the snapshot and not yet deleted at it\n    return [v for xmin, xmax, v in heap\n            if xmin <= snapshot_xid and (xmax is None or xmax > snapshot_xid)]\ndef vacuum(oldest_snapshot):\n    global heap\n    heap = [t for t in heap if t[1] is None or t[1] > oldest_snapshot]\n\n# --- InnoDB-like: current row plus undo chain of (trx_id, old value)\nrow = {\"trx\": 1, \"value\": \"balance=100\"}\nundo = []\ndef inno_update(trx, new):\n    undo.append((row[\"trx\"], row[\"value\"]))   # before-image to undo log\n    row[\"trx\"], row[\"value\"] = trx, new\ndef inno_read(snapshot_trx):\n    if row[\"trx\"] <= snapshot_trx:\n        return row[\"value\"]\n    for trx, old in reversed(undo):           # walk the chain backwards\n        if trx <= snapshot_trx:\n            return old\n\npg_update(5, \"balance=150\"); pg_update(9, \"balance=200\")\ninno_update(5, \"balance=150\"); inno_update(9, \"balance=200\")\nprint(\"PG heap tuples:\", len(heap), \"(dead ones:\", len(heap) - 1, \")\")\nprint(\"PG read at snapshot 6:\", pg_read(6))\nprint(\"InnoDB rows:\", 1, \"undo entries:\", len(undo))\nprint(\"InnoDB read at snapshot 6:\", inno_read(6))\nvacuum(9)\nprint(\"After VACUUM, PG heap tuples:\", len(heap))\n"
+   },
+   "followUps": [
+    "<p>HOT (heap-only tuple) is a PostgreSQL shortcut: when an UPDATE changes no indexed column and the new tuple fits on the same page, no index entries are added. The old tuple just points to the new one inside the page, and page pruning can clean it without VACUUM.</p><p><code>fillfactor</code> leaves free room on each page: with <code>fillfactor = 80</code> an 8 KB page is filled to about 6.5 KB, so updates have space to stay on the page. Cost: the table is about 25% larger.</p>",
+    "<p>Look for the oldest open snapshot, because it decides what cleanup may remove.</p><p>PostgreSQL: <code>SELECT pid, state, backend_xmin, xact_start FROM pg_stat_activity ORDER BY age(backend_xmin) DESC;</code> and also check <code>pg_replication_slots</code> (xmin, catalog_xmin) and <code>pg_prepared_xacts</code>.</p><p>InnoDB: <code>SELECT trx_id, trx_started FROM information_schema.innodb_trx ORDER BY trx_started;</code> and the history list length in <code>SHOW ENGINE INNODB STATUS</code>. A transaction open for hours with a growing list is the culprit.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Clustered table vs separate index",
+    "python": "import sqlite3\ndb = sqlite3.connect(\":memory:\")\n# Rowid table: rows live in a hidden rowid B-tree, index is separate (like a PG heap)\ndb.execute(\"CREATE TABLE heap_t (id INTEGER, email TEXT, name TEXT)\")\ndb.execute(\"CREATE UNIQUE INDEX heap_pk ON heap_t(id)\")\n# WITHOUT ROWID: the table itself is the B-tree ordered by the PK (like InnoDB clustered)\ndb.execute(\"CREATE TABLE clustered_t (id INTEGER PRIMARY KEY, email TEXT, name TEXT) WITHOUT ROWID\")\ndb.execute(\"CREATE INDEX clustered_email ON clustered_t(email)\")\ndb.execute(\"CREATE INDEX heap_email ON heap_t(email)\")\nfor i in (30, 10, 20):\n    for t in (\"heap_t\", \"clustered_t\"):\n        db.execute(\"INSERT INTO %s VALUES (?,?,?)\" % t, (i, \"u%d@x.com\" % i, \"n%d\" % i))\n# Clustered table returns rows in primary key order with no sort step\nprint(\"input ids: 30, 10, 20\")\nprint(\"clustered scan order:\", [r[0] for r in db.execute(\"SELECT id FROM clustered_t\")])\n# A secondary index on a clustered table stores the PK, so it covers PK lookups\nfor t in (\"clustered_t\", \"heap_t\"):\n    plan = db.execute(\"EXPLAIN QUERY PLAN SELECT id FROM %s WHERE email='u10@x.com'\" % t).fetchone()[3]\n    print(t, \"covering index used:\", \"COVERING INDEX\" in plan)\nprint(db.execute(\"SELECT name FROM clustered_t WHERE email='u10@x.com'\").fetchall())\n"
+   },
+   "followUps": [
+    "<p>InnoDB makes its own hidden key. It first uses the first UNIQUE index whose columns are all NOT NULL; if none exists, it adds a hidden 6-byte <code>DB_ROW_ID</code> counter and clusters on that.</p><p>The hidden counter is shared by every such table in the instance, so inserts contend on one mutex, and you cannot use the value in queries or replication logic. Always define a real primary key, for example a short BIGINT.</p>",
+    "<p>It uses the visibility map. Every heap page has a bit saying all its tuples are visible to everyone. An index-only scan reads the index entry, checks that bit, and skips the heap if it is set.</p><p>If the bit is not set (recent writes, vacuum behind), the scan does a heap fetch to check visibility. That is the Heap Fetches count in EXPLAIN ANALYZE. Frequent vacuum keeps it near 0.</p><p>The index must also contain all selected columns, for example with <code>INCLUDE</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Partial, unique-partial and expression indexes",
+    "python": "import sqlite3\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT, email TEXT)\")\nrows = [(i, \"pending\" if i % 100 == 0 else \"done\", \"User%d@X.com\" % i) for i in range(1, 1001)]\ndb.executemany(\"INSERT INTO orders VALUES (?,?,?)\", rows)\n# Partial index: only the 10 pending rows are indexed (tiny index)\ndb.execute(\"CREATE INDEX idx_pending ON orders(id) WHERE status='pending'\")\n# Partial UNIQUE rule: one pending order per email, any number of done ones\ndb.execute(\"CREATE UNIQUE INDEX one_pending ON orders(email) WHERE status='pending'\")\n# Expression index, like a functional index\ndb.execute(\"CREATE INDEX idx_lower ON orders(lower(email))\")\ndef uses(sql):\n    return db.execute(\"EXPLAIN QUERY PLAN \" + sql).fetchone()[3]\nprint(\"pending rows:\", db.execute(\"SELECT count(*) FROM orders WHERE status='pending'\").fetchone()[0])\nprint(\"partial index used:\", \"idx_pending\" in uses(\"SELECT id FROM orders WHERE status='pending'\"))\nprint(\"expression index used:\", \"idx_lower\" in uses(\"SELECT id FROM orders WHERE lower(email)='user7@x.com'\"))\ntry:\n    db.execute(\"INSERT INTO orders VALUES (2000,'pending','User100@X.com')\")\nexcept sqlite3.IntegrityError as e:\n    print(\"duplicate pending blocked:\", e)\ndb.execute(\"INSERT INTO orders VALUES (2001,'done','User100@X.com')\")\nprint(\"duplicate done allowed\")\n"
+   },
+   "followUps": [
+    "<p>jsonb_ops (the default) indexes every key and every value separately. It supports <code>@&gt;</code>, <code>?</code>, <code>?|</code> and <code>?&amp;</code>. jsonb_path_ops indexes only a hash of each full path plus its value, so it supports <code>@&gt;</code> and jsonpath matching but not key-existence operators.</p><p>The trade: jsonb_path_ops is usually 30 to 50% smaller and faster for containment such as <code>doc @&gt; '{\"a\":{\"b\":1}}'</code>. Pick it when containment is the only operator you use.</p>",
+    "<p>MySQL has no partial indexes, but you can imitate one with a generated column that is NULL when the row is out of scope, and a UNIQUE index on it. UNIQUE allows many NULLs.</p><pre><code>ALTER TABLE orders\n  ADD pending_email VARCHAR(255)\n  AS (IF(status='pending', email, NULL)) VIRTUAL,\n  ADD UNIQUE (pending_email);</code></pre><p>Now only pending rows must have a unique email; rows with other statuses give NULL and are ignored.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Spotting scan vs index and estimate gaps",
+    "python": "import sqlite3\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE t (id INTEGER PRIMARY KEY, city TEXT, v INTEGER)\")\ndb.executemany(\"INSERT INTO t VALUES (?,?,?)\", [(i, \"A\" if i % 50 else \"B\", i) for i in range(1, 2001)])\nq = \"SELECT count(*) FROM t WHERE city='B'\"\ndef plan():\n    return db.execute(\"EXPLAIN QUERY PLAN \" + q).fetchone()[3]\ndef kind(p):  # SCAN reads every row, SEARCH jumps through an index\n    return \"full scan\" if p.startswith(\"SCAN\") else \"index search\"\nprint(\"rows in table:\", db.execute(\"SELECT count(*) FROM t\").fetchone()[0])\nprint(\"actual matching rows:\", db.execute(q).fetchone()[0])\nprint(\"before index ->\", kind(plan()))\ndb.execute(\"CREATE INDEX t_city ON t(city)\")\ndb.execute(\"ANALYZE\")  # refresh statistics so the planner's estimates are good\nprint(\"after index  ->\", kind(plan()))\n# Estimate vs actual: the gap is the first thing to look for in EXPLAIN ANALYZE\nstat = db.execute(\"SELECT stat FROM sqlite_stat1 WHERE idx='t_city'\").fetchone()[0]\nprint(\"planner thinks avg rows per city value:\", stat.split()[1], \"(real: 40 and 1960)\")\n"
+   },
+   "followUps": [
+    "<p>MySQL 8.0.18+ prints a tree where each node shows estimated cost and rows plus real numbers, like <code>(cost=1.2 rows=10) (actual time=0.05..0.07 rows=9 loops=1)</code>. Unlike PostgreSQL it has no BUFFERS option, and the old tabular type/key/Extra columns are gone.</p><p>Read it the same way: compare estimated rows with actual rows, and multiply per-loop time by loops. It really runs the query, so wrap writes in a transaction you roll back.</p>",
+    "<p>Load the <code>auto_explain</code> module and set a threshold, so any statement slower than it logs its plan.</p><pre><code>shared_preload_libraries = 'auto_explain'\nauto_explain.log_min_duration = '500ms'\nauto_explain.log_analyze = on\nauto_explain.log_buffers = on</code></pre><p>Plans appear in the server log with real row counts. Caution: <code>log_analyze</code> times every node and adds overhead, so use a high threshold or <code>auto_explain.sample_rate</code> in production. Also <code>log_nested_statements</code> shows plans inside functions.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Create a composite index with the filter column first and the sort column second: <code>CREATE INDEX idx_ab ON t(a, b);</code>. Rows with the same <code>a</code> are already stored in order of <code>b</code>, so MySQL reads them in order and Extra no longer shows Using filesort.</p><p>Example: <code>WHERE a = 5 ORDER BY b LIMIT 10</code> now reads only the first 10 index entries under a=5 instead of sorting all matches. If the index were (b, a), it could not use equality on a to narrow the range.</p>",
+    "<p>type = index scans the whole index instead of the whole table. It is better when the index is much smaller than the rows, and especially when it covers the query (Extra: Using index), so no table lookups are needed.</p><p>Example: <code>SELECT COUNT(*) FROM users</code> on a table with 2 KB rows and a tiny index on id reads far fewer pages through the index. It can also give rows already in index order, avoiding a sort. Without covering, a full index scan plus row lookups is usually worse than ALL.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Lost update vs atomic update",
+    "python": "import sqlite3, os, tempfile\npath = os.path.join(tempfile.mkdtemp(), \"bank.db\")\nsetup = sqlite3.connect(path)\nsetup.execute(\"CREATE TABLE acct (id INTEGER PRIMARY KEY, bal INTEGER)\")\nsetup.execute(\"INSERT INTO acct VALUES (1, 100)\")\nsetup.commit(); setup.close()\na = sqlite3.connect(path, isolation_level=None)\nb = sqlite3.connect(path, isolation_level=None)\n# Lost update: both read 100, both write back their own result\nbal_a = a.execute(\"SELECT bal FROM acct WHERE id=1\").fetchone()[0]\nbal_b = b.execute(\"SELECT bal FROM acct WHERE id=1\").fetchone()[0]\na.execute(\"UPDATE acct SET bal=? WHERE id=1\", (bal_a + 10,))\nb.execute(\"UPDATE acct SET bal=? WHERE id=1\", (bal_b + 20,))\nprint(\"read-modify-write result:\", a.execute(\"SELECT bal FROM acct\").fetchone()[0], \"(expected 130)\")\na.execute(\"UPDATE acct SET bal=100 WHERE id=1\")\n# Atomic update: the database does the arithmetic on the latest row\na.execute(\"UPDATE acct SET bal = bal + 10 WHERE id=1\")\nb.execute(\"UPDATE acct SET bal = bal + 20 WHERE id=1\")\nprint(\"atomic update result:\", a.execute(\"SELECT bal FROM acct\").fetchone()[0], \"(expected 130)\")\n"
+   },
+   "followUps": [
+    "<p>Because a plain SELECT does not read the latest data; it reads from the snapshot created at the first read, rebuilt from undo. Rows inserted by others afterwards are newer than the snapshot, so they stay invisible.</p><p>Example: T1 runs <code>SELECT COUNT(*) FROM t WHERE x &gt; 10</code> and sees 3. T2 inserts and commits a row with x = 20. T1 repeats the SELECT and still sees 3. Phantoms do appear if T1 runs <code>FOR UPDATE</code> or UPDATE, which read the latest data; next-key locks are used to block those inserts.</p>",
+    "<p>Switch to READ COMMITTED when gap-lock deadlocks or lock waits hurt and you can accept that a transaction sees newer commits between statements. It takes locks only on matched rows, not gaps, and releases locks on non-matching rows sooner.</p><p>It needs row-based binary logging for replication to stay safe. Check that your code does not rely on repeated reads giving identical results. Many high-write MySQL shops use it, as PostgreSQL does by default.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Query the performance schema: <code>SELECT * FROM performance_schema.data_locks;</code> shows each lock with its index, mode (X, S, X,GAP, X,REC_NOT_GAP) and the locked record. <code>performance_schema.data_lock_waits</code> shows who waits for whom, and <code>sys.innodb_lock_waits</code> gives a readable version.</p><p>For a deadlock, <code>SHOW ENGINE INNODB STATUS</code> prints the latest one with both transactions and locks. Set <code>innodb_print_all_deadlocks=ON</code> to log all of them.</p>",
+    "<p>An index record lock on the matching entry only. If the search uses a unique index with a full unique key and the row exists, InnoDB does not need a gap lock, because nothing else could match that value.</p><p>Example: <code>SELECT * FROM u WHERE id = 7 FOR UPDATE</code> with id as primary key locks only the record id=7. If id=7 does not exist, it takes a gap lock on the gap where 7 would sit. Range scans and non-unique indexes get next-key locks.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A replication slot is a marker on the primary that says how much WAL a standby still needs, so the primary keeps that WAL. It guarantees a replica never misses data.</p><p>If the replica dies or lags and the slot stays, WAL piles up until the disk fills and the primary stops. Example: 50 GB of WAL per day and a dead slot for 3 days means 150 GB retained. Monitor <code>pg_replication_slots</code>, drop unused slots, and set <code>max_slot_wal_keep_size</code> to cap it.</p>",
+    "<p>Make the read wait for the replica to catch up to your own write, or send it to the primary.</p><p>Options: (1) after writing, read from the primary for a short time or for that user; (2) note the commit position (PostgreSQL LSN, MySQL GTID) and only read on a replica that has reached it, with <code>pg_last_wal_replay_lsn()</code> or <code>WAIT_FOR_EXECUTED_GTID_SET</code>; (3) use <code>synchronous_commit = remote_apply</code> at a latency cost.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Indexing a path inside JSON",
+    "python": "import sqlite3, json\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE ev (id INTEGER PRIMARY KEY, doc TEXT)\")\ndocs = [{\"user\": \"ann\", \"tags\": [\"a\", \"b\"]}, {\"user\": \"bob\", \"tags\": [\"c\"]},\n        {\"user\": \"cy\", \"tags\": []}]\ndb.executemany(\"INSERT INTO ev VALUES (?,?)\", [(i, json.dumps(d)) for i, d in enumerate(docs, 1)])\n# Query a path inside the JSON text\nq = \"SELECT id FROM ev WHERE json_extract(doc,'$.user')='bob'\"\nprint(\"docs:\", docs)\nprint(\"bob rows:\", db.execute(q).fetchall())\np = lambda: db.execute(\"EXPLAIN QUERY PLAN \" + q).fetchone()[3]\nprint(\"before index:\", \"index\" if \"USING\" in p() else \"scan\")\n# Index one path (like a MySQL functional index / generated column)\ndb.execute(\"CREATE INDEX idx_user ON ev(json_extract(doc,'$.user'))\")\nprint(\"after index :\", \"index\" if \"idx_user\" in p() else \"scan\")\n# Update one key; PG would rewrite the whole value, here we just show the result\ndb.execute(\"UPDATE ev SET doc=json_set(doc,'$.user','robert') WHERE id=2\")\nprint(\"after json_set:\", db.execute(\"SELECT doc FROM ev WHERE id=2\").fetchone()[0])\n"
+   },
+   "followUps": [
+    "<p>Keep json when you must preserve the exact input text: whitespace, key order or duplicate keys. It stores the text as written and parses it on every access.</p><p>Examples: storing a signed webhook body that must be replayed byte-for-byte, or an audit copy of a request. jsonb removes whitespace, keeps one value for duplicate keys and does not preserve order. If you query or index the content, use jsonb. json is also slightly faster to insert because nothing is converted.</p>",
+    "<p>Usually the expression or collation does not match exactly. The optimizer uses the index only when the query's expression equals the indexed one.</p><p>Examples: the index is on <code>CAST(doc-&gt;&gt;'$.age' AS UNSIGNED)</code> but the query compares <code>doc-&gt;&gt;'$.age' = '30'</code> as a string; or the string collation differs (JSON uses utf8mb4_bin). Use the identical cast, or query a generated column. Check with EXPLAIN that key shows the index.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>PostgreSQL starts one OS process per connection, with several MB of memory each, so 2,000 direct connections waste memory and slow snapshot work. PgBouncer holds a small pool, for example 20 real connections, and many clients borrow them per transaction.</p><p>Example: 1,000 app clients that each run a 5 ms query every second need roughly 5 active connections at any moment, not 1,000. MySQL uses cheaper threads, so it needs this less, though pools help there as well.</p>",
+    "<p>For heavy updates with many indexes I would lean on PostgreSQL only if updates are HOT-friendly, and on InnoDB if indexed columns rarely change. The decision is how much write amplification each engine does.</p><p>In PostgreSQL, a non-HOT update writes a new tuple and an entry in every index. In InnoDB, an update in place touches only indexes whose columns changed. A ledger is mostly append-only inserts and few updates, with strict transactions; both engines work, and PostgreSQL gives transactional DDL and constraints. I would benchmark with the real update mix.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The InnoDB analogue is a growing undo history and purge lag. Updates and deletes leave old versions in undo logs, and a long transaction stops purge from removing them.</p><p>Detect it with the history list length in <code>SHOW ENGINE INNODB STATUS</code> (or <code>information_schema.innodb_metrics</code> trx_rseg_history_len) and the oldest transaction in <code>innodb_trx</code>. Tables themselves can also fragment after many deletes; <code>OPTIMIZE TABLE</code> rebuilds them. Fix by ending long transactions.</p>",
+    "<p>VACUUM FULL rewrites the whole table into a new file while holding an ACCESS EXCLUSIVE lock, so every read and write on it waits for the whole rewrite.</p><p>Example: a 200 GB table may take hours, during which the application is effectively down for that table. It also needs extra disk equal to the live data. Use <code>pg_repack</code>, which rebuilds with only short locks, or partition and drop old partitions.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Transactional DDL rolls back a migration",
+    "python": "import sqlite3\ndb = sqlite3.connect(\":memory:\", isolation_level=None)\ndb.execute(\"CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)\")\ndb.execute(\"INSERT INTO users VALUES (1,'ann')\")\ndef cols():\n    return [r[1] for r in db.execute(\"PRAGMA table_info(users)\")]\nprint(\"start:\", cols())\n# Transactional DDL: a failing migration rolls back every step (as in PostgreSQL)\ndb.execute(\"BEGIN\")\ntry:\n    db.execute(\"ALTER TABLE users ADD COLUMN email TEXT\")\n    db.execute(\"CREATE INDEX idx_email ON users(email)\")\n    db.execute(\"INSERT INTO users(id, name) VALUES (1,'dup')\")  # fails: duplicate id\n    db.execute(\"COMMIT\")\nexcept sqlite3.Error as e:\n    db.execute(\"ROLLBACK\")\n    print(\"migration failed:\", e)\nprint(\"after rollback:\", cols())\nprint(\"indexes:\", [r[1] for r in db.execute(\"PRAGMA index_list(users)\")])\n# Same steps without the failing statement succeed together\ndb.execute(\"BEGIN\")\ndb.execute(\"ALTER TABLE users ADD COLUMN email TEXT\")\ndb.execute(\"CREATE INDEX idx_email ON users(email)\")\ndb.execute(\"COMMIT\")\nprint(\"after good migration:\", cols())\n"
+   },
+   "followUps": [
+    "<p>Even a quick ALTER needs an ACCESS EXCLUSIVE lock, and a lock request waits in the queue behind any running query on that table. Every new query then queues behind the waiting ALTER, so reads block too.</p><p>Example: a 10-minute report is running; your ALTER waits for it; within seconds all other SELECTs stack up behind the ALTER. Prevent this with <code>SET lock_timeout = '2s';</code> and retry, and avoid long transactions.</p>",
+    "<p>gh-ost reads the MySQL binary log as if it were a replica instead of using triggers. It creates a ghost table with the new schema, copies rows in small chunks, and applies row changes it sees in the binlog to the ghost table.</p><p>When the ghost table has caught up, it does a quick atomic table swap. The benefit: no trigger overhead on the primary, and it can be paused, throttled by replica lag, or stopped at any time.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With transaction pooling, consecutive transactions of one client may run on different server connections, so anything that lives in a session breaks.</p><p>Examples: <code>SET</code> values and temporary tables (they stay behind on another connection), session advisory locks, <code>LISTEN/NOTIFY</code>, and old-style named prepared statements. Use <code>SET LOCAL</code> inside a transaction, transaction-level advisory locks (<code>pg_advisory_xact_lock</code>), and a recent PgBouncer with prepared statement support.</p>",
+    "<p>Each connection can use up to <code>work_mem</code> per sort or hash node, so the worst case is multiplied by many connections and many nodes.</p><p>Example: <code>work_mem = 64MB</code>, a query with 3 sort/hash nodes, and 200 connections could in theory use 64 x 3 x 200 = about 38 GB. Raising max_connections without lowering work_mem risks running out of memory. Keep work_mem modest globally and raise it per session for heavy reports.</p>"
+   ]
+  }
+ ]
+}
