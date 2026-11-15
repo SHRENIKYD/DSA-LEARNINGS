@@ -1,0 +1,94 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>I run the same set of my own real tasks through each tool and score the results. Pick five or ten typical jobs (a rewrite, a bug fix, a summary, a fact lookup), give every tool the identical prompt, and rate accuracy, tone, speed and how much editing I had to do. Example: 8 tasks scored 1 to 5 gives a total out of 40 per tool. Also check price, privacy terms and limits, because the best answer is useless if the tool is not allowed at work.</p>",
+    "<p>A clear, repeatable win on my own test tasks, not a launch announcement. Concrete triggers: noticeably higher scores on my test set, a lower price for the same quality, better privacy terms (no training on my data), or my current tool dropping a feature I rely on. Switching costs time, so I switch only when the gain is large, and I keep my prompts in notes so moving is cheap.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because they still predict plausible text, and a long chain of steps can go wrong at any step. A reasoning model that is 95% reliable per step is only about 0.95^10 = 60% reliable over ten steps. It can also state a wrong intermediate result confidently, or follow a flawed assumption to a tidy but false conclusion. So you still check the final answer, especially numbers and facts.</p>",
+    "<p>Put a cheap classifier or simple rules in front. Send short, well-defined requests to the fast model; send requests with many steps, code, maths or planning to the reasoning model. Also escalate when the fast answer fails a check (bad format, low confidence, user clicks retry). Track cost and latency per route: if 80% of traffic is easy, most requests stay cheap and quick, and only the hard 20% pay for thinking tokens.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because usually only the trained weights are public, not the training data or full training code, and the licence may limit use. Open-source in the strict sense means you can use, study, change and share it freely. Some models forbid certain uses or require a licence for very large companies. So I say open-weight, and read the licence before shipping a product on it.</p>",
+    "<p>Two common ways. Locally, tools such as Ollama or LM Studio download a quantized file and serve it on your machine. At scale, run it on a GPU server with an inference server such as vLLM behind an HTTP API, or use a cloud provider that hosts the weights for you. Size the GPU memory to the model: a 7B model at 4-bit needs roughly 4 to 5 GB. Add monitoring, updates and access control, since you now own them.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Opting out only affects future training use, not everything. Data already used stays used, and the provider may still store chats for a period for safety or legal reasons, and staff or reviewers may read flagged chats. Opting out also does not stop leaks from your own mistakes, such as pasting a secret into a shared link. So the real protection is deciding what never goes into a tool.</p>",
+    "<p>Act fast, in this order. First stop and note what was pasted and where. Second, rotate any secret (keys, passwords, tokens) so the leaked value is useless. Third, delete the chat if the tool allows it and ask the vendor about deletion. Fourth, report to the security or privacy owner the same day, since personal data may have legal notice deadlines. Finally, write a short blameless note and fix the habit, for example with a redaction step.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Monthly LLM cost estimate with savings levers",
+    "python": "# Monthly cost estimate for an LLM feature (placeholder prices)\n# Time O(1), space O(1)\nrequests_per_day = 2000\nin_tokens, out_tokens = 800, 300\nprice_in, price_out = 0.50, 2.00      # dollars per million tokens (made up)\n\ndef monthly(reqs, tin, tout, pin, pout, days=30):\n    per_request = tin / 1e6 * pin + tout / 1e6 * pout\n    return reqs * days * per_request\n\nbase = monthly(requests_per_day, in_tokens, out_tokens, price_in, price_out)\nprint(\"requests/day:\", requests_per_day, \"in/out tokens:\", in_tokens, out_tokens)\nprint(\"base: $%.2f per month\" % base)\n\n# add 20% headroom for retries and growth\nprint(\"with 20%% headroom: $%.2f\" % (base * 1.2))\n\n# lever 1: shorter prompt (800 -> 400 input tokens)\nprint(\"shorter prompt: $%.2f\" % monthly(requests_per_day, 400, out_tokens, price_in, price_out))\n# lever 2: route 70% of traffic to a model 5x cheaper\ncheap = monthly(requests_per_day * 0.7, in_tokens, out_tokens, price_in / 5, price_out / 5)\nrest = monthly(requests_per_day * 0.3, in_tokens, out_tokens, price_in, price_out)\nprint(\"routed 70%% cheap: $%.2f\" % (cheap + rest))\n"
+   },
+   "followUps": [
+    "<p>Usually shrinking the number of expensive calls or tokens: routing easy requests to a cheaper model and caching repeated prompt prefixes. Example: 60,000 requests a month at $1 per 1,000 costs $60. If 70% go to a model five times cheaper, the bill drops to about $26. Shortening a prompt only saves the input part, so it helps less when output tokens dominate the price.</p>",
+    "<p>Log input tokens, output tokens, model and feature for every request, then chart daily cost and cost per request. Set a budget alert, for example at 80% of the monthly figure, and a hard cap in the provider's console. Watch for spikes from retry loops or very long inputs. Compare actual spend with the estimate each week and update the assumptions when real traffic differs.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Memory first, then memory speed. The model's weights must fit in GPU memory (VRAM), or in unified memory on some laptops, otherwise it spills to slow system memory and crawls. Example: a 7B model at 4-bit is about 4 GB; a 70B model at 4-bit needs about 40 GB. After that, memory bandwidth decides how fast words appear, and raw compute matters less for single users.</p>",
+    "<p>A hosted open-weight model, or a private cloud endpoint. You keep the model choice and can often avoid training on your data, without buying and running a GPU. You pay per token, so a low-volume feature is cheap. Another middle path is a small local model for private, simple tasks and a cloud model for hard ones, with consent and redaction before anything leaves the device.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Quantization: round weights to 4-bit integers",
+    "python": "# Quantization: store each weight as a small integer plus one shared scale\n# Time O(n), space O(n) for n weights\nweights = [0.82, -1.37, 0.05, 2.10, -0.64, 1.91, -2.00, 0.33]\nbits = 4\nlevels = 2 ** (bits - 1) - 1          # 7 -> integers from -7 to 7\nscale = max(abs(w) for w in weights) / levels\n\nquant = [round(w / scale) for w in weights]   # the small integers we store\nrestored = [q * scale for q in quant]         # approximate originals\n\nprint(\"original:\", weights)\nprint(\"scale   : %.4f\" % scale)\nprint(\"stored  :\", quant)\nprint(\"restored:\", [round(r, 2) for r in restored])\nerr = [abs(a - b) for a, b in zip(weights, restored)]\nprint(\"max error: %.3f\" % max(err))\nprint(\"memory: 16-bit =\", len(weights) * 16, \"bits, 4-bit =\", len(weights) * bits, \"bits\")\n"
+   },
+   "followUps": [
+    "<p>Often yes, at the same memory budget. A 4-bit model uses about a quarter of the memory of a 16-bit one, so you can fit a model with four times as many parameters. Example: a 14B model at 4-bit (about 7 GB) usually beats a 3.5B model at 16-bit (about 7 GB). The gain shrinks below 4 bits, where quality drops quickly, so test on your own tasks.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Ask for sources and structure in the prompt. Request primary sources (official docs, filings, standards), a link for each key claim, publication dates, and a final list of claims it could not confirm. Say which kinds of sites to avoid, such as anonymous blogs. Then open the links yourself. A prompt improves the odds, but checking the citations is still the real safeguard.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the approved path easier than the unapproved one. Provide a good tool people can use today, short training with real examples (a 30-minute session), clear do and do-not rules on one page, and a few champions in each team who share what works. Measure usage and time saved in the pilot and show the results. Rules nobody reads fail, so keep them short and answer questions fast.</p>",
+    "<p>First understand why people use it: usually the approved tool is missing or worse. Do not punish at first; run an amnesty and ask what people use. Add approved options, use network or browser controls to flag unapproved tools, and explain the risks with a real example. Review the list each quarter. The aim is to bring use into the open, not to drive it underground.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>About ten to twenty real tasks from my work, with the best answer I know for each. For example: summarise a long email, fix a bug in a small function, write a SQL query, answer a question with a known fact, and a tricky task that tests refusal or privacy. Include one or two tasks that earlier tools failed. Date the results so I can compare a new tool in minutes.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Enough to show real differences, often 30 to 50 tasks covering each kind of work, with several per category. With only 5 tasks one lucky answer swings the result; with 40 it does not. Example: if tool A wins 28 of 40 head-to-head comparisons, that is a clear lead, while 22 of 40 is close to a tie. Increase the size when scores are close or the decision is expensive.</p>",
+    "<p>Failing a hard requirement, regardless of quality: no business terms that exclude training on our data, no admin or single sign-on controls, no audit logs, data stored in a disallowed region, no security certification we require, unclear sub-processors, or no clear way to delete data. Also a vendor that cannot give written answers to the security questionnaire. Check these first, so no time is spent scoring tools we could never use.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "On-device first, redacted cloud fallback router",
+    "python": "# On-device first, cloud fallback with consent and redaction\nimport re\n\ndef local_model(prompt):\n    # pretend small model: confident only on short prompts\n    conf = 0.9 if len(prompt.split()) <= 6 else 0.4\n    return \"local answer\", conf\n\ndef redact(text):\n    text = re.sub(r\"[\\w.]+@[\\w.]+\", \"[EMAIL]\", text)\n    return re.sub(r\"\\d{3}-\\d{4}\", \"[PHONE]\", text)\n\ndef handle(prompt, consent, cloud_allowed=True, threshold=0.6):\n    answer, conf = local_model(prompt)\n    if conf >= threshold:\n        return \"on-device (conf %.1f): %s\" % (conf, answer)\n    if not cloud_allowed or not consent:\n        return \"on-device (conf %.1f), cloud not used: %s\" % (conf, answer)\n    return \"cloud with: \" + redact(prompt)\n\ntests = [\n    (\"set a timer\", True, True),\n    (\"summarise the contract mail from bob@example.com call 555-1234 about renewal terms\", True, True),\n    (\"summarise the contract mail from bob@example.com call 555-1234 about renewal terms\", False, True),\n    (\"summarise this long hard document with many clauses please\", True, False),\n]\nfor p, c, allowed in tests:\n    print(\"IN :\", p)\n    print(\"OUT:\", handle(p, c, allowed))\n"
+   },
+   "followUps": [
+    "<p>Use a score that comes from something measurable, not the model's own claim. Options: the model's token probabilities, agreement between several quick samples, a small classifier trained on past requests, or simple rules such as prompt length and task type. Calibrate on a test set: pick the threshold where, say, 90% of answers above it are correct. Re-check after each model update.</p>",
+    "<p>Remove anything not needed for the answer. Replace names, emails, phone numbers, addresses, account numbers and secrets with placeholders such as [EMAIL], send only the relevant part of the document rather than the whole, and drop device identifiers and history. Show the user what will be sent and ask for consent. Example: send 'Summarise a renewal email from [NAME]' instead of the full mail. Keep a local log, not the raw text.</p>"
+   ]
+  }
+ ]
+}

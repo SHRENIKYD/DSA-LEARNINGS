@@ -1,0 +1,113 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Most candidates skip <b>defining the label and the success metric</b> and jump straight to the model. Without it nothing later can be judged.</p><p>Example: for a video feed, \"clicks\" as the label rewards clickbait, while \"watched at least 50% or liked\" matches what the business wants. Also often skipped are data leakage checks and the online experiment plan with guardrail metrics. Saying these out loud takes 30 seconds and separates strong answers from model-name lists.</p>",
+    "<p>Give each step a rough share of the time and keep a reserve for follow-ups. A workable split for 45 minutes: <b>5</b> clarify and frame, <b>5</b> data and labels, <b>5</b> features, <b>12</b> model and serving architecture, <b>6</b> evaluation and A/B plan, <b>5</b> monitoring, risks and trade-offs, <b>7</b> buffer for interviewer questions.</p><p>Tell the interviewer your plan at the start, check the clock at the midpoint, and if you run short, compress features rather than evaluation.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Two-tower retrieval with precomputed item vectors",
+    "python": "# Two-tower retrieval: item vectors are precomputed, the user vector meets them only at a dot product.\nimport math\n\ndef tower(features, weights):\n    # one linear layer + L2 normalisation stands in for a neural tower\n    v = [sum(f * w for f, w in zip(features, col)) for col in weights]\n    n = math.sqrt(sum(x * x for x in v)) or 1.0\n    return [x / n for x in v]\n\nuser_w = [[1, 0, 0], [0, 1, 0]]          # 3 user features -> 2-d vector\nitem_w = [[1, 0, 0, 0], [0, 1, 0, 0]]    # 4 item features -> 2-d vector\nitems = {\"cooking\": [1, 0.2, 0, 0], \"gym\": [0.1, 1, 0, 0], \"news\": [0.7, 0.7, 0, 0]}\n\n# offline: precompute and store all item vectors (the ANN index would hold these)\nindex = {name: tower(f, item_w) for name, f in items.items()}\n\n# online: one user vector, then top-k by dot product\nuser = [0.2, 1.0, 0.0]\nu = tower(user, user_w)\nscores = sorted(((sum(a * b for a, b in zip(u, v)), n) for n, v in index.items()), reverse=True)\nprint(\"user features:\", user)\nfor s, n in scores[:2]:\n    print(n, round(s, 3))\n# brute force is O(N*d) per query; an ANN index such as HNSW makes it roughly O(log N)\n"
+   },
+   "followUps": [
+    "<p>Give new items a vector computed from their <b>content features</b>, not from interaction history. Because the item tower takes text, image, category and creator as input, a brand-new item gets a sensible embedding at upload time and can enter the ANN index immediately.</p><p>Add an ID embedding that starts at zero or a shared \"unknown\" value, and use a fresh-content candidate source plus a small exploration budget so it collects its first clicks. Once enough data exists, the ID part learns.</p>",
+    "<p>Measure it by <b>recall against exact search</b>: for a sample of queries, compute the true top-k by brute force and check what fraction the ANN index returns. This is recall@k of the index, for example 0.95 means 95 of the true top 100 were found.</p><p>Then plot recall against latency by varying parameters (HNSW ef_search, IVF nprobe) and pick the cheapest setting that meets your target. Also check end-to-end recall of relevant items, because the index can be exact and the towers still poor.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Start with a guess from product priorities, then <b>tune the weights with online experiments</b> against long-term metrics such as retention.</p><p>Example: score = 1.0*p(click) + 3.0*p(like) + 5.0*p(share) - 20.0*p(hide). Run arms with a few weight sets, compare 7 to 28 day retention, satisfaction surveys and hide rates, then move toward the best arm. Bayesian optimisation can search the weights if experiments are cheap. Keep negative weights large so one hide outweighs many clicks.</p>",
+    "<p>Treat it as an <b>incentive problem</b>, not just a modelling one. If creators spam thumbnails to lift p(click), the click head becomes unreliable.</p><p>Defences: rely on several heads so no single signal wins, discount signals that diverge from watch time (high click, low completion), penalise hide or report heavily, add integrity classifiers for clickbait and engagement bait, and rotate or hold out some features. Monitor per-creator gaps between predicted and actual satisfaction to spot gaming early.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "NDCG@k versus counting wrong pairs",
+    "python": "# NDCG@k: a listwise metric. Position discounts make the top of the list matter most.\nimport math\n\ndef dcg(rels):\n    # gain 2^rel - 1, discounted by log2(position + 1)\n    return sum((2 ** r - 1) / math.log2(i + 2) for i, r in enumerate(rels))\n\ndef ndcg(rels, k):\n    ideal = sorted(rels, reverse=True)\n    return dcg(rels[:k]) / dcg(ideal[:k])\n\ngood = [3, 2, 0, 1]   # relevance labels in the order the ranker returned them\nbad = [0, 1, 2, 3]    # same documents, reversed order\nprint(\"ranking A:\", good, \"NDCG@4 =\", round(ndcg(good, 4), 3))\nprint(\"ranking B:\", bad, \"NDCG@4 =\", round(ndcg(bad, 4), 3))\n\n# pairwise view: count document pairs that are in the wrong order\ndef inversions(rels):\n    return sum(1 for i in range(len(rels)) for j in range(i + 1, len(rels)) if rels[i] < rels[j])\nprint(\"wrong pairs A:\", inversions(good), \" B:\", inversions(bad))\n# the sort inside ndcg() makes the metric non-differentiable, which is why it is hard to optimise directly\n"
+   },
+   "followUps": [
+    "<p>NDCG is hard to optimise because it depends on a <b>sort</b>, and sorting is not differentiable. A tiny change in a score either leaves the order unchanged (gradient zero) or swaps two items (a jump), so gradient descent gets no useful signal.</p><p>Practical fixes are smooth surrogates: LambdaRank weights pairwise gradients by how much NDCG would change if two documents swapped, and softmax listwise losses approximate it. The program shows the same list scoring 0.993 versus 0.548 when reversed.</p>",
+    "<p>Choose pointwise when you need <b>calibrated probabilities</b> or have simple, large click data. Ads need a real pCTR for pricing, and pairwise scores cannot give that.</p><p>It is also fine as a first baseline (logistic regression on clicks takes a day to build), when labels are absolute grades, or when a downstream system needs a threshold such as \"show only if p &gt; 0.3\". You can also use pointwise for retrieval and pairwise or listwise for final ordering.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Tail queries have few clicks, so use <b>human graders plus smart sampling</b>. Sample queries from the tail by traffic buckets, grade the top 10 results on a 0 to 3 scale with clear guidelines, and have 2 or 3 raters per item to measure agreement.</p><p>Add weak labels: LLM judgments checked against a human subset, clicks aggregated across similar queries, and long-dwell or purchase signals. Budget example: 500 tail queries x 10 results x 3 raters = 15,000 judgments.</p>",
+    "<p>Partly. An LLM judge is <b>cheap and fast</b> and often correlates well with humans on clear relevance, so it can label thousands of tail queries and run regression tests.</p><p>But it has biases (prefers long or fluent results, may miss domain nuance, can be gamed if the ranker is tuned to it). Calibrate it: measure agreement with a human-labelled set (for example Cohen's kappa above 0.6), keep humans for new domains and disputes, and re-check the agreement regularly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fixing calibration after negative downsampling",
+    "python": "# Calibration after negative downsampling: keep only a fraction r of negatives, then correct the probability.\ndef corrected(p, r):\n    # q = p / (p + (1 - p) / r): undoes the shift caused by dropping negatives\n    return p / (p + (1 - p) / r)\n\ntrue_ctr = 0.02\nr = 0.1                     # we kept 10 percent of negatives\n# base rate seen in the downsampled training set: negatives shrink, positives do not\np_train = true_ctr / (true_ctr + (1 - true_ctr) * r)\nprint(\"true CTR:\", true_ctr)\nprint(\"rate seen by the model after downsampling:\", round(p_train, 4))\nprint(\"corrected back:\", round(corrected(p_train, r), 4))\n\n# money impact: eCPM = bid * pCTR * 1000\nbid = 0.50\nprint(\"eCPM with raw score:\", round(bid * p_train * 1000, 2))\nprint(\"eCPM with corrected:\", round(bid * corrected(p_train, r) * 1000, 2))\n# O(1) per prediction; AUC would be identical before and after because the order is unchanged\n"
+   },
+   "followUps": [
+    "<p>Late conversions make recent examples look negative when they are only <b>not yet labelled</b>, which pushes predicted probability too low.</p><p>Example: an ad converts after 3 days on average. A click from yesterday has a 30% chance of being a future conversion but is labelled 0 today. Fixes: wait for a matured window, train with a delay model that estimates the chance a still-unlabelled click will convert, or train on fast proxy events plus corrections. Monitor predicted-versus-observed by event age, since the gap shrinks as labels arrive.</p>",
+    "<p>Test on <b>separate budgets or randomised splits of the auction</b>, so the two models do not share spend. If control and treatment draw from the same budget pool, a treatment that bids higher steals budget from control and the comparison is biased.</p><p>Options: split advertiser budgets in half (budget-split), randomise by advertiser or by time slice, or use a switchback design. Always compare both revenue and calibration (predicted versus observed CTR), not only clicks.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Fraud threshold chosen by expected dollar cost",
+    "python": "# Pick the fraud threshold by expected dollar cost, not by a fixed 0.5.\ntxns = [  # (amount, model fraud probability)\n    (5, 0.30), (5, 0.60), (5000, 0.05), (5000, 0.20), (120, 0.40), (5000, 0.50),\n]\nREVIEW_COST = 8.0   # analyst time + customer friction when we block or challenge\n\ndef decision(amount, p):\n    loss_if_allow = p * amount          # expected fraud loss if we let it through\n    return \"block\" if loss_if_allow > REVIEW_COST else \"allow\"\n\nprint(\"amount  p(fraud)  expected_loss  decision\")\nfor amount, p in txns:\n    print(f\"{amount:6}  {p:8.2f}  {p*amount:13.2f}  {decision(amount, p)}\")\n# implied threshold on p is REVIEW_COST / amount\nfor a in (5, 120, 5000):\n    print(\"threshold for $%d: %.4f\" % (a, min(1.0, REVIEW_COST / a)))\n"
+   },
+   "followUps": [
+    "<p>I would avoid SMOTE as the default, because it <b>creates synthetic fraud points that are not real transactions</b> and distorts probability estimates.</p><p>In tabular data with categorical and behavioural features, interpolating between two frauds can produce impossible rows and leaks the training neighbourhood into validation if done before splitting. Better: class weights, majority downsampling with probability correction, and stronger features. SMOTE can be a quick experiment on small data, but always evaluate on untouched real data and recalibrate.</p>",
+    "<p>The threshold follows expected cost: <b>block when p x amount exceeds the cost of reviewing or blocking</b>. With a review cost of $8, the implied threshold is 8/5 = capped at 1.0 for a $5 purchase (never block), but 8/5000 = 0.0016 for $5,000.</p><p>In practice, add floors for friction and false-decline customer harm, so $5 might simply be allowed and $5,000 gets a step-up challenge at p = 0.02. The program prints these values.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use <b>fast proxy signals and anomaly detection</b> that do not need chargebacks. Watch for sudden shifts in unlabeled data: spikes in approvals from one device, new BIN or merchant combinations, velocity jumps, shared IPs or cards across accounts, and a changed score distribution.</p><p>Graph clustering links new accounts to known bad ones, and analyst queues and customer fraud reports arrive in hours. Example: 400 new accounts sharing one device in 2 hours is flagged long before the 60-day label.</p>",
+    "<p>Friendly fraud means the customer made the purchase but disputes it, so the <b>label is noisy</b>: a chargeback does not always mean stolen credentials.</p><p>Separate reason codes (true fraud versus dispute or service complaints), use evidence like delivery confirmation and prior orders from the same device to relabel or down-weight, and train on a clean target plus a separate dispute model. Tracking a customer's repeat-dispute history helps. Report metrics on both labels so noise is visible.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a <b>streaming approach</b>: sample frames (for example one per second) and audio chunks, run light models, and escalate. A fast classifier on short windows gives a score within 1 to 3 seconds, and high scores trigger a human reviewer or an automatic cut.</p><p>Add viewer reports, chat signals and a delay buffer (5 to 10 seconds) for high-risk streams or new broadcasters. Trust tiers help: new accounts get tighter checks. Because live content cannot be reviewed beforehand, lean on speed, reach-based prioritisation and quick takedown.</p>",
+    "<p>Reduce exposure and add support. Technically: <b>blur or grayscale by default, lower resolution, mute audio</b>, let reviewers reveal on demand, and cap the amount of severe content per shift.</p><p>Operationally: rotate queues, limit hours (for example no more than 4 hours of graphic content a day), provide counselling, regular breaks and opt-outs. Use classifiers to pre-filter and auto-handle the worst content, such as known hashes, so humans see less of it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Greedy feedback loop versus epsilon exploration",
+    "python": "# Feedback loop: a greedy recommender starves a good new item; epsilon exploration fixes it.\nimport random\n\ndef run(eps, steps=2000, seed=1):\n    rng = random.Random(seed)\n    true_ctr = {\"old_hit\": 0.10, \"new_better\": 0.15}\n    shown = {k: 1 for k in true_ctr}\n    clicks = {\"old_hit\": 1, \"new_better\": 0}   # the old item has history, the new one has none\n    for _ in range(steps):\n        if rng.random() < eps:\n            item = rng.choice(list(true_ctr))               # explore\n        else:\n            item = max(true_ctr, key=lambda k: clicks[k] / shown[k])  # exploit estimate\n        shown[item] += 1\n        clicks[item] += rng.random() < true_ctr[item]\n    return shown\n\nfor eps in (0.0, 0.1):\n    s = run(eps)\n    print(\"epsilon\", eps, \"impressions:\", s)\n# with eps=0 the new item gets almost no exposure, so its data never arrives\n"
+   },
+   "followUps": [
+    "<p>Use <b>inverse propensity scoring (IPS)</b>: log the probability the old policy showed each item, then weight each logged reward by new-policy probability divided by logged probability.</p><p>Example: item shown with logged probability 0.2 that the new policy would show with 0.5 gets weight 2.5; reward 1 contributes 2.5. Average the weights times rewards over the log. It needs randomness in the logs, and clipping weights (for example max 10) controls variance. A doubly robust estimator adds a reward model to reduce variance further.</p>",
+    "<p>Usually a <b>small, fixed slice such as 1 to 5%</b> of impressions, adjusted by measuring the cost. Run a holdout experiment: compare engagement and long-term retention for 0%, 2% and 5% exploration.</p><p>Choose the smallest slice that still gives new items enough impressions for a decision, for example 1,000 impressions each. Make it smarter than uniform: Thompson sampling or UCB spend traffic where uncertainty is highest, and limit exploration for fragile users or sensitive surfaces.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Point-in-time feature join",
+    "python": "# Point-in-time join: for each training row use the feature value known AT that moment, not the latest one.\nimport bisect\n\n# feature history for one user: (day, purchases_last_7d), sorted by day\nhistory = [(1, 0), (5, 2), (9, 7), (14, 1)]\ndays = [d for d, _ in history]\n\ndef as_of(day):\n    i = bisect.bisect_right(days, day) - 1      # last update at or before `day`\n    return history[i][1] if i >= 0 else None\n\nlabels = [(6, \"clicked\"), (10, \"not clicked\")]   # events with their timestamps\nprint(\"history:\", history)\nfor day, label in labels:\n    leaky = history[-1][1]                        # latest value: leaks the future\n    print(\"event day\", day, label, \"| correct feature:\", as_of(day), \"| leaky feature:\", leaky)\n# lookup is O(log n) per row; serving must compute the feature the same way as this offline join\n"
+   },
+   "followUps": [
+    "<p>Compare the <b>features logged at serving time with the features recomputed offline</b> for the same requests. Mismatch rates per feature tell you which one is skewed.</p><p>Also compare distributions of each feature between training data and live traffic (population stability index or KS test), watch the share of missing or default values, and check predicted score distributions. Example: if a feature is null in 40% of live requests but 2% in training, you have found it. Set alerts for these.</p>",
+    "<p>A point-in-time join attaches to each training example the <b>feature value as it was at the event time</b>, not the latest value. This prevents leaking the future into training.</p><p>Example: a user has purchases_7d of 2 on day 5 and 7 on day 9; a click on day 6 must get 2, not 7 or the latest value. The program shows this with a binary search over the history. Feature stores do the same with an as-of join on timestamps.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Cold start is risky because new items are uncertain, so <b>limit the exploration cost</b>. Cap impressions per new item (for example 500), spread them across users likely to enjoy that type of content using content embeddings, and stop early if early signals are poor.</p><p>Use bandits that mix a prior from content similarity with observed clicks, keep exploration out of the first few slots for fragile users, and monitor the engagement of the explored slice. A small budget of 2% usually costs far less than losing fresh content.</p>",
+    "<p>As quickly as <b>signals are reliable, and no faster</b>. Early on, a few clicks are noisy, so blend a content-based embedding with a slowly growing interaction part: the weight rises with impressions, for example weight = n / (n + 100).</p><p>In practice: content embedding at upload, a streaming update every few minutes for the first hours (trending items matter), then a daily or hourly retrain of the full model. The index must support incremental insertion to benefit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The minimum detectable effect (MDE) is the <b>smallest change your test can reliably see</b>. A common formula for a proportion with 80% power and 5% significance is n per arm = 16 x p(1-p) / delta squared.</p><p>Example: baseline conversion 10%, you want to detect an absolute 0.5 point lift (delta 0.005): n = 16 x 0.09 / 0.000025 = 57,600 per arm. Solve the same formula for delta to get the MDE for a fixed traffic size. Use a variance reduction method such as CUPED to shrink n.</p>",
+    "<p>An A/A test <b>runs the experiment with two identical variants</b>, so any difference is noise or a bug. Run it when setting up a new experiment platform, a new metric, a new bucketing system or a new variance estimator.</p><p>It should show a significant result in about 5% of runs at alpha 0.05. If it shows far more, your assignment is biased, logging differs between arms, or the statistics ignore correlation (such as repeated users). It also tells you the real noise level for sizing the actual test.</p>"
+   ]
+  }
+ ]
+}
