@@ -1,114 +1,114 @@
 {
- "interview": [
-  {
-   "code": null,
-   "followUps": [
-    "<p>The clearest sign is that one business change keeps needing edits in several services at the same time. Other signs: two services must be deployed together, they call each other chattily (dozens of calls per request), they share a database table, or a distributed transaction appears in a simple flow.</p><p>Check git history: if 60% of pull requests touch services A and B together, they are one service split in two. Fix by merging them or moving the misplaced capability.</p>",
-    "<p>You stop using a database foreign key and keep only the other service's id as a plain value. Integrity then becomes the application's job, not the database's.</p><p>Example: <code>orders.customer_id</code> stays as a column, but customers live in another service. On create, validate by calling the customer service (or from a local copy of customer ids fed by events). When a customer is deleted, publish <code>CustomerDeleted</code>; the order service reacts. Prefer soft delete, and accept that a dangling id can briefly exist. Joins become API calls or a local read model.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>A gateway handles traffic from outside into your system (north-south); a service mesh handles traffic between services inside (east-west). They solve different problems and are often used together.</p><p>The gateway does authentication, public routing and rate limits per client. The mesh sidecars do mTLS, retries, timeouts and telemetry for internal calls. With 5 services a gateway alone is often enough; with 100 services the mesh pays off.</p>",
-    "<p>A BFF (backend for frontend) is a small gateway-like service built for one kind of client, such as mobile or web, which shapes the data that client needs.</p><p>Example: the mobile app needs a home screen with 3 small fields from 4 services. The mobile BFF makes the 4 calls on the fast data-centre network and returns one 2 KB response, instead of the phone making 4 slow calls. Each BFF is owned by the client team, so they can change it without waiting for others. Keep business rules in the services, not in the BFF.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>Dead instances are removed by health checks and expiring registrations. An instance that stops reporting is dropped after a short time, so callers stop seeing it.</p><p>Two styles: the instance sends a heartbeat every 10 s and is evicted after 30 s of silence (Eureka style), or the platform probes it (Kubernetes readiness probe removes the pod from the Service endpoints). A window of a few seconds remains where callers may hit a dead instance, so clients still need timeouts and retry on another instance.</p>",
-    "<p>Callers keep working using their cached list of instances, so a registry outage does not stop traffic that is already flowing. What breaks is change: new instances are not found and dead ones are not removed.</p><p>Design for it: keep the cache after a failed refresh instead of clearing it, run the registry as a 3-node cluster, and retry registration with backoff. Registries usually favour availability over consistency for this reason; a stale list is better than no list. In Kubernetes, DNS and endpoints are served from the cluster's own control plane.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>A retry is safe when repeating the request cannot repeat the effect. Make the operation idempotent, usually with an idempotency key sent by the caller.</p><p>The client generates a key (for example a UUID) once per logical action and sends it with every retry. The server stores the key with the result, in the same transaction as the work. If a key is seen again, it returns the stored result instead of charging twice. Also use backoff with jitter (1 s, 2 s, 4 s plus random) and a retry limit, and only retry on timeouts and 5xx, not on 400s.</p>",
-    "<p>Availability multiplies, so a long chain is less available than any single service. Ten services each at 99.9% give about 0.999^10 = 99.0%, which is roughly 3.6 days of downtime a year instead of 8.8 hours.</p><p>Latency adds up as well, and one slow service holds threads up the whole chain. Reduce it by shortening the chain, using timeouts and circuit breakers, caching, and moving non-critical steps to async events so they are not in the request path.</p>"
-   ]
-  },
-  {
-   "code": {
-    "title": "Saga with compensation in reverse order",
-    "python": "# Saga: local steps with compensations run in reverse on failure.\n# Time O(steps), space O(steps) for the done-list.\ndef reserve_stock(ctx): ctx[\"stock\"] = 5 - 1\ndef release_stock(ctx): ctx[\"stock\"] = 5\ndef charge_card(ctx): raise RuntimeError(\"card declined\")\ndef refund_card(ctx): ctx[\"charged\"] = False\ndef create_order(ctx): ctx[\"order\"] = \"PENDING\"\ndef cancel_order(ctx): ctx[\"order\"] = \"CANCELLED\"\n\nsteps = [\n    (\"create order\", create_order, cancel_order),\n    (\"reserve stock\", reserve_stock, release_stock),\n    (\"charge card\", charge_card, refund_card),\n]\nctx = {}\ndone = []\nprint(\"start saga with\", [s[0] for s in steps])\ntry:\n    for name, action, comp in steps:\n        action(ctx)              # local transaction\n        done.append((name, comp))  # remember how to undo it\n        print(\"done:\", name)\nexcept RuntimeError as e:\n    print(\"failed:\", e)\n    for name, comp in reversed(done):  # compensate in reverse order\n        comp(ctx)\n        print(\"compensated:\", name)\nprint(\"final state:\", ctx)\n"
-   },
-   "followUps": [
-    "<p>Choreography fits this order flow only if it stays small; with four steps and refunds I would use orchestration. A single order service (or workflow engine) tells each step what to do and knows the state.</p><p>With choreography, order emits OrderCreated, stock reacts with StockReserved, payment reacts with PaymentFailed, and stock and order must listen to that to compensate. Nobody holds the whole picture, so finding why order 42 is stuck means reading four services. An orchestrator stores state PENDING, STOCK_RESERVED, FAILED in one place, with timeouts.</p>",
-    "<p>You retry it until it succeeds, because a compensation must not be allowed to fail permanently. That is why compensations must be idempotent and safe to repeat.</p><p>Steps: retry with backoff, for example 10 attempts over an hour. If it still fails, put the saga in a stuck or FAILED_COMPENSATION state, raise an alert and move the message to a dead-letter queue for a person to fix, since automatic undo is no longer possible. Keep state visible so the support team can see which step is not undone. A refund API call needs an idempotency key so a retry cannot refund twice.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>Orchestration engines: Temporal, Camunda, AWS Step Functions, Azure Durable Functions, Netflix Conductor, and in the Java world Axon or hand-written state machines in Spring.</p><p>They persist the workflow state, handle timers and retries, and let you see each running instance. You can also write a simple orchestrator yourself: a table with saga id, current step and status, plus a worker that moves it forward. Use an engine when flows are long-running, have human tasks, or need strong visibility.</p>",
-    "<p>You observe it by tying every event to a correlation id and tracing that id across services. Without a central owner, tracing is the only way to see the whole flow.</p><p>Put the order id or a trace id into every event header, log it in structured logs, and use OpenTelemetry to link producer and consumer spans. Build a dashboard keyed by correlation id, and alert on flows that started but did not finish within a time limit (for example OrderCreated with no OrderCompleted after 10 minutes).</p>"
-   ]
-  },
-  {
-   "code": {
-    "title": "Transactional outbox: order and event commit together",
-    "python": "# Transactional outbox: business row and event row commit together.\n# A relay publishes pending rows later (at-least-once).\nimport sqlite3, json\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"create table orders(id integer primary key, status text)\")\ndb.execute(\"create table outbox(id integer primary key autoincrement, payload text, sent integer default 0)\")\n\ndef place_order(order_id, fail=False):\n    try:\n        with db:  # one local transaction: both inserts or neither\n            db.execute(\"insert into orders values(?, 'NEW')\", (order_id,))\n            db.execute(\"insert into outbox(payload) values(?)\",\n                       (json.dumps({\"event\": \"OrderPlaced\", \"id\": order_id}),))\n            if fail:\n                raise RuntimeError(\"crash before commit\")\n    except RuntimeError as e:\n        print(\"order\", order_id, \"rolled back:\", e)\n\nplace_order(1)\nplace_order(2, fail=True)   # neither the order nor the event survives\nplace_order(3)\n\ndef relay():\n    rows = db.execute(\"select id, payload from outbox where sent=0 order by id\").fetchall()\n    for oid, payload in rows:\n        print(\"publish:\", payload)  # a broker send would go here\n        db.execute(\"update outbox set sent=1 where id=?\", (oid,))\n    db.commit()\n\nrelay()\nprint(\"orders:\", db.execute(\"select id from orders\").fetchall())\nprint(\"pending after relay:\", db.execute(\"select count(*) from outbox where sent=0\").fetchone()[0])\n"
-   },
-   "followUps": [
-    "<p>CDC (reading the database log) is more efficient and lower latency; polling is simpler to run. For small to medium volume, polling is a fine start.</p><p>Polling: a job runs <code>select ... where sent=false order by id limit 100 for update skip locked</code> every second. It adds a query load and about 1 s delay, but needs no extra infrastructure. CDC with Debezium reads the transaction log, so latency is milliseconds, load on the table is nearly zero and order is preserved, but you must run Kafka Connect and manage log retention and schema changes.</p>",
-    "<p>Delete rows after they are safely published, and do it in batches on a schedule. The outbox is a queue, not a history.</p><p>Common approach: a nightly job runs <code>delete from outbox where sent=true and sent_at &lt; now() - interval '7 days'</code> in chunks of 1000 to avoid long locks. Keep a few days for debugging and replay. With CDC you can even delete the row right after insert, since the log already captured it. On PostgreSQL, partitioning by day lets you drop whole partitions cheaply.</p>"
-   ]
-  },
-  {
-   "code": {
-    "title": "Exactly-once effect via idempotent inbox",
-    "js": "// Exactly-once effect = at-least-once delivery + idempotent consumer.\n// The \"inbox\" set plays the role of a unique constraint on eventId.\nconst inbox = new Set();\nlet balance = 100;\n\nfunction handle(event) {\n  if (inbox.has(event.id)) {          // duplicate: skip the side effect\n    console.log(\"skip duplicate\", event.id);\n    return;\n  }\n  inbox.add(event.id);                // in a real DB: same transaction as the update\n  balance += event.amount;\n  console.log(\"applied\", event.id, \"balance\", balance);\n}\n\n// the broker redelivers e1 (at-least-once)\nconst delivered = [\n  { id: \"e1\", amount: 50 },\n  { id: \"e2\", amount: -30 },\n  { id: \"e1\", amount: 50 },\n  { id: \"e2\", amount: -30 },\n];\nconsole.log(\"deliveries:\", delivered.map(e => e.id).join(\",\"));\ndelivered.forEach(handle);\nconsole.log(\"final balance\", balance, \"(expected 120)\");\n"
-   },
-   "followUps": [
-    "<p>On a rebalance, a partition moves to another consumer, which may reprocess messages that the first consumer handled but had not yet committed. So duplicates can appear.</p><p>Example: consumer A processes offsets 100 to 110 but commits only 105 before it dies. Consumer B starts at 105 and handles 105 to 110 again. This is why the consumer must be idempotent: store the processed event id in the same transaction as the side effect. Also commit offsets after processing, and keep processing short so you do not time out and trigger more rebalances.</p>",
-    "<p>An unknown outcome (a timeout) must be treated as neither success nor failure until you check. Never just retry blindly and never just give up.</p><p>Steps: send every payment with an idempotency key; on timeout, retry with the same key, or query the bank by that key or reference to see whether it went through. Mark the order PAYMENT_UNKNOWN meanwhile. If the status stays unknown, reconcile later by comparing your records with the bank's settlement file. The idempotency key ensures a retry cannot charge twice.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>CQRS is a good fit when the data is shown but not changed often, as long as a short delay is acceptable. Without a fix, a user who saves a change and reloads may see old data because the read side is behind.</p><p>Options: return the new data in the write response and update the UI from it; read from the write store for that user for a few seconds; or send a version number and let the query wait until the read model reaches it. Example: write returns version 17, the client asks for <code>?minVersion=17</code>, and the query retries for up to 2 s.</p>",
-    "<p>No. CQRS only means separate read and write models; event sourcing is a different idea, and each can be used without the other.</p><p>You can do CQRS with a normal SQL write database and a read model built from change events or even from database views. Event sourcing is often paired with CQRS because an event log is hard to query directly, so projections are needed. The reverse is rarely needed: if you only want a different read shape, plain CQRS is enough and much cheaper.</p>"
-   ]
-  },
-  {
-   "code": {
-    "title": "Event sourcing: state as a fold over events",
-    "python": "# Event sourcing: state is a fold over an append-only log.\n# Time O(events); snapshots shorten the fold for long streams.\nevents = [\n    {\"type\": \"Deposited\", \"amount\": 100},\n    {\"type\": \"Withdrawn\", \"amount\": 30},\n    {\"type\": \"Deposited\", \"amount\": 50},\n    {\"type\": \"Withdrawn\", \"amount\": 20},\n]\n\ndef apply(balance, e):\n    if e[\"type\"] == \"Deposited\":\n        return balance + e[\"amount\"]\n    if e[\"type\"] == \"Withdrawn\":\n        return balance - e[\"amount\"]\n    return balance  # unknown event types are ignored (forward compatible)\n\ndef replay(log):\n    balance = 0\n    for e in log:\n        balance = apply(balance, e)\n    return balance\n\nprint(\"log:\", [(e[\"type\"][0], e[\"amount\"]) for e in events])\nprint(\"balance now:\", replay(events))\nprint(\"balance after 2 events (time travel):\", replay(events[:2]))\n"
-   },
-   "followUps": [
-    "<p>You use optimistic concurrency: each stream has a version, and a write says which version it expects. If someone else wrote first, the append is rejected and you retry.</p><p>Example: two users load account at version 7. User A appends event 8 successfully. User B tries to append with expected version 7, the store sees the stream is already at 8 and fails with a conflict. B reloads, re-checks the rule against the new state, and tries again. This is enforced with a unique key on (streamId, version), so no locks are held.</p>",
-    "<p>You never change old events; you add new versions and convert on read. Old events stay as they were written because they are history.</p><p>Techniques: add only optional fields with defaults; for a bigger change, create <code>OrderPlacedV2</code> and write an upcaster that turns V1 into V2 when loading (for example splitting <code>name</code> into first and last). Register schemas in a registry that checks compatibility. As a last resort, migrate a stream by copying it into a new store with transformation while the system is paused.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>Mesh retries are dangerous for POST because a POST usually is not idempotent, so a retry can do the action twice. If the first request actually succeeded but the response was lost, a retry creates a second order or charge.</p><p>Safe by default: retry only on connection errors where the request was never sent, and on GET, which is idempotent. For POST, retry only when the service supports idempotency keys. Also beware of retry storms: 3 layers each retrying 3 times turns one failure into 27 calls.</p>",
-    "<p>The gateway handles clients outside; the mesh handles calls between services. You do not replace one with the other.</p><p>The gateway deals with API keys, user tokens, public routing, request shaping and quotas per customer. The mesh gives mutual TLS, retries, timeouts, circuit breaking and traffic splitting between internal services. Some meshes offer an ingress gateway, which can cover simple cases, but a full API management feature set (developer portal, billing plans) still needs a gateway product.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>A modular monolith is one deployable application split into modules with strict boundaries, so each module owns its code and data and talks to others only through a defined interface.</p><p>For example, orders, billing and catalog are separate packages; billing cannot read the orders tables directly, it calls an <code>OrdersApi</code> interface or listens to in-process events. Each module has its own schema. You keep one deployment, one transaction option and easy debugging, but with good boundaries you can later move a module into a service with little rework.</p>",
-    "<p>I split when I can point to a measurable problem that a service boundary solves, not because it feels modern.</p><p>Triggers: one module needs to scale 10x more than the rest (for example image processing); a team is blocked by another team's release cycle; deploys of the whole app take hours and break often; a part needs a different tech stack; or compliance needs isolation, such as payment card data. Even then I extract one module at a time, with its own data, using a strangler approach.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>You carry the trace context in the message headers, so the consumer can continue the same trace as the producer. Kafka records support headers for this.</p><p>The producer adds a header such as <code>traceparent</code> (the W3C format) when sending. The consumer reads it and starts a span linked to it. OpenTelemetry has Kafka instrumentation that does this automatically. Because the consumer may run seconds later, show it as a span linked to the producer rather than a child that appears blocked. Also log partition and offset for each message.</p>",
-    "<p>I alert on symptoms users feel, not on every internal cause: error rate, latency and saturation of the user-facing paths.</p><p>Examples: more than 1% of requests failing for 5 minutes; p99 latency over 2 s; a queue or consumer lag growing for 10 minutes; stuck sagas older than 15 minutes; circuit breaker open on a critical dependency. Page people only for things needing action now; send CPU or disk warnings to a ticket queue. Tie alerts to SLOs and burn rate to reduce noise.</p>"
-   ]
-  },
-  {
-   "code": null,
-   "followUps": [
-    "<p>Events are harder because you do not control when consumers read them, and old events stay stored. A REST call is answered now, while an event may be read months later or replayed.</p><p>With REST you know the current clients and can watch the traffic. With events, unknown consumers may exist, and a topic may contain 2 years of old messages with the old shape. A change must therefore work for old events and new ones at once, and it is hard to fix a bad event once it has been published. That is why a schema registry and strict compatibility rules matter.</p>",
-    "<p>Deprecate in steps and never remove a field before you know nobody uses it. Rushing this breaks consumers you did not know about.</p><p>Steps: 1) mark it deprecated in the contract and docs; 2) keep filling it, and add its replacement; 3) measure who still reads it (access logs, contract tests, consumer lists); 4) contact those teams with a date, for example 90 days; 5) when usage reaches zero, stop sending it. For example, replace <code>fullName</code> by <code>firstName</code> and <code>lastName</code> and keep both for a quarter.</p>"
-   ]
-  }
- ]
+  "interview": [
+    {
+      "code": null,
+      "followUps": [
+        "<p>The clearest sign is that one business change keeps needing edits in several services at the same time. Other signs: two services must be deployed together, they call each other chattily (dozens of calls per request), they share a database table, or a distributed transaction appears in a simple flow.</p><p>Check git history: if 60% of pull requests touch services A and B together, they are one service split in two. Fix by merging them or moving the misplaced capability.</p>",
+        "<p>You stop using a database foreign key and keep only the other service's id as a plain value. Integrity then becomes the application's job, not the database's.</p><p>Example: <code>orders.customer_id</code> stays as a column, but customers live in another service. On create, validate by calling the customer service (or from a local copy of customer ids fed by events). When a customer is deleted, publish <code>CustomerDeleted</code>; the order service reacts. Prefer soft delete, and accept that a dangling id can briefly exist. Joins become API calls or a local read model.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>A gateway handles traffic from outside into your system (north-south); a service mesh handles traffic between services inside (east-west). They solve different problems and are often used together.</p><p>The gateway does authentication, public routing and rate limits per client. The mesh sidecars do mTLS, retries, timeouts and telemetry for internal calls. With 5 services a gateway alone is often enough; with 100 services the mesh pays off.</p>",
+        "<p>A BFF (backend for frontend) is a small gateway-like service built for one kind of client, such as mobile or web, which shapes the data that client needs.</p><p>Example: the mobile app needs a home screen with 3 small fields from 4 services. The mobile BFF makes the 4 calls on the fast data-centre network and returns one 2 KB response, instead of the phone making 4 slow calls. Each BFF is owned by the client team, so they can change it without waiting for others. Keep business rules in the services, not in the BFF.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>Dead instances are removed by health checks and expiring registrations. An instance that stops reporting is dropped after a short time, so callers stop seeing it.</p><p>Two styles: the instance sends a heartbeat on a fixed interval and is evicted after a few missed ones (Eureka defaults: 30 s heartbeat, 90 s expiry), or the platform probes it (Kubernetes readiness probe removes the pod from the Service endpoints). A window of a few seconds remains where callers may hit a dead instance, so clients still need timeouts and retry on another instance.</p>",
+        "<p>Callers keep working using their cached list of instances, so a registry outage does not stop traffic that is already flowing. What breaks is change: new instances are not found and dead ones are not removed.</p><p>Design for it: keep the cache after a failed refresh instead of clearing it, run the registry as a 3-node cluster, and retry registration with backoff. Registries usually favour availability over consistency for this reason; a stale list is better than no list. In Kubernetes, DNS and endpoints are served from the cluster's own control plane.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>A retry is safe when repeating the request cannot repeat the effect. Make the operation idempotent, usually with an idempotency key sent by the caller.</p><p>The client generates a key (for example a UUID) once per logical action and sends it with every retry. The server stores the key with the result, in the same transaction as the work. If a key is seen again, it returns the stored result instead of charging twice. Also use backoff with jitter (1 s, 2 s, 4 s plus random) and a retry limit, and only retry on timeouts and 5xx, not on 400s.</p>",
+        "<p>Availability multiplies, so a long chain is less available than any single service. Ten services each at 99.9% give about 0.999^10 = 99.0%, which is roughly 3.6 days of downtime a year instead of 8.8 hours.</p><p>Latency adds up as well, and one slow service holds threads up the whole chain. Reduce it by shortening the chain, using timeouts and circuit breakers, caching, and moving non-critical steps to async events so they are not in the request path.</p>"
+      ]
+    },
+    {
+      "code": {
+        "title": "Saga with compensation in reverse order",
+        "python": "# Saga: local steps with compensations run in reverse on failure.\n# Time O(steps), space O(steps) for the done-list.\ndef reserve_stock(ctx): ctx[\"stock\"] = 5 - 1\ndef release_stock(ctx): ctx[\"stock\"] = 5\ndef charge_card(ctx): raise RuntimeError(\"card declined\")\ndef refund_card(ctx): ctx[\"charged\"] = False\ndef create_order(ctx): ctx[\"order\"] = \"PENDING\"\ndef cancel_order(ctx): ctx[\"order\"] = \"CANCELLED\"\n\nsteps = [\n    (\"create order\", create_order, cancel_order),\n    (\"reserve stock\", reserve_stock, release_stock),\n    (\"charge card\", charge_card, refund_card),\n]\nctx = {}\ndone = []\nprint(\"start saga with\", [s[0] for s in steps])\ntry:\n    for name, action, comp in steps:\n        action(ctx)              # local transaction\n        done.append((name, comp))  # remember how to undo it\n        print(\"done:\", name)\nexcept RuntimeError as e:\n    print(\"failed:\", e)\n    for name, comp in reversed(done):  # compensate in reverse order\n        comp(ctx)\n        print(\"compensated:\", name)\nprint(\"final state:\", ctx)\n"
+      },
+      "followUps": [
+        "<p>Choreography fits this order flow only if it stays small; with four steps and refunds I would use orchestration. A single order service (or workflow engine) tells each step what to do and knows the state.</p><p>With choreography, order emits OrderCreated, stock reacts with StockReserved, payment reacts with PaymentFailed, and stock and order must listen to that to compensate. Nobody holds the whole picture, so finding why order 42 is stuck means reading four services. An orchestrator stores state PENDING, STOCK_RESERVED, FAILED in one place, with timeouts.</p>",
+        "<p>You retry it until it succeeds, because a compensation must not be allowed to fail permanently. That is why compensations must be idempotent and safe to repeat.</p><p>Steps: retry with backoff, for example 10 attempts over an hour. If it still fails, put the saga in a stuck or FAILED_COMPENSATION state, raise an alert and move the message to a dead-letter queue for a person to fix, since automatic undo is no longer possible. Keep state visible so the support team can see which step is not undone. A refund API call needs an idempotency key so a retry cannot refund twice.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>Orchestration engines: Temporal, Camunda, AWS Step Functions, Azure Durable Functions, Netflix Conductor, and in the Java world Axon or hand-written state machines in Spring.</p><p>They persist the workflow state, handle timers and retries, and let you see each running instance. You can also write a simple orchestrator yourself: a table with saga id, current step and status, plus a worker that moves it forward. Use an engine when flows are long-running, have human tasks, or need strong visibility.</p>",
+        "<p>You observe it by tying every event to a correlation id and tracing that id across services. Without a central owner, tracing is the only way to see the whole flow.</p><p>Put the order id or a trace id into every event header, log it in structured logs, and use OpenTelemetry to link producer and consumer spans. Build a dashboard keyed by correlation id, and alert on flows that started but did not finish within a time limit (for example OrderCreated with no OrderCompleted after 10 minutes).</p>"
+      ]
+    },
+    {
+      "code": {
+        "title": "Transactional outbox: order and event commit together",
+        "python": "# Transactional outbox: business row and event row commit together.\n# A relay publishes pending rows later (at-least-once).\nimport sqlite3, json\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"create table orders(id integer primary key, status text)\")\ndb.execute(\"create table outbox(id integer primary key autoincrement, payload text, sent integer default 0)\")\n\ndef place_order(order_id, fail=False):\n    try:\n        with db:  # one local transaction: both inserts or neither\n            db.execute(\"insert into orders values(?, 'NEW')\", (order_id,))\n            db.execute(\"insert into outbox(payload) values(?)\",\n                       (json.dumps({\"event\": \"OrderPlaced\", \"id\": order_id}),))\n            if fail:\n                raise RuntimeError(\"crash before commit\")\n    except RuntimeError as e:\n        print(\"order\", order_id, \"rolled back:\", e)\n\nplace_order(1)\nplace_order(2, fail=True)   # neither the order nor the event survives\nplace_order(3)\n\ndef relay():\n    rows = db.execute(\"select id, payload from outbox where sent=0 order by id\").fetchall()\n    for oid, payload in rows:\n        print(\"publish:\", payload)  # a broker send would go here\n        db.execute(\"update outbox set sent=1 where id=?\", (oid,))\n    db.commit()\n\nrelay()\nprint(\"orders:\", db.execute(\"select id from orders\").fetchall())\nprint(\"pending after relay:\", db.execute(\"select count(*) from outbox where sent=0\").fetchone()[0])\n"
+      },
+      "followUps": [
+        "<p>CDC (reading the database log) is more efficient and lower latency; polling is simpler to run. For small to medium volume, polling is a fine start.</p><p>Polling: a job runs <code>select ... where sent=false order by id limit 100 for update skip locked</code> every second. It adds a query load and about 1 s delay, but needs no extra infrastructure. CDC with Debezium reads the transaction log, so latency is milliseconds, load on the table is nearly zero and order is preserved, but you must run Kafka Connect and manage log retention and schema changes.</p>",
+        "<p>Delete rows after they are safely published, and do it in batches on a schedule. The outbox is a queue, not a history.</p><p>Common approach: a nightly job runs <code>delete from outbox where sent=true and sent_at &lt; now() - interval '7 days'</code> in chunks of 1000 to avoid long locks. Keep a few days for debugging and replay. With CDC you can even delete the row right after insert, since the log already captured it. On PostgreSQL, partitioning by day lets you drop whole partitions cheaply.</p>"
+      ]
+    },
+    {
+      "code": {
+        "title": "Exactly-once effect via idempotent inbox",
+        "js": "// Exactly-once effect = at-least-once delivery + idempotent consumer.\n// The \"inbox\" set plays the role of a unique constraint on eventId.\nconst inbox = new Set();\nlet balance = 100;\n\nfunction handle(event) {\n  if (inbox.has(event.id)) {          // duplicate: skip the side effect\n    console.log(\"skip duplicate\", event.id);\n    return;\n  }\n  inbox.add(event.id);                // in a real DB: same transaction as the update\n  balance += event.amount;\n  console.log(\"applied\", event.id, \"balance\", balance);\n}\n\n// the broker redelivers e1 (at-least-once)\nconst delivered = [\n  { id: \"e1\", amount: 50 },\n  { id: \"e2\", amount: -30 },\n  { id: \"e1\", amount: 50 },\n  { id: \"e2\", amount: -30 },\n];\nconsole.log(\"deliveries:\", delivered.map(e => e.id).join(\",\"));\ndelivered.forEach(handle);\nconsole.log(\"final balance\", balance, \"(expected 120)\");\n"
+      },
+      "followUps": [
+        "<p>On a rebalance, a partition moves to another consumer, which may reprocess messages that the first consumer handled but had not yet committed. So duplicates can appear.</p><p>Example: consumer A processes offsets 100 to 110 but commits only 105 before it dies. Consumer B starts at 105 and handles 105 to 110 again. This is why the consumer must be idempotent: store the processed event id in the same transaction as the side effect. Also commit offsets after processing, and keep processing short so you do not time out and trigger more rebalances.</p>",
+        "<p>An unknown outcome (a timeout) must be treated as neither success nor failure until you check. Never just retry blindly and never just give up.</p><p>Steps: send every payment with an idempotency key; on timeout, retry with the same key, or query the bank by that key or reference to see whether it went through. Mark the order PAYMENT_UNKNOWN meanwhile. If the status stays unknown, reconcile later by comparing your records with the bank's settlement file. The idempotency key ensures a retry cannot charge twice.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>CQRS is a good fit when the data is shown but not changed often, as long as a short delay is acceptable. Without a fix, a user who saves a change and reloads may see old data because the read side is behind.</p><p>Options: return the new data in the write response and update the UI from it; read from the write store for that user for a few seconds; or send a version number and let the query wait until the read model reaches it. Example: write returns version 17, the client asks for <code>?minVersion=17</code>, and the query retries for up to 2 s.</p>",
+        "<p>No. CQRS only means separate read and write models; event sourcing is a different idea, and each can be used without the other.</p><p>You can do CQRS with a normal SQL write database and a read model built from change events or even from database views. Event sourcing is often paired with CQRS because an event log is hard to query directly, so projections are needed. The reverse is rarely needed: if you only want a different read shape, plain CQRS is enough and much cheaper.</p>"
+      ]
+    },
+    {
+      "code": {
+        "title": "Event sourcing: state as a fold over events",
+        "python": "# Event sourcing: state is a fold over an append-only log.\n# Time O(events); snapshots shorten the fold for long streams.\nevents = [\n    {\"type\": \"Deposited\", \"amount\": 100},\n    {\"type\": \"Withdrawn\", \"amount\": 30},\n    {\"type\": \"Deposited\", \"amount\": 50},\n    {\"type\": \"Withdrawn\", \"amount\": 20},\n]\n\ndef apply(balance, e):\n    if e[\"type\"] == \"Deposited\":\n        return balance + e[\"amount\"]\n    if e[\"type\"] == \"Withdrawn\":\n        return balance - e[\"amount\"]\n    return balance  # unknown event types are ignored (forward compatible)\n\ndef replay(log):\n    balance = 0\n    for e in log:\n        balance = apply(balance, e)\n    return balance\n\nprint(\"log:\", [(e[\"type\"][0], e[\"amount\"]) for e in events])\nprint(\"balance now:\", replay(events))\nprint(\"balance after 2 events (time travel):\", replay(events[:2]))\n"
+      },
+      "followUps": [
+        "<p>You use optimistic concurrency: each stream has a version, and a write says which version it expects. If someone else wrote first, the append is rejected and you retry.</p><p>Example: two users load account at version 7. User A appends event 8 successfully. User B tries to append with expected version 7, the store sees the stream is already at 8 and fails with a conflict. B reloads, re-checks the rule against the new state, and tries again. This is enforced with a unique key on (streamId, version), so no locks are held.</p>",
+        "<p>You never change old events; you add new versions and convert on read. Old events stay as they were written because they are history.</p><p>Techniques: add only optional fields with defaults; for a bigger change, create <code>OrderPlacedV2</code> and write an upcaster that turns V1 into V2 when loading (for example splitting <code>name</code> into first and last). Register schemas in a registry that checks compatibility. As a last resort, migrate a stream by copying it into a new store with transformation while the system is paused.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>Mesh retries are dangerous for POST because a POST usually is not idempotent, so a retry can do the action twice. If the first request actually succeeded but the response was lost, a retry creates a second order or charge.</p><p>Safe by default: retry only on connection errors where the request was never sent, and on GET, which is idempotent. For POST, retry only when the service supports idempotency keys. Also beware of retry storms: 3 layers each retrying 3 times turns one failure into 27 calls.</p>",
+        "<p>The gateway handles clients outside; the mesh handles calls between services. You do not replace one with the other.</p><p>The gateway deals with API keys, user tokens, public routing, request shaping and quotas per customer. The mesh gives mutual TLS, retries, timeouts, circuit breaking and traffic splitting between internal services. Some meshes offer an ingress gateway, which can cover simple cases, but a full API management feature set (developer portal, billing plans) still needs a gateway product.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>A modular monolith is one deployable application split into modules with strict boundaries, so each module owns its code and data and talks to others only through a defined interface.</p><p>For example, orders, billing and catalog are separate packages; billing cannot read the orders tables directly, it calls an <code>OrdersApi</code> interface or listens to in-process events. Each module has its own schema. You keep one deployment, one transaction option and easy debugging, but with good boundaries you can later move a module into a service with little rework.</p>",
+        "<p>I split when I can point to a measurable problem that a service boundary solves, not because it feels modern.</p><p>Triggers: one module needs to scale 10x more than the rest (for example image processing); a team is blocked by another team's release cycle; deploys of the whole app take hours and break often; a part needs a different tech stack; or compliance needs isolation, such as payment card data. Even then I extract one module at a time, with its own data, using a strangler approach.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>You carry the trace context in the message headers, so the consumer can continue the same trace as the producer. Kafka records support headers for this.</p><p>The producer adds a header such as <code>traceparent</code> (the W3C format) when sending. The consumer reads it and starts a span linked to it. OpenTelemetry has Kafka instrumentation that does this automatically. Because the consumer may run seconds later, show it as a span linked to the producer rather than a child that appears blocked. Also log partition and offset for each message.</p>",
+        "<p>I alert on symptoms users feel, not on every internal cause: error rate, latency and saturation of the user-facing paths.</p><p>Examples: more than 1% of requests failing for 5 minutes; p99 latency over 2 s; a queue or consumer lag growing for 10 minutes; stuck sagas older than 15 minutes; circuit breaker open on a critical dependency. Page people only for things needing action now; send CPU or disk warnings to a ticket queue. Tie alerts to SLOs and burn rate to reduce noise.</p>"
+      ]
+    },
+    {
+      "code": null,
+      "followUps": [
+        "<p>Events are harder because you do not control when consumers read them, and old events stay stored. A REST call is answered now, while an event may be read months later or replayed.</p><p>With REST you know the current clients and can watch the traffic. With events, unknown consumers may exist, and a topic may contain 2 years of old messages with the old shape. A change must therefore work for old events and new ones at once, and it is hard to fix a bad event once it has been published. That is why a schema registry and strict compatibility rules matter.</p>",
+        "<p>Deprecate in steps and never remove a field before you know nobody uses it. Rushing this breaks consumers you did not know about.</p><p>Steps: 1) mark it deprecated in the contract and docs; 2) keep filling it, and add its replacement; 3) measure who still reads it (access logs, contract tests, consumer lists); 4) contact those teams with a date, for example 90 days; 5) when usage reaches zero, stop sending it. For example, replace <code>fullName</code> by <code>firstName</code> and <code>lastName</code> and keep both for a quarter.</p>"
+      ]
+    }
+  ]
 }
