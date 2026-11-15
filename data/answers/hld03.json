@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Skip it when the answer is obviously small or the interviewer has already given the numbers. If they say \"10K internal users\", a single database is clearly enough and a long calculation wastes time. Also skip it when the question is about behaviour or API design rather than scale.</p><p>Even then, say one sentence of scale (\"about 1 QPS, so no sharding\") so your choices stay justified. Estimation is a tool for decisions, not a ritual.</p>",
+    "<p>Usually the read:write ratio, because it decides what you optimise. A ratio of 100:1 pushes you toward caches, replicas and precomputed data. A write-heavy 1:10 workload pushes you toward partitioning, queues and append-only storage.</p><p>Close behind are peak QPS (one box or many) and total data size (one disk or a sharded fleet). Example: 1M reads/s with 10K writes/s means a cache is mandatory, while the write path can stay simple.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "QPS from DAU: average and peak",
+    "python": "# Estimate average and peak QPS from daily active users\ndau = 200_000_000          # assumed daily active users\nloads_per_user = 10        # feed loads per user per day\npeak_factor = 3            # normal daily peak vs average\nper_server = 5000          # QPS one server can handle\nutilisation = 0.6          # keep servers 60% busy\n\ndaily = dau * loads_per_user\navg_qps = daily / 86400    # 86,400 seconds in a day (about 10^5)\npeak_qps = avg_qps * peak_factor\nservers = peak_qps / per_server / utilisation\n\nprint(\"DAU:\", dau, \"loads/user:\", loads_per_user)\nprint(\"requests/day:\", daily)\nprint(\"average QPS: %.0f\" % avg_qps)\nprint(\"peak QPS: %.0f\" % peak_qps)\nprint(\"servers needed: %.0f\" % (servers + 0.999))\n"
+   },
+   "followUps": [
+    "<p>Count devices instead of people and use their reporting interval. QPS = devices / interval in seconds. With 10 million sensors each sending one reading every 30 seconds, that is 10,000,000 / 30 = about 333K writes per second on average.</p><p>Then add a peak factor, since devices often sync after a power or network outage. Payloads are tiny, so batching at the gateway (say 100 readings per write) cuts the database load to roughly 3.3K writes/s.</p>",
+    "<p>Retries and fan-out multiply the load, so apply a multiplier to the raw QPS. If 1% of calls fail and each is retried 3 times, load rises only 3%, but during an outage retries can triple traffic exactly when systems are weakest. Use backoff with jitter.</p><p>Fan-out is bigger: one post to 500 followers is 500 feed writes. 10K posts/s times 500 followers = 5M writes/s internally. Always estimate internal QPS per service, not just the edge QPS.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>SSDs and networks changed the most. Random disk reads went from roughly 10 ms on spinning disks to about 0.1 ms on NVMe, a 100x drop, and datacenter network round trips fell from around 1 ms to 0.5 ms or less. Bandwidth also grew enormously, with 10 to 100 Gbit links common.</p><p>The speed of light did not change, so cross-region latency (60 to 150 ms) stayed the same. That is why geography, not hardware, is now often the limit.</p>",
+    "<p>Averages hide the slow requests, so you design for percentiles. p50 is the typical user, p99 is the slowest 1 in 100. If a page makes 20 backend calls in parallel and each has p99 of 100 ms, then 1 - 0.99^20 = about 18% of pages hit at least one slow call.</p><p>So the fan-out makes tail latency dominate. Mitigate with timeouts, hedged requests and caching, and set SLOs on p99 rather than the average.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Storage estimate with replication and index overhead",
+    "python": "# Storage = items/day * size * retention * replication * index overhead\nposts_per_day = 100_000_000\nmeta_bytes = 500            # metadata per post\nmedia_share = 0.2           # 20% of posts carry an image\nmedia_bytes = 300_000       # 300 KB per image (all renditions)\nretention_days = 365\nreplication = 3\nindex_overhead = 1.5        # indexes add 50% on the database side\n\ndef tb(n):\n    return n / 1e12\n\nmeta = posts_per_day * meta_bytes * retention_days * index_overhead * replication\nmedia = posts_per_day * media_share * media_bytes * retention_days * replication\nprint(\"metadata: %.1f TB\" % tb(meta))\nprint(\"media:    %.1f TB\" % tb(media))\nprint(\"media is %.0fx larger than metadata\" % (media / meta))\nprint(\"total with headroom (x1.3): %.0f TB\" % tb((meta + media) * 1.3))\n"
+   },
+   "followUps": [
+    "<p>Use replication (typically 3 full copies) for hot, small, frequently read data because it is simple and fast to read and repair. Use erasure coding for large, cold data such as media or backups because it is much cheaper.</p><p>Example: 6 data plus 3 parity chunks tolerates 3 lost chunks at 1.5x overhead, against 3x for replication. The cost is CPU for encoding and slower reads and rebuilds, since several chunks must be fetched. 1 PB costs 1.5 PB instead of 3 PB.</p>",
+    "<p>Add up the column sizes, then add overhead. A row with an 8-byte bigint, a 8-byte timestamp, a 16-byte uuid and a 100-byte text field is about 132 bytes of data. Postgres adds roughly 24 bytes of row header plus alignment padding, so call it about 160 bytes.</p><p>Indexes add more: each index entry is perhaps 30 to 40 bytes. For 100M rows, 160 bytes gives 16 GB for the table, and two indexes add about 7 GB. A rough rule is to double the raw size.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Cache hit rate under a Zipf access pattern",
+    "python": "# How much does caching the hottest 20% of items help?\nn = 100_000                 # distinct items\ns = 1.0                     # Zipf exponent: item k has weight 1/k^s\nweights = [1 / (k ** s) for k in range(1, n + 1)]\ntotal = sum(weights)\n\ndef hit_rate(cache_fraction):\n    cached = int(n * cache_fraction)        # cache the hottest items\n    return sum(weights[:cached]) / total    # share of reads they absorb\n\nprint(\"items:\", n)\nfor f in (0.01, 0.05, 0.10, 0.20, 0.50):\n    print(\"cache %4.0f%% of items -> hit rate %.1f%%\" % (f * 100, hit_rate(f) * 100))\n# Hit rate grows slowly (sub-linearly): doubling the cache adds less each time.\n"
+   },
+   "followUps": [
+    "<p>Protect the database with request coalescing, rate limiting and a warm-up. When the cache is cold, many requests for the same key all miss at once, so let only one fetch from the database while the others wait for that result.</p><p>Also pre-load the hottest keys before taking traffic, add jittered TTLs so keys do not expire together, and keep a circuit breaker that sheds load if the DB slows. If 100K QPS suddenly lands on a DB that handles 5K, it will fall over without these.</p>",
+    "<p>A CDN fits when the content is the same for many users and can be cached at the edge, such as images, video, JS bundles and public pages. It serves users from a nearby location, cutting latency from around 150 ms to 20 ms and removing load from your servers.</p><p>An application cache (Redis) fits per-user or dynamic data that needs your logic or fast invalidation, such as sessions or feed rows. For static assets, the CDN replaces the app cache; for personalised data it cannot.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>For infrastructure questions (design a rate limiter, a key-value store, a message queue) shift time from product requirements to internals. Spend less on API and data model for users, and more on core algorithms, failure handling, consistency and operations.</p><p>For example, for a key-value store the deep dive covers partitioning, replication, quorum reads and writes, and compaction. Clarify guarantees first: durability, latency targets and consistency level.</p>",
+    "<p>Politely answer briefly, then return to the plan. Say \"Good point, I'll note it and come back to that in the deep dive\", and write it on the board. This keeps the breadth-first structure while showing you heard them.</p><p>If they insist, follow them: the interviewer signals what they want to assess. Just agree a time box (for example 5 minutes) and then summarise what remains so the overall design still gets finished.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Usually the delivery and history requirements, which decide whether chat is a transient message relay or a durable store. Group size is a close second because it controls fan-out cost.</p><p>Example: 1:1 chat with only online delivery needs just connection servers and a small queue. Chat with history on many devices needs a persistent store, sync cursors and per-device ack tracking. A group of 100K members turns each message into 100K deliveries, so you use fan-out on read.</p>",
+    "<p>Time box them to about 3 to 5 minutes and ask the ones that change the design first. Group related questions in one go and offer a default: \"I'll assume 1:1 and small groups, 50M DAU, global, okay?\" This lets the interviewer confirm in one answer.</p><p>Write the agreed assumptions on the board and move on. If an answer is unknown, state a reasonable assumption and continue rather than waiting.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A common example is a read-heavy feed: estimates showed 70K reads/s against only 2K writes/s, so I deep-dived into caching and fan-out strategy instead of the database schema. Had the numbers shown 500K writes/s, I would have picked partitioning and stream ingestion.</p><p>Another: storage of 5 PB led me to tiered storage and erasure coding, not the load balancer. The numbers point to the bottleneck.</p>",
+    "<p>Deep enough means you can state the mechanism, the data structures, the failure modes and the cost, with numbers, for the chosen part. You should be able to answer \"what happens when X fails?\" and \"how does this scale 10x?\" without hand-waving.</p><p>Stop when the interviewer is satisfied or moves on. For a cache deep dive: eviction policy, TTL and invalidation, stampede protection, and a hit-rate estimate is usually enough.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Choose the simpler option when current scale does not justify the complexity and the cost of being wrong is low. For 5K writes/s and 2 TB of data, one Postgres primary with replicas is less scalable than a sharded store but cheaper, transactional and easy to run.</p><p>State the trade-off: \"It will not scale past about 20K writes/s, but we are at 25% of that, and I would shard on user_id when we reach 50%.\" Naming the trigger shows foresight.</p>",
+    "<p>Stay calm, ask what concern drives their view, and restate their point to show you understood. Then test it against the numbers or requirements: if they have a valid constraint you missed, adapt; if not, explain your reasoning briefly.</p><p>Example: \"You prefer strong consistency here. If we need it for payments I agree, and I'd use a single-leader write path; for the feed, eventual consistency saves 50 ms.\" Treat it as a discussion, not a fight.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Watch measured headroom and growth, not just size. Typical triggers: disk above about 70% of the node, write QPS above about 50% of tested capacity, replication lag or vacuum falling behind, p99 latency creeping toward the SLO, or backups and restores taking too long for your recovery target.</p><p>Example: a node tested to 10K writes/s that now peaks at 5.5K and grows 10% monthly will be at 8K in 4 months, so start the migration now, since it takes months.</p>",
+    "<p>Use dual writes with a gradual cutover. Steps: (1) create the shards and copy existing data using a snapshot plus change-data-capture; (2) keep the old DB as the source of truth while new writes go to both; (3) verify the data matches; (4) switch reads to the shards for a small share of traffic, then all; (5) switch writes and retire the old database.</p><p>A routing layer maps a key to a shard, so the application stays unchanged. Keep a rollback path until verification is complete.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Little's Law: requests in flight",
+    "python": "# Little's Law: concurrency = throughput * latency\ndef in_flight(qps, latency_ms):\n    return qps * latency_ms / 1000.0\n\nqps = 20000\nprint(\"throughput:\", qps, \"req/s\")\nfor lat in (50, 100, 500):\n    print(\"latency %3d ms -> %6.0f requests in flight\" % (lat, in_flight(qps, lat)))\n\n# A pool of 3000 slots is fine at 100 ms but overflows when a dependency slows.\npool = 3000\nfor lat in (100, 500):\n    need = in_flight(qps, lat)\n    print(\"pool %d at %d ms: %s\" % (pool, lat, \"ok\" if need <= pool else \"EXHAUSTED\"))\n"
+   },
+   "followUps": [
+    "<p>The closer a server gets to full utilisation, the more time requests spend waiting in queues, and the growth is not linear. In a simple queue, wait time scales roughly with utilisation divided by (1 - utilisation).</p><p>Example: at 50% busy the factor is 1, at 80% it is 4, at 90% it is 9, and at 99% it is 99. So a service with 10 ms work takes 20 ms at 50% but about 100 ms at 90%. This is why you target about 60 to 70% utilisation.</p>",
+    "<p>Start from Little's Law per app server and divide the database's real capacity. If the DB handles 500 connections well, 50 servers get 10 connections each. Check that this is enough: 400 queries/s per server at 10 ms each means 400 x 0.01 = 4 connections in use on average, so 10 is plenty.</p><p>More connections do not help; a small pool (often 10 to 20 per server) with a queue is faster than a huge one, because the DB thrashes when overloaded.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "LLM feature: tokens per second and daily cost",
+    "python": "# Token-based estimate for an LLM-powered feature\ndau = 1_000_000\nturns = 5                    # chat turns per user per day\nin_tokens = 1500             # prompt tokens per turn\nout_tokens = 300             # generated tokens per turn\nprice_in = 3.0               # placeholder dollars per million input tokens\nprice_out = 15.0             # placeholder dollars per million output tokens\n\ncalls = dau * turns\ntok_in = calls * in_tokens\ntok_out = calls * out_tokens\ntotal = tok_in + tok_out\nprint(\"calls/day:\", calls)\nprint(\"tokens/day: %d\" % total)\nprint(\"average tokens/s: %.0f\" % (total / 86400))\ncost = tok_in / 1e6 * price_in + tok_out / 1e6 * price_out\nprint(\"cost/day: $%.0f\" % cost)\nprint(\"generation time at 50 tok/s: %.1f s\" % (out_tokens / 50))\n"
+   },
+   "followUps": [
+    "<p>Prompt caching reduces both cost and time-to-first-token when many requests share the same long prefix, such as a system prompt or a document. The cached prefix is processed once and reused instead of recomputed on every call.</p><p>Example: a 4,000-token shared prefix with 300 new tokens. Without caching you pay for 4,300 input tokens each call; with a cache hit the 4,000 are billed at a much lower rate and the model skips most of the prefill work. Check your provider's actual cache pricing and time-to-live.</p>",
+    "<p>Divide the required output rate by the tokens per second one replica can generate across all its concurrent requests. If one GPU replica, using batching, produces about 2,500 output tokens/s in total, then 100,000 / 2,500 = 40 replicas at full load.</p><p>Add headroom for peaks and failures: at 60% target utilisation you need about 67 replicas. Measure the real throughput of your model and hardware, since it varies a lot with model size and batch size.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Show you can scale on paper without building it. Design the simple version for today's numbers, then say what you would change at each growth step: \"At 10x we add read replicas and a cache; at 100x we shard by tenant.\"</p><p>Mention the signals that would trigger each change. This proves you know the scalable patterns while keeping today's design cheap, which is what good judgement looks like.</p>",
+    "<p>Security and access control come first: single sign-on, role-based permissions and least privilege. Then auditability (who did what and when, kept as immutable logs), reliability (backups, restore tests and a clear recovery time), and data privacy.</p><p>Also compliance, simple deployment, and maintainability by a small team. Scale hardly matters: 10K users is about 1 QPS, so a single service and a managed database with a standby is plenty.</p>"
+   ]
+  }
+ ]
+}
