@@ -1,0 +1,123 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Modulo vs ring: how many keys move",
+    "python": "import hashlib\n\ndef h(s):\n    # stable 32-bit hash (Python's built-in hash() changes between runs)\n    return int(hashlib.md5(s.encode()).hexdigest()[:8], 16)\n\ndef ring_owner(key, servers):\n    # ring: first server token >= key hash, wrapping to the first\n    ring = sorted((h(\"%s#%d\" % (s, i)), s) for s in servers for i in range(100))  # 100 vnodes each\n    kh = h(key)\n    for t, s in ring:\n        if t >= kh:\n            return s\n    return ring[0][1]\n\nkeys = [\"key%d\" % i for i in range(1000)]\nold = [\"s%d\" % i for i in range(4)]\nnew = old + [\"s4\"]\nprint(\"servers:\", old, \"->\", new, \"| keys:\", len(keys))\n\nmod_moved = sum(1 for k in keys if old[h(k) % 4] != new[h(k) % 5])\nring_moved = sum(1 for k in keys if ring_owner(k, old) != ring_owner(k, new))\nprint(\"hash %% N moved: %d (%.0f%%), theory N/(N+1) = 80%%\" % (mod_moved, mod_moved / 10))\nprint(\"ring moved:     %d (%.0f%%), theory about 1/(N+1) = 20%%\" % (ring_moved, ring_moved / 10))\n"
+   },
+   "followUps": [
+    "<p>Going from N to N+1 servers moves almost every key. A key stays put only if <code>h % N == h % (N+1)</code>. Over a long cycle of N(N+1) hash values, that happens for only N of them (when h &lt; N). So the stay fraction is N/(N(N+1)) = 1/(N+1), and the moved fraction is N/(N+1).</p><p>Example: 4 to 5 servers moves 80% of keys, as the program shows (about 82% measured).</p>",
+    "<p>Yes, when the server count never changes or when moving everything is cheap. Examples: a fixed set of 16 database shards, or a cache you can simply warm up again. Modulo is simple, fast and perfectly balanced.</p><p>It also works if you separate the two steps: key to a fixed partition by modulo (say 1024 partitions), then partition to server through a small table. Resizing then only edits the table, so you move whole partitions, not individual keys.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Ring lookup with binary search and wrap",
+    "python": "import bisect, hashlib\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest()[:8], 16)\n\nclass Ring:\n    def __init__(self, servers):\n        # sorted token list + parallel owner list; lookup is O(log T)\n        pairs = sorted((h(s), s) for s in servers)\n        self.tokens = [t for t, _ in pairs]\n        self.owners = [s for _, s in pairs]\n\n    def lookup(self, key):\n        i = bisect.bisect_left(self.tokens, h(key))  # smallest token >= hash\n        if i == len(self.tokens):                    # past the largest: wrap\n            i = 0\n        return self.owners[i]\n\nring = Ring([\"alpha\", \"beta\", \"gamma\"])\nfor t, o in zip(ring.tokens, ring.owners):\n    print(\"token %10d -> %s\" % (t, o))\nfor k in [\"user:1\", \"user:2\", \"user:3\", \"user:4\"]:\n    print(k, \"hash\", h(k), \"->\", ring.lookup(k))\n# a key hashing exactly to a token belongs to that token (>=, not >)\nexact = ring.tokens[1]\nprint(\"exact hit\", exact, \"->\", ring.owners[bisect.bisect_left(ring.tokens, exact)])\n"
+   },
+   "followUps": [
+    "<p>Use ceiling (smallest token greater than or equal to the hash) so a key whose hash exactly equals a token belongs to that token's server. With strictly greater, that key would go to the next server, and two clients that disagree on the rule would route the same key differently.</p><p>Example with tokens [10, 20, 30]: hash 20 maps to 20 (ceiling), hash 21 maps to 30, hash 31 wraps to 10. The only requirement is that every client uses the same rule.</p>",
+    "<p>Treat the ring as immutable and swap it in one step (copy-on-write). To change membership, build a new sorted token array off to the side, then publish it with one atomic reference assignment (a <code>volatile</code> field or <code>AtomicReference</code>).</p><pre><code>Ring next = current.with(newNode);\nring.set(next);   // readers use ring.get()</code></pre><p>Readers never lock and never see a half-built ring. Cost: O(T log T) to rebuild per change, which is fine since membership changes are rare compared to lookups.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Virtual nodes even out the load",
+    "python": "import hashlib\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest()[:8], 16)\n\ndef shares(servers, v, keys):\n    # every server appears v times on the ring (virtual nodes)\n    ring = sorted((h(\"%s#%d\" % (s, i)), s) for s in servers for i in range(v))\n    tokens = [t for t, _ in ring]\n    count = {s: 0 for s in servers}\n    import bisect\n    for k in keys:\n        i = bisect.bisect_left(tokens, h(k)) % len(ring)\n        count[ring[i][1]] += 1\n    return count\n\nservers = [\"s%d\" % i for i in range(5)]\nkeys = [\"k%d\" % i for i in range(10000)]\nprint(\"10000 keys over 5 servers (ideal 2000 each)\")\nfor v in (1, 10, 200):\n    c = shares(servers, v, keys)\n    vals = list(c.values())\n    print(\"v=%3d counts=%s max/avg=%.2f\" % (v, vals, max(vals) / 2000))\n"
+   },
+   "followUps": [
+    "<p>Choose v by measuring the imbalance you can accept. Spread shrinks roughly like 1/&#8730;v, so v=100 gives about 10% variation and v=400 about 5%. The program shows max load over average falling as v grows.</p><p>The cost grows linearly: N nodes times v tokens of metadata, and more small ranges to stream and repair. Typical choices are 100 to 256 for small clusters. Beyond about 1000 total tokens per node, bookkeeping usually outweighs the gain.</p>",
+    "<p>Because 256 tokens per node makes repair, streaming and availability worse. With many random ranges, nearly every pair of nodes shares some range, so any two simultaneous failures are likely to lose a quorum for some data. Repairs also split into thousands of tiny ranges.</p><p>With 16 tokens and a smarter allocator that places tokens to balance load, you keep good balance while having far fewer ranges. That is why 4.0 changed the default to 16.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Cassandra-style placement adds skew: replicas are spread across racks one at a time, so a rack with twice the nodes gets twice the nodes per replica slot but holds the same one replica per rack. Each node in the big rack then stores about half the data of a node in a small rack.</p><p>Example: RF=3, racks of 4, 2 and 2 nodes. Every rack holds one full copy, so each rack-1 node carries 1/4 of the data and each other node 1/2. Fix by keeping racks about equal in size.</p>",
+    "<p>A joining node streams from the nodes that were replicas of the ranges it takes over. With RF=3 it becomes replica for 3 ranges, and for each range the former last replica in the preference list stops being responsible for it. Data is streamed from existing replicas of those ranges, not from the whole cluster.</p><p>With vnodes, these ranges are many and spread over many different peers, so the work is shared and no single neighbour is overloaded. Afterwards the old holders run cleanup to drop data they no longer own.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The hint is lost, so the stand-in copy is gone and that write has fewer real replicas than planned. The write already counted toward W, so it looked successful.</p><p>The data is not lost for good if other replicas hold it. Anti-entropy repair using Merkle trees later finds and fixes the difference between replicas. That is why hints are only an optimisation and repair is the safety net, and why Cassandra also limits hint age (about 3 hours by default): beyond that, run repair.</p>",
+    "<p>A Merkle tree lets two replicas find differing data by comparing a few hashes instead of all rows. Each leaf hashes a small key range, and each parent hashes its children. If the root hashes match, the data is identical and nothing is sent.</p><p>If they differ, compare the children and descend only into mismatching branches, in about O(log n) comparisons. Example: 1 million keys in 1024 leaf ranges with one stale row means you exchange about 10 levels of hashes, then stream only that one range, not 1 million rows.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Rendezvous hashing: top-k owners",
+    "python": "import hashlib\n\ndef score(server, key):\n    return int(hashlib.md5((server + \"|\" + key).encode()).hexdigest()[:8], 16)\n\ndef owners(key, servers, k=1):\n    # rendezvous (HRW): rank every server by hash(server, key), take top k\n    return sorted(servers, key=lambda s: score(s, key), reverse=True)[:k]\n\nservers = [\"a\", \"b\", \"c\", \"d\"]\nkeys = [\"k%d\" % i for i in range(1000)]\nbefore = {k: owners(k, servers)[0] for k in keys}\nafter = {k: owners(k, servers + [\"e\"])[0] for k in keys}\nmoved = [k for k in keys if before[k] != after[k]]\nprint(\"keys moved after adding e:\", len(moved), \"of 1000\")\nprint(\"all moved keys went to e:\", all(after[k] == \"e\" for k in moved))\nprint(\"top-3 replicas for k7:\", owners(\"k7\", servers, 3), \"(always distinct)\")\n# cost: O(N) hashes per lookup, but no ring or vnodes to store\n"
+   },
+   "followUps": [
+    "<p>Sort by score and keep the whole thing in O(N) only when N is small; to go sub-linear, group servers into a hierarchy. Split 1000 servers into 32 groups of about 32. Pick the group with the highest group score for the key, then pick the server inside it with HRW. That is about 64 hashes instead of 1000.</p><p>Another approach is skeleton-based HRW (a virtual tree with fan-out), giving O(log N) lookups. You trade a little extra structure for speed.</p>",
+    "<p>Ring: give heavier servers more virtual nodes, proportional to weight. A server with weight 2 gets 200 vnodes while weight 1 gets 100, so it owns about twice the key space.</p><p>HRW: use the weighted score <code>-w / ln(u)</code>, where u is the hash scaled to (0,1). The server with the highest score wins and the chance of winning is exactly proportional to w. Weight 3 versus 1 gives 75% versus 25%, and changing one weight only moves keys to or from that server.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Jump consistent hash",
+    "python": "def jump_hash(key, n):\n    # Google's jump consistent hash: no memory, O(log n)\n    b, j = -1, 0\n    while j < n:\n        b = j\n        key = (key * 2862933555777941757 + 1) & 0xFFFFFFFFFFFFFFFF\n        j = int((b + 1) * (float(1 << 31) / float((key >> 33) + 1)))\n    return b\n\nkeys = list(range(100000))\nfor n in (4, 5):\n    counts = [0] * n\n    for k in keys:\n        counts[jump_hash(k, n)] += 1\n    print(\"n=%d bucket counts: %s\" % (n, counts))\nmoved = sum(1 for k in keys if jump_hash(k, 4) != jump_hash(k, 5))\nprint(\"moved going 4 -> 5 buckets: %d (%.1f%%, ideal 20%%)\" % (moved, moved / 1000))\nprint(\"moved keys all went to the new bucket 4:\",\n      all(jump_hash(k, 5) == 4 for k in keys if jump_hash(k, 4) != jump_hash(k, 5)))\n"
+   },
+   "followUps": [
+    "<p>Maglev keeps a connection tracking table: the first packet of a flow is hashed to a backend, and later packets of that flow use the remembered entry. So even if the lookup table changes, existing flows continue to their old backend.</p><p>Only when the tracking entry is missing (for example the flow lands on another load balancer machine) does it fall back to the table. Because the table changes little, most such flows still reach the same backend.</p>",
+    "<p>A prime size makes each backend's permutation cover every slot. Each backend walks slots using <code>(offset + j * skip) mod M</code>. If M is prime, any skip between 1 and M-1 is coprime with M, so the walk visits all M slots exactly once before repeating.</p><p>With M=7, skip=3 visits 0,3,6,2,5,1,4: all 7 slots. With M=8 and skip=2 you only visit 4 slots. Full coverage lets the table fill evenly with no gaps.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Bounded-load spill to the next node",
+    "python": "import hashlib, math\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest()[:8], 16)\n\nservers = [\"s0\", \"s1\", \"s2\", \"s3\"]\nring = sorted((h(\"%s#%d\" % (s, i)), s) for s in servers for i in range(50))\n\ndef assign(keys, c):\n    # bounded-load consistent hashing: cap each server at ceil(c * average)\n    cap = math.ceil(c * len(keys) / len(servers))\n    load = {s: 0 for s in servers}\n    for k in keys:\n        kh = h(k)\n        i = next((j for j, (t, _) in enumerate(ring) if t >= kh), 0)\n        while load[ring[i][1]] >= cap:      # full: spill to next on the ring\n            i = (i + 1) % len(ring)\n        load[ring[i][1]] += 1\n    return cap, load\n\n# skewed traffic: 600 requests for one hot key, 400 for distinct keys\nkeys = [\"hot\"] * 600 + [\"k%d\" % i for i in range(400)]\nfor c in (100.0, 1.25):\n    cap, load = assign(keys, c)\n    print(\"c=%s cap=%d loads=%s\" % (c, cap, list(load.values())))\n"
+   },
+   "followUps": [
+    "<p>Writes are the hard part, so keep reads flexible and make writes fan out. For a read-mostly hot key, write the value to all k copies (<code>key#0..key#k-1</code>), or write to one master and let copies refresh from it with a short TTL.</p><p>If slightly stale data is fine, use TTL expiry (1 to 5 seconds) and accept it. If not, version values and invalidate all k copies on update. Cost: k writes per update instead of one. Only split keys you detected as hot, since splitting everything wastes memory.</p>",
+    "<p>Pick c from how much imbalance you tolerate and how much spilling you can afford. The cap is ceil(c * average load). With c=1.25, no node may exceed 125% of the average. A smaller c gives tighter balance but more keys spill away from their natural node, hurting cache locality.</p><p>Common values are 1.25 to 1.5, as in the original bounded-load paper's practice. Example: 1000 requests over 4 nodes with c=1.25 gives cap 313. Measure the spill rate and adjust.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the key you hash is a conversation or prompt-prefix ID that is stable across turns. Hashing the entire request would send each turn of a chat to a different GPU, missing the KV cache.</p><p>For multi-turn chat, hash the conversation ID or the system prompt plus the first messages, so each new turn lands where earlier turns are cached. For batch jobs, requests share nothing, so use plain least-loaded routing or hash the shared prefix only if they do share a long template. Never hash the full text if it changes every turn.</p>",
+    "<p>Compare the same workload with and without affinity routing and look at the outcomes users feel. Track cache hit rate (cached prompt tokens divided by total prompt tokens), time to first token, and throughput per GPU.</p><p>Example: if affinity raises prefix hit rate from 5% to 60% and cuts median time to first token from 800 ms to 300 ms, but one GPU runs at 95% while others sit at 50%, then you pay in tail latency. Watch load imbalance alongside, and keep affinity only when the net gain holds.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>nodetool cleanup</code> deletes data a node still stores but no longer owns. After a node joins, the previous owners keep their old copies of the ranges that moved, so disk usage stays high until cleanup removes them.</p><p>It rewrites SSTables, keeping only rows whose token is in the node's current ranges. Run it on each old node after the join finishes, one at a time since it uses I/O. Do not run it before the new node is fully bootstrapped, or you may delete the only copy.</p>",
+    "<p>A token-aware driver knows the ring and sends each request straight to a replica that owns the key. It hashes the partition key to a token and looks up the replicas from the cluster metadata it fetched at connect time.</p><p>That saves a network hop: without it a random node becomes coordinator and forwards the request to a replica. Example: with RF=3 on 30 nodes, a random coordinator is a replica only 10% of the time, so about 90% of requests would take an extra hop.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>For a viral object, serve it from more than one server. Detect it with request counters, then replicate it to k servers and pick one at random for each request, so no single server takes all the traffic. Add a tiny in-process cache and coalesce requests so that a flood of concurrent misses causes one origin fetch.</p><p>Example: 100,000 requests per second for one URL with k=10 copies gives about 10,000 per second per server instead of 100,000.</p>",
+    "<p>Hash again at each layer where you want an object to have one home. Common places: choosing the origin shield or parent cache so that all PoPs ask one tier for a miss, choosing which of many origin servers to fetch from, and picking a disk within one cache server so the load spreads over drives.</p><p>Each layer uses its own server set, so the rings are separate, and the same URL ends up with a stable home at every level, which keeps cache hit rates high.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A phi-accrual failure detector gives a suspicion level instead of a yes or no answer. It tracks how long heartbeats usually take to arrive and computes phi, a number that rises as the current silence becomes more unlikely given that history.</p><p>Phi near 1 means roughly a 10% chance the node is merely slow, phi 8 means about 1 in 10<sup>8</sup>. A node is marked down only past a threshold (8 in Cassandra). This adapts to a slow or jittery network better than a fixed timeout.</p>",
+    "<p>Add hysteresis, so a node must be stable before the ring changes. Use a hold-down timer (do not remove for several minutes), require several missed checks before marking down and several successes before marking up, and back off for repeated flaps.</p><p>Better still, distinguish temporary failure from removal: keep the node's tokens in the ring and use hinted handoff for short outages, and only rebalance when an operator removes the node or it stays down for hours. Rate-limit membership changes so the ring moves slowly.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Property tests for a hash ring",
+    "python": "import bisect, hashlib\n\ndef h(s):\n    return int(hashlib.md5(s.encode()).hexdigest()[:8], 16)\n\ndef build(servers, v=20):\n    ring = sorted((h(\"%s#%d\" % (s, i)), s) for s in servers for i in range(v))\n    return [t for t, _ in ring], [s for _, s in ring]\n\ndef owner(ring, key):\n    tokens, owners = ring\n    return owners[bisect.bisect_left(tokens, h(key)) % len(tokens)]\n\nkeys = [\"k%d\" % i for i in range(5000)]\nbase = [\"a\", \"b\", \"c\", \"d\"]\nr1, r2 = build(base), build(base + [\"x\"])\n# monotonicity: after adding x, a key keeps its owner or moves to x\nbad = [k for k in keys if owner(r1, k) != owner(r2, k) and owner(r2, k) != \"x\"]\nprint(\"add x: violations =\", len(bad))\n# removal: only the removed node's keys move\nr3 = build([\"a\", \"b\", \"c\"])\nbad = [k for k in keys if owner(r1, k) != \"d\" and owner(r1, k) != owner(r3, k)]\nprint(\"remove d: violations =\", len(bad))\n# determinism: the same input gives the same owner every time\nprint(\"deterministic:\", owner(r1, \"k42\") == owner(build(base), \"k42\"))\n# edge case: a single-node ring owns everything\nprint(\"single node owner:\", owner(build([\"only\"]), \"anything\"))\n"
+   },
+   "followUps": [
+    "<p>Choose more partitions than you will ever have nodes, but not so many that metadata and per-partition overhead hurt. A good rule is 10 to 100 partitions per node at your largest planned cluster, with room to grow.</p><p>Example: planning for up to 100 nodes, 100 partitions each gives 10,000, and 16384 (Redis Cluster) leaves room beyond that. Aim for partitions that stay in a manageable size range, such as 1 to 50 GB, since each is moved as a unit. If you cannot guess, use splittable partitions.</p>",
+    "<p>A tablet is a key range that is split when it grows too big or too hot. The control plane picks a split point, creates two child tablets that point at the same data first, then updates the shared map from one range to two.</p><p>To move a tablet, copy it to the target node, catch up the latest writes, then switch the map entry to the new owner and drop the old copy. Clients learn the new owner from the map or are redirected. Because only a small table changes, no key is rehashed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A golden vector file is a list of inputs with the exact owners expected, checked into the repository and used by every language implementation. Something like:</p><pre><code>{\"nodes\":[\"a\",\"b\",\"c\"],\"vnodes\":16,\n \"cases\":[{\"key\":\"user:1\",\"owner\":\"b\"},\n          {\"key\":\"\",\"owner\":\"a\"}]}</code></pre><p>Include a hash algorithm name and seed, edge keys (empty, unicode, a key equal to a token) and replica lists. Any change in hashing then fails the tests loudly.</p>",
+    "<p>Simulate a sequence of joins, leaves and failures, and check an invariant after every step. After each change, compare owners before and after for a large key set: for a join, every moved key must go to the new node, and the moved fraction should be near 1/(N+1).</p><p>Also test that replicas stay distinct, that a stale ring still gives answers, and that a reader running during a swap sees either the old or the new ring and never a mix. Run it with randomised event orders and a fixed seed so failures can be replayed.</p>"
+   ]
+  }
+ ]
+}
