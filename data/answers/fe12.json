@@ -117,6 +117,14 @@
   {
    "code": null,
    "followUps": [
+    "<p>Both come in at the start: the click is urgent, so its update gets the SyncLane, and all updates in that event are batched into one render.</p><p>The three setters in one handler queue updates with the same lane; React then renders once for that lane. A transition update would get a lower lane and render later or concurrently. Lanes are bitmasks, so React picks the highest priority bit and renders that group first.</p>",
+    "<p><code>useLayoutEffect</code> runs synchronously after the DOM is updated but before the browser paints; <code>useEffect</code> runs after paint.</p><p>So layout effects can measure the new DOM and change it before the user sees a frame, but they block painting. Passive effects do not delay the frame, which is why most work belongs there. For discrete events like clicks, React may flush passive effects early so state is consistent.</p>",
+    "<p>Look at the Profiler first: slow handlers, heavy renders or a long commit are the usual causes.</p><p>Check for one setState triggering renders of a huge subtree (fix with memo or moving state down), expensive calculations in render (useMemo), thousands of DOM nodes (virtualize), and slow layout effects that force reflow. Record a performance trace in Chrome: a 120 ms task on a click tells you whether render or commit is to blame.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
     "<p>A waterfall is when requests wait for each other one after another although they could run together, so total time is the sum of all of them.</p><p>Example: <code>const user = await getUser(); const posts = await getPosts();</code> with 200 ms each gives 400 ms; <code>Promise.all</code> gives 200 ms. Spot it in the network or tracing view as stair steps, or by timing each await with logs. Nested components that each fetch can also create waterfalls.</p>",
     "<p>Streaming lowers time to first byte but not total time: the server sends the shell at once and the slow parts later.</p><p>Without streaming, a page whose slowest query takes 2 s has TTFB of about 2 s. With streaming, the shell goes out at about 100 ms and the slow section arrives at 2 s. The user sees something sooner (better FCP and often LCP), while the whole page finishes at about the same time.</p>",
     "<p>Partial Prerendering builds the static shell at build time and serves it from the CDN instantly, then streams the dynamic parts into holes on request.</p><p>Here the layout, header and shared content come from the edge in tens of milliseconds, and the slow personalised or fresh data component sits inside Suspense and streams in. You get fast TTFB without turning the whole page into slow SSR.</p>"
