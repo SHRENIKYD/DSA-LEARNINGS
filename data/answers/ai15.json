@@ -1,0 +1,138 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Scaled dot-product attention with a causal mask",
+    "python": "import math\n\ndef softmax(row):\n    m = max(row)                      # subtract max for numeric stability\n    e = [math.exp(x - m) for x in row]\n    s = sum(e)\n    return [x / s for x in e]\n\ndef attention(Q, K, V, causal=True):\n    n, d = len(Q), len(Q[0])\n    out = []\n    for i in range(n):\n        # score = q.k / sqrt(d): scaling keeps the softmax from saturating\n        row = [sum(a * b for a, b in zip(Q[i], K[j])) / math.sqrt(d) for j in range(n)]\n        if causal:                    # causal mask: future cells get -inf\n            row = [row[j] if j <= i else float(\"-inf\") for j in range(n)]\n        w = softmax(row)              # each row sums to 1\n        # weighted average of the value vectors\n        out.append([sum(w[j] * V[j][c] for j in range(n)) for c in range(len(V[0]))])\n        print(\"token\", i, \"weights\", [round(x, 3) for x in w])\n    return out\n\nQ = [[1, 0], [0, 1], [1, 1]]\nK = [[1, 0], [0, 1], [1, 1]]\nV = [[1, 2], [3, 4], [5, 6]]\nprint(\"Q = K =\", Q, \" V =\", V)\nres = attention(Q, K, V)\nprint(\"output\", [[round(x, 3) for x in r] for r in res])\n# Time O(n^2 * d), memory O(n^2) for the score table\n"
+   },
+   "followUps": [
+    "<p>Q, K and V each have shape n x d (n tokens, d per head), so the score matrix Q&middot;K^T is n x n. Example: 4 tokens with d = 64 give Q, K, V of 4 x 64 and scores of 4 x 4.</p><p>The softmax output is also n x n, and multiplying it by V (n x d) returns an n x d result, the same shape as the input. Memory for the table grows as n&sup2;.</p>",
+    "<p>The weights would no longer describe a token's choices. Softmax over columns makes each <em>key</em>'s weights add up to 1 across the queries, instead of each query's weights adding up to 1 across the keys.</p><p>So a query's output would not be a proper weighted average of values, and token 0 in a causal model could not see just itself with weight 1. Rows must be the softmax axis because each row belongs to one query.</p>",
+    "<p>Self-attention takes Q, K and V from the same sequence; cross-attention takes Q from one sequence and K, V from another. In a translation decoder, Q comes from the target words so far and K, V from the encoder output of the source sentence.</p><p>The score matrix is then n_target x n_source, not square, and no causal mask is needed over the source. Cost is O(n_t &middot; n_s &middot; d).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>One attention block has about 4d&sup2; parameters: W_q, W_k, W_v and W_o are each d x d. The number of heads does not change this, because h heads of size d/h just split the same matrices.</p><p>Example: d = 4096 gives 4 x 4096&sup2; = 67M. Biases add only about 4d more and most modern models drop them.</p>",
+    "<p>MQA (multi-query) and GQA (grouped-query) make several query heads share key/value heads, which shrinks the KV cache. MQA uses a single K/V head for all queries; GQA uses g groups, for example 32 query heads over 8 K/V heads.</p><p>The cache gets 4x smaller in that example, and quality stays close to full multi-head attention. Only W_k and W_v shrink; W_q and W_o keep their size.</p>",
+    "<p>No, not before W_o. Each head computes attention separately inside its own d/h subspace and the heads never see each other's outputs until they are concatenated.</p><p>W_o is the first place they mix: it is a d x d matrix that combines all head outputs into one vector. The next layer's heads then read that mixed result, so information flows between heads across layers.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Counting parameters in one transformer layer",
+    "python": "def layer_params(d, ffn=\"classic\", ffn_hidden=None):\n    attn = 4 * d * d                       # Wq, Wk, Wv, Wo\n    if ffn == \"classic\":                   # up + down projection, hidden = 4d\n        mlp = 2 * d * (4 * d)\n    else:                                  # SwiGLU: three matrices\n        mlp = 3 * d * ffn_hidden\n    return attn, mlp\n\nd, layers, vocab = 4096, 32, 32000\nattn, mlp = layer_params(d)\nprint(\"classic: attn\", attn, \"mlp\", mlp, \"total\", attn + mlp, \"(12 d^2 =\", 12 * d * d, \")\")\na2, m2 = layer_params(d, \"swiglu\", 14336)\nprint(\"swiglu : attn\", a2, \"mlp\", m2, \"total\", a2 + m2)\nbody = layers * (a2 + m2)\nemb = vocab * d                            # token embedding table\nprint(\"32 layers body: %.2fB\" % (body / 1e9))\nprint(\"with embedding + untied output head: %.2fB\" % ((body + 2 * emb) / 1e9))\nprint(\"MLP share of a layer: %.0f%%\" % (100 * m2 / (a2 + m2)))\n# Counting is O(1): it is just arithmetic on d, layers and vocab\n"
+   },
+   "followUps": [
+    "<p>Embeddings add vocab x d parameters on top of the layers. With vocab 32,000 and d = 4096 that is 131M, or 262M if the output head is not tied to the input table.</p><p>For a 7B model that is only a few percent, but for small models it matters: at d = 512 and vocab 50,000 the embedding is 25.6M, a large share of the total. Position tables, if learned, add max_len x d.</p>",
+    "<p>GQA only shrinks W_k and W_v. With 32 query heads, 8 KV heads and d_head = 128, each of those becomes d x 1024 instead of d x 4096.</p><p>Attention drops from 4d&sup2; to d&sup2;(2 + 2 x 8/32) = 2.5d&sup2;, saving 1.5d&sup2; (25M at d = 4096) per layer. The MLP is unchanged, so the layer total changes by only a few percent.</p>",
+    "<p>About 2 FLOPs per parameter per token, so roughly 2 x the non-embedding parameter count. A 7B model costs around 14 GFLOPs per token. That is one multiply and one add per weight.</p><p>On top comes the attention score work, about 4 x n x d per layer for a context of n tokens, which only matters for long contexts. Training costs about 3x the forward pass, which gives the 6ND rule.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "RoPE: scores depend only on relative offset",
+    "python": "import math\n\ndef rope(vec, pos, base=10000.0):\n    # rotate each (x, y) pair by angle pos * theta_i\n    out = []\n    for i in range(0, len(vec), 2):\n        theta = base ** (-i / len(vec))\n        a = pos * theta\n        x, y = vec[i], vec[i + 1]\n        out += [x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a)]\n    return out\n\ndef dot(u, v):\n    return sum(a * b for a, b in zip(u, v))\n\nq = [1.0, 0.5, -0.3, 0.8]\nk = [0.2, -1.0, 0.7, 0.4]\nprint(\"q =\", q, \" k =\", k)\n# The score depends only on the offset m - n, not on absolute positions\nfor m, n in [(5, 2), (15, 12), (103, 100)]:\n    s = dot(rope(q, m), rope(k, n))\n    print(\"positions\", m, n, \"offset\", m - n, \"score %.6f\" % s)\nprint(\"norm before %.4f after %.4f\" % (math.sqrt(dot(q, q)), math.sqrt(dot(rope(q, 50), rope(q, 50)))))\n# Cost O(d) per vector, no learned parameters\n"
+   },
+   "followUps": [
+    "<p>Because the dot product Q&middot;K is the only place position needs to matter, and rotating just Q and K makes that score depend on the offset. V is what gets averaged and passed on; rotating it would contaminate the content.</p><p>Rotating the output would also break the clean identity R(m)^T R(n) = R(n-m) that RoPE relies on. So V stays unrotated.</p>",
+    "<p>Rescale the positions or the angles, then fine-tune briefly. Position interpolation divides every position by 8 (32k / 4k), so position 30,000 acts like 3,750 which the model has seen.</p><p>NTK-aware scaling raises the base instead, so high-frequency pairs keep their local detail. YaRN mixes both per frequency. A short fine-tune on long text (a few hundred steps) fixes the remaining mismatch.</p>",
+    "<p>The base sets the range of wavelengths across the pairs. Pair i rotates at theta_i = base^(-2i/d), so the first pair turns fast (about 1 radian per token) and the last pair turns very slowly.</p><p>With base 10000 the slowest pair needs about 62,800 tokens per full turn, so it can tell far-apart positions. A bigger base means longer wavelengths; that is the lever NTK-aware scaling pulls.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "KV cache size: MHA vs GQA",
+    "python": "def kv_bytes_per_token(layers, kv_heads, d_head, bytes_per=2):\n    return 2 * layers * kv_heads * d_head * bytes_per   # 2 = K and V\n\nGIB = 1024 ** 3\nlayers, d_head = 32, 128\nfor name, kv_heads in [(\"MHA 32 kv heads\", 32), (\"GQA 8 kv heads\", 8)]:\n    per_tok = kv_bytes_per_token(layers, kv_heads, d_head)\n    print(name, \"->\", per_tok / 1024, \"KiB per token\")\n    for seq in (2048, 8192, 32768):\n        print(\"   seq\", seq, \"one user: %.2f GiB\" % (per_tok * seq / GIB))\n\n# Simulated cache: append one K/V entry per generated token\ncache = []\ntokens = [\"The\", \"cat\", \"sat\"]\nfor t in tokens:\n    cache.append((t, \"K\", \"V\"))          # old entries are never recomputed\n    print(\"step\", len(cache), \"cache holds\", [c[0] for c in cache])\n# Memory is O(seq_len * batch); each step reads the whole cache\n"
+   },
+   "followUps": [
+    "<p>Q is used only once, for the current token, and then thrown away. K and V of old tokens are needed again at every later step, because every new query attends to them.</p><p>Caching Q would save nothing since the next step has a brand-new query. Skipping the K/V cache costs O(n) recomputation per step, so O(n&sup2;) in total instead of O(n).</p>",
+    "<p>PagedAttention stores the KV cache in small fixed-size blocks (for example 16 tokens) that need not be next to each other in memory, like pages in an operating system. A table maps a sequence to its blocks.</p><p>This removes fragmentation and over-reservation: instead of reserving 8k tokens per user up front, memory is given out as tokens appear. Waste falls from a large share to a few percent, and shared prompts can reuse blocks.</p>",
+    "<p>Time-to-first-token (TTFT) is the prefill: the prompt is processed at once and the cache is filled, which is compute-bound and grows with prompt length. Inter-token latency is each decode step, which is memory-bound and reads the whole cache.</p><p>A bigger cache makes every decode step slower, since it reads the weights plus all K and V. Prefix caching skips prefill for a shared prompt, cutting TTFT.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why decode is memory-bound: tokens/s vs batch",
+    "python": "def decode_tokens_per_sec(params_b, bytes_per_param, bandwidth_tb_s, batch=1):\n    weight_bytes = params_b * 1e9 * bytes_per_param\n    # each step streams all weights once, shared by the whole batch\n    steps_per_sec = bandwidth_tb_s * 1e12 / weight_bytes\n    return steps_per_sec * batch\n\nbw = 3.35                                 # TB/s of HBM\nprint(\"7B model, fp16 (14 GB), bandwidth\", bw, \"TB/s\")\nfor batch in (1, 8, 32, 128):\n    print(\"batch %3d -> %7.0f tokens/s total, %5.0f per user\" %\n          (batch, decode_tokens_per_sec(7, 2, bw, batch), decode_tokens_per_sec(7, 2, bw)))\n# Arithmetic intensity: FLOPs per byte of weight read\nflops_per_param = 2                       # one multiply + one add\nfor batch in (1, 8, 64, 300):\n    intensity = flops_per_param * batch / 2   # fp16 = 2 bytes per weight\n    print(\"batch\", batch, \"intensity %.0f FLOP/byte\" % intensity,\n          \"-> compute-bound\" if intensity >= 300 else \"-> memory-bound\")\n# Ridge point ~300 FLOP/byte for an H100-class GPU (approximate)\n"
+   },
+   "followUps": [
+    "<p>Batching lets many requests share one read of the weights. A decode step streams all 14 GB of a 7B fp16 model once, whether it serves 1 user or 64.</p><p>So throughput rises almost linearly with batch size until the GPU becomes compute-bound (see the program: 239 tokens/s per stream, 7,657 total at batch 32). The cost is that each user's KV cache also adds memory reads, and latency rises slowly.</p>",
+    "<p>A small draft model guesses several next tokens cheaply, and the big model checks all of them in one pass. Accepted tokens cost one big-model step for several outputs.</p><p>Example: the draft proposes 4 tokens and 3 match what the big model would pick; you get 3 or 4 tokens for one weight read. The output distribution is unchanged, because rejected guesses are resampled correctly. Speed-up is often 2 to 3x.</p>",
+    "<p>When the batch is big enough that each weight byte is reused about as many times as the GPU's FLOPs-per-byte ratio. For an H100 in fp16 that ridge point is roughly 300, so batches around a few hundred.</p><p>In practice KV-cache reads and memory capacity stop you earlier, so large-batch decode is limited by the attention reads, which scale with each sequence's own length and do not get shared.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Symmetric int4/int8 quantization and outliers",
+    "python": "import random\n\ndef quantize(w, bits):\n    qmax = 2 ** (bits - 1) - 1            # 127 for int8, 7 for int4\n    scale = max(abs(x) for x in w) / qmax # absmax scaling\n    q = [max(-qmax, min(qmax, round(x / scale))) for x in w]\n    return q, scale\n\ndef mse(a, b):\n    return sum((x - y) ** 2 for x, y in zip(a, b)) / len(a)\n\nrandom.seed(1)\nw = [random.gauss(0, 0.02) for _ in range(256)]\nprint(\"first 4 weights\", [round(x, 4) for x in w[:4]])\nfor bits in (8, 4):\n    q, s = quantize(w, bits)\n    deq = [v * s for v in q]              # dequantize: w' = q * scale\n    print(\"int%d scale %.5f q[:4]=%s max err %.5f (bound %.5f) mse %.2e\" %\n          (bits, s, q[:4], max(abs(a - b) for a, b in zip(w, deq)), s / 2, mse(w, deq)))\n\nw[0] = 1.0                                 # one outlier inflates absmax\nq, s = quantize(w, 4)\nprint(\"with outlier, int4 whole tensor mse %.2e\" % mse(w, [v * s for v in q]))\ng = 64                                     # group-wise: one scale per 64 weights\nerr = 0\nfor i in range(0, len(w), g):\n    q, s = quantize(w[i:i + g], 4)\n    err += mse(w[i:i + g], [v * s for v in q]) * g\nprint(\"with outlier, int4 group-64 mse %.2e\" % (err / len(w)))\n"
+   },
+   "followUps": [
+    "<p>Weight-only quantization stores weights in int8 or int4 but computes in fp16, so it saves memory and bandwidth. Activation quantization also converts inputs to int8, so the matrix multiply itself can run on faster integer units.</p><p>Activations are harder: they have large outliers in some channels, and their range changes per input. That is why 4-bit weight-only (W4A16) is common for decode, and W8A8 is used where compute matters.</p>",
+    "<p>Asymmetric quantization maps a range [min, max] to the integers using a scale and a zero point: q = round(w/scale) + z. The zero point shifts the grid so that 0.0 is representable.</p><p>It helps when values are not centred, for example after ReLU where everything is at least 0: symmetric int8 would waste half of its 255 levels on negative numbers. Cost is one extra integer per group.</p>",
+    "<p>Compare against the original on the real task, not only on error numbers. Check perplexity on held-out text first (a rise of about 0.05 to 0.2 is typical for 4-bit), then task benchmarks and your own regression prompts.</p><p>Also watch long contexts, code, maths and non-English text, which break first, and measure speed and memory. Per-layer error plots help find a layer that needs higher precision.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Chinchilla-optimal sizing from a compute budget",
+    "python": "import math\n\ndef optimal(compute_flops):\n    # C = 6 N D with D = 20 N  ->  C = 120 N^2\n    n = math.sqrt(compute_flops / 120)\n    return n, 20 * n\n\nfor c in (1e21, 5.76e23, 1e25):\n    n, d = optimal(c)\n    print(\"compute %.2e FLOPs -> N = %.1fB params, D = %.2fT tokens\" % (c, n / 1e9, d / 1e12))\n\n# Chinchilla vs Gopher: same compute, different split\nfor name, n, d in [(\"Gopher 280B\", 280e9, 300e9), (\"Chinchilla 70B\", 70e9, 1.4e12)]:\n    print(name, \"compute %.2e\" % (6 * n * d), \"tokens per param %.1f\" % (d / n))\n\n# Over-training a small model: tokens per parameter far above 20\nn, d = 8e9, 15e12\nprint(\"8B on 15T tokens: %.0f tokens/param, %.1fx the Chinchilla token count\" % (d / n, d / (20 * n)))\nprint(\"training compute 6ND = %.2e FLOPs\" % (6 * n * d))\n# The formulas are O(1) arithmetic\n"
+   },
+   "followUps": [
+    "<p>Per token, the forward pass costs about 2N FLOPs (a multiply and an add per parameter) and the backward pass about 4N, because it computes gradients for both activations and weights. That is 6N per token.</p><p>Over D tokens the total is 6ND. Example: N = 70B, D = 1.4T gives 6 x 7e10 x 1.4e12 = 5.9e23 FLOPs. It ignores attention-score work, which is small for short contexts.</p>",
+    "<p>Because training is paid once but serving is paid for every request. A small model trained on far more tokens is a bit worse per training FLOP, yet it is cheaper to run billions of times.</p><p>Example: an 8B model on 15T tokens (about 1,900 tokens per parameter) beats a Chinchilla-sized 8B (160B tokens) at the same inference price. The extra training compute is repaid by the lower serving cost.</p>",
+    "<p>Quality text is finite: public web text is roughly tens of trillions of tokens, and repeating data gives diminishing returns after a few epochs. Synthetic data and multimodal data help but add noise risks.</p><p>Energy and hardware also bind: a 1e26 FLOP run needs tens of thousands of GPUs and tens of megawatts for months. Returns follow a power law, so each 10x of compute buys a smaller loss drop.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Top-k MoE routing and load balance",
+    "python": "import math\n\ndef softmax(xs):\n    m = max(xs)\n    e = [math.exp(x - m) for x in xs]\n    s = sum(e)\n    return [v / s for v in e]\n\ndef route(logits, k):\n    # pick the top-k experts, then softmax over only those logits\n    top = sorted(range(len(logits)), key=lambda i: -logits[i])[:k]\n    gates = softmax([logits[i] for i in top])\n    return dict(zip(top, gates))\n\nexperts = 4\ntokens = {  # router logits for 6 tokens over 4 experts\n    \"t0\": [2.0, 0.1, 0.0, 0.3], \"t1\": [1.8, 0.2, 0.1, 0.0], \"t2\": [2.2, 0.0, 0.4, 0.1],\n    \"t3\": [0.1, 1.5, 0.2, 1.4], \"t4\": [1.9, 0.3, 0.0, 0.2], \"t5\": [0.0, 0.2, 1.7, 0.1]}\nload = [0] * experts\nfor name, lg in tokens.items():\n    r = route(lg, 2)\n    for e in r:\n        load[e] += 1\n    print(name, {e: round(g, 2) for e, g in r.items()})\nprint(\"tokens per expert\", load, \"(even would be\", 6 * 2 / experts, \")\")\n# Switch-style balance loss: E * sum(fraction_i * mean_prob_i), minimal when uniform\nfrac = [l / sum(load) for l in load]\nprob = [sum(softmax(lg)[e] for lg in tokens.values()) / len(tokens) for e in range(experts)]\nprint(\"balance loss %.3f (uniform would be 1.000)\" % (experts * sum(f * p for f, p in zip(frac, prob))))\n"
+   },
+   "followUps": [
+    "<p>Because only the FFN is multiplied by the number of experts. Attention, embeddings and norms are shared once. Mixtral 8x7B has 8 expert FFNs per layer but one attention block, giving 46.7B total, not 8 x 7 = 56B.</p><p>Only 2 of 8 experts run per token, so the active size is about 12.9B: shared parts plus 2 expert FFNs.</p>",
+    "<p>Instead of a few big experts, the layer uses many smaller ones, such as 64 experts each a quarter of the usual size, and routes each token to more of them (for example 6). The same compute is spread over more specialised pieces.</p><p>This gives more combinations: choosing 2 of 8 gives 28 options, choosing 6 of 64 gives about 75 million. Some designs keep a few shared experts that every token uses.</p>",
+    "<p>Count only the active parameters, not the total. Per token the forward cost is about 2 x active parameters, and training is about 6 x active x tokens.</p><p>Example: Mixtral has 12.9B active, so training on 1T tokens costs about 6 x 1.29e10 x 1e12 = 7.7e22 FLOPs, far less than a 46.7B dense model. Memory, communication and the router add overhead that FLOPs do not show.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Online softmax: tiled result equals the full result",
+    "python": "import math\n\ndef softmax_full(xs):\n    m = max(xs)\n    e = [math.exp(x - m) for x in xs]\n    return [v / sum(e) for v in e]\n\ndef online_attention(scores, values, tile=2):\n    m, l, acc = float(\"-inf\"), 0.0, 0.0   # running max, running sum, running weighted sum\n    for s in range(0, len(scores), tile):\n        sc, vs = scores[s:s + tile], values[s:s + tile]\n        new_m = max(m, max(sc))\n        scale = math.exp(m - new_m) if m != float(\"-inf\") else 0.0  # rescale old stats\n        l *= scale\n        acc *= scale\n        for x, v in zip(sc, vs):\n            p = math.exp(x - new_m)\n            l += p\n            acc += p * v\n        m = new_m\n        print(\"tile\", s // tile, \"max\", m, \"sum %.4f\" % l)\n    return acc / l\n\nscores = [1.0, 3.0, 0.5, 5.0, 2.0, 4.0]\nvalues = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]\nw = softmax_full(scores)\nexact = sum(a * b for a, b in zip(w, values))\nstreamed = online_attention(scores, values)\nprint(\"full softmax result  \", round(exact, 6))\nprint(\"tiled online result  \", round(streamed, 6))\n# Same answer, but only one tile of scores is held at a time: O(tile) memory\n"
+   },
+   "followUps": [
+    "<p>Because the softmax denominator and the running sum were built with an older, smaller maximum. When a new tile has a bigger max, the old exp(x - m_old) values are too large by the factor exp(m_new - m_old).</p><p>Multiplying the old sum and the old accumulator by exp(m_old - m_new) puts them on the same scale. The program shows this: the tile with max 5 shrinks the earlier sum before adding to it.</p>",
+    "<p>FlashAttention-3 targets H100 GPUs: it overlaps data movement with compute using asynchronous copy (TMA) and tensor-core instructions, runs the softmax in step with the matrix multiplies, and supports fp8 with careful scaling.</p><p>The result is roughly 1.5 to 2x faster than FlashAttention-2 on H100, reaching a much higher share of peak FLOPs. The maths stays the same.</p>",
+    "<p>They solve different problems and are used together. FlashAttention speeds up the attention computation by keeping tiles in on-chip memory; PagedAttention manages where the KV cache lives in GPU memory.</p><p>FlashAttention reduces memory traffic inside a kernel, while PagedAttention reduces wasted cache memory across many requests. Serving engines run a paged-cache version of the FlashAttention kernel.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Models use information at the start and the end of a long prompt better than information in the middle. Accuracy on a fact placed at the middle of a 100k prompt can fall well below the same fact at the edges.</p><p>Causes include attention biased toward early tokens and the end, and training data where key content sits at the edges. Mitigations: put the key facts first or last, retrieve fewer, better passages, and train on long-range tasks.</p>",
+    "<p>Prefill is compute-bound, and attention work grows with n&sup2;. Linear parts cost about 2 x N x n FLOPs: for a 7B model at 128k tokens that is 2 x 7e9 x 1.28e5 = 1.8e15 FLOPs.</p><p>Attention adds about 4 x layers x d x n&sup2; = 4 x 32 x 4096 x 1.6e10 = 8.4e15 FLOPs, so attention dominates. On one GPU doing roughly 4e14 FLOPs/s effectively, that is around 25 seconds. At 1M tokens attention grows 61x.</p>",
+    "<p>The main ones are state-space models (Mamba), linear attention and RNN-like designs such as RWKV, which keep a fixed-size state so each token costs O(1) memory. Sliding-window attention caps the look-back range.</p><p>Hybrids mix a few full-attention layers with many state-space or window layers. They cut cache size a lot but can lose precise recall of an exact earlier detail, which attention does well.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "GPU memory planning for a 70B model",
+    "python": "def kv_per_token(layers, kv_heads, d_head, bytes_per):\n    return 2 * layers * kv_heads * d_head * bytes_per\n\nGB = 1e9\ngpus, gpu_mem, reserve = 8, 80, 0.10\nusable = gpus * gpu_mem * (1 - reserve)\nprint(\"usable memory %.0f GB across %d GPUs\" % (usable, gpus))\nctx = 32768\nfor name, wb, kvb in [(\"fp16\", 2, 2), (\"fp8 weights+KV\", 1, 1)]:\n    weights = 70e9 * wb / GB\n    per_user = kv_per_token(80, 8, 128, kvb) * ctx / GB\n    users = int((usable - weights) // per_user)\n    print(\"%-15s weights %.0f GB, KV/user (32k) %.1f GB -> %d users\" % (name, weights, per_user, users))\n# Per-step decode latency floor: bytes read / aggregate bandwidth\nbw = gpus * 3.35e12\nprint(\"weights-only step (fp16): %.1f ms\" % (140e9 / bw * 1000))\nusers = 40\nprint(\"with %d users' KV also read: %.1f ms\" % (users, (140e9 + users * kv_per_token(80, 8, 128, 2) * ctx) / bw * 1000))\n# Planning is O(1) arithmetic; the load test provides the real numbers\n"
+   },
+   "followUps": [
+    "<p>Disaggregation runs prefill and decode on separate GPU pools. Prefill is compute-bound and bursty; decode is memory-bound and latency-sensitive, so mixing them makes decode steps stall behind long prompts.</p><p>The prefill pool processes the prompt, then sends the KV cache over a fast link to a decode pool. You can size and tune each pool separately, which improves tail latency, at the cost of the cache transfer (a 32k-token cache is about 10 GiB).</p>",
+    "<p>Memory is set by total parameters, compute by active parameters. All experts must be resident, so a 47B MoE needs the memory of a 47B model but decodes with about a 13B model's compute.</p><p>You also need expert parallelism: experts are spread across GPUs and tokens travel between them (all-to-all). At small batches few experts are hit, so the decode read per step is lower, but a big batch touches nearly all experts.</p>",
+    "<p>Divide the GPU cost per hour by the tokens produced per hour. Example: 8 GPUs at an assumed $2 per GPU-hour is $16 per hour; at 3,000 output tokens/s the node makes 10.8M tokens per hour, so about $1.50 per million output tokens.</p><p>Input tokens are cheaper because prefill is more efficient, so price them separately. Utilisation matters most: idle capacity at half load doubles the unit cost.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>About 1M-token prefill costs tens of minutes of GPU time on one device for a 7B model, because attention work grows with n&sup2;. At 128k it is roughly 25 s, and 1M tokens is 61 times as much attention work.</p><p>Parallelising across 8 GPUs with context parallelism brings it down to minutes. Prefix caching helps only if the same long prefix is reused.</p>",
+    "<p>Choose RAG when the corpus is much bigger than the window, changes often, or you need citations and access control. Retrieving 5 relevant passages of 500 tokens costs far less than sending 1M tokens on every request.</p><p>Choose long context when the task needs the whole document at once, such as summarising a contract or tracing a bug across files. Many systems combine both: retrieve, then reason over a moderately long context.</p>",
+    "<p>They replace the growing cache with a fixed-size state, so memory per sequence stays constant and each decode step costs O(1) in context length. A 1M-token stream needs no 100 GiB cache.</p><p>The trade-off is lossy memory: the state compresses history, so exact recall of one earlier fact can fail. Hybrids keep a few attention layers for precise lookup and use state-space layers for the rest, which gets most of the saving with less quality loss.</p>"
+   ]
+  }
+ ]
+}

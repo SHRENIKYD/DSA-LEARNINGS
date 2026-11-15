@@ -1,0 +1,132 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Base rate: P(sick | positive) by counting people",
+    "python": "# Base-rate fallacy: P(sick | positive) by counting people\npopulation = 10000\nprevalence = 0.01      # 1% are sick\nsensitivity = 0.99     # test catches 99% of sick people\nfpr = 0.05             # 5% of healthy people test positive\n\nsick = population * prevalence\nhealthy = population - sick\ntrue_pos = sick * sensitivity      # sick and positive\nfalse_pos = healthy * fpr          # healthy but positive\n\nprint(\"sick:\", sick, \"healthy:\", healthy)\nprint(\"true positives:\", true_pos, \"false positives:\", false_pos)\n# Bayes: share of positives that are really sick\nprint(\"P(sick | positive) = %.3f\" % (true_pos / (true_pos + false_pos)))\n\n# Same test on a higher-risk group (10% prevalence)\nfor prev in (0.001, 0.01, 0.10, 0.50):\n    tp = prev * sensitivity\n    fp = (1 - prev) * fpr\n    print(\"prevalence %.3f -> posterior %.3f\" % (prev, tp / (tp + fp)))\n"
+   },
+   "followUps": [
+    "<p>Make the test better or test people who are more likely to be sick. Cutting the false-positive rate from 5% to 1% gives 99 / (99 + 99) = 50%. Testing a group with 10% prevalence gives about 69%. A second independent test also works: after one positive the sick odds are 1 to 5, and a likelihood ratio of 0.99/0.05 = 19.8 lifts them to about 3.96 to 1, roughly 80%. The tests must be truly independent.</p>",
+    "<p>The posterior is precision. Precision = TP / (TP + FP) = 99 / 594 = 16.7%, while recall (sensitivity) = 99%. The test finds almost everyone who is sick, but most of its alarms are false because healthy people vastly outnumber sick ones. When the positive class is rare, precision falls even at a high recall, so report precision and recall (or precision-recall curves) rather than accuracy.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Dividing by n vs n-1 in sample variance",
+    "python": "# Population vs sample variance, and why n-1 removes the bias\nimport random, statistics\n\ndata = [2, 4, 4, 4, 5, 5, 7, 9]\nprint(\"data:\", data)\nprint(\"pvariance (n):   \", statistics.pvariance(data))\nprint(\"variance  (n-1): \", round(statistics.variance(data), 4))\n\n# Simulate: true population variance is 1 (standard normal)\nrandom.seed(1)\nn, trials = 5, 20000\nsum_n = sum_n1 = 0.0\nfor _ in range(trials):\n    s = [random.gauss(0, 1) for _ in range(n)]\n    m = sum(s) / n                       # mean fitted to the same data\n    ss = sum((x - m) ** 2 for x in s)    # squared deviations from sample mean\n    sum_n += ss / n\n    sum_n1 += ss / (n - 1)\nprint(\"true variance: 1.0\")\nprint(\"average of divide-by-n:     %.3f (too small)\" % (sum_n / trials))\nprint(\"average of divide-by-(n-1): %.3f (about right)\" % (sum_n1 / trials))\n"
+   },
+   "followUps": [
+    "<p>No, it is slightly biased low. The n &minus; 1 fix makes s&sup2; unbiased, but the square root is concave, so E[s] &lt; &sigma; (Jensen's inequality). For n = 5 the sample SD averages about 0.94&sigma;; for n = 30 about 0.99&sigma;. There is no simple exact correction for all distributions, and the bias is usually ignored because it shrinks quickly as n grows.</p>",
+    "<p>It matters when n is small. With n = 5, dividing by n instead of n &minus; 1 underestimates the variance by 20% (the average is 4/5 of the truth, as the program shows). With n = 10,000 the two differ by 0.01%, so nothing changes. It also matters for mismatched libraries: np.var uses n and pandas uses n &minus; 1, so tiny groups give different numbers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A type I error is a false positive: you reject a true null, for example shipping a change that does nothing. Its rate is &alpha;, often 5%. A type II error is a false negative: you fail to reject a false null and miss a real improvement. Its rate is &beta;, and power is 1 &minus; &beta;. Example: with &alpha; = 0.05, about 1 in 20 do-nothing changes will look like wins. Lowering &alpha; for a fixed sample raises &beta;.</p>",
+    "<p>A Bayesian test reports a probability about the effect directly, such as \"B is better than A with probability 94%\", plus a credible interval and expected loss if you pick the wrong variant. It does not give a p-value. You still need a decision rule fixed in advance (for example ship if P(B&gt;A) &gt; 95% and expected loss &lt; 0.1%), and the result depends on the prior you chose.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Treat it as a sample ratio mismatch and do not trust the result until you find the cause. With 10,000 users, 5,200 vs 4,800 is z = (5,200 &minus; 5,000) / 50 = 4, p &asymp; 0.00006, far too unlikely for chance. Typical causes are bot filtering that hits one arm, a redirect that loses users, or logging bugs. Fix the assignment or logging, then rerun.</p>",
+    "<p>CUPED uses a pre-experiment measurement of the same user, such as last month's spend, to remove noise. Compute &theta; = cov(X, Y) / var(X) and use Y' = Y &minus; &theta;(X &minus; mean X). The variance shrinks by a factor of (1 &minus; &rho;&sup2;), so a correlation of 0.7 cuts it by about 51%. That means the same power with roughly half the users, or a shorter test.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Peeking at an A/B test inflates false positives",
+    "python": "# Peeking: stop the first time |z| > 1.96 under a true null\nimport random, math\n\nrandom.seed(7)\ntrials, looks, per_look = 2000, 20, 50   # 20 looks, 50 users per look\npeek_fp = 0\nfor _ in range(trials):\n    total = 0.0\n    stopped = False\n    for k in range(1, looks + 1):\n        # each user adds a standard normal score (no real effect)\n        total += sum(random.gauss(0, 1) for _ in range(per_look))\n        z = total / math.sqrt(k * per_look)\n        if abs(z) > 1.96:\n            stopped = True            # a peeker would stop and ship here\n            break\n    if stopped:\n        peek_fp += 1\nprint(\"true effect = 0, nominal alpha = 0.05\")\nprint(\"false positives, 1 look at the end: ~0.05 (by design)\")\nprint(\"false positives, peeking %d times: %.3f\" % (looks, peek_fp / trials))\n"
+   },
+   "followUps": [
+    "<p>Run many experiments where the true effect is zero, check after every batch and count how often |z| exceeds 1.96 at least once. The program above uses a fixed seed and 20 looks of 50 users each, and about 25% of runs end in a false positive instead of 5%.</p><pre><code>for each trial:\n  total = 0\n  for k in 1..20:\n    total += sum of 50 random N(0,1)\n    z = total / sqrt(k*50)\n    if |z| &gt; 1.96: count++ ; break</code></pre>",
+    "<p>Mostly no for harm checks, but yes if you use them to declare a winner. Watching guardrails (errors, latency, crashes) to stop a bad experiment early is sensible, and you accept a few extra false alarms. But each look still adds chances to cross a threshold, so use stricter sequential bounds or one-sided limits. Never use repeated looks at a guardrail to claim a metric is \"safe\" without enough power.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The kidney-stone data is the classic case. Treatment A cures 93% (81 of 87) of small stones and 73% (192 of 263) of large ones. Treatment B cures 87% (234 of 270) and 69% (55 of 80). A wins in both groups, yet overall A scores 273/350 = 78% against B's 289/350 = 83%. A was given mostly to hard large stones, so the group mix reverses the total. Always compare within segments.</p>",
+    "<p>A holdout is a small group (for example 1 to 5% of users) that never receives the feature, even after launch. A short test cannot show long-term effects, such as novelty wearing off, effects that build up over months, or interference with other features. Comparing the exposed users with the holdout months later measures the true cumulative impact. The cost is a small share of users missing out.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Binomial vs normal approximation with continuity correction",
+    "python": "# Binomial vs normal approximation: 100 fair flips, P(X >= 60)\nimport math\n\nn, p, k = 100, 0.5, 60\nexact = sum(math.comb(n, i) * p**i * (1 - p)**(n - i) for i in range(k, n + 1))\n\ndef phi(z):                      # standard normal CDF\n    return 0.5 * (1 + math.erf(z / math.sqrt(2)))\n\nmu = n * p\nsigma = math.sqrt(n * p * (1 - p))\nno_corr = 1 - phi((k - mu) / sigma)\nwith_corr = 1 - phi((k - 0.5 - mu) / sigma)   # continuity correction\n\nprint(\"n=%d p=%.1f mean=%.1f sd=%.2f\" % (n, p, mu, sigma))\nprint(\"exact binomial P(X>=60):   %.4f\" % exact)\nprint(\"normal, no correction:     %.4f\" % no_corr)\nprint(\"normal, continuity corr.:  %.4f\" % with_corr)\n"
+   },
+   "followUps": [
+    "<p>Use Poisson when n is large and p is tiny, so the mean np is small (below about 10) and the count is of rare events. Example: n = 1,000 and p = 0.003 gives &lambda; = 3. P(X = 0) is 0.997^1000 = 0.0496 exactly and e^&minus;3 = 0.0498 with Poisson, while the normal approximation is poor at such a small mean. Typical uses are counting errors per day or requests per second.</p>",
+    "<p>The normal curve is symmetric, but a binomial with p near 0 or 1 is lopsided with a long tail on one side. With n = 20 and p = 0.05 the mean is 1 and SD is 0.97, so the normal puts about 15% of its mass below zero, where a count cannot go. That is why you need np &ge; 10 and n(1 &minus; p) &ge; 10. More skew needs a bigger n before the central limit theorem takes over.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Bootstrap interval for F1",
+    "python": "# Bootstrap 95% interval for F1 (resample the eval examples)\nimport random\n\nrandom.seed(3)\n# (true_label, predicted_label) for 40 examples\ngold = [1] * 15 + [0] * 25\npred = [1] * 11 + [0] * 4 + [1] * 5 + [0] * 20\npairs = list(zip(gold, pred))\n\ndef f1(items):\n    tp = sum(1 for g, p in items if g == 1 and p == 1)\n    fp = sum(1 for g, p in items if g == 0 and p == 1)\n    fn = sum(1 for g, p in items if g == 1 and p == 0)\n    return 2 * tp / (2 * tp + fp + fn) if tp else 0.0\n\nprint(\"F1 on the sample: %.3f\" % f1(pairs))\nscores = []\nfor _ in range(2000):\n    resample = [random.choice(pairs) for _ in pairs]   # with replacement\n    scores.append(f1(resample))\nscores.sort()\nlo, hi = scores[int(0.025 * len(scores))], scores[int(0.975 * len(scores))]\nprint(\"95%% bootstrap interval: [%.3f, %.3f]\" % (lo, hi))\n"
+   },
+   "followUps": [
+    "<p>Because both models are scored on the same resampled examples, hard examples hurt both models in the same way, and that shared noise cancels in the difference. In symbols, Var(A &minus; B) = Var(A) + Var(B) &minus; 2Cov(A, B), and the covariance is large and positive when models make similar mistakes. Example: if two models differ on only 5 of 500 items, the paired interval is narrow, while two separate intervals may overlap widely.</p>",
+    "<p>It fails with very small samples (n below about 20 to 30), for statistics at the extreme such as the maximum, with heavy tails or infinite variance, and with dependent data when you resample the wrong unit. It also breaks on rare classes: if only 3 of 200 examples are positive, many resamples contain none and F1 becomes undefined. Use stratified resampling, grouped resampling or an exact method instead.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Entropy, cross-entropy and KL divergence",
+    "python": "# Entropy, cross-entropy and KL divergence in bits\nimport math\n\ndef entropy(p):\n    return -sum(x * math.log2(x) for x in p if x > 0)\n\ndef cross_entropy(p, q):\n    return -sum(x * math.log2(y) for x, y in zip(p, q) if x > 0)\n\nP = [0.5, 0.25, 0.25]      # true distribution\nQ = [0.4, 0.4, 0.2]        # model\nH = entropy(P)\nCE = cross_entropy(P, Q)\nprint(\"P =\", P, \" Q =\", Q)\nprint(\"entropy H(P)         = %.4f bits\" % H)\nprint(\"cross-entropy H(P,Q) = %.4f bits\" % CE)\nprint(\"KL(P||Q) = H(P,Q)-H(P) = %.4f bits\" % (CE - H))\nprint(\"KL(Q||P)             = %.4f bits (not symmetric)\" % (cross_entropy(Q, P) - entropy(Q)))\nprint(\"fair coin entropy    = %.4f bits\" % entropy([0.5, 0.5]))\n# One-hot label: cross-entropy is just -log2(q[correct])\nprint(\"one-hot, q=0.8 -> %.4f bits\" % cross_entropy([1, 0, 0], [0.8, 0.1, 0.1]))\n"
+   },
+   "followUps": [
+    "<p>RLHF optimises the model for a reward, and without a brake it learns to exploit the reward model with odd, repetitive text. A penalty &beta; &middot; KL(&pi; || &pi;_ref) keeps the tuned policy close to the original reference model, so language quality and general ability survive. A larger &beta; means safer but smaller gains; a smaller &beta; allows bigger gains but more reward hacking.</p>",
+    "<p>Perplexity is the exponential of the average cross-entropy per token, so it is the model's effective number of equally likely choices. Example: a cross-entropy of 2 nats per token gives e&sup2; = 7.39, as if the model chose among about 7.4 tokens each step. With bits use 2 to the power of the cross-entropy. Lower is better, but only compare models that use the same tokenizer and test text.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Temperature reshapes the softmax",
+    "python": "# Temperature: softmax(logits / T)\nimport math\n\ndef softmax(logits, T=1.0):\n    scaled = [z / T for z in logits]\n    m = max(scaled)                          # subtract max for stability\n    exps = [math.exp(z - m) for z in scaled]\n    s = sum(exps)\n    return [e / s for e in exps]\n\ndef entropy(p):\n    return -sum(x * math.log(x) for x in p if x > 0)\n\nlogits = [2.0, 1.0, 0.0]\nprint(\"logits:\", logits)\nfor T in (0.1, 0.5, 1.0, 2.0, 5.0):\n    p = softmax(logits, T)\n    print(\"T=%-3s probs=%s entropy=%.3f\" %\n          (T, [round(x, 2) for x in p], entropy(p)))\n# Low T -> nearly greedy, high T -> nearly uniform\n"
+   },
+   "followUps": [
+    "<p>Not fully. T = 0 means greedy argmax, but the same prompt can still give different outputs. GPU floating-point sums are not associative, so different batch sizes or kernels change logits in the last digits, and near-ties then flip the chosen token. Mixture-of-experts routing and server-side changes add more variation. Treat T = 0 as mostly, not guaranteed, deterministic.</p>",
+    "<p>Top-k keeps a fixed number of tokens; top-p (nucleus) keeps the smallest set whose probabilities add up to at least p. With probabilities [0.5, 0.3, 0.1, 0.05, 0.05], top-k = 2 keeps 0.5 and 0.3, while top-p = 0.9 keeps the first three (0.5 + 0.3 + 0.1). Both renormalise afterwards. Top-p adapts: it keeps few tokens when the model is confident and many when it is unsure.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stable softmax and cross-entropy (log-sum-exp)",
+    "python": "# Softmax + cross-entropy with and without the max-subtraction trick\nimport math\n\ndef naive_softmax(z):\n    e = [math.exp(x) for x in z]\n    return [x / sum(e) for x in e]\n\ndef log_softmax(z):\n    m = max(z)                                   # log-sum-exp trick\n    lse = m + math.log(sum(math.exp(x - m) for x in z))\n    return [x - lse for x in z]\n\nsmall = [2.0, 1.0, 0.0]\nprint(\"normal logits:\", small)\nprint(\"naive  :\", [round(x, 4) for x in naive_softmax(small)])\nprint(\"stable :\", [round(math.exp(x), 4) for x in log_softmax(small)])\n\nbig = [1000.0, 999.0, 998.0]\nprint(\"huge logits:\", big)\ntry:\n    naive_softmax(big)\nexcept OverflowError:\n    print(\"naive  : OverflowError (exp(1000) is too big)\")\nls = log_softmax(big)\nprint(\"stable :\", [round(math.exp(x), 4) for x in ls])\nprint(\"loss if class 0 is correct: %.4f\" % -ls[0])\n# Gradient wrt logits = softmax - onehot\np = [math.exp(x) for x in log_softmax(small)]\nprint(\"gradient:\", [round(p[i] - (1 if i == 0 else 0), 4) for i in range(3)])\n"
+   },
+   "followUps": [
+    "<p>The second softmax squashes already-small probabilities. Applying it to [0.665, 0.245, 0.09] gives about [0.45, 0.30, 0.25], nearly flat. Because every input is between 0 and 1, the output can never become confident (for 3 classes the top probability is capped near 0.58), gradients stay tiny and the loss stalls. Fix it by passing raw logits to the loss.</p>",
+    "<p>Label smoothing replaces the one-hot target with a softer one. With K = 3 classes and &epsilon; = 0.1 the target [1, 0, 0] becomes [0.9, 0.05, 0.05]. The gradient is still softmax(z) &minus; target, but now it never reaches zero while the logit gap keeps growing, so the model is discouraged from being extremely overconfident. This often improves calibration and generalisation.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Sample size for a margin on accuracy",
+    "python": "# Sample size for a +/- margin on accuracy (95% confidence)\nimport math, random\n\ndef needed(p, margin, z=1.96):\n    return math.ceil(z * z * p * (1 - p) / margin ** 2)\n\nfor p in (0.5, 0.9):\n    for margin in (0.05, 0.02, 0.01):\n        print(\"accuracy~%.1f margin +/-%.2f -> n = %d\" % (p, margin, needed(p, margin)))\n\n# Check by simulation: true accuracy 0.9, n = 865\nrandom.seed(5)\nn, trials, covered = 865, 2000, 0\nfor _ in range(trials):\n    acc = sum(random.random() < 0.9 for _ in range(n)) / n\n    if abs(acc - 0.9) <= 0.02:\n        covered += 1\nprint(\"n=865: estimate within 2 points in %.1f%% of runs\" % (100 * covered / trials))\n"
+   },
+   "followUps": [
+    "<p>Pairing helps a lot because the models are scored on the same items, and only the items where they disagree carry information. The standard error of the accuracy difference is about &radic;(b + c) / n, where b and c count items only one model gets right. With n = 500, b = 30 and c = 20, the gap is 10/500 = 2% with SE = &radic;50 / 500 = 1.4%. Treated as unpaired, the SE would be about 1.9%.</p>",
+    "<p>Clustered items give less information than independent ones, so you need more. The design effect is 1 + (m &minus; 1)&rho;, where m is items per cluster and &rho; is how similar items within a topic are. With m = 10 and &rho; = 0.2 it is 2.8, so the 2,401 examples needed for &plusmn;2 points become about 6,700. Alternatively, bootstrap over topics rather than over single items.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Expected value vs variance of a risky game",
+    "python": "# Expected value vs variance: pays 1000 w.p. 0.01, costs 8 to play\nimport random, math\n\nprize, p, cost = 1000, 0.01, 8\nev = prize * p - cost\nvar = prize**2 * p - (prize * p) ** 2        # E[X^2] - E[X]^2\nprint(\"expected profit per play: %.2f\" % ev)\nprint(\"variance %.0f, sd %.2f\" % (var, math.sqrt(var)))\n\nrandom.seed(11)\nplays, sessions = 100, 5000\nprofits = []\nfor _ in range(sessions):\n    wins = sum(random.random() < p for _ in range(plays))\n    profits.append(wins * prize - plays * cost)\nlosing = sum(1 for x in profits if x < 0) / sessions\nprint(\"100 plays: average profit %.1f (theory %.1f)\" % (sum(profits) / sessions, ev * plays))\nprint(\"share of 100-play sessions that lose money: %.1f%%\" % (100 * losing))\n"
+   },
+   "followUps": [
+    "<p>You need roughly 6,700 plays for about 95% confidence of a positive total. After n plays the mean profit is 2n and the SD is 99.5&radic;n. The mean must exceed 1.645 SDs: 2n &gt; 1.645 &times; 99.5 &times; &radic;n, so &radic;n &gt; 81.8 and n &asymp; 6,700. At 100 plays, about 37% of sessions still lose money (see the program).</p>",
+    "<p>The Kelly criterion gives the fraction of your bankroll to stake to maximise long-run growth: f* = p &minus; (1 &minus; p)/b, with win probability p and net odds b. Here staking 8 wins a net 992, so b = 124, and f* = 0.01 &minus; 0.99/124 &asymp; 0.002, about 0.2% of your bankroll per play. Betting more than Kelly adds risk and lowers growth; many people use half Kelly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is the tendency for winning results to overstate the true effect, because you picked them for being large. Example: if the true lift is 1% and the noise SE is 1%, only measured lifts above about 2% become significant, so the reported wins average about 2.5%, more than double the truth. Underpowered tests make it worse. Fix with larger samples, shrinkage and replication of big wins.</p>",
+    "<p>Pick &alpha; = 0.01 when a false positive is costly or irreversible, such as a medical or safety change, a risky migration, or when running several tests at once (5 tests at 0.01 each keep the total near 5%). The cost is sample size: at 80% power you need (2.576 + 0.84)&sup2; = 11.7 versus (1.96 + 0.84)&sup2; = 7.8 units, about 49% more data.</p>"
+   ]
+  }
+ ]
+}
