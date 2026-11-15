@@ -1,0 +1,111 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "du model: follow the biggest folder",
+    "python": "# Model of \"du | sort -h\": find the biggest folder, then drill into it.\n# Time O(N) to total sizes, space O(N) for N paths.\ntree = {\n    \"/var/log/nginx/access.log\": 9_200, \"/var/log/syslog\": 300,\n    \"/var/lib/docker/overlay/a\": 14_500, \"/var/lib/docker/overlay/b\": 6_100,\n    \"/home/ann/backup.tar\": 2_000, \"/etc/hosts\": 1,\n}\n\ndef dir_sizes(files, prefix):\n    # Sum sizes (MB) of everything below each direct child of prefix\n    totals = {}\n    for path, size in files.items():\n        if path.startswith(prefix):\n            child = path[len(prefix):].split(\"/\")[0]\n            totals[child] = totals.get(child, 0) + size\n    return totals\n\nprefix = \"/\"\nwhile True:\n    totals = dir_sizes(tree, prefix)\n    print(\"in\", prefix, sorted(totals.items(), key=lambda kv: -kv[1]))\n    biggest = max(totals, key=totals.get)  # follow only the biggest one\n    nxt = prefix + biggest + \"/\"\n    if not any(p.startswith(nxt) for p in tree):\n        print(\"biggest item:\", prefix + biggest)\n        break\n    prefix = nxt\n"
+   },
+   "followUps": [
+    "<p>Grow the disk when the data is legitimate and still growing, and cleanup would only buy a few days. Example: a database at 92% that grows 1 GB a week is healthy growth, so add space; a log folder that jumped from 2 GB to 40 GB in an hour is a bug, so fix the cause instead of paying for more disk.</p><p>Growing is also the safe quick fix during an outage, because it deletes nothing. Do both: grow now, then find the root cause.</p>",
+    "<p>On most clouds you resize the volume in the console or CLI, then tell the OS to use the new space, all while the VM runs. Three steps: 1) enlarge the volume; 2) grow the partition; 3) grow the filesystem.</p><pre><code>lsblk                      # see new size\nsudo growpart /dev/xvda 1  # grow partition 1\nsudo resize2fs /dev/xvda1  # ext4 (use xfs_growfs / for XFS)\ndf -h /                    # confirm</code></pre><p>Take a snapshot first, and note that some providers limit how often a volume can be modified (often once every few hours).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Permission class: owner, group, other",
+    "python": "# Model of how the kernel picks ONE permission class: owner, else group, else other.\ndef can(mode, file_owner, file_group, user, groups, want):\n    # mode is octal like 0o640; want is 4 (r), 2 (w) or 1 (x)\n    if user == file_owner:\n        bits = (mode >> 6) & 7      # owner bits only\n    elif file_group in groups:\n        bits = (mode >> 3) & 7      # group bits only\n    else:\n        bits = mode & 7             # other bits\n    return bool(bits & want)\n\n# nginx runs as www-data (group www-data); file owned by root:root mode 640\nmode = 0o640\nprint(\"mode 640 root:root, www-data reads:\", can(mode, \"root\", \"root\", \"www-data\", {\"www-data\"}, 4))\nmode = 0o640\nprint(\"mode 640 root:www-data, www-data reads:\", can(mode, \"root\", \"www-data\", \"www-data\", {\"www-data\"}, 4))\n# Owner class wins even if it has fewer rights than 'other'\nprint(\"mode 077 owner ann reads own file:\", can(0o077, \"ann\", \"dev\", \"ann\", {\"dev\"}, 4))\nprint(\"mode 077 stranger reads it:\", can(0o077, \"ann\", \"dev\", \"bob\", {\"x\"}, 4))\n"
+   },
+   "followUps": [
+    "<p>umask is the set of permission bits that are removed from every new file or directory. New files start from 666 and directories from 777, then umask is subtracted bit by bit.</p><p>Example: umask 022 gives files 644 (666 minus 022) and directories 755. umask 077 gives 600 and 700, so only the owner has access. It is set per process (shell profile or the systemd UMask= option) and does not change existing files.</p>",
+    "<p>The setgid bit on a directory makes new files and subfolders inside it inherit the directory's group instead of the creator's primary group. It is shown as an s in the group position (mode 2775).</p><p>Use it for shared team folders: if /srv/project is group dev with mode 2775, every file Ann and Bob create belongs to group dev, so both can edit it. Without it, files get each person's own group and sharing quietly breaks. Set it with chmod g+s DIR.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Users are listed in /etc/passwd (name, UID, home, shell), and the password hashes are in /etc/shadow. Groups are in /etc/group.</p><p>The hashes are kept in a separate file because /etc/passwd must be readable by everyone (programs translate UIDs to names), while /etc/shadow is readable only by root (mode 640 root:shadow or 000). A line with an x in the password field of passwd means the hash lives in shadow; a ! or * there means the password login is locked. With LDAP or SSSD, accounts can also come from a central directory.</p>",
+    "<p>Use a sudoers rule that allows exactly one command, placed in a file under /etc/sudoers.d and edited with visudo so a typo cannot lock everyone out.</p><pre><code>%webops ALL=(root) NOPASSWD: /bin/systemctl restart myapp\n# then: sudo systemctl restart myapp</code></pre><p>Anyone in group webops can restart only myapp and cannot run other commands as root. Use full command paths and avoid wildcards, which can be abused. Another option is polkit for systemd units.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>restart stops the service and starts it again, so the process ends and connections drop. reload asks the running process to re-read its configuration without stopping, usually by sending SIGHUP.</p><p>Example: after editing nginx.conf, nginx -t then systemctl reload nginx keeps serving existing requests. Use restart when reload is not supported, after a binary upgrade, or when the process is stuck. A reload with a broken config may be refused or leave the old config running, so always test the config first.</p>",
+    "<p>Usually because journald stores logs only in memory (in /run/log/journal), which is wiped at reboot. Persistent storage is used only if /var/log/journal exists or Storage=persistent is set in journald.conf.</p><p>Fix: sudo mkdir -p /var/log/journal and restart systemd-journald (or set Storage=persistent). Check boots with journalctl --list-boots; only one boot listed confirms the problem. Also check that size limits (SystemMaxUse) or vacuum jobs did not delete old data.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>ed25519 keys are shorter, faster and harder to misuse than RSA, and they are secure by default. An ed25519 public key is about 68 characters; a safe RSA key needs at least 3072 bits and a long line.</p><p>RSA security depends on picking a large enough size and a good random source for the primes; ed25519 has a fixed, well-reviewed design with no weak sizes and fast signing. Use RSA only for old systems that do not support ed25519. Always add a passphrase either way.</p>",
+    "<p>Agent forwarding (ssh -A) lets a remote server use your local ssh-agent to sign logins to other machines, so the private key never leaves your laptop but can be used from the server.</p><p>The risk is that anyone with root on that server (or the same user) can use your forwarded agent socket while you are connected, and reach every host your key can reach. Safer: use ProxyJump (ssh -J bastion target), which tunnels through the bastion without exposing the agent, or short-lived certificates.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A crash loop is a service that starts, fails and is restarted again and again. In systemctl status you see activating (auto-restart), a growing restart counter, a very short uptime and the same exit code in each journal entry.</p><p>To stop it, first stop the unit (systemctl stop) so logs stay readable, then read the first error and fix the cause. To prevent a runaway loop use Restart=on-failure, RestartSec=5 and StartLimitBurst=5 with StartLimitIntervalSec=60; after that many failures systemd gives up and marks the unit failed. Clear it with systemctl reset-failed.</p>",
+    "<p>Use a drop-in override file, so package updates do not overwrite your change. Run systemctl edit NAME, which creates /etc/systemd/system/NAME.service.d/override.conf.</p><pre><code>[Service]\nLimitNOFILE=65535\nEnvironment=APP_ENV=prod</code></pre><p>Save, and systemd reloads automatically (otherwise run systemctl daemon-reload, then restart). To clear a list-type setting such as ExecStart, first assign it empty (ExecStart=) and then your new line. systemctl cat NAME shows the merged result.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Test from a different machine, because testing from the VM itself only proves the process listens locally. From a client run nc -zv HOST 8080 or curl -v http://HOST:8080.</p><p>If it fails, check the layers in order: the process binds to 0.0.0.0 and not 127.0.0.1 (ss -ltn); the host firewall (ufw status or firewall-cmd --list-all); then the cloud security group or NSG and any network ACL or route. The first layer that blocks decides the symptom.</p>",
+    "<p>Connection refused means the packet reached the machine and nothing is listening on that port, so the OS answered with a reset right away. A timeout means no answer came back at all: usually a firewall or security group silently drops the packets, or the host is down or unroutable.</p><p>So refused points at the service (stopped, wrong port, bound to localhost); timeout points at the network path (security group, firewall, route). Refused comes back in milliseconds; timeout waits for many seconds.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Top error IPs from a log pipeline",
+    "python": "# Model of: awk '$9 ~ /^5/ {print $1}' | sort | uniq -c | sort -rn | head\nlines = [\n    '10.0.0.5 - - [01/Jan +0000] \"GET /a HTTP/1.1\" 500 120',\n    '10.0.0.7 - - [01/Jan +0000] \"GET /b HTTP/1.1\" 200 500',\n    '10.0.0.5 - - [01/Jan +0000] \"GET /c HTTP/1.1\" 502 90',\n    '10.0.0.9 - - [01/Jan +0000] \"GET /d HTTP/1.1\" 503 10',\n    '10.0.0.5 - - [01/Jan +0000] \"GET /e HTTP/1.1\" 500 7',\n    '10.0.0.9 - - [01/Jan +0000] \"GET /f HTTP/1.1\" 404 5',\n]\nfor l in lines:\n    print(l)\n\n# awk step: status is field 9 (index 8); keep lines whose status starts with 5\nips = [l.split()[0] for l in lines if l.split()[8].startswith(\"5\")]\n# sort | uniq -c step: group equal IPs and count\nips.sort()\ncounts = []\nfor ip in ips:\n    if counts and counts[-1][1] == ip:\n        counts[-1][0] += 1          # uniq only merges ADJACENT duplicates\n    else:\n        counts.append([1, ip])\n# sort -rn | head\nfor n, ip in sorted(counts, reverse=True)[:3]:\n    print(n, ip)\n"
+   },
+   "followUps": [
+    "<p>uniq only merges identical lines that are next to each other, so sort must put equal lines together first. Without sort, the same value appearing in different places is counted separately.</p><p>Example input: A B A. Without sort, uniq -c prints 1 A, 1 B, 1 A. With sort the input becomes A A B and uniq -c prints 2 A, 1 B. Sorting costs O(n log n); for a huge file with few distinct values, awk with an array counts in one pass in O(n).</p>",
+    "<p>Cut the timestamp down to the minute, then count each value. In nginx format the time is field 4, like [15/Nov/2026:10:42:07, so take its first 18 characters after the bracket.</p><pre><code>awk '$9 ~ /^5/ {print substr($4,2,17)}' access.log \\\n  | sort | uniq -c</code></pre><p>The result lists lines such as 12 15/Nov/2026:10:42, meaning 12 errors in that minute. Because the log is already in time order, you can skip the first sort and use uniq -c directly. A spike in one minute points you at a deploy or an outage.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Roll back by installing the previous package version, or, better, by restoring a snapshot or image taken before patching. Package rollback is only reliable for small updates.</p><p>On Ubuntu: apt install PACKAGE=OLDVERSION (see apt-cache policy PACKAGE) and apt-mark hold it. On RHEL-family: dnf history list, then dnf history undo ID. For a kernel problem, pick the older kernel in the boot menu. This is why you snapshot the VM or test on staging before patching production.</p>",
+    "<p>The risk is that an update can break the application or restart a service at a bad moment, with nobody watching. The reason to use them anyway is that most real breaches use known, already-fixed holes, and unpatched servers are the common target.</p><p>A good compromise: enable automatic security-only updates, exclude critical packages (database, kernel) or hold them, avoid automatic reboots or schedule them in a window, send mail or alerts about results, and test the same updates on staging first.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>StrictModes is an sshd setting (default yes) that makes the server refuse a key login if the user's home folder, ~/.ssh or authorized_keys can be written by other users.</p><p>The idea is that if someone else can edit authorized_keys, they could add their own key and become you. Typical fix: chmod 755 or 700 on the home folder (not group-writable), chmod 700 ~/.ssh, chmod 600 ~/.ssh/authorized_keys, and make sure the user owns all of them. The log says bad ownership or modes. Do not turn StrictModes off to fix it.</p>",
+    "<p>You cannot recover the private key, so you add a new public key by another route. Options on a cloud VM: use the provider's console, SSM Session Manager or Instance Connect; run a command that appends a new key to authorized_keys; or stop the VM, attach its disk to a rescue VM, mount it and edit ~/.ssh/authorized_keys there, then reattach.</p><p>Afterwards remove the lost key's public part everywhere it was installed and rotate it. A good fix is to bake in several admin keys so one loss never locks you out.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>High steal time (st in top, %steal in mpstat) means the hypervisor gave your virtual CPU time to other VMs, so your VM wanted to run but could not. It is a noisy neighbour or an overcommitted host, not a problem inside your VM.</p><p>If st stays above about 5 to 10 percent, apps slow down even though load looks small. Fixes: move to a dedicated or bigger instance type, check for burstable instance credits running out (for example t-class instances), or stop and start the VM so it lands on another host.</p>",
+    "<p>Both show tasks in D state and rising load, but the disk is slow while an NFS mount is stuck. For a slow disk, iostat -xz 1 shows high %util and await on a local device, and commands still finish, only slowly. For a hung NFS mount, no local device is busy; commands touching that path (ls, df) freeze completely.</p><p>Test safely with timeout 5 stat /mnt/share. Also check the kernel log for messages like nfs: server not responding. A lazy unmount (umount -l) or fixing the server link recovers it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Revocation is done by expiry first and a list second. Certificates are usually short-lived (for example 1 to 8 hours), so a stolen certificate becomes useless on its own and normally nothing needs revoking.</p><p>For emergencies, put the certificate's serial or key into a revoked-keys file and point sshd at it with RevokedKeys, then push that file to all servers with configuration management. Also stop the CA from signing new certificates for that person by disabling their identity in the identity provider. Short lifetimes keep the revocation list tiny.</p>",
+    "<p>File ownership breaks, because Linux stores owners as numbers (UIDs), not names. If Ann is UID 1001 on server A and 1002 on server B, a shared NFS folder or a copied backup shows files owned by the wrong person, or by nobody.</p><p>Example: a file created as UID 1001 appears on server B as owned by whoever is 1001 there, perhaps a different employee. Fix by assigning UIDs from one directory (LDAP, SSSD) or one configuration-management source, so each person has the same UID everywhere.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The OOM killer scores each process with oom_score, based mostly on how much memory it uses compared with total memory, plus an adjustment, and kills the highest score. So the biggest memory user is usually chosen, not the one that leaked.</p><p>You can influence it: oom_score_adj ranges from -1000 (never kill) to 1000, and systemd offers OOMScoreAdjust=. Check scores in /proc/PID/oom_score. A cgroup memory limit kills inside that group only. Setting your database to a protective value makes the killer pick other processes first.</p>",
+    "<p>A shell shows exit status 137 for a process killed by SIGKILL. The rule is 128 plus the signal number, and SIGKILL is signal 9, so 128 + 9 = 137. Check it with echo $? right after the command.</p><p>Similarly, SIGTERM (15) gives 143, and SIGSEGV (11) gives 139. Container platforms show the same numbers: exit code 137 on a pod usually means killed, often by the OOM killer or a forced stop after a grace period. systemd reports it as status=9/KILL.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I treat the suggestion as untrusted advice and check it before running. First, read it fully and make sure I understand every command and flag; look the unknown flags up in man pages. Second, check it fits my distro and version. Third, ask what it changes and whether it can be undone.</p><p>Then I try it on a staging copy or with a dry run (for example --check, -n or a snapshot first), prefer the least-privileged and narrowest change (no chmod 777, no disabling SELinux), get a second person for production, and write down what I ran.</p>",
+    "<p>Give the agent the smallest power that does the job. Concretely: a dedicated low-privilege account with no root and no standing credentials; read-only access by default; a sandbox or throwaway VM; an allow-list of commands, with deletes, package changes and network changes needing human approval.</p><p>Also limit network egress, keep secrets out of its reach (short-lived tokens, nothing in the prompt), set time and cost limits, log every command it runs, and make actions reversible with snapshots. Test the setup against a prompt-injection case, such as a log line that tells the agent to run a command.</p>"
+   ]
+  }
+ ]
+}

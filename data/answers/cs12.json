@@ -1,0 +1,114 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "TCP byte stream vs UDP datagrams on loopback",
+    "python": "import socket\n\n# UDP keeps message boundaries; TCP gives a plain byte stream.\nmsgs = [b\"hello\", b\"world\", b\"!\"]\nprint(\"sent messages:\", msgs)\n\n# UDP over loopback: three sends -> three separate receives\nr = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\nr.bind((\"127.0.0.1\", 0))\ns = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\nfor m in msgs:\n    s.sendto(m, r.getsockname())\ngot = [r.recvfrom(100)[0] for _ in msgs]\nprint(\"UDP received:\", got)\nr.close(); s.close()\n\n# TCP over loopback: reads may merge the three writes into one chunk\nsrv = socket.socket()\nsrv.bind((\"127.0.0.1\", 0))\nsrv.listen(1)\nc = socket.create_connection(srv.getsockname())\nconn, _ = srv.accept()\nfor m in msgs:\n    c.sendall(m)\nc.close()  # FIN: the receiver sees EOF after all bytes\ndata = b\"\"\nwhile True:\n    chunk = conn.recv(100)\n    if not chunk:\n        break\n    data += chunk\nprint(\"TCP received one stream:\", data)  # boundaries are gone\nconn.close(); srv.close()\n"
+   },
+   "followUps": [
+    "<p>DNS uses UDP because a lookup is one small question and one small answer, so a handshake would double the cost. A query fits in one packet (classic limit 512 bytes, about 1,232 with EDNS0), and the resolver simply retries if nothing comes back.</p><p>It switches to TCP when the answer is truncated (the TC bit is set), for zone transfers (AXFR), and for large DNSSEC or DNS-over-TLS responses. Cost: one extra RTT for the handshake, which is why it is the fallback, not the default.</p>",
+    "<p>QUIC rebuilds TCP's reliability inside UDP packets, in user space. Every packet gets a unique, increasing packet number; the receiver acknowledges ranges of numbers, and the sender retransmits lost data in a new packet with a new number, so there is no retransmission ambiguity.</p><p>Data lives in streams with their own offsets, so a loss on stream 3 does not block stream 5. Flow control works per stream and per connection, and congestion control (CUBIC, BBR) runs on top. Example: 100 packets, packet 7 lost: only the stream carrying 7's data waits.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Two messages are not enough because the server could not know whether its own starting number reached the client. The client's ACK of y+1 is the proof that the server's SYN+ACK arrived, so both directions are confirmed.</p><p>Without it, a stale duplicate SYN from an old connection would make the server open a connection the client never wanted, wasting resources. With three messages the client can answer a stale SYN+ACK with RST. Both sides also need to agree on the initial sequence numbers: two messages only synchronise one side.</p>",
+    "<p>If the final ACK is lost, the client thinks it is ESTABLISHED but the server is still in SYN_RCVD. The server's SYN+ACK timer fires and it resends the SYN+ACK (typically after 1 s, then 2 s, 4 s, up to about 5 retries on Linux).</p><p>The client receives the repeat and re-ACKs. Meanwhile, if the client sends data first, that data segment carries the ACK flag with the right ack number, so the server completes the handshake from it. If all retries fail the server drops the half-open entry.</p>",
+    "<p>TCP Fast Open lets a client send data in the SYN itself, saving one RTT for repeat visitors. On the first visit the server returns a cookie (a keyed hash of the client IP) in the SYN+ACK; later the client sends SYN + cookie + data (for example an HTTP request), and the server can answer immediately.</p><p>Limits: the data in a SYN can be replayed, so it must be idempotent (GET, not POST), and some middleboxes drop SYNs with data. Adoption is therefore modest; QUIC 0-RTT has the same replay caveat.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>CLOSE_WAIT means the peer sent FIN and your kernel ACKed it, but your application has not called close() yet. The socket is stuck until your code closes it, so the fix is always in the application, never in kernel tuning.</p><p>Typical causes are leaked connections, a missing close() in an error path, or a thread blocked forever. Symptom: CLOSE_WAIT count grows without bound and file descriptors run out (EMFILE). Find the owner with <code>ss -tanp state close-wait</code>, then fix with try/finally or a pool that always releases.</p>",
+    "<p>tcp_tw_reuse lets Linux reuse a TIME_WAIT port for a new outgoing connection to the same destination if TCP timestamps show the new connection's data is newer than anything from the old one. It is safe for outbound (client-side) connections when timestamps are enabled on both ends.</p><p>It does nothing useful for incoming connections, and without timestamps the protection from reason (2) of TIME_WAIT is lost. This is why the old tcp_tw_recycle, which broke clients behind NAT, was removed in Linux 4.12.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "TIME_WAIT count and port exhaustion math",
+    "python": "# TIME_WAIT sizing: sockets in TIME_WAIT = close rate * 60 s (Little's law)\nTW = 60.0\ncount = 200_000\nprint(\"TIME_WAIT sockets:\", count)\nprint(\"implied close rate: %.0f closes/s\" % (count / TW))\n\n# Client side: ephemeral ports to ONE destination ip:port\nlow, high = 32768, 60999\nports = high - low + 1\nprint(\"ephemeral ports:\", ports)\nprint(\"max new connections/s to one destination: %.0f\" % (ports / TW))\n\n# Keep-alive with 100 requests per connection multiplies the headroom\nreqs_per_conn = 100\nprint(\"with keep-alive (%d req/conn): %.0f requests/s\" % (reqs_per_conn, ports / TW * reqs_per_conn))\n"
+   },
+   "followUps": [
+    "<p>Cloud NAT gateways make it worse because many instances share a few public IPs, so the pool of source ports per destination is small and every connection to the same destination IP:port consumes one from that shared pool.</p><p>Example: one NAT IP offers about 64k ports; with a 60 s hold after close, you get roughly 1,000 new connections per second per destination for the whole fleet. Symptoms are intermittent connect failures and dropped SYNs. Remedies: more NAT IPs, connection reuse, keep-alive, or private endpoints that bypass NAT.</p>",
+    "<p>No, SO_REUSEADDR does not help a client with ephemeral port exhaustion. It mainly lets a server bind to a port that has connections in TIME_WAIT, so restarts do not fail with \"Address already in use\".</p><p>For outgoing connections the kernel chooses the port, and the full 4-tuple (source IP, source port, destination IP, destination port) must still be unique. Port exhaustion happens when all 4-tuples to one destination are in use. Use tcp_tw_reuse, wider ip_local_port_range, extra source IPs, or pooling instead.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The bandwidth-delay product (BDP) is bandwidth times round-trip time: the amount of data that must be in flight to keep a link full. It tells you how big the window must be.</p><p>Example: 100 Mbit/s with a 50 ms RTT gives 12.5 MB/s x 0.05 s = 625 KB. If the window is only 64 KB, throughput is limited to 64 KB / 0.05 s, about 1.3 MB/s (10 Mbit/s), a tenth of the link. Window = rate x RTT.</p>",
+    "<p>Window scaling is a TCP option, negotiated in the SYNs, that multiplies the 16-bit window field by 2^shift, so windows can exceed 65,535 bytes. The shift (0 to 14) is fixed for the connection.</p><p>Example: shift 7 means an advertised value of 1,000 stands for 128,000 bytes; shift 14 allows up to about 1 GB. Without it, a 16-bit field caps throughput at 65,535 / RTT, which is only about 6.5 Mbit/s at 80 ms. If a middlebox strips the option from the SYN, the connection silently stays slow.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Reno cwnd: dup ACKs vs timeout",
+    "python": "# Reno-style cwnd in MSS per RTT. ssthresh=16, loss detected during RTT 8.\ndef run(loss_kind):\n    cwnd, ssthresh = 1, 16\n    out = []\n    for rtt in range(1, 11):\n        out.append(cwnd)\n        if rtt == 8:  # loss happens in this RTT\n            ssthresh = max(cwnd // 2, 2)\n            # 3 dup ACKs -> fast recovery keeps cwnd = ssthresh; timeout -> 1\n            cwnd = ssthresh if loss_kind == \"dupack\" else 1\n        elif cwnd < ssthresh:\n            cwnd = min(cwnd * 2, ssthresh)  # slow start: double per RTT\n        else:\n            cwnd += 1  # congestion avoidance: +1 MSS per RTT\n    return out\n\nprint(\"RTT:             \", list(range(1, 11)))\nprint(\"3 dup ACKs cwnd: \", run(\"dupack\"))\nprint(\"timeout cwnd:    \", run(\"timeout\"))\n"
+   },
+   "followUps": [
+    "<p>Counting RTT 1 as cwnd = 1 MSS: 1, 2, 4, 8, 16 (slow start stops at ssthresh 16 in RTT 5), then 17, 18, 19 in RTTs 6 to 8 (+1 each). Loss in RTT 8 detected by 3 dup ACKs: ssthresh = 19 / 2 = 9, cwnd = 9 in RTT 9, and 10 in RTT 10.</p><p>Full list: 1, 2, 4, 8, 16, 17, 18, 19, 9, 10. If it were a timeout instead, RTT 9 would restart at 1, then 2 (slow start up to ssthresh 9). The program shows both.</p>",
+    "<p>CUBIC reacts to packet loss, while BBR builds a model of the path from measured delivery rate and minimum RTT and paces packets to match it, so it does not need loss as a signal.</p><p>CUBIC fills buffers until they overflow, causing queueing delay (bufferbloat), and backs off by multiplying cwnd by 0.7. BBR aims to run at the bottleneck bandwidth with a near-empty queue, which helps on long lossy paths (a 1% random loss can crush CUBIC but not BBR). Downsides: BBRv1 can be unfair to loss-based flows.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "RFC 6298 RTO estimator",
+    "python": "# RFC 6298 retransmission timeout estimator (seconds)\nsamples = [0.100, 0.110, 0.095, 0.300, 0.105, 0.100]\nprint(\"RTT samples:\", samples)\nsrtt = rttvar = None\nfor r in samples:\n    if srtt is None:\n        srtt, rttvar = r, r / 2  # first sample\n    else:\n        # update variance first, using the old SRTT\n        rttvar = 0.75 * rttvar + 0.25 * abs(srtt - r)\n        srtt = 0.875 * srtt + 0.125 * r\n    rto = max(0.2, srtt + 4 * rttvar)  # 200 ms floor (Linux style)\n    print(\"R=%.3f SRTT=%.4f RTTVAR=%.4f RTO=%.4f\" % (r, srtt, rttvar, rto))\n\n# Backoff: each timer expiry doubles the RTO\nt = rto\nfor i in range(1, 4):\n    t *= 2\n    print(\"after timeout %d: RTO=%.3f\" % (i, t))\n"
+   },
+   "followUps": [
+    "<p>In a data centre the RTT is tens of microseconds, but a classic RTO floor of 200 ms to 1 s is thousands of times larger. One lost packet then stalls a flow for 200 ms while the network could have repaired it in well under a millisecond.</p><p>This hurts incast (many servers answering one client at once), where a few tail drops cause synchronized timeouts and throughput collapse. Fixes: microsecond-granularity timers, RTO min of 1 ms or less, and fast retransmit/RACK.</p>",
+    "<p>A spurious retransmission is a segment retransmitted although the original was not lost, just delayed beyond the RTO (for example by a radio handover or queueing). The sender wastes bandwidth and wrongly shrinks cwnd.</p><p>Detection: the ACK for the original arrives soon after the retransmit (Eifel with timestamps, or DSACK from the receiver, which reports duplicate data). The sender can then undo the cwnd reduction. This is also why Karn's rule excludes retransmitted segments from RTT samples.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>RPC frameworks set TCP_NODELAY because their traffic is many small request and response messages, and waiting for an ACK before sending the next small write adds tens of milliseconds to every call.</p><p>Example: a 100-byte header write followed by a 200-byte body write with Nagle on and a 40 ms delayed ACK: each call costs about 40 ms extra, which caps one connection at about 25 calls/s. With NODELAY the cost is a few more small packets, which is negligible on modern networks. Frameworks also batch writes themselves.</p>",
+    "<p>TCP_QUICKACK (Linux) asks the receiver to send ACKs immediately instead of delaying them. It breaks the Nagle plus delayed-ACK stall from the receiver side.</p><p>The flag is not permanent: the kernel can reset it, so you often must set it again after each read. It is a niche workaround; the usual fix is on the sender (TCP_NODELAY or a single coalesced write). The cost of QUICKACK is more pure-ACK packets.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stateless SYN cookie check",
+    "python": "import hmac, hashlib, struct\n\nSECRET = b\"server-secret\"  # placeholder key, rotated in real systems\nMSS_TABLE = [536, 1220, 1440, 1460]\n\ndef cookie(src, sport, dst, dport, minute, mss_idx):\n    # stateless: the sequence number encodes a keyed hash of the 4-tuple\n    msg = \"%s:%d>%s:%d|%d\" % (src, sport, dst, dport, minute)\n    h = hmac.new(SECRET, msg.encode(), hashlib.sha256).digest()\n    return (struct.unpack(\">I\", h[:4])[0] & 0xFFFFFFF8) | mss_idx\n\ndef verify(ack, src, sport, dst, dport, minute):\n    c = ack - 1  # client ACKs cookie + 1\n    idx = c & 7\n    if idx >= len(MSS_TABLE):\n        return None\n    ok = cookie(src, sport, dst, dport, minute, idx) == c\n    return MSS_TABLE[idx] if ok else None\n\nc = cookie(\"198.51.100.7\", 40000, \"192.0.2.1\", 443, 100, 3)\nprint(\"SYN+ACK seq (cookie):\", c, \"- server stores nothing\")\nprint(\"real client ACK ->\", verify(c + 1, \"198.51.100.7\", 40000, \"192.0.2.1\", 443, 100))\nprint(\"spoofer, wrong ACK ->\", verify(12345, \"198.51.100.7\", 40000, \"192.0.2.1\", 443, 100))\nprint(\"other source IP ->\", verify(c + 1, \"203.0.113.9\", 40000, \"192.0.2.1\", 443, 100))\n"
+   },
+   "followUps": [
+    "<p>Blocking the attacker IP rarely works because SYN flood sources are usually spoofed, random and many, so there is no single address to block, and blocking spoofed addresses would block innocent hosts.</p><p>Even a botnet of 10,000 real hosts sending 5 SYNs/s each is 50,000 SYN/s, far too many for per-IP rules at the server. Defences are stateless (SYN cookies), at the network edge (scrubbing, anycast spreading load), or rate limits per prefix. Ingress filtering (BCP 38) at ISPs would help but is not universal.</p>",
+    "<p>QUIC makes the server prove the client owns its address before it commits resources or sends much data. The server may reply with a Retry packet containing a token; only a client that can receive it can return a valid one.</p><p>Until the address is validated, the server may send at most 3 times the bytes it has received, which limits reflection amplification. The client's first packets must also be padded to at least 1,200 bytes, so spoofed initial packets are costly. The handshake state stays small.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Bandwidth-delay product and window scale",
+    "python": "# Bandwidth-delay product and window needed\nbw_bits = 10e9\nrtt = 0.080\nbdp = bw_bits / 8 * rtt\nprint(\"link: 10 Gbps, RTT 80 ms\")\nprint(\"BDP = %.0f bytes (%.0f MB)\" % (bdp, bdp / 1e6))\n\n# Without window scaling the window is capped at 65535 bytes\ncap = 65535\nprint(\"no scaling: %.2f Mbit/s\" % (cap * 8 / rtt / 1e6))\n\n# Smallest shift so 65535 << shift covers the BDP\nshift = 0\nwhile (65535 << shift) < bdp:\n    shift += 1\nprint(\"needed window scale shift:\", shift, \"-> max window\", 65535 << shift)\n\n# One loss halves a Reno window: time to climb back at +1 MSS/RTT\nmss = 1460\nrtts = (bdp / 2) / mss\nprint(\"recovery after one loss: %.0f RTTs = %.0f s\" % (rtts, rtts * rtt))\n"
+   },
+   "followUps": [
+    "<p>Without window scaling the window is capped at 65,535 bytes, so throughput is at most window / RTT. At 80 ms that is 65,535 / 0.08 = about 819 KB/s, roughly 6.5 Mbit/s, even on a 10 Gbps link.</p><p>That is 0.065% of the link. The sender sends one window, then idles for the rest of the 80 ms until ACKs come back. So the 10 Gbps path would carry about 1,500 times less than its capacity.</p>",
+    "<p>Bufferbloat is excess queueing in oversized buffers: the sender fills them, so RTT rises from 80 ms to hundreds of ms, and the BDP target rises with it. Loss is signalled late, so loss-based congestion control keeps the pipe over-full.</p><p>Example: a 200 MB router buffer at 10 Gbps adds 160 ms delay when full. Latency-sensitive traffic suffers, and a lost packet then needs a long time to be detected. Fixes: AQM (CoDel, FQ-CoDel), ECN, and delay-based congestion control such as BBR.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A connect that succeeds after about 1 s, 3 s or 7 s means the first SYNs were dropped and the client's SYN retransmit timer rescued it. Linux retries a SYN after 1 s, then 2 s, 4 s, so the cumulative delays are 1, 3, 7 seconds.</p><p>Common causes: a full accept queue or SYN queue (the kernel silently drops the SYN or the final ACK), conntrack full, or random packet loss. Check <code>nstat -az TcpExtListenDrops</code> and <code>ss -ltn</code>. Spikes at exactly these values prove the server never saw or never accepted the early SYNs.</p>",
+    "<p>SO_REUSEPORT lets several processes or threads bind the same port, each with its own listen socket and accept queue; the kernel spreads new connections across them by 4-tuple hash.</p><p>This removes the single accept-queue bottleneck and lock contention, so one slow acceptor no longer causes overflows for everyone. Caveats: uneven hash distribution can overload one queue, and if a process dies its queued connections are lost. Per-queue depth now has to be monitored.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>QUIC avoids TIME_WAIT because there is no 4-tuple state to protect: a connection is identified by connection IDs, not by source and destination IP and port, so stale packets cannot be confused with a new connection.</p><p>Closing is also simple: an endpoint sends CONNECTION_CLOSE and then waits briefly (about three times the PTO) in a draining state, only to answer retransmissions. Old packets cannot corrupt a new connection since packet protection keys differ. Result: no port exhaustion from closing many connections.</p>",
+    "<p>If a network throttles or blocks UDP, QUIC connections fail or become slow, so clients must fall back to TCP (HTTP/3 to HTTP/2). Browsers race both or remember the failure, which adds delay on first connect.</p><p>Some enterprise firewalls block UDP 443 outright, and carrier-grade NATs may time out UDP flows after 30 s, so QUIC needs frequent keep-alives. Rate limiting also breaks QUIC's loss-based signals: the sender sees heavy loss and slows right down. Plan fallbacks and monitor the HTTP/3 share of traffic.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Lingering close is how nginx closes a connection without sending an RST. After writing the response it calls shutdown(SHUT_WR) to send FIN, then keeps reading and discarding client data until the client closes or a timeout (about 5 s by default) passes, then closes.</p><p>This lets the client receive an error response (for example 413) even though it was still uploading a body. Without it, closing early with unread data causes RST, and the client may drop the response. The cost is holding the socket and a worker slot briefly.</p>",
+    "<p>A graceful half-close means you finish sending but can still receive: call shutdown(fd, SHUT_WR). This sends FIN, so the peer reads EOF, yet your socket stays open for incoming data.</p><p>Steps: 1) write your last bytes; 2) shutdown(SHUT_WR); 3) keep reading until read returns 0 (the peer's FIN); 4) close(). Example: a client sends a whole file, half-closes, then reads the server's checksum reply. Skipping step 3 risks RST if data is still arriving.</p>"
+   ]
+  }
+ ]
+}

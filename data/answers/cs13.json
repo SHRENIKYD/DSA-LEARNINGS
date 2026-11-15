@@ -1,0 +1,112 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Usually DNS plus connection setup, because they are pure waiting. A cold lookup can take 20 to 120 ms, then TCP needs 1 round trip and TLS 1.3 another one, so on a 50 ms RTT link you spend about 100 ms before the first request byte.</p><p>Server think time and large downloads can dominate too, but those are the parts you tune. Caching, CDNs and keep-alive remove the earlier steps on repeat visits.</p>",
+    "<p>The setup gets shorter and the transport stops sharing one ordered pipe. QUIC merges the transport and TLS handshakes, so a new connection costs 1 round trip instead of 2 (TCP 1 + TLS 1.3 1), and 0 on resumption.</p><p>A lost packet only stalls its own stream, not the whole page. The browser first learns about h3 from Alt-Svc or an HTTPS DNS record, so the very first visit often still uses h2.</p>",
+    "<p>The browser makes a new request to the URL in the Location header, so you pay for a whole extra round trip, and possibly a new DNS lookup, TCP and TLS if the host differs. A 301 means permanent, so browsers cache it and skip the hop next time.</p><p>Example: http to https redirect at 50 ms RTT costs about 50 ms plus TLS setup. HSTS removes it by upgrading before any request is sent.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It was hard to use and the cache already did the job. Push let the server send files it guessed the client needed, but it often sent things the browser already had cached, wasting bandwidth, and it was hard to tell which resources to push.</p><p>Chrome removed it. Better tools exist: <code>103 Early Hints</code> and <code>preload</code> hints let the browser fetch early while still checking its own cache.</p>",
+    "<p>The server advertises it. Either an <code>Alt-Svc: h3=\":443\"; ma=86400</code> response header over h2 (the client remembers it for 86400 s), or an HTTPS DNS record that lists <code>alpn=h3,h2</code> before connecting.</p><p>The client then tries QUIC over UDP port 443 and races or falls back to h2 if UDP is blocked. That is why the first visit often uses h2 and later ones use h3.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Head-of-line blocking: one queue vs independent lanes",
+    "python": "# Head-of-line blocking: one ordered queue vs independent lanes\n# Each response needs this many ms of transfer time.\nsizes = {\"big.js\": 100, \"a.css\": 10, \"b.png\": 10}\nprint(\"responses (ms):\", sizes)\n\n# One ordered connection: each response waits for the one before it.\nt = 0\nprint(\"single ordered queue (HTTP/1.1 style):\")\nfor name, ms in sizes.items():\n    t += ms\n    print(\" \", name, \"done at\", t)\n\n# Independent lanes (multiplexing with per-stream ordering, like QUIC):\n# a stall in one lane does not delay the others.\nprint(\"independent lanes:\")\nfor name, ms in sizes.items():\n    print(\" \", name, \"done at\", ms)\n\n# TCP-style stall: 5 packets in order, packet 2 lost and resent 200 ms later.\narrive = [10, 20, 230, 40, 50]  # packet 2 arrives late\nready, latest = [], 0\nfor a in arrive:\n    latest = max(latest, a)  # in-order delivery: wait for all earlier packets\n    ready.append(latest)\nprint(\"arrival times:      \", arrive)\nprint(\"delivered to app at:\", ready)\n# Cost: O(n) time, O(n) space.\n"
+   },
+   "followUps": [
+    "<p>No, it only removes the TCP-level kind. QUIC orders data per stream, so a lost packet blocks only the stream whose data it carried, and other streams keep flowing.</p><p>Within one stream bytes are still delivered in order, so that stream waits. A single large response over one stream still stalls on one loss, and a slow server handler still blocks its own queue.</p>",
+    "<p>Because h2 puts all requests on one TCP connection, one lost packet stalls all of them, while h1 spreads requests over about 6 connections so a loss stalls only one sixth of the work.</p><p>Example: with 2 percent loss, one h2 connection keeps pausing every stream during each retransmission, and TCP also halves its window per loss event, hurting all streams together. HTTP/3 fixes this.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It proves the server really owns the certificate's private key. The certificate is public, so anyone could copy and send it. CertificateVerify is a signature over a hash of the whole handshake transcript, made with the leaf's private key.</p><p>The client checks it with the public key from the certificate. Only the real owner can sign, and including the transcript stops replay of an old signature.</p>",
+    "<p>ALPN (Application-Layer Protocol Negotiation) lets client and server agree on the protocol inside the TLS handshake. The ClientHello lists protocols such as <code>h2</code> and <code>http/1.1</code>, and the server picks one.</p><p>This saves a round trip because no upgrade request is needed, and lets one port 443 serve h2, h1.1 or others. HTTP/3 advertises <code>h3</code> the same way.</p>",
+    "<p>Encrypted Client Hello hides the real hostname (SNI) that normally travels in clear text in the ClientHello. Observers on the network then see only a shared public name such as the CDN's, not which site on it you visit.</p><p>The inner ClientHello is encrypted with a public key published in the site's DNS HTTPS record. The server's IP address and traffic volume are still visible.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is a certificate where the same key is certified by two different issuers, so it chains to either root. This lets a new CA work on old devices: its intermediate is also signed by an older, already trusted root.</p><p>Example: a client with only the old root builds leaf, intermediate, old root and trusts it. A newer client uses the new root. The cost is a longer chain to send.</p>",
+    "<p>Pinning ties a site to a specific key or certificate you expect, instead of trusting any CA in the store. If an unexpected CA issues a certificate for your domain, a pinned client rejects it.</p><p>Normal validation asks whether any trusted CA signed it; pinning asks whether it is exactly mine. Pinning is risky: a lost or rotated key can lock users out, so browsers dropped HPKP, and apps pin a backup key.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Forward secrecy with ephemeral Diffie-Hellman (toy)",
+    "python": "import random\n\n# Toy Diffie-Hellman with ephemeral keys (small numbers, NOT secure)\np, g = 2147483647, 7   # public prime and generator\nrandom.seed(1)\n\ndef session(label):\n    a = random.randrange(2, p - 2)     # client's fresh private value\n    b = random.randrange(2, p - 2)     # server's fresh private value\n    A, B = pow(g, a, p), pow(g, b, p)  # public shares sent over the wire\n    secret = pow(B, a, p)              # client side\n    assert secret == pow(A, b, p)      # server computes the same value\n    print(label, \"shares:\", A, B, \"secret:\", secret)\n    return secret                      # a and b go out of scope: discarded\n\ns1 = session(\"session 1\")\ns2 = session(\"session 2\")\nprint(\"secrets differ:\", s1 != s2)\n\n# The long-term key only signs the handshake; it is not an input to the secret.\n# Stealing it later lets an attacker impersonate, but cannot recompute s1 or s2,\n# because a and b no longer exist anywhere. That is forward secrecy.\n# Cost: two modular exponentiations per side, O(log p) multiplications each.\n"
+   },
+   "followUps": [
+    "<p>It means someone records your encrypted traffic today and decrypts it years later, when they get the key or a quantum computer. Without forward secrecy, one stolen server key unlocks every recorded session.</p><p>Example: 10 years of saved traffic from static RSA suites falls open after one key leak. Ephemeral keys limit the damage to nothing, unless the key exchange maths itself gets broken.</p>",
+    "<p>The client sends two key shares, a classical X25519 one and a post-quantum one such as ML-KEM, and the secret mixes both. An attacker must break both to read the session.</p><p>The size grows: an X25519 share is 32 bytes, a hybrid ML-KEM-768 share is about 1.2 KB. It stays forward secret because both shares are ephemeral, and it protects against harvest-now-decrypt-later.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "DNS resolver with TTL caching",
+    "python": "# Toy recursive DNS resolver with TTL caching\nROOT = {\"com.\": (\"ns.tld\", 3600)}\nTLD = {\"example.com.\": (\"ns.example\", 3600)}\nAUTH = {\"www.example.com.\": (\"203.0.113.7\", 60)}\ncache = {}   # key -> (value, expires_at)\nqueries = 0\n\ndef ask(level, table, key):\n    global queries\n    queries += 1\n    print(\"   query\", level, \"for\", key)\n    return table[key]\n\ndef cached(key, now):\n    hit = cache.get(key)\n    return hit[0] if hit and hit[1] > now else None\n\ndef resolve(name, now):\n    global queries\n    queries = 0\n    ip = cached(name, now)\n    if ip:\n        return ip\n    if not cached(\"com.\", now):                 # NS delegations are cached too\n        v, ttl = ask(\"root\", ROOT, \"com.\")\n        cache[\"com.\"] = (v, now + ttl)\n    if not cached(\"example.com.\", now):\n        v, ttl = ask(\"tld\", TLD, \"example.com.\")\n        cache[\"example.com.\"] = (v, now + ttl)\n    v, ttl = ask(\"auth\", AUTH, name)            # final record has a short TTL\n    cache[name] = (v, now + ttl)\n    return v\n\nfor t in (0, 10, 100):\n    print(\"t =\", t, \"s\")\n    ip = resolve(\"www.example.com.\", t)\n    print(\"   answer\", ip, \"using\", queries, \"upstream queries\")\n# t=0: cold, 3 queries. t=10: cache hit, 0. t=100: A expired (TTL 60), NS still cached, 1.\n"
+   },
+   "followUps": [
+    "<p>Up to 4 queries on a fully cold lookup of <code>www.example.com</code>: the stub asks the recursive resolver (1), which asks a root server, a .com TLD server and the authoritative server (3 more). Your computer sends 1 query; the resolver sends 3.</p><p>Extra ones appear for CNAME chains or when name server names need their own lookup. Warm caches cut it to 0 or 1.</p>",
+    "<p>Glue is an address record stored in the parent zone for a name server that lives inside the zone it serves. Without it you would loop forever.</p><p>Example: <code>example.com</code> uses <code>ns1.example.com</code>. To find that name you must ask example.com, which you cannot reach yet. The .com servers therefore return ns1's IP address along with the delegation, breaking the loop.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Email software looks up TXT records to decide whether a message is legitimate. SPF lists the servers allowed to send, DKIM publishes the public key for signatures, and DMARC says what to do on failure.</p><p>If they are missing or wrong, big mailbox providers send your mail to spam or reject it. Example: <code>v=spf1 ip4:203.0.113.0/24 -all</code> allows only that range.</p>",
+    "<p>It lets you put an alias-like record at the zone apex, where a real CNAME is forbidden because the apex also needs SOA and NS records. The DNS provider resolves the target itself and answers with plain A or AAAA records.</p><p>Example: <code>example.com</code> pointing to a CDN hostname. Providers sell it under names like ALIAS or ANAME. The trade-off is that the answer comes from your provider, so geo-routing may reflect the provider's location.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It gets worse, because NS records and the registry's delegation have their own long TTLs, often 24 to 48 hours. The old name servers must keep answering correctly until every cache has expired.</p><p>Plan: lower the NS TTL early if you can, copy the full zone to the new servers first, switch the delegation at the registrar, and leave the old servers up for at least the old NS TTL, say 2 days.</p>",
+    "<p>Some resolvers set a minimum TTL to cut load or save bandwidth, so a 30 s TTL may be held for 5 minutes or an hour. Some also serve stale data when upstream fails.</p><p>Example: you set TTL 60 s but an ISP enforces a 300 s minimum, so a cutover takes 5 minutes there. Plan for the slowest cache, keep the old target alive, and do not rely on instant failover through DNS.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The client sends an ordinary HTTP/1.1 GET with <code>Upgrade: websocket</code>, <code>Connection: Upgrade</code>, a random <code>Sec-WebSocket-Key</code> and version 13. A server that agrees answers <code>101 Switching Protocols</code> with an accept value computed from the key.</p><p>After that, the same TCP connection carries frames instead of HTTP. The proof of the accept value stops a plain HTTP server from being tricked into acting like a WebSocket peer.</p>",
+    "<p>Add servers and spread the connections, because each connection costs memory and a file descriptor, not much CPU. At roughly 20 KB each, 1,000,000 connections is about 20 GB, so you need around 10 nodes at 100,000 each.</p><p>Raise the fd limit, use L4 balancing with long idle timeouts, keep nodes stateless apart from the socket, and route messages with pub/sub. Heartbeats and jittered reconnects prevent a thundering herd after a restart.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "WebSocket accept key and frame masking",
+    "python": "import base64, hashlib, struct\n\n# Handshake: Sec-WebSocket-Accept = base64(SHA-1(key + fixed GUID))\nGUID = \"258EAFA5-E914-47DA-95CA-C5AB0DC85B11\"\nkey = \"dGhlIHNhbXBsZSBub25jZQ==\"  # sample key from RFC 6455\naccept = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()\nprint(\"Sec-WebSocket-Key   :\", key)\nprint(\"Sec-WebSocket-Accept:\", accept)\n\n# Frame: FIN+opcode, mask bit+length, 4-byte mask key, masked payload\ndef client_frame(text, mask=b\"\\x01\\x02\\x03\\x04\"):\n    data = text.encode()\n    head = bytes([0x80 | 0x1, 0x80 | len(data)])   # FIN, text opcode; MASK bit set\n    masked = bytes(b ^ mask[i % 4] for i, b in enumerate(data))  # XOR with key\n    return head + mask + masked\n\nframe = client_frame(\"Hi\")\nprint(\"frame bytes:\", frame.hex())\nfin_op, mlen = frame[0], frame[1]\nprint(\"FIN:\", fin_op >> 7, \"opcode:\", fin_op & 0xF, \"mask:\", mlen >> 7, \"len:\", mlen & 0x7F)\nmask = frame[2:6]\nprint(\"unmasked:\", bytes(b ^ mask[i % 4] for i, b in enumerate(frame[6:])).decode())\n"
+   },
+   "followUps": [
+    "<p>Masking stops a malicious page from making the browser send bytes that look like a valid HTTP request to a proxy, which could poison a cache. Each client frame is XORed with a fresh random 4-byte key, so the attacker cannot control the exact bytes on the wire.</p><p>It is not encryption, since the key travels with the frame. Servers send unmasked frames.</p>",
+    "<p>Over HTTP/2 (RFC 8441) the handshake becomes an extended CONNECT request on one stream, not an Upgrade, so the socket is shared. Many WebSockets can then run beside normal requests on one TCP connection.</p><p>That saves connections, but a TCP loss now stalls all of them. Over HTTP/3 the same idea runs on QUIC (RFC 9220).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The client keeps its connection ID, so when its IP address or port changes (Wi-Fi to mobile) the packets still belong to the same QUIC connection. The server sees the ID in the header, not the address.</p><p>It first validates the new path: it sends a PATH_CHALLENGE and waits for the matching PATH_RESPONSE, then continues. Streams carry on, whereas TCP would reset because its identity is the 4-tuple of addresses and ports.</p>",
+    "<p>Until a client proves it owns its address, the server may send at most 3 times the bytes it has received from it. This stops attackers using spoofed source addresses to make the server flood a victim.</p><p>Example: a 1,200 byte client Initial lets the server send up to 3,600 bytes. Clients pad their first packet to at least 1,200 bytes so the server has enough budget for its handshake reply, and a Retry token can force address validation.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Resume after reconnect with last seen id and jittered backoff",
+    "python": "import random\n\n# Server keeps an ordered log with monotonic ids; client resumes from last seen id.\nlog = []\ndef publish(text):\n    log.append((len(log) + 1, text))   # id assigned, persisted before ack\n\nfor t in [\"hi\", \"how are you\", \"lunch?\", \"ok\", \"see you\", \"bye\"]:\n    publish(t)\n\nlast_seen = 0\ndef deliver(upto):\n    global last_seen\n    for mid, text in log:\n        if last_seen < mid <= upto:    # send only what the client lacks\n            print(\"  got\", mid, text)\n            last_seen = mid\n\nprint(\"connected, receives first 3\")\ndeliver(3)\nprint(\"connection drops; client had last_seen =\", last_seen)\n\n# Reconnect with exponential backoff and full jitter\nrandom.seed(7)\nfor attempt in range(4):\n    cap = min(30, 2 ** attempt)        # 1, 2, 4, 8 seconds cap\n    print(\"attempt\", attempt + 1, \"waits %.2f s (cap %d)\" % (random.uniform(0, cap), cap))\n\nprint(\"reconnected, sends last_seen =\", last_seen)\ndeliver(len(log))                      # replay the gap: no loss, no duplicates\n"
+   },
+   "followUps": [
+    "<p>Give each message a server-assigned id per conversation (a sequence number), and order by that id, not by device clocks. Every device stores its last seen id and asks for everything after it on reconnect.</p><p>Example: laptop saw 41, phone saw 38; the phone fetches 39, 40, 41 and shows the same order. Writes from different devices are serialised by the conversation's partition, so one place decides the order.</p>",
+    "<p>Make the sockets cheap to rebuild and the data replicated. Clients reconnect with jittered backoff to the surviving region and send their last seen id, while the message log is replicated across regions so nothing is lost.</p><p>Steps: DNS or a global load balancer shifts traffic, the new region replays from the log, presence is rebuilt from heartbeats. Expect a short gap, so cap the reconnect rate to avoid overload (for example 10 percent of clients per second).</p>"
+   ]
+  }
+ ]
+}

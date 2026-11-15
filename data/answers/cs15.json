@@ -1,0 +1,113 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The program counter (PC) is a special register that holds the address of the next instruction to fetch. After each instruction it advances by that instruction's size (for example +4 on a 32-bit fixed-width ISA), and a jump, branch, call or return overwrites it with a new address. Example: if PC = 0x1000 and the instruction is 4 bytes, the next PC is 0x1004, unless it is a taken branch to 0x2000. Interrupts also save the PC so the program can resume. On x86-64 it is called RIP.</p>",
+    "<p>CPI is cycles per instruction and IPC is instructions per cycle; they are reciprocals (IPC = 1 / CPI). Lower CPI means faster code. Example: a loop that runs 3,000 instructions in 1,500 cycles has CPI 0.5 and IPC 2. A simple in-order pipeline has IPC at most 1, while a superscalar core can exceed 4. Execution time = instruction count x CPI / clock rate, so you can improve speed by fewer instructions, lower CPI (fewer stalls and cache misses), or a faster clock. Tools like <code>perf stat</code> report IPC directly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Even with forwarding, a load stalls because its data does not exist until the end of the MEM stage, which is one stage later than an ALU result is ready. Forwarding can only send a value to a stage that runs after it is produced. Example: <code>lw r1,0(r2)</code> followed by <code>add r3,r1,r4</code>: the add needs r1 at the start of EX, but the load only has it at the end of MEM, so the add waits one cycle (a bubble). Compilers reduce this by placing an independent instruction between the load and its use; out-of-order cores hide it dynamically.</p>",
+    "<p>WAR (write after read) and WAW (write after write) are false dependencies: two instructions reuse the same register name, but no real data flows between them. Example: <code>r1 = r2 + r3</code> then later <code>r2 = r4 + r5</code> (WAR on r2), or two writes to r1 (WAW). Register renaming maps each architectural register to a fresh physical register on every write, so the second write goes to a different physical register and the instructions can run in any order. Only true read-after-write (RAW) dependencies remain, and those must wait for the producer.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Branch prediction: sorted versus random data",
+    "python": "import random\n\ndef mispredicts(data):\n    # 2-bit saturating counter: 0,1 predict not-taken; 2,3 predict taken\n    state, miss = 2, 0\n    for x in data:\n        taken = x >= 128          # the data-dependent branch\n        if (state >= 2) != taken:\n            miss += 1\n        state = min(3, state + 1) if taken else max(0, state - 1)\n    return miss\n\nrng = random.Random(7)\ndata = [rng.randrange(256) for _ in range(10000)]\nprint(\"random: \", mispredicts(data), \"mispredictions of 10000\")\nprint(\"sorted: \", mispredicts(sorted(data)), \"mispredictions of 10000\")\n# Same work, same values; only the branch pattern differs.\n# Time O(N), space O(1) for the predictor itself.\n"
+   },
+   "followUps": [
+    "<p>Branchless code is slower when the branch is easy to predict, because the branchless version always does the extra work. Example: if 99% of values fail a test, a branch costs almost nothing (the predictor is right 99% of the time) and skips the expensive work, while a cmov version computes both sides every time. Branchless wins when the outcome is close to 50/50 and both sides are cheap, since a misprediction costs about 15 to 20 cycles. Also, a branch breaks a data dependency (the CPU speculates ahead), whereas cmov adds a dependency on the condition. Measure with <code>perf stat</code> branch-misses.</p>",
+    "<p>Modern predictors like TAGE keep several tables indexed by the branch address combined with the history of recent branch outcomes, using different history lengths (for example 5, 15, 40, 130 outcomes). The prediction comes from the table with the longest history that has a matching tagged entry; shorter tables act as fallback. Each entry holds a small saturating counter, and on a mistake the predictor allocates an entry in a longer-history table. This lets it learn both simple biased branches and patterns that depend on far-back history, reaching well above 95% accuracy on typical code.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Caches use lines (usually 64 bytes) because programs tend to use nearby data soon (spatial locality), and because fetching one byte from DRAM costs nearly as much as fetching 64 bytes in one burst. Example: reading an int array of 16 elements (4 bytes each) takes one line fill instead of 16 separate misses, so 15 of the 16 reads are hits. Lines also reduce metadata: one tag covers 64 bytes instead of one tag per byte, which would waste more space than the data. The cost is wasted bandwidth for sparse access and false sharing.</p>",
+    "<p>The TLB (translation lookaside buffer) is a small, fast cache of recent virtual-to-physical page translations. Without it every memory access would need a page-table walk (several extra memory reads). Example: a TLB with 64 entries and 4 KB pages covers only 256 KB; touching a 1 GB array randomly misses constantly. Huge pages (2 MB or 1 GB) make each entry cover far more memory (64 entries x 2 MB = 128 MB), so there are fewer TLB misses and shorter page walks. The trade-offs are internal fragmentation and harder memory management.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Splitting an address into tag, index and offset",
+    "python": "# 32 KB, 8-way, 64-byte lines -> 64 sets\nLINE, SETS = 64, 64\nOFFSET_BITS, INDEX_BITS = 6, 6\n\ndef split(addr):\n    offset = addr & (LINE - 1)                     # low 6 bits\n    index = (addr >> OFFSET_BITS) & (SETS - 1)     # next 6 bits\n    tag = addr >> (OFFSET_BITS + INDEX_BITS)       # the rest\n    return tag, index, offset\n\nfor addr in [0x1000, 0x1040, 0x2000, 0x3004, 0x12345678]:\n    t, i, o = split(addr)\n    print(f\"addr={addr:#010x} tag={t:#x} index={i:2d} offset={o:2d}\")\n# 0x1000, 0x2000 and 0x3004 all map to set 0: addresses 4096 bytes apart\n# compete for the same 8 ways (conflict misses if more than 8 are hot).\n"
+   },
+   "followUps": [
+    "<p>L1 is VIPT so the cache lookup can start in parallel with address translation. The index bits come from the virtual address (available immediately), while the tag is compared with the physical address from the TLB, so the two slow steps overlap instead of running one after the other. For this to avoid aliasing problems, index plus offset bits must fit within the page offset (12 bits for 4 KB pages). Example: 64 B lines (6 bits) and 64 sets (6 bits) use exactly 12 bits, which is why L1 is often 32 KB with 8 ways (64 sets x 8 x 64 B).</p>",
+    "<p>The 3 Cs classify why a miss happened. Compulsory (cold) misses are the first touch of a line. Capacity misses happen because the working set is bigger than the cache, so even a fully associative cache would miss. Conflict misses happen because too many hot lines map to the same set, and would disappear with higher associativity. Example: looping over 9 lines that all map to one set of an 8-way cache keeps evicting lines, a pure conflict miss. Fixes: blocking for capacity, padding or higher associativity for conflict, prefetching for compulsory. Coherence misses are sometimes added as a fourth C.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>True sharing means threads really use the same variable, so the communication is needed; false sharing means they use different variables that merely sit on one line. Example: two threads incrementing one shared counter must see each other's updates (true), while two threads each incrementing their own counter stored 8 bytes apart in the same 64-byte line only slow each other down for no reason (false). The hardware cost looks identical, but the fix differs: true sharing needs less sharing (batching, sharding, atomics less often), while false sharing is cured by padding or aligning data to separate lines.</p>",
+    "<p>Some libraries pad to 128 bytes because Intel CPUs have an adjacent-line prefetcher that fetches cache lines in pairs (128-byte aligned), so two neighbouring 64-byte lines can still interact, and some CPUs (such as Apple M-series and some POWER chips) use 128-byte lines. Padding to 64 bytes then still leaves hot data in a line that is pulled along with its neighbour. Example: two counters 64 bytes apart may still ping-pong; at 128 bytes apart they do not. The cost is more memory: 128 B per counter instead of 8 B, a 16x overhead for tiny items.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "MESI states for one line on two cores",
+    "python": "# Two cores, one cache line; track each core's MESI state\nstate = [\"I\", \"I\"]\n\ndef read(c):\n    if state[c] == \"I\":\n        o = 1 - c\n        if state[o] in (\"M\", \"E\", \"S\"):\n            state[o] = \"S\"; state[c] = \"S\"   # owner supplies data, both Shared\n        else:\n            state[c] = \"E\"                   # nobody else has it\ndef write(c):\n    state[1 - c] = \"I\"                       # invalidate the other copy\n    state[c] = \"M\"\n\nfor name, op, c in [(\"core0 read\", read, 0), (\"core1 read\", read, 1),\n                    (\"core0 write\", write, 0), (\"core1 read\", read, 1),\n                    (\"core1 write\", write, 1)]:\n    op(c)\n    print(f\"{name:12s} -> core0={state[0]} core1={state[1]}\")\n# Expected: E/I, S/S, M/I, S/S, I/M\n"
+   },
+   "followUps": [
+    "<p>Coherence is about one memory location: all cores agree on a single order of writes to that address. Consistency (the memory model) is about the order in which operations on different locations become visible. Example: core A writes <code>data = 1</code> then <code>flag = 1</code>; coherence guarantees each variable behaves sanely, but without a fence or release/acquire, core B may see flag == 1 and still read data == 0, because stores can be reordered in store buffers. That is why code needs atomics with ordering or fences even on coherent hardware.</p>",
+    "<p>Atomics on a contended line scale poorly because every atomic read-modify-write needs the line in Modified state, so the line has to move between cores one at a time. Example: 8 threads doing <code>counter.fetch_add(1)</code> on one variable serialise; each increment costs around 50 to 100 ns of line transfer instead of about 1 ns, so adding threads often makes total throughput worse. Fixes: per-thread counters summed at the end, batching updates, or sharding across padded cells (like Java's LongAdder).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "INT_MIN, midpoint overflow and shifts",
+    "java": "public class Main {\n    public static void main(String[] args) {\n        int min = Integer.MIN_VALUE;\n        // -(-2^31) does not fit in an int, so it wraps back to itself\n        System.out.println(\"abs(MIN) = \" + Math.abs(min));\n        System.out.println(\"-MIN     = \" + (-min));\n\n        int lo = 1_500_000_000, hi = 2_000_000_000;\n        System.out.println(\"(lo+hi)/2        = \" + ((lo + hi) / 2));       // overflows\n        System.out.println(\"lo+(hi-lo)/2     = \" + (lo + (hi - lo) / 2));  // safe\n\n        // Detect overflow before it happens\n        int a = Integer.MAX_VALUE, b = 1;\n        boolean willOverflow = b > 0 && a > Integer.MAX_VALUE - b;\n        System.out.println(\"MAX + 1 overflows? \" + willOverflow);\n        try { Math.addExact(a, b); } catch (ArithmeticException e) {\n            System.out.println(\"addExact threw: \" + e.getMessage());\n        }\n        // Right shift rounds toward -infinity, division toward zero\n        System.out.println(\"-7 >> 1 = \" + (-7 >> 1) + \", -7 / 2 = \" + (-7 / 2));\n    }\n}\n"
+   },
+   "followUps": [
+    "<p>You detect overflow by checking the operands first or using a checked operation, never by checking the result of signed arithmetic in C/C++. For addition of signed ints: it overflows if <code>b &gt; 0 &amp;&amp; a &gt; INT_MAX - b</code> or <code>b &lt; 0 &amp;&amp; a &lt; INT_MIN - b</code>. Example: a = 2,147,483,647, b = 1: a &gt; MAX - 1, so overflow. Other options: <code>__builtin_add_overflow</code> in GCC/Clang, <code>Math.addExact</code> in Java, <code>checked</code> in C#, or widening to a 64-bit type for the calculation. For unsigned types, wrap-around is defined, so <code>a + b &lt; a</code> works.</p>",
+    "<p>The compiler may delete it because signed overflow is undefined behaviour in C/C++, so it assumes x + 1 never wraps, which makes x + 1 &lt; x always false for every valid program. Example: with x = INT_MAX the check was meant to catch overflow, but the optimiser removes the whole branch at -O2 and the overflow goes undetected. The safe version tests before adding: <code>if (x == INT_MAX)</code>. Alternatively use unsigned arithmetic or compile with <code>-fwrapv</code>, which defines wrap-around.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why 0.1 + 0.2 != 0.3",
+    "python": "import math\n# Python floats are IEEE 754 doubles (64-bit)\na = 0.1 + 0.2\nprint(\"0.1 + 0.2 =\", repr(a))\nprint(\"0.1 exactly  = %.20f\" % 0.1)\nprint(\"0.3 exactly  = %.20f\" % 0.3)\nprint(\"a == 0.3 ?\", a == 0.3)\nprint(\"close with tolerance?\", math.isclose(a, 0.3, rel_tol=1e-9))\n# Non-associative addition\nprint((0.1 + 0.2) + 0.3, \"vs\", 0.1 + (0.2 + 0.3))\n# Integers (cents) stay exact\nprint(\"cents:\", 10 + 20 == 30)\n# Step 1: 0.1 and 0.2 are rounded to the nearest double\n# Step 2: their sum is rounded again, landing one ulp above 0.3\n# Time O(1), space O(1)\n"
+   },
+   "followUps": [
+    "<p>An ulp (unit in the last place) is the gap between a floating-point number and the next representable one, so it measures the spacing of doubles at that magnitude. For a double near 1.0 the ulp is 2^-52 (about 2.2e-16); near 1e16 it is 2, which is why 1e16 + 1 rounds back to 1e16. The spacing doubles every time the exponent increases. Rounding error for one operation is at most half an ulp, and accuracy of numeric libraries is often quoted in ulps (for example, error under 1 ulp).</p>",
+    "<p>bf16 keeps 8 exponent bits, the same as 32-bit float, so it has the same huge range (about 1e-38 to 3e38) even though it has only 7 fraction bits. In machine learning, values like gradients span many orders of magnitude, and overflow or underflow breaks training, while low precision is tolerable because noise averages out. Example: fp16 has 5 exponent bits and overflows above 65,504, but bf16 handles 1e30. Converting float32 to bf16 is also trivial: just drop the lower 16 bits (with rounding).</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Byte order of a 32-bit value",
+    "python": "import struct, sys\nn = 0x01020304\nlittle = struct.pack(\"<I\", n)     # least significant byte first\nbig = struct.pack(\">I\", n)        # network byte order\nprint(\"value        =\", hex(n))\nprint(\"little-endian:\", little.hex(\" \"))\nprint(\"big-endian   :\", big.hex(\" \"))\nprint(\"this machine :\", sys.byteorder)\n# Reading bytes with the wrong order gives a different number\nprint(\"big bytes read as little:\", hex(struct.unpack(\"<I\", big)[0]))\n# Portable: build the number with shifts, independent of the host\nb = bytes([0x01, 0x02, 0x03, 0x04])\nprint(\"by shifts    :\", hex(b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]))\n"
+   },
+   "followUps": [
+    "<p>Because the 4 bytes of a multi-byte value are laid out in different orders, the code that treats a buffer as an integer reads the wrong number on a machine with the other byte order. Example: bytes 01 02 03 04 are 0x04030201 on little-endian and 0x01020304 on big-endian. The cast also has other problems: if buf is not 4-byte aligned, the access can fault or be slow on some CPUs, and it breaks strict aliasing rules, which is undefined behaviour so the compiler may reorder or drop the access. Use <code>memcpy(&amp;v, buf, 4)</code> plus an explicit byte swap, or shifts.</p>",
+    "<p>In C++20 use <code>std::endian</code> from the <code>&lt;bit&gt;</code> header: <code>if constexpr (std::endian::native == std::endian::little)</code>. It has three values, little, big and native, and native equals one of the other two (or neither on mixed-endian systems), so the check is evaluated at compile time with no runtime cost. Before C++20 you had to use compiler macros such as <code>__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__</code> because checking via a pointer cast at runtime is undefined behaviour and not a constant expression.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A loop is memory-bound when it spends its time waiting for data rather than computing, so wider arithmetic does not help. Example: summing a 1 GB array of floats does one add per 4 bytes; DRAM supplies maybe 20 GB/s, so the scan takes about 50 ms whether the adds are scalar or AVX, since memory is the limit. SIMD helps when data is already in cache and there is enough work per byte. Check arithmetic intensity (operations per byte); low values mean memory-bound. Remedies are better locality, blocking, compression, or fusing loops to reuse loaded data.</p>",
+    "<p>GPUs use the same idea of applying one instruction to many data elements, but organised differently: SIMT (single instruction, multiple threads). A warp of 32 threads executes the same instruction in lockstep, each thread with its own registers and its own address, so the programmer writes scalar-looking code. If threads in a warp take different branches, both paths run one after another with threads masked off (divergence). Unlike CPU SIMD, a GPU runs thousands of such threads and hides memory latency by switching warps. CPU SIMD is a few wide lanes with low latency; GPUs favour throughput.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A linked list traversal is slow because each node's address is only known after the previous load finishes, so the CPU cannot overlap the misses. Example: 1 million nodes scattered in memory with ~100 ns per DRAM miss take about 100 ms, while an array scan of 1 million ints is prefetched and takes about 1 ms. Each node also wastes space on the pointer and is less likely to share a cache line with its neighbours, so you use more lines. Allocators may place nodes close together, which helps, but arrays or index-based lists are usually much faster.</p>",
+    "<p>The roofline model is a chart that bounds a program's speed by two limits: peak compute and memory bandwidth. Performance = min(peak FLOPS, bandwidth x arithmetic intensity), where intensity is FLOPs per byte moved. Example: with 1 TFLOP/s peak and 100 GB/s bandwidth, the ridge point is 10 FLOP/byte; a kernel at 0.25 FLOP/byte can reach at most 25 GFLOP/s, so it is memory-bound and more SIMD will not help. Plot your kernel under the roof to see whether to optimise memory access or compute.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Spectre v1 is hard to fix in hardware because the leak comes from normal, useful behaviour: speculation and branch prediction are the source of CPU speed, and the data lands in shared caches whose timing any program can measure. Hardware would have to stop speculative loads from changing cache state, or know which branches guard secrets, and it cannot tell a legal bounds-check bypass from an attack. Disabling speculation would cut performance badly. So fixes are mostly software: array index masking, lfence after bounds checks, and compiler mitigations, plus partial hardware features.</p>",
+    "<p>A constant-time implementation runs the same sequence of operations and memory accesses regardless of secret values, so timing and cache state reveal nothing. That means no secret-dependent branches, no secret-dependent array indexes, and no variable-time instructions. Example: comparing a MAC byte by byte and returning at the first difference leaks how many bytes matched; the constant-time version ORs all the XOR differences and checks once at the end. This defends against timing and cache side channels, although speculation attacks may still need extra care.</p>"
+   ]
+  }
+ ]
+}

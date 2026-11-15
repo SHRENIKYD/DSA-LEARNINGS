@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Quoted vs unquoted expansion (model)",
+    "python": "import fnmatch\n\n# Model of bash expansion: unquoted -> split on whitespace, then glob each word.\nfiles = [\"a.log\", \"b.log\", \"my notes.txt\"]\n\ndef expand(value, quoted):\n    if quoted:\n        return [value]              # \"$v\": always exactly one argument\n    words = value.split()           # word splitting; empty value vanishes\n    out = []\n    for w in words:                 # globbing on each word\n        hits = [f for f in files if fnmatch.fnmatch(f, w)]\n        out.extend(hits if hits else [w])\n    return out\n\nfor v in [\"my notes.txt\", \"*.log\", \"\"]:\n    print(\"value:\", repr(v))\n    print(\"  unquoted ->\", expand(v, False))\n    print(\"  quoted   ->\", expand(v, True))\n\n# rm -rf $DIR/*  with DIR empty becomes rm -rf /*\nDIR = \"\"\nprint(\"unsafe target:\", \"rm -rf \" + DIR + \"/*\")\n"
+   },
+   "followUps": [
+    "<p><code>\"${arr[*]}\"</code> glues all elements into <b>one</b> word, joined by the first character of IFS (a space by default); <code>\"${arr[@]}\"</code> gives one word per element. With <code>arr=(\"a b\" c)</code>, <code>\"${arr[@]}\"</code> is two arguments (<code>a b</code> and <code>c</code>) and <code>\"${arr[*]}\"</code> is one argument (<code>a b c</code>). Use <code>[@]</code> when passing elements on to a command, and <code>[*]</code> when you want a single string, for example <code>IFS=,; echo \"${arr[*]}\"</code> prints <code>a b,c</code>.</p>",
+    "<p>Because the output of <code>ls</code> is split on whitespace, so a file called <code>my notes.txt</code> becomes two items, <code>my</code> and <code>notes.txt</code>, and odd names (leading dash, newline) break it further. It also globs the words again. Let the shell expand the pattern itself, which keeps each name intact:</p><pre><code>for f in ./*.txt; do\n  [ -e \"$f\" ] || continue\n  echo \"$f\"\ndone</code></pre><p>For names from <code>find</code>, use <code>-print0</code> with <code>read -r -d ''</code> or <code>xargs -0</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>130 means the process was killed by signal 2 (SIGINT), because 128 + 2 = 130: the user pressed Ctrl+C. Shells report \"killed by signal N\" as 128+N, so 137 is SIGKILL (9) and 143 is SIGTERM (15). In a script it tells you a person or a tool interrupted the job, not that the program itself found an error. A cleanup trap on INT often ends with <code>exit 130</code> so callers see the same convention.</p>",
+    "<p>Because <code>$?</code> is overwritten by every command, even <code>echo</code> or <code>[</code>. Save it at once: <code>cmd; rc=$?</code>. Example: after <code>grep -q x f</code> (exit 1), running <code>echo \"failed\"</code> and then reading <code>$?</code> gives 0, the status of <code>echo</code>. The same applies in a trap: write <code>cleanup() { rc=$?; rm -f \"$tmp\"; exit \"$rc\"; }</code>, otherwise the <code>rm</code> status hides the real one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Check the scheduler's own record, then the job's output. On systemd machines run <code>journalctl -u cron --since today</code> (or look in <code>/var/log/cron</code> or <code>/var/log/syslog</code>), where each start appears as a line like <code>CMD (/opt/job.sh)</code>. If the line is there, the job ran and failed; if not, the crontab syntax, the user or the cron service is the problem. Add a first line to the script that appends <code>date</code> to a log file as proof of life, and redirect output with <code>&gt;&gt; job.log 2&gt;&amp;1</code>.</p>",
+    "<p>A systemd timer gives you what cron lacks: a clear service environment, logs in <code>journalctl</code> without extra redirects, and a recorded exit status you can alert on. It also supports <code>Persistent=true</code> (run a missed job after downtime), random delay to spread load, resource limits, dependencies such as \"after network is up\", and <code>systemctl list-timers</code> shows the next run. The price is two unit files instead of one crontab line, so for a trivial job cron is still fine.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "pipefail changes a pipeline's exit status (model)",
+    "python": "# Model of pipeline status: without pipefail only the last stage counts.\ndef pipeline_status(codes, pipefail):\n    if not pipefail:\n        return codes[-1]\n    # with pipefail: last non-zero status of any stage, else 0\n    nonzero = [c for c in codes if c != 0]\n    return nonzero[-1] if nonzero else 0\n\n# pg_dump | gzip : dump failed (2), gzip succeeded (0)\nstages = [2, 0]\nprint(\"stage exit codes:\", stages)\nprint(\"default      ->\", pipeline_status(stages, False))\nprint(\"with pipefail ->\", pipeline_status(stages, True))\n\n# producer | head: head exits early, producer gets SIGPIPE (128+13 = 141)\nstages = [141, 0]\nprint(\"stage exit codes:\", stages)\nprint(\"default      ->\", pipeline_status(stages, False))\nprint(\"with pipefail ->\", pipeline_status(stages, True))\n"
+   },
+   "followUps": [
+    "<p>A failing command inside an <code>if</code> condition or a <code>&amp;&amp;</code> / <code>||</code> list does not stop the script. In <code>set -e; false || echo \"ignored\"; echo \"still running\"</code> both echos run. Also <code>if grep -q x f; then ...</code> simply takes the else branch when grep fails. Same for a function called as <code>if myfunc; then</code>: errors inside it are ignored. So never rely on -e alone for a step whose failure matters; test it explicitly with <code>if ! cmd; then exit 1; fi</code>.</p>",
+    "<p>Because <code>head</code> exits as soon as it has its line, and the producer then gets SIGPIPE when it writes again and dies with status 141 (128 + 13). Without pipefail only <code>head</code>'s status 0 counts; with it the pipeline reports 141, and under <code>set -e</code> the script stops although nothing was wrong. Example: <code>yes | head -n 1</code> returns 141. Fix it by tolerating that case, <code>{ cmd || [ $? -eq 141 ]; } | head -n 1</code>, or by reading the first line another way, such as <code>read -r first &lt; &lt;(cmd)</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Command-line arguments are visible to every user on the machine, which is the risk. On a shared host <code>ps aux</code> or <code>/proc/PID/cmdline</code> shows the full command, so the token in <code>-H \"Authorization: Bearer abc123\"</code> can be read for as long as curl runs. Safer: put the header in a file with mode 600 and use <code>curl -H @file</code> (or <code>--config</code> read from stdin with <code>-K -</code>), so the secret never appears in the process list. Shell built-ins like <code>echo</code> are not visible, only external programs.</p>",
+    "<p>Keep the secret outside the script and let the source of truth change, then restart or re-read. With a secrets manager, create a new version of the secret, and the script fetches the current value on every run, so nothing needs editing. With a systemd credential or EnvironmentFile, replace the file contents and run <code>systemctl restart app</code>. Good practice is a short overlap: issue the new token, switch consumers, check they work, then revoke the old one. Rotating on a schedule, for example every 90 days, makes it routine rather than an emergency.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Redirection order: > file 2>&1 vs 2>&1 > file (model)",
+    "python": "# Model: redirections are applied left to right on a table of file descriptors.\ndef run(redirs):\n    fd = {1: \"terminal\", 2: \"terminal\"}\n    for r in redirs:\n        kind, a, b = r\n        if kind == \"file\":      # N> file : fd N now points at the file\n            fd[a] = b\n        else:                   # N>&M : fd N copies where fd M points NOW\n            fd[a] = fd[b]\n    return fd\n\ncases = {\n    \"> file 2>&1\": [(\"file\", 1, \"file\"), (\"dup\", 2, 1)],\n    \"2>&1 > file\": [(\"dup\", 2, 1), (\"file\", 1, \"file\")],\n}\nfor text, redirs in cases.items():\n    fd = run(redirs)\n    print(text.ljust(12), \"stdout ->\", fd[1], \"| stderr ->\", fd[2])\n"
+   },
+   "followUps": [
+    "<p>Point stderr at the pipe and move stdout out of the way first: <code>cmd 2&gt;&amp;1 &gt;/dev/null | grep error</code>. Reading left to right, stderr copies stdout's target (the pipe), then stdout goes to <code>/dev/null</code>. This is exactly the \"wrong\" order from the main question, used on purpose. In bash you can also swap them with a third descriptor: <code>cmd 3&gt;&amp;1 1&gt;&amp;2 2&gt;&amp;3 3&gt;&amp;-</code>. With <code>|&amp;</code> you pipe both streams together.</p>",
+    "<p>Because the redirection is done by your own shell before <code>sudo</code> starts. In <code>sudo echo x &gt; /etc/file</code> only <code>echo</code> runs as root; your unprivileged shell tries to open <code>/etc/file</code> and gets \"Permission denied\". Let a privileged process do the writing: <code>echo x | sudo tee /etc/file &gt;/dev/null</code>, or <code>sudo sh -c 'echo x &gt; /etc/file'</code>. Use <code>tee -a</code> to append.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Fixed names are predictable and shared, so two runs overwrite each other's data, and on a shared machine another user can plant a symlink named <code>/tmp/backup.tmp</code> pointing at a file you own, so your script overwrites it. If a crashed run left the file behind, the next run may also read stale data. <code>mktemp</code> gives a unique name such as <code>/tmp/tmp.Xa81fQ</code>, created with mode 600, so runs do not clash and others cannot read or hijack it.</p>",
+    "<p>Conventionally 128 + 15 = 143, the code a shell reports for a process killed by SIGTERM. Supervisors and CI systems read it as \"stopped on request\", not as an ordinary failure. Write <code>trap 'cleanup; exit 143' TERM</code> (and <code>exit 130</code> for INT). Exiting 0 would hide the interruption; a plain <code>exit 1</code> is acceptable but less informative. If the cleanup is already in an EXIT trap, the handler only needs to call <code>exit 143</code>.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotent update vs blind append",
+    "python": "# Idempotent vs blind append: run each twice and compare the final state.\ndef blind_append(lines, line):\n    lines.append(line)\n    return True\n\ndef ensure_line(lines, line):\n    if line in lines:           # check first, act only if needed\n        return False\n    lines.append(line)\n    return True\n\nfor name, fn in [(\"blind append\", blind_append), (\"ensure line\", ensure_line)]:\n    conf = [\"a=1\"]\n    changes = 0\n    for run in (1, 2, 3):\n        if fn(conf, \"b=2\"):\n            changes += 1\n    print(name.ljust(13), \"changes:\", changes, \"final:\", conf)\n"
+   },
+   "followUps": [
+    "<p>Ansible modules describe a desired state and first compare it with the real one, changing something only if they differ. The <code>user</code> module checks whether the account exists, <code>lineinfile</code> looks for the line, <code>copy</code> compares checksums. Each task then reports <code>ok</code> (nothing to do) or <code>changed</code>, so a second run should show <code>changed=0</code>. Handlers such as \"restart nginx\" fire only when a task reported changed. The shell and command modules are not idempotent by themselves, so you add <code>creates:</code> or <code>when:</code> to them.</p>",
+    "<p>Between the check and the act, the other copy can act too, so both see \"not there yet\" and both create it. Example: two runs of <code>[ -e f ] || echo line &gt;&gt; f</code> start together, both find no file, both append, and the line appears twice (or the second <code>mkdir</code> fails). The fix is to make the check and the act one atomic step: <code>mkdir</code> (fails if it exists), <code>ln -s</code>, <code>set -o noclobber</code> with <code>&gt;</code>, or <code>flock</code> around the whole section.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The old file is renamed but the program keeps writing to it through its open file handle, so the new empty file stays empty while the renamed copy keeps growing. After compression and deletion the disk space may not even come back, because the deleted file is still open (check <code>lsof +L1</code>). Fix by sending the app a reload signal in <code>postrotate</code> (for example <code>systemctl kill -s HUP app</code>), or by using <code>copytruncate</code>, which copies and then empties the original in place.</p>",
+    "<p>Set options for the json-file driver, either per container or in <code>/etc/docker/daemon.json</code>: <code>\"log-driver\": \"json-file\", \"log-opts\": {\"max-size\": \"10m\", \"max-file\": \"3\"}</code>. This keeps at most about 30 MB of logs per container, rotating when a file reaches 10 MB. On the command line use <code>--log-opt max-size=10m --log-opt max-file=3</code>. The daemon setting applies only to containers created afterwards, so existing ones must be recreated. Alternatively ship logs to a central system with another log driver.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>With <code>flock -n</code>, a run that is still going makes every next run skip, so you silently lose executions and the work falls behind. For example a job every 5 minutes that takes 8 minutes runs only every 10 minutes. Better to measure the duration and either lengthen the interval, speed the job up, or make it process in batches. If skipping is acceptable, log it. If every run must happen, drop <code>-n</code> and use <code>flock -w 60</code> to queue briefly, or turn it into a worker that loops.</p>",
+    "<p>Make the job report that it succeeded and alert on silence. The simplest way is a heartbeat: at the end of each successful run, ping a dead-man's-switch service or touch a file, and alert when it is older than, say, 2 intervals. A metric works too, such as a Prometheus gauge for \"last success timestamp\" with the alert <code>time() - last_success &gt; 86400</code>. Also log \"already running, skipped\" so a job that is always skipped stands out. Checking only the exit code misses a job that never started.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not restart in place: run the new version next to the old one, then switch traffic. On one server that means two instances on different ports behind a reverse proxy such as nginx: start the new one, wait for its health check to pass, then <code>nginx -s reload</code> (which finishes in-flight requests on the old workers), and finally stop the old instance after it has drained. Some servers can also do a graceful reload with socket handover (systemd socket activation, or <code>SO_REUSEPORT</code>), so the listening port never closes.</p>",
+    "<p>When the work becomes more than one server, more than a few steps, or needs to be shared by a team. Signs: you copy the script to many hosts, need rolling or canary deploys, have to roll back by percentages, track who deployed what, or the script grows past about 200 lines with branching logic. Then use a tool that already does it: Ansible for configuration across hosts, a CI/CD pipeline with an artifact registry, or Kubernetes with a rolling update. Keep bash for small glue, and for the one-server case where it is simplest.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>ShellCheck finds most of these mistakes before the script runs. It warns about unquoted variables (SC2086), <code>local x=$(cmd)</code> masking the exit code (SC2155), <code>for f in $(ls)</code> (SC2045), missing <code>|| exit</code> after <code>cd</code> (SC2164), unused variables, and unreachable code. Each warning has a wiki page that explains the problem and the fix. Run it in CI with <code>shellcheck -S warning *.sh</code> and in the editor. It cannot know your runtime values, so it complements tests and does not replace them.</p>",
+    "<p>Switch when the script needs real data structures, parsing, or testing: JSON or YAML handling, nested arrays or maps, HTTP calls with retries, dates and time zones, or more than roughly 100 to 200 lines of logic. Bash is clumsy at these and quoting bugs grow. Python has proper exceptions, unit tests and libraries, and starts slowly only by a few tens of milliseconds. Keep bash when the job is mostly running programs and piping their output, or when the target machine has nothing but a shell. A common split: a thin bash wrapper that calls the Python tool.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A short checklist: (1) <code>shellcheck</code> passes with no suppressions that lack a reason; (2) every variable is quoted and required ones use <code>${VAR:?}</code>; (3) <code>set -Eeuo pipefail</code> plus traps for cleanup; (4) no secrets in code, logs or <code>set -x</code>; (5) idempotent: second run reports no changes; (6) destructive commands have a dry-run and a confirm step; (7) it works under cron's minimal environment; (8) every command and flag actually exists, because assistants sometimes invent options; (9) failure paths were tested.</p>",
+    "<p>Look at size, state and audience. A bash script suits glue: calling a few commands, a cron task, a boot step, up to roughly 100 lines with no complex data. Python fits when you need parsing, APIs, structured data, tests or long-term ownership by a team. Ansible fits when you describe the desired state of many servers and want idempotence and an inventory for free. Example: rotating logs on one host is bash, calling a cloud API and processing JSON is Python, installing nginx with the same config on 40 hosts is Ansible.</p>"
+   ]
+  }
+ ]
+}
