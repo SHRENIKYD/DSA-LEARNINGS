@@ -40,3 +40,7 @@ Questions about products, tools, comparisons and process have written answers on
 ## How it reaches the learner
 
 `tools/build.js` reads `data/answers/*.json` and injects `window.IM_ANSWERS` into each module bundle; `src/engine.js` renders programs (`ivProgram`) and follow-ups (`ivFollowUps`). The same data feeds `handbook.html`, which follows the learner's route and language, offers a level filter, search and a rapid-fire mode.
+
+## Review status (2026-11-15)
+
+After the answers were written, every follow-up answer was re-read for claims about external products (versions, defaults, limits, prices, named cases). About 400 such claims were screened. A minority were confirmed against vendor documentation, papers or release notes (for example Alembic, pgvector, the MCP specification, the Argo CD and AWS docs, the GitHub changelog); most were confirmed only from the reviewer's own knowledge, so they are less certain. About 40 sentences were corrected or softened: wrong or outdated statements were fixed, and precise figures that could not be confirmed were replaced by cautious wording. Treat product-specific numbers in the answers as a study aid and check the vendor documentation before relying on them. Programs model ideas in plain code and never run the real products.

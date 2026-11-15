@@ -27,7 +27,7 @@
    },
    "followUps": [
     "<p>Window functions run after GROUP BY and HAVING but before DISTINCT and ORDER BY. The order is FROM, WHERE, GROUP BY, HAVING, <b>window functions</b>, SELECT list, DISTINCT, ORDER BY, LIMIT. That is why you cannot filter on a window result in WHERE or HAVING: it does not exist yet. Example: to keep only <code>ROW_NUMBER() = 1</code>, put the query in a subquery or CTE and filter in the outer WHERE. Some engines offer QUALIFY, which filters right after window evaluation.</p>",
-    "<p>SQLite is more lenient than the standard: it lets a WHERE clause refer to a SELECT alias as an extension, and so do MySQL and BigQuery. PostgreSQL follows the standard logical order, in which WHERE runs before the SELECT list creates the alias, so it reports that the column does not exist. If you want portable code, repeat the expression in WHERE or put the aliased query in a subquery or CTE and filter outside: <code>SELECT * FROM (SELECT a*2 AS d FROM t) WHERE d &gt; 10</code>.</p>"
+    "<p>SQLite is more lenient than the standard: it lets a WHERE clause refer to a SELECT alias as an extension, and so do some other engines such as Snowflake, but MySQL and PostgreSQL do not. PostgreSQL follows the standard logical order, in which WHERE runs before the SELECT list creates the alias, so it reports that the column does not exist. If you want portable code, repeat the expression in WHERE or put the aliased query in a subquery or CTE and filter outside: <code>SELECT * FROM (SELECT a*2 AS d FROM t) WHERE d &gt; 10</code>.</p>"
    ]
   },
   {
