@@ -64,7 +64,7 @@
   {
    "code": null,
    "followUps": [
-    "<p>Create the kind cluster with a port mapping and a node label, then install the ingress-nginx manifest meant for kind.</p><pre><code>extraPortMappings:\n- containerPort: 80\n  hostPort: 80\nkubectl apply -f ingress-nginx-kind.yaml</code></pre><p>The mapping is needed because kind nodes are containers. Wait for the controller Pod to be Ready, then create an Ingress with <code>ingressClassName: nginx</code> and call <code>http://localhost/</code> with the right Host header.</p>",
+    "<p>Create the kind cluster with a port mapping and a node label, then install an ingress controller meant for kind (ingress-nginx was retired in March 2026, so for new setups consider another controller).</p><pre><code>extraPortMappings:\n- containerPort: 80\n  hostPort: 80\nkubectl apply -f ingress-nginx-kind.yaml</code></pre><p>The mapping is needed because kind nodes are containers. Wait for the controller Pod to be Ready, then create an Ingress with <code>ingressClassName: nginx</code> and call <code>http://localhost/</code> with the right Host header.</p>",
     "<p>TLS adds a secret holding a certificate, referenced in the Ingress <code>tls</code> section, and cert-manager automates getting and renewing it.</p><p>You install cert-manager, define an Issuer (for example Let's Encrypt), and add an annotation naming it. It requests the certificate, solves the challenge, stores the key and cert in the Secret, and renews before expiry (typically 30 days ahead). The controller terminates TLS, so traffic behind it is plain HTTP unless you add more.</p>"
    ]
   },

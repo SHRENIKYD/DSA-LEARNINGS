@@ -37,7 +37,7 @@
    },
    "followUps": [
     "<p>It depends on the convention you choose, so you must state it. The common textbook rule is that a newly arriving process enters the queue before the preempted process is put back. Example: q=2, P1 runs 0-2 and P2 arrives at 2 with P1 still needing time; queue becomes P2, P1, so P2 runs next. The opposite rule (preempted process first) gives P1, P2 and P1 runs again. Both are valid and give different Gantt charts and averages, so exams usually say which one to use. If nothing is stated, write down your assumption.</p>",
-    "<p>Linux does not use a fixed quantum for normal tasks. Under CFS the slice is the scheduling period times the task's weight share. The period is about 6 ms for few tasks (sched_latency) and grows when there are many, so that each task gets at least a minimum granularity (about 0.75 ms). Example: period 6 ms with two equal tasks gives 3 ms each; with 8 tasks the period stretches to 8 * 0.75 = 6 ms so each gets 0.75 ms. EEVDF in Linux 6.6 and later uses a base slice (about 3 ms) and chooses by virtual deadline. Real-time round robin tasks use a fixed 100 ms default.</p>"
+    "<p>Linux does not use a fixed quantum for normal tasks. Under CFS the slice is the scheduling period times the task's weight share. The period is about 6 ms for few tasks (sched_latency) and grows when there are many, so that each task gets at least a minimum granularity (about 0.75 ms). Example: period 6 ms with two equal tasks gives 3 ms each; with 8 tasks the period stretches to 8 * 0.75 = 6 ms so each gets 0.75 ms. EEVDF in Linux 6.6 and later uses a base slice (typically a few ms) and chooses by virtual deadline. Real-time round robin tasks use a fixed 100 ms default.</p>"
    ]
   },
   {

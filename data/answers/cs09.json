@@ -82,7 +82,7 @@
   {
    "code": null,
    "followUps": [
-    "<p>HTTP/3 runs over QUIC in user space on UDP, and QUIC encrypts every packet itself, so the sendfile path does not apply. Data must be read, encrypted and sent through <code>sendmsg</code>.</p><p>Mitigations: batch many packets per syscall (GSO with <code>UDP_SEGMENT</code> sends up to 64 datagrams in one call, <code>recvmmsg</code> for receive), use io_uring, or offload crypto to the NIC. This is a main reason QUIC servers use more CPU than TCP+kTLS.</p>",
+    "<p>HTTP/3 runs over QUIC in user space on UDP, and QUIC encrypts every packet itself, so the sendfile path does not apply. Data must be read, encrypted and sent through <code>sendmsg</code>.</p><p>Mitigations: batch many packets per syscall (GSO with <code>UDP_SEGMENT</code> sends many datagrams (up to 64, or 128 on newer kernels) in one call, <code>recvmmsg</code> for receive), use io_uring, or offload crypto to the NIC. This is a main reason QUIC servers use more CPU than TCP+kTLS.</p>",
     "<p>Compressed responses cannot be zero-copy because the bytes sent differ from the bytes on disk, so the CPU must read and transform them.</p><p>Best option: compress once ahead of time and store both versions (for example <code>app.js</code> and <code>app.js.br</code>), then send the right file with sendfile based on the Accept-Encoding header. Dynamic content must be compressed on the fly, which costs CPU (roughly tens of MB/s per core at high compression levels).</p>"
    ]
   },

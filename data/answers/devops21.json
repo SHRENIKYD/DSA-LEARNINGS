@@ -4,7 +4,7 @@
    "code": null,
    "followUps": [
     "<p>Already-running Pods keep working, but new Pods may start without a fresh certificate. The data plane keeps its last configuration, so existing traffic flows.</p><p>A new sidecar or ztunnel needs istiod to get its certificate and config. With injection, the injector webhook lives in istiod too, so with a fail-open webhook the Pod starts <b>without</b> a sidecar (a security gap), and with fail-closed it is not created. Run istiod with 2 or more replicas and a PodDisruptionBudget so this is rare.</p>",
-    "<p>Skip a mesh when you have few services, a single team, or no need for mTLS, traffic shifting or uniform telemetry.</p><p>A mesh adds CPU and memory, extra hops (latency of about a millisecond per proxy), upgrade work and a new thing to debug. With 5 services, a library or an ingress controller plus NetworkPolicies is often enough. It pays off when dozens of services in several languages need the same identity, policy and metrics without changing code.</p>"
+    "<p>Skip a mesh when you have few services, a single team, or no need for mTLS, traffic shifting or uniform telemetry.</p><p>A mesh adds CPU and memory, extra hops (a little added latency per proxy hop), upgrade work and a new thing to debug. With 5 services, a library or an ingress controller plus NetworkPolicies is often enough. It pays off when dozens of services in several languages need the same identity, policy and metrics without changing code.</p>"
    ]
   },
   {

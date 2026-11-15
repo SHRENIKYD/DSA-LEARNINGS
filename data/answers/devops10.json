@@ -99,7 +99,7 @@
    "code": null,
    "followUps": [
     "<p>Use <code>hostvars</code>: <code>hostvars['db1']['ansible_facts']['default_ipv4']['address']</code>. It only works if db1's facts were gathered earlier in the same run (a play that targeted db1) or are stored in a fact cache. If the host was never contacted, the key is undefined and the task fails. A common fix is a first play on all hosts that only gathers facts.</p>",
-    "<p><code>set_fact</code> creates or changes a variable for a host during the run, using a computed value. It ranks very high in precedence, above inventory and play vars and below only extra vars (<code>-e</code>) for most cases. Example: <code>set_fact: workers=\"{{ ansible_facts['processor_vcpus'] * 2 }}\"</code> gives 8 on a 4-CPU host. It lasts for the run (or longer with caching), so name it clearly.</p>"
+    "<p><code>set_fact</code> creates or changes a variable for a host during the run, using a computed value. It ranks very high in precedence, above inventory, play vars and role vars, and below extra vars (<code>-e</code>) and role or include parameters. Example: <code>set_fact: workers=\"{{ ansible_facts['processor_vcpus'] * 2 }}\"</code> gives 8 on a 4-CPU host. It lasts for the run (or longer with caching), so name it clearly.</p>"
    ]
   },
   {
