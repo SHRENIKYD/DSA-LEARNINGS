@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The API server is the only component that talks to etcd. The scheduler, controllers, kubelets and kubectl all read and write through the API server, never to etcd directly.</p><p>This gives one place for authentication, authorization, admission and validation, and one place to add audit logging. It also means etcd can be locked down so that only the API server holds its client certificate, and you can scale or replace the API server without touching the others.</p>",
+    "<p>Running Pods keep running. The kubelet and container runtime on each node keep the existing containers alive without needing the control plane.</p><p>What stops is anything that needs a decision: no new Pods are scheduled, a crashed node's Pods are not replaced, Deployments do not roll, scaling and autoscaling pause, and <code>kubectl</code> fails. Services still route with the rules already programmed on nodes, but endpoint changes are not picked up. After ten minutes the cluster mostly serves as before; the risk is that nothing can heal until the control plane returns.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The old ReplicaSets are what make rollback possible: <code>kubectl rollout undo</code> just scales a previous ReplicaSet back up instead of rebuilding anything.</p><p>The number kept is <code>spec.revisionHistoryLimit</code>, default 10. Old ReplicaSets are scaled to 0 and cost almost nothing, but many of them clutter <code>kubectl get rs</code>. Setting it to 0 removes the ability to roll back, so a value like 3 to 5 is a common compromise.</p>",
+    "<p>Use a StatefulSet when each Pod needs a stable identity or its own disk, and a DaemonSet when you need exactly one Pod on every node (or every matching node).</p><p>StatefulSet: databases and queues such as <code>db-0</code>, <code>db-1</code>, with stable DNS names, ordered start-up and a PersistentVolumeClaim per Pod. DaemonSet: log shippers, node monitoring agents and CNI plugins. A Deployment fits stateless apps where all replicas are interchangeable.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Service endpoints need matching labels and Ready Pods",
+    "python": "# Which Pods does a Service select? Labels must match AND the Pod must be Ready.\nservice = {\"name\": \"web\", \"selector\": {\"app\": \"web\", \"tier\": \"front\"}}\npods = [\n    {\"name\": \"web-1\", \"labels\": {\"app\": \"web\", \"tier\": \"front\"}, \"ready\": True},\n    {\"name\": \"web-2\", \"labels\": {\"app\": \"web\", \"tier\": \"front\"}, \"ready\": False},  # readiness probe failing\n    {\"name\": \"web-3\", \"labels\": {\"app\": \"webb\", \"tier\": \"front\"}, \"ready\": True},  # label typo\n]\n\ndef matches(selector, labels):\n    # every key/value of the selector must be present in the Pod labels\n    return all(labels.get(k) == v for k, v in selector.items())\n\nprint(\"selector:\", service[\"selector\"])\nendpoints = []\nfor p in pods:\n    label_ok = matches(service[\"selector\"], p[\"labels\"])\n    print(p[\"name\"], \"labels match:\", label_ok, \"ready:\", p[\"ready\"])\n    if label_ok and p[\"ready\"]:  # only matching Ready Pods become endpoints\n        endpoints.append(p[\"name\"])\nprint(\"endpoints:\", endpoints or \"none (check labels, then readiness)\")"
+   },
+   "followUps": [
+    "<p>A named <code>targetPort</code> lets the Service refer to the port by name, so you can change the container's number without editing the Service.</p><p>Example: the container declares <code>name: http, containerPort: 8080</code> and the Service says <code>targetPort: http</code>. Moving the app to 9090 only needs the Deployment edited. Even during a rollout where old Pods use 8080 and new ones 9090, each Pod's own named port is resolved, so the Service works for both.</p>",
+    "<p>A headless Service returns the Pod IPs directly instead of one virtual IP: the DNS A record for the Service name lists every Ready Pod.</p><p>With three Ready Pods, <code>nslookup db</code> gives three addresses and the client picks. For a StatefulSet, each Pod also gets its own record such as <code>db-0.db.ns.svc</code>. There is no kube-proxy load balancing, so clients must handle choosing and reconnecting themselves.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the total startup budget longer than 90 seconds, with a startup probe such as <code>periodSeconds: 5</code> and <code>failureThreshold: 30</code>.</p><p>The kubelet allows about <code>periodSeconds x failureThreshold</code> before killing: 5 x 30 = 150 seconds, a safe margin over 90. Liveness and readiness stay off until the startup probe succeeds, so you can then give liveness a tight setting like period 10 and threshold 3. Do not just raise initialDelaySeconds; that delays every restart too.</p>",
+    "<p>Yes. A Pod is Running when its containers have started, but Ready only when the readiness probe passes, so a failing probe gives Running but not Ready.</p><p>In <code>kubectl get pods</code> it shows as <code>0/1 Running</code> (or <code>1/2</code> for two containers) with the STATUS still Running. <code>describe pod</code> shows <code>Ready: False</code> and probe failure events. Its IP is removed from Service endpoints, so it gets no traffic, but it is not restarted.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Derive QoS class from requests and limits",
+    "python": "# Derive the QoS class from requests and limits (cpu, memory in simple units).\ndef qos(containers):\n    anything_set = any(c.get(\"req\") or c.get(\"lim\") for c in containers)\n    if not anything_set:\n        return \"BestEffort\"  # nothing set at all\n    for c in containers:\n        req, lim = c.get(\"req\", {}), c.get(\"lim\", {})\n        # Guaranteed: cpu and memory set, request == limit, in every container\n        if not all(k in req and k in lim and req[k] == lim[k] for k in (\"cpu\", \"memory\")):\n            return \"Burstable\"\n    return \"Guaranteed\"\n\ncases = {\n    \"no resources\": [{}],\n    \"request only\": [{\"req\": {\"cpu\": 100, \"memory\": 128}}],\n    \"equal req/lim\": [{\"req\": {\"cpu\": 500, \"memory\": 256}, \"lim\": {\"cpu\": 500, \"memory\": 256}}],\n    \"memory equal, cpu no limit\": [{\"req\": {\"cpu\": 200, \"memory\": 256}, \"lim\": {\"memory\": 256}}],\n}\nfor name, cs in cases.items():\n    print(f\"{name:28} -> {qos(cs)}\")\n# Under node memory pressure the kubelet evicts BestEffort first, Guaranteed last."
+   },
+   "followUps": [
+    "<p>A CPU limit is enforced by throttling in short time slices, so a busy container can be paused even when the node has idle CPU.</p><p>The kernel gives a container with limit 500m only 50 ms of CPU in each 100 ms window. A request that needs 80 ms of work in a burst runs 50 ms, waits for the next window, and finishes with 50 ms or more of added latency. Memory is different because it cannot be paused. Many teams set CPU requests but no CPU limit for latency-sensitive services.</p>",
+    "<p>The scheduler ignores limits for placement; it only adds up requests and compares them with each node's allocatable capacity.</p><p>Example: a node has 4000m allocatable CPU and Pods already request 3500m. A new Pod requesting 600m does not fit, even if its limit is 1000m and actual use is tiny. Limits only matter later: they set the CPU throttle and the OOM kill threshold at runtime, and (with requests) the QoS class.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why a Pod stays Pending: requests versus free capacity",
+    "python": "# Scheduler fit check: sum of REQUESTS (not real usage) must fit the node's free capacity.\nnodes = {\"node-a\": {\"cpu\": 4000, \"mem\": 8192, \"taint\": None},\n         \"node-b\": {\"cpu\": 4000, \"mem\": 8192, \"taint\": \"gpu\"}}\nplaced = {\"node-a\": [(3500, 2000)], \"node-b\": []}   # (cpu m, mem Mi) already requested\n\ndef why_pending(pod):\n    reasons = []\n    for n, cap in nodes.items():\n        if cap[\"taint\"] and cap[\"taint\"] not in pod[\"tolerations\"]:\n            reasons.append(f\"{n}: untolerated taint {cap['taint']}\")\n            continue\n        used_cpu = sum(c for c, _ in placed[n])\n        used_mem = sum(m for _, m in placed[n])\n        if used_cpu + pod[\"cpu\"] > cap[\"cpu\"]:\n            reasons.append(f\"{n}: Insufficient cpu ({used_cpu}+{pod['cpu']} > {cap['cpu']})\")\n        elif used_mem + pod[\"mem\"] > cap[\"mem\"]:\n            reasons.append(f\"{n}: Insufficient memory\")\n        else:\n            return f\"scheduled on {n}\"\n    return \"Pending: \" + \"; \".join(reasons)\n\nprint(\"Pod asks 1000m cpu:\", why_pending({\"cpu\": 1000, \"mem\": 512, \"tolerations\": []}))\nprint(\"Pod asks 500m cpu :\", why_pending({\"cpu\": 500, \"mem\": 512, \"tolerations\": []}))"
+   },
+   "followUps": [
+    "<p>A quota failure stops the Pod from being created at all, while a Pending Pod exists but has no node yet.</p><p>With quota exceeded, <code>kubectl get pods</code> shows nothing new; the error appears in the ReplicaSet events (<code>kubectl describe rs</code>) as <code>exceeded quota</code>, and the API call itself is rejected. A Pending Pod is visible in the list and <code>describe pod</code> shows a <code>FailedScheduling</code> event. Fix quota by freeing or raising it, and Pending by capacity or constraints.</p>",
+    "<p>Cluster Autoscaler watches for Pods that are Pending because no node has room, and adds a node from a node group that would fit them.</p><p>It only helps when the cause is capacity (insufficient CPU or memory based on requests). It will not fix a bad nodeSelector, an untolerated taint with no matching group, or a Pod whose request is larger than any single node. After the new node joins, the scheduler places the Pod; this can take a few minutes.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Rolling update stalls when the new version is never Ready",
+    "python": "# Rolling update simulation: maxSurge=1, maxUnavailable=0, new version never becomes Ready.\nreplicas, max_surge, max_unavail = 3, 1, 0\nold, new_total, new_ready = 3, 0, 0\nnew_is_healthy = False          # readiness probe fails for the bad version\n\nfor step in range(1, 6):\n    # create new Pods while total <= replicas + maxSurge\n    if old + new_total < replicas + max_surge:\n        new_total += 1\n    if new_is_healthy:\n        new_ready = new_total\n    # remove old Pods only if available Pods stay >= replicas - maxUnavailable\n    while old > 0 and (old - 1 + new_ready) >= replicas - max_unavail:\n        old -= 1\n    print(f\"step {step}: old={old} new={new_total} new_ready={new_ready} serving={old + new_ready}\")\n    if new_ready == replicas:\n        break\nprint(\"rollout stalled, old Pods still serving -> run: kubectl rollout undo\")"
+   },
+   "followUps": [
+    "<p>Without a readiness probe, Kubernetes treats a Pod as Ready as soon as its container starts, so a broken version would take traffic and old Pods would be removed.</p><p>With 3 replicas, the new Pods count as available in seconds, the old ones are scaled down, and users see errors while the rollout reports success. The probe is what turns a bad release into a stalled rollout with the old version still serving. Add <code>minReadySeconds</code> too, so a Pod that crashes shortly after starting is not counted.</p>",
+    "<p>Because <code>rollout history</code> shows only revision numbers by default, a recorded cause tells you which change each revision was.</p><p>Without it, undoing to revision 7 means diffing ReplicaSets to learn what 7 was. Set an annotation <code>kubernetes.io/change-cause: \"image 1.4.2, ticket 1234\"</code> in CI, or use the commit hash. During an incident this saves minutes and avoids rolling back to the wrong version.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Create the kind cluster with a port mapping and a node label, then install the ingress-nginx manifest meant for kind.</p><pre><code>extraPortMappings:\n- containerPort: 80\n  hostPort: 80\nkubectl apply -f ingress-nginx-kind.yaml</code></pre><p>The mapping is needed because kind nodes are containers. Wait for the controller Pod to be Ready, then create an Ingress with <code>ingressClassName: nginx</code> and call <code>http://localhost/</code> with the right Host header.</p>",
+    "<p>TLS adds a secret holding a certificate, referenced in the Ingress <code>tls</code> section, and cert-manager automates getting and renewing it.</p><p>You install cert-manager, define an Issuer (for example Let's Encrypt), and add an annotation naming it. It requests the certificate, solves the challenge, stores the key and cert in the Secret, and renews before expiry (typically 30 days ahead). The controller terminates TLS, so traffic behind it is plain HTTP unless you add more.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because <code>list</code> returns the full objects, including data, so anyone allowed to list secrets in a namespace can read every value.</p><p>A role with <code>get</code> restricted by <code>resourceNames</code> can read only named secrets, but <code>kubectl get secrets -o yaml</code> with list rights dumps all of them. Also watch can stream them. So grant <code>get</code> on specific names where possible and avoid list and watch for ordinary service accounts.</p>",
+    "<p>A mounted file is refreshed in place, but an environment variable is fixed at container start.</p><p>For files, the kubelet updates the secret volume after a short delay (often under a minute), and the app must re-read it. Not with <code>subPath</code>, which never updates. For env vars, nothing changes until the Pod restarts, so you roll the Deployment (<code>kubectl rollout restart</code>) or use a hash annotation. Rotate with overlap, so both old and new credentials work during the switch.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Config hash in the Pod template triggers a rollout",
+    "python": "# Config hash in the Pod template: a config change becomes a normal rolling update.\nimport hashlib, json\n\ndef pod_template(image, config):\n    digest = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]\n    return {\"image\": image, \"annotations\": {\"checksum/config\": digest}}\n\nconfig_v1 = {\"LOG_LEVEL\": \"info\"}\nconfig_v2 = {\"LOG_LEVEL\": \"debug\"}\nt1 = pod_template(\"app:1.0\", config_v1)\nt2 = pod_template(\"app:1.0\", config_v1)\nt3 = pod_template(\"app:1.0\", config_v2)\nprint(\"same config  -> template changed:\", t1 != t2)   # no rollout\nprint(\"new config   -> template changed:\", t1 != t3)   # Deployment sees a new template\nprint(t1[\"annotations\"], t3[\"annotations\"])\n# A changed template makes the Deployment create a new ReplicaSet and roll Pods."
+   },
+   "followUps": [
+    "<p>The generator adds a hash of the content to the ConfigMap name, such as <code>app-config-8k2d9f</code>, and rewrites every reference to it.</p><p>Changing the data creates a new name, so the Pod template changes and the Deployment performs a normal rolling update, with rollback possible by pointing to the previous name. Old ConfigMaps can be pruned. This avoids the stale-config problem with no manual restart.</p>",
+    "<p>Validate in CI before anything reaches the cluster, then check the rollout, because a bad value should fail early and visibly.</p><p>Steps: lint the YAML and render it (<code>kustomize build</code>, <code>helm template</code>); validate against a schema (kubeconform) and run the app's own config check (<code>app --check-config</code>) in a job; apply to a staging namespace; use a readiness probe so a Pod that fails to parse config never gets traffic.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A LimitRange sets defaults and per-Pod or per-container min and max sizes, while a quota only caps the namespace total.</p><p>If a quota covers requests, a Pod with no requests is rejected. A LimitRange with <code>defaultRequest: cpu 100m</code> fills those in so the Pod passes. It also stops one container asking for 64 CPUs when the max is 2. Quota controls the total, LimitRange controls each object.</p>",
+    "<p>Prefer separate clusters when you need hard isolation, different lifecycles or a smaller blast radius.</p><p>Examples: production versus development, regulated data with compliance rules, a team that needs its own Kubernetes version or cluster-wide CRDs, or untrusted tenants (a shared kernel is a risk). The cost is more clusters to run, upgrade and pay for. Namespaces suit trusted teams in one organisation.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The JVM sizes its heap from the container limit, and the total process memory is more than the heap, so a heap equal to the limit gets OOMKilled.</p><p>Modern Java reads the cgroup limit and uses 25% for the heap by default. Non-heap memory (metaspace, threads, buffers) is extra. For a 1 GiB limit, set <code>-XX:MaxRAMPercentage=70</code> to leave about 300 MiB. An OOM from heap throws OutOfMemoryError; from the limit, the kernel kills it with exit 137.</p>",
+    "<p>A PodDisruptionBudget protects against voluntary disruptions, like node drains and upgrades, by limiting how many Pods can be down at once.</p><p>With 5 replicas and <code>minAvailable: 4</code>, a drain evicts one Pod at a time. It does not protect against involuntary events: node crashes, OOM kills, or kernel panics, and it does not stop a direct delete. It also can block drains if set too tight, such as <code>minAvailable</code> equal to replicas.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A PDB does not protect against involuntary failures, only against voluntary evictions through the eviction API.</p><p>A node crash, hardware failure, OOMKill, a zone outage or someone running <code>kubectl delete pod</code> ignores it. It also does not help if all replicas are on one node, which is why you add topology spread, and it does not guard against a bad release. Combine it with multiple zones, enough replicas and probes.</p>",
+    "<p>With core objects, run two Deployments behind one Service and split traffic by Pod count; a mesh or Argo Rollouts gives exact percentages and automation.</p><p>Example: the stable Deployment has 9 replicas and the canary 1, both with the label the Service selects, so about 10% of requests reach the canary. You watch error rates, then scale up or delete it. Rollouts and meshes add weighted traffic (1%, 5%), metric-based promotion and automatic abort.</p>"
+   ]
+  }
+ ]
+}

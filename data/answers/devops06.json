@@ -1,0 +1,134 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Identity Center is the front door for people, and it hands out roles. You sign in once with your company login, pick an account and a permission set, and Identity Center creates (and keeps up to date) an IAM role in that account, then gives you short-lived credentials for it. So a person never owns an IAM user; they borrow a role for about an hour. A permission set is a template for such a role, and assigning a group to it in 50 accounts means 50 roles created for you.</p>",
+    "<p>Only when something truly cannot use a role. Examples: an old third-party tool or SaaS product that only accepts a static access key and cannot do OIDC or assume a role, or a break-glass account kept for when the identity provider is down. Even then keep it rare, give it a narrow policy, enable MFA where possible, store the key in a secrets manager, rotate it (for instance every 90 days) and alert on its use. If a role-based option appears later, migrate and delete the user.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Policy evaluation: explicit deny wins",
+    "python": "from fnmatch import fnmatchcase\n\n# Each statement: effect, action pattern, resource pattern\nidentity = [\n    {\"effect\": \"Allow\", \"action\": \"s3:*\", \"res\": \"arn:aws:s3:::logs/*\"},\n    {\"effect\": \"Deny\", \"action\": \"s3:Delete*\", \"res\": \"*\"},\n]\nscp = [{\"effect\": \"Allow\", \"action\": \"*\", \"res\": \"*\"},\n       {\"effect\": \"Deny\", \"action\": \"s3:PutObject\", \"res\": \"arn:aws:s3:::logs/secret/*\"}]\n\ndef hits(stmts, effect, action, res):\n    return any(s[\"effect\"] == effect and fnmatchcase(action, s[\"action\"])\n               and fnmatchcase(res, s[\"res\"]) for s in stmts)\n\ndef evaluate(action, res):\n    # 1. any matching explicit Deny in any layer wins\n    if hits(identity, \"Deny\", action, res) or hits(scp, \"Deny\", action, res):\n        return \"DENY (explicit)\"\n    # 2. need an Allow in the identity policy AND the SCP guard rail\n    if hits(identity, \"Allow\", action, res) and hits(scp, \"Allow\", action, res):\n        return \"ALLOW\"\n    return \"DENY (implicit)\"\n\nfor a, r in [(\"s3:GetObject\", \"arn:aws:s3:::logs/a.txt\"),\n             (\"s3:DeleteObject\", \"arn:aws:s3:::logs/a.txt\"),\n             (\"s3:PutObject\", \"arn:aws:s3:::logs/secret/k\"),\n             (\"ec2:RunInstances\", \"*\")]:\n    print(a, r, \"->\", evaluate(a, r))\n"
+   },
+   "followUps": [
+    "<p>No. A resource policy cannot override an SCP deny, because an SCP is a ceiling set for the whole account. If an SCP denies <code>s3:DeleteBucket</code>, a bucket policy that allows it changes nothing for principals in that account. Evaluation is: any explicit deny wins, then you need an allow and every guard rail must also allow. Example: a bucket policy allows a role to delete, but the SCP denies it, so the answer is still denied. SCPs do not affect principals outside your organisation.</p>",
+    "<p>A permission boundary caps what an identity-based policy can grant to one user or role. The effective permission is the intersection: an action must be allowed by the identity policy and by the boundary. Example: a role has <code>AdministratorAccess</code> but its boundary only allows <code>s3:*</code> and <code>sqs:*</code>, so it can do only S3 and SQS. A boundary never grants anything by itself, and an explicit deny in it still wins. It is how you safely delegate role creation.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Least privilege from observed activity",
+    "python": "import json\n\n# Pretend CloudTrail events for the last 90 days: (action, resource ARN)\nevents = [\n    (\"s3:GetObject\", \"arn:aws:s3:::reports/2024/a.csv\"),\n    (\"s3:GetObject\", \"arn:aws:s3:::reports/2024/b.csv\"),\n    (\"s3:PutObject\", \"arn:aws:s3:::reports/out/c.csv\"),\n    (\"sqs:SendMessage\", \"arn:aws:sqs:eu-west-1:123456789012:jobs\"),\n]\nprint(\"old policy: Action * on Resource *\")\n\ndef prefix(arn):\n    # tighten an object ARN to its first folder: .../reports/2024/*\n    if arn.startswith(\"arn:aws:s3:::\"):\n        bucket, _, rest = arn[len(\"arn:aws:s3:::\"):].partition(\"/\")\n        return \"arn:aws:s3:::%s/%s/*\" % (bucket, rest.split(\"/\")[0])\n    return arn\n\ngrouped = {}\nfor action, arn in events:\n    grouped.setdefault(prefix(arn), set()).add(action)\n\npolicy = {\"Statement\": [\n    {\"Effect\": \"Allow\", \"Action\": sorted(acts), \"Resource\": res}\n    for res, acts in sorted(grouped.items())]}\nprint(json.dumps(policy, indent=1))\n# O(E) time, O(U) space for E events and U unique resources\n"
+   },
+   "followUps": [
+    "<p>Because <code>NotAction</code> with Allow means everything except the listed actions, including actions that do not exist yet. Example: <code>\"Effect\":\"Allow\",\"NotAction\":\"iam:*\"</code> looks like \"no IAM\", but it grants every other service, every new API AWS ships next year, and on <code>Resource: *</code> that is almost admin. Safer is an explicit Allow list of actions, or an Allow of broad access paired with an explicit Deny of the sensitive set. <code>NotAction</code> with Deny is fine and common in SCPs.</p>",
+    "<p>Do not trust a window shorter than the job cycle. For a monthly job, a 90-day window usually has 3 runs but may miss a quarterly or yearly task. Ask the owners, read the code or schedule (EventBridge rules, cron) to list rare actions, and add them by hand. Then roll out in steps: attach the new policy next to the old one, wait through one full cycle watching CloudTrail for AccessDenied, and only then remove the broad policy. Keep a quick way to roll back.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>S3 adds the bucket policy, Block Public Access, ACL settings and, for encrypted objects, KMS. A GET on an encrypted object needs <code>s3:GetObject</code> and also <code>kms:Decrypt</code> on the key, and the KMS key policy must allow the account or role. Cross-account access needs both sides to allow. VPC endpoint policies and <code>aws:SourceVpce</code> conditions can also deny. So an AccessDenied on a file that the policy clearly allows is often the KMS key, not S3.</p>",
+    "<p>The simulator only evaluates the policies you give it, so it misses things it cannot see. Check: SCPs and RCPs in other accounts, session policies on the assumed role, resource policies and KMS key policies, VPC endpoint policies, and condition keys such as <code>aws:SourceIp</code> or MFA that the simulator did not get. Also confirm you simulated the same action and exact ARN. Then read CloudTrail's <code>errorMessage</code> and decode it with <code>sts decode-authorization-message</code>; it names the real layer.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The claim in the OIDC token decides it. GitHub signs a token that contains <code>sub</code>, for example <code>repo:acme/shop:ref:refs/heads/main</code>, and the role's trust policy has a condition that the <code>sub</code> must equal that exact string (and <code>aud</code> must be <code>sts.amazonaws.com</code>). A workflow on another repository or another branch produces a different <code>sub</code> and is refused. Avoid wildcards like <code>repo:acme/*</code>, which let any repo in the organisation assume the production role.</p>",
+    "<p>IMDSv2 is the session-based way for code on an EC2 instance to read its metadata and role credentials from the link-local address 169.254.169.254. The caller first sends a PUT to get a token, then sends it in a header with each request. It matters because with IMDSv1 a simple server-side request forgery bug in your app could make the server fetch the credentials URL and leak them (this was behind real breaches). IMDSv2 blocks most of that. Require it with <code>HttpTokens=required</code> and set the hop limit to 1 if containers do not need it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Deactivating is reversible and keeps evidence; deleting is not. If you delete first, a legitimate system that still uses the key breaks with no way back, and the key ID is gone, which makes CloudTrail searches and the incident report harder. Inactive stops all new use at once, which is what contains the attack, and you can reactivate within minutes if you find a real production dependency. Delete only after you replaced it and finished the investigation.</p>",
+    "<p>Look for what the key's identity created or changed, in every region. In CloudTrail filter by the access key ID and list write events: <code>CreateUser</code>, <code>CreateAccessKey</code>, <code>CreateRole</code>, <code>AttachUserPolicy</code>, <code>UpdateAssumeRolePolicy</code> (a trust change that lets the attacker's account in), <code>PutBucketPolicy</code>, snapshot or AMI sharing, new Lambda functions, EventBridge rules and <code>RunInstances</code>. Compare IAM users, roles and keys against a known-good list, and use IAM Access Analyzer for external-access findings.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Trust policy conditions: strict vs wildcard sub",
+    "python": "from fnmatch import fnmatchcase\n\n# Trust policy conditions for a GitHub Actions deploy role\ntrust = {\"aud\": \"sts.amazonaws.com\", \"sub\": \"repo:acme/shop:ref:refs/heads/main\"}\nloose = {\"aud\": \"sts.amazonaws.com\", \"sub\": \"repo:acme/*\"}  # the common mistake\n\ndef can_assume(token, cond):\n    # StringEquals / StringLike style check of every claim\n    return all(fnmatchcase(token.get(k, \"\"), v) for k, v in cond.items())\n\ntokens = [\n    {\"aud\": \"sts.amazonaws.com\", \"sub\": \"repo:acme/shop:ref:refs/heads/main\"},\n    {\"aud\": \"sts.amazonaws.com\", \"sub\": \"repo:acme/shop:ref:refs/heads/feature-x\"},\n    {\"aud\": \"sts.amazonaws.com\", \"sub\": \"repo:acme/other:ref:refs/heads/main\"},\n]\nfor t in tokens:\n    print(t[\"sub\"], \"strict:\", can_assume(t, trust), \"loose:\", can_assume(t, loose))\n"
+   },
+   "followUps": [
+    "<p>Use the <code>sub</code> claim: allow plan on pull requests with a read-only role and apply only from main with a deploy role. Create two roles. The plan role's trust policy accepts <code>repo:acme/shop:pull_request</code> and has read-only permissions. The apply role accepts only <code>repo:acme/shop:ref:refs/heads/main</code> (or an environment) and has the write permissions. In the workflow, the PR job assumes the plan role and the deploy job on main assumes the apply role, so a PR can never get write access.</p>",
+    "<p>When a job uses a GitHub environment, the subject is <code>repo:ORG/REPO:environment:NAME</code>, for example <code>repo:acme/shop:environment:prod</code>. It does not contain the branch. So in the trust policy you set <code>sub</code> equal to that string, and you protect the environment in GitHub with required reviewers and branch rules, which gives you an approval step before production deploys. For plain branch jobs the subject is <code>repo:ORG/REPO:ref:refs/heads/main</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>For KMS, the key policy is the main authority and IAM policies work only if the key policy allows it. Most resources accept either a resource policy or an identity policy in the same account, but a KMS key without a statement that trusts the account's IAM (usually the root principal) ignores IAM policies completely. So you can have an IAM role with <code>kms:Decrypt</code> and still be denied. The default key policy gives the account root that statement, which hands control to IAM.</p>",
+    "<p>It would flag the bucket as public or shared with anyone on the internet, because <code>\"Principal\": \"*\"</code> means every principal. If the statement has no condition (such as <code>aws:PrincipalOrgID</code>, <code>aws:SourceVpce</code> or <code>aws:SourceArn</code>), the finding is high severity. Access Analyzer also reports it as external access, and Block Public Access may stop it. Fix by naming the principals or adding a condition that limits it to your organisation, or intend it as a public website and keep it deliberate.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Carving a VPC into aligned subnets per AZ",
+    "python": "import ipaddress\n\nvpc = ipaddress.ip_network(\"10.20.0.0/16\")\ncursor = int(vpc.network_address)\n\ndef alloc(prefix):\n    # take the next block of the given size, aligned to its own size\n    global cursor\n    size = 2 ** (32 - prefix)\n    cursor = (cursor + size - 1) // size * size\n    net = ipaddress.ip_network((cursor, prefix))\n    cursor += size\n    return net\n\nplan = []\nfor tier, prefix in [(\"public\", 24), (\"app\", 23), (\"data\", 24)]:\n    for az in [\"a\", \"b\"]:\n        plan.append((tier, az, alloc(prefix)))\nprint(\"VPC\", vpc)\nfor tier, az, net in plan:\n    print(\"%-6s az-%s %-15s %4d addresses\" % (tier, az, net, net.num_addresses))\nprint(\"all inside VPC:\", all(n.subnet_of(vpc) for _, _, n in plan))\nprint(\"no overlaps:\", not any(x[2].overlaps(y[2]) for i, x in enumerate(plan) for y in plan[i+1:]))\n"
+   },
+   "followUps": [
+    "<p>Because each private subnet then sends its traffic to the NAT in the same AZ, so an AZ outage affects only that AZ. With a single shared NAT in AZ-a, AZ-b's instances lose internet access when AZ-a fails, and their traffic also crosses AZs on the way. With one NAT per AZ, each route table has <code>0.0.0.0/0</code> to its own NAT, the surviving AZs keep working with no route change, and you avoid cross-AZ data charges. Cost: one NAT hourly fee per AZ, about 2 or 3 times as much.</p>",
+    "<p>Remove the route to the internet for that subnet and give it only what it needs. The data subnet's table keeps just the local route (no NAT, no IGW), so it has no outbound internet at all. If the database still needs AWS services (backups to S3, Secrets Manager, CloudWatch), use VPC endpoints: a gateway endpoint for S3 and interface endpoints for the others. Add a security group with no outbound rule to the internet, and verify with flow logs. Patches then come through a managed service or a controlled path.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Route table longest-prefix match",
+    "python": "import ipaddress\n\n# Route tables: the most specific (longest) matching prefix wins\npublic = {\"10.20.0.0/16\": \"local\", \"0.0.0.0/0\": \"igw-1\"}\nprivate = {\"10.20.0.0/16\": \"local\", \"0.0.0.0/0\": \"nat-a\"}\nisolated = {\"10.20.0.0/16\": \"local\"}\n\ndef route(table, dest):\n    ip = ipaddress.ip_address(dest)\n    matches = [(ipaddress.ip_network(p), t) for p, t in table.items()\n               if ip in ipaddress.ip_network(p)]\n    if not matches:\n        return \"no route (dropped)\"\n    return max(matches, key=lambda m: m[0].prefixlen)[1]\n\nfor name, table in [(\"public\", public), (\"private\", private), (\"data\", isolated)]:\n    for dest in [\"10.20.5.9\", \"93.184.216.34\"]:\n        print(\"%-7s -> %-14s via %s\" % (name, dest, route(table, dest)))\n# a subnet is \"public\" only because its table sends 0.0.0.0/0 to an igw\n"
+   },
+   "followUps": [
+    "<p>Follow it step by step. Check the instance's subnet route table for <code>0.0.0.0/0</code> to a NAT gateway, then check that the NAT gateway is Available, sits in a public subnet whose table points to an internet gateway, and has an Elastic IP. Then check the instance security group's outbound rules, the NACLs on both subnets (including return ports 1024-65535), and DNS resolution. Run Reachability Analyzer from the instance ENI to an internet gateway to see which hop blocks, and read flow logs for REJECT records.</p>",
+    "<p>It is the IPv6 version of a NAT gateway: it lets instances with IPv6 addresses start outbound connections to the internet but blocks connections that start from outside. IPv6 addresses are public, so there is no NAT. You add a route <code>::/0</code> to the egress-only internet gateway in the private subnet's route table. It is free for the gateway itself (you pay normal data transfer) so it can cut NAT bills for traffic to IPv6-enabled destinations.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Stateless NACL needs a reply rule",
+    "python": "# Stateless NACL: lowest rule number that matches decides; reply needs its own rule\ndef check(rules, port):\n    for num, lo, hi, action in sorted(rules):\n        if lo <= port <= hi:\n            return action\n    return \"deny\"  # final implicit deny\n\ninbound = [(100, 443, 443, \"allow\")]\noutbound_hardened = [(100, 443, 443, \"allow\")]          # forgot the replies\noutbound_fixed = [(100, 443, 443, \"allow\"), (110, 1024, 65535, \"allow\")]\n\nclient_port = 51514  # ephemeral port picked by the client\nprint(\"request  client:%d -> server:443 inbound:\" % client_port, check(inbound, 443))\nfor name, out in [(\"hardened\", outbound_hardened), (\"fixed\", outbound_fixed)]:\n    print(\"reply %-8s server:443 -> client:%d outbound:\" % (name, client_port),\n          check(out, client_port))\n"
+   },
+   "followUps": [
+    "<p>Nothing, for connections that are already open. Security groups are stateful and track connections, so an existing flow keeps working after you delete the rule that allowed it, until it ends or goes idle past the tracking timeout. New connections are then refused. Removing a rule is therefore not an instant cut. To force it, restart the connection, or use a NACL deny, which is stateless and applies to each packet. Be aware that connections allowed by a very broad rule can stay untracked.</p>",
+    "<p>Because a NACL filters traffic that crosses a subnet boundary, and two instances in the same subnet do not leave the subnet; their traffic does not pass the subnet's router in the VPC. Only security groups (on each network interface) and OS firewalls filter it. That is why the NACL is not a way to separate hosts inside one subnet; for that, use security groups or place the hosts in different subnets. Traffic between different subnets, even in the same VPC, is checked by NACLs on both sides.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Allow 1024-65535, which covers the ephemeral ports clients use for replies. Clients pick a random source port, and this range is the safe superset: Linux typically uses 32768-60999, Windows 49152-65535, and some NAT and older systems use 1024 and up. A narrower range such as 32768-60999 breaks some clients. Since NACLs are stateless, the outbound rule must permit replies to those ports, and the inbound rule does the same for responses to your own outbound requests. Allow it to the client CIDR when you can.</p>",
+    "<p>Reachability Analyzer would trace a path from the client's source to the instance and report it as not reachable, naming the component that blocks it, for example the outbound entry of the subnet's network ACL (<code>acl-0abc</code>, rule <code>*</code> deny). It models both the forward direction and, with the return-path analysis, shows the explanation as a list of hops. It is static analysis of configuration, not a live test, so it does not send packets, and it also does not see OS firewalls.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A reference follows the instance, a CIDR does not. A rule \"5432 from app-sg\" allows any interface that carries app-sg, wherever it lives and whatever address it has, so it keeps working as autoscaling adds hosts or you move them to a new subnet. A CIDR for the app subnet is wider (everything in that subnet, even other tiers) and breaks when the layout changes. References state intent and are least privilege. The limit: the traffic must use the private IP, not a NAT or public address.</p>",
+    "<p>Collect evidence from configuration and from traffic. For configuration, export the DB security group rules and show that the only source is app-sg, and list which instances carry app-sg. Run Reachability Analyzer from each tier's ENI to the DB ENI on port 5432: expected result reachable from app, not reachable from web. For traffic, show VPC Flow Logs filtered on the DB's ENI and port 5432 listing the source addresses seen. Save the results with dates as audit evidence, and re-run on change.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because PassRole lets a developer hand a powerful role to a service that then acts with it. If they may create a Lambda or EC2 instance and pass an admin role, the code they run there is admin, even if their own permissions are small. So allow <code>iam:PassRole</code> only for named roles (<code>role/dev-*</code>) and add <code>iam:PassedToService</code> to name the service, for example <code>lambda.amazonaws.com</code>. Without this, the boundary on new roles is useless because they can use an existing privileged role instead.</p>",
+    "<p>An SCP sets the maximum for every principal in an account or OU; a permission boundary sets the maximum for one user or role. SCPs are applied by Organizations and cannot be changed from inside the member account; boundaries are chosen per identity and managed by whoever can edit that identity. SCPs do not grant anything and do not affect the management account; boundaries do not grant either. Example: an SCP blocks unapproved regions for all 50 accounts, while a boundary stops developer-created roles from using IAM. Use both.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>When the interface endpoint's hourly fee plus processing charge is more than what the NAT would charge for that traffic. An interface endpoint costs a fixed fee per hour per AZ (for example 3 AZs times a few cents times 730 hours, so tens of dollars a month) plus a small per-GB fee. If a service sends only a few GB a month, the NAT's per-GB charge is smaller than the endpoint's fixed fees. Also, a gateway endpoint for S3 and DynamoDB has no fee, so use that first. Compute the break-even from the bill.</p>",
+    "<p>Because instances in other AZs send their traffic to that one NAT, and traffic between AZs is billed per GB in each direction in addition to the NAT processing charge. Example: 10 TB a month from AZ-b through a NAT in AZ-a adds cross-AZ data transfer on top of the NAT fee. It is also a single point of failure. The fix is one NAT per AZ with each AZ's route table pointing to its local NAT, so the traffic stays inside the AZ.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Centralised egress gives one place to inspect and log outbound traffic and fewer NAT gateways to pay for, but it adds a shared dependency and some costs. Pros: simple firewall rules, one set of fixed IPs for partners to allow-list, and consistent policy. Cons: Transit Gateway data processing charges per GB, extra latency, a larger blast radius if the central VPC fails (so run it in several AZs), and the network team can become a bottleneck. It suits regulated organisations; with heavy traffic the cost can exceed local NATs.</p>",
+    "<p>Treat it as a documented, temporary, reviewed change. The team files a request stating what is needed, why, and for how long. The security team reviews it and applies the narrowest option, such as an SCP condition that exempts one named role or account (for example using <code>aws:PrincipalARN</code>) rather than removing the SCP, or moves the account to a separate OU. The exception gets an owner and an expiry date in the tracker, is created through code review, and is re-checked or removed on that date.</p>"
+   ]
+  }
+ ]
+}

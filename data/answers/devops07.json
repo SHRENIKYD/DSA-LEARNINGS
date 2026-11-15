@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep bash for short glue: an entrypoint that sets environment variables and runs one command, a one-screen wrapper around <code>tar</code>, <code>rsync</code> or <code>systemctl</code>, and anything that is mostly pipes between existing tools.</p><p>Bash is everywhere with no install step, so it suits container entrypoints, CI steps and boot hooks. Rule of thumb: if the script is under about 20 lines, has no real data handling and fails fine with <code>set -euo pipefail</code>, leave it. A Python tool can still call these wrappers.</p>",
+    "<p>Pass the command as a list, never as one string, and always set a timeout and check the result.</p><pre><code>r = subprocess.run([\"./backup.sh\", path],\n    capture_output=True, text=True,\n    timeout=300, check=True)\nprint(r.stdout)</code></pre><p>A list avoids the shell, so a path like <code>a; rm -rf /</code> is just one odd argument. <code>check=True</code> raises <code>CalledProcessError</code> on a non-zero exit, and <code>timeout</code> raises <code>TimeoutExpired</code> so a hung script cannot block the job forever. Avoid <code>shell=True</code> with user data.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The instance role wins. Explicit environment variables are checked before the instance profile, so <code>AWS_ACCESS_KEY_ID</code> beats the role.</p><p>boto3 walks a fixed chain: explicit arguments to the client or session, then environment variables, then the shared credentials and config files (profiles, SSO), then container credentials, and last the EC2 instance metadata role. So a stale key left in the environment silently overrides the role, and calls may run as the wrong identity. That is why the script prints <code>sts.get_caller_identity()</code> first and compares the account id.</p>",
+    "<p>IMDSv2 needs a session token, which blocks the simple request forgery attacks that steal role credentials through IMDSv1.</p><p>With IMDSv1 any plain GET to <code>169.254.169.254</code> returns the role keys, so a server-side request forgery bug in an app (\"fetch this URL\") can leak them. IMDSv2 first needs a PUT request to get a token and the token must be sent in a header; forwarded requests usually cannot do that. You enforce it with <code>HttpTokens=required</code>, and a small hop limit of 1 stops containers from reaching it. boto3 uses IMDSv2 automatically.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Pagination: one call misses pages",
+    "python": "# Pagination: one call sees only the first page; a loop follows the token.\nKEYS = [\"key-%04d\" % i for i in range(2500)]   # pretend bucket with 2500 objects\nPAGE = 1000\n\ndef list_page(token=None):\n    start = int(token) if token else 0\n    chunk = KEYS[start:start + PAGE]\n    nxt = str(start + PAGE) if start + PAGE < len(KEYS) else None\n    return {\"Keys\": chunk, \"NextToken\": nxt}\n\ndef list_all():\n    token, seen = None, set()\n    while True:\n        resp = list_page(token)\n        yield from resp[\"Keys\"]\n        token = resp[\"NextToken\"]\n        if token is None:          # only stop when there is no token\n            return\n        if token in seen:          # guard against a stuck token\n            raise RuntimeError(\"repeated token\")\n        seen.add(token)\n\nprint(\"bucket really holds:\", len(KEYS))\nprint(\"single call sees   :\", len(list_page()[\"Keys\"]), \"(bug: silently partial)\")\nprint(\"paginated loop sees:\", sum(1 for _ in list_all()))\n# Time O(N) over N keys, space O(page) because it is a generator.\n"
+   },
+   "followUps": [
+    "<p>Stop the loop as soon as you find the item; a paginator or generator only fetches the next page when you ask for it.</p><pre><code>for page in paginator.paginate(Bucket=b):\n    for o in page.get(\"Contents\", []):\n        if o[\"Key\"] == target:\n            return o\n# or: paginate(PaginationConfig={\"MaxItems\": 50})</code></pre><p>With 1000 keys per page, finding an object on page 2 costs 2 calls, not the whole 2500-key listing. Remember <code>Contents</code> is missing on empty pages.</p>",
+    "<p>Narrow the listing on the server side, or do not list at all: use a <code>Prefix</code>, keep an index, or use S3 Inventory.</p><p>Listing 1 billion keys at 1000 per call is 1 million requests, which is slow and costs money. Better options: a key layout with date prefixes so you list only today's prefix; S3 Inventory, which writes a daily CSV or Parquet report you can process in bulk; S3 Lifecycle rules, which expire objects without any script; and event notifications that record keys as they are created.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Catching <code>Exception</code> around the whole loop hides real problems and also stops the run on the first bad item.</p><p>It would treat a harmless <code>NotFound</code> the same as <code>AccessDenied</code>, and it catches typos like a <code>KeyError</code> from your own bug, then reports success. Catch <code>ClientError</code> narrowly inside the loop, around one item, decide skip, stop or fail, and count failures. Use a broad catch only at the very top to log the crash and exit non-zero. Example: 1000 items with 3 locked ones should delete 997, report 3, and exit 1.</p>",
+    "<p><code>DryRunOperation</code> is the error EC2 returns when you pass <code>DryRun=True</code> and you do have permission, so the call would have worked.</p><p>EC2 never performs the action in this mode. If permission is missing you get <code>UnauthorizedOperation</code> instead. So the check is: catch <code>ClientError</code>, and if the code is <code>DryRunOperation</code> treat it as \"allowed\"; any other code is a real problem. It is a cheap way to test IAM permissions before the real run. Not every AWS service supports <code>DryRun</code>, mainly EC2 does.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Backoff with full jitter and retry rules",
+    "python": "import random\n\nBASE, CAP, MAX_TRIES = 1.0, 30.0, 6\n\ndef full_jitter(attempt, rng):\n    # wait = uniform(0, min(cap, base * 2**attempt))\n    return rng.uniform(0, min(CAP, BASE * 2 ** attempt))\n\ndef should_retry(status):\n    # retry throttling and server errors; never retry other 4xx\n    return status in (408, 429) or 500 <= status <= 599\n\nprint(\"upper bound per retry:\", [min(CAP, BASE * 2 ** a) for a in range(5)])\nprint(\"worst case total (5 retries):\", sum(min(CAP, BASE * 2 ** a) for a in range(5)), \"s\")\nfor s in (200, 400, 403, 404, 429, 500, 503):\n    print(s, \"retry\" if should_retry(s) else \"no retry\")\n\nrng = random.Random(7)\nresponses = iter([503, 429, 503, 200])      # fake flaky server\nfor attempt in range(MAX_TRIES):\n    status = next(responses)\n    if status == 200:\n        print(\"attempt\", attempt + 1, \"-> success\")\n        break\n    if not should_retry(status):\n        print(\"fatal\", status); break\n    wait = full_jitter(attempt, rng)        # a real script would time.sleep(wait)\n    print(\"attempt\", attempt + 1, \"->\", status, \"wait %.2fs\" % wait)\n# Bounded: at most MAX_TRIES calls, so the job fails visibly instead of hanging.\n"
+   },
+   "followUps": [
+    "<p>The worst case is 31 seconds in total for 5 retries, because the delays are capped at 1, 2, 4, 8 and 16 seconds.</p><p>With full jitter each wait is a random number between 0 and <code>min(30, 1*2^n)</code>, so the upper bounds are 1+2+4+8+16 = 31 s. The cap of 30 only starts to matter at the 6th retry (32 would become 30). On average the total is about half, near 15.5 s. Without jitter the waits are exactly 1, 2, 4, 8, 16 and every client retries at the same moment.</p>",
+    "<p>It retries only methods in an allowed list, by default the idempotent ones, and only for status codes you list.</p><pre><code>Retry(total=5, backoff_factor=1,\n      status_forcelist=[429, 500, 502, 503, 504],\n      allowed_methods=[\"GET\", \"HEAD\", \"PUT\", \"DELETE\"])</code></pre><p>By default <code>POST</code> is excluded because a repeat could create two orders. Connection errors before the request is sent are safe to retry for any method. Add <code>POST</code> only when the API accepts an idempotency key. <code>respect_retry_after_header</code> is on by default.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Safe snapshot cleanup plan, dry run first",
+    "python": "from datetime import datetime, timedelta, timezone\n\nNOW = datetime(2026, 11, 15, tzinfo=timezone.utc)   # fixed so the output is stable\nDAYS = 30\nsnaps = [\n    {\"Id\": \"snap-1\", \"Tags\": [], \"StartTime\": NOW - timedelta(days=45)},\n    {\"Id\": \"snap-2\", \"Tags\": [{\"Key\": \"Owner\", \"Value\": \"x\"}], \"StartTime\": NOW - timedelta(days=90)},\n    {\"Id\": \"snap-3\", \"Tags\": [], \"StartTime\": NOW - timedelta(days=10)},\n    {\"Id\": \"snap-4\", \"Tags\": [], \"StartTime\": NOW - timedelta(days=30)},        # boundary\n    {\"Id\": \"snap-5\", \"Tags\": [], \"StartTime\": NOW - timedelta(days=30, seconds=1)},\n]\n\ndef plan(snapshots, now, days, max_count=3):\n    cutoff = now - timedelta(days=days)           # pure function: no AWS calls\n    todo = [s[\"Id\"] for s in snapshots if not s[\"Tags\"] and s[\"StartTime\"] < cutoff]\n    if len(todo) > max_count:                     # circuit breaker\n        raise SystemExit(\"plan too large: %d\" % len(todo))\n    return todo\n\ndef run(apply):\n    todo = plan(snaps, NOW, DAYS)\n    for sid in todo:\n        print((\"DELETE \" if apply else \"would delete \") + sid)\n    print(\"total:\", len(todo), \"(dry run)\" if not apply else \"(applied)\")\n\nprint(\"input ids:\", [s[\"Id\"] for s in snaps])\nrun(apply=False)      # dry run is the default\n"
+   },
+   "followUps": [
+    "<p>Add a manifest of already-managed resources: query Backup tags and exclude whatever AWS Backup owns.</p><p>Backup-created snapshots carry tags such as <code>aws:backup:source-resource</code>, and they are named like <code>awsbackup:job-...</code>, but those tags may not be visible in all cases, so also ask AWS Backup for its recovery points. Safest rule: only delete when you can prove the snapshot is yours. Same for Data Lifecycle Manager (<code>aws:dlm:lifecycle-policy-id</code> tag). Skip anything referenced by an AMI (the delete fails with <code>InvalidSnapshot.InUse</code>) and report the skipped ones.</p>",
+    "<p>Loop over the accounts, assume a read/write role in each one, and run the same code per region, with a cap per account.</p><pre><code>for acct in org.list_accounts():\n    creds = sts.assume_role(RoleArn=arn(acct),\n                RoleSessionName=\"cleanup\")\n    for region in regions:\n        run(session(creds, region), acct)</code></pre><p>List accounts with <code>organizations.list_accounts</code> (paginated). Keep the account guard per session, write one plan file per account, roll out dry-run first, and run accounts in parallel with a small worker pool (say 5) to avoid throttling. One failing account should not stop the others.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Idempotent reconciler: second run changes nothing",
+    "python": "# Idempotent reconciler: observe, diff, apply only the differences.\ndesired = {\"web\": \"t3.small\", \"db\": \"t3.large\", \"cache\": \"t3.micro\"}\ncurrent = {\"web\": \"t3.small\", \"old\": \"t2.nano\"}      # the \"cloud\" (a dict here)\n\ndef make_plan(desired, current):\n    plan = []\n    for name, size in desired.items():\n        if name not in current:\n            plan.append((\"create\", name, size))\n        elif current[name] != size:\n            plan.append((\"update\", name, size))\n    for name in current:\n        if name not in desired:\n            plan.append((\"delete\", name, None))\n    return plan\n\ndef apply(plan, current):\n    for action, name, size in plan:\n        if action == \"delete\":\n            current.pop(name, None)          # already gone counts as success\n        else:\n            current[name] = size\n\nprint(\"desired:\", desired)\nfor run in (1, 2):\n    plan = make_plan(desired, current)\n    print(\"run\", run, \"plan:\", plan)\n    apply(plan, current)\nprint(\"final:\", current)\nprint(\"second run changes:\", len(make_plan(desired, current)))\n"
+   },
+   "followUps": [
+    "<p>\"Check then create\" is not enough when two runs can happen at the same time, because both can check, see nothing, and both create.</p><p>Example: two jobs both look for volume \"data-1\", find none, and both create it, so you pay for two. The gap between check and create is a race. Fix it by making the create itself atomic: a <code>ClientToken</code>, a DynamoDB <code>ConditionExpression=attribute_not_exists(pk)</code>, an S3 conditional write, or a unique name that the service rejects with \"already exists\" (then treat that error as success).</p>",
+    "<p>Use a lease: a lock record in a shared store that one host holds for a limited time.</p><p>DynamoDB works well: <code>PutItem</code> with <code>ConditionExpression=\"attribute_not_exists(pk) OR expires_at &lt; :now\"</code>. Whoever succeeds owns it and renews while working. A lock file on NFS is unreliable, and <code>flock</code> is per machine only. Other options are etcd or Consul sessions, a database advisory lock, or simply running the job in exactly one place.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A bare <code>Mock</code> accepts any call, so a typo or a wrong parameter still passes while real AWS would reject it.</p><p><code>Stubber</code> wraps a real boto3 client and checks every expected call against the real API model: wrong parameter names or types raise an error, and <code>assert_no_pending_responses()</code> fails if a call you expected never happened. <code>create_autospec</code> gives a similar guard for your own classes. Example: <code>Mock().delete_snapshot(SnapshotID=\"x\")</code> passes, but the real parameter is <code>SnapshotId</code>.</p>",
+    "<p>moto does not check IAM permissions or real service limits, so a test can pass while the real run gets AccessDenied.</p><p>By default moto accepts any call from any fake identity. It also does not fully reproduce throttling, eventual consistency, or every error code and edge case of each service, and some newer features are missing. So keep a short sandbox-account run before release, using the real role. Mocks prove your logic; only AWS proves permissions and limits.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Duplicate keys are silently accepted by the standard parsers (the last one wins), so you must detect them yourself while parsing.</p><p>For JSON use <code>object_pairs_hook</code>, which receives the key/value pairs before they become a dict.</p><pre><code>def no_dups(pairs):\n    keys = [k for k, _ in pairs]\n    if len(keys) != len(set(keys)):\n        raise ValueError(\"duplicate key\")\n    return dict(pairs)\njson.loads(text, object_pairs_hook=no_dups)</code></pre><p>For YAML, <code>yamllint</code> has a <code>key-duplicates</code> rule, and ruamel.yaml raises <code>DuplicateKeyError</code> by default.</p>",
+    "<p>Stream it instead of loading it: a 5 GB file would need many gigabytes of memory as Python objects.</p><p>If it is a JSON Lines file (one object per line) just iterate over the lines, memory stays tiny. For one huge JSON array use an incremental parser such as <code>ijson</code> (a third-party package) that yields items one at a time. Or pre-filter with <code>jq -c '.items[]'</code> into lines. Process in batches and write results out as you go, so memory is O(one item) and time is O(N).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use preventive controls as the source of truth and let Terraform own the values, with the tool only touching resources Terraform does not manage.</p><p>Set required tags in Terraform with <code>default_tags</code> on the provider. The tool should skip resources that carry a Terraform marker tag, or only report them as drift. If it must tag them, tell Terraform to ignore those keys with <code>ignore_changes = [tags[\"Owner\"]]</code>. Otherwise Terraform sets Owner=A, the tool sets Owner=B, and the two loop forever at every run.</p>",
+    "<p>Roll out in stages: report only, then one test account, then small groups, with the cap and an easy stop.</p><ol><li>Week 1: dry run in all 40 accounts, share the reports.</li><li>Apply in 1 sandbox account.</li><li>Apply to 5 accounts, then 15, then all 40.</li></ol><p>Use a per-account flag in a config file in Git, a per-run change cap (say 200 tags), and alerts when failures appear. Tagging is easily reversible, which makes it a safe first apply mode.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Non-blocking lock stops overlapping runs",
+    "python": "import fcntl, os, tempfile\n\npath = os.path.join(tempfile.gettempdir(), \"demo-job.lock\")\n\ndef try_lock():\n    fd = open(path, \"w\")\n    try:\n        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)   # non-blocking\n        return fd\n    except BlockingIOError:\n        fd.close()\n        return None\n\nfirst = try_lock()\nprint(\"run A got lock:\", first is not None)\nsecond = try_lock()          # simulates the next cron run starting too early\nprint(\"run B got lock:\", second is not None)\nif second is None:\n    print(\"run B: already running, exiting 0\")\nfirst.close()                # releasing (or process exit) frees the lock\nthird = try_lock()\nprint(\"run C got lock after A finished:\", third is not None)\nif third:\n    third.close()\nos.remove(path)\n"
+   },
+   "followUps": [
+    "<p>Watch for it by recording every run, including the ones that exit early, and alerting when too many were skipped in a row.</p><p>When the lock is busy the job logs \"already running\" and emits a metric <code>skipped_runs</code>. Also write a <code>last_success</code> timestamp and alert if it is older than, say, 2 hours for an hourly job (a dead-man's switch such as a heartbeat check). One skip is normal; 3 skips in a row means the job now takes longer than its schedule, so fix the speed or the interval.</p>",
+    "<p>A lease is a lock that is granted for a fixed time, so it frees itself if the holder dies.</p><p>Without an expiry, a host that crashes or loses the network while holding the lock blocks everyone forever. With a 10-minute lease, others can take over after it runs out. The holder should renew every minute or so while it works. Careful: a slow holder may still be working after expiry, so writes should carry a fencing token (an increasing number) that the storage checks, rejecting the older holder.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use a pinned lockfile and install from one trusted index, so every server gets the same versions.</p><p>Build a wheel in CI on each tag, then install with <code>pipx install tool==1.4.2</code> or <code>uv tool install</code> using a constraints or lock file (<code>pip install --require-hashes -r requirements.txt</code>). Pin transitive dependencies too: if <code>requests</code> is unpinned, servers installed a month apart can differ. For full control ship a container image, which freezes Python itself and the OS libraries.</p>",
+    "<p><code>CGO_ENABLED=0</code> makes Go build a fully static binary that does not use the C library, so it runs on any Linux machine or in an empty container.</p><p>With cgo on, the binary may link to glibc, and then it can break on Alpine (musl) or on an older distribution. With it off, the standard library uses pure Go code (for example for DNS). Typical build: <code>CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build</code>. You lose packages that need C, such as some SQLite drivers.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Check generated code against a fixed checklist of the usual dangerous gaps, then run it through the same tests as any other code.</p><ul><li>Uses a paginator, and has a test with 2 or more pages?</li><li>Timeouts and one retry layer only?</li><li>Dry run default, account guard, change cap?</li><li><code>ClientError</code> handled by code, not a blanket <code>except</code>?</li><li>No <code>shell=True</code>, no <code>yaml.load</code>, UTC-aware datetimes?</li><li>No hardcoded keys; real API names (models invent parameters)?</li></ul>",
+    "<p>Give the agent a narrow tool with a read-only plan step and make the apply step need a human approval.</p><p>Expose two functions: <code>plan_cleanup(account, days)</code> returns the list and a plan id; <code>apply_cleanup(plan_id)</code> only runs for a plan a person approved, within a change cap. The agent's role has read-only permissions, the apply role is assumed by the tool itself, never by the agent. Every call is logged. It cannot pass arbitrary IDs, so a confused agent cannot delete anything outside the plan.</p>"
+   ]
+  }
+ ]
+}

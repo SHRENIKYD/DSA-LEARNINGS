@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Declarative: compute steps from a desired state",
+    "python": "# Declarative: describe the end state, compute the steps from a diff.\ndef plan(desired, real):\n    steps = []\n    for name, size in desired.items():\n        if name not in real:\n            steps.append((\"create\", name, size))\n        elif real[name] != size:\n            steps.append((\"update\", name, size))\n    for name in real:\n        if name not in desired:\n            steps.append((\"destroy\", name, real[name]))\n    return steps\n\ndef apply(steps, real):\n    for op, name, size in steps:   # execute the plan\n        if op == \"destroy\":\n            del real[name]\n        else:\n            real[name] = size\n\ndesired = {\"web-1\": \"t3.micro\", \"web-2\": \"t3.micro\"}\nreal = {\"web-1\": \"t3.small\", \"old-1\": \"t3.micro\"}\nprint(\"desired:\", desired)\nprint(\"real   :\", real)\nfor run in (1, 2):\n    steps = plan(desired, real)\n    print(\"run\", run, \"plan:\", steps if steps else \"no changes\")\n    apply(steps, real)\nprint(\"final  :\", real)\n# plan is O(N) in resources, space O(N)\n"
+   },
+   "followUps": [
+    "<p>Use a plain script for one-off work that has no lasting state: a data migration, a database fix, a one-time cleanup, or glue between systems where the order of steps matters. Terraform describes <em>what should exist</em>, not <em>what should happen</em>, so it is a poor fit for actions like running a query, restarting a service, or seeding data.</p><p>Example: renaming 40,000 rows is a script; the database it runs on is Terraform. Keep scripts idempotent anyway (check before creating) so a retry is safe.</p>",
+    "<p>Terraform keeps a <b>state file</b> that records which real object each resource in your code maps to, such as <code>aws_instance.web</code> to <code>i-0abc</code>. On plan it reads state, then refreshes by asking the provider API about each of those objects.</p><p>Then it compares three things: code, state and the refreshed reality. An object in code but not in state is created; in state but not in code is destroyed. It does not scan the whole cloud, so a resource made by hand and never imported is invisible to it. Cost: one API read per managed object.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It means the object will be destroyed and then created again (the order is destroy first, then create). <code>+/-</code> is the same but create first. This happens when you change an attribute that cannot be edited in place, such as an instance's AMI or a subnet's CIDR block.</p><p>The plan marks the cause with <code># forces replacement</code>. Replacement means downtime and possibly lost data, so it deserves attention. Example: changing a database's name can wipe a 200 GB database. <code>create_before_destroy</code> reverses the order to cut downtime.</p>",
+    "<p>I look for destroys and replacements first, because they are the changes that lose data or cause outages. Then I check the counts: a plan that says 1 to add but shows 14 to destroy is a warning.</p><p>Next I check for surprises: changes I did not intend (a provider upgrade reading a default differently), anything touching networking, IAM or databases, and sensitive values. Last, I read each <code>forces replacement</code> note and ask whether it is expected. A short plan I can explain line by line is a good plan.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>First rotate the secrets, because deleting the leak does not undo it. Treat every value in that state (database passwords, keys, tokens) as compromised and replace them in the systems that issued them.</p><p>Then close the exposure: remove public access, check access logs to see who read the file, and revoke the leaked credentials. If it was in Git, rewrite history only after rotation, since copies may exist. Finally fix the cause: a private encrypted backend, restricted IAM, and a scanner. Rotation matters more than cleanup, as the secret is already out.</p>",
+    "<p>Lineage is a random ID created with a state, and it stays the same across that state's whole life. It lets Terraform tell apart two unrelated states that happen to carry the same serial number.</p><p>Each write also increments a <code>serial</code>. If you try to push a state whose lineage differs from the stored one, or whose serial is older, Terraform refuses, because it would be overwriting a different history. This protects against restoring or pushing the wrong file, for example from another environment.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Lost update without state locking",
+    "python": "# Lost update: two runs read the same state version, last writer wins.\ndef run(locking):\n    store = {\"state\": {\"vm\": 1}}          # the remote state file\n    lock = {\"holder\": None}\n\n    def read(who):\n        return dict(store[\"state\"])\n\n    def write(who, new_state):\n        store[\"state\"] = new_state\n\n    a_view = read(\"A\")                    # both read the same version\n    if locking:\n        lock[\"holder\"] = \"A\"              # A holds the lock\n    b_blocked = locking and lock[\"holder\"] is not None\n    a_view[\"bucket\"] = 1                  # A's apply creates a bucket\n    write(\"A\", a_view)\n    if b_blocked:\n        print(\"  B waits for the lock, then re-reads state\")\n        b_view = read(\"B\")\n    else:\n        b_view = {\"vm\": 1}                # B works from its stale copy\n    b_view[\"queue\"] = 1                   # B's apply creates a queue\n    write(\"B\", b_view)\n    return store[\"state\"]\n\nprint(\"without lock:\", run(False), \"<- bucket lost (orphaned)\")\nprint(\"with lock   :\", run(True))\n# lock turns a read-modify-write race into a sequence: O(1) extra cost\n"
+   },
+   "followUps": [
+    "<p>The S3 backend writes a small <code>.tflock</code> object next to the state, using a conditional write that succeeds only if the object does not already exist. The first run to create it holds the lock; everyone else gets an error.</p><p>When the run ends, Terraform deletes the object. Because the check and create happen as one atomic request on the server, two runs cannot both win. Cost: one extra small object and one request at the start. Old setups used a DynamoDB table with a conditional put for the same effect. If a run crashes, the file stays until someone uses <code>force-unlock</code>.</p>",
+    "<p>Plan with refresh reads and may write the state (updated attributes), and a plan made while another run is writing would see half-finished data. The lock gives you a consistent snapshot to plan against.</p><p>Example: run A is applying; run B plans at the same moment and sees a resource missing that A is creating, then proposes to create it again. Locking the plan avoids this wrong result. For read-only checks in CI you can pass <code>-lock=false</code> to avoid blocking, accepting a slightly stale view.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "count vs for_each: removing the middle item",
+    "python": "# count addresses by index, for_each by key: remove \"b\" and compare.\ndef diff(old, new):\n    out = []\n    for addr in sorted(set(old) | set(new)):\n        if addr not in new:\n            out.append(\"destroy \" + str(addr) + \" (\" + old[addr] + \")\")\n        elif addr not in old:\n            out.append(\"create \" + str(addr))\n        elif old[addr] != new[addr]:\n            out.append(\"change \" + str(addr) + \": \" + old[addr] + \" -> \" + new[addr])\n    return out\n\nnames_before = [\"a\", \"b\", \"c\"]\nnames_after = [\"a\", \"c\"]                      # remove \"b\"\nprint(\"names:\", names_before, \"->\", names_after)\n\n# count: addresses are indexes 0,1,2\nold_c = {i: n for i, n in enumerate(names_before)}\nnew_c = {i: n for i, n in enumerate(names_after)}\nprint(\"count:\")\nfor line in diff(old_c, new_c):\n    print(\"  \", line)\n\n# for_each: addresses are the names themselves\nold_f = {n: n for n in names_before}\nnew_f = {n: n for n in names_after}\nprint(\"for_each:\")\nfor line in diff(old_f, new_f):\n    print(\"  \", line)\n# diff is O(N log N) because of the sort\n"
+   },
+   "followUps": [
+    "<p>Move them one by one with <code>moved</code> blocks, generated by a script, so nothing is rebuilt. Each old address like <code>aws_instance.web[0]</code> maps to the new key <code>aws_instance.web[\"a\"]</code>.</p><p>Steps: list the instances and decide a stable key for each, then generate 200 blocks, then run plan and require <b>0 to add, 0 to destroy</b> before merging. Example block:</p><pre><code>moved {\n  from = aws_instance.web[0]\n  to   = aws_instance.web[\"a\"]\n}</code></pre><p>The plan itself is the safety net: any replacement means a wrong mapping.</p>",
+    "<p>Terraform must know every key during <code>plan</code>, before anything is created. An instance ID only exists after the instance is built, so Terraform cannot count the resources in advance and fails with a message that the keys cannot be determined.</p><p>Use values known upfront instead: names, or a static list in a variable. Example: <code>for_each = toset([\"a\",\"b\"])</code> works; <code>for_each = toset(aws_instance.x[*].id)</code> fails on a fresh run. Applying in two steps with <code>-target</code> is a workaround, but a bad habit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Rotate it at the source and let Terraform pick up the new value, rather than editing state. If the secret is generated by a managed feature (such as the database service rotating its own password), rotation needs no Terraform change at all.</p><p>If Terraform created it, use <code>-replace</code> on the secret resource (for example a random password) and apply, so the application receives the new value from the secret manager. Then confirm the old one is revoked. Remember the old value sits in earlier state versions, so shorten their retention.</p>",
+    "<p>State holds a full copy of the resource attributes, including the password in plain text, even when the variable is marked <code>sensitive</code>. Sensitive only hides it in CLI output.</p><p>So for an <code>aws_db_instance</code> with <code>password = var.db_pass</code>, the state JSON contains that exact password under the instance's attributes, plus the endpoint, ID and the rest. Anyone who can read the state can read the password. That is why state needs encryption, tight access, and why managed passwords or write-only arguments are better.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You test it like application code, in layers: cheap checks first, real infrastructure last. Run <code>fmt</code>, <code>validate</code> and a linter, then <code>terraform test</code> with plan-mode checks on the module's outputs and rules.</p><p>Then apply it for real in a throwaway account or sandbox, check it works (a ping, a query), and destroy it. Example: a network module is applied with 3 subnets, the test asserts 3 subnet IDs are returned, then it is destroyed. Test also the upgrade path from the last tag, since that is what users will run.</p>",
+    "<p>Anything that makes existing users' plans show destroy or replace, or forces them to edit their code, is a major change. Examples: renaming or removing a variable or output, changing a resource's address without a <code>moved</code> block, adding a required variable, or switching a default that changes real infrastructure.</p><p>Adding an optional variable with a safe default is minor; a bug fix with no plan change is a patch. Version <code>1.4.0</code> to <code>2.0.0</code> tells users to read the upgrade notes before bumping.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Add a guard that cannot be forgotten, because the weakness of workspaces is that the selected workspace is invisible. Make prod deploy only from CI, never from laptops, and have the pipeline select the workspace explicitly.</p><p>Also add a check that fails if the workspace name does not match the target account, for example comparing <code>terraform.workspace</code> with an expected variable, and give each workspace its own deploy role. Then a mistake fails at the first API call instead of changing prod. Still, separate directories are safer.</p>",
+    "<p>Terragrunt is a thin wrapper that keeps Terraform code DRY across environments. You write the backend and provider settings once and each environment folder just states its inputs and the module version.</p><p>It generates the backend config per folder, handles dependencies between stacks (<code>dependency</code> blocks), and can run <code>plan</code> or <code>apply</code> for many folders with <code>run-all</code>. The cost is another tool and another layer to debug. For a few environments, plain Terraform with copied small files is often simpler.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It means the real resource and your code still differ in some attribute, so you must decide which side is right. Read the diff: it shows exactly which fields change.</p><p>Usual causes: provider defaults you did not write (add them to code), computed values that look different (use <code>ignore_changes</code> for those), or a wrong import ID or an attribute you forgot. Example: plan says tags <code>~</code> from <code>{}</code> to <code>{env=prod}</code>; copy those tags into the code. Repeat until the plan reads 0 to change.</p>",
+    "<p>Remove the resource from the old state and import it into the new one, in that order, with backups of both. In current Terraform, use a <code>removed</code> block with <code>destroy = false</code> in the old config and an <code>import</code> block in the new one.</p><pre><code>removed {\n  from = aws_s3_bucket.logs\n  lifecycle { destroy = false }\n}</code></pre><p>The old CLI way is <code>state rm</code> followed by <code>import</code>. Never apply while both states claim the object, or two runs may fight over it. Verify with a plan showing no changes on both sides.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Drift detection: compare state with reality",
+    "python": "# Drift: compare code, state and real world; decide per attribute.\ncode  = {\"sg\": {\"ssh_open\": False, \"timeout\": 30}, \"tags\": {\"owner\": \"team\"}}\nstate = {\"sg\": {\"ssh_open\": False, \"timeout\": 30}, \"tags\": {\"owner\": \"team\"}}\nreal  = {\"sg\": {\"ssh_open\": True,  \"timeout\": 60}, \"tags\": {\"owner\": \"team\", \"cost\": \"x\"}}\nignore = {(\"tags\", \"cost\")}          # another tool owns this tag\n\ndrift = []\nfor res in real:\n    for attr in real[res]:\n        if (res, attr) in ignore:\n            continue\n        if state[res].get(attr) != real[res][attr]:\n            drift.append((res, attr, state[res].get(attr), real[res][attr]))\n\nfor res, attr, was, now in drift:\n    print(\"drift:\", res + \".\" + attr, was, \"->\", now)\nprint(\"exit code:\", 2 if drift else 0)   # like plan -detailed-exitcode\nprint(\"decision: revert ssh_open (wrong), adopt timeout 60 into code\")\n# O(R*A) time over resources and attributes\n"
+   },
+   "followUps": [
+    "<p>Because it only updates the state to match reality; it does not touch the real world or your code. The drift is still there in the code, so the next plan will propose to put things back.</p><p>Example: someone opened port 22. A refresh-only apply writes <code>ssh_open = true</code> into state. Code still says false, so the next plan closes it again, or, if you wanted to keep it, you must also edit the code. Refresh-only is useful to record a change you accept, after you update the code.</p>",
+    "<p>Terraform cannot tell you; the cloud's audit log can. Look in the audit trail (such as CloudTrail on AWS) for write events on that resource's ID around the time the plan first showed the change.</p><p>The log shows which role or user made the call, from which IP and when. Filter by resource ID and event type, for example <code>AuthorizeSecurityGroupIngress</code>. If drift is frequent, restrict console access to read-only and force changes through pull requests, so the author is always the commit history.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because a <code>moved</code> block is a record of history: it tells Terraform that an old address now lives at a new one. Anyone whose state still holds the old address needs it to migrate.</p><p>If you delete the block and some environment has not yet applied the move, Terraform sees the old address vanish and the new one appear, so it destroys one and creates the other. Keep the block until every environment, and every consumer of the module, has applied it. For published modules, keep it for several releases.</p>",
+    "<p>Put the object back by importing it again, since <code>state rm</code> only forgot it and the real resource is still there. Restore from the backup you took with <code>state pull</code> if the removal also hit other items.</p><p>Steps: write or restore the resource block, add an <code>import</code> block (or run <code>terraform import ADDR ID</code>), then plan until it shows no changes. If you did not take a backup, bucket versioning on the state can restore an earlier version. This is why state commands need a backup and a second person.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Fork PRs run with no access to secrets or cloud roles, so the pipeline must treat them as untrusted. A malicious fork could change the workflow or the Terraform code to print credentials or create resources.</p><p>Safe options: run only the no-credential steps (<code>fmt</code>, <code>validate</code>, lint, policy checks on code) for forks, and run the real plan only after a maintainer reviews and re-runs it from a branch in the main repo. Never use <code>pull_request_target</code> to check out and run fork code with secrets.</p>",
+    "<p>Make things advisory when the rule is new, noisy or a matter of taste, so it teaches without stopping work. Examples: cost thresholds, naming conventions, missing optional tags, and instance sizes slightly over the guidance.</p><p>Keep blocking for rules where a breach is serious and clear: public storage, open admin ports, deleting protected databases, unencrypted disks. A good path is advisory first, measure how often it fires (say 5 percent of PRs), fix the false positives, then promote it to blocking.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Migrate one root module at a time, starting with a low-risk one, and keep both tools out of the same state at once. First pin versions: bring Terraform to a version OpenTofu supports, then check that providers and modules come from the registries you want.</p><p>Per root: back up state, change the binary in CI and locally, run <code>tofu init</code> then <code>tofu plan</code>, and require no changes. Only then apply and move on. Avoid features that exist in only one tool. Rolling back is easy before you use OpenTofu-only features, so do that last.</p>",
+    "<p>Give the agent the least power and the shortest leash: it may open pull requests, never apply. Use read-only credentials, no access to state or secrets, and a fresh sandbox per task.</p><p>Then rely on the same gates as for humans: required plan, policy checks, code owners for sensitive paths (IAM, networking, databases), and a human approver for every apply. Add rules against shortcuts such as <code>-target</code>, <code>nonsensitive()</code> and hard-coded keys, and cap the size of a change, say 10 resources per PR. Log what the agent did.</p>"
+   ]
+  }
+ ]
+}
