@@ -1,0 +1,127 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>Put it in a dedicated networking host project, usually under a shared infrastructure folder, not in an application project. Only the network team gets admin rights there, so app teams cannot change subnets or firewall rules.</p><p>Typically you have one host project per environment (prod, non-prod), and each team's service project is attached to it and receives only the subnets it needs through the <code>compute.networkUser</code> role on those subnets.</p>",
+     "<p>There is no fixed number; the right count is what keeps blast radius, quotas and permissions clear. One project per app per environment is a common rule, so a team with 5 apps and 3 environments has 15 projects, which is fine if creation is automated.</p><p>A project factory is a Terraform module or pipeline that takes a small request file (name, folder, labels, budget, APIs) and creates the project, links billing, sets IAM, enables APIs and attaches it to the Shared VPC. A review of that file in a pull request is the only manual step.</p>"
+    ],
+    [
+     "<p>Use a deny policy on the organization or prod folder that denies <code>storage.buckets.delete</code> to everyone, with the break-glass group listed as an exception principal. Deny is checked before any allow, so no project-level grant can undo it.</p><p>Keep the break-glass group empty, add members only through an approved, time-limited process, and alert on any use. Also set bucket retention or soft delete as a second safety net.</p>",
+     "<p>An allow policy supports a limited number of distinct principals (about 1,500), and a policy that grows near that limit becomes hard to read. Groups fix it because one binding to a group counts as one principal, however many people are inside.</p><p>Example: instead of 300 user bindings on a role, bind <code>group:data-eng</code> once and manage membership in the identity provider. Joiners and leavers then change the group, not the policy.</p>"
+    ]
+   ]
+  },
+  {
+   "code": {
+    "title": "Allow union and deny policy check",
+    "python": "# Model of GCP IAM: allow = union over ancestors, deny policies checked first\nhierarchy = [\"org\", \"folder-prod\", \"project-shop\"]  # top to bottom\n\nallow = {  # level -> list of (principal, permission)\n    \"org\": [(\"group:sre\", \"storage.buckets.get\")],\n    \"folder-prod\": [(\"group:devs\", \"storage.buckets.get\")],\n    \"project-shop\": [(\"group:sre\", \"storage.buckets.delete\")],\n}\ndeny = {  # level -> (denied permission, exception principals)\n    \"folder-prod\": (\"storage.buckets.delete\", {\"group:break-glass\"}),\n}\n\ndef check(principal, perm):\n    # Deny policies on any ancestor are evaluated before allow\n    for level in hierarchy:\n        if level in deny:\n            denied, exceptions = deny[level]\n            if perm == denied and principal not in exceptions:\n                return \"DENIED by \" + level\n    # Allow is the union over the resource and its ancestors\n    for level in hierarchy:\n        if (principal, perm) in allow.get(level, []):\n            return \"ALLOWED via \" + level\n    return \"no grant (implicit deny)\"\n\nfor who, perm in [(\"group:sre\", \"storage.buckets.get\"),\n                  (\"group:sre\", \"storage.buckets.delete\"),\n                  (\"group:devs\", \"storage.buckets.get\"),\n                  (\"group:devs\", \"storage.buckets.delete\")]:\n    print(who, perm, \"->\", check(who, perm))\n"
+   },
+   "followUps": [
+    [
+     "<p>List the keys, check when each was last used, move the user to keyless auth, then disable before you delete. Never delete first, because a hidden consumer will break with no way back.</p><ol><li>List keys with <code>gcloud iam service-accounts keys list</code> and use the Policy Intelligence key usage data to see which are unused for 90 days.</li><li>Find the consumer (CI, script, laptop) and switch it to federation or impersonation.</li><li>Disable the key, wait a few weeks, watch for errors, then delete.</li></ol><p>Finish by enforcing the org policy that blocks new keys.</p>",
+     "<p>Restrict the provider so only your repositories and branches can get tokens; without that, any GitHub repository could use your pool. The key is an attribute condition on the token claims.</p><pre><code>assertion.repository_owner == 'my-org' &amp;&amp;\nassertion.repository == 'my-org/shop' &amp;&amp;\nassertion.ref == 'refs/heads/main'</code></pre><p>Then grant <code>workloadIdentityUser</code> on the service account only to that mapped repository, and give that service account narrow roles.</p>"
+    ],
+    [
+     "<p>Multiple VPCs are still useful when you need a hard boundary: different security or compliance domains, separate teams with overlapping IP ranges, or an acquired network you cannot renumber. Do not use them just because you have several environments, since a single global VPC with separate projects and firewall rules is simpler.</p><p>Also consider per-VPC quotas (such as routes and firewall rules) for very large estates, and a separate untrusted VPC for third-party tooling.</p>",
+     "<p>Peering connects two VPCs directly but is not transitive: if A peers with B and B peers with C, A cannot reach C. Network Connectivity Center is a hub that connects many spokes (VPCs, VPNs, Interconnects) and lets them exchange routes through it.</p><p>With 10 VPCs, a full peering mesh needs 45 links to manage; with a hub it needs 10 spokes. Peering is simpler for two or three networks; the hub scales better and also covers on-premises and other clouds.</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>It tells the firewall engine to skip the rest of that policy level and continue evaluation at the next level down (the next policy in the hierarchy, then VPC rules). It is neither an allow nor a deny.</p><p>Example: an org policy has a rule allowing SSH from a corporate range with action <code>goto_next</code>; matching traffic is not decided there but passes down so the VPC or network policy can still allow or block it. This lets central teams set guardrails without taking every decision.</p>",
+     "<p>Validate the intended rules before they are applied, so a broken rule fails the pull request instead of production. Firewalls should be code, not console changes.</p><ul><li>Run Terraform plan and a policy-as-code check (for example, no <code>0.0.0.0/0</code> on port 22, unique priorities).</li><li>After apply, run a Connectivity Test between known source and destination as a pipeline step; if reachability differs from the expected result, fail the build.</li></ul>"
+    ],
+    [
+     "<p>You lower the capacity scaler of the backend in that region to 0, and the global load balancer stops sending new requests there while it keeps health checks running. Traffic moves to the next closest region that has capacity.</p><p>Do it in steps, such as 100% to 50% to 0%, and check that the other regions can take the load. Existing connections finish gracefully through connection draining. Set the scaler back to 100% when maintenance ends.</p>",
+     "<p>Premium tier carries traffic on Google's own backbone from the closest edge to the destination, which gives a global anycast IP and lower latency. Standard tier hands traffic to the public internet and only uses Google's network inside the region, so the IP is regional.</p><p>Standard is cheaper for egress and fine for regional apps with lenient latency needs. It also limits you to regional load balancers, so the global Application Load Balancer needs Premium.</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>Cloud Run assumes many requests share an instance, so shared state in globals breaks. A Lambda function normally handles one request at a time, so code that keeps a request's data in module variables or uses a single database connection works in Lambda but can mix data between requests at concurrency 80.</p><p>Fix by keeping request data local, using thread-safe pools, and checking that memory and CPU can handle 80 parallel requests. Lower the concurrency setting to 1 if the code cannot be made safe.</p>",
+     "<p>In Autopilot you pay for the CPU, memory and storage your pods request, not for the nodes underneath, so every request is a cost. Over-requesting wastes money directly and under-requesting causes throttling or kills.</p><p>Example: a pod that asks for 2 vCPU but uses 0.3 pays for 2. So measure real usage, set requests close to the p95 usage, and use the vertical pod autoscaler recommendations. Limits matter less for billing than requests.</p>"
+    ],
+    [
+     "<p>Choose a key that spreads writes across many splits, because Spanner divides data by key range and a steadily increasing key sends all new writes to one server. Avoid timestamps and auto-increment numbers as the first key part.</p><p>Options: a UUIDv4, a hash prefix such as <code>shard = hash(id) % 16</code> placed first in the key, or a bit-reversed sequence. For time-ordered data, put a high-cardinality column like user id before the timestamp. Check with Key Visualizer.</p>",
+     "<p>Make cost a limit you set, not a surprise you discover. Slots pricing gives a flat cost, and on-demand pricing is per byte scanned, so each needs guardrails.</p><ul><li>Partition tables by date and cluster by common filters, then require a partition filter so queries scan less.</li><li>Set maximum bytes billed per query and project quotas, and select only needed columns (not <code>SELECT *</code>).</li><li>Use a reservation (slots) for steady loads, and billing alerts on spend.</li></ul>"
+    ]
+   ]
+  },
+  {
+   "code": {
+    "title": "Firewall priority and deny-wins-ties",
+    "python": "# Model of VPC firewall evaluation: lowest priority number wins, deny wins ties\nrules = [\n    {\"name\": \"allow-web\", \"prio\": 1000, \"action\": \"allow\", \"port\": 80, \"tag\": \"web\"},\n    {\"name\": \"deny-all-80\", \"prio\": 900, \"action\": \"deny\", \"port\": 80, \"tag\": \"web\"},\n    {\"name\": \"allow-ssh\", \"prio\": 1000, \"action\": \"allow\", \"port\": 22, \"tag\": \"web\"},\n    {\"name\": \"deny-ssh\", \"prio\": 1000, \"action\": \"deny\", \"port\": 22, \"tag\": \"web\"},\n]\n\ndef evaluate(port, vm_tags):\n    # keep rules that match the port and the VM's tags\n    hits = [r for r in rules if r[\"port\"] == port and r[\"tag\"] in vm_tags]\n    if not hits:\n        return \"implied deny ingress\"\n    # sort: lower priority number first, and deny before allow on a tie\n    hits.sort(key=lambda r: (r[\"prio\"], r[\"action\"] != \"deny\"))\n    top = hits[0]\n    return top[\"action\"] + \" by \" + top[\"name\"] + \" (prio \" + str(top[\"prio\"]) + \")\"\n\nprint(\"VM tags: web\")\nprint(\"port 80:\", evaluate(80, [\"web\"]))\nprint(\"port 22:\", evaluate(22, [\"web\"]))\nprint(\"port 443:\", evaluate(443, [\"web\"]))\nprint(\"VM tags: none, port 80:\", evaluate(80, []))\n"
+   },
+   "followUps": [
+    [
+     "<p>Seek the subscription to a timestamp, and the broker redelivers every message it still retains from that time. This needs the subscription to keep acknowledged messages (message retention enabled) or a snapshot taken earlier.</p><p>Example: to reprocess from yesterday at 09:00, run seek to that time on the subscription; consumers then receive everything published after it. Make handlers idempotent first, because they will see messages they already processed. Retention is limited, 7 days by default.</p>",
+     "<p>Use Cloud Tasks when you want to send one specific job to one specific HTTP endpoint with control over rate and retries, and use Pub/Sub when many independent consumers should react to an event. Tasks is a work queue and Pub/Sub is a broadcast.</p><p>Example: sending 10,000 emails at no more than 20 per second to one service fits Cloud Tasks (rate limits, scheduled delay, task names for dedupe). An order-created event read by billing, shipping and analytics fits Pub/Sub.</p>"
+    ],
+    [
+     "<p>I would not copy the identity model, the network design, the serverless behaviour or pricing structure directly. A literal copy would run, but it would be slow, costly or insecure on the new cloud.</p><p>Examples: a regional AWS design with DNS failover does not need to be rebuilt, since one global GCP load balancer replaces it. IAM policies cannot be copied because GCP uses inheritance and roles, so redesign them. Lambda code with one request per instance must be reviewed before moving to Cloud Run concurrency.</p>",
+     "<p>Federate instead of copying users: keep one identity provider as source of truth and let both clouds trust it through SAML or OIDC, so people sign in once and are removed everywhere together.</p><p>For workloads, use workload identity federation: an AWS role can exchange its signed identity for a short-lived Google token, and the reverse, with no stored keys. During migration, map roles by job function, not by policy text, and test the mapping with a few users before the cut-over.</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>Count the cost and effort of leaving, and compare it to the probability and impact of the risk that would make you leave. A rough formula is: exit cost multiplied by the chance of needing to exit within a few years.</p><p>Example: moving 200 TB of data out at about 0.08 USD per GB is 16,000 USD of egress, plus say 6 engineer-months of rework. Score each service on how proprietary its API is (object storage low, Spanner or DynamoDB high) and rank them. Spend portability effort only where the score is high.</p>",
+     "<p>A credible exit plan says what you would move, where to, how long it takes, what it costs, and proof that it works. A document nobody tested is not a plan.</p><ul><li>An inventory of services with their alternatives, and a data export path in open formats.</li><li>Runbooks, a target architecture, a time estimate and egress cost.</li><li>A tested drill, for example restoring a backup into the other cloud once a year.</li></ul><p>Regulators such as those under DORA expect this for critical services.</p>"
+    ],
+    [
+     "<p>Use a base that holds the common manifests, and one overlay folder per cloud containing only the differences. The base is not allowed to mention any cloud.</p><pre><code>base/            # deployment, service, hpa\noverlays/gke/    # kustomization + patch: WIF annotation, storageClass\noverlays/eks/    # patch: IRSA annotation, gp3 class\noverlays/aks/    # patch: workload identity, managed-csi</code></pre><p>Each overlay patches the service account annotation, ingress class and storage class. CI renders all overlays with <code>kustomize build</code> and validates them.</p>",
+     "<p>PostgreSQL-compatible databases (Cloud SQL, RDS, Azure Database for PostgreSQL) are the portable choice: the same SQL, drivers and tools work, and migration uses standard dump or logical replication. Spanner and DynamoDB give scale and features but have their own APIs and data models, so moving off them means rewriting data access.</p><p>If you need that scale, accept the lock-in for that service on purpose, and wrap it behind a small repository interface so the rest of the code does not depend on it.</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>You design for it with redundancy: two tunnels or links on separate devices and paths, a dynamic routing protocol (BGP) that moves traffic when one goes down, and monitoring that shows the failure. If one path fails, routes are withdrawn and traffic uses the other.</p><p>Example: an HA VPN with 4 tunnels still has 3 running after one fails; Cloud Router sees the BGP session drop and shifts traffic in seconds. For Interconnect, use two links in different edge availability domains, and keep VPN as a backup with lower route priority (higher MED).</p>",
+     "<p>Allow only specific services, ports and ranges between the clouds, instead of treating the link like a LAN. Keep trust at the service level, not the network level.</p><ul><li>Advertise only the needed CIDRs by BGP route filters, not whole aggregates.</li><li>Use firewall rules and security groups that name ports and sources, and default deny.</li><li>Expose services through Private Service Connect or private endpoints and require mTLS and identity checks.</li></ul><p>Separate VPCs per trust zone make a breach in one cloud harder to spread.</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": []
+  },
+  {
+   "code": {
+    "title": "At-least-once delivery with idempotent consumer",
+    "python": "# Model of at-least-once delivery: redelivery until ack, dedupe by message id\nimport random\nrandom.seed(3)\n\nmessages = [{\"id\": \"m1\", \"body\": \"order 1\"}, {\"id\": \"m2\", \"body\": \"order 2\"},\n            {\"id\": \"m3\", \"body\": \"order 3\"}]\nseen = set()      # ids already processed (idempotency store)\neffects = []      # real side effects, must happen once per message\ndeliveries = 0\n\ndef handle(msg):\n    if msg[\"id\"] in seen:          # duplicate: skip the side effect\n        return\n    effects.append(msg[\"body\"])\n    seen.add(msg[\"id\"])\n\nqueue = list(messages)\nwhile queue:\n    msg = queue.pop(0)\n    deliveries += 1\n    handle(msg)\n    # simulate a lost ack: the broker redelivers after the ack deadline\n    if random.random() < 0.5:\n        queue.append(msg)\n        print(\"ack lost, redelivering\", msg[\"id\"])\n\nprint(\"deliveries:\", deliveries)\nprint(\"side effects:\", effects)\nprint(\"exactly once effect:\", len(effects) == len(messages))\n"
+   },
+   "followUps": []
+  },
+  {
+   "code": null,
+   "followUps": []
+  },
+  {
+   "code": null,
+   "followUps": []
+  },
+  {
+   "code": null,
+   "followUps": []
+  },
+  {
+   "code": {
+    "title": "Check that cloud CIDR ranges do not overlap",
+    "python": "# Check that CIDR ranges of two clouds do not overlap (time O(n*m), space O(1))\nimport ipaddress\n\ngcp = [\"10.10.0.0/20\", \"10.20.0.0/20\"]\naws = [\"10.30.0.0/16\", \"10.20.8.0/21\"]\nprint(\"GCP:\", gcp)\nprint(\"AWS:\", aws)\n\nproblems = 0\nfor a in gcp:\n    for b in aws:\n        na = ipaddress.ip_network(a)\n        nb = ipaddress.ip_network(b)\n        if na.overlaps(nb):   # true if the two ranges share any address\n            print(\"OVERLAP:\", a, \"and\", b)\n            problems += 1\nprint(\"overlaps found:\", problems)\n"
+   },
+   "followUps": []
+  }
+ ]
+}

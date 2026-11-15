@@ -1,0 +1,95 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>I pick the project with the clearest trade-offs, because hard means decisions, not hours. <b>Situation:</b> our payment retries were creating duplicate charges for about 3% of orders. <b>Task:</b> I owned the fix. <b>Action:</b> I traced two days of logs, found that retries reused no key, and added idempotency keys plus a dedupe table. <b>Result:</b> duplicates fell from 3% to under 0.1%, and I learned to test failure paths first.</p>",
+    "<p>I want two years of growing from strong individual contributor toward owning a system end to end. In the first year I want to be fully productive on your core product and take one medium-sized project from design to launch. In the second I want to mentor newer teammates and lead a design review. I am open to either a senior engineer or a tech lead path, depending on where the team needs me.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, I did, and I would say so honestly. <b>Situation:</b> I wanted more payments-systems work. <b>Action:</b> I raised it in a one-on-one, asked for a stretch project, and got a small one. <b>Result:</b> I enjoyed it, but the team had no further roadmap in that area. That is why I am looking outward. If you have not spoken to your manager, say you plan to, since employers like to see you tried to fix it first.</p>",
+    "<p>Honestly, a clear growth path in the area I care about would make me stay, and I would say that without sounding like a threat. For example: ownership of a larger system, a lead role within a year, and some say in the roadmap. I have already asked for these. Avoid naming money as the main reason, since it sounds like you are shopping for offers rather than moving toward a goal.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Be honest but constructive: name one real weakness and attach a suggestion. For example, \"I noticed the onboarding flow asks for the same details twice, which probably costs sign-ups; I would test merging those steps.\" Do not insult the product. Using a small, specific observation shows you actually used it and think like an owner. If you have not used it, say so, then pick a point from its public docs or release notes instead.</p>",
+    "<p>Share only what you can verify, and say where your knowledge ends. For example: \"From the job post and your engineering blog, I understand you own the checkout service and are moving to event-driven processing. I do not know your on-call setup, so I would like to ask about it.\" Two true details plus one honest question beats a long guess, and it leads naturally into your questions for them.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep it short, true and free of blame. For example: \"The role was a short contract that ended when the project was cancelled, so I moved on after four months to find stable work.\" Give the reason in one sentence, say what you learned (for example, to check team stability before joining), and pivot to what you did next. Do not criticise the employer, and never invent a reason you cannot back up.</p>",
+    "<p>State the gap plainly in one sentence, then show what you did with it and that you are ready now. For example: \"I took eight months off to care for a family member; during that time I finished two open-source contributions and a data-structures course, and I returned to full-time work with a clear focus.\" You do not owe private details. Say it calmly, with no apology, and move straight on to the role.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would add a guard so the mistake was hard to repeat, not just rely on being careful. In that incident the script could point at production by default. The fixes were: separate credentials per environment, a required confirmation that prints the target database name, a dry-run mode, and nightly backups with a tested restore. After that, the same typo could not touch production. I would also rehearse restores, since the 90-minute recovery was the slowest step.</p>",
+    "<p>My manager was calm and focused on the fix, because I had told them within five minutes and brought a restore plan. They asked three questions: what was affected, how long to restore, and how we stop it recurring. In the review they thanked me for reporting fast. If your manager was upset, say so honestly and describe how you handled it, since reacting well to a hard reaction is also a strength.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would not force it. If Dev refused after I listened and shared the data, I would agree on a small deadline, then take it to our lead for a decision, framed as a question of risk, not as who is right. <b>Action steps:</b> 1) restate both options and risks in writing, 2) agree who decides, 3) commit fully to the decision. Once the lead chooses, I support it even if it was not my option.</p>",
+    "<p>Yes, in one way: I would raise the disagreement earlier. We waited until the sale was close, so the options felt like a crisis. Now I bring concerns in the first design review, when changing course costs hours, not days. I would also ask Dev what he was worried about before proposing anything, since his concern (a risky patch under pressure) was legitimate and shaped the final plan.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It is usually a pattern of over-thinking before asking, so my manager would say I am careful, and occasionally slow to speak up. They would probably add that it has improved. Use the words you believe your manager would really say; interviewers sometimes check references. A believable answer sounds like: \"They would say I sometimes struggled for a day before asking, but now I raise a block within two hours.\"</p>",
+    "<p>Last month I got stuck on a flaky integration test. My old habit was to spend a full day alone. This time I set a two-hour limit, then wrote a short summary of what I had tried and asked a teammate. They spotted a shared test database in ten minutes. The fix took one afternoon rather than two days. The rule I follow now: two hours alone, then ask with notes written down.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would stay calm and keep the conversation about the role's value, not my pay. For example: \"I understand the budget. My range comes from the scope we discussed. Could we look at the total package, such as a signing bonus, equity, or a review after six months?\" If nothing moves and the gap is large, I would decline politely. Do not accept a figure that makes you resentful within a year.</p>",
+    "<p>Only if I understand what the equity is worth and when I can sell it. Ask: the number of shares, the vesting schedule (for example four years with a one-year cliff), the current valuation, and whether the company is public. Private equity can be worth zero, while salary pays rent today. A rough rule: value equity cautiously, perhaps at half its stated paper value, and compare to cash on that basis.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I rehearse the structure, not the words. I know the stories and their key facts, such as the numbers and my part, but I keep the phrasing loose. I practise aloud with a friend, who asks different questions each time, so I have to adapt. I also keep the tone conversational: short sentences, an actual pause to think, and I answer the question asked, not the one I prepared. Reading from memory sounds flat.</p>",
+    "<p>I pause and say, \"Let me think for a moment,\" which is perfectly normal. Then I buy time by restating the question, or ask a clarifying one such as \"Do you mean a recent project or any time in my career?\". Next I pick the closest story from my bank of eight and start with the situation; the structure usually brings the details back. If nothing comes, I say honestly that I need another minute and return later.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Managing my time against the amount I needed to cover was the hardest part. I had six weeks and four areas: coding patterns, system design, behavioral stories, and company research. I split my time roughly 40/25/20/15, set a weekly plan, and reviewed what I got wrong. Doing too much coding at the start left my stories thin; I corrected that in week three. A specific honest challenge sounds more believable than saying nothing was hard.</p>",
+    "<p>The mocks taught me three things. First, I rambled: my stories took three minutes, so I cut the setup to two sentences. Second, I forgot to state numbers, so I added one measurable result to each story. Third, I froze on follow-up questions, so I practised saying \"the trade-off was...\". After the second mock, a peer told me my answers were clearer, and I timed them at 90 seconds each.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would ask about the deal-breakers that matter: \"On-call is every week with no rotation,\" \"Nobody can describe what success looks like,\" or \"The team has lost most of its engineers recently.\" Any of these would tell me the role cannot support the growth I want. Say which signal worries you and why, and frame it as wanting an honest fit, not as a test. Avoid answers about salary alone, which can look shallow.</p>",
+    "<p>Ask this to learn the team's shape and how work is shared. For example: \"Who would I pair with in my first month, and which teams do we depend on most?\" You are listening for a named onboarding buddy, how many engineers sit on the team, and who reviews code. A vague reply, such as \"you will figure it out,\" suggests weak onboarding. Write the answer down; it shows you are thinking about the real job.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I used a comparison window that matched the week before, same weekdays and the same time of day, since traffic changes between a Monday morning and a Saturday night. I also checked the request count per endpoint to make sure the mix was similar: for example, 410k requests in the baseline week and 395k afterwards, which is within 4%. If the mix differed, I would compare per-endpoint, or rerun the test under a load script with a fixed request pattern.</p>",
+    "<p>Next I would measure whether the improvement reached users and the budget: the cache hit rate (for example, 85% of reads served from Redis), the p99 latency, which can hide slow tails, and error rates after cache expiry. I would also watch cost, such as memory use, and check for stale data complaints. The aim is to confirm that a faster p95 is not trading correctness or stability for speed, and then decide whether more tuning is worth it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A model once suggested a date-parsing helper that looked right but gave the wrong week number for the last days of December, since it mixed calendar year with ISO week year. I caught it because I wrote a test with real boundary dates (30 December and 1 January). The test failed, and I fixed the helper using the standard library's ISO calendar. The lesson: tests with edge cases found the error faster than reading the code.</p>",
+    "<p>I trust output I can check cheaply and distrust output I cannot. Boilerplate, test scaffolds, and rewording are low-risk, because I can read and run them. Facts, numbers, library behaviour and security advice I verify against the official docs or by running a small experiment. I also never paste confidential code or customer data into a tool. If I cannot explain the result in my own words, I do not ship it or use it in an interview.</p>"
+   ]
+  }
+ ]
+}

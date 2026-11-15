@@ -41,6 +41,13 @@
   {
    "code": null,
    "followUps": [
+    "<p>Because layers only add; a delete in a later layer just hides the file while the earlier layer still stores its bytes.</p><p>If one <code>RUN</code> downloads a 300 MB archive and the next does <code>rm</code> on it, the image is still 300 MB larger, as the first layer is shipped and pulled. Download, use and delete in the same <code>RUN</code>, or better build in a separate stage and copy only the result: <code>COPY --from=builder /out/app /app</code>.</p>",
+    "<p>Alpine is the wrong choice when your software needs glibc or has slow or missing musl builds.</p><p>Alpine uses musl libc, so prebuilt glibc wheels or binaries (many Python scientific packages, some Node native modules, Java with certain JNI libraries) fail or must compile from source, making builds slower and sometimes subtly different in DNS and performance. Use <code>-slim</code> (Debian) or distroless for those, and keep Alpine for static or simple tools.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
     "<p>Because the secret is already in the image and in anyone's copy of it, so deleting the image does not undo the leak.</p><p>Assume anyone who could pull it (or any CI log, cache or mirror) has the value. Revoke and replace the credential first, then check access logs for misuse, and only then delete the image and purge caches. If you delete first, you lose the evidence you need and the key stays valid. Rotating takes minutes; deleting every copy is impossible.</p>",
     "<p>The convention lets you give a variable's value as a file path, so the secret is read from a mounted file instead of the environment.</p><p>For example <code>POSTGRES_PASSWORD_FILE=/run/secrets/db_pass</code>: the entrypoint script reads that file and exports <code>POSTGRES_PASSWORD</code> itself. This keeps the value out of <code>docker inspect</code> and <code>/proc/&lt;pid&gt;/environ</code> of other tools. Compose or Swarm mounts the file under <code>/run/secrets</code>. It only works if the image's entrypoint supports it, as the official Postgres and MySQL images do.</p>"
    ]
@@ -67,17 +74,17 @@
    ]
   },
   {
-   "code": null,
+   "code": {
+    "title": "Wait for a dependency with exponential backoff",
+    "python": "# Waiting for a dependency: poll its health with exponential backoff.\nclass Database:\n    def __init__(self, ready_after):\n        self.ready_after = ready_after   # becomes healthy after N checks\n        self.checks = 0\n\n    def healthy(self):\n        self.checks += 1\n        return self.checks >= self.ready_after\n\ndef wait_healthy(service, max_tries=6, base=0.5, cap=4.0):\n    delay = base\n    for attempt in range(1, max_tries + 1):\n        if service.healthy():\n            print(\"attempt\", attempt, \"-> healthy, starting app\")\n            return True\n        print(\"attempt\", attempt, \"-> not ready, would wait\", delay, \"s\")\n        delay = min(delay * 2, cap)      # 0.5, 1, 2, 4, 4 ...\n    print(\"gave up: exit non-zero so the orchestrator restarts us\")\n    return False\n\nprint(\"slow database (ready on check 4)\")\nwait_healthy(Database(4))\nprint(\"dead database (never ready)\")\nwait_healthy(Database(99))\n"
+   },
    "followUps": [
     "<p>The migration service fails, exits non-zero, and every service that depends on it with <code>service_completed_successfully</code> never starts.</p><p><code>docker compose up</code> reports the dependency failed and stops. Read the migration's logs, fix it, and rerun; the dependent services start only after it exits 0. That is a feature: the app should not run against a half-migrated schema. Make migrations idempotent so a rerun is safe.</p>",
     "<p>Kubernetes has no start-up ordering between pods, so each app must tolerate missing dependencies and rely on probes and init containers.</p><p>Use an <b>init container</b> for one-time waiting or migration (the main container starts only after it succeeds), a <b>readiness probe</b> so traffic reaches only ready pods, and a <b>startup probe</b> for slow starts. The app itself retries connections with backoff, because a dependency can restart at any time. Failing pods are restarted with CrashLoopBackOff delays.</p>"
    ]
   },
   {
-   "code": {
-    "title": "Wait for a dependency with exponential backoff",
-    "python": "# Waiting for a dependency: poll its health with exponential backoff.\nclass Database:\n    def __init__(self, ready_after):\n        self.ready_after = ready_after   # becomes healthy after N checks\n        self.checks = 0\n\n    def healthy(self):\n        self.checks += 1\n        return self.checks >= self.ready_after\n\ndef wait_healthy(service, max_tries=6, base=0.5, cap=4.0):\n    delay = base\n    for attempt in range(1, max_tries + 1):\n        if service.healthy():\n            print(\"attempt\", attempt, \"-> healthy, starting app\")\n            return True\n        print(\"attempt\", attempt, \"-> not ready, would wait\", delay, \"s\")\n        delay = min(delay * 2, cap)      # 0.5, 1, 2, 4, 4 ...\n    print(\"gave up: exit non-zero so the orchestrator restarts us\")\n    return False\n\nprint(\"slow database (ready on check 4)\")\nwait_healthy(Database(4))\nprint(\"dead database (never ready)\")\nwait_healthy(Database(99))\n"
-   },
+   "code": null,
    "followUps": [
     "<p>npm does not forward signals or reap children, so the app often never gets SIGTERM and Docker kills it after 10 seconds.</p><p><code>npm start</code> as PID 1 launches <code>sh -c node server.js</code>, so signals hit npm, not node, and npm may not pass them on. Result: slow stops, exit 137, dropped requests. Run <code>CMD [\"node\", \"server.js\"]</code> directly, and add <code>--init</code> or tini if it spawns children.</p>",
     "<p>Kubernetes sends SIGTERM, waits for the grace period (30 seconds by default), then sends SIGKILL.</p><p>The pod is also removed from Service endpoints at the same time, but that is asynchronous, so requests may still arrive. A common pattern is a <code>preStop</code> sleep of a few seconds, then graceful shutdown in the app within <code>terminationGracePeriodSeconds</code>. If shutdown needs 60 s, raise the setting; the app must handle SIGTERM as PID 1.</p>"
@@ -105,7 +112,10 @@
    ]
   },
   {
-   "code": null,
+   "code": {
+    "title": "Content-addressed layers: push only what is missing",
+    "python": "# Registries are content-addressed: a layer is identified by the hash of its bytes.\nimport hashlib\n\ndef digest(data):\n    return \"sha256:\" + hashlib.sha256(data).hexdigest()[:12]\n\nclass Registry:\n    def __init__(self):\n        self.blobs = {}\n    def push(self, layers):\n        uploaded = 0\n        for data in layers:\n            d = digest(data)\n            if d not in self.blobs:      # only missing layers are sent\n                self.blobs[d] = data\n                uploaded += 1\n        manifest = [digest(x) for x in layers]\n        return uploaded, digest(\"\".join(manifest).encode())\n\nreg = Registry()\nv1 = [b\"base-os\", b\"deps-install\", b\"app-code-v1\"]\nv2 = [b\"base-os\", b\"deps-install\", b\"app-code-v2\"]\nup, image1 = reg.push(v1)\nprint(\"release 1: uploaded\", up, \"layers, image digest\", image1)\nup, image2 = reg.push(v2)\nprint(\"release 2: uploaded\", up, \"layer, image digest\", image2)\nprint(\"rollback = deploy the old digest:\", image1)\nprint(\"same bytes pushed again uploads:\", reg.push(v1)[0])\n"
+   },
    "followUps": [
     "<p>Because a digest covers the bytes of every layer, and builds usually are not bit-for-bit reproducible.</p><p>Timestamps in files, an unpinned <code>apt-get install</code> or <code>npm install</code> fetching newer versions, file order in tarballs, and build metadata all change the bytes, so the hash changes. Even the same source can give two digests. For reproducibility pin base images by digest and dependencies by lockfile, and set <code>SOURCE_DATE_EPOCH</code>.</p>",
     "<p>Promote by retagging or copying the exact same digest, never by rebuilding.</p><p>After staging tests pass, run <code>docker buildx imagetools create -t registry/app:prod registry/app@sha256:ab12...</code> (or <code>crane copy</code>), and deploy production with that digest. Because nothing is rebuilt, production runs exactly the bytes you tested. Add an approval gate, and record digest, commit and scan result for the audit trail.</p>"

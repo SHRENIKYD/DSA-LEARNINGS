@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Make the gate quieter, not off. Start with report-only mode, then block only new Critical and High findings, so developers are not blamed for old debt. Tune rules, add path-scoped suppressions with a reason, an owner and an expiry, and track the false-positive rate. If a gate still blocks more than it helps (say 30 percent of failures are noise), fix the rule or move it to a nightly job. Removing it silently leaves the risk with no owner.</p>",
+    "<p>Because a local hook runs on the developer's machine and can be skipped with <code>git commit --no-verify</code>, never installed, or out of date. The CI copy runs the same check on every pull request in a place the developer cannot bypass, and it can be made a required status check. Think of the hook as a fast hint (feedback in 2 seconds) and CI as the enforcement (the real gate). A secret that passes a skipped hook is caught before merge, not after it is public.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Deactivating stops the key working at once but keeps it listed, so you keep evidence. Deleting removes the record: you lose the key's last-used time, and the key ID you need to search CloudTrail may be harder to correlate. Example: you deactivate at 10:05, then search CloudTrail for that AccessKeyId from 09:00 on to find what the attacker did. Delete only after the investigation, when no system still depends on it. If a real service used it, deactivating first also shows what breaks, and you can re-enable briefly if needed.</p>",
+    "<p>Role sessions use temporary credentials, so you cannot deactivate a key. Instead attach an inline deny policy to the role with a condition on <code>aws:TokenIssueTime</code> (deny everything issued before now), which revokes all current sessions at once; the AWS console's Revoke active sessions button does exactly this. Then fix how the credentials leaked, and tighten the role trust policy. Sessions last at most 12 hours, so the exposure window is bounded, but the attacker may have used it to create persistent users or keys, which you still search CloudTrail for.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Vault KV v2: policy path vs CLI path",
+    "python": "import fnmatch\n\n# Policies are matched against the REAL API path, not the CLI path.\ndef cli_to_api(mount, path):\n    # KV v2 inserts \"data/\" after the mount name\n    return mount + \"/data/\" + path\n\ndef allowed(rules, api_path, cap):\n    for pattern, caps in rules:\n        if fnmatch.fnmatch(api_path, pattern) and cap in caps:\n            return True\n    return False  # default deny\n\nwrong = [(\"secret/app/*\", [\"read\"])]\nright = [(\"secret/data/app/*\", [\"read\"]), (\"secret/metadata/app/*\", [\"list\"])]\n\napi = cli_to_api(\"secret\", \"app/db\")\nprint(\"CLI path : secret/app/db\")\nprint(\"API path :\", api)\nprint(\"wrong policy read:\", \"allow\" if allowed(wrong, api, \"read\") else \"403 denied\")\nprint(\"right policy read:\", \"allow\" if allowed(right, api, \"read\") else \"403 denied\")\n# listing uses the metadata path\nprint(\"right policy list:\", \"allow\" if allowed(right, \"secret/metadata/app/\", \"list\") else \"403 denied\")\n"
+   },
+   "followUps": [
+    "<p>Remember that policies are cumulative and an explicit <code>deny</code> always wins. So you cannot narrow a path by writing a smaller allow: if a broad policy (for example one granting <code>secret/data/*</code>) is also attached to the token, access stays. To block a subpath, add a policy with <code>capabilities = [\"deny\"]</code> on <code>secret/data/app/prod/*</code>, which overrides every grant. Check effective rights with <code>vault token capabilities</code> using the actual token, and review which policies each auth role attaches. Also watch the identity groups, which add policies too.</p>",
+    "<p>You need the <code>update</code> capability on the version rollback path, <code>secret/rollback/app/db</code> in older setups, or you read the old version with <code>vault kv get -version=2</code> and write it back as a new version with <code>vault kv put</code> (needs <code>read</code> on data and <code>create</code>/<code>update</code>). Versions cannot be edited, only added, deleted or destroyed. Undeleting needs <code>update</code> on <code>secret/undelete/...</code>. So a rollback creates version 4 holding version 2's content. Keep these rights out of normal application policies.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because anyone who can pull the image gets a working credential, and it cannot be revoked per use. A token in the image is valid for every copy, in every registry mirror, laptop and build cache, and it lasts as long as its TTL, usually far longer than a pod. Layers keep it forever even if you delete it later. The fix is to let the running pod authenticate at start up with its service-account identity and receive a token that lives for minutes and is limited to that pod's path.</p>",
+    "<p>A wrapped secret is delivered as a one-time <b>wrapping token</b>, which can be unwrapped once. If an attacker unwraps it first, the legitimate consumer gets an error when its own unwrap fails, and that failure is your alarm. Vault also lets you look up the wrapping token's creation path and time without using it, to confirm it came from the expected orchestrator. Keep the TTL short (say 60 seconds) so the interception window is small. If the unwrap fails, treat the secret_id as stolen: revoke it and issue a new one.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The lease cannot be renewed any more, so the credential expires and Vault revokes it (for a database, it drops the user). The client must ask for a new credential, which has a new username and password. Example: default TTL 1 hour, max TTL 24 hours means you can renew up to 24 times, then you must fetch a new one. Applications therefore need to handle an authentication failure by refetching, and connection pools should recycle connections before max TTL. Vault Agent can do this renewal and re-rendering for you.</p>",
+    "<p>Use the database secrets engine's root rotation or a two-user pattern. <code>vault write -f database/rotate-root/mydb</code> changes the password Vault uses so that only Vault knows it. Rotation can briefly break connections if it fails mid-way, so test it in staging. For stricter setups, alternate between two accounts (A and B): Vault uses A while it changes B's password, then switches, so there is always one valid credential. Use a least-privilege account, which can create users but cannot do anything else. Alert on failed rotations.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Envelope encryption with a toy cipher",
+    "python": "import os, hashlib\n\n# TOY demo of envelope encryption. XOR keystream stands in for AES-GCM;\n# never use this for real data.\ndef stream(key, n):\n    out, i = b\"\", 0\n    while len(out) < n:\n        out += hashlib.sha256(key + bytes([i])).digest()\n        i += 1\n    return out[:n]\n\ndef xor(key, data):\n    return bytes(a ^ b for a, b in zip(data, stream(key, len(data))))\n\nmaster = os.urandom(32)          # lives only inside \"KMS\", never leaves\n\ndef generate_data_key():\n    dk = os.urandom(32)\n    return dk, xor(master, dk)   # plaintext key + copy wrapped by master\n\ndef kms_decrypt(wrapped):\n    return xor(master, wrapped)\n\ndata = b\"card=4111-0000 amount=42\"\ndk, wrapped = generate_data_key()\nblob = (xor(dk, data), wrapped)  # store ciphertext + wrapped key together\ndel dk                           # discard the plaintext data key\n\nprint(\"plain     :\", data)\nprint(\"ciphertext:\", blob[0].hex())\nback = xor(kms_decrypt(blob[1]), blob[0])  # one small KMS call to unwrap\nprint(\"decrypted :\", back)\nprint(\"match     :\", back == data)\n"
+   },
+   "followUps": [
+    "<p>It schedules the key for deletion after a waiting period (7 to 30 days) and then destroys it for good. After that, everything encrypted with it, including all wrapped data keys, can never be decrypted, which is the point of crypto-shredding but a disaster if done by mistake. During the waiting period the key is disabled and unusable, so you can watch for failures and cancel. Example: you schedule deletion at 7 days, and a CloudWatch alarm on <code>Decrypt</code> failures flags a hidden user on day 2. Prefer disabling first.</p>",
+    "<p>The wrapped data key is the only way to get the plaintext key back, and it is useless without KMS. If you stored it elsewhere or lost it, the ciphertext would be unreadable forever. Storing them together keeps them in step: one object holds the data and the right key for exactly that data, so a key per object is easy, a bad object affects nothing else, and re-wrapping under a new KMS key does not touch the bulk data. It is safe, because the wrapped key means nothing without permission to call KMS.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Triage by reachability, exposure and exploitation",
+    "python": "# Triage: rank findings by risk questions, not by CVSS alone.\nfindings = [\n    # id, cvss, reachable, internet-facing, in KEV, fix available\n    (\"CVE-A\", 9.8, False, False, False, True),\n    (\"CVE-B\", 7.5, True,  True,  True,  True),\n    (\"CVE-C\", 8.1, True,  False, False, True),\n    (\"CVE-D\", 5.3, True,  True,  False, False),\n    (\"CVE-E\", 9.1, False, True,  False, False),\n]\n\ndef bucket(f):\n    _, cvss, reach, exposed, kev, fix = f\n    if reach and exposed and kev:\n        return \"fix now\"\n    if reach and fix and cvss >= 7:\n        return \"this sprint\"\n    return \"accept with expiry\"\n\nfor f in sorted(findings, key=lambda f: -f[1]):\n    print(f\"{f[0]} cvss={f[1]} -> {bucket(f)}\")\n# CVE-A has the top CVSS but lands in the lowest bucket (unreachable).\n# Time O(n log n) for the sort, space O(1) extra.\n"
+   },
+   "followUps": [
+    "<p>CVSS measures how bad a flaw could be in general, not how bad it is in your environment. It does not know whether the code is reachable, whether the system is internet-facing, whether attackers are exploiting it now, or what the asset is worth. A 9.8 in an unused library can matter less than a 7.5 on your login page that is on the CISA KEV list. Add EPSS (probability of exploitation in 30 days), reachability, exposure and asset value to get a real priority.</p>",
+    "<p>Give each waiver an owner, a reason, a link to the finding and a hard expiry date (for example 90 days), stored as code in the repository or in the scanner's ignore file. A CI job fails or opens a ticket when a waiver expires, so someone must renew it with fresh justification. Report the count and age of open waivers monthly, and cap renewals (two renewals, then an escalation to the risk owner). A waiver without an expiry is just a permanent exclusion with a nice name.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "SCP, boundary and identity policy: intersection",
+    "python": "# A request must pass every layer: SCP, boundary, identity policy.\ndef evaluate(action, scp, boundary, identity, explicit_deny=()):\n    if action in explicit_deny:\n        return \"DENY (explicit)\"\n    for name, layer in ((\"SCP\", scp), (\"boundary\", boundary), (\"identity\", identity)):\n        if action not in layer:\n            return \"DENY (not allowed by \" + name + \")\"\n    return \"ALLOW\"\n\nscp = {\"s3:GetObject\", \"s3:PutObject\", \"ec2:RunInstances\"}   # org cap\nboundary = {\"s3:GetObject\", \"s3:PutObject\", \"iam:CreateUser\"}  # per-role cap\nidentity = {\"s3:GetObject\", \"s3:DeleteObject\", \"iam:CreateUser\"}  # grants\n\nfor a in [\"s3:GetObject\", \"s3:PutObject\", \"s3:DeleteObject\", \"iam:CreateUser\"]:\n    print(a, \"->\", evaluate(a, scp, boundary, identity))\nprint(\"effective:\", sorted(scp & boundary & identity))\n"
+   },
+   "followUps": [
+    "<p>Yes in one sense and no in another. SCPs do not apply to the organization's management account at all: they only affect member accounts, even if you attach one to the root. That is why you keep almost no workloads in the management account and protect it with strong MFA and few users. SCPs also do not restrict service-linked roles. Example: an SCP denying <code>ec2:*</code> on the root stops every member account but not the management account's own admin.</p>",
+    "<p><code>iam:PassRole</code> lets a user hand an existing role to an AWS service. If the user can also create a Lambda function or EC2 instance, they can pass a powerful role (like Admin) to it and run code with that role's rights, even though they cannot assume it directly. Mitigate by limiting <code>PassRole</code> to specific role ARNs, adding the condition <code>iam:PassedToService</code>, and using a permission boundary on roles developers create. Review any policy that combines PassRole with a create-compute action.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Management events (like API calls to IAM) are logged by default, but data events such as S3 object reads and Lambda invokes are not. Access Analyzer generates policies from what it sees in CloudTrail, so a policy for S3 access will miss <code>GetObject</code> calls unless data events are on, and it may leave out actions that did not happen during the window (quarterly jobs). Also, some services' actions are not mapped to action-level policies. Use a 90 day window, turn on data events for important buckets, and always review the result by hand.</p>",
+    "<p>Treat any permission that can change IAM or create resources as sensitive. Check for <code>iam:*</code>, <code>iam:PassRole</code>, <code>sts:AssumeRole</code> with wildcard resources, and <code>Action: \"*\"</code>. Ask who needs it, whether a condition can narrow it (tags, resource ARN, source IP), and whether a boundary caps it. Review changes through pull requests with a policy linter (for example Access Analyzer's policy validation) in CI, and require a second reviewer for any write action to IAM. Re-check in 90 days with last-accessed data.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Why deploy by digest instead of tag",
+    "python": "import hashlib\n\n# Registry maps a mutable tag to a digest; the digest is the content hash.\ndef digest(content):\n    return \"sha256:\" + hashlib.sha256(content).hexdigest()[:12]\n\ngood = b\"app v1 built by CI\"\nsigned = {digest(good)}          # digests that CI signed\nregistry = {\"app:prod\": good}\n\ndef deploy_by_tag(tag):\n    img = registry[tag]\n    return digest(img), digest(img) in signed\n\nprint(\"tag deploy before tamper:\", deploy_by_tag(\"app:prod\"))\nregistry[\"app:prod\"] = b\"app v1 BACKDOORED\"   # attacker re-pushes the tag\nprint(\"tag deploy after tamper :\", deploy_by_tag(\"app:prod\"))\n\n# Deploying by digest pins the exact bytes: the tampered image cannot match.\npinned = digest(good)\nprint(\"pinned digest           :\", pinned)\nprint(\"tampered matches pin?   :\", digest(registry[\"app:prod\"]) == pinned)\n"
+   },
+   "followUps": [
+    "<p>Hosted CI with provenance generally reaches SLSA Build level 2: the build runs on a hosted service and signed provenance says which source and workflow produced the artifact. Level 3 needs more isolation, such as a hardened builder where the build steps cannot forge the provenance (reusable workflows such as the GitHub SLSA generator get there). Level 1 is only documented provenance. Check the claim against the version of the spec you follow, and remember that a level says how trustworthy the build is, not that the code is safe.</p>",
+    "<p>A tag is a movable label: anyone with push rights can re-point <code>app:1.4</code> to different content tomorrow. A digest (<code>sha256:...</code>) is the hash of the exact image, so it can never mean different bytes. Signatures and scans are attached to digests too, so deploying by digest guarantees you run what was signed and scanned. Keep the readable tag in comments or in a values file generated by CI, and let the admission policy reject manifests that use tags only.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Use cost controls: send CloudTrail to one organization trail (the first copy of management events is free, extra trails and data events cost money), turn on data events only for crown-jewel buckets, set S3 lifecycle rules to move old logs to cheaper storage, and use GuardDuty's 30 day trial to size cost. Config charges per recorded item, so restrict it to needed resource types. Set a budget alert on the security account and review the Cost Explorer by service monthly. Cost should shape scope, not remove baseline detection.</p>",
+    "<p>CloudTrail's Event history only covers 90 days, so older events need your own trail delivering to S3. Query those logs with Athena over the S3 bucket (partitioned by date to limit scanned data), or use CloudTrail Lake if enabled. Example: <code>SELECT eventtime, useridentity.arn FROM trail WHERE eventname='DeleteBucket' AND day='2026/03/10'</code>. If no trail existed then, the event is gone, which is why an organization trail with long retention and log file validation is set up before you need it.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Automate it so evidence is a by-product of normal work. Use Config rules and Security Hub standards for configuration state, pull request approvals and CI results for change management, IAM Identity Center logs for access reviews, and a compliance tool or scheduled scripts that export dated snapshots to a locked evidence bucket. Map each control to one source and one owner. For SOC 2 Type II the auditor samples across the period, so continuous, timestamped evidence beats screenshots taken the week before the audit.</p>",
+    "<p>It means keeping card data out of as many systems as possible, because every system that stores, processes or transmits it (and anything connected to it) is in scope. Use a payment provider's hosted fields or redirect so the number never touches your servers, store tokens instead of card numbers, and isolate the small card data environment in its own VPC and account with tight rules. Example: instead of 40 services in scope, only the 2 that handle tokens are. Fewer systems means fewer controls to evidence.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Security groups are stateful and attached to resources, so they follow a server wherever it goes and replies are allowed automatically. They can reference other security groups (ALB group to app group), which expresses intent without IP lists. NACLs are stateless and apply to a whole subnet, so you must write both inbound and outbound rules including ephemeral ports, and they only match IP ranges. Use NACLs for coarse backstops, like denying a known bad CIDR, and security groups for everyday rules.</p>",
+    "<p>Add a check before apply, in the pipeline. Run <code>terraform plan</code> to JSON and test it with a policy engine (OPA, Conftest, Checkov) that fails on a security group with <code>0.0.0.0/0</code> on port 5432 or a database with <code>publicly_accessible = true</code>. Require a reviewer for network changes. Add a backstop in the cloud itself: an SCP or Config rule with auto-remediation that blocks or reverts public database access, and put the database in subnets with no internet route, so a mistaken rule still has no path.</p>"
+   ]
+  }
+ ]
+}
