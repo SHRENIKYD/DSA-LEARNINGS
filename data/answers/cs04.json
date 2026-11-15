@@ -1,0 +1,107 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Count good interleavings of two counter++",
+    "python": "# All interleavings of two threads each doing counter++ as LOAD, ADD, STORE.\nfrom itertools import combinations\n\ndef run(order):\n    counter = 0\n    reg = {0: 0, 1: 0}\n    pc = {0: 0, 1: 0}\n    for t in order:                 # t is the thread that takes the next step\n        step = pc[t]\n        if step == 0: reg[t] = counter      # LOAD\n        elif step == 1: reg[t] += 1         # ADD\n        else: counter = reg[t]              # STORE\n        pc[t] += 1\n    return counter\n\ntotal = good = 0\nfor pos in combinations(range(6), 3):       # choose which 3 of 6 slots are thread 0\n    order = [0 if i in pos else 1 for i in range(6)]\n    total += 1\n    if run(order) == 2:\n        good += 1\n        print(\"correct:\", order)\nprint(\"interleavings:\", total, \"correct:\", good, \"lost update:\", total - good)\n"
+   },
+   "followUps": [
+    "<p>Because <code>volatile</code> only stops the compiler from caching a variable in a register; it does not make the read-modify-write indivisible. <code>counter++</code> on a volatile still compiles to load, add, store, so two threads can still both load 0 and both store 1. In C++ a volatile access is also not atomic and not a synchronisation point, so it is still a data race (undefined behaviour). In Java, <code>volatile</code> gives visibility and ordering for single reads and writes, but <code>count++</code> is still three steps. Use <code>AtomicInteger</code>, <code>std::atomic</code> or a lock.</p>",
+    "<p>Only 2 of the 20. Each thread has 3 steps (LOAD, ADD, STORE), so the number of orderings is C(6,3) = 20. The result is correct only if one thread finishes all three steps before the other starts its LOAD: A,A,A,B,B,B or B,B,B,A,A,A. In every other ordering both threads load the same old value, or one overwrites the other, so one increment is lost and the counter ends at 1. The program above lists all 20 and prints the two good ones. This is why a race may pass most test runs: the bad windows are narrow but common enough in production.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Mutual exclusion is a safety property: it says something bad (two threads inside) never happens. Progress and bounded waiting are liveness properties: they say something good eventually happens (a thread gets in, a waiting thread is not overtaken forever). Safety can be checked by looking at any single state of a run; liveness needs the whole infinite run. Example: a lock that nobody ever grants is perfectly safe (nobody is ever inside) but has no liveness. A good design needs both, and they are proved by different arguments.</p>",
+    "<p>No, not by itself. A plain mutex guarantees mutual exclusion, but the standard does not say which waiter gets the lock when it is released. Linux futex-based mutexes and <code>std::mutex</code> let the thread that just released it grab it again (barging) because that avoids a context switch, so an unlucky waiter can lose repeatedly: it is starvation-prone in theory. In practice the wait is short and OS queues are roughly FIFO. If you need a bound, use a fair lock (<code>new ReentrantLock(true)</code> in Java, a ticket lock), at the price of lower throughput.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Model-check Peterson's algorithm",
+    "python": "# Exhaustive check of Peterson's algorithm, and of the version with the first two lines swapped.\ndef explore(order):\n    prog = order + [\"cs\", \"exit\"]\n    # state: (pc0, pc1, flag0, flag1, turn)\n    start = (0, 0, 0, 0, 0)\n    seen, stack = {start}, [start]\n    while stack:\n        s = stack.pop()\n        if s[0] < len(prog) and s[1] < len(prog) and prog[s[0]] == \"cs\" and prog[s[1]] == \"cs\":\n            return False                 # both threads inside the critical section\n        for i in (0, 1):\n            j = 1 - i\n            pc = s[i]\n            if pc >= len(prog): continue\n            flags, turn, op = [s[2], s[3]], s[4], prog[pc]\n            npc = pc + 1\n            if op == \"flag\": flags[i] = 1\n            elif op == \"turn\": turn = j\n            elif op == \"wait\":                 # spin while flag[j] and turn == j\n                if flags[j] and turn == j: npc = pc\n            elif op == \"exit\": flags[i] = 0\n            pcs = [s[0], s[1]]\n            pcs[i] = npc\n            n = (pcs[0], pcs[1], flags[0], flags[1], turn)\n            if n not in seen:\n                seen.add(n); stack.append(n)\n    return True\n\nprint(\"flag=1; turn=j; wait   -> mutual exclusion holds:\", explore([\"flag\", \"turn\", \"wait\"]))\nprint(\"turn=j; flag=1; wait   -> mutual exclusion holds:\", explore([\"turn\", \"flag\", \"wait\"]))\n"
+   },
+   "followUps": [
+    "<p>Because modern CPUs reorder memory operations. On x86 a store can sit in the store buffer while a later load of a different address executes first (store-load reordering). So thread 0 does <code>flag[0]=1; turn=1</code> and then reads <code>flag[1]</code> before its own store is visible; thread 1 does the same, both see the other flag as 0, and both enter. Fix: use sequentially consistent atomics (<code>std::atomic</code> with seq_cst, Java <code>volatile</code>) or insert a full fence (<code>mfence</code>) between the stores and the loads. Compilers may also reorder plain variables.</p>",
+    "<p>It breaks. If a thread writes <code>turn = j</code> first and sets <code>flag[i]</code> afterwards, the other thread can slip in between. Example: T0 sets turn=1; T1 sets turn=0, sets flag1, sees flag0 still false and enters; then T0 sets flag0, sees flag1=true and turn=0 (not 1), so it enters too. Both are in the critical section. The order matters: announce interest first, then give way. The program above model-checks both orders: the original holds, the swapped one fails.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Priority inversion is when a high-priority thread waits for a lock held by a low-priority thread, and a medium-priority thread keeps preempting the low one, so the high one is effectively delayed by the medium one. Example: H needs the lock held by L, but M (which does not use the lock) is runnable and always beats L, so L never releases. This famously crashed a Mars rover. Fix: priority inheritance (L temporarily runs at H's priority while it holds the lock), or priority ceiling. POSIX offers <code>PTHREAD_PRIO_INHERIT</code>.</p>",
+    "<p>Because fairness costs throughput. A strictly fair mutex hands the lock to the longest waiter, which forces a context switch (the waiter must be woken and scheduled) on every release. If the releasing thread simply re-acquires, it is already running on a warm cache, and the lock changes owners rarely. So implementations allow barging and the standard promises only mutual exclusion, not order. Throughput can be several times better, at the cost of possible starvation under heavy contention. Use a ticket lock or a fair lock if you need FIFO.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A ticket lock is a spinlock that serves threads in arrival order, like a deli counter. It has two counters, <code>next_ticket</code> and <code>now_serving</code>. To lock, take a ticket with an atomic fetch-and-add and spin until <code>now_serving</code> equals it; to unlock, increment <code>now_serving</code>. Example: tickets 7, 8, 9 are handed out; the holder of 7 unlocks, now_serving becomes 8, and thread 8 enters. This gives FIFO fairness (bounded waiting), unlike test-and-set. Downside: all waiters spin on the same variable, so each release invalidates every waiter's cache line; MCS locks fix that.</p>",
+    "<p>Lock convoying is when threads queue up behind a lock, and the lock keeps being handed off through slow context switches, so throughput collapses even though the critical section is short. Cause: a holder is descheduled (or a waiter must be woken) at the hand-off, so everyone behind it sleeps; each wake-up takes microseconds, and arrivals pile up faster than the lock is released. Example: 8 threads each hold a lock for 1 microsecond, but every hand-off costs 5 microseconds of wake-up. Fixes: shorter or fewer critical sections, adaptive spinning, lock-free structures, or allowing barging.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep a counter and a queue under a mutex: <code>wait</code> locks the mutex, loops <code>while (value == 0) cv.wait(lock)</code>, then does <code>value--</code>. <code>signal</code> locks the mutex, does <code>value++</code> and calls <code>cv.notify_one()</code>.</p><pre><code>void wait()   { lock(m); while (v == 0) cv.wait(m); v--; unlock(m); }\nvoid signal() { lock(m); v++; cv.notify_one(); unlock(m); }</code></pre><p>The counter remembers signals, which is what a bare condition variable cannot do. The <code>while</code> handles spurious and stolen wake-ups. Each operation is O(1).</p>",
+    "<p>The second wait blocks forever, so the thread deadlocks with itself. With a binary semaphore starting at 1, the first <code>wait</code> sets it to 0 and the second finds 0 and sleeps, and nobody else will signal. A real mutex has the same problem unless it is recursive (reentrant), where the owner may lock again and the lock keeps a count (lock twice, unlock twice). A semaphore has no owner, so it cannot know the caller is the same thread. This is one reason to prefer a mutex for exclusion.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Bounded buffer with semaphores",
+    "python": "# Bounded buffer with semaphores: capacity 2, one producer, one consumer, 6 items.\nimport threading\nfrom collections import deque\n\nN = 2\nbuf = deque()\nempty = threading.Semaphore(N)     # free slots\nfull = threading.Semaphore(0)      # filled slots\nmutex = threading.Lock()           # protects buf (needed with many producers)\nout = []\n\ndef producer():\n    for item in range(1, 7):\n        empty.acquire()            # wait for a free slot FIRST, then take the mutex\n        with mutex:\n            buf.append(item)\n        full.release()\n\ndef consumer():\n    for _ in range(6):\n        full.acquire()             # wait for an item before locking\n        with mutex:\n            out.append(buf.popleft())\n        empty.release()\n\nt1 = threading.Thread(target=producer)\nt2 = threading.Thread(target=consumer)\nt1.start(); t2.start(); t1.join(); t2.join()\nprint(\"produced: [1, 2, 3, 4, 5, 6]\")\nprint(\"consumed:\", out)\nprint(\"buffer left:\", list(buf))\n# Swapping the two acquires in the producer would deadlock once the buffer is full.\n"
+   },
+   "followUps": [
+    "<p>With one mutex and two condition variables (<code>notFull</code>, <code>notEmpty</code>), each side waits in a loop on its own condition.</p><pre><code>put(x): lock; while (size == N) notFull.wait(); q.add(x); notEmpty.signal(); unlock\ntake(): lock; while (size == 0) notEmpty.wait(); x = q.remove(); notFull.signal(); unlock; return x</code></pre><p>The mutex protects the queue and the predicate; waiting releases it atomically. Example: capacity 2, three puts in a row, the third waits until a take signals notFull. No semaphores are needed, and each operation is O(1).</p>",
+    "<p>Send a poison pill or set a closed flag. Poison pill: after the last item, the producer puts one special value per consumer, and each consumer exits when it takes it. Closed flag: <code>close()</code> sets <code>closed = true</code> under the mutex and calls <code>notifyAll()</code> on both conditions; <code>take()</code> returns end-of-stream when the queue is empty and closed, and <code>put()</code> fails when closed. Remaining items are still drained first. Then join the threads. Without notifyAll, consumers sleeping on an empty queue would hang forever.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>In a Hoare monitor, <code>signal</code> hands the lock directly to the woken thread, which runs at once, so the condition is guaranteed true and an <code>if</code> is enough. In a Mesa monitor (what Java, POSIX and C++ use), <code>signal</code> only marks the waiter runnable; the signaller keeps the lock, and by the time the waiter gets it another thread may have changed the state. So Mesa code must re-check in a <code>while</code> loop. Hoare is easier to reason about but costs an extra context switch per signal, so real systems use Mesa.</p>",
+    "<p><code>notify_one</code> wakes a single waiter; <code>notify_all</code> wakes every waiter, and each re-checks its condition. Use <code>notify_one</code> when any waiter can make progress and all waiters wait for the same condition (e.g. one item added to a queue). Use <code>notify_all</code> when different waiters wait for different conditions or a state change helps many (a shutdown flag, a barrier opening). Using <code>notify_one</code> wrongly can lose a wake-up and hang; <code>notify_all</code> is always correct but can cause a thundering herd: with 100 waiters, 99 wake up for nothing.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because two readers upgrading at once deadlock. Suppose readers A and B both hold the read lock and each tries to upgrade to a write lock. A write lock needs all other readers gone, so A waits for B to release and B waits for A to release: a cycle. That is why Java's <code>ReentrantReadWriteLock</code> refuses to upgrade (it blocks forever) and downgrading (write to read) is allowed. Fix: release the read lock, take the write lock, and re-check the condition, or use an upgradable-read lock that only one thread can hold.</p>",
+    "<p>No. A read-write lock is more complex than a mutex: it keeps a reader count that all readers update atomically, so on many cores the readers still fight over one cache line, and the lock can be slower than a plain mutex when critical sections are very short. It wins only when reads are frequent, the read section is long enough to benefit from parallelism, and writes are rare. Example: a 10 microsecond read with 8 threads gains a lot; a 20 nanosecond read gains nothing. Measure before choosing. Read-copy-update or immutable snapshots avoid shared counters.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Dining philosophers: naive vs ordered forks",
+    "python": "# Dining philosophers in lockstep rounds: naive (left first) vs ordered (lower fork first).\nN = 5\n\ndef simulate(ordered):\n    owner = [None] * N                       # who holds each fork\n    held = [[] for _ in range(N)]\n    meals = 0\n    for rnd in range(1, 5):\n        progress = False\n        for p in range(N):\n            if len(held[p]) == 2:            # finished eating last round: put both down\n                for f in held[p]: owner[f] = None\n                held[p] = []\n                progress = True\n                continue\n            left, right = p, (p + 1) % N\n            first, second = (min(left, right), max(left, right)) if ordered else (left, right)\n            want = first if not held[p] else second\n            if owner[want] is None:\n                owner[want] = p; held[p].append(want); progress = True\n                if len(held[p]) == 2:\n                    meals += 1\n                    print(\"  round\", rnd, \"philosopher\", p, \"eats\")\n        if not progress:\n            print(\"  round\", rnd, \"nobody can move: DEADLOCK\")\n            break\n    return meals\n\nprint(\"naive (left then right):\")\nprint(\" meals:\", simulate(False))\nprint(\"ordered (lower fork first):\")\nprint(\" meals:\", simulate(True))\n"
+   },
+   "followUps": [
+    "<p>Both are the same problem: processes each holding one resource and waiting for another. A transfer from account A to B locks A then B; a simultaneous transfer from B to A locks B then A. Each holds one lock and waits for the other: deadlock, exactly like two neighbouring philosophers. The fix is the same too: lock accounts in a fixed global order (for example by account id), so both transfers lock the lower id first. Databases solve it by detecting the cycle and aborting one transaction.</p><pre><code>first = min(a.id, b.id); second = max(a.id, b.id);\nlock(first); lock(second);</code></pre>",
+    "<p>Resource ordering and the asymmetric solution prevent deadlock but not starvation: a philosopher can still be unlucky for ever if the neighbours always grab the forks first. The waiter (allowing only 4 at the table) is also not automatically fair. To avoid starvation, make the wait queue FIFO (a fair semaphore as waiter, or a ticket for each request), or let a philosopher who is hungry for long get priority. The Chandy-Misra solution uses clean and dirty fork tokens and is both deadlock-free and starvation-free.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The ABA problem is when a compare-and-swap succeeds even though the value changed and changed back, so the code wrongly believes nothing happened. Example: a lock-free stack has top = A. Thread 1 reads top = A with next = B and is paused. Thread 2 pops A, pops B, pushes A back (now A.next = C). Thread 1 resumes and CAS(top, A, B) succeeds, installing the freed node B as the top: corruption. Fixes: version tags (pair the pointer with a counter), hazard pointers, epoch-based reclamation, or garbage collection.</p>",
+    "<p>A release store makes all writes before it visible to any thread that does an acquire load that reads the stored value. Think of release as publishing and acquire as receiving. Example: thread 1 writes <code>data = 42</code> and then does <code>ready.store(true, release)</code>; thread 2 spins on <code>ready.load(acquire)</code> and, once it sees true, is guaranteed to see data = 42. It does not order unrelated operations or give a single global order (that needs seq_cst). Acquire/release is cheaper than seq_cst on weakly ordered CPUs such as ARM.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Most databases keep a wait-for graph: a node per transaction, an edge from T1 to T2 when T1 waits for a lock held by T2. They search it for a cycle, either periodically or when a lock wait lasts too long. If there is a cycle (T1 waits for T2, T2 waits for T1), the database picks a victim (usually the cheapest to roll back), aborts it, releases its locks, and the application is told to retry. Some systems simply use lock timeouts instead. This is cheaper than preventing deadlocks, because transactions cannot know in advance what they will lock.</p>",
+    "<p>Make the bad interleaving more likely and make it deterministic if you can. Techniques: run the test thousands of times with many more threads than cores; insert <code>sleep</code> or <code>yield</code> at the racy point; use a tool that randomises scheduling (ThreadSanitizer, Java's jcstress, Go's <code>-race</code>, Loom or rr chaos mode); run on a loaded machine. Best of all, restructure the code so the interleaving can be driven by a test: inject a hook or barrier between the check and the act. Then log it and fix with a lock or atomic.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>False sharing is when two threads write different variables that happen to sit on the same cache line (usually 64 bytes), so the line bounces between cores even though the data is unrelated. Example: an array of per-thread counters of 8 bytes each puts 8 counters on one line; every increment invalidates the others' copy, and 8 threads can run several times slower than one. Fix: pad or align each hot variable to its own line (<code>alignas(64)</code>, Java <code>@Contended</code>). This matters for sharded locks and counters.</p>",
+    "<p>Combine stress tests with tools. (1) Run many threads doing random <code>get</code> and <code>put</code> operations for a few seconds under ThreadSanitizer, which reports data races even when the output looks right. (2) Check invariants after the run: size never exceeds capacity, every key maps to the right value, the LRU list and the hash map agree. (3) For blocking queues, check that the multiset of items put equals the multiset taken (nothing lost, nothing duplicated). (4) Repeat with different thread counts and capacity 1, which exposes boundary races.</p>"
+   ]
+  }
+ ]
+}

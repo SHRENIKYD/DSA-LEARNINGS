@@ -1,0 +1,117 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Two threads, opposite lock order: circular wait detected by timeout",
+    "python": "import threading\n\n# Two threads take the same two locks in opposite order.\na, b = threading.Lock(), threading.Lock()\nbarrier = threading.Barrier(2)   # force both to hold their first lock\ndone = threading.Barrier(2)      # keep first locks held until both tried\nresults = []\n\ndef worker(name, first, second):\n    with first:\n        barrier.wait()\n        # A timed acquire lets us detect the circular wait instead of hanging forever\n        got = second.acquire(timeout=0.5)\n        results.append(name + (\" got both locks\" if got else \" timed out: circular wait\"))\n        done.wait()              # no one releases early, so both really wait\n        if got:\n            second.release()\n\nt1 = threading.Thread(target=worker, args=(\"T1 (A then B)\", a, b))\nt2 = threading.Thread(target=worker, args=(\"T2 (B then A)\", b, a))\nt1.start(); t2.start(); t1.join(); t2.join()\nfor r in sorted(results):\n    print(r)\n# Mutual exclusion + hold and wait + no preemption + circular wait all hold here.\n"
+   },
+   "followUps": [
+    "<p>Circular wait is the easiest to break, by always taking locks in one fixed global order.</p><p>If every thread locks by ascending id (account 3 before account 7), nobody can hold a higher lock while waiting for a lower one, so no ring of waits can form. It costs nothing at run time and needs no special OS support. The other three are hard: you cannot make most resources shareable, forced preemption of a mutex corrupts data, and hold-and-wait needs all-at-once acquisition.</p>",
+    "<p>No, the four conditions are necessary but not sufficient.</p><p>Deadlock needs all four, but having all four does not guarantee it. With several instances of a resource, a cycle can exist while a process outside the cycle releases an instance and unblocks it. Example: two printers, P1 and P2 hold one each and P3 holds none; a cycle may exist, but P3 finishing frees a printer. Only with single-instance resources does a circular wait (given the other three) mean a real deadlock.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Acquire-all-at-once is simple and safe, but it wastes resources and can starve.</p><p>A thread must request everything up front, so it holds locks it will only need much later. That lowers concurrency: with 3 locks held for a 10 ms job that needs each for 1 ms, others wait 10 ms instead of 1 ms. You must also know the needed set in advance, which is hard with data-dependent code. A thread needing a popular lock may be repeatedly passed over, so starvation is possible.</p>",
+    "<p>lockdep is a Linux kernel checker that finds possible deadlocks from lock order, even if they never actually happened.</p><p>It gives each lock a class and records every time lock B is taken while A is held, building a directed graph of A before B. If a new edge closes a cycle (B before A later), it prints a warning with both call stacks. It also tracks interrupt context. Because it checks orders, not real hangs, one run of the code path can reveal a bug that would only fire under rare timing. Cost is extra memory and slowdown, so it is a debug option.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes: a cycle with several instances of a resource need not be a deadlock.</p><p>Say R1 has 2 instances. P1 holds one R1 and requests R2, which P2 holds. P2 requests R1, but R1's second instance is held by P3, which is not waiting for anything. The graph has a cycle P1, R2, P2, R1, P1, yet P3 finishes, releases its R1 instance, P2 gets it, finishes, and P1 proceeds. Hence for multiple instances you must run the detection algorithm, not just look for cycles.</p>",
+    "<p>A claim edge P→R (dashed) says that process P may request resource R in the future.</p><p>It is used for deadlock avoidance in single-instance graphs. When P actually requests R, the claim edge turns into a request edge; when R is granted, it becomes an assignment edge. A request is granted only if converting the edge to an assignment edge does not create a cycle in the graph, which keeps the system safe. All claims must be declared before the process starts, as with Banker's maximum demand.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, a safe state can have several safe sequences, and often does.</p><p>Any order in which each process can finish with the resources available at that moment is valid. In the classic example, with Available (3,3,2), P1 then P3 is one start, but P3 then P1 also works because both Needs fit in (3,3,2). Safe sequences P1 P3 P0 P2 P4 and P3 P1 P0 P2 P4 are both valid. Only one needs to exist for the state to be safe, and the algorithm stops at the first it finds.</p>",
+    "<p>Banker's is conservative because it refuses any request that makes the state unsafe, even though unsafe does not always lead to deadlock.</p><p>It assumes the worst: every process will ask for its full declared maximum at the same time. Example: one resource with 10 units, P1 and P2 each have max 8 and hold 4 now; a request that leaves the system unsafe is denied, though the processes might never both use 8. So some resources sit idle and some requests wait unnecessarily, trading utilisation for a guarantee of no deadlock.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Banker's algorithm: safety check and request test",
+    "python": "# Banker's algorithm: classic 5 processes x 3 resource types\navail = [3, 3, 2]\nalloc = [[0,1,0],[2,0,0],[3,0,2],[2,1,1],[0,0,2]]\nmaxd  = [[7,5,3],[3,2,2],[9,0,2],[2,2,2],[4,3,3]]\nneed  = [[m - a for m, a in zip(mr, ar)] for mr, ar in zip(maxd, alloc)]\n\ndef safe_sequence(avail, alloc, need):\n    work, done, seq = avail[:], [False] * len(alloc), []\n    while len(seq) < len(alloc):\n        for i in range(len(alloc)):\n            if not done[i] and all(n <= w for n, w in zip(need[i], work)):\n                work = [w + a for w, a in zip(work, alloc[i])]  # i finishes, releases\n                done[i] = True\n                seq.append(\"P%d\" % i)\n                break\n        else:\n            return None          # nobody can proceed: unsafe\n    return seq\n\ndef request(i, req):\n    if any(r > n for r, n in zip(req, need[i])) or any(r > a for r, a in zip(req, avail)):\n        return \"wait/error\"\n    av = [a - r for a, r in zip(avail, req)]\n    al = [row[:] for row in alloc]; nd = [row[:] for row in need]\n    al[i] = [x + r for x, r in zip(al[i], req)]\n    nd[i] = [x - r for x, r in zip(nd[i], req)]\n    s = safe_sequence(av, al, nd)       # pretend to grant, then test safety\n    return \"granted, safe sequence \" + \" \".join(s) if s else \"denied (unsafe)\"\n\nprint(\"Available:\", avail, \"Need:\", need)\nprint(\"Safe sequence:\", \" \".join(safe_sequence(avail, alloc, need)))\nprint(\"P1 requests [1,0,2]:\", request(1, [1,0,2]))\nprint(\"P4 requests [3,3,0]:\", request(4, [3,3,0]))\n# Time O(m * n^2) per safety check, space O(m * n)\n"
+   },
+   "followUps": [
+    "<p>Each safety check is O(m x n^2), where n is the number of processes and m the number of resource types.</p><p>The safety loop scans up to n processes to find one that fits, and repeats this up to n times, giving n^2 comparisons of m numbers each. A resource request does this check once, plus O(m) for the Request, Available and Need tests. With 100 processes and 10 resource types that is about 100,000 operations per request, which is why it is too heavy for hot paths.</p>",
+    "<p>It is rarely used because it needs information real systems do not have and costs too much per request.</p><p>Programs cannot state their maximum needs in advance, the set of processes and resources keeps changing, and every request would run an O(m x n^2) check. An OS lock call that takes 50 ns today would pay microseconds or more. It also assumes processes are well behaved. Real systems prefer lock ordering, timeouts and detection with recovery.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Banker-style reasoning lives on in admission control: do not accept work you cannot finish with the resources reserved.</p><p>Examples: a cluster scheduler that only starts a job when its declared CPU and memory requests fit; a database connection pool that limits concurrent requests; a bounded semaphore for memory buffers. All decline a request now so that those already accepted can complete, which is exactly the safe-state idea, just with simpler rules.</p>",
+    "<p>The rule is pool size at least N x (k - 1) + 1, so at least one thread can always finish.</p><p>If N threads each need k connections and all hold k - 1 while asking for one more, they deadlock when the pool has N x (k - 1) connections. Add one more and somebody gets the last connection, completes and releases k. Example: N = 4 threads, k = 3 connections: you need 4 x 2 + 1 = 9 connections. Alternatively cap concurrent threads that may hold connections.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Deadlock detection: DFS cycle in a wait-for graph",
+    "python": "# Wait-for graph: P -> Q means P waits for a lock held by Q\ngraph = {\"P1\": [\"P2\"], \"P2\": [\"P3\"], \"P3\": [\"P1\"], \"P4\": [\"P1\"], \"P5\": []}\n\ndef find_cycle(g):\n    state, stack = {}, []        # state: 1 = on current path, 2 = fully explored\n    def dfs(u):\n        state[u] = 1; stack.append(u)\n        for v in g[u]:\n            if state.get(v) == 1:                 # back edge = cycle\n                return stack[stack.index(v):] + [v]\n            if v not in state:\n                c = dfs(v)\n                if c: return c\n        state[u] = 2; stack.pop()\n        return None\n    for node in g:\n        if node not in state:\n            c = dfs(node)\n            if c: return c\n    return None\n\nprint(\"Graph:\", graph)\ncycle = find_cycle(graph)\nprint(\"Deadlock cycle:\", \" -> \".join(cycle) if cycle else \"none\")\ngraph[\"P3\"] = []                  # P3 no longer waits\nprint(\"After P3 stops waiting:\", find_cycle(graph))\n# Time O(V + E), space O(V)\n"
+   },
+   "followUps": [
+    "<p>Detection is optimistic because it assumes a process that can run now will finish and release everything it holds.</p><p>When the algorithm finds an unfinished process with Request at most Work, it adds that process's Allocation to Work, assuming it will not ask for more later. If this assumption is wrong, a deadlock may appear later, and the next run will catch it. This is why detection finds only current deadlocks, unlike Banker's, which uses the pessimistic maximum-demand assumption to avoid them.</p>",
+    "<p>Run it when the cost is justified by the chance of deadlock: periodically, or when a trigger suggests trouble.</p><p>Running on every request is O(m x n^2) each time, too costly. Common choices: every 30 seconds, when a process has waited longer than a threshold, or when CPU utilisation falls below, say, 40 percent. Running rarely lets many processes pile up in the cycle, and makes it hard to tell which one caused it; running too often wastes CPU. Databases typically search only after a short lock wait (about one second in PostgreSQL).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Keep a victim's rollback count or age in its cost so it eventually wins instead of always being chosen.</p><p>If cost is only work done or priority, the same cheap, low-priority process can be aborted repeatedly. Add a term such as cost = work + 10 x rollbacks, so that each time a process is picked, it becomes more expensive to pick next time. After 3 rollbacks it would exceed the cost of its competitors and a different victim is chosen. Wound-wait and wait-die use the original timestamp to the same end.</p>",
+    "<p>Processes with side effects that cannot be undone, such as sending an email or charging a card, are poor victims, and should be avoided.</p><p>Rollback only reverses effects you control (memory, database writes with undo log). Prefer a victim that has done only reversible work. For external effects, make the operation idempotent with a request id, delay it until after commit (outbox pattern), or use compensating actions such as a refund. If a victim must be chosen anyway, record that it needs compensation.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Deadlock: a bank transfer where two threads each hold one account lock and wait for the other. Livelock: two people in a corridor who both step aside the same way, repeatedly. Starvation: a low-priority print job that never prints because high-priority jobs keep arriving.</p><p>In the first nothing moves and CPU is idle; in the second CPU is busy but nothing is achieved; in the third the system moves forward, but not for one victim.</p>",
+    "<p>No, starvation is not deadlock, though both mean a process never gets its resource.</p><p>In starvation, the resource is being used and released by others, so the system makes progress, but an unfair policy keeps skipping one process. In deadlock, every process in the cycle waits for another in the cycle, so none can progress. Starvation is cured with aging or fair queues; a deadlocked process stays blocked forever unless the cycle is broken from outside. A deadlocked process is starved, but not vice versa.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "transfer(A,B) vs transfer(B,A) fixed with scoped_lock",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nstruct Account {\n    mutex m;\n    long balance;\n    explicit Account(long b) : balance(b) {}\n};\n\nvoid transfer(Account& from, Account& to, long amount) {\n    if (&from == &to) return;               // locking the same mutex twice is undefined\n    scoped_lock lk(from.m, to.m);           // locks both with deadlock avoidance\n    from.balance -= amount;\n    to.balance += amount;\n}\n\nint main() {\n    Account a(1000), b(1000);\n    // Opposite directions: a naive lock(from); lock(to) could deadlock here\n    thread t1([&] { for (int i = 0; i < 10000; i++) transfer(a, b, 1); });\n    thread t2([&] { for (int i = 0; i < 10000; i++) transfer(b, a, 2); });\n    t1.join(); t2.join();\n    cout << \"A = \" << a.balance << \", B = \" << b.balance << \"\\n\";\n    cout << \"Total = \" << a.balance + b.balance << \" (must stay 2000)\\n\";\n}\n"
+   },
+   "followUps": [
+    "<p>Sort the three account locks by a fixed key such as id, then lock all in that order.</p><p>With accounts 9, 2, 5, lock 2, then 5, then 9, regardless of who is the payer. Another transfer of 5, 9, 2 uses the same order, so no cycle. In C++ you can simply write <code>std::scoped_lock lk(a.m, b.m, c.m);</code>, which accepts any number of mutexes. Make sure the accounts are distinct, because locking one twice is undefined.</p>",
+    "<p>It uses a try-and-back-off loop: lock one mutex, try_lock the others, and if any fails, release everything and start again.</p><pre><code>lock(m1);\nif (!try_lock(m2)) {\n  unlock(m1); // give up what we hold\n  retry starting from m2;\n}</code></pre><p>The standard says the algorithm must avoid deadlock, and implementations typically rotate which mutex they start with. Because the thread never waits while holding a lock that others need, there is no hold-and-wait.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look at what the threads are doing: a deadlock shows blocked threads that wait on each other, while a slow dependency shows threads waiting on I/O that does complete.</p><p>Take two thread dumps 10 seconds apart. If the same threads are stuck on the same lock addresses and a cycle exists in the wait-for graph, it is a deadlock. If stacks change, or sit in a socket read for a downstream service whose latency is high, it is slowness. Deadlock gives 0 percent CPU and never recovers; a slow dependency recovers when it does.</p>",
+    "<p>Add detection, bounded waits and tests so the cause is found fast and cannot silently return.</p><ul><li>Lock acquisition timeouts that log the holder.</li><li>An alert on requests stuck longer than, say, 30 seconds.</li><li>A documented lock order and a code review rule for it.</li><li>TSan or lockdep in CI, plus a stress test that reproduces this case.</li></ul>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You watch for queue growth with all workers busy but no tasks completing.</p><p>Signals: pool active threads equals pool size, queue length climbing, completed tasks per second dropping to 0, and CPU low. Example: pool of 8, 8 active, queue at 500 and growing, 0 completions in the last minute. A thread dump shows workers waiting in <code>future.get()</code> for tasks that sit in the queue. Alert on this combination.</p>",
+    "<p>A bigger pool only moves the point where all workers are blocked; it does not remove the dependency.</p><p>With a pool of 10 and a load that spawns 10 parents at once, all parents block and children starve; with 20 it takes 20 parents, which a traffic spike easily brings. The bug then appears only under load, which is harder to debug. Fix the structure instead: no blocking waits inside pool tasks, separate pools, or async composition.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Retrying a transaction after a deadlock-victim error",
+    "python": "import random, time\n\nclass DeadlockError(Exception):\n    pass\n\nattempts_log = []\ncalls = {\"n\": 0}\n\ndef run_transaction():\n    calls[\"n\"] += 1\n    if calls[\"n\"] <= 2:                   # the DB picks us as victim twice\n        raise DeadlockError(\"deadlock detected, transaction rolled back\")\n    return \"committed\"\n\ndef with_retry(fn, max_tries=5):\n    for attempt in range(1, max_tries + 1):\n        try:\n            return fn()                   # retry the WHOLE transaction\n        except DeadlockError as e:\n            delay = random.uniform(0, 0.01 * 2 ** attempt)   # jittered backoff\n            attempts_log.append(\"attempt %d failed: %s\" % (attempt, e))\n            time.sleep(delay)\n    raise RuntimeError(\"giving up after %d tries\" % max_tries)\n\nprint(\"Result:\", with_retry(run_transaction))\nfor line in attempts_log:\n    print(line)\nprint(\"Total attempts:\", calls[\"n\"])\n"
+   },
+   "followUps": [
+    "<p>Wait-die and wound-wait are two ways of using timestamps to prevent deadlock by deciding who may wait.</p><p>Older means smaller timestamp. In wait-die, an older requester waits for a younger holder, but a younger requester dies (aborts and restarts). In wound-wait, an older requester wounds (aborts) a younger holder, and a younger requester waits. Waits therefore always go in one age direction, so no cycle can form. The restarted transaction keeps its original timestamp, so it eventually becomes oldest and cannot starve.</p>",
+    "<p>Distributed deadlocks are found by combining each site's local wait-for graph, or by tracing probes through sites.</p><p>Centralised: sites send their graphs to a coordinator, which unions them and searches for a cycle. Beware phantom deadlocks from stale snapshots. Edge chasing (Chandy-Misra-Haas): a blocked transaction sends a probe along its wait edges; if the probe returns to its initiator, there is a cycle. Many systems just use lock timeouts for simplicity.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The priority ceiling protocol prevents deadlock because a task can take a lock only if its priority is above the ceilings of all locks currently held by others.</p><p>Each lock's ceiling is the highest priority of any task that ever uses it. Under the immediate form, a task that locks it runs at the ceiling at once. So once a task holds a lock, no other task that could need a lock it holds can start running, and a cycle cannot form. A task also gets blocked at most once, by one critical section.</p>",
+    "<p>Yes in principle, Linux CFS can have priority inversion, but in the normal fair scheduler it is less severe.</p><p>CFS shares CPU by weight, so a medium-nice task cannot fully starve a low-weight lock holder; it still gets some time slice. For real-time policies (SCHED_FIFO) the full problem exists, which is why pthread mutexes can be created with <code>PTHREAD_PRIO_INHERIT</code> and the kernel's rt-mutex implements priority inheritance. Kernel code using RT mutexes in PREEMPT_RT relies on this.</p>"
+   ]
+  }
+ ]
+}

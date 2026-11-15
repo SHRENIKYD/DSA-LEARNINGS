@@ -1,0 +1,124 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because software cannot be trusted to police itself, and checks must happen on every single memory access. If the check were software, a buggy or malicious program could skip it and read another process's memory.</p><p>Hardware does the base/limit or page-table check in parallel with the access, costing almost no extra time. A software check would add many instructions to every load and store, slowing programs by a large factor.</p>",
+    "<p>They describe <em>when</em> a program's addresses are tied to physical memory. <b>Compile time:</b> the compiler writes absolute addresses, so the program must always load at the same place (old .COM files). <b>Load time:</b> the loader fixes addresses once when the program starts; it cannot move afterwards. <b>Execution time:</b> addresses are translated on every access by the MMU, so the OS can move or swap the process. Modern systems use execution-time binding.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It says that for first-fit allocation, if N blocks are allocated, about N/2 more blocks are lost to external fragmentation, so roughly one third of memory is unusable.</p><p>Example: 1000 allocated blocks leave about 500 blocks' worth of holes, so wasted share = 500 / 1500 = 33%. It is an empirical result by Knuth, not a hard guarantee, and it applies to variable-size contiguous allocation.</p>",
+    "<p>It keeps memory as blocks of size 2^k and splits or merges them in pairs (\"buddies\") so that free neighbours can always be coalesced into bigger blocks. Freed buddies merge back, so large contiguous runs reappear instead of staying shattered.</p><p>Example: a request for 5 pages takes an 8-page block (3 pages wasted, internal fragmentation) but external fragmentation stays low. Linux keeps free lists per order and groups pages by mobility type, so unmovable allocations do not scatter among movable ones.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Paging: split a virtual address and translate it",
+    "python": "# Paging address translation with a tiny page table\nPAGE_BITS = 12                      # 4 KB pages -> offset is 12 bits\nPAGE_SIZE = 1 << PAGE_BITS\npage_table = {0: 5, 1: 9, 2: 7, 3: 1}   # page number -> frame number\n\ndef translate(va):\n    page = va >> PAGE_BITS           # high bits pick the page\n    offset = va & (PAGE_SIZE - 1)    # low bits are kept unchanged\n    if page not in page_table:       # no valid entry -> page fault\n        return None\n    return (page_table[page] << PAGE_BITS) | offset\n\nfor va in (0x3A7C, 0x0001, 0x2FFF, 0x5000):\n    pa = translate(va)\n    if pa is None:\n        print(f\"VA {va:#06x}: page {va >> PAGE_BITS} -> PAGE FAULT\")\n    else:\n        print(f\"VA {va:#06x}: page {va >> PAGE_BITS}, offset {va & 0xFFF:#05x} -> PA {pa:#06x}\")\n"
+   },
+   "followUps": [
+    "<p>A page-table entry (PTE) holds the frame number plus status bits that the MMU and the OS need.</p><ul><li><b>Present/valid</b>: is the page in RAM?</li><li><b>R/W, U/S, NX</b>: permissions.</li><li><b>Accessed</b> and <b>dirty</b>: set by hardware, used by page replacement and write-back.</li><li><b>Caching bits</b> and, on x86-64, a 40-ish-bit frame number.</li></ul><p>When present is 0, the OS may reuse the other bits to remember where the page lives in swap.</p>",
+    "<p>Nothing: the offset is copied unchanged from the virtual address to the physical address, because pages and frames have the same size. Only the page number is translated.</p><p>Example: with 4 KB pages, VA 0x3A7C has offset 0xA7C; the physical address is frame 1 followed by the same offset, 0x1A7C. This is also why the offset bits need no table lookup and why page size must be a power of two.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Flat page-table size vs a multi-level tree",
+    "python": "# Size of a flat page table vs a multi-level one\ndef flat(addr_bits, page_bits, entry_bytes):\n    return (1 << (addr_bits - page_bits)) * entry_bytes\n\nprint(\"32-bit, 4 KB pages, 4 B entries:\", flat(32, 12, 4) // 2**20, \"MB per process\")\nprint(\"48-bit, 4 KB pages, 8 B entries:\", flat(48, 12, 8) // 2**30, \"GB per process\")\n\n# 4-level x86-64 style tree: every table is one page (512 entries x 8 B = 4 KB).\n# A process touching only 3 separate 4 KB pages needs few tables.\npages = [0x00400000 >> 12, 0x00401000 >> 12, 0x7FFFFFFFE000 >> 12]\ntables = {0: {()}, 1: set(), 2: set(), 3: set()}   # level 0 = root\nfor p in pages:\n    idx = [(p >> s) & 511 for s in (27, 18, 9, 0)]   # 9 bits per level\n    for lvl in (1, 2, 3):\n        tables[lvl].add(tuple(idx[:lvl]))           # table identified by its path\nn = sum(len(t) for t in tables.values())\nprint(\"pages used:\", len(pages), \"-> tables allocated:\", n, \"=\", n * 4, \"KB\")\n"
+   },
+   "followUps": [
+    "<p>Each level indexes one table that is exactly one page long, so the bits per level are log2(entries per page). With 4 KB pages and 8-byte entries a table holds 4096 / 8 = 512 entries, so 9 bits.</p><p>Four levels give 4 x 9 = 36 bits for the page number, plus 12 offset bits, which makes 48 bits of virtual address. Sizing each table to one page means a table can be allocated, swapped and protected like any other page.</p>",
+    "<p>A huge page maps 2 MB (or 1 GB) with one entry, so the walk stops one level earlier and one TLB entry covers far more memory.</p><p>Example: with 4 KB pages a 4-level walk needs 4 table reads; a 2 MB page ends at the third level (3 reads), a 1 GB page at the second (2 reads). The 2 MB page also replaces 512 normal TLB entries by one, so TLB reach grows 512 times. The cost is internal fragmentation and harder allocation.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Effective access time with a TLB",
+    "python": "# Effective access time with a TLB (times in ns)\ndef eat(h, t, m, levels=1):\n    hit = t + m                      # TLB lookup + the data access\n    miss = t + levels * m + m        # walk 'levels' tables, then the data\n    return h * hit + (1 - h) * miss\n\nt, m = 10, 100\nfor h in (0.0, 0.5, 0.9, 0.99):\n    print(f\"h={h:4}: 1-level EAT = {eat(h, t, m):6.1f} ns, 4-level EAT = {eat(h, t, m, 4):6.1f} ns\")\n# Worked example: 0.9*110 + 0.1*210 = 120 ns for one level\n"
+   },
+   "followUps": [
+    "<p>TLB reach is the amount of memory the TLB can map at once: number of entries times page size.</p><p>Example: 64 entries x 4 KB = 256 KB; the same 64 entries with 2 MB pages reach 128 MB. If a program's working set is larger than the reach, hit ratio falls and EAT rises. That is why databases and JVMs use huge pages: they raise reach without a bigger TLB.</p>",
+    "<p>A shootdown is the work of making other CPUs drop a stale TLB entry after the page tables change. Each core has its own TLB, and the hardware does not keep them coherent automatically.</p><p>When the kernel unmaps or changes permissions on a shared page (munmap, COW, migration), it sends an inter-processor interrupt to every core that may cache the entry; each runs invlpg and acknowledges. With many cores this costs microseconds and stalls them, so kernels batch invalidations.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because segmentation was slow to use well and paging alone does the job. In 64-bit mode the CPU forces the code, data and stack segment bases to 0, so addresses are flat; only FS and GS keep a base for thread-local storage.</p><p>Compilers and OSes already used flat memory, segment reloads were costly, and external fragmentation was a headache. Protection and sharing moved to page permissions and software regions (VMAs).</p>",
+    "<p><b>Segmentation:</b> put the library in one segment, and give each process a segment-table entry pointing to the same base; sharing is natural and the whole library has one protection setting. <b>Paging:</b> map the same physical frames into each process's page table (usually at different virtual addresses), read-only for code.</p><p>Example: a 2 MB library mapped by 10 processes uses 2 MB of frames, not 20 MB. Data pages that are written need copy-on-write or per-process copies.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The CPU must be able to re-run the exact instruction that faulted, so the program never notices the fault. After the OS loads the page, execution simply resumes at the same instruction and the memory access now succeeds.</p><p>This needs hardware support: partial side effects (an auto-incremented register, a half-done string copy) must be undone or recorded. Without restartability, a fault in the middle of an instruction would leave the process in a state that cannot continue correctly.</p>",
+    "<p>After fork the parent and child share the same frames, marked read-only. When one writes, the CPU raises a protection fault; the kernel sees the page is a COW page, copies it to a new frame, maps the copy writable for the writer and lets the instruction restart.</p><p>Example: after fork, 1000 shared pages cost zero data copies; if the child writes to 10 pages, exactly 10 faults and 10 copies of 4 KB happen. The other 990 pages stay shared. The last owner just makes the page writable without copying.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "FIFO, LRU, OPT and Clock fault counts",
+    "python": "# Page replacement: FIFO, LRU, OPT, Clock on the classic string\nrefs = [7,0,1,2,0,3,0,4,2,3,0,3,2,1,2,0,1,7,0,1]\n\ndef fifo(refs, n):\n    mem, faults = [], 0\n    for r in refs:\n        if r not in mem:\n            faults += 1\n            if len(mem) == n: mem.pop(0)    # evict oldest loaded\n            mem.append(r)\n    return faults\n\ndef lru(refs, n):\n    mem, faults = [], 0                     # most recent at the end\n    for r in refs:\n        if r in mem: mem.remove(r)\n        else:\n            faults += 1\n            if len(mem) == n: mem.pop(0)    # evict least recently used\n        mem.append(r)\n    return faults\n\ndef opt(refs, n):\n    mem, faults = [], 0\n    for i, r in enumerate(refs):\n        if r in mem: continue\n        faults += 1\n        if len(mem) == n:\n            def nxt(p):                     # next use, or infinity\n                return refs[i+1:].index(p) if p in refs[i+1:] else 10**9\n            mem.remove(max(mem, key=nxt))   # farthest next use\n        mem.append(r)\n    return faults\n\ndef clock(refs, n):\n    frames, ref, hand, faults = [None]*n, [0]*n, 0, 0\n    for r in refs:\n        if r in frames:\n            ref[frames.index(r)] = 1        # a hit only sets a bit\n            continue\n        faults += 1\n        while ref[hand]:                    # second chance: clear and skip\n            ref[hand] = 0\n            hand = (hand + 1) % n\n        frames[hand], ref[hand] = r, 1\n        hand = (hand + 1) % n\n    return faults\n\nprint(\"refs:\", refs)\nfor name, f in ((\"FIFO\", fifo), (\"LRU\", lru), (\"OPT\", opt), (\"Clock\", clock)):\n    print(f\"{name:5}: {f(refs, 3)} faults with 3 frames\")\n"
+   },
+   "followUps": [
+    "<p>On the classic 20-reference string 7 0 1 2 0 3 0 4 2 3 0 3 2 1 2 0 1 7 0 1 with 3 frames: <b>FIFO 15</b> faults, <b>LRU 12</b>, <b>OPT 9</b>. A simple Clock gives 14 in a simple simulation. OPT is the lower bound; no real algorithm can beat 9 here because it needs future knowledge.</p>",
+    "<p>Because a hit only sets the reference bit, which is one memory write and needs no list reordering or locking. Exact LRU would have to move the page in a list or update a timestamp on every access, and an access happens billions of times per second.</p><p>The cost moves to the rare eviction: the clock hand sweeps, clearing bits and skipping pages used since the last sweep. Hits are free, faults are amortized O(1) per page.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Belady's anomaly with FIFO and LRU",
+    "python": "# Belady's anomaly: FIFO vs LRU on the same string\nrefs = [1,2,3,4,1,2,5,1,2,3,4,5]\n\ndef fifo(refs, n):\n    mem, faults = [], 0\n    for r in refs:\n        if r not in mem:\n            faults += 1\n            if len(mem) == n: mem.pop(0)\n            mem.append(r)\n    return faults\n\ndef lru(refs, n):\n    mem, faults = [], 0\n    for r in refs:\n        if r in mem: mem.remove(r)      # refresh recency\n        else:\n            faults += 1\n            if len(mem) == n: mem.pop(0)\n        mem.append(r)\n    return faults\n\nprint(\"refs:\", refs)\nfor n in (3, 4):\n    print(f\"{n} frames: FIFO {fifo(refs, n)} faults, LRU {lru(refs, n)} faults\")\n# FIFO gets worse with more frames (9 -> 10); LRU improves (10 -> 8).\n"
+   },
+   "followUps": [
+    "<p>Yes. Plain second-chance Clock is FIFO with a reference bit, and its memory contents are not always a subset of the larger-memory case, so it can in principle show the anomaly. If every reference bit is set, the hand clears them all and then evicts the oldest page, which behaves exactly like FIFO.</p><p>It is rare in practice because hits protect pages, but Clock is not a stack algorithm, unlike LRU and OPT.</p>",
+    "<p>Run the algorithm for every frame count and look for a string where faults(n+1) is greater than faults(n). Enumerate or randomly generate reference strings over a small alphabet, simulate FIFO for 1..k frames, and report the first string that fails.</p><pre><code>for s in strings:\n  prev = faults(s, 1)\n  for n in 2..k:\n    f = faults(s, n)\n    if f &gt; prev: report(s, n)\n    prev = f</code></pre><p>The string 1 2 3 4 1 2 5 1 2 3 4 5 is the classic hit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The window \u0394 is how many recent references define the working set. If \u0394 is too small, the set misses pages still in use and you under-allocate memory, causing faults. If \u0394 is too large, it includes old pages that are no longer needed (overlap of two phases) and you over-estimate demand, reducing multiprogramming.</p><p>Example: with \u0394 = 10,000 references a loop touching 40 pages gives a working set of 40; with \u0394 = 5, it may read just 5. A good \u0394 spans one locality phase.</p>",
+    "<p>Because swap only moves the problem to a slower device; it does not shrink what the processes need in RAM. When the working sets exceed RAM, more swap space just lets the system page more, and faults cost milliseconds on disk.</p><p>Example: 6 GB of active working sets on a 4 GB machine means the missing 2 GB is constantly swapped in and out; adding 16 GB of swap changes nothing about that 6 GB. Swap helps cold pages leave memory, but the cure is less demand or more RAM.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It maps the file privately (MAP_PRIVATE): reads share the file's page-cache pages, but a write triggers copy-on-write. The kernel copies the page to a private anonymous frame, and the change is never written back to the file.</p><p>Example: map a 4 KB config file privately and change one byte: that process gets its own 4 KB copy; other processes and the file on disk still see the original. With MAP_SHARED the write goes to the shared page and is written back to the file.</p>",
+    "<p>Overcommit lets the kernel promise more virtual memory than there is RAM plus swap, betting that not everything will be touched. Fork with COW is the classic case: a 10 GB process forks, and the kernel does not reserve another 10 GB because most pages stay shared.</p><p>The risk is that if both processes later write too many pages, memory runs out and the OOM killer picks a victim. Strict mode (vm.overcommit_memory=2) refuses the fork instead.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Larger pages cost more per fault for a latency-sensitive service. THP can stall an allocation while the kernel compacts memory to build a 2 MB page, and khugepaged can collapse pages in the background and interrupt threads.</p><p>It also bloats memory: touching one byte can bring in 2 MB, and a COW fault copies 2 MB (512 times more than 4 KB). Many databases (Redis, MongoDB) advise disabling THP or using madvise mode and explicit huge pages.</p>",
+    "<p>GPUs use larger pages than CPUs, commonly 64 KB or 2 MB, because they stream large arrays, and they need their TLBs to cover big buffers while keeping translation fast. Smaller pages would blow up TLB misses on massive parallel access.</p><p>Unified memory migrates data between host and device in pages, so the size trades migration granularity (small = precise but many faults) against throughput (large = efficient but may move unused data). Drivers choose per allocation.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>MAP_POPULATE tells mmap to pre-fault the whole mapping (read the pages in) at call time, so later accesses do not fault. madvise(MADV_WILLNEED) hints that a range will be needed soon, so the kernel starts readahead asynchronously.</p><p>Use them when predictable latency matters: a 1 GB model file mapped with MAP_POPULATE costs a long call but gives no major faults afterwards. Both are hints or up-front costs, not guarantees against eviction (use mlock for that).</p>",
+    "<p>Touching a page that no longer has file data behind it raises SIGBUS, not SIGSEGV, and kills the process by default. The mapping itself stays valid, but pages beyond the new end of file cannot be backed.</p><p>Example: map 8 KB, another process truncates the file to 4 KB, then you read byte 5000: SIGBUS. Defences are to avoid mapping files others can shrink, use file locks or leases, and handle SIGBUS where needed.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Look at the trend of resident memory. A leak grows steadily with time and with request count and never plateaus, and the heap or RSS keeps rising even at constant load. A larger working set rises with load or data size and then flattens, and it drops when load drops.</p><p>Check RSS over days, heap profiler allocation sites and object counts. If RSS is flat but major faults rise, the working set simply no longer fits RAM, not a leak.</p>",
+    "<p>Swappiness sets how eagerly the kernel swaps out anonymous pages versus dropping file cache (0 to 100, default 60). A high value pushes idle app memory to swap early, which can cause major faults when the app wakes.</p><p>For a latency-sensitive service that already shows major faults, lower it (say 1 to 10) so anonymous pages stay in RAM, and keep the file cache from eating hot data. Lowering it does not add memory; if the working set is too big you still thrash, so right-size memory too.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>KPTI keeps the kernel unmapped while user code runs, so each syscall and interrupt switches page tables. This flushes TLB entries unless they are tagged, and costs from a few percent to about 30 percent on syscall-heavy loads.</p><p>PCID tags each TLB entry with an address-space id, so the CPU keeps entries for both the user and kernel tables across the CR3 write and avoids a full flush. That cuts most of the penalty. Compute-bound programs barely notice.</p>",
+    "<p>The IOMMU translates and checks addresses issued by devices doing DMA, in the same way the MMU does for the CPU. Without it a buggy or malicious device (or a compromised NIC or Thunderbolt peripheral) could read or write any RAM.</p><p>With it, each device gets its own I/O page tables that map only the buffers the driver allows, so a stray DMA to an unmapped address faults. It is also what makes safe device pass-through to virtual machines possible (VFIO).</p>"
+   ]
+  }
+ ]
+}
