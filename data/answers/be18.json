@@ -1,0 +1,110 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Session: identity map and unit of work",
+    "python": "# Tiny model of a Session: identity map + unit of work (flush on commit)\nimport sqlite3\n\nclass Session:\n    def __init__(self, db):\n        self.db = db\n        self.identity_map = {}   # (table, pk) -> object: one object per row\n        self.new = []            # pending objects (to INSERT)\n        self.loads = 0\n\n    def add(self, obj):\n        self.new.append(obj)\n\n    def get(self, pk):\n        if pk in self.identity_map:          # no SQL: served from the map\n            return self.identity_map[pk]\n        row = self.db.execute(\"SELECT id, name FROM users WHERE id=?\", (pk,)).fetchone()\n        self.loads += 1\n        obj = {\"id\": row[0], \"name\": row[1]}\n        self.identity_map[pk] = obj\n        return obj\n\n    def commit(self):\n        # unit of work: collect dirty objects, send statements together\n        for obj in self.identity_map.values():\n            self.db.execute(\"UPDATE users SET name=? WHERE id=?\", (obj[\"name\"], obj[\"id\"]))\n        for obj in self.new:\n            self.db.execute(\"INSERT INTO users(name) VALUES (?)\", (obj[\"name\"],))\n        self.db.commit()\n        self.new.clear()\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)\")\ndb.execute(\"INSERT INTO users(name) VALUES ('ann')\")\ns = Session(db)\na, b = s.get(1), s.get(1)\nprint(\"same object:\", a is b, \"| SQL loads:\", s.loads)\na[\"name\"] = \"anna\"                 # change tracked just by mutating the object\ns.add({\"name\": \"bob\"})\ns.commit()                         # one flush: UPDATE + INSERT\nprint(db.execute(\"SELECT * FROM users\").fetchall())\n"
+   },
+   "followUps": [
+    "<p>Autoflush makes the Session send pending changes to the database before it runs a query, so the query sees your own unsaved work. Example: you <code>add(user)</code> and then query users by email; without autoflush the new row would not appear in the result.</p><p>Disable it (<code>with session.no_autoflush:</code>) when a query runs while objects are half-built and a flush would fail or fire needless SQL, for example during a bulk loop where you check for duplicates first.</p>",
+    "<p>An object moves through four states. <b>Transient</b>: created in Python, not attached to a Session. <b>Pending</b>: added with <code>add()</code>, no row yet. <b>Persistent</b>: has a row and is tracked by the Session (after flush or load). <b>Detached</b>: has a row but its Session was closed or it was expunged.</p><p>Why it matters: lazy loading and change tracking only work on persistent objects, so touching a lazy attribute on a detached one raises <code>DetachedInstanceError</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Replace the dependency in the app's override table: <code>app.dependency_overrides[get_db] = override_get_db</code>. The override yields a session bound to a test database instead, so no endpoint code changes.</p><pre><code>def override_get_db():\n    with TestSession() as s:\n        yield s\napp.dependency_overrides[get_db] = override_get_db</code></pre><p>A common choice is to wrap each test in a transaction and roll it back at the end, so tests stay isolated and fast. Clear the overrides after the test.</p>",
+    "<p>Because commit normally expires every loaded attribute, so the next read of <code>user.name</code> triggers a fresh SELECT. In async code that implicit load fails with <code>MissingGreenlet</code>, and in FastAPI the response model often reads attributes after the commit.</p><p>With <code>expire_on_commit=False</code> objects keep the values they had at commit time. The trade-off: they can be stale if another transaction changed the row, so call <code>refresh()</code> when you need server-generated values.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "N+1 queries vs one IN query",
+    "python": "# N+1 vs one batched IN query, counting the SQL statements sent\nimport sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.executescript(\"\"\"\nCREATE TABLE author(id INTEGER PRIMARY KEY, name TEXT);\nCREATE TABLE book(id INTEGER PRIMARY KEY, author_id INT, title TEXT);\n\"\"\")\nfor i in range(1, 6):\n    db.execute(\"INSERT INTO author VALUES (?, ?)\", (i, \"author%d\" % i))\n    for j in range(2):\n        db.execute(\"INSERT INTO book(author_id, title) VALUES (?, ?)\", (i, \"book%d-%d\" % (i, j)))\n\ncount = 0\ndef trace(sql):\n    global count\n    count += 1\ndb.set_trace_callback(trace)\n\n# Lazy loading: 1 query for authors + 1 per author\ncount = 0\nfor aid, name in db.execute(\"SELECT id, name FROM author\").fetchall():\n    db.execute(\"SELECT title FROM book WHERE author_id=?\", (aid,)).fetchall()\nprint(\"lazy (N+1) queries:\", count)          # 1 + 5 = 6\n\n# selectinload style: 1 query for authors + 1 IN query for all books\ncount = 0\nauthors = db.execute(\"SELECT id, name FROM author\").fetchall()\nids = [a[0] for a in authors]\nmarks = \",\".join(\"?\" * len(ids))\nbooks = db.execute(\"SELECT author_id, title FROM book WHERE author_id IN (%s)\" % marks, ids).fetchall()\nby_author = {}\nfor aid, title in books:\n    by_author.setdefault(aid, []).append(title)   # group in memory\nprint(\"selectin-style queries:\", count)       # 2\nprint(by_author[1])\n"
+   },
+   "followUps": [
+    "<p>joinedload is worse when it joins a collection, because the parent columns repeat for every child row. Example: 100 orders with 50 items each return 5,000 rows, each carrying the full order columns, so the result is wide and slow to transfer and de-duplicate.</p><p>With LIMIT it also forces a subquery wrapper. selectinload instead sends 2 queries: 100 order rows, then one <code>WHERE order_id IN (...)</code> returning 5,000 slim item rows. Use joinedload for many-to-one, where no rows multiply.</p>",
+    "<p>Look at the number of queries per request, not just their speed. Trace with OpenTelemetry (SQLAlchemy instrumentation) and alert when one request issues many near-identical statements, for example more than 20 SELECTs differing only by id.</p><p>You can also count statements with an engine <code>before_cursor_execute</code> event and export it as a metric or log field. Slow-query logs alone miss N+1, because each query is fast; 200 queries at 2 ms still add 400 ms plus 200 round trips.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Chain the options by calling the next loader on the previous one. For Author, then books, then reviews:</p><pre><code>select(Author).options(\n  selectinload(Author.books)\n    .selectinload(Book.reviews)\n    .joinedload(Review.user))</code></pre><p>Each step starts from the attribute loaded in the step before. This is 3 queries total for three levels (the last joined into the reviews query). Use <code>defaultload()</code> to reach a deeper level without changing how the middle one loads.</p>",
+    "<p><code>populate_existing()</code> tells the query to overwrite objects already in the identity map with the freshly loaded row values. Normally the Session reuses the existing object and ignores new column data, so edits made by other transactions are not seen.</p><p>Example: you loaded user 5 with name \"ann\", someone renamed it to \"anna\", and a normal query still returns \"ann\". With <code>.execution_options(populate_existing=True)</code> you get \"anna\". Unflushed local changes are lost, so flush first.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Lost update: naive, atomic, optimistic",
+    "python": "# Lost update with read-modify-write, vs atomic UPDATE, vs version check\nimport sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE item(id INT PRIMARY KEY, stock INT, version INT)\")\ndb.execute(\"INSERT INTO item VALUES (1, 10, 0)\")\n\ndef read():\n    return db.execute(\"SELECT stock, version FROM item WHERE id=1\").fetchone()\n\n# 1) Naive: both requests read 10, both write 9 -> one sale lost\na, b = read(), read()\ndb.execute(\"UPDATE item SET stock=? WHERE id=1\", (a[0] - 1,))\ndb.execute(\"UPDATE item SET stock=? WHERE id=1\", (b[0] - 1,))\nprint(\"naive, 2 sales from 10 ->\", read()[0])          # 9 (wrong)\n\n# 2) Atomic SQL: the database applies each decrement to the current value\ndb.execute(\"UPDATE item SET stock=10, version=0 WHERE id=1\")\nfor _ in range(2):\n    cur = db.execute(\"UPDATE item SET stock=stock-1 WHERE id=1 AND stock>0\")\n    assert cur.rowcount == 1                           # check rowcount\nprint(\"atomic, 2 sales from 10 ->\", read()[0])         # 8\n\n# 3) Optimistic: UPDATE ... AND version=:old, conflict if rowcount is 0\ndb.execute(\"UPDATE item SET stock=10, version=0 WHERE id=1\")\na, b = read(), read()\nfor name, (stock, ver) in ((\"A\", a), (\"B\", b)):\n    cur = db.execute(\"UPDATE item SET stock=?, version=version+1 WHERE id=1 AND version=?\",\n                     (stock - 1, ver))\n    print(\"optimistic\", name, \"ok\" if cur.rowcount else \"CONFLICT (retry / 409)\")\nprint(\"optimistic final stock:\", read()[0])            # 9, the loser retries\n"
+   },
+   "followUps": [
+    "<p>Send the version in an ETag, and require it back in If-Match. GET returns <code>ETag: \"7\"</code> (the row version). The client sends PUT with <code>If-Match: \"7\"</code>; the server runs UPDATE ... WHERE version = 7.</p><p>If zero rows match, someone else changed the row, so reply <b>412 Precondition Failed</b> (or 409) and the client re-fetches and retries. If the header is missing on a write you can answer 428 Precondition Required. This stops two browser tabs overwriting each other silently.</p>",
+    "<p>Write skew is when two transactions each read overlapping data, make a decision, and write different rows, so together they break a rule neither broke alone. Example: two doctors both see 2 on call, and each goes off call; now 0 are on call.</p><p>REPEATABLE READ (snapshot) does not stop it. SERIALIZABLE does, by aborting one transaction with a serialization failure that you retry. The alternative is locking the rows both depend on, with <code>FOR UPDATE</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>READ COMMITTED allows non-repeatable reads and phantoms (and write skew). Each statement sees the latest committed data, so two identical SELECTs in one transaction can differ.</p><p>Example: you read a balance of 100, another transaction commits a withdrawal of 30, you read again and get 70. A report that runs several queries can therefore mix data from different moments. PostgreSQL never shows dirty reads at this level. Use REPEATABLE READ if you need one consistent snapshot.</p>",
+    "<p>Because after a serialization failure or deadlock the whole transaction is rolled back; earlier statements no longer exist and the data they read may have changed. Retrying only the failed statement would run it against a different state than the earlier steps assumed.</p><p>So wrap the whole unit in a loop: begin, do all reads and writes, commit, and on SQLSTATE 40001 or 40P01 start again from the top (with a small random backoff and a cap, say 3 to 5 tries). Make side effects like emails happen after commit.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Autogenerate compares your models to the live database, so it misses anything it cannot see in metadata. It does not detect table or column renames (it sees a drop plus an add, which loses data), changes to server defaults and some type changes unless you enable <code>compare_type</code>, and it ignores things like triggers, views, stored procedures and sometimes CHECK constraints or sequences.</p><p>Always read the generated file. A rename needs <code>op.alter_column(..., new_column_name=...)</code> written by hand.</p>",
+    "<p>Parallel work creates two revisions with the same parent, which gives two heads, and <code>alembic upgrade head</code> fails with \"multiple heads\". Fix it after merging branches with <code>alembic merge -m \"merge\" heads</code>, which creates an empty revision that has both as parents.</p><p>Better, have CI run <code>alembic heads</code> and fail if more than one appears, so the second developer rebases and re-points <code>down_revision</code> to the new head. Keep migrations independent where you can.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Keyset-batched backfill",
+    "python": "# Backfill a new column in keyset batches, each batch its own short transaction\nimport sqlite3\n\ndb = sqlite3.connect(\":memory:\")\ndb.execute(\"CREATE TABLE t(id INTEGER PRIMARY KEY, email TEXT, email_lower TEXT)\")\ndb.executemany(\"INSERT INTO t(id, email) VALUES (?, ?)\",\n               [(i, \"User%d@X.com\" % i) for i in range(1, 11)])\ndb.commit()\n\nBATCH, last_id, batches = 4, 0, 0\nwhile True:\n    # keyset: WHERE id > last_id ORDER BY id LIMIT n  (no OFFSET, stays fast)\n    ids = [r[0] for r in db.execute(\n        \"SELECT id FROM t WHERE id > ? AND email_lower IS NULL ORDER BY id LIMIT ?\",\n        (last_id, BATCH))]\n    if not ids:\n        break\n    db.execute(\"UPDATE t SET email_lower=lower(email) WHERE id BETWEEN ? AND ? \"\n               \"AND email_lower IS NULL\", (ids[0], ids[-1]))   # idempotent\n    db.commit()                      # short transaction per batch\n    last_id, batches = ids[-1], batches + 1\n    print(\"batch\", batches, \"ids\", ids[0], \"-\", ids[-1])\n\nleft = db.execute(\"SELECT count(*) FROM t WHERE email_lower IS NULL\").fetchone()[0]\nprint(\"rows still NULL:\", left, \"-> safe to add NOT NULL\" if left == 0 else \"\")\n"
+   },
+   "followUps": [
+    "<p>MySQL differs mainly in how it locks and alters tables. Modern MySQL 8 can <code>ADD COLUMN</code> with a default instantly (<code>ALGORITHM=INSTANT</code>), but it has no <code>NOT VALID</code> constraint trick, so <code>MODIFY ... NOT NULL</code> rebuilds the table or scans it under a lock.</p><p>On 100 million rows teams use online schema change tools (gh-ost, pt-online-schema-change) that copy to a shadow table and swap. The batched backfill step is the same. Also, DDL in MySQL is not transactional, so a failed migration cannot roll back.</p>",
+    "<p>Check the data, not the job log. Run <code>SELECT 1 FROM t WHERE col IS NULL LIMIT 1</code> and expect zero rows; the count query can be expensive, so a limit-1 check on an index or the batch cursor reaching the max id is cheaper.</p><p>Also confirm the new code is fully deployed, because an old instance could still insert NULLs after you check. In practice: deploy, backfill, verify 0 NULLs twice a few minutes apart, then add the constraint with <code>VALIDATE</code>, which itself proves it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Connection pool sizing and exhaustion",
+    "python": "# Pool sizing arithmetic and what happens when a pool is exhausted\nimport queue\n\ndef worst_case(instances, procs, pool_size, max_overflow):\n    return instances * procs * (pool_size + max_overflow)\n\nDB_MAX, RESERVED = 100, 10\nfor inst in (4, 8, 10):\n    total = worst_case(inst, 2, 2, 3)         # 2 workers each, 2 + 3 overflow\n    ok = total <= DB_MAX - RESERVED\n    print(\"instances=%2d -> worst case %3d connections, limit %d: %s\"\n          % (inst, total, DB_MAX - RESERVED, \"ok\" if ok else \"TOO MANY\"))\n\n# A pool of 2 connections: the 3rd request waits, then times out\npool = queue.Queue()\nfor c in (\"conn1\", \"conn2\"):\n    pool.put(c)\nheld = [pool.get(), pool.get()]                # two requests hold connections\ntry:\n    pool.get(timeout=0.2)                      # pool_timeout\nexcept queue.Empty:\n    print(\"third request: TimeoutError (QueuePool limit reached)\")\npool.put(held.pop())                           # a transaction finishes\nprint(\"after release, a waiter gets:\", pool.get(timeout=0.2))\n"
+   },
+   "followUps": [
+    "<p>It usually means requests hold connections longer than they should, so the pool (5 plus 10 overflow = 15) is full and a new request waited for <code>pool_timeout</code> (30 s by default) and gave up. It is rarely fixed by simply raising the numbers.</p><p>Look for: slow queries, transactions kept open during an external HTTP call, sessions never closed (a missing close or a leaked generator), or a sudden traffic spike. Check <code>pg_stat_activity</code> for \"idle in transaction\" sessions to find the holders.</p>",
+    "<p>Transaction mode hands the server connection back after each transaction, so anything that relies on one session across transactions breaks. This includes session-level <code>SET</code> values, advisory locks held across commits, <code>LISTEN/NOTIFY</code>, temporary tables, and (in older versions) named prepared statements.</p><p>With asyncpg, disable the prepared statement cache. Use <code>SET LOCAL</code> inside a transaction instead of <code>SET</code>, and use transaction-level advisory locks (<code>pg_advisory_xact_lock</code>).</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>You keep it honest by running the same test suite against both the fake and the real repository. These contract tests call methods like <code>add</code>, <code>get_by_email</code> and <code>list_active</code> and assert identical behaviour, including edge cases such as a missing id and duplicate emails.</p><pre><code>@pytest.fixture(params=[FakeRepo, SqlRepo])\ndef repo(request): ...\ndef test_missing(repo):\n    assert repo.get(99) is None</code></pre><p>If the fake passes but the real one fails (or the reverse), the fake has drifted.</p>",
+    "<p>Domain dataclasses give the cleanest boundary, but ORM objects are acceptable if you accept the coupling. Returning ORM objects is simple and keeps change tracking, yet callers can trigger lazy loads and are tied to the Session's lifetime.</p><p>Domain objects need a mapping step (and you lose automatic dirty tracking, so you write explicit saves), in exchange for services that can be tested without a database. For thin CRUD, ORM objects are fine; choose dataclasses when the domain logic is rich.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>SQLAlchemy runs the async driver inside a greenlet. Your <code>await session.execute()</code> switches into a greenlet, where the normal synchronous SQLAlchemy code runs; when it needs I/O, the greenlet suspends and hands control back to the event loop until the driver finishes.</p><p>That lets the same sync internals serve both modes, but any attribute access that tries I/O outside this bridge (a lazy load) has no greenlet to suspend in, which is exactly the <code>MissingGreenlet</code> error.</p>",
+    "<p>Keep a sync stack when the app is mostly CPU work or simple CRUD with modest traffic, when your libraries are sync-only, or when the team needs simple code. FastAPI runs plain <code>def</code> endpoints in a thread pool (40 threads by default), which handles many apps fine.</p><p>Async pays off when each request waits on many I/O calls and you need thousands of concurrent connections. It adds pitfalls (lazy loads, one session per task), and does not make a single query faster.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>The Session's identity map is the equivalent of Hibernate's first-level cache (the persistence context). In both, loading the same primary key twice in one session returns the same object without a second SQL statement.</p><p>Like Hibernate's, it is scoped to one Session and is not shared across requests, so it is not a performance cache between users. Accessing it directly is done with <code>session.get(User, 5)</code>, which checks the map before querying.</p>",
+    "<p>They solve the same problem, choosing which related data loads together, but in different places. A JPA entity graph (<code>@EntityGraph</code>) names the attributes to fetch eagerly for a particular query, which is what <code>selectinload()</code> or <code>joinedload()</code> options do in SQLAlchemy.</p><p>Example: <code>.options(selectinload(Order.items))</code> is the Python version of an entity graph that includes <code>items</code>. Both avoid changing the default lazy mapping for all queries.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Compare time spent waiting for a connection with time spent running SQL. Trace spans show both: a span for acquiring the connection (or pool \"checkout\" events) separate from the query span.</p><p>If queries are quick in the database (check <code>pg_stat_statements</code>) but the request is slow, and the pool shows all connections checked out, then it is pool waiting. A pool that is waiting often shows <code>QueuePool</code> timeouts; slow SQL shows long statement times. Export pool <code>checkedout</code> as a metric.</p>",
+    "<p>Add a read replica when the load is read-heavy and the queries are already well indexed, since the primary is busy. Add a cache (for example Redis) when many users request the same data that changes rarely, such as a product list refreshed every 60 seconds.</p><p>Fix the query and indexes first, since both options hide a bad query rather than curing it. Replicas have replication lag, so avoid them for read-after-write, and caches need an invalidation plan.</p>"
+   ]
+  }
+ ]
+}
