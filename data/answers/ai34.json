@@ -1,0 +1,100 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>Ask it to question you first. End your request with: &quot;Before you write anything, ask me up to five questions about anything important that is missing.&quot; The AI then lists gaps such as audience, length or facts, you answer them, and only then does it draft. Example: for a customer email it may ask &quot;What is the refund deadline?&quot; and &quot;Is the customer upset?&quot; This costs one extra round trip but avoids a generic first draft.</p>",
+    "<p>Here is a typical one. I once asked for a project update with just &quot;write an update about the migration&quot; and got three vague paragraphs. I reran it with the audience (executives), the format (five bullets, under 120 words), and facts (two weeks late, cause: vendor delay). The second version needed only light edits. The difference was the context I supplied, not a better tool.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Most often the audience. People state the task and sometimes the format but forget who reads it and what they already know. &quot;Explain the price rise&quot; gives a very different text for a loyal customer than for a new lead. Adding one line such as &quot;readers are small shop owners who dislike jargon&quot; fixes tone, length and detail level together, so it gives the most improvement for the least typing.</p>",
+    "<p>A role alone, like &quot;act as a marketing expert&quot;, sets a voice but supplies no facts, so the AI still guesses your product, audience and limits. It is not enough when the answer depends on your own data, such as prices, policies or past decisions. Pair the role with a goal, the real facts and an example of good output. Role is the cheapest ingredient and also the weakest by itself.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Layered context: later layers win",
+    "python": "# Q2: layers of context; narrower layers are added later so they win on conflict\nlayers = [\n    (\"custom instructions\", {\"spelling\": \"US\", \"tone\": \"formal\"}),\n    (\"project: client A\",   {\"spelling\": \"UK\"}),\n    (\"this message\",        {\"tone\": \"casual\"}),\n]\neffective = {}\nfor name, settings in layers:          # later layer overrides earlier one\n    effective.update(settings)\n    print(\"after %-20s -> %s\" % (name, effective))\nprint(\"final:\", effective)\n# Time O(total settings), space O(distinct settings)\n"
+   },
+   "followUps": [
+    "<p>The more specific, closer layer should win, but behaviour differs between apps, so I test it. A common order is: the message you type beats the project, and the project beats general instructions. Example: instructions say US spelling, the project says UK spelling, so replies use UK. If it is unclear, I state the rule in the message itself, which is the strongest place. The small program shows the layering idea.</p>",
+    "<p>A project. A client style guide applies to one area of work, not to everything I do, and it needs the guide document attached as a file. Put the rules and the PDF in a project named for that client, so only chats in it use them. Keeping it out of custom instructions stops one client&#39;s tone leaking into unrelated chats.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Give every project an owner and a review date. Keep the files in one source of truth and re-upload when the original changes, and name files with a version, such as <code>pricing-2026-03.pdf</code>. A monthly check of 5 questions with known answers shows quickly whether the AI is quoting an old file. Removing old files is as important as adding new ones, because stale text is read just like current text.</p>",
+    "<p>Anything you would not be allowed to email to every member: personal data, passwords or keys, unreleased financials, health or legal records, and customer details not needed for the task. A shared project is visible to everyone with access and may be read by the provider under its terms. Use anonymised or sample data instead, and follow your employer&#39;s data policy.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Because the chat may not be the only copy. The provider can keep data for a period for safety, legal or abuse-review reasons, and the memory may be stored separately from the chat, so removing the chat does not always remove the saved memory. Shared or exported copies also remain. To be sure, delete the memory item itself, check the retention setting, and avoid typing sensitive data in the first place.</p>",
+    "<p>I would say: &quot;The AI can keep notes about you between chats, like a colleague&#39;s notebook. You can open the notebook, cross out lines or ban it from writing at all. For private questions use a temporary chat, which is like a conversation with the notebook closed.&quot; Then show them the settings page once, and suggest a quick review every few months.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>First check the scan is readable and straight. Attach it and ask the AI to list supplier, date, invoice number, line items and total as a table, and to mark anything it is unsure about. Then check the numbers yourself: line items must add up (for example 3 x 40 = 120, plus 20 tax = 140). If digits look wrong, retry with a clearer image or type the figures in. Scans are the case where misreads are most likely.</p>",
+    "<p>Anything I am not permitted to share or do not need for the task: passwords, API keys, customer personal data, health or legal files, and confidential contracts on a personal or unapproved account. If the task needs only part of a file, I attach only that part or an anonymised copy. Rule of thumb: if I would not paste it in an email to an outsider, I do not attach it.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Old messages get trimmed from context",
+    "python": "# Q6: a chat keeps every message; when the budget is full, the oldest are trimmed\ndef tokens(text):\n    return len(text.split())          # crude stand-in for a token count\n\ndef trim(messages, budget):\n    kept = list(messages)\n    while sum(tokens(m) for m in kept) > budget:\n        kept.pop(0)                    # the oldest message falls out first\n    return kept\n\nchat = [\"RULE: always answer in British spelling\",\n        \"draft intro v1 with some long text here\",\n        \"no, shorter please\",\n        \"draft intro v2 with some long text here\",\n        \"make it friendlier\"]\nprint(\"budget 30 words, total\", sum(tokens(m) for m in chat))\nfor m in trim(chat, 30):\n    print(\"  kept:\", m)\n# the RULE was first, so it is the first thing lost: this is drift\n# Time O(n^2) here for clarity, space O(n)\n"
+   },
+   "followUps": [
+    "<p>Then the next chat is built on a wrong base, so I check the summary before using it. I read it against my own notes, correct any wrong facts, and add the missing ones. Better still, I ask for the summary as a short list of decisions, constraints and open questions, so each line is easy to verify. Spending two minutes fixing five lines is cheaper than redoing hours of work from a bad start.</p>",
+    "<p>Keep chats short and focused on one task, and repeat the key rule when it matters, for example &quot;remember: UK spelling, under 100 words&quot;. Put stable facts in a project or a template instead of the first message. Start a new chat when the topic changes. After about 20 exchanges, or two failed corrections, ask for a summary and restart rather than continuing.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Verify quotes against the source",
+    "python": "# Q7: check that every quote the AI gives really appears in the source\nsource = \"Refunds are allowed within 30 days. Digital goods are not refundable.\"\nclaims = [\"Refunds are allowed within 30 days\",\n          \"Refunds are allowed within 60 days\",\n          \"Digital goods are not refundable\"]\nprint(\"source:\", source)\nfor c in claims:\n    found = c in source                # exact text match is the strict check\n    print(\"%-40s -> %s\" % (c, \"verified\" if found else \"NOT FOUND, check by hand\"))\n# Time O(len(source) * claims) with simple search, space O(1)\n"
+   },
+   "followUps": [
+    "<p>In one case an AI summary of a contract said the notice period was 60 days. I asked it to quote the clause, and the quote said 30 days; the model had mixed it with a different section. Because I checked the quote against the original, the error never reached my manager. The lesson: always ask for the exact sentence and compare it with the source, as the program above does.</p>",
+    "<p>A light check is enough for a routine email: read it once, confirm names, dates, amounts and any promise, and make sure the tone fits. It takes under a minute. The more the text could cost someone money, trust or safety, the more checking it needs. A lunch invitation needs a glance; a price quote needs the numbers verified against the price list.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Template that refuses unfilled blanks",
+    "python": "# Q8: a reusable template with blanks; refuse to run if any blank is unfilled\nimport re\nTEMPLATE = \"Write a weekly update for [AUDIENCE] about [PROJECT]. Keep it under [WORDS] words.\"\n\ndef fill(template, values):\n    missing = sorted(set(re.findall(r\"\\[([A-Z]+)\\]\", template)) - set(values))\n    if missing:                        # mirrors \"if any bracket is unfilled, ask me\"\n        return \"ASK ME: missing \" + \", \".join(missing)\n    for k, v in values.items():\n        template = template.replace(\"[\" + k + \"]\", v)\n    return template\n\nprint(fill(TEMPLATE, {\"AUDIENCE\": \"the sales team\", \"PROJECT\": \"the new CRM\"}))\nprint(fill(TEMPLATE, {\"AUDIENCE\": \"the sales team\", \"PROJECT\": \"the new CRM\", \"WORDS\": \"150\"}))\n# Time O(length of template), space O(length of template)\n"
+   },
+   "followUps": [
+    "<p>Store them in one shared place everyone can find, such as a team document or a shared project, with a name, owner, version and a one-line example of the output. Add a short note on when to use each. Let people suggest changes through the owner so only one current version exists. A 30-minute demo using real team tasks helps adoption more than a long document.</p>",
+    "<p>Retest it. Run the simple, messy and unusual test cases again and see which fails. Common causes are changed facts (old prices), a model or tool update, or people filling the blanks differently. Fix the template, bump the version number, and note the change. If it still fails, rewrite it from one fresh good request instead of piling on extra rules.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Then I say so honestly. Poor fits include tasks needing exact calculations with no checking, up-to-date facts the tool cannot see, and decisions that need human judgment or are sensitive. I would show a calculator, spreadsheet or the real system for those, and keep AI for drafting, summarising and brainstorming. Matching the tool to the task builds more trust than defending it.</p>",
+    "<p>Pick one repeated task and measure before and after: minutes per task, number of edits needed, and errors found in review. Example: a weekly report that took 60 minutes now takes 25, with the same number of corrections, which saves 35 minutes a week. Compare a handful of real outputs rather than relying on feelings.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Treat it as a policy and a support issue, not blame. Explain the risk plainly: data in a personal account may fall outside company controls and agreements. Move the work to the approved tool, show how to do the same task there, and check whether any customer data needs reporting under policy. Make the approved route easy so people have no reason to avoid it.</p>",
+    "<p>Each shared project needs one named owner, usually the person who does that work most, with a backup. The owner keeps files current, approves edits to the instructions, reviews sample outputs, and removes access when people leave. Without a named owner, files go stale and nobody notices. Review each project on a fixed date, for example quarterly.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Turn the hidden layers off one by one. Repeat the same question in a temporary chat with no memory, then without the project, then without custom instructions, and see when the odd part disappears. Read your memory list for the wrong detail, such as an old job title. Once found, edit or delete that line. This is like debugging by elimination.</p>",
+    "<p>Short: roughly 5 to 15 lines, or under about 150 words. Include only things true in every chat, such as your role, spelling, tone and a few rules like &quot;ask when unsure&quot;. Leave out client names, prices, dates and anything that will change. If you need more than a paragraph, that content belongs in a project or in the message.</p>"
+   ]
+  }
+ ]
+}

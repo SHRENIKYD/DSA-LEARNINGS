@@ -1,0 +1,100 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    "<p>The dimension that matters most is data terms, because it is a gate: a tool that fails it cannot be used at any price. After that I pick the one tied to our biggest bottleneck, for example review capacity or editor fit.</p><p>Example: a team on JetBrains with regulated data first drops anything without an approved plan, then compares only tools that work in that editor. Say this out loud, because the right answer depends on the team.</p>",
+    "<p>I keep it current by treating it as a dated document with an owner, not a one-off report. Products change monthly, so I re-check vendor pages for pricing, retention and features every quarter and note the check date on each row.</p><p>Steps: keep the frame fixed (levels, surface, cost, data, controls), store the table in the repo, re-run a small benchmark of 5 to 10 real tickets when a tool ships a big change, and set a calendar reminder. Cost: about half a day per quarter.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I run as many as I can review well, which is usually two to four, not as many as I can start. The limit is my review time, not the agent's speed.</p><p>Example: if a typical PR takes 20 minutes to review and I have 60 minutes of focused review per hour-block, three parallel tasks already saturate me. More runs only make a queue of unreviewed branches. I raise the number when the tasks are mechanical and CI is strong, and lower it for risky work.</p>",
+    "<p>A task card is async-ready when someone with no context could finish it and check it without asking you. Wrong guesses cost a whole run, so the card must remove them.</p><ul><li>Goal and the files or modules in scope.</li><li>Acceptance tests or a command that must pass.</li><li>Out of scope, and any rule to follow.</li><li>Branch name and how to report back.</li></ul><p>Example: 'Bump library X from 2.3 to 2.4, run <code>make test</code>, do not touch the public API.'</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>It needs a repo that builds and tests itself from a clean machine with one or two commands, because the agent starts in an empty sandbox.</p><ul><li>A setup script or container that installs dependencies.</li><li>Fast, reliable tests so the agent can check its own work.</li><li>An instruction file that names the commands and conventions.</li><li>Scoped credentials and no production secrets.</li></ul><p>If setup takes 40 minutes of manual steps, the agent will fail or guess. Fixing that helps human newcomers too.</p>",
+    "<p>Run them with the least power they need and treat their output as untrusted. A CI agent reads text from issues and PRs, which anyone may write, so it can be tricked by hidden instructions.</p><ul><li>Read-only token by default; write only to a new branch.</li><li>No production secrets; short-lived credentials.</li><li>Network allow-list and a time and cost limit.</li><li>Humans merge; no auto-merge from agent output.</li></ul>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Seat vs usage pricing on a skewed team",
+    "python": "# Fit three pricing shapes to a skewed usage sample (units = agent runs per month)\nusage = [20, 40, 60, 80, 300, 900]           # one heavy user dominates\n\ndef seat_only(u):  return 30                    # flat seat, unlimited\ndef seat_plus_overage(u):                       # 20 seat, 100 runs included, 0.10 per extra run\n    return 20 + max(0, u - 100) * 0.10\ndef pure_usage(u): return u * 0.15              # pay per run only\n\nmerged_prs = 60                                 # PRs merged in the pilot month\nprint(\"usage per person:\", usage)\nfor name, f in [(\"seat only\", seat_only), (\"seat+overage\", seat_plus_overage), (\"pure usage\", pure_usage)]:\n    total = sum(f(u) for u in usage)            # O(N) over people, O(1) extra space\n    print(f\"{name:13s} total=${total:7.2f}  per merged PR=${total / merged_prs:5.2f}\")\n"
+   },
+   "followUps": [
+    "<p>Break-even is the usage level where two pricing plans cost the same. Set the two cost formulas equal and solve for usage.</p><p>Example: plan A is a flat $30 seat. Plan B is $20 plus $0.10 per run above 100. They are equal when 20 + 0.10 x (u - 100) = 30, so u - 100 = 100 and u = 200 runs. Below 200 runs plan B is cheaper, above it plan A wins. Do this per person from the pilot data, then add the results. Cost of the calculation is O(N) in people.</p>",
+    "<p>Pooling is worth it when usage is very uneven, so light users' unused allowance can cover heavy users instead of being wasted.</p><p>Example: 10 seats each include 100 runs, so 1000 runs in total. If nine people use 50 and one uses 400, individual plans bill overage on 300 runs, while a pool of 1000 covers all 850 used. If everyone uses about the same amount, pooling saves nothing and just adds admin work, so also set budgets and alerts.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Cloud agents raise the risk because they run on someone else's machine with a copy of your code, often for a long time and with credentials.</p><ul><li>More data is copied and kept: the workspace, logs, and branches.</li><li>They can run commands and reach the network, so a bad instruction can cause real actions.</li><li>They read untrusted text such as issues.</li></ul><p>So I check retention of workspaces, allow only approved repos, forbid production secrets, and limit the network.</p>",
+    "<p>Treat the secret as leaked: rotate it first, then investigate. Deleting the chat does not undo the exposure.</p><ol><li>Revoke and replace the secret immediately.</li><li>Report to security quickly, with no blame.</li><li>Check logs for any use of the old secret.</li><li>Ask the vendor to delete the data if the plan allows.</li><li>Add prevention: secret scanning, content exclusions, and a reminder in training.</li></ol>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Weighted scoring with a sensitivity check",
+    "python": "# Score tools 1-5 on criteria; weights sum to 1. Then change the weights and re-check the winner.\nscores = {\n    \"ToolA\": {\"quality\": 5, \"cost\": 2, \"controls\": 3},\n    \"ToolB\": {\"quality\": 4, \"cost\": 4, \"controls\": 4},\n    \"ToolC\": {\"quality\": 3, \"cost\": 5, \"controls\": 5},\n}\n\ndef rank(weights):\n    totals = {t: sum(weights[c] * s[c] for c in weights) for t, s in scores.items()}\n    return sorted(totals.items(), key=lambda kv: -kv[1])   # best first\n\nbase = {\"quality\": 0.5, \"cost\": 0.3, \"controls\": 0.2}\nprint(\"base weights\", base)\nfor t, v in rank(base):\n    print(\" \", t, round(v, 2))\n\n# Sensitivity: move 0.1 of weight from quality to cost and see if the winner changes\nshifted = {\"quality\": 0.4, \"cost\": 0.4, \"controls\": 0.2}\nprint(\"shifted weights\", shifted)\nfor t, v in rank(shifted):\n    print(\" \", t, round(v, 2))\nprint(\"winner stable:\", rank(base)[0][0] == rank(shifted)[0][0])\n"
+   },
+   "followUps": [
+    "<p>If two tools tie, I choose the one that is cheapest to leave and cheapest to run, and I set a short review date. A tie means the choice is low-stakes, so do not spend more weeks on it.</p><p>Steps: check the tie holds when weights change by 0.1 (sensitivity), then break it on portability (does it read the shared instruction file and MCP servers), price at our real usage, and developer preference from the survey. Pick, write it down, and re-evaluate in 6 months.</p>",
+    "<p>Yes, a small approved set is often better than one tool, if each has a clear job and the same policy applies to all. Different people work in different editors and for different tasks.</p><p>Example: an IDE assistant for most developers, a terminal agent for people who live in the shell, and a cloud agent for mechanical batches. The cost is more admin and more spend, so I cap it at two or three, share one instruction file, and use the same CI and review for all.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not fix the bad PR by chatting at it; find out why it went wrong, then fix the cause. Usually the task card was vague, and a new agent run will make the same mistake.</p><ol><li>Read the diff and the failing tests.</li><li>Decide: small fix by hand, a retry with a better card, or close it.</li><li>If a rule was missing, add it to the instruction file or a lint check.</li></ol><p>A cheap rejected run costs minutes; a merged bad PR costs far more.</p>",
+    "<p>Keep one source of truth and let the tools read it, instead of copying text between files. Tools look for different file names, so duplicates drift apart.</p><ul><li>One main file, for example <code>AGENTS.md</code>, with commands, conventions and do-not rules.</li><li>Tool-specific names are thin pointers or symlinks to it.</li><li>A CI check or review rule that flags changes only in a copy.</li></ul><p>Put anything enforceable (formatting, banned APIs) into lint, which every tool respects.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Before/after change against a comparison group",
+    "python": "# Median PR cycle time in hours, before and after rollout, for a pilot group and a control group\nfrom statistics import median\n\npilot_before = [30, 26, 40, 34, 28]\npilot_after  = [24, 22, 35, 27, 21]\nctrl_before  = [31, 27, 38, 33, 29]\nctrl_after   = [29, 26, 36, 31, 27]            # also fell a bit: holiday, simpler tickets\n\nd_pilot = median(pilot_after) - median(pilot_before)\nd_ctrl  = median(ctrl_after) - median(ctrl_before)\nprint(\"pilot change:  \", d_pilot, \"h\")\nprint(\"control change:\", d_ctrl, \"h\")\n# Difference-in-differences: the pilot change minus the background change\nprint(\"effect attributed to the tool:\", d_pilot - d_ctrl, \"h\")\n"
+   },
+   "followUps": [
+    "<p>Report a mixed result honestly: say what improved, what did not, how sure you are, and what you will do. Do not hide the bad number or pick the best one.</p><p>Example: 'PR cycle time fell 4 hours (30 to 26), but reverts rose from 2% to 3% and review time grew. The sample is 5 people over 4 weeks, so we are not sure. Decision: keep for tests and boilerplate, tighten review elsewhere, re-measure in 8 weeks.' Use the rule fixed beforehand.</p>",
+    "<p>Ranking individuals by AI usage rewards the wrong thing and makes the data useless. People will inflate usage to look good, and usage is not the same as value.</p><p>Example: a developer who solves a task in one careful prompt scores lower than one who spams 50 prompts. Heavy use may even mean the person is struggling. Measure team outcomes (lead time, defects, cost per merged PR) and use usage only to find who needs help or training.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Experienced developers may be slower because on a codebase they know well, they already know the answer, so the tool adds overhead instead of saving thinking.</p><ul><li>Writing prompts and reading output takes time.</li><li>Generated code that is almost right needs careful fixing.</li><li>Mature repos have hidden rules and context the tool misses.</li></ul><p>A beginner or a new repo gets more help. Tools also improve, so results can change.</p>",
+    "<p>I would change how we measure and review, not simply buy more tools. The research says feelings are unreliable and stability can drop without good tests.</p><ol><li>Take a baseline and compare a pilot group to a control.</li><li>Focus AI on boilerplate, tests and migrations first.</li><li>Strengthen tests and review before raising usage.</li><li>Re-measure every quarter.</li></ol><p>Small steps with numbers beat a company-wide mandate.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Prepare by practising the skills they grade: clarify the task, direct the tool, check the output, and explain it. The tool is allowed, but your judgement is the test.</p><ul><li>Practise on small problems and narrate your plan out loud.</li><li>Write or request tests before accepting code.</li><li>Read every line and be ready to say why it is correct.</li><li>Learn the provided tool beforehand if the company says which.</li></ul>",
+    "<p>Follow the stricter rule and get the answer in writing. Never guess that a tool is allowed. Ask the interviewer politely at the start: 'The recruiter mentioned X; may I confirm which tools I can use?'</p><p>If you cannot clear it up, do not use the assistant. Losing a little speed is much cheaper than being seen as dishonest. Keep the recruiter's email so you can point to it if there is a doubt.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Map data classes to allowed tool tiers",
+    "python": "# Policy as data: each data class has the minimum approved tool tier allowed to see it\nTIERS = {\"none\": 0, \"enterprise\": 1, \"approved-regulated\": 2}\nPOLICY = {                       # class -> tier required (None = never allowed)\n    \"public\": \"none\",\n    \"internal\": \"enterprise\",\n    \"confidential\": \"enterprise\",\n    \"regulated\": \"approved-regulated\",\n    \"secret\": None,\n}\n\ndef allowed(data_class, tool_tier):\n    need = POLICY[data_class]\n    if need is None:\n        return False             # secrets are never sent to any tool\n    return TIERS[tool_tier] >= TIERS[need]\n\nfor cls in POLICY:\n    for tier in [\"none\", \"enterprise\", \"approved-regulated\"]:\n        print(f\"{cls:12s} {tier:19s} -> {'ALLOW' if allowed(cls, tier) else 'DENY'}\")\n"
+   },
+   "followUps": [
+    "<p>You cannot fully stop it with rules alone, so combine blocking, making the approved path easier, and detecting the rest.</p><ul><li>Use company SSO and a managed account that gives better limits than a personal one.</li><li>Block known tools on managed devices and at the network proxy.</li><li>Run secret and data-loss scanning on repos and traffic.</li><li>Explain why in training and offer a quick request path for new tools.</li></ul><p>If the official tool is slow or weak, people will go around it.</p>",
+    "<p>Treat every new model as untrusted until it is checked, even when the tool vendor enables it automatically. A new model may use a different provider, region or retention rule.</p><ol><li>Default new models to off in the allow-list.</li><li>Security and legal check provider, region, retention and training terms.</li><li>Run a small eval on our own tasks.</li><li>Enable per team, then review spend and quality after a month.</li></ol>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>I would change my mind if the data shows that one tool covers everyone and the multiple-tool approach costs more than it gives. The proof must come from our own pilot, not a vendor chart.</p><ul><li>One tool works in all our editors and workflows.</li><li>Quality is within noise of the best alternative.</li><li>Support and admin cost of a second tool exceeds its gain.</li><li>A large volume discount is tied to one vendor.</li></ul><p>Then I would standardise on it, but keep exit terms.</p>",
+    "<p>Manage vendor risk by making switching cheap and by not depending on a single company for anything critical. The market changes monthly, so assume a change will come.</p><ul><li>Keep instructions, specs, tests and MCP servers in the repo, not in vendor settings.</li><li>Use contract exit terms, a short term or a yearly review.</li><li>Check security reports and data terms yearly.</li><li>Keep a second tool piloted as a fallback.</li></ul>"
+   ]
+  }
+ ]
+}
