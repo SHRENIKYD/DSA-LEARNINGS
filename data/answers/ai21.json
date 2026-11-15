@@ -1,0 +1,133 @@
+{
+ "interview": [
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>Add the non-linear shapes by hand as features, because the model stays linear in whatever columns you give it. Options: bin or spline a numeric column, add squares and logs, add interaction products such as <code>age*income</code>, or cross two categoricals.</p><p>Example: risk that rises after age 60 needs a hinge feature <code>max(0, age-60)</code>; one coefficient of 0.08 then adds 0.08 log-odds per year past 60. Regularize (L2) when you add many terms. Cost stays linear in rows times features.</p>",
+     "<p>Use SHAP values: they split one prediction into additive contributions per feature that sum to the model output in log-odds. Tree SHAP computes them exactly for boosted trees in polynomial time.</p><p>Example: base value 0.0 log-odds, then +1.2 for <code>account_age &lt; 30 days</code>, -0.4 for verified email, +0.3 for night login gives 1.1, or probability 0.75. Add partial dependence for global shape. Explanations describe the model, not causes.</p>"
+    ],
+    [
+     "<p>Gain importance is biased because a feature with many possible thresholds gets more chances to find a lucky split that lowers impurity, even if it is pure noise. A unique ID can look important.</p><p>It is also computed on training data, so it rewards features the tree used to memorise. With correlated features the credit is split arbitrarily. Prefer permutation importance on validation data or SHAP. Example: a random column with 1,000 distinct values can outrank a true binary feature in a forest.</p>",
+     "<p>It depends on the library: some learn a direction for missing values, and others need you to impute first. Classic CART in scikit-learn older versions required complete data, while newer versions support NaN in several trees.</p><p>XGBoost and LightGBM try sending all missing rows left, then right, and keep the direction with the higher gain, storing it as the default at that split. Surrogate splits (rpart) use a correlated feature instead. An is_missing flag works for any model.</p>"
+    ]
+   ]
+  },
+  {
+   "code": {
+    "title": "Choosing a split with Gini and entropy",
+    "python": "import math\n\nx = [2, 3, 5, 7, 8, 10]\ny = [0, 0, 1, 0, 1, 1]\n\ndef gini(labels):\n    # 1 - sum(p^2); 0 means a pure node\n    n = len(labels)\n    return 1 - sum((labels.count(c) / n) ** 2 for c in set(labels))\n\ndef entropy(labels):\n    n = len(labels)\n    return -sum((labels.count(c) / n) * math.log2(labels.count(c) / n) for c in set(labels))\n\ndef best_split(impurity):\n    parent = impurity(y)\n    best = None\n    pairs = sorted(zip(x, y))\n    for i in range(1, len(pairs)):\n        t = (pairs[i - 1][0] + pairs[i][0]) / 2   # midpoint threshold\n        left = [l for v, l in pairs if v <= t]\n        right = [l for v, l in pairs if v > t]\n        # children impurity weighted by row counts\n        child = (len(left) * impurity(left) + len(right) * impurity(right)) / len(pairs)\n        gain = parent - child\n        print(\"  threshold %.1f gain %.4f\" % (t, gain))\n        if best is None or gain > best[1]:\n            best = (t, gain)\n    return best\n\nprint(\"x =\", x, \"y =\", y)\nfor name, f in ((\"gini\", gini), (\"entropy\", entropy)):\n    print(name)\n    t, g = best_split(f)\n    print(\"  best: x <= %.1f (gain %.4f)\" % (t, g))\n# Cost: O(n log n) per feature after sorting\n"
+   },
+   "followUps": [
+    [
+     "<p>Out-of-bag (OOB) score is a free validation estimate from the rows each tree did not see in its bootstrap sample. About 36.8% of rows are left out of any one tree (1/e).</p><p>For each row, average only the trees that did not train on it, and score those predictions against the label. With 500 trees, each row is scored by roughly 184 of them. It avoids a separate holdout, but it does not respect groups or time, so use proper CV in those cases.</p>",
+     "<p>Random feature subsets make the trees less alike, and averaging less correlated trees reduces variance more. Without them, one strong feature dominates the top split of every tree and the trees nearly copy each other.</p><p>Variance of an average of n trees with correlation r is about r*s^2 + (1-r)*s^2/n, so adding trees cannot beat the r term. Picking sqrt(d) features per split (say 5 of 25) lowers r. Too few features per split raises bias.</p>"
+    ],
+    [
+     "<p>It is the minimum total Hessian (sum of p(1-p)) a leaf must hold, not a row count. A leaf is not allowed to form if its Hessian sum falls below this value.</p><p>For log loss each row contributes at most 0.25 (when p = 0.5) and almost 0 when the model is confident. So with <code>min_child_weight=1</code> a leaf needs at least 4 uncertain rows, but many more confident ones. For squared error the Hessian is 1, so it equals a row count.</p>",
+     "<p>Level-wise growth splits every node on a depth before going deeper; leaf-wise (LightGBM) always splits the single leaf with the largest gain, wherever it is. Leaf-wise reaches lower loss with the same number of leaves but can build deep, lopsided trees that overfit small data.</p><p>So with leaf-wise growth, control <code>num_leaves</code> and <code>min_data_in_leaf</code> rather than depth alone. A rule of thumb is num_leaves &lt; 2^max_depth. XGBoost defaults to level-wise but can run leaf-wise (<code>grow_policy=lossguide</code>).</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>Because the mean is computed using validation or test rows too, information from rows you meant to hold out flows into training. The imputed value then carries a hint about data the model should never have seen.</p><p>Example: the mean income of all 1,000 rows is 52k, but the training rows alone average 50k. Using 52k leaks a little of the test distribution and makes scores slightly optimistic. Fit the imputer on training folds only, inside a pipeline, then apply it to the others.</p>",
+     "<p>Drop rows when few of them are affected, the missing pattern looks random (MCAR), and you still have plenty of data. Also drop rows when the label itself is missing or the target feature is the one that is absent.</p><p>Example: 0.5% of 2 million rows lack a value, so deleting them changes almost nothing. Do not drop when 30% of rows are missing, since you lose data and bias the sample, or when missingness predicts the label. Never drop rows at serving time; you must still answer.</p>"
+    ],
+    [
+     "<p>Smoothing pulls a category's mean toward the global mean, more strongly when the category has few rows. The usual formula is <code>(sum_y + m*prior) / (n + m)</code>, where m is the strength.</p><p>Example: prior 0.10, m = 10. A category with 2 rows and 2 positives gives (2+1)/12 = 0.25, not 1.0. A category with 1,000 rows and 300 positives gives (300+1)/1010 = 0.298, almost its raw mean. This stops rare categories from memorising the label.</p>",
+     "<p>Map them to a safe fallback chosen at training time, since a new ID has no history. Common choices are the global prior for target encoding, zero or a reserved \"unknown\" bucket for hashing, and an \"Other\" category.</p><p>Train for this by grouping the rarest categories into \"Other\" or by randomly masking some categories, so the model has seen the fallback value. Also log the share of unseen values in production; a rising rate means drift, for example 5% of rows today versus 0.5% at launch.</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>After undersampling negatives, the model sees positives as more common than they are, so its probabilities are too high. The fix is a formula: <code>p = b*ps / (b*ps - ps + 1)</code>, where b is the share of negatives kept and ps the model output.</p><p>Example: 1% positives, keep b = 0.1 of negatives. A sampled rate of 0.0917 maps back to 0.01. A score of 0.5 becomes 0.1/(0.1*0.5 - 0.5 + 1) = 0.091. Ranking is unchanged, so only calibrated outputs need it.</p>",
+     "<p>SMOTE hurts when the minority class is noisy, overlaps the majority, or forms several small clusters, because it makes synthetic points in between that sit in majority territory. It also hurts if applied before the split, since synthetic rows built from validation data leak.</p><p>With high-dimensional or categorical data, linear interpolation produces unrealistic rows. With boosting, class weights plus threshold tuning usually match it. Always apply SMOTE only to training folds, and judge it by PR-AUC on untouched data.</p>"
+    ],
+    [
+     "<p>Sort the scores once, then walk down the list while counting. Sorting costs O(n log n) and the walk is O(n). ROC-AUC equals the share of (positive, negative) pairs where the positive scores higher.</p><p>Steps: sort descending; keep a running count of negatives seen; for each positive add the negatives above it; divide the total by P*N. Ties count as half. Example: scores 0.9(+) 0.8(-) 0.7(+) 0.1(-) give pairs won 3 of 4, so AUC = 0.75.</p>",
+     "<p>Because the PR curve is not a straight line between two points: precision can fall sharply between neighbouring thresholds, but linear interpolation draws a straight line in between and overstates the area.</p><p>Example: at recall 0.5 precision is 1.0, and at recall 1.0 precision is 0.01. The straight line implies about 0.5 precision at recall 0.75, yet the real value can be near 0.02. Use the step-wise average precision sum (precision times recall increment) instead of the trapezoid rule.</p>"
+    ]
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    [
+     "<p>The model gives scores that do not equal the true chance of being positive. Random forests average votes from trees, and individual trees rarely predict exactly 0 or 1 for any row, so extreme scores are pulled in.</p><p>With variance across trees, a row whose true probability is 0.99 may get 0.93, because a few trees disagree because of the bootstrap and feature sampling. Averaging therefore avoids the extremes, giving an S-shaped reliability curve. Platt or isotonic calibration fixes it.</p>",
+     "<p>Temperature scaling divides the logits by one learned number T before the softmax or sigmoid. T above 1 softens over-confident outputs, T below 1 sharpens them.</p><p>Example: logit 4 gives p = 0.982; with T = 2, the logit is 2 and p = 0.881. Only T is fitted, by minimising log loss on a validation set. It cannot reorder predictions, so accuracy and AUC are unchanged. It is popular for neural networks because it has one parameter and rarely overfits.</p>"
+    ],
+    [
+     "<p>Nested CV uses an inner loop to tune hyper-parameters and an outer loop to estimate the tuned model's score, so the estimate is not inflated by the search. If you tune and report on the same folds, the winning setting is partly luck.</p><p>Example: outer 5 folds, inner 3 folds, 20 candidates costs 5*3*20 = 300 fits plus 5 refits. Use it for small datasets or when comparing methods. With plenty of data, a simple train, validation and test split is enough.</p>",
+     "<p>A gap prevents information from the future-looking edge of training from leaking into validation. Rolling-window features and slow-maturing labels mean the last training rows overlap in time with the first validation rows.</p><p>Example: a feature is the 7-day average and the label (a churn flag) is known 30 days later. Rows from day 100 share their window with day 103, and their labels are not final yet. Leaving a 30-day gap between train end and validation start mimics real deployment.</p>"
+    ]
+   ]
+  },
+  {
+   "code": {
+    "title": "Out-of-fold smoothed target encoding",
+    "python": "# Out-of-fold, smoothed target encoding\nrows = [(\"a\", 1), (\"a\", 1), (\"a\", 0), (\"a\", 1), (\"b\", 0), (\"b\", 0),\n        (\"b\", 1), (\"b\", 0), (\"c\", 1), (\"c\", 0)]\nm = 4  # smoothing strength: acts like m pseudo-rows at the global rate\nfolds = [i % 2 for i in range(len(rows))]  # two folds\n\ndef encode(train, cat):\n    prior = sum(y for _, y in train) / len(train)\n    ys = [y for c, y in train if c == cat]\n    # shrink the category mean toward the prior; rare categories move more\n    return (sum(ys) + m * prior) / (len(ys) + m)\n\nprint(\"rows:\", rows)\nfor i, (cat, y) in enumerate(rows):\n    # the row's own fold is excluded, so its label never leaks into its encoding\n    train = [r for j, r in enumerate(rows) if folds[j] != folds[i]]\n    print(\"row %d cat=%s label=%d -> encoded %.3f\" % (i, cat, y, encode(train, cat)))\n\n# unseen category at serving time falls back to the prior\nprint(\"unseen category 'z' ->\", round(encode(rows, \"z\"), 3))\n"
+   },
+   "followUps": [
+    [
+     "<p>It is a high-bias pattern: both training and validation errors are high and close to each other, and they flatten out as you add data.</p><p>Example: training AUC 0.70 and validation AUC 0.69, both staying put at 1,000 and at 100,000 rows. More data will not help; the model is too simple or lacks signal. Add features, use a more flexible model or reduce regularization. In high variance, by contrast, there is a wide gap that narrows with more data.</p>",
+     "<p>Yes: if you try many models and settings and keep picking the best validation score, you slowly fit the noise in that set. The reported score becomes optimistic even though no model trained on it directly.</p><p>Example: with 200 random configurations that are truly equal at AUC 0.80 and a validation noise of 0.01, the best one may show about 0.825. Guard against it with a separate test set touched once, nested CV, fewer tuning rounds and larger validation sets.</p>"
+    ],
+    [
+     "<p>The first derivative says which direction to move, and the second derivative says how far to step, so Newton-style steps converge faster and with sensible leaf sizes. XGBoost uses both gradient g and Hessian h.</p><p>A leaf value is <code>-sum(g)/(sum(h)+lambda)</code>. Example: a leaf with 3 rows, gradients -0.5 each (sum -1.5) and p = 0.5 each (h sum 0.75), lambda 1 gives 1.5/1.75 = 0.86. Where the model is confident h is tiny, so extra care is taken with those leaves.</p>",
+     "<p>Each tree pushes the log-odds toward the labels, so the ensemble can become over-confident, and the stage-wise fit optimises ranking and log loss on training data only. Early stopping, subsampling, class weights and strong learning-rate shrinkage all shift probabilities away from the true rates.</p><p>Example: after 500 rounds, rows scored 0.9 might be positive only 78% of the time. Check a reliability diagram on held-out data, then apply Platt scaling or isotonic regression. Class weights and undersampling distort it further.</p>"
+    ]
+   ]
+  },
+  {
+   "code": {
+    "title": "Correcting probabilities after undersampling",
+    "python": "# 1% positives; keep only 10% of negatives to train faster\npos, neg, beta = 1000, 99000, 0.1\nkept_neg = neg * beta\nps = pos / (pos + kept_neg)   # positive rate the model sees after undersampling\nprint(\"true positive rate: %.4f\" % (pos / (pos + neg)))\nprint(\"rate after keeping %.0f%% of negatives: %.4f\" % (beta * 100, ps))\n\ndef correct(p):\n    # undo the undersampling: p = beta*ps / (beta*ps - ps + 1)\n    return beta * p / (beta * p - p + 1)\n\nfor p in (0.0917, 0.30, 0.80):\n    print(\"model says %.4f -> corrected %.4f\" % (p, correct(p)))\n# the ranking is unchanged, only the probability scale moves\n"
+   },
+   "followUps": [
+    [
+     "<p>With correlated features, permuting one column barely hurts the model because its twin still carries the signal, so both look unimportant even though together they matter. It can also create unrealistic rows, such as height and weight pairs that never occur.</p><p>Example: two copies of <code>income</code> each show importance near 0, while dropping both would cut AUC from 0.85 to 0.70. Fixes: permute correlated groups together, use conditional permutation, or compare with drop-column retraining.</p>",
+     "<p>SHAP interaction values split each prediction into main effects and pairwise effects, so you can see how much two features together shift the output beyond their separate contributions. They form a matrix per row whose entries sum to the normal SHAP value.</p><p>Example: <code>age &lt; 30</code> adds +0.2 and <code>new_device</code> adds +0.3 alone, but together an extra +0.4 appears: that is the interaction. Tree SHAP computes them exactly, at a cost that grows with the square of the feature count, so use them on a sample.</p>"
+    ]
+   ]
+  },
+  {
+   "code": {
+    "title": "ROC-AUC vs PR-AUC on rare positives",
+    "python": "import random\nrandom.seed(1)\n# 20 positives, 9980 negatives (0.2% positive rate)\ndata = [(random.gauss(2.0, 1), 1) for _ in range(20)] + \\\n       [(random.gauss(0.0, 1), 0) for _ in range(9980)]\ndata.sort(key=lambda t: -t[0])          # best score first: O(n log n)\nP = sum(l for _, l in data)\nN = len(data) - P\n\ntp = fp = 0\nauc = ap = 0.0\nfor s, l in data:\n    if l == 1:\n        tp += 1\n        ap += tp / (tp + fp)            # precision at each recall step\n        auc += fp                       # negatives ranked above this positive\n    else:\n        fp += 1\nauc = 1 - auc / (P * N)                 # chance a positive outranks a negative\nap /= P\nprint(\"positives=%d negatives=%d\" % (P, N))\nprint(\"ROC-AUC           = %.3f\" % auc)\nprint(\"PR-AUC (avg prec) = %.3f  (baseline %.4f)\" % (ap, P / len(data)))\ntop = data[:100]\nprint(\"precision in top 100 = %.2f\" % (sum(l for _, l in top) / 100))\n"
+   },
+   "followUps": []
+  },
+  {
+   "code": {
+    "title": "Reliability table and histogram-binning fix",
+    "python": "import random\nrandom.seed(7)\n# model is over-confident: true chance is closer to 0.5 than its score\nrows = []\nfor _ in range(5000):\n    true_p = random.random()\n    score = min(max(0.5 + (true_p - 0.5) * 1.8, 0.01), 0.99)\n    rows.append((score, 1 if random.random() < true_p else 0))\n\ndef table(rows):\n    # reliability table: mean prediction vs observed rate in each bin\n    out = []\n    for b in range(5):\n        grp = [(s, y) for s, y in rows if int(s * 5) == b or (b == 4 and s == 1)]\n        out.append((sum(s for s, _ in grp) / len(grp), sum(y for _, y in grp) / len(grp), len(grp)))\n    return out\n\ndef brier(rows):\n    return sum((s - y) ** 2 for s, y in rows) / len(rows)\n\nfit, test = rows[:2500], rows[2500:]\ntab = table(fit)\nprint(\"bin  mean_pred observed  n\")\nfor i, (mp, ob, n) in enumerate(tab):\n    print(\" %d    %.3f     %.3f   %d\" % (i, mp, ob, n))\n# histogram binning: replace the score by its bin's observed rate\nfixed = [(tab[min(int(s * 5), 4)][1], y) for s, y in test]\nprint(\"Brier before: %.4f\" % brier(test))\nprint(\"Brier after : %.4f\" % brier(fixed))\n"
+   },
+   "followUps": []
+  },
+  {
+   "code": null,
+   "followUps": []
+  },
+  {
+   "code": null,
+   "followUps": []
+  },
+  {
+   "code": {
+    "title": "Gradient boosting with stumps on log loss",
+    "python": "import math\n\nx = [1, 2, 3, 4, 5, 6, 7, 8]\ny = [0, 0, 1, 0, 1, 1, 1, 1]\neta, lam = 0.5, 1.0\n\ndef sigmoid(f):\n    return 1 / (1 + math.exp(-f))\n\np0 = sum(y) / len(y)\nF = [math.log(p0 / (1 - p0))] * len(x)   # start at the base-rate log-odds\nprint(\"round  log-loss\")\nfor m in range(1, 6):\n    p = [sigmoid(f) for f in F]\n    g = [yi - pi for yi, pi in zip(y, p)]        # negative gradient\n    h = [pi * (1 - pi) for pi in p]              # Hessian\n    best = None\n    for t in range(1, len(x)):                   # try every stump split\n        L, R = range(t), range(t, len(x))\n        def leaf(idx):                           # Newton step per leaf\n            return sum(g[i] for i in idx) / (sum(h[i] for i in idx) + lam)\n        score = sum(sum(g[i] for i in s) ** 2 / (sum(h[i] for i in s) + lam) for s in (L, R))\n        if best is None or score > best[0]:\n            best = (score, t, leaf(L), leaf(R))\n    _, t, lv, rv = best\n    for i in range(len(x)):                      # add the shrunken tree\n        F[i] += eta * (lv if i < t else rv)\n    loss = -sum(math.log(sigmoid(F[i]) if y[i] else 1 - sigmoid(F[i])) for i in range(len(x))) / len(x)\n    print(\"%d      %.4f  (split before x=%d)\" % (m, loss, x[t]))\nprint(\"x =\", x, \"y =\", y)\nprint(\"probs:\", [round(sigmoid(f), 2) for f in F])\n"
+   },
+   "followUps": []
+  },
+  {
+   "code": null,
+   "followUps": []
+  }
+ ]
+}
