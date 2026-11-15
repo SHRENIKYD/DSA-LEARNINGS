@@ -1,0 +1,124 @@
+{
+ "interview": [
+  {
+   "code": {
+    "title": "Bytes-to-DOM: tokenize and build a tree with li recovery",
+    "js": "// Tiny HTML parser: text -> tokens -> tree, with li auto-closing (error recovery)\nconst html = '<ul><li>One<li>Two</ul>';\n\n// Step 1: tokenizer turns characters into start tags, end tags and text\nfunction tokenize(s) {\n  const tokens = [];\n  const re = /<(\\/?)([a-z0-9]+)>|([^<]+)/g;\n  let m;\n  while ((m = re.exec(s))) {\n    if (m[2]) tokens.push({ type: m[1] ? 'end' : 'start', name: m[2] });\n    else tokens.push({ type: 'text', text: m[3] });\n  }\n  return tokens;\n}\n\n// Step 2: tree builder keeps a stack of open elements\nfunction build(tokens) {\n  const root = { name: '#root', kids: [] };\n  const stack = [root];\n  for (const t of tokens) {\n    const top = stack[stack.length - 1];\n    if (t.type === 'text') top.kids.push(t.text);\n    else if (t.type === 'start') {\n      // Recovery rule: a new <li> closes an open <li>\n      if (t.name === 'li' && top.name === 'li') stack.pop();\n      const el = { name: t.name, kids: [] };\n      stack[stack.length - 1].kids.push(el);\n      stack.push(el);\n    } else {\n      while (stack.length > 1 && stack[stack.length - 1].name !== t.name) stack.pop();\n      if (stack.length > 1) stack.pop();\n    }\n  }\n  return root;\n}\n\nfunction show(node, depth) {\n  for (const k of node.kids) {\n    if (typeof k === 'string') console.log('  '.repeat(depth) + '\"' + k + '\"');\n    else { console.log('  '.repeat(depth) + '<' + k.name + '>'); show(k, depth + 1); }\n  }\n}\n\nconsole.log('Source:', html);\nconsole.log('Tokens:', tokenize(html).map(t => t.name || t.text).join(' | '));\nconsole.log('DOM tree:');\nshow(build(tokenize(html)), 0);\n"
+   },
+   "followUps": [
+    "<p>View source shows the exact text the server sent; the Elements panel shows the live DOM after parsing and after JavaScript has changed it.</p><p>Example: the source has <code>&lt;ul&gt;&lt;li&gt;A&lt;li&gt;B&lt;/ul&gt;</code>, but Elements shows two closed <code>li</code> elements. If a script appends a third item, only Elements shows it. For pages built by JavaScript the source can be nearly empty while the DOM is full. Use source to debug what the server returned, Elements to debug what you see.</p>",
+    "<p>Three things block rendering: CSS in the head, synchronous scripts, and (for text) web fonts that are still loading.</p><p>The browser will not paint until the CSSOM is ready, because painting unstyled content then restyling would flash. A plain <code>&lt;script src&gt;</code> stops the HTML parser, and it also waits for any CSS above it. Fixes: inline critical CSS and load the rest later, add <code>defer</code> or <code>async</code> to scripts, use <code>font-display: swap</code>, and <code>media</code> attributes so non-matching stylesheets do not block.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A div is right when you only need a container for styling or scripting and no semantic element describes it.</p><p>Examples: a wrapper for a CSS grid, a flex row around a button group, a mount point like <code>&lt;div id=\"root\"&gt;</code>, or a positioning box for a tooltip. If you could say \"this is navigation\", \"this is a list\" or \"this is a button\", use that element instead. Adding a div costs nothing semantically, but a div pretending to be a button needs role, tabindex and key handlers.</p>",
+    "<p>The accessibility tree is the browser's simplified copy of the DOM that screen readers and other assistive tools read, made of nodes with a role, a name, a state and a value.</p><p>For <code>&lt;button disabled&gt;Save&lt;/button&gt;</code> the node is role button, name \"Save\", state disabled. Native elements fill these in for you; a bare div has role generic and no name. Elements hidden with <code>display:none</code> or <code>aria-hidden</code> are left out. Chrome DevTools shows it in the Accessibility panel.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, articles can be nested, and it is meaningful when the inner one relates to the outer one.</p><p>The classic case is a blog post (<code>article</code>) containing its reader comments, each comment being its own <code>article</code>. Each nested article should stand alone (it makes sense if copied out) and normally has its own heading or author. Do not nest articles just for layout; use a div for that.</p>",
+    "<p>Inside an article or section, header and footer are not page landmarks; they only describe that piece of content.</p><p>At the top level of body, <code>header</code> maps to the \"banner\" landmark and <code>footer</code> to \"contentinfo\". Nested in an <code>article</code>, <code>section</code>, <code>main</code>, <code>aside</code> or <code>nav</code>, they map to generic, so a screen reader will not announce a banner for every blog post. You can still use them for a post's title block or author and date line.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes, <code>&lt;u&gt;</code> is still valid, but it now means \"unarticulated annotation\" (such as a misspelling mark or a Chinese proper-name mark), not \"underline\".</p><p>Because underlined text looks like a link, avoid it for plain decoration; use CSS <code>text-decoration: underline</code> or a styled span instead. Use <code>u</code> only when the text really is annotated in that way. The same spec rethink gave <code>b</code> and <code>i</code> new meanings rather than removing them.</p>",
+    "<p>Use a span with a CSS class (or a <code>b</code> element if it is just a convention like a keyword) so the weight comes from the stylesheet.</p><pre><code>&lt;span class=\"price\"&gt;$9&lt;/span&gt;\n.price { font-weight: 700; }</code></pre><p>Keep presentation in CSS so you can restyle without touching HTML. Do not use <code>strong</code> merely to get bold, since it tells screen readers and search engines the text is important.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Inline scripts ignore <code>defer</code> and <code>async</code>: they always run immediately, blocking the parser, because there is nothing to download.</p><p>The exception is <code>type=\"module\"</code>: an inline module is deferred, and it also honours <code>async</code>. An inline classic script that reads an element placed later in the page will not find it, since that element has not been parsed yet. Put such code in a deferred external file or listen for <code>DOMContentLoaded</code>.</p>",
+    "<p>Scripts that block the parser delay First Contentful Paint and LCP; scripts that run long after load hurt INP, because they keep the main thread busy.</p><p><code>defer</code> lets the HTML and LCP image arrive while the script downloads, but its execution still happens before DOMContentLoaded, so a heavy bundle can delay interaction. <code>async</code> third-party scripts can run in the middle of parsing and cause jank. Good practice: defer app code, split bundles, load third-party code late, and break long tasks under about 50 ms.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Resolving relative URLs with new URL(href, base)",
+    "js": "// Resolve relative URLs the way the browser does (new URL(href, base))\nconst base = 'https://shop.example/docs/guide/page.html';\nconst links = ['a', './a', '../a', '/a', '//cdn.example/a', '#faq', '?q=1'];\n\nconsole.log('Base:', base);\nfor (const href of links) {\n  // The URL constructor implements the browser's resolution algorithm\n  console.log(href.padEnd(18), '->', new URL(href, base).href);\n}\n\n// Deploying under /app/: a root-relative link ignores the sub-folder\nconst appBase = 'https://shop.example/app/index.html';\nconsole.log('Under /app/, \"/a\"  ->', new URL('/a', appBase).href);\nconsole.log('Under /app/, \"a\"   ->', new URL('a', appBase).href);\n"
+   },
+   "followUps": [
+    "<p>A fragment-only href like <code>#faq</code> keeps the current page and jumps to the element whose id is <code>faq</code>, without a new request.</p><p>It resolves to the same URL plus the fragment, so on <code>/docs/page.html</code> it becomes <code>/docs/page.html#faq</code>. The browser scrolls to that element and applies the <code>:target</code> CSS pseudo-class. If no element has that id, nothing scrolls. Changing only the fragment adds a history entry and fires <code>hashchange</code> but does not reload the page. With a <code>&lt;base href&gt;</code> present, fragment links resolve against it, a classic surprise.</p>",
+    "<p>Root-relative links like <code>/a</code> point to the host's root, so they escape the <code>/app/</code> folder and hit the wrong URL (usually a 404).</p><p>Under <code>https://site.example/app/</code>, the link <code>/img/logo.png</code> asks for <code>https://site.example/img/logo.png</code>, not <code>/app/img/logo.png</code>. The same applies to assets and router URLs. Fixes: use path-relative links, set <code>&lt;base href=\"/app/\"&gt;</code>, or configure your build's base path (for example a <code>base</code> or <code>publicPath</code> option). Test by deploying under the sub-path early.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Do not lazy-load the hero image because it is probably the LCP element, and lazy loading delays its download until layout shows it is near the viewport.</p><p>The browser normally requests above-the-fold images early through the preload scanner; <code>loading=\"lazy\"</code> defers that, so the image arrives late and LCP gets worse. Use <code>loading=\"eager\"</code> (the default) and <code>fetchpriority=\"high\"</code> for it. Lazy-load only images well below the fold, and always give them width and height to avoid layout shift.</p>",
+    "<p>Density descriptors (<code>1x</code>, <code>2x</code>) are for images with a fixed CSS size; width descriptors (<code>400w</code>) are for images whose size changes with the layout.</p><pre><code>&lt;img srcset=\"logo.png 1x, logo@2x.png 2x\"&gt;\n&lt;img srcset=\"a-400.jpg 400w, a-800.jpg 800w\"\n     sizes=\"50vw\"&gt;</code></pre><p>With <code>w</code> you must add <code>sizes</code> so the browser can compute needed pixels; you cannot mix <code>x</code> and <code>w</code> in one srcset. A 400 px slot on a 2x screen needs an 800-pixel-wide file.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A safe method does not change anything on the server; an idempotent method gives the same final result if you repeat it.</p><p>GET, HEAD and OPTIONS are safe. PUT and DELETE are idempotent but not safe: deleting item 5 twice leaves the same state. POST is neither, so submitting an order twice may create two orders. This is why browsers warn before re-posting a form, and why you add idempotency keys to payment POSTs.</p>",
+    "<p><code>urlencoded</code> (the default) sends text like <code>a=1&amp;b=hello+world</code>; <code>multipart/form-data</code> splits the body into parts, each with its own headers, so it can carry files and binary data.</p><p>Urlencoded percent-escapes every special byte, so a 1 MB file would grow noticeably and the file name would be lost. Multipart adds a boundary string and per-part overhead, but sends raw bytes. Use multipart whenever the form has <code>&lt;input type=\"file\"&gt;</code>. A third value, <code>text/plain</code>, is for debugging only.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Which form controls are submitted",
+    "js": "// Which form controls end up in the submitted data?\nconst controls = [\n  { name: 'agree', type: 'checkbox', checked: false, value: 'on' },\n  { name: 'news', type: 'checkbox', checked: true, value: 'yes' },\n  { type: 'checkbox', checked: true, value: 'x' },              // no name\n  { name: 'beta', type: 'checkbox', checked: true, disabled: true, value: 'on' },\n  { name: 'user', type: 'text', value: 'asha' },\n  { name: 'tag', type: 'checkbox', checked: true, value: 'a' },\n  { name: 'tag', type: 'checkbox', checked: true, value: 'b' }  // same name twice\n];\n\n// Rules from the HTML spec: skip no name, disabled, unchecked checkbox\nfunction entries(list) {\n  const out = [];\n  for (const c of list) {\n    if (!c.name || c.disabled) continue;\n    if (c.type === 'checkbox' && !c.checked) continue;\n    out.push([c.name, c.value]);\n  }\n  return out;\n}\n\nconst sent = entries(controls);\nconsole.log('Submitted pairs:', JSON.stringify(sent));\nconsole.log('Query string:', sent.map(p => p[0] + '=' + p[1]).join('&'));\n\n// Server side: a missing key means false, repeated keys form a list\nconst body = {};\nfor (const [k, v] of sent) (body[k] = body[k] || []).push(v);\nconsole.log('agree is', body.agree ? 'true' : 'false (missing)');\nconsole.log('tag list:', body.tag);\n"
+   },
+   "followUps": [
+    "<p>FormData includes only controls that would be submitted, so an unchecked checkbox is left out entirely, not sent as false.</p><pre><code>const fd = new FormData(form);\nfd.get('agree');      // null if unchecked\nfd.has('agree');      // false\nfd.get('agree') === 'on'  // true if checked</code></pre><p>The default value of a checked box with no value attribute is the string <code>\"on\"</code>, not a boolean. When you need an explicit false, read <code>form.elements.agree.checked</code> directly.</p>",
+    "<p>Checkboxes sharing a name each submit their own pair, so the server gets a repeated key, for example <code>tag=a&amp;tag=b</code>.</p><p>In JavaScript use <code>fd.getAll('tag')</code> to get <code>['a','b']</code>; <code>fd.get('tag')</code> returns only the first. Server frameworks differ: some keep the last value, others give a list, and PHP needs the name <code>tag[]</code>. Check your framework's rule, or send JSON built from <code>getAll</code>.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>A placeholder disappears as soon as the user types, is often low contrast, and some screen readers do not treat it as a name, so it is a hint, not a label.</p><p>Users with memory or attention difficulties lose the field's purpose, and a filled-in form cannot be checked at a glance. Browser autofill and translation also tend to be worse. Use a visible <code>&lt;label for=\"email\"&gt;</code> linked to <code>id=\"email\"</code>, and keep the placeholder only for an example such as \"name@example.com\".</p>",
+    "<p>Put the error in an element with <code>role=\"alert\"</code> (or <code>aria-live=\"assertive\"</code>) that already exists in the page, then change its text, and the screen reader will read it out.</p><pre><code>&lt;p id=\"err\" role=\"alert\"&gt;&lt;/p&gt;\n\nerr.textContent = 'Email is required';\ninput.setAttribute('aria-invalid', 'true');</code></pre><p>The region must be in the DOM before the message is set, or some readers miss it. Use <code>aria-live=\"polite\"</code> for non-urgent updates. Also link the message with <code>aria-describedby</code> and do not rely on colour alone.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Client and server share one validation rule set",
+    "js": "// One shared rule set used on the client and (again) on the server\nconst rules = {\n  name: v => (typeof v === 'string' && v.trim().length >= 2) || 'name needs 2+ characters',\n  age: v => (Number.isInteger(v) && v >= 18 && v <= 120) || 'age must be 18 to 120',\n  email: v => (typeof v === 'string' && /^[^@\\s]+@[^@\\s]+\\.[a-z]+$/i.test(v)) || 'email looks invalid'\n};\n\nfunction validate(data) {\n  const errors = {};\n  for (const field in rules) {\n    const r = rules[field](data[field]);\n    if (r !== true) errors[field] = r;\n  }\n  return errors;\n}\n\n// Client: runs in the form handler for instant feedback\nconst typed = { name: 'A', age: 17, email: 'a@b.co' };\nconsole.log('Client check:', JSON.stringify(validate(typed)));\n\n// Attacker skips the client and sends the request directly (like curl)\nconst forged = { name: 'Bob', age: -5, email: 'not-an-email' };\nfunction serverHandler(body) {\n  const errors = validate(body);              // never trust the client\n  return Object.keys(errors).length\n    ? { status: 422, errors }\n    : { status: 201 };\n}\nconsole.log('Server on forged data:', JSON.stringify(serverHandler(forged)));\nconsole.log('Server on good data:', JSON.stringify(serverHandler({ name: 'Bob', age: 30, email: 'b@x.io' })));\n"
+   },
+   "followUps": [
+    "<p>Uniqueness can only be checked on the server, because only the database knows the existing usernames; the client can ask but never decide.</p><p>Do an optional live check (a debounced request such as <code>GET /users/exists?name=asha</code>) for friendly feedback, but still enforce it on save with a unique index and handle the failure (HTTP 409). A pure check-then-insert has a race: two users can both see \"free\" and both insert; the unique constraint makes one fail safely.</p>",
+    "<p>A form that looks valid is not proof of a human, so combine several defences rather than relying on field validation.</p><p>Common layers: a CAPTCHA or invisible challenge, rate limiting per IP and account, a honeypot field hidden from humans (bots fill it, so reject those), a minimum time to submit, email verification, and server-side anomaly checks. Rate limiting is the most effective: 5 sign-ups per hour per IP stops simple floods. Keep the user experience in mind and offer accessible alternatives.</p>"
+   ]
+  },
+  {
+   "code": {
+    "title": "Table grid placement with rowspan",
+    "js": "// Place table cells into a grid the way the browser does\nconst rows = [\n  [{ t: 'A', rs: 2 }, { t: 'B' }, { t: 'C' }],\n  [{ t: 'D' }, { t: 'E' }],          // correct: A already covers slot 0\n  [{ t: 'F' }, { t: 'G' }, { t: 'H' }]\n];\nconst wrong = [\n  [{ t: 'A', rs: 2 }, { t: 'B' }],\n  [{ t: 'X' }, { t: 'D' }]           // bug: 2 cells + covered slot = 3 wide\n];\n\nfunction layout(rows) {\n  const grid = [];\n  rows.forEach((cells, r) => {\n    grid[r] = grid[r] || [];\n    let c = 0;\n    for (const cell of cells) {\n      while (grid[r][c] !== undefined) c++;      // skip slots taken by a rowspan\n      const cs = cell.cs || 1, rs = cell.rs || 1;\n      for (let i = 0; i < rs; i++) {\n        grid[r + i] = grid[r + i] || [];\n        for (let j = 0; j < cs; j++) grid[r + i][c + j] = cell.t;\n      }\n      c += cs;\n    }\n  });\n  return grid;\n}\n\nfor (const [name, data] of [['good', rows], ['wrong', wrong]]) {\n  const g = layout(data);\n  console.log(name + ':');\n  g.forEach(r => console.log('  ' + Array.from(r, x => x || '.').join(' ')));\n  console.log('  widths:', g.map(r => r.length).join(','));\n}\n"
+   },
+   "followUps": [
+    "<p>The HTML table model treats overlapping cells as an error: it still lays them out, but two cells share the same slot and the result is an undefined, messy grid.</p><p>Browsers do not stop; the cells simply overlap visually, and the spec says it is a table model error that validators flag. Avoid it by counting slots per row: each row's cells plus slots covered by earlier rowspans must equal the column count. A validator or an accessibility checker will find these.</p>",
+    "<p>Let the table scroll sideways inside a wrapper, or reflow it into stacked cards on small screens.</p><pre><code>.wrap { overflow-x: auto; }\n@media (max-width: 600px) {\n  td { display: block; }\n  td::before { content: attr(data-label); }\n}</code></pre><p>The wrapper is the simplest and keeps the table semantics (add <code>tabindex=\"0\"</code> and a label so keyboard users can scroll). The stacked version needs a <code>data-label</code> on each cell; when changing <code>display</code>, add table roles back with ARIA so screen readers still see a table. Also drop unneeded columns.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p><code>noindex</code> tells search engines not to show the page in results, while <code>Disallow</code> only tells crawlers not to fetch it, and a blocked URL can still be listed if other sites link to it.</p><p>The catch: if robots.txt blocks a page, the crawler never sees its <code>noindex</code> tag, so use only one. To remove a page from search, leave it crawlable and add <code>&lt;meta name=\"robots\" content=\"noindex\"&gt;</code> or the <code>X-Robots-Tag</code> header. Use Disallow to save crawl budget on junk URLs; neither one is security.</p>",
+    "<p>Use the official debuggers, and always re-scrape after you change the tags because platforms cache the preview.</p><p>Examples: Facebook's Sharing Debugger, LinkedIn's Post Inspector, and a card validator for X. You can also view the raw HTML with <code>curl -s URL | grep og:</code> to confirm the tags are in the server response, since crawlers do not run JavaScript. Check that <code>og:image</code> is an absolute URL, about 1200x630 pixels, and publicly reachable.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Dynamic rendering means serving pre-rendered HTML to bots and the normal JavaScript app to users, and it is discouraged because it is a workaround that doubles the complexity.</p><p>You must keep two outputs in sync, detect user agents (which is fragile), and bugs show up only for bots. Google now calls it a temporary workaround, not a long-term solution. Prefer server-side rendering or static generation, which gives every visitor the same HTML. Serving different content to bots than to users can also be treated as cloaking.</p>",
+    "<p>Use Google Search Console's URL Inspection tool, which shows the rendered HTML, a screenshot and any blocked resources as Googlebot saw them.</p><p>Also test with the Rich Results Test, and compare the \"View source\" HTML with the rendered HTML to see what depends on JavaScript. Check that the status code is right and that JS and CSS files are not blocked in robots.txt. A quick local check is <code>curl</code>: if the text you care about is missing from the response, non-rendering crawlers will miss it too.</p>"
+   ]
+  },
+  {
+   "code": null,
+   "followUps": [
+    "<p>Yes: <code>&lt;table&gt;&lt;tr&gt;&lt;td&gt;x&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;</code> becomes a table with an inserted tbody, and <code>&lt;p&gt;a&lt;div&gt;b&lt;/div&gt;</code> closes the p before the div.</p><p>Other cases: <code>&lt;b&gt;&lt;i&gt;x&lt;/b&gt;&lt;/i&gt;</code> is repaired to <code>&lt;b&gt;&lt;i&gt;x&lt;/i&gt;&lt;/b&gt;</code>, and text placed directly inside a table is moved out before it. The DOM therefore has elements that the source never wrote.</p>",
+    "<p>Because the parser always inserts a <code>&lt;tbody&gt;</code> between <code>table</code> and <code>tr</code>, so the <code>tr</code> is not a direct child.</p><p>Write <code>table &gt; tbody &gt; tr</code>, or the descendant selector <code>table tr</code>, which works either way. The tbody is inserted only when parsing HTML; if you create elements with <code>appendChild</code> in JavaScript, no tbody appears. That difference is another reason to inspect the real DOM.</p>"
+   ]
+  }
+ ]
+}
