@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.46] — 2026-11-15 · Programs and follow-up answers for C++, C#, LLD and HLD interview questions
+
+### Added
+- **C++ (places 4 to 15), C# (all 16 places), Low-level design and System design interview questions:** 793 questions now have 579 runnable programs and all 1,623 of their follow-up questions open to a written answer. C++ and C# programs are in that language, low-level design programs run in Java, Python, JavaScript, C++ and C#, and system design demos are mostly small Python simulations (rate limiters, consistent hashing, caches, queues). Questions about products, architecture talk and process have written answers only.
+
 ## [1.10.45] — 2026-11-15 · Programs and follow-up answers for SQL, Python and Java interview questions
 
 ### Added
