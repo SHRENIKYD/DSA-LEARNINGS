@@ -32,7 +32,12 @@ for (const [id, e] of Object.entries(db.videos)) {
   if (e.end !== undefined) assert(Number.isSafeInteger(e.end) && e.end > (e.start || 0));
   if (e.curated) { assert(e.note && /^\d{4}-\d{2}-\d{2}$/.test(e.reviewedAt)); curated++; }
   // A video YouTube reports as unavailable stays in the catalog for review but must be hidden (docs/VIDEOS.md).
-  if (e.available === false) { assert.equal(V.publicEntry(e, topics.get(id)), null, 'Unavailable video still shown: ' + id); unavailable.push(id); continue; }
+  // A topic with language picks keeps those picks visible; its own (unavailable) main video is shown as an empty id.
+  if (e.available === false) {
+    const pub = V.publicEntry(e, topics.get(id)), hasLang = Object.values(e.byLang || {}).some((b) => b && b.id && b.available !== false);
+    if (hasLang) { assert(pub && pub.id === '', 'Unavailable main video still shown: ' + id); } else { assert.equal(pub, null, 'Unavailable video still shown: ' + id); }
+    unavailable.push(id); continue;
+  }
   else assert(V.publicEntry(e, topics.get(id)), 'Unexpectedly hidden video: ' + id);
   have++;
 }
