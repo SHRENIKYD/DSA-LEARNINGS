@@ -28,7 +28,7 @@ Every concept starts with a real-world analogy, comes alive in a step-by-step vi
 298 modules, over 6,300 practice problems and nearly 3,000 visualizers.
 
 INTERVIEW QUESTIONS WITH ANSWERS
-• 4,500+ interview questions, each with a model answer, a runnable example program in your language and a written answer to every likely follow-up
+• 4,500+ interview questions with model answers, a written answer to every likely follow-up, and runnable example programs in your language where they help
 • An Interview handbook: search every question in one place, filter by level and drill with rapid-fire mode
 
 LEARN BY PLAYING
