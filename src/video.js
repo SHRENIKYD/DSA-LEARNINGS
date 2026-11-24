@@ -9,6 +9,7 @@
     // Bare shift/comparison operators (<<, >>) are text, not HTML tags.
     return String(s || '').replace(/<\/?[a-z][a-z0-9]*(?:\s+[^<>]*)?\/?>/gi, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
   }
+  function entityText(s) { return String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim(); }
   var LANGS = ['java', 'python', 'js', 'cpp', 'csharp'], LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript', cpp: 'C++', csharp: 'C#' };
   var ID = /^[A-Za-z0-9_-]{11}$/;
   function clean(v) {
@@ -19,7 +20,7 @@
   // The public form of one catalog entry: the default pick plus any usable per-language picks (byLang).
   // An entry with only per-language picks has id '' (pick() then returns null for learners without one).
   function publicEntry(v, topicTitle) {
-    if (!v || v.stale || cleanTitle(v.t) !== cleanTitle(topicTitle)) return null;
+    if (!v || v.stale || cleanTitle(v.t) !== cleanTitle(topicTitle) && entityText(v.t) !== entityText(topicTitle)) return null;
     var out = ID.test(v.id || '') && v.available !== false ? clean(v) : null, by = {}, any = false;
     LANGS.forEach(function (l) {
       var b = v.byLang && v.byLang[l];

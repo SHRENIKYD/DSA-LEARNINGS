@@ -320,7 +320,7 @@ ${H.table(['API', 'Queue', 'Runs', 'Owner'], [
       '"queueMicrotask in Node" → same queue as promise reactions; standard and portable'
     ],
     code: [
-      { lang: 'js', run: true, title: 'Priority ladder with nesting (runnable in Node)', code: R`setImmediate(() => console.log('7 immediate'));
+      { lang: 'js', title: 'Priority ladder with nesting (run it with node)', code: R`setImmediate(() => console.log('7 immediate'));
 setTimeout(() => console.log('8 timeout (or before 7: main-module race)'), 0);
 process.nextTick(() => {
   console.log('2 tick');
@@ -723,7 +723,7 @@ async function writeMillionLines(writable) {
   writable.end();
   await once(writable, 'finish');
 }` },
-      { lang: 'js', run: true, title: 'Buffer facts you get asked about (runnable)', code: R`const s = 'héllo €';
+      { lang: 'js', title: 'Buffer facts you get asked about (run it with node)', code: R`const s = 'héllo €';
 console.log('chars:', s.length, 'bytes:', Buffer.byteLength(s));   // 7 vs 10
 const buf = Buffer.from(s, 'utf8');
 console.log(buf);                                                 // <Buffer 68 c3 a9 6c 6c 6f 20 e2 82 ac>
@@ -965,7 +965,7 @@ ${H.table(['Gotcha', 'What happens'], [
       '"Remove a listener added with once" → off(original) must match wrapper.listener'
     ],
     code: [
-      { lang: 'js', run: true, title: 'Core semantics in real Node (runnable)', code: R`const { EventEmitter, once } = require('node:events');
+      { lang: 'js', title: 'Core semantics in real Node (run it with node)', code: R`const { EventEmitter, once } = require('node:events');
 const bus = new EventEmitter();
 
 bus.on('order', (id) => console.log('1st listener', id));
@@ -1042,12 +1042,12 @@ function handleGood(req, res) {
       }
     ],
     examples: [
-      { title: 'A listener that throws stops the rest', html: `<p>Listeners run in a plain loop. If listener 1 throws, listener 2 never runs, and the exception surfaces at the <code>emit()</code> call site — often deep inside a library, far from your code. Wrap risky listener bodies or emit errors instead of throwing.</p>`, code: { lang: 'js', run: true, code: R`const { EventEmitter } = require('node:events');
+      { title: 'A listener that throws stops the rest', html: `<p>Listeners run in a plain loop. If listener 1 throws, listener 2 never runs, and the exception surfaces at the <code>emit()</code> call site — often deep inside a library, far from your code. Wrap risky listener bodies or emit errors instead of throwing.</p>`, code: { lang: 'js', code: R`const { EventEmitter } = require('node:events');
 const em = new EventEmitter();
 em.on('x', () => { throw new Error('listener 1 broke'); });
 em.on('x', () => console.log('listener 2 never runs'));
 try { em.emit('x'); } catch (e) { console.log('caught at emit():', e.message); }` } },
-      { title: 'off() removes the most recent duplicate', html: `<p>Add <code>f</code>, then <code>g</code>, then <code>f</code> again. <code>off('e', f)</code> removes the <b>last</b> f, leaving [f, g]. Node scans the array from the end.</p>`, code: { lang: 'js', run: true, code: R`const { EventEmitter } = require('node:events');
+      { title: 'off() removes the most recent duplicate', html: `<p>Add <code>f</code>, then <code>g</code>, then <code>f</code> again. <code>off('e', f)</code> removes the <b>last</b> f, leaving [f, g]. Node scans the array from the end.</p>`, code: { lang: 'js', code: R`const { EventEmitter } = require('node:events');
 const em = new EventEmitter(), out = [];
 const f = () => out.push('f'), g = () => out.push('g');
 em.on('e', f); em.on('e', g); em.on('e', f);

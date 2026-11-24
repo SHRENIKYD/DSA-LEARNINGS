@@ -172,8 +172,8 @@ var Journey = (function () {
     var tb = document.getElementById('themeBtn');
     if (opts.theme && tb) {
       var label = function () { var d = document.documentElement.getAttribute('data-theme') !== 'light'; tb.innerHTML = d ? themeIcon('sun') : themeIcon('moon'); tb.setAttribute('aria-label', d ? 'Switch to daylight map' : 'Switch to night map'); tb.title = tb.getAttribute('aria-label'); };
-      tb.addEventListener('click', function () { var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'; set('imastery.theme', t); ThemeMotion.apply(t, true); label(); });
-      window.addEventListener('pageshow', label); window.addEventListener('storage', label);
+      tb.addEventListener('click', function () { var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'; set('imastery.theme', t); ThemeMotion.apply(t, true); label(); window.dispatchEvent(new Event('imastery:theme')); });
+      window.addEventListener('pageshow', label); window.addEventListener('storage', label); window.addEventListener('imastery:theme', label);
       label();
     }
     var av = document.getElementById('jav');
@@ -283,8 +283,8 @@ var Journey = (function () {
     }
     var th = document.getElementById('pTheme');
     var syncTh = function () { th.checked = document.documentElement.getAttribute('data-theme') === 'light'; };
-    th.addEventListener('change', function () { var t = th.checked ? 'light' : 'dark'; set('imastery.theme', t); ThemeMotion.apply(t, true); var tb = document.getElementById('themeBtn'); if (tb) tb.innerHTML = themeIcon(t === 'light' ? 'moon' : 'sun'); });
-    window.addEventListener('pageshow', syncTh); window.addEventListener('storage', function () { syncTh(); draw(); });
+    th.addEventListener('change', function () { var t = th.checked ? 'light' : 'dark'; set('imastery.theme', t); ThemeMotion.apply(t, true); window.dispatchEvent(new Event('imastery:theme')); });
+    window.addEventListener('pageshow', syncTh); window.addEventListener('imastery:theme', syncTh); window.addEventListener('storage', function () { syncTh(); draw(); });
     syncTh();
     var ds = document.getElementById('pDest');
     if (window.PATHS && window.Learn) {

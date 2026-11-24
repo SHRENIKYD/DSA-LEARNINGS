@@ -33,12 +33,15 @@ function main() {
   if (d.added < min) { console.log('video-release: ' + d.added + ' new video(s), below the minimum of ' + min + '; no app release'); out('released', 'false'); return; }
   const pkgPath = path.join(root, 'package.json'), src = fs.readFileSync(pkgPath, 'utf8'), cur = JSON.parse(src).appVersion, next = bumpApp(cur);
   const date = new Date().toISOString().slice(0, 10);
-  const entry = '## [' + next + '] — ' + date + ' · Lesson videos\n\n### Changed\n- ' + d.added + ' new lesson video' + (d.added === 1 ? '' : 's') + ' (' + d.total + ' in the app now, counting per-language picks).\n';
+  // Optional hand-written notes (data/app-pending-notes.md, bullet lines) ride along in the next app entry, then the file is removed.
+  const pendingFile = path.join(root, 'data', 'app-pending-notes.md'), pending = fs.existsSync(pendingFile) ? fs.readFileSync(pendingFile, 'utf8').trim() : '';
+  const entry = '## [' + next + '] — ' + date + ' · Lesson videos\n\n### Changed\n- ' + d.added + ' new lesson video' + (d.added === 1 ? '' : 's') + ' (' + d.total + ' in the app now, counting per-language picks).\n' + (pending ? '\n### Fixed\n' + pending + '\n' : '');
   console.log('video-release: ' + d.added + ' new video(s); app ' + cur + ' -> ' + next + (dry ? ' (dry run)' : ''));
   if (!dry) {
     fs.writeFileSync(pkgPath, src.replace(/("appVersion": ")[^"]+"/, '$1' + next + '"'));
     const cl = path.join(root, 'CHANGELOG-APP.md'), text = fs.readFileSync(cl, 'utf8'), i = text.search(/^## \[/m);
     fs.writeFileSync(cl, i < 0 ? text.trimEnd() + '\n\n' + entry + '\n' : text.slice(0, i) + entry + '\n' + text.slice(i));
+    if (pending) fs.unlinkSync(pendingFile);
     execFileSync('node', [path.join(__dirname, 'version-sync.js')], { cwd: root, stdio: 'inherit' });
   }
   out('released', dry ? 'false' : 'true'); out('version', next);
