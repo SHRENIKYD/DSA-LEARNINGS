@@ -222,9 +222,10 @@ var App = (function () {
       var ifr = document.createElement('iframe');
       ifr.setAttribute('sandbox', 'allow-scripts');
       ifr.style.display = 'none';
-      var shim = 'var __s=function(t,a){parent.postMessage({tok:"' + tok + '",t:t,a:Array.prototype.map.call(a,function(x){if(typeof x==="string")return x;try{return JSON.stringify(x)}catch(e){return String(x)}}).join(" ")},"*")};' +
+      var shim = 'var __P=window.parent;var __s=function(t,a){__P.postMessage({tok:"' + tok + '",t:t,a:Array.prototype.map.call(a,function(x){if(typeof x==="string")return x;try{return JSON.stringify(x)}catch(e){return String(x)}}).join(" ")},"*")};' +
         '["log","info","warn","error","table"].forEach(function(k){console[k]=function(){__s(k,arguments)}});' +
-        'var process={stdout:{write:function(t){__s("log",[String(t).replace(/\\n$/,"")]);return true}},stderr:{write:function(t){__s("error",[String(t).replace(/\\n$/,"")]);return true}},argv:["node","main.js"],env:{},exit:function(){}};' +
+        'var process={stdout:{write:function(t){__s("log",[String(t).replace(/\\n$/,"")]);return true}},stderr:{write:function(t){__s("error",[String(t).replace(/\\n$/,"")]);return true}},argv:["node","main.js"],env:{},exit:function(){},nextTick:function(f){var a=[].slice.call(arguments,1);queueMicrotask(function(){f.apply(null,a)})}};' +
+        'var Buffer={byteLength:function(s){return new TextEncoder().encode(String(s)).length},from:function(s,e){var u=e==="base64"?Uint8Array.from(atob(s),function(c){return c.charCodeAt(0)}):new TextEncoder().encode(String(s));u.toString=function(n){return n==="base64"?btoa(String.fromCharCode.apply(null,u)):new TextDecoder().decode(u)};return u}};' +
         'window.onerror=function(m){__s("error",["Uncaught "+m])};window.addEventListener("unhandledrejection",function(e){__s("error",["Unhandled rejection: "+(e.reason&&e.reason.message||e.reason)])});';
       // let/const/class names that the browser reserves on window (top, window, document, location) would throw at the top
       // level, so only such snippets run inside a block. Others run unwrapped, so var/function hoisting demos behave as written.

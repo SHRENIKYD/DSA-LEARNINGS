@@ -330,8 +330,8 @@ r = StepRange(2, 11, 3)
 print(list(r), list(r), len(r))            # [2, 5, 8] [2, 5, 8] 3
 print(len([(a, b) for a in r for b in r]))  # 9 -> independent iterators
 print(list(StepRangeGen(2, 11, 3)))         # [2, 5, 8]
-big = StepRange(0, 10**12)
-print(len(big), next(iter(big)))            # 1000000000000 0 (no memory used)` },
+big = StepRange(0, 10**9)
+print(len(big), next(iter(big)))            # 1000000000 0 (no memory used; len() is capped at 2**31-1 in the browser)` },
         dry: { head: ['call', 'iterator.current before', 'returns', 'current after'], rows: [['iter(r)', '—', 'new iterator', '2'], ['next()', '2', '2', '5'], ['next()', '5', '5', '8'], ['next()', '8', '8', '11'], ['next()', '11 (≥ stop)', '<span class="c-r">StopIteration</span>', '11']] },
         complexity: `<p>Each <code>next()</code> is O(1); memory O(1) per iterator. <code>len()</code> O(1).</p>`,
         followUps: ['Support negative steps (count down) — what changes in the stop test?', 'Add __contains__ in O(1) using modular arithmetic (like the real range does).', 'Add __getitem__ with slicing that returns another StepRange.']
