@@ -4,6 +4,17 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.49] — 2026-11-24 · Fixes from a full test pass: runnable snippets, Passport on phones, one lesson video
+
+### Fixed
+- **Runnable snippets in Front-end 17 (`fe17`) printed nothing** when a snippet declared its own `parent` variable. The runner now keeps its own reference to the page.
+- **Back-end 22 and 23 snippets that use `Buffer` or `process.nextTick` crashed in the browser.** The runner now provides both, plus `Buffer.byteLength`. The WebSocket accept-key snippet uses the browser's crypto instead of Node's `require`.
+- **JavaScript 15 snippets that only work in Node no longer show a Run button** (five snippets that use `setImmediate`, `Buffer` or `require`); their titles say to run them with node.
+- **Python 7 StepRange demo crashed** in the browser because `len()` of 10**12 does not fit there; it now uses 10**9.
+- **Passport page scrolled sideways on phones** (360 and 390 px wide).
+- **Passport "Daylight map" checkbox went out of sync** when the header theme button was used on the same page, and the other way round.
+- **The lesson video for C++ 8 "accumulate & the &lt;numeric&gt; Toolbox" was missing** from the site because its title was written in two forms that did not match.
+
 ## [1.10.48] — 2026-11-16 · Every interview question now has programs and follow-up answers, an Interview handbook and 2,214 lesson videos
 
 ### Added
