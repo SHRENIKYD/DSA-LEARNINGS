@@ -1,6 +1,0 @@
-- Runnable snippets in Front-end 17 now print their output; a snippet that declared its own `parent` variable broke the runner.
-- Back-end 22 and 23 snippets that use `Buffer` or `process.nextTick` now run in the in-app runner.
-- JavaScript 15 snippets that only work in Node no longer show a Run button.
-- The Python 7 StepRange demo no longer crashes.
-- The Passport page no longer scrolls sideways on phones, and its "Daylight map" switch stays in step with the header theme button.
-- The C++ 8 "accumulate & the <numeric> Toolbox" lesson video is back.

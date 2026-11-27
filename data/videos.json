@@ -812,9 +812,15 @@
   },
   "ai17-t0": {
    "t": "What Gets Automated, What Gets Augmented, What Gains Value",
-   "id": null,
-   "at": "2026-11-27",
-   "broadAt": "2026-11-26"
+   "id": "7TPYxE-eQPc",
+   "title": "How to Use Generative AI at Work: AI Augmentation vs Automation",
+   "channel": "Correlation One",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-27",
+   "note": "Explains the difference between using generative AI to automate work and to augment people, which is the core of this lesson; the lesson adds what gains value.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-27T08:31:21.339Z"
   },
   "ai17-t1": {
    "t": "T-Shaped Skills: Depth Plus Breadth",
@@ -1087,9 +1093,15 @@
   },
   "ai22-t0": {
    "t": "The ML Lifecycle in Production and Data/Feature Pipelines",
-   "id": null,
-   "at": "2026-11-25",
-   "broadAt": "2026-11-25"
+   "id": "m1nhsvGowfk",
+   "title": "MLOps Lifecycle Explained: From Raw Data to Production Models | Module 1.3",
+   "channel": "KryptoMindz Technologies",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-27",
+   "note": "Walks the MLOps lifecycle from raw data to a production model; the lesson adds the feature and data pipeline detail.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-27T08:31:21.360Z"
   },
   "ai22-t1": {
    "t": "Feature Stores: Offline/Online Stores and Freshness",
@@ -1860,9 +1872,15 @@
   },
   "ai35-t7": {
    "t": "A Starter Set of Automations for Common Jobs",
-   "id": null,
-   "at": "2026-11-24",
-   "broadAt": "2026-11-27"
+   "id": "GQrJBhLgCQI",
+   "title": "Sit Back and Let AI Do The Work (Automation Guide)",
+   "channel": "Matt Wolfe",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-27",
+   "note": "A general guide to letting AI do routine work for you; the lesson adds a concrete starter set of automations.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-27T08:31:21.381Z"
   },
   "ai36-t0": {
    "t": "Hallucinations: Confident, Fluent and Wrong",
@@ -22289,8 +22307,7 @@
   },
   "lld06-t10": {
    "t": "Which Pattern Fits? Choosing, Comparing and Combining",
-   "id": null,
-   "at": "2026-11-25",
+   "id": "2rqJV_JXuv8",
    "byLang": {
     "csharp": {
      "id": null,
@@ -22313,7 +22330,14 @@
      "at": "2026-11-24"
     }
    },
-   "broadAt": "2026-11-27"
+   "title": "Observer, Visitor, Strategy, State - Behavioural Design Patterns 2/2",
+   "channel": "Smok Code",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-27",
+   "note": "Compares the Observer, Visitor, Strategy and State patterns side by side; covers part of the lesson and the lesson adds how to choose and combine patterns.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-27T08:31:21.400Z"
   },
   "lld06-t2": {
    "t": "Command: Turn a Request into an Object (Undo, Queue, Log)",
@@ -24150,9 +24174,15 @@
   },
   "py05-t6": {
    "t": "Big-O Cheat Sheet for Built-ins: list, dict, set, deque, str, heapq, sort",
-   "id": null,
-   "at": "2026-11-22",
-   "broadAt": "2026-11-26"
+   "id": "SmutQEAp1w8",
+   "title": "Big-O Runtime Complexity List and Set Operations",
+   "channel": "Finxter AI Nuggets",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-27",
+   "note": "Covers Big-O costs of Python list and set operations; the lesson adds dict, deque, str, heapq and sort.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-27T08:31:21.418Z"
   },
   "py06-t0": {
    "t": "First-Class Functions: Functions Are Just Objects",
@@ -25264,9 +25294,15 @@
   },
   "sql09-t3": {
    "t": "Soft Deletes, Restores & Archiving",
-   "id": null,
-   "at": "2026-11-27",
-   "broadAt": "2026-11-26"
+   "id": "lDYXtj95Jy8",
+   "title": "Should you Delete or Soft Delete?",
+   "channel": "CodeOpinion",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-27",
+   "note": "Weighs soft delete against hard delete; the lesson adds restores and archiving in SQL.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-27T08:31:21.437Z"
   },
   "sql09-t4": {
    "t": "Views: Saved Queries for Simplicity and Security",
@@ -26141,9 +26177,15 @@
   },
   "tl10-t4": {
    "t": "The Tech Lead Playbook: STAR Stories and Leadership Answers",
-   "id": null,
-   "at": "2026-11-26",
-   "broadAt": "2026-11-26"
+   "id": "EcaxGJc5e9c",
+   "title": "Tech Lead Manager Behavioral Interview with a FAANG Engineer (M1/L6+)",
+   "channel": "interviewing.io",
+   "secs": 0,
+   "curated": true,
+   "reviewedAt": "2026-11-27",
+   "note": "A mock tech-lead behavioral interview showing how leadership answers sound; the lesson adds a STAR story bank.",
+   "available": true,
+   "availabilityCheckedAt": "2026-11-27T08:31:21.454Z"
   },
   "tl11-t0": {
    "t": "How to Approach a Coding Question Out Loud",
