@@ -4216,6 +4216,83 @@
       "basis": "DynamoDB storage and hot partitioning with DAX; hot keys and access-pattern fixes are mostly lesson-only.",
       "evidenceUrl": "https://www.youtube.com/watch?v=bJuI6xgkC14",
       "playbackVerified": false
+    },
+    {
+      "topic": "ai17-t0",
+      "concept": "What Gets Automated, What Gets Augmented, What Gains Value",
+      "action": "added",
+      "previousId": null,
+      "id": "7TPYxE-eQPc",
+      "source": "https://www.youtube.com/watch?v=7TPYxE-eQPc",
+      "basis": "Explains the difference between using generative AI to automate work and to augment people, which is the core of this lesson; the lesson adds what gains value.",
+      "evidenceUrl": "https://www.youtube.com/watch?v=7TPYxE-eQPc",
+      "playbackVerified": false
+    },
+    {
+      "topic": "ai22-t0",
+      "concept": "The ML Lifecycle in Production and Data/Feature Pipelines",
+      "action": "added",
+      "previousId": null,
+      "id": "m1nhsvGowfk",
+      "source": "https://www.youtube.com/watch?v=m1nhsvGowfk",
+      "basis": "Walks the MLOps lifecycle from raw data to a production model; the lesson adds the feature and data pipeline detail.",
+      "evidenceUrl": "https://www.youtube.com/watch?v=m1nhsvGowfk",
+      "playbackVerified": false
+    },
+    {
+      "topic": "ai35-t7",
+      "concept": "A Starter Set of Automations for Common Jobs",
+      "action": "added",
+      "previousId": null,
+      "id": "GQrJBhLgCQI",
+      "source": "https://www.youtube.com/watch?v=GQrJBhLgCQI",
+      "basis": "A general guide to letting AI do routine work for you; the lesson adds a concrete starter set of automations.",
+      "evidenceUrl": "https://www.youtube.com/watch?v=GQrJBhLgCQI",
+      "playbackVerified": false
+    },
+    {
+      "topic": "lld06-t10",
+      "concept": "Which Pattern Fits? Choosing, Comparing and Combining",
+      "action": "added",
+      "previousId": null,
+      "id": "2rqJV_JXuv8",
+      "source": "https://www.youtube.com/watch?v=2rqJV_JXuv8",
+      "basis": "Compares the Observer, Visitor, Strategy and State patterns side by side; covers part of the lesson and the lesson adds how to choose and combine patterns.",
+      "evidenceUrl": "https://www.youtube.com/watch?v=2rqJV_JXuv8",
+      "playbackVerified": false
+    },
+    {
+      "topic": "py05-t6",
+      "concept": "Big-O Cheat Sheet for Built-ins: list, dict, set, deque, str, heapq, sort",
+      "action": "added",
+      "previousId": null,
+      "id": "SmutQEAp1w8",
+      "source": "https://www.youtube.com/watch?v=SmutQEAp1w8",
+      "basis": "Covers Big-O costs of Python list and set operations; the lesson adds dict, deque, str, heapq and sort.",
+      "evidenceUrl": "https://www.youtube.com/watch?v=SmutQEAp1w8",
+      "playbackVerified": false
+    },
+    {
+      "topic": "sql09-t3",
+      "concept": "Soft Deletes, Restores & Archiving",
+      "action": "added",
+      "previousId": null,
+      "id": "lDYXtj95Jy8",
+      "source": "https://www.youtube.com/watch?v=lDYXtj95Jy8",
+      "basis": "Weighs soft delete against hard delete; the lesson adds restores and archiving in SQL.",
+      "evidenceUrl": "https://www.youtube.com/watch?v=lDYXtj95Jy8",
+      "playbackVerified": false
+    },
+    {
+      "topic": "tl10-t4",
+      "concept": "The Tech Lead Playbook: STAR Stories and Leadership Answers",
+      "action": "added",
+      "previousId": null,
+      "id": "EcaxGJc5e9c",
+      "source": "https://www.youtube.com/watch?v=EcaxGJc5e9c",
+      "basis": "A mock tech-lead behavioral interview showing how leadership answers sound; the lesson adds a STAR story bank.",
+      "evidenceUrl": "https://www.youtube.com/watch?v=EcaxGJc5e9c",
+      "playbackVerified": false
     }
   ]
 }

@@ -4,6 +4,11 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.50] — 2026-11-27 · Seven more lesson videos
+
+### Added
+- **Lesson videos for 7 more topics:** AI automation vs augmentation, the production ML lifecycle, a starter set of AI automations, choosing between design patterns, Big-O costs of Python built-ins, soft deletes and archiving, and Tech Lead behavioral answers. 2,219 of 2,228 topics now have a playable "Watch it explained" video; 8 are still being searched for a good match and 1 is hidden until its video is replaced.
+
 ## [1.10.49] — 2026-11-24 · Fixes from a full test pass: runnable snippets, Passport on phones, one lesson video
 
 ### Fixed
